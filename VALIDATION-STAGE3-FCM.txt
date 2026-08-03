@@ -1,0 +1,25 @@
+IAQAR Stage 3 FCM validation
+============================
+Validation date: 2026-08-02
+
+PASS - Worker JavaScript syntax
+PASS - Browser JavaScript syntax
+PASS - FID bridge JavaScript syntax
+PASS - Service Worker syntax
+PASS - Inline HTML JavaScript syntax
+PASS - Worker automated tests: 40 / 40
+PASS - FCM target selection: FID first, legacy token fallback
+PASS - HTTP v1 payload: HTTPS deep link + webpush.fcm_options
+PASS - FCM office isolation: offices/{officeId}/devices
+PASS - Registration privacy: client reads/writes denied by Firestore rules
+PASS - Deep links: match, deal and platform broker application
+PASS - Stale registration cleanup: UNREGISTERED / INVALID_ARGUMENT / HTTP 404
+PASS - Visual assets/icons unchanged from Stage 2
+PASS - UI layout/CSS unchanged
+
+Not executed in this environment:
+- Live Cloudflare Worker deployment
+- Live Firebase Hosting/Firestore deployment
+- End-to-end delivery to a real browser device
+These require the owner's Cloudflare/Firebase login, VAPID key and service-account JSON.
+Run setup-fcm-worker.cmd, then deploy-all.cmd, then enable notifications in the office to complete the live test.

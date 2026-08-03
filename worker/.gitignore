@@ -1,0 +1,9 @@
+node_modules/
+.dev.vars
+.env
+.env.*
+secrets.json
+*-service-account*.json
+*firebase-adminsdk*.json
+MACRODROID-PRIVATE-*.txt
+.wrangler/

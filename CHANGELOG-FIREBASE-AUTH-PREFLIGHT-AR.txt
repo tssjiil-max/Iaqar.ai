@@ -1,0 +1,12 @@
+إصلاح مصادقة Firebase
+=====================
+
+- إضافة private_key_id إلى رأس JWT باسم kid وفق مواصفة Google الرسمية.
+- فحص ملف حساب الخدمة مباشرة مع Google قبل حفظ أي سر في Cloudflare.
+- منع النشر وعدم تغيير الأسرار إذا رفضت Google المفتاح.
+- عرض سبب رفض Google بوضوح من دون طباعة المفتاح الخاص أو رمز الدخول.
+- حفظ FIREBASE_PRIVATE_KEY_ID في Cloudflare Secret مع البريد والمفتاح الخاص.
+
+التشغيل:
+شغّل setup-fcm-worker.cmd، ثم الصق VAPID واختر ملف JSON.
+لن يبدأ تسجيل Cloudflare أو النشر إلا بعد قبول Google للمفتاح.

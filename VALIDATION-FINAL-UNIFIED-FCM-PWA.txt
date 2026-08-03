@@ -1,0 +1,20 @@
+VALIDATION — IAQAR FINAL UNIFIED FCM + PWA
+==========================================
+- JavaScript syntax: PASS
+- Worker syntax: PASS
+- Service Worker syntax: PASS
+- Manifest JSON: PASS
+- Worker tests: 25/25 PASS
+- Multi-office FCM storage: offices/{officeId}/devices
+- Per-device opt-in/out: IMPLEMENTED
+- FCM unregister endpoint: IMPLEMENTED
+- Authorization CORS header: IMPLEMENTED
+- PWA standalone manifest/icons/shortcuts: IMPLEMENTED
+- Meta dependency for site matching/FCM: NONE
+- Windows PowerShell JSON picker: IMPLEMENTED
+- Manual private_key copy/file: NOT REQUIRED
+
+External setup still required once:
+- Firebase public VAPID key
+- Firebase service-account JSON file selection
+- Cloudflare login approval in the browser

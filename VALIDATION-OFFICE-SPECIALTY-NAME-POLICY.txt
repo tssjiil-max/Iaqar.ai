@@ -1,0 +1,13 @@
+IAQAR - Office specialty and name policy validation
+
+PASS: office-settings.js JavaScript syntax
+PASS: specialty options are sale, purchase, rent, property_management
+PASS: at least one specialty is required
+PASS: office specialty appears in the office card
+PASS: old status texts were removed
+PASS: normal office users require 4 significant characters or more
+PASS: Arabic and English office names are supported
+PASS: 1-3 character office names require platformAdmin/admin custom claim
+PASS: duplicate names are reserved atomically through officeNameClaims
+PASS: officeId isolation remains unchanged
+PASS: no page layout sections were reordered

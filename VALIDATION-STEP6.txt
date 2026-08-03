@@ -1,0 +1,11 @@
+Step 6 validation
+=================
+- Main page design unchanged; only PWA manifest links were added to <head>.
+- manifest.webmanifest is valid JSON.
+- 192x192 and 512x512 application icons exist.
+- share-target.html accepts Android shares and preserves officeId from local storage.
+- /pipeline/intake requires Firebase sign-in and office management permission.
+- Shared messages use the same parser, matching engine, FCM path, and deal workflow as official inbound WhatsApp messages.
+- MacroDroid and outbound WhatsApp remain disabled.
+- JavaScript syntax checks passed.
+- Worker tests passed: 8/8.

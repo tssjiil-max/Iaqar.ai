@@ -1,0 +1,61 @@
+IAQAR Workflow V5 — تقرير التحقق النهائي
+=========================================
+التاريخ: 2026-07-31
+النتيجة: PASS — 39/39 تحققًا ناجحًا
+
+أهم النتائج:
+- 25 اختبار Worker ناجح، 0 فشل.
+- JavaScript صالح نحويًا في Worker وملفات الواجهة والسكريبت الداخلي.
+- CSS وهيكل الواجهة المرئي مطابقان للنسخة المرفوعة؛ لم يتغير التصميم.
+- officeId وصلاحيات العضوية وFirebase ID Token مفعلة.
+- حالات المطابقة، جاهزية الإغلاق، المتابعات، سجل النشاط، دورة الصفقة، وإغلاق البدائل موجودة.
+- عند فشل صفقة تغلق مطابقتها فقط وتبقى البدائل الأخرى متاحة.
+- Cron كل ساعة للمتابعات المستحقة وFCM موجودان.
+- إرسال واتساب التلقائي محظور، ولا يوجد استدعاء Graph API لإرسال رسائل.
+- PWA Share Target والأيقونات والملفات المحلية سليمة.
+
+تفاصيل التحقق:
+- PASS: JSON صالح: firebase.json
+- PASS: JSON صالح: firestore.indexes.json
+- PASS: JSON صالح: public/manifest.webmanifest
+- PASS: JSON صالح: worker/package.json
+- PASS: CSS المعتمد لم يتغير — 1605cd45353420b1927ceb0d6535c0f690d19801fc65146a320b50f5aa2378fb
+- PASS: هيكل الواجهة المرئي لم يتغير — 1eba1229c109559e7fd64d530c638f7acef2ca9cb82ec4ebd856cc37acb98f0b
+- PASS: العنصر موجود: bellBtn
+- PASS: العنصر موجود: officeSettingsBtn
+- PASS: العنصر موجود: workspace
+- PASS: العنصر موجود: operationList
+- PASS: العنصر موجود: officeSettings
+- PASS: العنصر موجود: whatsappConnectBtn
+- PASS: العنصر موجود: whatsappConnectionStatus
+- PASS: ترتيب الفرص ثم الصفقات محفوظ — ['opportunities', 'deals']
+- PASS: المرجع المحلي موجود: js/firebase-office.js
+- PASS: المرجع المحلي موجود: js/whatsapp-office.js
+- PASS: المرجع المحلي موجود: js/workflow-office.js
+- PASS: المرجع المحلي موجود: manifest.webmanifest
+- PASS: المرجع المحلي موجود: icons/icon-512.png
+- PASS: مقاس icon-192.png — (192, 192)
+- PASS: مقاس icon-512.png — (512, 512)
+- PASS: الميزة موجودة: عالية جدًا
+- PASS: الميزة موجودة: عالية
+- PASS: الميزة موجودة: متوسطة
+- PASS: الميزة موجودة: منخفضة
+- PASS: الميزة موجودة: بانتظار رد
+- PASS: الميزة موجودة: موعد معاينة
+- PASS: الميزة موجودة: تمت الصفقة مع عقار آخر
+- PASS: الميزة موجودة: processOverdueFollowups
+- PASS: الميزة موجودة: match_closed_after_deal_lost
+- PASS: الإرسال التلقائي محظور
+- PASS: لا يوجد استدعاء Meta لإرسال الرسائل
+- PASS: Share Target موجود
+- PASS: عزل officeId في قواعد Firestore
+- PASS: العضوية الفعالة مطلوبة
+- PASS: Firebase ID Token موثق في Worker
+- PASS: فحص المتابعات كل ساعة
+- PASS: اختبارات Worker: 25 ناجحة
+- PASS: ملف الاختبار المؤقت محذوف
+
+حدود هذا التحقق:
+- لم يتم النشر على حساب Firebase أو Cloudflare من داخل بيئة الاختبار، لأن بيانات الدخول والأسرار تبقى لدى مالك المشروع.
+- الاختبار الحي لرسائل Meta وFCM يتطلب نشر Worker وإضافة الأسرار ومفتاح VAPID وموافقة Meta.
+- الواجهة الحقيقية تحتاج تسجيل دخول Firebase وعضوية المكتب القائمة في Firestore.

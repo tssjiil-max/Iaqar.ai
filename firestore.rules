@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isPlatformAdmin() {
+      return signedIn() &&
+        ((request.auth.token.platformAdmin == true) || (request.auth.token.admin == true));
+    }
+    function officeDoc(officeId) { return get(/databases/$(database)/documents/offices/$(officeId)); }
+    function memberDoc(officeId) { return get(/databases/$(database)/documents/offices/$(officeId)/members/$(request.auth.uid)); }
+    function isOfficeOwner(officeId) {
+      return signedIn() && officeDoc(officeId).data.ownerUid == request.auth.uid;
+    }
+    function isOfficeMember(officeId) {
+      return signedIn() && (isPlatformAdmin() || isOfficeOwner(officeId) ||
+        (exists(/databases/$(database)/documents/offices/$(officeId)/members/$(request.auth.uid)) &&
+         memberDoc(officeId).data.active != false));
+    }
+    function canManage(officeId) {
+      return isPlatformAdmin() || isOfficeOwner(officeId) ||
+        (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
+    }
+    function validOfficeProfile() {
+      return request.resource.data.officeName is string
+        && request.resource.data.officeName.size() <= 80
+        && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey.size() <= 100
+        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.specialties is list
+        && request.resource.data.specialties.size() >= 0
+        && request.resource.data.specialties.size() <= 4
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+    }
+
+    match /offices/{officeId} {
+      allow read: if isOfficeMember(officeId);
+      allow create: if isPlatformAdmin() && validOfficeProfile();
+      allow update: if canManage(officeId) && validOfficeProfile();
+      allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
+
+      match /members/{uid} {
+        allow read: if isOfficeMember(officeId);
+        allow write: if canManage(officeId);
+      }
+
+      match /publicIntake/{docId} {
+        allow create: if request.resource.data.officeId == officeId
+          && request.resource.data.kind in ['client','owner']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 3
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.name.matches('.*\\s+.*')
+          && request.resource.data.phone is string
+          && request.resource.data.phone.size() >= 9
+          && request.resource.data.phone.size() <= 20
+          && request.resource.data.propertyType is string
+          && request.resource.data.propertyType.size() <= 40
+          && request.resource.data.district is string
+          && request.resource.data.district.size() <= 80
+          && request.resource.data.details is string
+          && request.resource.data.details.size() <= 1000
+          && request.resource.data.mediaPaths is list
+          && request.resource.data.mediaPaths.size() <= 6
+          && request.resource.data.imageCount is int
+          && request.resource.data.imageCount >= 0
+          && request.resource.data.imageCount <= 5
+          && ((request.resource.data.kind == 'owner'
+              && request.resource.data.imageCount >= 0
+              && request.resource.data.imageCount <= 5)
+            || (request.resource.data.kind == 'client'
+              && request.resource.data.imageCount == 0))
+          && request.resource.data.hasVideo is bool
+          && request.resource.data.source in ['office_public_link','platform_public']
+          && request.resource.data.status == 'new';
+        allow read, update, delete: if isOfficeMember(officeId);
+      }
+
+      // رموز FCM سرية وتدار حصريًا من Cloudflare Worker بحساب الخدمة.
+      match /devices/{deviceId} {
+        allow read, write: if false;
+      }
+
+      match /{collectionName}/{docId} {
+        allow read: if collectionName != 'devices' && isOfficeMember(officeId);
+        allow create, update: if collectionName != 'devices'
+          && isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId;
+        allow delete: if collectionName != 'devices' && canManage(officeId);
+
+        match /timeline/{eventId} {
+          allow read, create: if isOfficeMember(officeId);
+          allow update, delete: if canManage(officeId);
+        }
+      }
+    }
+
+    match /publicOffices/{officeId} {
+      allow read: if true;
+      allow create, update, delete: if canManage(officeId);
+    }
+
+    match /brokerApplications/{applicationId} {
+      allow create: if false;
+      allow read, update, delete: if isPlatformAdmin();
+    }
+
+
+    match /officeNameClaims/{nameKey} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.officeId is string
+        && request.resource.data.officeName is string
+        && request.resource.data.officeName.size() <= 80
+        && (isPlatformAdmin() || nameKey.size() >= 4)
+        && (canManage(request.resource.data.officeId)
+          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+      allow delete: if signedIn()
+        && (isPlatformAdmin() || canManage(resource.data.officeId));
+    }
+
+    match /whatsapp_accounts/{phoneNumberId} {
+      allow read, write: if false;
+    }
+    match /_system/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

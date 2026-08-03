@@ -1,0 +1,32 @@
+حزمة IAQAR Workflow V5 — طريقة التشغيل والنشر
+=============================================
+
+محتويات التشغيل الأساسية:
+- public/index.html: الواجهة المعتمدة دون تغيير تصميمها.
+- public/js/firebase-office.js: تحديد officeId ومسارات المكتب.
+- public/js/workflow-office.js: المطابقات والمتابعات والصفقات الحقيقية داخل مساحة العمل.
+- worker/src/index.js: الاستقبال والتحليل والمطابقة ودورة الصفقة والإشعارات.
+- firestore.rules وfirestore.indexes.json: عزل المكاتب والفهارس اللازمة.
+- deploy-all.cmd: التحقق والاختبار والنشر الكامل.
+
+للتجربة المحلية للواجهة فقط:
+1) افتح مجلد public.
+2) افتح index.html في Chrome.
+ملاحظة: البيانات الحقيقية وتسجيل الدخول وFirestore وService Worker تحتاج تشغيل الموقع عبر Firebase Hosting أو خادم محلي HTTPS مناسب.
+
+للنشر الكامل على Windows:
+1) ثبّت Node.js وFirebase CLI.
+2) سجّل الدخول إلى Firebase وCloudflare.
+3) أكمل أسرار Worker وفق worker/README-AR.txt.
+4) شغّل deploy-all.cmd من جذر المشروع.
+
+ما ينشره السكربت:
+- Cloudflare Worker وCron المتابعات.
+- قواعد Firestore وفهارسه.
+- Firebase Hosting.
+
+مهم:
+- الربط مع واتساب رسمي عبر Meta Cloud API وللاستقبال فقط.
+- لا يوجد إرسال واتساب تلقائي ولا whatsapp-web.js ولا MacroDroid تشغيلي.
+- اسم Worker القديم محفوظ فقط حتى لا يتغير Callback URL المسجل في Meta.
+- كل مكتب معزول بواسطة officeId، والوصول الفعلي يحتاج Firebase Authentication وعضوية المكتب.

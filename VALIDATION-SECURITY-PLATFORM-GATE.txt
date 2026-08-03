@@ -1,0 +1,18 @@
+VALIDATION — PLATFORM GATE AND OFFICE SECURITY
+==============================================
+- Public root has no hard-coded office identity: PASS
+- Client/owner direct submission without account: IMPLEMENTED
+- Client/owner name and phone required: IMPLEMENTED
+- Owner 3–5 images: IMPLEMENTED
+- Owner optional video: IMPLEMENTED
+- Broker pending approval workflow: IMPLEMENTED
+- Platform admin approve/reject: IMPLEMENTED
+- Office creation restricted to platform admin: IMPLEMENTED
+- Office workspace guarded by Auth + membership read: IMPLEMENTED
+- Settings remote save requires manager authorization: IMPLEMENTED
+- Office cover isolated by officeId: IMPLEMENTED
+- Shareable office card for WhatsApp/Telegram: IMPLEMENTED
+- Admin FCM registration and broker application push: IMPLEMENTED
+- Service Worker cache bumped to v9: PASS
+- JavaScript syntax: PASS
+- Worker tests: 25/25 PASS

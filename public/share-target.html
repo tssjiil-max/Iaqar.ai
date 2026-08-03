@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#005C4B">
+  <title>إدخال فرصة إلى IAQAR</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f1f5f2;color:#19231f;font-family:Tahoma,Arial,sans-serif}
+    main{width:min(92%,420px);background:#fff;border:1px solid #dee7e2;border-radius:22px;padding:24px;text-align:center;box-shadow:0 9px 26px rgba(0,63,52,.08)}
+    h1{font-size:20px;color:#005c4b;margin:0 0 10px}p{margin:0;color:#66736d;line-height:1.8}
+  </style>
+</head>
+<body>
+<main><h1>جاري تحويل الرسالة إلى مكتبك</h1><p>سيتم فرزها وتشغيل المطابقة تلقائيًا بعد التحقق من حساب المكتب.</p></main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const title = (params.get('title') || '').trim();
+  const text = (params.get('text') || '').trim();
+  const url = (params.get('url') || '').trim();
+  const messageText = [title, text, url].filter(Boolean).join('\n').slice(0, 12000);
+  const payload = {
+    id: 'share-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    messageText,
+    senderName: title || 'مشاركة من واتساب',
+    source: 'pwa_share_target',
+    receivedAt: new Date().toISOString()
+  };
+  try { localStorage.setItem('iaqar.pendingSharedMessage', JSON.stringify(payload)); } catch (_) {}
+  const officeId = (() => { try { return localStorage.getItem('iaqar.officeId') || ''; } catch (_) { return ''; } })();
+  const next = new URL('/', location.origin);
+  if (officeId) next.searchParams.set('officeId', officeId);
+  next.searchParams.set('shared', '1');
+  location.replace(next.toString());
+})();
+</script>
+</body>
+</html>

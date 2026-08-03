@@ -1,0 +1,8 @@
+Validation V1.4
+- Worker JavaScript syntax: PASS
+- Browser workflow JavaScript syntax: PASS
+- Worker automated tests: 11/11 PASS
+- Outbound WhatsApp routes remain blocked: PASS
+- Legacy MacroDroid endpoint remains disabled: PASS
+- PWA share target preserved: PASS
+- Main page design files were not redesigned: PASS

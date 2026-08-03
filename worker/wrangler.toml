@@ -1,0 +1,18 @@
+name = "iaqar-macrodroid-intake"
+main = "src/index.js"
+compatibility_date = "2026-07-29"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "aqar-b5d76"
+META_GRAPH_VERSION = "v25.0"
+META_APP_ID = ""
+META_CONFIG_ID = ""
+FCM_WEB_PUSH_VAPID_KEY = ""
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[r2_buckets]]
+binding = "IAQAR_MEDIA"
+bucket_name = "iaqar-media"

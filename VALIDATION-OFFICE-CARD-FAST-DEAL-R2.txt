@@ -1,0 +1,50 @@
+IAQAR R2 OFFICE CARD + FAST DEAL VALIDATION
+Base archive: iaqar-final-unified-secure-r2-ready (13).zip
+Validation date: 2026-08-02
+
+RESULT: PASS
+
+1. Base architecture preservation
+- admin/: present
+- worker/: present
+- docs/: present
+- public/: present
+- firestore.rules: present
+- firestore.indexes.json: present
+- deployment/setup scripts: present
+
+2. JavaScript syntax
+- All project .js and .mjs files passed node --check.
+- Inline scripts in public HTML files passed node --check.
+
+3. Worker regression tests
+- 33 tests passed.
+- 0 failed, 0 skipped, 0 cancelled.
+
+4. Office card checks
+- Approved site logo selector present.
+- Office cover uses crop-to-cover rendering.
+- Required office fields validated before card generation.
+- Public short slug stored in offices and publicOffices.
+- /o/** Firebase Hosting rewrite present.
+- QR vendor loaded and QR generation smoke test passed.
+- One office-card share action present with free fallback.
+
+5. Fast-deal workflow checks
+- Two visible stages present: schedule viewing, finish opportunity.
+- Client and owner WhatsApp actions present.
+- Contact sync to offices/{officeId}/contacts/{phone} present.
+- Optional internal final price, commission and note present.
+- Close-reason list and mandatory custom reason behavior present.
+- Fast completion records agreement then closes the deal.
+
+6. Browser-dialog check
+- No direct window.prompt, window.alert or window.confirm workflow dialogs remain.
+- The only .prompt() call is the standard PWA install prompt object and is unrelated to data entry.
+
+7. Static asset check
+- All local src/href references in public HTML resolve to existing files.
+- QR script is included in the service-worker shell cache.
+
+8. Deployment status
+- NOT DEPLOYED TO LIVE SITE.

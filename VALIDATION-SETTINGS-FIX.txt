@@ -1,0 +1,9 @@
+IAQAR Office Settings Fix
+- Added editable office profile fields inside the existing settings modal.
+- Added local per-office persistence keyed by officeId.
+- Added Firestore synchronization for an authenticated authorized office manager.
+- Added office-link copy action and sign-out action.
+- Updated the office card immediately after saving.
+- Replaced raw WhatsApp network failure text with a clear Meta-pending status.
+- No main-page layout sections were rearranged.
+- JavaScript syntax checks passed.
