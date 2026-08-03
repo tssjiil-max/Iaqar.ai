@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -31,13 +30,19 @@ const roleFilters: Array<PartyRole | "all"> = [
   "agent",
 ];
 
-export function InboxApp() {
-  const [messages, setMessages] = useState<IncomingMessage[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function InboxApp({
+  initialMessages,
+}: {
+  initialMessages: IncomingMessage[];
+}) {
+  const [messages, setMessages] = useState<IncomingMessage[]>(initialMessages);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialMessages[0]?.id ?? null,
+  );
   const [filter, setFilter] = useState<PartyRole | "all">("all");
   const [flash, setFlash] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     fromRole: "customer" as PartyRole,
@@ -52,16 +57,21 @@ export function InboxApp() {
   });
 
   async function refresh() {
-    const res = await fetch("/api/messages", { cache: "no-store" });
-    const data = (await res.json()) as { messages: IncomingMessage[] };
-    setMessages(data.messages);
-    setSelectedId((current) => current ?? data.messages[0]?.id ?? null);
-    setLoading(false);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/messages", { cache: "no-store" });
+      const data = (await res.json()) as { messages: IncomingMessage[] };
+      setMessages(data.messages);
+      setSelectedId((current) => {
+        if (current && data.messages.some((message) => message.id === current)) {
+          return current;
+        }
+        return data.messages[0]?.id ?? null;
+      });
+    } finally {
+      setLoading(false);
+    }
   }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
 
   const filtered = useMemo(() => {
     if (filter === "all") return messages;
