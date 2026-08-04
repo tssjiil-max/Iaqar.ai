@@ -37,8 +37,14 @@
 
   function closeSettings() {
     elements.overlay.hidden = true;
-    document.body.style.overflow = "";
+    if (document.getElementById("opportunityBank")?.hidden !== false) {
+      document.body.style.overflow = "";
+    }
   }
+
+  window.IAQAR = window.IAQAR || {};
+  window.IAQAR.openOfficeSettings = openSettings;
+  window.IAQAR.closeOfficeSettings = closeSettings;
 
   async function fetchJson(path, options = {}) {
     let idToken = "";
@@ -223,6 +229,7 @@
 
   function init() {
     elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.coverBtn = document.getElementById("officeCoverBtn");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -235,6 +242,7 @@
     if (!elements.openBtn || !elements.overlay) return;
 
     elements.openBtn.addEventListener("click", openSettings);
+    if (elements.coverBtn) elements.coverBtn.addEventListener("click", openSettings);
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();

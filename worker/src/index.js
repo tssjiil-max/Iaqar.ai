@@ -237,10 +237,22 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeCover(request, env, requestId);
+        return await uploadOfficeCover(request, env, requestId, "cover");
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
+      if (request.method === "POST" && url.pathname === "/media/office-logo") {
+        return await uploadOfficeCover(request, env, requestId, "logo");
+      }
+
+      if (request.method === "POST" && url.pathname === "/media/office-whatsapp-cover") {
+        return await uploadOfficeCover(request, env, requestId, "whatsapp-cover");
+      }
+
+      if (request.method === "GET" && (
+        url.pathname.startsWith("/media/public/office-covers/") ||
+        url.pathname.startsWith("/media/public/office-logos/") ||
+        url.pathname.startsWith("/media/public/office-whatsapp-covers/")
+      )) {
         return await servePublicOfficeCover(url, env);
       }
 
@@ -379,8 +391,15 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
+const OFFICE_MEDIA_KINDS = Object.freeze({
+  cover: { folder: "office-covers", file: "cover", urlField: "coverUrl" },
+  logo: { folder: "office-logos", file: "logo", urlField: "logoUrl" },
+  "whatsapp-cover": { folder: "office-whatsapp-covers", file: "cover", urlField: "whatsappCoverUrl" }
+});
+
+async function uploadOfficeCover(request, env, requestId, kind = "cover") {
   const bucket = requireMediaBucket(env);
+  const mediaKind = OFFICE_MEDIA_KINDS[kind] || OFFICE_MEDIA_KINDS.cover;
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "manage");
@@ -388,20 +407,28 @@ async function uploadOfficeCover(request, env, requestId) {
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
+  const key = `${mediaKind.folder}/${officeId}/${mediaKind.file}`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, kind, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const mediaUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({
+    ok: true,
+    kind,
+    [mediaKind.urlField]: mediaUrl,
+    coverUrl: kind === "cover" ? mediaUrl : undefined,
+    logoUrl: kind === "logo" ? mediaUrl : undefined,
+    whatsappCoverUrl: kind === "whatsapp-cover" ? mediaUrl : undefined,
+    requestId
+  }, 201);
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!/^(office-covers|office-logos|office-whatsapp-covers)\/[a-z0-9_-]{1,80}\/(cover|logo)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -2601,4 +2628,4 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure, OFFICE_MEDIA_KINDS };

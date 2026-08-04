@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory, OFFICE_MEDIA_KINDS } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -507,4 +507,11 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+
+test("office media kinds expose logo cover and whatsapp-cover paths", () => {
+  assert.equal(OFFICE_MEDIA_KINDS.logo.folder, "office-logos");
+  assert.equal(OFFICE_MEDIA_KINDS.cover.folder, "office-covers");
+  assert.equal(OFFICE_MEDIA_KINDS["whatsapp-cover"].urlField, "whatsappCoverUrl");
 });

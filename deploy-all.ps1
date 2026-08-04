@@ -27,6 +27,7 @@ foreach ($file in @(
   "public/js/access-gate.js",
   "public/js/firebase-office.js",
   "public/js/fcm-fid.js",
+  "public/js/office-profile-core.js",
   "public/js/office-settings.js",
   "public/js/whatsapp-office.js",
   "public/js/workflow-office.js",

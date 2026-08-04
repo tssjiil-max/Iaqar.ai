@@ -20,6 +20,10 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    function validCooperationMode() {
+      return !('cooperationMode' in request.resource.data)
+        || request.resource.data.cooperationMode in ['DISABLED','APPROVAL_REQUIRED','SMART_AUTOMATIC'];
+    }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
@@ -29,7 +33,8 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && validCooperationMode();
     }
 
     match /offices/{officeId} {
