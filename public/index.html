@@ -2064,6 +2064,7 @@
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
   <script type="module" src="js/operations-domain-bridge.js"></script>
+  <script type="module" src="js/messaging-domain-bridge.js"></script>
 
   <script>
     "use strict";
@@ -2156,8 +2157,10 @@
                 </button>
                 ${item.canDismiss ? `<button class="close" data-action="dismiss" data-id="${escapeHtml(item.id)}">${escapeHtml(item.dismissLabel || "صرف النظر")}</button>` : ""}
                 ${item.priorityLabel ? `<span class="time" aria-label="الأولوية">${escapeHtml(item.priorityLabel)}</span>` : ""}
-                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "واتساب المالك")}</button>` : ""}
-                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">واتساب العميل</button>` : ""}
+                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "مسودة واتساب للمالك")}</button>` : ""}
+                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "مسودة واتساب للعميل")}</button>` : ""}
+                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "مسودة تيليجرام للمالك")}</button>` : ""}
+                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "مسودة تيليجرام للعميل")}</button>` : ""}
               </div>
             </div>
           </div>
@@ -2230,7 +2233,20 @@
               ...item,
               recordId: item.recordId || item.id,
               actionMode: "whatsapp",
+              channel: "whatsapp",
               recipientRole: action.dataset.action === "whatsapp-owner" ? "owner" : "client"
+            }
+          }));
+        }
+
+        if ((action.dataset.action === "telegram-owner" || action.dataset.action === "telegram-client") && item) {
+          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
+            detail: {
+              ...item,
+              recordId: item.recordId || item.id,
+              actionMode: "telegram",
+              channel: "telegram",
+              recipientRole: action.dataset.action === "telegram-owner" ? "owner" : "client"
             }
           }));
         }

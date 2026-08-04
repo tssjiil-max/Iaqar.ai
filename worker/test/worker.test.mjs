@@ -22,6 +22,7 @@ import worker, {
   parseFcmFailure,
   phase4BoundaryGuarantees,
   phase6BoundaryGuarantees,
+  phase7BoundaryGuarantees,
   relevantDataVersion,
   resolveLoginDirectory,
   scoreMatch
@@ -816,14 +817,15 @@ test("Phase 4 matching/run requires authentication", async () => {
   assert.equal(body.ok, false);
 });
 
-test("Phase 5 boundaries never claim messaging or deals", async () => {
+test("Phase 5 boundaries allow drafts but never claim send or deals", async () => {
   const { phase5BoundaryGuarantees } = await import("../src/operations-domain.js");
   const g = phase5BoundaryGuarantees();
-  assert.equal(g.createsWhatsAppMessage, false);
+  // Phase 7: draft flags are true; Cloud API / Bot send remains false.
+  assert.equal(g.createsWhatsAppMessage, true);
   assert.equal(g.sendsWhatsApp, false);
-  assert.equal(g.createsTelegramMessage, false);
+  assert.equal(g.createsTelegramMessage, true);
   assert.equal(g.sendsTelegram, false);
-  assert.equal(g.createsSmartMessageDraft, false);
+  assert.equal(g.createsSmartMessageDraft, true);
   assert.equal(g.createsAutomaticCooperation, false);
   assert.equal(g.createsDeal, false);
   assert.equal(g.addsDealsPage, false);
@@ -875,4 +877,34 @@ test("Phase 6 boundaries export denies automatic cooperation", async () => {
   assert.equal(phase6BoundaryGuarantees().createsAutomaticCooperation, false);
   assert.equal(phase6BoundaryGuarantees().createsBrokerRecommendation, false);
   assert.equal(phase6BoundaryGuarantees().smartAutomaticImplemented, false);
+});
+
+test("Phase 7 message draft/handoff endpoints require authentication", async () => {
+  for (const path of ["/messages/draft", "/messages/handoff"]) {
+    const response = await worker.fetch(new Request(`https://example.test${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        officeId: "office-a",
+        messageId: "msg_1",
+        channel: "whatsapp",
+        contactPhone: "0551234567",
+        body: "مسودة"
+      })
+    }), env);
+    assert.equal(response.status, 401, path);
+  }
+});
+
+test("Phase 7 adapters endpoint and boundaries deny outbound send", async () => {
+  const response = await worker.fetch(new Request("https://example.test/messages/adapters"), env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.whatsapp.adapterStatus, "adapter_ready");
+  assert.equal(body.telegram.adapterStatus, "simulated");
+  assert.equal(body.boundaries.sendsWhatsApp, false);
+  assert.equal(body.boundaries.sendsTelegram, false);
+  assert.equal(body.boundaries.autoSendsMessages, false);
+  assert.equal(phase7BoundaryGuarantees().claimsFakeDelivery, false);
 });

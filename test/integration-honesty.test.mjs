@@ -92,20 +92,43 @@ test("no shipped file claims a delivered or read WhatsApp/Telegram message", () 
     "public/js/whatsapp-office.js": whatsappClient,
     "public/js/workflow-office.js": readRepositoryFile("public", "js", "workflow-office.js"),
     "public/js/office-settings.js": readRepositoryFile("public", "js", "office-settings.js"),
-    "worker/src/index.js": workerSource
+    "public/js/messaging-domain.js": readRepositoryFile("public", "js", "messaging-domain.js"),
+    "worker/src/index.js": workerSource,
+    "worker/src/messaging-domain.js": readRepositoryFile("worker", "src", "messaging-domain.js")
   };
   for (const [name, source] of Object.entries(files)) {
-    for (const claim of ["تم تسليم الرسالة", "تم توصيل الرسالة", "تمت القراءة", "delivered: true", "deliveryState: \"delivered\""]) {
+    for (const claim of [
+      "تم تسليم الرسالة",
+      "تم توصيل الرسالة",
+      "تمت القراءة",
+      "delivered: true",
+      "deliveryState: \"delivered\"",
+      "providerConfirmedDelivery: true"
+    ]) {
       assert.equal(source.includes(claim), false, `${name} claims delivery: ${claim}`);
     }
   }
 });
 
-test("Telegram is absent rather than stubbed as working", () => {
-  // Directive §10: the Telegram adapter is Phase 7. Nothing may imply it exists.
-  for (const source of [shellSource, workerSource, readRepositoryFile("public", "js", "workflow-office.js")]) {
-    assert.equal(/telegram/i.test(source), false);
-  }
+test("Telegram adapter is simulated, never production-connected or auto-sending", () => {
+  // Directive §10 / Phase 7: Telegram may exist as adapter-ready/simulated structure only.
+  const messaging = readRepositoryFile("worker", "src", "messaging-domain.js");
+  assert.ok(messaging.includes('TELEGRAM_ADAPTER_SIMULATED: "simulated"'));
+  assert.ok(messaging.includes("outboundEnabled: false"));
+  assert.ok(messaging.includes("inboundEnabled: false"));
+  assert.equal(messaging.includes("production connected"), false);
+  assert.equal(messaging.includes("production_connected"), false);
+
+  const boundaries = messaging.slice(messaging.indexOf("export function phase7BoundaryGuarantees"));
+  assert.ok(boundaries.includes("sendsTelegram: false"));
+  assert.ok(boundaries.includes("autoSendsMessages: false"));
+  assert.ok(boundaries.includes("claimsFakeDelivery: false"));
+
+  // External handoff must not mark provider SENT/DELIVERED.
+  assert.ok(messaging.includes("OPENED_EXTERNAL"));
+  assert.ok(messaging.includes("Never set in Phase 7 handoff")
+    || messaging.includes("never set in Phase 7 handoff")
+    || messaging.includes("must not mark SENT or DELIVERED"));
 });
 
 test("the notification preference gate reports a skip instead of a fake success", () => {

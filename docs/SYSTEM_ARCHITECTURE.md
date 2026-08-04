@@ -89,7 +89,8 @@ Route groups:
 | Workflow | `POST /workflow/action`, `GET /workflow/timeline`, `GET /office/analytics` | Match/deal progression. |
 | Operations (Phase 5) | `POST /operations/action`, `/operations/from-cooperation`, `/operations/missing-data` | Worker upserts/lifecycle for persisted Operations + Notifications. |
 | Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
-| Blocked | `/ingest` → 410, any `*messages*`/`*send*` → 403 `outbound_disabled` | Outbound messaging is refused at the edge. |
+| Messages (Phase 7) | `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters` | Persisted Arabic drafts + external broker handoff; never Cloud API/Bot send. |
+| Blocked | `/ingest` → 410; other `*messages*`/`*send*` → 403 `outbound_disabled` | Meta/Telegram outbound send refused at the edge (draft APIs excluded). |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the
 Firebase ID token against Google's JWKS (`verifyFirebaseIdToken`), then resolves

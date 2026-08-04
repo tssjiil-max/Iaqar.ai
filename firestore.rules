@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
     function isRestrictedOfficeCollection(collectionName) {
-      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs'];
+      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages'];
     }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
@@ -179,6 +179,13 @@ service cloud.firestore {
 
       // سجل تدقيق التعاون (المرحلة 6): قراءة الأعضاء — الكتابة عبر Worker فقط.
       match /auditLogs/{auditId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // مسودات الرسائل الذكية (المرحلة 7): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
+      // لا يجوز للعميل تزوير SENT أو DELIVERED.
+      match /messages/{messageId} {
         allow read: if isOfficeMember(officeId);
         allow create, update, delete: if false;
       }

@@ -34,15 +34,15 @@ Test files:
 | `test/matching-phase4.test.mjs` | Phase 4 Matching Engine domain + rematch contracts |
 | `test/operations-phase5.test.mjs` | Phase 5 Operations Center + Notifications (Tests 9–10) |
 | `test/cooperation-phase6.test.mjs` | Phase 6 Cooperation ownership + revocation (Tests 11–12) |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints, Phase 6 cooperation lifecycle |
+| `test/messaging-phase7.test.mjs` | Phase 7 Smart message drafts + adapters (Test 13) |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints, Phase 6 cooperation lifecycle, Phase 7 message routes |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 6**:
-- Phase 0–5 regression suites remain green.
-- Explicit cooperation lifecycle via Worker is delivered (accept/reject/revoke + audit).
-- `SMART_AUTOMATIC` does not auto-accept or recommend brokers (Q-4 unresolved);
-  `createsAutomaticCooperation` remains false.
-- Phase 7 (messaging adapters) is not started.
+Status as of the end of **Phase 7**:
+- Phase 0–6 regression suites remain green.
+- Persisted smart message drafts + WhatsApp/Telegram adapter contracts delivered.
+- Handoff never marks provider SENT/DELIVERED; Cloud API outbound remains blocked.
+- Phase 8 (hardening) is not started.
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -58,7 +58,7 @@ Status as of the end of **Phase 6**:
 | 10 | Notification | **PASS** | `test/operations-phase5.test.mjs`, `test/notification-preferences.test.mjs`, Worker Phase 5 |
 | 11 | Cooperation ownership | **PASS** | `test/cooperation-phase6.test.mjs`, emulator Phase 6 cases |
 | 12 | Cooperation revocation | **PASS** | `test/cooperation-phase6.test.mjs`, emulator Phase 6 cases |
-| 13 | Message draft | **PENDING (phase 7)** | — |
+| 13 | Message draft | **PASS** | `test/messaging-phase7.test.mjs`, emulator Phase 7 messages, Worker `/messages/*` |
 | 14 | No deals page | **PASS** | `test/office-card.test.mjs` |
 | 15 | Production honesty | **PASS** | `test/office-card.test.mjs`, `test/integration-honesty.test.mjs` |
 
@@ -331,10 +331,19 @@ Automated coverage:
 A Match or communication Operation can generate an Arabic WhatsApp or Telegram draft, and
 it is not marked sent until a real send action or confirmed external response occurs.
 
-**Status: PENDING (phase 7).** Arabic WhatsApp drafts are generated today and handed to
-`wa.me` for the broker to send; nothing is ever marked as sent or delivered, which is
-correct. Drafts are not persisted and Telegram does not exist, so the scenario is not
-claimed.
+Automated assertions (`test/messaging-phase7.test.mjs`, emulator, Worker):
+
+- Arabic templates for match / viewing / follow-up / media / deal stages.
+- Persisted draft shape: channel, recipient, related ids, `createdAt`, `sendState=DRAFT`,
+  `deliveryState=NOT_APPLICABLE`, honesty flags false.
+- External handoff → `OPENED_EXTERNAL` only (never `SENT` / `DELIVERED`).
+- WhatsApp adapter `adapter_ready` (`wa.me`); Telegram adapter `simulated` (share URL +
+  webhook validation fixture; inbound/outbound Bot API off).
+- MATCH_REVIEW Operations offer draft actions; `sendsWhatsApp` / `sendsTelegram` false.
+- Firestore clients cannot forge `SENT` / `DELIVERED` on `messages`.
+- `/meta/*messages*` / `*send*` still 403 `outbound_disabled`.
+
+**Status: PASS (Phase 7).**
 
 ## TEST 14 — No deals page
 

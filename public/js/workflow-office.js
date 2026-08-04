@@ -5,6 +5,7 @@
   const SHARED_STORAGE_KEY = "iaqar.pendingSharedMessage";
   const APP_VERSION = "stage3-fcm-fid-v1";
   const office = () => window.IAQAR && window.IAQAR.office;
+  const messagingDomain = () => window.IAQAR && window.IAQAR.messagingDomain;
 
   const MATCH_STATUS = Object.freeze({
     new: { key: "active", label: "نشطة", mark: "🟢", next: "التواصل مع الطرفين" },
@@ -753,57 +754,180 @@
     return contact;
   }
 
+  function resolveMessageStage(detail) {
+    return detail.messageStage
+      || (detail.recordType === "deal" ? detail.workflowStage : detail.status)
+      || (detail.recordType === "operation" ? "match_review" : "contact");
+  }
+
   function whatsappMessage(detail, role, contact) {
-    const name = contact.name ? ` ${contact.name}` : "";
+    const domain = messagingDomain();
     const officeName = officeDisplayName();
-    const property = [detail.propertyType, detail.district].filter(Boolean).join(" في ") || "العقار";
-    const status = detail.messageStage || (detail.recordType === "deal" ? detail.workflowStage : detail.status);
+    const stage = resolveMessageStage(detail);
+    if (domain && typeof domain.buildArabicMessageBody === "function") {
+      const templateCode = typeof domain.resolveTemplateCode === "function"
+        ? domain.resolveTemplateCode({
+          templateCode: detail.templateCode,
+          role,
+          stage,
+          messageMode: detail.messageMode || "",
+          ownerMediaMissing: detail.ownerMediaMissing === true
+        })
+        : "";
+      return domain.buildArabicMessageBody({
+        templateCode,
+        role,
+        officeName,
+        contactName: contact && contact.name || "",
+        propertyType: detail.propertyType || "",
+        district: detail.district || "",
+        appointmentLabel: appointmentText(detail),
+        requestedItems: detail.requestedItems || [],
+        requestNote: detail.requestNote || "",
+        stage
+      });
+    }
+    // Fallback if messaging domain module has not loaded yet.
+    const name = contact.name ? ` ${contact.name}` : "";
     const greeting = `مرحبًا${name}، معك ${officeName}.`;
-    const appointment = appointmentText(detail);
+    const property = [detail.propertyType, detail.district].filter(Boolean).join(" في ") || "العقار";
+    return `${greeting}\n\nنتواصل معك بخصوص ${property} لتأكيد البيانات وترتيب الخطوة التالية.\n\nمع التحية،\n${officeName}`;
+  }
 
-    if (detail.messageMode === "request") {
-      const labels = { photos: "صور العقار", location: "موقع العقار", propertyLink: "رابط العقار" };
-      const requested = (detail.requestedItems || []).map(item => labels[item]).filter(Boolean).join("، ");
-      return `${greeting}\n\nنرجو تزويدنا بـ${requested || "المعلومات اللازمة لإكمال المطابقة"}.${detail.requestNote ? `\nملاحظة: ${detail.requestNote}` : ""}\n\nمع التحية،\n${officeName}`;
+  async function enrichDetailForMessaging(detail) {
+    const next = { ...detail };
+    if (next.ownerOfferId && next.clientRequestId) return next;
+    const matchId = next.matchId || (next.recordType === "match" ? next.recordId : "");
+    if (!matchId) return next;
+    const fromCache = matchItems.find((item) => item.recordId === matchId || item.id === matchId);
+    if (fromCache) {
+      next.ownerOfferId = next.ownerOfferId || fromCache.ownerOfferId || "";
+      next.clientRequestId = next.clientRequestId || fromCache.clientRequestId || "";
+      next.propertyType = next.propertyType || fromCache.propertyType || "";
+      next.district = next.district || fromCache.district || "";
+      next.ownerMediaMissing = next.ownerMediaMissing ?? fromCache.ownerMediaMissing;
+      next.status = next.status || fromCache.status || "";
+      return next;
+    }
+    const runtime = office();
+    if (!runtime || !runtime.refs || !runtime.refs.matches) return next;
+    try {
+      const snap = await runtime.refs.matches.doc(matchId).get();
+      if (!snap.exists) return next;
+      const data = snap.data() || {};
+      next.ownerOfferId = next.ownerOfferId || data.ownerOfferId || "";
+      next.clientRequestId = next.clientRequestId || data.clientRequestId || "";
+      next.propertyType = next.propertyType || data.propertyType || "";
+      next.district = next.district || data.district || "";
+      next.ownerMediaMissing = next.ownerMediaMissing ?? data.ownerMediaMissing;
+      next.status = next.status || data.status || "";
+    } catch (error) {
+      console.warn("[iaqar] enrich match for messaging", error);
+    }
+    return next;
+  }
+
+  async function persistAndOpenMessageDraft(detail, channel) {
+    const popup = window.open("", "_blank");
+    if (popup) popup.opener = null;
+    const runtime = office();
+    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
+    const domain = messagingDomain();
+    if (!runtime || !runtime.officeId || !user) {
+      if (popup) popup.close();
+      return notify("سجل دخول المكتب أولًا");
+    }
+    const role = detail.recipientRole === "owner" ? "owner" : "client";
+    const enriched = await enrichDetailForMessaging(detail);
+    const contact = await workflowContact(enriched, role);
+    const safeChannel = channel === "telegram" ? "telegram" : "whatsapp";
+    if (safeChannel === "whatsapp") {
+      const phone = whatsappPhone(contact && contact.phone);
+      if (!phone) {
+        if (popup) popup.close();
+        return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
+      }
     }
 
-    if (role === "owner" && detail.ownerMediaMissing === true && !["viewing", "completed", "closed"].includes(status)) {
-      return `${greeting}\n\nنشكرك على إرسال عرض العقار. نأمل تزويدنا بصور واضحة للعقار حتى نتمكن من عرضه ومطابقته مع العملاء المناسبين.\n\nمع التحية،\n${officeName}`;
+    const stage = resolveMessageStage(enriched);
+    const bodyText = whatsappMessage(enriched, role, contact || {});
+    let handoffUrl = "";
+    let messageId = "";
+
+    if (domain && typeof domain.requestCreateMessageDraft === "function") {
+      const idToken = await user.getIdToken(true);
+      const created = await domain.requestCreateMessageDraft({
+        workerBase: WORKER_BASE,
+        idToken,
+        officeId: runtime.officeId,
+        channel: safeChannel,
+        role,
+        contactName: contact && contact.name || "",
+        contactPhone: contact && contact.phone || "",
+        propertyType: enriched.propertyType || "",
+        district: enriched.district || "",
+        appointmentLabel: appointmentText(enriched),
+        officeName: officeDisplayName(),
+        stage,
+        messageMode: enriched.messageMode || "",
+        ownerMediaMissing: enriched.ownerMediaMissing === true,
+        requestedItems: enriched.requestedItems || [],
+        requestNote: enriched.requestNote || "",
+        operationId: enriched.recordType === "operation" ? (enriched.recordId || enriched.id || "") : "",
+        matchId: enriched.matchId || (enriched.recordType === "match" ? enriched.recordId : "") || "",
+        opportunityId: enriched.opportunityId || "",
+        body: bodyText
+      });
+      if (!created.ok) {
+        if (popup) popup.close();
+        return notify(created.message || "تعذر حفظ مسودة الرسالة");
+      }
+      messageId = created.messageId || (created.draft && created.draft.id) || "";
+      handoffUrl = (created.draft && created.draft.handoffUrl) || "";
+      if (messageId && typeof domain.requestMessageHandoff === "function") {
+        const handed = await domain.requestMessageHandoff({
+          workerBase: WORKER_BASE,
+          idToken,
+          officeId: runtime.officeId,
+          messageId
+        });
+        if (handed.ok) {
+          handoffUrl = handed.handoffUrl || handoffUrl;
+          // OPENED_EXTERNAL only — never treat as provider SENT/DELIVERED.
+        }
+      }
     }
 
-    const messages = {
-      active: role === "owner"
-        ? `يوجد عميل مهتم بعقار مطابق لـ ${property}. نرغب في استكمال التنسيق معك.`
-        : `وجدنا عرضًا مناسبًا لطلبك: ${property}. نرغب في استكمال التنسيق معك.`,
-      waiting_response: `نتابع معك بخصوص ${property} لاستكمال الخطوة التالية.`,
-      viewing: role === "owner"
-        ? `تم تحديد موعد معاينة العقار مع عميل مهتم يوم ${appointment}. نرجو تأكيد الموعد.`
-        : `تم تحديد موعد معاينة العقار يوم ${appointment}. نرجو تأكيد حضورك.`,
-      contact: `نتواصل معك بخصوص ${property} لتأكيد البيانات وترتيب الخطوة التالية.`,
-      negotiation: `بدأت مرحلة التفاوض بخصوص ${property}، وسننسق معك التفاصيل حتى اكتمال الإجراء.`,
-      agreement: `تم تسجيل الاتفاق بخصوص ${property}، وجارٍ استكمال إجراءات الصفقة.`,
-      closing: `المعاملة الخاصة بـ ${property} جاهزة للإغلاق.`,
-      completed: `تم بحمد الله إتمام الصفقة الخاصة بـ ${property}. نشكرك على التعامل مع ${officeName}.`,
-      closed: `تم إغلاق متابعة ${property}. إذا رغبت في إعادة فتح الطلب فتواصل معنا.`,
-      lost: `لم تكتمل صفقة ${property} حاليًا. يسعدنا خدمتك عند توفر فرصة جديدة.`
-    };
-    return `${greeting}\n\n${messages[status] || messages.contact}\n\nمع التحية،\n${officeName}`;
+    if (!handoffUrl) {
+      if (safeChannel === "whatsapp") {
+        const phone = whatsappPhone(contact && contact.phone);
+        handoffUrl = phone
+          ? `https://wa.me/${phone}?text=${encodeURIComponent(bodyText)}`
+          : "";
+      } else if (domain && typeof domain.buildTelegramHandoffUrl === "function") {
+        handoffUrl = domain.buildTelegramHandoffUrl({ body: bodyText }).url;
+      } else {
+        handoffUrl = `https://t.me/share/url?url=${encodeURIComponent("https://iaqar.ai/")}&text=${encodeURIComponent(bodyText)}`;
+      }
+    }
+
+    if (!handoffUrl) {
+      if (popup) popup.close();
+      return notify("تعذر تجهيز رابط الرسالة");
+    }
+    if (popup) popup.location.replace(handoffUrl);
+    else window.location.href = handoffUrl;
+    notify(safeChannel === "telegram"
+      ? "فُتحت مسودة تيليجرام خارجيًا — لم يُؤكد الإرسال"
+      : "فُتحت مسودة واتساب خارجيًا — لم يُؤكد الإرسال");
   }
 
   async function openWorkflowWhatsApp(detail) {
-    const popup = window.open("", "_blank");
-    if (popup) popup.opener = null;
-    const role = detail.recipientRole === "owner" ? "owner" : "client";
-    const contact = await workflowContact(detail, role);
-    const phone = whatsappPhone(contact && contact.phone);
-    if (!phone) {
-      if (popup) popup.close();
-      return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
-    }
-    const message = whatsappMessage(detail, role, contact || {});
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    if (popup) popup.location.replace(url);
-    else window.location.href = url;
+    return persistAndOpenMessageDraft(detail, "whatsapp");
+  }
+
+  async function openWorkflowTelegram(detail) {
+    return persistAndOpenMessageDraft(detail, "telegram");
   }
 
   let activeWorkflowDetail = null;
@@ -1108,6 +1232,8 @@
     const messageStage = activeWorkflowDetail.status === "closed" && activeWorkflowDetail.workflowStage === "closed" ? "completed" : activeWorkflowDetail.status;
     if (action === "whatsapp-client") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
     if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
+    if (action === "telegram-client") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
+    if (action === "telegram-owner") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
   }
 
   async function handleOperationPrimary(detail) {
@@ -1169,13 +1295,13 @@
   async function handleAction(event) {
     const detail = event.detail || {};
     try {
-      if (detail.actionMode === "whatsapp") {
-        // Phase 5 Operations Center cards never request WhatsApp; ignore for operation items.
-        if (detail.recordType === "operation") {
-          notify("إرسال الرسائل خارج نطاق مركز العمليات الحالي");
-          return;
-        }
-        await openWorkflowWhatsApp(detail);
+      if (detail.actionMode === "whatsapp" || detail.actionMode === "telegram") {
+        // Phase 7: Match/communication Operations may create drafts; never auto-send.
+        const channel = detail.actionMode === "telegram" || detail.channel === "telegram"
+          ? "telegram"
+          : "whatsapp";
+        if (channel === "telegram") await openWorkflowTelegram(detail);
+        else await openWorkflowWhatsApp(detail);
       } else if (detail.actionMode === "dismiss") await handleOperationDismiss(detail);
       else if (detail.actionMode === "secondary") await handleSecondaryAction(detail);
       else await handlePrimaryAction(detail);

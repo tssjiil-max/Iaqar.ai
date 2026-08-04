@@ -946,6 +946,48 @@ test("Phase 6: auditLogs are readable by office members and not client-writable"
   await assertFails(getDoc(doc(unauthed(), "offices/office-a/auditLogs/aud_phase6_a")));
 });
 
+test("Phase 7: messages are office-isolated and send/delivery state is not client-writable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/messages/msg_phase7_a"), {
+      officeId: "office-a",
+      id: "msg_phase7_a",
+      channel: "whatsapp",
+      body: "مسودة",
+      sendState: "DRAFT",
+      deliveryState: "NOT_APPLICABLE",
+      providerConfirmedSend: false,
+      providerConfirmedDelivery: false,
+      createdBySystem: false
+    });
+    await setDoc(doc(db, "offices/office-b/messages/msg_phase7_b"), {
+      officeId: "office-b",
+      id: "msg_phase7_b",
+      channel: "telegram",
+      body: "مسودة",
+      sendState: "DRAFT",
+      deliveryState: "NOT_APPLICABLE"
+    });
+  });
+
+  const member = authed("broker-a1");
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/messages/msg_phase7_a")));
+  await assertFails(getDoc(doc(member, "offices/office-b/messages/msg_phase7_b")));
+  await assertFails(setDoc(doc(member, "offices/office-a/messages/msg_forged"), {
+    officeId: "office-a",
+    sendState: "SENT",
+    deliveryState: "DELIVERED",
+    providerConfirmedDelivery: true
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/messages/msg_phase7_a"), {
+    sendState: "SENT",
+    deliveryState: "DELIVERED",
+    providerConfirmedSend: true,
+    providerConfirmedDelivery: true
+  }));
+  await assertFails(getDoc(doc(unauthed(), "offices/office-a/messages/msg_phase7_a")));
+});
+
 test("Phase 6 Test 12: revoked sharedOpportunities are no longer readable", async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();

@@ -1,7 +1,8 @@
 /**
  * Phase 5 — client Operations Center + Notifications contracts.
  * Projects persisted Operations into the shell list; lifecycle mutations go through Worker.
- * No WhatsApp/Telegram/message drafts/automatic cooperation.
+ * Phase 7: MATCH_REVIEW / EXTERNAL_RESPONSE may offer smart message *draft* actions
+ * (never auto-send; never claim delivery).
  */
 
 export const OPERATION_TYPES = Object.freeze({
@@ -50,11 +51,12 @@ const TYPE_ICONS = Object.freeze({
 
 export function phase5BoundaryGuarantees() {
   return {
-    createsWhatsAppMessage: false,
+    // Phase 7: draft generation is real; Cloud API / Bot send remains off.
+    createsWhatsAppMessage: true,
     sendsWhatsApp: false,
-    createsTelegramMessage: false,
+    createsTelegramMessage: true,
     sendsTelegram: false,
-    createsSmartMessageDraft: false,
+    createsSmartMessageDraft: true,
     createsAutomaticCooperation: false,
     createsBrokerRecommendation: false,
     createsDeal: false,
@@ -148,6 +150,10 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
   detailsLines.push(`الأولوية: ${priorityLabel(priority)}`);
   detailsLines.push(`الحالة: ${status}`);
 
+  // Phase 7: Match / external-response ops can generate drafts; never claim send.
+  const canDraftMessage = type === OPERATION_TYPES.MATCH_REVIEW
+    || type === OPERATION_TYPES.EXTERNAL_RESPONSE;
+
   return {
     id: String(op.id || ""),
     recordId: String(op.id || ""),
@@ -173,11 +179,20 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     opportunityId: String(op.opportunityId || ""),
     cooperationId: String(op.cooperationId || ""),
     assignedBrokerId: String(op.assignedBrokerId || ""),
-    whatsappOwner: false,
-    whatsappClient: false,
-    createsWhatsAppMessage: false,
-    createsTelegramMessage: false,
-    ...phase5BoundaryGuarantees()
+    ...phase5BoundaryGuarantees(),
+    whatsappOwner: canDraftMessage,
+    whatsappClient: canDraftMessage,
+    telegramOwner: canDraftMessage,
+    telegramClient: canDraftMessage,
+    whatsappOwnerLabel: "مسودة واتساب للمالك",
+    whatsappClientLabel: "مسودة واتساب للعميل",
+    telegramOwnerLabel: "مسودة تيليجرام للمالك",
+    telegramClientLabel: "مسودة تيليجرام للعميل",
+    createsWhatsAppMessage: canDraftMessage,
+    createsTelegramMessage: canDraftMessage,
+    createsSmartMessageDraft: canDraftMessage,
+    sendsWhatsApp: false,
+    sendsTelegram: false
   };
 }
 

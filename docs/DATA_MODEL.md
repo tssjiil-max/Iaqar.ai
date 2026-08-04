@@ -104,6 +104,7 @@ health documents.
 | **`operations/{operationId}`** | **Worker (Phase 5)** | Persisted actionable Operations Center items. See §8. Clients cannot write. |
 | **`notifications/{notificationId}`** | **Worker (Phase 5)** | Auditable in-app / push notification records. See §8. Clients cannot write. |
 | **`auditLogs/{auditId}`** | **Worker (Phase 6)** | Sensitive cooperation-action audit trail. See §9. Clients cannot write. |
+| **`messages/{messageId}`** | **Worker (Phase 7)** | Persisted smart message drafts + honest send/delivery state. See §10. Clients cannot write. |
 | `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
 | `deals/{id}/timeline/{eventId}` | Worker + client | As above. |
 | `alerts/{alertId}` | Worker | Legacy `alt_{matchId}` alert records. Phase 5 primary path is `notifications`. |
@@ -129,7 +130,8 @@ match /{collectionName}/{docId} {
 
 `restricted()` / `isRestrictedOfficeCollection()` returns true for `devices`,
 `officeSettings`, `brokerSettings`, `opportunitySources`, `opportunities`,
-`sharedOpportunities`, `matches`, `operations`, `notifications`, and `auditLogs`.
+`sharedOpportunities`, `matches`, `operations`, `notifications`, `auditLogs`,
+and `messages`.
 Before Phase 1 it only excluded `devices`; later phases exclude collections that need
 explicit least-privilege rules. In Firestore, rules are additive — a permissive
 catch-all cannot be narrowed by adding a specific rule, so exclusion is the only
@@ -425,13 +427,35 @@ Access: office-member `read` only; client `create` / `update` / `delete` are `if
   auto-accept or recommend brokers (Q-4 unresolved). Smart automatic cooperating-broker
   selection is still not implemented; `createsAutomaticCooperation` remains false.
 
-## 10. Target-state entities — NOT IMPLEMENTED
+## 10. Message drafts (`offices/{officeId}/messages/{messageId}`) — Phase 7
+
+Worker-trusted documents (`msg_{sha256…}`). Members may read; clients cannot create,
+update, or delete (no forging `SENT` / `DELIVERED`).
+
+| Field | Notes |
+| --- | --- |
+| `id`, `officeId`, `brokerId` | Draft identity + creating broker. |
+| `channel` | `whatsapp` \| `telegram`. |
+| `templateCode` | e.g. `MATCH_OWNER`, `VIEWING_CLIENT`, `MEDIA_REQUEST`, … |
+| `body` | Arabic draft text (≤ 4000). |
+| `recipientRole`, `recipientName`, `recipientPhone` | Recipient; phone digits for WhatsApp handoff only. |
+| `operationId`, `matchId`, `opportunityId` | Related records when known. |
+| `sendState` | `DRAFT` → `READY` → `OPENED_EXTERNAL` (handoff). `SENT`/`FAILED` reserved for real provider paths (none enabled in Phase 7). |
+| `deliveryState` | `NOT_APPLICABLE` for external handoff. `DELIVERED`/`READ` require provider confirmation — never set by handoff. |
+| `failureReason` | Populated only on real provider failure paths. |
+| `handoffUrl`, `adapterStatus` | `wa.me` / `t.me/share`; `adapter_ready` or `simulated`. |
+| `openedExternalAt`, `sentAt`, `deliveredAt` | Timestamps; `sentAt`/`deliveredAt` unused without provider confirmation. |
+| `autoSend`, `providerConfirmedSend`, `providerConfirmedDelivery` | Honesty flags; handoff keeps send/delivery confirmation false. |
+| `createdAt`, `updatedAt`, `schemaVersion` | Audit. |
+
+## 11. Target-state entities — NOT IMPLEMENTED
 
 Listed so nobody mistakes the current model for the target model.
 
 | Entity | Phase | Purpose |
 | --- | --- | --- |
 | Smart automatic cooperating-broker selection | 6 (deferred — Q-4) | Mode may be stored; Phase 6 does not auto-accept or invent recommendations. Explicit approval only. |
-| `conversations`, `messages` with channel/send/delivery state | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |
+| Automatic Cloud API / Bot API outbound send | 7+ (Q-3) | Phase 7 ships drafts + external handoff only. |
+| `conversations` threading beyond drafts | future | Optional conversation grouping around drafts. |
 | `eventOutbox` / `backgroundJobs` | 2+ | Database-backed job pattern for the event workflow. |
 | `officeHandles` | deferred | See `DECISIONS.md` D-004. |

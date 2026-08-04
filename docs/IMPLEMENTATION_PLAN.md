@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0–6 complete — stop (do not begin Phase 7).**
+Current position: **Phase 0–7 complete — stop (do not begin Phase 8).**
 
 ---
 
@@ -18,7 +18,7 @@ Current position: **Phase 0–6 complete — stop (do not begin Phase 7).**
 | 4 | Matching engine | **DONE** |
 | 5 | Operations Center and notifications | **DONE** |
 | 6 | Cooperation | **DONE** |
-| 7 | Smart messages and integration adapters | NOT STARTED |
+| 7 | Smart messages and integration adapters | **DONE** |
 | 8 | Hardening | NOT STARTED |
 
 ## Phase 0 — Foundation and audit (DONE)
@@ -262,19 +262,36 @@ Explicitly **not** done in Phase 6 (future phases):
 - WhatsApp / Telegram smart message drafts and channel adapters — Phase 7
 - Deals page, bottom navigation, or home redesign — never
 
-## Phase 7 — Smart messages and integration adapters (future)
+## Phase 7 — Smart messages and integration adapters (DONE)
 
 Depends on: Phases 5 and 6.
 
-Scope: Arabic message templates; a WhatsApp adapter contract; a Telegram adapter
-contract; webhook validation structure; local simulation fixtures; persisted drafts with
-channel, recipient, related opportunity/match/operation, created time, send state,
-delivery state and failure reason; honest integration state labels.
+Delivered:
 
-Risks: credentials are absent, so the phase must ship as "adapter ready"/"simulated" and
-must never store fake delivery success.
+- Arabic message templates (`TEMPLATE_CODES`) covering match, viewing, follow-up, media
+  request, deal stages, and operation review — Worker + client mirrors.
+- WhatsApp adapter contract: `adapter_ready`, broker handoff via `wa.me`; Cloud API
+  outbound remains blocked (`outbound_disabled`).
+- Telegram adapter contract: `simulated` share URL (`t.me/share`); webhook validation
+  fixture (`X-Telegram-Bot-Api-Secret-Token`); inbound/outbound Bot API disabled.
+- Persisted drafts at `offices/{officeId}/messages/{msg_*}` with channel, recipient,
+  related opportunity/match/operation, `createdAt`, `sendState`, `deliveryState`,
+  `failureReason`, honesty flags.
+- Worker routes: `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters`.
+- Client wiring: Operations Center MATCH_REVIEW draft actions; workflow persist +
+  external handoff; labels never claim provider send/delivery from handoff.
+- Firestore: `messages` restricted (member read; Worker-only write).
+- Acceptance: Test 13 PASS; Test 15 still PASS. Decision: D-016.
 
-Exit criteria: Test 13 PASS; Test 15 still PASS.
+Explicitly **not** done in Phase 7 (future / open):
+
+- Automatic Cloud API / Bot API send (Q-3 unresolved) — `sendsWhatsApp` /
+  `sendsTelegram` remain false; handoff sets `OPENED_EXTERNAL` only.
+- Fake delivery success — never stored.
+- Deals page, bottom navigation, or home redesign — never.
+- Phase 8 hardening — do not begin.
+
+Exit criteria: Test 13 PASS; Test 15 still PASS. **Met.**
 
 ## Phase 8 — Hardening (future)
 

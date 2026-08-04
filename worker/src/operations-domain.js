@@ -100,11 +100,12 @@ const TYPE_COPY = Object.freeze({
 
 export function phase5BoundaryGuarantees() {
   return {
-    createsWhatsAppMessage: false,
+    // Phase 7: draft generation is real; Cloud API / Bot send remains off.
+    createsWhatsAppMessage: true,
     sendsWhatsApp: false,
-    createsTelegramMessage: false,
+    createsTelegramMessage: true,
     sendsTelegram: false,
-    createsSmartMessageDraft: false,
+    createsSmartMessageDraft: true,
     createsAutomaticCooperation: false,
     createsBrokerRecommendation: false,
     createsDeal: false,

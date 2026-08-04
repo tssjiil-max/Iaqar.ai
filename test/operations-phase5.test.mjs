@@ -359,7 +359,7 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
   }
 });
 
-test("36-42. Phase 5 UI boundaries: no bottom nav, deals page, messaging actions on ops cards", async () => {
+test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft actions only", async () => {
   const shellSource = readRepositoryFile("public", "index.html");
   assert.equal(shellSource.includes('data-main="deals"'), false);
   assert.equal(/bottom-nav|bottom_nav|bottomNav/.test(shellSource), false);
@@ -377,17 +377,20 @@ test("36-42. Phase 5 UI boundaries: no bottom nav, deals page, messaging actions
       status: "OPEN",
       createdAt: new Date().toISOString()
     });
-    assert.equal(ui.whatsappOwner, false);
-    assert.equal(ui.whatsappClient, false);
-    assert.equal(ui.createsWhatsAppMessage, false);
+    // Phase 7: Match review may offer draft actions; never send claims.
+    assert.equal(ui.whatsappOwner, true);
+    assert.equal(ui.whatsappClient, true);
+    assert.equal(ui.createsSmartMessageDraft, true);
+    assert.equal(ui.sendsWhatsApp, false);
+    assert.equal(ui.sendsTelegram, false);
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
     const list = document.getElementById("operationList");
-    assert.equal(list.querySelectorAll(".whatsapp-action").length, 0);
-    assert.equal(list.textContent.includes("واتساب"), false);
-    assert.equal(list.textContent.includes("تيليجرام"), false);
-    assert.equal(list.textContent.includes("توليد رسالة"), false);
+    assert.ok(list.querySelectorAll(".whatsapp-action").length >= 2);
+    assert.ok(list.textContent.includes("مسودة واتساب"));
+    assert.ok(list.textContent.includes("مسودة تيليجرام"));
+    assert.equal(list.textContent.includes("تم التسليم"), false);
     assert.equal(list.innerHTML.includes("mat_"), false);
   } finally {
     shell.close();
@@ -396,24 +399,25 @@ test("36-42. Phase 5 UI boundaries: no bottom nav, deals page, messaging actions
 
 test("56-65. Phase 5 boundary guarantees and wiring", () => {
   const g = phase5BoundaryGuarantees();
-  assert.equal(g.createsWhatsAppMessage, false);
+  // Phase 7 supersedes messaging-draft flags; send remains forbidden.
+  assert.equal(g.createsWhatsAppMessage, true);
   assert.equal(g.sendsWhatsApp, false);
-  assert.equal(g.createsTelegramMessage, false);
+  assert.equal(g.createsTelegramMessage, true);
   assert.equal(g.sendsTelegram, false);
-  assert.equal(g.createsSmartMessageDraft, false);
+  assert.equal(g.createsSmartMessageDraft, true);
   assert.equal(g.createsAutomaticCooperation, false);
   assert.equal(g.createsBrokerRecommendation, false);
   assert.equal(g.createsDeal, false);
   assert.equal(g.createsCommission, false);
   assert.equal(g.addsDealsPage, false);
   assert.equal(g.addsBottomNavigation, false);
+  assert.deepEqual(clientBoundaries(), g);
 
   const worker = readRepositoryFile("worker", "src", "index.js");
   assert.ok(worker.includes("/operations/action"));
   assert.ok(worker.includes("/operations/from-cooperation"));
   assert.ok(worker.includes("/operations/missing-data"));
   assert.ok(worker.includes("createMatchReviewBundle"));
-  assert.ok(!worker.includes("MESSAGE_DRAFT_CREATED"));
   assert.ok(!worker.includes("WHATSAPP_SENT"));
   assert.ok(!worker.includes("TELEGRAM_SENT"));
 

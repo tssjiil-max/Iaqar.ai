@@ -46,6 +46,22 @@ import {
   runCooperationLifecycle,
   revokeBankSharingScope
 } from "./cooperation-phase6-service.js";
+import {
+  MESSAGE_CHANNELS,
+  MESSAGE_SEND_STATE,
+  MESSAGE_DELIVERY_STATE,
+  TEMPLATE_CODES,
+  ADAPTER_STATUS,
+  phase7BoundaryGuarantees,
+  buildArabicMessageBody,
+  buildMessageDraft,
+  applyExternalHandoff,
+  whatsappAdapterContract,
+  telegramWebhookValidationFixture,
+  normalizeChannel,
+  resolveTemplateCode,
+  whatsappDigits
+} from "./messaging-domain.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -248,6 +264,24 @@ export default {
         return await handleCooperationScopeRevoke(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/messages/draft") {
+        return await handleMessagesDraft(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/messages/handoff") {
+        return await handleMessagesHandoff(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/messages/adapters") {
+        return jsonResponse({
+          ok: true,
+          whatsapp: whatsappAdapterContract(),
+          telegram: telegramWebhookValidationFixture(),
+          boundaries: phase7BoundaryGuarantees(),
+          requestId
+        });
+      }
+
       if (request.method === "POST" && url.pathname === "/workflow/preview") {
         const body = await request.json().catch(() => ({}));
         const current = cleanText(body.currentStage || "contact", 40);
@@ -372,7 +406,12 @@ export default {
         }, 410);
       }
 
-      if (url.pathname.includes("messages") || url.pathname.includes("send")) {
+      // Cloud API / legacy outbound remains blocked. Phase 7 draft/handoff APIs are
+      // registered above and never auto-send via Meta or Telegram Bot API.
+      const draftApi = url.pathname === "/messages/draft"
+        || url.pathname === "/messages/handoff"
+        || url.pathname === "/messages/adapters";
+      if (!draftApi && (url.pathname.includes("messages") || url.pathname.includes("send"))) {
         return jsonResponse({
           ok: false,
           error: "outbound_disabled",
@@ -2262,6 +2301,169 @@ async function handleCooperationScopeRevoke(request, env, requestId) {
   });
 }
 
+function messageDraftToFirestoreFields(draft) {
+  const h = operationsFirestoreHelpers();
+  return {
+    schemaVersion: h.firestoreInteger(draft.schemaVersion || 1),
+    id: h.firestoreString(draft.id),
+    officeId: h.firestoreString(draft.officeId),
+    brokerId: h.firestoreString(draft.brokerId || ""),
+    channel: h.firestoreString(draft.channel),
+    templateCode: h.firestoreString(draft.templateCode || ""),
+    body: h.firestoreString(draft.body || ""),
+    recipientRole: h.firestoreString(draft.recipientRole || ""),
+    recipientName: h.firestoreString(draft.recipientName || ""),
+    recipientPhone: h.firestoreString(draft.recipientPhone || ""),
+    operationId: h.firestoreString(draft.operationId || ""),
+    matchId: h.firestoreString(draft.matchId || ""),
+    opportunityId: h.firestoreString(draft.opportunityId || ""),
+    sendState: h.firestoreString(draft.sendState || MESSAGE_SEND_STATE.DRAFT),
+    deliveryState: h.firestoreString(draft.deliveryState || MESSAGE_DELIVERY_STATE.NOT_APPLICABLE),
+    failureReason: h.firestoreString(draft.failureReason || ""),
+    handoffUrl: h.firestoreString(draft.handoffUrl || ""),
+    adapterStatus: h.firestoreString(draft.adapterStatus || ""),
+    openedExternalAt: draft.openedExternalAt
+      ? h.firestoreTimestamp(new Date(draft.openedExternalAt))
+      : null,
+    sentAt: draft.sentAt ? h.firestoreTimestamp(new Date(draft.sentAt)) : null,
+    deliveredAt: draft.deliveredAt ? h.firestoreTimestamp(new Date(draft.deliveredAt)) : null,
+    createdAt: h.firestoreTimestamp(new Date(draft.createdAt)),
+    updatedAt: h.firestoreTimestamp(new Date(draft.updatedAt)),
+    createdBySystem: h.firestoreBoolean(Boolean(draft.createdBySystem)),
+    autoSend: h.firestoreBoolean(false),
+    providerConfirmedSend: h.firestoreBoolean(Boolean(draft.providerConfirmedSend)),
+    providerConfirmedDelivery: h.firestoreBoolean(false)
+  };
+}
+
+async function handleMessagesDraft(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const channel = normalizeChannel(body.channel);
+  const role = cleanText(body.role || "client", 20) === "owner" ? "owner" : "client";
+  const stage = cleanText(body.stage, 40) || "contact";
+  const messageMode = cleanText(body.messageMode, 40);
+  const templateCode = resolveTemplateCode({
+    templateCode: cleanText(body.templateCode, 40),
+    role,
+    stage,
+    messageMode,
+    ownerMediaMissing: body.ownerMediaMissing === true
+  });
+  const officeName = cleanText(body.officeName, 80) || "المكتب العقاري";
+  const contactPhone = cleanText(body.contactPhone, 40);
+  if (channel === MESSAGE_CHANNELS.WHATSAPP && !whatsappDigits(contactPhone)) {
+    throw appError("phone_required", 400, "رقم المستلم غير موجود أو غير صحيح");
+  }
+  const text = cleanText(body.body, 4000) || buildArabicMessageBody({
+    templateCode,
+    role,
+    officeName,
+    contactName: cleanText(body.contactName, 120),
+    propertyType: cleanText(body.propertyType, 40),
+    district: cleanText(body.district, 80),
+    appointmentLabel: cleanText(body.appointmentLabel, 80),
+    requestedItems: Array.isArray(body.requestedItems) ? body.requestedItems : [],
+    requestNote: cleanText(body.requestNote, 400),
+    stage
+  });
+
+  const built = await buildMessageDraft({
+    officeId,
+    brokerId: identity.uid || "",
+    channel,
+    templateCode,
+    body: text,
+    recipientRole: role,
+    recipientName: cleanText(body.contactName, 120),
+    recipientPhone: contactPhone,
+    operationId: cleanText(body.operationId, 180),
+    matchId: cleanText(body.matchId, 180),
+    opportunityId: cleanText(body.opportunityId, 180)
+  });
+  if (!built.ok) throw appError(built.error || "draft_failed", 400, "تعذر إنشاء مسودة الرسالة");
+
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", built.draft.id],
+    accessToken,
+    fields: messageDraftToFirestoreFields(built.draft)
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    messageId: built.draft.id,
+    draft: {
+      ...built.draft,
+      // Never claim send/delivery from draft creation.
+      sendState: MESSAGE_SEND_STATE.DRAFT,
+      deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
+      providerConfirmedSend: false,
+      providerConfirmedDelivery: false
+    },
+    boundaries: phase7BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleMessagesHandoff(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const messageId = cleanText(body.messageId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!messageId) throw appError("message_id_required", 400, "معرّف الرسالة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", messageId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!doc) throw appError("message_not_found", 404, "المسودة غير موجودة");
+  const draft = { id: messageId, ...firestoreFieldsToJs(doc.fields || {}) };
+  const applied = applyExternalHandoff(draft);
+  if (!applied.ok) throw appError(applied.error || "handoff_failed", 400, "تعذر تسجيل الفتح الخارجي");
+
+  const h = operationsFirestoreHelpers();
+  const fields = {
+    sendState: h.firestoreString(applied.patch.sendState),
+    deliveryState: h.firestoreString(applied.patch.deliveryState),
+    openedExternalAt: h.firestoreTimestamp(new Date(applied.patch.openedExternalAt)),
+    updatedAt: h.firestoreTimestamp(new Date(applied.patch.updatedAt)),
+    providerConfirmedSend: h.firestoreBoolean(false),
+    providerConfirmedDelivery: h.firestoreBoolean(false)
+  };
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", messageId],
+    accessToken,
+    fields
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    messageId,
+    sendState: MESSAGE_SEND_STATE.OPENED_EXTERNAL,
+    deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
+    handoffUrl: draft.handoffUrl || "",
+    // Explicit honesty: external handoff is not Cloud API send and not delivery.
+    providerConfirmedSend: false,
+    providerConfirmedDelivery: false,
+    boundaries: phase7BoundaryGuarantees(),
+    requestId
+  });
+}
+
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
   const url=new URL(firestoreDocumentUrl(projectId,segments)); url.searchParams.set("pageSize",String(pageSize));
   const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`}});
@@ -3323,5 +3525,9 @@ export {
   phase5BoundaryGuarantees, OPERATION_TYPES, OPERATION_STATUS, NOTIFICATION_TYPES,
   NOTIFICATION_STATUS, ACTIVE_OPERATION_STATUSES, shouldCreateMatchReview,
   applyOperationLifecycle, listMissingOpportunityFields, pushTypeForOperation,
-  phase6BoundaryGuarantees, cooperationModeAllowsExplicitRequest
+  phase6BoundaryGuarantees, cooperationModeAllowsExplicitRequest,
+  phase7BoundaryGuarantees, MESSAGE_CHANNELS, MESSAGE_SEND_STATE, MESSAGE_DELIVERY_STATE,
+  TEMPLATE_CODES, ADAPTER_STATUS, buildArabicMessageBody, buildMessageDraft,
+  applyExternalHandoff, whatsappAdapterContract, telegramWebhookValidationFixture,
+  resolveTemplateCode, whatsappDigits
 };

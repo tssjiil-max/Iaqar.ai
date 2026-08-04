@@ -370,12 +370,37 @@ invent broker recommendations (Q-4 unresolved).
 **Why.** Satisfies Tests 11–12 with explicit, revocable, audited cross-office access
 without inventing performance-based broker selection or starting Phase 7 messaging.
 
+## D-016 — Phase 7 smart message drafts + adapter-ready/simulated channels
+
+**Phase:** 7
+**Directive:** §10 (integrations honesty), Tests 13 and 15; Phase 7 only — do not begin
+Phase 8 hardening; do not invent automatic send policy while Q-3 is unresolved.
+
+**Decision.**
+
+1. **Persisted drafts only.** `offices/{officeId}/messages/{msg_*}` are written by the
+   Worker (`POST /messages/draft`). Clients may read; client create/update/delete denied.
+2. **External broker handoff ≠ send.** Opening `wa.me` / `t.me/share` records
+   `sendState=OPENED_EXTERNAL` and keeps `deliveryState=NOT_APPLICABLE` with
+   `providerConfirmedSend/Delivery=false`. Never auto-send via Meta Cloud API or
+   Telegram Bot API.
+3. **Adapter honesty.** WhatsApp = `adapter_ready` (inbound Cloud API path may exist;
+   outbound Cloud API blocked). Telegram = `simulated` (share URL + webhook validation
+   fixture structure; inbound/outbound disabled).
+4. **Ops Center draft actions.** `MATCH_REVIEW` / `EXTERNAL_RESPONSE` may offer Arabic
+   draft buttons (واتساب/تيليجرام) without claiming delivery.
+5. **No Deals / bottom nav.** Phase 7 boundary guarantees forbid a Deals page and bottom
+   navigation. Q-3 remains open for any future automatic send policy beyond drafts.
+
+**Why.** Satisfies Test 13 with persisted, auditable drafts and honest adapter labels
+while keeping Test 15 (no fake delivery / no production-connected stubs).
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
 | --- | --- | --- |
 | Q-1 | May an office have a WhatsApp number different from its mobile number? (see D-002) | A separate approved settings field. |
 | Q-2 | Should the office URL become the bare `iaqar.ai/{handle}` form, accepting a link migration? (see D-004) | The `officeHandles` registry. |
-| Q-3 | What is the approved sending policy, if any, for outbound owner/customer messages? §10 says drafts by default; nothing describes when automatic sending would ever be allowed. | Phase 7 outbound behaviour beyond drafts. |
+| Q-3 | What is the approved sending policy, if any, for outbound owner/customer messages? §10 says drafts by default; nothing describes when automatic sending would ever be allowed. | Any outbound behaviour beyond drafts + external handoff (Phase 7 ships drafts only). |
 | Q-4 | Which "verified performance data" may drive cooperating-broker recommendations? §19 forbids inventing performance scores. | Smart-automatic recommendation factors — still unresolved; Phase 6 does not invent them. |
 | Q-5 | What are the approved completion milestones that trigger a success badge/notification (§21)? | Phase 5 completion operation. |

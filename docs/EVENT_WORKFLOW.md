@@ -57,9 +57,9 @@ be introduced.
 | `PUSH_QUEUED_IF_ALLOWED` | **Real (Phase 5)** — when prefs allow and the notification is newly created, FCM HTTP v1 is attempted with lock-screen-safe copy; `providerState.push` records `QUEUED` / send / fail. Device delivery is **not** claimed without provider confirmation. | `operations-service.js` `recordNotificationPushResult`; `sendOfficePush` |
 | `BROKER_ACTION` | **Real** — Operation lifecycle via `POST /operations/action`; cooperation accept/reject/revoke via `POST /cooperation/lifecycle` (+ scope revoke); legacy match/deal progression via `iaqar:workflow-action` → `POST /workflow/action`. | `public/js/workflow-office.js`; `public/js/opportunity-bank.js`; `worker/src/cooperation-phase6-service.js` |
 | `COOPERATION_ACCEPTED` / `COOPERATION_REJECTED` / `COOPERATION_REVOKED` | **Real (Phase 6)** — trusted Worker lifecycle; auditLogs written; accept writes minimum `sharedOpportunities`; revoke removes/invalidates projections. | `worker/src/cooperation-phase6-service.js`; `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` |
-| `MESSAGE_DRAFT_CREATED` | **Partial** — Arabic drafts are generated per stage and role and opened in `wa.me` for the broker to send. Drafts are **not persisted**; there is no `messages` collection, no channel/recipient/send-state record and no Telegram path. **Phase 6 stops before messaging (Phase 7).** | `public/js/workflow-office.js` `whatsappMessage`, `openWorkflowWhatsApp` |
+| `MESSAGE_DRAFT_CREATED` | **Real (Phase 7)** — persisted `offices/{id}/messages/{msg_*}` via `POST /messages/draft`. Arabic templates; WhatsApp `adapter_ready` (`wa.me`) and Telegram `simulated` (`t.me/share`). External handoff via `POST /messages/handoff` sets `OPENED_EXTERNAL` only — **not** provider `SENT`/`DELIVERED`. | `worker/src/messaging-domain.js`; `public/js/messaging-domain.js`; `workflow-office.js` `persistAndOpenMessageDraft` |
 | `EXTERNAL_RESPONSE_RECEIVED` | **Partial** — only inbound WhatsApp messages arrive back, and they are treated as new sources rather than as replies correlated to an operation. | `worker/src/index.js` `receiveMetaWebhook` |
-| `NEXT_OPERATION_CREATED` | **Not implemented** (Phase 7 territory beyond Phase 6 cooperation lifecycle) | — |
+| `NEXT_OPERATION_CREATED` | **Not implemented** (beyond Phase 7 draft/handoff) | — |
 | `COMPLETED` | **Partial** — Operation `COMPLETED` / `DISMISSED` / `EXPIRED` via lifecycle actions; a deal reaching `closed` closes sibling matches and records a timeline entry. | `applyOperationLifecycle`; `finalizeDealAndCloseSiblings` |
 
 ## 3. The only scheduled worker today
@@ -174,3 +174,28 @@ Mode enforcement:
 - `SMART_AUTOMATIC` — stored only; does **not** auto-accept or recommend brokers;
   behaviour falls back to explicit approval. `createsAutomaticCooperation` remains
   false.
+
+## 8. Phase 7 smart message draft flow
+
+Phase 7 stops **before** automatic provider send (Q-3 unresolved) and before Phase 8
+hardening. Drafts + external handoff only.
+
+```
+BROKER_ACTION (Match / communication Operation, or workflow overlay)
+  → MESSAGE_DRAFT_CREATED
+       POST /messages/draft → offices/{officeId}/messages/{msg_*}
+       sendState=DRAFT, deliveryState=NOT_APPLICABLE
+  → broker opens external handoff URL (wa.me or t.me/share)
+  → POST /messages/handoff
+       sendState=OPENED_EXTERNAL (not SENT)
+       deliveryState stays NOT_APPLICABLE
+       providerConfirmedSend/Delivery=false
+```
+
+Adapter honesty:
+
+- WhatsApp: `adapter_ready` — inbound Cloud API may exist; outbound Cloud API paths
+  containing `messages`/`send` still return 403 `outbound_disabled` except the draft
+  APIs above.
+- Telegram: `simulated` — share URL + webhook validation fixture structure; Bot API
+  inbound/outbound disabled.
