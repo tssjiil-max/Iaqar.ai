@@ -148,6 +148,100 @@ test("public intake media rejects an unsupported content type", async () => {
   assert.equal(response.status, 415);
 });
 
+test("office logo upload is stored under office-logos with a public URL", async () => {
+  const writes = [];
+  const mediaEnv = {
+    ...env,
+    ALLOW_TRIAL_NO_AUTH: "true",
+    IAQAR_MEDIA: { put: async (...args) => writes.push(args) }
+  };
+  const response = await worker.fetch(new Request("https://example.test/media/office-logo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png", "Content-Length": "4",
+      "X-Office-Id": "office-alqiq"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][0], "office-logos/office-alqiq/logo");
+  assert.ok(body.logoUrl.includes("/media/public/office-logos/office-alqiq/logo"));
+});
+
+test("office logo upload rejects an unsupported content type", async () => {
+  const mediaEnv = {
+    ...env,
+    ALLOW_TRIAL_NO_AUTH: "true",
+    IAQAR_MEDIA: { put: async () => {} }
+  };
+  const response = await worker.fetch(new Request("https://example.test/media/office-logo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/gif", "Content-Length": "4",
+      "X-Office-Id": "office-alqiq"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(response.status, 415);
+});
+
+test("office logo upload requires authentication outside the trial office", async () => {
+  const mediaEnv = { ...env, IAQAR_MEDIA: { put: async () => {} } };
+  const response = await worker.fetch(new Request("https://example.test/media/office-logo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png", "Content-Length": "4",
+      "X-Office-Id": "office-other"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "authentication_required");
+});
+
+test("public office logo serving returns the stored object and rejects bad keys", async () => {
+  const served = {
+    body: new Uint8Array([9, 9]),
+    httpEtag: "etag-1",
+    writeHttpMetadata: headers => headers.set("content-type", "image/png")
+  };
+  const mediaEnv = {
+    ...env,
+    IAQAR_MEDIA: {
+      get: async key => (key === "office-logos/office-alqiq/logo" ? served : null)
+    }
+  };
+  const ok = await worker.fetch(new Request("https://example.test/media/public/office-logos/office-alqiq/logo"), mediaEnv);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("content-type"), "image/png");
+  const missing = await worker.fetch(new Request("https://example.test/media/public/office-logos/office-alqiq/logo/extra"), mediaEnv);
+  assert.equal(missing.status, 404);
+});
+
+test("office name availability requires authentication", async () => {
+  const response = await worker.fetch(new Request("https://example.test/office/name-availability?key=almasar"), env);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "authentication_required");
+});
+
+test("office name availability rejects malformed tokens before touching storage", async () => {
+  const response = await worker.fetch(new Request("https://example.test/office/name-availability?key=almasar", {
+    headers: { Authorization: "Bearer not-a-real-token" }
+  }), env);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "invalid_auth_token");
+});
+
+test("office name availability validates the normalized key length", async () => {
+  const response = await worker.fetch(new Request("https://example.test/office/name-availability?key=ab"), env);
+  assert.equal(response.status, 401);
+});
+
 
 test("pipeline classifies a client request", async () => {
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {

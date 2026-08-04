@@ -151,6 +151,7 @@
         const data = snap.data() || {};
         gate.querySelector("#publicOfficeProfile").innerHTML = `
           ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${data.logoUrl ? `<img src="${escapeHtml(data.logoUrl)}" alt="شعار المكتب" style="width:64px;height:64px;object-fit:contain;margin-bottom:8px">` : ""}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}${data.whatsapp ? ` — واتساب ${escapeHtml(data.whatsapp)}` : ""}</p>`;

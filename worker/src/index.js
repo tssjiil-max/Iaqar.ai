@@ -240,8 +240,20 @@ export default {
         return await uploadOfficeCover(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/media/office-logo") {
+        return await uploadOfficeLogo(request, env, requestId);
+      }
+
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
-        return await servePublicOfficeCover(url, env);
+        return await servePublicOfficeImage(url, env, "office-covers");
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-logos/")) {
+        return await servePublicOfficeImage(url, env, "office-logos");
+      }
+
+      if (request.method === "GET" && url.pathname === "/office/name-availability") {
+        return await checkOfficeNameAvailability(request, url, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
@@ -379,7 +391,7 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
+async function uploadOfficeImage(request, env, requestId, { keyPrefix, keyName, urlField }) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
@@ -388,20 +400,30 @@ async function uploadOfficeCover(request, env, requestId) {
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
+  const key = `${keyPrefix}/${officeId}/${keyName}`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
     customMetadata: { officeId, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({ ok: true, [urlField]: imageUrl, requestId }, 201);
 }
 
-async function servePublicOfficeCover(url, env) {
+function uploadOfficeCover(request, env, requestId) {
+  return uploadOfficeImage(request, env, requestId, { keyPrefix: "office-covers", keyName: "cover", urlField: "coverUrl" });
+}
+
+function uploadOfficeLogo(request, env, requestId) {
+  return uploadOfficeImage(request, env, requestId, { keyPrefix: "office-logos", keyName: "logo", urlField: "logoUrl" });
+}
+
+async function servePublicOfficeImage(url, env, keyPrefix) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  const keyName = keyPrefix === "office-logos" ? "logo" : "cover";
+  const allowed = new RegExp(`^${keyPrefix}/[a-z0-9_-]{1,80}/${keyName}$`);
+  if (!allowed.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -412,6 +434,30 @@ async function servePublicOfficeCover(url, env) {
   headers.set("cache-control", "public, max-age=3600");
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
+}
+
+async function checkOfficeNameAvailability(request, url, env, requestId) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!token) throw appError("authentication_required", 401, "سجل دخول المكتب أولاً");
+  await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
+  const nameKey = cleanText(url.searchParams.get("key"), 100);
+  if (!nameKey || nameKey.length < 4) throw appError("invalid_name_key", 400, "مفتاح الاسم غير صالح");
+  assertFirebaseSecrets(env);
+  const accessToken = await getGoogleAccessToken(env);
+  const claim = await getFirestoreDocument({
+    projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
+    segments: ["officeNameClaims", nameKey],
+    accessToken,
+    allowMissing: true
+  });
+  const ownOfficeId = normalizeOfficeId(url.searchParams.get("officeId"));
+  let available = !claim;
+  if (claim) {
+    const fields = firestoreFieldsToJs(claim.fields || {});
+    available = Boolean(ownOfficeId) && String(fields.officeId || "") === ownOfficeId;
+  }
+  return jsonResponse({ ok: true, key: nameKey, available, requestId });
 }
 
 async function handleBrokerApplication(request, env, requestId) {

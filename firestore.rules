@@ -20,6 +20,16 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    function validNotificationPrefs() {
+      return request.resource.data.notificationPrefs is map
+        && request.resource.data.notificationPrefs.keys().hasOnly(['matches','contacts','cooperation','messages','appointments','system'])
+        && request.resource.data.notificationPrefs.get('matches', true) is bool
+        && request.resource.data.notificationPrefs.get('contacts', true) is bool
+        && request.resource.data.notificationPrefs.get('cooperation', true) is bool
+        && request.resource.data.notificationPrefs.get('messages', true) is bool
+        && request.resource.data.notificationPrefs.get('appointments', true) is bool
+        && request.resource.data.notificationPrefs.get('system', true) is bool;
+    }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
@@ -29,7 +39,16 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && (!request.resource.data.keys().hasAny(['cooperationMode'])
+          || request.resource.data.cooperationMode in ['disabled','approval_required','smart_automatic'])
+        && (!request.resource.data.keys().hasAny(['logoUrl'])
+          || (request.resource.data.logoUrl is string && request.resource.data.logoUrl.size() <= 2000))
+        && (!request.resource.data.keys().hasAny(['coverUrl'])
+          || (request.resource.data.coverUrl is string && request.resource.data.coverUrl.size() <= 2000))
+        && (!request.resource.data.keys().hasAny(['publicSlug'])
+          || (request.resource.data.publicSlug is string && request.resource.data.publicSlug.size() <= 64))
+        && (!request.resource.data.keys().hasAny(['notificationPrefs']) || validNotificationPrefs());
     }
 
     match /offices/{officeId} {

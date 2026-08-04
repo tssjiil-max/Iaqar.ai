@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const utils = (window.IAQAR && window.IAQAR.officeUtils) || null;
   const SPECIALTY_LABELS = Object.freeze({
     sale: "بيع",
     purchase: "شراء",
@@ -19,12 +20,22 @@
     city: "المدينة المنورة",
     specialties: [],
     coverUrl: "",
-    publicSlug: ""
+    logoUrl: "",
+    publicSlug: "",
+    cooperationMode: "approval_required",
+    notificationPrefs: null
   };
 
   const el = {};
   let current = { ...defaults };
   let authClaims = {};
+  let defaultLogoUrl = "";
+  let pendingCover = null;
+  let pendingLogo = null;
+  let removeCoverRequested = false;
+  let removeLogoRequested = false;
+  let nameCheckTimer = 0;
+  let nameCheckSeq = 0;
 
   function officeRuntime() {
     return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -60,31 +71,7 @@
   }
 
   function safeText(value, fallback = "") {
-    return String(value == null ? fallback : value).trim();
-  }
-
-
-  function publicSlugBase(value) {
-    const asciiName = safeText(value)
-      .normalize("NFKC")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 36);
-    return asciiName || "maktab";
-  }
-
-  function shortHash(value) {
-    let hash = 2166136261;
-    for (const char of String(value || "")) {
-      hash ^= char.codePointAt(0);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(36).slice(0, 6);
-  }
-
-  function buildPublicSlug(name) {
-    return `${publicSlugBase(name)}-${shortHash(officeId())}`.slice(0, 64);
+    return utils ? utils.safeText(value, fallback) : String(value == null ? fallback : value).trim();
   }
 
   function normalizedSpecialties(value) {
@@ -93,39 +80,17 @@
     return cleanList;
   }
 
-  function significantCharacterCount(value) {
-    const matches = safeText(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
-    return matches ? matches.length : 0;
-  }
-
-  function allowedOfficeName(value) {
-    const name = safeText(value);
-    return /^[A-Za-z0-9\u0600-\u06FF\s._-]+$/.test(name);
-  }
-
-  function normalizeOfficeNameKey(value) {
-    return safeText(value)
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[\s._-]+/g, "")
-      .replace(/[^A-Za-z0-9\u0600-\u06FF]/g, "");
-  }
-
   function validateOfficeName(value) {
-    const name = safeText(value);
-    if (!name) return "اكتب اسم المكتب";
-    if (!allowedOfficeName(name)) return "اسم المكتب يقبل العربية أو الإنجليزية والأرقام والمسافات فقط";
-    if (!isPlatformAdmin() && significantCharacterCount(name) < 4) {
-      return "اسم المكتب يجب أن يكون 4 أحرف على الأقل؛ الأسماء الأقصر محجوزة لإدارة المنصة";
-    }
-    if (significantCharacterCount(name) > 80) return "اسم المكتب طويل جدًا";
-    return "";
+    if (utils) return utils.validateOfficeName(value, { isPlatformAdmin: isPlatformAdmin() });
+    return safeText(value) ? "" : "اكتب اسم المكتب";
   }
 
   function clean(data) {
     return {
       officeName: safeText(data.officeName, defaults.officeName).slice(0, 80),
-      officeNameKey: normalizeOfficeNameKey(data.officeName || defaults.officeName).slice(0, 100),
+      officeNameKey: utils
+        ? utils.normalizeOfficeNameKey(data.officeName || defaults.officeName).slice(0, 100)
+        : safeText(data.officeNameKey).slice(0, 100),
       brokerName: safeText(data.brokerName, defaults.brokerName).slice(0, 80),
       phone: safeText(data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
       whatsapp: safeText(data.whatsapp || data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
@@ -133,7 +98,10 @@
       city: safeText(data.city, defaults.city).slice(0, 60),
       specialties: normalizedSpecialties(data.specialties),
       coverUrl: safeText(data.coverUrl).slice(0, 2000),
-      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
+      logoUrl: safeText(data.logoUrl).slice(0, 2000),
+      publicSlug: utils ? utils.sanitizePublicSlug(data.publicSlug) : safeText(data.publicSlug).slice(0, 64),
+      cooperationMode: utils ? utils.sanitizeCooperationMode(data.cooperationMode) : "approval_required",
+      notificationPrefs: utils ? utils.sanitizeNotificationPrefs(data.notificationPrefs) : (data.notificationPrefs || null)
     };
   }
 
@@ -162,6 +130,82 @@
     });
   }
 
+  function renderNotificationPrefs() {
+    if (!el.prefsList || !utils) return;
+    el.prefsList.innerHTML = utils.NOTIFICATION_PREF_DEFS.map(def => `
+      <label class="pref-item">
+        <input type="checkbox" data-pref-key="${def.key}">
+        <span class="pref-text"><strong>${def.label}</strong><small>${def.hint}</small></span>
+      </label>`).join("");
+  }
+
+  function writePrefsToForm(prefs) {
+    const cleanPrefs = utils ? utils.sanitizeNotificationPrefs(prefs) : (prefs || {});
+    Array.from((el.prefsList || { querySelectorAll: () => [] }).querySelectorAll("[data-pref-key]"))
+      .forEach(input => {
+        input.checked = cleanPrefs[input.dataset.prefKey] !== false;
+      });
+  }
+
+  function readPrefsFromForm() {
+    const prefs = {};
+    Array.from((el.prefsList || { querySelectorAll: () => [] }).querySelectorAll("[data-pref-key]"))
+      .forEach(input => {
+        prefs[input.dataset.prefKey] = input.checked;
+      });
+    return utils ? utils.sanitizeNotificationPrefs(prefs) : prefs;
+  }
+
+  function renderCropPresets() {
+    if (!el.cropPreset || !utils) return;
+    const presets = utils.OFFICE_DESIGN.coverCrop.presets;
+    const defaultKey = utils.OFFICE_DESIGN.coverCrop.defaultPreset;
+    el.cropPreset.innerHTML = Object.values(presets)
+      .map(preset => `<option value="${preset.key}"${preset.key === defaultKey ? " selected" : ""}>${preset.label}</option>`)
+      .join("");
+  }
+
+  function writeCooperationModeToForm(mode) {
+    const safeMode = utils ? utils.sanitizeCooperationMode(mode) : (mode || "approval_required");
+    Array.from(document.querySelectorAll('input[name="cooperationMode"]')).forEach(input => {
+      input.checked = input.value === safeMode;
+    });
+  }
+
+  function readCooperationModeFromForm() {
+    const selected = document.querySelector('input[name="cooperationMode"]:checked');
+    return utils ? utils.sanitizeCooperationMode(selected && selected.value) : "approval_required";
+  }
+
+  function setIdentityStatus(text, state = "") {
+    if (!el.identityStatus) return;
+    el.identityStatus.textContent = text || "";
+    el.identityStatus.className = `identity-status${state ? ` ${state}` : ""}`;
+  }
+
+  function refreshIdentityPreviews() {
+    if (el.logoPreview) {
+      el.logoPreview.src = pendingLogo ? pendingLogo.dataUrl : (removeLogoRequested ? defaultLogoUrl : (current.logoUrl || defaultLogoUrl));
+    }
+    if (el.removeLogo) el.removeLogo.hidden = !(pendingLogo || (current.logoUrl && !removeLogoRequested));
+    if (el.coverPreview) {
+      const coverSource = pendingCover ? pendingCover.dataUrl : (removeCoverRequested ? "" : current.coverUrl);
+      el.coverPreview.src = coverSource || "";
+      el.coverPreview.hidden = !coverSource;
+      if (el.coverEmpty) el.coverEmpty.hidden = Boolean(coverSource);
+    }
+    if (el.removeCover) el.removeCover.hidden = !(pendingCover || (current.coverUrl && !removeCoverRequested));
+  }
+
+  function applyOfficeCardIdentity() {
+    const coverButton = document.getElementById("officeCoverSettingsBtn");
+    const coverImage = document.getElementById("officeCoverImage");
+    if (coverImage) coverImage.src = current.coverUrl || "";
+    if (coverButton) coverButton.hidden = !current.coverUrl;
+    const logoImage = document.getElementById("officeLogoImage");
+    if (logoImage) logoImage.src = current.logoUrl || defaultLogoUrl;
+  }
+
   function apply(data) {
     current = clean({ ...defaults, ...(data || {}) });
     el.officeName.value = current.officeName;
@@ -172,10 +216,10 @@
     el.city.value = current.city;
     el.link.value = officeLink();
     writeSpecialtiesToForm(current.specialties);
-    if (el.coverPreview) {
-      el.coverPreview.src = current.coverUrl || "";
-      el.coverPreview.hidden = !current.coverUrl;
-    }
+    writePrefsToForm(current.notificationPrefs);
+    writeCooperationModeToForm(current.cooperationMode);
+    refreshIdentityPreviews();
+    applyOfficeCardIdentity();
 
     const map = [
       ["officeDisplayName", current.officeName],
@@ -224,7 +268,10 @@
           city: data.city,
           specialties: data.specialties,
           coverUrl: data.coverUrl,
-          publicSlug: data.publicSlug
+          logoUrl: data.logoUrl,
+          publicSlug: data.publicSlug,
+          cooperationMode: data.cooperationMode,
+          notificationPrefs: data.notificationPrefs
         });
         saveLocal(current);
       }
@@ -286,10 +333,73 @@
         city: data.city,
         specialties: data.specialties,
         coverUrl: data.coverUrl,
+        logoUrl: data.logoUrl,
         publicSlug: data.publicSlug,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     });
+  }
+
+  async function uploadOfficeImage(path, blob, contentType, resultField) {
+    const user = authUser();
+    if (!user) throw new Error("سجل دخول مدير المكتب قبل رفع الصورة");
+    const idToken = await user.getIdToken();
+    const response = await fetch(`${WORKER_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType,
+        "Authorization": `Bearer ${idToken}`,
+        "X-Office-Id": officeId()
+      },
+      body: blob
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result[resultField]) {
+      throw new Error(result.message || "تعذر رفع صورة المكتب");
+    }
+    return result[resultField];
+  }
+
+  function setNameStatus(text, state = "") {
+    if (!el.nameStatus) return;
+    el.nameStatus.textContent = text || "";
+    el.nameStatus.className = `office-name-status${state ? ` ${state}` : ""}`;
+  }
+
+  function scheduleNameAvailabilityCheck() {
+    clearTimeout(nameCheckTimer);
+    if (!utils) return;
+    const value = el.officeName.value;
+    const error = validateOfficeName(value);
+    if (error) { setNameStatus("", ""); return; }
+    const key = utils.normalizeOfficeNameKey(value);
+    if (!key || key === current.officeNameKey) { setNameStatus("", ""); return; }
+    nameCheckTimer = setTimeout(() => checkNameAvailability(key), 600);
+  }
+
+  async function checkNameAvailability(key) {
+    const user = authUser();
+    if (!user || !utils) return;
+    const seq = ++nameCheckSeq;
+    setNameStatus(utils.OFFICE_NAME_ERRORS.CHECKING, "");
+    try {
+      const idToken = await user.getIdToken();
+      const params = new URLSearchParams({ key, officeId: officeId() });
+      const response = await fetch(`${WORKER_BASE}/office/name-availability?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+        cache: "no-store"
+      });
+      const result = await response.json().catch(() => ({}));
+      if (seq !== nameCheckSeq) return;
+      if (!response.ok) {
+        setNameStatus(utils.OFFICE_NAME_ERRORS.CHECK_FAILED, "");
+        return;
+      }
+      if (result.available) setNameStatus(utils.OFFICE_NAME_ERRORS.AVAILABLE, "ok");
+      else setNameStatus(utils.OFFICE_NAME_ERRORS.TAKEN, "error");
+    } catch (_) {
+      if (seq === nameCheckSeq) setNameStatus(utils.OFFICE_NAME_ERRORS.CHECK_FAILED, "");
+    }
   }
 
   async function onSave(event) {
@@ -305,35 +415,33 @@
     el.officeName.setCustomValidity("");
 
     const specialties = readSpecialtiesFromForm();
+    const notificationPrefs = readPrefsFromForm();
+    const cooperationMode = readCooperationModeFromForm();
+
+    el.save.disabled = true;
 
     let coverUrl = current.coverUrl || "";
-    const coverFile = el.cover && el.cover.files ? el.cover.files[0] : null;
-    if (coverFile) {
-      if (!/^image\/(jpeg|png|webp)$/.test(coverFile.type) || coverFile.size > 10 * 1024 * 1024) {
-        toast("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
-        return;
+    let logoUrl = current.logoUrl || "";
+    try {
+      if (pendingLogo || pendingCover) {
+        el.save.textContent = "جارٍ رفع الصور...";
+        setIdentityStatus("جارٍ رفع الصور الجديدة...", "");
+        if (pendingLogo) {
+          logoUrl = await uploadOfficeImage("/media/office-logo", pendingLogo.blob, pendingLogo.type, "logoUrl");
+        }
+        if (pendingCover) {
+          coverUrl = await uploadOfficeImage("/media/office-cover", pendingCover.blob, pendingCover.type, "coverUrl");
+        }
       }
-      const user = authUser();
-      if (!user) {
-        toast("سجل دخول مدير المكتب قبل رفع الصورة");
-        return;
-      }
-      const idToken = await user.getIdToken();
-      const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": coverFile.type,
-          "Authorization": `Bearer ${idToken}`,
-          "X-Office-Id": officeId()
-        },
-        body: coverFile
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.coverUrl) {
-        toast(result.message || "تعذر رفع صورة المكتب");
-        return;
-      }
-      coverUrl = result.coverUrl;
+      if (removeLogoRequested && !pendingLogo) logoUrl = "";
+      if (removeCoverRequested && !pendingCover) coverUrl = "";
+    } catch (error) {
+      console.warn("[iaqar] office image upload", error);
+      setIdentityStatus(error.message || "تعذر رفع الصورة", "error");
+      toast(error.message || "تعذر رفع صورة المكتب");
+      el.save.disabled = false;
+      el.save.textContent = "حفظ التعديلات";
+      return;
     }
 
     const data = clean({
@@ -345,15 +453,19 @@
       city: el.city.value,
       specialties,
       coverUrl,
-      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value)
+      logoUrl,
+      publicSlug: current.publicSlug || (utils ? utils.buildPublicSlug(el.officeName.value, officeId()) : ""),
+      cooperationMode,
+      notificationPrefs
     });
 
     if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
       toast("أكمل بيانات المكتب المطلوبة");
+      el.save.disabled = false;
+      el.save.textContent = "حفظ التعديلات";
       return;
     }
 
-    el.save.disabled = true;
     el.save.textContent = "جارٍ الحفظ...";
 
     const runtime = officeRuntime();
@@ -367,9 +479,10 @@
       } catch (error) {
         console.warn("[iaqar] office settings sync failed", error);
         if (error && error.message === "OFFICE_NAME_TAKEN") {
-          const message = "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر";
+          const message = utils ? utils.OFFICE_NAME_ERRORS.TAKEN : "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر";
           el.officeName.setCustomValidity(message);
           el.officeName.reportValidity();
+          setNameStatus(message, "error");
           toast(message);
           el.save.disabled = false;
           el.save.textContent = "حفظ التعديلات";
@@ -386,6 +499,12 @@
       return;
     }
 
+    pendingCover = null;
+    pendingLogo = null;
+    removeCoverRequested = false;
+    removeLogoRequested = false;
+    setIdentityStatus("", "");
+    setNameStatus("", "");
     apply(data);
     saveLocal(data);
     el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
@@ -416,6 +535,77 @@
       el.link.select();
       document.execCommand("copy");
       toast("تم نسخ رابط المكتب");
+    }
+  }
+
+  async function shareOfficeLink() {
+    try {
+      await ensurePublicSlug();
+    } catch (error) {
+      console.warn("[iaqar] ensure slug before share", error);
+    }
+    const url = officeLink();
+    el.link.value = url;
+    const text = `${current.officeName} — زيارة المكتب والتسجيل: ${url}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: current.officeName, text, url });
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("المشاركة غير مدعومة هنا؛ تم نسخ الرابط");
+    } catch (_) {
+      el.link.select();
+      toast("انسخ الرابط الظاهر لمشاركته");
+    }
+  }
+
+  function previewOfficeLink() {
+    window.open(officeLink(), "_blank", "noopener,noreferrer");
+  }
+
+  function toggleOfficeQr() {
+    if (!el.qrWrap) return;
+    const willShow = el.qrWrap.hidden;
+    if (willShow) {
+      try {
+        renderOfficeQr();
+      } catch (error) {
+        console.warn("[iaqar] office qr", error);
+        toast("تعذر إنشاء رمز QR الآن");
+        return;
+      }
+    }
+    el.qrWrap.hidden = !willShow;
+    if (el.qrToggle) el.qrToggle.setAttribute("aria-expanded", willShow ? "true" : "false");
+  }
+
+  function renderOfficeQr() {
+    if (typeof window.qrcode !== "function") throw new Error("QR_UNAVAILABLE");
+    const canvas = el.qrCanvas;
+    const ctx = canvas.getContext("2d");
+    const qr = window.qrcode(0, "M");
+    qr.addData(el.link.value || officeLink());
+    qr.make();
+    const modules = qr.getModuleCount();
+    const quiet = 4;
+    const cell = canvas.width / (modules + quiet * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#073f35";
+    for (let row = 0; row < modules; row += 1) {
+      for (let col = 0; col < modules; col += 1) {
+        if (!qr.isDark(row, col)) continue;
+        const x = Math.floor((col + quiet) * cell);
+        const y = Math.floor((row + quiet) * cell);
+        const w = Math.ceil((col + quiet + 1) * cell) - x;
+        const h = Math.ceil((row + quiet + 1) * cell) - y;
+        ctx.fillRect(x, y, w, h);
+      }
     }
   }
 
@@ -583,7 +773,7 @@
 
   async function ensurePublicSlug() {
     if (current.publicSlug) return current.publicSlug;
-    const slug = buildPublicSlug(current.officeName);
+    const slug = utils ? utils.buildPublicSlug(current.officeName, officeId()) : `maktab-${Date.now().toString(36)}`;
     current = clean({ ...current, publicSlug: slug });
     el.link.value = officeLink();
     const runtime = officeRuntime();
@@ -650,6 +840,212 @@
     }
   }
 
+  /* ---- سير قص الصور (الهوية البصرية) ---- */
+
+  const cropper = {
+    img: null,
+    kind: "",
+    ratio: 1,
+    outputWidth: 1200,
+    baseScale: 1,
+    scale: 1,
+    dx: 0,
+    dy: 0,
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+    objectUrl: ""
+  };
+
+  function stagePendingImage(kind, blob, type) {
+    const entry = { blob, type, dataUrl: URL.createObjectURL(blob) };
+    if (kind === "logo") {
+      if (pendingLogo) URL.revokeObjectURL(pendingLogo.dataUrl);
+      pendingLogo = entry;
+      removeLogoRequested = false;
+    } else {
+      if (pendingCover) URL.revokeObjectURL(pendingCover.dataUrl);
+      pendingCover = entry;
+      removeCoverRequested = false;
+    }
+    refreshIdentityPreviews();
+    setIdentityStatus(kind === "logo" ? "شعار جديد بانتظار الحفظ" : "صورة غلاف جديدة بانتظار الحفظ", "ok");
+  }
+
+  function onIdentityFileSelected(kind, input) {
+    const file = input && input.files ? input.files[0] : null;
+    if (input) input.value = "";
+    if (!file || !utils) return;
+    const error = utils.validateOfficeImage(file);
+    if (error) {
+      setIdentityStatus(error, "error");
+      toast(error);
+      return;
+    }
+    const preset = kind === "logo"
+      ? { ratio: utils.OFFICE_DESIGN.logoCrop.ratio, outputWidth: utils.OFFICE_DESIGN.logoCrop.outputWidth }
+      : utils.resolveCoverCropPreset(el.cropPreset ? el.cropPreset.value : "");
+    if (!preset.ratio) {
+      stagePendingImage(kind, file, file.type);
+      return;
+    }
+    openCropper(file, kind, preset);
+  }
+
+  function openCropper(file, kind, preset) {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      cropper.img = img;
+      cropper.kind = kind;
+      cropper.ratio = preset.ratio || 1;
+      cropper.outputWidth = preset.outputWidth || 1200;
+      cropper.objectUrl = objectUrl;
+      resetCropView();
+      if (el.cropTitle) {
+        el.cropTitle.textContent = kind === "logo" ? "قص شعار المكتب" : "قص صورة الغلاف";
+      }
+      el.cropOverlay.hidden = false;
+      if (el.cropConfirm) el.cropConfirm.focus();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setIdentityStatus("تعذر قراءة ملف الصورة", "error");
+      toast("تعذر قراءة ملف الصورة");
+    };
+    img.src = objectUrl;
+  }
+
+  function resetCropView() {
+    const canvas = el.cropCanvas;
+    if (!canvas || !cropper.img) return;
+    canvas.width = 640;
+    canvas.height = Math.max(1, Math.round(640 / cropper.ratio));
+    const scaleX = canvas.width / cropper.img.naturalWidth;
+    const scaleY = canvas.height / cropper.img.naturalHeight;
+    cropper.baseScale = Math.max(scaleX, scaleY);
+    cropper.scale = cropper.baseScale;
+    if (el.cropZoom) el.cropZoom.value = "100";
+    cropper.dx = (canvas.width - cropper.img.naturalWidth * cropper.scale) / 2;
+    cropper.dy = (canvas.height - cropper.img.naturalHeight * cropper.scale) / 2;
+    clampCropOffsets();
+    drawCrop();
+  }
+
+  function clampCropOffsets() {
+    const canvas = el.cropCanvas;
+    if (!canvas || !cropper.img) return;
+    const width = cropper.img.naturalWidth * cropper.scale;
+    const height = cropper.img.naturalHeight * cropper.scale;
+    cropper.dx = Math.min(0, Math.max(canvas.width - width, cropper.dx));
+    cropper.dy = Math.min(0, Math.max(canvas.height - height, cropper.dy));
+  }
+
+  function drawCrop() {
+    const canvas = el.cropCanvas;
+    if (!canvas || !cropper.img) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0d221d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(
+      cropper.img,
+      cropper.dx,
+      cropper.dy,
+      cropper.img.naturalWidth * cropper.scale,
+      cropper.img.naturalHeight * cropper.scale
+    );
+  }
+
+  function onCropPointerDown(event) {
+    if (!cropper.img) return;
+    cropper.dragging = true;
+    cropper.lastX = event.clientX;
+    cropper.lastY = event.clientY;
+    el.cropCanvas.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function onCropPointerMove(event) {
+    if (!cropper.dragging || !cropper.img) return;
+    const rect = el.cropCanvas.getBoundingClientRect();
+    const factor = el.cropCanvas.width / Math.max(1, rect.width);
+    cropper.dx += (event.clientX - cropper.lastX) * factor;
+    cropper.dy += (event.clientY - cropper.lastY) * factor;
+    cropper.lastX = event.clientX;
+    cropper.lastY = event.clientY;
+    clampCropOffsets();
+    drawCrop();
+  }
+
+  function onCropPointerUp(event) {
+    cropper.dragging = false;
+    try { el.cropCanvas.releasePointerCapture(event.pointerId); } catch (_) {}
+  }
+
+  function onCropZoomInput() {
+    if (!cropper.img) return;
+    const zoom = Math.max(1, Number(el.cropZoom.value || 100) / 100);
+    const canvas = el.cropCanvas;
+    const centerX = (canvas.width / 2 - cropper.dx) / cropper.scale;
+    const centerY = (canvas.height / 2 - cropper.dy) / cropper.scale;
+    cropper.scale = cropper.baseScale * zoom;
+    cropper.dx = canvas.width / 2 - centerX * cropper.scale;
+    cropper.dy = canvas.height / 2 - centerY * cropper.scale;
+    clampCropOffsets();
+    drawCrop();
+  }
+
+  function confirmCrop() {
+    if (!cropper.img) return;
+    const canvas = el.cropCanvas;
+    const outWidth = cropper.outputWidth;
+    const outHeight = Math.max(1, Math.round(outWidth / cropper.ratio));
+    const sourceX = -cropper.dx / cropper.scale;
+    const sourceY = -cropper.dy / cropper.scale;
+    const sourceW = canvas.width / cropper.scale;
+    const sourceH = canvas.height / cropper.scale;
+    const output = document.createElement("canvas");
+    output.width = outWidth;
+    output.height = outHeight;
+    const ctx = output.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, outWidth, outHeight);
+    ctx.drawImage(cropper.img, sourceX, sourceY, sourceW, sourceH, 0, 0, outWidth, outHeight);
+    const kind = cropper.kind;
+    const type = kind === "logo" ? "image/png" : "image/jpeg";
+    output.toBlob(blob => {
+      closeCropper();
+      if (!blob) {
+        setIdentityStatus("تعذر تجهيز الصورة المقصوصة", "error");
+        return;
+      }
+      stagePendingImage(kind, blob, type);
+    }, type, 0.92);
+  }
+
+  function closeCropper() {
+    if (el.cropOverlay) el.cropOverlay.hidden = true;
+    if (cropper.objectUrl) URL.revokeObjectURL(cropper.objectUrl);
+    cropper.img = null;
+    cropper.objectUrl = "";
+    cropper.dragging = false;
+  }
+
+  function requestRemoveImage(kind) {
+    if (kind === "logo") {
+      if (pendingLogo) URL.revokeObjectURL(pendingLogo.dataUrl);
+      pendingLogo = null;
+      removeLogoRequested = true;
+      setIdentityStatus("سيُزال شعار المكتب المخصص عند الحفظ", "");
+    } else {
+      if (pendingCover) URL.revokeObjectURL(pendingCover.dataUrl);
+      pendingCover = null;
+      removeCoverRequested = true;
+      setIdentityStatus("ستُزال صورة الغلاف عند الحفظ", "");
+    }
+    refreshIdentityPreviews();
+  }
+
   async function updateAuthState(user) {
     authClaims = {};
     el.logout.disabled = !user;
@@ -678,26 +1074,80 @@
     el.city = document.getElementById("officeCityInput");
     el.cover = document.getElementById("officeCoverInput");
     el.coverPreview = document.getElementById("officeCoverPreview");
+    el.coverEmpty = document.getElementById("officeCoverEmpty");
+    el.logo = document.getElementById("officeLogoInput");
+    el.logoPreview = document.getElementById("officeLogoPreview");
+    el.changeCover = document.getElementById("changeOfficeCoverBtn");
+    el.removeCover = document.getElementById("removeOfficeCoverBtn");
+    el.changeLogo = document.getElementById("changeOfficeLogoBtn");
+    el.removeLogo = document.getElementById("removeOfficeLogoBtn");
+    el.cropPreset = document.getElementById("coverCropPresetSelect");
+    el.identityStatus = document.getElementById("identityStatus");
+    el.nameStatus = document.getElementById("officeNameStatus");
     el.link = document.getElementById("officeLinkInput");
     el.copy = document.getElementById("copyOfficeLinkBtn");
+    el.shareLink = document.getElementById("shareOfficeLinkBtn");
+    el.qrToggle = document.getElementById("toggleOfficeQrBtn");
+    el.qrWrap = document.getElementById("officeQrWrap");
+    el.qrCanvas = document.getElementById("officeQrCanvas");
+    el.preview = document.getElementById("previewOfficeLinkBtn");
+    el.prefsList = document.getElementById("notificationPrefsList");
     el.save = document.getElementById("saveOfficeSettingsBtn");
     el.logout = document.getElementById("officeLogoutBtn");
     el.shareCard = document.getElementById("shareOfficeCardBtn");
     el.note = document.getElementById("officeSettingsNote");
     el.specialties = document.querySelectorAll('input[name="officeSpecialty"]');
+    el.cropOverlay = document.getElementById("imageCropOverlay");
+    el.cropCanvas = document.getElementById("cropCanvas");
+    el.cropTitle = document.getElementById("cropTitle");
+    el.cropZoom = document.getElementById("cropZoomRange");
+    el.cropConfirm = document.getElementById("cropConfirmBtn");
+    el.cropCancel = document.getElementById("cropCancelBtn");
+    el.cropSkip = document.getElementById("cropSkipBtn");
 
+    const cardLogo = document.getElementById("officeLogoImage");
+    defaultLogoUrl = (cardLogo && cardLogo.src) || (el.logoPreview && el.logoPreview.src) || "";
+
+    renderNotificationPrefs();
+    renderCropPresets();
     apply(loadLocal() || defaults);
 
-    el.officeName.addEventListener("input", () => el.officeName.setCustomValidity(""));
+    el.officeName.addEventListener("input", () => {
+      el.officeName.setCustomValidity("");
+      scheduleNameAvailabilityCheck();
+    });
     el.form.addEventListener("submit", onSave);
     el.copy.addEventListener("click", copyLink);
+    if (el.shareLink) el.shareLink.addEventListener("click", shareOfficeLink);
+    if (el.qrToggle) el.qrToggle.addEventListener("click", toggleOfficeQr);
+    if (el.preview) el.preview.addEventListener("click", previewOfficeLink);
     el.logout.addEventListener("click", onLogout);
     if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
-    if (el.cover) el.cover.addEventListener("change", () => {
-      const file = el.cover.files && el.cover.files[0];
-      if (!file || !el.coverPreview) return;
-      el.coverPreview.src = URL.createObjectURL(file);
-      el.coverPreview.hidden = false;
+
+    if (el.changeCover) el.changeCover.addEventListener("click", () => el.cover && el.cover.click());
+    if (el.changeLogo) el.changeLogo.addEventListener("click", () => el.logo && el.logo.click());
+    if (el.cover) el.cover.addEventListener("change", () => onIdentityFileSelected("cover", el.cover));
+    if (el.logo) el.logo.addEventListener("change", () => onIdentityFileSelected("logo", el.logo));
+    if (el.removeCover) el.removeCover.addEventListener("click", () => requestRemoveImage("cover"));
+    if (el.removeLogo) el.removeLogo.addEventListener("click", () => requestRemoveImage("logo"));
+
+    if (el.cropCanvas) {
+      el.cropCanvas.addEventListener("pointerdown", onCropPointerDown);
+      el.cropCanvas.addEventListener("pointermove", onCropPointerMove);
+      el.cropCanvas.addEventListener("pointerup", onCropPointerUp);
+      el.cropCanvas.addEventListener("pointercancel", onCropPointerUp);
+    }
+    if (el.cropZoom) el.cropZoom.addEventListener("input", onCropZoomInput);
+    if (el.cropConfirm) el.cropConfirm.addEventListener("click", confirmCrop);
+    if (el.cropCancel) el.cropCancel.addEventListener("click", closeCropper);
+    if (el.cropSkip) el.cropSkip.addEventListener("click", closeCropper);
+    if (el.cropOverlay) {
+      el.cropOverlay.addEventListener("click", event => {
+        if (event.target === el.cropOverlay) closeCropper();
+      });
+    }
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && el.cropOverlay && !el.cropOverlay.hidden) closeCropper();
     });
 
     try {
