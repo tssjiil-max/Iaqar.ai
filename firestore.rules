@@ -224,11 +224,13 @@ service cloud.firestore {
           (
             isOfficeMember(resource.data.targetOfficeId)
             && resource.data.status == 'PENDING'
-            && request.resource.data.status in ['ACCEPTED', 'REJECTED']
+            && (request.resource.data.status == 'ACCEPTED'
+              || request.resource.data.status == 'REJECTED')
           )
           || (
             isOfficeMember(resource.data.originatingOfficeId)
-            && request.resource.data.status in ['REVOKED', 'ENDED']
+            && (request.resource.data.status == 'REVOKED'
+              || request.resource.data.status == 'ENDED')
           )
         );
       allow delete: if false;

@@ -85,15 +85,23 @@ export async function loadShell(options = {}) {
   if (fetchStub) defineGlobal("fetch", fetchStub);
 
   let settingsModule = null;
+  let bankModule = null;
   if (bootSettingsModule) {
     moduleCounter += 1;
-    const specifier = new URL(
+    const settingsSpecifier = new URL(
       pathToFileURL(path.join(repositoryRoot, "public", "js", "office-settings.js"))
     );
     // A fresh query string forces a fresh module instance per test, so each test binds to
     // its own DOM instead of the first one loaded in the process.
-    specifier.searchParams.set("shellInstance", String(moduleCounter));
-    settingsModule = await import(specifier.href);
+    settingsSpecifier.searchParams.set("shellInstance", String(moduleCounter));
+    settingsModule = await import(settingsSpecifier.href);
+
+    // Phase 3 bank controller is a separate module loaded next to settings in index.html.
+    const bankSpecifier = new URL(
+      pathToFileURL(path.join(repositoryRoot, "public", "js", "opportunity-bank.js"))
+    );
+    bankSpecifier.searchParams.set("shellInstance", String(moduleCounter));
+    bankModule = await import(bankSpecifier.href);
   }
 
   return {
@@ -101,6 +109,7 @@ export async function loadShell(options = {}) {
     window,
     document: window.document,
     settingsModule,
+    bankModule,
     styles: shellStyles(window.document),
     close() {
       restoreGlobals();

@@ -557,6 +557,14 @@ test("Phase 3: Office A cannot read, update, archive, or hard-delete Office B op
 });
 
 test("Phase 3: hard delete of own opportunities is denied; ownership fields are immutable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), opportunityDoc({
+      city: "جدة",
+      version: 3
+    }));
+  });
+
   const db = authed("broker-a1");
   await assertFails(deleteDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a")));
 
@@ -582,6 +590,12 @@ test("Phase 3: hard delete of own opportunities is denied; ownership fields are 
 });
 
 test("Phase 3: unauthenticated users cannot access the Opportunity Bank", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), opportunityDoc());
+    await setDoc(doc(db, "cooperationRequests/coop_test_1"), cooperationPayload());
+  });
+
   const db = unauthed();
   await assertFails(getDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a")));
   await assertFails(getDoc(doc(db, "cooperationRequests/coop_test_1")));
@@ -610,18 +624,19 @@ test("Phase 3: originating office can create a PENDING cooperation request; outs
 });
 
 test("Phase 3: only the target office may accept/reject; originating office may revoke", async () => {
+  const origin = authed("broker-a1");
+  await assertSucceeds(setDoc(doc(origin, "cooperationRequests/coop_test_1"), cooperationPayload()));
+
   const target = authed("broker-b1");
   const other = authed("owner-a"); // originating member but not target for accept
   // Office A cannot accept on behalf of Office B.
   await assertFails(updateDoc(doc(other, "cooperationRequests/coop_test_1"), {
-    ...cooperationPayload(),
     status: "ACCEPTED",
     acceptedAt: "2026-08-03T13:00:00.000Z",
     respondedAt: "2026-08-03T13:00:00.000Z"
   }));
 
   await assertSucceeds(updateDoc(doc(target, "cooperationRequests/coop_test_1"), {
-    ...cooperationPayload(),
     status: "ACCEPTED",
     acceptedAt: "2026-08-03T13:00:00.000Z",
     respondedAt: "2026-08-03T13:00:00.000Z",
@@ -630,13 +645,10 @@ test("Phase 3: only the target office may accept/reject; originating office may 
 
   // After acceptance, target cannot flip to REJECTED (only PENDING → ACCEPTED|REJECTED).
   await assertFails(updateDoc(doc(target, "cooperationRequests/coop_test_1"), {
-    ...cooperationPayload({ status: "ACCEPTED" }),
     status: "REJECTED"
   }));
 
-  const origin = authed("broker-a1");
   await assertSucceeds(updateDoc(doc(origin, "cooperationRequests/coop_test_1"), {
-    ...cooperationPayload({ status: "ACCEPTED" }),
     status: "REVOKED",
     revokedAt: "2026-08-03T14:00:00.000Z",
     endedAt: "2026-08-03T14:00:00.000Z",
