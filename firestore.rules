@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
     function isRestrictedOfficeCollection(collectionName) {
-      return collectionName in ['devices', 'officeSettings', 'brokerSettings'];
+      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities'];
     }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
@@ -101,6 +101,33 @@ service cloud.firestore {
           && request.resource.data.officeId == officeId
           && request.resource.data.brokerId == request.auth.uid;
         allow delete: if false;
+      }
+
+      // مصادر الإدخال الموحّد (المرحلة 2): تبقى داخل المكتب ومعرّفة بـ officeId.
+      match /opportunitySources/{sourceId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId == request.auth.uid
+          && request.resource.data.sourceType is string
+          && request.resource.data.deduplicationFingerprint is string;
+        allow update, delete: if canManage(officeId)
+          && request.resource.data.officeId == officeId;
+      }
+
+      // الفرصة الموحّدة (المرحلة 2): إنشاء/تحديث لأعضاء المكتب مع عزل officeId.
+      match /opportunities/{opportunityId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId is string
+          && request.resource.data.deduplicationFingerprint is string
+          && request.resource.data.sourceType is string
+          && request.resource.data.sourceReference is string;
+        allow update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId is string;
+        allow delete: if canManage(officeId);
       }
 
       // القاعدة العامة تستثني المجموعات أعلاه: قواعد Firestore تُجمع ولا تُضيّق،

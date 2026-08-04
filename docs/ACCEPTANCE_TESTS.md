@@ -28,10 +28,12 @@ Test files:
 | `test/cooperation.test.mjs` | Cooperation modes, default and status labels (§7.7, §19, §20) |
 | `test/opportunity-bank.test.mjs` | Bank row projection and the §13/§26 visibility limits |
 | `test/integration-honesty.test.mjs` | Acceptance test 15 (§10) |
+| `test/opportunity-intake.test.mjs` | Acceptance test 5 — unified intake domain + Add Opportunity card |
+| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1 gate + Phase 2 opportunity isolation) |
 | `worker/test/worker.test.mjs` | Worker routes and pure functions, including the Phase 1 image variants and the notification gate |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 1**:
+Status as of the end of **Phase 2**:
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -39,7 +41,7 @@ Status as of the end of **Phase 1**:
 | 2 | No bottom navigation | **PASS** | `test/office-card.test.mjs` |
 | 3 | Office name validation | **PASS** | `test/office-name.test.mjs`, `test/firestore-rules.test.mjs` |
 | 4 | Office privacy | **PASS (emulator + static)** | `test/emulator/firestore-rules.emulator.test.mjs`, `test/firestore-rules.test.mjs` |
-| 5 | Opportunity intake | **PENDING (phase 2)** | — |
+| 5 | Opportunity intake | **PASS** | `test/opportunity-intake.test.mjs` |
 | 6 | No match | **PENDING (phase 3/4)** | — |
 | 7 | Automatic rematch | **PENDING (phase 4)** | — |
 | 8 | Exactly one match | **PASS (partial)** | `worker/test/worker.test.mjs` |
@@ -180,9 +182,16 @@ pattern so it cannot be used to read private intake media.
 A URL or text can be submitted through the unified field; a supported attachment can be
 selected through the paperclip; one Opportunity record is created or updated.
 
-**Status: PENDING (phase 2).** The unified intake control does not exist. Today intake
-happens through the public office link form and the PWA share target only. Not claimed.
+Automated coverage:
+- `test/opportunity-intake.test.mjs` — URL/text/attachment intake, source-type detection,
+  duplicate fingerprints, missing-field flow, persistence payload, no Operations item,
+  officeId isolation, Add Opportunity card DOM.
+- Worker: `normalizeOpportunitySourceType` for approved attachment kinds.
+- Emulator: opportunities / opportunitySources tenant isolation.
 
+**Status: PASS (Phase 2).** Extraction is deterministic/simulated only (`productionAi: false`).
+
+## TEST 6
 ## TEST 6 — No match
 
 A valid Opportunity with no match is stored in the office Opportunity Bank, and no

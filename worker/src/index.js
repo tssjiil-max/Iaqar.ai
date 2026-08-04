@@ -236,6 +236,10 @@ export default {
         return await uploadPublicIntakeMedia(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/media/opportunity-source") {
+        return await uploadOpportunitySourceMedia(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
         return await uploadOfficeImage(request, env, requestId);
       }
@@ -381,6 +385,69 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
     customMetadata: { officeId, intakeId, mediaKind, uploadedAt: new Date().toISOString() }
   });
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
+}
+
+const OPPORTUNITY_SOURCE_TYPES = Object.freeze({
+  "image/jpeg": { sourceTypes: ["image", "screenshot"], ext: "jpg", max: 15 * 1024 * 1024 },
+  "image/png": { sourceTypes: ["image", "screenshot"], ext: "png", max: 15 * 1024 * 1024 },
+  "image/webp": { sourceTypes: ["image", "screenshot"], ext: "webp", max: 15 * 1024 * 1024 },
+  "application/pdf": { sourceTypes: ["pdf"], ext: "pdf", max: 15 * 1024 * 1024 },
+  "application/msword": { sourceTypes: ["word"], ext: "doc", max: 15 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { sourceTypes: ["word"], ext: "docx", max: 15 * 1024 * 1024 },
+  "application/vnd.ms-excel": { sourceTypes: ["excel"], ext: "xls", max: 15 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { sourceTypes: ["excel"], ext: "xlsx", max: 15 * 1024 * 1024 },
+  "audio/mpeg": { sourceTypes: ["audio"], ext: "mp3", max: 15 * 1024 * 1024 },
+  "audio/mp4": { sourceTypes: ["audio"], ext: "m4a", max: 15 * 1024 * 1024 },
+  "audio/wav": { sourceTypes: ["audio"], ext: "wav", max: 15 * 1024 * 1024 },
+  "audio/ogg": { sourceTypes: ["audio"], ext: "ogg", max: 15 * 1024 * 1024 },
+  "audio/webm": { sourceTypes: ["audio"], ext: "webm", max: 15 * 1024 * 1024 }
+});
+
+export function normalizeOpportunitySourceType(value) {
+  const sourceType = cleanText(value, 20).toLowerCase();
+  return ["image", "screenshot", "pdf", "word", "excel", "audio"].includes(sourceType) ? sourceType : "";
+}
+
+async function uploadOpportunitySourceMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const sourceId = cleanText(request.headers.get("x-source-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
+  const sourceType = normalizeOpportunitySourceType(request.headers.get("x-source-type"));
+  const fileNameHeader = cleanText(decodeURIComponent(request.headers.get("x-file-name") || ""), 240);
+  const contentType = cleanText(request.headers.get("content-type"), 120).toLowerCase();
+  const size = requestBodyLength(request);
+
+  if (!officeId || sourceId.length < 8) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  if (!sourceType) throw appError("unsupported_source_type", 400, "نوع مصدر المرفق غير مدعوم");
+
+  await authorizeOfficeRequest(request, env, officeId, "member");
+
+  const rule = OPPORTUNITY_SOURCE_TYPES[contentType];
+  if (!rule || !rule.sourceTypes.includes(sourceType)) {
+    throw appError("unsupported_media", 415, "نوع الملف غير مدعوم لمصدر الفرصة");
+  }
+  if (size > rule.max) throw appError("file_too_large", 413, "حجم الملف يتجاوز الحد المسموح");
+
+  const safeName = fileNameHeader.replace(/[^a-zA-Z0-9._\u0600-\u06FF-]+/g, "_").slice(0, 80) || `source.${rule.ext}`;
+  const key = `opportunity-sources/${officeId}/${sourceId}/${safeName}`;
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      officeId,
+      sourceId,
+      sourceType,
+      uploadedAt: new Date().toISOString(),
+      extractionMode: "simulated_fixture"
+    }
+  });
+  return jsonResponse({
+    ok: true,
+    mediaPath: key,
+    sourceType,
+    extractionMode: "simulated_fixture",
+    productionAi: false,
+    requestId
+  }, 201);
 }
 
 // متغيّرات هوية المكتب البصرية. الترويسة تبقى "cover" لتوافق الروابط المنشورة سابقًا.
@@ -2676,7 +2743,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name",
     "Access-Control-Max-Age": "86400"
   };
 }

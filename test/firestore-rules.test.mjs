@@ -72,10 +72,13 @@ test("TEST 4: FCM device registrations stay invisible to every client", () => {
 
 test("TEST 4: the permissive catch-all excludes the collections with stricter rules", () => {
   const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
-  assert.match(helper, /collectionName in \['devices', 'officeSettings', 'brokerSettings'\]/);
+  assert.match(
+    helper,
+    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities'\]/
+  );
   // Firestore rules are additive, so a stricter rule cannot narrow a permissive one —
   // exclusion is the only mechanism that actually enforces the stricter rules.
-  for (const collection of ["officeSettings", "brokerSettings", "devices"]) {
+  for (const collection of ["officeSettings", "brokerSettings", "devices", "opportunitySources", "opportunities"]) {
     assert.ok(helper.includes(`'${collection}'`), `${collection} must be excluded from the catch-all`);
   }
 });

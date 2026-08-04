@@ -116,6 +116,13 @@ Risks:
 
 Exit criteria: Test 5 PASS; no fake extraction on any production path.
 
+Phase 2 delivered on this branch:
+- Home Add Opportunity card (text/link + paperclip + submit)
+- Domain pipeline with deterministic text parser + simulated attachment fixtures
+- `opportunitySources` + unified `opportunities` persistence (client) with Worker media upload
+- Dedup fingerprints, missing-field flow, visible states, no Operations item / no matching
+- Automated tests under `test/opportunity-intake.test.mjs` + emulator isolation cases
+
 ## Phase 3 — Opportunity Bank
 
 Depends on: Phase 2.

@@ -199,11 +199,10 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
     const { document } = context;
     const app = document.querySelector(".app");
     const sections = Array.from(app.children).map(node => `${node.tagName.toLowerCase()}.${node.className}`);
-    // Office Card (header + licence card) and Operations Center. The Add Opportunity card
-    // is Phase 2 and is deliberately absent — see docs/DECISIONS.md D-006.
     assert.deepEqual(sections, [
       "header.card header",
       "section.card license",
+      "section.card add-opportunity",
       "section.card workspace"
     ]);
   } finally {

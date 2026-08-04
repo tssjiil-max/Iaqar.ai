@@ -297,6 +297,167 @@
       line-height:1;
     }
 
+
+    /* إضافة فرصة — بوابة الإدخال الموحدة (المرحلة 2) */
+    .add-opportunity {
+      margin-top:13px;
+      padding:16px;
+    }
+    .add-opportunity-head {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+    }
+    .add-opportunity-head h2 {
+      margin:0;
+      color:var(--green);
+      font-size:20px;
+      font-weight:800;
+    }
+    .add-opportunity-head p {
+      margin:3px 0 0;
+      color:var(--muted);
+      font-size:11px;
+    }
+    .add-opportunity-row {
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .add-opportunity-row input[type=text] {
+      flex:1;
+      min-width:0;
+      height:44px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:0 12px;
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+    }
+    .add-opportunity-icon-btn,
+    .add-opportunity-submit {
+      width:44px;
+      height:44px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      display:grid;
+      place-items:center;
+      flex:0 0 auto;
+      cursor:pointer;
+    }
+    .add-opportunity-submit {
+      width:auto;
+      min-width:44px;
+      padding:0 14px;
+      border:0;
+      background:var(--green);
+      color:#fff;
+      font-size:12px;
+      font-weight:800;
+    }
+    .add-opportunity-submit:disabled,
+    .add-opportunity-icon-btn:disabled {
+      opacity:.55;
+      cursor:default;
+    }
+    .add-opportunity-file-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin-top:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--green-pale);
+      color:var(--green);
+      font-size:11px;
+      font-weight:700;
+      max-width:100%;
+    }
+    .add-opportunity-file-chip button {
+      border:0;
+      background:transparent;
+      color:#8b2f2a;
+      cursor:pointer;
+      font-size:11px;
+      font-weight:800;
+    }
+    .add-opportunity-status {
+      margin:8px 1px 0;
+      min-height:16px;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.5;
+    }
+    .add-opportunity-status.is-error { color:#a1332c; }
+    .add-opportunity-status.is-done { color:var(--success); }
+    .add-opportunity-retry {
+      margin-top:8px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font-size:12px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .add-opportunity-missing {
+      margin-top:12px;
+      padding:12px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:var(--green-pale);
+    }
+    .add-opportunity-missing-title {
+      margin:0 0 8px;
+      color:var(--green);
+      font-size:13px;
+      font-weight:800;
+    }
+    .add-opportunity-missing-grid {
+      display:grid;
+      gap:8px;
+    }
+    .add-opportunity-missing-grid label {
+      display:grid;
+      gap:4px;
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+    }
+    .add-opportunity-missing-grid input,
+    .add-opportunity-missing-grid select {
+      height:40px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:0 10px;
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+    }
+    .add-opportunity-complete {
+      margin-top:10px;
+      width:100%;
+      height:42px;
+      border:0;
+      border-radius:12px;
+      background:var(--green);
+      color:#fff;
+      font-size:13px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .add-opportunity-note {
+      margin:8px 0 0;
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.5;
+    }
+
     /* مساحة العمل */
     .workspace {
       margin-top:13px;
@@ -1264,7 +1425,15 @@
         <path d="m16.4 17 1.1 1.1 2.2-2.5"/>
       </symbol>
     </defs>
-  </svg>
+  
+  <symbol id="i-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21.44 11.05l-8.49 8.49a5.5 5.5 0 01-7.78-7.78l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.49 8.49a1.5 1.5 0 01-2.12-2.12l7.78-7.78"/>
+  </symbol>
+  <symbol id="i-plus-square" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="3"/>
+    <path d="M12 8v8M8 12h8"/>
+  </symbol>
+</svg>
 
   <div class="app">
 
@@ -1322,6 +1491,40 @@
           </div>
         </div>
       </div>
+    </section>
+
+
+    <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
+      <div class="add-opportunity-head">
+        <div class="workspace-symbol" aria-hidden="true">
+          <svg class="icon"><use href="#i-plus-square"></use></svg>
+        </div>
+        <div>
+          <h2 id="addOpportunityTitle">إضافة فرصة</h2>
+          <p>رابط أو نص أو مرفق — مصدر واحد يُحوَّل إلى فرصة موحّدة</p>
+        </div>
+      </div>
+
+      <form id="addOpportunityForm" autocomplete="off">
+        <div class="add-opportunity-row">
+          <input id="addOpportunityInput" type="text" maxlength="4000"
+            placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
+          <button type="button" class="add-opportunity-icon-btn" id="addOpportunityPaperclip"
+            aria-label="إرفاق ملف">
+            <svg class="icon"><use href="#i-paperclip"></use></svg>
+          </button>
+          <button type="submit" class="add-opportunity-submit" id="addOpportunitySubmit">معالجة</button>
+        </div>
+        <input id="addOpportunityFile" type="file" hidden>
+        <div class="add-opportunity-file-chip" id="addOpportunityFileChip" hidden>
+          <span id="addOpportunityFileName"></span>
+          <button type="button" id="addOpportunityClearFile" aria-label="إزالة المرفق">إزالة</button>
+        </div>
+        <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
+        <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
+      </form>
+
+      <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
     </section>
 
     <section class="card workspace" id="workspace">
@@ -1665,6 +1868,7 @@
   <script src="js/firebase-office.js"></script>
   <script src="js/qrcode.js"></script>
   <script type="module" src="js/office-settings.js"></script>
+  <script type="module" src="js/add-opportunity.js"></script>
   <script src="js/whatsapp-office.js"></script>
 
   <script>

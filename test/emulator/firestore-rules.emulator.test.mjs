@@ -378,3 +378,69 @@ test("Existing approved public-office access continues to work", async () => {
     publicSlug: "office-a-public"
   }));
 });
+
+// ---------------------------------------------------------------------------
+// Phase 2 opportunity isolation
+// ---------------------------------------------------------------------------
+
+test("Office A can create and read its own opportunities and sources", async () => {
+  const db = authed("broker-a1");
+  await assertSucceeds(setDoc(doc(db, "offices/office-a/opportunitySources/src_phase2_a"), {
+    officeId: "office-a",
+    brokerId: "broker-a1",
+    sourceType: "text",
+    deduplicationFingerprint: "fp-a"
+  }));
+  await assertSucceeds(setDoc(doc(db, "offices/office-a/opportunities/opp_phase2_a"), {
+    officeId: "office-a",
+    brokerId: "broker-a1",
+    sourceType: "text",
+    sourceReference: "src_phase2_a",
+    deduplicationFingerprint: "fp-a",
+    opportunityKind: "OFFER",
+    purpose: "SALE"
+  }));
+  const snap = await assertSucceeds(getDoc(doc(db, "offices/office-a/opportunities/opp_phase2_a")));
+  assert.equal(snap.data().officeId, "office-a");
+});
+
+test("Office A cannot read or write Office B opportunities or sources", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-b/opportunities/opp_phase2_b"), {
+      officeId: "office-b",
+      brokerId: "broker-b1",
+      sourceType: "text",
+      sourceReference: "src_b",
+      deduplicationFingerprint: "fp-b"
+    });
+    await setDoc(doc(db, "offices/office-b/opportunitySources/src_phase2_b"), {
+      officeId: "office-b",
+      brokerId: "broker-b1",
+      sourceType: "text",
+      deduplicationFingerprint: "fp-b"
+    });
+  });
+
+  const db = authed("owner-a");
+  await assertFails(getDoc(doc(db, "offices/office-b/opportunities/opp_phase2_b")));
+  await assertFails(getDoc(doc(db, "offices/office-b/opportunitySources/src_phase2_b")));
+  await assertFails(setDoc(doc(db, "offices/office-b/opportunities/opp_hack"), {
+    officeId: "office-b",
+    brokerId: "owner-a",
+    sourceType: "text",
+    sourceReference: "x",
+    deduplicationFingerprint: "hack"
+  }));
+});
+
+test("Unauthenticated users cannot access opportunities or sources", async () => {
+  const db = unauthed();
+  await assertFails(getDoc(doc(db, "offices/office-a/opportunities/opp_phase2_a")));
+  await assertFails(setDoc(doc(db, "offices/office-a/opportunitySources/src_unauth"), {
+    officeId: "office-a",
+    brokerId: "anon",
+    sourceType: "text",
+    deduplicationFingerprint: "x"
+  }));
+});

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { ALWAYS_ALLOWED_PUSH_TYPES, PUSH_TYPE_NOTIFICATION_CATEGORIES, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, normalizeOfficeImageVariant, notificationCategoryAllowed, notificationCategoryForPushType, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { ALWAYS_ALLOWED_PUSH_TYPES, PUSH_TYPE_NOTIFICATION_CATEGORIES, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, normalizeOfficeImageVariant, normalizeOpportunitySourceType, notificationCategoryAllowed, notificationCategoryForPushType, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -721,4 +721,16 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+test("opportunity source media accepts only approved Phase 2 source types", () => {
+  assert.equal(normalizeOpportunitySourceType("pdf"), "pdf");
+  assert.equal(normalizeOpportunitySourceType("IMAGE"), "image");
+  assert.equal(normalizeOpportunitySourceType("screenshot"), "screenshot");
+  assert.equal(normalizeOpportunitySourceType("word"), "word");
+  assert.equal(normalizeOpportunitySourceType("excel"), "excel");
+  assert.equal(normalizeOpportunitySourceType("audio"), "audio");
+  assert.equal(normalizeOpportunitySourceType("url"), "");
+  assert.equal(normalizeOpportunitySourceType("text"), "");
+  assert.equal(normalizeOpportunitySourceType(""), "");
 });
