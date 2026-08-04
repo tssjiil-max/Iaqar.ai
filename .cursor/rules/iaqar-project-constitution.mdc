@@ -1,0 +1,63 @@
+---
+description: Mandatory IAQAR.AI project constitution — read before every change
+alwaysApply: true
+---
+
+# IAQAR.AI Project Constitution Rules
+
+Before making ANY changes to this repository:
+
+1. **Read** `docs/PROJECT_CONSTITUTION.md`
+2. **Read** `docs/SYSTEM_ARCHITECTURE.md`
+3. **Read** `docs/IMPLEMENTATION_PLAN.md`
+
+## Non-Negotiable Rules
+
+### DO NOT
+- Redesign the approved Arabic RTL interface
+- Add a bottom navigation bar
+- Add a standalone "Settings" button on the home page
+- Add a separate "Deals" or "الصفقات" page
+- Remove the officeId isolation from any data access
+- Invent business requirements not in the directive
+- Mark an integration as "production" without verified credentials
+- Implement features from a future phase without approval
+- Remove working code without a specific approved reason
+- Push to production without explicit owner approval
+
+### DO
+- Preserve officeId isolation on every sensitive backend action
+- Validate office names with 4+ significant character rule
+- Keep cover aspect ratio as `COVER_ASPECT_RATIO` constant (never hard-coded)
+- Use the existing Firebase/Cloudflare/PWA stack
+- Implement one approved phase at a time
+- Run tests before reporting completion
+- Report limitations honestly
+
+### Home Page — Approved Sections Only
+The home page may only contain:
+1. **بطاقة المكتب** (Office Card)
+2. **إضافة فرصة** (Add Opportunity)  
+3. **مركز العمليات** (Operations Center)
+
+### Office Settings — Approved Sections
+1. الهوية البصرية (Visual Identity)
+2. بيانات المكتب (Office Data — NO email field)
+3. رابط المكتب (Office Link — copy + share + QR)
+4. الإشعارات (Notification Preferences — per type)
+5. بنك الفرص (Opportunity Bank entry)
+6. التعاون الذكي (Cooperation Settings)
+
+### Feature Complete Criteria
+A feature is DONE only when:
+- Code path is connected end-to-end
+- Data persisted correctly to Firestore
+- Access control enforced (Firestore rules + Worker auth)
+- Automated tests pass
+- Acceptance scenario passes
+- No production path uses fake data
+
+### Current Phase
+**PHASE 1** — Office Card and Office Settings
+
+Do not implement Phase 2+ features in this phase.
