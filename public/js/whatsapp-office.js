@@ -223,6 +223,7 @@
 
   function init() {
     elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.coverBtn = document.getElementById("officeCoverBtn");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -235,6 +236,9 @@
     if (!elements.openBtn || !elements.overlay) return;
 
     elements.openBtn.addEventListener("click", openSettings);
+    // The office cover image is the second approved entry to Office Settings
+    // (Directive §6). Native <button> gives keyboard (Enter/Space) support.
+    if (elements.coverBtn) elements.coverBtn.addEventListener("click", openSettings);
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();

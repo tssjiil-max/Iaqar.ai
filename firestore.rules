@@ -31,11 +31,28 @@ service cloud.firestore {
         && request.resource.data.specialties.size() <= 4
         && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
     }
+    // Phase 1 optional fields: cooperation mode, notification prefs, image URLs.
+    function validOfficeExtras() {
+      return (!('cooperationMode' in request.resource.data)
+          || request.resource.data.cooperationMode in ['disabled','approval_required','smart_automatic'])
+        && (!('notificationPrefs' in request.resource.data)
+          || request.resource.data.notificationPrefs is map)
+        && (!('logoUrl' in request.resource.data) || request.resource.data.logoUrl is string)
+        && (!('coverUrl' in request.resource.data) || request.resource.data.coverUrl is string);
+    }
+    // Ownership fields must not be reassigned by ordinary managers.
+    function ownershipPreserved(officeId) {
+      return isPlatformAdmin() || (
+        (!('ownerUid' in resource.data) || request.resource.data.ownerUid == resource.data.ownerUid)
+        && (!('officeId' in request.resource.data) || request.resource.data.officeId == officeId)
+      );
+    }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow create: if isPlatformAdmin() && validOfficeProfile() && validOfficeExtras();
+      allow update: if canManage(officeId) && validOfficeProfile() && validOfficeExtras()
+        && ownershipPreserved(officeId);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {

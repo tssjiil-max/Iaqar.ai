@@ -1,0 +1,12 @@
+{
+  "name": "iaqar-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "IAQAR.AI — intelligent operating system for real-estate offices and licensed brokers.",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.mjs\" && npm --prefix worker test",
+    "test:frontend": "node --test \"tests/**/*.test.mjs\"",
+    "test:worker": "npm --prefix worker test"
+  }
+}

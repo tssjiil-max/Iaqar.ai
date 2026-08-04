@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory, officeImageKeyParts, isPublicOfficeImageKey, normalizeOfficeId } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -507,4 +507,65 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+test("phase 1 office image kinds map to safe storage folders", () => {
+  assert.deepEqual(officeImageKeyParts("logo"), { folder: "office-logos", name: "logo" });
+  assert.deepEqual(officeImageKeyParts("cover"), { folder: "office-covers", name: "cover" });
+  assert.deepEqual(officeImageKeyParts(""), { folder: "office-covers", name: "cover" });
+  assert.equal(officeImageKeyParts("passwd"), null);
+  assert.equal(officeImageKeyParts("../secret"), null);
+});
+
+test("phase 1 public office image keys reject traversal and foreign paths", () => {
+  assert.equal(isPublicOfficeImageKey("office-covers/office-alqiq/cover"), true);
+  assert.equal(isPublicOfficeImageKey("office-logos/office-alqiq/logo"), true);
+  assert.equal(isPublicOfficeImageKey("office-covers/office-alqiq/../secret"), false);
+  assert.equal(isPublicOfficeImageKey("public-intake/office-alqiq/x/image-1.jpg"), false);
+  assert.equal(isPublicOfficeImageKey("office-covers//cover"), false);
+});
+
+test("phase 1 office image upload requires authentication", async () => {
+  const response = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "POST",
+    headers: { "content-type": "image/webp", "x-office-id": "office-b", "x-media-kind": "logo", "content-length": "1000" },
+    body: "x"
+  }), { ...env, IAQAR_MEDIA: { put: async () => {}, get: async () => null, delete: async () => {} } });
+  assert.equal(response.status, 401);
+});
+
+test("phase 1 office image upload rejects an unsupported kind before storing", async () => {
+  let putCalled = false;
+  const response = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "POST",
+    headers: {
+      "content-type": "image/webp", "x-office-id": "office-alqiq",
+      "x-media-kind": "secrets", "content-length": "1000"
+    },
+    body: "x"
+  }), { ...env, ALLOW_TRIAL_NO_AUTH: "true", IAQAR_MEDIA: { put: async () => { putCalled = true; }, get: async () => null, delete: async () => {} } });
+  assert.equal(response.status, 400);
+  assert.equal(putCalled, false);
+});
+
+test("phase 1 office image upload stores logo under the office-scoped key", async () => {
+  const puts = [];
+  const response = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "POST",
+    headers: {
+      "content-type": "image/webp", "x-office-id": "office-alqiq",
+      "x-media-kind": "logo", "content-length": "1000"
+    },
+    body: "x"
+  }), { ...env, ALLOW_TRIAL_NO_AUTH: "true", IAQAR_MEDIA: { put: async (key) => { puts.push(key); }, get: async () => null, delete: async () => {} } });
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.kind, "logo");
+  assert.deepEqual(puts, ["office-logos/office-alqiq/logo"]);
+  assert.match(body.imageUrl, /\/media\/public\/office-logos\/office-alqiq\/logo/);
+});
+
+test("office id normalization strips unsafe characters", () => {
+  assert.equal(normalizeOfficeId("Office ALQIQ!!"), "office-alqiq");
+  assert.equal(normalizeOfficeId("../../etc"), "etc");
 });

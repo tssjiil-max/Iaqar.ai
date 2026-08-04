@@ -237,11 +237,19 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeCover(request, env, requestId);
+        return await uploadOfficeImage(request, env, requestId, "cover");
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
-        return await servePublicOfficeCover(url, env);
+      if (request.method === "POST" && url.pathname === "/media/office-image") {
+        return await uploadOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/media/office-image/remove") {
+        return await removeOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-")) {
+        return await servePublicOfficeImage(url, env);
       }
 
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
@@ -379,29 +387,61 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
+// Map an office media kind to its storage folder + object name. Returns null for
+// unsupported kinds so callers can reject with a clear error.
+function officeImageKeyParts(kind) {
+  const value = String(kind || "").toLowerCase();
+  if (value === "logo") return { folder: "office-logos", name: "logo" };
+  if (value === "cover" || value === "") return { folder: "office-covers", name: "cover" };
+  return null;
+}
+
+async function uploadOfficeImage(request, env, requestId, kindOverride) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  const kind = kindOverride || cleanText(request.headers.get("x-media-kind"), 12).toLowerCase() || "cover";
+  const parts = officeImageKeyParts(kind);
+  if (!parts) throw appError("unsupported_media_kind", 400, "نوع الصورة غير مدعوم");
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
+  const key = `${parts.folder}/${officeId}/${parts.name}`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, kind, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  // `coverUrl` retained for backward compatibility with older clients.
+  const payload = { ok: true, kind, imageUrl, requestId };
+  if (kind === "cover") payload.coverUrl = imageUrl;
+  return jsonResponse(payload, 201);
 }
 
-async function servePublicOfficeCover(url, env) {
+async function removeOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  const kind = cleanText(request.headers.get("x-media-kind"), 12).toLowerCase() || "cover";
+  const parts = officeImageKeyParts(kind);
+  if (!parts) throw appError("unsupported_media_kind", 400, "نوع الصورة غير مدعوم");
+  await bucket.delete(`${parts.folder}/${officeId}/${parts.name}`);
+  return jsonResponse({ ok: true, kind, requestId }, 200);
+}
+
+// Only well-formed office logo/cover object keys may be served publicly.
+function isPublicOfficeImageKey(key) {
+  return /^office-(covers|logos)\/[a-z0-9_-]{1,80}\/(cover|logo)$/.test(key);
+}
+
+async function servePublicOfficeImage(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!isPublicOfficeImageKey(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -2601,4 +2641,4 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure, officeImageKeyParts, isPublicOfficeImageKey, normalizeOfficeId };
