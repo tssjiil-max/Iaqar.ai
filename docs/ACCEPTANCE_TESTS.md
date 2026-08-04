@@ -15,6 +15,22 @@ Status legend: **PASS** = an automated test asserts it and passes.
 **PASS (manual)** = verified by reading/executing but not yet automated.
 **PENDING (phase N)** = the feature belongs to a later phase and is not claimed.
 
+Test files:
+
+| File | Covers |
+| --- | --- |
+| `test/office-card.test.mjs` | Acceptance tests 1, 2, 14, 15 (shell half) — jsdom, against the real `public/index.html` |
+| `test/office-settings-sections.test.mjs` | The approved Office Settings sections and field list (§7.1–§7.6) |
+| `test/office-name.test.mjs` | Acceptance test 3, pure logic half |
+| `test/firestore-rules.test.mjs` | Acceptance tests 3 (backend half) and 4 |
+| `test/office-images.test.mjs` | Visual identity presets, crop geometry, validation, storage keys (§7.1) |
+| `test/notification-preferences.test.mjs` | Acceptance test 10, plus browser/Worker table parity (§7.5, §17) |
+| `test/cooperation.test.mjs` | Cooperation modes, default and status labels (§7.7, §19, §20) |
+| `test/opportunity-bank.test.mjs` | Bank row projection and the §13/§26 visibility limits |
+| `test/integration-honesty.test.mjs` | Acceptance test 15 (§10) |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including the Phase 1 image variants and the notification gate |
+| `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
+
 Status as of the end of **Phase 1**:
 
 | # | Scenario | Status | Test |
@@ -34,6 +50,9 @@ Status as of the end of **Phase 1**:
 | 13 | Message draft | **PENDING (phase 7)** | — |
 | 14 | No deals page | **PASS** | `test/office-card.test.mjs` |
 | 15 | Production honesty | **PASS** | `test/office-card.test.mjs`, `test/integration-honesty.test.mjs` |
+
+Totals at the end of Phase 1: **202 automated tests pass, 0 fail** (145 in `test/`,
+57 in `worker/test/` — up from the 40 that already existed, all of which still pass).
 
 ---
 
@@ -68,12 +87,19 @@ The approved home page has no bottom navigation bar.
 
 Automated assertions (`test/office-card.test.mjs`):
 
-- No `<nav>` element exists.
-- No element has a class matching `/bottom-?nav|tab-?bar|navbar/i`.
-- No element in `.app` is positioned `fixed` or `sticky` at the bottom by an inline
-  style, and the stylesheet contains no `position:fixed` rule with `bottom:0` other
-  than the toast and the settings overlay (both explicitly allow-listed by ID/class in
-  the test so a new bottom bar cannot slip in).
+- No `<nav>`, no `[role=navigation]` and no `[role=tablist]` element exists.
+- No element's class or id matches
+  `/bottom[-_ ]?nav|nav[-_ ]?bar|navbar|tab[-_ ]?bar|bottom[-_ ]?bar|footer[-_ ]?nav/i`,
+  and no stylesheet rule defines such a selector.
+- The children of `.app` are exactly `header.card header`, `section.card license` and
+  `section.card workspace`. This is the strongest form of the assertion: since the home
+  page is enumerated, a bottom bar cannot be added inside it without failing.
+- The element children of `<body>` are exactly the SVG sprite, `.app`, the two overlays
+  (`#officeSettings`, `#opportunityBank`) and `#toast`, so nothing outside the app shell
+  can act as a fixed bottom bar either.
+
+`jsdom` has no layout engine, so this is asserted structurally rather than by measuring
+positions — see "Known limitations".
 
 **Status: PASS.**
 
