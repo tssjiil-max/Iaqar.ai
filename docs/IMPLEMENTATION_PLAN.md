@@ -10,7 +10,7 @@ after the Phase 1 report. Phase 2 requires project-owner approval.
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 0 | Audit, governance documents, persistent rule | Complete |
-| 1 | Office Card and Office Settings | Complete with documented production-verification limitations |
+| 1 | Office Card and Office Settings | Implemented; authenticated staging acceptance remains BLOCKED |
 | 2 | Unified Opportunity intake | Not authorized |
 | 3 | Private Opportunity Bank | Not authorized |
 | 4 | Matching and automatic rematching | Not authorized |
@@ -94,6 +94,8 @@ See `REPOSITORY_AUDIT.md` for evidence and classifications.
   Firebase access gate correctly requires a real office account and backend.
 - No deployment or production provider test was performed.
 
-Phase 1 is stopped. The exact next recommended phase, after owner approval, is
+Phase 1 is stopped and is not labeled production-complete until authenticated
+staging acceptance verifies profile persistence, R2 identity media, and real
+FCM routing. After that verification and owner approval, the exact next phase is
 Phase 2: unified Opportunity intake and source persistence. Phase 2 must begin
 with the existing Add Opportunity card and must not add a new home section.
