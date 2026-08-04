@@ -49,6 +49,10 @@ test("Office Settings markup contains every approved section", () => {
   assert.ok(indexHtml.includes("السماح بالتعاون الذكي بين الوسطاء"));
 });
 
+test("the hidden attribute always wins over the layout styles", () => {
+  assert.match(indexHtml, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
+
 test("no email field is rendered anywhere in the office workspace page", () => {
   assert.equal(/type="email"/.test(indexHtml), false);
   assert.equal(/البريد الإلكتروني/.test(indexHtml), false);

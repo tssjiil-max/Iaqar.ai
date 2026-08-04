@@ -91,11 +91,23 @@ Rules: the generic `offices/{officeId}/{collectionName}/{docId}` wildcard explic
 
 ## 3. `officeNameClaims/{nameKey}` — global name uniqueness (existing, hardened in Phase 1)
 
-`nameKey` is the document id and equals the normalized office name:
+`nameKey` is the document id and equals the normalized office name
+(`normalizeOfficeNameKey` in `public/js/office-identity.js`):
 
 ```
-trim → NFKC → lowercase(en-US) → remove [ \t._-] → keep only [A-Za-z0-9\u0600-\u06FF]
+trim
+→ NFKC
+→ lowercase(en-US)
+→ strip Arabic diacritics and tatweel (U+064B–U+0652, U+0670, U+0640)
+→ fold أ إ آ ٱ → ا, ة → ه, ى → ي, ؤ → و, ئ → ي
+→ remove spaces and [._-]
+→ keep only [A-Za-z0-9\u0600-\u06FF]
 ```
+
+The folding step is what makes "مكتب الأمانة" and "مكتب الامانه" the same office name, which
+directive §7.3 requires ("prevent equivalent duplicate names after normalization"). Offices
+created before this folding existed keep working: the next profile save re-reserves the new key
+inside the same transaction and releases the old one.
 
 | Field | Type |
 | --- | --- |
