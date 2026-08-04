@@ -241,6 +241,21 @@ office documents (`AUDIT_PHASE0.md` §5 risk 2). A full fix means per-collection
 protected-field guards across `matches`, `deals`, `clients`, `owners` and `opportunities`,
 which touches the matching and workflow paths and belongs in Phase 8.
 
+## D-011 — Phase 2 unified intake uses deterministic/simulated extraction only
+
+**Phase:** 2
+**Directive:** §8, §10, §12
+
+**Decision.** Text/URL intake uses a labeled `deterministic_text_parser`. Image, screenshot,
+PDF, Word, Excel and audio intake use labeled `simulated_fixture` adapters. Every
+Opportunity record stores `productionAi: false`. Attachments upload through
+`POST /media/opportunity-source`. Phase 2 intake creates `opportunitySources` +
+`opportunities` only — it does not run matching and does not create Operations Center
+items.
+
+**Why.** No OCR/ASR/document-AI provider is configured. §10 forbids claiming production
+integrations. Matching is Phase 4; persisted Operations are Phase 5.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
