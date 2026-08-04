@@ -62,6 +62,13 @@ import {
   resolveTemplateCode,
   whatsappDigits
 } from "./messaging-domain.js";
+import {
+  PUBLIC_RATE_LIMITS,
+  consumePublicRateLimit,
+  evaluatePublicRateLimit,
+  publicRateLimitKey,
+  resetPublicRateLimitStoreForTests
+} from "./public-rate-limit.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -458,6 +465,20 @@ function requestBodyLength(request) {
   return value;
 }
 
+function enforcePublicRouteRateLimit(request, { route, officeId = "", limit, windowMs }) {
+  const ip = cleanText(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown", 80);
+  const key = publicRateLimitKey({ route, ip, officeId });
+  const result = consumePublicRateLimit(key, { limit, windowMs });
+  if (!result.ok) {
+    throw appError(
+      "rate_limited",
+      429,
+      "تم تجاوز حد الطلبات مؤقتًا. حاول مرة أخرى بعد قليل."
+    );
+  }
+  return result;
+}
+
 async function uploadPublicIntakeMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
@@ -467,6 +488,11 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!officeId || intakeId.length < 8) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  enforcePublicRouteRateLimit(request, {
+    route: "media/public-intake",
+    officeId,
+    ...PUBLIC_RATE_LIMITS.PUBLIC_MEDIA
+  });
 
   let filename;
   if (mediaKind === "image" && PUBLIC_IMAGE_TYPES[contentType] && Number.isInteger(index) && index >= 1 && index <= 5) {
@@ -943,12 +969,18 @@ async function handleSharedIntake(request, env, requestId) {
 
 
 async function handlePublicIntakeMatching(request, env, requestId) {
-  assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!intakeId || intakeId.length < 8) throw appError("intake_id_required", 400, "رقم الطلب غير صالح");
+  // Rate-limit before secret/Firestore work so abuse is stopped cheaply (Phase 8 / risk 4).
+  enforcePublicRouteRateLimit(request, {
+    route: "pipeline/public-intake",
+    officeId,
+    ...PUBLIC_RATE_LIMITS.PUBLIC_INTAKE
+  });
+  assertFirebaseSecrets(env);
 
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -3000,6 +3032,22 @@ async function handleWorkflowAction(request,env,requestId) {
     return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:closed.closedSiblings,requestId});
   }
 
+  // Phase 8: broker-entered financial/note fields — Worker-trusted only (no client deal writes).
+  if(action==="update_deal_fields"){
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,allowMissing:true});
+    if(!deal) throw appError("deal_not_found",404,"الصفقة غير موجودة");
+    const fields={ updatedAt:firestoreTimestamp(now) };
+    const finalPrice=Number(body.finalPrice);
+    const commissionActual=Number(body.commissionActual);
+    const internalNote=cleanText(body.internalNote,1000);
+    if(Number.isFinite(finalPrice) && finalPrice >= 0) fields.finalPrice=firestoreInteger(Math.round(finalPrice));
+    if(Number.isFinite(commissionActual) && commissionActual >= 0) fields.commissionActual=firestoreInteger(Math.round(commissionActual));
+    if(internalNote) fields.internalNote=firestoreString(internalNote);
+    if(Object.keys(fields).length <= 1) throw appError("deal_fields_required",400,"لا توجد حقول لتحديثها");
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields});
+    return jsonResponse({ok:true,dealId:recordId,updated:true,requestId});
+  }
+
   throw appError("workflow_action_invalid",400,"الإجراء غير معروف");
 }
 
@@ -3529,5 +3577,7 @@ export {
   phase7BoundaryGuarantees, MESSAGE_CHANNELS, MESSAGE_SEND_STATE, MESSAGE_DELIVERY_STATE,
   TEMPLATE_CODES, ADAPTER_STATUS, buildArabicMessageBody, buildMessageDraft,
   applyExternalHandoff, whatsappAdapterContract, telegramWebhookValidationFixture,
-  resolveTemplateCode, whatsappDigits
+  resolveTemplateCode, whatsappDigits,
+  evaluatePublicRateLimit, consumePublicRateLimit, publicRateLimitKey,
+  resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS
 };

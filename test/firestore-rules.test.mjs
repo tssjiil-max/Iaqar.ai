@@ -72,15 +72,21 @@ test("TEST 4: FCM device registrations stay invisible to every client", () => {
 
 test("TEST 4: the permissive catch-all excludes the collections with stricter rules", () => {
   const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
-  assert.match(
-    helper,
-    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages'\]/
-  );
+  assert.match(helper, /'clients'/);
+  assert.match(helper, /'owners'/);
+  assert.match(helper, /'deals'/);
+  assert.match(helper, /'alerts'/);
+  assert.match(helper, /'inbox'/);
+  assert.match(helper, /'usage'/);
+  assert.match(helper, /'contacts'/);
+  assert.match(helper, /'messages'/);
   // Firestore rules are additive, so a stricter rule cannot narrow a permissive one —
   // exclusion is the only mechanism that actually enforces the stricter rules.
   for (const collection of [
     "officeSettings", "brokerSettings", "devices", "opportunitySources",
-    "opportunities", "sharedOpportunities", "matches", "operations", "notifications", "auditLogs", "messages"
+    "opportunities", "sharedOpportunities", "matches", "operations", "notifications",
+    "auditLogs", "messages", "clients", "owners", "deals", "alerts", "inbox", "usage", "contacts",
+    "publicIntake"
   ]) {
     assert.ok(helper.includes(`'${collection}'`), `${collection} must be excluded from the catch-all`);
   }
@@ -114,6 +120,21 @@ test("Phase 7: messages are client read-only (no forged SENT/DELIVERED)", () => 
   const messages = condensed(matchBlock("/messages/{messageId}"));
   assert.match(messages, /allow read: if isOfficeMember\(officeId\)/);
   assert.match(messages, /allow create, update, delete: if false/);
+});
+
+test("Phase 8: legacy catch-all collections are Worker-only or contacts-shaped", () => {
+  for (const collection of ["clients", "owners", "deals", "alerts", "inbox"]) {
+    const block = condensed(matchBlock(`/${collection}/{`));
+    assert.match(block, /allow read: if isOfficeMember\(officeId\)/, collection);
+    assert.match(block, /allow create, update, delete: if false|allow create, update, delete: if false/, collection);
+  }
+  const usage = condensed(matchBlock("/usage/{usageId}"));
+  assert.match(usage, /allow read, create, update, delete: if false/);
+  const contacts = condensed(matchBlock("/contacts/{contactId}"));
+  assert.match(contacts, /allow create, update: if isOfficeMember\(officeId\)/);
+  assert.match(contacts, /contactId\.matches/);
+  const publicIntake = condensed(matchBlock("/publicIntake/{docId}"));
+  assert.match(publicIntake, /allow update, delete: if false/);
 });
 
 test("TEST 4: the catch-all timeline subcollection inherits the restriction check", () => {
@@ -231,5 +252,7 @@ test("the unauthenticated public intake rule still validates every field", () =>
   assert.match(block, /request\.resource\.data\.kind in \['client','owner'\]/);
   assert.match(block, /request\.resource\.data\.status == 'new'/);
   assert.match(block, /request\.resource\.data\.details\.size\(\) <= 1000/);
-  assert.match(block, /allow read, update, delete: if isOfficeMember\(officeId\)/);
+  // Phase 8: members may read; update/delete are Worker-only.
+  assert.match(block, /allow read: if isOfficeMember\(officeId\)/);
+  assert.match(block, /allow update, delete: if false/);
 });

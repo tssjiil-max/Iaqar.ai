@@ -908,3 +908,28 @@ test("Phase 7 adapters endpoint and boundaries deny outbound send", async () => 
   assert.equal(body.boundaries.autoSendsMessages, false);
   assert.equal(phase7BoundaryGuarantees().claimsFakeDelivery, false);
 });
+
+test("Phase 8 public intake rate limit returns 429 after the window is exhausted", async () => {
+  const { resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS } = await import("../src/public-rate-limit.js");
+  resetPublicRateLimitStoreForTests();
+  const headers = {
+    "Content-Type": "application/json",
+    "CF-Connecting-IP": "198.51.100.20"
+  };
+  const payload = JSON.stringify({ officeId: "office-limit", intakeId: "intakelimit1" });
+  for (let i = 0; i < PUBLIC_RATE_LIMITS.PUBLIC_INTAKE.limit; i += 1) {
+    const response = await worker.fetch(new Request("https://example.test/pipeline/public-intake", {
+      method: "POST",
+      headers,
+      body: payload
+    }), env);
+    assert.notEqual(response.status, 429);
+  }
+  const blocked = await worker.fetch(new Request("https://example.test/pipeline/public-intake", {
+    method: "POST",
+    headers,
+    body: payload
+  }), env);
+  assert.equal(blocked.status, 429);
+  assert.equal((await blocked.json()).error, "rate_limited");
+});

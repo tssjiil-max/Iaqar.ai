@@ -395,6 +395,35 @@ Phase 8 hardening; do not invent automatic send policy while Q-3 is unresolved.
 **Why.** Satisfies Test 13 with persisted, auditable drafts and honest adapter labels
 while keeping Test 15 (no fake delivery / no production-connected stubs).
 
+## D-017 — Phase 8 catch-all lockdown + public rate limits
+
+**Phase:** 8
+**Directive:** §1.3 least privilege, §1.7 honesty, AUDIT_PHASE0 §5 risks 2 and 4;
+Tests 14–15 must remain PASS; no Deals page / bottom nav / auto-send.
+
+**Decision.**
+
+1. **Per-collection lockdown.** Legacy office collections that the catch-all previously
+   left member-writable (`clients`, `owners`, `deals`, `alerts`, `inbox`, `usage`,
+   `publicIntake`) are restricted. Clients/owners/deals/alerts/inbox are member-read /
+   Worker-write. `usage` is deny-all for clients. `publicIntake` keeps unauthenticated
+   **create** with shape validation; member **read** only; update/delete Worker-only.
+2. **Contacts stay member-writable** with phone-digit document ids and required
+   `officeId` / `phone` / `fullName` so `syncOfficeContact` keeps working.
+3. **Deal field updates via Worker.** `saveInternalDealData` calls
+   `POST /workflow/action` with `update_deal_fields` instead of client SDK merges, so
+   brokers cannot forge `workflowStage` / `status`.
+4. **Public rate limits.** Unauthenticated `POST /pipeline/public-intake` and
+   `POST /media/public-intake` share an in-isolate sliding window
+   (`worker/src/public-rate-limit.js`) and return 429 `rate_limited`.
+5. **Cleanup / PWA.** Removed dead `public-intake.js` and unused client matcher;
+   deduped default logos to `/icons/default-office.png`; removed manifest deals
+   shortcut; refreshed SW shell cache.
+
+**Why.** Closes the two Phase 0 risks carried into Phase 8 without inventing a Deals
+page, weakening tenant isolation, or claiming real-device visual e2e beyond the
+automated jsdom + emulator gate.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

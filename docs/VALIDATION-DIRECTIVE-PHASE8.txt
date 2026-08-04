@@ -1,0 +1,37 @@
+IAQAR.AI — Phase 8 Hardening validation
+
+Date: 2026-08-04
+Branch: cursor/phase8-hardening-0d44
+
+Scope completed:
+- Catch-all lockdown (AUDIT_PHASE0 §5 risk 2): clients/owners/deals/alerts/inbox/usage/
+  contacts/publicIntake restricted with explicit rules
+- Deal price/note updates via Worker update_deal_fields (no client SDK deal writes)
+- Public intake/media rate limits (AUDIT_PHASE0 §5 risk 4) → 429 rate_limited
+- Dead code removed: public/js/public-intake.js; unused client matcher
+- Logos deduped to /icons/default-office.png (~330 KB removed from shell)
+- PWA: deals shortcut removed; SW cache iaqar-shell-phase8-v1 refreshed
+- A11y smoke + acceptance aggregation via npm run test:phase8
+- Automated coverage: test/hardening-phase8.test.mjs, emulator Phase 8 cases,
+  Worker rate-limit case, static rules asserts
+- Acceptance: Tests 14–15 PASS; Decision D-017
+- Verification counts: web 263, worker 69, rules 34, check 60 targets
+
+Explicit limitation (do not claim):
+- No Playwright / real-device visual lab (jsdom + emulator remain the gate)
+- No event outbox rewrite
+- No automatic WhatsApp/Telegram provider send (Q-3 open)
+- Label tables between Worker and workflow-office not fully unified
+
+Boundaries preserved:
+- No deals page, no bottom navigation, no home redesign
+- Constitution not weakened
+- Tenant isolation strengthened, not relaxed
+
+Docs updated:
+- docs/IMPLEMENTATION_PLAN.md — Phase 0–8 complete
+- docs/ACCEPTANCE_TESTS.md — Phase 8 status + file pointers
+- docs/DATA_MODEL.md — restricted collections + Worker-only legacy cols
+- docs/DECISIONS.md — D-017
+- docs/SYSTEM_ARCHITECTURE.md — public rate-limit routes
+- docs/VALIDATION-DIRECTIVE-PHASE8.txt — this file

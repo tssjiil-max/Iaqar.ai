@@ -318,59 +318,7 @@
   }
 
 
-  function normalizeArabic(value) {
-    return String(value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[أإآ]/g, "ا")
-      .replace(/ة/g, "ه")
-      .replace(/ى/g, "ي")
-      .replace(/[\u064B-\u065F\u0670]/g, "")
-      .replace(/\s+/g, " ");
-  }
-
-  function localMatchScore(source, candidate) {
-    const reasons = [];
-    const warnings = [];
-    let score = 0;
-    const same = (a, b) => a && b && normalizeArabic(a) === normalizeArabic(b);
-
-    if (source.district && candidate.district) {
-      if (same(source.district, candidate.district)) { score += 35; reasons.push("نفس الحي"); }
-      else return { eligible: false, score: 0, reasons: [], warnings: ["الحي مختلف"] };
-    }
-    if (source.propertyType && candidate.propertyType) {
-      if (same(source.propertyType, candidate.propertyType)) { score += 30; reasons.push("نفس نوع العقار"); }
-      else return { eligible: false, score: 0, reasons: [], warnings: ["نوع العقار مختلف"] };
-    }
-
-    const sourcePrice = Number(source.priceMax || source.price || source.amount || 0);
-    const candidatePrice = Number(candidate.price || candidate.priceMax || candidate.amount || 0);
-    if (sourcePrice && candidatePrice) {
-      const gap = Math.abs(sourcePrice - candidatePrice) / Math.max(sourcePrice, candidatePrice);
-      if (gap <= 0.05) { score += 30; reasons.push("السعر متوافق جدًا"); }
-      else if (gap <= 0.15) { score += 25; reasons.push("السعر قريب"); }
-      else if (gap <= 0.30) { score += 15; warnings.push("يوجد فرق قابل للتفاوض في السعر"); }
-      else return { eligible: false, score: 0, reasons: [], warnings: ["فرق السعر كبير"] };
-    } else {
-      score += 10;
-      warnings.push("السعر غير مكتمل في أحد الطرفين");
-    }
-
-    score = Math.max(0, Math.min(100, Math.round(score)));
-    return { eligible: score >= 60, score, reasons, warnings };
-  }
-
-  function readinessFromLocalScore(score) {
-    if (score >= 90) return { score: 90, key: "very_high", label: "عالية جدًا" };
-    if (score >= 78) return { score: 78, key: "high", label: "عالية" };
-    if (score >= 65) return { score: 62, key: "medium", label: "متوسطة" };
-    return { score: 40, key: "low", label: "منخفضة" };
-  }
-
-  function safeRecordId(value) {
-    return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
-  }
+  // Phase 8: client-side matcher removed — Worker matching-engine is authoritative.
 
   async function showLocalMatchNotification(matchCount, topMatch) {
     const title = matchCount > 1 ? `تم اكتشاف ${matchCount} مطابقات جديدة` : "تم اكتشاف مطابقة جديدة";
@@ -1131,15 +1079,18 @@
 
   async function saveInternalDealData(dealId) {
     const runtime = office();
-    if (!runtime || !runtime.refs || !runtime.refs.deals || !dealId) return;
+    if (!runtime || !runtime.officeId || !dealId) return;
     const finalPriceRaw = document.getElementById("iaqarFinalPrice")?.value.trim() || "";
     const commissionRaw = document.getElementById("iaqarCommission")?.value.trim() || "";
     const internalNote = document.getElementById("iaqarInternalNote")?.value.trim() || "";
-    const fields = { officeId: runtime.officeId, updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() };
-    if (finalPriceRaw && Number.isFinite(Number(finalPriceRaw))) fields.finalPrice = Number(finalPriceRaw);
-    if (commissionRaw && Number.isFinite(Number(commissionRaw))) fields.commissionActual = Number(commissionRaw);
-    if (internalNote) fields.internalNote = internalNote;
-    if (Object.keys(fields).length > 2) await runtime.refs.deals.doc(dealId).set(fields, { merge: true });
+    const payload = {};
+    if (finalPriceRaw && Number.isFinite(Number(finalPriceRaw))) payload.finalPrice = Number(finalPriceRaw);
+    if (commissionRaw && Number.isFinite(Number(commissionRaw))) payload.commissionActual = Number(commissionRaw);
+    if (internalNote) payload.internalNote = internalNote;
+    // Phase 8: deals are Worker-writable only — never patch from the client SDK.
+    if (Object.keys(payload).length) {
+      await workflowAction("update_deal_fields", dealId, payload);
+    }
   }
 
   async function completeFastDeal(button) {

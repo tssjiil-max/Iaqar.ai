@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0–7 complete — stop (do not begin Phase 8).**
+Current position: **Phase 0–8 complete — platform hardening delivered.**
 
 ---
 
@@ -19,7 +19,7 @@ Current position: **Phase 0–7 complete — stop (do not begin Phase 8).**
 | 5 | Operations Center and notifications | **DONE** |
 | 6 | Cooperation | **DONE** |
 | 7 | Smart messages and integration adapters | **DONE** |
-| 8 | Hardening | NOT STARTED |
+| 8 | Hardening | **DONE** |
 
 ## Phase 0 — Foundation and audit (DONE)
 
@@ -293,21 +293,38 @@ Explicitly **not** done in Phase 7 (future / open):
 
 Exit criteria: Test 13 PASS; Test 15 still PASS. **Met.**
 
-## Phase 8 — Hardening (future)
+## Phase 8 — Hardening (DONE)
 
-Scope: full security review beyond the Phase 1 emulator gate already shipped in
-`test/emulator/firestore-rules.emulator.test.mjs` (`npm run test:rules`); expand
-tenant-isolation coverage to remaining collections; performance; indexes; retry
-behaviour; error handling; accessibility; mobile device testing; PWA validation; the
-end-to-end acceptance suite.
+Depends on: Phases 0–7.
 
-Carried into this phase from the Phase 0 audit:
+Delivered:
 
-- `AUDIT_PHASE0.md` §5 risk 2 — the office catch-all rule still lets any active member
-  write most office documents. Phase 1 removed the settings collections from it; a full
-  fix needs per-collection rules plus protected-field guards.
-- §5 risk 4 — no rate limiting on the unauthenticated public intake endpoints.
-- Dead code removal: `public/js/public-intake.js` (never loaded) and the unused
-  client-side matcher in `public/js/workflow-office.js`.
-- The two duplicated ~166 KB base64 logos inside `public/index.html`.
-- Duplicated label tables between the Worker and `workflow-office.js`.
+- **Risk 2 (catch-all privilege):** `clients`, `owners`, `deals`, `alerts`, `inbox`,
+  `usage`, `contacts`, `publicIntake` pulled into `isRestrictedOfficeCollection` with
+  explicit rules. Worker-only writes for legacy pipeline collections; `contacts` remain
+  member-writable with phone-shaped ids; deal price/note updates go through
+  `POST /workflow/action` (`update_deal_fields`).
+- **Risk 4 (public abuse):** sliding-window rate limits on `POST /pipeline/public-intake`
+  and `POST /media/public-intake` (`worker/src/public-rate-limit.js`) → 429 `rate_limited`.
+- **Dead code / size:** deleted unused `public/js/public-intake.js`; removed unused
+  client matcher; replaced duplicated ~166 KB base64 logos with
+  `/icons/default-office.png`.
+- **PWA:** removed deals shortcut from `manifest.webmanifest`; refreshed SW cache list
+  (`iaqar-shell-phase8-v1`) for Phase 2–7 modules.
+- **A11y / acceptance aggregation:** smoke tests for accessible names + modal dialogs;
+  `npm run test:phase8` runs `npm test && npm run test:rules && npm run check`.
+- Indexes audited against live listeners — no speculative indexes added.
+- Acceptance regressions: Tests 14–15 still PASS. Decision: **D-017**.
+
+Explicitly **not** claimed:
+
+- Full visual/real-device mobile lab or Playwright browser e2e (jsdom structural suite
+  remains the automated gate).
+- Event outbox / background job rewrite.
+- Automatic Cloud API / Bot API send (Q-3 still open).
+- Deals page, bottom navigation, or home redesign — never.
+- Full label-table unification across Worker/client (Worker remains source of truth for
+  matching/workflow stages).
+
+Exit criteria: Risks 2 & 4 mitigated with tests; emulator covers legacy collections;
+PWA/a11y smoke green; Tests 14–15 PASS; no Deals/bottom-nav/auto-send. **Met.**

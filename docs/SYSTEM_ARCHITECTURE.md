@@ -90,6 +90,7 @@ Route groups:
 | Operations (Phase 5) | `POST /operations/action`, `/operations/from-cooperation`, `/operations/missing-data` | Worker upserts/lifecycle for persisted Operations + Notifications. |
 | Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
 | Messages (Phase 7) | `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters` | Persisted Arabic drafts + external broker handoff; never Cloud API/Bot send. |
+| Public abuse (Phase 8) | Rate limits on `/pipeline/public-intake`, `/media/public-intake` | Sliding-window 429 `rate_limited` before Firestore/R2 work. |
 | Blocked | `/ingest` → 410; other `*messages*`/`*send*` → 403 `outbound_disabled` | Meta/Telegram outbound send refused at the edge (draft APIs excluded). |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the

@@ -946,6 +946,90 @@ test("Phase 6: auditLogs are readable by office members and not client-writable"
   await assertFails(getDoc(doc(unauthed(), "offices/office-a/auditLogs/aud_phase6_a")));
 });
 
+test("Phase 8: clients/owners/deals/alerts/inbox/usage are not client-writable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/clients/cli_seed"), { officeId: "office-a", name: "عميل" });
+    await setDoc(doc(db, "offices/office-a/owners/own_seed"), { officeId: "office-a", name: "مالك" });
+    await setDoc(doc(db, "offices/office-a/deals/deal_seed"), {
+      officeId: "office-a",
+      status: "open",
+      workflowStage: "contact"
+    });
+    await setDoc(doc(db, "offices/office-a/alerts/alert_seed"), { officeId: "office-a", status: "unread" });
+    await setDoc(doc(db, "offices/office-a/inbox/inbox_seed"), { officeId: "office-a" });
+    await setDoc(doc(db, "offices/office-a/usage/usage_seed"), { officeId: "office-a", count: 1 });
+  });
+
+  const member = authed("broker-a1");
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/clients/cli_seed")));
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/deals/deal_seed")));
+  await assertFails(setDoc(doc(member, "offices/office-a/clients/cli_forged"), {
+    officeId: "office-a",
+    name: "مزور"
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/deals/deal_seed"), {
+    status: "closed",
+    workflowStage: "closed",
+    finalPrice: 999999
+  }));
+  await assertFails(setDoc(doc(member, "offices/office-a/alerts/alert_forged"), {
+    officeId: "office-a",
+    status: "unread"
+  }));
+  await assertFails(setDoc(doc(member, "offices/office-a/inbox/inbox_forged"), { officeId: "office-a" }));
+  await assertFails(getDoc(doc(member, "offices/office-a/usage/usage_seed")));
+  await assertFails(setDoc(doc(member, "offices/office-a/usage/usage_forged"), { officeId: "office-a", count: 99 }));
+});
+
+test("Phase 8: publicIntake members can read but cannot update/delete", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/publicIntake/intake_phase8"), {
+      officeId: "office-a",
+      kind: "client",
+      name: "أحمد علي",
+      phone: "0551234567",
+      propertyType: "شقة",
+      district: "النرجس",
+      details: "تفاصيل",
+      mediaPaths: [],
+      imageCount: 0,
+      hasVideo: false,
+      source: "office_public_link",
+      status: "new"
+    });
+  });
+
+  const member = authed("broker-a1");
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/publicIntake/intake_phase8")));
+  await assertFails(updateDoc(doc(member, "offices/office-a/publicIntake/intake_phase8"), {
+    status: "processed",
+    processedRecordId: "cli_forged"
+  }));
+  await assertFails(deleteDoc(doc(member, "offices/office-a/publicIntake/intake_phase8")));
+});
+
+test("Phase 8: contacts remain member-writable with phone-shaped ids", async () => {
+  const member = authed("broker-a1");
+  await assertSucceeds(setDoc(doc(member, "offices/office-a/contacts/0551234567"), {
+    officeId: "office-a",
+    phone: "0551234567",
+    fullName: "عميل تجريبي",
+    name: "عميل تجريبي"
+  }));
+  await assertFails(setDoc(doc(member, "offices/office-a/contacts/bad-id"), {
+    officeId: "office-a",
+    phone: "0551234567",
+    fullName: "خطأ"
+  }));
+  await assertFails(setDoc(doc(member, "offices/office-b/contacts/0551234567"), {
+    officeId: "office-b",
+    phone: "0551234567",
+    fullName: "مكتب آخر"
+  }));
+});
+
 test("Phase 7: messages are office-isolated and send/delivery state is not client-writable", async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();

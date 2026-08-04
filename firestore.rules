@@ -21,8 +21,13 @@ service cloud.firestore {
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
+    // المرحلة 8: إغلاق المجموعات الحساسة (clients/owners/deals/alerts/inbox/usage/contacts).
     function isRestrictedOfficeCollection(collectionName) {
-      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages'];
+      return collectionName in [
+        'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
+        'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
+        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake'
+      ];
     }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
@@ -76,7 +81,9 @@ service cloud.firestore {
           && request.resource.data.hasVideo is bool
           && request.resource.data.source in ['office_public_link','platform_public']
           && request.resource.data.status == 'new';
-        allow read, update, delete: if isOfficeMember(officeId);
+        // القراءة للأعضاء — التحديث/الحذف عبر Worker فقط (منع تزوير processed).
+        allow read: if isOfficeMember(officeId);
+        allow update, delete: if false;
       }
 
       // رموز FCM سرية وتدار حصريًا من Cloudflare Worker بحساب الخدمة.
@@ -188,6 +195,55 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isOfficeMember(officeId);
         allow create, update, delete: if false;
+      }
+
+      // سجلات العملاء/الملاك (المرحلة 8): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      match /clients/{clientId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /owners/{ownerId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // الصفقات الداخلية (المرحلة 8): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      // تحديث السعر/العمولة/الملاحظة يتم عبر POST /workflow/action.
+      match /deals/{dealId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+        match /timeline/{eventId} {
+          allow read: if isOfficeMember(officeId);
+          allow create: if isOfficeMember(officeId)
+            && request.resource.data.officeId == officeId;
+          allow update, delete: if canManage(officeId);
+        }
+      }
+
+      // التنبيهات القديمة / الوارد / العدادات: Worker فقط.
+      match /alerts/{alertId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /inbox/{inboxId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /usage/{usageId} {
+        allow read, create, update, delete: if false;
+      }
+
+      // دليل جهات الاتصال: أعضاء المكتب يكتبون حقولًا محدودة مع officeId.
+      match /contacts/{contactId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && contactId.matches('^[0-9]{8,15}$')
+          && request.resource.data.phone is string
+          && request.resource.data.phone.size() <= 40
+          && request.resource.data.fullName is string
+          && request.resource.data.fullName.size() <= 120;
+        allow delete: if canManage(officeId);
       }
 
       // القاعدة العامة تستثني المجموعات أعلاه: قواعد Firestore تُجمع ولا تُضيّق،

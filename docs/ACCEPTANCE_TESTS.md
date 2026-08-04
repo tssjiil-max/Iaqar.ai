@@ -29,20 +29,21 @@ Test files:
 | `test/opportunity-bank.test.mjs` | Bank row projection and the §13/§26 visibility limits |
 | `test/integration-honesty.test.mjs` | Acceptance test 15 (§10) |
 | `test/opportunity-intake.test.mjs` | Acceptance test 5 — unified intake domain + Add Opportunity card |
-| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1–4 isolation including matches) |
+| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1–8 isolation including legacy collections) |
 | `test/opportunity-bank-phase3.test.mjs` | Phase 3 Opportunity Bank domain + shell access |
 | `test/matching-phase4.test.mjs` | Phase 4 Matching Engine domain + rematch contracts |
 | `test/operations-phase5.test.mjs` | Phase 5 Operations Center + Notifications (Tests 9–10) |
 | `test/cooperation-phase6.test.mjs` | Phase 6 Cooperation ownership + revocation (Tests 11–12) |
 | `test/messaging-phase7.test.mjs` | Phase 7 Smart message drafts + adapters (Test 13) |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints, Phase 6 cooperation lifecycle, Phase 7 message routes |
+| `test/hardening-phase8.test.mjs` | Phase 8 hardening — rate limits, PWA/a11y smoke, dead-code cleanup |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4–7 endpoints, Phase 8 rate limits |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 7**:
-- Phase 0–6 regression suites remain green.
-- Persisted smart message drafts + WhatsApp/Telegram adapter contracts delivered.
-- Handoff never marks provider SENT/DELIVERED; Cloud API outbound remains blocked.
-- Phase 8 (hardening) is not started.
+Status as of the end of **Phase 8**:
+- Phase 0–7 regression suites remain green.
+- Catch-all privilege flattening mitigated; public intake/media rate-limited.
+- PWA deals shortcut removed; SW cache refreshed; dead code/logos cleaned.
+- Aggregated gate: `npm run test:phase8` (`npm test && npm run test:rules && npm run check`).
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |

@@ -93,9 +93,9 @@ health documents.
 | Collection | Written by | Contents |
 | --- | --- | --- |
 | `members/{uid}` | Office manager / platform admin | `role` (`owner`/`admin`/`manager`/…), `active`, optional `canManageIntegrations`. Drives `isOfficeMember`, `canManage`. |
-| `publicIntake/{id}` | **Unauthenticated public form** | Owner offer / customer request submitted through the office link. Rules validate every field shape and size on create; only office members can read or update. Processed by `POST /pipeline/public-intake`, which sets `status: "processed"`, `processedRecordId`, `opportunityId`, `matchCount`. |
-| `clients/{id}` | Worker | Customer request records (`cli_intake_*` or parsed message records). |
-| `owners/{id}` | Worker | Owner offer records (`own_intake_*`). |
+| `publicIntake/{id}` | **Unauthenticated create** + **Worker process** | Owner offer / customer request submitted through the office link. Rules validate every field shape and size on create; members may **read**; update/delete are Worker-only (Phase 8). Processed by `POST /pipeline/public-intake`. |
+| `clients/{id}` | **Worker only** (Phase 8) | Customer request records (`cli_intake_*` or parsed message records). Members read; client write denied. |
+| `owners/{id}` | **Worker only** (Phase 8) | Owner offer records (`own_intake_*`). Members read; client write denied. |
 | `opportunities/{id}` | Phase 2 intake + Phase 3 bank | Unified Opportunity entity (`opp_*`). Phase 3 adds lifecycle/archive/soft-delete and cooperation status fields. Hard client delete denied. |
 | `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. |
 | `sharedOpportunities/{id}` | Phase 3 + Phase 6 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. Phase 6 revoke deletes or sets `revokedAt` so future reads fail. |
@@ -105,12 +105,12 @@ health documents.
 | **`notifications/{notificationId}`** | **Worker (Phase 5)** | Auditable in-app / push notification records. See §8. Clients cannot write. |
 | **`auditLogs/{auditId}`** | **Worker (Phase 6)** | Sensitive cooperation-action audit trail. See §9. Clients cannot write. |
 | **`messages/{messageId}`** | **Worker (Phase 7)** | Persisted smart message drafts + honest send/delivery state. See §10. Clients cannot write. |
-| `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
-| `deals/{id}/timeline/{eventId}` | Worker + client | As above. |
-| `alerts/{alertId}` | Worker | Legacy `alt_{matchId}` alert records. Phase 5 primary path is `notifications`. |
-| `inbox/{id}` | Worker | Raw inbound WhatsApp messages. |
-| `contacts/{digits}` | Worker + client | Contact directory keyed by digit-only phone, with `roles` as an `arrayUnion`. |
-| `usage/whatsapp_{yyyymmdd}` | Worker | Daily counters via Firestore field transforms. |
+| `deals/{dealId}` | **Worker only** (Phase 8) | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. Broker price/note updates via `POST /workflow/action` `update_deal_fields`. |
+| `deals/{id}/timeline/{eventId}` | Worker + client append | Member create/read; update/delete managers. |
+| `alerts/{alertId}` | **Worker only** (Phase 8) | Legacy `alt_{matchId}` alert records. Phase 5 primary path is `notifications`. |
+| `inbox/{id}` | **Worker only** (Phase 8) | Raw inbound WhatsApp messages. |
+| `contacts/{digits}` | Worker + **member** (Phase 8 shaped) | Contact directory keyed by 8–15 digit phone ids; requires `officeId`/`phone`/`fullName`. |
+| `usage/whatsapp_{yyyymmdd}` | **Worker only** (Phase 8 deny-all clients) | Daily counters via Firestore field transforms. |
 | `devices/{deviceId}` | Worker only | FCM registrations. `allow read, write: if false` for clients. |
 | **`officeSettings/{settingId}`** | **Phase 1** | Office-level settings documents. See §3.1. |
 | **`brokerSettings/{uid}`** | **Phase 1** | Per-broker overrides. See §3.2. |
@@ -131,7 +131,8 @@ match /{collectionName}/{docId} {
 `restricted()` / `isRestrictedOfficeCollection()` returns true for `devices`,
 `officeSettings`, `brokerSettings`, `opportunitySources`, `opportunities`,
 `sharedOpportunities`, `matches`, `operations`, `notifications`, `auditLogs`,
-and `messages`.
+`messages`, `clients`, `owners`, `deals`, `alerts`, `inbox`, `usage`, `contacts`,
+and `publicIntake`.
 Before Phase 1 it only excluded `devices`; later phases exclude collections that need
 explicit least-privilege rules. In Firestore, rules are additive — a permissive
 catch-all cannot be narrowed by adding a specific rule, so exclusion is the only
