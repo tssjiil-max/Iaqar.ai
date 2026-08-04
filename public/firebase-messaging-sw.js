@@ -59,19 +59,24 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-stage3-fcm-fid-v1";
+const IAQAR_CACHE = "iaqar-shell-phase8-v1";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/share-target.html",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/default-office.png",
   "/js/access-gate.js",
   "/js/firebase-office.js",
   "/js/fcm-fid.js",
   "/js/office-settings.js",
+  "/js/add-opportunity.js",
+  "/js/opportunity-bank.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
+  "/js/operations-domain-bridge.js",
+  "/js/messaging-domain-bridge.js",
   "/js/workflow-office.js"
 ];
 

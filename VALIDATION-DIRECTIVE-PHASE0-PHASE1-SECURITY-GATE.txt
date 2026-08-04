@@ -1,0 +1,91 @@
+IAQAR.AI — Phase 1 security gate validation
+Branch: cursor/phase0-phase1-office-settings-0d44
+PR: #2 (Draft — do not merge)
+Date: 2026-08-04
+
+================================================================
+COMMANDS
+================================================================
+
+1) Existing suite
+   npm test
+   Result: 202 pass / 0 fail
+           - test:web     145 pass / 0 fail
+           - test:worker   57 pass / 0 fail
+
+2) Firestore emulator security suite (loads real firestore.rules)
+   npm run test:rules
+   Exact command:
+     firebase emulators:exec --only firestore --project demo-iaqar-rules \
+       "node --test test/emulator/firestore-rules.emulator.test.mjs"
+   Result: 11 pass / 0 fail
+
+3) Syntax / parse check
+   npm run check
+   Result: passed — 37 targets parsed (27 JS, 6 JSON, 2 HTML shells)
+
+Combined gate command:
+   npm run test:phase1-security
+   (= npm test && npm run test:rules && npm run check)
+
+================================================================
+RULES TESTED (actual file: firestore.rules)
+================================================================
+
+Suite: test/emulator/firestore-rules.emulator.test.mjs
+Loader: @firebase/rules-unit-testing initializeTestEnvironment({
+          firestore: { rules: readFileSync("firestore.rules", "utf8") }
+        })
+No duplicated / approximated rules in test code.
+
+Executable cases:
+  PASS  Office A can read and update its own allowed office settings
+  PASS  Office A cannot read Office B office settings
+  PASS  Office A cannot update Office B office settings
+  PASS  A broker can access only their permitted brokerSettings
+  PASS  A broker cannot read or update another broker’s private settings
+  PASS  A new unique officeNameClaim can be created correctly
+  PASS  An existing officeNameClaim cannot be taken over by another office
+  PASS  An office cannot change a claim’s officeId after creation
+  PASS  Unauthenticated users cannot access protected office settings or claims
+  PASS  Cooperation settings do not expose contact information automatically
+  PASS  Existing approved public-office access continues to work
+
+Rules paths exercised:
+  - offices/{officeId}/officeSettings/{settingId}
+  - offices/{officeId}/brokerSettings/{brokerUid}
+  - officeNameClaims/{nameKey}  (create / update takeover / officeId immutability)
+  - publicOffices/{officeId}    (unauthenticated read; unauthenticated write denied)
+  - offices/{officeId}          (unauthenticated denied)
+
+================================================================
+ENVIRONMENT
+================================================================
+
+Cloud Agent environment successfully ran the Firestore emulator:
+  - OpenJDK 21 available
+  - cloud-firestore-emulator-v1.19.8.jar downloaded
+  - Emulator bound to 127.0.0.1:8080
+  - All 11 security tests executed and passed
+
+Local / CI command (same as CI-equivalent gate):
+  npm install
+  npm run test:phase1-security
+
+================================================================
+REMAINING LIMITATIONS
+================================================================
+
+- Emulator suite covers Phase 1 security surfaces listed above; it is not a
+  full Phase 8 end-to-end security review of every collection/rule branch.
+- Static analysis suite (test/firestore-rules.test.mjs) remains as a fast
+  regression guard complementary to the emulator suite.
+- Phase 2+ features (intake, matching, persisted operations, cooperation
+  ownership/revocation, message adapters) are intentionally not started.
+- PR #2 remains Draft; do not merge until owner approval after this gate.
+
+================================================================
+STOP
+================================================================
+
+Phase 2 not started. Awaiting explicit owner approval.
