@@ -388,14 +388,14 @@ Automated assertions:
 
 ## Known limitations of this suite
 
-1. **Phase 1 rules are now executed in the emulator.** `npm run test:rules` loads the
-   real `firestore.rules` via `@firebase/rules-unit-testing` and covers the Phase 1
-   security gate cases. `test/firestore-rules.test.mjs` remains as a fast static
-   regression guard. Broader Phase 8 hardening (every collection/rule branch, performance,
-   PWA/e2e) is still outstanding.
-2. **No end-to-end browser test.** DOM tests run in `jsdom`, which has no layout engine,
+1. **Firestore rules execute in the emulator through Phase 8.** `npm run test:rules` loads
+   the real `firestore.rules` via `@firebase/rules-unit-testing` (legacy catch-all
+   collections included). `test/firestore-rules.test.mjs` remains as a fast static
+   regression guard. Speculative performance indexes and a Playwright browser lab are
+   still out of scope.
+2. **No visual browser/device lab.** DOM tests run in `jsdom`, which has no layout engine,
    so "mobile-first" and "no bottom navigation" are asserted structurally (element and CSS
-   rule shape) rather than visually. Real-device checks are Phase 8.
+   rule shape) rather than visually. Phase 8 ships PWA/a11y smoke tests instead.
 3. **Image cropping is asserted on its geometry function, not on pixels.** `jsdom` has no
    `CanvasRenderingContext2D`. `test/office-images.test.mjs` asserts the crop rectangle
    maths, the preset ratios, the type/size validation and the variant→key mapping; the
