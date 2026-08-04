@@ -7,6 +7,7 @@ import {
   officeImageKey,
   validateOfficeSettingsInput
 } from "../src/index.js";
+import worker from "../src/index.js";
 
 const root = new URL("../../", import.meta.url);
 const read = path => readFile(new URL(path, root), "utf8");
@@ -60,6 +61,52 @@ test("visual identity storage keys are tenant-scoped and kind-limited", () => {
   assert.equal(officeImageKey("office-one", "whatsapp-cover"), "office-images/office-one/whatsapp-cover");
   assert.equal(officeImageKey("office-one", "other"), "");
   assert.notEqual(officeImageKey("office-one", "logo"), officeImageKey("office-two", "logo"));
+});
+
+test("visual identity upload and removal use the authorized office-scoped R2 object", async () => {
+  const writes = [];
+  const removals = [];
+  const mediaEnv = {
+    FIREBASE_PROJECT_ID: "aqar-b5d76",
+    META_TRIAL_OFFICE_ID: "office-one",
+    ALLOW_TRIAL_NO_AUTH: "true",
+    IAQAR_MEDIA: {
+      put: async (...args) => writes.push(args),
+      delete: async key => removals.push(key)
+    }
+  };
+  const upload = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/webp",
+      "Content-Length": "4",
+      "X-Office-Id": "office-one",
+      "X-Office-Image-Kind": "logo"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(upload.status, 201);
+  assert.equal(writes[0][0], "office-images/office-one/logo");
+  assert.match((await upload.json()).imageUrl, /\/media\/public\/office-images\/office-one\/logo\?v=/);
+
+  const removal = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "DELETE",
+    headers: {
+      "X-Office-Id": "office-one",
+      "X-Office-Image-Kind": "logo"
+    }
+  }), mediaEnv);
+  assert.equal(removal.status, 200);
+  assert.deepEqual(removals, ["office-images/office-one/logo"]);
+
+  const crossOffice = await worker.fetch(new Request("https://example.test/media/office-image", {
+    method: "DELETE",
+    headers: {
+      "X-Office-Id": "office-two",
+      "X-Office-Image-Kind": "logo"
+    }
+  }), mediaEnv);
+  assert.equal(crossOffice.status, 401);
 });
 
 test("home exposes logo and display-image settings triggers without a visible settings label", async () => {
