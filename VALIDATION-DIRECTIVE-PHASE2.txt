@@ -1,0 +1,60 @@
+IAQAR.AI — Phase 2 validation (Unified Opportunity Intake)
+Branch: cursor/phase0-phase1-office-settings-0d44
+PR: #2 (Draft)
+Date: 2026-08-04
+
+================================================================
+COMMANDS / RESULTS
+================================================================
+
+npm test
+  web:    159 pass / 0 fail
+  worker:  58 pass / 0 fail
+  total:  217 pass / 0 fail
+
+npm run test:rules
+  command:
+    firebase emulators:exec --only firestore --project demo-iaqar-rules \
+      "node --test test/emulator/firestore-rules.emulator.test.mjs"
+  result: 14 pass / 0 fail
+  (includes Phase 1 gate + Phase 2 opportunities/opportunitySources isolation)
+
+npm run check
+  passed — 40 targets parsed (30 JS, 6 JSON, 2 HTML shells)
+
+================================================================
+PHASE 2 ACCEPTANCE
+================================================================
+
+PASS  Add Opportunity card on home (input + paperclip + submit, RTL)
+PASS  URL / text / attachment intake (image, screenshot, PDF, Word, Excel, audio)
+PASS  Source-type detection
+PASS  Unified Opportunity fields + source reference
+PASS  Missing-field flow (ask only for missing)
+PASS  Duplicate prevention (office-scoped fingerprint)
+PASS  officeId / brokerId on records + fingerprint isolation
+PASS  Visible states: uploading / analyzing / missing / saved / failed+retry
+PASS  No Operations Center item / no matching on Phase 2 save
+PASS  Extraction honesty: deterministic_text_parser / simulated_fixture only
+PASS  Firestore rules isolation for opportunities + opportunitySources
+
+================================================================
+SCHEMA / SECURITY
+================================================================
+
+New collections (under offices/{officeId}/):
+  - opportunitySources/{sourceId}
+  - opportunities/{opportunityId}  (unified Phase 2 fields)
+
+firestore.rules:
+  - opportunitySources + opportunities added to restricted collections
+  - explicit member create/read with officeId (+ brokerId on create)
+
+Worker:
+  - POST /media/opportunity-source (member auth, R2 key opportunity-sources/...)
+
+================================================================
+STOP
+================================================================
+
+Phase 3 not started. Awaiting explicit owner approval.
