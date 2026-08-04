@@ -244,6 +244,14 @@ export default {
         return await servePublicOfficeCover(url, env);
       }
 
+      if (request.method === "POST" && url.pathname === "/media/office-logo") {
+        return await uploadOfficeLogo(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-logos/")) {
+        return await servePublicOfficeLogo(url, env);
+      }
+
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
         return await listBrokerApplications(request, env, requestId);
       }
@@ -402,6 +410,41 @@ async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
   if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+    throw appError("media_not_found", 404, "الصورة غير موجودة");
+  }
+  const object = await bucket.get(key);
+  if (!object) throw appError("media_not_found", 404, "الصورة غير موجودة");
+  const headers = new Headers(corsHeaders());
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "public, max-age=3600");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
+}
+
+async function uploadOfficeLogo(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  const size = requestBodyLength(request);
+  if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
+  if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم الشعار يتجاوز 10 ميجابايت");
+  const key = `office-logos/${officeId}/logo`;
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
+    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+  });
+  const origin = new URL(request.url).origin;
+  const logoUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({ ok: true, logoUrl, requestId }, 201);
+}
+
+async function servePublicOfficeLogo(url, env) {
+  const bucket = requireMediaBucket(env);
+  const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
+  if (!/^office-logos\/[a-z0-9_-]{1,80}\/logo$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
