@@ -29,13 +29,19 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && (!('cooperationMode' in request.resource.data)
+          || request.resource.data.cooperationMode in ['DISABLED','APPROVAL_REQUIRED','SMART_AUTOMATIC']);
+    }
+
+    function officeNameClaimOwned(officeId) {
+      return getAfter(/databases/$(database)/documents/officeNameClaims/$(request.resource.data.officeNameKey)).data.officeId == officeId;
     }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow create: if isPlatformAdmin() && validOfficeProfile() && officeNameClaimOwned(officeId);
+      allow update: if canManage(officeId) && validOfficeProfile() && officeNameClaimOwned(officeId);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
