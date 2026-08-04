@@ -303,7 +303,7 @@ Listed so nobody mistakes the current model for the target model.
 
 | Entity | Phase | Purpose |
 | --- | --- | --- |
-| Matching Engine producing versioned `matches` IDs | 4 | Automatic rematch on every relevant event. |
+| Persisted `operations` driven from Match events with full §16 fields | 5 | Phase 4 creates Matches only; Operations remain derived client-side until Phase 5. |
 | `operations` with full §16 field set + `deduplicationKey` | 5 | Persisted actionable work items. Today operations are derived on the client and never stored. |
 | Smart automatic cooperating-broker selection | 6 | Phase 3 stores explicit requests only. |
 | `conversations`, `messages` with channel/send/delivery state | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |

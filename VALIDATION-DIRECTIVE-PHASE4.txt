@@ -11,10 +11,10 @@ Scope completed:
 - Firestore matches client read-only
 - No Operations persistence, no WhatsApp/Telegram send, no Phase 5+
 
-Commands (record after run):
-- npm test
-- npm run test:rules
-- npm run check
+Verification results:
+- npm test: web 187 pass / 0 fail; worker 61 pass / 0 fail (248 total)
+- npm run test:rules: 23 pass / 0 fail (real firestore.rules via emulator)
+- npm run check: 46 targets passed
 
 Decision: D-013
 Acceptance: Test 7 PASS, Test 8 PASS

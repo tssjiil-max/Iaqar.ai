@@ -83,8 +83,17 @@ test("TEST 4: the permissive catch-all excludes the collections with stricter ru
   }
 });
 
-test("TEST 4: the timeline subcollection inherits the restriction check", () => {
-  assert.match(condensed(matchBlock("/timeline/{eventId}")), /!isRestrictedOfficeCollection\(collectionName\)/);
+test("TEST 4: the catch-all timeline subcollection inherits the restriction check", () => {
+  // Prefer the timeline nested under the restricted catch-all, not the Phase 4 matches timeline.
+  const catchAll = condensed(matchBlock("/{collectionName}/{docId}"));
+  assert.match(catchAll, /match \/timeline\/\{eventId\} \{ allow read, create: if !isRestrictedOfficeCollection\(collectionName\)/);
+});
+
+test("Phase 4: matches are client read-only with a member timeline create path", () => {
+  const block = condensed(matchBlock("/matches/{matchId}"));
+  assert.match(block, /allow read: if isOfficeMember\(officeId\)/);
+  assert.match(block, /allow create, update, delete: if false/);
+  assert.match(block, /match \/timeline\/\{eventId\}/);
 });
 
 test("TEST 4: office settings may only be written by an office manager", () => {

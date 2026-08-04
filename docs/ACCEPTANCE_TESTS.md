@@ -48,8 +48,8 @@ Status as of the end of **Phase 4**:
 | 4 | Office privacy | **PASS (emulator + static)** | `test/emulator/firestore-rules.emulator.test.mjs`, `test/firestore-rules.test.mjs` |
 | 5 | Opportunity intake | **PASS** | `test/opportunity-intake.test.mjs` |
 | 6 | No match | **PENDING (phase 3/4)** | — |
-| 7 | Automatic rematch | **PENDING (phase 4)** | — |
-| 8 | Exactly one match | **PASS (partial)** | `worker/test/worker.test.mjs` |
+| 7 | Automatic rematch | **PASS** | `test/matching-phase4.test.mjs`, Worker `/matching/run` |
+| 8 | Exactly one match | **PASS** | `test/matching-phase4.test.mjs`, `worker/test/worker.test.mjs` |
 | 9 | Operation creation | **PENDING (phase 5)** | — |
 | 10 | Notification | **PASS (partial)** | `test/notification-preferences.test.mjs`, `worker/test/worker.test.mjs` |
 | 11 | Cooperation ownership | **PENDING (phase 6)** | — |
