@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0–5 complete — stop (do not begin Phase 6).**
+Current position: **Phase 0–6 complete — stop (do not begin Phase 7).**
 
 ---
 
@@ -17,7 +17,7 @@ Current position: **Phase 0–5 complete — stop (do not begin Phase 6).**
 | 3 | Opportunity Bank | **DONE** |
 | 4 | Matching engine | **DONE** |
 | 5 | Operations Center and notifications | **DONE** |
-| 6 | Cooperation | NOT STARTED |
+| 6 | Cooperation | **DONE** |
 | 7 | Smart messages and integration adapters | NOT STARTED |
 | 8 | Hardening | NOT STARTED |
 
@@ -215,11 +215,11 @@ Phase 5 delivered on this branch:
 
 Explicitly **not** done in Phase 5 (future phases):
 
-- Automatic cooperation broker selection / full cooperation lifecycle UI — Phase 6
+- Automatic cooperation broker selection / full cooperation lifecycle — Phase 6
 - WhatsApp / Telegram smart message drafts and channel adapters — Phase 7
 - Deals page, bottom navigation, or home redesign — never
 
-## Phase 6 — Cooperation
+## Phase 6 — Cooperation (DONE)
 
 Depends on: Phases 3 and 5.
 
@@ -233,7 +233,36 @@ financial or contractual commitment.
 
 Exit criteria: Tests 11 and 12 PASS.
 
-## Phase 7 — Smart messages and integration adapters
+Phase 6 delivered on this branch:
+
+- Worker `POST /cooperation/lifecycle` + `POST /cooperation/scope-revoke` — trusted
+  accept / reject / revoke for explicit cooperation requests and bank-sharing scopes
+- `offices/{officeId}/auditLogs` — Worker-written audit entries for sensitive
+  cooperation actions (request created/accepted/rejected/revoked, scope revoke,
+  shared projection write/remove)
+- Revoke removes or invalidates `sharedOpportunities` projections (`revokedAt` /
+  delete) so the cooperating party loses future access
+- Accept writes real minimum shared projections (contact forced empty; ownership
+  not transferred)
+- `DISABLED` mode enforced — blocks new explicit requests and accepts
+- `currentOwningOfficeId` stamped and preserved on opportunities / projections
+- Five Arabic statuses exact: `لم تُشارك`, `بانتظار الموافقة`, `تعاون نشط`,
+  `رُفض الطلب`, `انتهى التعاون`
+- Tests 11–12 PASS (`test/cooperation-phase6.test.mjs` + emulator Phase 6 cases)
+- Decision: D-015
+
+Explicit limitation (Q-4 unresolved):
+
+- `SMART_AUTOMATIC` does **not** auto-accept or recommend brokers. The mode may be
+  stored, but behaviour falls back to explicit approval. `createsAutomaticCooperation`
+  remains `false`; no invented performance scores or broker recommendations.
+
+Explicitly **not** done in Phase 6 (future phases):
+
+- WhatsApp / Telegram smart message drafts and channel adapters — Phase 7
+- Deals page, bottom navigation, or home redesign — never
+
+## Phase 7 — Smart messages and integration adapters (future)
 
 Depends on: Phases 5 and 6.
 
@@ -247,7 +276,7 @@ must never store fake delivery success.
 
 Exit criteria: Test 13 PASS; Test 15 still PASS.
 
-## Phase 8 — Hardening
+## Phase 8 — Hardening (future)
 
 Scope: full security review beyond the Phase 1 emulator gate already shipped in
 `test/emulator/firestore-rules.emulator.test.mjs` (`npm run test:rules`); expand

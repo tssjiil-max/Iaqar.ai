@@ -33,13 +33,16 @@ Test files:
 | `test/opportunity-bank-phase3.test.mjs` | Phase 3 Opportunity Bank domain + shell access |
 | `test/matching-phase4.test.mjs` | Phase 4 Matching Engine domain + rematch contracts |
 | `test/operations-phase5.test.mjs` | Phase 5 Operations Center + Notifications (Tests 9–10) |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints |
+| `test/cooperation-phase6.test.mjs` | Phase 6 Cooperation ownership + revocation (Tests 11–12) |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints, Phase 6 cooperation lifecycle |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 5**:
-- Phase 0–4 regression suites remain green.
-- Persisted Operations + Notifications with Worker-trusted writes are delivered.
-- Phase 6 (automatic cooperation) and Phase 7 (messaging adapters) are not started.
+Status as of the end of **Phase 6**:
+- Phase 0–5 regression suites remain green.
+- Explicit cooperation lifecycle via Worker is delivered (accept/reject/revoke + audit).
+- `SMART_AUTOMATIC` does not auto-accept or recommend brokers (Q-4 unresolved);
+  `createsAutomaticCooperation` remains false.
+- Phase 7 (messaging adapters) is not started.
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -53,8 +56,8 @@ Status as of the end of **Phase 5**:
 | 8 | Exactly one match | **PASS** | `test/matching-phase4.test.mjs`, `worker/test/worker.test.mjs` |
 | 9 | Operation creation | **PASS** | `test/operations-phase5.test.mjs`, emulator Phase 5 cases, Worker Phase 5 |
 | 10 | Notification | **PASS** | `test/operations-phase5.test.mjs`, `test/notification-preferences.test.mjs`, Worker Phase 5 |
-| 11 | Cooperation ownership | **PENDING (phase 6)** | — |
-| 12 | Cooperation revocation | **PENDING (phase 6)** | — |
+| 11 | Cooperation ownership | **PASS** | `test/cooperation-phase6.test.mjs`, emulator Phase 6 cases |
+| 12 | Cooperation revocation | **PASS** | `test/cooperation-phase6.test.mjs`, emulator Phase 6 cases |
 | 13 | Message draft | **PENDING (phase 7)** | — |
 | 14 | No deals page | **PASS** | `test/office-card.test.mjs` |
 | 15 | Production honesty | **PASS** | `test/office-card.test.mjs`, `test/integration-honesty.test.mjs` |
@@ -293,16 +296,35 @@ respected before push. Device FCM delivery is not claimed without provider confi
 When an Opportunity is shared, the originating office and broker remain the owners, and
 the cooperating broker receives only approved access.
 
-**Status: PENDING (phase 6).** Phase 1 ships only the office-level cooperation **mode**
-setting (default `APPROVAL_REQUIRED`, automatic contact exposure hard-wired off). No
-cooperation records, no sharing, no cross-office access exists — so nothing can leak
-yet, but nothing is claimed either.
+Automated coverage:
+- `test/cooperation-phase6.test.mjs` — five Arabic statuses exact; ownership fields
+  (`originatingOfficeId`, `originatingBrokerId`, `currentOwningOfficeId`, …) preserved
+  across cooperation patches; shared projections strip contacts and forbid ownership
+  transfer; `DISABLED` mode blocks new requests/accepts; Worker
+  `/cooperation/lifecycle` client contract; `createsAutomaticCooperation: false`.
+- Emulator Phase 6 cases in `test/emulator/firestore-rules.emulator.test.mjs` —
+  accepted share keeps ownership on the origin opportunity (`currentOwningOfficeId`
+  immutable); `auditLogs` office-isolated and not client-writable.
+- Worker Phase 6 cases — lifecycle / scope-revoke routes require auth; Phase 6
+  boundary guarantees.
+
+**Status: PASS (Phase 6).** Explicit cooperation only. `SMART_AUTOMATIC` does not
+auto-accept or recommend brokers (Q-4 unresolved).
 
 ## TEST 12 — Cooperation revocation
 
 When cooperation is revoked, the cooperating party loses future access.
 
-**Status: PENDING (phase 6).**
+Automated coverage:
+- `test/cooperation-phase6.test.mjs` — revocation cleanup plan targets
+  `sharedOpportunities`; revoke decision is idempotent and terminal (`REVOKED`);
+  audit entries exclude sensitive contact fields.
+- Emulator Phase 6 cases — revoked `sharedOpportunities` (`revokedAt` set) are no
+  longer readable by the cooperating office.
+- Worker `/cooperation/lifecycle` (REVOKE) and `/cooperation/scope-revoke` remove or
+  invalidate shared projections.
+
+**Status: PASS (Phase 6).**
 
 ## TEST 13 — Message draft
 

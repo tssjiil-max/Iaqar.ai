@@ -55,10 +55,11 @@ be introduced.
 | `OPERATION_CREATED` / `OPERATION_UPSERTED` | **Real (Phase 5)** — persisted `offices/{id}/operations/{op_*}` with `deduplicationKey`. Match path upserts `MATCH_REVIEW`; missing fields upsert `MISSING_DATA`; explicit cooperation upserts `COOPERATION_*`. Operations are **persisted, not derived**. | `worker/src/operations-domain.js`; `worker/src/operations-service.js` `createMatchReviewBundle`, `upsertMissingDataForOpportunity`; `POST /operations/*` |
 | `NOTIFICATION_CREATED` / `IN_APP_NOTIFICATION` | **Real (Phase 5)** — auditable `offices/{id}/notifications/{nt_*}` linked to the Operation. Legacy `alerts/alt_{matchId}` may still be written for older clients. Preferences gate push. | `buildInAppNotification`; `sendOfficePush` |
 | `PUSH_QUEUED_IF_ALLOWED` | **Real (Phase 5)** — when prefs allow and the notification is newly created, FCM HTTP v1 is attempted with lock-screen-safe copy; `providerState.push` records `QUEUED` / send / fail. Device delivery is **not** claimed without provider confirmation. | `operations-service.js` `recordNotificationPushResult`; `sendOfficePush` |
-| `BROKER_ACTION` | **Real** — Operation lifecycle via `POST /operations/action`; legacy match/deal progression via `iaqar:workflow-action` → `POST /workflow/action`. | `public/js/workflow-office.js`; `worker/src/index.js` |
-| `MESSAGE_DRAFT_CREATED` | **Partial** — Arabic drafts are generated per stage and role and opened in `wa.me` for the broker to send. Drafts are **not persisted**; there is no `messages` collection, no channel/recipient/send-state record and no Telegram path. **Phase 5 stops before messaging.** | `public/js/workflow-office.js` `whatsappMessage`, `openWorkflowWhatsApp` |
+| `BROKER_ACTION` | **Real** — Operation lifecycle via `POST /operations/action`; cooperation accept/reject/revoke via `POST /cooperation/lifecycle` (+ scope revoke); legacy match/deal progression via `iaqar:workflow-action` → `POST /workflow/action`. | `public/js/workflow-office.js`; `public/js/opportunity-bank.js`; `worker/src/cooperation-phase6-service.js` |
+| `COOPERATION_ACCEPTED` / `COOPERATION_REJECTED` / `COOPERATION_REVOKED` | **Real (Phase 6)** — trusted Worker lifecycle; auditLogs written; accept writes minimum `sharedOpportunities`; revoke removes/invalidates projections. | `worker/src/cooperation-phase6-service.js`; `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` |
+| `MESSAGE_DRAFT_CREATED` | **Partial** — Arabic drafts are generated per stage and role and opened in `wa.me` for the broker to send. Drafts are **not persisted**; there is no `messages` collection, no channel/recipient/send-state record and no Telegram path. **Phase 6 stops before messaging (Phase 7).** | `public/js/workflow-office.js` `whatsappMessage`, `openWorkflowWhatsApp` |
 | `EXTERNAL_RESPONSE_RECEIVED` | **Partial** — only inbound WhatsApp messages arrive back, and they are treated as new sources rather than as replies correlated to an operation. | `worker/src/index.js` `receiveMetaWebhook` |
-| `NEXT_OPERATION_CREATED` | **Not implemented** (Phase 6/7 territory beyond Phase 5 Operation upserts) | — |
+| `NEXT_OPERATION_CREATED` | **Not implemented** (Phase 7 territory beyond Phase 6 cooperation lifecycle) | — |
 | `COMPLETED` | **Partial** — Operation `COMPLETED` / `DISMISSED` / `EXPIRED` via lifecycle actions; a deal reaching `closed` closes sibling matches and records a timeline entry. | `applyOperationLifecycle`; `finalizeDealAndCloseSiblings` |
 
 ## 3. The only scheduled worker today
@@ -133,3 +134,43 @@ Client surface:
 
 Honesty boundary: FCM send attempts and `providerState` updates are recorded; the
 system does **not** mark `DELIVERED` unless a real provider confirmation exists.
+
+## 7. Phase 6 cooperation lifecycle flow
+
+Phase 6 stops **before** messaging (`MESSAGE_DRAFT_CREATED` and channel adapters remain
+Phase 7). Explicit cooperation only — no automatic broker recommendations (Q-4).
+
+Trusted Worker flow:
+
+```
+COOPERATION_REQUEST (PENDING, explicit)
+  → BROKER_ACTION ACCEPT | REJECT | REVOKE
+       (POST /cooperation/lifecycle — actor must be target for accept/reject;
+        origin or target for revoke)
+  → cooperationRequests status patched (idempotent terminal states)
+  → ACCEPT: write minimum sharedOpportunities under target office
+            (contacts empty; currentOwningOfficeId stays origin)
+  → REJECT: origin opportunity status → REJECTED; no projection
+  → REVOKE: delete or stamp revokedAt on sharedOpportunities;
+            origin opportunity status → ENDED; cooperating party loses future access
+  → auditLogs entry under each relevant office (sanitized details)
+  → COOPERATION_* Operation upsert via existing Phase 5 path when applicable
+```
+
+Scoped bank sharing revoke:
+
+```
+ACTIVE bankSharingScopes
+  → POST /cooperation/scope-revoke
+  → scope status REVOKED + revokedAt
+  → shared projection cleanup for in-scope opportunities
+  → auditLogs BANK_SHARING_SCOPE_REVOKED
+```
+
+Mode enforcement:
+
+- `DISABLED` — blocks new explicit requests and accepts.
+- `APPROVAL_REQUIRED` — default; every request needs broker approval.
+- `SMART_AUTOMATIC` — stored only; does **not** auto-accept or recommend brokers;
+  behaviour falls back to explicit approval. `createsAutomaticCooperation` remains
+  false.

@@ -88,6 +88,7 @@ Route groups:
 | FCM | `GET /fcm/config`, `GET /fcm/status`, `POST /fcm/register`, `/fcm/unregister`, `/fcm/test` | Device registry lives server-side only. |
 | Workflow | `POST /workflow/action`, `GET /workflow/timeline`, `GET /office/analytics` | Match/deal progression. |
 | Operations (Phase 5) | `POST /operations/action`, `/operations/from-cooperation`, `/operations/missing-data` | Worker upserts/lifecycle for persisted Operations + Notifications. |
+| Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
 | Blocked | `/ingest` → 410, any `*messages*`/`*send*` → 403 `outbound_disabled` | Outbound messaging is refused at the edge. |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the
@@ -227,3 +228,15 @@ Phase 1 makes office-name and settings logic testable without a browser.
   provider confirmation.
 - Firestore: clients read-only on `operations` / `notifications`; composite indexes
   added for Operations Center queries.
+
+### B.7 What Phase 6 actually changed
+
+- Added `worker/src/cooperation-phase6-domain.js` + `cooperation-phase6-service.js` and
+  client `public/js/cooperation-phase6-domain.js`.
+- Worker routes `POST /cooperation/lifecycle` and `POST /cooperation/scope-revoke` for
+  trusted accept / reject / revoke; writes `offices/{id}/auditLogs`; accept writes
+  minimum `sharedOpportunities`; revoke removes or invalidates them (`revokedAt`).
+- `currentOwningOfficeId` preserved on opportunities and projections; five Arabic
+  cooperation statuses enforced; `DISABLED` mode blocks new requests/accepts.
+- `SMART_AUTOMATIC` does not auto-accept or recommend brokers (Q-4 unresolved).
+- No WhatsApp / Telegram messaging, Deals page, or bottom navigation.

@@ -339,6 +339,37 @@ do not begin Phase 6/7 (automatic cooperation, WhatsApp/Telegram messaging).
 keeping messaging and automatic cooperation for later phases, and without weakening
 tenant isolation or the constitution.
 
+## D-015 — Phase 6 explicit cooperation lifecycle via Worker
+
+**Phase:** 6
+**Directive:** §19 (broker-to-broker cooperation), §20 (ownership), §26 (audit),
+Tests 11–12; Phase 6 only — do not begin Phase 7 (WhatsApp/Telegram messaging) or
+invent broker recommendations (Q-4 unresolved).
+
+**Decision.**
+
+1. **Worker-trusted lifecycle.** Accept / reject / revoke for
+   `cooperationRequests` go through `POST /cooperation/lifecycle`. Scoped bank-sharing
+   revoke goes through `POST /cooperation/scope-revoke`. Clients do not forge
+   terminal states or shared projections outside these paths for the trusted flow.
+2. **`auditLogs`.** Sensitive cooperation actions write
+   `offices/{officeId}/auditLogs/{aud_*}` (Worker-only writes; members may read).
+   Audit details never store phones, contact names, or tokens.
+3. **Revocation removes future access.** Revoke deletes or stamps `revokedAt` on
+   `sharedOpportunities` under the target office; rules deny reads when revoked.
+   Origin opportunity cooperation status becomes `ENDED`.
+4. **Ownership preserved.** `originatingOfficeId`, `originatingBrokerId`, and
+   `currentOwningOfficeId` never transfer because of cooperation. Accept writes
+   real minimum projections with contacts forced empty.
+5. **No invented recommendations.** `SMART_AUTOMATIC` does not auto-accept or
+   recommend brokers while Q-4 is unresolved. `createsAutomaticCooperation` remains
+   `false`. `DISABLED` mode blocks new requests and accepts.
+6. **No messaging / Deals.** Phase 6 boundary guarantees forbid WhatsApp/Telegram
+   send, smart message drafts, a Deals page, and bottom navigation.
+
+**Why.** Satisfies Tests 11–12 with explicit, revocable, audited cross-office access
+without inventing performance-based broker selection or starting Phase 7 messaging.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
@@ -346,5 +377,5 @@ tenant isolation or the constitution.
 | Q-1 | May an office have a WhatsApp number different from its mobile number? (see D-002) | A separate approved settings field. |
 | Q-2 | Should the office URL become the bare `iaqar.ai/{handle}` form, accepting a link migration? (see D-004) | The `officeHandles` registry. |
 | Q-3 | What is the approved sending policy, if any, for outbound owner/customer messages? §10 says drafts by default; nothing describes when automatic sending would ever be allowed. | Phase 7 outbound behaviour beyond drafts. |
-| Q-4 | Which "verified performance data" may drive cooperating-broker recommendations? §19 forbids inventing performance scores. | Phase 6 recommendation factors. |
+| Q-4 | Which "verified performance data" may drive cooperating-broker recommendations? §19 forbids inventing performance scores. | Smart-automatic recommendation factors — still unresolved; Phase 6 does not invent them. |
 | Q-5 | What are the approved completion milestones that trigger a success badge/notification (§21)? | Phase 5 completion operation. |

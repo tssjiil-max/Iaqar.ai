@@ -1,7 +1,7 @@
 # IAQAR.AI — Data Model
 
 Scope of this file: every Firestore collection and R2 key prefix the system uses today,
-its ownership, its access rules, the indexes it needs, and the fields Phases 1–5 added.
+its ownership, its access rules, the indexes it needs, and the fields Phases 1–6 added.
 Target-state entities that do not exist yet are in the final section and are clearly
 marked as **not implemented**.
 
@@ -98,11 +98,12 @@ health documents.
 | `owners/{id}` | Worker | Owner offer records (`own_intake_*`). |
 | `opportunities/{id}` | Phase 2 intake + Phase 3 bank | Unified Opportunity entity (`opp_*`). Phase 3 adds lifecycle/archive/soft-delete and cooperation status fields. Hard client delete denied. |
 | `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. |
-| `sharedOpportunities/{id}` | Phase 3 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. |
+| `sharedOpportunities/{id}` | Phase 3 + Phase 6 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. Phase 6 revoke deletes or sets `revokedAt` so future reads fail. |
 | `matches/{matchId}` | Worker (Phase 4) | `matchId = mat_{sha256(officeId\|canonicalPair\|matchingRuleVersion\|dataVersion)[0..36]}`. Fields include `isCurrent`, `matchingRuleVersion`, `dataVersion`, `canonicalPairKey`, `pairRuleKey`, scores/reasons JSON, opportunity ids, `status` (`active` / `superseded` / …). Client read-only; Worker writes. |
 | `matches/{id}/timeline/{eventId}` | Worker + client | Append-only per-record activity. Read/create = member, update/delete = manager. |
-| **`operations/{operationId}`** | **Worker (Phase 5)** | Persisted actionable Operations Center items. See §9. Clients cannot write. |
-| **`notifications/{notificationId}`** | **Worker (Phase 5)** | Auditable in-app / push notification records. See §9. Clients cannot write. |
+| **`operations/{operationId}`** | **Worker (Phase 5)** | Persisted actionable Operations Center items. See §8. Clients cannot write. |
+| **`notifications/{notificationId}`** | **Worker (Phase 5)** | Auditable in-app / push notification records. See §8. Clients cannot write. |
+| **`auditLogs/{auditId}`** | **Worker (Phase 6)** | Sensitive cooperation-action audit trail. See §9. Clients cannot write. |
 | `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
 | `deals/{id}/timeline/{eventId}` | Worker + client | As above. |
 | `alerts/{alertId}` | Worker | Legacy `alt_{matchId}` alert records. Phase 5 primary path is `notifications`. |
@@ -128,7 +129,7 @@ match /{collectionName}/{docId} {
 
 `restricted()` / `isRestrictedOfficeCollection()` returns true for `devices`,
 `officeSettings`, `brokerSettings`, `opportunitySources`, `opportunities`,
-`sharedOpportunities`, `matches`, `operations`, and `notifications`.
+`sharedOpportunities`, `matches`, `operations`, `notifications`, and `auditLogs`.
 Before Phase 1 it only excluded `devices`; later phases exclude collections that need
 explicit least-privilege rules. In Firestore, rules are additive — a permissive
 catch-all cannot be narrowed by adding a specific rule, so exclusion is the only
@@ -299,13 +300,24 @@ Filters may include kind/purpose/propertyType/city/district/activeOnly and/or ex
 | Field | Type | Notes |
 | --- | --- | --- |
 | `originatingOfficeId` / `originatingBrokerId` | string | Set at create; immutable in rules. |
+| `currentOwningOfficeId` | string | **Phase 6.** Defaults to `officeId` / originating office; preserved across cooperate / accept / revoke. Never transfers because of cooperation. |
 | `lifecycleStatus` | `ACTIVE` \| `ARCHIVED` \| `DELETED` | Soft delete by default. |
 | `archivedAt` / `archivedBy` / `restoredAt` / `restoredBy` | string | Audit. |
 | `deletedAt` / `deletedBy` / `deletionReason` | string | Soft-delete audit. |
-| `cooperationStatus` / `cooperationState` | enum | Visible: NOT_SHARED … ENDED. Default NOT_SHARED. |
+| `cooperationStatus` / `cooperationState` | enum | Visible Arabic labels: `لم تُشارك`, `بانتظار الموافقة`, `تعاون نشط`, `رُفض الطلب`, `انتهى التعاون`. Internal: NOT_SHARED … ENDED. Default NOT_SHARED. |
 | `activeCooperationId` | string \| null | Points at `cooperationRequests/{id}`. |
 | `version` | number | Incremented on edit/archive/restore/delete. |
 | `brokerConfirmed` | boolean | Set on authorized edit — extraction must not overwrite. |
+
+### 7.4 `sharedOpportunities` Phase 6 fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `originatingOfficeId` / `currentOwningOfficeId` | string | Always the owner office; never the cooperating target. |
+| `revokedAt` | timestamp \| null | Set on revoke (or document deleted). Rules deny reads when `revokedAt` is present. |
+| `cooperationStatus` | string | `ACTIVE` while shared; `ENDED` after revoke invalidation. |
+| `contactName` / `contactPhone` / `phone` | string | Always empty on write. |
+| `permissions` | map | Hard floor: `contactVisible: false`, `ownershipModifiable: false`, `canDelete: false`. |
 
 ## 8. Phase 5 — Operations and Notifications
 
@@ -378,14 +390,48 @@ Notification `deduplicationKey` = `NOTIF|{operation.deduplicationKey}`.
 | `sensitivePreview` | bool | Always `false` for Phase 5 system notifications. |
 | `createdBySystem` / `schemaVersion` | bool / int | System-authored; schema `1`. |
 
-## 9. Target-state entities — NOT IMPLEMENTED
+## 9. Phase 6 — Cooperation audit logs and lifecycle notes
+
+### 9.1 `offices/{officeId}/auditLogs/{auditId}`
+
+Worker-trusted writes for sensitive cooperation actions. Document ID =
+`aud_{sha256(action|officeId|cooperationId|createdAt)[0..40]}`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Same as document ID. |
+| `officeId` | string | Tenant; required. |
+| `action` | string | e.g. `COOPERATION_REQUEST_CREATED`, `COOPERATION_REQUEST_ACCEPTED`, `COOPERATION_REQUEST_REJECTED`, `COOPERATION_REQUEST_REVOKED`, `BANK_SHARING_SCOPE_CREATED`, `BANK_SHARING_SCOPE_REVOKED`, `SHARED_OPPORTUNITY_WRITTEN`, `SHARED_OPPORTUNITY_REMOVED`. |
+| `actorUid` | string | Broker who triggered the action. |
+| `cooperationId` | string | Related request or scope id. |
+| `originatingOfficeId` / `targetOfficeId` | string | Parties. |
+| `opportunityIdsJson` | string (JSON) | Related opportunity ids. |
+| `detailsJson` | string (JSON) | Sanitized details — phones / contact names / tokens never stored. |
+| `createdAt` | timestamp | |
+| `createdBySystem` / `schemaVersion` | bool / int | System-authored; schema `1`. |
+
+Access: office-member `read` only; client `create` / `update` / `delete` are `if false`.
+
+### 9.2 Phase 6 lifecycle notes
+
+- Accept / reject / revoke for `cooperationRequests` go through Worker
+  `POST /cooperation/lifecycle`. Scoped bank sharing revoke goes through
+  `POST /cooperation/scope-revoke`.
+- Accept writes real minimum `sharedOpportunities` projections under the target office.
+- Revoke deletes or stamps `revokedAt` on those projections and clears
+  `activeCooperationId` on the origin opportunity.
+- `DISABLED` cooperation mode blocks new explicit requests and accepts.
+- `SMART_AUTOMATIC` may be stored in `officeSettings/cooperation.mode` but does **not**
+  auto-accept or recommend brokers (Q-4 unresolved). Smart automatic cooperating-broker
+  selection is still not implemented; `createsAutomaticCooperation` remains false.
+
+## 10. Target-state entities — NOT IMPLEMENTED
 
 Listed so nobody mistakes the current model for the target model.
 
 | Entity | Phase | Purpose |
 | --- | --- | --- |
-| Smart automatic cooperating-broker selection | 6 | Phase 3 stores explicit requests only; Phase 5 can surface cooperation Operations from explicit requests. |
+| Smart automatic cooperating-broker selection | 6 (deferred — Q-4) | Mode may be stored; Phase 6 does not auto-accept or invent recommendations. Explicit approval only. |
 | `conversations`, `messages` with channel/send/delivery state | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |
-| `auditLogs` | 6–8 | Sensitive-action audit trail; today only per-record `timeline` exists. |
 | `eventOutbox` / `backgroundJobs` | 2+ | Database-backed job pattern for the event workflow. |
 | `officeHandles` | deferred | See `DECISIONS.md` D-004. |
