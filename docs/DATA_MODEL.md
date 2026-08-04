@@ -96,7 +96,9 @@ health documents.
 | `publicIntake/{id}` | **Unauthenticated public form** | Owner offer / customer request submitted through the office link. Rules validate every field shape and size on create; only office members can read or update. Processed by `POST /pipeline/public-intake`, which sets `status: "processed"`, `processedRecordId`, `opportunityId`, `matchCount`. |
 | `clients/{id}` | Worker | Customer request records (`cli_intake_*` or parsed message records). |
 | `owners/{id}` | Worker | Owner offer records (`own_intake_*`). |
-| `opportunities/{id}` | Worker | Unified opportunity projection (`opp_intake_*`). Currently a secondary copy of the client/owner record; see §5. |
+| `opportunities/{id}` | Phase 2 intake + Phase 3 bank | Unified Opportunity entity (`opp_*`). Phase 3 adds lifecycle/archive/soft-delete and cooperation status fields. Hard client delete denied. |
+| `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. |
+| `sharedOpportunities/{id}` | Phase 3 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. |
 | `matches/{matchId}` | Worker | `matchId = mat_{sha256(officeId|sortedPair)[0..36]}`, which is what makes match creation idempotent for a pair. Holds `score`, `opportunityScore`, `closingReadiness*`, `reasonsJson`, `warningsJson`, `breakdownJson`, `rejectionChecksJson`, `clientRequestId`, `ownerOfferId`, `matchGroupId`, `status`, `workflowStage`, `nextAction`, `nextFollowUpAt`, `viewingAt`. |
 | `matches/{id}/timeline/{eventId}` | Worker + client | Append-only per-record activity. Read/create = member, update/delete = manager. |
 | `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
@@ -122,11 +124,12 @@ match /{collectionName}/{docId} {
 }
 ```
 
-`restricted()` returns true for `devices`, `officeSettings` and `brokerSettings`.
-Before Phase 1 it only excluded `devices`; the two new collections are excluded so that
-the explicit least-privilege rules below are the *only* way to reach them. In Firestore,
-rules are additive — a permissive catch-all cannot be narrowed by adding a specific
-rule, so exclusion is the only correct mechanism.
+`restricted()` returns true for `devices`, `officeSettings`, `brokerSettings`,
+`opportunitySources`, `opportunities`, and `sharedOpportunities`.
+Before Phase 1 it only excluded `devices`; later phases exclude collections that need
+explicit least-privilege rules. In Firestore, rules are additive — a permissive
+catch-all cannot be narrowed by adding a specific rule, so exclusion is the only
+correct mechanism.
 
 ## 3. Phase 1 settings documents
 
@@ -236,7 +239,7 @@ Accepted image types: `image/jpeg`, `image/png`, `image/webp`. Maximum 10 MB per
 
 ## 6. Indexes
 
-Existing composite indexes in `firestore.indexes.json` (unchanged by Phase 1):
+Composite indexes in `firestore.indexes.json`:
 
 | Collection group | Scope | Fields |
 | --- | --- | --- |
@@ -246,30 +249,65 @@ Existing composite indexes in `firestore.indexes.json` (unchanged by Phase 1):
 | `matches` | COLLECTION_GROUP | `status` ASC, `nextFollowUpAt` ASC |
 | `deals` | COLLECTION_GROUP | `status` ASC, `nextFollowUpAt` ASC |
 | `matches` | COLLECTION | `matchGroupId` ASC, `updatedAt` DESC |
+| `cooperationRequests` | COLLECTION | `targetOfficeId` ASC, `status` ASC |
 
-Phase 1 adds **no** index. Its queries are:
-
-- `offices/{id}` — document get.
-- `officeNameClaims/{key}` — document get.
-- `offices/{id}/officeSettings/{doc}`, `offices/{id}/brokerSettings/{uid}` — document
-  gets.
-- `offices/{id}/opportunities` ordered by `createdAt` DESC, limit 50 — single-field
-  order, served by the automatic single-field index.
+Phase 3 bank list query: `offices/{id}/opportunities` ordered by `createdAt` DESC with
+`limit` + `startAfter` cursor pagination — single-field order (automatic index).
 
 Per the constitution, indexes are created only when a real query needs them.
 
-## 7. Target-state entities — NOT IMPLEMENTED
+## 7. Phase 3 collections (global)
 
-Listed so nobody mistakes the current model for the target model. None of these exist.
+### 7.1 `cooperationRequests/{requestId}`
+
+Explicit single/selected opportunity cooperation request. Not automatic broker matching.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `originatingOfficeId` / `originatingBrokerId` | string | Owner; immutable on update. |
+| `targetOfficeId` / `targetBrokerId` | string | Target; broker optional. |
+| `opportunityId` / `opportunityIds` | string / array | Single or selected scope. |
+| `scopeType` | `single` \| `selected` | |
+| `status` | enum | `PENDING` (default), `ACCEPTED`, `REJECTED`, `REVOKED`, `ENDED`. |
+| `permissions` | map | Default: read-only, minimum data, contact hidden, no ownership/delete/archive/reshare. |
+| `requestedAt`, `respondedAt`, `acceptedAt`, `revokedAt`, `endedAt` | string ISO | |
+| `createdBy` | string | |
+
+Document IDs are content-hashed for active-request deduplication.
+
+### 7.2 `bankSharingScopes/{sharingScopeId}`
+
+Scoped, revocable Opportunity Bank share. Disabled by default (`status: DISABLED`,
+`enabled: false`). Target may read only when `status == ACTIVE && enabled == true &&
+revokedAt` is absent.
+
+Filters may include kind/purpose/propertyType/city/district/activeOnly and/or explicit
+`opportunityIds`. Never grants raw database access.
+
+### 7.3 Opportunity Phase 3 fields (on `offices/{officeId}/opportunities/{id}`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `originatingOfficeId` / `originatingBrokerId` | string | Set at create; immutable in rules. |
+| `lifecycleStatus` | `ACTIVE` \| `ARCHIVED` \| `DELETED` | Soft delete by default. |
+| `archivedAt` / `archivedBy` / `restoredAt` / `restoredBy` | string | Audit. |
+| `deletedAt` / `deletedBy` / `deletionReason` | string | Soft-delete audit. |
+| `cooperationStatus` / `cooperationState` | enum | Visible: NOT_SHARED … ENDED. Default NOT_SHARED. |
+| `activeCooperationId` | string \| null | Points at `cooperationRequests/{id}`. |
+| `version` | number | Incremented on edit/archive/restore/delete. |
+| `brokerConfirmed` | boolean | Set on authorized edit — extraction must not overwrite. |
+
+## 8. Target-state entities — NOT IMPLEMENTED
+
+Listed so nobody mistakes the current model for the target model.
 
 | Entity | Phase | Purpose |
 | --- | --- | --- |
-| `opportunities` with the full §11 field set (`brokerId`, `createdBy`, `opportunityKind`, `purpose`, `nearbyDistricts`, `extractionConfidence`, `dataCompleteness`, `lifecycleStatus`, `cooperationState`, ownership metadata, `deduplicationFingerprint`, `version`) | 2–3 | The single unified entity; today's `opportunities` is a partial projection. |
-| `opportunitySources` / attachments with lazy-loaded originals | 2 | Keep large originals out of list queries. |
-| `operations` with `type`, `sourceEntityType`, `sourceEntityId`, `priority`, `title`, `summary`, `recommendedAction`, `status`, `dueAt`, `deduplicationKey` | 5 | Persisted actionable work items. Today operations are derived on the client and never stored. |
-| `cooperations` / `cooperationRequests` with `originatingOfficeId`, `originatingBrokerId`, `cooperatingOfficeId`, `cooperatingBrokerId`, scope, `requestedAt`, `respondedAt`, `acceptedAt`, `endedAt`, `status`, `permissions`, revocation info | 6 | Broker-to-broker cooperation. |
-| `conversations`, `messages` with channel, recipient, send state, delivery state, failure reason | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |
+| Matching Engine producing versioned `matches` IDs | 4 | Automatic rematch on every relevant event. |
+| `operations` with full §16 field set + `deduplicationKey` | 5 | Persisted actionable work items. Today operations are derived on the client and never stored. |
+| Smart automatic cooperating-broker selection | 6 | Phase 3 stores explicit requests only. |
+| `conversations`, `messages` with channel/send/delivery state | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |
 | `notifications` | 5 | Auditable notification records; today only `alerts` exists. |
 | `auditLogs` | 6–8 | Sensitive-action audit trail; today only per-record `timeline` exists. |
 | `eventOutbox` / `backgroundJobs` | 2+ | Database-backed job pattern for the event workflow. |
-| `officeHandles` | deferred | A global clean-handle registry (`iaqar.ai/almasar`). Deferred because `publicSlug` already provides a stable unique office URL — see `DECISIONS.md` D-004. |
+| `officeHandles` | deferred | See `DECISIONS.md` D-004. |

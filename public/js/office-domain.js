@@ -329,7 +329,12 @@ export const COOPERATION_STATUS_LABELS = Object.freeze({
 });
 
 export function cooperationStatusLabel(value) {
-  const key = String(value || "NOT_SHARED").trim().toUpperCase();
+  const raw = String(value || "NOT_SHARED").trim().toUpperCase();
+  const aliases = {
+    PENDING: "PENDING_APPROVAL",
+    REVOKED: "ENDED"
+  };
+  const key = aliases[raw] || raw;
   return COOPERATION_STATUS_LABELS[key] || COOPERATION_STATUS_LABELS.NOT_SHARED;
 }
 
@@ -399,7 +404,9 @@ const OPPORTUNITY_KIND_LABELS = Object.freeze({
   owner_offer: "عرض مالك",
   client_request: "طلب عميل",
   owner: "عرض مالك",
-  client: "طلب عميل"
+  client: "طلب عميل",
+  offer: "عرض",
+  request: "طلب"
 });
 
 function formatMoney(value) {
@@ -409,8 +416,9 @@ function formatMoney(value) {
 }
 
 export function opportunityAmountText(record = {}) {
-  const isOwner = String(record.recordType || "").startsWith("owner");
-  const exact = formatMoney(record.price || record.amount);
+  const kind = String(record.opportunityKind || record.recordType || "").toUpperCase();
+  const isOwner = kind === "OFFER" || String(record.recordType || "").startsWith("owner");
+  const exact = formatMoney(record.price || record.priceOrBudget || record.amount);
   if (exact) return { label: isOwner ? "السعر المطلوب" : "الميزانية", value: exact };
   const min = Number(record.priceMin || 0);
   const max = Number(record.priceMax || 0);
@@ -453,7 +461,8 @@ export function toDateValue(value) {
  * or match-run count.
  */
 export function opportunityBankRow(id, record = {}) {
-  const kindKey = String(record.recordType || record.kind || "").toLowerCase();
+  const kindRaw = String(record.opportunityKind || record.recordType || record.kind || "").toLowerCase();
+  const kindKey = kindRaw === "offer" ? "owner" : kindRaw === "request" ? "client" : kindRaw;
   const amount = opportunityAmountText(record);
   const attributes = [];
   if (Number(record.area || 0) > 0) attributes.push(`${Number(record.area).toLocaleString("ar-SA")} م²`);
@@ -470,6 +479,6 @@ export function opportunityBankRow(id, record = {}) {
     attributes,
     contactName: safeText(record.contactName || record.name),
     dateAdded: formatDateAdded(record.createdAt),
-    cooperationStatus: cooperationStatusLabel(record.cooperationStatus)
+    cooperationStatus: cooperationStatusLabel(record.cooperationStatus || record.cooperationState)
   };
 }

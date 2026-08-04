@@ -379,6 +379,8 @@ export function buildOpportunityRecord({
     id,
     officeId: safeText(officeId, 80),
     brokerId: safeText(brokerId, 120),
+    originatingOfficeId: safeText(officeId, 80),
+    originatingBrokerId: safeText(brokerId, 120),
     createdAt: timestamp,
     updatedAt: timestamp,
     sourceType,
@@ -391,17 +393,23 @@ export function buildOpportunityRecord({
     priceOrBudget: fields.priceOrBudget == null || fields.priceOrBudget === ""
       ? null
       : Number(fields.priceOrBudget),
+    price: fields.priceOrBudget == null || fields.priceOrBudget === ""
+      ? null
+      : Number(fields.priceOrBudget),
     area: fields.area == null || fields.area === "" ? null : Number(fields.area),
     rooms: fields.rooms == null || fields.rooms === "" ? null : Number(fields.rooms),
     extractionConfidence: Number(extraction?.extractionConfidence || 0),
     dataCompleteness: completeness.dataCompleteness,
     internalStatus,
+    lifecycleStatus: completeness.isComplete ? "ACTIVE" : "ACTIVE",
     deduplicationFingerprint,
     missingFields: completeness.missingFields,
     extractionMode: extraction?.extractionMode || "simulated_fixture",
     extractionProvider: extraction?.extractionProvider || "iaqar.simulated_fixture",
     productionAi: false,
     cooperationState: "NOT_SHARED",
+    cooperationStatus: "NOT_SHARED",
+    version: 1,
     // Legacy projection helpers used by the Opportunity Bank list.
     recordType: fields.opportunityKind === "OFFER" ? "owner" : "client",
     status: "active",

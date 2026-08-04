@@ -1299,6 +1299,181 @@
   .section-status.is-error { color:#a1332c; }
   .section-status.is-done { color:var(--success); }
 
+
+  .bank-toolbar {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:10px;
+    align-items:center;
+  }
+  .bank-filter {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--green);
+    border-radius:999px;
+    padding:7px 12px;
+    font-size:11px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  .bank-filter.is-active {
+    background:var(--green);
+    color:#fff;
+    border-color:var(--green);
+  }
+  .bank-toolbar input[type=text] {
+    flex:1;
+    min-width:140px;
+    height:36px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    font-size:12px;
+  }
+  .bank-toolbar .bank-action,
+  .bank-toolbar .bank-action-primary {
+    height:36px;
+    border-radius:12px;
+    padding:0 12px;
+    font-size:11px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  .bank-row {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    gap:8px;
+    align-items:start;
+  }
+  .bank-select { margin-top:4px; }
+  .bank-row-main {
+    border:0;
+    background:transparent;
+    text-align:right;
+    padding:0;
+    width:100%;
+    cursor:pointer;
+  }
+  #bankLoadMoreBtn {
+    display:block;
+    width:100%;
+    margin:10px 0 4px;
+    height:40px;
+  }
+  .bank-incoming {
+    margin-top:14px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#fff;
+  }
+  .bank-incoming h3 {
+    margin:0 0 8px;
+    color:var(--green);
+    font-size:14px;
+  }
+  .bank-incoming-item {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:space-between;
+    padding:8px 0;
+    border-top:1px solid var(--line);
+  }
+  .bank-detail {
+    margin-top:12px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:var(--green-pale);
+  }
+  .bank-detail-head {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+  }
+  .bank-detail-head h3 {
+    margin:0;
+    color:var(--green);
+    font-size:15px;
+    font-weight:800;
+  }
+  .bank-detail-grid {
+    margin:10px 0 0;
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    gap:4px 10px;
+  }
+  .bank-detail-grid dt { color:var(--muted); font-size:10px; font-weight:700; }
+  .bank-detail-grid dd { margin:0; font-size:12px; font-weight:700; }
+  .bank-edit-form, .bank-share-form, .bank-source-preview, .bank-confirm {
+    margin-top:12px;
+    padding-top:10px;
+    border-top:1px solid rgba(0,92,75,.12);
+  }
+  .bank-edit-form h4 { margin:0 0 8px; color:var(--green); font-size:13px; }
+  .bank-edit-grid {
+    display:grid;
+    gap:8px;
+  }
+  .bank-edit-grid label, .bank-share-form label {
+    display:grid;
+    gap:4px;
+    color:var(--muted);
+    font-size:11px;
+    font-weight:700;
+  }
+  .bank-edit-grid input, .bank-share-form input {
+    height:38px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+  }
+  .bank-actions {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:12px;
+  }
+  .bank-action, .bank-action-primary {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--green);
+    border-radius:12px;
+    padding:8px 12px;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  .bank-action-primary {
+    border:0;
+    background:var(--green);
+    color:#fff;
+    width:100%;
+    margin-top:8px;
+  }
+  .bank-action.danger { color:#8b2f2a; }
+  .bank-note, .bank-source-text {
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:10px;
+    line-height:1.5;
+  }
+  .bank-retry {
+    margin-top:8px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--green);
+    border-radius:12px;
+    padding:8px 12px;
+    font-size:12px;
+    font-weight:800;
+  }
+
   .bank-list { margin-top:13px; display:grid; gap:9px; }
 
   .bank-row {
@@ -1848,11 +2023,26 @@
           <h2 id="opportunityBankTitle">بنك الفرص</h2>
           <p>فرص هذا المكتب فقط. لا يظهر هنا أي سجل يتبع مكتبًا آخر.</p>
         </div>
-        <button class="settings-close" id="opportunityBankClose" type="button" aria-label="إغلاق">×</button>
+        <button class="settings-close" id="opportunityBankClose" type="button" aria-label="إغلاق بنك الفرص والعودة">×</button>
+      </div>
+
+      <div class="bank-toolbar">
+        <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
+        <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
+        <input id="bankScopeTarget" type="text" placeholder="معرّف المكتب المستهدف للمشاركة" aria-label="معرّف المكتب المستهدف">
+        <button type="button" class="bank-action" id="bankShareSelectedBtn">مشاركة المحدد</button>
+        <button type="button" class="bank-action" id="bankCreateScopeBtn">نطاق مشاركة</button>
       </div>
 
       <p class="section-status" id="opportunityBankStatus" role="status"></p>
+      <button type="button" class="bank-retry" id="opportunityBankRetry" hidden>إعادة المحاولة</button>
       <div class="bank-list" id="opportunityBankList"></div>
+      <button type="button" class="bank-action" id="bankLoadMoreBtn" hidden>تحميل المزيد</button>
+      <div class="bank-incoming" id="bankIncomingRequests" hidden>
+        <h3>طلبات تعاون واردة</h3>
+        <div id="bankIncomingList"></div>
+      </div>
+      <div class="bank-detail" id="opportunityBankDetail" hidden></div>
     </section>
   </div>
 
@@ -1869,6 +2059,7 @@
   <script src="js/qrcode.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>
+  <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
 
   <script>

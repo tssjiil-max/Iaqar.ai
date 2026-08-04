@@ -129,31 +129,33 @@ test("unparseable dates are reported as unspecified rather than as an invalid da
 });
 
 test("the bank reads only the current office's own opportunities", () => {
-  const settings = readRepositoryFile("public", "js", "office-settings.js");
-  const opener = settings.slice(settings.indexOf("function openOpportunityBank("));
-  assert.ok(opener.includes('collection("offices").doc(officeId())'), "the query must be scoped to this office");
-  assert.ok(opener.includes('collection("opportunities")'));
-  assert.equal(/collectionGroup/.test(opener), false, "a collection-group query would cross offices");
+  // Phase 3 moved the bank controller out of office-settings.js.
+  const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
+  assert.ok(bank.includes('collection("offices").doc(officeId())'), "the query must be scoped to this office");
+  assert.ok(bank.includes('collection("opportunities")'));
+  assert.equal(/\bcollectionGroup\s*\(/.test(bank), false, "a collection-group query would cross offices");
 });
 
 test("the bank shows a real empty state and a real error state, not fabricated rows", () => {
-  const settings = readRepositoryFile("public", "js", "office-settings.js");
-  const opener = settings.slice(settings.indexOf("function openOpportunityBank("));
-  assert.ok(opener.includes("لا توجد فرص محفوظة بعد"), "an empty state message is required");
-  assert.ok(opener.includes("تعذر تحميل بنك الفرص"), "an error state message is required");
-  assert.equal(/const demo|sampleRows|fakeRows/.test(settings), false, "no seeded rows may exist");
+  const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
+  assert.ok(bank.includes("لا توجد فرص محفوظة بعد"), "an empty state message is required");
+  assert.ok(bank.includes("تعذر تحميل بنك الفرص"), "an error state message is required");
+  assert.equal(/const demo|sampleRows|fakeRows/.test(bank), false, "no seeded rows may exist");
 });
 
 test("the bank list markup escapes every projected value", () => {
-  const settings = readRepositoryFile("public", "js", "office-settings.js");
-  const renderer = settings.slice(
-    settings.indexOf("function renderBankRows("),
-    settings.indexOf("function escapeHtml(")
-  );
+  const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
+  const start = bank.indexOf("function renderList(");
+  const end = bank.indexOf("async function lazyLoadSource(");
+  assert.ok(start >= 0 && end > start, "renderList must exist in opportunity-bank.js");
+  const renderer = bank.slice(start, end);
   const interpolations = [...renderer.matchAll(/\$\{([^}]+)\}/g)].map(match => match[1].trim());
+  assert.ok(interpolations.length > 0, "list template must interpolate fields");
   for (const expression of interpolations) {
     assert.ok(
-      expression.startsWith("escapeHtml(") || expression.startsWith("row.attributes.length ?") || expression.startsWith("row.contactName ?"),
+      expression.startsWith("escapeHtml(")
+        || expression.startsWith("row.attributes.length ?")
+        || expression.startsWith("state.selected.has("),
       `unescaped interpolation in the bank list: ${expression}`
     );
   }

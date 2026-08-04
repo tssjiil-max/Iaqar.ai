@@ -256,6 +256,32 @@ items.
 **Why.** No OCR/ASR/document-AI provider is configured. §10 forbids claiming production
 integrations. Matching is Phase 4; persisted Operations are Phase 5.
 
+## D-012 — Phase 3 Opportunity Bank uses soft delete + explicit cooperation records
+
+**Directive:** Phase 3 Opportunity Bank (list/detail/edit/archive/delete/share) with
+strict tenant isolation; Matching Engine is Phase 4; automatic cooperation is Phase 6.
+
+**Decision.**
+
+1. **Soft delete by default.** Client hard `delete` on `opportunities` is denied in
+   Firestore rules. Archive and delete stamp `lifecycleStatus` + audit fields
+   (`archivedAt`/`deletedAt`/`…By`). Restore is allowed for archived (not deleted)
+   records.
+2. **Separate cooperation documents.** `cooperationRequests` and `bankSharingScopes`
+   live at the root; accepted targets receive `offices/{target}/sharedOpportunities`
+   minimum projections. Opportunities are never ownership-copied into another office.
+3. **Default share permissions** are read-only, minimum data, contact hidden, no
+   ownership/delete/archive/reshare. Scoped bank sharing starts DISABLED.
+4. **Bank UI** lives in `opportunity-bank.js`, opened only from Office Settings →
+   بنك الفرص. Cursor pagination (`limit` + `startAfter`). No home-page bank section,
+   no bottom nav, no Deals page, no Matching Engine, no Operations items, no outbound
+   WhatsApp/Telegram send.
+5. **Authorization** for Phase 3 bank/share mutations is enforced in Firestore rules
+   (and domain validators). No new Worker bank endpoints in this phase.
+
+**Why.** Safe deletion without inventing retention destruction rules; cross-office
+access only through explicit revocable records; Phase 4/5/6 boundaries preserved.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

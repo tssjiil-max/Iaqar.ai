@@ -29,11 +29,15 @@ Test files:
 | `test/opportunity-bank.test.mjs` | Bank row projection and the §13/§26 visibility limits |
 | `test/integration-honesty.test.mjs` | Acceptance test 15 (§10) |
 | `test/opportunity-intake.test.mjs` | Acceptance test 5 — unified intake domain + Add Opportunity card |
-| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1 gate + Phase 2 opportunity isolation) |
+| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1 gate + Phase 2 opportunity isolation + Phase 3 bank/sharing) |
+| `test/opportunity-bank-phase3.test.mjs` | Phase 3 Opportunity Bank domain + shell access |
 | `worker/test/worker.test.mjs` | Worker routes and pure functions, including the Phase 1 image variants and the notification gate |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 2**:
+Status as of the end of **Phase 3**:
+- Phase 0 / 1 / 2 regression suites remain green.
+- Phase 3 Opportunity Bank domain + shell + emulator isolation suites added.
+- Matching Engine (Phase 4) is not started.
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -191,17 +195,26 @@ Automated coverage:
 
 **Status: PASS (Phase 2).** Extraction is deterministic/simulated only (`productionAi: false`).
 
-## TEST 6
-## TEST 6 — No match
+## TEST 6 — Opportunity Bank (and no false Operations for unmatched opportunities)
 
-A valid Opportunity with no match is stored in the office Opportunity Bank, and no
-Operations Center item is created merely because no match exists.
+A valid Opportunity is stored and visible in the originating office Opportunity Bank.
+The bank supports list/detail, authorized edit, archive/restore, soft delete, date added,
+cooperation status, and explicit sharing structures. No Match record and no Operations
+Center item are created by Phase 3 bank actions. No WhatsApp/Telegram send occurs.
 
-**Status: PENDING (phase 3/4).** Half of this already holds: `handlePublicIntakeMatching`
-writes the opportunity record before matching runs and creates an alert only when
-`matches.length > 0`. The Phase 1 Opportunity Bank entry can display those stored
-opportunities. The scenario is not claimed until the bank and the operations model are
-delivered.
+Automated coverage:
+- `test/opportunity-bank-phase3.test.mjs` — access routing, list/detail projection,
+  edit/ownership protection, archive/restore/soft-delete idempotency, cooperation status
+  transitions, single/selected/scoped sharing, contact hiding, Phase 3 boundaries.
+- `test/opportunity-bank.test.mjs` — row projection + bank query scoped to current office
+  (controller in `opportunity-bank.js`).
+- Emulator (`test/emulator/firestore-rules.emulator.test.mjs`) — Opportunity Bank
+  tenant isolation, ownership immutability, hard-delete denial, cooperation
+  create/accept/reject/revoke rules, shared projection contact ban, scoped sharing
+  revocation.
+
+**Status: PASS (Phase 3 Opportunity Bank).** Matching Engine and persisted Operations
+remain Phase 4 / Phase 5; this test does not claim rematch or Operations creation.
 
 ## TEST 7 — Automatic rematch
 

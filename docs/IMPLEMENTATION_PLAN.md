@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0 complete · Phase 1 complete · awaiting approval for Phase 2.**
+Current position: **Phase 0 complete · Phase 1 complete · Phase 2 complete · Phase 3 complete — stop (do not begin Phase 4).**
 
 ---
 
@@ -13,8 +13,8 @@ Current position: **Phase 0 complete · Phase 1 complete · awaiting approval fo
 | --- | --- | --- |
 | 0 | Foundation and audit | **DONE** |
 | 1 | Office Card and Office Settings | **DONE** |
-| 2 | Unified opportunity intake | NOT STARTED — needs approval |
-| 3 | Opportunity Bank | NOT STARTED |
+| 2 | Unified opportunity intake | **DONE** |
+| 3 | Opportunity Bank | **DONE** |
 | 4 | Matching engine | NOT STARTED |
 | 5 | Operations Center and notifications | NOT STARTED |
 | 6 | Cooperation | NOT STARTED |
@@ -137,7 +137,20 @@ Risks: "share the entire bank" must never become raw database access; scoped rea
 permissions across offices need rules that cannot be expressed as a simple path match, so
 a permission-document join (or a Worker-mediated read) is required.
 
-Exit criteria: Test 6 PASS.
+Exit criteria: Test 6 PASS (Opportunity Bank half); full no-match Operations behaviour remains Phase 5.
+
+Phase 3 delivered on this branch:
+
+- `public/js/opportunity-bank-domain.js` — lifecycle, edit/archive/restore/soft-delete,
+  cooperation request builders, scoped bank sharing, shared minimum projection, Phase 3
+  boundary guarantees (no match / ops / messaging / matching engine)
+- `public/js/opportunity-bank.js` — bank UI from Office Settings → بنك الفرص (list, detail,
+  lazy source, pagination, archive/restore/soft-delete confirm, single/selected share,
+  scoped share, incoming accept/reject, revoke)
+- Firestore: ownership-stable `opportunities` updates, hard delete denied;
+  `cooperationRequests`, `bankSharingScopes`, `sharedOpportunities`
+- Tests: `test/opportunity-bank-phase3.test.mjs` + emulator Phase 3 isolation cases
+- Docs: DATA_MODEL / SYSTEM_ARCHITECTURE / ACCEPTANCE_TESTS / DECISIONS D-012
 
 ## Phase 4 — Matching engine
 

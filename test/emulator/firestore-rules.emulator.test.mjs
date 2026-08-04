@@ -444,3 +444,313 @@ test("Unauthenticated users cannot access opportunities or sources", async () =>
     deduplicationFingerprint: "x"
   }));
 });
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Opportunity Bank isolation, ownership, cooperation / sharing
+// ---------------------------------------------------------------------------
+
+function opportunityDoc(overrides = {}) {
+  return {
+    officeId: "office-a",
+    brokerId: "broker-a1",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-a1",
+    sourceType: "text",
+    sourceReference: "src_phase3_a",
+    deduplicationFingerprint: "fp-phase3-a",
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "النرجس",
+    priceOrBudget: 900000,
+    lifecycleStatus: "ACTIVE",
+    cooperationStatus: "NOT_SHARED",
+    cooperationState: "NOT_SHARED",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    version: 1,
+    ...overrides
+  };
+}
+
+function cooperationPayload(overrides = {}) {
+  return {
+    id: "coop_test_1",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-a1",
+    targetOfficeId: "office-b",
+    targetBrokerId: "",
+    opportunityId: "opp_phase3_a",
+    opportunityIds: ["opp_phase3_a"],
+    scopeType: "single",
+    requestedAt: "2026-08-03T10:00:00.000Z",
+    status: "PENDING",
+    permissions: {
+      readOnly: true,
+      minimumData: true,
+      contactVisible: false,
+      ownershipModifiable: false,
+      canDelete: false,
+      canArchive: false,
+      unrestrictedAttachmentDownload: false,
+      canReshare: false
+    },
+    createdBy: "broker-a1",
+    createdAt: "2026-08-03T10:00:00.000Z",
+    updatedAt: "2026-08-03T10:00:00.000Z",
+    ...overrides
+  };
+}
+
+test("Phase 3: Office A can read and soft-update its Opportunity Bank records", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), opportunityDoc());
+  });
+
+  const db = authed("broker-a1");
+  const snap = await assertSucceeds(getDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a")));
+  assert.equal(snap.data().officeId, "office-a");
+  assert.equal(snap.data().cooperationStatus, "NOT_SHARED");
+
+  await assertSucceeds(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc(),
+    city: "جدة",
+    version: 2,
+    updatedAt: "2026-08-03T12:00:00.000Z",
+    brokerConfirmed: true
+  }));
+
+  await assertSucceeds(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc({ city: "جدة", version: 2 }),
+    lifecycleStatus: "ARCHIVED",
+    archivedAt: "2026-08-03T12:30:00.000Z",
+    archivedBy: "broker-a1",
+    version: 3
+  }));
+});
+
+test("Phase 3: Office A cannot read, update, archive, or hard-delete Office B opportunities", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-b/opportunities/opp_phase3_b"), opportunityDoc({
+      officeId: "office-b",
+      brokerId: "broker-b1",
+      originatingOfficeId: "office-b",
+      originatingBrokerId: "broker-b1",
+      deduplicationFingerprint: "fp-b-phase3"
+    }));
+  });
+
+  const db = authed("owner-a");
+  await assertFails(getDoc(doc(db, "offices/office-b/opportunities/opp_phase3_b")));
+  await assertFails(updateDoc(doc(db, "offices/office-b/opportunities/opp_phase3_b"), {
+    lifecycleStatus: "ARCHIVED",
+    archivedAt: "2026-08-03T12:00:00.000Z"
+  }));
+  await assertFails(updateDoc(doc(db, "offices/office-b/opportunities/opp_phase3_b"), {
+    lifecycleStatus: "DELETED",
+    deletedAt: "2026-08-03T12:00:00.000Z"
+  }));
+  await assertFails(deleteDoc(doc(db, "offices/office-b/opportunities/opp_phase3_b")));
+});
+
+test("Phase 3: hard delete of own opportunities is denied; ownership fields are immutable", async () => {
+  const db = authed("broker-a1");
+  await assertFails(deleteDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a")));
+
+  await assertFails(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc({ city: "جدة", version: 3 }),
+    officeId: "office-b"
+  }));
+
+  await assertFails(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc({ city: "جدة", version: 3 }),
+    originatingOfficeId: "office-b"
+  }));
+
+  await assertFails(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc({ city: "جدة", version: 3 }),
+    brokerId: "broker-b1"
+  }));
+
+  await assertFails(updateDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a"), {
+    ...opportunityDoc({ city: "جدة", version: 3 }),
+    createdAt: "1999-01-01T00:00:00.000Z"
+  }));
+});
+
+test("Phase 3: unauthenticated users cannot access the Opportunity Bank", async () => {
+  const db = unauthed();
+  await assertFails(getDoc(doc(db, "offices/office-a/opportunities/opp_phase3_a")));
+  await assertFails(getDoc(doc(db, "cooperationRequests/coop_test_1")));
+  await assertFails(getDoc(doc(db, "bankSharingScopes/scope_test_1")));
+  await assertFails(getDoc(doc(db, "offices/office-b/sharedOpportunities/opp_phase3_a")));
+});
+
+test("Phase 3: originating office can create a PENDING cooperation request; outsiders cannot forge it", async () => {
+  const broker = authed("broker-a1");
+  await assertSucceeds(setDoc(doc(broker, "cooperationRequests/coop_test_1"), cooperationPayload()));
+
+  const outsider = authed("broker-b1");
+  await assertFails(setDoc(doc(outsider, "cooperationRequests/coop_forged"), cooperationPayload({
+    id: "coop_forged",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-b1",
+    targetOfficeId: "office-b"
+  })));
+
+  // Target office cannot create a request pretending to originate from itself for Office A's id mismatch path:
+  await assertFails(setDoc(doc(outsider, "cooperationRequests/coop_wrong_origin"), cooperationPayload({
+    id: "coop_wrong_origin",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-b1"
+  })));
+});
+
+test("Phase 3: only the target office may accept/reject; originating office may revoke", async () => {
+  const target = authed("broker-b1");
+  const other = authed("owner-a"); // originating member but not target for accept
+  // Office A cannot accept on behalf of Office B.
+  await assertFails(updateDoc(doc(other, "cooperationRequests/coop_test_1"), {
+    ...cooperationPayload(),
+    status: "ACCEPTED",
+    acceptedAt: "2026-08-03T13:00:00.000Z",
+    respondedAt: "2026-08-03T13:00:00.000Z"
+  }));
+
+  await assertSucceeds(updateDoc(doc(target, "cooperationRequests/coop_test_1"), {
+    ...cooperationPayload(),
+    status: "ACCEPTED",
+    acceptedAt: "2026-08-03T13:00:00.000Z",
+    respondedAt: "2026-08-03T13:00:00.000Z",
+    respondedBy: "broker-b1"
+  }));
+
+  // After acceptance, target cannot flip to REJECTED (only PENDING → ACCEPTED|REJECTED).
+  await assertFails(updateDoc(doc(target, "cooperationRequests/coop_test_1"), {
+    ...cooperationPayload({ status: "ACCEPTED" }),
+    status: "REJECTED"
+  }));
+
+  const origin = authed("broker-a1");
+  await assertSucceeds(updateDoc(doc(origin, "cooperationRequests/coop_test_1"), {
+    ...cooperationPayload({ status: "ACCEPTED" }),
+    status: "REVOKED",
+    revokedAt: "2026-08-03T14:00:00.000Z",
+    endedAt: "2026-08-03T14:00:00.000Z",
+    revokedBy: "broker-a1"
+  }));
+});
+
+test("Phase 3: shared projection hides contacts; cooperating office cannot mutate source ownership", async () => {
+  const target = authed("broker-b1");
+  await assertSucceeds(setDoc(doc(target, "offices/office-b/sharedOpportunities/opp_phase3_a"), {
+    id: "opp_phase3_a",
+    sourceOpportunityId: "opp_phase3_a",
+    originatingOfficeId: "office-a",
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "النرجس",
+    contactName: "",
+    contactPhone: "",
+    phone: "",
+    readOnly: true
+  }));
+
+  await assertFails(setDoc(doc(target, "offices/office-b/sharedOpportunities/opp_bad_contact"), {
+    id: "opp_bad",
+    originatingOfficeId: "office-a",
+    contactName: "",
+    contactPhone: "0559999999",
+    phone: "",
+    readOnly: true
+  }));
+
+  // Cooperating office still cannot touch the source opportunity under Office A.
+  await assertFails(updateDoc(doc(target, "offices/office-a/opportunities/opp_phase3_a"), {
+    officeId: "office-b"
+  }));
+  await assertFails(updateDoc(doc(target, "offices/office-a/opportunities/opp_phase3_a"), {
+    lifecycleStatus: "DELETED",
+    deletedAt: "2026-08-03T15:00:00.000Z"
+  }));
+  await assertFails(deleteDoc(doc(target, "offices/office-a/opportunities/opp_phase3_a")));
+});
+
+test("Phase 3: scoped bank sharing is createable by origin and readable by target only when active", async () => {
+  const origin = authed("broker-a1");
+  await assertSucceeds(setDoc(doc(origin, "bankSharingScopes/scope_test_1"), {
+    sharingScopeId: "scope_test_1",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-a1",
+    targetOfficeId: "office-b",
+    filters: { activeOnly: true },
+    opportunityIds: ["opp_phase3_a"],
+    permissions: {
+      readOnly: true,
+      contactVisible: false,
+      ownershipModifiable: false,
+      canDelete: false
+    },
+    status: "DISABLED",
+    enabled: false,
+    createdAt: "2026-08-03T10:00:00.000Z",
+    updatedAt: "2026-08-03T10:00:00.000Z",
+    revokedAt: null,
+    createdBy: "broker-a1"
+  }));
+
+  // Disabled scope: target cannot read.
+  await assertFails(getDoc(doc(authed("broker-b1"), "bankSharingScopes/scope_test_1")));
+
+  await assertSucceeds(updateDoc(doc(origin, "bankSharingScopes/scope_test_1"), {
+    sharingScopeId: "scope_test_1",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-a1",
+    targetOfficeId: "office-b",
+    filters: { activeOnly: true },
+    opportunityIds: ["opp_phase3_a"],
+    permissions: {
+      readOnly: true,
+      contactVisible: false,
+      ownershipModifiable: false,
+      canDelete: false
+    },
+    status: "ACTIVE",
+    enabled: true,
+    createdAt: "2026-08-03T10:00:00.000Z",
+    updatedAt: "2026-08-03T11:00:00.000Z",
+    revokedAt: null,
+    createdBy: "broker-a1"
+  }));
+
+  await assertSucceeds(getDoc(doc(authed("broker-b1"), "bankSharingScopes/scope_test_1")));
+
+  await assertSucceeds(updateDoc(doc(origin, "bankSharingScopes/scope_test_1"), {
+    sharingScopeId: "scope_test_1",
+    originatingOfficeId: "office-a",
+    originatingBrokerId: "broker-a1",
+    targetOfficeId: "office-b",
+    filters: { activeOnly: true },
+    opportunityIds: ["opp_phase3_a"],
+    permissions: {
+      readOnly: true,
+      contactVisible: false,
+      ownershipModifiable: false,
+      canDelete: false
+    },
+    status: "REVOKED",
+    enabled: false,
+    createdAt: "2026-08-03T10:00:00.000Z",
+    updatedAt: "2026-08-03T12:00:00.000Z",
+    revokedAt: "2026-08-03T12:00:00.000Z",
+    createdBy: "broker-a1"
+  }));
+
+  // After revocation, target loses read access.
+  await assertFails(getDoc(doc(authed("broker-b1"), "bankSharingScopes/scope_test_1")));
+});

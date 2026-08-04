@@ -15,7 +15,6 @@ import {
   normalizeOfficeNameKey,
   normalizePublicSlug,
   officeLinkFor,
-  opportunityBankRow,
   resolveNotificationPreferences,
   safeText,
   sanitizeNotificationPreferences,
@@ -31,7 +30,6 @@ const SPECIALTY_LABELS = Object.freeze({
 });
 const SPECIALTY_KEYS = Object.freeze(Object.keys(SPECIALTY_LABELS));
 const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
-const BANK_PAGE_SIZE = 50;
 
 const defaults = {
   officeName: "مكتب عقاري",
@@ -60,7 +58,6 @@ let authClaims = {};
 let notificationPreferences = defaultNotificationPreferences();
 let cooperationMode = DEFAULT_COOPERATION_MODE;
 let nameCheckToken = 0;
-let bankUnsubscribe = null;
 
 function officeRuntime() {
   return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -1172,72 +1169,16 @@ async function saveCooperationSettings(value) {
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity bank
+// Opportunity bank — owned by opportunity-bank.js (Phase 3)
 // ---------------------------------------------------------------------------
 
-function renderBankRows(rows) {
-  el.bankList.innerHTML = rows.map(row => `
-    <article class="bank-row">
-      <h3>${escapeHtml(row.kindLabel)} — ${escapeHtml(row.propertyType)}</h3>
-      <dl>
-        <dt>الموقع</dt><dd>${escapeHtml(row.location)}</dd>
-        <dt>${escapeHtml(row.amountLabel)}</dt><dd>${escapeHtml(row.amountText)}</dd>
-        ${row.attributes.length ? `<dt>المواصفات</dt><dd>${escapeHtml(row.attributes.join(" • "))}</dd>` : ""}
-        ${row.contactName ? `<dt>الاسم</dt><dd>${escapeHtml(row.contactName)}</dd>` : ""}
-        <dt>تاريخ الإضافة</dt><dd>${escapeHtml(row.dateAdded)}</dd>
-        <dt>حالة التعاون</dt><dd>${escapeHtml(row.cooperationStatus)}</dd>
-      </dl>
-    </article>`).join("");
-}
-
-function escapeHtml(value) {
-  return String(value == null ? "" : value).replace(/[&<>"']/g, character => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[character]));
-}
-
-function stopBankListener() {
-  if (bankUnsubscribe) {
-    try { bankUnsubscribe(); } catch (_) {}
-    bankUnsubscribe = null;
-  }
-}
-
-function openOpportunityBank() {
-  const runtime = officeRuntime();
-  const user = authUser();
-  el.bankOverlay.hidden = false;
-  el.bankList.innerHTML = "";
-  setStatus(el.bankStatus, "جارٍ تحميل فرص المكتب…");
-
-  if (!runtime || !runtime.db || !user) {
-    setStatus(el.bankStatus, "سجل دخول المكتب لعرض بنك الفرص", "is-error");
-    return;
-  }
-
-  stopBankListener();
-  bankUnsubscribe = runtime.db.collection("offices").doc(officeId())
-    .collection("opportunities")
-    .orderBy("createdAt", "desc")
-    .limit(BANK_PAGE_SIZE)
-    .onSnapshot(snapshot => {
-      const rows = snapshot.docs.map(doc => opportunityBankRow(doc.id, doc.data() || {}));
-      renderBankRows(rows);
-      setStatus(
-        el.bankStatus,
-        rows.length
-          ? `${rows.length} فرصة محفوظة لهذا المكتب`
-          : "لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند وصولها."
-      );
-    }, error => {
-      console.warn("[iaqar] opportunity bank", error);
-      setStatus(el.bankStatus, "تعذر تحميل بنك الفرص لهذا المكتب", "is-error");
-    });
-}
-
 function closeOpportunityBank() {
-  stopBankListener();
-  el.bankOverlay.hidden = true;
+  if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+    window.IAQAR.closeOpportunityBank();
+  } else {
+    const overlay = document.getElementById("opportunityBank");
+    if (overlay) overlay.hidden = true;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1322,11 +1263,7 @@ function init() {
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
   el.cardCover = document.getElementById("officeCardCover");
   el.cardCoverEmpty = document.getElementById("officeCardCoverEmpty");
-  el.bankOpen = document.getElementById("openOpportunityBankBtn");
   el.bankOverlay = document.getElementById("opportunityBank");
-  el.bankClose = document.getElementById("opportunityBankClose");
-  el.bankList = document.getElementById("opportunityBankList");
-  el.bankStatus = document.getElementById("opportunityBankStatus");
 
   if (el.cardLogo && el.cardLogo.getAttribute("src")) {
     el.cardLogo.dataset.defaultSrc = el.cardLogo.getAttribute("src");
@@ -1379,12 +1316,6 @@ function init() {
         saveCooperationSettings(input.value);
       }
     });
-  });
-
-  if (el.bankOpen) el.bankOpen.addEventListener("click", openOpportunityBank);
-  if (el.bankClose) el.bankClose.addEventListener("click", closeOpportunityBank);
-  if (el.bankOverlay) el.bankOverlay.addEventListener("click", event => {
-    if (event.target === el.bankOverlay) closeOpportunityBank();
   });
 
   try {

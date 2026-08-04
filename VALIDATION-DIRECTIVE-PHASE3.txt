@@ -1,0 +1,26 @@
+IAQAR.AI — Phase 3 Opportunity Bank validation
+
+Date: 2026-08-04
+Branch: cursor/phase0-phase1-office-settings-0d44
+
+Scope completed:
+- Private per-office Opportunity Bank from Office Settings → بنك الفرص
+- List/detail with essential fields only; lazy source attachments
+- Authorized edit with ownership protection; archive/restore; soft delete + confirm
+- Cooperation statuses (NOT_SHARED…ENDED); single/selected requests; scoped bank sharing
+- Firestore rules + emulator isolation; Phase 0–2 regression retained
+
+Out of scope (not started):
+- Phase 4 Matching Engine
+- Operations Center persisted items
+- Automatic broker cooperation
+- WhatsApp/Telegram sending
+- Deals page / bottom navigation / home redesign
+
+Commands (record results after run):
+- npm test
+- npm run test:rules
+- npm run check
+
+Decision: D-012
+Acceptance: Test 6 PASS (Opportunity Bank)

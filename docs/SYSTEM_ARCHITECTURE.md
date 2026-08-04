@@ -189,3 +189,15 @@ Phase 1 makes office-name and settings logic testable without a browser.
   `sendOfficePush` consults the office notification-preference document before sending.
 - Rules: office-name claim takeover fixed; `officeSettings` and `brokerSettings` are
   removed from the permissive catch-all and given explicit least-privilege rules.
+
+### B.4 What Phase 3 actually changed
+
+- Added `public/js/opportunity-bank-domain.js` and `public/js/opportunity-bank.js` for the
+  private Opportunity Bank (list/detail/edit/archive/restore/soft-delete, single and
+  selected cooperation requests, scoped bank sharing, incoming accept/reject, revoke).
+- Extended Phase 2 `opportunities` with lifecycle + cooperation fields; ownership fields
+  are immutable in rules; hard delete is denied.
+- Added `cooperationRequests`, `bankSharingScopes`, and
+  `offices/{id}/sharedOpportunities` with least-privilege rules.
+- Bank entry remains Office Settings → بنك الفرص only; home page and Operations Center
+  empty-state behaviour are unchanged. No Matching Engine.
