@@ -1,7 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, {
+  buildNotificationLink,
+  buildFcmTarget,
+  buildFcmHttpMessage,
+  createServiceAccountJwt,
+  firebaseServiceAccount,
+  legacyLocalLoginPhone,
+  normalizeLoginPhone,
+  normalizeOfficeNameKey,
+  notificationPreferenceField,
+  officeIdentityMediaKey,
+  officeNotificationEnabled,
+  parseFcmFailure,
+  resolveLoginDirectory
+} from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -146,6 +160,64 @@ test("public intake media rejects an unsupported content type", async () => {
     body: new Uint8Array([1, 2, 3, 4])
   }), mediaEnv);
   assert.equal(response.status, 415);
+});
+
+test("Phase 1 office name normalization is stable across equivalent input", () => {
+  assert.equal(normalizeOfficeNameKey(" مَـسار العقار "), "مسارالعقار");
+  assert.equal(normalizeOfficeNameKey("مسار_العقار"), "مسارالعقار");
+  assert.equal(normalizeOfficeNameKey("Alpha Office"), normalizeOfficeNameKey("alpha-office"));
+});
+
+test("Phase 1 office identity media keys are tenant-scoped and allowlisted", () => {
+  assert.equal(officeIdentityMediaKey("Office-A", "logo"), "office-identity/office-a/logo");
+  assert.equal(officeIdentityMediaKey("office-a", "displayImage"), "office-identity/office-a/display-image");
+  assert.equal(officeIdentityMediaKey("office-a", "whatsappCover"), "office-identity/office-a/whatsapp-cover");
+  assert.equal(officeIdentityMediaKey("office-a", "other"), "");
+});
+
+test("Phase 1 office identity uploads require an authenticated office manager", async () => {
+  const mediaEnv = { ...env, IAQAR_MEDIA: { put: async () => {} } };
+  const response = await worker.fetch(new Request("https://example.test/media/office-identity", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/webp",
+      "Content-Length": "4",
+      "X-Office-Id": "office-a",
+      "X-Media-Asset": "logo"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "authentication_required");
+});
+
+test("Phase 1 notification event types map to persisted preference categories", () => {
+  assert.equal(notificationPreferenceField("match"), "matches");
+  assert.equal(notificationPreferenceField("owner_offer"), "participants");
+  assert.equal(notificationPreferenceField("cooperation"), "cooperation");
+  assert.equal(notificationPreferenceField("message"), "messages");
+  assert.equal(notificationPreferenceField("follow_up"), "appointments");
+  assert.equal(notificationPreferenceField("security"), "system");
+});
+
+test("Phase 1 persisted office preference can suppress match notifications", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    fields: {
+      officeId: { stringValue: "office-a" },
+      matches: { booleanValue: false }
+    }
+  });
+  try {
+    assert.equal(await officeNotificationEnabled({
+      projectId: "aqar-b5d76",
+      officeId: "office-a",
+      type: "match",
+      accessToken: "test-token"
+    }), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 

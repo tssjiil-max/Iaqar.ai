@@ -240,8 +240,20 @@ export default {
         return await uploadOfficeCover(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/media/office-identity") {
+        return await uploadOfficeIdentityMedia(request, env, requestId);
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/media/office-identity") {
+        return await deleteOfficeIdentityMedia(request, env, requestId);
+      }
+
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
         return await servePublicOfficeCover(url, env);
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-identity/")) {
+        return await servePublicOfficeIdentityMedia(url, env);
       }
 
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
@@ -338,6 +350,11 @@ const PUBLIC_IMAGE_TYPES = Object.freeze({
 const PUBLIC_VIDEO_TYPES = Object.freeze({
   "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov"
 });
+const OFFICE_IDENTITY_ASSETS = Object.freeze({
+  logo: "logo",
+  displayImage: "display-image",
+  whatsappCover: "whatsapp-cover"
+});
 
 function requireMediaBucket(env) {
   if (!env.IAQAR_MEDIA) throw appError("media_storage_unavailable", 503, "تخزين الوسائط غير مفعّل");
@@ -402,6 +419,71 @@ async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
   if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+    throw appError("media_not_found", 404, "الصورة غير موجودة");
+  }
+  const object = await bucket.get(key);
+  if (!object) throw appError("media_not_found", 404, "الصورة غير موجودة");
+  const headers = new Headers(corsHeaders());
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "public, max-age=3600");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
+}
+
+function officeIdentityMediaKey(officeId, asset) {
+  const safeOfficeId = normalizeOfficeId(officeId);
+  const filename = OFFICE_IDENTITY_ASSETS[asset];
+  if (!safeOfficeId || !filename) return "";
+  return `office-identity/${safeOfficeId}/${filename}`;
+}
+
+async function uploadOfficeIdentityMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const asset = cleanText(request.headers.get("x-media-asset"), 40);
+  const key = officeIdentityMediaKey(officeId, asset);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  if (!key) throw appError("invalid_media_asset", 400, "نوع صورة الهوية غير صالح");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "manage");
+  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  const size = requestBodyLength(request);
+  if (!PUBLIC_IMAGE_TYPES[contentType]) {
+    throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
+  }
+  if (size > 10 * 1024 * 1024) {
+    throw appError("image_too_large", 413, "حجم صورة الهوية يتجاوز 10 ميجابايت");
+  }
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
+    customMetadata: {
+      officeId,
+      asset,
+      uploadedByUid: identity.uid,
+      uploadedAt: new Date().toISOString()
+    }
+  });
+  const origin = new URL(request.url).origin;
+  const mediaUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({ ok: true, officeId, asset, mediaUrl, requestId }, 201);
+}
+
+async function deleteOfficeIdentityMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const asset = cleanText(request.headers.get("x-media-asset"), 40);
+  const key = officeIdentityMediaKey(officeId, asset);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  if (!key) throw appError("invalid_media_asset", 400, "نوع صورة الهوية غير صالح");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  await bucket.delete(key);
+  return jsonResponse({ ok: true, officeId, asset, removed: true, requestId });
+}
+
+async function servePublicOfficeIdentityMedia(url, env) {
+  const bucket = requireMediaBucket(env);
+  const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
+  if (!/^office-identity\/[a-z0-9_-]{1,80}\/(logo|display-image|whatsapp-cover)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -531,12 +613,42 @@ async function decideBrokerApplication(request, env, requestId) {
     }
     const existing = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
     if (existing) throw appError("office_exists", 409, "رمز المكتب مستخدم");
+    const officeNameKey = normalizeOfficeNameKey(application.officeName);
+    if (officeNameKey.length < 4) {
+      throw appError("office_name_invalid", 400, "اسم المكتب يجب أن يتكون من 4 أحرف ظاهرة على الأقل");
+    }
+    const existingNameClaim = await getFirestoreDocument({
+      projectId,
+      segments: ["officeNameClaims", officeNameKey],
+      accessToken,
+      allowMissing: true
+    });
+    if (existingNameClaim) {
+      const claim = firestoreFieldsToJs(existingNameClaim.fields || {});
+      if (claim.officeId !== officeId) {
+        throw appError("office_name_taken", 409, "اسم المكتب مستخدم أو محجوز");
+      }
+    } else {
+      await createFirestoreDocumentIfAbsent({
+        projectId,
+        collectionId: "officeNameClaims",
+        documentId: officeNameKey,
+        accessToken,
+        fields: {
+          officeId: firestoreString(officeId),
+          ownerUid: firestoreString(application.applicantUid),
+          officeName: firestoreString(application.officeName),
+          officeNameKey: firestoreString(officeNameKey),
+          updatedAt: firestoreTimestamp(now)
+        }
+      });
+    }
     await setFirestoreDocument({
       projectId, segments: ["offices", officeId], accessToken,
       fields: {
         officeId: firestoreString(officeId),
         officeName: firestoreString(application.officeName),
-        officeNameKey: firestoreString(normalizeOfficeId(application.officeName) || officeId),
+        officeNameKey: firestoreString(officeNameKey),
         brokerName: firestoreString(application.brokerName),
         phone: firestoreString(application.phone),
         licenseNumber: firestoreString(application.falLicense),
@@ -1668,7 +1780,43 @@ async function listCollectionDocuments({projectId,segments,accessToken,pageSize=
   const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
 }
 
+function notificationPreferenceField(type) {
+  if (type === "match") return "matches";
+  if (["owner_offer", "client_request"].includes(type)) return "participants";
+  if (type === "cooperation") return "cooperation";
+  if (type === "message") return "messages";
+  if (["appointment", "follow_up", "deal"].includes(type)) return "appointments";
+  return "system";
+}
+
+async function officeNotificationEnabled({ projectId, officeId, type, accessToken, cache = null }) {
+  let preferences = cache && cache.get(officeId);
+  if (!preferences) {
+    try {
+      const document = await getFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "officeSettings", "notifications"],
+        accessToken,
+        allowMissing: true
+      });
+      preferences = document ? firestoreFieldsToJs(document.fields || {}) : {};
+    } catch (error) {
+      console.warn("[iaqar-notifications] preferences unavailable; using safe defaults", {
+        officeId,
+        message: error && error.message
+      });
+      preferences = {};
+    }
+    if (cache) cache.set(officeId, preferences);
+  }
+  const field = notificationPreferenceField(type);
+  return preferences[field] !== false;
+}
+
 async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken}) {
+  if (!await officeNotificationEnabled({projectId,officeId,type:"match",accessToken})) {
+    return { skipped: true, reason: "office_preference" };
+  }
   const top=matches[0]; const now=new Date();
   const alertId=`alt_${top.matchId}`;
   const displayScore = Number(top.opportunityScore || top.score || 0);
@@ -2166,6 +2314,7 @@ async function processOverdueFollowups(env,scheduledTime=Date.now()){
     queryDueWorkflowRecords({projectId,accessToken,collectionId:"deals",now})
   ]);
   const records=[...matchDocs.map(document=>({recordType:"match",document})),...dealDocs.map(document=>({recordType:"deal",document}))];
+  const notificationPreferences = new Map();
   let notified=0;
   for(const entry of records){
     const value=firestoreFieldsToJs(entry.document.fields||{});
@@ -2177,6 +2326,9 @@ async function processOverdueFollowups(env,scheduledTime=Date.now()){
     const officeId=normalizeOfficeId(value.officeId);
     const recordId=decodeURIComponent(String(entry.document.name||"").split("/").pop()||"");
     if(!officeId||!recordId) continue;
+    if(!await officeNotificationEnabled({
+      projectId,officeId,type:"follow_up",accessToken,cache:notificationPreferences
+    })) continue;
     const collection=workflowCollection(entry.recordType);
     const title=entry.recordType==="match"?"متابعة مطابقة مستحقة":"متابعة صفقة مستحقة";
     const stageText=entry.recordType==="match"?(value.statusLabel||MATCH_STATUS_LABELS[normalizeMatchStatus(status)]):(value.stageLabel||DEAL_STAGE_LABELS[value.workflowStage]||"المتابعة");
@@ -2319,6 +2471,33 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
     const detail = await response.text();
     console.error("[iaqar-whatsapp] Firestore set failed", response.status, detail);
     throw appError("firestore_write_failed", 502, "تعذر حفظ ربط واتساب");
+  }
+  return response.json();
+}
+
+async function createFirestoreDocumentIfAbsent({
+  projectId,
+  collectionId,
+  documentId,
+  accessToken,
+  fields
+}) {
+  const endpoint = new URL(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeURIComponent(collectionId)}`
+  );
+  endpoint.searchParams.set("documentId", documentId);
+  const response = await fetch(endpoint.toString(), {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compactFields(fields) })
+  });
+  if (response.status === 409) {
+    throw appError("office_name_taken", 409, "اسم المكتب مستخدم أو محجوز");
+  }
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("[iaqar] Firestore create failed", response.status, detail);
+    throw appError("firestore_write_failed", 502, "تعذر حجز اسم المكتب");
   }
   return response.json();
 }
@@ -2505,6 +2684,27 @@ function bytesToHex(bytes) { return Array.from(bytes, byte => byte.toString(16).
 function normalizeOfficeId(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
+function normalizeOfficeNameKey(value) {
+  const arabicDigits = {
+    "٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9",
+    "۰":"0","۱":"1","۲":"2","۳":"3","۴":"4","۵":"5","۶":"6","۷":"7","۸":"8","۹":"9"
+  };
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[٠-٩۰-۹]/g, character => arabicDigits[character] || character)
+    .toLocaleLowerCase("en-US")
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
+    .replace(/\u0640/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[\s._-]+/g, "")
+    .replace(/[^a-z0-9\u0600-\u06FF]/g, "")
+    .slice(0, 100);
+}
 function normalizeLoginPhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("00966")) digits = digits.slice(2);
@@ -2589,8 +2789,8 @@ function appError(code, status, publicMessage) { const error = new Error(publicM
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Media-Asset",
     "Access-Control-Max-Age": "86400"
   };
 }
@@ -2601,4 +2801,18 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export {
+  normalizeLoginPhone,
+  legacyLocalLoginPhone,
+  resolveLoginDirectory,
+  firebaseServiceAccount,
+  createServiceAccountJwt,
+  buildNotificationLink,
+  buildFcmTarget,
+  buildFcmHttpMessage,
+  parseFcmFailure,
+  normalizeOfficeNameKey,
+  notificationPreferenceField,
+  officeNotificationEnabled,
+  officeIdentityMediaKey
+};

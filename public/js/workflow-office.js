@@ -370,6 +370,16 @@
   }
 
   async function showLocalMatchNotification(matchCount, topMatch) {
+    const runtime = office();
+    try {
+      if (runtime && runtime.db && runtime.officeId) {
+        const snapshot = await runtime.db.collection("offices").doc(runtime.officeId)
+          .collection("officeSettings").doc("notifications").get();
+        if (snapshot.exists && snapshot.data().matches === false) return;
+      }
+    } catch (error) {
+      console.warn("[iaqar] notification preference check", error);
+    }
     const title = matchCount > 1 ? `تم اكتشاف ${matchCount} مطابقات جديدة` : "تم اكتشاف مطابقة جديدة";
     const body = topMatch
       ? `${topMatch.propertyType || "عقار"} — ${topMatch.district || ""} — نسبة ${topMatch.score}%`

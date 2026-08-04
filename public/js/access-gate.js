@@ -149,8 +149,10 @@
       const snap = await db().collection("publicOffices").doc(officeId).get();
       if (snap.exists) {
         const data = snap.data() || {};
+        const displayImageUrl = data.displayImageUrl || data.coverUrl || "";
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${displayImageUrl ? `<img src="${escapeHtml(displayImageUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${data.logoUrl ? `<img src="${escapeHtml(data.logoUrl)}" alt="شعار المكتب" style="width:72px;height:72px;object-fit:contain;border-radius:16px;margin:-46px 12px 8px;background:#fff;border:3px solid #fff;position:relative">` : ""}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}${data.whatsapp ? ` — واتساب ${escapeHtml(data.whatsapp)}` : ""}</p>`;

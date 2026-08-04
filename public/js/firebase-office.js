@@ -54,6 +54,8 @@
       alerts: `${base}/alerts`,
       devices: `${base}/devices`,
       inbox: `${base}/inbox`,
+      officeSettings: `${base}/officeSettings`,
+      auditLogs: `${base}/auditLogs`,
       publicIntake: `${base}/publicIntake`
     });
   }
@@ -118,6 +120,8 @@
       alerts: officeRef.collection("alerts"),
       devices: officeRef.collection("devices"),
       inbox: officeRef.collection("inbox"),
+      officeSettings: officeRef.collection("officeSettings"),
+      auditLogs: officeRef.collection("auditLogs"),
       publicIntake: officeRef.collection("publicIntake")
     });
 

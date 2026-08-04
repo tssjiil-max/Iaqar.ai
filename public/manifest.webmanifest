@@ -41,21 +41,9 @@
   ],
   "shortcuts": [
     {
-      "name": "الفرص",
-      "short_name": "الفرص",
-      "url": "/?source=pwa&open=opportunities",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "الصفقات",
-      "short_name": "الصفقات",
-      "url": "/?source=pwa&open=deals",
+      "name": "مركز العمليات",
+      "short_name": "العمليات",
+      "url": "/?source=pwa",
       "icons": [
         {
           "src": "/icons/icon-192.png",

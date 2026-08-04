@@ -1,0 +1,15 @@
+{
+  "name": "iaqar-ai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:phase1 && npm run test:rules && npm --prefix worker test",
+    "test:phase1": "node --test test/phase1.test.mjs",
+    "test:rules": "npx --yes firebase-tools@latest emulators:exec --only firestore --project iaqar-phase1-test \"node --test test/firestore.rules.test.mjs\"",
+    "build": "node scripts/verify-static-build.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.17.0"
+  }
+}

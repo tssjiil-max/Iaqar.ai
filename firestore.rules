@@ -20,22 +20,50 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
-    function validOfficeProfile() {
-      return request.resource.data.officeName is string
+    function validOfficeProfile(officeId) {
+      return request.resource.data.officeId == officeId
+        && request.resource.data.officeName is string
+        && request.resource.data.officeName.size() >= 4
         && request.resource.data.officeName.size() <= 80
+        && request.resource.data.officeName.matches('.*[A-Za-z0-9ء-ي].*[A-Za-z0-9ء-ي].*[A-Za-z0-9ء-ي].*[A-Za-z0-9ء-ي].*')
         && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey.size() >= 4
         && request.resource.data.officeNameKey.size() <= 100
-        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.officeNameKey.matches('[A-Za-z0-9ء-ي]+')
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && (!('logoUrl' in request.resource.data) || request.resource.data.logoUrl is string)
+        && (!('displayImageUrl' in request.resource.data) || request.resource.data.displayImageUrl is string)
+        && (!('whatsappCoverUrl' in request.resource.data) || request.resource.data.whatsappCoverUrl is string);
+    }
+    function hasOfficeNameClaim(officeId) {
+      return getAfter(/databases/$(database)/documents/officeNameClaims/$(request.resource.data.officeNameKey)).data.officeId == officeId
+        && getAfter(/databases/$(database)/documents/officeNameClaims/$(request.resource.data.officeNameKey)).data.officeName == request.resource.data.officeName;
+    }
+    function validNotificationSettings(officeId) {
+      return request.resource.data.officeId == officeId
+        && request.resource.data.matches is bool
+        && request.resource.data.participants is bool
+        && request.resource.data.cooperation is bool
+        && request.resource.data.messages is bool
+        && request.resource.data.appointments is bool
+        && request.resource.data.system is bool;
+    }
+    function validCooperationSettings(officeId) {
+      return request.resource.data.officeId == officeId
+        && request.resource.data.mode in ['DISABLED','APPROVAL_REQUIRED','SMART_AUTOMATIC']
+        && request.resource.data.exposeContactsAutomatically == false;
     }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow create: if isPlatformAdmin() && validOfficeProfile(officeId) && hasOfficeNameClaim(officeId);
+      allow update: if canManage(officeId)
+        && validOfficeProfile(officeId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && hasOfficeNameClaim(officeId);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
@@ -80,15 +108,36 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      match /officeSettings/{settingId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update: if canManage(officeId)
+          && ((settingId == 'notifications' && validNotificationSettings(officeId))
+            || (settingId == 'cooperation' && validCooperationSettings(officeId)));
+        allow delete: if canManage(officeId);
+      }
+
+      match /auditLogs/{auditId} {
+        allow read: if canManage(officeId);
+        allow create: if canManage(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.action is string;
+        allow update, delete: if false;
+      }
+
       match /{collectionName}/{docId} {
-        allow read: if collectionName != 'devices' && isOfficeMember(officeId);
-        allow create, update: if collectionName != 'devices'
+        allow read: if !(collectionName in ['devices','officeSettings','auditLogs'])
+          && isOfficeMember(officeId);
+        allow create, update: if !(collectionName in ['devices','officeSettings','auditLogs','integrations','usage'])
           && isOfficeMember(officeId)
           && request.resource.data.officeId == officeId;
-        allow delete: if collectionName != 'devices' && canManage(officeId);
+        allow delete: if !(collectionName in ['devices','officeSettings','auditLogs','integrations','usage'])
+          && canManage(officeId);
 
         match /timeline/{eventId} {
-          allow read, create: if isOfficeMember(officeId);
+          allow read: if isOfficeMember(officeId);
+          allow create: if isOfficeMember(officeId)
+            && request.resource.data.officeId == officeId;
           allow update, delete: if canManage(officeId);
         }
       }
@@ -96,7 +145,9 @@ service cloud.firestore {
 
     match /publicOffices/{officeId} {
       allow read: if true;
-      allow create, update, delete: if canManage(officeId);
+      allow create, update: if canManage(officeId)
+        && request.resource.data.officeId == officeId;
+      allow delete: if canManage(officeId);
     }
 
     match /brokerApplications/{applicationId} {
@@ -106,14 +157,18 @@ service cloud.firestore {
 
 
     match /officeNameClaims/{nameKey} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if false;
       allow create, update: if signedIn()
         && request.resource.data.officeId is string
         && request.resource.data.officeName is string
+        && request.resource.data.officeNameKey == nameKey
+        && nameKey.size() >= 4
         && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
         && (canManage(request.resource.data.officeId)
-          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid)
+        && (!exists(/databases/$(database)/documents/officeNameClaims/$(nameKey))
+          || resource.data.officeId == request.resource.data.officeId);
       allow delete: if signedIn()
         && (isPlatformAdmin() || canManage(resource.data.officeId));
     }

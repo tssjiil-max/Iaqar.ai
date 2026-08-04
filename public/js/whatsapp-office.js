@@ -6,6 +6,7 @@
   let config = null;
   let signupData = null;
   let sdkPromise = null;
+  let previouslyFocused = null;
 
   const elements = {};
 
@@ -30,14 +31,17 @@
   }
 
   function openSettings() {
+    previouslyFocused = document.activeElement;
     elements.overlay.hidden = false;
     document.body.style.overflow = "hidden";
+    elements.closeBtn.focus();
     refreshStatus();
   }
 
   function closeSettings() {
     elements.overlay.hidden = true;
     document.body.style.overflow = "";
+    if (previouslyFocused && typeof previouslyFocused.focus === "function") previouslyFocused.focus();
   }
 
   async function fetchJson(path, options = {}) {
@@ -222,7 +226,7 @@
   }
 
   function init() {
-    elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.openButtons = Array.from(document.querySelectorAll("#officeSettingsBtn,#officeCoverSettingsBtn"));
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -232,9 +236,9 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.openButtons.length || !elements.overlay) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
+    elements.openButtons.forEach(button => button.addEventListener("click", openSettings));
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();
