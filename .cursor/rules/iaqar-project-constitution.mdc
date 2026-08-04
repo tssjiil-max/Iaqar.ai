@@ -1,0 +1,17 @@
+---
+description: Mandatory IAQAR.AI project constitution
+alwaysApply: true
+---
+
+Before making changes:
+
+1. Read `docs/PROJECT_CONSTITUTION.md`.
+2. Read `docs/SYSTEM_ARCHITECTURE.md`.
+3. Read `docs/IMPLEMENTATION_PLAN.md`.
+4. Do not contradict approved requirements.
+5. Do not redesign the approved UI.
+6. Preserve `officeId` isolation.
+7. Do not invent missing business decisions.
+8. Implement one approved phase at a time.
+9. Run tests and build before reporting completion.
+10. Do not claim untested integrations are working.

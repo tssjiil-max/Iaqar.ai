@@ -20,22 +20,43 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
-    function validOfficeProfile() {
+    function validOfficeProfile(officeId) {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
         && request.resource.data.officeNameKey is string
         && request.resource.data.officeNameKey.size() <= 100
-        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.officeNameKey.size() >= 4
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && (!('officeId' in request.resource.data) || request.resource.data.officeId == officeId)
+        && (!('cooperationMode' in request.resource.data)
+          || request.resource.data.cooperationMode in ['DISABLED','APPROVAL_REQUIRED','SMART_AUTOMATIC'])
+        && (!('notificationPreferences' in request.resource.data)
+          || request.resource.data.notificationPreferences is map)
+        && (!('logoUrl' in request.resource.data)
+          || (request.resource.data.logoUrl is string && request.resource.data.logoUrl.size() <= 2000))
+        && (!('coverUrl' in request.resource.data)
+          || (request.resource.data.coverUrl is string && request.resource.data.coverUrl.size() <= 2000))
+        && (!('whatsappCoverUrl' in request.resource.data)
+          || (request.resource.data.whatsappCoverUrl is string && request.resource.data.whatsappCoverUrl.size() <= 2000));
+    }
+    function validOfficeUpdate(officeId) {
+      return request.resource.data.officeId == officeId
+        && (!('ownerUid' in resource.data) || request.resource.data.ownerUid == resource.data.ownerUid || isPlatformAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'officeName','officeNameKey','brokerName','phone','whatsapp','mobileNumber',
+          'licenseNumber','city','specialties','logoUrl','coverUrl','whatsappCoverUrl',
+          'publicSlug','notificationPreferences','cooperationMode','visualIdentity',
+          'updatedAt','ownerUid','officeId'
+        ]);
     }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow create: if isPlatformAdmin() && validOfficeProfile(officeId);
+      allow update: if canManage(officeId) && validOfficeProfile(officeId) && validOfficeUpdate(officeId);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
@@ -107,13 +128,20 @@ service cloud.firestore {
 
     match /officeNameClaims/{nameKey} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
+      allow create: if signedIn()
         && request.resource.data.officeId is string
         && request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
+        && nameKey.size() >= 4
         && (canManage(request.resource.data.officeId)
           || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+      allow update: if signedIn()
+        && resource.data.officeId == request.resource.data.officeId
+        && request.resource.data.officeId is string
+        && request.resource.data.officeName is string
+        && request.resource.data.officeName.size() <= 80
+        && nameKey.size() >= 4
+        && canManage(resource.data.officeId);
       allow delete: if signedIn()
         && (isPlatformAdmin() || canManage(resource.data.officeId));
     }

@@ -9,6 +9,20 @@
   });
   const SPECIALTY_KEYS = Object.freeze(Object.keys(SPECIALTY_LABELS));
   const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  const VISUAL_IDENTITY = Object.freeze({
+    logo: { kind: "logo", width: 512, height: 512 },
+    cover: { kind: "cover", width: 1200, height: 675 },
+    whatsappCover: { kind: "whatsapp-cover", width: 1200, height: 628 }
+  });
+  const NOTIFICATION_DEFAULTS = Object.freeze({
+    matches: true,
+    partyUpdates: true,
+    cooperation: true,
+    messages: true,
+    appointments: true,
+    system: true
+  });
+  const COOPERATION_MODES = Object.freeze(["DISABLED", "APPROVAL_REQUIRED", "SMART_AUTOMATIC"]);
 
   const defaults = {
     officeName: "مكتب عقاري",
@@ -18,13 +32,22 @@
     licenseNumber: "",
     city: "المدينة المنورة",
     specialties: [],
+    logoUrl: "",
     coverUrl: "",
-    publicSlug: ""
+    whatsappCoverUrl: "",
+    publicSlug: "",
+    notificationPreferences: { ...NOTIFICATION_DEFAULTS },
+    cooperationMode: "APPROVAL_REQUIRED",
+    visualIdentity: {
+      coverCropY: 50,
+      whatsappCoverCropY: 50
+    }
   };
 
   const el = {};
   let current = { ...defaults };
   let authClaims = {};
+  let defaultOfficeLogoSrc = "";
 
   function officeRuntime() {
     return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -93,6 +116,24 @@
     return cleanList;
   }
 
+  function normalizeNotificationPreferences(value) {
+    const source = value && typeof value === "object" ? value : {};
+    return Object.fromEntries(Object.keys(NOTIFICATION_DEFAULTS).map(key => [
+      key,
+      source[key] !== false
+    ]));
+  }
+
+  function normalizeCooperationMode(value) {
+    return COOPERATION_MODES.includes(value) ? value : defaults.cooperationMode;
+  }
+
+  function normalizeCropValue(value, fallback = 50) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(number)));
+  }
+
   function significantCharacterCount(value) {
     const matches = safeText(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
     return matches ? matches.length : 0;
@@ -132,8 +173,16 @@
       licenseNumber: safeText(data.licenseNumber, defaults.licenseNumber).replace(/[^0-9]/g, "").slice(0, 20),
       city: safeText(data.city, defaults.city).slice(0, 60),
       specialties: normalizedSpecialties(data.specialties),
+      logoUrl: safeText(data.logoUrl).slice(0, 2000),
       coverUrl: safeText(data.coverUrl).slice(0, 2000),
-      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
+      whatsappCoverUrl: safeText(data.whatsappCoverUrl).slice(0, 2000),
+      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64),
+      notificationPreferences: normalizeNotificationPreferences(data.notificationPreferences),
+      cooperationMode: normalizeCooperationMode(data.cooperationMode),
+      visualIdentity: {
+        coverCropY: normalizeCropValue(data.visualIdentity && data.visualIdentity.coverCropY, defaults.visualIdentity.coverCropY),
+        whatsappCoverCropY: normalizeCropValue(data.visualIdentity && data.visualIdentity.whatsappCoverCropY, defaults.visualIdentity.whatsappCoverCropY)
+      }
     };
   }
 
@@ -162,20 +211,72 @@
     });
   }
 
+  function readNotificationPreferencesFromForm() {
+    const values = {};
+    Array.from(el.notificationPreferences || []).forEach(input => {
+      values[input.value] = input.checked;
+    });
+    return normalizeNotificationPreferences(values);
+  }
+
+  function writeNotificationPreferencesToForm(value) {
+    const preferences = normalizeNotificationPreferences(value);
+    Array.from(el.notificationPreferences || []).forEach(input => {
+      input.checked = preferences[input.value] !== false;
+    });
+  }
+
+  function readCooperationModeFromForm() {
+    const checked = Array.from(el.cooperationModes || []).find(input => input.checked);
+    return normalizeCooperationMode(checked && checked.value);
+  }
+
+  function writeCooperationModeToForm(value) {
+    const mode = normalizeCooperationMode(value);
+    Array.from(el.cooperationModes || []).forEach(input => {
+      input.checked = input.value === mode;
+    });
+  }
+
+  function setPreview(image, url, hiddenWhenEmpty = true) {
+    if (!image) return;
+    image.src = url || "";
+    image.hidden = hiddenWhenEmpty && !url;
+  }
+
+  function renderQr() {
+    if (!el.qrCanvas || typeof window.qrcode !== "function") return;
+    try {
+      const ctx = el.qrCanvas.getContext("2d");
+      ctx.clearRect(0, 0, el.qrCanvas.width, el.qrCanvas.height);
+      drawQr(ctx, officeLink(), 10, 10, Math.min(el.qrCanvas.width, el.qrCanvas.height) - 20);
+    } catch (error) {
+      console.warn("[iaqar] QR render failed", error);
+    }
+  }
+
   function apply(data) {
     current = clean({ ...defaults, ...(data || {}) });
     el.officeName.value = current.officeName;
     el.brokerName.value = current.brokerName;
     el.phone.value = current.phone;
-    el.whatsapp.value = current.whatsapp || current.phone;
+    if (el.whatsapp) el.whatsapp.value = current.whatsapp || current.phone;
     el.license.value = current.licenseNumber;
     el.city.value = current.city;
     el.link.value = officeLink();
     writeSpecialtiesToForm(current.specialties);
-    if (el.coverPreview) {
-      el.coverPreview.src = current.coverUrl || "";
-      el.coverPreview.hidden = !current.coverUrl;
+    writeNotificationPreferencesToForm(current.notificationPreferences);
+    writeCooperationModeToForm(current.cooperationMode);
+    if (el.coverCrop) el.coverCrop.value = current.visualIdentity.coverCropY;
+    if (el.whatsappCoverCrop) el.whatsappCoverCrop.value = current.visualIdentity.whatsappCoverCropY;
+    setPreview(el.logoPreview, current.logoUrl);
+    setPreview(el.coverPreview, current.coverUrl);
+    setPreview(el.whatsappCoverPreview, current.whatsappCoverUrl);
+    setPreview(el.displayCover, current.coverUrl);
+    if (el.displayLogo && (current.logoUrl || defaultOfficeLogoSrc)) {
+      el.displayLogo.src = current.logoUrl || defaultOfficeLogoSrc;
     }
+    if (el.displayCoverFallback) el.displayCoverFallback.hidden = Boolean(current.coverUrl);
 
     const map = [
       ["officeDisplayName", current.officeName],
@@ -190,6 +291,7 @@
     });
     const specialtyRow = document.querySelector(".specialty-status-row");
     if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
+    renderQr();
   }
 
   function loadLocal() {
@@ -223,8 +325,13 @@
           licenseNumber: data.licenseNumber || data.falLicense,
           city: data.city,
           specialties: data.specialties,
+          logoUrl: data.logoUrl,
           coverUrl: data.coverUrl,
-          publicSlug: data.publicSlug
+          whatsappCoverUrl: data.whatsappCoverUrl,
+          publicSlug: data.publicSlug,
+          notificationPreferences: data.notificationPreferences,
+          cooperationMode: data.cooperationMode,
+          visualIdentity: data.visualIdentity
         });
         saveLocal(current);
       }
@@ -285,11 +392,87 @@
         licenseNumber: data.licenseNumber,
         city: data.city,
         specialties: data.specialties,
+        logoUrl: data.logoUrl,
         coverUrl: data.coverUrl,
+        whatsappCoverUrl: data.whatsappCoverUrl,
         publicSlug: data.publicSlug,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     });
+  }
+
+  function validateImageFile(file) {
+    if (!file) return "";
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return "اختر صورة JPG أو PNG أو WebP";
+    if (file.size > 10 * 1024 * 1024) return "حجم الصورة يجب ألا يتجاوز 10 ميجابايت";
+    return "";
+  }
+
+  function loadFileImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("IMAGE_LOAD_FAILED"));
+      };
+      image.src = url;
+    });
+  }
+
+  async function cropImageFile(file, preset, focusY = 50) {
+    const image = await loadFileImage(file);
+    const targetRatio = preset.width / preset.height;
+    const sourceRatio = image.naturalWidth / image.naturalHeight;
+    let sourceWidth = image.naturalWidth;
+    let sourceHeight = image.naturalHeight;
+    let sourceX = 0;
+    let sourceY = 0;
+
+    if (sourceRatio > targetRatio) {
+      sourceWidth = image.naturalHeight * targetRatio;
+      sourceX = (image.naturalWidth - sourceWidth) / 2;
+    } else {
+      sourceHeight = image.naturalWidth / targetRatio;
+      sourceY = (image.naturalHeight - sourceHeight) * (normalizeCropValue(focusY) / 100);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = preset.width;
+    canvas.height = preset.height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, preset.width, preset.height);
+
+    return new Promise(resolve => {
+      canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.9);
+    });
+  }
+
+  async function uploadOfficeImage({ file, preset, cropY, user }) {
+    const validationError = validateImageFile(file);
+    if (validationError) throw new Error(validationError);
+    const cropped = await cropImageFile(file, preset, cropY);
+    if (!cropped) throw new Error("تعذر تجهيز الصورة");
+    const idToken = await user.getIdToken();
+    const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
+      method: "POST",
+      headers: {
+        "Content-Type": cropped.type || "image/jpeg",
+        "Authorization": `Bearer ${idToken}`,
+        "X-Office-Id": officeId(),
+        "X-Media-Kind": preset.kind
+      },
+      body: cropped
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !(result.mediaUrl || result.coverUrl)) {
+      throw new Error(result.message || "تعذر رفع صورة المكتب");
+    }
+    return result.mediaUrl || result.coverUrl;
   }
 
   async function onSave(event) {
@@ -305,47 +488,40 @@
     el.officeName.setCustomValidity("");
 
     const specialties = readSpecialtiesFromForm();
-
-    let coverUrl = current.coverUrl || "";
+    const notificationPreferences = readNotificationPreferencesFromForm();
+    const cooperationMode = readCooperationModeFromForm();
+    const visualIdentity = {
+      coverCropY: normalizeCropValue(el.coverCrop && el.coverCrop.value),
+      whatsappCoverCropY: normalizeCropValue(el.whatsappCoverCrop && el.whatsappCoverCrop.value)
+    };
+    const logoFile = el.logo && el.logo.files ? el.logo.files[0] : null;
     const coverFile = el.cover && el.cover.files ? el.cover.files[0] : null;
-    if (coverFile) {
-      if (!/^image\/(jpeg|png|webp)$/.test(coverFile.type) || coverFile.size > 10 * 1024 * 1024) {
-        toast("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
+    const whatsappCoverFile = el.whatsappCover && el.whatsappCover.files ? el.whatsappCover.files[0] : null;
+    const selectedFiles = [logoFile, coverFile, whatsappCoverFile].filter(Boolean);
+
+    for (const file of selectedFiles) {
+      const validationError = validateImageFile(file);
+      if (validationError) {
+        toast(validationError);
         return;
       }
-      const user = authUser();
-      if (!user) {
-        toast("سجل دخول مدير المكتب قبل رفع الصورة");
-        return;
-      }
-      const idToken = await user.getIdToken();
-      const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": coverFile.type,
-          "Authorization": `Bearer ${idToken}`,
-          "X-Office-Id": officeId()
-        },
-        body: coverFile
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.coverUrl) {
-        toast(result.message || "تعذر رفع صورة المكتب");
-        return;
-      }
-      coverUrl = result.coverUrl;
     }
 
     const data = clean({
       officeName: el.officeName.value,
       brokerName: el.brokerName.value,
       phone: el.phone.value,
-      whatsapp: el.whatsapp.value,
+      whatsapp: el.phone.value,
       licenseNumber: el.license.value,
       city: el.city.value,
       specialties,
-      coverUrl,
-      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value)
+      logoUrl: current.logoUrl,
+      coverUrl: current.coverUrl,
+      whatsappCoverUrl: current.whatsappCoverUrl,
+      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value),
+      notificationPreferences,
+      cooperationMode,
+      visualIdentity
     });
 
     if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
@@ -362,6 +538,30 @@
 
     if (runtime && runtime.db && user) {
       try {
+        if (logoFile) {
+          data.logoUrl = await uploadOfficeImage({
+            file: logoFile,
+            preset: VISUAL_IDENTITY.logo,
+            cropY: 50,
+            user
+          });
+        }
+        if (coverFile) {
+          data.coverUrl = await uploadOfficeImage({
+            file: coverFile,
+            preset: VISUAL_IDENTITY.cover,
+            cropY: visualIdentity.coverCropY,
+            user
+          });
+        }
+        if (whatsappCoverFile) {
+          data.whatsappCoverUrl = await uploadOfficeImage({
+            file: whatsappCoverFile,
+            preset: VISUAL_IDENTITY.whatsappCover,
+            cropY: visualIdentity.whatsappCoverCropY,
+            user
+          });
+        }
         await reserveOfficeName(runtime, user, data);
         synced = true;
       } catch (error) {
@@ -375,6 +575,12 @@
           el.save.textContent = "حفظ التعديلات";
           return;
         }
+        const message = error && error.message ? error.message : "تعذر حفظ إعدادات المكتب";
+        el.note.textContent = message;
+        toast(message);
+        el.save.disabled = false;
+        el.save.textContent = "حفظ التعديلات";
+        return;
       }
     }
 
@@ -388,6 +594,9 @@
 
     apply(data);
     saveLocal(data);
+    if (el.logo) el.logo.value = "";
+    if (el.cover) el.cover.value = "";
+    if (el.whatsappCover) el.whatsappCover.value = "";
     el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
     toast("تم حفظ إعدادات المكتب");
     el.save.disabled = false;
@@ -416,6 +625,75 @@
       el.link.select();
       document.execCommand("copy");
       toast("تم نسخ رابط المكتب");
+    }
+  }
+
+  async function shareOfficeLink() {
+    try {
+      await ensurePublicSlug();
+      const url = officeLink();
+      const title = current.officeName || "رابط المكتب";
+      const text = `${title}\n${url}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text, url });
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") return;
+        }
+      }
+      await copyLink();
+    } catch (error) {
+      console.warn("[iaqar] office link share failed", error);
+      toast("تعذرت مشاركة الرابط الآن");
+    }
+  }
+
+  function previewOfficeLink() {
+    window.open(officeLink(), "_blank", "noopener,noreferrer");
+  }
+
+  async function openOpportunityBank() {
+    if (!el.bankPanel) return;
+    el.bankPanel.hidden = false;
+    el.bankPanel.textContent = "جارٍ تحميل بنك الفرص الخاص بهذا المكتب...";
+    const runtime = officeRuntime();
+    if (!runtime || !runtime.refs || !runtime.refs.opportunities) {
+      el.bankPanel.textContent = "يتطلب بنك الفرص اتصال Firestore وصلاحية مكتب. ستكتمل وظائف الإدارة في المرحلة الثالثة.";
+      return;
+    }
+    try {
+      const snapshot = await runtime.refs.opportunities.orderBy("createdAt", "desc").limit(5).get();
+      if (snapshot.empty) {
+        el.bankPanel.textContent = "بنك الفرص فارغ حالياً لهذا المكتب.";
+        return;
+      }
+      el.bankPanel.textContent = "";
+      Array.from(snapshot.docs).forEach(doc => {
+        const item = doc.data() || {};
+        const row = document.createElement("div");
+        row.textContent = `${safeText(item.opportunityKind || item.kind || "فرصة")} — ${safeText(item.propertyType || "نوع غير محدد")} — ${safeText(item.city || current.city)} ${safeText(item.district || "")}`;
+        el.bankPanel.appendChild(row);
+      });
+    } catch (error) {
+      console.warn("[iaqar] opportunity bank load failed", error);
+      el.bankPanel.textContent = "تعذر تحميل بنك الفرص. تحقق من تسجيل الدخول وصلاحية المكتب.";
+    }
+  }
+
+  function previewSelectedImage(fileInput, image, cropInput) {
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file || !image) return;
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      toast(validationError);
+      fileInput.value = "";
+      return;
+    }
+    image.src = URL.createObjectURL(file);
+    image.hidden = false;
+    if (cropInput) {
+      image.style.objectPosition = `50% ${normalizeCropValue(cropInput.value)}%`;
     }
   }
 
@@ -676,28 +954,55 @@
     el.whatsapp = document.getElementById("officeWhatsappInput");
     el.license = document.getElementById("licenseNumberInput");
     el.city = document.getElementById("officeCityInput");
+    el.logo = document.getElementById("officeLogoInput");
+    el.logoPreview = document.getElementById("officeLogoPreview");
     el.cover = document.getElementById("officeCoverInput");
     el.coverPreview = document.getElementById("officeCoverPreview");
+    el.coverCrop = document.getElementById("officeCoverCropInput");
+    el.whatsappCover = document.getElementById("officeWhatsappCoverInput");
+    el.whatsappCoverPreview = document.getElementById("officeWhatsappCoverPreview");
+    el.whatsappCoverCrop = document.getElementById("officeWhatsappCoverCropInput");
     el.link = document.getElementById("officeLinkInput");
     el.copy = document.getElementById("copyOfficeLinkBtn");
+    el.shareLink = document.getElementById("shareOfficeLinkBtn");
+    el.previewLink = document.getElementById("previewOfficeLinkBtn");
+    el.qrCanvas = document.getElementById("officeQrCanvas");
+    el.bank = document.getElementById("officeBankBtn");
+    el.bankPanel = document.getElementById("officeBankPanel");
     el.save = document.getElementById("saveOfficeSettingsBtn");
     el.logout = document.getElementById("officeLogoutBtn");
     el.shareCard = document.getElementById("shareOfficeCardBtn");
     el.note = document.getElementById("officeSettingsNote");
     el.specialties = document.querySelectorAll('input[name="officeSpecialty"]');
+    el.notificationPreferences = document.querySelectorAll('input[name="notificationPreference"]');
+    el.cooperationModes = document.querySelectorAll('input[name="cooperationMode"]');
+    el.displayLogo = document.querySelector(".office-logo img");
+    el.displayCover = document.getElementById("officeDisplayCover");
+    el.displayCoverFallback = document.getElementById("officeDisplayCoverFallback");
+    defaultOfficeLogoSrc = el.displayLogo ? el.displayLogo.src : "";
 
     apply(loadLocal() || defaults);
 
     el.officeName.addEventListener("input", () => el.officeName.setCustomValidity(""));
     el.form.addEventListener("submit", onSave);
     el.copy.addEventListener("click", copyLink);
+    if (el.shareLink) el.shareLink.addEventListener("click", shareOfficeLink);
+    if (el.previewLink) el.previewLink.addEventListener("click", previewOfficeLink);
+    if (el.bank) el.bank.addEventListener("click", openOpportunityBank);
     el.logout.addEventListener("click", onLogout);
     if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
+    if (el.logo) el.logo.addEventListener("change", () => previewSelectedImage(el.logo, el.logoPreview));
     if (el.cover) el.cover.addEventListener("change", () => {
-      const file = el.cover.files && el.cover.files[0];
-      if (!file || !el.coverPreview) return;
-      el.coverPreview.src = URL.createObjectURL(file);
-      el.coverPreview.hidden = false;
+      previewSelectedImage(el.cover, el.coverPreview, el.coverCrop);
+    });
+    if (el.whatsappCover) el.whatsappCover.addEventListener("change", () => {
+      previewSelectedImage(el.whatsappCover, el.whatsappCoverPreview, el.whatsappCoverCrop);
+    });
+    if (el.coverCrop) el.coverCrop.addEventListener("input", () => {
+      if (el.coverPreview) el.coverPreview.style.objectPosition = `50% ${normalizeCropValue(el.coverCrop.value)}%`;
+    });
+    if (el.whatsappCoverCrop) el.whatsappCoverCrop.addEventListener("input", () => {
+      if (el.whatsappCoverPreview) el.whatsappCoverPreview.style.objectPosition = `50% ${normalizeCropValue(el.whatsappCoverCrop.value)}%`;
     });
 
     try {
