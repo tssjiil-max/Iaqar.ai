@@ -27,6 +27,16 @@ test("backend office settings reject names shorter than four visible characters"
     }, "office-one"),
     error => error && error.code === "office_name_too_short"
   );
+  assert.throws(
+    () => validateOfficeSettingsInput({
+      officeName: "َ َ َ َ",
+      brokerName: "وسيط معتمد",
+      phone: "0551234567",
+      licenseNumber: "123456",
+      city: "المدينة المنورة"
+    }, "office-one"),
+    error => error && error.code === "office_name_too_short"
+  );
 });
 
 test("backend office settings accept Arabic and Latin names and apply safe defaults", () => {

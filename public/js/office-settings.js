@@ -96,7 +96,7 @@
   }
 
   function visibleCharacterCount(value) {
-    const matches = safeText(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
+    const matches = normalizeOfficeNameKey(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
     return matches ? matches.length : 0;
   }
 

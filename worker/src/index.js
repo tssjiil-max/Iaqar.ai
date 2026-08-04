@@ -487,7 +487,7 @@ function normalizeOfficeNameKey(value) {
 }
 
 function officeNameCharacterCount(value) {
-  const matches = cleanText(value, 80).match(/[A-Za-z0-9\u0600-\u06FF]/g);
+  const matches = normalizeOfficeNameKey(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
   return matches ? matches.length : 0;
 }
 
@@ -675,7 +675,8 @@ async function persistOfficeSettingsTransaction({ projectId, accessToken, profil
         throw appError("office_handle_taken", 409, "رابط المكتب مستخدم؛ احفظ مرة أخرى لإنشاء رابط بديل");
       }
 
-      const oldNameKey = normalizeOfficeNameKey(currentOffice.officeName || "");
+      const oldNameKey = cleanText(currentOffice.officeNameKey, 100) ||
+        normalizeOfficeNameKey(currentOffice.officeName || "");
       let oldClaimDoc = null;
       if (oldNameKey && oldNameKey !== profile.officeNameKey) {
         oldClaimDoc = await getFirestoreDocument({
