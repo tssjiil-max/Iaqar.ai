@@ -12,8 +12,8 @@
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Foundation audit and governance | Implemented; verification pending |
-| 1 | Office Card and Office Settings | Implemented; verification pending |
+| 0 | Foundation audit and governance | Complete and verified |
+| 1 | Office Card and Office Settings | Complete locally; deployed-service acceptance not verified |
 | 2 | Unified Opportunity intake | Not started; approval required |
 | 3 | Opportunity Bank | Not started |
 | 4 | Matching engine and rematching | Not accepted under this plan; legacy code exists |
@@ -72,26 +72,41 @@ No lint or TypeScript command exists in the repository. `npm run build` performs
 - Public office media is intentional branding. Private opportunity attachments must use different, authorization-protected paths in later phases.
 - Existing Worker and workflow modules contain later-stage functionality. It is preserved but must be reconciled to the constitution in its assigned phase.
 
+## Phase 1 verification results
+
+| Command/check | Result |
+|---|---|
+| `npm run build` | PASS — 15 JavaScript files, inline app script, PWA manifest, and Firebase config |
+| `npm run test:phase1` | PASS — 10/10 |
+| `npm run test:rules` | PASS — 6/6 |
+| `npm --prefix worker test` | PASS — 45/45 |
+| `npm test` aggregate gate | PASS — 61/61 |
+| `npm audit --omit=optional` | PASS — 0 known vulnerabilities in committed dependencies |
+| Mobile browser visual/keyboard check | PASS at 390×844 static preview |
+| Lint/type check | Not configured in the repository |
+
+The first Rules emulator run was 5/6 because the test attempted to use the return value of `withSecurityRulesDisabled`, which does not return the callback result. The production rule assertions had passed. The harness was corrected in commit `f1e3072`; the rerun and aggregate gate passed 6/6. This failed run is retained in the phase report rather than hidden.
+
+No deployment was performed. An authenticated end-to-end save/upload against deployed Firebase, Worker, and R2 remains `NOT VERIFIED`; repository tests verify validation, authorization denial, storage key isolation, Firestore rules, persistence contracts, and UI behavior.
+
 ## Phase 1 acceptance status
 
-Final PASS/FAIL results are filled only after the verification gate:
-
-| Criterion | Status before verification |
+| Criterion | Result |
 |---|---|
-| Logo opens settings | Pending |
-| Display cover opens settings | Pending |
-| No visible Settings button | Pending |
-| No bottom navigation | Pending |
-| Name minimum/normalization/unique race guard | Pending |
-| Office A blocked from Office B | Pending |
-| Identity upload/crop/replace/remove contracts | Pending |
-| Link copy/share/QR/preview | Pending |
-| Notification preferences persisted | Pending |
-| Opportunity Bank entry | Pending |
-| Cooperation mode default/persistence | Pending |
-| Arabic RTL/mobile layout | Pending |
-| No Deals page/navigation | Pending |
-| Existing tests/build | Pending |
+| Logo opens settings | PASS — browser |
+| Display cover opens settings | PASS — browser |
+| No visible Settings button | PASS — source + browser |
+| No bottom navigation | PASS — source + browser |
+| Name minimum/normalization/unique race guard | PASS — unit + Rules emulator |
+| Office A blocked from Office B | PASS — Rules emulator read/list/update tests |
+| Identity crop/replace/remove UI and contracts | PASS locally; successful deployed R2 upload NOT VERIFIED |
+| Link copy/share/QR/preview controls | PASS — unit/source + browser; native OS share not exercised |
+| Notification preferences persistence/routing contracts | PASS — Rules + Worker unit; live FCM delivery NOT VERIFIED |
+| Opportunity Bank entry | PASS — Phase 1 boundary only; record management remains Phase 3 |
+| Cooperation mode default/persistence | PASS — unit + Rules emulator |
+| Arabic RTL/mobile layout | PASS — browser at 390×844 |
+| No Deals page/navigation | PASS — source + browser |
+| Existing tests/build | PASS |
 
 ## Exact next recommended phase
 
