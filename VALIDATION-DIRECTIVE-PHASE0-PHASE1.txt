@@ -1,0 +1,68 @@
+IAQAR - Directive Phase 0 and Phase 1 validation
+
+Commands run: npm test (145 web + 57 worker = 202 pass, 0 fail), npm run check (36 targets).
+
+PASS: acceptance test 1 - the office logo opens Office Settings
+PASS: acceptance test 1 - the office cover image opens Office Settings
+PASS: acceptance test 1 - both entry points respond to Enter and Space
+PASS: acceptance test 1 - no visible standalone settings control exists on the home page
+PASS: acceptance test 2 - no nav, no tablist, no bottom-bar selector anywhere
+PASS: acceptance test 2 - the app shell contains only header, office card and workspace
+PASS: acceptance test 3 - names under 4 visible characters are rejected
+PASS: acceptance test 3 - equivalent Arabic spellings collide on one uniqueness key
+PASS: acceptance test 3 - the claim registry is keyed by the normalized name
+PASS: acceptance test 3 - officeNameClaims update cannot repoint another office's claim
+PASS: acceptance test 4 - every office read is gated on isOfficeMember
+PASS: acceptance test 4 - devices stay unreadable and unwritable by clients
+PASS: acceptance test 4 - officeSettings and brokerSettings are excluded from the catch-all
+PASS: acceptance test 4 - brokerSettings can only be written by their own broker
+PASS: acceptance test 4 - publicOffices is the only world-readable collection
+PASS: acceptance test 14 - no deals tab, no deals page, no deals navigation item
+PASS: acceptance test 14 - deal records still render in the single operations list
+PASS: acceptance test 15 - the shell ships zero demo operations and shows the empty state
+PASS: acceptance test 15 - Meta credentials are empty and /meta/config reports disabled
+PASS: acceptance test 15 - outbound message routes return 403 outbound_disabled
+PASS: acceptance test 15 - no file claims a delivered WhatsApp or Telegram message
+PASS: office settings expose exactly five visible fields
+PASS: no email field and no second WhatsApp field in Office Settings
+PASS: the derived whatsapp value is still persisted for the public page and wa.me links
+PASS: three image variants with distinct crop presets, upload, crop, remove where allowed
+PASS: the cover crop ratio exists in one configurable preset only
+PASS: image type and size are validated in the browser and again in the worker
+PASS: the worker stores each image variant under its own key
+PASS: the worker refuses an unknown image variant before touching the bucket
+PASS: the share cover cannot be deleted, and the refusal is explicit
+PASS: the public media route serves only the three office image keys
+PASS: six notification categories, all enabled by default
+PASS: a broker override wins over the office default, which wins over the built-in
+PASS: the worker consults the preference document before listing devices
+PASS: a blocked notification is reported as skipped, never as sent
+PASS: the browser and worker push-type tables agree for every type and preference set
+PASS: cooperation has exactly three modes, defaulting to APPROVAL_REQUIRED
+PASS: automatic cooperation can never expose contact information
+PASS: the five approved Arabic cooperation statuses are used verbatim
+PASS: the opportunity bank entry is named بنك الفرص and lives inside Office Settings
+PASS: the bank reads only this office's opportunities, never a collection group
+PASS: the bank row shows only date added and cooperation status as its activity summary
+PASS: the bank row carries no phone number, score, confidence or parser output
+PASS: no forbidden opportunity status label appears in the shell
+PASS: officeId isolation unchanged; new documents all carry officeId
+PASS: manual mobile-viewport inspection of the office card, all settings sections, the QR
+      code and the opportunity bank showed no overlap, clipping or LTR/RTL defect
+
+NOT CLAIMED (later phases, see docs/IMPLEMENTATION_PLAN.md):
+  acceptance test 5  - unified opportunity intake (phase 2)
+  acceptance test 6  - no-match storage in the bank (phase 3/4)
+  acceptance test 7  - automatic rematch on opportunity edit (phase 4)
+  acceptance test 8  - match identity versioned by rule and data version (phase 4)
+  acceptance test 9  - persisted operations records with a dedup key (phase 5)
+  acceptance test 10 - per-broker push routing and auditable notifications (phase 5)
+  acceptance test 11 - cooperation ownership (phase 6)
+  acceptance test 12 - cooperation revocation (phase 6)
+  acceptance test 13 - persisted message drafts and Telegram (phase 7)
+
+KNOWN LIMITATIONS:
+  Firestore rules are asserted by static analysis, not by the emulator (phase 8).
+  jsdom has no layout engine, so layout is asserted structurally, not by measurement.
+  jsdom has no canvas, so cropping is asserted on its geometry rather than on pixels.
+  The Add Opportunity home section is deliberately absent until phase 2.
