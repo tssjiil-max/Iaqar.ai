@@ -150,7 +150,8 @@
       if (snap.exists) {
         const data = snap.data() || {};
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;aspect-ratio:1.91/1;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${data.logoUrl ? `<img src="${escapeHtml(data.logoUrl)}" alt="شعار المكتب" style="width:62px;height:62px;object-fit:contain;border:1px solid #dce8e4;border-radius:14px;background:#fff;padding:5px;margin-bottom:8px">` : ""}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}${data.whatsapp ? ` — واتساب ${escapeHtml(data.whatsapp)}` : ""}</p>`;

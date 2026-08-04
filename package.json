@@ -1,0 +1,11 @@
+{
+  "name": "iaqar-ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:structure && npm run test:worker",
+    "test:structure": "node --test tests/*.test.mjs",
+    "test:worker": "npm --prefix worker test",
+    "check": "node --check public/js/office-settings.js && node --check public/js/whatsapp-office.js && node --check public/js/workflow-office.js && node --check public/js/access-gate.js && node --check public/js/firebase-office.js && node --check public/js/fcm-fid.js && node --check public/firebase-messaging-sw.js && node --check worker/src/index.js"
+  }
+}

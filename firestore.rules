@@ -20,6 +20,22 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    function validCooperationMode() {
+      return !('cooperationMode' in request.resource.data)
+        || request.resource.data.cooperationMode in ['disabled','approval_required','smart_automatic'];
+    }
+    function validNotificationPreferences() {
+      return !('notificationPreferences' in request.resource.data)
+        || (request.resource.data.notificationPreferences is map
+          && request.resource.data.notificationPreferences.keys().hasOnly(
+            ['matches','ownerCustomer','cooperation','messages','appointments','system']));
+    }
+    function validOfficeMediaUrls() {
+      return (!('coverUrl' in request.resource.data)
+          || (request.resource.data.coverUrl is string && request.resource.data.coverUrl.size() <= 2000))
+        && (!('logoUrl' in request.resource.data)
+          || (request.resource.data.logoUrl is string && request.resource.data.logoUrl.size() <= 2000));
+    }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
@@ -29,7 +45,10 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && validCooperationMode()
+        && validNotificationPreferences()
+        && validOfficeMediaUrls();
     }
 
     match /offices/{officeId} {
