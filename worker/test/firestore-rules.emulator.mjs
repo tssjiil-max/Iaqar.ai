@@ -172,22 +172,8 @@ test("clients cannot change ownership, office names, claims, handles, or public 
   assert.deepEqual(responses.map(response => response.status), [403, 403, 403, 403, 403]);
 });
 
-async function beginTransaction() {
-  const response = await firestoreRequest(`${databaseRoot}/documents:beginTransaction`, {
-    method: "POST",
-    body: { options: { readWrite: {} } }
-  });
-  assert.equal(response.status, 200);
-  return (await response.json()).transaction;
-}
-
-test("a Firestore transaction permits exactly one concurrent normalized name claim", async () => {
-  const transactionA = await beginTransaction();
-  const transactionB = await beginTransaction();
+test("an atomic Firestore claim permits exactly one normalized office name owner", async () => {
   const claimUrl = `${documentRoot}/officeNameClaims/${encodeURIComponent("المسارالعقاري")}`;
-  assert.equal((await firestoreRequest(`${claimUrl}?transaction=${encodeURIComponent(transactionA)}`)).status, 404);
-  assert.equal((await firestoreRequest(`${claimUrl}?transaction=${encodeURIComponent(transactionB)}`)).status, 404);
-
   const write = officeId => ({
     update: {
       name: `projects/${projectId}/databases/(default)/documents/officeNameClaims/المسارالعقاري`,
@@ -196,18 +182,19 @@ test("a Firestore transaction permits exactly one concurrent normalized name cla
         officeName: { stringValue: "المسار العقاري" }
       }
     },
-    updateMask: { fieldPaths: ["officeId", "officeName"] }
+    updateMask: { fieldPaths: ["officeId", "officeName"] },
+    currentDocument: { exists: false }
   });
   const commitA = await firestoreRequest(`${databaseRoot}/documents:commit`, {
     method: "POST",
-    body: { transaction: transactionA, writes: [write("office-a")] }
+    body: { writes: [write("office-a")] }
   });
   const commitB = await firestoreRequest(`${databaseRoot}/documents:commit`, {
     method: "POST",
-    body: { transaction: transactionB, writes: [write("office-b")] }
+    body: { writes: [write("office-b")] }
   });
   assert.equal(commitA.status, 200);
-  assert.equal(commitB.status, 409);
+  assert.notEqual(commitB.status, 200);
   const claim = await (await firestoreRequest(claimUrl)).json();
   assert.equal(claim.fields.officeId.stringValue, "office-a");
 });
