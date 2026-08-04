@@ -1025,6 +1025,14 @@
     color:var(--muted);
     font-size:11px;
   }
+  .crop-controls {
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:7px;
+    margin-top:8px;
+  }
+  .crop-controls label { color:var(--muted);font-size:10px;font-weight:700;text-align:center; }
+  .crop-controls input { width:100%;height:24px;accent-color:var(--green); }
   .identity-actions,.link-actions { display:flex;flex-wrap:wrap;gap:7px;margin-top:8px; }
   .identity-actions label,.identity-actions button,.link-actions button,.settings-entry {
     min-height:39px;
@@ -1270,6 +1278,11 @@
             <div class="identity-item-head"><strong>شعار المكتب</strong><small>قص مربع</small></div>
             <img class="identity-preview logo" id="officeLogoPreview" alt="معاينة شعار المكتب" hidden>
             <div class="identity-empty" id="officeLogoEmpty">لا يوجد شعار محفوظ</div>
+            <div class="crop-controls" aria-label="ضبط قص الشعار">
+              <label>أفقي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="logo" data-crop-axis="x"></label>
+              <label>رأسي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="logo" data-crop-axis="y"></label>
+              <label>تكبير<input type="range" min="1" max="2" step="0.05" value="1" data-crop-kind="logo" data-crop-axis="zoom"></label>
+            </div>
             <div class="identity-actions">
               <label>رفع أو استبدال<input id="officeLogoInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
               <button type="button" data-remove-identity="logo">إزالة</button>
@@ -1279,6 +1292,11 @@
             <div class="identity-item-head"><strong>صورة عرض المكتب</strong><small>قص 4:3</small></div>
             <img class="identity-preview" id="officeDisplayPreview" alt="معاينة صورة عرض المكتب" hidden>
             <div class="identity-empty" id="officeDisplayEmpty">لا توجد صورة عرض محفوظة</div>
+            <div class="crop-controls" aria-label="ضبط قص صورة العرض">
+              <label>أفقي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="display" data-crop-axis="x"></label>
+              <label>رأسي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="display" data-crop-axis="y"></label>
+              <label>تكبير<input type="range" min="1" max="2" step="0.05" value="1" data-crop-kind="display" data-crop-axis="zoom"></label>
+            </div>
             <div class="identity-actions">
               <label>رفع أو استبدال<input id="officeDisplayInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
               <button type="button" data-remove-identity="display">إزالة</button>
@@ -1288,6 +1306,11 @@
             <div class="identity-item-head"><strong>غلاف المكتب العريض</strong><small>نسبة قابلة للضبط</small></div>
             <img class="identity-preview" id="officeCoverPreview" alt="معاينة غلاف المكتب العريض" hidden>
             <div class="identity-empty" id="officeCoverEmpty">لا يوجد غلاف محفوظ</div>
+            <div class="crop-controls" aria-label="ضبط قص الغلاف">
+              <label>أفقي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="cover" data-crop-axis="x"></label>
+              <label>رأسي<input type="range" min="0" max="1" step="0.05" value="0.5" data-crop-kind="cover" data-crop-axis="y"></label>
+              <label>تكبير<input type="range" min="1" max="2" step="0.05" value="1" data-crop-kind="cover" data-crop-axis="zoom"></label>
+            </div>
             <div class="identity-actions">
               <label>رفع أو استبدال<input id="officeCoverInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
               <button type="button" data-remove-identity="cover">إزالة</button>

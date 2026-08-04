@@ -35,6 +35,10 @@ test("Office Settings has approved data, identity, link, preference, bank and co
   for (const preference of ["matches", "contacts", "cooperation", "messages", "appointments", "system"]) {
     assert.match(html, new RegExp(`data-notification-preference="${preference}"`));
   }
+  for (const kind of ["logo", "display", "cover"]) {
+    assert.match(html, new RegExp(`data-crop-kind="${kind}" data-crop-axis="x"`));
+    assert.match(html, new RegExp(`data-remove-identity="${kind}"`));
+  }
   assert.doesNotMatch(html, /id="officeEmailInput"/);
   assert.doesNotMatch(html, /id="officeWhatsappInput"/);
   assert.match(html, /value="APPROVAL_REQUIRED"/);

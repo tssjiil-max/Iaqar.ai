@@ -33,6 +33,12 @@
   const el = {};
   let current = { ...defaults };
   const pendingMedia = { logo: null, display: null, cover: null };
+  const originalMedia = { logo: null, display: null, cover: null };
+  const cropPosition = {
+    logo: { x: 0.5, y: 0.5, zoom: 1 },
+    display: { x: 0.5, y: 0.5, zoom: 1 },
+    cover: { x: 0.5, y: 0.5, zoom: 1 }
+  };
   const removedMedia = new Set();
   const previewObjectUrls = new Set();
   let nameAvailabilityTimer = null;
@@ -300,7 +306,7 @@
     return file && /^image\/(jpeg|png|webp)$/.test(file.type) && file.size > 0 && file.size <= 10 * 1024 * 1024;
   }
 
-  async function cropIdentityFile(file, kind) {
+  async function cropIdentityFile(file, kind, position = cropPosition[kind]) {
     if (!validIdentityFile(file)) {
       throw new Error("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
     }
@@ -314,8 +320,11 @@
       let sourceHeight = image.naturalHeight;
       if (sourceRatio > preset.ratio) sourceWidth = sourceHeight * preset.ratio;
       else sourceHeight = sourceWidth / preset.ratio;
-      const sourceX = (image.naturalWidth - sourceWidth) / 2;
-      const sourceY = (image.naturalHeight - sourceHeight) / 2;
+      const zoom = Math.max(1, Math.min(2, Number(position.zoom) || 1));
+      sourceWidth /= zoom;
+      sourceHeight /= zoom;
+      const sourceX = (image.naturalWidth - sourceWidth) * Math.max(0, Math.min(1, Number(position.x) || 0));
+      const sourceY = (image.naturalHeight - sourceHeight) * Math.max(0, Math.min(1, Number(position.y) || 0));
       const outputWidth = Math.max(1, Math.min(preset.maxWidth, Math.round(sourceWidth)));
       const outputHeight = Math.max(1, Math.round(outputWidth / preset.ratio));
       const canvas = document.createElement("canvas");
@@ -333,13 +342,19 @@
   }
 
   async function selectIdentityMedia(kind, file) {
-    const cropped = await cropIdentityFile(file, kind);
+    originalMedia[kind] = file;
+    const cropped = await cropIdentityFile(file, kind, cropPosition[kind]);
     pendingMedia[kind] = cropped;
     removedMedia.delete(kind);
     const previewUrl = URL.createObjectURL(cropped);
     previewObjectUrls.add(previewUrl);
     setIdentityPreview(kind, previewUrl);
     if (el.mediaStatus) el.mediaStatus.textContent = "تم تجهيز المعاينة والقص. احفظ لتطبيق التغييرات.";
+  }
+
+  async function updateIdentityCrop(kind) {
+    if (!originalMedia[kind]) return;
+    await selectIdentityMedia(kind, originalMedia[kind]);
   }
 
   async function uploadIdentityMedia(kind, file) {
@@ -523,6 +538,7 @@
 
   function markIdentityRemoved(kind) {
     pendingMedia[kind] = null;
+    originalMedia[kind] = null;
     removedMedia.add(kind);
     setIdentityPreview(kind, "");
     if (el.mediaStatus) el.mediaStatus.textContent = "ستُحذف الصورة عند حفظ التعديلات.";
@@ -826,6 +842,7 @@
     el.bankButton = document.getElementById("openOpportunityBankBtn");
     el.bankPanel = document.getElementById("opportunityBankPanel");
     el.bankState = document.getElementById("opportunityBankState");
+    el.cropControls = document.querySelectorAll("[data-crop-kind][data-crop-axis]");
 
     apply(loadLocal() || defaults);
 
@@ -858,6 +875,20 @@
     });
     document.querySelectorAll("[data-remove-identity]").forEach(button => {
       button.addEventListener("click", () => markIdentityRemoved(button.dataset.removeIdentity));
+    });
+    el.cropControls.forEach(input => {
+      input.addEventListener("change", async () => {
+        const kind = input.dataset.cropKind;
+        const axis = input.dataset.cropAxis;
+        cropPosition[kind][axis] = Number(input.value);
+        if (!originalMedia[kind]) return;
+        if (el.mediaStatus) el.mediaStatus.textContent = "جارٍ تحديث القص...";
+        try {
+          await updateIdentityCrop(kind);
+        } catch (error) {
+          if (el.mediaStatus) el.mediaStatus.textContent = error.message;
+        }
+      });
     });
     window.addEventListener("beforeunload", () => {
       previewObjectUrls.forEach(url => URL.revokeObjectURL(url));
