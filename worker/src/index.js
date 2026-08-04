@@ -1,3 +1,44 @@
+import {
+  MATCHING_RULE_VERSION,
+  MATCH_THRESHOLD,
+  MAX_MATCH_CANDIDATES,
+  MAX_MATCH_RESULTS,
+  DEFAULT_CITY,
+  phase4BoundaryGuarantees,
+  readinessFromScore as readinessFromScoreEngine,
+  normalizeMatchStatus as normalizeMatchStatusEngine,
+  calculateClosingReadiness as calculateClosingReadinessEngine,
+  opportunityToMatchInput,
+  counterpartsEligible,
+  isActiveLifecycle,
+  canonicalPairKey,
+  relevantDataVersion,
+  buildMatchId,
+  pairRuleKey,
+  scoreMatch as scoreMatchEngine,
+  rankMatchCandidates as rankMatchCandidatesEngine
+} from "./matching-engine.js";
+import {
+  phase5BoundaryGuarantees,
+  OPERATION_TYPES,
+  OPERATION_STATUS,
+  NOTIFICATION_TYPES,
+  NOTIFICATION_STATUS,
+  ACTIVE_OPERATION_STATUSES,
+  buildMatchReviewDedupKey,
+  shouldCreateMatchReview,
+  applyOperationLifecycle
+} from "./operations-domain.js";
+import {
+  createMatchReviewBundle,
+  expireOperationsForMatchIds,
+  upsertMissingDataForOpportunity,
+  upsertCooperationOperations,
+  applyTrustedOperationAction,
+  listMissingOpportunityFields,
+  pushTypeForOperation
+} from "./operations-service.js";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const DEFAULT_PROJECT_ID = "aqar-b5d76";
@@ -7,10 +48,6 @@ const MAX_RAW_LENGTH = 16000;
 const DAILY_FREE_WRITES = 20000;
 const WARNING_PERCENT = 80;
 const ESTIMATED_WRITES_PER_MESSAGE = 8;
-const MATCH_THRESHOLD = 55;
-const MAX_MATCH_CANDIDATES = 60;
-const MAX_MATCH_RESULTS = 3;
-const DEFAULT_CITY = "المدينة المنورة";
 
 const DEAL_STAGE_ORDER = ["contact","viewing","negotiation","agreement","closing","closed"];
 const DEAL_STAGE_LABELS = Object.freeze({
@@ -43,30 +80,13 @@ function nextDealStage(current){
   return DEAL_STAGE_ORDER[Math.min(DEAL_STAGE_ORDER.indexOf(safe)+1,DEAL_STAGE_ORDER.length-1)];
 }
 function normalizeMatchStatus(value){
-  const status=cleanText(value||"active",40);
-  if(status==="new"||status==="in_progress") return "active";
-  if(status==="converted") return "negotiation";
-  return ["active","waiting_response","viewing","negotiation","completed","closed"].includes(status)?status:"active";
+  return normalizeMatchStatusEngine(cleanText(value||"active",40));
 }
 function readinessFromScore(score){
-  const safe=Math.max(0,Math.min(100,Math.round(Number(score)||0)));
-  const key=safe>=85?"very_high":safe>=70?"high":safe>=50?"medium":"low";
-  return {score:safe,key,label:READINESS_LABELS[key]};
+  return readinessFromScoreEngine(score);
 }
-function calculateClosingReadiness({matchScore=0,source={},candidate={},status="active"}={}){
-  const normalized=normalizeMatchStatus(status);
-  if(normalized==="completed") return readinessFromScore(100);
-  if(normalized==="closed") return readinessFromScore(0);
-  const completeness=Math.min(Number(source.completeness||0),Number(candidate.completeness||0));
-  let score=Math.round(Math.max(0,Math.min(100,Number(matchScore)||0))*0.28);
-  score+=Math.round(Math.max(0,Math.min(100,completeness))*0.18);
-  if(source.financingReady===true||candidate.financingReady===true) score+=18;
-  if(source.directOwner===true||candidate.directOwner===true) score+=14;
-  if(source.urgency==="high"||candidate.urgency==="high") score+=5;
-  if(source.availabilityConfirmed===true||candidate.availabilityConfirmed===true) score+=7;
-  if(source.priceConfirmed===true||candidate.priceConfirmed===true) score+=5;
-  const stageFloor={active:25,waiting_response:42,viewing:72,negotiation:88}[normalized]||20;
-  return readinessFromScore(Math.max(stageFloor,score));
+function calculateClosingReadiness(args){
+  return calculateClosingReadinessEngine(args);
 }
 function calculateDealHealth({stage="contact",status="open",updatedAt=null,nextFollowUpAt=null}={}){
   if(status==="closed"||stage==="closed") return {score:100,key:"excellent",label:DEAL_HEALTH_LABELS.excellent};
@@ -184,7 +204,32 @@ export default {
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
         const candidates = Array.isArray(body.candidates) ? body.candidates : [];
         const ranked = rankMatchCandidates(source, candidates);
-        return jsonResponse({ ok: true, source, matches: ranked, bestOpportunity: ranked[0] || null, requestId });
+        return jsonResponse({
+          ok: true,
+          source,
+          matches: ranked,
+          bestOpportunity: ranked[0] || null,
+          matchingRuleVersion: MATCHING_RULE_VERSION,
+          threshold: MATCH_THRESHOLD,
+          boundaries: phase4BoundaryGuarantees(),
+          requestId
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/matching/run") {
+        return await handleMatchingRun(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/operations/action") {
+        return await handleOperationsAction(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/operations/from-cooperation") {
+        return await handleOperationsFromCooperation(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/operations/missing-data") {
+        return await handleOperationsMissingData(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/workflow/preview") {
@@ -236,8 +281,16 @@ export default {
         return await uploadPublicIntakeMedia(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/media/opportunity-source") {
+        return await uploadOpportunitySourceMedia(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeCover(request, env, requestId);
+        return await uploadOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
+        return await deleteOfficeImage(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
@@ -379,29 +432,122 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
+const OPPORTUNITY_SOURCE_TYPES = Object.freeze({
+  "image/jpeg": { sourceTypes: ["image", "screenshot"], ext: "jpg", max: 15 * 1024 * 1024 },
+  "image/png": { sourceTypes: ["image", "screenshot"], ext: "png", max: 15 * 1024 * 1024 },
+  "image/webp": { sourceTypes: ["image", "screenshot"], ext: "webp", max: 15 * 1024 * 1024 },
+  "application/pdf": { sourceTypes: ["pdf"], ext: "pdf", max: 15 * 1024 * 1024 },
+  "application/msword": { sourceTypes: ["word"], ext: "doc", max: 15 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { sourceTypes: ["word"], ext: "docx", max: 15 * 1024 * 1024 },
+  "application/vnd.ms-excel": { sourceTypes: ["excel"], ext: "xls", max: 15 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { sourceTypes: ["excel"], ext: "xlsx", max: 15 * 1024 * 1024 },
+  "audio/mpeg": { sourceTypes: ["audio"], ext: "mp3", max: 15 * 1024 * 1024 },
+  "audio/mp4": { sourceTypes: ["audio"], ext: "m4a", max: 15 * 1024 * 1024 },
+  "audio/wav": { sourceTypes: ["audio"], ext: "wav", max: 15 * 1024 * 1024 },
+  "audio/ogg": { sourceTypes: ["audio"], ext: "ogg", max: 15 * 1024 * 1024 },
+  "audio/webm": { sourceTypes: ["audio"], ext: "webm", max: 15 * 1024 * 1024 }
+});
+
+export function normalizeOpportunitySourceType(value) {
+  const sourceType = cleanText(value, 20).toLowerCase();
+  return ["image", "screenshot", "pdf", "word", "excel", "audio"].includes(sourceType) ? sourceType : "";
+}
+
+async function uploadOpportunitySourceMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const sourceId = cleanText(request.headers.get("x-source-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
+  const sourceType = normalizeOpportunitySourceType(request.headers.get("x-source-type"));
+  const fileNameHeader = cleanText(decodeURIComponent(request.headers.get("x-file-name") || ""), 240);
+  const contentType = cleanText(request.headers.get("content-type"), 120).toLowerCase();
+  const size = requestBodyLength(request);
+
+  if (!officeId || sourceId.length < 8) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  if (!sourceType) throw appError("unsupported_source_type", 400, "نوع مصدر المرفق غير مدعوم");
+
+  await authorizeOfficeRequest(request, env, officeId, "member");
+
+  const rule = OPPORTUNITY_SOURCE_TYPES[contentType];
+  if (!rule || !rule.sourceTypes.includes(sourceType)) {
+    throw appError("unsupported_media", 415, "نوع الملف غير مدعوم لمصدر الفرصة");
+  }
+  if (size > rule.max) throw appError("file_too_large", 413, "حجم الملف يتجاوز الحد المسموح");
+
+  const safeName = fileNameHeader.replace(/[^a-zA-Z0-9._\u0600-\u06FF-]+/g, "_").slice(0, 80) || `source.${rule.ext}`;
+  const key = `opportunity-sources/${officeId}/${sourceId}/${safeName}`;
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      officeId,
+      sourceId,
+      sourceType,
+      uploadedAt: new Date().toISOString(),
+      extractionMode: "simulated_fixture"
+    }
+  });
+  return jsonResponse({
+    ok: true,
+    mediaPath: key,
+    sourceType,
+    extractionMode: "simulated_fixture",
+    productionAi: false,
+    requestId
+  }, 201);
+}
+
+// متغيّرات هوية المكتب البصرية. الترويسة تبقى "cover" لتوافق الروابط المنشورة سابقًا.
+export const OFFICE_IMAGE_VARIANTS = Object.freeze(["cover", "logo", "display"]);
+
+export function normalizeOfficeImageVariant(value) {
+  const variant = cleanText(value, 20).toLowerCase();
+  if (!variant) return "cover";
+  return OFFICE_IMAGE_VARIANTS.includes(variant) ? variant : "";
+}
+
+function officeImageKey(officeId, variant) {
+  return `office-covers/${officeId}/${variant}`;
+}
+
+async function resolveOfficeImageTarget(request, env) {
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
+  if (!variant) throw appError("unsupported_image_variant", 400, "نوع صورة المكتب غير مدعوم");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  return { officeId, variant, key: officeImageKey(officeId, variant) };
+}
+
+async function uploadOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, variant, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  // coverUrl محفوظ للتوافق مع أي عميل قديم يقرأ الاسم السابق.
+  return jsonResponse({ ok: true, variant, imageUrl, coverUrl: imageUrl, requestId }, 201);
+}
+
+async function deleteOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { variant, key } = await resolveOfficeImageTarget(request, env);
+  if (variant === "cover") {
+    throw appError("image_not_removable", 400, "الترويسة مطلوبة لبطاقة المكتب ولا يمكن إزالتها");
+  }
+  await bucket.delete(key);
+  return jsonResponse({ ok: true, variant, removed: true, requestId });
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!/^office-covers\/[a-z0-9_-]{1,80}\/(cover|logo|display)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -1482,9 +1628,232 @@ function parsedToFirestoreFields(parsed, context) {
   });
 }
 
+function rankMatchCandidates(source, candidates) {
+  return rankMatchCandidatesEngine(source, candidates);
+}
+
+function scoreMatch(source, candidate) {
+  return scoreMatchEngine(source, candidate);
+}
+
+function operationsFirestoreHelpers() {
+  return {
+    firestoreString,
+    firestoreBoolean,
+    firestoreInteger,
+    firestoreTimestamp,
+    firestoreOptionalString,
+    firestoreFieldsToJs
+  };
+}
+
+function operationsDeps() {
+  return {
+    setFirestoreDocument,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    sendOfficePush,
+    firestoreHelpers: operationsFirestoreHelpers()
+  };
+}
+
+async function supersedeMatchesForPairKey({
+  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
+}) {
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  let superseded = 0;
+  const supersededMatchIds = [];
+  for (const doc of docs) {
+    const match = firestoreFieldsToJs(doc.fields || {});
+    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!matchId || matchId === keepMatchId) continue;
+    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
+    if (match.isCurrent === false || match.status === "superseded") continue;
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matches", matchId],
+      accessToken,
+      fields: {
+        isCurrent: firestoreBoolean(false),
+        status: firestoreString("superseded"),
+        statusLabel: firestoreString("أُلغيت بنسخة أحدث"),
+        supersededAt: firestoreTimestamp(now),
+        supersededByMatchId: firestoreString(keepMatchId || ""),
+        attentionRequired: firestoreBoolean(false),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    superseded += 1;
+    supersededMatchIds.push(matchId);
+  }
+  if (supersededMatchIds.length) {
+    await expireOperationsForMatchIds({
+      projectId,
+      officeId,
+      matchIds: supersededMatchIds,
+      accessToken,
+      listCollectionDocuments,
+      setFirestoreDocument,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }).catch((error) => console.warn("[iaqar-ops] expire superseded match ops", error && error.message));
+  }
+  return superseded;
+}
+
+async function persistScoredMatch({
+  projectId, officeId, source, candidate, sourceRef, counterpartRef,
+  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+  opportunityId, counterpartOpportunityId, scored, rank, accessToken,
+  notifyOperation = false, assignedBrokerId = ""
+}) {
+  const pairKey = canonicalPairKey(sourceRef, counterpartRef);
+  const dataVersion = await relevantDataVersion(source, candidate);
+  const matchId = await buildMatchId({
+    officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
+  });
+  const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
+  const existingMatch = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
+  });
+  if (existingMatch) {
+    const existing = firestoreFieldsToJs(existingMatch.fields || {});
+    if (existing.isCurrent !== false && existing.status !== "superseded") {
+      return {
+        matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
+        priority: scored.priority, closingReadiness: scored.readiness, status: "active",
+        statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+        rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+        metrics: scored.metrics, breakdown: scored.breakdown,
+        city: source.city || candidate.city || DEFAULT_CITY,
+        district: source.district || candidate.district || "",
+        propertyType: source.propertyType || candidate.propertyType || "",
+        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey
+      };
+    }
+  }
+
+  await supersedeMatchesForPairKey({
+    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
+  });
+
+  const now = new Date();
+  const clientRequestId = sourceCollection === "clients"
+    ? sourceRecordId
+    : (counterpartCollection === "clients" ? counterpartRecordId : "");
+  const ownerOfferId = sourceCollection === "owners"
+    ? sourceRecordId
+    : (counterpartCollection === "owners" ? counterpartRecordId : "");
+  const readiness = scored.readiness;
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+    schemaVersion: firestoreInteger(6),
+    officeId: firestoreString(officeId),
+    matchId: firestoreString(matchId),
+    status: firestoreString("active"),
+    statusLabel: firestoreString(MATCH_STATUS_LABELS.active),
+    workflowStage: firestoreString("contact"),
+    nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active),
+    attentionRequired: firestoreBoolean(true),
+    isCurrent: firestoreBoolean(true),
+    matchingRuleVersion: firestoreString(MATCHING_RULE_VERSION),
+    dataVersion: firestoreString(dataVersion),
+    canonicalPairKey: firestoreString(pairKey),
+    pairRuleKey: firestoreString(pairRule),
+    score: firestoreInteger(scored.score),
+    opportunityScore: firestoreInteger(scored.opportunityScore),
+    closingReadinessScore: firestoreInteger(readiness.score),
+    closingReadinessKey: firestoreString(readiness.key),
+    closingReadinessLabel: firestoreString(readiness.label),
+    priority: firestoreString(scored.priority),
+    rank: firestoreInteger(rank),
+    isBestOpportunity: firestoreBoolean(rank === 1),
+    reasonsJson: firestoreString(JSON.stringify(scored.reasons)),
+    breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
+    warningsJson: firestoreString(JSON.stringify(scored.warnings)),
+    rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
+    sourceCollection: firestoreString(sourceCollection),
+    sourceRecordId: firestoreString(sourceRecordId),
+    counterpartCollection: firestoreString(counterpartCollection),
+    counterpartRecordId: firestoreString(counterpartRecordId),
+    clientRequestId: firestoreString(clientRequestId),
+    ownerOfferId: firestoreString(ownerOfferId),
+    matchGroupId: firestoreString(clientRequestId || pairKey),
+    opportunityId: firestoreString(opportunityId || ""),
+    counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
+    city: firestoreOptionalString(source.city || candidate.city || DEFAULT_CITY),
+    district: firestoreOptionalString(source.district || candidate.district),
+    propertyType: firestoreOptionalString(source.propertyType || candidate.propertyType),
+    transactionType: firestoreOptionalString(source.transactionType || candidate.transactionType),
+    priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
+    areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
+    contactPhone: firestoreOptionalString(source.phone || candidate.contactPhone || candidate.phone),
+    contactName: firestoreOptionalString(source.senderName || candidate.contactName || candidate.senderName),
+    nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)),
+    followUpCount: firestoreInteger(0),
+    createdAt: firestoreTimestamp(now),
+    lastMatchedAt: firestoreTimestamp(now),
+    updatedAt: firestoreTimestamp(now)
+  }});
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],
+    accessToken,
+    fields: {
+      officeId: firestoreString(officeId),
+      recordType: firestoreString("match"),
+      recordId: firestoreString(matchId),
+      eventType: firestoreString("match_created"),
+      stage: firestoreString("active"),
+      note: firestoreString(`تم إنشاء المطابقة بنسبة ${scored.score}% — جاهزية الإغلاق ${readiness.label}`),
+      createdAt: firestoreTimestamp(now)
+    }
+  });
+
+  const persisted = {
+    matchId, duplicate: false, score: scored.score, opportunityScore: scored.opportunityScore,
+    priority: scored.priority, closingReadiness: readiness, status: "active",
+    statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+    rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+    metrics: scored.metrics, breakdown: scored.breakdown,
+    city: source.city || candidate.city || DEFAULT_CITY,
+    district: source.district || candidate.district || "",
+    propertyType: source.propertyType || candidate.propertyType || "",
+    matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
+    opportunityId: opportunityId || "",
+    counterpartOpportunityId: counterpartOpportunityId || "",
+    isCurrent: true,
+    assignedBrokerId: assignedBrokerId || ""
+  };
+
+  // Phase 5: actionable Match → exactly one MATCH_REVIEW Operation (+ in-app Notification).
+  try {
+    const bundle = await createMatchReviewBundle({
+      projectId,
+      officeId,
+      match: persisted,
+      threshold: MATCH_THRESHOLD,
+      assignedBrokerId,
+      notifyPush: notifyOperation === true,
+      accessToken,
+      deps: operationsDeps()
+    });
+    persisted.operationId = bundle.operation?.id || "";
+    persisted.operationCreated = Boolean(bundle.created);
+  } catch (error) {
+    console.warn("[iaqar-ops] match review upsert failed", error && error.message);
+    persisted.operationCreated = false;
+  }
+
+  return persisted;
+}
+
 async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken }) {
   const counterpart = sourceCollection === "owners" ? "clients" : "owners";
-  const docs = await listCollectionDocuments({ projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES });
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
   const prepared = [];
   for (const doc of docs) {
     const candidate = firestoreFieldsToJs(doc.fields || {});
@@ -1500,165 +1869,299 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
   const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
   for (let index = 0; index < topPrepared.length; index += 1) {
     const { candidate, candidateId, scored } = topPrepared[index];
-    const pair = [`${sourceCollection}:${sourceRecordId}`, `${counterpart}:${candidateId}`].sort().join("|");
-    const matchId = `mat_${(await sha256Hex(`${officeId}|${pair}`)).slice(0, 36)}`;
-    const existingMatch = await getFirestoreDocument({
-      projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
+    const sourceRef = `${sourceCollection}:${sourceRecordId}`;
+    const counterpartRef = `${counterpart}:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source: parsed, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection, sourceRecordId,
+      counterpartCollection: counterpart, counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: "",
+      scored, rank: index + 1, accessToken,
+      notifyOperation: false
     });
-    if (existingMatch) continue;
-    const now = new Date();
-    const rank = index + 1;
-    const clientRequestId = sourceCollection === "clients" ? sourceRecordId : candidateId;
-    const ownerOfferId = sourceCollection === "owners" ? sourceRecordId : candidateId;
-    const readiness = scored.readiness;
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-      schemaVersion: firestoreInteger(5), officeId: firestoreString(officeId), matchId: firestoreString(matchId),
-      status: firestoreString("active"), statusLabel: firestoreString(MATCH_STATUS_LABELS.active), workflowStage: firestoreString("contact"),
-      nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active), attentionRequired: firestoreBoolean(true),
-      score: firestoreInteger(scored.score), opportunityScore: firestoreInteger(scored.opportunityScore),
-      closingReadinessScore: firestoreInteger(readiness.score), closingReadinessKey: firestoreString(readiness.key), closingReadinessLabel: firestoreString(readiness.label),
-      priority: firestoreString(scored.priority), rank: firestoreInteger(rank), isBestOpportunity: firestoreBoolean(rank === 1),
-      reasonsJson: firestoreString(JSON.stringify(scored.reasons)), breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
-      warningsJson: firestoreString(JSON.stringify(scored.warnings)), rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
-      sourceCollection: firestoreString(sourceCollection), sourceRecordId: firestoreString(sourceRecordId),
-      counterpartCollection: firestoreString(counterpart), counterpartRecordId: firestoreString(candidateId),
-      clientRequestId: firestoreString(clientRequestId), ownerOfferId: firestoreString(ownerOfferId), matchGroupId: firestoreString(clientRequestId),
-      opportunityId: firestoreString(opportunityId), city: firestoreOptionalString(parsed.city || candidate.city || DEFAULT_CITY),
-      district: firestoreOptionalString(parsed.district || candidate.district),
-      propertyType: firestoreOptionalString(parsed.propertyType || candidate.propertyType), transactionType: firestoreOptionalString(parsed.transactionType || candidate.transactionType),
-      priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
-      areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
-      contactPhone: firestoreOptionalString(parsed.phone || candidate.contactPhone), contactName: firestoreOptionalString(parsed.senderName || candidate.contactName),
-      nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)), followUpCount: firestoreInteger(0),
-      createdAt: firestoreTimestamp(now), lastMatchedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
-    }});
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"], accessToken, fields: {
-      officeId: firestoreString(officeId), recordType: firestoreString("match"), recordId: firestoreString(matchId),
-      eventType: firestoreString("match_created"), stage: firestoreString("active"),
-      note: firestoreString(`تم إنشاء المطابقة بنسبة ${scored.score}% — جاهزية الإغلاق ${readiness.label}`),
-      createdAt: firestoreTimestamp(now)
-    }});
-    results.push({ matchId, score: scored.score, opportunityScore: scored.opportunityScore, priority: scored.priority,
-      closingReadiness: readiness, status: "active", statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
-      rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings, metrics: scored.metrics,
-      breakdown: scored.breakdown, city: parsed.city || candidate.city || DEFAULT_CITY, district: parsed.district || candidate.district || "", propertyType: parsed.propertyType || candidate.propertyType || "" });
+    results.push(persisted);
   }
   return results;
 }
 
-function rankMatchCandidates(source, candidates) {
-  return candidates
-    .map((candidate, index) => ({ candidateIndex: index, candidate, ...scoreMatch(source, candidate) }))
-    .filter(item => item.eligible && item.score >= MATCH_THRESHOLD)
-    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.score - a.score)
-    .slice(0, MAX_MATCH_RESULTS)
-    .map((item, index) => ({ ...item, rank: index + 1, isBestOpportunity: index === 0 }));
-}
+async function findAndSaveMatchesForOpportunity({
+  projectId, officeId, opportunityId, accessToken, notify = false
+}) {
+  const oppDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const opportunity = {
+    id: opportunityId,
+    ...firestoreFieldsToJs(oppDoc.fields || {})
+  };
 
-function scoreMatch(source, candidate) {
-  const reasons = [];
-  const warnings = [];
-  const rejectionChecks = [];
-  const metrics = { priceDifferencePercent: 0, areaDifferencePercent: 0 };
-  const breakdown = { city: 0, district: 0, propertyType: 0, transactionType: 0, price: 0, area: 0, rooms: 0, readiness: 0, urgency: 0, completeness: 0 };
-  const eq = (a, b) => a && b && normalizeArabicText(a) === normalizeArabicText(b);
-  const reject = message => ({ eligible: false, score: 0, opportunityScore: 0, priority: "rejected", readiness: readinessFromScore(0), reasons: [], warnings: [message], rejectionChecks: [message], breakdown, metrics });
-
-  if (source.city && candidate.city && !eq(source.city, candidate.city)) return reject("المدينة غير متوافقة");
-  if (eq(source.city || DEFAULT_CITY, candidate.city || DEFAULT_CITY)) { breakdown.city = 5; reasons.push("نفس المدينة"); }
-
-  if (source.transactionType && candidate.transactionType && !eq(source.transactionType, candidate.transactionType)) {
-    return reject("نوع العملية غير متوافق");
-  }
-
-  const districtConflict = Boolean(source.district && candidate.district && !eq(source.district, candidate.district));
-  const propertyTypeConflict = Boolean(source.propertyType && candidate.propertyType && !eq(source.propertyType, candidate.propertyType));
-  if (districtConflict && propertyTypeConflict) {
-    return reject("الحي ونوع العقار غير متوافقين");
-  }
-
-  if (eq(source.district, candidate.district)) { breakdown.district = 30; reasons.push("نفس الحي"); }
-  else if (districtConflict) { breakdown.district = -12; warnings.push("الحي مختلف"); }
-  else { warnings.push("الحي غير مكتمل في أحد الطرفين"); }
-
-  if (eq(source.propertyType, candidate.propertyType)) { breakdown.propertyType = 22; reasons.push("نفس نوع العقار"); }
-  else if (propertyTypeConflict) { breakdown.propertyType = -14; warnings.push("نوع العقار مختلف"); }
-  else { warnings.push("نوع العقار غير مكتمل في أحد الطرفين"); }
-
-  if (eq(source.transactionType, candidate.transactionType)) { breakdown.transactionType = 14; reasons.push("نفس نوع العملية"); }
-
-  const sourceRange = normalizePriceRange(source);
-  const candidateRange = normalizePriceRange(candidate);
-  if (sourceRange && candidateRange) {
-    const gap = rangeGapRatio(sourceRange, candidateRange);
-    metrics.priceDifferencePercent = Math.round(gap * 100);
-    const overlaps = rangesIntersect(sourceRange, candidateRange);
-    if (overlaps) {
-      breakdown.price = 20; reasons.push("السعر داخل الميزانية");
-      reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`);
-    } else {
-      if (gap > 0.40) return reject("فرق السعر غير منطقي");
-      if (gap <= 0.10) { breakdown.price = 14; reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`); }
-      else if (gap <= 0.20) { breakdown.price = 7; reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪ وقابل للتفاوض`); }
-      else { breakdown.price = -15; warnings.push(`فرق السعر مرتفع: ${metrics.priceDifferencePercent}٪`); }
+  if (!isActiveLifecycle(opportunity)) {
+    const docs = await listCollectionDocuments({
+      projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+    });
+    const now = new Date();
+    let superseded = 0;
+    const supersededMatchIds = [];
+    for (const doc of docs) {
+      const match = firestoreFieldsToJs(doc.fields || {});
+      const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      const relates = match.opportunityId === opportunityId
+        || match.counterpartOpportunityId === opportunityId
+        || match.sourceRecordId === opportunityId
+        || match.counterpartRecordId === opportunityId;
+      if (!relates || match.isCurrent === false || match.status === "superseded") continue;
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+          isCurrent: firestoreBoolean(false),
+          status: firestoreString("superseded"),
+          statusLabel: firestoreString("أُلغيت لأن الفرصة غير نشطة"),
+          supersededAt: firestoreTimestamp(now),
+          attentionRequired: firestoreBoolean(false),
+          updatedAt: firestoreTimestamp(now)
+        }
+      });
+      superseded += 1;
+      supersededMatchIds.push(matchId);
     }
-  } else { warnings.push("السعر غير مكتمل في أحد الطرفين"); }
-
-  const sa = Number(source.area || 0), ca = Number(candidate.area || 0);
-  if (sa && ca) {
-    const diff = Math.abs(sa - ca) / Math.max(sa, ca);
-    metrics.areaDifferencePercent = Math.round(diff * 100);
-    if (diff > 0.65 && propertyTypeConflict) return reject("المساحة ونوع العقار غير منطقيين للطلب");
-    if (diff <= 0.10) { breakdown.area = 8; reasons.push(`فرق المساحة ${metrics.areaDifferencePercent}٪`); }
-    else if (diff <= 0.25) { breakdown.area = 4; reasons.push(`المساحة ضمن نطاق مقبول: فرق ${metrics.areaDifferencePercent}٪`); }
-    else { breakdown.area = -5; warnings.push(`المساحة مختلفة: فرق ${metrics.areaDifferencePercent}٪`); }
+    if (supersededMatchIds.length) {
+      await expireOperationsForMatchIds({
+        projectId, officeId, matchIds: supersededMatchIds, accessToken,
+        listCollectionDocuments, setFirestoreDocument, firestoreHelpers: operationsFirestoreHelpers()
+      }).catch((error) => console.warn("[iaqar-ops] expire inactive match ops", error && error.message));
+    }
+    return {
+      matches: [], superseded, inactive: true,
+      boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() }
+    };
   }
 
-  const sr = Number(source.rooms || 0), cr = Number(candidate.rooms || 0);
-  if (sr && cr) {
-    const diff = Math.abs(sr - cr);
-    if (diff > 3) return reject("عدد الغرف غير منطقي للطلب");
-    if (diff === 0) { breakdown.rooms = 5; reasons.push("عدد الغرف مطابق"); }
-    else if (diff === 1) { breakdown.rooms = 3; reasons.push("عدد الغرف قريب"); }
-    else { breakdown.rooms = -3; warnings.push("عدد الغرف غير مناسب"); }
+  const source = opportunityToMatchInput(opportunity, { id: opportunityId });
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  const prepared = [];
+  for (const doc of docs) {
+    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!candidateId || candidateId === opportunityId) continue;
+    const candidateRaw = { id: candidateId, ...firestoreFieldsToJs(doc.fields || {}) };
+    if (!counterpartsEligible(opportunity, candidateRaw)) continue;
+    const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
+    const scored = scoreMatch(source, candidate);
+    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    prepared.push({ candidate, candidateRaw, candidateId, scored });
+  }
+  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
+
+  const results = [];
+  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
+  for (let index = 0; index < topPrepared.length; index += 1) {
+    const { candidate, candidateId, scored } = topPrepared[index];
+    const sourceRef = `opportunities:${opportunityId}`;
+    const counterpartRef = `opportunities:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection: "opportunities", sourceRecordId: opportunityId,
+      counterpartCollection: "opportunities", counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: candidateId,
+      scored, rank: index + 1, accessToken,
+      notifyOperation: notify === true,
+      assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || "")
+    });
+    results.push(persisted);
   }
 
-  if (source.financingReady === true || candidate.financingReady === true) { breakdown.readiness += 5; reasons.push("جاهزية مالية مرتفعة"); }
-  if (source.directOwner === true || candidate.directOwner === true) { breakdown.readiness += 4; reasons.push("تواصل مباشر مع المالك"); }
-  if (source.urgency === "high" || candidate.urgency === "high") { breakdown.urgency = 4; reasons.push("فرصة عاجلة"); }
+  // Missing required fields → MISSING_DATA Operation; complete fields close it.
+  let missingData = { created: false };
+  try {
+    missingData = await upsertMissingDataForOpportunity({
+      projectId,
+      officeId,
+      opportunity,
+      opportunityId,
+      accessToken,
+      deps: operationsDeps()
+    });
+  } catch (error) {
+    console.warn("[iaqar-ops] missing-data upsert failed", error && error.message);
+  }
 
-  const completeness = Math.min(Number(source.completeness || 0), Number(candidate.completeness || 0));
-  if (completeness >= 80) { breakdown.completeness = 3; reasons.push("بيانات الطرفين مكتملة"); }
-  else if (completeness && completeness < 50) { breakdown.completeness = -3; warnings.push("بيانات المطابقة ناقصة"); }
+  // Legacy alerts retained for older clients; Phase 5 push is lock-screen-safe via Operation bundle.
+  if (notify && results.length > 0) {
+    const fresh = results.filter((item) => !item.duplicate && item.operationCreated);
+    if (fresh.length > 0) {
+      await sendOfficeMatchNotifications({
+        projectId, officeId, matches: fresh, parsed: source, accessToken, skipPush: true
+      }).catch((error) => console.warn("[iaqar-ops] legacy alert write", error && error.message));
+    }
+  }
 
-  const rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
-  const score = Math.max(0, Math.min(100, Math.round(rawScore)));
-  const opportunityBoost = (source.financingReady || candidate.financingReady ? 5 : 0) +
-    (source.directOwner || candidate.directOwner ? 4 : 0) +
-    (source.urgency === "high" || candidate.urgency === "high" ? 3 : 0);
-  const opportunityScore = Math.max(0, Math.min(100, score + opportunityBoost));
-  const priority = opportunityScore >= 88 ? "critical" : opportunityScore >= 72 ? "high" : opportunityScore >= 55 ? "medium" : "low";
-  const readiness = calculateClosingReadiness({ matchScore: score, source, candidate, status: "active" });
-  return { eligible: true, score, opportunityScore, readiness, reasons, warnings, rejectionChecks, breakdown, metrics, priority };
+  const operationsCreated = results.filter((item) => item.operationCreated).length
+    + (missingData.created ? 1 : 0);
+
+  return {
+    matches: results,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    createsOperation: operationsCreated > 0,
+    operationsCreated,
+    missingData,
+    boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees(), createsOperation: operationsCreated > 0 }
+  };
 }
 
-function normalizePriceRange(record) {
-  const price = Number(record.price || 0);
-  let min = Number(record.priceMin || price || 0);
-  let max = Number(record.priceMax || price || 0);
-  if (!min && !max) return null;
-  if (!min) min = max;
-  if (!max) max = min;
-  if (min > max) [min, max] = [max, min];
-  return { min, max };
+async function handleMatchingRun(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  // Auth before Firestore work — missing Bearer token fails closed at 401.
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const notify = body.notify === true;
+  const result = await findAndSaveMatchesForOpportunity({
+    projectId, officeId, opportunityId, accessToken, notify
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    matchCount: result.matches.length,
+    matches: result.matches,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    superseded: result.superseded || 0,
+    inactive: Boolean(result.inactive),
+    boundaries: result.boundaries || { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
+    createsOperation: Boolean(result.createsOperation),
+    operationsCreated: Number(result.operationsCreated || 0),
+    missingData: result.missingData || null,
+    requestId
+  });
 }
-function rangesIntersect(a, b) {
-  return Math.max(a.min, b.min) <= Math.min(a.max, b.max);
+
+async function handleOperationsAction(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const operationId = cleanText(body.operationId, 180);
+  const action = cleanText(body.action, 40);
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!operationId) throw appError("operation_id_required", 400, "معرّف العملية مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await applyTrustedOperationAction({
+    projectId,
+    officeId,
+    operationId,
+    action,
+    reason,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreHelpers: operationsFirestoreHelpers()
+  });
+  if (!result.ok) {
+    throw appError(result.error || "operation_action_failed", result.status || 400, "تعذر تحديث العملية");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    operationId,
+    status: result.status,
+    idempotent: Boolean(result.idempotent),
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
 }
-function rangeGapRatio(a, b) {
-  const gap = a.max < b.min ? b.min - a.max : (b.max < a.min ? a.min - b.max : 0);
-  const midpoint = Math.max(1, (a.min + a.max + b.min + b.max) / 4);
-  return gap / midpoint;
+
+async function handleOperationsFromCooperation(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const coopDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!coopDoc) throw appError("cooperation_not_found", 404, "طلب التعاون غير موجود");
+  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
+  const origin = String(cooperation.originatingOfficeId || "");
+  const target = String(cooperation.targetOfficeId || "");
+  if (officeId !== origin && officeId !== target) {
+    throw appError("cooperation_forbidden", 403, "لا يمكن إنشاء عملية تعاون لمكتب غير طرف");
+  }
+  // Never invent cooperation — only sync Operations from an explicit Phase 3 record.
+  const result = await upsertCooperationOperations({
+    projectId,
+    cooperation,
+    accessToken,
+    deps: operationsDeps()
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    results: result.results,
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleOperationsMissingData(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const oppDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const opportunity = { id: opportunityId, ...firestoreFieldsToJs(oppDoc.fields || {}) };
+  const result = await upsertMissingDataForOpportunity({
+    projectId,
+    officeId,
+    opportunity,
+    opportunityId,
+    accessToken,
+    deps: operationsDeps()
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    created: Boolean(result.created),
+    closed: Number(result.closed || 0),
+    operationId: result.operation?.id || "",
+    missingFields: listMissingOpportunityFields(opportunity),
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
 }
 
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
@@ -1668,22 +2171,34 @@ async function listCollectionDocuments({projectId,segments,accessToken,pageSize=
   const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
 }
 
-async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken}) {
+async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false}) {
   const top=matches[0]; const now=new Date();
   const alertId=`alt_${top.matchId}`;
-  const displayScore = Number(top.opportunityScore || top.score || 0);
-  const readinessLabel = top.closingReadiness && top.closingReadiness.label ? top.closingReadiness.label : "متوسطة";
-  const title = top.isBestOpportunity ? `أفضل فرصة اليوم — ${displayScore}%` : `مطابقة عقارية ${displayScore}%`;
-  const reasonText = Array.isArray(top.reasons) && top.reasons.length ? top.reasons.slice(0, 2).join("، ") : "توجد فرصة مطابقة جديدة";
-  const body = [[parsed.propertyType, parsed.district].filter(Boolean).join(" — "), `جاهزية الإغلاق ${readinessLabel}`, reasonText].filter(Boolean).join(" | ");
+  // Lock-screen-safe / preference-safe copy — no district, phone, or full opportunity text.
+  const title = "لديك مطابقة جديدة تحتاج مراجعتك.";
+  const body = "لديك مطابقة جديدة تحتاج مراجعتك.";
   await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
     officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
-    title:firestoreString(title),body:firestoreString(body),matchId:firestoreString(top.matchId),score:firestoreInteger(top.score),
-    opportunityScore:firestoreInteger(displayScore),closingReadinessLabel:firestoreString(readinessLabel),isBestOpportunity:firestoreBoolean(Boolean(top.isBestOpportunity)),
-    reasonsJson:firestoreString(JSON.stringify(top.reasons || [])),
+    title:firestoreString(title),body:firestoreString(body),
+    matchId:firestoreString(top.matchId),
+    operationId:firestoreString(top.operationId || ""),
+    score:firestoreInteger(top.score),
+    opportunityScore:firestoreInteger(Number(top.opportunityScore || top.score || 0)),
+    isBestOpportunity:firestoreBoolean(Boolean(top.isBestOpportunity)),
     createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
   }});
-  await sendOfficePush({projectId,officeId,title,body,type:"match",recordId:top.matchId,accessToken});
+  if (!skipPush) {
+    await sendOfficePush({
+      projectId,
+      officeId,
+      title,
+      body,
+      type: "match",
+      recordId: top.operationId || top.matchId,
+      assignedBrokerId: top.assignedBrokerId || "",
+      accessToken
+    });
+  }
 }
 
 function buildNotificationLink({officeId,type="match",recordId=""}) {
@@ -1697,7 +2212,16 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   else if(type==="broker_application"){
     params.set("adminApplications","1");
     if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
-  } else if(type==="client_request"||type==="owner_offer"){
+  } else if(
+    type==="client_request"
+    || type==="owner_offer"
+    || type==="missing_data"
+    || type==="operation"
+    || type==="cooperation_request"
+    || type==="cooperation_response"
+    || type==="system"
+    || String(safeRecordId).startsWith("op_")
+  ){
     params.set("openOperation",safeRecordId);
   } else params.set("openMatch",safeRecordId);
   return `/?${params.toString()}`;
@@ -1720,8 +2244,64 @@ async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,re
   }}).catch(error=>console.warn("[iaqar-fcm] stale token cleanup failed",error&&error.message));
 }
 
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",accessToken}) {
+// خريطة نوع الإشعار إلى فئة التفضيلات. نسخة مطابقة موجودة في
+// public/js/office-domain.js، والاختباران يتحققان من الجدول نفسه فأي اختلاف يفشل البناء.
+// لا يمكن للعامل أن يستورد من public/ دون إضافة خطوة بناء.
+export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
+  match: "matchNotifications",
+  deal: "matchNotifications",
+  client_request: "ownerCustomerNotifications",
+  owner_offer: "ownerCustomerNotifications",
+  intake: "ownerCustomerNotifications",
+  missing_data: "ownerCustomerNotifications",
+  cooperation: "cooperationNotifications",
+  cooperation_request: "cooperationNotifications",
+  cooperation_response: "cooperationNotifications",
+  message: "messageNotifications",
+  conversation: "messageNotifications",
+  appointment: "appointmentNotifications",
+  followup: "appointmentNotifications",
+  viewing: "appointmentNotifications",
+  operation: "systemNotifications",
+  system: "systemNotifications"
+});
+
+// أنواع طلبها الوسيط بنفسه، فلا تُحجب بأي تفضيل.
+export const ALWAYS_ALLOWED_PUSH_TYPES = Object.freeze(["notification_test"]);
+
+export function notificationCategoryForPushType(type) {
+  const key=String(type||"").trim().toLowerCase();
+  return PUSH_TYPE_NOTIFICATION_CATEGORIES[key]||"systemNotifications";
+}
+
+/** غياب المستند يعني "كل الفئات مفعّلة"، فلا تتغير سلوك المكاتب القائمة. */
+export function notificationCategoryAllowed(type,preferences) {
+  if(ALWAYS_ALLOWED_PUSH_TYPES.includes(String(type||"").trim().toLowerCase()))return true;
+  const source=preferences&&typeof preferences==="object"?preferences:{};
+  const value=source[notificationCategoryForPushType(type)];
+  return value!==false;
+}
+
+async function readOfficeNotificationPreferences({projectId,officeId,accessToken}) {
+  try{
+    const document=await getFirestoreDocument({
+      projectId,segments:["offices",officeId,"officeSettings","notifications"],accessToken,allowMissing:true
+    });
+    return document?firestoreFieldsToJs(document.fields||{}):{};
+  }catch(error){
+    // تعذر قراءة التفضيل لا يجوز أن يُسكت إشعارًا مطلوبًا.
+    console.warn("[iaqar-fcm] notification preferences read failed",error&&error.message);
+    return {};
+  }
+}
+
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken}) {
+  const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
+  if(!notificationCategoryAllowed(type,preferences)){
+    return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
+  }
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
+  const brokerFilter=String(assignedBrokerId||"").trim();
   const activeDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
     return {
@@ -1730,9 +2310,17 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
       registrationId:value.fcmRegistrationId||value.fcmToken||"",
       registrationType:value.registrationType==="fid"?"fid":"token"
     };
-  }).filter(device=>device.enabled!==false&&device.registrationId);
-  const summary={registered:activeDevices.length,sent:0,failed:0,disabled:0};
-  for(const device of activeDevices){
+  }).filter(device=>{
+    if(device.enabled===false||!device.registrationId)return false;
+    // Assigned broker: prefer devices owned by that uid; if none match, fall back to office queue.
+    return true;
+  });
+  const brokerDevices=brokerFilter
+    ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
+    : [];
+  const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
+  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
+  for(const device of targetDevices){
     try{
       await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken});
       summary.sent+=1;
@@ -2590,7 +3178,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name",
     "Access-Control-Max-Age": "86400"
   };
 }
@@ -2601,4 +3189,13 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export {
+  normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount,
+  createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure,
+  MATCHING_RULE_VERSION, MATCH_THRESHOLD, scoreMatch, rankMatchCandidates,
+  buildMatchId, relevantDataVersion, canonicalPairKey, opportunityToMatchInput,
+  counterpartsEligible, phase4BoundaryGuarantees, findAndSaveMatchesForOpportunity,
+  phase5BoundaryGuarantees, OPERATION_TYPES, OPERATION_STATUS, NOTIFICATION_TYPES,
+  NOTIFICATION_STATUS, ACTIVE_OPERATION_STATUSES, shouldCreateMatchReview,
+  applyOperationLifecycle, listMissingOpportunityFields, pushTypeForOperation
+};

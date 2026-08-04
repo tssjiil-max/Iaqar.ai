@@ -1,0 +1,35 @@
+IAQAR.AI — Phase 5 Operations Center + Notifications validation
+
+Date: 2026-08-04
+Branch: cursor/phase5-operations-notifications-0d44
+
+Scope completed:
+- Persisted offices/{officeId}/operations and notifications (Worker-trusted writes)
+- Types: MATCH_REVIEW, MISSING_DATA, COOPERATION_REQUEST, COOPERATION_RESPONSE
+- DeduplicationKey + content-hashed document IDs; terminal statuses not reopened
+- Worker upsert after Match; POST /operations/action|/from-cooperation|/missing-data
+- Operations Center listens to active operations only (not derived from matches/deals)
+- Lock-screen-safe FCM copy; notification preferences respected
+- Firestore rules deny client writes; indexes for operations/notifications queries
+- Empty state: «لا توجد فرص حالياً» / «ستظهر الفرص المباشرة هنا»
+- Automated coverage: test/operations-phase5.test.mjs, emulator Phase 5 cases,
+  worker Phase 5 cases
+
+Boundaries (not started — do not begin):
+- Phase 6 automatic cooperation / broker recommendation lifecycle
+- Phase 7 WhatsApp/Telegram smart messages and channel adapters
+- No deals page, no bottom navigation, no home redesign
+- No claim of device FCM delivery without provider confirmation
+- Constitution not weakened
+
+Decision: D-014
+Acceptance: Test 9 PASS, Test 10 PASS
+
+Docs updated:
+- docs/IMPLEMENTATION_PLAN.md — Phase 0–5 complete; stop before Phase 6
+- docs/DATA_MODEL.md — operations + notifications field sets
+- docs/EVENT_WORKFLOW.md — MATCH_CREATED → OPERATION_UPSERTED → IN_APP_NOTIFICATION
+  → PUSH_QUEUED_IF_ALLOWED (stop before messaging)
+- docs/ACCEPTANCE_TESTS.md — Tests 9–10 PASS with file pointers
+- docs/DECISIONS.md — D-014
+- docs/SYSTEM_ARCHITECTURE.md — Operations Center consumes persisted operations
