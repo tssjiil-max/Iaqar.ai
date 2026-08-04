@@ -5,6 +5,7 @@
   const SHARED_STORAGE_KEY = "iaqar.pendingSharedMessage";
   const APP_VERSION = "stage3-fcm-fid-v1";
   const office = () => window.IAQAR && window.IAQAR.office;
+  const messagingDomain = () => window.IAQAR && window.IAQAR.messagingDomain;
 
   const MATCH_STATUS = Object.freeze({
     new: { key: "active", label: "نشطة", mark: "🟢", next: "التواصل مع الطرفين" },
@@ -44,7 +45,9 @@
   let matchItems = [];
   let dealItems = [];
   let intakeItems = [];
+  let operationItems = [];
   let analyticsItem = null;
+  const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
   const timelineCache = new Map();
   const timelinePending = new Set();
   const intakeProcessing = new Set();
@@ -429,10 +432,69 @@
       .forEach(doc => processPublicIntakeDoc(doc));
   }
 
+  function opsDomain() {
+    return (window.IAQAR && window.IAQAR.operationsDomain) || null;
+  }
+
+  function projectPersistedOperation(doc) {
+    const data = { id: doc.id, ...(doc.data() || {}) };
+    const domain = opsDomain();
+    if (domain && typeof domain.projectOperationToUiItem === "function") {
+      return domain.projectOperationToUiItem(data, { relativeTime });
+    }
+    // Fallback projector if the domain module has not loaded yet.
+    const priorityMap = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
+    return {
+      id: data.id,
+      recordId: data.id,
+      recordType: "operation",
+      operationType: data.type || "SYSTEM_ACTION",
+      main: "opportunities",
+      priority: priorityMap[String(data.priority || "NORMAL").toUpperCase()] ?? 2,
+      priorityKey: data.priority || "NORMAL",
+      isAlert: ["URGENT", "HIGH"].includes(String(data.priority || "").toUpperCase()),
+      icon: "i-clipboard-list",
+      title: data.titleText || "إجراء مطلوب",
+      subtitle: data.summaryText || "",
+      time: relativeTime(data.updatedAt || data.createdAt),
+      detailsLines: [data.summaryText || "لا توجد تفاصيل إضافية."],
+      status: data.status || "OPEN",
+      actionLabel: data.recommendedActionText || "عرض التفاصيل",
+      secondaryActionLabel: "إتمام",
+      canDismiss: ACTIVE_OPERATION_STATUSES.includes(String(data.status || "").toUpperCase()),
+      dismissLabel: "صرف النظر",
+      matchId: data.matchId || "",
+      opportunityId: data.opportunityId || "",
+      cooperationId: data.cooperationId || "",
+      whatsappOwner: false,
+      whatsappClient: false
+    };
+  }
+
   function emitOperations() {
-    const baseItems = [...intakeItems, ...matchItems, ...dealItems];
-    const items = analyticsItem ? [analyticsItem, ...baseItems] : baseItems;
+    // Phase 5: Operations Center shows only persisted actionable Operations.
+    // Matches/deals/intake remain available for legacy workflow handlers, not the home list.
+    const items = [...operationItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
+  }
+
+  async function postOperationAction(operationId, action, reason = "") {
+    const runtime = office();
+    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
+    if (!runtime || !runtime.officeId || !user) throw new Error("سجل دخول المكتب أولًا");
+    const response = await fetch(`${WORKER_BASE}/operations/action`, {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify({
+        officeId: runtime.officeId,
+        operationId,
+        action,
+        reason
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || "تعذر تحديث العملية");
+    return payload;
   }
 
   async function authHeaders() {
@@ -546,21 +608,33 @@
 
     const matchUnsub = runtime.refs.matches.orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
       matchItems = snapshot.docs.map(matchOperation);
-      emitOperations();
       loadAnalytics();
     }, onError);
     const dealUnsub = runtime.refs.deals.orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
       dealItems = snapshot.docs.map(dealOperation);
-      emitOperations();
       loadAnalytics();
     }, onError);
     const intakeUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("publicIntake")
       .orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
         intakeItems = snapshot.docs.map(intakeOperation);
-        emitOperations();
         processNewPublicIntakes(snapshot);
       }, onError);
-    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub];
+
+    const operationsRef = runtime.refs.operations
+      || runtime.db.collection("offices").doc(runtime.officeId).collection("operations");
+    // Bounded active-status query; client sorts by priority after snapshot.
+    const opsUnsub = operationsRef
+      .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
+      .orderBy("createdAt", "desc")
+      .limit(50)
+      .onSnapshot(snapshot => {
+        operationItems = snapshot.docs.map(projectPersistedOperation);
+        emitOperations();
+      }, onError);
+
+    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub, opsUnsub];
+    // Ensure empty authoritative state until the first operations snapshot arrives.
+    if (!operationItems.length) emitOperations();
   }
 
   async function loadTimeline(recordType, recordId) {
@@ -680,57 +754,180 @@
     return contact;
   }
 
+  function resolveMessageStage(detail) {
+    return detail.messageStage
+      || (detail.recordType === "deal" ? detail.workflowStage : detail.status)
+      || (detail.recordType === "operation" ? "match_review" : "contact");
+  }
+
   function whatsappMessage(detail, role, contact) {
-    const name = contact.name ? ` ${contact.name}` : "";
+    const domain = messagingDomain();
     const officeName = officeDisplayName();
-    const property = [detail.propertyType, detail.district].filter(Boolean).join(" في ") || "العقار";
-    const status = detail.messageStage || (detail.recordType === "deal" ? detail.workflowStage : detail.status);
+    const stage = resolveMessageStage(detail);
+    if (domain && typeof domain.buildArabicMessageBody === "function") {
+      const templateCode = typeof domain.resolveTemplateCode === "function"
+        ? domain.resolveTemplateCode({
+          templateCode: detail.templateCode,
+          role,
+          stage,
+          messageMode: detail.messageMode || "",
+          ownerMediaMissing: detail.ownerMediaMissing === true
+        })
+        : "";
+      return domain.buildArabicMessageBody({
+        templateCode,
+        role,
+        officeName,
+        contactName: contact && contact.name || "",
+        propertyType: detail.propertyType || "",
+        district: detail.district || "",
+        appointmentLabel: appointmentText(detail),
+        requestedItems: detail.requestedItems || [],
+        requestNote: detail.requestNote || "",
+        stage
+      });
+    }
+    // Fallback if messaging domain module has not loaded yet.
+    const name = contact.name ? ` ${contact.name}` : "";
     const greeting = `مرحبًا${name}، معك ${officeName}.`;
-    const appointment = appointmentText(detail);
+    const property = [detail.propertyType, detail.district].filter(Boolean).join(" في ") || "العقار";
+    return `${greeting}\n\nنتواصل معك بخصوص ${property} لتأكيد البيانات وترتيب الخطوة التالية.\n\nمع التحية،\n${officeName}`;
+  }
 
-    if (detail.messageMode === "request") {
-      const labels = { photos: "صور العقار", location: "موقع العقار", propertyLink: "رابط العقار" };
-      const requested = (detail.requestedItems || []).map(item => labels[item]).filter(Boolean).join("، ");
-      return `${greeting}\n\nنرجو تزويدنا بـ${requested || "المعلومات اللازمة لإكمال المطابقة"}.${detail.requestNote ? `\nملاحظة: ${detail.requestNote}` : ""}\n\nمع التحية،\n${officeName}`;
+  async function enrichDetailForMessaging(detail) {
+    const next = { ...detail };
+    if (next.ownerOfferId && next.clientRequestId) return next;
+    const matchId = next.matchId || (next.recordType === "match" ? next.recordId : "");
+    if (!matchId) return next;
+    const fromCache = matchItems.find((item) => item.recordId === matchId || item.id === matchId);
+    if (fromCache) {
+      next.ownerOfferId = next.ownerOfferId || fromCache.ownerOfferId || "";
+      next.clientRequestId = next.clientRequestId || fromCache.clientRequestId || "";
+      next.propertyType = next.propertyType || fromCache.propertyType || "";
+      next.district = next.district || fromCache.district || "";
+      next.ownerMediaMissing = next.ownerMediaMissing ?? fromCache.ownerMediaMissing;
+      next.status = next.status || fromCache.status || "";
+      return next;
+    }
+    const runtime = office();
+    if (!runtime || !runtime.refs || !runtime.refs.matches) return next;
+    try {
+      const snap = await runtime.refs.matches.doc(matchId).get();
+      if (!snap.exists) return next;
+      const data = snap.data() || {};
+      next.ownerOfferId = next.ownerOfferId || data.ownerOfferId || "";
+      next.clientRequestId = next.clientRequestId || data.clientRequestId || "";
+      next.propertyType = next.propertyType || data.propertyType || "";
+      next.district = next.district || data.district || "";
+      next.ownerMediaMissing = next.ownerMediaMissing ?? data.ownerMediaMissing;
+      next.status = next.status || data.status || "";
+    } catch (error) {
+      console.warn("[iaqar] enrich match for messaging", error);
+    }
+    return next;
+  }
+
+  async function persistAndOpenMessageDraft(detail, channel) {
+    const popup = window.open("", "_blank");
+    if (popup) popup.opener = null;
+    const runtime = office();
+    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
+    const domain = messagingDomain();
+    if (!runtime || !runtime.officeId || !user) {
+      if (popup) popup.close();
+      return notify("سجل دخول المكتب أولًا");
+    }
+    const role = detail.recipientRole === "owner" ? "owner" : "client";
+    const enriched = await enrichDetailForMessaging(detail);
+    const contact = await workflowContact(enriched, role);
+    const safeChannel = channel === "telegram" ? "telegram" : "whatsapp";
+    if (safeChannel === "whatsapp") {
+      const phone = whatsappPhone(contact && contact.phone);
+      if (!phone) {
+        if (popup) popup.close();
+        return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
+      }
     }
 
-    if (role === "owner" && detail.ownerMediaMissing === true && !["viewing", "completed", "closed"].includes(status)) {
-      return `${greeting}\n\nنشكرك على إرسال عرض العقار. نأمل تزويدنا بصور واضحة للعقار حتى نتمكن من عرضه ومطابقته مع العملاء المناسبين.\n\nمع التحية،\n${officeName}`;
+    const stage = resolveMessageStage(enriched);
+    const bodyText = whatsappMessage(enriched, role, contact || {});
+    let handoffUrl = "";
+    let messageId = "";
+
+    if (domain && typeof domain.requestCreateMessageDraft === "function") {
+      const idToken = await user.getIdToken(true);
+      const created = await domain.requestCreateMessageDraft({
+        workerBase: WORKER_BASE,
+        idToken,
+        officeId: runtime.officeId,
+        channel: safeChannel,
+        role,
+        contactName: contact && contact.name || "",
+        contactPhone: contact && contact.phone || "",
+        propertyType: enriched.propertyType || "",
+        district: enriched.district || "",
+        appointmentLabel: appointmentText(enriched),
+        officeName: officeDisplayName(),
+        stage,
+        messageMode: enriched.messageMode || "",
+        ownerMediaMissing: enriched.ownerMediaMissing === true,
+        requestedItems: enriched.requestedItems || [],
+        requestNote: enriched.requestNote || "",
+        operationId: enriched.recordType === "operation" ? (enriched.recordId || enriched.id || "") : "",
+        matchId: enriched.matchId || (enriched.recordType === "match" ? enriched.recordId : "") || "",
+        opportunityId: enriched.opportunityId || "",
+        body: bodyText
+      });
+      if (!created.ok) {
+        if (popup) popup.close();
+        return notify(created.message || "تعذر حفظ مسودة الرسالة");
+      }
+      messageId = created.messageId || (created.draft && created.draft.id) || "";
+      handoffUrl = (created.draft && created.draft.handoffUrl) || "";
+      if (messageId && typeof domain.requestMessageHandoff === "function") {
+        const handed = await domain.requestMessageHandoff({
+          workerBase: WORKER_BASE,
+          idToken,
+          officeId: runtime.officeId,
+          messageId
+        });
+        if (handed.ok) {
+          handoffUrl = handed.handoffUrl || handoffUrl;
+          // OPENED_EXTERNAL only — never treat as provider SENT/DELIVERED.
+        }
+      }
     }
 
-    const messages = {
-      active: role === "owner"
-        ? `يوجد عميل مهتم بعقار مطابق لـ ${property}. نرغب في استكمال التنسيق معك.`
-        : `وجدنا عرضًا مناسبًا لطلبك: ${property}. نرغب في استكمال التنسيق معك.`,
-      waiting_response: `نتابع معك بخصوص ${property} لاستكمال الخطوة التالية.`,
-      viewing: role === "owner"
-        ? `تم تحديد موعد معاينة العقار مع عميل مهتم يوم ${appointment}. نرجو تأكيد الموعد.`
-        : `تم تحديد موعد معاينة العقار يوم ${appointment}. نرجو تأكيد حضورك.`,
-      contact: `نتواصل معك بخصوص ${property} لتأكيد البيانات وترتيب الخطوة التالية.`,
-      negotiation: `بدأت مرحلة التفاوض بخصوص ${property}، وسننسق معك التفاصيل حتى اكتمال الإجراء.`,
-      agreement: `تم تسجيل الاتفاق بخصوص ${property}، وجارٍ استكمال إجراءات الصفقة.`,
-      closing: `المعاملة الخاصة بـ ${property} جاهزة للإغلاق.`,
-      completed: `تم بحمد الله إتمام الصفقة الخاصة بـ ${property}. نشكرك على التعامل مع ${officeName}.`,
-      closed: `تم إغلاق متابعة ${property}. إذا رغبت في إعادة فتح الطلب فتواصل معنا.`,
-      lost: `لم تكتمل صفقة ${property} حاليًا. يسعدنا خدمتك عند توفر فرصة جديدة.`
-    };
-    return `${greeting}\n\n${messages[status] || messages.contact}\n\nمع التحية،\n${officeName}`;
+    if (!handoffUrl) {
+      if (safeChannel === "whatsapp") {
+        const phone = whatsappPhone(contact && contact.phone);
+        handoffUrl = phone
+          ? `https://wa.me/${phone}?text=${encodeURIComponent(bodyText)}`
+          : "";
+      } else if (domain && typeof domain.buildTelegramHandoffUrl === "function") {
+        handoffUrl = domain.buildTelegramHandoffUrl({ body: bodyText }).url;
+      } else {
+        handoffUrl = `https://t.me/share/url?url=${encodeURIComponent("https://iaqar.ai/")}&text=${encodeURIComponent(bodyText)}`;
+      }
+    }
+
+    if (!handoffUrl) {
+      if (popup) popup.close();
+      return notify("تعذر تجهيز رابط الرسالة");
+    }
+    if (popup) popup.location.replace(handoffUrl);
+    else window.location.href = handoffUrl;
+    notify(safeChannel === "telegram"
+      ? "فُتحت مسودة تيليجرام خارجيًا — لم يُؤكد الإرسال"
+      : "فُتحت مسودة واتساب خارجيًا — لم يُؤكد الإرسال");
   }
 
   async function openWorkflowWhatsApp(detail) {
-    const popup = window.open("", "_blank");
-    if (popup) popup.opener = null;
-    const role = detail.recipientRole === "owner" ? "owner" : "client";
-    const contact = await workflowContact(detail, role);
-    const phone = whatsappPhone(contact && contact.phone);
-    if (!phone) {
-      if (popup) popup.close();
-      return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
-    }
-    const message = whatsappMessage(detail, role, contact || {});
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    if (popup) popup.location.replace(url);
-    else window.location.href = url;
+    return persistAndOpenMessageDraft(detail, "whatsapp");
+  }
+
+  async function openWorkflowTelegram(detail) {
+    return persistAndOpenMessageDraft(detail, "telegram");
   }
 
   let activeWorkflowDetail = null;
@@ -1035,12 +1232,45 @@
     const messageStage = activeWorkflowDetail.status === "closed" && activeWorkflowDetail.workflowStage === "closed" ? "completed" : activeWorkflowDetail.status;
     if (action === "whatsapp-client") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
     if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
+    if (action === "telegram-client") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
+    if (action === "telegram-owner") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
+  }
+
+  async function handleOperationPrimary(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "START");
+    notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
+    if (detail.operationType === "MISSING_DATA") {
+      const bankBtn = document.getElementById("openOpportunityBankBtn");
+      if (bankBtn) bankBtn.click();
+      return;
+    }
+    if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
+      const bankBtn = document.getElementById("openOpportunityBankBtn");
+      if (bankBtn) bankBtn.click();
+    }
+  }
+
+  async function handleOperationSecondary(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "COMPLETE");
+    notify("تم إتمام الإجراء");
+  }
+
+  async function handleOperationDismiss(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "DISMISS", detail.dismissalReason || "");
+    notify("تم صرف النظر عن الإجراء");
   }
 
   async function handlePrimaryAction(detail) {
     if (detail.recordType === "summary") {
       if (detail.targetId) window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: detail.targetId, main: detail.targetMain || "opportunities" } }));
       else notify("لا توجد فرصة جاهزة الآن");
+      return;
+    }
+    if (detail.recordType === "operation") {
+      await handleOperationPrimary(detail);
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {
@@ -1052,6 +1282,10 @@
 
   async function handleSecondaryAction(detail) {
     if (detail.recordType === "summary") return;
+    if (detail.recordType === "operation") {
+      await handleOperationSecondary(detail);
+      return;
+    }
     if (["match", "deal"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
@@ -1061,7 +1295,14 @@
   async function handleAction(event) {
     const detail = event.detail || {};
     try {
-      if (detail.actionMode === "whatsapp") await openWorkflowWhatsApp(detail);
+      if (detail.actionMode === "whatsapp" || detail.actionMode === "telegram") {
+        // Phase 7: Match/communication Operations may create drafts; never auto-send.
+        const channel = detail.actionMode === "telegram" || detail.channel === "telegram"
+          ? "telegram"
+          : "whatsapp";
+        if (channel === "telegram") await openWorkflowTelegram(detail);
+        else await openWorkflowWhatsApp(detail);
+      } else if (detail.actionMode === "dismiss") await handleOperationDismiss(detail);
       else if (detail.actionMode === "secondary") await handleSecondaryAction(detail);
       else await handlePrimaryAction(detail);
     } catch (error) {
@@ -1364,6 +1605,11 @@
     window.addEventListener("iaqar:operation-opened", event => {
       const detail = event.detail || {};
       if (["match", "deal"].includes(detail.recordType)) loadTimeline(detail.recordType, detail.recordId);
+      if (detail.recordType === "operation" && detail.recordId) {
+        postOperationAction(detail.recordId, "OPEN").catch((error) => {
+          console.warn("[iaqar] operation open", error);
+        });
+      }
     });
 
     if ("serviceWorker" in navigator) {
@@ -1413,6 +1659,8 @@
           stopLiveData();
           matchItems = [];
           dealItems = [];
+          intakeItems = [];
+          operationItems = [];
           analyticsItem = null;
           emitOperations();
         }
@@ -1424,6 +1672,8 @@
     const params = new URLSearchParams(location.search);
     const openMatch = params.get("openMatch");
     const openDeal = params.get("openDeal");
+    const openOperation = params.get("openOperation");
+    if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
     if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
     if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
   }

@@ -1,0 +1,37 @@
+IAQAR.AI — Phase 6 Cooperation validation
+
+Date: 2026-08-04
+Branch: cursor/phase6-cooperation-0d44
+
+Scope completed:
+- Worker POST /cooperation/lifecycle + /cooperation/scope-revoke
+- offices/{officeId}/auditLogs (Worker-trusted writes; members read-only)
+- Accept writes real minimum sharedOpportunities projections (contacts empty)
+- Revoke removes/invalidates sharedOpportunities (delete or revokedAt)
+- DISABLED mode enforced (blocks new requests and accepts)
+- currentOwningOfficeId stamped and preserved (no ownership transfer)
+- Five Arabic statuses: لم تُشارك / بانتظار الموافقة / تعاون نشط / رُفض الطلب / انتهى التعاون
+- Automated coverage: test/cooperation-phase6.test.mjs, emulator Phase 6 cases,
+  Worker Phase 6 cases
+- Acceptance: Test 11 PASS, Test 12 PASS
+- Decision: D-015
+
+Explicit limitation (do not claim):
+- SMART_AUTOMATIC does not auto-accept or recommend brokers (Q-4 unresolved)
+- createsAutomaticCooperation remains false
+- No invented performance scores or broker recommendations
+
+Boundaries (not started — do not begin Phase 7):
+- Phase 7 WhatsApp/Telegram smart messages and channel adapters
+- No persisted message drafts / send / delivery claims
+- No deals page, no bottom navigation, no home redesign
+- Constitution not weakened
+
+Docs updated:
+- docs/IMPLEMENTATION_PLAN.md — Phase 0–6 complete; stop before Phase 7
+- docs/ACCEPTANCE_TESTS.md — Tests 11–12 PASS with file pointers
+- docs/DATA_MODEL.md — auditLogs; currentOwningOfficeId; revokedAt; Phase 6 notes
+- docs/EVENT_WORKFLOW.md — cooperation accept/reject/revoke trusted Worker flow
+- docs/DECISIONS.md — D-015
+- docs/SYSTEM_ARCHITECTURE.md — Worker cooperation lifecycle routes
+- docs/VALIDATION-DIRECTIVE-PHASE6.txt — this file
