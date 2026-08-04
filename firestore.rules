@@ -105,15 +105,29 @@ service cloud.firestore {
     }
 
 
+    // Normalized office-name uniqueness. Create only when absent; update/delete
+    // only by the claiming office (or platform admin). Prevents race overwrites.
     match /officeNameClaims/{nameKey} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/officeNameClaims/$(nameKey))
         && request.resource.data.officeId is string
         && request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
+        && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey == nameKey
         && (isPlatformAdmin() || nameKey.size() >= 4)
         && (canManage(request.resource.data.officeId)
           || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+      allow update: if signedIn()
+        && resource.data.officeId == request.resource.data.officeId
+        && request.resource.data.officeId == resource.data.officeId
+        && request.resource.data.officeName is string
+        && request.resource.data.officeName.size() <= 80
+        && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey == nameKey
+        && (isPlatformAdmin() || nameKey.size() >= 4)
+        && (isPlatformAdmin() || canManage(resource.data.officeId));
       allow delete: if signedIn()
         && (isPlatformAdmin() || canManage(resource.data.officeId));
     }

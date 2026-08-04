@@ -25,20 +25,27 @@
   }
 
   function setStatus(text, connected = false) {
+    if (!elements.status) return;
     elements.status.textContent = text;
     elements.status.classList.toggle("connected", connected);
   }
 
   function openSettings() {
+    if (!elements.overlay) return;
     elements.overlay.hidden = false;
     document.body.style.overflow = "hidden";
     refreshStatus();
   }
 
   function closeSettings() {
+    if (!elements.overlay) return;
     elements.overlay.hidden = true;
     document.body.style.overflow = "";
   }
+
+  // Shared entry point: logo and cover open Office Settings (no standalone settings button).
+  window.IAQAR = window.IAQAR || {};
+  window.IAQAR.openOfficeSettings = openSettings;
 
   async function fetchJson(path, options = {}) {
     let idToken = "";
@@ -63,7 +70,7 @@
 
   async function refreshStatus() {
     setStatus("جارٍ التحقق");
-    elements.connectBtn.disabled = true;
+    if (elements.connectBtn) elements.connectBtn.disabled = true;
 
     try {
       config = await fetchJson(`/meta/config?officeId=${encodeURIComponent(officeId())}`);
@@ -71,21 +78,33 @@
 
       if (status.connected) {
         setStatus("مربوط", true);
-        elements.connectBtn.textContent = "واتساب أعمال مربوط";
-        elements.connectBtn.disabled = true;
-        elements.note.textContent = status.displayPhoneNumber
-          ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
-          : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        if (elements.connectBtn) {
+          elements.connectBtn.textContent = "واتساب أعمال مربوط";
+          elements.connectBtn.disabled = true;
+        }
+        if (elements.note) {
+          elements.note.textContent = status.displayPhoneNumber
+            ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
+            : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        }
       } else if (config.enabled) {
         setStatus("غير مربوط");
-        elements.connectBtn.textContent = "ربط واتساب أعمال";
-        elements.connectBtn.disabled = false;
-        elements.note.textContent = "اضغط للربط الرسمي مع Meta. يستقبل الموقع الرسائل الخاصة الواردة فقط.";
+        if (elements.connectBtn) {
+          elements.connectBtn.textContent = "ربط واتساب أعمال";
+          elements.connectBtn.disabled = false;
+        }
+        if (elements.note) {
+          elements.note.textContent = "اضغط للربط الرسمي مع Meta. يستقبل الموقع الرسائل الخاصة الواردة فقط.";
+        }
       } else {
         setStatus("يحتاج إعداد Meta");
-        elements.connectBtn.textContent = "ربط واتساب أعمال";
-        elements.connectBtn.disabled = true;
-        elements.note.textContent = "الزر جاهز، ويتفعّل بعد إدخال App ID وConfiguration ID من منصة Meta.";
+        if (elements.connectBtn) {
+          elements.connectBtn.textContent = "ربط واتساب أعمال";
+          elements.connectBtn.disabled = true;
+        }
+        if (elements.note) {
+          elements.note.textContent = "الزر جاهز، ويتفعّل بعد إدخال App ID وConfiguration ID من منصة Meta.";
+        }
       }
 
       updateUsage(status.usage || {});
@@ -93,17 +112,22 @@
       const message = String(error && error.message || "تعذر التحقق");
       if (message.includes("سجل دخول")) {
         setStatus("يتطلب تسجيل الدخول");
-        elements.note.textContent = "سجل دخول مدير المكتب لعرض حالة الربط أو ربط واتساب أعمال.";
+        if (elements.note) {
+          elements.note.textContent = "سجل دخول مدير المكتب لعرض حالة الربط أو ربط واتساب أعمال.";
+        }
       } else {
         setStatus("بانتظار إعداد Meta");
-        elements.note.textContent = "ربط واتساب الرسمي غير مفعّل حاليًا. إعدادات المكتب وبقية المنصة تعمل بصورة مستقلة.";
+        if (elements.note) {
+          elements.note.textContent = "ربط واتساب الرسمي غير مفعّل حاليًا. إعدادات المكتب وبقية المنصة تعمل بصورة مستقلة.";
+        }
       }
-      elements.connectBtn.disabled = true;
+      if (elements.connectBtn) elements.connectBtn.disabled = true;
       updateUsage({});
     }
   }
 
   function updateUsage(usage) {
+    if (!elements.usagePercent || !elements.usageFill || !elements.usageCaption) return;
     const percent = Math.max(0, Math.min(100, Number(usage.percent || 0)));
     elements.usagePercent.textContent = `${Math.round(percent)}%`;
     elements.usageFill.style.width = `${percent}%`;
@@ -221,8 +245,20 @@
     }
   }
 
+  function bindSettingsOpener(node) {
+    if (!node) return;
+    node.addEventListener("click", openSettings);
+    node.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openSettings();
+      }
+    });
+  }
+
   function init() {
     elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.coverBtn = document.getElementById("officeCoverSettingsBtn");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -232,17 +268,18 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.overlay) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
-    elements.closeBtn.addEventListener("click", closeSettings);
+    bindSettingsOpener(elements.openBtn);
+    bindSettingsOpener(elements.coverBtn);
+    if (elements.closeBtn) elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();
     });
     document.addEventListener("keydown", event => {
       if (event.key === "Escape" && !elements.overlay.hidden) closeSettings();
     });
-    elements.connectBtn.addEventListener("click", startEmbeddedSignup);
+    if (elements.connectBtn) elements.connectBtn.addEventListener("click", startEmbeddedSignup);
 
     listenForSignupEvents();
   }

@@ -9,6 +9,8 @@
   });
   const SPECIALTY_KEYS = Object.freeze(Object.keys(SPECIALTY_LABELS));
   const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  const Policy = () => (window.IAQAR && window.IAQAR.OfficePolicy) || null;
+  const Design = () => (window.IAQAR && window.IAQAR.OfficeDesign) || null;
 
   const defaults = {
     officeName: "مكتب عقاري",
@@ -18,13 +20,25 @@
     licenseNumber: "",
     city: "المدينة المنورة",
     specialties: [],
+    logoUrl: "",
     coverUrl: "",
-    publicSlug: ""
+    whatsappCoverUrl: "",
+    publicSlug: "",
+    cooperationMode: "APPROVAL_REQUIRED",
+    notificationPreferences: {
+      match: true,
+      ownerCustomer: true,
+      cooperation: true,
+      message: true,
+      appointment: true,
+      system: true
+    }
   };
 
   const el = {};
   let current = { ...defaults };
   let authClaims = {};
+  let cropState = null;
 
   function officeRuntime() {
     return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -60,80 +74,69 @@
   }
 
   function safeText(value, fallback = "") {
+    const policy = Policy();
+    if (policy) return policy.safeText(value, fallback);
     return String(value == null ? fallback : value).trim();
   }
 
-
-  function publicSlugBase(value) {
-    const asciiName = safeText(value)
-      .normalize("NFKC")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 36);
-    return asciiName || "maktab";
+  function normalizeOfficeNameKey(value) {
+    const policy = Policy();
+    if (policy) return policy.normalizeOfficeNameKey(value);
+    return safeText(value).normalize("NFKC").toLocaleLowerCase("en-US").replace(/[\s._-]+/g, "").replace(/[^A-Za-z0-9\u0600-\u06FF]/g, "");
   }
 
-  function shortHash(value) {
-    let hash = 2166136261;
-    for (const char of String(value || "")) {
-      hash ^= char.codePointAt(0);
-      hash = Math.imul(hash, 16777619);
+  function validateOfficeName(value) {
+    const policy = Policy();
+    if (policy) return policy.validateOfficeName(value, { isPlatformAdmin: isPlatformAdmin() });
+    const name = safeText(value);
+    if (!name) return "اكتب اسم المكتب";
+    if (name.replace(/[^A-Za-z0-9\u0600-\u06FF]/g, "").length < 4 && !isPlatformAdmin()) {
+      return "اسم المكتب يجب أن يكون 4 أحرف على الأقل؛ الأسماء الأقصر محجوزة لإدارة المنصة";
     }
-    return (hash >>> 0).toString(36).slice(0, 6);
+    return "";
   }
 
   function buildPublicSlug(name) {
-    return `${publicSlugBase(name)}-${shortHash(officeId())}`.slice(0, 64);
+    const policy = Policy();
+    if (policy) return policy.buildPublicSlug(name, officeId());
+    return `maktab-${officeId()}`.slice(0, 64);
   }
 
   function normalizedSpecialties(value) {
     const list = Array.isArray(value) ? value : [];
-    const cleanList = [...new Set(list.filter(item => SPECIALTY_KEYS.includes(item)))];
-    return cleanList;
+    return [...new Set(list.filter(item => SPECIALTY_KEYS.includes(item)))];
   }
 
-  function significantCharacterCount(value) {
-    const matches = safeText(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
-    return matches ? matches.length : 0;
+  function normalizeCooperationMode(value) {
+    const policy = Policy();
+    if (policy) return policy.normalizeCooperationMode(value);
+    return "APPROVAL_REQUIRED";
   }
 
-  function allowedOfficeName(value) {
-    const name = safeText(value);
-    return /^[A-Za-z0-9\u0600-\u06FF\s._-]+$/.test(name);
-  }
-
-  function normalizeOfficeNameKey(value) {
-    return safeText(value)
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[\s._-]+/g, "")
-      .replace(/[^A-Za-z0-9\u0600-\u06FF]/g, "");
-  }
-
-  function validateOfficeName(value) {
-    const name = safeText(value);
-    if (!name) return "اكتب اسم المكتب";
-    if (!allowedOfficeName(name)) return "اسم المكتب يقبل العربية أو الإنجليزية والأرقام والمسافات فقط";
-    if (!isPlatformAdmin() && significantCharacterCount(name) < 4) {
-      return "اسم المكتب يجب أن يكون 4 أحرف على الأقل؛ الأسماء الأقصر محجوزة لإدارة المنصة";
-    }
-    if (significantCharacterCount(name) > 80) return "اسم المكتب طويل جدًا";
-    return "";
+  function normalizeNotificationPreferences(value) {
+    const policy = Policy();
+    if (policy) return policy.normalizeNotificationPreferences(value);
+    return { ...defaults.notificationPreferences };
   }
 
   function clean(data) {
+    const phone = safeText(data.phone).replace(/[^0-9+]/g, "").slice(0, 20);
+    const whatsapp = safeText(data.whatsapp || phone).replace(/[^0-9+]/g, "").slice(0, 20);
     return {
       officeName: safeText(data.officeName, defaults.officeName).slice(0, 80),
       officeNameKey: normalizeOfficeNameKey(data.officeName || defaults.officeName).slice(0, 100),
       brokerName: safeText(data.brokerName, defaults.brokerName).slice(0, 80),
-      phone: safeText(data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
-      whatsapp: safeText(data.whatsapp || data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
+      phone,
+      whatsapp: whatsapp || phone,
       licenseNumber: safeText(data.licenseNumber, defaults.licenseNumber).replace(/[^0-9]/g, "").slice(0, 20),
       city: safeText(data.city, defaults.city).slice(0, 60),
       specialties: normalizedSpecialties(data.specialties),
+      logoUrl: safeText(data.logoUrl).slice(0, 2000),
       coverUrl: safeText(data.coverUrl).slice(0, 2000),
-      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
+      whatsappCoverUrl: safeText(data.whatsappCoverUrl).slice(0, 2000),
+      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64),
+      cooperationMode: normalizeCooperationMode(data.cooperationMode),
+      notificationPreferences: normalizeNotificationPreferences(data.notificationPreferences)
     };
   }
 
@@ -162,20 +165,64 @@
     });
   }
 
+  function readNotificationPreferencesFromForm() {
+    const prefs = {};
+    const map = el.notificationPrefs || {};
+    Object.keys(defaults.notificationPreferences).forEach(key => {
+      prefs[key] = map[key] ? map[key].checked : true;
+    });
+    return normalizeNotificationPreferences(prefs);
+  }
+
+  function writeNotificationPreferencesToForm(prefs) {
+    const normalized = normalizeNotificationPreferences(prefs);
+    Object.keys(normalized).forEach(key => {
+      if (el.notificationPrefs && el.notificationPrefs[key]) {
+        el.notificationPrefs[key].checked = normalized[key] !== false;
+      }
+    });
+  }
+
+  function setPreview(img, url, emptyNode) {
+    if (!img) return;
+    if (url) {
+      img.src = url;
+      img.hidden = false;
+      if (emptyNode) emptyNode.hidden = true;
+    } else {
+      img.removeAttribute("src");
+      img.hidden = true;
+      if (emptyNode) emptyNode.hidden = false;
+    }
+  }
+
+  function applyHomeVisuals() {
+    const logoImg = document.getElementById("officeDisplayLogo");
+    if (logoImg && current.logoUrl) logoImg.src = current.logoUrl;
+
+    const coverImg = document.getElementById("officeDisplayCover");
+    const coverEmpty = document.getElementById("officeCoverPlaceholder");
+    setPreview(coverImg, current.coverUrl, coverEmpty);
+
+    const qrHost = document.getElementById("officeQrPreview");
+    if (qrHost) renderQrInto(qrHost, officeLink());
+  }
+
   function apply(data) {
     current = clean({ ...defaults, ...(data || {}) });
-    el.officeName.value = current.officeName;
-    el.brokerName.value = current.brokerName;
-    el.phone.value = current.phone;
-    el.whatsapp.value = current.whatsapp || current.phone;
-    el.license.value = current.licenseNumber;
-    el.city.value = current.city;
-    el.link.value = officeLink();
+    if (el.officeName) el.officeName.value = current.officeName;
+    if (el.brokerName) el.brokerName.value = current.brokerName;
+    if (el.phone) el.phone.value = current.phone;
+    if (el.license) el.license.value = current.licenseNumber;
+    if (el.city) el.city.value = current.city;
+    if (el.link) el.link.value = officeLink();
+    if (el.cooperationMode) el.cooperationMode.value = current.cooperationMode;
     writeSpecialtiesToForm(current.specialties);
-    if (el.coverPreview) {
-      el.coverPreview.src = current.coverUrl || "";
-      el.coverPreview.hidden = !current.coverUrl;
-    }
+    writeNotificationPreferencesToForm(current.notificationPreferences);
+
+    setPreview(el.logoPreview, current.logoUrl, el.logoEmpty);
+    setPreview(el.coverPreview, current.coverUrl, el.coverEmpty);
+    setPreview(el.whatsappCoverPreview, current.whatsappCoverUrl, el.whatsappCoverEmpty);
 
     const map = [
       ["officeDisplayName", current.officeName],
@@ -190,6 +237,11 @@
     });
     const specialtyRow = document.querySelector(".specialty-status-row");
     if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
+
+    applyHomeVisuals();
+    window.IAQAR = window.IAQAR || {};
+    window.IAQAR.officeProfile = { ...current, officeId: officeId() };
+    window.dispatchEvent(new CustomEvent("iaqar:office-profile", { detail: window.IAQAR.officeProfile }));
   }
 
   function loadLocal() {
@@ -223,16 +275,20 @@
           licenseNumber: data.licenseNumber || data.falLicense,
           city: data.city,
           specialties: data.specialties,
+          logoUrl: data.logoUrl,
           coverUrl: data.coverUrl,
-          publicSlug: data.publicSlug
+          whatsappCoverUrl: data.whatsappCoverUrl,
+          publicSlug: data.publicSlug,
+          cooperationMode: data.cooperationMode,
+          notificationPreferences: data.notificationPreferences
         });
         saveLocal(current);
       }
-      el.note.textContent = "البيانات متزامنة مع Firestore لهذا المكتب.";
+      if (el.note) el.note.textContent = "البيانات متزامنة مع Firestore لهذا المكتب.";
       return true;
     } catch (error) {
       console.warn("[iaqar] office settings load failed", error);
-      el.note.textContent = "تم عرض البيانات المحفوظة على الجهاز. يلزم حساب مدير مخوّل للمزامنة.";
+      if (el.note) el.note.textContent = "تم عرض البيانات المحفوظة على الجهاز. يلزم حساب مدير مخوّل للمزامنة.";
       return false;
     }
   }
@@ -265,6 +321,7 @@
         officeId: officeId(),
         ownerUid: user.uid,
         officeName: data.officeName,
+        officeNameKey: data.officeNameKey,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
 
@@ -285,11 +342,148 @@
         licenseNumber: data.licenseNumber,
         city: data.city,
         specialties: data.specialties,
+        logoUrl: data.logoUrl,
         coverUrl: data.coverUrl,
+        whatsappCoverUrl: data.whatsappCoverUrl,
         publicSlug: data.publicSlug,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     });
+  }
+
+  async function uploadOfficeMedia(file, kind) {
+    const design = Design();
+    const validationError = design ? design.validateImageFile(file) : "";
+    if (validationError) throw new Error(validationError);
+    const user = authUser();
+    if (!user) throw new Error("سجل دخول مدير المكتب قبل رفع الصورة");
+    const idToken = await user.getIdToken();
+    const path = kind === "logo"
+      ? "/media/office-logo"
+      : kind === "whatsapp-cover"
+        ? "/media/office-whatsapp-cover"
+        : "/media/office-cover";
+    const response = await fetch(`${WORKER_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type,
+        Authorization: `Bearer ${idToken}`,
+        "X-Office-Id": officeId()
+      },
+      body: file
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || "تعذر رفع صورة المكتب");
+    return result.mediaUrl || result.coverUrl || result.logoUrl || result.whatsappCoverUrl || "";
+  }
+
+  function openCropper(file, kind) {
+    const design = Design();
+    const error = design ? design.validateImageFile(file) : "";
+    if (error) {
+      toast(error);
+      return;
+    }
+    const overlay = document.getElementById("officeImageCrop");
+    const canvas = document.getElementById("officeImageCropCanvas");
+    const title = document.getElementById("officeImageCropTitle");
+    if (!overlay || !canvas) {
+      // Fallback: use file directly when crop UI unavailable.
+      cropState = { file, kind, ratio: design ? design.cropRatioForKind(kind) : 16 / 9 };
+      applyCroppedBlob(file);
+      return;
+    }
+    const ratio = design ? design.cropRatioForKind(kind) : (kind === "logo" ? 1 : 1.91);
+    const labels = (design && design.OFFICE_IMAGE_DESIGN.labels) || {};
+    if (title) {
+      title.textContent = kind === "logo"
+        ? (labels.logo || "قص الشعار")
+        : kind === "whatsapp-cover"
+          ? (labels.whatsappCover || "قص ترويسة واتساب")
+          : (labels.displayCover || "قص صورة العرض");
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      cropState = { file, kind, ratio, image, objectUrl: url };
+      drawCropPreview();
+      overlay.hidden = false;
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      toast("تعذر قراءة الصورة");
+    };
+    image.src = url;
+  }
+
+  function drawCropPreview() {
+    if (!cropState || !cropState.image) return;
+    const canvas = document.getElementById("officeImageCropCanvas");
+    if (!canvas) return;
+    const design = Design();
+    const rect = design
+      ? design.computeCoverCropRect(cropState.image.naturalWidth, cropState.image.naturalHeight, cropState.ratio)
+      : { sx: 0, sy: 0, sw: cropState.image.naturalWidth, sh: cropState.image.naturalHeight };
+    const maxW = 320;
+    const drawW = maxW;
+    const drawH = Math.max(80, Math.round(drawW / cropState.ratio));
+    canvas.width = drawW;
+    canvas.height = drawH;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#f4f8f6";
+    ctx.fillRect(0, 0, drawW, drawH);
+    ctx.drawImage(cropState.image, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, drawW, drawH);
+    cropState.rect = rect;
+  }
+
+  async function applyCroppedBlob(directFile) {
+    try {
+      let blob = directFile;
+      if (!blob && cropState && cropState.image && cropState.rect) {
+        const out = document.createElement("canvas");
+        const targetW = cropState.kind === "logo" ? 512 : 1200;
+        const targetH = Math.round(targetW / cropState.ratio);
+        out.width = targetW;
+        out.height = targetH;
+        const ctx = out.getContext("2d");
+        ctx.drawImage(
+          cropState.image,
+          cropState.rect.sx, cropState.rect.sy, cropState.rect.sw, cropState.rect.sh,
+          0, 0, targetW, targetH
+        );
+        blob = await new Promise(resolve => out.toBlob(resolve, "image/jpeg", 0.92));
+      }
+      if (!blob || !cropState) return;
+      const file = blob instanceof File
+        ? blob
+        : new File([blob], `${cropState.kind}.jpg`, { type: blob.type || "image/jpeg" });
+      const previewUrl = URL.createObjectURL(file);
+      if (cropState.kind === "logo") {
+        current.logoUrl = previewUrl;
+        setPreview(el.logoPreview, previewUrl, el.logoEmpty);
+        el._pendingLogoFile = file;
+      } else if (cropState.kind === "whatsapp-cover") {
+        current.whatsappCoverUrl = previewUrl;
+        setPreview(el.whatsappCoverPreview, previewUrl, el.whatsappCoverEmpty);
+        el._pendingWhatsappCoverFile = file;
+      } else {
+        current.coverUrl = previewUrl;
+        setPreview(el.coverPreview, previewUrl, el.coverEmpty);
+        el._pendingCoverFile = file;
+      }
+      closeCropper();
+    } catch (error) {
+      console.warn("[iaqar] crop", error);
+      toast("تعذر قص الصورة");
+    }
+  }
+
+  function closeCropper() {
+    const overlay = document.getElementById("officeImageCrop");
+    if (overlay) overlay.hidden = true;
+    if (cropState && cropState.objectUrl) URL.revokeObjectURL(cropState.objectUrl);
+    // keep pending kind/file refs on el; clear image only
+    cropState = cropState ? { kind: cropState.kind } : null;
   }
 
   async function onSave(event) {
@@ -305,93 +499,105 @@
     el.officeName.setCustomValidity("");
 
     const specialties = readSpecialtiesFromForm();
-
+    let logoUrl = current.logoUrl || "";
     let coverUrl = current.coverUrl || "";
-    const coverFile = el.cover && el.cover.files ? el.cover.files[0] : null;
-    if (coverFile) {
-      if (!/^image\/(jpeg|png|webp)$/.test(coverFile.type) || coverFile.size > 10 * 1024 * 1024) {
-        toast("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
-        return;
-      }
-      const user = authUser();
-      if (!user) {
-        toast("سجل دخول مدير المكتب قبل رفع الصورة");
-        return;
-      }
-      const idToken = await user.getIdToken();
-      const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": coverFile.type,
-          "Authorization": `Bearer ${idToken}`,
-          "X-Office-Id": officeId()
-        },
-        body: coverFile
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.coverUrl) {
-        toast(result.message || "تعذر رفع صورة المكتب");
-        return;
-      }
-      coverUrl = result.coverUrl;
-    }
-
-    const data = clean({
-      officeName: el.officeName.value,
-      brokerName: el.brokerName.value,
-      phone: el.phone.value,
-      whatsapp: el.whatsapp.value,
-      licenseNumber: el.license.value,
-      city: el.city.value,
-      specialties,
-      coverUrl,
-      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value)
-    });
-
-    if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
-      toast("أكمل بيانات المكتب المطلوبة");
-      return;
-    }
+    let whatsappCoverUrl = current.whatsappCoverUrl || "";
 
     el.save.disabled = true;
     el.save.textContent = "جارٍ الحفظ...";
+    setSettingsStatus("loading", "جارٍ حفظ إعدادات المكتب...");
 
-    const runtime = officeRuntime();
-    const user = authUser();
-    let synced = false;
+    try {
+      if (el._pendingLogoFile) {
+        logoUrl = await uploadOfficeMedia(el._pendingLogoFile, "logo");
+        el._pendingLogoFile = null;
+      }
+      if (el._pendingCoverFile) {
+        coverUrl = await uploadOfficeMedia(el._pendingCoverFile, "cover");
+        el._pendingCoverFile = null;
+      }
+      if (el._pendingWhatsappCoverFile) {
+        whatsappCoverUrl = await uploadOfficeMedia(el._pendingWhatsappCoverFile, "whatsapp-cover");
+        el._pendingWhatsappCoverFile = null;
+      }
 
-    if (runtime && runtime.db && user) {
-      try {
-        await reserveOfficeName(runtime, user, data);
-        synced = true;
-      } catch (error) {
-        console.warn("[iaqar] office settings sync failed", error);
-        if (error && error.message === "OFFICE_NAME_TAKEN") {
-          const message = "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر";
-          el.officeName.setCustomValidity(message);
-          el.officeName.reportValidity();
-          toast(message);
-          el.save.disabled = false;
-          el.save.textContent = "حفظ التعديلات";
-          return;
+      const mobile = safeText(el.phone.value).replace(/[^0-9+]/g, "");
+      const data = clean({
+        officeName: el.officeName.value,
+        brokerName: el.brokerName.value,
+        phone: mobile,
+        whatsapp: mobile,
+        licenseNumber: el.license.value,
+        city: el.city.value,
+        specialties,
+        logoUrl: logoUrl.startsWith("blob:") ? (current.logoUrl || "") : logoUrl,
+        coverUrl: coverUrl.startsWith("blob:") ? (current.coverUrl || "") : coverUrl,
+        whatsappCoverUrl: whatsappCoverUrl.startsWith("blob:") ? (current.whatsappCoverUrl || "") : whatsappCoverUrl,
+        publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value),
+        cooperationMode: el.cooperationMode ? el.cooperationMode.value : current.cooperationMode,
+        notificationPreferences: readNotificationPreferencesFromForm()
+      });
+
+      // Avoid persisting blob: preview URLs
+      if (data.logoUrl.startsWith("blob:")) data.logoUrl = "";
+      if (data.coverUrl.startsWith("blob:")) data.coverUrl = "";
+      if (data.whatsappCoverUrl.startsWith("blob:")) data.whatsappCoverUrl = "";
+
+      if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
+        toast("أكمل بيانات المكتب المطلوبة");
+        setSettingsStatus("error", "أكمل بيانات المكتب المطلوبة");
+        return;
+      }
+
+      const runtime = officeRuntime();
+      const user = authUser();
+      let synced = false;
+
+      if (runtime && runtime.db && user) {
+        try {
+          await reserveOfficeName(runtime, user, data);
+          synced = true;
+        } catch (error) {
+          console.warn("[iaqar] office settings sync failed", error);
+          if (error && error.message === "OFFICE_NAME_TAKEN") {
+            const message = "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر";
+            el.officeName.setCustomValidity(message);
+            el.officeName.reportValidity();
+            toast(message);
+            setSettingsStatus("error", message);
+            return;
+          }
         }
       }
-    }
 
-    if (!synced) {
-      el.note.textContent = "لم يتم الحفظ: يلزم حساب مدير مخوّل لهذا المكتب.";
-      toast("غير مصرح لك بتعديل إعدادات المكتب");
+      if (!synced) {
+        if (el.note) el.note.textContent = "لم يتم الحفظ: يلزم حساب مدير مخوّل لهذا المكتب.";
+        toast("غير مصرح لك بتعديل إعدادات المكتب");
+        setSettingsStatus("error", "غير مصرح لك بتعديل إعدادات المكتب");
+        return;
+      }
+
+      apply(data);
+      saveLocal(data);
+      if (el.note) el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
+      toast("تم حفظ إعدادات المكتب");
+      setSettingsStatus("success", "تم حفظ إعدادات المكتب");
+    } catch (error) {
+      console.warn("[iaqar] office settings save", error);
+      toast(error.message || "تعذر حفظ الإعدادات");
+      setSettingsStatus("error", error.message || "تعذر حفظ الإعدادات");
+    } finally {
       el.save.disabled = false;
       el.save.textContent = "حفظ التعديلات";
-      return;
     }
+  }
 
-    apply(data);
-    saveLocal(data);
-    el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
-    toast("تم حفظ إعدادات المكتب");
-    el.save.disabled = false;
-    el.save.textContent = "حفظ التعديلات";
+  function setSettingsStatus(kind, message) {
+    const node = document.getElementById("officeSettingsStatus");
+    if (!node) return;
+    node.hidden = !message;
+    node.textContent = message || "";
+    node.dataset.state = kind || "";
   }
 
   async function onLogout() {
@@ -419,15 +625,54 @@
     }
   }
 
+  function previewOfficeLink() {
+    const link = officeLink();
+    window.open(link, "_blank", "noopener,noreferrer");
+  }
+
+  function renderQrInto(host, text) {
+    if (!host) return;
+    host.innerHTML = "";
+    if (typeof window.qrcode !== "function") {
+      host.textContent = "رمز QR غير متاح";
+      return;
+    }
+    try {
+      const qr = window.qrcode(0, "M");
+      qr.addData(text);
+      qr.make();
+      const size = 140;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", "رمز QR لرابط المكتب");
+      const ctx = canvas.getContext("2d");
+      const modules = qr.getModuleCount();
+      const cell = size / modules;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = "#073f35";
+      for (let row = 0; row < modules; row += 1) {
+        for (let col = 0; col < modules; col += 1) {
+          if (!qr.isDark(row, col)) continue;
+          ctx.fillRect(Math.floor(col * cell), Math.floor(row * cell), Math.ceil(cell), Math.ceil(cell));
+        }
+      }
+      host.appendChild(canvas);
+    } catch (error) {
+      host.textContent = "تعذر إنشاء رمز QR";
+    }
+  }
+
   function officeMissingFields() {
     const fields = [
       ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
       ["اسم الوسيط", current.brokerName && current.brokerName !== defaults.brokerName],
       ["رخصة فال", current.licenseNumber],
-      ["رقم التواصل", current.phone],
-      ["رقم واتساب", current.whatsapp],
+      ["رقم الجوال", current.phone],
       ["المدينة", current.city],
-      ["صورة المكتب أو الترويسة", current.coverUrl]
+      ["صورة العرض", current.coverUrl]
     ];
     return fields.filter(([, valid]) => !valid).map(([label]) => label);
   }
@@ -512,10 +757,10 @@
     ctx.fillStyle = "#087064";
     ctx.fillRect(0, 0, canvas.width, 190);
 
-    const logoNode = document.querySelector(".site-logo img,.brand-logo img,.office-logo img");
-    if (logoNode && logoNode.src) {
+    const logoSrc = current.logoUrl || (document.getElementById("officeDisplayLogo") || {}).src;
+    if (logoSrc) {
       try {
-        const logo = await loadImage(logoNode.src);
+        const logo = await loadImage(logoSrc);
         ctx.fillStyle = "#ffffff";
         roundedRect(ctx, 820, 28, 175, 132, 24);
         ctx.fill();
@@ -532,7 +777,8 @@
     ctx.fillStyle = "#d7ece7";
     ctx.fillText("بطاقة المكتب العقاري", 770, 126);
 
-    const cover = await loadImage(current.coverUrl);
+    const coverSrc = current.whatsappCoverUrl || current.coverUrl;
+    const cover = await loadImage(coverSrc);
     drawImageCover(ctx, cover, 60, 225, 960, 420, 32);
 
     ctx.fillStyle = "#ffffff";
@@ -550,8 +796,7 @@
     const rows = [
       ["رخصة فال", current.licenseNumber],
       ["المدينة", current.city],
-      ["التواصل", current.phone],
-      ["واتساب", current.whatsapp]
+      ["الجوال", current.phone]
     ];
     let rowY = 900;
     for (const [label, value] of rows) {
@@ -585,7 +830,7 @@
     if (current.publicSlug) return current.publicSlug;
     const slug = buildPublicSlug(current.officeName);
     current = clean({ ...current, publicSlug: slug });
-    el.link.value = officeLink();
+    if (el.link) el.link.value = officeLink();
     const runtime = officeRuntime();
     const user = authUser();
     if (runtime && runtime.db && user) {
@@ -616,8 +861,7 @@
         `الوسيط: ${current.brokerName}`,
         `رخصة فال: ${current.licenseNumber}`,
         `المدينة: ${current.city}`,
-        `التواصل: ${current.phone}`,
-        `واتساب: ${current.whatsapp}`,
+        `الجوال: ${current.phone}`,
         "زيارة المكتب والتسجيل:",
         link
       ].join("\n");
@@ -650,11 +894,128 @@
     }
   }
 
+  function cooperationStatusLabel(value) {
+    const status = safeText(value).toLowerCase();
+    if (status === "active" || status === "accepted" || status === "تعاون نشط") return "تعاون نشط";
+    if (status === "pending" || status === "بانتظار الموافقة") return "بانتظار الموافقة";
+    if (status === "rejected" || status === "رُفض الطلب") return "رُفض الطلب";
+    if (status === "ended" || status === "انتهى التعاون") return "انتهى التعاون";
+    return "لم تُشارك";
+  }
+
+  async function openOpportunityBank() {
+    const overlay = document.getElementById("opportunityBank");
+    const list = document.getElementById("opportunityBankList");
+    const empty = document.getElementById("opportunityBankEmpty");
+    const status = document.getElementById("opportunityBankStatus");
+    if (!overlay || !list) return;
+    overlay.hidden = false;
+    document.body.style.overflow = "hidden";
+    list.innerHTML = "";
+    if (empty) empty.hidden = true;
+    if (status) {
+      status.hidden = false;
+      status.textContent = "جارٍ تحميل بنك الفرص...";
+      status.dataset.state = "loading";
+    }
+
+    const runtime = officeRuntime();
+    const user = authUser();
+    if (!runtime || !runtime.db || !user || officeId() === "platform") {
+      if (status) {
+        status.textContent = "سجل دخول المكتب لعرض بنك الفرص الخاص به.";
+        status.dataset.state = "error";
+      }
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = "لا تتوفر فرص للعرض.";
+      }
+      return;
+    }
+
+    try {
+      const snap = await runtime.db.collection("offices").doc(officeId())
+        .collection("opportunities").orderBy("createdAt", "desc").limit(50).get();
+      if (status) status.hidden = true;
+      if (snap.empty) {
+        if (empty) {
+          empty.hidden = false;
+          empty.textContent = "لا توجد فرص محفوظة في بنك هذا المكتب بعد.";
+        }
+        return;
+      }
+      snap.docs.forEach(doc => {
+        const data = doc.data() || {};
+        if (data.officeId && data.officeId !== officeId()) return;
+        const item = document.createElement("article");
+        item.className = "opportunity-bank-item";
+        const created = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : null;
+        const dateText = created
+          ? created.toLocaleDateString("ar-SA")
+          : "—";
+        item.innerHTML = `
+          <h4>${escapeHtml(data.propertyType || data.kind || "فرصة عقارية")}</h4>
+          <p>${escapeHtml([data.city, data.district].filter(Boolean).join(" — ") || "بدون موقع")}</p>
+          <p>${escapeHtml(data.price ? String(data.price) : (data.budget || "بدون سعر"))}</p>
+          <div class="opportunity-bank-meta">
+            <span>تاريخ الإضافة: ${escapeHtml(dateText)}</span>
+            <span>التعاون: ${escapeHtml(cooperationStatusLabel(data.cooperationStatus || data.cooperationState))}</span>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+      if (!list.children.length && empty) {
+        empty.hidden = false;
+        empty.textContent = "لا توجد فرص محفوظة في بنك هذا المكتب بعد.";
+      }
+    } catch (error) {
+      console.warn("[iaqar] opportunity bank", error);
+      if (status) {
+        status.hidden = false;
+        status.textContent = "تعذر تحميل بنك الفرص الآن.";
+        status.dataset.state = "error";
+      }
+    }
+  }
+
+  function closeOpportunityBank() {
+    const overlay = document.getElementById("opportunityBank");
+    if (overlay) overlay.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function clearImage(kind) {
+    if (kind === "logo") {
+      current.logoUrl = "";
+      el._pendingLogoFile = null;
+      if (el.logo) el.logo.value = "";
+      setPreview(el.logoPreview, "", el.logoEmpty);
+    } else if (kind === "whatsapp-cover") {
+      current.whatsappCoverUrl = "";
+      el._pendingWhatsappCoverFile = null;
+      if (el.whatsappCover) el.whatsappCover.value = "";
+      setPreview(el.whatsappCoverPreview, "", el.whatsappCoverEmpty);
+    } else {
+      current.coverUrl = "";
+      el._pendingCoverFile = null;
+      if (el.cover) el.cover.value = "";
+      setPreview(el.coverPreview, "", el.coverEmpty);
+    }
+  }
+
   async function updateAuthState(user) {
     authClaims = {};
-    el.logout.disabled = !user;
+    if (el.logout) el.logout.disabled = !user;
     if (!user) {
-      el.note.textContent = "البيانات محفوظة على هذا الجهاز. سجل دخول مدير المكتب للمزامنة مع Firestore.";
+      if (el.note) el.note.textContent = "البيانات محفوظة على هذا الجهاز. سجل دخول مدير المكتب للمزامنة مع Firestore.";
       return;
     }
 
@@ -666,6 +1027,16 @@
     await loadFirestore();
   }
 
+  function bindImageInput(input, kind) {
+    if (!input) return;
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      openCropper(file, kind);
+      input.value = "";
+    });
+  }
+
   function init() {
     el.form = document.getElementById("officeProfileForm");
     if (!el.form) return;
@@ -673,32 +1044,78 @@
     el.officeName = document.getElementById("officeNameInput");
     el.brokerName = document.getElementById("brokerNameInput");
     el.phone = document.getElementById("officePhoneInput");
-    el.whatsapp = document.getElementById("officeWhatsappInput");
     el.license = document.getElementById("licenseNumberInput");
     el.city = document.getElementById("officeCityInput");
+    el.logo = document.getElementById("officeLogoInput");
+    el.logoPreview = document.getElementById("officeLogoPreview");
+    el.logoEmpty = document.getElementById("officeLogoEmpty");
     el.cover = document.getElementById("officeCoverInput");
     el.coverPreview = document.getElementById("officeCoverPreview");
+    el.coverEmpty = document.getElementById("officeCoverEmpty");
+    el.whatsappCover = document.getElementById("officeWhatsappCoverInput");
+    el.whatsappCoverPreview = document.getElementById("officeWhatsappCoverPreview");
+    el.whatsappCoverEmpty = document.getElementById("officeWhatsappCoverEmpty");
     el.link = document.getElementById("officeLinkInput");
     el.copy = document.getElementById("copyOfficeLinkBtn");
+    el.previewLink = document.getElementById("previewOfficeLinkBtn");
     el.save = document.getElementById("saveOfficeSettingsBtn");
     el.logout = document.getElementById("officeLogoutBtn");
     el.shareCard = document.getElementById("shareOfficeCardBtn");
     el.note = document.getElementById("officeSettingsNote");
+    el.cooperationMode = document.getElementById("cooperationModeSelect");
     el.specialties = document.querySelectorAll('input[name="officeSpecialty"]');
+    el.notificationPrefs = {
+      match: document.getElementById("notifyMatch"),
+      ownerCustomer: document.getElementById("notifyOwnerCustomer"),
+      cooperation: document.getElementById("notifyCooperation"),
+      message: document.getElementById("notifyMessage"),
+      appointment: document.getElementById("notifyAppointment"),
+      system: document.getElementById("notifySystem")
+    };
 
     apply(loadLocal() || defaults);
 
-    el.officeName.addEventListener("input", () => el.officeName.setCustomValidity(""));
+    if (el.officeName) el.officeName.addEventListener("input", () => el.officeName.setCustomValidity(""));
     el.form.addEventListener("submit", onSave);
-    el.copy.addEventListener("click", copyLink);
-    el.logout.addEventListener("click", onLogout);
+    if (el.copy) el.copy.addEventListener("click", copyLink);
+    if (el.previewLink) el.previewLink.addEventListener("click", previewOfficeLink);
+    if (el.logout) el.logout.addEventListener("click", onLogout);
     if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
-    if (el.cover) el.cover.addEventListener("change", () => {
-      const file = el.cover.files && el.cover.files[0];
-      if (!file || !el.coverPreview) return;
-      el.coverPreview.src = URL.createObjectURL(file);
-      el.coverPreview.hidden = false;
-    });
+
+    bindImageInput(el.logo, "logo");
+    bindImageInput(el.cover, "cover");
+    bindImageInput(el.whatsappCover, "whatsapp-cover");
+
+    const removeLogo = document.getElementById("removeOfficeLogoBtn");
+    const removeCover = document.getElementById("removeOfficeCoverBtn");
+    const removeWhatsapp = document.getElementById("removeOfficeWhatsappCoverBtn");
+    if (removeLogo) removeLogo.addEventListener("click", () => clearImage("logo"));
+    if (removeCover) removeCover.addEventListener("click", () => clearImage("cover"));
+    if (removeWhatsapp) removeWhatsapp.addEventListener("click", () => clearImage("whatsapp-cover"));
+
+    const cropApply = document.getElementById("officeImageCropApply");
+    const cropCancel = document.getElementById("officeImageCropCancel");
+    if (cropApply) cropApply.addEventListener("click", () => applyCroppedBlob());
+    if (cropCancel) cropCancel.addEventListener("click", closeCropper);
+
+    const bankEntry = document.getElementById("opportunityBankEntry");
+    if (bankEntry) {
+      bankEntry.addEventListener("click", openOpportunityBank);
+      bankEntry.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openOpportunityBank();
+        }
+      });
+    }
+    const bankClose = document.getElementById("opportunityBankClose");
+    if (bankClose) bankClose.addEventListener("click", closeOpportunityBank);
+    const bankOverlay = document.getElementById("opportunityBank");
+    if (bankOverlay) {
+      bankOverlay.addEventListener("click", event => {
+        if (event.target === bankOverlay) closeOpportunityBank();
+      });
+    }
 
     try {
       if (window.firebase && firebase.auth) firebase.auth().onAuthStateChanged(updateAuthState);

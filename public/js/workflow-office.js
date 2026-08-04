@@ -369,7 +369,19 @@
     return String(value || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
   }
 
+  function matchNotificationsAllowed() {
+    const policy = window.IAQAR && window.IAQAR.OfficePolicy;
+    const prefs = window.IAQAR && window.IAQAR.officeProfile
+      ? window.IAQAR.officeProfile.notificationPreferences
+      : null;
+    if (policy && typeof policy.isNotificationEnabled === "function") {
+      return policy.isNotificationEnabled(prefs, "match");
+    }
+    return !(prefs && prefs.match === false);
+  }
+
   async function showLocalMatchNotification(matchCount, topMatch) {
+    if (!matchNotificationsAllowed()) return;
     const title = matchCount > 1 ? `تم اكتشاف ${matchCount} مطابقات جديدة` : "تم اكتشاف مطابقة جديدة";
     const body = topMatch
       ? `${topMatch.propertyType || "عقار"} — ${topMatch.district || ""} — نسبة ${topMatch.score}%`
