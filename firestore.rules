@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
     function isRestrictedOfficeCollection(collectionName) {
-      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches'];
+      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications'];
     }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
@@ -159,6 +159,18 @@ service cloud.firestore {
             && request.resource.data.officeId == officeId;
           allow update, delete: if canManage(officeId);
         }
+      }
+
+      // عمليات مركز العمليات (المرحلة 5): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
+      match /operations/{operationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // إشعارات داخل التطبيق (المرحلة 5): قراءة الأعضاء — حالة التسليم محمية من العميل.
+      match /notifications/{notificationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
       }
 
       // القاعدة العامة تستثني المجموعات أعلاه: قواعد Firestore تُجمع ولا تُضيّق،

@@ -1718,8 +1718,8 @@
 
       <div class="list" id="operationList"></div>
       <p class="empty" id="operationsEmpty">
-        لا توجد إجراءات مطلوبة الآن.
-        <br>يعمل النظام في الخلفية، وسيظهر هنا الإجراء التالي عند الحاجة إليه.
+        لا توجد فرص حالياً
+        <br>ستظهر الفرص المباشرة هنا
       </p>
     </section>
   </div>
@@ -2061,6 +2061,12 @@
   <script type="module" src="js/add-opportunity.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
+  <script type="module">
+    import * as operationsDomain from "./js/operations-domain.js";
+    window.IAQAR = window.IAQAR || {};
+    window.IAQAR.operationsDomain = operationsDomain;
+    window.dispatchEvent(new CustomEvent("iaqar:operations-domain-ready"));
+  </script>
 
   <script>
     "use strict";
@@ -2151,6 +2157,8 @@
                 <button class="close" data-action="${secondaryMode}" data-id="${escapeHtml(item.id)}">
                   ${escapeHtml(item.secondaryActionLabel || "إغلاق التفاصيل")}
                 </button>
+                ${item.canDismiss ? `<button class="close" data-action="dismiss" data-id="${escapeHtml(item.id)}">${escapeHtml(item.dismissLabel || "صرف النظر")}</button>` : ""}
+                ${item.priorityLabel ? `<span class="time" aria-label="الأولوية">${escapeHtml(item.priorityLabel)}</span>` : ""}
                 ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "واتساب المالك")}</button>` : ""}
                 ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">واتساب العميل</button>` : ""}
               </div>
@@ -2210,6 +2218,12 @@
         if (action.dataset.action === "secondary" && item) {
           window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
             detail: { ...item, recordId: item.recordId || item.id, actionMode: "secondary" }
+          }));
+        }
+
+        if (action.dataset.action === "dismiss" && item) {
+          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
+            detail: { ...item, recordId: item.recordId || item.id, actionMode: "dismiss" }
           }));
         }
 

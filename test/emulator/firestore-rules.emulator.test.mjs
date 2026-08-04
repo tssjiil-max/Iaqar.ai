@@ -797,3 +797,124 @@ test("Phase 3: scoped bank sharing is createable by origin and readable by targe
   // After revocation, target loses read access.
   await assertFails(getDoc(doc(authed("broker-b1"), "bankSharingScopes/scope_test_1")));
 });
+
+test("Phase 5: office members can read operations but cannot forge MATCH_REVIEW or mutate protected fields", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/operations/op_phase5_a"), {
+      officeId: "office-a",
+      id: "op_phase5_a",
+      type: "MATCH_REVIEW",
+      status: "OPEN",
+      priority: "HIGH",
+      matchId: "mat_1",
+      deduplicationKey: "MATCH_REVIEW|office-a|mat_1|v1",
+      createdBySystem: true
+    });
+    await setDoc(doc(db, "offices/office-b/operations/op_phase5_b"), {
+      officeId: "office-b",
+      id: "op_phase5_b",
+      type: "MATCH_REVIEW",
+      status: "OPEN",
+      priority: "NORMAL",
+      createdBySystem: true
+    });
+  });
+
+  const member = authed("broker-a1");
+  const snap = await assertSucceeds(getDoc(doc(member, "offices/office-a/operations/op_phase5_a")));
+  assert.equal(snap.data().type, "MATCH_REVIEW");
+
+  await assertFails(getDoc(doc(member, "offices/office-b/operations/op_phase5_b")));
+  await assertFails(getDoc(doc(authed("broker-b1"), "offices/office-a/operations/op_phase5_a")));
+
+  await assertFails(setDoc(doc(member, "offices/office-a/operations/op_forged"), {
+    officeId: "office-a",
+    type: "MATCH_REVIEW",
+    status: "OPEN",
+    priority: "URGENT",
+    createdBySystem: true
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/operations/op_phase5_a"), {
+    officeId: "office-b"
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/operations/op_phase5_a"), {
+    priority: "LOW",
+    type: "SYSTEM_ACTION"
+  }));
+  await assertFails(deleteDoc(doc(member, "offices/office-a/operations/op_phase5_a")));
+
+  await assertFails(getDoc(doc(unauthed(), "offices/office-a/operations/op_phase5_a")));
+});
+
+test("Phase 5: notifications are office-isolated and delivery state is not client-writable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/notifications/nt_phase5_a"), {
+      officeId: "office-a",
+      id: "nt_phase5_a",
+      operationId: "op_phase5_a",
+      type: "NEW_MATCH",
+      status: "CREATED",
+      providerStateJson: JSON.stringify({ push: "QUEUED" }),
+      createdBySystem: true
+    });
+    await setDoc(doc(db, "offices/office-b/notifications/nt_phase5_b"), {
+      officeId: "office-b",
+      id: "nt_phase5_b",
+      operationId: "op_phase5_b",
+      type: "NEW_MATCH",
+      status: "CREATED",
+      createdBySystem: true
+    });
+  });
+
+  const member = authed("broker-a1");
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/notifications/nt_phase5_a")));
+  await assertFails(getDoc(doc(member, "offices/office-b/notifications/nt_phase5_b")));
+  await assertFails(setDoc(doc(member, "offices/office-a/notifications/nt_forged"), {
+    officeId: "office-a",
+    status: "DELIVERED",
+    providerStateJson: JSON.stringify({ push: "DELIVERED" })
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/notifications/nt_phase5_a"), {
+    status: "DELIVERED",
+    providerStateJson: JSON.stringify({ push: "DELIVERED" })
+  }));
+  await assertFails(getDoc(doc(unauthed(), "offices/office-a/notifications/nt_phase5_a")));
+});
+
+test("Phase 5: trusted backend path (rules disabled) can create Operation and Notification", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await assertSucceeds(setDoc(doc(db, "offices/office-a/operations/op_backend_1"), {
+      officeId: "office-a",
+      type: "MATCH_REVIEW",
+      status: "OPEN",
+      priority: "HIGH",
+      createdBySystem: true
+    }));
+    await assertSucceeds(setDoc(doc(db, "offices/office-a/notifications/nt_backend_1"), {
+      officeId: "office-a",
+      operationId: "op_backend_1",
+      type: "NEW_MATCH",
+      status: "CREATED",
+      createdBySystem: true
+    }));
+  });
+  const member = authed("broker-a1");
+  const op = await assertSucceeds(getDoc(doc(member, "offices/office-a/operations/op_backend_1")));
+  assert.equal(op.data().type, "MATCH_REVIEW");
+});
+
+test("Phase 5: customer/owner style unauthenticated public cannot read internal Operations", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/operations/op_private"), {
+      officeId: "office-a",
+      type: "MISSING_DATA",
+      status: "OPEN"
+    });
+  });
+  await assertFails(getDoc(doc(unauthed(), "offices/office-a/operations/op_private")));
+});

@@ -814,3 +814,42 @@ test("Phase 4 matching/run requires authentication", async () => {
   const body = await response.json();
   assert.equal(body.ok, false);
 });
+
+test("Phase 5 boundaries never claim messaging or deals", async () => {
+  const { phase5BoundaryGuarantees } = await import("../src/operations-domain.js");
+  const g = phase5BoundaryGuarantees();
+  assert.equal(g.createsWhatsAppMessage, false);
+  assert.equal(g.sendsWhatsApp, false);
+  assert.equal(g.createsTelegramMessage, false);
+  assert.equal(g.sendsTelegram, false);
+  assert.equal(g.createsSmartMessageDraft, false);
+  assert.equal(g.createsAutomaticCooperation, false);
+  assert.equal(g.createsDeal, false);
+  assert.equal(g.addsDealsPage, false);
+  assert.equal(g.addsBottomNavigation, false);
+});
+
+test("Phase 5 operation deep links open Operations Center records", () => {
+  assert.equal(
+    buildNotificationLink({ officeId: "office-1", type: "missing_data", recordId: "op_abc" }),
+    "/?officeId=office-1&openOperation=op_abc"
+  );
+  assert.equal(
+    buildNotificationLink({ officeId: "office-1", type: "match", recordId: "op_xyz" }),
+    "/?officeId=office-1&openOperation=op_xyz"
+  );
+  assert.ok(
+    buildNotificationLink({ officeId: "office-1", type: "match", recordId: "mat_legacy" }).includes("openMatch=mat_legacy")
+  );
+});
+
+test("Phase 5 operations endpoints require authentication", async () => {
+  for (const path of ["/operations/action", "/operations/from-cooperation", "/operations/missing-data"]) {
+    const response = await worker.fetch(new Request(`https://example.test${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ officeId: "office-a", operationId: "op_1", action: "START", cooperationId: "c1", opportunityId: "o1" })
+    }));
+    assert.equal(response.status, 401, path);
+  }
+});

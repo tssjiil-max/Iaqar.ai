@@ -17,6 +17,10 @@ import {
   requestOpportunityRematch,
   shouldRematchAfterOpportunityWrite
 } from "./matching-domain.js";
+import {
+  phase5BoundaryGuarantees,
+  requestMissingDataOperationSync
+} from "./operations-domain.js";
 
 const FIELD_LABELS = Object.freeze({
   opportunityKind: "نوع الفرصة (عرض / طلب)",
@@ -303,6 +307,7 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
     clearMissingForm();
 
     let matching = { ok: false, matchCount: 0, skipped: true };
+    let missingDataSync = { ok: false, created: false };
     if (shouldRematchAfterOpportunityWrite({ duplicate: saved.duplicate })) {
       try {
         const token = await user.getIdToken();
@@ -311,24 +316,31 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
           idToken: token,
           officeId: office.officeId,
           opportunityId: saved.opportunityId,
-          notify: false
+          notify: true
+        });
+        // Explicit missing-data sync covers NEEDS_DATA even when rematch finds no pairs.
+        missingDataSync = await requestMissingDataOperationSync({
+          workerBase: workerBase(),
+          idToken: token,
+          officeId: office.officeId,
+          opportunityId: saved.opportunityId
         });
       } catch (error) {
-        console.warn("[iaqar] rematch after intake", error);
+        console.warn("[iaqar] rematch/ops after intake", error);
         matching = { ok: false, error: "rematch_failed", matchCount: 0 };
       }
     }
 
-    // Phase 4 rematch runs in the Worker; Operations Center items remain Phase 5.
     window.dispatchEvent(new CustomEvent("iaqar:opportunity-ingested", {
       detail: {
         opportunityId: saved.opportunityId,
         duplicate: saved.duplicate,
-        createsOperation: false,
+        createsOperation: Boolean(matching.createsOperation || missingDataSync.created),
         runsMatching: matching.ok === true,
         matchCount: Number(matching.matchCount || 0),
         productionAi: false,
-        ...phase4BoundaryGuarantees()
+        ...phase4BoundaryGuarantees(),
+        ...phase5BoundaryGuarantees()
       }
     }));
   } catch (error) {

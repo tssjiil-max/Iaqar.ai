@@ -262,6 +262,7 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   client_request: "ownerCustomerNotifications",
   owner_offer: "ownerCustomerNotifications",
   intake: "ownerCustomerNotifications",
+  missing_data: "ownerCustomerNotifications",
   cooperation: "cooperationNotifications",
   cooperation_request: "cooperationNotifications",
   cooperation_response: "cooperationNotifications",
@@ -269,7 +270,9 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   conversation: "messageNotifications",
   appointment: "appointmentNotifications",
   followup: "appointmentNotifications",
-  viewing: "appointmentNotifications"
+  viewing: "appointmentNotifications",
+  operation: "systemNotifications",
+  system: "systemNotifications"
 });
 
 /** Types the broker triggered themself, which must never be silently swallowed. */

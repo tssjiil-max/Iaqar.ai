@@ -296,7 +296,8 @@ test("TEST 15: the Operations Center ships empty, with the approved empty state 
     const empty = document.getElementById("operationsEmpty");
     assert.ok(empty, "an empty state must exist");
     assert.equal(empty.hidden, false, "the empty state must be visible when there is nothing to do");
-    assert.ok(empty.textContent.includes("لا توجد إجراءات مطلوبة"));
+    assert.ok(empty.textContent.includes("لا توجد فرص حالياً"));
+    assert.ok(empty.textContent.includes("ستظهر الفرص المباشرة هنا"));
   } finally {
     context.close();
   }

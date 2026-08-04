@@ -26,6 +26,11 @@ import {
   phase4BoundaryGuarantees,
   requestOpportunityRematch
 } from "./matching-domain.js";
+import {
+  phase5BoundaryGuarantees,
+  requestCooperationOperationSync,
+  requestMissingDataOperationSync
+} from "./operations-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -296,28 +301,56 @@ async function patchOpportunity(id, patch) {
     }, { merge: true });
 }
 
+function workerBaseUrl() {
+  return window.IAQAR?.workerBase
+    || window.IAQAR?.office?.workerBase
+    || "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+}
+
+async function syncCooperationOperation(cooperationId) {
+  const user = authUser();
+  if (!user?.getIdToken || !officeId() || !cooperationId) return { ok: false };
+  try {
+    const token = await user.getIdToken();
+    return await requestCooperationOperationSync({
+      workerBase: workerBaseUrl(),
+      idToken: token,
+      officeId: officeId(),
+      cooperationId
+    });
+  } catch (error) {
+    console.warn("[iaqar] cooperation operation sync", error);
+    return { ok: false, error: "cooperation_ops_failed" };
+  }
+}
+
 async function rematchOpportunity(id, { reason = "edit" } = {}) {
   const user = authUser();
   if (!user?.getIdToken || !officeId()) return { ok: false, skipped: true };
   try {
     const token = await user.getIdToken();
-    const workerBase = window.IAQAR?.workerBase
-      || window.IAQAR?.office?.workerBase
-      || "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+    const workerBase = workerBaseUrl();
     const result = await requestOpportunityRematch({
       workerBase,
       idToken: token,
       officeId: officeId(),
       opportunityId: id,
-      notify: false
+      notify: true
+    });
+    const missingData = await requestMissingDataOperationSync({
+      workerBase,
+      idToken: token,
+      officeId: officeId(),
+      opportunityId: id
     });
     window.dispatchEvent(new CustomEvent("iaqar:opportunity-rematched", {
       detail: {
         opportunityId: id,
         reason,
         matchCount: Number(result.matchCount || 0),
-        createsOperation: false,
-        ...phase4BoundaryGuarantees()
+        createsOperation: Boolean(result.createsOperation || missingData.created),
+        ...phase4BoundaryGuarantees(),
+        ...phase5BoundaryGuarantees()
       }
     }));
     return result;
@@ -475,8 +508,14 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
 
     setStatus("تم إرسال طلب التعاون", "is-done");
     toast("تم إرسال طلب التعاون");
+    await syncCooperationOperation(built.request.id);
     window.dispatchEvent(new CustomEvent("iaqar:cooperation-request-created", {
-      detail: { ...phase3BoundaryGuarantees(), requestId: built.request.id }
+      detail: {
+        ...phase3BoundaryGuarantees(),
+        ...phase5BoundaryGuarantees(),
+        requestId: built.request.id,
+        createsAutomaticCooperation: false
+      }
     }));
   } catch (error) {
     console.warn("[iaqar] cooperation request", error);
@@ -566,6 +605,7 @@ async function revokeCooperation(opportunityId, record) {
     });
     setStatus("انتهى التعاون", "is-done");
     toast("تم إنهاء التعاون");
+    await syncCooperationOperation(requestId);
   } catch (error) {
     console.warn("[iaqar] revoke cooperation", error);
     setStatus("تعذر إنهاء التعاون", "is-error");
@@ -703,6 +743,7 @@ async function decideIncomingRequest(requestId, decision) {
 
     setStatus(decision === "ACCEPT" ? "تم قبول طلب التعاون" : "تم رفض طلب التعاون", "is-done");
     toast(decision === "ACCEPT" ? "تم قبول التعاون" : "تم رفض الطلب");
+    await syncCooperationOperation(requestId);
     await loadIncomingRequests();
   } catch (error) {
     console.warn("[iaqar] decide incoming", error);
