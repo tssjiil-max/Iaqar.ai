@@ -4,7 +4,8 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isPlatformAdmin() {
       return signedIn() &&
-        ((request.auth.token.platformAdmin == true) || (request.auth.token.admin == true));
+        ((('platformAdmin' in request.auth.token) && request.auth.token.platformAdmin == true)
+          || (('admin' in request.auth.token) && request.auth.token.admin == true));
     }
     function officeDoc(officeId) { return get(/databases/$(database)/documents/offices/$(officeId)); }
     function memberDoc(officeId) { return get(/databases/$(database)/documents/offices/$(officeId)/members/$(request.auth.uid)); }

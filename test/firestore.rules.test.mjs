@@ -178,8 +178,9 @@ test("concurrent duplicate name claims result in exactly one owning office", asy
   ]);
   assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
   assert.equal(results.filter(result => result.status === "rejected").length, 1);
-  const winner = await environment.withSecurityRulesDisabled(context =>
-    getDoc(doc(context.firestore(), "officeNameClaims/الاسمالموحد"))
-  );
+  let winner;
+  await environment.withSecurityRulesDisabled(async context => {
+    winner = await getDoc(doc(context.firestore(), "officeNameClaims/الاسمالموحد"));
+  });
   assert.ok(["office-a", "office-b"].includes(winner.data().officeId));
 });
