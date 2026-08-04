@@ -190,10 +190,11 @@ Exit criteria: Test 13 PASS; Test 15 still PASS.
 
 ## Phase 8 — Hardening
 
-Scope: full security review; a real Firestore emulator rules suite replacing the current
-static rules assertions; tenant-isolation tests; performance; indexes; retry behaviour;
-error handling; accessibility; mobile device testing; PWA validation; the end-to-end
-acceptance suite.
+Scope: full security review beyond the Phase 1 emulator gate already shipped in
+`test/emulator/firestore-rules.emulator.test.mjs` (`npm run test:rules`); expand
+tenant-isolation coverage to remaining collections; performance; indexes; retry
+behaviour; error handling; accessibility; mobile device testing; PWA validation; the
+end-to-end acceptance suite.
 
 Carried into this phase from the Phase 0 audit:
 
