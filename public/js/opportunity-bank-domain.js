@@ -61,6 +61,7 @@ export const PROTECTED_OWNERSHIP_FIELDS = Object.freeze([
   "brokerId",
   "originatingOfficeId",
   "originatingBrokerId",
+  "currentOwningOfficeId",
   "createdAt",
   "deduplicationFingerprint",
   "sourceReference",
@@ -594,5 +595,25 @@ export function phase3BoundaryGuarantees() {
     sendsWhatsApp: false,
     sendsTelegram: false,
     runsMatchingEngine: false
+  };
+}
+
+/** Phase 6: ensure current owning office is always the source office unless already set. */
+export function withCurrentOwningOffice(record = {}, officeId = "") {
+  const owner = safeText(record.currentOwningOfficeId || record.officeId || officeId, 80);
+  return {
+    ...record,
+    currentOwningOfficeId: owner
+  };
+}
+
+export function buildScopeRevokePatch({ now = new Date(), actorUid = "", reason = "" } = {}) {
+  return {
+    status: "REVOKED",
+    enabled: false,
+    revokedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    revokedBy: safeText(actorUid, 120),
+    revocationReason: safeText(reason, 200)
   };
 }

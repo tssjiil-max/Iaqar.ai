@@ -21,6 +21,7 @@ import worker, {
   notificationCategoryForPushType,
   parseFcmFailure,
   phase4BoundaryGuarantees,
+  phase6BoundaryGuarantees,
   relevantDataVersion,
   resolveLoginDirectory,
   scoreMatch
@@ -852,4 +853,26 @@ test("Phase 5 operations endpoints require authentication", async () => {
     }), env);
     assert.equal(response.status, 401, path);
   }
+});
+
+test("Phase 6 cooperation lifecycle endpoints require authentication", async () => {
+  for (const path of ["/cooperation/lifecycle", "/cooperation/scope-revoke"]) {
+    const response = await worker.fetch(new Request(`https://example.test${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        officeId: "office-a",
+        cooperationId: "coop_1",
+        sharingScopeId: "scope_1",
+        action: "ACCEPT"
+      })
+    }), env);
+    assert.equal(response.status, 401, path);
+  }
+});
+
+test("Phase 6 boundaries export denies automatic cooperation", async () => {
+  assert.equal(phase6BoundaryGuarantees().createsAutomaticCooperation, false);
+  assert.equal(phase6BoundaryGuarantees().createsBrokerRecommendation, false);
+  assert.equal(phase6BoundaryGuarantees().smartAutomaticImplemented, false);
 });

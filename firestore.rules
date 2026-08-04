@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
     function isRestrictedOfficeCollection(collectionName) {
-      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications'];
+      return collectionName in ['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs'];
     }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
@@ -138,6 +138,10 @@ service cloud.firestore {
             || request.resource.data.originatingBrokerId == resource.data.originatingBrokerId
           )
           && (
+            !('currentOwningOfficeId' in resource.data)
+            || request.resource.data.currentOwningOfficeId == resource.data.currentOwningOfficeId
+          )
+          && (
             !('createdAt' in resource.data)
             || request.resource.data.createdAt == resource.data.createdAt
           )
@@ -169,6 +173,12 @@ service cloud.firestore {
 
       // إشعارات داخل التطبيق (المرحلة 5): قراءة الأعضاء — حالة التسليم محمية من العميل.
       match /notifications/{notificationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // سجل تدقيق التعاون (المرحلة 6): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      match /auditLogs/{auditId} {
         allow read: if isOfficeMember(officeId);
         allow create, update, delete: if false;
       }
@@ -261,9 +271,19 @@ service cloud.firestore {
     }
 
     // إسقاطات مشاركة الحد الأدنى للطرف المتعاون — بدون بيانات تواصل.
+    // بعد الإلغاء (revokedAt) يُمنع الوصول المستقبلي (اختبار 12).
     match /offices/{officeId}/sharedOpportunities/{sharedId} {
-      allow read: if isOfficeMember(officeId);
-      allow create, update: if isOfficeMember(officeId)
+      allow read: if isOfficeMember(officeId)
+        && !('revokedAt' in resource.data && resource.data.revokedAt != null);
+      allow create: if isOfficeMember(officeId)
+        && request.resource.data.originatingOfficeId is string
+        && request.resource.data.originatingOfficeId != officeId
+        && request.resource.data.contactPhone == ''
+        && request.resource.data.phone == ''
+        && request.resource.data.readOnly == true;
+      // Updates blocked after revocation so future access cannot be restored by clients.
+      allow update: if isOfficeMember(officeId)
+        && !('revokedAt' in resource.data && resource.data.revokedAt != null)
         && request.resource.data.originatingOfficeId is string
         && request.resource.data.originatingOfficeId != officeId
         && request.resource.data.contactPhone == ''

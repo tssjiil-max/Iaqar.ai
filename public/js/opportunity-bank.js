@@ -7,7 +7,6 @@ import {
   BANK_PAGE_SIZE,
   LIFECYCLE,
   SHARE_REQUEST_STATUS,
-  applyCooperationDecision,
   bankDetailView,
   bankListItem,
   buildArchivePatch,
@@ -17,9 +16,8 @@ import {
   buildRestorePatch,
   buildSoftDeletePatch,
   cooperationStateFromShareStatus,
-  defaultSharePermissions,
+  cooperationStatusLabel,
   phase3BoundaryGuarantees,
-  sharedOpportunityProjection,
   validateOwnedOpportunityIds
 } from "./opportunity-bank-domain.js";
 import {
@@ -31,6 +29,16 @@ import {
   requestCooperationOperationSync,
   requestMissingDataOperationSync
 } from "./operations-domain.js";
+import {
+  phase6BoundaryGuarantees,
+  cooperationModeAllowsExplicitRequest,
+  cooperationModeAllowsAccept,
+  normalizeCooperationMode,
+  requestCooperationLifecycle,
+  requestScopeRevoke,
+  FIVE_ARABIC_COOPERATION_STATUSES
+} from "./cooperation-phase6-domain.js";
+import { DEFAULT_COOPERATION_MODE } from "./office-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -324,6 +332,35 @@ async function syncCooperationOperation(cooperationId) {
   }
 }
 
+async function readOfficeCooperationMode() {
+  const runtime = officeRuntime();
+  if (!runtime?.db || !officeId()) return DEFAULT_COOPERATION_MODE;
+  try {
+    const snap = await runtime.db.collection("offices").doc(officeId())
+      .collection("officeSettings").doc("cooperation").get();
+    if (!snap.exists) return DEFAULT_COOPERATION_MODE;
+    return normalizeCooperationMode(snap.data()?.mode);
+  } catch (_) {
+    return DEFAULT_COOPERATION_MODE;
+  }
+}
+
+async function runTrustedCooperationLifecycle(cooperationId, action, reason = "") {
+  const user = authUser();
+  if (!user?.getIdToken || !officeId() || !cooperationId) {
+    return { ok: false, error: "auth_required" };
+  }
+  const token = await user.getIdToken();
+  return requestCooperationLifecycle({
+    workerBase: workerBaseUrl(),
+    idToken: token,
+    officeId: officeId(),
+    cooperationId,
+    action,
+    reason
+  });
+}
+
 async function rematchOpportunity(id, { reason = "edit" } = {}) {
   const user = authUser();
   if (!user?.getIdToken || !officeId()) return { ok: false, skipped: true };
@@ -455,6 +492,12 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     return;
   }
 
+  const mode = await readOfficeCooperationMode();
+  if (!cooperationModeAllowsExplicitRequest(mode)) {
+    setStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
+    return;
+  }
+
   const ownedCheck = validateOwnedOpportunityIds(
     officeId(),
     state.records,
@@ -498,6 +541,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
       const oppRef = runtime.db.collection("offices").doc(officeId()).collection("opportunities").doc(oppId);
       batch.set(oppRef, {
         officeId: officeId(),
+        currentOwningOfficeId: officeId(),
         cooperationState: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
         cooperationStatus: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
         activeCooperationId: built.request.id,
@@ -513,6 +557,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
       detail: {
         ...phase3BoundaryGuarantees(),
         ...phase5BoundaryGuarantees(),
+        ...phase6BoundaryGuarantees(),
         requestId: built.request.id,
         createsAutomaticCooperation: false
       }
@@ -529,6 +574,11 @@ async function createScopedShare() {
   const targetOfficeId = $("bankScopeTarget")?.value?.trim();
   if (!runtime?.db || !user || !targetOfficeId) {
     setStatus("أدخل معرّف المكتب المستهدف للنطاق", "is-error");
+    return;
+  }
+  const mode = await readOfficeCooperationMode();
+  if (!cooperationModeAllowsExplicitRequest(mode)) {
+    setStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
     return;
   }
   const built = await buildBankSharingScope({
@@ -549,9 +599,107 @@ async function createScopedShare() {
     await runtime.db.collection("bankSharingScopes").doc(built.scope.id).set(built.scope);
     setStatus("تم تفعيل نطاق المشاركة (قابل للإلغاء)", "is-done");
     toast("تم حفظ نطاق المشاركة");
+    await loadOutgoingScopes();
   } catch (error) {
     console.warn("[iaqar] bank scope", error);
     setStatus("تعذر حفظ نطاق المشاركة", "is-error");
+  }
+}
+
+async function revokeScopedShare(sharingScopeId) {
+  const user = authUser();
+  if (!user?.getIdToken || !sharingScopeId) {
+    setStatus("يلزم تسجيل الدخول", "is-error");
+    return;
+  }
+  setStatus("جارٍ إنهاء نطاق المشاركة…");
+  try {
+    const token = await user.getIdToken();
+    const result = await requestScopeRevoke({
+      workerBase: workerBaseUrl(),
+      idToken: token,
+      officeId: officeId(),
+      sharingScopeId,
+      reason: "broker_revoked_scope"
+    });
+    if (!result.ok) {
+      setStatus(result.message || "تعذر إنهاء نطاق المشاركة", "is-error");
+      return;
+    }
+    setStatus("انتهى نطاق المشاركة", "is-done");
+    toast("تم إنهاء نطاق المشاركة");
+    await loadOutgoingScopes();
+  } catch (error) {
+    console.warn("[iaqar] scope revoke", error);
+    setStatus("تعذر إنهاء نطاق المشاركة", "is-error");
+  }
+}
+
+async function loadOutgoingScopes() {
+  const runtime = officeRuntime();
+  const panel = $("bankOutgoingScopes");
+  if (!runtime?.db || !panel) return;
+  try {
+    const snap = await runtime.db.collection("bankSharingScopes")
+      .where("originatingOfficeId", "==", officeId())
+      .limit(20)
+      .get();
+    const active = snap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((scope) => scope.status === "ACTIVE" && scope.enabled !== false && !scope.revokedAt);
+    if (!active.length) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      return;
+    }
+    panel.hidden = false;
+    panel.innerHTML = `<h3>نطاقات المشاركة النشطة</h3>${active.map((scope) => `
+      <div class="bank-incoming-item">
+        <div>
+          <strong>إلى ${escapeHtml(scope.targetOfficeId || "")}</strong>
+          <p>${Number(scope.opportunityIds?.length || 0)} فرصة — قابل للإلغاء</p>
+        </div>
+        <button type="button" class="bank-action" data-revoke-scope="${escapeHtml(scope.id)}">إنهاء النطاق</button>
+      </div>
+    `).join("")}`;
+    panel.querySelectorAll("[data-revoke-scope]").forEach((btn) => {
+      btn.addEventListener("click", () => void revokeScopedShare(btn.getAttribute("data-revoke-scope")));
+    });
+  } catch (error) {
+    console.warn("[iaqar] outgoing scopes", error);
+  }
+}
+
+async function loadSharedWithUs() {
+  const runtime = officeRuntime();
+  const panel = $("bankSharedWithUs");
+  if (!runtime?.db || !panel) return;
+  try {
+    const snap = await runtime.db.collection("offices").doc(officeId())
+      .collection("sharedOpportunities")
+      .limit(30)
+      .get();
+    const rows = snap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((row) => !row.revokedAt);
+    if (!rows.length) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      return;
+    }
+    panel.hidden = false;
+    panel.innerHTML = `<h3>فرص مشاركة مع مكتبكم</h3>
+      <p class="bank-note">قراءة فقط — بدون بيانات تواصل. الملكية تبقى للمكتب الأصلي.</p>
+      ${rows.map((row) => `
+        <div class="bank-incoming-item">
+          <div>
+            <strong>${escapeHtml([row.propertyType, row.district, row.city].filter(Boolean).join(" — ") || row.id)}</strong>
+            <p>من ${escapeHtml(row.originatingOfficeId || "")} — ${escapeHtml(cooperationStatusLabel(row.cooperationStatus || "ACTIVE"))}</p>
+          </div>
+        </div>
+      `).join("")}`;
+  } catch (error) {
+    console.warn("[iaqar] shared with us", error);
   }
 }
 
@@ -576,36 +724,30 @@ function bindListClicks() {
 
 async function revokeCooperation(opportunityId, record) {
   const user = authUser();
-  const runtime = officeRuntime();
   const requestId = record.activeCooperationId;
-  if (!runtime?.db || !user || !requestId) {
+  if (!user || !requestId) {
     setStatus("لا يوجد تعاون نشط لإلغائه", "is-error");
     return;
   }
   setStatus("جارٍ إنهاء التعاون…");
   try {
-    const ref = runtime.db.collection("cooperationRequests").doc(requestId);
-    const snap = await ref.get();
-    if (!snap.exists) {
-      setStatus("طلب التعاون غير موجود", "is-error");
+    // Phase 6 trusted path: revoke + remove target shared projections + audit.
+    const result = await runTrustedCooperationLifecycle(requestId, "REVOKE", "broker_revoked");
+    if (!result.ok) {
+      setStatus(result.message || "تعذر إنهاء التعاون", "is-error");
       return;
     }
-    const decision = applyCooperationDecision(snap.data(), "REVOKE", { actorUid: user.uid });
-    if (!decision.ok) {
-      setStatus("تعذر إنهاء التعاون", "is-error");
-      return;
-    }
-    if (!decision.idempotent && decision.patch) {
-      await ref.set(decision.patch, { merge: true });
-    }
-    await patchOpportunity(opportunityId, {
-      cooperationState: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.REVOKED),
-      cooperationStatus: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.REVOKED),
-      activeCooperationId: null
-    });
     setStatus("انتهى التعاون", "is-done");
     toast("تم إنهاء التعاون");
-    await syncCooperationOperation(requestId);
+    window.dispatchEvent(new CustomEvent("iaqar:cooperation-revoked", {
+      detail: {
+        requestId,
+        opportunityId,
+        ...phase6BoundaryGuarantees()
+      }
+    }));
+    await loadSharedWithUs();
+    if (state.activeId === opportunityId) await renderDetail(opportunityId);
   } catch (error) {
     console.warn("[iaqar] revoke cooperation", error);
     setStatus("تعذر إنهاء التعاون", "is-error");
@@ -688,63 +830,41 @@ async function loadIncomingRequests() {
 }
 
 async function decideIncomingRequest(requestId, decision) {
-  const runtime = officeRuntime();
   const user = authUser();
-  if (!runtime?.db || !user) {
+  if (!user) {
     setStatus("يلزم تسجيل الدخول", "is-error");
     return;
   }
+  if (decision === "ACCEPT") {
+    const mode = await readOfficeCooperationMode();
+    if (!cooperationModeAllowsAccept(mode)) {
+      setStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
+      return;
+    }
+  }
   setStatus(decision === "ACCEPT" ? "جارٍ قبول الطلب…" : "جارٍ رفض الطلب…");
   try {
-    const ref = runtime.db.collection("cooperationRequests").doc(requestId);
-    const snap = await ref.get();
-    if (!snap.exists) {
-      setStatus("الطلب غير موجود", "is-error");
-      return;
-    }
-    const request = { id: requestId, ...snap.data() };
-    if (request.targetOfficeId !== officeId()) {
-      setStatus("لا يمكن الرد على طلب مكتب آخر", "is-error");
-      return;
-    }
-    const result = applyCooperationDecision(request, decision, { actorUid: user.uid });
+    // Phase 6 Worker path writes real minimum projections, updates origin status, audits.
+    const result = await runTrustedCooperationLifecycle(
+      requestId,
+      decision === "ACCEPT" ? "ACCEPT" : "REJECT"
+    );
     if (!result.ok) {
-      setStatus("تعذر تحديث الطلب", "is-error");
+      setStatus(result.message || "تعذر تحديث الطلب", "is-error");
       return;
-    }
-    if (!result.idempotent && result.patch) {
-      await ref.set({
-        ...result.patch,
-        originatingOfficeId: request.originatingOfficeId,
-        targetOfficeId: request.targetOfficeId
-      }, { merge: true });
-    }
-
-    if (decision === "ACCEPT") {
-      const oppIds = request.opportunityIds?.length
-        ? request.opportunityIds
-        : (request.opportunityId ? [request.opportunityId] : []);
-      const batch = runtime.db.batch();
-      for (const oppId of oppIds) {
-        const projection = sharedOpportunityProjection(oppId, {
-          originatingOfficeId: request.originatingOfficeId,
-          opportunityKind: "",
-          purpose: "",
-          propertyType: "",
-          city: "",
-          district: ""
-        }, request);
-        const sharedRef = runtime.db.collection("offices").doc(officeId())
-          .collection("sharedOpportunities").doc(oppId);
-        batch.set(sharedRef, projection, { merge: true });
-      }
-      await batch.commit();
     }
 
     setStatus(decision === "ACCEPT" ? "تم قبول طلب التعاون" : "تم رفض طلب التعاون", "is-done");
     toast(decision === "ACCEPT" ? "تم قبول التعاون" : "تم رفض الطلب");
-    await syncCooperationOperation(requestId);
+    window.dispatchEvent(new CustomEvent("iaqar:cooperation-decided", {
+      detail: {
+        requestId,
+        decision,
+        ...phase6BoundaryGuarantees()
+      }
+    }));
     await loadIncomingRequests();
+    await loadSharedWithUs();
   } catch (error) {
     console.warn("[iaqar] decide incoming", error);
     setStatus("تعذر تحديث طلب التعاون", "is-error");
@@ -818,6 +938,9 @@ function startListener() {
   // Phase 3 uses cursor pagination (get + startAfter) instead of an unbounded snapshot.
   stopListener();
   void loadBankPage({ reset: true });
+  void loadIncomingRequests();
+  void loadSharedWithUs();
+  void loadOutgoingScopes();
 }
 
 export function openOpportunityBank() {
@@ -828,7 +951,12 @@ export function openOpportunityBank() {
   const retry = $("opportunityBankRetry");
   if (retry) retry.hidden = true;
   startListener();
-  window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-opened"));
+  window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-opened", {
+    detail: {
+      arabicStatuses: [...FIVE_ARABIC_COOPERATION_STATUSES],
+      ...phase6BoundaryGuarantees()
+    }
+  }));
 }
 
 export function closeOpportunityBank() {

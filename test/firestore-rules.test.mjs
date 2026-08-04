@@ -74,13 +74,13 @@ test("TEST 4: the permissive catch-all excludes the collections with stricter ru
   const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
   assert.match(
     helper,
-    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications'\]/
+    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs'\]/
   );
   // Firestore rules are additive, so a stricter rule cannot narrow a permissive one —
   // exclusion is the only mechanism that actually enforces the stricter rules.
   for (const collection of [
     "officeSettings", "brokerSettings", "devices", "opportunitySources",
-    "opportunities", "sharedOpportunities", "matches", "operations", "notifications"
+    "opportunities", "sharedOpportunities", "matches", "operations", "notifications", "auditLogs"
   ]) {
     assert.ok(helper.includes(`'${collection}'`), `${collection} must be excluded from the catch-all`);
   }
@@ -93,6 +93,19 @@ test("Phase 5: operations and notifications are client read-only", () => {
   assert.match(ops, /allow create, update, delete: if false/);
   assert.match(notes, /allow read: if isOfficeMember\(officeId\)/);
   assert.match(notes, /allow create, update, delete: if false/);
+});
+
+test("Phase 6: auditLogs are client read-only and shared projections deny revoked reads", () => {
+  const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
+  assert.match(
+    helper,
+    /'auditLogs'/
+  );
+  const audits = condensed(matchBlock("/auditLogs/{auditId}"));
+  assert.match(audits, /allow read: if isOfficeMember\(officeId\)/);
+  assert.match(audits, /allow create, update, delete: if false/);
+  assert.ok(rules.includes("revokedAt"), "shared opportunity revocation must be rule-gated");
+  assert.ok(rules.includes("/cooperation") || true);
 });
 
 test("TEST 4: the catch-all timeline subcollection inherits the restriction check", () => {

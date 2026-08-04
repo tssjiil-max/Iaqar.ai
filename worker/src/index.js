@@ -38,6 +38,14 @@ import {
   listMissingOpportunityFields,
   pushTypeForOperation
 } from "./operations-service.js";
+import {
+  phase6BoundaryGuarantees,
+  cooperationModeAllowsExplicitRequest
+} from "./cooperation-phase6-domain.js";
+import {
+  runCooperationLifecycle,
+  revokeBankSharingScope
+} from "./cooperation-phase6-service.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -230,6 +238,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/operations/missing-data") {
         return await handleOperationsMissingData(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
+        return await handleCooperationLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/scope-revoke") {
+        return await handleCooperationScopeRevoke(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/workflow/preview") {
@@ -2164,6 +2180,88 @@ async function handleOperationsMissingData(request, env, requestId) {
   });
 }
 
+async function handleCooperationLifecycle(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 40).toUpperCase();
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await runCooperationLifecycle({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    reason,
+    accessToken,
+    deps: {
+      ...operationsDeps(),
+      deleteFirestoreDocument,
+      firestoreFieldsToJs,
+      upsertCooperationOperations
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "cooperation_lifecycle_failed", result.status || 400, "تعذر تحديث التعاون");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    status: result.status,
+    projectionsWritten: result.projectionsWritten,
+    projectionsRemoved: result.projectionsRemoved,
+    opportunityIds: result.opportunityIds,
+    boundaries: { ...phase6BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
+    requestId
+  });
+}
+
+async function handleCooperationScopeRevoke(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const sharingScopeId = cleanText(body.sharingScopeId, 180);
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!sharingScopeId) throw appError("scope_id_required", 400, "معرّف نطاق المشاركة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await revokeBankSharingScope({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    sharingScopeId,
+    reason,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "scope_revoke_failed", result.status || 400, "تعذر إنهاء نطاق المشاركة");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    sharingScopeId,
+    status: result.status,
+    boundaries: phase6BoundaryGuarantees(),
+    requestId
+  });
+}
+
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
   const url=new URL(firestoreDocumentUrl(projectId,segments)); url.searchParams.set("pageSize",String(pageSize));
   const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`}});
@@ -2916,16 +3014,43 @@ function firestoreDocumentUrl(projectId, segments) {
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${path}`;
 }
 
+function firestoreValueToJs(value) {
+  if (!value || typeof value !== "object") return null;
+  if ("stringValue" in value) return value.stringValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("booleanValue" in value) return Boolean(value.booleanValue);
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("nullValue" in value) return null;
+  if ("arrayValue" in value) {
+    const values = Array.isArray(value.arrayValue?.values) ? value.arrayValue.values : [];
+    return values.map((item) => firestoreValueToJs(item));
+  }
+  if ("mapValue" in value) {
+    return firestoreFieldsToJs(value.mapValue?.fields || {});
+  }
+  return null;
+}
+
 function firestoreFieldsToJs(fields) {
   const output = {};
   for (const [key, value] of Object.entries(fields || {})) {
-    if ("stringValue" in value) output[key] = value.stringValue;
-    else if ("integerValue" in value) output[key] = Number(value.integerValue);
-    else if ("doubleValue" in value) output[key] = Number(value.doubleValue);
-    else if ("booleanValue" in value) output[key] = Boolean(value.booleanValue);
-    else if ("timestampValue" in value) output[key] = value.timestampValue;
+    output[key] = firestoreValueToJs(value);
   }
   return output;
+}
+
+async function deleteFirestoreDocument({ projectId, segments, accessToken }) {
+  const response = await fetch(firestoreDocumentUrl(projectId, segments), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw appError("firestore_delete_failed", 502, detail || "تعذر حذف المستند");
+  }
+  return true;
 }
 
 
@@ -3197,5 +3322,6 @@ export {
   counterpartsEligible, phase4BoundaryGuarantees, findAndSaveMatchesForOpportunity,
   phase5BoundaryGuarantees, OPERATION_TYPES, OPERATION_STATUS, NOTIFICATION_TYPES,
   NOTIFICATION_STATUS, ACTIVE_OPERATION_STATUSES, shouldCreateMatchReview,
-  applyOperationLifecycle, listMissingOpportunityFields, pushTypeForOperation
+  applyOperationLifecycle, listMissingOpportunityFields, pushTypeForOperation,
+  phase6BoundaryGuarantees, cooperationModeAllowsExplicitRequest
 };

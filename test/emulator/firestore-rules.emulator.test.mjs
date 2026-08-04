@@ -918,3 +918,109 @@ test("Phase 5: customer/owner style unauthenticated public cannot read internal 
   });
   await assertFails(getDoc(doc(unauthed(), "offices/office-a/operations/op_private")));
 });
+
+test("Phase 6: auditLogs are readable by office members and not client-writable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/auditLogs/aud_phase6_a"), {
+      officeId: "office-a",
+      action: "COOPERATION_REQUEST_ACCEPTED",
+      cooperationId: "coop_1",
+      createdBySystem: true
+    });
+    await setDoc(doc(db, "offices/office-b/auditLogs/aud_phase6_b"), {
+      officeId: "office-b",
+      action: "COOPERATION_REQUEST_ACCEPTED",
+      cooperationId: "coop_1",
+      createdBySystem: true
+    });
+  });
+
+  const member = authed("broker-a1");
+  await assertSucceeds(getDoc(doc(member, "offices/office-a/auditLogs/aud_phase6_a")));
+  await assertFails(getDoc(doc(member, "offices/office-b/auditLogs/aud_phase6_b")));
+  await assertFails(setDoc(doc(member, "offices/office-a/auditLogs/aud_forged"), {
+    officeId: "office-a",
+    action: "COOPERATION_REQUEST_ACCEPTED"
+  }));
+  await assertFails(getDoc(doc(unauthed(), "offices/office-a/auditLogs/aud_phase6_a")));
+});
+
+test("Phase 6 Test 12: revoked sharedOpportunities are no longer readable", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-b/sharedOpportunities/opp_revoked"), {
+      officeId: "office-b",
+      originatingOfficeId: "office-a",
+      sourceOpportunityId: "opp_revoked",
+      contactPhone: "",
+      phone: "",
+      readOnly: true,
+      cooperationStatus: "ENDED",
+      revokedAt: "2026-08-04T12:00:00.000Z"
+    });
+    await setDoc(doc(db, "offices/office-b/sharedOpportunities/opp_active_share"), {
+      officeId: "office-b",
+      originatingOfficeId: "office-a",
+      sourceOpportunityId: "opp_active_share",
+      contactPhone: "",
+      phone: "",
+      readOnly: true,
+      cooperationStatus: "ACTIVE",
+      revokedAt: null
+    });
+  });
+
+  const target = authed("broker-b1");
+  await assertFails(getDoc(doc(target, "offices/office-b/sharedOpportunities/opp_revoked")));
+  await assertSucceeds(getDoc(doc(target, "offices/office-b/sharedOpportunities/opp_active_share")));
+
+  // Target cannot clear revocation to restore access.
+  await assertFails(updateDoc(doc(target, "offices/office-b/sharedOpportunities/opp_revoked"), {
+    revokedAt: null,
+    cooperationStatus: "ACTIVE",
+    originatingOfficeId: "office-a",
+    contactPhone: "",
+    phone: "",
+    readOnly: true
+  }));
+});
+
+test("Phase 6 Test 11: accepted share keeps ownership on origin opportunity", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/opportunities/opp_owned"), {
+      officeId: "office-a",
+      brokerId: "broker-a1",
+      originatingOfficeId: "office-a",
+      originatingBrokerId: "broker-a1",
+      currentOwningOfficeId: "office-a",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      deduplicationFingerprint: "fp_owned",
+      sourceType: "text",
+      sourceReference: "src",
+      lifecycleStatus: "ACTIVE"
+    });
+  });
+
+  const outsider = authed("broker-b1");
+  await assertFails(updateDoc(doc(outsider, "offices/office-a/opportunities/opp_owned"), {
+    officeId: "office-b",
+    brokerId: "broker-b1",
+    originatingOfficeId: "office-b",
+    currentOwningOfficeId: "office-b"
+  }));
+
+  const owner = authed("broker-a1");
+  await assertFails(updateDoc(doc(owner, "offices/office-a/opportunities/opp_owned"), {
+    officeId: "office-a",
+    brokerId: "broker-a1",
+    originatingOfficeId: "office-hacked",
+    originatingBrokerId: "broker-a1",
+    currentOwningOfficeId: "office-a",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    deduplicationFingerprint: "fp_owned",
+    sourceType: "text",
+    sourceReference: "src"
+  }));
+});

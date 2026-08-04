@@ -381,6 +381,7 @@ export function buildOpportunityRecord({
     brokerId: safeText(brokerId, 120),
     originatingOfficeId: safeText(officeId, 80),
     originatingBrokerId: safeText(brokerId, 120),
+    currentOwningOfficeId: safeText(officeId, 80),
     createdAt: timestamp,
     updatedAt: timestamp,
     sourceType,
