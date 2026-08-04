@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { ALWAYS_ALLOWED_PUSH_TYPES, PUSH_TYPE_NOTIFICATION_CATEGORIES, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, normalizeOfficeImageVariant, normalizeOpportunitySourceType, notificationCategoryAllowed, notificationCategoryForPushType, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -146,6 +146,220 @@ test("public intake media rejects an unsupported content type", async () => {
     body: new Uint8Array([1, 2, 3, 4])
   }), mediaEnv);
   assert.equal(response.status, 415);
+});
+
+// --- Phase 1: office visual identity ---------------------------------------
+
+const trialEnv = { ...env, ALLOW_TRIAL_NO_AUTH: "true" };
+
+function officeImageRequest({ variant, method = "POST", contentType = "image/png", officeId = "office-alqiq" } = {}) {
+  const headers = { "X-Office-Id": officeId };
+  if (variant !== undefined) headers["X-Office-Image-Variant"] = variant;
+  if (method === "POST") {
+    headers["Content-Type"] = contentType;
+    headers["Content-Length"] = "4";
+  }
+  return new Request("https://example.test/media/office-cover", {
+    method,
+    headers,
+    body: method === "POST" ? new Uint8Array([1, 2, 3, 4]) : undefined
+  });
+}
+
+test("each office image variant is stored under its own key and returns its URL", async () => {
+  for (const variant of ["logo", "display", "cover"]) {
+    const writes = [];
+    const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async (...args) => writes.push(args) } };
+    const response = await worker.fetch(officeImageRequest({ variant }), mediaEnv);
+    const body = await response.json();
+    assert.equal(response.status, 201, `${variant}: ${JSON.stringify(body)}`);
+    assert.equal(body.variant, variant);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0][0], `office-covers/office-alqiq/${variant}`);
+    assert.equal(writes[0][2].customMetadata.variant, variant);
+    assert.ok(body.imageUrl.includes(`/media/public/office-covers/office-alqiq/${variant}?v=`));
+    // The old field name stays populated so any older client keeps working.
+    assert.equal(body.coverUrl, body.imageUrl);
+  }
+});
+
+test("an office image upload without a variant defaults to the cover, as before", async () => {
+  const writes = [];
+  const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async (...args) => writes.push(args) } };
+  const response = await worker.fetch(officeImageRequest({ variant: undefined }), mediaEnv);
+  assert.equal(response.status, 201);
+  assert.equal(writes[0][0], "office-covers/office-alqiq/cover");
+});
+
+test("an unknown office image variant is refused instead of writing an unexpected key", async () => {
+  for (const variant of ["private", "../cover", "COVER2", "intake"]) {
+    const writes = [];
+    const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async (...args) => writes.push(args) } };
+    const response = await worker.fetch(officeImageRequest({ variant }), mediaEnv);
+    assert.equal(response.status, 400, variant);
+    const body = await response.json();
+    assert.equal(body.error, "unsupported_image_variant");
+    assert.equal(writes.length, 0, `${variant} must not reach the bucket`);
+  }
+});
+
+test("office image variants are case-insensitive", async () => {
+  const writes = [];
+  const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async (...args) => writes.push(args) } };
+  const response = await worker.fetch(officeImageRequest({ variant: "LOGO" }), mediaEnv);
+  assert.equal(response.status, 201);
+  assert.equal(writes[0][0], "office-covers/office-alqiq/logo");
+});
+
+test("office image uploads still enforce type and size server-side", async () => {
+  const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async () => {} } };
+  const badType = await worker.fetch(officeImageRequest({ variant: "logo", contentType: "image/gif" }), mediaEnv);
+  assert.equal(badType.status, 415);
+
+  const tooLarge = await worker.fetch(new Request("https://example.test/media/office-cover", {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": String(11 * 1024 * 1024),
+      "X-Office-Id": "office-alqiq",
+      "X-Office-Image-Variant": "logo"
+    },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(tooLarge.status, 413);
+});
+
+test("an office image upload requires an office id", async () => {
+  const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { put: async () => {} } };
+  const response = await worker.fetch(new Request("https://example.test/media/office-cover", {
+    method: "POST",
+    headers: { "Content-Type": "image/png", "Content-Length": "4", "X-Office-Image-Variant": "logo" },
+    body: new Uint8Array([1, 2, 3, 4])
+  }), mediaEnv);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "office_id_required");
+});
+
+test("an office image upload from an unauthorized caller is refused", async () => {
+  const writes = [];
+  const mediaEnv = { ...env, IAQAR_MEDIA: { put: async (...args) => writes.push(args) } };
+  const response = await worker.fetch(officeImageRequest({ variant: "logo" }), mediaEnv);
+  assert.equal(response.status, 401);
+  assert.equal(writes.length, 0);
+});
+
+test("a removable office image is deleted from its own key", async () => {
+  for (const variant of ["logo", "display"]) {
+    const deletes = [];
+    const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { delete: async key => deletes.push(key) } };
+    const response = await worker.fetch(officeImageRequest({ variant, method: "DELETE" }), mediaEnv);
+    const body = await response.json();
+    assert.equal(response.status, 200, `${variant}: ${JSON.stringify(body)}`);
+    assert.equal(body.removed, true);
+    assert.deepEqual(deletes, [`office-covers/office-alqiq/${variant}`]);
+  }
+});
+
+test("the share cover cannot be deleted, and the refusal is explicit", async () => {
+  const deletes = [];
+  const mediaEnv = { ...trialEnv, IAQAR_MEDIA: { delete: async key => deletes.push(key) } };
+  const response = await worker.fetch(officeImageRequest({ variant: "cover", method: "DELETE" }), mediaEnv);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "image_not_removable");
+  assert.deepEqual(deletes, [], "nothing may be deleted when the request is refused");
+});
+
+test("the public media route serves every office image variant", async () => {
+  for (const variant of ["cover", "logo", "display"]) {
+    const mediaEnv = {
+      ...env,
+      IAQAR_MEDIA: {
+        get: async () => ({
+          body: "binary",
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers) { headers.set("content-type", "image/png"); }
+        })
+      }
+    };
+    const response = await worker.fetch(
+      new Request(`https://example.test/media/public/office-covers/office-alqiq/${variant}`),
+      mediaEnv
+    );
+    assert.equal(response.status, 200, variant);
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  }
+});
+
+test("office image variant normalization mirrors the client's variant list", () => {
+  assert.equal(normalizeOfficeImageVariant("logo"), "logo");
+  assert.equal(normalizeOfficeImageVariant(" DISPLAY "), "display");
+  assert.equal(normalizeOfficeImageVariant(""), "cover", "an absent variant means the cover");
+  assert.equal(normalizeOfficeImageVariant(null), "cover");
+  for (const value of ["private", "thumb", "../cover", "logo2"]) {
+    assert.equal(normalizeOfficeImageVariant(value), "", value);
+  }
+});
+
+// --- Phase 1: notification preference gate ---------------------------------
+
+test("a disabled notification category blocks only its own push types", () => {
+  const preferences = { matchNotifications: false, cooperationNotifications: false };
+  assert.equal(notificationCategoryAllowed("match", preferences), false);
+  assert.equal(notificationCategoryAllowed("deal", preferences), false);
+  assert.equal(notificationCategoryAllowed("cooperation_request", preferences), false);
+  assert.equal(notificationCategoryAllowed("appointment", preferences), true);
+  assert.equal(notificationCategoryAllowed("owner_offer", preferences), true);
+});
+
+test("a missing preference document leaves every notification enabled", () => {
+  for (const preferences of [undefined, null, {}, { officeId: "office-alqiq", updatedBy: "uid" }]) {
+    for (const type of Object.keys(PUSH_TYPE_NOTIFICATION_CATEGORIES)) {
+      assert.equal(notificationCategoryAllowed(type, preferences), true, `${type}`);
+    }
+  }
+});
+
+test("an unrecognized push type is governed by the system category", () => {
+  assert.equal(notificationCategoryForPushType("brand_new_event"), "systemNotifications");
+  assert.equal(notificationCategoryAllowed("brand_new_event", { systemNotifications: false }), false);
+  assert.equal(notificationCategoryAllowed("brand_new_event", { matchNotifications: false }), true);
+});
+
+test("the broker's own activation test is never blocked by a preference", () => {
+  const everythingOff = Object.fromEntries(
+    Object.values(PUSH_TYPE_NOTIFICATION_CATEGORIES)
+      .concat("systemNotifications")
+      .map(key => [key, false])
+  );
+  assert.deepEqual([...ALWAYS_ALLOWED_PUSH_TYPES], ["notification_test"]);
+  assert.equal(notificationCategoryAllowed("notification_test", everythingOff), true);
+  assert.equal(notificationCategoryAllowed("match", everythingOff), false);
+});
+
+test("only an explicit false blocks a notification, so partial documents are safe", () => {
+  for (const value of [true, undefined, null, 0, "", "false"]) {
+    assert.equal(
+      notificationCategoryAllowed("match", { matchNotifications: value }),
+      true,
+      `value ${JSON.stringify(value)} must not silently block notifications`
+    );
+  }
+  assert.equal(notificationCategoryAllowed("match", { matchNotifications: false }), false);
+});
+
+test("the public media route refuses any key outside the office image allow-list", async () => {
+  const reads = [];
+  const mediaEnv = { ...env, IAQAR_MEDIA: { get: async key => { reads.push(key); return null; } } };
+  for (const key of [
+    "public-intake/office-alqiq/request_123456/image-1.jpg",
+    "office-covers/office-alqiq/private",
+    "office-covers/office-alqiq/cover/extra",
+    "office-covers/office-alqiq"
+  ]) {
+    const response = await worker.fetch(new Request(`https://example.test/media/public/${key}`), mediaEnv);
+    assert.equal(response.status, 404, key);
+  }
+  assert.deepEqual(reads, [], "a rejected key must never reach the bucket");
 });
 
 
@@ -507,4 +721,16 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+test("opportunity source media accepts only approved Phase 2 source types", () => {
+  assert.equal(normalizeOpportunitySourceType("pdf"), "pdf");
+  assert.equal(normalizeOpportunitySourceType("IMAGE"), "image");
+  assert.equal(normalizeOpportunitySourceType("screenshot"), "screenshot");
+  assert.equal(normalizeOpportunitySourceType("word"), "word");
+  assert.equal(normalizeOpportunitySourceType("excel"), "excel");
+  assert.equal(normalizeOpportunitySourceType("audio"), "audio");
+  assert.equal(normalizeOpportunitySourceType("url"), "");
+  assert.equal(normalizeOpportunitySourceType("text"), "");
+  assert.equal(normalizeOpportunitySourceType(""), "");
 });
