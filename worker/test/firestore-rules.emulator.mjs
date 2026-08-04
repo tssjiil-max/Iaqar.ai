@@ -142,34 +142,35 @@ test("office owners can access their tenant but cannot read, query, or modify an
 test("clients cannot change ownership, office names, claims, handles, or public projections", async () => {
   const token = userToken("owner-a");
   const attempts = [
-    firestoreRequest(`${documentRoot}/offices/office-a?updateMask.fieldPaths=ownerUid`, {
+    () => firestoreRequest(`${documentRoot}/offices/office-a?updateMask.fieldPaths=ownerUid`, {
       method: "PATCH",
       token,
       body: { fields: { ownerUid: { stringValue: "attacker" } } }
     }),
-    firestoreRequest(`${documentRoot}/offices/office-a?updateMask.fieldPaths=officeName&updateMask.fieldPaths=officeNameKey`, {
+    () => firestoreRequest(`${documentRoot}/offices/office-a?updateMask.fieldPaths=officeName&updateMask.fieldPaths=officeNameKey`, {
       method: "PATCH",
       token,
       body: { fields: { officeName: { stringValue: "اسم بديل" }, officeNameKey: { stringValue: "اسمبديل" } } }
     }),
-    firestoreRequest("officeNameClaims/مكتبألف", {
+    () => firestoreRequest("officeNameClaims/مكتبألف", {
       method: "PATCH",
       token,
       body: { fields: { officeId: { stringValue: "office-a" }, officeName: { stringValue: "مكتب ألف" } } }
     }),
-    firestoreRequest("officeHandles/office-a-public", {
+    () => firestoreRequest("officeHandles/office-a-public", {
       method: "PATCH",
       token,
       body: { fields: { officeId: { stringValue: "office-a" } } }
     }),
-    firestoreRequest(`${documentRoot}/publicOffices/office-a?updateMask.fieldPaths=officeName`, {
+    () => firestoreRequest(`${documentRoot}/publicOffices/office-a?updateMask.fieldPaths=officeName`, {
       method: "PATCH",
       token,
       body: { fields: { officeName: { stringValue: "اسم بديل" } } }
     })
   ];
-  const responses = await Promise.all(attempts);
-  assert.deepEqual(responses.map(response => response.status), [403, 403, 403, 403, 403]);
+  const statuses = [];
+  for (const attempt of attempts) statuses.push((await attempt()).status);
+  assert.deepEqual(statuses, [403, 403, 403, 403, 403]);
 });
 
 test("an atomic Firestore claim permits exactly one normalized office name owner", async () => {
