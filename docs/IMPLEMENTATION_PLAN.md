@@ -9,8 +9,8 @@ after the Phase 1 report. Phase 2 requires project-owner approval.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 0 | Audit, governance documents, persistent rule | In progress |
-| 1 | Office Card and Office Settings | In progress |
+| 0 | Audit, governance documents, persistent rule | Complete |
+| 1 | Office Card and Office Settings | Complete with documented production-verification limitations |
 | 2 | Unified Opportunity intake | Not authorized |
 | 3 | Private Opportunity Bank | Not authorized |
 | 4 | Matching and automatic rematching | Not authorized |
@@ -79,3 +79,21 @@ See `REPOSITORY_AUDIT.md` for evidence and classifications.
 - Existing and new tests, syntax checks, and deploy-equivalent static build
   checks pass.
 - Documents reflect actual results and limitations.
+
+## Phase 1 verification result
+
+- Existing Worker suite: 40/40 passing.
+- New Phase 1 unit/static suite: 10 passing; the emulator-only test is skipped
+  in the ordinary command and run separately.
+- Firestore emulator isolation suite: 1/1 passing.
+- JavaScript syntax, JSON parsing, and duplicate HTML ID checks: passing.
+- Cloudflare Worker dry-run bundle: passing.
+- Firestore rules compile: passing.
+- Public localhost browser rendering: Arabic RTL/mobile PASS.
+- Authenticated office browser flow: BLOCKED locally because the production
+  Firebase access gate correctly requires a real office account and backend.
+- No deployment or production provider test was performed.
+
+Phase 1 is stopped. The exact next recommended phase, after owner approval, is
+Phase 2: unified Opportunity intake and source persistence. Phase 2 must begin
+with the existing Add Opportunity card and must not add a new home section.
