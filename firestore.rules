@@ -20,6 +20,16 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    // لا يغيّر الوسيط ملكية المكتب أو معرّفه من الواجهة إطلاقًا.
+    function ownershipPreserved(officeId) {
+      return isPlatformAdmin() || (
+        (!('ownerUid' in resource.data) || request.resource.data.ownerUid == resource.data.ownerUid)
+        && (!('officeId' in request.resource.data) || request.resource.data.officeId == officeId)
+      );
+    }
+    function validCooperationMode(mode) {
+      return mode in ['disabled', 'approval_required', 'smart_automatic'];
+    }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
@@ -35,12 +45,32 @@ service cloud.firestore {
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
       allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow update: if canManage(officeId) && validOfficeProfile() && ownershipPreserved(officeId);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
         allow read: if isOfficeMember(officeId);
         allow write: if canManage(officeId);
+      }
+
+      // إعدادات المكتب: تفضيلات الإشعارات ووضع التعاون الذكي.
+      // مستند المكتب لمن يملك صلاحية الإدارة، ومستند الوسيط لصاحبه فقط.
+      match /officeSettings/{settingId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && (
+            (settingId == 'notifications'
+              && canManage(officeId)
+              && request.resource.data.scope == 'office')
+            || (settingId == 'cooperation'
+              && canManage(officeId)
+              && validCooperationMode(request.resource.data.mode))
+            || (settingId == 'broker-' + request.auth.uid
+              && request.resource.data.scope == 'broker'
+              && request.resource.data.brokerId == request.auth.uid)
+          );
+        allow delete: if canManage(officeId);
       }
 
       match /publicIntake/{docId} {
@@ -81,11 +111,11 @@ service cloud.firestore {
       }
 
       match /{collectionName}/{docId} {
-        allow read: if collectionName != 'devices' && isOfficeMember(officeId);
-        allow create, update: if collectionName != 'devices'
+        allow read: if !(collectionName in ['devices', 'officeSettings']) && isOfficeMember(officeId);
+        allow create, update: if !(collectionName in ['devices', 'officeSettings'])
           && isOfficeMember(officeId)
           && request.resource.data.officeId == officeId;
-        allow delete: if collectionName != 'devices' && canManage(officeId);
+        allow delete: if !(collectionName in ['devices', 'officeSettings']) && canManage(officeId);
 
         match /timeline/{eventId} {
           allow read, create: if isOfficeMember(officeId);
@@ -105,15 +135,32 @@ service cloud.firestore {
     }
 
 
+    // حجز اسم المكتب على مستوى المنصة. اسم المستند هو المفتاح الموحّد للاسم،
+    // ولا يجوز لمكتب أن يستولي على حجز مكتب آخر أو أن يحجز اسمًا لا يطابق اسمه المحفوظ.
     match /officeNameClaims/{nameKey} {
+      function claimMatchesOffice() {
+        return getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.officeNameKey == nameKey;
+      }
+      function claimWriterAuthorized() {
+        return canManage(request.resource.data.officeId)
+          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid;
+      }
+      function validClaimPayload() {
+        return request.resource.data.officeId is string
+          && request.resource.data.officeName is string
+          && request.resource.data.officeName.size() <= 80
+          && (isPlatformAdmin() || nameKey.size() >= 4);
+      }
       allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.resource.data.officeId is string
-        && request.resource.data.officeName is string
-        && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
-        && (canManage(request.resource.data.officeId)
-          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+      allow create: if signedIn()
+        && validClaimPayload()
+        && claimWriterAuthorized()
+        && claimMatchesOffice();
+      allow update: if signedIn()
+        && validClaimPayload()
+        && resource.data.officeId == request.resource.data.officeId
+        && claimWriterAuthorized()
+        && claimMatchesOffice();
       allow delete: if signedIn()
         && (isPlatformAdmin() || canManage(resource.data.officeId));
     }

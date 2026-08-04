@@ -29,17 +29,6 @@
     elements.status.classList.toggle("connected", connected);
   }
 
-  function openSettings() {
-    elements.overlay.hidden = false;
-    document.body.style.overflow = "hidden";
-    refreshStatus();
-  }
-
-  function closeSettings() {
-    elements.overlay.hidden = true;
-    document.body.style.overflow = "";
-  }
-
   async function fetchJson(path, options = {}) {
     let idToken = "";
     try {
@@ -222,9 +211,7 @@
   }
 
   function init() {
-    elements.openBtn = document.getElementById("officeSettingsBtn");
     elements.overlay = document.getElementById("officeSettings");
-    elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
     elements.connectBtn = document.getElementById("whatsappConnectBtn");
     elements.note = document.getElementById("whatsappIntegrationNote");
@@ -232,16 +219,10 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.overlay || !elements.connectBtn) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
-    elements.closeBtn.addEventListener("click", closeSettings);
-    elements.overlay.addEventListener("click", event => {
-      if (event.target === elements.overlay) closeSettings();
-    });
-    document.addEventListener("keydown", event => {
-      if (event.key === "Escape" && !elements.overlay.hidden) closeSettings();
-    });
+    // لوحة الإعدادات يفتحها ملف office-settings.js عبر الشعار أو صورة المكتب.
+    window.addEventListener("iaqar:office-settings-opened", refreshStatus);
     elements.connectBtn.addEventListener("click", startEmbeddedSignup);
 
     listenForSignupEvents();

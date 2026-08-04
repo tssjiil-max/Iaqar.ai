@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, isPublicOfficeImageKey, legacyLocalLoginPhone, normalizeLoginPhone, officeImageKey, officeImageKind, OFFICE_IMAGE_KINDS, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -507,4 +507,64 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+/* المرحلة 1: هوية المكتب البصرية */
+
+test("phase 1 office images map to three fixed storage paths", () => {
+  assert.deepEqual(Object.keys(OFFICE_IMAGE_KINDS).sort(), ["display", "logo", "share"]);
+  assert.equal(officeImageKey("logo", "office-alqiq"), "office-logos/office-alqiq/logo");
+  assert.equal(officeImageKey("display", "office-alqiq"), "office-covers/office-alqiq/cover");
+  assert.equal(officeImageKey("share", "office-alqiq"), "office-share-covers/office-alqiq/cover");
+});
+
+test("phase 1 keeps the previous office cover contract when no kind is supplied", () => {
+  assert.equal(officeImageKind(""), "display");
+  assert.equal(officeImageKind(null), "display");
+  assert.equal(officeImageKey("", "office-alqiq"), "office-covers/office-alqiq/cover");
+});
+
+test("phase 1 rejects unknown office image kinds", () => {
+  assert.throws(() => officeImageKind("banner"), /نوع صورة المكتب غير مدعوم/);
+  assert.throws(() => officeImageKey("logo", ""), /officeId مطلوب/);
+});
+
+test("phase 1 office image keys are office scoped and normalized", () => {
+  assert.equal(officeImageKey("logo", "Office ALQIQ"), "office-logos/office-alqiq/logo");
+  assert.equal(officeImageKey("logo", "../other"), "office-logos/other/logo");
+});
+
+test("phase 1 public media reads are limited to the three approved key shapes", () => {
+  assert.equal(isPublicOfficeImageKey("office-logos/office-alqiq/logo"), true);
+  assert.equal(isPublicOfficeImageKey("office-covers/office-alqiq/cover"), true);
+  assert.equal(isPublicOfficeImageKey("office-share-covers/office-alqiq/cover"), true);
+  assert.equal(isPublicOfficeImageKey("public-intake/office-alqiq/abcdefgh/image-1.jpg"), false);
+  assert.equal(isPublicOfficeImageKey("office-covers/office-alqiq/../secret"), false);
+  assert.equal(isPublicOfficeImageKey("office-covers/office-alqiq/cover/extra"), false);
+});
+
+test("phase 1 office image upload refuses an unauthenticated caller", async () => {
+  const response = await worker.fetch(new Request("https://example.test/media/office-cover", {
+    method: "POST",
+    headers: { "content-type": "image/png", "content-length": "1024", "x-office-id": "office-alqiq", "x-media-kind": "logo" },
+    body: "x"
+  }), { ...env, IAQAR_MEDIA: { put: async () => { throw new Error("must not upload"); } } });
+  assert.equal(response.status >= 400, true);
+});
+
+test("phase 1 office image removal refuses an unauthenticated caller", async () => {
+  const response = await worker.fetch(new Request("https://example.test/media/office-image/remove", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ officeId: "office-alqiq", kind: "logo" })
+  }), { ...env, IAQAR_MEDIA: { delete: async () => { throw new Error("must not delete"); } } });
+  assert.equal(response.status >= 400, true);
+});
+
+test("phase 1 public media route rejects a key outside the allow list", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/media/public/public-intake/office-alqiq/abcdefgh/image-1.jpg"),
+    { ...env, IAQAR_MEDIA: { get: async () => { throw new Error("must not read"); } } }
+  );
+  assert.equal(response.status, 404);
 });

@@ -27,6 +27,7 @@ foreach ($file in @(
   "public/js/access-gate.js",
   "public/js/firebase-office.js",
   "public/js/fcm-fid.js",
+  "public/js/office-identity.js",
   "public/js/office-settings.js",
   "public/js/whatsapp-office.js",
   "public/js/workflow-office.js",
@@ -35,6 +36,9 @@ foreach ($file in @(
 )) {
   Invoke-Checked "JavaScript check: $file" { node.exe --check $file }
 }
+
+Write-Host "Running frontend tests..." -ForegroundColor Cyan
+Invoke-Checked "Frontend tests" { npm.cmd test }
 
 Push-Location worker
 try {

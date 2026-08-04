@@ -240,7 +240,11 @@ export default {
         return await uploadOfficeCover(request, env, requestId);
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
+      if (request.method === "POST" && url.pathname === "/media/office-image/remove") {
+        return await removeOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/")) {
         return await servePublicOfficeCover(url, env);
       }
 
@@ -379,29 +383,70 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
+// هوية المكتب البصرية: ثلاث صور معتمدة، لكل واحدة مسار ثابت وحد أقصى للحجم.
+const OFFICE_IMAGE_KINDS = Object.freeze({
+  logo: { prefix: "office-logos", filename: "logo", maxBytes: 5 * 1024 * 1024 },
+  display: { prefix: "office-covers", filename: "cover", maxBytes: 10 * 1024 * 1024 },
+  share: { prefix: "office-share-covers", filename: "cover", maxBytes: 10 * 1024 * 1024 }
+});
+
+function officeImageKind(value) {
+  const kind = cleanText(value, 20).toLowerCase() || "display";
+  if (!OFFICE_IMAGE_KINDS[kind]) throw appError("unsupported_office_image_kind", 400, "نوع صورة المكتب غير مدعوم");
+  return kind;
+}
+
+function officeImageKey(kind, officeId) {
+  const preset = OFFICE_IMAGE_KINDS[officeImageKind(kind)];
+  const office = normalizeOfficeId(officeId);
+  if (!office) throw appError("office_id_required", 400, "officeId مطلوب");
+  return `${preset.prefix}/${office}/${preset.filename}`;
+}
+
+function isPublicOfficeImageKey(key) {
+  return Object.values(OFFICE_IMAGE_KINDS).some(preset =>
+    new RegExp(`^${preset.prefix}/[a-z0-9_-]{1,80}/${preset.filename}$`).test(key));
+}
+
 async function uploadOfficeCover(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  const kind = officeImageKind(request.headers.get("x-media-kind"));
+  const preset = OFFICE_IMAGE_KINDS[kind];
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
-  if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
+  if (size > preset.maxBytes) {
+    throw appError("image_too_large", 413, `حجم الصورة يتجاوز ${Math.round(preset.maxBytes / (1024 * 1024))} ميجابايت`);
+  }
+  const key = officeImageKey(kind, officeId);
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, mediaKind: kind, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
   const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  return jsonResponse({ ok: true, kind, coverUrl, imageUrl: coverUrl, requestId }, 201);
+}
+
+async function removeOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId || request.headers.get("x-office-id"));
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  const kind = officeImageKind(body.kind || request.headers.get("x-media-kind"));
+  const key = officeImageKey(kind, officeId);
+  await bucket.delete(key);
+  return jsonResponse({ ok: true, kind, removed: true, requestId });
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!isPublicOfficeImageKey(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -2601,4 +2646,4 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure, OFFICE_IMAGE_KINDS, officeImageKind, officeImageKey, isPublicOfficeImageKey };
