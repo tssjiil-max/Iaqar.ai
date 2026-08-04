@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory, isPublicOfficeMediaKey } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -46,6 +46,16 @@ test("Firebase service account JWT identifies the exact private key", async () =
   });
   const header = JSON.parse(Buffer.from(jwt.split(".")[0], "base64url").toString("utf8"));
   assert.deepEqual(header, { alg: "RS256", typ: "JWT", kid: "firebase-key-123" });
+});
+
+test("public office media keys allow only canonical cover and logo objects", () => {
+  assert.equal(isPublicOfficeMediaKey("office-covers/office-alqiq/cover"), true);
+  assert.equal(isPublicOfficeMediaKey("office-logos/office-alqiq/logo"), true);
+  // Traversal / arbitrary reads are rejected.
+  assert.equal(isPublicOfficeMediaKey("office-covers/office-alqiq/../secret"), false);
+  assert.equal(isPublicOfficeMediaKey("office-logos/office-alqiq/other"), false);
+  assert.equal(isPublicOfficeMediaKey("public-intake/office-alqiq/x/image-1.jpg"), false);
+  assert.equal(isPublicOfficeMediaKey("office-logos//logo"), false);
 });
 
 test("office login normalizes every Saudi mobile format to one canonical value", () => {

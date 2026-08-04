@@ -223,6 +223,7 @@
 
   function init() {
     elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.coverBtn = document.getElementById("officeCoverTrigger");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -235,6 +236,7 @@
     if (!elements.openBtn || !elements.overlay) return;
 
     elements.openBtn.addEventListener("click", openSettings);
+    if (elements.coverBtn) elements.coverBtn.addEventListener("click", openSettings);
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();

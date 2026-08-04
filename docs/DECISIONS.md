@@ -2,6 +2,20 @@
 
 Records approved decisions and open points. Newest first.
 
+## D‑0007 — Pre‑existing "الصفقات" (Deals) home card left in place for Phase 1
+- **Phase:** 1 (finding), resolution deferred to Phase 2/5
+- **Finding:** `public/index.html` has a `main-sections` toggle with an
+  `data-main="deals"` card labelled "الصفقات", and the home page does not yet
+  match the approved Section 5 layout (Office Card + Add Opportunity + Operations
+  Center). This predates the directive.
+- **Decision:** Not changed in Phase 1. Removing the Deals card and restructuring
+  the home sections is coupled to Add Opportunity (Phase 2) and the Operations
+  Center (Phase 5) and to `workflow-office.js` deals logic; doing it now would be
+  an uncontrolled, out‑of‑scope change (Section 28/31). There is **no** bottom
+  navigation bar (Test 2 passes).
+- **Requested:** Address the Deals card + home‑section layout during the Add
+  Opportunity / Operations Center phases per Section 5 and Section 21.
+
 ## D‑0006 — Cover crop implemented as configurable, deterministic center‑crop
 - **Phase:** 1
 - **Decision:** The cover image is cropped to a configurable aspect ratio

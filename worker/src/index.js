@@ -240,8 +240,15 @@ export default {
         return await uploadOfficeCover(request, env, requestId);
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
-        return await servePublicOfficeCover(url, env);
+      if (request.method === "POST" && url.pathname === "/media/office-logo") {
+        return await uploadOfficeLogo(request, env, requestId);
+      }
+
+      if (request.method === "GET" && (
+        url.pathname.startsWith("/media/public/office-covers/") ||
+        url.pathname.startsWith("/media/public/office-logos/")
+      )) {
+        return await servePublicOfficeMedia(url, env);
       }
 
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
@@ -398,10 +405,36 @@ async function uploadOfficeCover(request, env, requestId) {
   return jsonResponse({ ok: true, coverUrl, requestId }, 201);
 }
 
-async function servePublicOfficeCover(url, env) {
+async function uploadOfficeLogo(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  const size = requestBodyLength(request);
+  if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
+  if (size > 5 * 1024 * 1024) throw appError("image_too_large", 413, "حجم شعار المكتب يتجاوز 5 ميجابايت");
+  const key = `office-logos/${officeId}/logo`;
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
+    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+  });
+  const origin = new URL(request.url).origin;
+  const logoUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({ ok: true, logoUrl, requestId }, 201);
+}
+
+// Only office cover/logo objects are publicly readable, and only at their exact
+// canonical key. Exported for unit tests.
+function isPublicOfficeMediaKey(key) {
+  return /^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key) ||
+    /^office-logos\/[a-z0-9_-]{1,80}\/logo$/.test(key);
+}
+
+async function servePublicOfficeMedia(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!isPublicOfficeMediaKey(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -2601,4 +2634,4 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure, isPublicOfficeMediaKey };

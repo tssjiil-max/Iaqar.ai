@@ -18,7 +18,7 @@ phases are delivered. Legend: ✅ PASS · ⏳ pending phase · ⚠️ partial.
 | 11 | Sharing an Opportunity preserves originating office/broker; cooperating broker gets only approved access | 6 | ⏳ |
 | 12 | Revoking cooperation removes future access per policy | 6 | ⏳ |
 | 13 | Match/communication Operation generates an Arabic WhatsApp/Telegram draft; not "sent" until real send/response | 7 | ⏳ |
-| 14 | No separate Deals page or bottom‑nav item | 1 | ✅ |
+| 14 | No separate Deals page or bottom‑nav item | 1/5 | ⚠️ no bottom‑nav (✅), but a pre‑existing `data-main="deals"` "الصفقات" home card remains; home‑section restructuring is Phase 2/5 scope (see D‑0007) |
 | 15 | Mock integrations clearly separated from production adapters; no fake WhatsApp/Telegram delivery success | 7/10 | ⚠️ (WhatsApp receive‑only + honest status today; full separation in Phase 7) |
 
 ## Phase 1 automated coverage
