@@ -237,7 +237,11 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeCover(request, env, requestId);
+        return await uploadOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
+        return await deleteOfficeImage(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
@@ -379,29 +383,59 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
+// متغيّرات هوية المكتب البصرية. الترويسة تبقى "cover" لتوافق الروابط المنشورة سابقًا.
+export const OFFICE_IMAGE_VARIANTS = Object.freeze(["cover", "logo", "display"]);
+
+export function normalizeOfficeImageVariant(value) {
+  const variant = cleanText(value, 20).toLowerCase();
+  if (!variant) return "cover";
+  return OFFICE_IMAGE_VARIANTS.includes(variant) ? variant : "";
+}
+
+function officeImageKey(officeId, variant) {
+  return `office-covers/${officeId}/${variant}`;
+}
+
+async function resolveOfficeImageTarget(request, env) {
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
+  if (!variant) throw appError("unsupported_image_variant", 400, "نوع صورة المكتب غير مدعوم");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  return { officeId, variant, key: officeImageKey(officeId, variant) };
+}
+
+async function uploadOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, variant, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  // coverUrl محفوظ للتوافق مع أي عميل قديم يقرأ الاسم السابق.
+  return jsonResponse({ ok: true, variant, imageUrl, coverUrl: imageUrl, requestId }, 201);
+}
+
+async function deleteOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { variant, key } = await resolveOfficeImageTarget(request, env);
+  if (variant === "cover") {
+    throw appError("image_not_removable", 400, "الترويسة مطلوبة لبطاقة المكتب ولا يمكن إزالتها");
+  }
+  await bucket.delete(key);
+  return jsonResponse({ ok: true, variant, removed: true, requestId });
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!/^office-covers\/[a-z0-9_-]{1,80}\/(cover|logo|display)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -1720,7 +1754,59 @@ async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,re
   }}).catch(error=>console.warn("[iaqar-fcm] stale token cleanup failed",error&&error.message));
 }
 
+// خريطة نوع الإشعار إلى فئة التفضيلات. نسخة مطابقة موجودة في
+// public/js/office-domain.js، والاختباران يتحققان من الجدول نفسه فأي اختلاف يفشل البناء.
+// لا يمكن للعامل أن يستورد من public/ دون إضافة خطوة بناء.
+export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
+  match: "matchNotifications",
+  deal: "matchNotifications",
+  client_request: "ownerCustomerNotifications",
+  owner_offer: "ownerCustomerNotifications",
+  intake: "ownerCustomerNotifications",
+  cooperation: "cooperationNotifications",
+  cooperation_request: "cooperationNotifications",
+  cooperation_response: "cooperationNotifications",
+  message: "messageNotifications",
+  conversation: "messageNotifications",
+  appointment: "appointmentNotifications",
+  followup: "appointmentNotifications",
+  viewing: "appointmentNotifications"
+});
+
+// أنواع طلبها الوسيط بنفسه، فلا تُحجب بأي تفضيل.
+export const ALWAYS_ALLOWED_PUSH_TYPES = Object.freeze(["notification_test"]);
+
+export function notificationCategoryForPushType(type) {
+  const key=String(type||"").trim().toLowerCase();
+  return PUSH_TYPE_NOTIFICATION_CATEGORIES[key]||"systemNotifications";
+}
+
+/** غياب المستند يعني "كل الفئات مفعّلة"، فلا تتغير سلوك المكاتب القائمة. */
+export function notificationCategoryAllowed(type,preferences) {
+  if(ALWAYS_ALLOWED_PUSH_TYPES.includes(String(type||"").trim().toLowerCase()))return true;
+  const source=preferences&&typeof preferences==="object"?preferences:{};
+  const value=source[notificationCategoryForPushType(type)];
+  return value!==false;
+}
+
+async function readOfficeNotificationPreferences({projectId,officeId,accessToken}) {
+  try{
+    const document=await getFirestoreDocument({
+      projectId,segments:["offices",officeId,"officeSettings","notifications"],accessToken,allowMissing:true
+    });
+    return document?firestoreFieldsToJs(document.fields||{}):{};
+  }catch(error){
+    // تعذر قراءة التفضيل لا يجوز أن يُسكت إشعارًا مطلوبًا.
+    console.warn("[iaqar-fcm] notification preferences read failed",error&&error.message);
+    return {};
+  }
+}
+
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",accessToken}) {
+  const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
+  if(!notificationCategoryAllowed(type,preferences)){
+    return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
+  }
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
   const activeDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
