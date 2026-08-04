@@ -20,22 +20,87 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    function validNotificationPreferences() {
+      return request.resource.data.notificationPreferences is map
+        && request.resource.data.notificationPreferences.keys().hasOnly([
+          'matches',
+          'participants',
+          'cooperation',
+          'messages',
+          'appointmentsFollowUps',
+          'systemImportant'
+        ])
+        && request.resource.data.notificationPreferences.matches is bool
+        && request.resource.data.notificationPreferences.participants is bool
+        && request.resource.data.notificationPreferences.cooperation is bool
+        && request.resource.data.notificationPreferences.messages is bool
+        && request.resource.data.notificationPreferences.appointmentsFollowUps is bool
+        && request.resource.data.notificationPreferences.systemImportant is bool;
+    }
     function validOfficeProfile() {
-      return request.resource.data.officeName is string
+      return request.resource.data.officeId is string
+        && request.resource.data.officeName is string
+        && request.resource.data.officeName.size() >= 4
         && request.resource.data.officeName.size() <= 80
         && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey.size() >= 4
         && request.resource.data.officeNameKey.size() <= 100
-        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.brokerName is string
+        && request.resource.data.brokerName.size() > 0
+        && request.resource.data.brokerName.size() <= 80
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.licenseNumber is string
+        && request.resource.data.licenseNumber.size() > 0
+        && request.resource.data.licenseNumber.size() <= 20
+        && request.resource.data.city is string
+        && request.resource.data.city.size() > 0
+        && request.resource.data.city.size() <= 60
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && request.resource.data.logoUrl is string
+        && request.resource.data.logoUrl.size() <= 2000
+        && request.resource.data.displayImageUrl is string
+        && request.resource.data.displayImageUrl.size() <= 2000
+        && request.resource.data.coverUrl is string
+        && request.resource.data.coverUrl.size() <= 2000
+        && request.resource.data.whatsappCoverUrl is string
+        && request.resource.data.whatsappCoverUrl.size() <= 2000
+        && request.resource.data.publicSlug is string
+        && request.resource.data.publicSlug.size() <= 64
+        && request.resource.data.cooperationMode in ['DISABLED','APPROVAL_REQUIRED','SMART_AUTOMATIC']
+        && validNotificationPreferences();
     }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      // إنشاء المكتب وتغيير الاسم المحجوز يتمان عبر الخادم لضمان التفرد الذري.
+      allow create: if false;
+      allow update: if canManage(officeId)
+        && validOfficeProfile()
+        && request.resource.data.officeId == officeId
+        && request.resource.data.officeId == resource.data.officeId
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.officeName == resource.data.officeName
+        && request.resource.data.officeNameKey == resource.data.officeNameKey
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'brokerName',
+          'phone',
+          'whatsapp',
+          'licenseNumber',
+          'city',
+          'specialties',
+          'logoUrl',
+          'displayImageUrl',
+          'coverUrl',
+          'whatsappCoverUrl',
+          'publicSlug',
+          'notificationPreferences',
+          'cooperationMode',
+          'updatedAt'
+        ]);
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
@@ -96,7 +161,7 @@ service cloud.firestore {
 
     match /publicOffices/{officeId} {
       allow read: if true;
-      allow create, update, delete: if canManage(officeId);
+      allow write: if false;
     }
 
     match /brokerApplications/{applicationId} {
@@ -107,15 +172,12 @@ service cloud.firestore {
 
     match /officeNameClaims/{nameKey} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.resource.data.officeId is string
-        && request.resource.data.officeName is string
-        && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
-        && (canManage(request.resource.data.officeId)
-          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
-      allow delete: if signedIn()
-        && (isPlatformAdmin() || canManage(resource.data.officeId));
+      allow write: if false;
+    }
+
+    match /officeHandles/{handle} {
+      allow read: if true;
+      allow write: if false;
     }
 
     match /whatsapp_accounts/{phoneNumberId} {

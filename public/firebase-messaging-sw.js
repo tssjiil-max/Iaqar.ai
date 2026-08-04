@@ -59,7 +59,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-stage3-fcm-fid-v1";
+const IAQAR_CACHE = "iaqar-shell-phase1-office-settings-v1";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -70,6 +70,7 @@ const IAQAR_SHELL = [
   "/js/firebase-office.js",
   "/js/fcm-fid.js",
   "/js/office-settings.js",
+  "/js/opportunity-bank.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
   "/js/workflow-office.js"

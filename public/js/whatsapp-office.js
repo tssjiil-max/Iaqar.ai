@@ -6,6 +6,7 @@
   let config = null;
   let signupData = null;
   let sdkPromise = null;
+  let settingsTrigger = null;
 
   const elements = {};
 
@@ -29,15 +30,36 @@
     elements.status.classList.toggle("connected", connected);
   }
 
-  function openSettings() {
+  function openSettings(event) {
+    settingsTrigger = event && event.currentTarget ? event.currentTarget : document.activeElement;
     elements.overlay.hidden = false;
     document.body.style.overflow = "hidden";
     refreshStatus();
+    requestAnimationFrame(() => elements.closeBtn.focus());
   }
 
   function closeSettings() {
     elements.overlay.hidden = true;
     document.body.style.overflow = "";
+    if (settingsTrigger && typeof settingsTrigger.focus === "function") settingsTrigger.focus();
+    settingsTrigger = null;
+  }
+
+  function trapSettingsFocus(event) {
+    if (event.key !== "Tab" || elements.overlay.hidden) return;
+    const focusable = Array.from(elements.overlay.querySelectorAll(
+      'button:not([disabled]),input:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'
+    )).filter(node => !node.hidden && node.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   async function fetchJson(path, options = {}) {
@@ -223,6 +245,7 @@
 
   function init() {
     elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.coverBtn = document.getElementById("officeCoverSettingsBtn");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -235,12 +258,14 @@
     if (!elements.openBtn || !elements.overlay) return;
 
     elements.openBtn.addEventListener("click", openSettings);
+    if (elements.coverBtn) elements.coverBtn.addEventListener("click", openSettings);
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();
     });
     document.addEventListener("keydown", event => {
       if (event.key === "Escape" && !elements.overlay.hidden) closeSettings();
+      trapSettingsFocus(event);
     });
     elements.connectBtn.addEventListener("click", startEmbeddedSignup);
 

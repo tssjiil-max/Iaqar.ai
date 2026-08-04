@@ -149,11 +149,13 @@
       const snap = await db().collection("publicOffices").doc(officeId).get();
       if (snap.exists) {
         const data = snap.data() || {};
+        const displayImage = data.displayImageUrl || data.coverUrl || "";
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${displayImage ? `<img src="${escapeHtml(displayImage)}" alt="صورة عرض المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${data.logoUrl ? `<img src="${escapeHtml(data.logoUrl)}" alt="شعار المكتب" style="width:72px;height:72px;object-fit:cover;border-radius:16px;margin:0 auto 10px;display:block">` : ""}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
-          <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}${data.whatsapp ? ` — واتساب ${escapeHtml(data.whatsapp)}` : ""}</p>`;
+          <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}</p>`;
       }
     } catch (_) {}
   }
@@ -579,14 +581,18 @@
     }
     if (publicSlug && !officeId) {
       try {
-        const snapshot = await db().collection("publicOffices").where("publicSlug", "==", publicSlug).limit(1).get();
-        if (snapshot.empty) {
+        const handleSnapshot = await db().collection("officeHandles").doc(publicSlug).get();
+        let resolvedOfficeId = handleSnapshot.exists ? String(handleSnapshot.data().officeId || "") : "";
+        if (!resolvedOfficeId) {
+          const legacySnapshot = await db().collection("publicOffices").where("publicSlug", "==", publicSlug).limit(1).get();
+          if (!legacySnapshot.empty) resolvedOfficeId = legacySnapshot.docs[0].id;
+        }
+        if (!resolvedOfficeId) {
           frame(`<section class="access-card"><h2>رابط المكتب غير متاح</h2><p>تحقق من الرابط أو ارجع إلى المنصة العامة.</p><button class="access-btn" id="goPlatformHome">المنصة العامة</button></section>`);
           gate.querySelector("#goPlatformHome").onclick = () => location.assign("/");
           return;
         }
-        const data = snapshot.docs[0].data() || {};
-        officeId = String(data.officeId || snapshot.docs[0].id || "").trim().toLowerCase();
+        officeId = resolvedOfficeId.trim().toLowerCase();
         refreshRouteFlags();
       } catch (error) {
         console.warn("[iaqar] public slug resolution", error);
