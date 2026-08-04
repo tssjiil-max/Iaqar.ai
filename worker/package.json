@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "npm run test:unit && npm run test:rules",
+    "test:unit": "node --test test/worker.test.mjs test/phase1.test.mjs",
+    "test:rules": "npx --yes firebase-tools@latest emulators:exec --project aqar-b5d76 --only firestore \"node --test test/firestore-rules.emulator.mjs\"",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

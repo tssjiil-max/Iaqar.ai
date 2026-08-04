@@ -4,8 +4,8 @@
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 — Foundation and audit | Implemented in current branch; verification pending | Factual audit and governance documents created; no stack migration |
-| 1 — Office Card and Office Settings | Implemented in current branch; verification pending | Backend-enforced names, identity, links, preferences, bank entry, cooperation mode |
+| 0 — Foundation and audit | Complete | Factual audit and governance documents created; no stack migration |
+| 1 — Office Card and Office Settings | Complete with documented live-integration limitations | 51 automated tests, syntax checks, Worker dry build, rules compilation, and local UI acceptance passed |
 | 2 — Unified Opportunity intake | Not started | Explicitly outside the current execution |
 | 3 — Opportunity Bank | Not started | Phase 1 provides only the private entry/read-only shell |
 | 4 — Matching engine | Not started under the new constitution | Historical matcher exists and requires model/idempotency alignment |
@@ -61,6 +61,16 @@ Detailed evidence is in `docs/PHASE_0_AUDIT.md`.
 - Opportunity Bank entry opens an authenticated office-scoped read-only shell; Phase 3 functionality remains deferred.
 - Cooperation mode defaults to `APPROVAL_REQUIRED`.
 - Rules protect `officeId`, ownership, office name, claims, handles, and public projection writes.
+
+## Phase 1 verification
+
+- `npm test` in `worker`: 51 passed, 0 failed.
+- `node --check` on changed frontend, service-worker, Worker, and test JavaScript: passed.
+- `wrangler deploy --dry-run`: passed; no deployment performed.
+- Firestore Emulator startup/rules compilation: passed.
+- Local Chrome mobile-width UI acceptance: passed, including both Settings triggers and focus return.
+- No lint or typecheck command exists in the repository.
+- Authenticated live Firestore/R2/FCM integration tests were not run because no production credentials or test tenant were available to this run.
 
 ## Risks and limitations
 
