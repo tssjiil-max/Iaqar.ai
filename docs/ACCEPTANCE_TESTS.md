@@ -38,7 +38,7 @@ Status as of the end of **Phase 1**:
 | 1 | Office Settings access | **PASS** | `test/office-card.test.mjs` |
 | 2 | No bottom navigation | **PASS** | `test/office-card.test.mjs` |
 | 3 | Office name validation | **PASS** | `test/office-name.test.mjs`, `test/firestore-rules.test.mjs` |
-| 4 | Office privacy | **PASS (static)** | `test/firestore-rules.test.mjs` |
+| 4 | Office privacy | **PASS (emulator + static)** | `test/emulator/firestore-rules.emulator.test.mjs`, `test/firestore-rules.test.mjs` |
 | 5 | Opportunity intake | **PENDING (phase 2)** | — |
 | 6 | No match | **PENDING (phase 3/4)** | — |
 | 7 | Automatic rematch | **PENDING (phase 4)** | — |
@@ -143,35 +143,37 @@ ID, so exactly one wins and the loser receives `OFFICE_NAME_TAKEN`, which the UI
 as `اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر`. The rule change above means this holds
 even against a hand-crafted request that bypasses the client.
 
-**Status: PASS.** Limitation: the rules assertions are static text analysis of
-`firestore.rules`, not an emulator run — see "Known limitations" below.
+**Status: PASS.** Claim uniqueness is covered by static rules analysis plus the executable
+emulator suite (`npm run test:rules`) for create / takeover / officeId immutability.
 
 ## TEST 4 — Office privacy
 
 Office A cannot read, query, modify or download Office B data.
 
-Automated assertions (`test/firestore-rules.test.mjs`):
+Automated assertions:
 
-- Every `match` block under `/offices/{officeId}` gates reads on `isOfficeMember(officeId)`
-  or is `if false`.
-- `devices` is `read, write: if false`.
-- The permissive catch-all `match /{collectionName}/{docId}` excludes `devices`,
-  `officeSettings` and `brokerSettings`.
-- `officeSettings` writes require `canManage(officeId)` and
-  `request.resource.data.officeId == officeId`.
-- `brokerSettings` writes require `uid == request.auth.uid`,
-  `request.resource.data.brokerId == request.auth.uid` and the matching `officeId`.
-- `brokerSettings` reads require the requester to be that broker or an office manager.
-- No rule anywhere grants `allow read, write: if true` (the only `if true` is the
-  intentional public read on `publicOffices`, which the test allow-lists by name and
-  asserts is read-only).
+1. Static guard — `test/firestore-rules.test.mjs`
+   - Every `match` block under `/offices/{officeId}` gates reads on `isOfficeMember(officeId)`
+     or is `if false`.
+   - `devices` is `read, write: if false`.
+   - The permissive catch-all excludes `devices`, `officeSettings` and `brokerSettings`.
+   - `officeSettings` / `brokerSettings` write conditions require matching `officeId` /
+     `brokerId` ownership.
+   - The only `if true` read is intentional `publicOffices`.
+
+2. Emulator execution — `test/emulator/firestore-rules.emulator.test.mjs`
+   - Loads the real `firestore.rules` file into the Firestore emulator.
+   - Proves Office A/B officeSettings isolation, brokerSettings isolation,
+     officeNameClaims takeover prevention, unauthenticated denials, cooperation
+     non-exposure, and publicOffices continuity.
+   - Command: `npm run test:rules` (11 pass / 0 fail on 2026-08-04).
 
 Backend equivalent: `authorizeOfficeRequest` resolves membership from Firestore on every
 sensitive route and throws `office_forbidden`. Media uploads pass through it before
 touching R2, and the public cover route validates the object key against a strict
 pattern so it cannot be used to read private intake media.
 
-**Status: PASS (static).** Limitation: no Firestore emulator run yet — Phase 8.
+**Status: PASS (emulator + static).**
 
 ## TEST 5 — Opportunity intake
 
@@ -308,11 +310,11 @@ Automated assertions:
 
 ## Known limitations of this suite
 
-1. **Firestore rules are asserted statically, not executed.** `test/firestore-rules.test.mjs`
-   parses `firestore.rules` and asserts the presence/absence of specific conditions. That
-   catches regressions in the conditions themselves but does not prove Firestore's
-   evaluation. A `@firebase/rules-unit-testing` emulator suite is Phase 8 work and is
-   listed in `IMPLEMENTATION_PLAN.md`.
+1. **Phase 1 rules are now executed in the emulator.** `npm run test:rules` loads the
+   real `firestore.rules` via `@firebase/rules-unit-testing` and covers the Phase 1
+   security gate cases. `test/firestore-rules.test.mjs` remains as a fast static
+   regression guard. Broader Phase 8 hardening (every collection/rule branch, performance,
+   PWA/e2e) is still outstanding.
 2. **No end-to-end browser test.** DOM tests run in `jsdom`, which has no layout engine,
    so "mobile-first" and "no bottom navigation" are asserted structurally (element and CSS
    rule shape) rather than visually. Real-device checks are Phase 8.

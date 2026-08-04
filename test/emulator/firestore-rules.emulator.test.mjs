@@ -30,7 +30,7 @@ import { cooperationSettingsPayload } from "../../public/js/office-domain.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const RULES_PATH = resolve(ROOT, "firestore.rules");
-const PROJECT_ID = "aqar-b5d76-rules-phase1";
+const PROJECT_ID = "demo-iaqar-rules";
 
 /** Absolute path used so the suite always binds the repo rules file. */
 const RULES_SOURCE = readFileSync(RULES_PATH, "utf8");
