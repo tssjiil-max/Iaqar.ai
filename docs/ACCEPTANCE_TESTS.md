@@ -32,13 +32,14 @@ Test files:
 | `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1–4 isolation including matches) |
 | `test/opportunity-bank-phase3.test.mjs` | Phase 3 Opportunity Bank domain + shell access |
 | `test/matching-phase4.test.mjs` | Phase 4 Matching Engine domain + rematch contracts |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview and Phase 4 ID helpers |
+| `test/operations-phase5.test.mjs` | Phase 5 Operations Center + Notifications (Tests 9–10) |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4 ID helpers, Phase 5 operations endpoints |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 4**:
-- Phase 0–3 regression suites remain green.
-- Matching Engine with versioned Match IDs and automatic rematch is delivered.
-- Persisted Operations Center items (Phase 5) are not started.
+Status as of the end of **Phase 5**:
+- Phase 0–4 regression suites remain green.
+- Persisted Operations + Notifications with Worker-trusted writes are delivered.
+- Phase 6 (automatic cooperation) and Phase 7 (messaging adapters) are not started.
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -50,8 +51,8 @@ Status as of the end of **Phase 4**:
 | 6 | No match | **PENDING (phase 3/4)** | — |
 | 7 | Automatic rematch | **PASS** | `test/matching-phase4.test.mjs`, Worker `/matching/run` |
 | 8 | Exactly one match | **PASS** | `test/matching-phase4.test.mjs`, `worker/test/worker.test.mjs` |
-| 9 | Operation creation | **PENDING (phase 5)** | — |
-| 10 | Notification | **PASS (partial)** | `test/notification-preferences.test.mjs`, `worker/test/worker.test.mjs` |
+| 9 | Operation creation | **PASS** | `test/operations-phase5.test.mjs`, emulator Phase 5 cases, Worker Phase 5 |
+| 10 | Notification | **PASS** | `test/operations-phase5.test.mjs`, `test/notification-preferences.test.mjs`, Worker Phase 5 |
 | 11 | Cooperation ownership | **PENDING (phase 6)** | — |
 | 12 | Cooperation revocation | **PENDING (phase 6)** | — |
 | 13 | Message draft | **PENDING (phase 7)** | — |
@@ -253,29 +254,39 @@ Automated coverage:
 A valid actionable Match creates exactly one Operations Center item for the correct
 office/broker.
 
-**Status: PENDING (phase 5).** Operations are derived client-side and never persisted,
-so there is no `deduplicationKey` to assert on. Not claimed.
+Automated coverage:
+- `test/operations-phase5.test.mjs` — `MATCH_REVIEW` / `MISSING_DATA` / `COOPERATION_*`
+  builders; deterministic `deduplicationKey` and document IDs; idempotent upsert
+  semantics; empty state «لا توجد فرص حالياً» / «ستظهر الفرص المباشرة هنا»; active-only
+  projector; Phase 5 UI boundaries (no bottom nav, no deals page, no messaging actions
+  on ops cards); Worker `/operations/action`|/from-cooperation|/missing-data wiring;
+  rules + indexes static checks.
+- Emulator Phase 5 cases in `test/emulator/firestore-rules.emulator.test.mjs` —
+  members read own-office Operations; forge/mutate/delete denied; cross-office and
+  unauthenticated reads denied.
+- Worker Phase 5 cases in `worker/test/worker.test.mjs` — operations endpoints require
+  authentication; Phase 5 boundary guarantees.
+
+**Status: PASS (Phase 5).** Operations are persisted under
+`offices/{officeId}/operations` with Worker-trusted writes.
 
 ## TEST 10 — Notification
 
 The actionable Match creates a notification according to the broker's preferences.
 
-Automated assertions:
+Automated coverage:
+- `test/operations-phase5.test.mjs` — in-app notification linked to Operation;
+  lock-screen-safe copy (`sensitivePreview: false`); push queued independently of
+  Operation creation; delivery not claimed without provider confirmation.
+- `test/notification-preferences.test.mjs` — preference schema defaults; broker
+  overrides; push `type` → preference-key mapping; `notification_test` always allowed.
+- Emulator Phase 5 cases — notifications office-isolated; delivery state not
+  client-writable.
+- Worker Phase 5 / FCM cases — `notificationCategoryAllowed` gate; FCM payload builder;
+  stale-token handling; operations push path respects prefs.
 
-- `test/notification-preferences.test.mjs` — the preference schema defaults every
-  category to enabled; broker overrides win over office defaults; office defaults win
-  over built-ins; unknown keys are dropped; the push `type` → preference-key mapping is
-  exhaustive and falls back to `systemNotifications`; `notification_test` always passes
-  the gate.
-- `worker/test/worker.test.mjs` — the FCM payload builder, the FID-first/token-fallback
-  target, the deep link, stale-token detection, and the new
-  `notificationCategoryAllowed` gate including the "missing document means enabled"
-  behaviour.
-
-**Status: PASS (partial).** The preference document is persisted per office and per
-broker, and `sendOfficePush` refuses to send a disabled category. **Not yet satisfied:**
-per-broker routing of pushes (devices are registered per office, not per broker), and
-persisted auditable `notifications` records. Phase 5.
+**Status: PASS (Phase 5).** Auditable `notifications` records are persisted; prefs are
+respected before push. Device FCM delivery is not claimed without provider confirmation.
 
 ## TEST 11 — Cooperation ownership
 
@@ -317,7 +328,8 @@ Automated assertions (`test/office-card.test.mjs`):
   cannot hide deal records: the test feeds an `iaqar:operations-data` event containing a
   record with `main: "deals"` and asserts it appears.
 
-**Status: PASS.**
+**Status: PASS.** Empty-state copy (Phase 5): «لا توجد فرص حالياً» /
+«ستظهر الفرص المباشرة هنا».
 
 ## TEST 15 — Production honesty
 
@@ -328,7 +340,7 @@ Automated assertions:
 
 - `test/office-card.test.mjs` — the shell ships **zero** hard-coded operation records:
   the operations list is empty on load, `#total` reads `0`, and the approved empty state
-  is visible.
+  («لا توجد فرص حالياً» / «ستظهر الفرص المباشرة هنا») is visible.
 - `test/integration-honesty.test.mjs` — no shipped file contains a hard-coded
   "delivered"/"sent" claim for WhatsApp or Telegram; the Worker's outbound guard
   (`/meta/*messages*`, `/meta/*send*` → 403 `outbound_disabled`) is present; the

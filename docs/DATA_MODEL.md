@@ -1,7 +1,7 @@
 # IAQAR.AI — Data Model
 
 Scope of this file: every Firestore collection and R2 key prefix the system uses today,
-its ownership, its access rules, the indexes it needs, and the fields Phase 1 added.
+its ownership, its access rules, the indexes it needs, and the fields Phases 1–5 added.
 Target-state entities that do not exist yet are in the final section and are clearly
 marked as **not implemented**.
 
@@ -101,9 +101,11 @@ health documents.
 | `sharedOpportunities/{id}` | Phase 3 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. |
 | `matches/{matchId}` | Worker (Phase 4) | `matchId = mat_{sha256(officeId\|canonicalPair\|matchingRuleVersion\|dataVersion)[0..36]}`. Fields include `isCurrent`, `matchingRuleVersion`, `dataVersion`, `canonicalPairKey`, `pairRuleKey`, scores/reasons JSON, opportunity ids, `status` (`active` / `superseded` / …). Client read-only; Worker writes. |
 | `matches/{id}/timeline/{eventId}` | Worker + client | Append-only per-record activity. Read/create = member, update/delete = manager. |
+| **`operations/{operationId}`** | **Worker (Phase 5)** | Persisted actionable Operations Center items. See §9. Clients cannot write. |
+| **`notifications/{notificationId}`** | **Worker (Phase 5)** | Auditable in-app / push notification records. See §9. Clients cannot write. |
 | `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
 | `deals/{id}/timeline/{eventId}` | Worker + client | As above. |
-| `alerts/{alertId}` | Worker | `alt_{matchId}` notification records with `title`, `body`, `status`. |
+| `alerts/{alertId}` | Worker | Legacy `alt_{matchId}` alert records. Phase 5 primary path is `notifications`. |
 | `inbox/{id}` | Worker | Raw inbound WhatsApp messages. |
 | `contacts/{digits}` | Worker + client | Contact directory keyed by digit-only phone, with `roles` as an `arrayUnion`. |
 | `usage/whatsapp_{yyyymmdd}` | Worker | Daily counters via Firestore field transforms. |
@@ -124,8 +126,9 @@ match /{collectionName}/{docId} {
 }
 ```
 
-`restricted()` returns true for `devices`, `officeSettings`, `brokerSettings`,
-`opportunitySources`, `opportunities`, and `sharedOpportunities`.
+`restricted()` / `isRestrictedOfficeCollection()` returns true for `devices`,
+`officeSettings`, `brokerSettings`, `opportunitySources`, `opportunities`,
+`sharedOpportunities`, `matches`, `operations`, and `notifications`.
 Before Phase 1 it only excluded `devices`; later phases exclude collections that need
 explicit least-privilege rules. In Firestore, rules are additive — a permissive
 catch-all cannot be narrowed by adding a specific rule, so exclusion is the only
@@ -250,9 +253,16 @@ Composite indexes in `firestore.indexes.json`:
 | `deals` | COLLECTION_GROUP | `status` ASC, `nextFollowUpAt` ASC |
 | `matches` | COLLECTION | `matchGroupId` ASC, `updatedAt` DESC |
 | `cooperationRequests` | COLLECTION | `targetOfficeId` ASC, `status` ASC |
+| `operations` | COLLECTION | `status` ASC, `createdAt` DESC |
+| `operations` | COLLECTION | `status` ASC, `priority` ASC, `createdAt` DESC |
+| `notifications` | COLLECTION | `status` ASC, `createdAt` DESC |
 
 Phase 3 bank list query: `offices/{id}/opportunities` ordered by `createdAt` DESC with
 `limit` + `startAfter` cursor pagination — single-field order (automatic index).
+
+Phase 5 Operations Center query: `offices/{id}/operations` where `status in`
+(`OPEN`, `IN_PROGRESS`, `WAITING_EXTERNAL_RESPONSE`) ordered by `createdAt` DESC —
+requires the `status` + `createdAt` composite index.
 
 Per the constitution, indexes are created only when a real query needs them.
 
@@ -297,17 +307,85 @@ Filters may include kind/purpose/propertyType/city/district/activeOnly and/or ex
 | `version` | number | Incremented on edit/archive/restore/delete. |
 | `brokerConfirmed` | boolean | Set on authorized edit — extraction must not overwrite. |
 
-## 8. Target-state entities — NOT IMPLEMENTED
+## 8. Phase 5 — Operations and Notifications
+
+Source of truth for field builders: `worker/src/operations-domain.js` (mirrored client
+contracts in `public/js/operations-domain.js`). Document IDs are content-hashed from
+`deduplicationKey` so upserts are idempotent.
+
+**Clients cannot write these collections.** Rules allow office-member `read` only;
+`create` / `update` / `delete` are `if false`. The Worker service account writes via
+Admin/REST outside client rules.
+
+### 8.1 `offices/{officeId}/operations/{operationId}`
+
+`operationId` = `op_{sha256(deduplicationKey)[0..40]}`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Same as document ID. |
+| `officeId` | string | Tenant; required. |
+| `assignedBrokerId` | string | Optional broker uid for routing. |
+| `type` | enum | `MATCH_REVIEW`, `MISSING_DATA`, `COOPERATION_REQUEST`, `COOPERATION_RESPONSE`, `EXTERNAL_RESPONSE`, `SYSTEM_ACTION`. |
+| `sourceEntityType` / `sourceEntityId` | string | e.g. `match` / `mat_…`, `opportunity` / `opp_…`, `cooperationRequest` / id. |
+| `opportunityId` / `matchId` / `cooperationId` | string | Related ids (empty when N/A). |
+| `titleCode` / `summaryCode` | string | Stable codes for copy. |
+| `titleText` / `summaryText` | string | Arabic display copy. |
+| `recommendedActionCode` / `recommendedActionText` | string | Primary CTA. |
+| `priority` | enum | `URGENT`, `HIGH`, `NORMAL`, `LOW`. |
+| `status` | enum | `OPEN`, `IN_PROGRESS`, `WAITING_EXTERNAL_RESPONSE`, `COMPLETED`, `DISMISSED`, `EXPIRED`. |
+| `deduplicationKey` | string | Idempotency key — see below. |
+| `createdAt` / `updatedAt` | timestamp | |
+| `openedAt` / `completedAt` / `dismissedAt` / `dueAt` | timestamp \| null | Lifecycle stamps. |
+| `dismissalReason` | string | Optional. |
+| `createdBySystem` | bool | Always `true` for Phase 5 system upserts. |
+| `operationVersion` / `schemaVersion` | int | Currently `1`. |
+| `metadataJson` / `missingFieldsJson` | string (JSON) | Firestore storage form of `metadata` / missing-field list. |
+
+Active statuses shown in the Operations Center:
+`OPEN`, `IN_PROGRESS`, `WAITING_EXTERNAL_RESPONSE`.
+
+`deduplicationKey` builders:
+
+| Type | Key shape |
+| --- | --- |
+| `MATCH_REVIEW` | `MATCH_REVIEW\|{officeId}\|{matchId}\|{dataVersion}` |
+| `MISSING_DATA` | `MISSING_DATA\|{officeId}\|{opportunityId}\|{dataVersion}\|{sortedMissingFields}` |
+| `COOPERATION_*` | `{type}\|{officeId}\|{cooperationId}\|{status}` |
+
+Replaying the same key upserts the same document; terminal statuses
+(`COMPLETED` / `DISMISSED` / `EXPIRED`) are not reopened for the same key.
+
+### 8.2 `offices/{officeId}/notifications/{notificationId}`
+
+`notificationId` = `nt_{sha256("notif\|" + deduplicationKey)[0..40]}`.
+Notification `deduplicationKey` = `NOTIF|{operation.deduplicationKey}`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Same as document ID. |
+| `officeId` | string | Tenant. |
+| `brokerId` | string | Target broker (from operation `assignedBrokerId`). |
+| `operationId` | string | Linked Operation. |
+| `type` | enum | `NEW_MATCH`, `MISSING_DATA`, `COOPERATION_REQUEST`, `COOPERATION_RESPONSE`, `SYSTEM_ACTION`. |
+| `title` / `body` | string | Lock-screen-safe Arabic copy (no sensitive customer/owner fields). |
+| `status` | enum | `CREATED`, `QUEUED`, `SENT`, `DELIVERED`, `FAILED`, `READ`, `DISMISSED`. |
+| `readAt` | timestamp \| string | |
+| `createdAt` / `updatedAt` | timestamp | |
+| `deduplicationKey` | string | Idempotency. |
+| `deliveryChannelsJson` | string (JSON) | Default `["in_app","push"]`. |
+| `providerStateJson` | string (JSON) | Push queue/send/fail timestamps and errors. Initial push state is `QUEUED`; `DELIVERED` is not claimed without provider confirmation. |
+| `sensitivePreview` | bool | Always `false` for Phase 5 system notifications. |
+| `createdBySystem` / `schemaVersion` | bool / int | System-authored; schema `1`. |
+
+## 9. Target-state entities — NOT IMPLEMENTED
 
 Listed so nobody mistakes the current model for the target model.
 
 | Entity | Phase | Purpose |
 | --- | --- | --- |
-| Persisted `operations` driven from Match events with full §16 fields | 5 | Phase 4 creates Matches only; Operations remain derived client-side until Phase 5. |
-| `operations` with full §16 field set + `deduplicationKey` | 5 | Persisted actionable work items. Today operations are derived on the client and never stored. |
-| Smart automatic cooperating-broker selection | 6 | Phase 3 stores explicit requests only. |
+| Smart automatic cooperating-broker selection | 6 | Phase 3 stores explicit requests only; Phase 5 can surface cooperation Operations from explicit requests. |
 | `conversations`, `messages` with channel/send/delivery state | 7 | Persisted message drafts. Today drafts are built in memory and handed to `wa.me`. |
-| `notifications` | 5 | Auditable notification records; today only `alerts` exists. |
 | `auditLogs` | 6–8 | Sensitive-action audit trail; today only per-record `timeline` exists. |
 | `eventOutbox` / `backgroundJobs` | 2+ | Database-backed job pattern for the event workflow. |
 | `officeHandles` | deferred | See `DECISIONS.md` D-004. |

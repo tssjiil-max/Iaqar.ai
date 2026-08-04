@@ -306,6 +306,39 @@ automatic rematch including opportunity edits. Operations are Phase 5.
 
 **Why.** Satisfies Tests 7–8 without inventing Operations or automatic cooperation.
 
+## D-014 — Phase 5 Operations Center + Notifications: Worker-trusted writes
+
+**Phase:** 5
+**Directive:** §16 (Operations Center), §17 (notifications), Tests 9–10; Phase 5 only —
+do not begin Phase 6/7 (automatic cooperation, WhatsApp/Telegram messaging).
+
+**Decision.**
+
+1. **Worker-trusted writes.** `offices/{officeId}/operations` and
+   `offices/{officeId}/notifications` are created/updated only by the Cloudflare Worker
+   (service account). Firestore rules: office members may `read`; client
+   `create` / `update` / `delete` are `if false`. Lifecycle mutations go through
+   `POST /operations/action` (and related Worker routes).
+2. **Deduplication keys.** Every Operation carries a `deduplicationKey`; document ID is
+   `op_{sha256(key)[0..40]}`. Notifications use `NOTIF|{operation.deduplicationKey}` →
+   `nt_{…}`. Replays upsert; terminal Operation statuses are not reopened for the same
+   key.
+3. **Lock-screen-safe push.** System notification `title`/`body` are generic Arabic
+   action prompts (`sensitivePreview: false`). No customer/owner phone, name, or price
+   detail in the push preview. Push is queued when prefs allow; `DELIVERED` is not
+   claimed without provider confirmation.
+4. **No WhatsApp / Telegram / deals / bottom-nav.** Phase 5 boundary guarantees forbid
+   message drafts, outbound send, deals page, and bottom navigation. Operations cards do
+   not open messaging actions.
+5. **Operations Center binds to the `operations` collection only.** The home list listens
+   to active statuses (`OPEN` / `IN_PROGRESS` / `WAITING_EXTERNAL_RESPONSE`) on
+   `operations`. It does not derive the list from `matches` / `deals` / `publicIntake`.
+   Empty state: «لا توجد فرص حالياً» / «ستظهر الفرص المباشرة هنا».
+
+**Why.** Satisfies Tests 9–10 with persisted, auditable, idempotent work items while
+keeping messaging and automatic cooperation for later phases, and without weakening
+tenant isolation or the constitution.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

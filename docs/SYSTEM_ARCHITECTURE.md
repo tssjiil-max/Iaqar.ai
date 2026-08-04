@@ -52,7 +52,8 @@ treated as existing until its phase is delivered and tested.
   `CustomEvent`s on `window`:
   - `iaqar:firebase-ready`, `iaqar:firebase-status` — runtime lifecycle.
   - `iaqar:operations-data` — authoritative operations list (producer:
-    `workflow-office.js`, consumer: the inline script).
+    `workflow-office.js` listening to persisted `operations`, consumer: the inline
+    script).
   - `iaqar:open-operation` — deep-link request to open one operation.
   - `iaqar:operation-opened` — the broker expanded an operation.
   - `iaqar:workflow-action` — the broker pressed an action button.
@@ -86,6 +87,7 @@ Route groups:
 | Admin | `GET /admin/broker-applications`, `POST /admin/broker-applications/action` | Platform-admin only. |
 | FCM | `GET /fcm/config`, `GET /fcm/status`, `POST /fcm/register`, `/fcm/unregister`, `/fcm/test` | Device registry lives server-side only. |
 | Workflow | `POST /workflow/action`, `GET /workflow/timeline`, `GET /office/analytics` | Match/deal progression. |
+| Operations (Phase 5) | `POST /operations/action`, `/operations/from-cooperation`, `/operations/missing-data` | Worker upserts/lifecycle for persisted Operations + Notifications. |
 | Blocked | `/ingest` → 410, any `*messages*`/`*send*` → 403 `outbound_disabled` | Outbound messaging is refused at the edge. |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the
@@ -210,3 +212,18 @@ Phase 1 makes office-name and settings logic testable without a browser.
 - `POST /matching/run` for office-member rematch of an opportunity.
 - Add Opportunity + Opportunity Bank edits trigger rematch; no persisted Operations.
 - Firestore `matches` are client read-only.
+
+### B.6 What Phase 5 actually changed
+
+- Added `worker/src/operations-domain.js` + `operations-service.js` and client
+  `public/js/operations-domain.js`.
+- Worker upserts persisted `operations` and `notifications` after Match create / missing
+  data / cooperation triggers (`POST /operations/action`, `/from-cooperation`,
+  `/missing-data`).
+- Operations Center consumes the persisted `operations` collection (active statuses
+  only) via `workflow-office.js` snapshot → `iaqar:operations-data`; it no longer
+  derives the home list from matches/deals/intake.
+- FCM push is preference-gated and lock-screen-safe; delivery is not claimed without
+  provider confirmation.
+- Firestore: clients read-only on `operations` / `notifications`; composite indexes
+  added for Operations Center queries.

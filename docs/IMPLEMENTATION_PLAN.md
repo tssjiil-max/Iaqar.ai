@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0–4 complete — stop (do not begin Phase 5).**
+Current position: **Phase 0–5 complete — stop (do not begin Phase 6).**
 
 ---
 
@@ -16,7 +16,7 @@ Current position: **Phase 0–4 complete — stop (do not begin Phase 5).**
 | 2 | Unified opportunity intake | **DONE** |
 | 3 | Opportunity Bank | **DONE** |
 | 4 | Matching engine | **DONE** |
-| 5 | Operations Center and notifications | NOT STARTED |
+| 5 | Operations Center and notifications | **DONE** |
 | 6 | Cooperation | NOT STARTED |
 | 7 | Smart messages and integration adapters | NOT STARTED |
 | 8 | Hardening | NOT STARTED |
@@ -178,7 +178,7 @@ Phase 4 delivered on this branch:
 - Tests: `test/matching-phase4.test.mjs`, Worker Phase 4 cases, emulator matches rules
 - Docs: DATA_MODEL / EVENT_WORKFLOW / ACCEPTANCE_TESTS (Tests 7–8) / DECISIONS D-013
 
-## Phase 5 — Operations Center and notifications
+## Phase 5 — Operations Center and notifications (DONE)
 
 Depends on: Phases 2–4.
 
@@ -191,6 +191,33 @@ Risks: device registrations are currently per office, so per-broker routing need
 `brokerId`/`uid` on each device document — a schema change to a Worker-only collection.
 
 Exit criteria: Tests 9 and 10 fully PASS.
+
+Phase 5 delivered on this branch:
+
+- Persisted `offices/{officeId}/operations` and `offices/{officeId}/notifications`
+  collections (Worker-trusted writes; clients cannot create/update/delete)
+- Operation types: `MATCH_REVIEW`, `MISSING_DATA`, `COOPERATION_REQUEST`,
+  `COOPERATION_RESPONSE` (plus reserved `EXTERNAL_RESPONSE` / `SYSTEM_ACTION`)
+- Worker upsert after Match persist (`createMatchReviewBundle` / `deduplicationKey`);
+  missing-data and cooperation upserts via domain builders
+- Worker routes: `POST /operations/action`, `/operations/from-cooperation`,
+  `/operations/missing-data`
+- Operations Center listens to active Operations only
+  (`OPEN` / `IN_PROGRESS` / `WAITING_EXTERNAL_RESPONSE`) — no longer derived from
+  matches/deals/intake for the home list
+- Lock-screen-safe FCM copy (`sensitivePreview: false`; generic Arabic titles/bodies;
+  queue/send recorded without claiming device delivery absent provider confirmation)
+- Notification preferences respected before push (`notificationCategoryAllowed`)
+- Firestore rules restrict client writes on `operations` / `notifications`; indexes for
+  active Operations and notifications list queries
+- Tests: `test/operations-phase5.test.mjs`, emulator Phase 5 cases, Worker Phase 5 cases
+- Decision: D-014
+
+Explicitly **not** done in Phase 5 (future phases):
+
+- Automatic cooperation broker selection / full cooperation lifecycle UI — Phase 6
+- WhatsApp / Telegram smart message drafts and channel adapters — Phase 7
+- Deals page, bottom navigation, or home redesign — never
 
 ## Phase 6 — Cooperation
 
