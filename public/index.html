@@ -2061,12 +2061,7 @@
   <script type="module" src="js/add-opportunity.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
-  <script type="module">
-    import * as operationsDomain from "./js/operations-domain.js";
-    window.IAQAR = window.IAQAR || {};
-    window.IAQAR.operationsDomain = operationsDomain;
-    window.dispatchEvent(new CustomEvent("iaqar:operations-domain-ready"));
-  </script>
+  <script type="module" src="js/operations-domain-bridge.js"></script>
 
   <script>
     "use strict";

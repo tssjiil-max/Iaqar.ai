@@ -74,13 +74,25 @@ test("TEST 4: the permissive catch-all excludes the collections with stricter ru
   const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
   assert.match(
     helper,
-    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches'\]/
+    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches', 'operations', 'notifications'\]/
   );
   // Firestore rules are additive, so a stricter rule cannot narrow a permissive one —
   // exclusion is the only mechanism that actually enforces the stricter rules.
-  for (const collection of ["officeSettings", "brokerSettings", "devices", "opportunitySources", "opportunities", "sharedOpportunities", "matches"]) {
+  for (const collection of [
+    "officeSettings", "brokerSettings", "devices", "opportunitySources",
+    "opportunities", "sharedOpportunities", "matches", "operations", "notifications"
+  ]) {
     assert.ok(helper.includes(`'${collection}'`), `${collection} must be excluded from the catch-all`);
   }
+});
+
+test("Phase 5: operations and notifications are client read-only", () => {
+  const ops = condensed(matchBlock("/operations/{operationId}"));
+  const notes = condensed(matchBlock("/notifications/{notificationId}"));
+  assert.match(ops, /allow read: if isOfficeMember\(officeId\)/);
+  assert.match(ops, /allow create, update, delete: if false/);
+  assert.match(notes, /allow read: if isOfficeMember\(officeId\)/);
+  assert.match(notes, /allow create, update, delete: if false/);
 });
 
 test("TEST 4: the catch-all timeline subcollection inherits the restriction check", () => {

@@ -849,7 +849,7 @@ test("Phase 5 operations endpoints require authentication", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ officeId: "office-a", operationId: "op_1", action: "START", cooperationId: "c1", opportunityId: "o1" })
-    }));
+    }), env);
     assert.equal(response.status, 401, path);
   }
 });
