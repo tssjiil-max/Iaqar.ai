@@ -6,6 +6,7 @@
   let config = null;
   let signupData = null;
   let sdkPromise = null;
+  let previousFocus = null;
 
   const elements = {};
 
@@ -30,14 +31,17 @@
   }
 
   function openSettings() {
+    previousFocus = document.activeElement;
     elements.overlay.hidden = false;
     document.body.style.overflow = "hidden";
+    elements.closeBtn.focus();
     refreshStatus();
   }
 
   function closeSettings() {
     elements.overlay.hidden = true;
     document.body.style.overflow = "";
+    if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
   }
 
   async function fetchJson(path, options = {}) {
@@ -222,7 +226,10 @@
   }
 
   function init() {
-    elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.openButtons = [
+      document.getElementById("officeSettingsBtn"),
+      document.getElementById("officeCoverSettingsBtn")
+    ].filter(Boolean);
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -232,15 +239,30 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.openButtons.length || !elements.overlay) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
+    elements.openButtons.forEach(button => button.addEventListener("click", openSettings));
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();
     });
     document.addEventListener("keydown", event => {
       if (event.key === "Escape" && !elements.overlay.hidden) closeSettings();
+      if (event.key === "Tab" && !elements.overlay.hidden) {
+        const focusable = Array.from(elements.overlay.querySelectorAll(
+          'button:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+        )).filter(node => !node.hidden);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     });
     elements.connectBtn.addEventListener("click", startEmbeddedSignup);
 

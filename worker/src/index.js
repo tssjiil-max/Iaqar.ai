@@ -240,8 +240,24 @@ export default {
         return await uploadOfficeCover(request, env, requestId);
       }
 
+      if (["POST", "DELETE"].includes(request.method) && url.pathname === "/media/office-identity") {
+        return await handleOfficeIdentityMedia(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-identity/")) {
+        return await servePublicOfficeIdentity(url, env);
+      }
+
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
         return await servePublicOfficeCover(url, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/office/name-availability") {
+        return await getOfficeNameAvailability(request, url, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/office/profile") {
+        return await saveOfficeProfile(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
@@ -398,6 +414,61 @@ async function uploadOfficeCover(request, env, requestId) {
   return jsonResponse({ ok: true, coverUrl, requestId }, 201);
 }
 
+function officeIdentityKey(officeId, mediaKind) {
+  const safeOfficeId = normalizeOfficeId(officeId);
+  const safeKind = cleanText(mediaKind, 20).toLowerCase();
+  if (!safeOfficeId || !["logo", "display", "cover"].includes(safeKind)) return "";
+  return `office-identity/${safeOfficeId}/${safeKind}`;
+}
+
+async function handleOfficeIdentityMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const mediaKind = cleanText(request.headers.get("x-media-kind"), 20).toLowerCase();
+  const key = officeIdentityKey(officeId, mediaKind);
+  if (!key) throw appError("invalid_media_target", 400, "وجهة صورة المكتب غير صالحة");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+
+  if (request.method === "DELETE") {
+    await bucket.delete(key);
+    return jsonResponse({ ok: true, removed: true, mediaKind, requestId });
+  }
+
+  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  const size = requestBodyLength(request);
+  if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
+  if (!size || size > 10 * 1024 * 1024) {
+    throw appError("image_too_large", 413, "حجم صورة المكتب يجب ألا يتجاوز 10 ميجابايت");
+  }
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
+    customMetadata: { officeId, mediaKind, uploadedAt: new Date().toISOString() }
+  });
+  const origin = new URL(request.url).origin;
+  return jsonResponse({
+    ok: true,
+    mediaKind,
+    mediaUrl: `${origin}/media/public/${key}?v=${Date.now()}`,
+    requestId
+  }, 201);
+}
+
+async function servePublicOfficeIdentity(url, env) {
+  const bucket = requireMediaBucket(env);
+  const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
+  if (!/^office-identity\/[a-z0-9_-]{1,80}\/(logo|display|cover)$/.test(key)) {
+    throw appError("media_not_found", 404, "الصورة غير موجودة");
+  }
+  const object = await bucket.get(key);
+  if (!object) throw appError("media_not_found", 404, "الصورة غير موجودة");
+  const headers = new Headers(corsHeaders());
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "public, max-age=3600");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
+}
+
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
@@ -412,6 +483,180 @@ async function servePublicOfficeCover(url, env) {
   headers.set("cache-control", "public, max-age=3600");
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
+}
+
+function normalizeOfficeNameKey(value) {
+  return cleanText(value, 80)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/\u0640/g, "")
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function visibleOfficeNameCharacters(value) {
+  const matches = cleanText(value, 100).normalize("NFKC").match(/[\p{L}\p{N}]/gu);
+  return matches ? matches.length : 0;
+}
+
+function officeNotificationPreferences(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(["matches", "contacts", "cooperation", "messages", "appointments", "system"].map(key => [
+    key,
+    typeof source[key] === "boolean" ? source[key] : true
+  ]));
+}
+
+function cleanOfficeProfileInput(body, existing = {}, requestOrigin = "") {
+  const officeName = cleanText(body.officeName, 80);
+  const officeNameKey = normalizeOfficeNameKey(officeName);
+  if (visibleOfficeNameCharacters(officeName) < 4 || !officeNameKey) {
+    throw appError("office_name_invalid", 400, "اسم المكتب يجب أن يكون 4 أحرف ظاهرة على الأقل");
+  }
+  const cleanUrl = value => {
+    const candidate = cleanText(value, 2000);
+    if (!candidate) return "";
+    let parsed;
+    try { parsed = new URL(candidate); } catch (_) {
+      throw appError("identity_url_invalid", 400, "رابط صورة الهوية غير صالح");
+    }
+    if (parsed.origin !== requestOrigin ||
+        !/^\/media\/public\/(office-identity|office-covers)\//.test(parsed.pathname)) {
+      throw appError("identity_url_invalid", 400, "رابط صورة الهوية غير معتمد");
+    }
+    return parsed.toString();
+  };
+  const publicSlug = cleanText(existing.publicSlug || body.publicSlug, 64)
+    .toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const cooperationMode = ["DISABLED", "APPROVAL_REQUIRED", "SMART_AUTOMATIC"].includes(body.cooperationMode)
+    ? body.cooperationMode
+    : "APPROVAL_REQUIRED";
+  const specialties = [...new Set((Array.isArray(body.specialties) ? body.specialties : [])
+    .filter(item => ["sale", "purchase", "rent", "property_management"].includes(item)))].slice(0, 4);
+  const profile = {
+    officeName,
+    officeNameKey,
+    brokerName: cleanText(body.brokerName, 80),
+    phone: cleanText(body.phone, 20).replace(/[^0-9+]/g, ""),
+    licenseNumber: cleanText(body.licenseNumber, 20).replace(/\D/g, ""),
+    city: cleanText(body.city, 60),
+    specialties,
+    logoUrl: cleanUrl(body.logoUrl),
+    displayImageUrl: cleanUrl(body.displayImageUrl),
+    coverUrl: cleanUrl(body.coverUrl),
+    publicSlug,
+    notificationPreferences: officeNotificationPreferences(body.notificationPreferences),
+    cooperationMode
+  };
+  if (!profile.brokerName || !profile.phone || !profile.licenseNumber || !profile.city || !profile.publicSlug) {
+    throw appError("office_profile_incomplete", 400, "أكمل بيانات المكتب المطلوبة");
+  }
+  return profile;
+}
+
+async function getOfficeNameAvailability(request, url, env, requestId) {
+  assertFirebaseSecrets(env);
+  const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeName = cleanText(url.searchParams.get("name"), 80);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "manage");
+  const nameKey = normalizeOfficeNameKey(officeName);
+  if (visibleOfficeNameCharacters(officeName) < 4 || !nameKey) {
+    throw appError("office_name_invalid", 400, "اسم المكتب يجب أن يكون 4 أحرف ظاهرة على الأقل");
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const claim = await getFirestoreDocument({
+    projectId, segments: ["officeNameClaims", nameKey], accessToken, allowMissing: true
+  });
+  const holder = claim ? firestoreFieldsToJs(claim.fields || {}).officeId : "";
+  return jsonResponse({ ok: true, available: !holder || holder === officeId, requestId });
+}
+
+async function saveOfficeProfile(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "manage");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const officeDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId], accessToken
+  });
+  const existing = firestoreFieldsToJs(officeDoc.fields || {});
+  const profile = cleanOfficeProfileInput(body, existing, new URL(request.url).origin);
+  const newClaim = await getFirestoreDocument({
+    projectId, segments: ["officeNameClaims", profile.officeNameKey], accessToken, allowMissing: true
+  });
+  const newClaimValue = newClaim ? firestoreFieldsToJs(newClaim.fields || {}) : {};
+  if (newClaim && newClaimValue.officeId !== officeId) {
+    throw appError("office_name_taken", 409, "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر");
+  }
+  const oldNameKey = cleanText(existing.officeNameKey, 100);
+  const oldClaim = oldNameKey && oldNameKey !== profile.officeNameKey
+    ? await getFirestoreDocument({
+      projectId, segments: ["officeNameClaims", oldNameKey], accessToken, allowMissing: true
+    })
+    : null;
+  const now = new Date();
+  const profileFields = {
+    officeId: firestoreString(officeId),
+    officeName: firestoreString(profile.officeName),
+    officeNameKey: firestoreString(profile.officeNameKey),
+    brokerName: firestoreString(profile.brokerName),
+    phone: firestoreString(profile.phone),
+    whatsapp: firestoreString(profile.phone),
+    licenseNumber: firestoreString(profile.licenseNumber),
+    city: firestoreString(profile.city),
+    specialties: firestoreStringArray(profile.specialties),
+    logoUrl: firestoreString(profile.logoUrl),
+    displayImageUrl: firestoreString(profile.displayImageUrl),
+    coverUrl: firestoreString(profile.coverUrl),
+    publicSlug: firestoreString(profile.publicSlug),
+    notificationPreferences: firestoreBooleanMap(profile.notificationPreferences),
+    cooperationMode: firestoreString(profile.cooperationMode),
+    updatedAt: firestoreTimestamp(now)
+  };
+  const publicFields = Object.fromEntries(Object.entries(profileFields).filter(([key]) =>
+    !["officeNameKey", "notificationPreferences", "cooperationMode"].includes(key)
+  ));
+  const claimFields = {
+    officeId: firestoreString(officeId),
+    ownerUid: firestoreString(identity.uid),
+    officeName: firestoreString(profile.officeName),
+    updatedAt: firestoreTimestamp(now),
+    ...(!newClaim ? { createdAt: firestoreTimestamp(now) } : {})
+  };
+  const auditId = `profile_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
+  const writes = [
+    firestoreUpdateWrite(projectId, ["officeNameClaims", profile.officeNameKey], claimFields,
+      newClaim ? { updateTime: newClaim.updateTime } : { exists: false }),
+    firestoreUpdateWrite(projectId, ["offices", officeId], profileFields, { updateTime: officeDoc.updateTime }),
+    firestoreUpdateWrite(projectId, ["publicOffices", officeId], publicFields),
+    firestoreUpdateWrite(projectId, ["offices", officeId, "auditLogs", auditId], {
+      officeId: firestoreString(officeId),
+      actorUid: firestoreString(identity.uid),
+      action: firestoreString("OFFICE_PROFILE_UPDATED"),
+      officeNameKey: firestoreString(profile.officeNameKey),
+      createdAt: firestoreTimestamp(now)
+    }, { exists: false })
+  ];
+  if (oldClaim && firestoreFieldsToJs(oldClaim.fields || {}).officeId === officeId) {
+    writes.push({
+      delete: firestoreDocumentName(projectId, ["officeNameClaims", oldNameKey]),
+      currentDocument: { updateTime: oldClaim.updateTime }
+    });
+  }
+  try {
+    await commitFirestoreWrites({ projectId, accessToken, writes });
+  } catch (error) {
+    if (error && error.code === "firestore_precondition_failed") {
+      throw appError("office_name_taken", 409, "تغير توفر اسم المكتب؛ تحقق من الاسم وحاول مرة أخرى");
+    }
+    throw error;
+  }
+  return jsonResponse({ ok: true, officeId, profile, requestId });
 }
 
 async function handleBrokerApplication(request, env, requestId) {
@@ -531,56 +776,69 @@ async function decideBrokerApplication(request, env, requestId) {
     }
     const existing = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
     if (existing) throw appError("office_exists", 409, "رمز المكتب مستخدم");
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId], accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        officeName: firestoreString(application.officeName),
-        officeNameKey: firestoreString(normalizeOfficeId(application.officeName) || officeId),
-        brokerName: firestoreString(application.brokerName),
-        phone: firestoreString(application.phone),
-        licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("المدينة المنورة"),
-        specialties: { arrayValue: { values: [] } },
-        ownerUid: firestoreString(application.applicantUid),
-        approvalStatus: firestoreString("approved"),
-        approvedAt: firestoreTimestamp(now),
-        approvedByUid: firestoreString(admin.sub)
-      }
+    const officeNameKey = normalizeOfficeNameKey(application.officeName);
+    if (visibleOfficeNameCharacters(application.officeName) < 4 || !officeNameKey) {
+      throw appError("office_name_invalid", 400, "اسم المكتب يجب أن يكون 4 أحرف ظاهرة على الأقل");
+    }
+    const nameClaim = await getFirestoreDocument({
+      projectId, segments: ["officeNameClaims", officeNameKey], accessToken, allowMissing: true
     });
-    await setFirestoreDocument({
-      projectId, segments: ["publicOffices", officeId], accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        officeName: firestoreString(application.officeName),
-        brokerName: firestoreString(application.brokerName),
-        phone: firestoreString(application.phone),
-        licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("المدينة المنورة"),
-        specialties: { arrayValue: { values: [] } },
-        coverUrl: firestoreString(""),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "members", application.applicantUid], accessToken,
-      fields: {
-        uid: firestoreString(application.applicantUid),
-        role: firestoreString("owner"),
-        active: firestoreBoolean(true),
-        createdAt: firestoreTimestamp(now)
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["loginDirectory", phoneHash], accessToken,
-      fields: {
-        uid: firestoreString(application.applicantUid),
-        officeId: firestoreString(officeId),
-        email: firestoreString(application.email),
-        phone: firestoreString(normalizedPhone),
-        active: firestoreBoolean(true),
-        updatedAt: firestoreTimestamp(now)
-      }
+    if (nameClaim) throw appError("office_name_taken", 409, "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر");
+    const defaultPreferences = officeNotificationPreferences({});
+    const officeFields = {
+      officeId: firestoreString(officeId),
+      officeName: firestoreString(application.officeName),
+      officeNameKey: firestoreString(officeNameKey),
+      brokerName: firestoreString(application.brokerName),
+      phone: firestoreString(application.phone),
+      whatsapp: firestoreString(application.phone),
+      licenseNumber: firestoreString(application.falLicense),
+      city: firestoreString("المدينة المنورة"),
+      specialties: firestoreStringArray([]),
+      logoUrl: firestoreString(""),
+      displayImageUrl: firestoreString(""),
+      coverUrl: firestoreString(""),
+      publicSlug: firestoreString(officeId),
+      notificationPreferences: firestoreBooleanMap(defaultPreferences),
+      cooperationMode: firestoreString("APPROVAL_REQUIRED"),
+      ownerUid: firestoreString(application.applicantUid),
+      approvalStatus: firestoreString("approved"),
+      approvedAt: firestoreTimestamp(now),
+      approvedByUid: firestoreString(admin.sub),
+      updatedAt: firestoreTimestamp(now)
+    };
+    const publicFields = Object.fromEntries(Object.entries(officeFields).filter(([key]) =>
+      !["officeNameKey", "notificationPreferences", "cooperationMode", "ownerUid", "approvalStatus", "approvedAt", "approvedByUid"].includes(key)
+    ));
+    await commitFirestoreWrites({
+      projectId,
+      accessToken,
+      writes: [
+        firestoreUpdateWrite(projectId, ["officeNameClaims", officeNameKey], {
+          officeId: firestoreString(officeId),
+          ownerUid: firestoreString(application.applicantUid),
+          officeName: firestoreString(application.officeName),
+          createdAt: firestoreTimestamp(now),
+          updatedAt: firestoreTimestamp(now)
+        }, { exists: false }),
+        firestoreUpdateWrite(projectId, ["offices", officeId], officeFields, { exists: false }),
+        firestoreUpdateWrite(projectId, ["publicOffices", officeId], publicFields, { exists: false }),
+        firestoreUpdateWrite(projectId, ["offices", officeId, "members", application.applicantUid], {
+          officeId: firestoreString(officeId),
+          uid: firestoreString(application.applicantUid),
+          role: firestoreString("owner"),
+          active: firestoreBoolean(true),
+          createdAt: firestoreTimestamp(now)
+        }, { exists: false }),
+        firestoreUpdateWrite(projectId, ["loginDirectory", phoneHash], {
+          uid: firestoreString(application.applicantUid),
+          officeId: firestoreString(officeId),
+          email: firestoreString(application.email),
+          phone: firestoreString(normalizedPhone),
+          active: firestoreBoolean(true),
+          updatedAt: firestoreTimestamp(now)
+        }, loginDirectory ? { updateTime: loginDirectory.updateTime } : { exists: false })
+      ]
     });
   }
   await setFirestoreDocument({
@@ -1720,7 +1978,29 @@ async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,re
   }}).catch(error=>console.warn("[iaqar-fcm] stale token cleanup failed",error&&error.message));
 }
 
+function notificationPreferenceCategory(type) {
+  const key = cleanText(type, 60).toLowerCase();
+  if (["match", "new_match"].includes(key)) return "matches";
+  if (["owner", "customer", "public_intake", "contact"].includes(key)) return "contacts";
+  if (key.startsWith("cooperation")) return "cooperation";
+  if (["message", "reply"].includes(key)) return "messages";
+  if (["appointment", "follow_up", "deal"].includes(key)) return "appointments";
+  return "system";
+}
+
+function officeNotificationAllowed(preferences, type) {
+  const normalized = officeNotificationPreferences(preferences);
+  return normalized[notificationPreferenceCategory(type)] !== false;
+}
+
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",accessToken}) {
+  const officeDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId], accessToken, allowMissing: true
+  });
+  const office = officeDoc ? firestoreFieldsToJs(officeDoc.fields || {}) : {};
+  if (!officeNotificationAllowed(office.notificationPreferences, type)) {
+    return { registered: 0, sent: 0, failed: 0, disabled: 0, skippedByPreference: true };
+  }
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
   const activeDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
@@ -2323,21 +2603,62 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
   return response.json();
 }
 
+function firestoreDocumentName(projectId, segments) {
+  return `projects/${projectId}/databases/(default)/documents/${segments.map(segment => String(segment)).join("/")}`;
+}
+
+function firestoreUpdateWrite(projectId, segments, fields, currentDocument = null) {
+  const compacted = compactFields(fields);
+  return {
+    update: {
+      name: firestoreDocumentName(projectId, segments),
+      fields: compacted
+    },
+    updateMask: { fieldPaths: Object.keys(compacted) },
+    ...(currentDocument ? { currentDocument } : {})
+  };
+}
+
+async function commitFirestoreWrites({ projectId, accessToken, writes }) {
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`,
+    {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ writes })
+    }
+  );
+  if (!response.ok) {
+    const detail = await response.text();
+    if ([409, 412].includes(response.status) || detail.includes("FAILED_PRECONDITION") || detail.includes("ALREADY_EXISTS")) {
+      throw appError("firestore_precondition_failed", 409, "تعارضت البيانات مع تحديث آخر");
+    }
+    console.error("[iaqar] Firestore commit failed", response.status, detail);
+    throw appError("firestore_write_failed", 502, "تعذر حفظ بيانات المكتب");
+  }
+  return response.json();
+}
+
 function firestoreDocumentUrl(projectId, segments) {
   const path = segments.map(segment => encodeURIComponent(String(segment))).join("/");
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${path}`;
 }
 
+function firestoreValueToJs(value) {
+  if (!value || typeof value !== "object") return null;
+  if ("stringValue" in value) return value.stringValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("booleanValue" in value) return Boolean(value.booleanValue);
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("nullValue" in value) return null;
+  if ("arrayValue" in value) return (value.arrayValue.values || []).map(firestoreValueToJs);
+  if ("mapValue" in value) return firestoreFieldsToJs(value.mapValue.fields || {});
+  return null;
+}
+
 function firestoreFieldsToJs(fields) {
-  const output = {};
-  for (const [key, value] of Object.entries(fields || {})) {
-    if ("stringValue" in value) output[key] = value.stringValue;
-    else if ("integerValue" in value) output[key] = Number(value.integerValue);
-    else if ("doubleValue" in value) output[key] = Number(value.doubleValue);
-    else if ("booleanValue" in value) output[key] = Boolean(value.booleanValue);
-    else if ("timestampValue" in value) output[key] = value.timestampValue;
-  }
-  return output;
+  return Object.fromEntries(Object.entries(fields || {}).map(([key, value]) => [key, firestoreValueToJs(value)]));
 }
 
 
@@ -2575,6 +2896,16 @@ function compactFields(fields) { return Object.fromEntries(Object.entries(fields
 function firestoreString(value) { return { stringValue: String(value) }; }
 function firestoreOptionalString(value) { return value ? firestoreString(value) : null; }
 function firestoreBoolean(value) { return { booleanValue: Boolean(value) }; }
+function firestoreStringArray(values) {
+  return { arrayValue: { values: (Array.isArray(values) ? values : []).map(firestoreString) } };
+}
+function firestoreBooleanMap(value) {
+  return {
+    mapValue: {
+      fields: Object.fromEntries(Object.entries(value || {}).map(([key, enabled]) => [key, firestoreBoolean(enabled)]))
+    }
+  };
+}
 function firestoreInteger(value) { return { integerValue: String(value) }; }
 function firestoreTimestamp(value) { return { timestampValue: value.toISOString() }; }
 function safeJsonStringify(value) { try { return JSON.stringify(value); } catch (_) { return "{}"; } }
@@ -2589,7 +2920,7 @@ function appError(code, status, publicMessage) { const error = new Error(publicM
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index",
     "Access-Control-Max-Age": "86400"
   };
@@ -2601,4 +2932,20 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export {
+  normalizeLoginPhone,
+  legacyLocalLoginPhone,
+  resolveLoginDirectory,
+  firebaseServiceAccount,
+  createServiceAccountJwt,
+  buildNotificationLink,
+  buildFcmTarget,
+  buildFcmHttpMessage,
+  parseFcmFailure,
+  normalizeOfficeNameKey,
+  visibleOfficeNameCharacters,
+  officeIdentityKey,
+  officeNotificationPreferences,
+  notificationPreferenceCategory,
+  officeNotificationAllowed
+};

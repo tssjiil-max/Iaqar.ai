@@ -245,7 +245,7 @@
       id: doc.id,
       recordId: doc.id,
       recordType: "deal",
-      main: "deals",
+      main: "opportunities",
       priority,
       isAlert: overdue || item.attentionRequired === true || item.workflowStage === "closing",
       icon: item.status === "closed" ? "i-house-check" : "i-briefcase-check",

@@ -1,6 +1,11 @@
 (() => {
   "use strict";
 
+  const core = window.IAQAROfficeSettingsCore;
+  if (!core) {
+    console.error("[iaqar] office settings core was not loaded");
+    return;
+  }
   const SPECIALTY_LABELS = Object.freeze({
     sale: "بيع",
     purchase: "شراء",
@@ -14,17 +19,23 @@
     officeName: "مكتب عقاري",
     brokerName: "وسيط عقاري",
     phone: "",
-    whatsapp: "",
     licenseNumber: "",
     city: "المدينة المنورة",
     specialties: [],
+    logoUrl: "",
+    displayImageUrl: "",
     coverUrl: "",
-    publicSlug: ""
+    publicSlug: "",
+    notificationPreferences: { ...core.DEFAULT_NOTIFICATION_PREFERENCES },
+    cooperationMode: "APPROVAL_REQUIRED"
   };
 
   const el = {};
   let current = { ...defaults };
-  let authClaims = {};
+  const pendingMedia = { logo: null, display: null, cover: null };
+  const removedMedia = new Set();
+  const previewObjectUrls = new Set();
+  let nameAvailabilityTimer = null;
 
   function officeRuntime() {
     return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -44,10 +55,6 @@
     } catch (_) {
       return null;
     }
-  }
-
-  function isPlatformAdmin() {
-    return authClaims.platformAdmin === true || authClaims.admin === true;
   }
 
   function toast(message) {
@@ -93,33 +100,12 @@
     return cleanList;
   }
 
-  function significantCharacterCount(value) {
-    const matches = safeText(value).match(/[A-Za-z0-9\u0600-\u06FF]/g);
-    return matches ? matches.length : 0;
-  }
-
-  function allowedOfficeName(value) {
-    const name = safeText(value);
-    return /^[A-Za-z0-9\u0600-\u06FF\s._-]+$/.test(name);
-  }
-
   function normalizeOfficeNameKey(value) {
-    return safeText(value)
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[\s._-]+/g, "")
-      .replace(/[^A-Za-z0-9\u0600-\u06FF]/g, "");
+    return core.normalizeOfficeNameKey(value);
   }
 
   function validateOfficeName(value) {
-    const name = safeText(value);
-    if (!name) return "اكتب اسم المكتب";
-    if (!allowedOfficeName(name)) return "اسم المكتب يقبل العربية أو الإنجليزية والأرقام والمسافات فقط";
-    if (!isPlatformAdmin() && significantCharacterCount(name) < 4) {
-      return "اسم المكتب يجب أن يكون 4 أحرف على الأقل؛ الأسماء الأقصر محجوزة لإدارة المنصة";
-    }
-    if (significantCharacterCount(name) > 80) return "اسم المكتب طويل جدًا";
-    return "";
+    return core.validateOfficeName(value);
   }
 
   function clean(data) {
@@ -128,12 +114,15 @@
       officeNameKey: normalizeOfficeNameKey(data.officeName || defaults.officeName).slice(0, 100),
       brokerName: safeText(data.brokerName, defaults.brokerName).slice(0, 80),
       phone: safeText(data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
-      whatsapp: safeText(data.whatsapp || data.phone).replace(/[^0-9+]/g, "").slice(0, 20),
       licenseNumber: safeText(data.licenseNumber, defaults.licenseNumber).replace(/[^0-9]/g, "").slice(0, 20),
       city: safeText(data.city, defaults.city).slice(0, 60),
       specialties: normalizedSpecialties(data.specialties),
+      logoUrl: safeText(data.logoUrl).slice(0, 2000),
+      displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
       coverUrl: safeText(data.coverUrl).slice(0, 2000),
-      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
+      publicSlug: safeText(data.publicSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 64),
+      notificationPreferences: core.notificationPreferences(data.notificationPreferences),
+      cooperationMode: core.cooperationMode(data.cooperationMode)
     };
   }
 
@@ -162,20 +151,68 @@
     });
   }
 
+  function identityField(kind) {
+    return kind === "logo" ? "logoUrl" : kind === "display" ? "displayImageUrl" : "coverUrl";
+  }
+
+  function setIdentityPreview(kind, url) {
+    const image = el.identityPreviews && el.identityPreviews[kind];
+    const empty = el.identityEmpty && el.identityEmpty[kind];
+    if (image) {
+      image.src = url || "";
+      image.hidden = !url;
+    }
+    if (empty) empty.hidden = Boolean(url);
+    const homeImage = kind === "logo"
+      ? document.getElementById("officeLogoImage")
+      : kind === "cover"
+        ? document.getElementById("officeCoverImage")
+        : document.getElementById("officeDisplayImage");
+    if (homeImage) {
+      homeImage.src = url || "";
+      homeImage.hidden = !url;
+    }
+    const homeEmpty = kind === "logo"
+      ? document.getElementById("officeHomeLogoEmpty")
+      : kind === "cover"
+        ? document.getElementById("officeHomeCoverEmpty")
+        : null;
+    if (homeEmpty) homeEmpty.hidden = Boolean(url);
+  }
+
+  function writePreferencesToForm(preferences) {
+    const normalized = core.notificationPreferences(preferences);
+    Object.entries(el.notificationPreferences || {}).forEach(([key, input]) => {
+      input.checked = normalized[key];
+    });
+  }
+
+  function readPreferencesFromForm() {
+    return core.notificationPreferences(Object.fromEntries(
+      Object.entries(el.notificationPreferences || {}).map(([key, input]) => [key, input.checked])
+    ));
+  }
+
   function apply(data) {
     current = clean({ ...defaults, ...(data || {}) });
     el.officeName.value = current.officeName;
     el.brokerName.value = current.brokerName;
     el.phone.value = current.phone;
-    el.whatsapp.value = current.whatsapp || current.phone;
     el.license.value = current.licenseNumber;
     el.city.value = current.city;
     el.link.value = officeLink();
     writeSpecialtiesToForm(current.specialties);
-    if (el.coverPreview) {
-      el.coverPreview.src = current.coverUrl || "";
-      el.coverPreview.hidden = !current.coverUrl;
+    writePreferencesToForm(current.notificationPreferences);
+    if (el.cooperationMode) el.cooperationMode.value = current.cooperationMode;
+    ["logo", "display", "cover"].forEach(kind => setIdentityPreview(kind, current[identityField(kind)]));
+    const homeCover = document.getElementById("officeCoverImage");
+    const homeCoverEmpty = document.getElementById("officeHomeCoverEmpty");
+    const homeCoverUrl = current.coverUrl || current.displayImageUrl;
+    if (homeCover) {
+      homeCover.src = homeCoverUrl;
+      homeCover.hidden = !homeCoverUrl;
     }
+    if (homeCoverEmpty) homeCoverEmpty.hidden = Boolean(homeCoverUrl);
 
     const map = [
       ["officeDisplayName", current.officeName],
@@ -219,12 +256,15 @@
           officeName: data.officeName || data.name,
           brokerName: data.brokerName || data.licenseeName,
           phone: data.phone,
-          whatsapp: data.whatsapp || data.phone,
           licenseNumber: data.licenseNumber || data.falLicense,
           city: data.city,
           specialties: data.specialties,
+          logoUrl: data.logoUrl,
+          displayImageUrl: data.displayImageUrl || data.coverUrl,
           coverUrl: data.coverUrl,
-          publicSlug: data.publicSlug
+          publicSlug: data.publicSlug,
+          notificationPreferences: data.notificationPreferences,
+          cooperationMode: data.cooperationMode
         });
         saveLocal(current);
       }
@@ -237,59 +277,99 @@
     }
   }
 
-  async function reserveOfficeName(runtime, user, data) {
-    const officeRef = runtime.db.collection("offices").doc(officeId());
-    const claimRef = runtime.db.collection("officeNameClaims").doc(data.officeNameKey);
-    const publicRef = runtime.db.collection("publicOffices").doc(officeId());
-
-    await runtime.db.runTransaction(async transaction => {
-      const [officeSnap, claimSnap] = await Promise.all([
-        transaction.get(officeRef),
-        transaction.get(claimRef)
-      ]);
-
-      if (claimSnap.exists && claimSnap.data().officeId !== officeId()) {
-        throw new Error("OFFICE_NAME_TAKEN");
+  async function authenticatedFetch(path, options = {}) {
+    const user = authUser();
+    if (!user) throw new Error("سجل دخول مدير المكتب أولًا");
+    const response = await fetch(`${WORKER_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Authorization": `Bearer ${await user.getIdToken()}`,
+        ...(options.headers || {})
       }
-
-      const oldKey = officeSnap.exists ? safeText(officeSnap.data().officeNameKey) : "";
-      if (oldKey && oldKey !== data.officeNameKey) {
-        const oldClaimRef = runtime.db.collection("officeNameClaims").doc(oldKey);
-        const oldClaimSnap = await transaction.get(oldClaimRef);
-        if (oldClaimSnap.exists && oldClaimSnap.data().officeId === officeId()) {
-          transaction.delete(oldClaimRef);
-        }
-      }
-
-      transaction.set(claimRef, {
-        officeId: officeId(),
-        ownerUid: user.uid,
-        officeName: data.officeName,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      transaction.set(officeRef, {
-        ...data,
-        officeId: officeId(),
-        ownerUid: officeSnap.exists && officeSnap.data().ownerUid
-          ? officeSnap.data().ownerUid
-          : user.uid,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-      transaction.set(publicRef, {
-        officeId: officeId(),
-        officeName: data.officeName,
-        brokerName: data.brokerName,
-        phone: data.phone,
-        whatsapp: data.whatsapp,
-        licenseNumber: data.licenseNumber,
-        city: data.city,
-        specialties: data.specialties,
-        coverUrl: data.coverUrl,
-        publicSlug: data.publicSlug,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
     });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.message || "تعذر حفظ إعدادات المكتب");
+      error.code = payload.error || "";
+      throw error;
+    }
+    return payload;
+  }
+
+  function validIdentityFile(file) {
+    return file && /^image\/(jpeg|png|webp)$/.test(file.type) && file.size > 0 && file.size <= 10 * 1024 * 1024;
+  }
+
+  async function cropIdentityFile(file, kind) {
+    if (!validIdentityFile(file)) {
+      throw new Error("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
+    }
+    const preset = core.mediaPreset(kind);
+    if (!preset) throw new Error("نوع صورة الهوية غير صالح");
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const image = await loadImage(sourceUrl);
+      const sourceRatio = image.naturalWidth / image.naturalHeight;
+      let sourceWidth = image.naturalWidth;
+      let sourceHeight = image.naturalHeight;
+      if (sourceRatio > preset.ratio) sourceWidth = sourceHeight * preset.ratio;
+      else sourceHeight = sourceWidth / preset.ratio;
+      const sourceX = (image.naturalWidth - sourceWidth) / 2;
+      const sourceY = (image.naturalHeight - sourceHeight) / 2;
+      const outputWidth = Math.max(1, Math.min(preset.maxWidth, Math.round(sourceWidth)));
+      const outputHeight = Math.max(1, Math.round(outputWidth / preset.ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      canvas.getContext("2d").drawImage(
+        image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight
+      );
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", preset.quality));
+      if (!blob) throw new Error("تعذر قص الصورة");
+      return new File([blob], `${kind}.jpg`, { type: "image/jpeg" });
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+
+  async function selectIdentityMedia(kind, file) {
+    const cropped = await cropIdentityFile(file, kind);
+    pendingMedia[kind] = cropped;
+    removedMedia.delete(kind);
+    const previewUrl = URL.createObjectURL(cropped);
+    previewObjectUrls.add(previewUrl);
+    setIdentityPreview(kind, previewUrl);
+    if (el.mediaStatus) el.mediaStatus.textContent = "تم تجهيز المعاينة والقص. احفظ لتطبيق التغييرات.";
+  }
+
+  async function uploadIdentityMedia(kind, file) {
+    const payload = await authenticatedFetch("/media/office-identity", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type,
+        "X-Office-Id": officeId(),
+        "X-Media-Kind": kind
+      },
+      body: file
+    });
+    if (!payload.mediaUrl) throw new Error("لم يرجع الخادم رابط الصورة");
+    return payload.mediaUrl;
+  }
+
+  async function removeIdentityMedia(kind) {
+    await authenticatedFetch("/media/office-identity", {
+      method: "DELETE",
+      headers: { "X-Office-Id": officeId(), "X-Media-Kind": kind }
+    });
+  }
+
+  async function saveProfile(data) {
+    const payload = await authenticatedFetch("/office/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ officeId: officeId(), ...data })
+    });
+    return clean(payload.profile || data);
   }
 
   async function onSave(event) {
@@ -304,94 +384,58 @@
     }
     el.officeName.setCustomValidity("");
 
-    const specialties = readSpecialtiesFromForm();
-
-    let coverUrl = current.coverUrl || "";
-    const coverFile = el.cover && el.cover.files ? el.cover.files[0] : null;
-    if (coverFile) {
-      if (!/^image\/(jpeg|png|webp)$/.test(coverFile.type) || coverFile.size > 10 * 1024 * 1024) {
-        toast("اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 10 ميجابايت");
-        return;
-      }
-      const user = authUser();
-      if (!user) {
-        toast("سجل دخول مدير المكتب قبل رفع الصورة");
-        return;
-      }
-      const idToken = await user.getIdToken();
-      const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": coverFile.type,
-          "Authorization": `Bearer ${idToken}`,
-          "X-Office-Id": officeId()
-        },
-        body: coverFile
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.coverUrl) {
-        toast(result.message || "تعذر رفع صورة المكتب");
-        return;
-      }
-      coverUrl = result.coverUrl;
-    }
-
     const data = clean({
       officeName: el.officeName.value,
       brokerName: el.brokerName.value,
       phone: el.phone.value,
-      whatsapp: el.whatsapp.value,
       licenseNumber: el.license.value,
       city: el.city.value,
-      specialties,
-      coverUrl,
-      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value)
+      specialties: current.specialties,
+      logoUrl: removedMedia.has("logo") ? "" : current.logoUrl,
+      displayImageUrl: removedMedia.has("display") ? "" : current.displayImageUrl,
+      coverUrl: removedMedia.has("cover") ? "" : current.coverUrl,
+      publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value),
+      notificationPreferences: readPreferencesFromForm(),
+      cooperationMode: el.cooperationMode.value
     });
 
-    if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
+    if (!data.officeName || !data.brokerName || !data.phone || !data.licenseNumber || !data.city) {
       toast("أكمل بيانات المكتب المطلوبة");
       return;
     }
 
     el.save.disabled = true;
-    el.save.textContent = "جارٍ الحفظ...";
+    el.save.textContent = Object.values(pendingMedia).some(Boolean) ? "جارٍ رفع الصور..." : "جارٍ الحفظ...";
+    el.note.textContent = "جارٍ التحقق من الاسم وحفظ الإعدادات...";
 
-    const runtime = officeRuntime();
-    const user = authUser();
-    let synced = false;
-
-    if (runtime && runtime.db && user) {
-      try {
-        await reserveOfficeName(runtime, user, data);
-        synced = true;
-      } catch (error) {
-        console.warn("[iaqar] office settings sync failed", error);
-        if (error && error.message === "OFFICE_NAME_TAKEN") {
-          const message = "اسم المكتب مستخدم أو محجوز؛ اختر اسمًا آخر";
-          el.officeName.setCustomValidity(message);
-          el.officeName.reportValidity();
-          toast(message);
-          el.save.disabled = false;
-          el.save.textContent = "حفظ التعديلات";
-          return;
-        }
+    try {
+      for (const kind of ["logo", "display", "cover"]) {
+        if (pendingMedia[kind]) data[identityField(kind)] = await uploadIdentityMedia(kind, pendingMedia[kind]);
       }
-    }
-
-    if (!synced) {
-      el.note.textContent = "لم يتم الحفظ: يلزم حساب مدير مخوّل لهذا المكتب.";
-      toast("غير مصرح لك بتعديل إعدادات المكتب");
+      el.save.textContent = "جارٍ الحفظ...";
+      const saved = await saveProfile(data);
+      await Promise.all([...removedMedia].map(kind => removeIdentityMedia(kind).catch(error => {
+        console.warn("[iaqar] identity media removal failed", kind, error);
+      })));
+      apply(saved);
+      saveLocal(saved);
+      ["logo", "display", "cover"].forEach(kind => { pendingMedia[kind] = null; });
+      removedMedia.clear();
+      if (el.mediaStatus) el.mediaStatus.textContent = "تم حفظ الهوية البصرية.";
+      el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
+      toast("تم حفظ إعدادات المكتب");
+    } catch (error) {
+      console.warn("[iaqar] office settings sync failed", error);
+      if (error && error.code === "office_name_taken") {
+        el.officeName.setCustomValidity(error.message);
+        el.officeName.reportValidity();
+      }
+      el.note.textContent = error.message || "تعذر حفظ إعدادات المكتب.";
+      toast(error.message || "تعذر حفظ إعدادات المكتب");
+    } finally {
       el.save.disabled = false;
       el.save.textContent = "حفظ التعديلات";
-      return;
     }
-
-    apply(data);
-    saveLocal(data);
-    el.note.textContent = "تم حفظ البيانات ومزامنتها مع Firestore.";
-    toast("تم حفظ إعدادات المكتب");
-    el.save.disabled = false;
-    el.save.textContent = "حفظ التعديلات";
   }
 
   async function onLogout() {
@@ -419,15 +463,101 @@
     }
   }
 
+  async function shareOfficeLink() {
+    await ensurePublicSlug();
+    const url = officeLink();
+    const shareData = { title: current.officeName, text: `زيارة ${current.officeName}`, url };
+    try {
+      if (navigator.share) await navigator.share(shareData);
+      else await copyLink();
+    } catch (error) {
+      if (error && error.name !== "AbortError") {
+        await copyLink();
+      }
+    }
+  }
+
+  function showOfficeQr() {
+    const canvas = el.qrCanvas;
+    if (!canvas) return;
+    canvas.width = 280;
+    canvas.height = 280;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawQr(ctx, officeLink(), 20, 20, 240);
+    el.qrPanel.hidden = false;
+    el.qrPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function previewOfficeLink() {
+    window.open(officeLink(), "_blank", "noopener,noreferrer");
+  }
+
+  async function checkOfficeNameAvailability() {
+    const error = validateOfficeName(el.officeName.value);
+    if (error) {
+      el.nameStatus.textContent = error;
+      el.nameStatus.dataset.state = "error";
+      return false;
+    }
+    el.nameStatus.textContent = "جارٍ التحقق من توفر الاسم...";
+    el.nameStatus.dataset.state = "loading";
+    try {
+      const params = new URLSearchParams({ officeId: officeId(), name: el.officeName.value.trim() });
+      const result = await authenticatedFetch(`/office/name-availability?${params.toString()}`);
+      el.nameStatus.textContent = result.available ? "اسم المكتب متاح" : "اسم المكتب مستخدم؛ اختر اسمًا آخر";
+      el.nameStatus.dataset.state = result.available ? "success" : "error";
+      return result.available;
+    } catch (availabilityError) {
+      el.nameStatus.textContent = availabilityError.message || "تعذر التحقق من الاسم";
+      el.nameStatus.dataset.state = "error";
+      return false;
+    }
+  }
+
+  function scheduleNameAvailabilityCheck() {
+    clearTimeout(nameAvailabilityTimer);
+    el.officeName.setCustomValidity("");
+    nameAvailabilityTimer = setTimeout(checkOfficeNameAvailability, 450);
+  }
+
+  function markIdentityRemoved(kind) {
+    pendingMedia[kind] = null;
+    removedMedia.add(kind);
+    setIdentityPreview(kind, "");
+    if (el.mediaStatus) el.mediaStatus.textContent = "ستُحذف الصورة عند حفظ التعديلات.";
+  }
+
+  async function openOpportunityBank() {
+    if (!el.bankPanel) return;
+    el.bankPanel.hidden = false;
+    el.bankState.textContent = "جارٍ فتح بنك الفرص الخاص بالمكتب...";
+    el.bankPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const runtime = officeRuntime();
+    const user = authUser();
+    if (!runtime || !runtime.refs || !runtime.refs.opportunities || !user) {
+      el.bankState.textContent = "سجل دخول المكتب لفتح بنك الفرص الخاص.";
+      return;
+    }
+    try {
+      const snapshot = await runtime.refs.opportunities.limit(1).get();
+      el.bankState.textContent = snapshot.empty
+        ? "لا توجد فرص محفوظة في بنك المكتب حاليًا."
+        : "بنك الفرص متصل وتوجد فرص محفوظة. إدارة السجلات الكاملة غير متاحة حاليًا.";
+    } catch (error) {
+      console.warn("[iaqar] opportunity bank entry", error);
+      el.bankState.textContent = "تعذر فتح بنك الفرص. تحقق من الاتصال وصلاحية المكتب.";
+    }
+  }
+
   function officeMissingFields() {
     const fields = [
       ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
       ["اسم الوسيط", current.brokerName && current.brokerName !== defaults.brokerName],
       ["رخصة فال", current.licenseNumber],
       ["رقم التواصل", current.phone],
-      ["رقم واتساب", current.whatsapp],
       ["المدينة", current.city],
-      ["صورة المكتب أو الترويسة", current.coverUrl]
+      ["صورة المكتب", current.displayImageUrl || current.coverUrl]
     ];
     return fields.filter(([, valid]) => !valid).map(([label]) => label);
   }
@@ -512,7 +642,7 @@
     ctx.fillStyle = "#087064";
     ctx.fillRect(0, 0, canvas.width, 190);
 
-    const logoNode = document.querySelector(".site-logo img,.brand-logo img,.office-logo img");
+    const logoNode = document.getElementById("officeLogoImage") || document.querySelector(".site-logo img");
     if (logoNode && logoNode.src) {
       try {
         const logo = await loadImage(logoNode.src);
@@ -532,7 +662,7 @@
     ctx.fillStyle = "#d7ece7";
     ctx.fillText("بطاقة المكتب العقاري", 770, 126);
 
-    const cover = await loadImage(current.coverUrl);
+    const cover = await loadImage(current.coverUrl || current.displayImageUrl);
     drawImageCover(ctx, cover, 60, 225, 960, 420, 32);
 
     ctx.fillStyle = "#ffffff";
@@ -551,7 +681,7 @@
       ["رخصة فال", current.licenseNumber],
       ["المدينة", current.city],
       ["التواصل", current.phone],
-      ["واتساب", current.whatsapp]
+      ["الخدمات", specialtyText(current.specialties) || "خدمات عقارية"]
     ];
     let rowY = 900;
     for (const [label, value] of rows) {
@@ -586,16 +716,8 @@
     const slug = buildPublicSlug(current.officeName);
     current = clean({ ...current, publicSlug: slug });
     el.link.value = officeLink();
-    const runtime = officeRuntime();
-    const user = authUser();
-    if (runtime && runtime.db && user) {
-      const now = window.firebase.firestore.FieldValue.serverTimestamp();
-      await Promise.all([
-        runtime.db.collection("offices").doc(officeId()).set({ publicSlug: slug, updatedAt: now }, { merge: true }),
-        runtime.db.collection("publicOffices").doc(officeId()).set({ officeId: officeId(), publicSlug: slug, updatedAt: now }, { merge: true })
-      ]);
-      saveLocal(current);
-    }
+    current = await saveProfile(current);
+    saveLocal(current);
     return slug;
   }
 
@@ -617,7 +739,6 @@
         `رخصة فال: ${current.licenseNumber}`,
         `المدينة: ${current.city}`,
         `التواصل: ${current.phone}`,
-        `واتساب: ${current.whatsapp}`,
         "زيارة المكتب والتسجيل:",
         link
       ].join("\n");
@@ -651,18 +772,11 @@
   }
 
   async function updateAuthState(user) {
-    authClaims = {};
     el.logout.disabled = !user;
     if (!user) {
       el.note.textContent = "البيانات محفوظة على هذا الجهاز. سجل دخول مدير المكتب للمزامنة مع Firestore.";
       return;
     }
-
-    try {
-      const token = await user.getIdTokenResult();
-      authClaims = token.claims || {};
-    } catch (_) {}
-
     await loadFirestore();
   }
 
@@ -673,31 +787,80 @@
     el.officeName = document.getElementById("officeNameInput");
     el.brokerName = document.getElementById("brokerNameInput");
     el.phone = document.getElementById("officePhoneInput");
-    el.whatsapp = document.getElementById("officeWhatsappInput");
     el.license = document.getElementById("licenseNumberInput");
     el.city = document.getElementById("officeCityInput");
-    el.cover = document.getElementById("officeCoverInput");
-    el.coverPreview = document.getElementById("officeCoverPreview");
+    el.identityInputs = {
+      logo: document.getElementById("officeLogoInput"),
+      display: document.getElementById("officeDisplayInput"),
+      cover: document.getElementById("officeCoverInput")
+    };
+    el.identityPreviews = {
+      logo: document.getElementById("officeLogoPreview"),
+      display: document.getElementById("officeDisplayPreview"),
+      cover: document.getElementById("officeCoverPreview")
+    };
+    el.identityEmpty = {
+      logo: document.getElementById("officeLogoEmpty"),
+      display: document.getElementById("officeDisplayEmpty"),
+      cover: document.getElementById("officeCoverEmpty")
+    };
+    el.mediaStatus = document.getElementById("officeIdentityStatus");
     el.link = document.getElementById("officeLinkInput");
     el.copy = document.getElementById("copyOfficeLinkBtn");
+    el.shareLink = document.getElementById("shareOfficeLinkBtn");
+    el.previewLink = document.getElementById("previewOfficeLinkBtn");
+    el.showQr = document.getElementById("showOfficeQrBtn");
+    el.qrPanel = document.getElementById("officeQrPanel");
+    el.qrCanvas = document.getElementById("officeQrCanvas");
     el.save = document.getElementById("saveOfficeSettingsBtn");
     el.logout = document.getElementById("officeLogoutBtn");
     el.shareCard = document.getElementById("shareOfficeCardBtn");
     el.note = document.getElementById("officeSettingsNote");
+    el.nameStatus = document.getElementById("officeNameStatus");
     el.specialties = document.querySelectorAll('input[name="officeSpecialty"]');
+    el.notificationPreferences = Object.fromEntries(
+      Array.from(document.querySelectorAll("[data-notification-preference]"))
+        .map(input => [input.dataset.notificationPreference, input])
+    );
+    el.cooperationMode = document.getElementById("officeCooperationMode");
+    el.bankButton = document.getElementById("openOpportunityBankBtn");
+    el.bankPanel = document.getElementById("opportunityBankPanel");
+    el.bankState = document.getElementById("opportunityBankState");
 
     apply(loadLocal() || defaults);
 
-    el.officeName.addEventListener("input", () => el.officeName.setCustomValidity(""));
+    el.officeName.addEventListener("input", scheduleNameAvailabilityCheck);
+    el.officeName.addEventListener("blur", checkOfficeNameAvailability);
     el.form.addEventListener("submit", onSave);
     el.copy.addEventListener("click", copyLink);
+    el.shareLink.addEventListener("click", shareOfficeLink);
+    el.previewLink.addEventListener("click", previewOfficeLink);
+    el.showQr.addEventListener("click", showOfficeQr);
     el.logout.addEventListener("click", onLogout);
+    el.bankButton.addEventListener("click", openOpportunityBank);
     if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
-    if (el.cover) el.cover.addEventListener("change", () => {
-      const file = el.cover.files && el.cover.files[0];
-      if (!file || !el.coverPreview) return;
-      el.coverPreview.src = URL.createObjectURL(file);
-      el.coverPreview.hidden = false;
+    Object.entries(el.identityInputs).forEach(([kind, input]) => {
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        input.disabled = true;
+        if (el.mediaStatus) el.mediaStatus.textContent = "جارٍ تجهيز الصورة وقصها...";
+        try {
+          await selectIdentityMedia(kind, file);
+        } catch (error) {
+          if (el.mediaStatus) el.mediaStatus.textContent = error.message;
+          toast(error.message);
+          input.value = "";
+        } finally {
+          input.disabled = false;
+        }
+      });
+    });
+    document.querySelectorAll("[data-remove-identity]").forEach(button => {
+      button.addEventListener("click", () => markIdentityRemoved(button.dataset.removeIdentity));
+    });
+    window.addEventListener("beforeunload", () => {
+      previewObjectUrls.forEach(url => URL.revokeObjectURL(url));
     });
 
     try {

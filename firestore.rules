@@ -20,27 +20,63 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
-    function validOfficeProfile() {
+    function validNotificationPreferences() {
+      return request.resource.data.notificationPreferences is map
+        && request.resource.data.notificationPreferences.keys().hasOnly([
+          'matches', 'contacts', 'cooperation', 'messages', 'appointments', 'system'
+        ])
+        && request.resource.data.notificationPreferences.matches is bool
+        && request.resource.data.notificationPreferences.contacts is bool
+        && request.resource.data.notificationPreferences.cooperation is bool
+        && request.resource.data.notificationPreferences.messages is bool
+        && request.resource.data.notificationPreferences.appointments is bool
+        && request.resource.data.notificationPreferences.system is bool;
+    }
+    function validOfficeProfile(officeId) {
       return request.resource.data.officeName is string
+        && request.resource.data.officeName.size() >= 4
         && request.resource.data.officeName.size() <= 80
         && request.resource.data.officeNameKey is string
+        && request.resource.data.officeNameKey.size() >= 4
         && request.resource.data.officeNameKey.size() <= 100
-        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.officeId == officeId
+        && request.resource.data.brokerName is string
+        && request.resource.data.phone is string
+        && request.resource.data.licenseNumber is string
+        && request.resource.data.city is string
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && request.resource.data.cooperationMode in ['DISABLED', 'APPROVAL_REQUIRED', 'SMART_AUTOMATIC']
+        && validNotificationPreferences();
+    }
+    function protectedOfficeFieldsUnchanged(officeId) {
+      return request.resource.data.officeId == officeId
+        && request.resource.data.officeId == resource.data.officeId
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+    function officeNameUnchanged() {
+      return request.resource.data.officeName == resource.data.officeName
+        && request.resource.data.officeNameKey == resource.data.officeNameKey;
     }
 
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
-      allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow create: if isPlatformAdmin() && validOfficeProfile(officeId);
+      // Display-name changes use the authenticated Worker so the normalized
+      // global claim and profile update are committed atomically.
+      allow update: if canManage(officeId)
+        && validOfficeProfile(officeId)
+        && protectedOfficeFieldsUnchanged(officeId)
+        && officeNameUnchanged();
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
       match /members/{uid} {
         allow read: if isOfficeMember(officeId);
-        allow write: if canManage(officeId);
+        allow create, update: if canManage(officeId)
+          && request.resource.data.officeId == officeId;
+        allow delete: if canManage(officeId);
       }
 
       match /publicIntake/{docId} {
@@ -107,15 +143,9 @@ service cloud.firestore {
 
     match /officeNameClaims/{nameKey} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.resource.data.officeId is string
-        && request.resource.data.officeName is string
-        && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
-        && (canManage(request.resource.data.officeId)
-          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
-      allow delete: if signedIn()
-        && (isPlatformAdmin() || canManage(resource.data.officeId));
+      // Service-account backend only: clients cannot steal or forge a
+      // normalized claim. Availability is exposed by an authenticated endpoint.
+      allow create, update, delete: if false;
     }
 
     match /whatsapp_accounts/{phoneNumberId} {
