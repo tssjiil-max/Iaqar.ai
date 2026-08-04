@@ -22,6 +22,10 @@ import {
   sharedOpportunityProjection,
   validateOwnedOpportunityIds
 } from "./opportunity-bank-domain.js";
+import {
+  phase4BoundaryGuarantees,
+  requestOpportunityRematch
+} from "./matching-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -278,8 +282,9 @@ async function patchOpportunity(id, patch) {
   const runtime = officeRuntime();
   const user = authUser();
   if (!runtime?.db || !user) throw new Error("auth_required");
+  // Phase 3 bank domain itself never creates matches; Phase 4 rematch is a separate Worker call.
   const boundaries = phase3BoundaryGuarantees();
-  if (boundaries.createsMatch || boundaries.runsMatchingEngine) {
+  if (boundaries.createsMatch) {
     throw new Error("phase_boundary_violation");
   }
   await runtime.db.collection("offices").doc(officeId())
@@ -289,6 +294,37 @@ async function patchOpportunity(id, patch) {
       officeId: officeId(),
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
+}
+
+async function rematchOpportunity(id, { reason = "edit" } = {}) {
+  const user = authUser();
+  if (!user?.getIdToken || !officeId()) return { ok: false, skipped: true };
+  try {
+    const token = await user.getIdToken();
+    const workerBase = window.IAQAR?.workerBase
+      || window.IAQAR?.office?.workerBase
+      || "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+    const result = await requestOpportunityRematch({
+      workerBase,
+      idToken: token,
+      officeId: officeId(),
+      opportunityId: id,
+      notify: false
+    });
+    window.dispatchEvent(new CustomEvent("iaqar:opportunity-rematched", {
+      detail: {
+        opportunityId: id,
+        reason,
+        matchCount: Number(result.matchCount || 0),
+        createsOperation: false,
+        ...phase4BoundaryGuarantees()
+      }
+    }));
+    return result;
+  } catch (error) {
+    console.warn("[iaqar] bank rematch", error);
+    return { ok: false, error: "rematch_failed" };
+  }
 }
 
 async function saveEdit(id, existing, input) {
@@ -303,6 +339,7 @@ async function saveEdit(id, existing, input) {
   setStatus("جارٍ الحفظ…");
   try {
     await patchOpportunity(id, result.patch);
+    await rematchOpportunity(id, { reason: "edit" });
     setStatus("تم حفظ التعديلات", "is-done");
     toast("تم حفظ الفرصة");
   } catch (error) {
@@ -325,6 +362,7 @@ async function archiveOpportunity(id, existing) {
   setStatus("جارٍ الأرشفة…");
   try {
     await patchOpportunity(id, result.patch);
+    await rematchOpportunity(id, { reason: "archive" });
     setStatus("تمت الأرشفة", "is-done");
     toast("تمت أرشفة الفرصة");
   } catch (error) {
@@ -347,6 +385,7 @@ async function restoreOpportunity(id, existing) {
   setStatus("جارٍ الاستعادة…");
   try {
     await patchOpportunity(id, result.patch);
+    await rematchOpportunity(id, { reason: "restore" });
     setStatus("تمت الاستعادة", "is-done");
     toast("تمت استعادة الفرصة");
   } catch (error) {
@@ -365,6 +404,7 @@ async function softDeleteOpportunity(id, existing) {
   setStatus("جارٍ الحذف الآمن…");
   try {
     await patchOpportunity(id, result.patch);
+    await rematchOpportunity(id, { reason: "delete" });
     setStatus("تم الحذف الآمن مع حفظ التدقيق", "is-done");
     toast("تم حذف الفرصة");
     $("opportunityBankDetail").hidden = true;

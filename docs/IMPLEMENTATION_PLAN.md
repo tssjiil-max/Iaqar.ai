@@ -3,7 +3,7 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0 complete · Phase 1 complete · Phase 2 complete · Phase 3 complete — stop (do not begin Phase 4).**
+Current position: **Phase 0–4 complete — stop (do not begin Phase 5).**
 
 ---
 
@@ -15,7 +15,7 @@ Current position: **Phase 0 complete · Phase 1 complete · Phase 2 complete · 
 | 1 | Office Card and Office Settings | **DONE** |
 | 2 | Unified opportunity intake | **DONE** |
 | 3 | Opportunity Bank | **DONE** |
-| 4 | Matching engine | NOT STARTED |
+| 4 | Matching engine | **DONE** |
 | 5 | Operations Center and notifications | NOT STARTED |
 | 6 | Cooperation | NOT STARTED |
 | 7 | Smart messages and integration adapters | NOT STARTED |
@@ -165,6 +165,18 @@ version-tagged; thresholds are currently a Worker constant (`MATCH_THRESHOLD = 5
 must not leak into UI code.
 
 Exit criteria: Tests 7 and 8 PASS.
+
+Phase 4 delivered on this branch:
+
+- `worker/src/matching-engine.js` — single config (`MATCHING_RULE_VERSION`, threshold,
+  weights), scoring/reasons, opportunity eligibility, versioned match IDs
+- Worker `POST /matching/run` — office-member rematch for an opportunity; supersedes
+  stale current matches for the same pair/rule when data version changes
+- Client triggers: Add Opportunity + Opportunity Bank edit/archive/restore/delete call
+  rematch; `createsOperation` remains false (Phase 5)
+- Firestore: `matches` read by office members; client create/update/delete denied
+- Tests: `test/matching-phase4.test.mjs`, Worker Phase 4 cases, emulator matches rules
+- Docs: DATA_MODEL / EVENT_WORKFLOW / ACCEPTANCE_TESTS (Tests 7–8) / DECISIONS D-013
 
 ## Phase 5 — Operations Center and notifications
 

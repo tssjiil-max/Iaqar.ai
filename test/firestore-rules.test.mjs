@@ -74,11 +74,11 @@ test("TEST 4: the permissive catch-all excludes the collections with stricter ru
   const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
   assert.match(
     helper,
-    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities'\]/
+    /collectionName in \['devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities', 'sharedOpportunities', 'matches'\]/
   );
   // Firestore rules are additive, so a stricter rule cannot narrow a permissive one —
   // exclusion is the only mechanism that actually enforces the stricter rules.
-  for (const collection of ["officeSettings", "brokerSettings", "devices", "opportunitySources", "opportunities", "sharedOpportunities"]) {
+  for (const collection of ["officeSettings", "brokerSettings", "devices", "opportunitySources", "opportunities", "sharedOpportunities", "matches"]) {
     assert.ok(helper.includes(`'${collection}'`), `${collection} must be excluded from the catch-all`);
   }
 });

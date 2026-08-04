@@ -1,3 +1,24 @@
+import {
+  MATCHING_RULE_VERSION,
+  MATCH_THRESHOLD,
+  MAX_MATCH_CANDIDATES,
+  MAX_MATCH_RESULTS,
+  DEFAULT_CITY,
+  phase4BoundaryGuarantees,
+  readinessFromScore as readinessFromScoreEngine,
+  normalizeMatchStatus as normalizeMatchStatusEngine,
+  calculateClosingReadiness as calculateClosingReadinessEngine,
+  opportunityToMatchInput,
+  counterpartsEligible,
+  isActiveLifecycle,
+  canonicalPairKey,
+  relevantDataVersion,
+  buildMatchId,
+  pairRuleKey,
+  scoreMatch as scoreMatchEngine,
+  rankMatchCandidates as rankMatchCandidatesEngine
+} from "./matching-engine.js";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const DEFAULT_PROJECT_ID = "aqar-b5d76";
@@ -7,10 +28,6 @@ const MAX_RAW_LENGTH = 16000;
 const DAILY_FREE_WRITES = 20000;
 const WARNING_PERCENT = 80;
 const ESTIMATED_WRITES_PER_MESSAGE = 8;
-const MATCH_THRESHOLD = 55;
-const MAX_MATCH_CANDIDATES = 60;
-const MAX_MATCH_RESULTS = 3;
-const DEFAULT_CITY = "المدينة المنورة";
 
 const DEAL_STAGE_ORDER = ["contact","viewing","negotiation","agreement","closing","closed"];
 const DEAL_STAGE_LABELS = Object.freeze({
@@ -43,30 +60,13 @@ function nextDealStage(current){
   return DEAL_STAGE_ORDER[Math.min(DEAL_STAGE_ORDER.indexOf(safe)+1,DEAL_STAGE_ORDER.length-1)];
 }
 function normalizeMatchStatus(value){
-  const status=cleanText(value||"active",40);
-  if(status==="new"||status==="in_progress") return "active";
-  if(status==="converted") return "negotiation";
-  return ["active","waiting_response","viewing","negotiation","completed","closed"].includes(status)?status:"active";
+  return normalizeMatchStatusEngine(cleanText(value||"active",40));
 }
 function readinessFromScore(score){
-  const safe=Math.max(0,Math.min(100,Math.round(Number(score)||0)));
-  const key=safe>=85?"very_high":safe>=70?"high":safe>=50?"medium":"low";
-  return {score:safe,key,label:READINESS_LABELS[key]};
+  return readinessFromScoreEngine(score);
 }
-function calculateClosingReadiness({matchScore=0,source={},candidate={},status="active"}={}){
-  const normalized=normalizeMatchStatus(status);
-  if(normalized==="completed") return readinessFromScore(100);
-  if(normalized==="closed") return readinessFromScore(0);
-  const completeness=Math.min(Number(source.completeness||0),Number(candidate.completeness||0));
-  let score=Math.round(Math.max(0,Math.min(100,Number(matchScore)||0))*0.28);
-  score+=Math.round(Math.max(0,Math.min(100,completeness))*0.18);
-  if(source.financingReady===true||candidate.financingReady===true) score+=18;
-  if(source.directOwner===true||candidate.directOwner===true) score+=14;
-  if(source.urgency==="high"||candidate.urgency==="high") score+=5;
-  if(source.availabilityConfirmed===true||candidate.availabilityConfirmed===true) score+=7;
-  if(source.priceConfirmed===true||candidate.priceConfirmed===true) score+=5;
-  const stageFloor={active:25,waiting_response:42,viewing:72,negotiation:88}[normalized]||20;
-  return readinessFromScore(Math.max(stageFloor,score));
+function calculateClosingReadiness(args){
+  return calculateClosingReadinessEngine(args);
 }
 function calculateDealHealth({stage="contact",status="open",updatedAt=null,nextFollowUpAt=null}={}){
   if(status==="closed"||stage==="closed") return {score:100,key:"excellent",label:DEAL_HEALTH_LABELS.excellent};
@@ -184,7 +184,20 @@ export default {
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
         const candidates = Array.isArray(body.candidates) ? body.candidates : [];
         const ranked = rankMatchCandidates(source, candidates);
-        return jsonResponse({ ok: true, source, matches: ranked, bestOpportunity: ranked[0] || null, requestId });
+        return jsonResponse({
+          ok: true,
+          source,
+          matches: ranked,
+          bestOpportunity: ranked[0] || null,
+          matchingRuleVersion: MATCHING_RULE_VERSION,
+          threshold: MATCH_THRESHOLD,
+          boundaries: phase4BoundaryGuarantees(),
+          requestId
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/matching/run") {
+        return await handleMatchingRun(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/workflow/preview") {
@@ -1583,9 +1596,172 @@ function parsedToFirestoreFields(parsed, context) {
   });
 }
 
+function rankMatchCandidates(source, candidates) {
+  return rankMatchCandidatesEngine(source, candidates);
+}
+
+function scoreMatch(source, candidate) {
+  return scoreMatchEngine(source, candidate);
+}
+
+async function supersedeMatchesForPairKey({
+  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
+}) {
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  let superseded = 0;
+  for (const doc of docs) {
+    const match = firestoreFieldsToJs(doc.fields || {});
+    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!matchId || matchId === keepMatchId) continue;
+    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
+    if (match.isCurrent === false || match.status === "superseded") continue;
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matches", matchId],
+      accessToken,
+      fields: {
+        isCurrent: firestoreBoolean(false),
+        status: firestoreString("superseded"),
+        statusLabel: firestoreString("أُلغيت بنسخة أحدث"),
+        supersededAt: firestoreTimestamp(now),
+        supersededByMatchId: firestoreString(keepMatchId || ""),
+        attentionRequired: firestoreBoolean(false),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    superseded += 1;
+  }
+  return superseded;
+}
+
+async function persistScoredMatch({
+  projectId, officeId, source, candidate, sourceRef, counterpartRef,
+  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+  opportunityId, counterpartOpportunityId, scored, rank, accessToken
+}) {
+  const pairKey = canonicalPairKey(sourceRef, counterpartRef);
+  const dataVersion = await relevantDataVersion(source, candidate);
+  const matchId = await buildMatchId({
+    officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
+  });
+  const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
+  const existingMatch = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
+  });
+  if (existingMatch) {
+    const existing = firestoreFieldsToJs(existingMatch.fields || {});
+    if (existing.isCurrent !== false && existing.status !== "superseded") {
+      return {
+        matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
+        priority: scored.priority, closingReadiness: scored.readiness, status: "active",
+        statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+        rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+        metrics: scored.metrics, breakdown: scored.breakdown,
+        city: source.city || candidate.city || DEFAULT_CITY,
+        district: source.district || candidate.district || "",
+        propertyType: source.propertyType || candidate.propertyType || "",
+        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey
+      };
+    }
+  }
+
+  await supersedeMatchesForPairKey({
+    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
+  });
+
+  const now = new Date();
+  const clientRequestId = sourceCollection === "clients"
+    ? sourceRecordId
+    : (counterpartCollection === "clients" ? counterpartRecordId : "");
+  const ownerOfferId = sourceCollection === "owners"
+    ? sourceRecordId
+    : (counterpartCollection === "owners" ? counterpartRecordId : "");
+  const readiness = scored.readiness;
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+    schemaVersion: firestoreInteger(6),
+    officeId: firestoreString(officeId),
+    matchId: firestoreString(matchId),
+    status: firestoreString("active"),
+    statusLabel: firestoreString(MATCH_STATUS_LABELS.active),
+    workflowStage: firestoreString("contact"),
+    nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active),
+    attentionRequired: firestoreBoolean(true),
+    isCurrent: firestoreBoolean(true),
+    matchingRuleVersion: firestoreString(MATCHING_RULE_VERSION),
+    dataVersion: firestoreString(dataVersion),
+    canonicalPairKey: firestoreString(pairKey),
+    pairRuleKey: firestoreString(pairRule),
+    score: firestoreInteger(scored.score),
+    opportunityScore: firestoreInteger(scored.opportunityScore),
+    closingReadinessScore: firestoreInteger(readiness.score),
+    closingReadinessKey: firestoreString(readiness.key),
+    closingReadinessLabel: firestoreString(readiness.label),
+    priority: firestoreString(scored.priority),
+    rank: firestoreInteger(rank),
+    isBestOpportunity: firestoreBoolean(rank === 1),
+    reasonsJson: firestoreString(JSON.stringify(scored.reasons)),
+    breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
+    warningsJson: firestoreString(JSON.stringify(scored.warnings)),
+    rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
+    sourceCollection: firestoreString(sourceCollection),
+    sourceRecordId: firestoreString(sourceRecordId),
+    counterpartCollection: firestoreString(counterpartCollection),
+    counterpartRecordId: firestoreString(counterpartRecordId),
+    clientRequestId: firestoreString(clientRequestId),
+    ownerOfferId: firestoreString(ownerOfferId),
+    matchGroupId: firestoreString(clientRequestId || pairKey),
+    opportunityId: firestoreString(opportunityId || ""),
+    counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
+    city: firestoreOptionalString(source.city || candidate.city || DEFAULT_CITY),
+    district: firestoreOptionalString(source.district || candidate.district),
+    propertyType: firestoreOptionalString(source.propertyType || candidate.propertyType),
+    transactionType: firestoreOptionalString(source.transactionType || candidate.transactionType),
+    priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
+    areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
+    contactPhone: firestoreOptionalString(source.phone || candidate.contactPhone || candidate.phone),
+    contactName: firestoreOptionalString(source.senderName || candidate.contactName || candidate.senderName),
+    nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)),
+    followUpCount: firestoreInteger(0),
+    createdAt: firestoreTimestamp(now),
+    lastMatchedAt: firestoreTimestamp(now),
+    updatedAt: firestoreTimestamp(now)
+  }});
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],
+    accessToken,
+    fields: {
+      officeId: firestoreString(officeId),
+      recordType: firestoreString("match"),
+      recordId: firestoreString(matchId),
+      eventType: firestoreString("match_created"),
+      stage: firestoreString("active"),
+      note: firestoreString(`تم إنشاء المطابقة بنسبة ${scored.score}% — جاهزية الإغلاق ${readiness.label}`),
+      createdAt: firestoreTimestamp(now)
+    }
+  });
+
+  return {
+    matchId, duplicate: false, score: scored.score, opportunityScore: scored.opportunityScore,
+    priority: scored.priority, closingReadiness: readiness, status: "active",
+    statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+    rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+    metrics: scored.metrics, breakdown: scored.breakdown,
+    city: source.city || candidate.city || DEFAULT_CITY,
+    district: source.district || candidate.district || "",
+    propertyType: source.propertyType || candidate.propertyType || "",
+    matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey
+  };
+}
+
 async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken }) {
   const counterpart = sourceCollection === "owners" ? "clients" : "owners";
-  const docs = await listCollectionDocuments({ projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES });
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
   const prepared = [];
   for (const doc of docs) {
     const candidate = firestoreFieldsToJs(doc.fields || {});
@@ -1601,165 +1777,144 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
   const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
   for (let index = 0; index < topPrepared.length; index += 1) {
     const { candidate, candidateId, scored } = topPrepared[index];
-    const pair = [`${sourceCollection}:${sourceRecordId}`, `${counterpart}:${candidateId}`].sort().join("|");
-    const matchId = `mat_${(await sha256Hex(`${officeId}|${pair}`)).slice(0, 36)}`;
-    const existingMatch = await getFirestoreDocument({
-      projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
+    const sourceRef = `${sourceCollection}:${sourceRecordId}`;
+    const counterpartRef = `${counterpart}:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source: parsed, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection, sourceRecordId,
+      counterpartCollection: counterpart, counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: "",
+      scored, rank: index + 1, accessToken
     });
-    if (existingMatch) continue;
-    const now = new Date();
-    const rank = index + 1;
-    const clientRequestId = sourceCollection === "clients" ? sourceRecordId : candidateId;
-    const ownerOfferId = sourceCollection === "owners" ? sourceRecordId : candidateId;
-    const readiness = scored.readiness;
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-      schemaVersion: firestoreInteger(5), officeId: firestoreString(officeId), matchId: firestoreString(matchId),
-      status: firestoreString("active"), statusLabel: firestoreString(MATCH_STATUS_LABELS.active), workflowStage: firestoreString("contact"),
-      nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active), attentionRequired: firestoreBoolean(true),
-      score: firestoreInteger(scored.score), opportunityScore: firestoreInteger(scored.opportunityScore),
-      closingReadinessScore: firestoreInteger(readiness.score), closingReadinessKey: firestoreString(readiness.key), closingReadinessLabel: firestoreString(readiness.label),
-      priority: firestoreString(scored.priority), rank: firestoreInteger(rank), isBestOpportunity: firestoreBoolean(rank === 1),
-      reasonsJson: firestoreString(JSON.stringify(scored.reasons)), breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
-      warningsJson: firestoreString(JSON.stringify(scored.warnings)), rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
-      sourceCollection: firestoreString(sourceCollection), sourceRecordId: firestoreString(sourceRecordId),
-      counterpartCollection: firestoreString(counterpart), counterpartRecordId: firestoreString(candidateId),
-      clientRequestId: firestoreString(clientRequestId), ownerOfferId: firestoreString(ownerOfferId), matchGroupId: firestoreString(clientRequestId),
-      opportunityId: firestoreString(opportunityId), city: firestoreOptionalString(parsed.city || candidate.city || DEFAULT_CITY),
-      district: firestoreOptionalString(parsed.district || candidate.district),
-      propertyType: firestoreOptionalString(parsed.propertyType || candidate.propertyType), transactionType: firestoreOptionalString(parsed.transactionType || candidate.transactionType),
-      priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
-      areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
-      contactPhone: firestoreOptionalString(parsed.phone || candidate.contactPhone), contactName: firestoreOptionalString(parsed.senderName || candidate.contactName),
-      nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)), followUpCount: firestoreInteger(0),
-      createdAt: firestoreTimestamp(now), lastMatchedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
-    }});
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"], accessToken, fields: {
-      officeId: firestoreString(officeId), recordType: firestoreString("match"), recordId: firestoreString(matchId),
-      eventType: firestoreString("match_created"), stage: firestoreString("active"),
-      note: firestoreString(`تم إنشاء المطابقة بنسبة ${scored.score}% — جاهزية الإغلاق ${readiness.label}`),
-      createdAt: firestoreTimestamp(now)
-    }});
-    results.push({ matchId, score: scored.score, opportunityScore: scored.opportunityScore, priority: scored.priority,
-      closingReadiness: readiness, status: "active", statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
-      rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings, metrics: scored.metrics,
-      breakdown: scored.breakdown, city: parsed.city || candidate.city || DEFAULT_CITY, district: parsed.district || candidate.district || "", propertyType: parsed.propertyType || candidate.propertyType || "" });
+    results.push(persisted);
   }
   return results;
 }
 
-function rankMatchCandidates(source, candidates) {
-  return candidates
-    .map((candidate, index) => ({ candidateIndex: index, candidate, ...scoreMatch(source, candidate) }))
-    .filter(item => item.eligible && item.score >= MATCH_THRESHOLD)
-    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.score - a.score)
-    .slice(0, MAX_MATCH_RESULTS)
-    .map((item, index) => ({ ...item, rank: index + 1, isBestOpportunity: index === 0 }));
-}
+async function findAndSaveMatchesForOpportunity({
+  projectId, officeId, opportunityId, accessToken, notify = false
+}) {
+  const oppDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const opportunity = {
+    id: opportunityId,
+    ...firestoreFieldsToJs(oppDoc.fields || {})
+  };
 
-function scoreMatch(source, candidate) {
-  const reasons = [];
-  const warnings = [];
-  const rejectionChecks = [];
-  const metrics = { priceDifferencePercent: 0, areaDifferencePercent: 0 };
-  const breakdown = { city: 0, district: 0, propertyType: 0, transactionType: 0, price: 0, area: 0, rooms: 0, readiness: 0, urgency: 0, completeness: 0 };
-  const eq = (a, b) => a && b && normalizeArabicText(a) === normalizeArabicText(b);
-  const reject = message => ({ eligible: false, score: 0, opportunityScore: 0, priority: "rejected", readiness: readinessFromScore(0), reasons: [], warnings: [message], rejectionChecks: [message], breakdown, metrics });
-
-  if (source.city && candidate.city && !eq(source.city, candidate.city)) return reject("المدينة غير متوافقة");
-  if (eq(source.city || DEFAULT_CITY, candidate.city || DEFAULT_CITY)) { breakdown.city = 5; reasons.push("نفس المدينة"); }
-
-  if (source.transactionType && candidate.transactionType && !eq(source.transactionType, candidate.transactionType)) {
-    return reject("نوع العملية غير متوافق");
-  }
-
-  const districtConflict = Boolean(source.district && candidate.district && !eq(source.district, candidate.district));
-  const propertyTypeConflict = Boolean(source.propertyType && candidate.propertyType && !eq(source.propertyType, candidate.propertyType));
-  if (districtConflict && propertyTypeConflict) {
-    return reject("الحي ونوع العقار غير متوافقين");
-  }
-
-  if (eq(source.district, candidate.district)) { breakdown.district = 30; reasons.push("نفس الحي"); }
-  else if (districtConflict) { breakdown.district = -12; warnings.push("الحي مختلف"); }
-  else { warnings.push("الحي غير مكتمل في أحد الطرفين"); }
-
-  if (eq(source.propertyType, candidate.propertyType)) { breakdown.propertyType = 22; reasons.push("نفس نوع العقار"); }
-  else if (propertyTypeConflict) { breakdown.propertyType = -14; warnings.push("نوع العقار مختلف"); }
-  else { warnings.push("نوع العقار غير مكتمل في أحد الطرفين"); }
-
-  if (eq(source.transactionType, candidate.transactionType)) { breakdown.transactionType = 14; reasons.push("نفس نوع العملية"); }
-
-  const sourceRange = normalizePriceRange(source);
-  const candidateRange = normalizePriceRange(candidate);
-  if (sourceRange && candidateRange) {
-    const gap = rangeGapRatio(sourceRange, candidateRange);
-    metrics.priceDifferencePercent = Math.round(gap * 100);
-    const overlaps = rangesIntersect(sourceRange, candidateRange);
-    if (overlaps) {
-      breakdown.price = 20; reasons.push("السعر داخل الميزانية");
-      reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`);
-    } else {
-      if (gap > 0.40) return reject("فرق السعر غير منطقي");
-      if (gap <= 0.10) { breakdown.price = 14; reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`); }
-      else if (gap <= 0.20) { breakdown.price = 7; reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪ وقابل للتفاوض`); }
-      else { breakdown.price = -15; warnings.push(`فرق السعر مرتفع: ${metrics.priceDifferencePercent}٪`); }
+  if (!isActiveLifecycle(opportunity)) {
+    const docs = await listCollectionDocuments({
+      projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+    });
+    const now = new Date();
+    let superseded = 0;
+    for (const doc of docs) {
+      const match = firestoreFieldsToJs(doc.fields || {});
+      const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      const relates = match.opportunityId === opportunityId
+        || match.counterpartOpportunityId === opportunityId
+        || match.sourceRecordId === opportunityId
+        || match.counterpartRecordId === opportunityId;
+      if (!relates || match.isCurrent === false || match.status === "superseded") continue;
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+          isCurrent: firestoreBoolean(false),
+          status: firestoreString("superseded"),
+          statusLabel: firestoreString("أُلغيت لأن الفرصة غير نشطة"),
+          supersededAt: firestoreTimestamp(now),
+          attentionRequired: firestoreBoolean(false),
+          updatedAt: firestoreTimestamp(now)
+        }
+      });
+      superseded += 1;
     }
-  } else { warnings.push("السعر غير مكتمل في أحد الطرفين"); }
-
-  const sa = Number(source.area || 0), ca = Number(candidate.area || 0);
-  if (sa && ca) {
-    const diff = Math.abs(sa - ca) / Math.max(sa, ca);
-    metrics.areaDifferencePercent = Math.round(diff * 100);
-    if (diff > 0.65 && propertyTypeConflict) return reject("المساحة ونوع العقار غير منطقيين للطلب");
-    if (diff <= 0.10) { breakdown.area = 8; reasons.push(`فرق المساحة ${metrics.areaDifferencePercent}٪`); }
-    else if (diff <= 0.25) { breakdown.area = 4; reasons.push(`المساحة ضمن نطاق مقبول: فرق ${metrics.areaDifferencePercent}٪`); }
-    else { breakdown.area = -5; warnings.push(`المساحة مختلفة: فرق ${metrics.areaDifferencePercent}٪`); }
+    return { matches: [], superseded, inactive: true, boundaries: phase4BoundaryGuarantees() };
   }
 
-  const sr = Number(source.rooms || 0), cr = Number(candidate.rooms || 0);
-  if (sr && cr) {
-    const diff = Math.abs(sr - cr);
-    if (diff > 3) return reject("عدد الغرف غير منطقي للطلب");
-    if (diff === 0) { breakdown.rooms = 5; reasons.push("عدد الغرف مطابق"); }
-    else if (diff === 1) { breakdown.rooms = 3; reasons.push("عدد الغرف قريب"); }
-    else { breakdown.rooms = -3; warnings.push("عدد الغرف غير مناسب"); }
+  const source = opportunityToMatchInput(opportunity, { id: opportunityId });
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  const prepared = [];
+  for (const doc of docs) {
+    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!candidateId || candidateId === opportunityId) continue;
+    const candidateRaw = { id: candidateId, ...firestoreFieldsToJs(doc.fields || {}) };
+    if (!counterpartsEligible(opportunity, candidateRaw)) continue;
+    const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
+    const scored = scoreMatch(source, candidate);
+    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    prepared.push({ candidate, candidateRaw, candidateId, scored });
+  }
+  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
+
+  const results = [];
+  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
+  for (let index = 0; index < topPrepared.length; index += 1) {
+    const { candidate, candidateId, scored } = topPrepared[index];
+    const sourceRef = `opportunities:${opportunityId}`;
+    const counterpartRef = `opportunities:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection: "opportunities", sourceRecordId: opportunityId,
+      counterpartCollection: "opportunities", counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: candidateId,
+      scored, rank: index + 1, accessToken
+    });
+    results.push(persisted);
   }
 
-  if (source.financingReady === true || candidate.financingReady === true) { breakdown.readiness += 5; reasons.push("جاهزية مالية مرتفعة"); }
-  if (source.directOwner === true || candidate.directOwner === true) { breakdown.readiness += 4; reasons.push("تواصل مباشر مع المالك"); }
-  if (source.urgency === "high" || candidate.urgency === "high") { breakdown.urgency = 4; reasons.push("فرصة عاجلة"); }
+  if (notify && results.length > 0) {
+    const fresh = results.filter((item) => !item.duplicate);
+    if (fresh.length > 0) {
+      await sendOfficeMatchNotifications({
+        projectId, officeId, matches: fresh, parsed: source, accessToken
+      });
+    }
+  }
 
-  const completeness = Math.min(Number(source.completeness || 0), Number(candidate.completeness || 0));
-  if (completeness >= 80) { breakdown.completeness = 3; reasons.push("بيانات الطرفين مكتملة"); }
-  else if (completeness && completeness < 50) { breakdown.completeness = -3; warnings.push("بيانات المطابقة ناقصة"); }
-
-  const rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
-  const score = Math.max(0, Math.min(100, Math.round(rawScore)));
-  const opportunityBoost = (source.financingReady || candidate.financingReady ? 5 : 0) +
-    (source.directOwner || candidate.directOwner ? 4 : 0) +
-    (source.urgency === "high" || candidate.urgency === "high" ? 3 : 0);
-  const opportunityScore = Math.max(0, Math.min(100, score + opportunityBoost));
-  const priority = opportunityScore >= 88 ? "critical" : opportunityScore >= 72 ? "high" : opportunityScore >= 55 ? "medium" : "low";
-  const readiness = calculateClosingReadiness({ matchScore: score, source, candidate, status: "active" });
-  return { eligible: true, score, opportunityScore, readiness, reasons, warnings, rejectionChecks, breakdown, metrics, priority };
+  return {
+    matches: results,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    boundaries: phase4BoundaryGuarantees()
+  };
 }
 
-function normalizePriceRange(record) {
-  const price = Number(record.price || 0);
-  let min = Number(record.priceMin || price || 0);
-  let max = Number(record.priceMax || price || 0);
-  if (!min && !max) return null;
-  if (!min) min = max;
-  if (!max) max = min;
-  if (min > max) [min, max] = [max, min];
-  return { min, max };
-}
-function rangesIntersect(a, b) {
-  return Math.max(a.min, b.min) <= Math.min(a.max, b.max);
-}
-function rangeGapRatio(a, b) {
-  const gap = a.max < b.min ? b.min - a.max : (b.max < a.min ? a.min - b.max : 0);
-  const midpoint = Math.max(1, (a.min + a.max + b.min + b.max) / 4);
-  return gap / midpoint;
+async function handleMatchingRun(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  // Auth before Firestore work — missing Bearer token fails closed at 401.
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const notify = body.notify === true;
+  const result = await findAndSaveMatchesForOpportunity({
+    projectId, officeId, opportunityId, accessToken, notify
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    matchCount: result.matches.length,
+    matches: result.matches,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    superseded: result.superseded || 0,
+    inactive: Boolean(result.inactive),
+    boundaries: phase4BoundaryGuarantees(),
+    createsOperation: false,
+    requestId
+  });
 }
 
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
@@ -2754,4 +2909,10 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export {
+  normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount,
+  createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure,
+  MATCHING_RULE_VERSION, MATCH_THRESHOLD, scoreMatch, rankMatchCandidates,
+  buildMatchId, relevantDataVersion, canonicalPairKey, opportunityToMatchInput,
+  counterpartsEligible, phase4BoundaryGuarantees, findAndSaveMatchesForOpportunity
+};

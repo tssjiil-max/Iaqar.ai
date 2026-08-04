@@ -201,3 +201,12 @@ Phase 1 makes office-name and settings logic testable without a browser.
   `offices/{id}/sharedOpportunities` with least-privilege rules.
 - Bank entry remains Office Settings → بنك الفرص only; home page and Operations Center
   empty-state behaviour are unchanged. No Matching Engine.
+
+### B.5 What Phase 4 actually changed
+
+- Extracted `worker/src/matching-engine.js` as the single threshold/scoring/version
+  authority (`MATCHING_RULE_VERSION = 4.0.0`).
+- Versioned Match IDs; supersede stale current matches on data-version change.
+- `POST /matching/run` for office-member rematch of an opportunity.
+- Add Opportunity + Opportunity Bank edits trigger rematch; no persisted Operations.
+- Firestore `matches` are client read-only.

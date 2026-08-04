@@ -1,7 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { ALWAYS_ALLOWED_PUSH_TYPES, PUSH_TYPE_NOTIFICATION_CATEGORIES, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, normalizeOfficeImageVariant, normalizeOpportunitySourceType, notificationCategoryAllowed, notificationCategoryForPushType, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, {
+  ALWAYS_ALLOWED_PUSH_TYPES,
+  PUSH_TYPE_NOTIFICATION_CATEGORIES,
+  MATCHING_RULE_VERSION,
+  MATCH_THRESHOLD,
+  buildMatchId,
+  buildNotificationLink,
+  buildFcmTarget,
+  buildFcmHttpMessage,
+  canonicalPairKey,
+  createServiceAccountJwt,
+  firebaseServiceAccount,
+  legacyLocalLoginPhone,
+  normalizeLoginPhone,
+  normalizeOfficeImageVariant,
+  normalizeOpportunitySourceType,
+  notificationCategoryAllowed,
+  notificationCategoryForPushType,
+  parseFcmFailure,
+  phase4BoundaryGuarantees,
+  relevantDataVersion,
+  resolveLoginDirectory,
+  scoreMatch
+} from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -733,4 +756,61 @@ test("opportunity source media accepts only approved Phase 2 source types", () =
   assert.equal(normalizeOpportunitySourceType("url"), "");
   assert.equal(normalizeOpportunitySourceType("text"), "");
   assert.equal(normalizeOpportunitySourceType(""), "");
+});
+
+test("Phase 4 matching preview exposes rule version and threshold from one config", async () => {
+  const response = await worker.fetch(new Request("https://example.test/matching/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: {
+        district: "العقيق", propertyType: "شقة", transactionType: "sale",
+        price: 650000, area: 160, rooms: 4, completeness: 90
+      },
+      candidates: [{
+        district: "العقيق", propertyType: "شقة", transactionType: "sale",
+        price: 650000, area: 160, rooms: 4, completeness: 90
+      }]
+    })
+  }), env);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.matchingRuleVersion, MATCHING_RULE_VERSION);
+  assert.equal(body.threshold, MATCH_THRESHOLD);
+  assert.equal(body.boundaries.createsOperation, false);
+  assert.ok(body.matches.length >= 1);
+});
+
+test("Phase 4 match ids include rule and data versions and stay idempotent", async () => {
+  const left = {
+    opportunityKind: "OFFER", purpose: "SALE", city: "الرياض", district: "النرجس",
+    propertyType: "شقة", price: 1000000, area: 150, rooms: 3, completeness: 90, version: 1
+  };
+  const right = {
+    opportunityKind: "REQUEST", purpose: "PURCHASE", city: "الرياض", district: "النرجس",
+    propertyType: "شقة", price: 1050000, area: 148, rooms: 3, completeness: 90, version: 1
+  };
+  const pairKey = canonicalPairKey("opportunities:a", "opportunities:b");
+  const dataVersion = await relevantDataVersion(left, right);
+  const first = await buildMatchId({
+    officeId: "office-a", pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
+  });
+  const second = await buildMatchId({
+    officeId: "office-a", pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
+  });
+  assert.equal(first, second);
+  const scored = scoreMatch(left, right);
+  assert.equal(scored.eligible, true);
+  assert.equal(phase4BoundaryGuarantees().createsOperation, false);
+});
+
+test("Phase 4 matching/run requires authentication", async () => {
+  const response = await worker.fetch(new Request("https://example.test/matching/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ officeId: "office-a", opportunityId: "opp_1" })
+  }), env);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.ok, false);
 });

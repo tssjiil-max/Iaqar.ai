@@ -99,7 +99,7 @@ health documents.
 | `opportunities/{id}` | Phase 2 intake + Phase 3 bank | Unified Opportunity entity (`opp_*`). Phase 3 adds lifecycle/archive/soft-delete and cooperation status fields. Hard client delete denied. |
 | `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. |
 | `sharedOpportunities/{id}` | Phase 3 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. |
-| `matches/{matchId}` | Worker | `matchId = mat_{sha256(officeId|sortedPair)[0..36]}`, which is what makes match creation idempotent for a pair. Holds `score`, `opportunityScore`, `closingReadiness*`, `reasonsJson`, `warningsJson`, `breakdownJson`, `rejectionChecksJson`, `clientRequestId`, `ownerOfferId`, `matchGroupId`, `status`, `workflowStage`, `nextAction`, `nextFollowUpAt`, `viewingAt`. |
+| `matches/{matchId}` | Worker (Phase 4) | `matchId = mat_{sha256(officeId\|canonicalPair\|matchingRuleVersion\|dataVersion)[0..36]}`. Fields include `isCurrent`, `matchingRuleVersion`, `dataVersion`, `canonicalPairKey`, `pairRuleKey`, scores/reasons JSON, opportunity ids, `status` (`active` / `superseded` / …). Client read-only; Worker writes. |
 | `matches/{id}/timeline/{eventId}` | Worker + client | Append-only per-record activity. Read/create = member, update/delete = manager. |
 | `deals/{dealId}` | Worker | Progression record created from a match. `workflowStage` ∈ `contact`…`closed`/`lost`. Internal only — there is no deals page. |
 | `deals/{id}/timeline/{eventId}` | Worker + client | As above. |

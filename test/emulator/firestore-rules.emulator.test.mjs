@@ -693,6 +693,37 @@ test("Phase 3: shared projection hides contacts; cooperating office cannot mutat
   await assertFails(deleteDoc(doc(target, "offices/office-a/opportunities/opp_phase3_a")));
 });
 
+test("Phase 4: office members can read matches but cannot create or mutate them", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/matches/mat_phase4_a"), {
+      officeId: "office-a",
+      matchId: "mat_phase4_a",
+      status: "active",
+      isCurrent: true,
+      matchingRuleVersion: "4.0.0",
+      score: 90
+    });
+  });
+
+  const member = authed("broker-a1");
+  const snap = await assertSucceeds(getDoc(doc(member, "offices/office-a/matches/mat_phase4_a")));
+  assert.equal(snap.data().matchId, "mat_phase4_a");
+
+  await assertFails(setDoc(doc(member, "offices/office-a/matches/mat_forged"), {
+    officeId: "office-a",
+    matchId: "mat_forged",
+    status: "active"
+  }));
+  await assertFails(updateDoc(doc(member, "offices/office-a/matches/mat_phase4_a"), {
+    score: 1
+  }));
+  await assertFails(deleteDoc(doc(member, "offices/office-a/matches/mat_phase4_a")));
+
+  const outsider = authed("broker-b1");
+  await assertFails(getDoc(doc(outsider, "offices/office-a/matches/mat_phase4_a")));
+});
+
 test("Phase 3: scoped bank sharing is createable by origin and readable by target only when active", async () => {
   const origin = authed("broker-a1");
   await assertSucceeds(setDoc(doc(origin, "bankSharingScopes/scope_test_1"), {

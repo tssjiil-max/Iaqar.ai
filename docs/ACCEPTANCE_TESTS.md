@@ -29,15 +29,16 @@ Test files:
 | `test/opportunity-bank.test.mjs` | Bank row projection and the §13/§26 visibility limits |
 | `test/integration-honesty.test.mjs` | Acceptance test 15 (§10) |
 | `test/opportunity-intake.test.mjs` | Acceptance test 5 — unified intake domain + Add Opportunity card |
-| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1 gate + Phase 2 opportunity isolation + Phase 3 bank/sharing) |
+| `test/emulator/firestore-rules.emulator.test.mjs` | Executable Firestore rules (Phase 1–4 isolation including matches) |
 | `test/opportunity-bank-phase3.test.mjs` | Phase 3 Opportunity Bank domain + shell access |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including the Phase 1 image variants and the notification gate |
+| `test/matching-phase4.test.mjs` | Phase 4 Matching Engine domain + rematch contracts |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview and Phase 4 ID helpers |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 3**:
-- Phase 0 / 1 / 2 regression suites remain green.
-- Phase 3 Opportunity Bank domain + shell + emulator isolation suites added.
-- Matching Engine (Phase 4) is not started.
+Status as of the end of **Phase 4**:
+- Phase 0–3 regression suites remain green.
+- Matching Engine with versioned Match IDs and automatic rematch is delivered.
+- Persisted Operations Center items (Phase 5) are not started.
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |
@@ -219,22 +220,33 @@ remain Phase 4 / Phase 5; this test does not claim rematch or Operations creatio
 ## TEST 7 — Automatic rematch
 
 Given a stored offer, when a compatible request is later created, matching runs
-automatically without a manual broker action.
+automatically without a manual broker action. Rematch also runs on Opportunity Bank edits
+(and archive/restore/delete reconciliation) via Worker `POST /matching/run`.
 
-**Status: PENDING (phase 4).** Matching does run automatically on new intake, and there
-is no "rematch" button anywhere, but rematching on *edit* of an existing opportunity does
-not exist. Not claimed.
+Automated coverage:
+- `test/matching-phase4.test.mjs` — client rematch helper, Add Opportunity / bank wiring,
+  counterpart eligibility, no Operations creation.
+- Worker: `/matching/preview` + `/matching/run` auth gate; public intake still calls
+  `findAndSaveMatches`.
+
+**Status: PASS (Phase 4).** No rematch button; rematch is automatic. Persisted Operations
+Center items remain Phase 5.
 
 ## TEST 8 — Exactly one match
 
 A compatible offer/request pair creates exactly one current Match for the same
 matching/data version, and repeated event processing does not create duplicates.
 
-**Status: PASS (partial).** `worker/test/worker.test.mjs` covers the scorer, the
-threshold, the top-3 cap and the intake `duplicate: true` short-circuit. The match ID is
-a content hash of `officeId` + the sorted pair and existing matches are skipped, so a
-replay cannot duplicate. **Not yet satisfied:** the ID does not include a matching-rule
-version or a data version, which §15 recommends. Phase 4.
+Match ID = `mat_{sha256(officeId|canonicalPair|matchingRuleVersion|dataVersion)[0..36]}`.
+Older current matches for the same pair/rule are marked `superseded` when a new data
+version wins.
+
+Automated coverage:
+- `test/matching-phase4.test.mjs` — idempotent IDs; data-version change yields a new ID.
+- Worker Phase 4 tests for rule version exposure and ID helpers.
+- Emulator: clients cannot forge `matches` writes.
+
+**Status: PASS (Phase 4).**
 
 ## TEST 9 — Operation creation
 

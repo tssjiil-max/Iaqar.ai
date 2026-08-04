@@ -282,6 +282,30 @@ strict tenant isolation; Matching Engine is Phase 4; automatic cooperation is Ph
 **Why.** Safe deletion without inventing retention destruction rules; cross-office
 access only through explicit revocable records; Phase 4/5/6 boundaries preserved.
 
+## D-013 — Phase 4 Matching Engine uses versioned match IDs and Worker rematch
+
+**Directive:** Phase 4 Matching Engine — eligibility, scoring, reasons, single threshold
+config, idempotency on (canonical pair, matching rule version, relevant data version),
+automatic rematch including opportunity edits. Operations are Phase 5.
+
+**Decision.**
+
+1. **Single engine module** `worker/src/matching-engine.js` owns `MATCHING_RULE_VERSION`
+   (`4.0.0`), `MATCHING_CONFIG.threshold` (55), weights, scoring, and ID helpers.
+2. **Match ID** = hash of `officeId|canonicalPairKey|matchingRuleVersion|dataVersion`.
+   Replays with the same tuple are idempotent. A new data version creates a new Match and
+   marks prior current matches for the same pair/rule as `superseded`.
+3. **Automatic rematch** via authenticated `POST /matching/run` after Add Opportunity
+   persistence and Opportunity Bank edit/archive/restore/delete. Public/shared intake
+   continues to call `findAndSaveMatches`. Opportunity-vs-opportunity matching covers
+   Phase 2/3 records; clients/owners path remains for legacy intake.
+4. **No Operations persistence** in Phase 4 (`createsOperation: false`). Existing
+   derived Operations Center UI may still read matches; that is not the Phase 5 model.
+5. **Firestore:** office members may read `matches`; client create/update/delete denied
+   (Worker Admin SDK writes).
+
+**Why.** Satisfies Tests 7–8 without inventing Operations or automatic cooperation.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

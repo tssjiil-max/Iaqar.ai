@@ -12,6 +12,11 @@ import {
   sha256Hex,
   validateAttachment
 } from "./opportunity-intake-domain.js";
+import {
+  phase4BoundaryGuarantees,
+  requestOpportunityRematch,
+  shouldRematchAfterOpportunityWrite
+} from "./matching-domain.js";
 
 const FIELD_LABELS = Object.freeze({
   opportunityKind: "نوع الفرصة (عرض / طلب)",
@@ -297,14 +302,33 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
     if (input) input.value = "";
     clearMissingForm();
 
-    // Phase 2 must not create Operations Center items when there is no match.
+    let matching = { ok: false, matchCount: 0, skipped: true };
+    if (shouldRematchAfterOpportunityWrite({ duplicate: saved.duplicate })) {
+      try {
+        const token = await user.getIdToken();
+        matching = await requestOpportunityRematch({
+          workerBase: workerBase(),
+          idToken: token,
+          officeId: office.officeId,
+          opportunityId: saved.opportunityId,
+          notify: false
+        });
+      } catch (error) {
+        console.warn("[iaqar] rematch after intake", error);
+        matching = { ok: false, error: "rematch_failed", matchCount: 0 };
+      }
+    }
+
+    // Phase 4 rematch runs in the Worker; Operations Center items remain Phase 5.
     window.dispatchEvent(new CustomEvent("iaqar:opportunity-ingested", {
       detail: {
         opportunityId: saved.opportunityId,
         duplicate: saved.duplicate,
         createsOperation: false,
-        runsMatching: false,
-        productionAi: false
+        runsMatching: matching.ok === true,
+        matchCount: Number(matching.matchCount || 0),
+        productionAi: false,
+        ...phase4BoundaryGuarantees()
       }
     }));
   } catch (error) {
