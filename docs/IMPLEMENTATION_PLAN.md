@@ -5,7 +5,7 @@
 | Phase | Status | Notes |
 |---|---|---|
 | 0 — Foundation and audit | Complete | Factual audit and governance documents created; no stack migration |
-| 1 — Office Card and Office Settings | Complete with documented live-integration limitations | 51 automated tests, syntax checks, Worker dry build, rules compilation, and local UI acceptance passed |
+| 1 — Office Card and Office Settings | Complete with documented live-integration limitations | 55 automated tests, syntax checks, Worker dry build, rules isolation tests, and local UI acceptance passed |
 | 2 — Unified Opportunity intake | Not started | Explicitly outside the current execution |
 | 3 — Opportunity Bank | Not started | Phase 1 provides only the private entry/read-only shell |
 | 4 — Matching engine | Not started under the new constitution | Historical matcher exists and requires model/idempotency alignment |
@@ -64,13 +64,13 @@ Detailed evidence is in `docs/PHASE_0_AUDIT.md`.
 
 ## Phase 1 verification
 
-- `npm test` in `worker`: 51 passed, 0 failed.
+- `npm test` in `worker`: 52 unit/contract tests plus 3 Firestore Emulator tests passed; 0 failed.
 - `node --check` on changed frontend, service-worker, Worker, and test JavaScript: passed.
 - `wrangler deploy --dry-run`: passed; no deployment performed.
-- Firestore Emulator startup/rules compilation: passed.
+- Firestore Emulator rules, cross-office read/query/write denial, protected-field denial, and atomic name-claim tests: passed.
 - Local Chrome mobile-width UI acceptance: passed, including both Settings triggers and focus return.
 - No lint or typecheck command exists in the repository.
-- Authenticated live Firestore/R2/FCM integration tests were not run because no production credentials or test tenant were available to this run.
+- Production Firebase/R2/FCM integration tests were not run because no production credentials or dedicated test tenant were available to this run.
 
 ## Risks and limitations
 

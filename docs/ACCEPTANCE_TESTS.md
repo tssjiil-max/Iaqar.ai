@@ -97,6 +97,18 @@ Mock adapters and deterministic fixtures are visibly separate from production in
 
 Phase: all phases.
 
+## Current execution result
+
+| Test | Result | Evidence/limit |
+|---|---|---|
+| 1 — Settings access | PASS | Local Chrome verified both Office Card triggers, close behavior, and focus return |
+| 2 — No bottom navigation | PASS | UI inspection and contract test |
+| 3 — Office-name validation | PASS in automated/emulator environment | Backend normalization tests and atomic Firestore claim test; production tenant not mutated |
+| 4 — Office privacy | PASS in Firestore Emulator | Cross-office read, collection query, update, ownership/name, claim, handle, and public-projection writes denied |
+| 5–13 | NOT RUN / deferred | Belong to Phases 2–7 and were not implemented in this execution |
+| 14 — No Deals page | PASS | Deals home card/filter absent; no bottom navigation |
+| 15 — Production honesty | PASS for current scope | Static demo Operations removed; Meta/FCM credentials and live delivery are not claimed |
+
 ## Phase 1 automated contract coverage
 
 `worker/test/phase1.test.mjs` verifies:
