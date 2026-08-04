@@ -8,9 +8,14 @@
     "test": "npm run test:web && npm run test:worker",
     "test:web": "node --test test/*.test.mjs",
     "test:worker": "npm test --prefix worker",
+    "test:rules": "firebase emulators:exec --only firestore --project aqar-b5d76 \"node --test test/emulator/firestore-rules.emulator.test.mjs\"",
+    "test:phase1-security": "npm test && npm run test:rules && npm run check",
     "check": "node scripts/check.mjs"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.22.0",
     "jsdom": "^26.1.0"
   }
 }
