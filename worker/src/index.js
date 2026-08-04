@@ -384,24 +384,27 @@ async function uploadOfficeCover(request, env, requestId) {
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  const mediaRole = cleanText(request.headers.get("x-office-media-role") || "cover", 40).toLowerCase();
+  const allowedRoles = new Set(["logo", "cover", "whatsapp-cover"]);
+  if (!allowedRoles.has(mediaRole)) throw appError("invalid_media_role", 400, "نوع صورة المكتب غير صالح");
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
+  const key = `office-covers/${officeId}/${mediaRole}`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, mediaRole, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
   const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  return jsonResponse({ ok: true, coverUrl, mediaUrl: coverUrl, mediaRole, requestId }, 201);
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!/^office-covers\/[a-z0-9_-]{1,80}\/(logo|cover|whatsapp-cover)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);

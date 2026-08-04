@@ -222,7 +222,7 @@
   }
 
   function init() {
-    elements.openBtn = document.getElementById("officeSettingsBtn");
+    elements.openButtons = document.querySelectorAll("[data-office-settings-trigger]");
     elements.overlay = document.getElementById("officeSettings");
     elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
@@ -232,9 +232,11 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.openButtons.length || !elements.overlay) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
+    elements.openButtons.forEach(button => {
+      button.addEventListener("click", openSettings);
+    });
     elements.closeBtn.addEventListener("click", closeSettings);
     elements.overlay.addEventListener("click", event => {
       if (event.target === elements.overlay) closeSettings();

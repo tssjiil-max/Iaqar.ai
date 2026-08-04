@@ -25,7 +25,7 @@ service cloud.firestore {
         && request.resource.data.officeName.size() <= 80
         && request.resource.data.officeNameKey is string
         && request.resource.data.officeNameKey.size() <= 100
-        && (isPlatformAdmin() || request.resource.data.officeNameKey.size() >= 4)
+        && request.resource.data.officeNameKey.size() >= 4
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
@@ -111,7 +111,7 @@ service cloud.firestore {
         && request.resource.data.officeId is string
         && request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
-        && (isPlatformAdmin() || nameKey.size() >= 4)
+        && nameKey.size() >= 4
         && (canManage(request.resource.data.officeId)
           || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
       allow delete: if signedIn()
