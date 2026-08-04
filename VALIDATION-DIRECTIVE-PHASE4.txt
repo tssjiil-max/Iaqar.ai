@@ -1,0 +1,20 @@
+IAQAR.AI — Phase 4 Matching Engine validation
+
+Date: 2026-08-04
+Branch: cursor/phase4-matching-engine-0d44
+
+Scope completed:
+- Single matching config module (rule version, threshold, weights, scoring, reasons)
+- Versioned Match IDs (canonical pair + matchingRuleVersion + dataVersion)
+- Automatic rematch on Add Opportunity + Opportunity Bank edit/archive/restore/delete
+- Worker POST /matching/run (office-member auth)
+- Firestore matches client read-only
+- No Operations persistence, no WhatsApp/Telegram send, no Phase 5+
+
+Verification results:
+- npm test: web 187 pass / 0 fail; worker 61 pass / 0 fail (248 total)
+- npm run test:rules: 23 pass / 0 fail (real firestore.rules via emulator)
+- npm run check: 46 targets passed
+
+Decision: D-013
+Acceptance: Test 7 PASS, Test 8 PASS

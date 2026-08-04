@@ -44,7 +44,9 @@
   let matchItems = [];
   let dealItems = [];
   let intakeItems = [];
+  let operationItems = [];
   let analyticsItem = null;
+  const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
   const timelineCache = new Map();
   const timelinePending = new Set();
   const intakeProcessing = new Set();
@@ -429,10 +431,69 @@
       .forEach(doc => processPublicIntakeDoc(doc));
   }
 
+  function opsDomain() {
+    return (window.IAQAR && window.IAQAR.operationsDomain) || null;
+  }
+
+  function projectPersistedOperation(doc) {
+    const data = { id: doc.id, ...(doc.data() || {}) };
+    const domain = opsDomain();
+    if (domain && typeof domain.projectOperationToUiItem === "function") {
+      return domain.projectOperationToUiItem(data, { relativeTime });
+    }
+    // Fallback projector if the domain module has not loaded yet.
+    const priorityMap = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
+    return {
+      id: data.id,
+      recordId: data.id,
+      recordType: "operation",
+      operationType: data.type || "SYSTEM_ACTION",
+      main: "opportunities",
+      priority: priorityMap[String(data.priority || "NORMAL").toUpperCase()] ?? 2,
+      priorityKey: data.priority || "NORMAL",
+      isAlert: ["URGENT", "HIGH"].includes(String(data.priority || "").toUpperCase()),
+      icon: "i-clipboard-list",
+      title: data.titleText || "إجراء مطلوب",
+      subtitle: data.summaryText || "",
+      time: relativeTime(data.updatedAt || data.createdAt),
+      detailsLines: [data.summaryText || "لا توجد تفاصيل إضافية."],
+      status: data.status || "OPEN",
+      actionLabel: data.recommendedActionText || "عرض التفاصيل",
+      secondaryActionLabel: "إتمام",
+      canDismiss: ACTIVE_OPERATION_STATUSES.includes(String(data.status || "").toUpperCase()),
+      dismissLabel: "صرف النظر",
+      matchId: data.matchId || "",
+      opportunityId: data.opportunityId || "",
+      cooperationId: data.cooperationId || "",
+      whatsappOwner: false,
+      whatsappClient: false
+    };
+  }
+
   function emitOperations() {
-    const baseItems = [...intakeItems, ...matchItems, ...dealItems];
-    const items = analyticsItem ? [analyticsItem, ...baseItems] : baseItems;
+    // Phase 5: Operations Center shows only persisted actionable Operations.
+    // Matches/deals/intake remain available for legacy workflow handlers, not the home list.
+    const items = [...operationItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
+  }
+
+  async function postOperationAction(operationId, action, reason = "") {
+    const runtime = office();
+    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
+    if (!runtime || !runtime.officeId || !user) throw new Error("سجل دخول المكتب أولًا");
+    const response = await fetch(`${WORKER_BASE}/operations/action`, {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify({
+        officeId: runtime.officeId,
+        operationId,
+        action,
+        reason
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || "تعذر تحديث العملية");
+    return payload;
   }
 
   async function authHeaders() {
@@ -546,21 +607,33 @@
 
     const matchUnsub = runtime.refs.matches.orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
       matchItems = snapshot.docs.map(matchOperation);
-      emitOperations();
       loadAnalytics();
     }, onError);
     const dealUnsub = runtime.refs.deals.orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
       dealItems = snapshot.docs.map(dealOperation);
-      emitOperations();
       loadAnalytics();
     }, onError);
     const intakeUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("publicIntake")
       .orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
         intakeItems = snapshot.docs.map(intakeOperation);
-        emitOperations();
         processNewPublicIntakes(snapshot);
       }, onError);
-    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub];
+
+    const operationsRef = runtime.refs.operations
+      || runtime.db.collection("offices").doc(runtime.officeId).collection("operations");
+    // Bounded active-status query; client sorts by priority after snapshot.
+    const opsUnsub = operationsRef
+      .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
+      .orderBy("createdAt", "desc")
+      .limit(50)
+      .onSnapshot(snapshot => {
+        operationItems = snapshot.docs.map(projectPersistedOperation);
+        emitOperations();
+      }, onError);
+
+    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub, opsUnsub];
+    // Ensure empty authoritative state until the first operations snapshot arrives.
+    if (!operationItems.length) emitOperations();
   }
 
   async function loadTimeline(recordType, recordId) {
@@ -1037,10 +1110,41 @@
     if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
   }
 
+  async function handleOperationPrimary(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "START");
+    notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
+    if (detail.operationType === "MISSING_DATA") {
+      const bankBtn = document.getElementById("openOpportunityBankBtn");
+      if (bankBtn) bankBtn.click();
+      return;
+    }
+    if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
+      const bankBtn = document.getElementById("openOpportunityBankBtn");
+      if (bankBtn) bankBtn.click();
+    }
+  }
+
+  async function handleOperationSecondary(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "COMPLETE");
+    notify("تم إتمام الإجراء");
+  }
+
+  async function handleOperationDismiss(detail) {
+    const operationId = detail.recordId || detail.id;
+    await postOperationAction(operationId, "DISMISS", detail.dismissalReason || "");
+    notify("تم صرف النظر عن الإجراء");
+  }
+
   async function handlePrimaryAction(detail) {
     if (detail.recordType === "summary") {
       if (detail.targetId) window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: detail.targetId, main: detail.targetMain || "opportunities" } }));
       else notify("لا توجد فرصة جاهزة الآن");
+      return;
+    }
+    if (detail.recordType === "operation") {
+      await handleOperationPrimary(detail);
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {
@@ -1052,6 +1156,10 @@
 
   async function handleSecondaryAction(detail) {
     if (detail.recordType === "summary") return;
+    if (detail.recordType === "operation") {
+      await handleOperationSecondary(detail);
+      return;
+    }
     if (["match", "deal"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
@@ -1061,7 +1169,14 @@
   async function handleAction(event) {
     const detail = event.detail || {};
     try {
-      if (detail.actionMode === "whatsapp") await openWorkflowWhatsApp(detail);
+      if (detail.actionMode === "whatsapp") {
+        // Phase 5 Operations Center cards never request WhatsApp; ignore for operation items.
+        if (detail.recordType === "operation") {
+          notify("إرسال الرسائل خارج نطاق مركز العمليات الحالي");
+          return;
+        }
+        await openWorkflowWhatsApp(detail);
+      } else if (detail.actionMode === "dismiss") await handleOperationDismiss(detail);
       else if (detail.actionMode === "secondary") await handleSecondaryAction(detail);
       else await handlePrimaryAction(detail);
     } catch (error) {
@@ -1364,6 +1479,11 @@
     window.addEventListener("iaqar:operation-opened", event => {
       const detail = event.detail || {};
       if (["match", "deal"].includes(detail.recordType)) loadTimeline(detail.recordType, detail.recordId);
+      if (detail.recordType === "operation" && detail.recordId) {
+        postOperationAction(detail.recordId, "OPEN").catch((error) => {
+          console.warn("[iaqar] operation open", error);
+        });
+      }
     });
 
     if ("serviceWorker" in navigator) {
@@ -1413,6 +1533,8 @@
           stopLiveData();
           matchItems = [];
           dealItems = [];
+          intakeItems = [];
+          operationItems = [];
           analyticsItem = null;
           emitOperations();
         }
@@ -1424,6 +1546,8 @@
     const params = new URLSearchParams(location.search);
     const openMatch = params.get("openMatch");
     const openDeal = params.get("openDeal");
+    const openOperation = params.get("openOperation");
+    if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
     if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
     if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
   }

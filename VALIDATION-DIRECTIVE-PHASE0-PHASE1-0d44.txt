@@ -1,0 +1,36 @@
+IAQAR.AI — Directive Phase 0 + Phase 1 verification
+Branch: cursor/phase0-phase1-office-settings-0d44
+Base: origin/main @ ea66a81
+Verified: 2026-08-04
+
+Commands:
+  npm install
+  npm test        → 145 web + 57 worker = 202 pass, 0 fail
+  npm run check   → 36 targets parsed
+
+Phase 0:
+  - Factual audit in docs/AUDIT_PHASE0.md
+  - Governance docs under docs/
+  - Persistent Cursor rule: .cursor/rules/iaqar-project-constitution.mdc
+
+Phase 1 acceptance (this run):
+  PASS Test 1  — logo and cover open Office Settings; no standalone Settings button
+  PASS Test 2  — no bottom navigation
+  PASS Test 3  — office name ≥4 chars + normalized uniqueness + claim-rule hardening
+  PASS Test 4  — officeId isolation in rules (static analysis)
+  PASS Test 14 — no Deals page / deals nav item
+  PASS Test 15 — no demo operations in shell; integrations labeled honestly
+
+Phase 1 product surfaces:
+  PASS visual identity upload/crop/remove (configurable cover ratio)
+  PASS five office fields only (no email in Office Settings)
+  PASS office link copy/share + on-screen QR
+  PASS notification preference categories
+  PASS بنك الفرص entry inside Office Settings
+  PASS cooperation modes (default APPROVAL_REQUIRED)
+
+Not claimed (later phases):
+  Tests 5–13 (intake, bank rematch, matching, operations persistence,
+  cooperation ownership/revocation, message drafts)
+
+Stopped after Phase 1 per Section 31. Next recommended phase: Phase 2.
