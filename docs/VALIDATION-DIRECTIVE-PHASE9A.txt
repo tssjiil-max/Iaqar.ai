@@ -17,6 +17,7 @@ Scope completed (full-functional staging kit):
 - deploy-staging.sh/.ps1 require backendReady + run smoke-staging.mjs
 - docs/STAGING-DEPLOY.md full-functional definition; Decision D-018
 - Automated: test/staging-phase9a.test.mjs + worker health backendReady cases
+- Verification counts: web 272, worker 71, rules 34, check 63
 
 Live deploy status:
 - BLOCKED without:
