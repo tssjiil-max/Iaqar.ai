@@ -13,6 +13,7 @@ Scope completed (staging kit):
 - SW cache iaqar-shell-phase9a-v1 includes runtime-config.js
 - Health returns deploymentEnvironment; staging keeps outboundMessaging false
 - Automated: test/staging-phase9a.test.mjs + worker health staging case
+- Verification counts: web 271, worker 70, rules 34, check 63
 
 Live deploy status:
 - BLOCKED in agent environment without CLOUDFLARE_API_TOKEN,
