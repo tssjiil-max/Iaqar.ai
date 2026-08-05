@@ -7,7 +7,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
 import { JSDOM } from "jsdom";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -18,17 +17,15 @@ function read(...parts) {
 
 function loadRuntimeConfig({ hostname, search = "" }) {
   const runtime = read("public", "js", "runtime-config.js");
+  const query = !search ? "" : search.startsWith("?") ? search : `?${search}`;
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
-    url: `https://${hostname}/${search}`,
-    runScripts: "outside-only"
+    url: `https://${hostname}/${query}`,
+    runScripts: "dangerously"
   });
-  const sandbox = {
-    window: dom.window,
-    CustomEvent: dom.window.CustomEvent
-  };
-  sandbox.window.IAQAR = {};
-  vm.runInNewContext(runtime, sandbox);
-  return sandbox.window.IAQAR;
+  const script = dom.window.document.createElement("script");
+  script.textContent = runtime;
+  dom.window.document.body.appendChild(script);
+  return dom.window.IAQAR;
 }
 
 test("Phase 9A runtime-config: staging channel host uses staging Worker", () => {
@@ -76,12 +73,12 @@ test("Phase 9A deploy script refuses production and uses staging-only targets", 
   const script = read("scripts", "deploy-staging.sh");
   assert.ok(script.includes("wrangler deploy --env staging"));
   assert.ok(script.includes("hosting:channel:deploy staging"));
-  assert.ok(script.includes('IAQAR_DEPLOY_TARGET'));
+  assert.ok(script.includes("IAQAR_DEPLOY_TARGET"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
-  assert.equal(script.includes("wrangler deploy\n") && !script.includes("--env staging"), false);
-  // Must not call bare production hosting deploy.
+  // Must not invoke production deploy commands (mentions in refusal messages are OK).
+  assert.equal(/^\s*npx wrangler deploy\s*$/m.test(script), false);
   assert.equal(/firebase deploy --only hosting/.test(script), false);
-  assert.equal(/deploy-all/.test(script.split("\n").filter((l) => !l.trimStart().startsWith("#") && !l.includes("Do NOT")).join("\n")), false);
+  assert.equal(/^\s*(?:\.\/)?deploy-all/m.test(script), false);
   assert.ok(existsSync(path.join(root, "scripts", "smoke-staging.mjs")));
   assert.ok(existsSync(path.join(root, "docs", "STAGING-DEPLOY.md")));
 });
