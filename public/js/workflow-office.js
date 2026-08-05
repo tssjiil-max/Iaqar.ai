@@ -1,7 +1,11 @@
 (() => {
   "use strict";
 
-  const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  function resolveWorkerBase() {
+    return (window.IAQAR && window.IAQAR.workerBase)
+      ? String(window.IAQAR.workerBase).replace(/\/$/, "")
+      : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  }
   const SHARED_STORAGE_KEY = "iaqar.pendingSharedMessage";
   const APP_VERSION = "stage3-fcm-fid-v1";
   const office = () => window.IAQAR && window.IAQAR.office;
@@ -349,7 +353,7 @@
     intakeProcessing.add(doc.id);
 
     try {
-      const response = await fetch(`${WORKER_BASE}/pipeline/public-intake`, {
+      const response = await fetch(`${resolveWorkerBase()}/pipeline/public-intake`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ officeId: runtime.officeId, intakeId: doc.id })
@@ -430,7 +434,7 @@
     const runtime = office();
     const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
     if (!runtime || !runtime.officeId || !user) throw new Error("سجل دخول المكتب أولًا");
-    const response = await fetch(`${WORKER_BASE}/operations/action`, {
+    const response = await fetch(`${resolveWorkerBase()}/operations/action`, {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify({
@@ -469,7 +473,7 @@
     }
     try {
       notify("جاري فرز الرسالة وتشغيل المطابقة");
-      const response = await fetch(`${WORKER_BASE}/pipeline/intake`, {
+      const response = await fetch(`${resolveWorkerBase()}/pipeline/intake`, {
         method: "POST",
         headers: await authHeaders(),
         body: JSON.stringify({
@@ -498,7 +502,7 @@
     const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
     if (!runtime || !runtime.officeId || !user) return;
     try {
-      const response = await fetch(`${WORKER_BASE}/office/analytics?officeId=${encodeURIComponent(runtime.officeId)}`, { headers: await authHeaders() });
+      const response = await fetch(`${resolveWorkerBase()}/office/analytics?officeId=${encodeURIComponent(runtime.officeId)}`, { headers: await authHeaders() });
       const data = await response.json();
       if (!response.ok) return;
       const summary = data.morningSummary || data.counts || {};
@@ -621,7 +625,7 @@
   async function workflowAction(action, recordId, extra = {}) {
     const runtime = office();
     if (!runtime || !runtime.officeId) throw new Error("تعذر تحديد المكتب");
-    const response = await fetch(`${WORKER_BASE}/workflow/action`, {
+    const response = await fetch(`${resolveWorkerBase()}/workflow/action`, {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify({ officeId: runtime.officeId, action, recordId, ...extra })
@@ -805,7 +809,7 @@
     if (domain && typeof domain.requestCreateMessageDraft === "function") {
       const idToken = await user.getIdToken(true);
       const created = await domain.requestCreateMessageDraft({
-        workerBase: WORKER_BASE,
+        workerBase: resolveWorkerBase(),
         idToken,
         officeId: runtime.officeId,
         channel: safeChannel,
@@ -834,7 +838,7 @@
       handoffUrl = (created.draft && created.draft.handoffUrl) || "";
       if (messageId && typeof domain.requestMessageHandoff === "function") {
         const handed = await domain.requestMessageHandoff({
-          workerBase: WORKER_BASE,
+          workerBase: resolveWorkerBase(),
           idToken,
           officeId: runtime.officeId,
           messageId
@@ -1280,7 +1284,7 @@
   }
 
   async function getFcmConfig() {
-    const response = await fetch(`${WORKER_BASE}/fcm/config`, { cache: "no-store" });
+    const response = await fetch(`${resolveWorkerBase()}/fcm/config`, { cache: "no-store" });
     if (!response.ok) throw new Error("تعذر قراءة إعدادات الإشعارات");
     return response.json();
   }
@@ -1423,7 +1427,7 @@
     const registration = await createFcmRegistration(config, serviceWorkerRegistration);
     const runtime = office();
     const payload = registrationPayload(runtime, registration, permission);
-    const response = await fetch(`${WORKER_BASE}/fcm/register`, {
+    const response = await fetch(`${resolveWorkerBase()}/fcm/register`, {
       method: "POST",
       headers: await authHeaders(),
       body: JSON.stringify(payload)
@@ -1434,7 +1438,7 @@
     setupForegroundNotifications();
     setNotificationStatus("مفعّلة لهذا المكتب");
     if (sendTest) {
-      const testResponse = await fetch(`${WORKER_BASE}/fcm/test`, {
+      const testResponse = await fetch(`${resolveWorkerBase()}/fcm/test`, {
         method: "POST",
         headers: await authHeaders(),
         body: JSON.stringify(payload)
@@ -1480,7 +1484,7 @@
         }
       }
       if (registration.id) {
-        const response = await fetch(`${WORKER_BASE}/fcm/unregister`, {
+        const response = await fetch(`${resolveWorkerBase()}/fcm/unregister`, {
           method: "POST",
           headers: await authHeaders(),
           body: JSON.stringify(registrationPayload(runtime, registration, Notification.permission))

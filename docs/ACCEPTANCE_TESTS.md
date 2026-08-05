@@ -36,14 +36,16 @@ Test files:
 | `test/cooperation-phase6.test.mjs` | Phase 6 Cooperation ownership + revocation (Tests 11–12) |
 | `test/messaging-phase7.test.mjs` | Phase 7 Smart message drafts + adapters (Test 13) |
 | `test/hardening-phase8.test.mjs` | Phase 8 hardening — rate limits, PWA/a11y smoke, dead-code cleanup |
-| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4–7 endpoints, Phase 8 rate limits |
+| `test/staging-phase9a.test.mjs` | Phase 9A staging kit — runtime routing, wrangler staging env, deploy guards |
+| `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4–9A health env |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 8**:
-- Phase 0–7 regression suites remain green.
-- Catch-all privilege flattening mitigated; public intake/media rate-limited.
-- PWA deals shortcut removed; SW cache refreshed; dead code/logos cleaned.
-- Aggregated gate: `npm run test:phase8` (`npm test && npm run test:rules && npm run check`).
+Status as of the end of **Phase 9A (kit)**:
+- Phase 0–8 regression suites remain green.
+- Staging Worker + Hosting channel deploy path exists and refuses production targets.
+- Client routes `--staging` Hosting to staging Worker; production hosts unchanged.
+- Live staging deploy requires owner secrets; not claimed until `deploy:staging` succeeds.
+- Aggregated gate: `npm run test:phase9a` (`npm test && npm run test:rules && npm run check`).
 
 | # | Scenario | Status | Test |
 | --- | --- | --- | --- |

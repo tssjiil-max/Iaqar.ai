@@ -310,9 +310,10 @@ async function patchOpportunity(id, patch) {
 }
 
 function workerBaseUrl() {
-  return window.IAQAR?.workerBase
+  const base = window.IAQAR?.workerBase
     || window.IAQAR?.office?.workerBase
     || "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  return String(base).replace(/\/$/, "");
 }
 
 async function syncCooperationOperation(cooperationId) {

@@ -105,7 +105,8 @@ test("Phase 8 PWA: manifest has no deals shortcut; icons and SW cache are curren
   assert.ok(shortcutText.includes("open=operations") || shortcutText.includes("open=add-opportunity"));
 
   const sw = readRepositoryFile("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-phase8-v1"));
+  assert.ok(sw.includes("iaqar-shell-phase9a-v1"));
+  assert.ok(sw.includes("/js/runtime-config.js"));
   assert.ok(sw.includes("/js/operations-domain-bridge.js"));
   assert.ok(sw.includes("/js/messaging-domain-bridge.js"));
   assert.ok(sw.includes("/js/add-opportunity.js"));

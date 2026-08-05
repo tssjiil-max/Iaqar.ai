@@ -3,7 +3,11 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 0–8 complete — platform hardening delivered.**
+Current position: **Phase 9A staging deployment kit delivered — stop before Phase 9B / production deploy.**
+
+Live staging Worker + Hosting channel deploy requires owner credentials
+(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FIREBASE_TOKEN`) and is not claimed
+done until those secrets are present and `npm run deploy:staging` succeeds.
 
 ---
 
@@ -20,6 +24,8 @@ Current position: **Phase 0–8 complete — platform hardening delivered.**
 | 6 | Cooperation | **DONE** |
 | 7 | Smart messages and integration adapters | **DONE** |
 | 8 | Hardening | **DONE** |
+| 9A | Staging deployment | **DONE (kit)** — live deploy blocked on secrets |
+| 9B | Production deployment | **NOT STARTED** |
 
 ## Phase 0 — Foundation and audit (DONE)
 
@@ -328,3 +334,45 @@ Explicitly **not** claimed:
 
 Exit criteria: Risks 2 & 4 mitigated with tests; emulator covers legacy collections;
 PWA/a11y smoke green; Tests 14–15 PASS; no Deals/bottom-nav/auto-send. **Met.**
+
+## Phase 9A — Staging deployment (DONE — kit; live deploy needs secrets)
+
+Depends on: Phase 8.
+
+Delivered:
+
+- **Staging Worker env** in `worker/wrangler.toml` (`[env.staging]`, name
+  `iaqar-intake-staging`, `DEPLOYMENT_ENV=staging`). Production Worker name unchanged.
+- **Client runtime routing** via `public/js/runtime-config.js`: Firebase Hosting
+  channels with `--staging` (or `?env=staging`) use the staging Worker URL; production
+  hosts keep `iaqar-macrodroid-intake`.
+- **Staging-only deploy scripts:** `scripts/deploy-staging.sh` (+ `.ps1`),
+  `npm run deploy:staging` — runs tests, `wrangler deploy --env staging`,
+  `firebase hosting:channel:deploy staging`, health smoke. Refuses production flags and
+  never runs bare `wrangler deploy` / `firebase deploy --only hosting` / `deploy-all`.
+- **Smoke:** `npm run smoke:staging` (`scripts/smoke-staging.mjs`).
+- **Health** exposes `deploymentEnvironment`; staging must keep `outboundMessaging: false`.
+- **Docs / tests:** `docs/STAGING-DEPLOY.md`, `test/staging-phase9a.test.mjs`, SW cache
+  `iaqar-shell-phase9a-v1`. Decision: **D-018**.
+- Aggregated gate: `npm run test:phase9a`.
+
+Explicit Phase 9A choices / limits:
+
+- Same Firebase project `aqar-b5d76` and same R2 bucket `iaqar-media` (office-scoped
+  paths) — not a second project.
+- Live staging deploy is **blocked in this agent environment** until Cloudflare +
+  Firebase CI tokens are provided; the kit is verified by unit/static tests only until
+  then.
+- Meta / outbound Cloud API credentials stay empty on staging.
+
+Explicitly **not** in Phase 9A:
+
+- Production Worker or live Hosting deploy (Phase 9B / owner-run `deploy-all`)
+- Automatic WhatsApp/Telegram send (Q-3)
+- Deals page / bottom navigation / home redesign
+
+Exit criteria: staging path exists and cannot hit production; client routes staging
+Hosting → staging Worker; docs + automated tests green; live deploy + smoke when
+credentials present. **Kit met; live deploy pending secrets.**
+
+**STOP HERE — do not begin Phase 9B / production deploy without owner approval.**

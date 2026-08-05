@@ -1,7 +1,11 @@
 (() => {
   "use strict";
 
-  const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  function resolveWorkerBase() {
+    return (window.IAQAR && window.IAQAR.workerBase)
+      ? String(window.IAQAR.workerBase).replace(/\/$/, "")
+      : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  }
   const GRAPH_VERSION_FALLBACK = "v25.0";
   let config = null;
   let signupData = null;
@@ -35,7 +39,7 @@
       const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
       if (user) idToken = await user.getIdToken();
     } catch (_) {}
-    const response = await fetch(`${WORKER_BASE}${path}`, {
+    const response = await fetch(`${resolveWorkerBase()}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

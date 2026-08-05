@@ -58,10 +58,11 @@ function currentUser() {
   }
 }
 
-const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+const DEFAULT_WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
 
 function workerBase() {
-  return window.IAQAR?.workerBase || window.IAQAR?.office?.workerBase || WORKER_BASE;
+  const base = window.IAQAR?.workerBase || window.IAQAR?.office?.workerBase || DEFAULT_WORKER_BASE;
+  return String(base).replace(/\/$/, "");
 }
 
 async function authHeader() {

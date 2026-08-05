@@ -179,11 +179,15 @@ export default {
       }
 
       if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
+        const deploymentEnvironment = String(env.DEPLOYMENT_ENV || "production").toLowerCase() === "staging"
+          ? "staging"
+          : "production";
         return jsonResponse({
           ok: true,
           service: "iaqar-whatsapp-official-intake",
           mode: "inbound-only",
           outboundMessaging: false,
+          deploymentEnvironment,
           pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && hasFirebaseSecrets(env)),
           projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
           webhook: "/meta/webhook",

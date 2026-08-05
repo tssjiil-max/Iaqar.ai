@@ -29,7 +29,11 @@ const SPECIALTY_LABELS = Object.freeze({
   property_management: "إدارة أملاك"
 });
 const SPECIALTY_KEYS = Object.freeze(Object.keys(SPECIALTY_LABELS));
-const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+function resolveWorkerBase() {
+  return (window.IAQAR && window.IAQAR.workerBase)
+    ? String(window.IAQAR.workerBase).replace(/\/$/, "")
+    : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+}
 
 const defaults = {
   officeName: "مكتب عقاري",
@@ -574,7 +578,7 @@ async function onSlotSave(slot) {
   setStatus(slot.status, OFFICE_IMAGE_MESSAGES.uploading);
   try {
     const idToken = await user.getIdToken();
-    const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
+    const response = await fetch(`${resolveWorkerBase()}/media/office-cover`, {
       method: "POST",
       headers: {
         "Content-Type": slot.pending.blob.type || slot.preset.outputType,
@@ -612,7 +616,7 @@ async function onSlotRemove(slot) {
   setStatus(slot.status, OFFICE_IMAGE_MESSAGES.removing);
   try {
     const idToken = await user.getIdToken();
-    const response = await fetch(`${WORKER_BASE}/media/office-cover`, {
+    const response = await fetch(`${resolveWorkerBase()}/media/office-cover`, {
       method: "DELETE",
       headers: {
         "Authorization": `Bearer ${idToken}`,

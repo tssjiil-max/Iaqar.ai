@@ -114,6 +114,18 @@ test("health is inbound-only", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.outboundMessaging, false);
   assert.equal(body.mode, "inbound-only");
+  assert.equal(body.deploymentEnvironment, "production");
+});
+
+test("health reports staging when DEPLOYMENT_ENV=staging", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/health"),
+    { ...env, DEPLOYMENT_ENV: "staging" }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.deploymentEnvironment, "staging");
+  assert.equal(body.outboundMessaging, false);
 });
 
 test("Meta config is disabled until credentials exist", async () => {

@@ -59,7 +59,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase8-v1";
+const IAQAR_CACHE = "iaqar-shell-phase9a-v1";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -67,6 +67,7 @@ const IAQAR_SHELL = [
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/default-office.png",
+  "/js/runtime-config.js",
   "/js/access-gate.js",
   "/js/firebase-office.js",
   "/js/fcm-fid.js",

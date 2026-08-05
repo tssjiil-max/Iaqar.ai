@@ -1,0 +1,42 @@
+IAQAR.AI — Phase 9A Staging Deployment validation
+
+Date: 2026-08-05
+Branch: cursor/phase9a-staging-deploy-0d44
+
+Scope completed (staging kit):
+- worker/wrangler.toml [env.staging] → iaqar-intake-staging, DEPLOYMENT_ENV=staging
+- public/js/runtime-config.js routes --staging Hosting / ?env=staging → staging Worker
+- Client modules resolve worker base from window.IAQAR.workerBase
+- scripts/deploy-staging.sh + deploy-staging.ps1 refuse production; staging-only targets
+- scripts/smoke-staging.mjs + npm run deploy:staging / smoke:staging / test:phase9a
+- docs/STAGING-DEPLOY.md; Decision D-018
+- SW cache iaqar-shell-phase9a-v1 includes runtime-config.js
+- Health returns deploymentEnvironment; staging keeps outboundMessaging false
+- Automated: test/staging-phase9a.test.mjs + worker health staging case
+
+Live deploy status:
+- BLOCKED in agent environment without CLOUDFLARE_API_TOKEN,
+  CLOUDFLARE_ACCOUNT_ID, FIREBASE_TOKEN (+ wrangler staging secrets once).
+- Do not claim staging Worker/Hosting channel is live until npm run deploy:staging
+  and npm run smoke:staging succeed with those credentials.
+
+Explicitly out of Phase 9A:
+- Production Worker / live Hosting (Phase 9B / owner deploy-all)
+- Second Firebase project
+- Automatic WhatsApp/Telegram send (Q-3)
+- Deals page / bottom navigation / home redesign
+
+Boundaries preserved:
+- No deals page, no bottom navigation, no home redesign
+- Production deploy paths untouched by staging script
+- Constitution not weakened
+
+Docs updated:
+- docs/IMPLEMENTATION_PLAN.md — Phase 9A kit; stop before 9B
+- docs/ACCEPTANCE_TESTS.md — Phase 9A status + file pointer
+- docs/DECISIONS.md — D-018
+- docs/SYSTEM_ARCHITECTURE.md — staging Worker/channel + runtime-config
+- docs/STAGING-DEPLOY.md — operator steps
+- docs/VALIDATION-DIRECTIVE-PHASE9A.txt — this file
+
+STOP: do not begin Phase 9B / production deploy without owner approval.

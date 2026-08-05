@@ -44,9 +44,10 @@ treated as existing until its phase is delivered and tested.
   design tokens in `:root`, all component CSS inline, an inline SVG `<symbol>` sprite,
   and an inline script that renders the Operations Center list.
 - Scripts load in a fixed order at the end of `<body>`: Firebase compat SDKs →
-  `/__/firebase/init.js` → `fcm-fid.js` (module) → `access-gate.js` →
-  `firebase-office.js` → `qrcode.js` → `office-settings.js` → `whatsapp-office.js` →
-  inline operations script → `workflow-office.js`.
+  `/__/firebase/init.js` → `runtime-config.js` (Phase 9A deploymentEnvironment +
+  workerBase) → `fcm-fid.js` (module) → `access-gate.js` → `firebase-office.js` →
+  `qrcode.js` → `office-settings.js` → `whatsapp-office.js` → inline operations
+  script → `workflow-office.js`.
 - Each `public/js/*.js` file is a self-contained IIFE. The only shared surface is
   `window.IAQAR.office` (created by `firebase-office.js`) plus a small set of
   `CustomEvent`s on `window`:
@@ -78,7 +79,7 @@ Route groups:
 
 | Group | Routes | Purpose |
 | --- | --- | --- |
-| Health | `GET /`, `GET /health` | Reports `mode: "inbound-only"`, `outboundMessaging: false`. |
+| Health | `GET /`, `GET /health` | Reports `mode: "inbound-only"`, `outboundMessaging: false`, `deploymentEnvironment` (`production` \| `staging`). |
 | Meta / WhatsApp | `GET /meta/config`, `GET /meta/status`, `GET|POST /meta/webhook`, `POST /meta/signup/complete` | Embedded signup + inbound webhook. Disabled while `META_APP_ID`/`META_CONFIG_ID` are empty. |
 | Pipelines | `POST /pipeline/intake`, `POST /pipeline/public-intake` | Parse → persist → match → notify. |
 | Previews (test-only, no auth, no writes) | `POST /pipeline/preview`, `/matching/preview`, `/workflow/preview`, `/workflow/readiness/preview`, `/office/analytics/preview` | Pure-function endpoints the test suite drives. |
@@ -91,6 +92,7 @@ Route groups:
 | Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
 | Messages (Phase 7) | `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters` | Persisted Arabic drafts + external broker handoff; never Cloud API/Bot send. |
 | Public abuse (Phase 8) | Rate limits on `/pipeline/public-intake`, `/media/public-intake` | Sliding-window 429 `rate_limited` before Firestore/R2 work. |
+| Staging (Phase 9A) | Worker `iaqar-intake-staging` via `wrangler --env staging`; Hosting preview channel `staging` | Client `runtime-config.js` routes `--staging` hosts to staging Worker. Same Firebase project + R2; never overwrites live Hosting/production Worker. |
 | Blocked | `/ingest` → 410; other `*messages*`/`*send*` → 403 `outbound_disabled` | Meta/Telegram outbound send refused at the edge (draft APIs excluded). |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the

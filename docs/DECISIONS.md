@@ -424,6 +424,35 @@ Tests 14–15 must remain PASS; no Deals page / bottom nav / auto-send.
 page, weakening tenant isolation, or claiming real-device visual e2e beyond the
 automated jsdom + emulator gate.
 
+## D-018 — Phase 9A staging path without a second Firebase project
+
+**Phase:** 9A
+**Directive:** §1.7 honesty; staging must not overwrite production; no Deals page /
+bottom nav / auto-send; stop before production Phase 9B.
+
+**Decision.**
+
+1. **Separate staging Worker.** Cloudflare `[env.staging]` deploys
+   `iaqar-intake-staging` with `DEPLOYMENT_ENV=staging`. Production remains
+   `iaqar-macrodroid-intake`.
+2. **Hosting preview channel only.** Staging front-end deploys via
+   `firebase hosting:channel:deploy staging` — never bare `firebase deploy --only hosting`.
+3. **Shared Firebase project + R2.** Phase 9A reuses project `aqar-b5d76` and bucket
+   `iaqar-media` (office-scoped paths). A second Firebase project is explicitly not
+   created here.
+4. **Client routing.** `public/js/runtime-config.js` maps `--staging` Hosting hosts
+   (and `?env=staging`) to the staging Worker; production hosts keep the production
+   Worker.
+5. **Deploy guards.** `scripts/deploy-staging.sh` / `.ps1` refuse production targets
+   and require CI tokens. Staging must keep `outboundMessaging: false` / empty Meta
+   credentials.
+6. **Honesty on live deploy.** Without Cloudflare/Firebase tokens in the agent
+   environment, only the staging kit + automated tests are claimed; live channel/Worker
+   deploy is owner-credential gated.
+
+**Why.** Gives a safe non-production path to exercise Phases 1–8 without risking live
+Hosting/Worker overwrite, while documenting the shared-project limitation honestly.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
