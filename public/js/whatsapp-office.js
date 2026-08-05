@@ -2,9 +2,16 @@
   "use strict";
 
   function resolveWorkerBase() {
-    return (window.IAQAR && window.IAQAR.workerBase)
-      ? String(window.IAQAR.workerBase).replace(/\/$/, "")
-      : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+    if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+      return window.IAQAR.resolveWorkerBase();
+    }
+    try {
+      const host = String(window.location && window.location.hostname || "").toLowerCase();
+      if (host.includes("--staging") || host.startsWith("staging.")) {
+        return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+      }
+    } catch (_) { /* ignore */ }
+    return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
   }
   const GRAPH_VERSION_FALLBACK = "v25.0";
   let config = null;

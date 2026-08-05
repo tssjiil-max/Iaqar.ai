@@ -2,6 +2,10 @@
  * Phase 9A — runtime deployment config.
  * Staging Firebase Hosting channels (`--staging`) talk to the staging Worker only.
  * Production hosts keep the production Worker. Never invent a second Firebase project here.
+ *
+ * Full-functional staging also requires Worker Firebase secrets
+ * (FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID on --env staging).
+ * Without those secrets the shell can render but backend APIs return firebase_not_configured.
  */
 (function () {
   "use strict";
@@ -37,6 +41,18 @@
     return "production";
   }
 
+  function resolveWorkerBase() {
+    const env = window.IAQAR && window.IAQAR.deploymentEnvironment
+      ? window.IAQAR.deploymentEnvironment
+      : detectEnvironment();
+    if (window.IAQAR && window.IAQAR.workerBase) {
+      return String(window.IAQAR.workerBase).replace(/\/$/, "");
+    }
+    // Fail closed: staging hosts never fall back to the production Worker.
+    if (env === "staging") return STAGING_WORKER;
+    return PRODUCTION_WORKER;
+  }
+
   const deploymentEnvironment = detectEnvironment();
   const workerBase = deploymentEnvironment === "staging" ? STAGING_WORKER : PRODUCTION_WORKER;
 
@@ -45,6 +61,8 @@
   window.IAQAR.workerBase = workerBase;
   window.IAQAR.PRODUCTION_WORKER = PRODUCTION_WORKER;
   window.IAQAR.STAGING_WORKER = STAGING_WORKER;
+  window.IAQAR.resolveWorkerBase = resolveWorkerBase;
+  window.IAQAR.detectEnvironment = detectEnvironment;
 
   window.dispatchEvent(new CustomEvent("iaqar:runtime-config-ready", {
     detail: { deploymentEnvironment, workerBase }

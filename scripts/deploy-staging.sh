@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Phase 9A — staging-only deploy. Refuses production targets.
+# Phase 9A — full-functional staging-only deploy. Refuses production targets.
+# Requires Worker Firebase secrets on --env staging so backend APIs work (not UI-only).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,7 +8,7 @@ cd "$ROOT"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-echo "=== IAQAR Phase 9A staging deploy ==="
+echo "=== IAQAR Phase 9A staging deploy (full-functional) ==="
 
 # Hard guards — never allow production deploy through this script.
 if [[ "${IAQAR_DEPLOY_TARGET:-staging}" != "staging" ]]; then
@@ -40,13 +41,30 @@ echo "--- Cloudflare Worker (staging env only) ---"
 )
 
 echo "--- Firebase Hosting channel 'staging' only ---"
+CHANNEL_LOG="$(mktemp)"
 # Preview channel — does not overwrite live hosting.
+# FIREBASE_TOKEN needs Auth Admin so the channel domain is authorized for Auth.
+set +e
 npx firebase-tools hosting:channel:deploy staging \
   --project aqar-b5d76 \
   --expires 30d \
-  --token "$FIREBASE_TOKEN"
+  --token "$FIREBASE_TOKEN" 2>&1 | tee "$CHANNEL_LOG"
+CHANNEL_RC=${PIPESTATUS[0]}
+set -e
+[[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed"
 
-echo "--- Smoke: staging Worker /health ---"
+if grep -qiE "Unable to add channel domain|authorized domain" "$CHANNEL_LOG"; then
+  echo "WARNING: Auth authorized-domain sync may have failed. Phone/email Auth on the channel can break." >&2
+  echo "Ensure FIREBASE_TOKEN has Auth Admin, then re-run channel deploy." >&2
+fi
+
+STAGING_HOSTING_URL="$(grep -oE 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.web\.app' "$CHANNEL_LOG" | head -1 || true)"
+if [[ -z "$STAGING_HOSTING_URL" ]]; then
+  STAGING_HOSTING_URL="$(grep -oE 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.firebaseapp\.com' "$CHANNEL_LOG" | head -1 || true)"
+fi
+rm -f "$CHANNEL_LOG"
+
+echo "--- Smoke: staging Worker /health (must be backendReady) ---"
 HEALTH_JSON="$(curl -fsS --max-time 30 "${STAGING_WORKER_URL}/health" || true)"
 if [[ -z "$HEALTH_JSON" ]]; then
   die "Staging Worker health check failed at ${STAGING_WORKER_URL}/health"
@@ -64,12 +82,36 @@ if (body.outboundMessaging === true) {
   console.error("outboundMessaging must remain false on staging");
   process.exit(1);
 }
-console.log("Staging health OK");
+if (body.firebaseConfigured !== true || body.backendReady !== true) {
+  console.error("Staging Worker is UI-only: firebaseConfigured/backendReady must be true.");
+  console.error("Set Wrangler secrets on --env staging: FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID");
+  process.exit(1);
+}
+if (body.cronEnabled === true) {
+  console.error("cronEnabled must be false on staging");
+  process.exit(1);
+}
+console.log("Staging health OK (full-functional backendReady)");
 '
 
+echo "--- Smoke: staging adapters + hosting wiring ---"
+export STAGING_WORKER_URL
+if [[ -n "${STAGING_HOSTING_URL:-}" ]]; then
+  export STAGING_HOSTING_URL
+  echo "Hosting channel: ${STAGING_HOSTING_URL}"
+else
+  echo "WARNING: could not parse Hosting channel URL from firebase-tools output; hosting smoke skipped" >&2
+fi
+node scripts/smoke-staging.mjs
+
 echo ""
-echo "=== Phase 9A staging deploy complete ==="
+echo "=== Phase 9A full-functional staging deploy complete ==="
 echo "Worker:  ${STAGING_WORKER_URL}"
-echo "Hosting: open the firebase channel URL printed above (must contain --staging)"
+if [[ -n "${STAGING_HOSTING_URL:-}" ]]; then
+  echo "Hosting: ${STAGING_HOSTING_URL}"
+else
+  echo "Hosting: open the firebase channel URL printed above (must contain --staging)"
+fi
 echo "Verify in browser: window.IAQAR.deploymentEnvironment === \"staging\""
+echo "Verify Worker: /health backendReady === true"
 echo "Do NOT run deploy-all / bare wrangler deploy / bare firebase deploy from this path."

@@ -58,11 +58,23 @@ function currentUser() {
   }
 }
 
-const DEFAULT_WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+const PRODUCTION_WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+const STAGING_WORKER_BASE = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
 
 function workerBase() {
-  const base = window.IAQAR?.workerBase || window.IAQAR?.office?.workerBase || DEFAULT_WORKER_BASE;
-  return String(base).replace(/\/$/, "");
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  if (window.IAQAR?.workerBase || window.IAQAR?.office?.workerBase) {
+    return String(window.IAQAR.workerBase || window.IAQAR.office.workerBase).replace(/\/$/, "");
+  }
+  try {
+    const host = String(window.location?.hostname || "").toLowerCase();
+    if (host.includes("--staging") || host.startsWith("staging.") || window.IAQAR?.deploymentEnvironment === "staging") {
+      return STAGING_WORKER_BASE;
+    }
+  } catch (_) { /* ignore */ }
+  return PRODUCTION_WORKER_BASE;
 }
 
 async function authHeader() {

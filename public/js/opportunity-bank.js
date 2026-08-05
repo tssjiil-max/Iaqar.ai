@@ -310,10 +310,19 @@ async function patchOpportunity(id, patch) {
 }
 
 function workerBaseUrl() {
-  const base = window.IAQAR?.workerBase
-    || window.IAQAR?.office?.workerBase
-    || "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
-  return String(base).replace(/\/$/, "");
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  if (window.IAQAR?.workerBase || window.IAQAR?.office?.workerBase) {
+    return String(window.IAQAR.workerBase || window.IAQAR.office.workerBase).replace(/\/$/, "");
+  }
+  try {
+    const host = String(window.location?.hostname || "").toLowerCase();
+    if (host.includes("--staging") || host.startsWith("staging.") || window.IAQAR?.deploymentEnvironment === "staging") {
+      return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+    }
+  } catch (_) { /* ignore */ }
+  return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
 }
 
 async function syncCooperationOperation(cooperationId) {

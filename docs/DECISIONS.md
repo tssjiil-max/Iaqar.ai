@@ -424,11 +424,11 @@ Tests 14–15 must remain PASS; no Deals page / bottom nav / auto-send.
 page, weakening tenant isolation, or claiming real-device visual e2e beyond the
 automated jsdom + emulator gate.
 
-## D-018 — Phase 9A staging path without a second Firebase project
+## D-018 — Phase 9A full-functional staging without a second Firebase project
 
 **Phase:** 9A
-**Directive:** §1.7 honesty; staging must not overwrite production; no Deals page /
-bottom nav / auto-send; stop before production Phase 9B.
+**Directive:** §1.7 honesty; staging must not overwrite production; staging must not
+be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase 9B.
 
 **Decision.**
 
@@ -439,19 +439,24 @@ bottom nav / auto-send; stop before production Phase 9B.
    `firebase hosting:channel:deploy staging` — never bare `firebase deploy --only hosting`.
 3. **Shared Firebase project + R2.** Phase 9A reuses project `aqar-b5d76` and bucket
    `iaqar-media` (office-scoped paths). A second Firebase project is explicitly not
-   created here.
-4. **Client routing.** `public/js/runtime-config.js` maps `--staging` Hosting hosts
-   (and `?env=staging`) to the staging Worker; production hosts keep the production
-   Worker.
-5. **Deploy guards.** `scripts/deploy-staging.sh` / `.ps1` refuse production targets
-   and require CI tokens. Staging must keep `outboundMessaging: false` / empty Meta
-   credentials.
-6. **Honesty on live deploy.** Without Cloudflare/Firebase tokens in the agent
-   environment, only the staging kit + automated tests are claimed; live channel/Worker
-   deploy is owner-credential gated.
+   created here. Staging cron is **disabled** so follow-ups are not double-fired.
+4. **Client routing (fail closed).** `public/js/runtime-config.js` maps `--staging`
+   Hosting hosts (and `?env=staging`) to the staging Worker; staging hosts never fall
+   back to the production Worker. Channel uses `/__/firebase/init.js`.
+5. **Full-functional gate.** Deploy smoke requires `/health`
+   `firebaseConfigured` + `backendReady` (Worker secrets
+   `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` on
+   `--env staging`). Without them, staging is rejected as UI-only.
+6. **Deploy guards.** `scripts/deploy-staging.sh` / `.ps1` refuse production targets,
+   require CI tokens (`CLOUDFLARE_*`, `FIREBASE_TOKEN` with Auth Admin for channel
+   domains), keep `outboundMessaging: false` / empty Meta credentials.
+7. **Honesty on live deploy.** Without those credentials in the agent environment,
+   only the staging kit + automated tests are claimed; live channel/Worker deploy
+   remains owner-credential gated.
 
-**Why.** Gives a safe non-production path to exercise Phases 1–8 without risking live
-Hosting/Worker overwrite, while documenting the shared-project limitation honestly.
+**Why.** Gives a non-production Hosting+Worker path that actually exercises Phases
+1–8 (login, intake matching, ops, drafts) without overwriting live Hosting/Worker,
+while documenting shared-project data side effects honestly.
 
 ## Open questions carried forward
 

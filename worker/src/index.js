@@ -182,13 +182,21 @@ export default {
         const deploymentEnvironment = String(env.DEPLOYMENT_ENV || "production").toLowerCase() === "staging"
           ? "staging"
           : "production";
+        const firebaseConfigured = hasFirebaseSecrets(env);
+        // backendReady = phone login, matching, ops, messages, auth-gated media work.
+        // UI-only staging Worker is rejected by deploy-staging smoke when this is false.
+        const backendReady = firebaseConfigured;
+        const cronEnabled = deploymentEnvironment !== "staging";
         return jsonResponse({
           ok: true,
           service: "iaqar-whatsapp-official-intake",
           mode: "inbound-only",
           outboundMessaging: false,
           deploymentEnvironment,
-          pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && hasFirebaseSecrets(env)),
+          firebaseConfigured,
+          backendReady,
+          cronEnabled,
+          pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && firebaseConfigured),
           projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
           webhook: "/meta/webhook",
           requestId,
@@ -447,6 +455,10 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
+    // Phase 9A: staging Worker must not run follow-up cron against the shared project.
+    if (String(env.DEPLOYMENT_ENV || "").toLowerCase() === "staging") {
+      return;
+    }
     ctx.waitUntil(processOverdueFollowups(env, event && event.scheduledTime));
   }
 };
@@ -3556,7 +3568,7 @@ function appError(code, status, publicMessage) { const error = new Error(publicM
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name",
     "Access-Control-Max-Age": "86400"
   };

@@ -1,4 +1,4 @@
-# Phase 9A — staging-only deploy (Windows parity). Refuses production targets.
+# Phase 9A — full-functional staging-only deploy (Windows parity). Refuses production.
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -9,7 +9,7 @@ function Die([string]$Message) {
   exit 1
 }
 
-Write-Host "=== IAQAR Phase 9A staging deploy ==="
+Write-Host "=== IAQAR Phase 9A staging deploy (full-functional) ==="
 
 if (($env:IAQAR_DEPLOY_TARGET -or "staging") -ne "staging") {
   Die "IAQAR_DEPLOY_TARGET must be 'staging'. Refusing."
@@ -41,13 +41,25 @@ try {
 }
 
 Write-Host "--- Firebase Hosting channel 'staging' only ---"
-npx firebase-tools hosting:channel:deploy staging `
+$channelOutput = npx firebase-tools hosting:channel:deploy staging `
   --project aqar-b5d76 `
   --expires 30d `
-  --token $env:FIREBASE_TOKEN
+  --token $env:FIREBASE_TOKEN 2>&1 | Out-String
+Write-Host $channelOutput
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "--- Smoke: staging Worker /health ---"
+if ($channelOutput -match "Unable to add channel domain|authorized domain") {
+  Write-Warning "Auth authorized-domain sync may have failed. Ensure FIREBASE_TOKEN has Auth Admin."
+}
+
+$StagingHostingUrl = $null
+if ($channelOutput -match 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.web\.app') {
+  $StagingHostingUrl = $Matches[0]
+} elseif ($channelOutput -match 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.firebaseapp\.com') {
+  $StagingHostingUrl = $Matches[0]
+}
+
+Write-Host "--- Smoke: staging Worker /health (must be backendReady) ---"
 try {
   $HealthJson = Invoke-RestMethod -Uri "$StagingWorkerUrl/health" -TimeoutSec 30
 } catch {
@@ -60,11 +72,25 @@ if ($HealthJson.deploymentEnvironment -ne "staging") {
 if ($HealthJson.outboundMessaging -eq $true) {
   Die "outboundMessaging must remain false on staging"
 }
-Write-Host "Staging health OK"
+if ($HealthJson.firebaseConfigured -ne $true -or $HealthJson.backendReady -ne $true) {
+  Die "Staging Worker is UI-only. Set Wrangler secrets on --env staging: FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID"
+}
+if ($HealthJson.cronEnabled -eq $true) {
+  Die "cronEnabled must be false on staging"
+}
+Write-Host "Staging health OK (full-functional backendReady)"
+
+$env:STAGING_WORKER_URL = $StagingWorkerUrl
+if ($StagingHostingUrl) {
+  $env:STAGING_HOSTING_URL = $StagingHostingUrl
+  Write-Host "Hosting channel: $StagingHostingUrl"
+}
+node (Join-Path $Root "scripts/smoke-staging.mjs")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
-Write-Host "=== Phase 9A staging deploy complete ==="
+Write-Host "=== Phase 9A full-functional staging deploy complete ==="
 Write-Host "Worker:  $StagingWorkerUrl"
-Write-Host "Hosting: open the firebase channel URL printed above (must contain --staging)"
+if ($StagingHostingUrl) { Write-Host "Hosting: $StagingHostingUrl" }
 Write-Host 'Verify in browser: window.IAQAR.deploymentEnvironment === "staging"'
 Write-Host "Do NOT run deploy-all / bare wrangler deploy / bare firebase deploy from this path."

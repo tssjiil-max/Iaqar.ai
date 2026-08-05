@@ -1,5 +1,5 @@
 /**
- * Phase 9A — staging deployment kit: runtime routing, wrangler staging env,
+ * Phase 9A — full-functional staging kit: runtime routing, wrangler staging env,
  * deploy script guards, shell wiring. Does not perform a live deploy.
  */
 
@@ -34,6 +34,8 @@ test("Phase 9A runtime-config: staging channel host uses staging Worker", () => 
   });
   assert.equal(cfg.deploymentEnvironment, "staging");
   assert.equal(cfg.workerBase, "https://iaqar-intake-staging.iaqar-ai.workers.dev");
+  assert.equal(typeof cfg.resolveWorkerBase, "function");
+  assert.equal(cfg.resolveWorkerBase(), cfg.workerBase);
 });
 
 test("Phase 9A runtime-config: ?env=staging override works on any host", () => {
@@ -57,33 +59,47 @@ test("Phase 9A runtime-config: production hosts keep production Worker", () => {
   }
 });
 
-test("Phase 9A wrangler.toml defines staging Worker name and DEPLOYMENT_ENV", () => {
+test("Phase 9A runtime-config: staging never falls back to production Worker", () => {
+  const cfg = loadRuntimeConfig({
+    hostname: "aqar-b5d76--staging-abc123.web.app"
+  });
+  delete cfg.workerBase;
+  assert.equal(cfg.resolveWorkerBase(), "https://iaqar-intake-staging.iaqar-ai.workers.dev");
+});
+
+test("Phase 9A wrangler.toml defines staging Worker without cron", () => {
   const toml = read("worker", "wrangler.toml");
   assert.ok(toml.includes("[env.staging]"));
   assert.ok(toml.includes('name = "iaqar-intake-staging"'));
   assert.ok(toml.includes('DEPLOYMENT_ENV = "staging"'));
   assert.ok(toml.includes('DEPLOYMENT_ENV = "production"'));
   assert.ok(toml.includes('name = "iaqar-macrodroid-intake"'));
-  // Staging must not redefine production name.
   const stagingBlock = toml.split("[env.staging]")[1] || "";
   assert.equal(stagingBlock.includes('name = "iaqar-macrodroid-intake"'), false);
+  assert.ok(/crons\s*=\s*\[\s*\]/.test(stagingBlock) || stagingBlock.includes("crons = []"));
 });
 
-test("Phase 9A deploy script refuses production and uses staging-only targets", () => {
+test("Phase 9A deploy script requires backendReady and refuses production", () => {
   const script = read("scripts", "deploy-staging.sh");
   assert.ok(script.includes("wrangler deploy --env staging"));
   assert.ok(script.includes("hosting:channel:deploy staging"));
   assert.ok(script.includes("IAQAR_DEPLOY_TARGET"));
+  assert.ok(script.includes("backendReady"));
+  assert.ok(script.includes("firebaseConfigured"));
+  assert.ok(script.includes("smoke-staging.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
-  // Must not invoke production deploy commands (mentions in refusal messages are OK).
   assert.equal(/^\s*npx wrangler deploy\s*$/m.test(script), false);
   assert.equal(/firebase deploy --only hosting/.test(script), false);
   assert.equal(/^\s*(?:\.\/)?deploy-all/m.test(script), false);
-  assert.ok(existsSync(path.join(root, "scripts", "smoke-staging.mjs")));
+
+  const smoke = read("scripts", "smoke-staging.mjs");
+  assert.ok(smoke.includes("backendReady"));
+  assert.ok(smoke.includes("firebaseConfigured"));
+  assert.ok(smoke.includes("iaqar-intake-staging"));
   assert.ok(existsSync(path.join(root, "docs", "STAGING-DEPLOY.md")));
 });
 
-test("Phase 9A shell loads runtime-config before app scripts; no deals nav", () => {
+test("Phase 9A shell uses channel-local Firebase init; no deals nav", () => {
   const shell = read("public", "index.html");
   const runtimeIdx = shell.indexOf('src="js/runtime-config.js"');
   const accessIdx = shell.indexOf('src="js/access-gate.js"');
@@ -91,15 +107,22 @@ test("Phase 9A shell loads runtime-config before app scripts; no deals nav", () 
   assert.ok(runtimeIdx > 0);
   assert.ok(accessIdx > runtimeIdx);
   assert.ok(workflowIdx > accessIdx);
+  assert.ok(shell.includes('src="/__/firebase/init.js"'));
+  assert.equal(shell.includes("aqar-b5d76.web.app/__/firebase/init.js"), false);
   assert.equal(shell.includes('data-main="deals"'), false);
   assert.equal(/bottom-nav|nav-bottom|bottom_nav/i.test(shell), false);
 
   const sw = read("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-phase9a-v1"));
-  assert.ok(sw.includes("/js/runtime-config.js"));
+  assert.ok(sw.includes("iaqar-shell-phase9a-v2"));
+  assert.ok(sw.includes("runtime-config.js"));
+  assert.ok(sw.includes('cache: "no-store"') || sw.includes("no-store"));
+
+  const hosting = JSON.parse(read("firebase.json"));
+  const headers = hosting.hosting.headers || [];
+  assert.ok(headers.some((h) => h.source === "/js/runtime-config.js"));
 });
 
-test("Phase 9A clients resolve worker base from window.IAQAR.workerBase", () => {
+test("Phase 9A clients fail closed to staging Worker on staging hosts", () => {
   for (const rel of [
     "public/js/workflow-office.js",
     "public/js/access-gate.js",
@@ -108,15 +131,17 @@ test("Phase 9A clients resolve worker base from window.IAQAR.workerBase", () => 
   ]) {
     const src = read(...rel.split("/"));
     assert.ok(src.includes("function resolveWorkerBase"), rel);
-    assert.ok(src.includes("window.IAQAR.workerBase") || src.includes("window.IAQAR && window.IAQAR.workerBase"), rel);
-    assert.ok(src.includes("resolveWorkerBase()"), rel);
+    assert.ok(src.includes("IAQAR.resolveWorkerBase"), rel);
+    assert.ok(src.includes("iaqar-intake-staging"), rel);
+    assert.ok(src.includes("--staging"), rel);
     assert.equal(src.includes("${WORKER_BASE}"), false, rel);
   }
   const addOpp = read("public", "js", "add-opportunity.js");
-  assert.ok(addOpp.includes("function workerBase"));
-  assert.ok(addOpp.includes("window.IAQAR?.workerBase"));
+  assert.ok(addOpp.includes("STAGING_WORKER_BASE"));
+  assert.ok(addOpp.includes("IAQAR.resolveWorkerBase"));
   const bank = read("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("window.IAQAR?.workerBase"));
+  assert.ok(bank.includes("IAQAR.resolveWorkerBase"));
+  assert.ok(bank.includes("iaqar-intake-staging"));
 });
 
 test("Phase 9A package scripts expose deploy:staging and smoke:staging", () => {

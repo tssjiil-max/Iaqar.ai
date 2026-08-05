@@ -2,9 +2,17 @@
   "use strict";
 
   function resolveWorkerBase() {
-    return (window.IAQAR && window.IAQAR.workerBase)
-      ? String(window.IAQAR.workerBase).replace(/\/$/, "")
-      : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+    if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+      return window.IAQAR.resolveWorkerBase();
+    }
+    // Fail closed if runtime-config did not load: never send staging hosts to prod Worker.
+    try {
+      const host = String(window.location && window.location.hostname || "").toLowerCase();
+      if (host.includes("--staging") || host.startsWith("staging.")) {
+        return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+      }
+    } catch (_) { /* ignore */ }
+    return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
   }
   const SHARED_STORAGE_KEY = "iaqar.pendingSharedMessage";
   const APP_VERSION = "stage3-fcm-fid-v1";
