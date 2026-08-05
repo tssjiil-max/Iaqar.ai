@@ -27,7 +27,7 @@ name = "iaqar-intake-staging"
 workers_dev = true
 
 [env.staging.vars]
-FIREBASE_PROJECT_ID = "aqar-b5d76"
+FIREBASE_PROJECT_ID = "iaqar-ai-staging"
 DEPLOYMENT_ENV = "staging"
 META_GRAPH_VERSION = "v25.0"
 META_APP_ID = ""

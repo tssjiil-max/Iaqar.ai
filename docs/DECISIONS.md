@@ -424,7 +424,7 @@ Tests 14–15 must remain PASS; no Deals page / bottom nav / auto-send.
 page, weakening tenant isolation, or claiming real-device visual e2e beyond the
 automated jsdom + emulator gate.
 
-## D-018 — Phase 9A full-functional staging without a second Firebase project
+## D-018 — Phase 9A full-functional staging on project `iaqar-ai-staging`
 
 **Phase:** 9A
 **Directive:** §1.7 honesty; staging must not overwrite production; staging must not
@@ -433,30 +433,30 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 **Decision.**
 
 1. **Separate staging Worker.** Cloudflare `[env.staging]` deploys
-   `iaqar-intake-staging` with `DEPLOYMENT_ENV=staging`. Production remains
-   `iaqar-macrodroid-intake`.
-2. **Hosting preview channel only.** Staging front-end deploys via
-   `firebase hosting:channel:deploy staging` — never bare `firebase deploy --only hosting`.
-3. **Shared Firebase project + R2.** Phase 9A reuses project `aqar-b5d76` and bucket
-   `iaqar-media` (office-scoped paths). A second Firebase project is explicitly not
-   created here. Staging cron is **disabled** so follow-ups are not double-fired.
-4. **Client routing (fail closed).** `public/js/runtime-config.js` maps `--staging`
-   Hosting hosts (and `?env=staging`) to the staging Worker; staging hosts never fall
-   back to the production Worker. Channel uses `/__/firebase/init.js`.
-5. **Full-functional gate.** Deploy smoke requires `/health`
-   `firebaseConfigured` + `backendReady` (Worker secrets
-   `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` on
-   `--env staging`). Without them, staging is rejected as UI-only.
-6. **Deploy guards.** `scripts/deploy-staging.sh` / `.ps1` refuse production targets,
-   require CI tokens (`CLOUDFLARE_*`, `FIREBASE_TOKEN` with Auth Admin for channel
-   domains), keep `outboundMessaging: false` / empty Meta credentials.
-7. **Honesty on live deploy.** Without those credentials in the agent environment,
-   only the staging kit + automated tests are claimed; live channel/Worker deploy
-   remains owner-credential gated.
+   `iaqar-intake-staging` with `DEPLOYMENT_ENV=staging` and
+   `FIREBASE_PROJECT_ID=iaqar-ai-staging`. Production remains
+   `iaqar-macrodroid-intake` / `aqar-b5d76`.
+2. **Separate Firebase staging project.** Hosting channel + Firestore + Auth use
+   **`iaqar-ai-staging`**. Production project `aqar-b5d76` is untouched by staging
+   deploy. R2 bucket `iaqar-media` remains shared (office-scoped paths). Staging cron
+   is **disabled**.
+3. **Hosting preview channel only.** `firebase hosting:channel:deploy staging
+   --project iaqar-ai-staging` — never bare `firebase deploy --only hosting` on
+   production.
+4. **Service-account auth (no FIREBASE_TOKEN).** Deploy builds a temporary GAC JSON
+   from `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID`,
+   sets `GOOGLE_APPLICATION_CREDENTIALS`, syncs the same secrets to the staging Worker,
+   then deletes the temp file. Values are never printed or committed.
+5. **Client routing (fail closed).** `runtime-config.js` maps `--staging` /
+   `?env=staging` to the staging Worker and `firebaseProjectId=iaqar-ai-staging`.
+6. **Full-functional gate.** `/health` must report `backendReady` and
+   `projectId=iaqar-ai-staging`. Cloudflare: `CLOUDFLARE_API_TOKEN` +
+   `CLOUDFLARE_ACCOUNT_ID`.
+7. **Honesty on live deploy.** Secrets added after a Cloud Agent run starts are not
+   visible in that run — a **new** run is required. Live deploy remains owner-gated.
 
-**Why.** Gives a non-production Hosting+Worker path that actually exercises Phases
-1–8 (login, intake matching, ops, drafts) without overwriting live Hosting/Worker,
-while documenting shared-project data side effects honestly.
+**Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
+Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
 
 ## Open questions carried forward
 

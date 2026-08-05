@@ -29,6 +29,9 @@ async function main() {
     if (json.deploymentEnvironment !== "staging") {
       throw new Error(`expected deploymentEnvironment=staging, got ${json.deploymentEnvironment}`);
     }
+    if (json.projectId && json.projectId !== "iaqar-ai-staging") {
+      throw new Error(`expected projectId=iaqar-ai-staging, got ${json.projectId}`);
+    }
     if (json.outboundMessaging === true) throw new Error("outboundMessaging must be false");
     if (json.cronEnabled === true) throw new Error("cronEnabled must be false on staging");
     if (REQUIRE_BACKEND) {

@@ -1,46 +1,31 @@
-IAQAR.AI — Phase 9A Full-Functional Staging Deployment validation
+IAQAR.AI — Phase 9A Full-Functional Staging (iaqar-ai-staging) validation
 
 Date: 2026-08-05
 Branch: cursor/phase9a-staging-deploy-0d44
 
-Scope completed (full-functional staging kit):
-- worker/wrangler.toml [env.staging] → iaqar-intake-staging, DEPLOYMENT_ENV=staging,
-  cron disabled (crons = [])
-- /health exposes firebaseConfigured, backendReady, cronEnabled, deploymentEnvironment
-- staging scheduled handler no-ops (shared-project follow-ups not double-fired)
-- public/js/runtime-config.js fail-closed resolveWorkerBase (never prod fallback on staging)
-- Client modules use IAQAR.resolveWorkerBase + staging-host detection
-- Channel-local /__/firebase/init.js (not hard-coded live Hosting URL)
-- firebase.json Cache-Control: no-store for runtime-config.js
-- SW iaqar-shell-phase9a-v2; runtime-config network-only / no-store
-- CORS Allow-Methods includes DELETE (office-cover delete preflight)
-- deploy-staging.sh/.ps1 require backendReady + run smoke-staging.mjs
-- docs/STAGING-DEPLOY.md full-functional definition; Decision D-018
-- Automated: test/staging-phase9a.test.mjs + worker health backendReady cases
-- Verification counts: web 272, worker 71, rules 34, check 63
+Prep changes (no live deploy this turn):
+- Staging Firebase project ID → iaqar-ai-staging (Hosting channel + Worker vars)
+- Production project aqar-b5d76 unchanged
+- Removed FIREBASE_TOKEN from deploy-staging.sh / .ps1
+- Temp GAC via scripts/staging-gac.mjs → GOOGLE_APPLICATION_CREDENTIALS → deleted
+- Uses FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID
+- Syncs those secrets to Worker --env staging during deploy (when run)
+- .firebaserc alias staging → iaqar-ai-staging
+- runtime-config sets firebaseProjectId for staging
+- Docs D-018 / STAGING-DEPLOY updated
 
-Live deploy status:
-- BLOCKED without:
-  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FIREBASE_TOKEN (Auth Admin),
-  and Worker --env staging secrets FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY,
-  FIREBASE_PRIVATE_KEY_ID
-- Optional for FCM: FCM_WEB_PUSH_VAPID_KEY
-- Do not claim staging live until npm run deploy:staging + smoke succeed with
-  /health.backendReady === true
+Cloud Agent secret note:
+- This run started before repo secrets were added; they are absent here.
+- A NEW Cloud Agent run is required for secret injection before live deploy.
 
-Shared-project honesty:
-- Firestore/Auth/R2 shared with production; staging writes mutate live data
-- Not a second Firebase project (out of Phase 9A)
+Still required for live deploy (names only):
+- CLOUDFLARE_API_TOKEN (Workers Scripts Edit + Workers R2 Storage Edit + Account Settings Read)
+- CLOUDFLARE_ACCOUNT_ID (Dashboard account sidebar)
+- FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID
 
-Explicitly out of Phase 9A:
-- Production Worker / live Hosting (Phase 9B / owner deploy-all)
-- Automatic WhatsApp/Telegram send (Q-3)
-- Deals page / bottom navigation / home redesign
+Explicitly NOT done this turn:
+- No Firebase Hosting deploy
+- No Worker deploy
+- No Phase 9B
 
-Boundaries preserved:
-- No deals page, no bottom navigation, no home redesign
-- Production deploy paths untouched by staging script
-- Constitution not weakened
-
-STOP: do not begin Phase 9B / production deploy without owner approval.
-Do not publish/deploy from this agent turn without credentials.
+STOP before Phase 9B / production deploy.

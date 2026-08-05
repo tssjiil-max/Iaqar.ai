@@ -3,13 +3,12 @@
 Phases, dependencies, risks and current progress. One phase at a time; each phase stops
 for owner approval before the next begins.
 
-Current position: **Phase 9A full-functional staging kit delivered — stop before Phase 9B / production deploy.**
+Current position: **Phase 9A full-functional staging kit retargeted to `iaqar-ai-staging` — stop before Phase 9B / production deploy. No live deploy in this turn.**
 
-Live staging Worker + Hosting channel deploy requires owner credentials
-(`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FIREBASE_TOKEN`) **and** Worker
-staging secrets (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`,
-`FIREBASE_PRIVATE_KEY_ID`) so `/health.backendReady === true`. Not claimed live until
-`npm run deploy:staging` succeeds with that gate.
+Live staging deploy requires `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
+Firebase SA secrets `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` /
+`FIREBASE_PRIVATE_KEY_ID` (no `FIREBASE_TOKEN`). Secrets must be present in a **new**
+Cloud Agent run. Not claimed live until `npm run deploy:staging` succeeds.
 
 ---
 
@@ -343,40 +342,29 @@ Depends on: Phase 8.
 
 Delivered:
 
-- **Staging Worker env** in `worker/wrangler.toml` (`[env.staging]`, name
-  `iaqar-intake-staging`, `DEPLOYMENT_ENV=staging`, **cron disabled**). Production
-  Worker name unchanged.
-- **Client runtime routing (fail closed)** via `public/js/runtime-config.js`:
-  `--staging` / `?env=staging` → staging Worker; never fall back to production Worker
-  on staging hosts. Channel-local `/__/firebase/init.js`.
-- **Full-functional deploy scripts:** `scripts/deploy-staging.sh` (+ `.ps1`),
-  `npm run deploy:staging` — tests → `wrangler deploy --env staging` →
-  `hosting:channel:deploy staging` → require `/health.backendReady` →
-  `smoke-staging.mjs`. Refuses production / bare deploy commands.
-- **Health** exposes `deploymentEnvironment`, `firebaseConfigured`, `backendReady`,
-  `cronEnabled`; staging keeps `outboundMessaging: false`.
-- **SW / cache:** `iaqar-shell-phase9a-v2`; `runtime-config.js` is network/`no-store`.
-- **Docs / tests:** `docs/STAGING-DEPLOY.md`, `test/staging-phase9a.test.mjs`.
-  Decision: **D-018**. Gate: `npm run test:phase9a`.
+- **Staging Worker env** (`[env.staging]`, name `iaqar-intake-staging`,
+  `FIREBASE_PROJECT_ID=iaqar-ai-staging`, `DEPLOYMENT_ENV=staging`, cron disabled).
+- **Separate Firebase staging project** `iaqar-ai-staging` (Auth/Firestore/Hosting
+  channel). Production remains `aqar-b5d76`. R2 `iaqar-media` still shared.
+- **Client runtime routing (fail closed):** staging → staging Worker +
+  `firebaseProjectId=iaqar-ai-staging`. Channel-local `/__/firebase/init.js`.
+- **Deploy auth without FIREBASE_TOKEN:** temp GAC from
+  `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` →
+  `GOOGLE_APPLICATION_CREDENTIALS` → deleted after; secrets synced to Worker staging.
+- **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-gac.mjs`, `smoke-staging.mjs`.
+- **Health gate:** `backendReady` + `projectId=iaqar-ai-staging`.
+- **Docs / tests / D-018.** Gate: `npm run test:phase9a`.
 
-Explicit Phase 9A choices / limits:
+Explicit limits:
 
-- Same Firebase project `aqar-b5d76` and same R2 bucket `iaqar-media` — not a second
-  project; staging writes mutate shared data (documented).
-- Live staging deploy is **blocked** until Cloudflare + Firebase CI tokens **and**
-  Worker staging Firebase secrets are present; kit verified by automated tests until then.
-- Meta / outbound Cloud API credentials stay empty on staging (drafts/handoff still work
-  once `backendReady`).
+- Live deploy blocked until Cloudflare + Firebase SA secrets are in a **new** agent run.
+- Meta outbound stays empty; drafts/handoff work once `backendReady`.
 
 Explicitly **not** in Phase 9A:
 
 - Production Worker or live Hosting deploy (Phase 9B / owner-run `deploy-all`)
 - Automatic WhatsApp/Telegram send (Q-3)
 - Deals page / bottom navigation / home redesign
-- Isolated staging Firebase project
-
-Exit criteria: staging path is full-functional (not UI-only); cannot hit production
-deploy targets; client routes staging Hosting → staging Worker; docs + tests green;
-live deploy + smoke when credentials present. **Kit met; live deploy pending secrets.**
 
 **STOP HERE — do not begin Phase 9B / production deploy without owner approval.**
+**Do not publish/deploy Firebase or Worker until the owner explicitly asks.**

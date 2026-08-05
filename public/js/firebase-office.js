@@ -1,7 +1,17 @@
 (() => {
   "use strict";
 
-  const PROJECT_ID = "aqar-b5d76";
+  function resolveFirebaseProjectId() {
+    if (window.IAQAR && window.IAQAR.firebaseProjectId) return window.IAQAR.firebaseProjectId;
+    try {
+      const id = window.firebase && window.firebase.app && window.firebase.app().options
+        ? window.firebase.app().options.projectId
+        : "";
+      if (id) return id;
+    } catch (_) { /* app not ready */ }
+    return "aqar-b5d76";
+  }
+  const PROJECT_ID = resolveFirebaseProjectId();
   const STORAGE_KEY = "iaqar.officeId";
   const DEFAULT_OFFICE_ID = "platform";
   const ROOT_COLLECTION = "offices";

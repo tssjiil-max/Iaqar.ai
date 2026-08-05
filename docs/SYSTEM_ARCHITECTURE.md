@@ -92,7 +92,7 @@ Route groups:
 | Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
 | Messages (Phase 7) | `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters` | Persisted Arabic drafts + external broker handoff; never Cloud API/Bot send. |
 | Public abuse (Phase 8) | Rate limits on `/pipeline/public-intake`, `/media/public-intake` | Sliding-window 429 `rate_limited` before Firestore/R2 work. |
-| Staging (Phase 9A) | Worker `iaqar-intake-staging` via `wrangler --env staging`; Hosting preview channel `staging` | Full-functional: requires Worker Firebase secrets (`backendReady`). Fail-closed client routing; staging cron off. Same Firebase project + R2; never overwrites live Hosting/production Worker. |
+| Staging (Phase 9A) | Worker `iaqar-intake-staging` (`FIREBASE_PROJECT_ID=iaqar-ai-staging`); Hosting channel `staging` on project `iaqar-ai-staging` | Full-functional: SA secrets → temp GAC (no `FIREBASE_TOKEN`); `backendReady` gate; staging cron off; R2 `iaqar-media` shared; never overwrites production Hosting/Worker (`aqar-b5d76`). |
 | Blocked | `/ingest` → 410; other `*messages*`/`*send*` → 403 `outbound_disabled` | Meta/Telegram outbound send refused at the edge (draft APIs excluded). |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the

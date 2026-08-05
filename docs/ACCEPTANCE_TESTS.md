@@ -40,12 +40,12 @@ Test files:
 | `worker/test/worker.test.mjs` | Worker routes and pure functions, including matching/preview, Phase 4–9A health env |
 | `test/helpers/shell.mjs` | jsdom loader for the shell (not a test file) |
 
-Status as of the end of **Phase 9A (full-functional kit)**:
+Status as of the end of **Phase 9A (full-functional kit → `iaqar-ai-staging`)**:
 - Phase 0–8 regression suites remain green.
-- Staging path requires Worker `backendReady` (Firebase secrets on `--env staging`), not UI-only.
-- Client fail-closed routes `--staging` Hosting to staging Worker; production hosts unchanged.
-- Staging cron disabled; shared project/R2 side effects documented (D-018).
-- Live staging deploy requires owner secrets; not claimed until `deploy:staging` succeeds.
+- Staging Firebase project is `iaqar-ai-staging` (not production `aqar-b5d76`).
+- Deploy uses service-account GAC (no `FIREBASE_TOKEN`); requires Worker `backendReady`.
+- Client fail-closed routes `--staging` Hosting to staging Worker + staging project id.
+- Live staging deploy needs a **new** Cloud Agent run with secrets; not claimed live yet.
 - Aggregated gate: `npm run test:phase9a` (`npm test && npm run test:rules && npm run check`).
 
 | # | Scenario | Status | Test |

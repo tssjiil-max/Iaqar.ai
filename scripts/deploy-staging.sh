@@ -1,16 +1,29 @@
 #!/usr/bin/env bash
 # Phase 9A — full-functional staging-only deploy. Refuses production targets.
-# Requires Worker Firebase secrets on --env staging so backend APIs work (not UI-only).
+# Auth: Google service account via temporary GOOGLE_APPLICATION_CREDENTIALS (no FIREBASE_TOKEN).
+# Firebase project: iaqar-ai-staging
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+STAGING_FIREBASE_PROJECT="iaqar-ai-staging"
+STAGING_WORKER_NAME="iaqar-intake-staging"
+STAGING_WORKER_URL="https://${STAGING_WORKER_NAME}.iaqar-ai.workers.dev"
+GAC_FILE=""
+
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-echo "=== IAQAR Phase 9A staging deploy (full-functional) ==="
+cleanup() {
+  if [[ -n "${GAC_FILE:-}" && -f "$GAC_FILE" ]]; then
+    rm -f "$GAC_FILE" || true
+  fi
+  unset GOOGLE_APPLICATION_CREDENTIALS || true
+}
+trap cleanup EXIT
 
-# Hard guards — never allow production deploy through this script.
+echo "=== IAQAR Phase 9A staging deploy (full-functional, project ${STAGING_FIREBASE_PROJECT}) ==="
+
 if [[ "${IAQAR_DEPLOY_TARGET:-staging}" != "staging" ]]; then
   die "IAQAR_DEPLOY_TARGET must be 'staging' (got '${IAQAR_DEPLOY_TARGET:-}'). Refusing."
 fi
@@ -20,7 +33,14 @@ fi
 
 [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] || die "CLOUDFLARE_API_TOKEN is required"
 [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || die "CLOUDFLARE_ACCOUNT_ID is required"
-[[ -n "${FIREBASE_TOKEN:-}" ]] || die "FIREBASE_TOKEN is required (firebase login:ci)"
+[[ -n "${FIREBASE_CLIENT_EMAIL:-}" ]] || die "FIREBASE_CLIENT_EMAIL is required"
+[[ -n "${FIREBASE_PRIVATE_KEY:-}" ]] || die "FIREBASE_PRIVATE_KEY is required"
+[[ -n "${FIREBASE_PRIVATE_KEY_ID:-}" ]] || die "FIREBASE_PRIVATE_KEY_ID is required"
+
+# Explicitly unused — service account auth replaces CI user tokens.
+if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
+  echo "NOTE: FIREBASE_TOKEN is set but ignored; staging deploy uses service-account GAC."
+fi
 
 command -v node >/dev/null || die "node is required"
 command -v npm >/dev/null || die "npm is required"
@@ -30,35 +50,48 @@ echo "--- Preflight tests ---"
 npm test
 npm run check
 
-STAGING_WORKER_NAME="iaqar-intake-staging"
-STAGING_WORKER_URL="https://${STAGING_WORKER_NAME}.iaqar-ai.workers.dev"
+echo "--- Temporary Google Application Credentials (service account) ---"
+GAC_FILE="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-gac.XXXXXX")"
+export FIREBASE_STAGING_PROJECT_ID="$STAGING_FIREBASE_PROJECT"
+node scripts/staging-gac.mjs "$GAC_FILE"
+export GOOGLE_APPLICATION_CREDENTIALS="$GAC_FILE"
+chmod 600 "$GAC_FILE"
 
 echo "--- Cloudflare Worker (staging env only) ---"
 (
   cd worker
-  # Explicit --env staging; never bare deploy.
   npx wrangler deploy --env staging
 )
 
-echo "--- Firebase Hosting channel 'staging' only ---"
-CHANNEL_LOG="$(mktemp)"
-# Preview channel — does not overwrite live hosting.
-# FIREBASE_TOKEN needs Auth Admin so the channel domain is authorized for Auth.
+echo "--- Sync Worker staging secrets from environment (values not printed) ---"
+(
+  cd worker
+  # Pipe secret values; Wrangler reads stdin. Never echo the values.
+  printf '%s' "$FIREBASE_CLIENT_EMAIL" | npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging
+  printf '%s' "$FIREBASE_PRIVATE_KEY" | npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging
+  printf '%s' "$FIREBASE_PRIVATE_KEY_ID" | npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging
+)
+
+echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"
+CHANNEL_LOG="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-channel.XXXXXX")"
 set +e
 npx firebase-tools hosting:channel:deploy staging \
-  --project aqar-b5d76 \
+  --project "$STAGING_FIREBASE_PROJECT" \
   --expires 30d \
-  --token "$FIREBASE_TOKEN" 2>&1 | tee "$CHANNEL_LOG"
+  --non-interactive 2>&1 | tee "$CHANNEL_LOG"
 CHANNEL_RC=${PIPESTATUS[0]}
 set -e
-[[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed"
+[[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed for ${STAGING_FIREBASE_PROJECT}"
 
 if grep -qiE "Unable to add channel domain|authorized domain" "$CHANNEL_LOG"; then
-  echo "WARNING: Auth authorized-domain sync may have failed. Phone/email Auth on the channel can break." >&2
-  echo "Ensure FIREBASE_TOKEN has Auth Admin, then re-run channel deploy." >&2
+  echo "WARNING: Auth authorized-domain sync may have failed." >&2
+  echo "Grant the staging service account Firebase Auth Admin (or add the channel domain manually)." >&2
 fi
 
-STAGING_HOSTING_URL="$(grep -oE 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.web\.app' "$CHANNEL_LOG" | head -1 || true)"
+STAGING_HOSTING_URL="$(grep -oE "https://[A-Za-z0-9._-]*${STAGING_FIREBASE_PROJECT}--staging[A-Za-z0-9._-]*\\.web\\.app" "$CHANNEL_LOG" | head -1 || true)"
+if [[ -z "$STAGING_HOSTING_URL" ]]; then
+  STAGING_HOSTING_URL="$(grep -oE 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.web\.app' "$CHANNEL_LOG" | head -1 || true)"
+fi
 if [[ -z "$STAGING_HOSTING_URL" ]]; then
   STAGING_HOSTING_URL="$(grep -oE 'https://[A-Za-z0-9._-]+--staging[A-Za-z0-9._-]+\.firebaseapp\.com' "$CHANNEL_LOG" | head -1 || true)"
 fi
@@ -78,13 +111,16 @@ if (body.deploymentEnvironment !== "staging") {
   console.error("deploymentEnvironment must be staging, got", body.deploymentEnvironment);
   process.exit(1);
 }
+if (body.projectId && body.projectId !== "iaqar-ai-staging") {
+  console.error("health.projectId must be iaqar-ai-staging, got", body.projectId);
+  process.exit(1);
+}
 if (body.outboundMessaging === true) {
   console.error("outboundMessaging must remain false on staging");
   process.exit(1);
 }
 if (body.firebaseConfigured !== true || body.backendReady !== true) {
   console.error("Staging Worker is UI-only: firebaseConfigured/backendReady must be true.");
-  console.error("Set Wrangler secrets on --env staging: FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_PRIVATE_KEY_ID");
   process.exit(1);
 }
 if (body.cronEnabled === true) {
@@ -106,6 +142,7 @@ node scripts/smoke-staging.mjs
 
 echo ""
 echo "=== Phase 9A full-functional staging deploy complete ==="
+echo "Firebase project: ${STAGING_FIREBASE_PROJECT}"
 echo "Worker:  ${STAGING_WORKER_URL}"
 if [[ -n "${STAGING_HOSTING_URL:-}" ]]; then
   echo "Hosting: ${STAGING_HOSTING_URL}"
@@ -113,5 +150,6 @@ else
   echo "Hosting: open the firebase channel URL printed above (must contain --staging)"
 fi
 echo "Verify in browser: window.IAQAR.deploymentEnvironment === \"staging\""
-echo "Verify Worker: /health backendReady === true"
+echo "Verify Worker: /health backendReady === true and projectId === iaqar-ai-staging"
 echo "Do NOT run deploy-all / bare wrangler deploy / bare firebase deploy from this path."
+# trap cleanup removes GAC_FILE

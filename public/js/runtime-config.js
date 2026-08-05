@@ -12,6 +12,8 @@
 
   const PRODUCTION_WORKER = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
   const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+  const PRODUCTION_FIREBASE_PROJECT = "aqar-b5d76";
+  const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";
 
   function hostname() {
     try {
@@ -55,16 +57,22 @@
 
   const deploymentEnvironment = detectEnvironment();
   const workerBase = deploymentEnvironment === "staging" ? STAGING_WORKER : PRODUCTION_WORKER;
+  const firebaseProjectId = deploymentEnvironment === "staging"
+    ? STAGING_FIREBASE_PROJECT
+    : PRODUCTION_FIREBASE_PROJECT;
 
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.deploymentEnvironment = deploymentEnvironment;
   window.IAQAR.workerBase = workerBase;
+  window.IAQAR.firebaseProjectId = firebaseProjectId;
   window.IAQAR.PRODUCTION_WORKER = PRODUCTION_WORKER;
   window.IAQAR.STAGING_WORKER = STAGING_WORKER;
+  window.IAQAR.PRODUCTION_FIREBASE_PROJECT = PRODUCTION_FIREBASE_PROJECT;
+  window.IAQAR.STAGING_FIREBASE_PROJECT = STAGING_FIREBASE_PROJECT;
   window.IAQAR.resolveWorkerBase = resolveWorkerBase;
   window.IAQAR.detectEnvironment = detectEnvironment;
 
   window.dispatchEvent(new CustomEvent("iaqar:runtime-config-ready", {
-    detail: { deploymentEnvironment, workerBase }
+    detail: { deploymentEnvironment, workerBase, firebaseProjectId }
   }));
 })();
