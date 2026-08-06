@@ -59,22 +59,20 @@ create/delete. Probe resources are staging-prefixed and removed immediately.
 the account home URL / Workers overview).
 
 ### Firebase staging service account (project `iaqar-ai-staging`)
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY`
-- `FIREBASE_PRIVATE_KEY_ID`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
 
-Use the individual fields from the `iaqar-ai-staging` service-account JSON. The deploy
-preflight safely trims matching outer quotes, converts literal `\n` sequences in
-`FIREBASE_PRIVATE_KEY` to real line breaks, requires the complete <!-- // pragma: allowlist secret -->
-`BEGIN PRIVATE KEY` / `END PRIVATE KEY` PKCS8 envelope, validates the service-account
-email and key ID formats, constructs a Firebase Admin credential, and creates a local
-RSA-SHA256 JWT signature. Invalid output names only the failing environment variable;
-values are never printed.
+Store the complete downloaded `iaqar-ai-staging` service-account JSON as the value. The
+deploy preflight accepts either the raw JSON object text or a JSON-string-encoded copy,
+validates its project/type and required fields, normalizes literal `\n` sequences inside
+the private key, requires the complete `BEGIN PRIVATE KEY` / `END PRIVATE KEY` PKCS8
+envelope, constructs a Firebase Admin credential, and creates a local RSA-SHA256 JWT
+signature. Invalid output names only the failing JSON field; values are never printed.
 
 `FIREBASE_TOKEN` / `firebase login:ci` is **not used**. The deploy script builds a
-temporary JSON key, sets `GOOGLE_APPLICATION_CREDENTIALS`, runs firebase-tools, syncs
-the same secrets onto the staging Worker, then deletes the temp file (never committed,
-never printed).
+temporary credential file directly from the JSON secret, sets
+`GOOGLE_APPLICATION_CREDENTIALS`, runs firebase-tools, derives the three runtime fields
+needed by the staging Worker into private temporary files, and deletes all temporary
+files on exit (never committed, never printed).
 
 Recommended IAM on that service account for Hosting channel deploy:
 - Firebase Hosting Admin
@@ -90,8 +88,8 @@ Leave `META_*` empty — outbound Cloud API stays blocked; drafts/handoff still 
 Repo / environment secrets added **after** a Cloud Agent run started are **not**
 visible in that already-running session. Start a **new** Cloud Agent run (with the
 secrets configured for the environment/repo) so
-`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` (and
-Cloudflare vars) are present in the process environment before deploy.
+`FIREBASE_SERVICE_ACCOUNT_JSON` and the Cloudflare vars are present in the process
+environment before deploy.
 
 ## Deploy (staging only) — do not run until owner approves live deploy
 
@@ -103,7 +101,7 @@ npm run deploy:staging
 
 The script:
 
-1. Normalizes and validates the three Firebase fields without printing values.
+1. Parses and validates `FIREBASE_SERVICE_ACCOUNT_JSON` without printing its value.
 2. Creates a temp GAC and verifies local JWT signing, Google OAuth exchange, and access
    to Firebase Hosting project `iaqar-ai-staging`.
 3. Verifies Cloudflare through account-scoped Workers Scripts and R2 create/delete

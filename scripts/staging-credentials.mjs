@@ -31,14 +31,6 @@ export function normalizePrivateKey(value) {
     .trim();
 }
 
-export function normalizeFirebaseSecrets(env = process.env) {
-  return {
-    clientEmail: stripOuterQuotes(env.FIREBASE_CLIENT_EMAIL), // pragma: allowlist secret
-    privateKeyId: stripOuterQuotes(env.FIREBASE_PRIVATE_KEY_ID), // pragma: allowlist secret
-    privateKey: normalizePrivateKey(env.FIREBASE_PRIVATE_KEY) // pragma: allowlist secret
-  };
-}
-
 export function validateFirebaseSecrets(credentials) {
   const invalidFields = [];
   const clientEmail = String(credentials?.clientEmail || "");
@@ -46,16 +38,16 @@ export function validateFirebaseSecrets(credentials) {
   const privateKey = String(credentials?.privateKey || "");
 
   if (!/^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/i.test(clientEmail)) {
-    invalidFields.push("FIREBASE_CLIENT_EMAIL"); // pragma: allowlist secret
+    invalidFields.push("client_email"); // pragma: allowlist secret
   }
   if (!/^[a-f0-9]{40}$/i.test(privateKeyId)) {
-    invalidFields.push("FIREBASE_PRIVATE_KEY_ID"); // pragma: allowlist secret
+    invalidFields.push("private_key_id"); // pragma: allowlist secret
   }
 
   const hasPemEnvelope = privateKey.startsWith("-----BEGIN PRIVATE KEY-----")
     && privateKey.endsWith("-----END PRIVATE KEY-----");
   if (!hasPemEnvelope) {
-    invalidFields.push("FIREBASE_PRIVATE_KEY"); // pragma: allowlist secret
+    invalidFields.push("private_key"); // pragma: allowlist secret
   } else {
     try {
       const key = createPrivateKey(privateKey);
@@ -64,11 +56,45 @@ export function validateFirebaseSecrets(credentials) {
       signer.end();
       signer.sign(key);
     } catch {
-      invalidFields.push("FIREBASE_PRIVATE_KEY"); // pragma: allowlist secret
+      invalidFields.push("private_key"); // pragma: allowlist secret
     }
   }
 
   return [...new Set(invalidFields)];
+}
+
+export function parseFirebaseServiceAccountJson(value, expectedProjectId) {
+  const invalid = (fields) => ({
+    serviceAccount: null,
+    invalidFields: fields.map((field) => `FIREBASE_SERVICE_ACCOUNT_JSON${field ? `.${field}` : ""}`)
+  });
+  const raw = String(value ?? "").trim();
+  if (!raw) return invalid([]);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+    if (typeof parsed === "string") parsed = JSON.parse(parsed);
+  } catch {
+    return invalid([]);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return invalid([]);
+
+  const credentials = {
+    clientEmail: stripOuterQuotes(parsed.client_email), // pragma: allowlist secret
+    privateKeyId: stripOuterQuotes(parsed.private_key_id), // pragma: allowlist secret
+    privateKey: normalizePrivateKey(parsed.private_key) // pragma: allowlist secret
+  };
+  const invalidFields = [];
+  if (parsed.type !== "service_account") invalidFields.push("type");
+  if (stripOuterQuotes(parsed.project_id) !== expectedProjectId) invalidFields.push("project_id");
+  invalidFields.push(...validateFirebaseSecrets(credentials));
+  if (invalidFields.length) return invalid([...new Set(invalidFields)]);
+
+  return {
+    serviceAccount: createServiceAccountPayload(credentials, expectedProjectId),
+    invalidFields: []
+  };
 }
 
 export function createServiceAccountPayload(credentials, projectId) {

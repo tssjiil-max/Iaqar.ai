@@ -444,9 +444,9 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
    --project iaqar-ai-staging` — never bare `firebase deploy --only hosting` on
    production.
 4. **Service-account auth (no FIREBASE_TOKEN).** Deploy builds a temporary GAC JSON
-   from `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID`,
-   sets `GOOGLE_APPLICATION_CREDENTIALS`, syncs the same secrets to the staging Worker,
-   then deletes the temp file. Values are never printed or committed.
+   from `FIREBASE_SERVICE_ACCOUNT_JSON`, sets `GOOGLE_APPLICATION_CREDENTIALS`, derives
+   the runtime fields required by the staging Worker into private temporary files, then
+   deletes every temp file. Values are never printed or committed.
 5. **Client routing (fail closed).** `runtime-config.js` maps `--staging` /
    `?env=staging` to the staging Worker and `firebaseProjectId=iaqar-ai-staging`.
 6. **Full-functional gate.** `/health` must report `backendReady` and

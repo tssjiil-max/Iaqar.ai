@@ -37,9 +37,7 @@ fi
 
 [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] || die "CLOUDFLARE_API_TOKEN is required"
 [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || die "CLOUDFLARE_ACCOUNT_ID is required"
-[[ -n "${FIREBASE_CLIENT_EMAIL:-}" ]] || die "FIREBASE_CLIENT_EMAIL is required"
-[[ -n "${FIREBASE_PRIVATE_KEY:-}" ]] || die "FIREBASE_PRIVATE_KEY is required"
-[[ -n "${FIREBASE_PRIVATE_KEY_ID:-}" ]] || die "FIREBASE_PRIVATE_KEY_ID is required"
+[[ -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ]] || die "FIREBASE_SERVICE_ACCOUNT_JSON is required"
 
 # Explicitly unused — service account auth replaces CI user tokens.
 if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
@@ -50,7 +48,7 @@ command -v node >/dev/null || die "node is required"
 command -v npm >/dev/null || die "npm is required"
 command -v npx >/dev/null || die "npx is required"
 
-echo "--- Normalize + validate Firebase credentials (no secret output) ---"
+echo "--- Parse + validate Firebase service-account JSON (no secret output) ---"
 GAC_FILE="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-gac.XXXXXX")"
 NORMALIZED_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/iaqar-staging-secrets.XXXXXX")"
 export FIREBASE_STAGING_PROJECT_ID="$STAGING_FIREBASE_PROJECT"
@@ -70,7 +68,7 @@ echo "--- Cloudflare Worker (staging env only) ---"
   npx wrangler deploy --env staging
 )
 
-echo "--- Sync Worker staging secrets from environment (values not printed) ---"
+echo "--- Sync derived Worker staging secrets (values not printed) ---"
 (
   cd worker
   # Wrangler reads normalized values from private temp files. Values never reach logs.

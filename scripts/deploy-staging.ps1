@@ -38,15 +38,13 @@ try {
 
   if (-not $env:CLOUDFLARE_API_TOKEN) { Die "CLOUDFLARE_API_TOKEN is required" }
   if (-not $env:CLOUDFLARE_ACCOUNT_ID) { Die "CLOUDFLARE_ACCOUNT_ID is required" }
-  if (-not $env:FIREBASE_CLIENT_EMAIL) { Die "FIREBASE_CLIENT_EMAIL is required" }
-  if (-not $env:FIREBASE_PRIVATE_KEY) { Die "FIREBASE_PRIVATE_KEY is required" }
-  if (-not $env:FIREBASE_PRIVATE_KEY_ID) { Die "FIREBASE_PRIVATE_KEY_ID is required" }
+  if (-not $env:FIREBASE_SERVICE_ACCOUNT_JSON) { Die "FIREBASE_SERVICE_ACCOUNT_JSON is required" }
 
   if ($env:FIREBASE_TOKEN) {
     Write-Host "NOTE: FIREBASE_TOKEN is set but ignored; staging deploy uses service-account GAC."
   }
 
-  Write-Host "--- Normalize + validate Firebase credentials (no secret output) ---"
+  Write-Host "--- Parse + validate Firebase service-account JSON (no secret output) ---"
   $GacFile = Join-Path ([System.IO.Path]::GetTempPath()) ("iaqar-staging-gac-" + [guid]::NewGuid().ToString("N") + ".json")
   $NormalizedSecretDir = Join-Path ([System.IO.Path]::GetTempPath()) ("iaqar-staging-secrets-" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $NormalizedSecretDir | Out-Null
@@ -69,7 +67,7 @@ try {
     npx wrangler deploy --env staging
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    Write-Host "--- Sync Worker staging secrets from environment (values not printed) ---"
+    Write-Host "--- Sync derived Worker staging secrets (values not printed) ---"
     Get-Content -LiteralPath (Join-Path $NormalizedSecretDir "FIREBASE_CLIENT_EMAIL") -Raw | # // pragma: allowlist secret
       npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging # // pragma: allowlist secret
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

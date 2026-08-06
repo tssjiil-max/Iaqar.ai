@@ -6,9 +6,9 @@ for owner approval before the next begins.
 Current position: **Phase 9A full-functional staging kit retargeted to `iaqar-ai-staging` — stop before Phase 9B / production deploy. No live deploy in this turn.**
 
 Live staging deploy requires `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
-Firebase SA secrets `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` /
-`FIREBASE_PRIVATE_KEY_ID` (no `FIREBASE_TOKEN`). Secrets must be present in a **new**
-Cloud Agent run. Not claimed live until `npm run deploy:staging` succeeds.
+the complete Firebase SA secret `FIREBASE_SERVICE_ACCOUNT_JSON` (no `FIREBASE_TOKEN`).
+Secrets must be present in a **new** Cloud Agent run. Not claimed live until
+`npm run deploy:staging` succeeds.
 
 ---
 
@@ -349,8 +349,8 @@ Delivered:
 - **Client runtime routing (fail closed):** staging → staging Worker +
   `firebaseProjectId=iaqar-ai-staging`. Channel-local `/__/firebase/init.js`.
 - **Deploy auth without FIREBASE_TOKEN:** temp GAC from
-  `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` →
-  `GOOGLE_APPLICATION_CREDENTIALS` → deleted after; secrets synced to Worker staging.
+  `FIREBASE_SERVICE_ACCOUNT_JSON` → `GOOGLE_APPLICATION_CREDENTIALS` → deleted after;
+  required runtime fields are derived into private temp files and synced to Worker staging.
 - **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-credentials.mjs`,
   `staging-gac.mjs`, `preflight-staging.mjs`, `smoke-staging.mjs`. The preflight
   normalizes quoted/escaped Firebase fields, verifies local JWT + Google OAuth, and

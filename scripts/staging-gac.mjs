@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 /**
  * Phase 9A — write a temporary Google service-account JSON for firebase-tools.
- * Reads FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID.
+ * Reads FIREBASE_SERVICE_ACCOUNT_JSON.
  * Never prints secret values. Caller must delete the file after use.
  *
  * Usage: node scripts/staging-gac.mjs /absolute/path/to/temp.json [/tmp/normalized-secret-dir]
  */
 import { closeSync, openSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-  createServiceAccountPayload,
-  normalizeFirebaseSecrets,
-  validateFirebaseSecrets
-} from "./staging-credentials.mjs";
+import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 
 const outPath = process.argv[2];
 const secretDir = process.argv[3] || "";
@@ -29,15 +25,15 @@ if (secretDir && (
 }
 
 const projectId = process.env.FIREBASE_STAGING_PROJECT_ID || "iaqar-ai-staging";
-const credentials = normalizeFirebaseSecrets();
-const invalidFields = validateFirebaseSecrets(credentials);
+const { serviceAccount: payload, invalidFields } = parseFirebaseServiceAccountJson(
+  process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  projectId
+);
 
 if (invalidFields.length) {
   console.error(`staging-gac: invalid field(s): ${invalidFields.join(", ")}`);
   process.exit(1);
 }
-
-const payload = createServiceAccountPayload(credentials, projectId);
 
 function writePrivateFile(filePath, contents) {
   const fd = openSync(filePath, "w", 0o600);
@@ -50,9 +46,9 @@ function writePrivateFile(filePath, contents) {
 
 writePrivateFile(outPath, `${JSON.stringify(payload)}\n`);
 if (secretDir) {
-  writePrivateFile(path.join(secretDir, "FIREBASE_CLIENT_EMAIL"), credentials.clientEmail); // pragma: allowlist secret
-  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY"), `${credentials.privateKey}\n`); // pragma: allowlist secret
-  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY_ID"), credentials.privateKeyId); // pragma: allowlist secret
+  writePrivateFile(path.join(secretDir, "FIREBASE_CLIENT_EMAIL"), payload.client_email); // pragma: allowlist secret
+  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY"), payload.private_key); // pragma: allowlist secret
+  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY_ID"), payload.private_key_id); // pragma: allowlist secret
 }
 
 // Presence-only confirmation — never print secret material.
