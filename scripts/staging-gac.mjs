@@ -4,55 +4,56 @@
  * Reads FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID.
  * Never prints secret values. Caller must delete the file after use.
  *
- * Usage: node scripts/staging-gac.mjs /absolute/path/to/temp.json
+ * Usage: node scripts/staging-gac.mjs /absolute/path/to/temp.json [/tmp/normalized-secret-dir]
  */
 import { closeSync, openSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import {
+  createServiceAccountPayload,
+  normalizeFirebaseSecrets,
+  validateFirebaseSecrets
+} from "./staging-credentials.mjs";
 
 const outPath = process.argv[2];
+const secretDir = process.argv[3] || "";
 if (!outPath || outPath.includes("..") || !(outPath.startsWith("/tmp/") || outPath.startsWith("/var/tmp/"))) {
   console.error("staging-gac: refuse to write outside /tmp or /var/tmp");
   process.exit(2);
 }
+if (secretDir && (
+  secretDir.includes("..")
+  || !(secretDir.startsWith("/tmp/") || secretDir.startsWith("/var/tmp/"))
+)) {
+  console.error("staging-gac: refuse to write normalized secrets outside /tmp or /var/tmp");
+  process.exit(2);
+}
 
-const email = process.env.FIREBASE_CLIENT_EMAIL;
-const keyRaw = process.env.FIREBASE_PRIVATE_KEY;
-const keyId = process.env.FIREBASE_PRIVATE_KEY_ID;
 const projectId = process.env.FIREBASE_STAGING_PROJECT_ID || "iaqar-ai-staging";
+const credentials = normalizeFirebaseSecrets();
+const invalidFields = validateFirebaseSecrets(credentials);
 
-if (!email || !String(email).trim()) {
-  console.error("staging-gac: FIREBASE_CLIENT_EMAIL is required");
-  process.exit(1);
-}
-if (!keyRaw || !String(keyRaw).trim()) {
-  console.error("staging-gac: FIREBASE_PRIVATE_KEY is required");
-  process.exit(1);
-}
-if (!keyId || !String(keyId).trim()) {
-  console.error("staging-gac: FIREBASE_PRIVATE_KEY_ID is required");
+if (invalidFields.length) {
+  console.error(`staging-gac: invalid field(s): ${invalidFields.join(", ")}`);
   process.exit(1);
 }
 
-const privateKey = String(keyRaw).includes("\\n")
-  ? String(keyRaw).replace(/\\n/g, "\n")
-  : String(keyRaw);
+const payload = createServiceAccountPayload(credentials, projectId);
 
-const payload = {
-  type: "service_account",
-  project_id: projectId,
-  private_key_id: String(keyId).trim(),
-  private_key: privateKey,
-  client_email: String(email).trim(),
-  token_uri: "https://oauth2.googleapis.com/token",
-  auth_uri: "https://accounts.google.com/o/oauth2/auth",
-  auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs"
-};
+function writePrivateFile(filePath, contents) {
+  const fd = openSync(filePath, "w", 0o600);
+  try {
+    writeFileSync(fd, contents, { encoding: "utf8" });
+  } finally {
+    closeSync(fd);
+  }
+}
 
-const fd = openSync(outPath, "w", 0o600);
-try {
-  writeFileSync(fd, `${JSON.stringify(payload)}\n`, { encoding: "utf8" });
-} finally {
-  closeSync(fd);
+writePrivateFile(outPath, `${JSON.stringify(payload)}\n`);
+if (secretDir) {
+  writePrivateFile(path.join(secretDir, "FIREBASE_CLIENT_EMAIL"), credentials.clientEmail); // pragma: allowlist secret
+  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY"), `${credentials.privateKey}\n`); // pragma: allowlist secret
+  writePrivateFile(path.join(secretDir, "FIREBASE_PRIVATE_KEY_ID"), credentials.privateKeyId); // pragma: allowlist secret
 }
 
 // Presence-only confirmation — never print secret material.
-console.log(`staging-gac: wrote credentials file for project ${projectId}`);
+console.log(`staging-gac: normalized fields and verified local RSA signing for project ${projectId}`);

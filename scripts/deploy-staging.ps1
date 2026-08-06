@@ -9,6 +9,7 @@ $StagingFirebaseProject = "iaqar-ai-staging"
 $StagingWorkerName = "iaqar-intake-staging"
 $StagingWorkerUrl = "https://$StagingWorkerName.iaqar-ai.workers.dev"
 $GacFile = $null
+$NormalizedSecretDir = $null
 
 function Die([string]$Message) {
   Write-Error "ERROR: $Message"
@@ -16,6 +17,9 @@ function Die([string]$Message) {
 }
 
 function Cleanup {
+  if ($NormalizedSecretDir -and (Test-Path -LiteralPath $NormalizedSecretDir)) {
+    Remove-Item -LiteralPath $NormalizedSecretDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
   if ($GacFile -and (Test-Path -LiteralPath $GacFile)) {
     Remove-Item -LiteralPath $GacFile -Force -ErrorAction SilentlyContinue
   }
@@ -42,18 +46,22 @@ try {
     Write-Host "NOTE: FIREBASE_TOKEN is set but ignored; staging deploy uses service-account GAC."
   }
 
-  Write-Host "--- Preflight tests ---"
-  npm test
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  npm run check
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-  Write-Host "--- Temporary Google Application Credentials (service account) ---"
+  Write-Host "--- Normalize + validate Firebase credentials (no secret output) ---"
   $GacFile = Join-Path ([System.IO.Path]::GetTempPath()) ("iaqar-staging-gac-" + [guid]::NewGuid().ToString("N") + ".json")
+  $NormalizedSecretDir = Join-Path ([System.IO.Path]::GetTempPath()) ("iaqar-staging-secrets-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $NormalizedSecretDir | Out-Null
   $env:FIREBASE_STAGING_PROJECT_ID = $StagingFirebaseProject
-  node (Join-Path $Root "scripts/staging-gac.mjs") $GacFile
+  node (Join-Path $Root "scripts/staging-gac.mjs") $GacFile $NormalizedSecretDir
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   $env:GOOGLE_APPLICATION_CREDENTIALS = $GacFile
+
+  Write-Host "--- Staging credential + permission preflight ---"
+  node (Join-Path $Root "scripts/preflight-staging.mjs") $GacFile
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  Write-Host "--- Full Phase 9A test gate ---"
+  npm run test:phase9a
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   Write-Host "--- Cloudflare Worker (staging env only) ---"
   Push-Location (Join-Path $Root "worker")
@@ -62,11 +70,14 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host "--- Sync Worker staging secrets from environment (values not printed) ---"
-    $env:FIREBASE_CLIENT_EMAIL | npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging
+    Get-Content -LiteralPath (Join-Path $NormalizedSecretDir "FIREBASE_CLIENT_EMAIL") -Raw | # // pragma: allowlist secret
+      npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging # // pragma: allowlist secret
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    $env:FIREBASE_PRIVATE_KEY | npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging
+    Get-Content -LiteralPath (Join-Path $NormalizedSecretDir "FIREBASE_PRIVATE_KEY") -Raw | # // pragma: allowlist secret
+      npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging # // pragma: allowlist secret
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    $env:FIREBASE_PRIVATE_KEY_ID | npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging
+    Get-Content -LiteralPath (Join-Path $NormalizedSecretDir "FIREBASE_PRIVATE_KEY_ID") -Raw | # // pragma: allowlist secret
+      npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging # // pragma: allowlist secret
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   } finally {
     Pop-Location

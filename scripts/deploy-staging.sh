@@ -11,10 +11,14 @@ STAGING_FIREBASE_PROJECT="iaqar-ai-staging"
 STAGING_WORKER_NAME="iaqar-intake-staging"
 STAGING_WORKER_URL="https://${STAGING_WORKER_NAME}.iaqar-ai.workers.dev"
 GAC_FILE=""
+NORMALIZED_SECRET_DIR=""
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 cleanup() {
+  if [[ -n "${NORMALIZED_SECRET_DIR:-}" && -d "$NORMALIZED_SECRET_DIR" ]]; then
+    rm -rf "$NORMALIZED_SECRET_DIR" || true
+  fi
   if [[ -n "${GAC_FILE:-}" && -f "$GAC_FILE" ]]; then
     rm -f "$GAC_FILE" || true
   fi
@@ -46,16 +50,19 @@ command -v node >/dev/null || die "node is required"
 command -v npm >/dev/null || die "npm is required"
 command -v npx >/dev/null || die "npx is required"
 
-echo "--- Preflight tests ---"
-npm test
-npm run check
-
-echo "--- Temporary Google Application Credentials (service account) ---"
+echo "--- Normalize + validate Firebase credentials (no secret output) ---"
 GAC_FILE="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-gac.XXXXXX")"
+NORMALIZED_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/iaqar-staging-secrets.XXXXXX")"
 export FIREBASE_STAGING_PROJECT_ID="$STAGING_FIREBASE_PROJECT"
-node scripts/staging-gac.mjs "$GAC_FILE"
+node scripts/staging-gac.mjs "$GAC_FILE" "$NORMALIZED_SECRET_DIR"
 export GOOGLE_APPLICATION_CREDENTIALS="$GAC_FILE"
 chmod 600 "$GAC_FILE"
+
+echo "--- Staging credential + permission preflight ---"
+node scripts/preflight-staging.mjs "$GAC_FILE"
+
+echo "--- Full Phase 9A test gate ---"
+npm run test:phase9a
 
 echo "--- Cloudflare Worker (staging env only) ---"
 (
@@ -66,10 +73,10 @@ echo "--- Cloudflare Worker (staging env only) ---"
 echo "--- Sync Worker staging secrets from environment (values not printed) ---"
 (
   cd worker
-  # Pipe secret values; Wrangler reads stdin. Never echo the values.
-  printf '%s' "$FIREBASE_CLIENT_EMAIL" | npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging
-  printf '%s' "$FIREBASE_PRIVATE_KEY" | npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging
-  printf '%s' "$FIREBASE_PRIVATE_KEY_ID" | npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging
+  # Wrangler reads normalized values from private temp files. Values never reach logs.
+  npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_CLIENT_EMAIL" # // pragma: allowlist secret
+  npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY" # // pragma: allowlist secret
+  npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY_ID" # // pragma: allowlist secret
 )
 
 echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"

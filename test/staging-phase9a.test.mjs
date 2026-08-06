@@ -9,7 +9,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { JSDOM } from "jsdom";
+import {
+  createServiceAccountJwt,
+  normalizeFirebaseSecrets,
+  validateFirebaseSecrets
+} from "../scripts/staging-credentials.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -101,6 +107,8 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(script.includes("FIREBASE_PRIVATE_KEY_ID"));
   assert.ok(script.includes("GOOGLE_APPLICATION_CREDENTIALS"));
   assert.ok(script.includes("staging-gac.mjs"));
+  assert.ok(script.includes("preflight-staging.mjs"));
+  assert.ok(script.includes("npm run test:phase9a"));
   assert.ok(script.includes("backendReady"));
   assert.ok(script.includes("smoke-staging.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
@@ -114,39 +122,124 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   const ps1 = read("scripts", "deploy-staging.ps1");
   assert.ok(ps1.includes("FIREBASE_CLIENT_EMAIL"));
   assert.ok(ps1.includes("GOOGLE_APPLICATION_CREDENTIALS"));
+  assert.ok(ps1.includes("preflight-staging.mjs"));
+  assert.ok(ps1.includes("npm run test:phase9a"));
   assert.equal(ps1.includes("--token $env:FIREBASE_TOKEN"), false);
   assert.ok(ps1.includes("iaqar-ai-staging"));
 
   assert.ok(existsSync(path.join(root, "scripts", "staging-gac.mjs")));
+  assert.ok(existsSync(path.join(root, "scripts", "staging-credentials.mjs")));
+  assert.ok(existsSync(path.join(root, "scripts", "preflight-staging.mjs")));
   assert.ok(existsSync(path.join(root, "docs", "STAGING-DEPLOY.md")));
 });
 
-test("Phase 9A staging-gac writes temp credentials then caller can delete", () => {
+test("Phase 9A staging-gac normalizes quoted fields and writes private temp credentials", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "iaqar-gac-"));
   const out = path.join(dir, "sa.json");
-  const fakeKey = "-----BEGIN PRIVATE KEY-----\\nABC\\n-----END PRIVATE KEY-----\\n";
+  const secretDir = path.join(dir, "normalized");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" }
+  });
+  const escapedKey = JSON.stringify(privateKey.replace(/\n/g, "\\n"));
+  const keyId = "0123456789abcdef0123456789abcdef01234567";
+  const mkdir = spawnSync(process.execPath, ["-e", `require("fs").mkdirSync(${JSON.stringify(secretDir)})`]);
+  assert.equal(mkdir.status, 0);
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(root, "scripts", "staging-gac.mjs"), out, secretDir],
+    {
+      env: {
+        ...process.env,
+        FIREBASE_CLIENT_EMAIL: '"sa@iaqar-ai-staging.iam.gserviceaccount.com"', // pragma: allowlist secret
+        FIREBASE_PRIVATE_KEY: escapedKey, // pragma: allowlist secret
+        FIREBASE_PRIVATE_KEY_ID: `'${keyId}'`, // pragma: allowlist secret
+        FIREBASE_STAGING_PROJECT_ID: "iaqar-ai-staging"
+      },
+      encoding: "utf8"
+    }
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stdout.includes("BEGIN PRIVATE KEY"), false);
+  assert.equal(result.stdout.includes(keyId), false);
+  assert.equal(result.stdout.includes("sa@"), false);
+
+  const parsed = JSON.parse(readFileSync(out, "utf8"));
+  assert.equal(parsed.type, "service_account");
+  assert.equal(parsed.project_id, "iaqar-ai-staging");
+  assert.equal(parsed.client_email, "sa@iaqar-ai-staging.iam.gserviceaccount.com"); // pragma: allowlist secret
+  assert.equal(parsed.private_key_id, keyId); // pragma: allowlist secret
+  assert.ok(parsed.private_key.startsWith("-----BEGIN PRIVATE KEY-----")); // pragma: allowlist secret
+  assert.ok(parsed.private_key.includes("\n")); // pragma: allowlist secret
+  assert.equal(readFileSync(path.join(secretDir, "FIREBASE_CLIENT_EMAIL"), "utf8"), parsed.client_email); // pragma: allowlist secret
+  assert.equal(readFileSync(path.join(secretDir, "FIREBASE_PRIVATE_KEY_ID"), "utf8"), parsed.private_key_id); // pragma: allowlist secret
+  assert.equal(readFileSync(path.join(secretDir, "FIREBASE_PRIVATE_KEY"), "utf8"), parsed.private_key); // pragma: allowlist secret
+  unlinkSync(out);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("Phase 9A Firebase secret normalization preserves a valid PKCS8 PEM", () => {
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" }
+  });
+  const keyId = "abcdef0123456789abcdef0123456789abcdef01";
+  const credentials = normalizeFirebaseSecrets({
+    FIREBASE_CLIENT_EMAIL: "'firebase-admin@iaqar-ai-staging.iam.gserviceaccount.com'", // pragma: allowlist secret
+    FIREBASE_PRIVATE_KEY_ID: `"${keyId}"`, // pragma: allowlist secret
+    FIREBASE_PRIVATE_KEY: JSON.stringify(privateKey.replace(/\n/g, "\\n")) // pragma: allowlist secret
+  });
+
+  assert.deepEqual(validateFirebaseSecrets(credentials), []);
+  assert.ok(credentials.privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+  assert.ok(credentials.privateKey.endsWith("-----END PRIVATE KEY-----"));
+  assert.equal(credentials.privateKey.includes("\\n"), false);
+
+  const jwt = createServiceAccountJwt({
+    client_email: credentials.clientEmail, // pragma: allowlist secret
+    private_key_id: credentials.privateKeyId, // pragma: allowlist secret
+    private_key: credentials.privateKey // pragma: allowlist secret
+  }, 1_700_000_000);
+  assert.equal(jwt.split(".").length, 3);
+});
+
+test("Phase 9A invalid Firebase fields are named without printing their values", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "iaqar-invalid-gac-"));
+  const out = path.join(dir, "sa.json");
+  const invalidValues = {
+    FIREBASE_CLIENT_EMAIL: "not-an-email-sensitive", // pragma: allowlist secret
+    FIREBASE_PRIVATE_KEY_ID: "not-a-key-id-sensitive", // pragma: allowlist secret
+    FIREBASE_PRIVATE_KEY: "not-a-private-key-sensitive" // pragma: allowlist secret
+  };
   const result = spawnSync(process.execPath, [path.join(root, "scripts", "staging-gac.mjs"), out], {
     env: {
       ...process.env,
-      FIREBASE_CLIENT_EMAIL: "sa@iaqar-ai-staging.iam.gserviceaccount.com",
-      FIREBASE_PRIVATE_KEY: fakeKey,
-      FIREBASE_PRIVATE_KEY_ID: "test-key-id-12345678",
+      ...invalidValues,
       FIREBASE_STAGING_PROJECT_ID: "iaqar-ai-staging"
     },
     encoding: "utf8"
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(result.stdout.includes("BEGIN PRIVATE KEY"), false);
-  assert.equal(result.stdout.includes("test-key-id"), false);
-  assert.equal(result.stdout.includes("sa@"), false);
-  const parsed = JSON.parse(readFileSync(out, "utf8"));
-  assert.equal(parsed.type, "service_account");
-  assert.equal(parsed.project_id, "iaqar-ai-staging");
-  assert.equal(parsed.client_email, "sa@iaqar-ai-staging.iam.gserviceaccount.com");
-  assert.equal(parsed.private_key_id, "test-key-id-12345678");
-  assert.ok(parsed.private_key.includes("BEGIN PRIVATE KEY"));
-  unlinkSync(out);
+
+  assert.equal(result.status, 1);
+  for (const field of Object.keys(invalidValues)) assert.ok(result.stderr.includes(field), field);
+  for (const value of Object.values(invalidValues)) assert.equal(result.stderr.includes(value), false);
+  assert.equal(existsSync(out), false);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("Phase 9A Cloudflare preflight uses account APIs and disposable permission probes", () => {
+  const preflight = read("scripts", "preflight-staging.mjs");
+  assert.equal(preflight.includes("/user/tokens/verify"), false);
+  assert.ok(preflight.includes("/workers/scripts/"));
+  assert.ok(preflight.includes("/r2/buckets"));
+  assert.ok(preflight.includes('method: "PUT"'));
+  assert.ok(preflight.includes('method: "POST"'));
+  assert.ok(preflight.includes('method: "DELETE"'));
+  assert.ok(preflight.includes("iaqar-media"));
+  assert.ok(preflight.includes("firebasehosting.googleapis.com"));
 });
 
 test("Phase 9A shell uses channel-local Firebase init; no deals nav", () => {

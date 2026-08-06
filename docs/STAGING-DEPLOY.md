@@ -48,6 +48,12 @@ Set these before `npm run deploy:staging`:
 Create at: Cloudflare Dashboard → **My Profile → API Tokens** (or **Manage Account →
 Account API Tokens**) → Create Token → custom token with the permissions above.
 
+The staging preflight does not call `/user/tokens/verify`, because account-owned tokens
+are not consistently supported by that user-scoped endpoint. It proves the permissions
+that deployment actually needs through account-scoped operations: account read, visible
+`iaqar-media`, a disposable Worker script create/delete, and a disposable R2 bucket
+create/delete. Probe resources are staging-prefixed and removed immediately.
+
 **Where to find `CLOUDFLARE_ACCOUNT_ID`:** Cloudflare Dashboard → any account page
 (Workers & Pages / overview) → **Account ID** in the right sidebar (also visible in
 the account home URL / Workers overview).
@@ -56,6 +62,14 @@ the account home URL / Workers overview).
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
 - `FIREBASE_PRIVATE_KEY_ID`
+
+Use the individual fields from the `iaqar-ai-staging` service-account JSON. The deploy
+preflight safely trims matching outer quotes, converts literal `\n` sequences in
+`FIREBASE_PRIVATE_KEY` to real line breaks, requires the complete <!-- // pragma: allowlist secret -->
+`BEGIN PRIVATE KEY` / `END PRIVATE KEY` PKCS8 envelope, validates the service-account
+email and key ID formats, constructs a Firebase Admin credential, and creates a local
+RSA-SHA256 JWT signature. Invalid output names only the failing environment variable;
+values are never printed.
 
 `FIREBASE_TOKEN` / `firebase login:ci` is **not used**. The deploy script builds a
 temporary JSON key, sets `GOOGLE_APPLICATION_CREDENTIALS`, runs firebase-tools, syncs
@@ -89,15 +103,19 @@ npm run deploy:staging
 
 The script:
 
-1. Runs `npm test` + `npm run check`
-2. Writes a temp GAC file from the three Firebase SA secrets → `GOOGLE_APPLICATION_CREDENTIALS`
-3. Deploys **only** `wrangler deploy --env staging`
-4. Syncs Worker staging secrets from the same env vars (values not printed)
-5. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`
-6. Requires `/health` `backendReady: true` and `projectId: iaqar-ai-staging`
-7. Runs `scripts/smoke-staging.mjs`
-8. Deletes the temp GAC file on exit
-9. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set
+1. Normalizes and validates the three Firebase fields without printing values.
+2. Creates a temp GAC and verifies local JWT signing, Google OAuth exchange, and access
+   to Firebase Hosting project `iaqar-ai-staging`.
+3. Verifies Cloudflare through account-scoped Workers Scripts and R2 create/delete
+   probes; no unsupported token-verification endpoint is used.
+4. Runs the full `npm run test:phase9a` gate.
+5. Deploys **only** `wrangler deploy --env staging`.
+6. Syncs normalized Worker staging secrets from private temp files (values not printed).
+7. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`.
+8. Requires `/health` `backendReady: true` and `projectId: iaqar-ai-staging`.
+9. Runs `scripts/smoke-staging.mjs`.
+10. Deletes the temp GAC and normalized secret files on exit.
+11. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set.
 
 ## After deploy
 

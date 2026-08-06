@@ -351,7 +351,10 @@ Delivered:
 - **Deploy auth without FIREBASE_TOKEN:** temp GAC from
   `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PRIVATE_KEY_ID` →
   `GOOGLE_APPLICATION_CREDENTIALS` → deleted after; secrets synced to Worker staging.
-- **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-gac.mjs`, `smoke-staging.mjs`.
+- **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-credentials.mjs`,
+  `staging-gac.mjs`, `preflight-staging.mjs`, `smoke-staging.mjs`. The preflight
+  normalizes quoted/escaped Firebase fields, verifies local JWT + Google OAuth, and
+  proves account-scoped Workers Scripts / R2 edit permissions with disposable probes.
 - **Health gate:** `backendReady` + `projectId=iaqar-ai-staging`.
 - **Docs / tests / D-018.** Gate: `npm run test:phase9a`.
 
