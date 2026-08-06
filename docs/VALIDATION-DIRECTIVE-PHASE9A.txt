@@ -1,0 +1,31 @@
+IAQAR.AI — Phase 9A Full-Functional Staging (iaqar-ai-staging) validation
+
+Date: 2026-08-05
+Branch: cursor/phase9a-staging-deploy-0d44
+
+Prep changes (no live deploy this turn):
+- Staging Firebase project ID → iaqar-ai-staging (Hosting channel + Worker vars)
+- Production project aqar-b5d76 unchanged
+- Removed FIREBASE_TOKEN from deploy-staging.sh / .ps1
+- Temp GAC via scripts/staging-gac.mjs → GOOGLE_APPLICATION_CREDENTIALS → deleted
+- Uses FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID
+- Syncs those secrets to Worker --env staging during deploy (when run)
+- .firebaserc alias staging → iaqar-ai-staging
+- runtime-config sets firebaseProjectId for staging
+- Docs D-018 / STAGING-DEPLOY updated
+
+Cloud Agent secret note:
+- This run started before repo secrets were added; they are absent here.
+- A NEW Cloud Agent run is required for secret injection before live deploy.
+
+Still required for live deploy (names only):
+- CLOUDFLARE_API_TOKEN (Workers Scripts Edit + Workers R2 Storage Edit + Account Settings Read)
+- CLOUDFLARE_ACCOUNT_ID (Dashboard account sidebar)
+- FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / FIREBASE_PRIVATE_KEY_ID
+
+Explicitly NOT done this turn:
+- No Firebase Hosting deploy
+- No Worker deploy
+- No Phase 9B
+
+STOP before Phase 9B / production deploy.

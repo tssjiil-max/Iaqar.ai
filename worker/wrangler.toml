@@ -5,6 +5,7 @@ workers_dev = true
 
 [vars]
 FIREBASE_PROJECT_ID = "aqar-b5d76"
+DEPLOYMENT_ENV = "production"
 META_GRAPH_VERSION = "v25.0"
 META_APP_ID = ""
 META_CONFIG_ID = ""
@@ -16,3 +17,27 @@ crons = ["0 * * * *"]
 [[r2_buckets]]
 binding = "IAQAR_MEDIA"
 bucket_name = "iaqar-media"
+
+# ---------------------------------------------------------------------------
+# Phase 9A — staging Worker. Deploy ONLY via: wrangler deploy --env staging
+# Never point custom production routes at this env.
+# ---------------------------------------------------------------------------
+[env.staging]
+name = "iaqar-intake-staging"
+workers_dev = true
+
+[env.staging.vars]
+FIREBASE_PROJECT_ID = "iaqar-ai-staging"
+DEPLOYMENT_ENV = "staging"
+META_GRAPH_VERSION = "v25.0"
+META_APP_ID = ""
+META_CONFIG_ID = ""
+FCM_WEB_PUSH_VAPID_KEY = ""
+
+[[env.staging.r2_buckets]]
+binding = "IAQAR_MEDIA"
+bucket_name = "iaqar-media"
+
+# No hourly cron on staging — shared Firestore must not get dual follow-up writers.
+[env.staging.triggers]
+crons = []

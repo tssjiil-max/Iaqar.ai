@@ -1,7 +1,18 @@
 (() => {
   "use strict";
 
-  const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  function resolveWorkerBase() {
+    if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+      return window.IAQAR.resolveWorkerBase();
+    }
+    try {
+      const host = String(window.location && window.location.hostname || "").toLowerCase();
+      if (host.includes("--staging") || host.startsWith("staging.")) {
+        return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+      }
+    } catch (_) { /* ignore */ }
+    return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  }
   const GRAPH_VERSION_FALLBACK = "v25.0";
   let config = null;
   let signupData = null;
@@ -29,24 +40,13 @@
     elements.status.classList.toggle("connected", connected);
   }
 
-  function openSettings() {
-    elements.overlay.hidden = false;
-    document.body.style.overflow = "hidden";
-    refreshStatus();
-  }
-
-  function closeSettings() {
-    elements.overlay.hidden = true;
-    document.body.style.overflow = "";
-  }
-
   async function fetchJson(path, options = {}) {
     let idToken = "";
     try {
       const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
       if (user) idToken = await user.getIdToken();
     } catch (_) {}
-    const response = await fetch(`${WORKER_BASE}${path}`, {
+    const response = await fetch(`${resolveWorkerBase()}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -222,9 +222,7 @@
   }
 
   function init() {
-    elements.openBtn = document.getElementById("officeSettingsBtn");
     elements.overlay = document.getElementById("officeSettings");
-    elements.closeBtn = document.getElementById("officeSettingsClose");
     elements.status = document.getElementById("whatsappConnectionStatus");
     elements.connectBtn = document.getElementById("whatsappConnectBtn");
     elements.note = document.getElementById("whatsappIntegrationNote");
@@ -232,16 +230,11 @@
     elements.usagePercent = document.getElementById("usagePercent");
     elements.usageCaption = document.getElementById("usageCaption");
 
-    if (!elements.openBtn || !elements.overlay) return;
+    if (!elements.overlay || !elements.status || !elements.connectBtn) return;
 
-    elements.openBtn.addEventListener("click", openSettings);
-    elements.closeBtn.addEventListener("click", closeSettings);
-    elements.overlay.addEventListener("click", event => {
-      if (event.target === elements.overlay) closeSettings();
-    });
-    document.addEventListener("keydown", event => {
-      if (event.key === "Escape" && !elements.overlay.hidden) closeSettings();
-    });
+    // فتح وإغلاق لوحة الإعدادات مملوك لـ office-settings.js، وهذا الملف يكتفي
+    // بتحديث حالة الربط عند فتحها.
+    window.addEventListener("iaqar:office-settings-opened", refreshStatus);
     elements.connectBtn.addEventListener("click", startEmbeddedSignup);
 
     listenForSignupEvents();

@@ -16,7 +16,18 @@
     isPlatformHome = !officeId || officeId === "platform";
   }
   const gate = document.createElement("main");
-  const WORKER_BASE = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  function resolveWorkerBase() {
+    if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+      return window.IAQAR.resolveWorkerBase();
+    }
+    try {
+      const host = String(window.location && window.location.hostname || "").toLowerCase();
+      if (host.includes("--staging") || host.startsWith("staging.")) {
+        return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+      }
+    } catch (_) { /* ignore */ }
+    return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  }
   const PROPERTY_TYPES = Object.freeze([
     "شقة", "فيلا", "دور", "دوبلكس", "عمارة", "أرض سكنية", "أرض تجارية",
     "محل تجاري", "مكتب", "مستودع", "استراحة", "مزرعة", "قصر", "بيت شعبي",
@@ -82,7 +93,7 @@
   const validFullName = value => String(value || "").trim().split(/\s+/).filter(Boolean).length >= 2;
 
   async function uploadPublicMedia({ file, targetOffice, intakeId, kind, index = 0 }) {
-    const response = await fetch(`${WORKER_BASE}/media/public-intake`, {
+    const response = await fetch(`${resolveWorkerBase()}/media/public-intake`, {
       method: "POST",
       headers: {
         "Content-Type": file.type,
@@ -100,7 +111,7 @@
 
 
   async function triggerPublicIntakeMatching(targetOffice, intakeId) {
-    const response = await fetch(`${WORKER_BASE}/pipeline/public-intake`, {
+    const response = await fetch(`${resolveWorkerBase()}/pipeline/public-intake`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ officeId: targetOffice, intakeId })
@@ -301,7 +312,7 @@
           String(fields.get("password") || "")
         );
         const idToken = await credential.user.getIdToken();
-        const response = await fetch(`${WORKER_BASE}/broker/apply`, {
+        const response = await fetch(`${resolveWorkerBase()}/broker/apply`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({
@@ -347,7 +358,7 @@
       const phone = normalizeSaudiPhone(fields.get("phone"));
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       try {
-        const response = await fetch(`${WORKER_BASE}/auth/phone-login`, {
+        const response = await fetch(`${resolveWorkerBase()}/auth/phone-login`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone, password: String(fields.get("password") || ""), apiKey: firebase.app().options.apiKey })
         });
@@ -375,7 +386,7 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const button = event.currentTarget.querySelector("button"); button.disabled = true;
       try {
-        const response = await fetch(`${WORKER_BASE}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" },
+        const response = await fetch(`${resolveWorkerBase()}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone, apiKey: firebase.app().options.apiKey }) });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error("RESET_FAILED");
@@ -434,7 +445,7 @@
     }
     try {
       const token = await firebase.auth().currentUser.getIdToken();
-      const response = await fetch(`${WORKER_BASE}/admin/broker-applications`, {
+      const response = await fetch(`${resolveWorkerBase()}/admin/broker-applications`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!response.ok) throw new Error("LOAD_FAILED");
@@ -470,7 +481,7 @@
         button.disabled = true;
         try {
           const freshToken = await firebase.auth().currentUser.getIdToken();
-          const actionResponse = await fetch(`${WORKER_BASE}/admin/broker-applications/action`, {
+          const actionResponse = await fetch(`${resolveWorkerBase()}/admin/broker-applications/action`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${freshToken}` },
             body: JSON.stringify({ applicationId: id, action, officeId: officeInput ? officeInput.value : "" })
@@ -495,7 +506,7 @@
       let permission = Notification.permission;
       if (sendTest && permission !== "granted") permission = await Notification.requestPermission();
       if (permission !== "granted") throw new Error("PERMISSION_DENIED");
-      const configResponse = await fetch(`${WORKER_BASE}/fcm/config`, { cache: "no-store" });
+      const configResponse = await fetch(`${resolveWorkerBase()}/fcm/config`, { cache: "no-store" });
       const config = await configResponse.json();
       if (!config.enabled || !config.vapidKey) throw new Error("FCM_DISABLED");
       const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
@@ -521,7 +532,7 @@
         }
         return value;
       })();
-      const response = await fetch(`${WORKER_BASE}/fcm/register`, {
+      const response = await fetch(`${resolveWorkerBase()}/fcm/register`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -541,7 +552,7 @@
       localStorage.setItem("iaqar.fcm.enabled.platform", "1");
       button.textContent = "إشعارات الإدارة مفعّلة";
       if (sendTest) {
-        const testResponse = await fetch(`${WORKER_BASE}/fcm/test`, {
+        const testResponse = await fetch(`${resolveWorkerBase()}/fcm/test`, {
           method: "POST",
           headers,
           body: JSON.stringify({

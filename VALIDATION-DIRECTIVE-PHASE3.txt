@@ -1,0 +1,30 @@
+IAQAR.AI — Phase 3 Opportunity Bank validation
+
+Date: 2026-08-04
+Branch: cursor/phase0-phase1-office-settings-0d44
+PR: https://github.com/tssjiil-max/Iaqar.ai/pull/2 (Draft)
+
+Scope completed:
+- Private per-office Opportunity Bank from Office Settings → بنك الفرص
+- List/detail with essential fields, date added, cooperation status; lazy source attachments
+- Cursor pagination (limit + startAfter); active/archived filters
+- Authorized edit with ownership protection; archive/restore; soft delete + confirmation
+- Explicit cooperationRequests, bankSharingScopes, sharedOpportunities
+- Firestore rules: ownership-immutable updates, hard delete denied, accept/reject/revoke,
+  scoped share revocation, contact-hidden shared projections
+- Phase 0–2 regression retained; Phase 4 not started
+
+Verification results:
+- npm test: web 176 pass / 0 fail; worker 58 pass / 0 fail (234 total)
+- npm run test:rules: 22 pass / 0 fail (real firestore.rules via emulator)
+- npm run check: 43 targets passed
+
+Decision: D-012
+Acceptance: Test 6 PASS (Opportunity Bank)
+
+Out of scope (not started):
+- Phase 4 Matching Engine / Match records
+- Persisted Operations Center items
+- Automatic broker cooperation
+- WhatsApp/Telegram sending
+- Deals page / bottom navigation / home redesign

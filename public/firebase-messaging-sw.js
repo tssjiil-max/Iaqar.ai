@@ -59,19 +59,25 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-stage3-fcm-fid-v1";
+const IAQAR_CACHE = "iaqar-shell-phase9a-v2";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/share-target.html",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/icons/default-office.png",
+  // runtime-config.js is network-only (staging/prod Worker routing must not stale-cache).
   "/js/access-gate.js",
   "/js/firebase-office.js",
   "/js/fcm-fid.js",
   "/js/office-settings.js",
+  "/js/add-opportunity.js",
+  "/js/opportunity-bank.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
+  "/js/operations-domain-bridge.js",
+  "/js/messaging-domain-bridge.js",
   "/js/workflow-office.js"
 ];
 
@@ -89,6 +95,11 @@ self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  // Always network for deployment routing — never serve a stale Worker base.
+  if (url.pathname.endsWith("/runtime-config.js")) {
+    event.respondWith(fetch(event.request, { cache: "no-store" }));
+    return;
+  }
   event.respondWith(fetch(event.request).then(response => {
     if (response && response.ok) {
       const copy = response.clone();

@@ -20,6 +20,15 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
+    // المرحلة 8: إغلاق المجموعات الحساسة (clients/owners/deals/alerts/inbox/usage/contacts).
+    function isRestrictedOfficeCollection(collectionName) {
+      return collectionName in [
+        'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
+        'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
+        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake'
+      ];
+    }
     function validOfficeProfile() {
       return request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
@@ -72,7 +81,9 @@ service cloud.firestore {
           && request.resource.data.hasVideo is bool
           && request.resource.data.source in ['office_public_link','platform_public']
           && request.resource.data.status == 'new';
-        allow read, update, delete: if isOfficeMember(officeId);
+        // القراءة للأعضاء — التحديث/الحذف عبر Worker فقط (منع تزوير processed).
+        allow read: if isOfficeMember(officeId);
+        allow update, delete: if false;
       }
 
       // رموز FCM سرية وتدار حصريًا من Cloudflare Worker بحساب الخدمة.
@@ -80,16 +91,177 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      // إعدادات المكتب: قراءة لأعضاء المكتب، وكتابة لمن يملك إدارة المكتب فقط.
+      match /officeSettings/{settingId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update: if canManage(officeId)
+          && request.resource.data.officeId == officeId;
+        allow delete: if false;
+      }
+
+      // تفضيلات الوسيط الشخصية: لا يكتبها أحد غير صاحبها.
+      match /brokerSettings/{brokerUid} {
+        allow read: if isOfficeMember(officeId)
+          && (brokerUid == request.auth.uid || canManage(officeId));
+        allow create, update: if isOfficeMember(officeId)
+          && brokerUid == request.auth.uid
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId == request.auth.uid;
+        allow delete: if false;
+      }
+
+      // مصادر الإدخال الموحّد (المرحلة 2): تبقى داخل المكتب ومعرّفة بـ officeId.
+      match /opportunitySources/{sourceId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId == request.auth.uid
+          && request.resource.data.sourceType is string
+          && request.resource.data.deduplicationFingerprint is string;
+        allow update, delete: if canManage(officeId)
+          && request.resource.data.officeId == officeId;
+      }
+
+      // الفرصة الموحّدة (المرحلة 2/3): إنشاء/تحديث لأعضاء المكتب مع حماية الملكية.
+      match /opportunities/{opportunityId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.brokerId is string
+          && request.resource.data.deduplicationFingerprint is string
+          && request.resource.data.sourceType is string
+          && request.resource.data.sourceReference is string;
+        allow update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && resource.data.officeId == officeId
+          && request.resource.data.officeId == resource.data.officeId
+          && request.resource.data.brokerId == resource.data.brokerId
+          && (
+            !('originatingOfficeId' in resource.data)
+            || request.resource.data.originatingOfficeId == resource.data.originatingOfficeId
+          )
+          && (
+            !('originatingBrokerId' in resource.data)
+            || request.resource.data.originatingBrokerId == resource.data.originatingBrokerId
+          )
+          && (
+            !('currentOwningOfficeId' in resource.data)
+            || request.resource.data.currentOwningOfficeId == resource.data.currentOwningOfficeId
+          )
+          && (
+            !('createdAt' in resource.data)
+            || request.resource.data.createdAt == resource.data.createdAt
+          )
+          && (
+            !('deduplicationFingerprint' in resource.data)
+            || request.resource.data.deduplicationFingerprint == resource.data.deduplicationFingerprint
+          );
+        // الحذف الصلب ممنوع للعملاء — الحذف الآمن يتم عبر حقول lifecycle فقط.
+        allow delete: if false;
+      }
+
+      // المطابقات (المرحلة 4): القراءة لأعضاء المكتب فقط — الكتابة عبر Worker (Admin SDK).
+      match /matches/{matchId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+        match /timeline/{eventId} {
+          allow read: if isOfficeMember(officeId);
+          allow create: if isOfficeMember(officeId)
+            && request.resource.data.officeId == officeId;
+          allow update, delete: if canManage(officeId);
+        }
+      }
+
+      // عمليات مركز العمليات (المرحلة 5): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
+      match /operations/{operationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // إشعارات داخل التطبيق (المرحلة 5): قراءة الأعضاء — حالة التسليم محمية من العميل.
+      match /notifications/{notificationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // سجل تدقيق التعاون (المرحلة 6): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      match /auditLogs/{auditId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // مسودات الرسائل الذكية (المرحلة 7): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
+      // لا يجوز للعميل تزوير SENT أو DELIVERED.
+      match /messages/{messageId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // سجلات العملاء/الملاك (المرحلة 8): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      match /clients/{clientId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /owners/{ownerId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // الصفقات الداخلية (المرحلة 8): قراءة الأعضاء — الكتابة عبر Worker فقط.
+      // تحديث السعر/العمولة/الملاحظة يتم عبر POST /workflow/action.
+      match /deals/{dealId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+        match /timeline/{eventId} {
+          allow read: if isOfficeMember(officeId);
+          allow create: if isOfficeMember(officeId)
+            && request.resource.data.officeId == officeId;
+          allow update, delete: if canManage(officeId);
+        }
+      }
+
+      // التنبيهات القديمة / الوارد / العدادات: Worker فقط.
+      match /alerts/{alertId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /inbox/{inboxId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+      match /usage/{usageId} {
+        allow read, create, update, delete: if false;
+      }
+
+      // دليل جهات الاتصال: أعضاء المكتب يكتبون حقولًا محدودة مع officeId.
+      match /contacts/{contactId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && contactId.matches('^[0-9]{8,15}$')
+          && request.resource.data.phone is string
+          && request.resource.data.phone.size() <= 40
+          && request.resource.data.fullName is string
+          && request.resource.data.fullName.size() <= 120;
+        allow delete: if canManage(officeId);
+      }
+
+      // القاعدة العامة تستثني المجموعات أعلاه: قواعد Firestore تُجمع ولا تُضيّق،
+      // فالاستثناء هو الوسيلة الوحيدة لجعل القواعد الأضيق نافذة فعلًا.
       match /{collectionName}/{docId} {
-        allow read: if collectionName != 'devices' && isOfficeMember(officeId);
-        allow create, update: if collectionName != 'devices'
+        allow read: if !isRestrictedOfficeCollection(collectionName)
+          && isOfficeMember(officeId);
+        allow create, update: if !isRestrictedOfficeCollection(collectionName)
           && isOfficeMember(officeId)
           && request.resource.data.officeId == officeId;
-        allow delete: if collectionName != 'devices' && canManage(officeId);
+        allow delete: if !isRestrictedOfficeCollection(collectionName)
+          && canManage(officeId);
 
         match /timeline/{eventId} {
-          allow read, create: if isOfficeMember(officeId);
-          allow update, delete: if canManage(officeId);
+          allow read, create: if !isRestrictedOfficeCollection(collectionName)
+            && isOfficeMember(officeId);
+          allow update, delete: if !isRestrictedOfficeCollection(collectionName)
+            && canManage(officeId);
         }
       }
     }
@@ -105,17 +277,103 @@ service cloud.firestore {
     }
 
 
-    match /officeNameClaims/{nameKey} {
-      allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.resource.data.officeId is string
+    // سجل تفرد أسماء المكاتب على مستوى المنصة. معرّف المستند هو الاسم بعد التطبيع،
+    // فيصبح التفرد خصيصة مفتاح أساسي لا نتيجة استعلام، ويمنع التسابق.
+    function validOfficeNameClaim(nameKey) {
+      return request.resource.data.officeId is string
         && request.resource.data.officeName is string
         && request.resource.data.officeName.size() <= 80
         && (isPlatformAdmin() || nameKey.size() >= 4)
         && (canManage(request.resource.data.officeId)
           || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+    }
+    match /officeNameClaims/{nameKey} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validOfficeNameClaim(nameKey);
+      // الشرط الإضافي يمنع مكتبًا من توجيه حجز مكتب آخر إلى نفسه واستيلائه على الاسم.
+      allow update: if signedIn()
+        && validOfficeNameClaim(nameKey)
+        && resource.data.officeId == request.resource.data.officeId;
       allow delete: if signedIn()
         && (isPlatformAdmin() || canManage(resource.data.officeId));
+    }
+
+    // طلبات التعاون الصريحة (المرحلة 3) — لا تعاون تلقائي.
+    match /cooperationRequests/{requestId} {
+      allow read: if signedIn()
+        && (isOfficeMember(resource.data.originatingOfficeId)
+          || isOfficeMember(resource.data.targetOfficeId));
+      allow create: if signedIn()
+        && isOfficeMember(request.resource.data.originatingOfficeId)
+        && request.resource.data.originatingBrokerId == request.auth.uid
+        && request.resource.data.originatingOfficeId is string
+        && request.resource.data.targetOfficeId is string
+        && request.resource.data.originatingOfficeId != request.resource.data.targetOfficeId
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.permissions.readOnly == true
+        && request.resource.data.permissions.contactVisible == false
+        && request.resource.data.permissions.ownershipModifiable == false
+        && request.resource.data.permissions.canDelete == false;
+      allow update: if signedIn()
+        && resource.data.originatingOfficeId == request.resource.data.originatingOfficeId
+        && resource.data.targetOfficeId == request.resource.data.targetOfficeId
+        && (
+          (
+            isOfficeMember(resource.data.targetOfficeId)
+            && resource.data.status == 'PENDING'
+            && (request.resource.data.status == 'ACCEPTED'
+              || request.resource.data.status == 'REJECTED')
+          )
+          || (
+            isOfficeMember(resource.data.originatingOfficeId)
+            && (request.resource.data.status == 'REVOKED'
+              || request.resource.data.status == 'ENDED')
+          )
+        );
+      allow delete: if false;
+    }
+
+    // إسقاطات مشاركة الحد الأدنى للطرف المتعاون — بدون بيانات تواصل.
+    // بعد الإلغاء (revokedAt) يُمنع الوصول المستقبلي (اختبار 12).
+    match /offices/{officeId}/sharedOpportunities/{sharedId} {
+      allow read: if isOfficeMember(officeId)
+        && !('revokedAt' in resource.data && resource.data.revokedAt != null);
+      allow create: if isOfficeMember(officeId)
+        && request.resource.data.originatingOfficeId is string
+        && request.resource.data.originatingOfficeId != officeId
+        && request.resource.data.contactPhone == ''
+        && request.resource.data.phone == ''
+        && request.resource.data.readOnly == true;
+      // Updates blocked after revocation so future access cannot be restored by clients.
+      allow update: if isOfficeMember(officeId)
+        && !('revokedAt' in resource.data && resource.data.revokedAt != null)
+        && request.resource.data.originatingOfficeId is string
+        && request.resource.data.originatingOfficeId != officeId
+        && request.resource.data.contactPhone == ''
+        && request.resource.data.phone == ''
+        && request.resource.data.readOnly == true;
+      allow delete: if canManage(officeId);
+    }
+
+    // نطاق مشاركة بنك الفرص — معطّل افتراضيًا وقابل للإلغاء.
+    match /bankSharingScopes/{scopeId} {
+      allow read: if signedIn()
+        && (isOfficeMember(resource.data.originatingOfficeId)
+          || (isOfficeMember(resource.data.targetOfficeId)
+            && resource.data.status == 'ACTIVE'
+            && resource.data.enabled == true
+            && !('revokedAt' in resource.data && resource.data.revokedAt != null)));
+      allow create: if signedIn()
+        && isOfficeMember(request.resource.data.originatingOfficeId)
+        && request.resource.data.originatingBrokerId == request.auth.uid
+        && request.resource.data.originatingOfficeId != request.resource.data.targetOfficeId
+        && request.resource.data.permissions.contactVisible == false
+        && request.resource.data.permissions.readOnly == true;
+      allow update: if signedIn()
+        && isOfficeMember(resource.data.originatingOfficeId)
+        && request.resource.data.originatingOfficeId == resource.data.originatingOfficeId
+        && request.resource.data.targetOfficeId == resource.data.targetOfficeId;
+      allow delete: if false;
     }
 
     match /whatsapp_accounts/{phoneNumberId} {

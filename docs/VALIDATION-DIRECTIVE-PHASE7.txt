@@ -1,0 +1,41 @@
+IAQAR.AI — Phase 7 Smart messages validation
+
+Date: 2026-08-04
+Branch: cursor/phase7-smart-messages-0d44
+
+Scope completed:
+- Arabic message templates (Worker + client mirrors)
+- WhatsApp adapter_ready contract (wa.me broker handoff; Cloud API outbound blocked)
+- Telegram adapter simulated contract (t.me/share + webhook validation fixture)
+- Persisted offices/{officeId}/messages/{msg_*} drafts with channel, recipient,
+  related opportunity/match/operation, createdAt, sendState, deliveryState,
+  failureReason, honesty flags
+- Worker POST /messages/draft, POST /messages/handoff, GET /messages/adapters
+- Operations Center MATCH_REVIEW / EXTERNAL_RESPONSE draft actions
+- workflow-office persist + external handoff (OPENED_EXTERNAL ≠ SENT/DELIVERED)
+- Firestore messages: member read; Worker-only write
+- Automated coverage: test/messaging-phase7.test.mjs, emulator Phase 7 case,
+  Worker Phase 7 cases, honesty Test 15 updates
+- Acceptance: Test 13 PASS; Test 15 PASS
+- Decision: D-016
+- Verification counts: web 255, worker 68, rules 31, check 59 targets
+
+Explicit limitation (do not claim):
+- No automatic Meta Cloud API or Telegram Bot API send (Q-3 unresolved)
+- sendsWhatsApp / sendsTelegram / autoSendsMessages remain false
+- Handoff never stores fake delivery success
+- Telegram is simulated, not production-connected
+
+Boundaries (not started — do not begin Phase 8):
+- Phase 8 hardening / full security review expansion
+- No deals page, no bottom navigation, no home redesign
+- Constitution not weakened
+
+Docs updated:
+- docs/IMPLEMENTATION_PLAN.md — Phase 0–7 complete; stop before Phase 8
+- docs/ACCEPTANCE_TESTS.md — Test 13 PASS with file pointers
+- docs/DATA_MODEL.md — messages collection schema (§10)
+- docs/EVENT_WORKFLOW.md — MESSAGE_DRAFT_CREATED Real; Phase 7 flow §8
+- docs/DECISIONS.md — D-016
+- docs/SYSTEM_ARCHITECTURE.md — /messages/* routes + outbound guard exception
+- docs/VALIDATION-DIRECTIVE-PHASE7.txt — this file
