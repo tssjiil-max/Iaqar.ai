@@ -605,9 +605,17 @@ async function persistImageUrl(variant, url) {
   const field = IMAGE_FIELDS[variant];
   if (!runtime || !runtime.db || !user || !field) throw new Error("NOT_AUTHORIZED");
   const now = serverTimestamp();
+  const profilePatch = {
+    officeId: officeId(),
+    officeName: current.officeName,
+    officeNameKey: current.officeNameKey,
+    specialties: current.specialties,
+    [field]: url,
+    updatedAt: now
+  };
   await Promise.all([
     runtime.db.collection("offices").doc(officeId())
-      .set({ officeId: officeId(), [field]: url, updatedAt: now }, { merge: true }),
+      .set(profilePatch, { merge: true }),
     runtime.db.collection("publicOffices").doc(officeId())
       .set({ officeId: officeId(), [field]: url, updatedAt: now }, { merge: true })
   ]);
