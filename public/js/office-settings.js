@@ -466,13 +466,14 @@ function loadImageFromFile(file) {
   });
 }
 
-function cropToPresetBlob(image, preset, offsetX, offsetY) {
+function cropToPresetBlob(image, preset, offsetX, offsetY, zoom = 1) {
   const rect = cropRectForAspect({
     naturalWidth: image.naturalWidth,
     naturalHeight: image.naturalHeight,
     aspectRatio: preset.aspectRatio,
     offsetX,
-    offsetY
+    offsetY,
+    zoom
   });
   if (!rect) return Promise.reject(new Error("IMAGE_CROP_FAILED"));
 
@@ -499,21 +500,57 @@ function cropToPresetBlob(image, preset, offsetX, offsetY) {
   });
 }
 
+function slotCropValues(slot) {
+  return {
+    offsetX: (slot.offsetX?.valueAsNumber ?? 50) / 100,
+    offsetY: (slot.offsetY?.valueAsNumber ?? 50) / 100,
+    zoom: (slot.zoom?.valueAsNumber ?? 100) / 100
+  };
+}
+
+function drawSlotCropPreview(slot) {
+  if (!slot.pending?.image || !slot.cropCanvas) return;
+  const values = slotCropValues(slot);
+  const rect = cropRectForAspect({
+    naturalWidth: slot.pending.image.naturalWidth,
+    naturalHeight: slot.pending.image.naturalHeight,
+    aspectRatio: slot.preset.aspectRatio,
+    ...values
+  });
+  const context = slot.cropCanvas.getContext("2d");
+  if (!rect || !context) return;
+  context.clearRect(0, 0, slot.cropCanvas.width, slot.cropCanvas.height);
+  context.drawImage(
+    slot.pending.image,
+    rect.sourceX, rect.sourceY, rect.sourceWidth, rect.sourceHeight,
+    0, 0, slot.cropCanvas.width, slot.cropCanvas.height
+  );
+}
+
 async function refreshSlotPending(slot) {
   if (!slot.pending) return;
+  const pending = slot.pending;
+  const renderToken = (pending.renderToken || 0) + 1;
+  pending.renderToken = renderToken;
+  slot.save.disabled = true;
+  drawSlotCropPreview(slot);
   try {
+    const values = slotCropValues(slot);
     const blob = await cropToPresetBlob(
-      slot.pending.image,
+      pending.image,
       slot.preset,
-      slot.offsetX.valueAsNumber / 100,
-      slot.offsetY.valueAsNumber / 100
+      values.offsetX,
+      values.offsetY,
+      values.zoom
     );
-    if (slot.pending.previewUrl) URL.revokeObjectURL(slot.pending.previewUrl);
-    slot.pending.blob = blob;
-    slot.pending.previewUrl = URL.createObjectURL(blob);
-    setSlotPreview(slot, slot.pending.previewUrl);
+    if (slot.pending !== pending || pending.renderToken !== renderToken) return;
+    if (pending.previewUrl) URL.revokeObjectURL(pending.previewUrl);
+    pending.blob = blob;
+    pending.previewUrl = URL.createObjectURL(blob);
+    setSlotPreview(slot, pending.previewUrl);
     slot.save.disabled = false;
   } catch (error) {
+    if (slot.pending !== pending || pending.renderToken !== renderToken) return;
     console.warn("[iaqar] office image crop", error);
     setStatus(slot.status, OFFICE_IMAGE_MESSAGES.failed, "is-error");
     slot.save.disabled = true;
@@ -527,8 +564,10 @@ function clearSlotPending(slot) {
   slot.crop.hidden = true;
   slot.cancel.hidden = true;
   slot.save.disabled = true;
-  slot.offsetX.value = "50";
-  slot.offsetY.value = "50";
+  if (slot.offsetX) slot.offsetX.value = "50";
+  if (slot.offsetY) slot.offsetY.value = "50";
+  if (slot.zoom) slot.zoom.value = "100";
+  if (slot.cropStage) slot.cropStage.classList.remove("is-dragging");
   setSlotPreview(slot, current[IMAGE_FIELDS[slot.preset.variant]] || "");
 }
 
@@ -544,11 +583,16 @@ async function onSlotFileChange(slot) {
   setStatus(slot.status, "جارٍ تجهيز الصورة…");
   try {
     const image = await loadImageFromFile(file);
-    slot.pending = { image, blob: null, previewUrl: "" };
+    slot.pending = { image, originalFile: file, blob: null, previewUrl: "", renderToken: 0 };
     slot.crop.hidden = false;
     slot.cancel.hidden = false;
     await refreshSlotPending(slot);
-    setStatus(slot.status, "اضبط موضع الاقتصاص ثم احفظ الصورة.");
+    setStatus(
+      slot.status,
+      slot.preset.variant === "logo"
+        ? "حرّك الصورة وكبّرها أو صغّرها داخل المربع ثم احفظ."
+        : "اضبط موضع الاقتصاص ثم احفظ الصورة."
+    );
   } catch (_) {
     setStatus(slot.status, OFFICE_IMAGE_MESSAGES.failed, "is-error");
     clearSlotPending(slot);
@@ -585,16 +629,35 @@ async function onSlotSave(slot) {
   setStatus(slot.status, OFFICE_IMAGE_MESSAGES.uploading);
   try {
     const idToken = await user.getIdToken();
-    const response = await fetch(`${resolveWorkerBase()}/media/office-cover`, {
+    const upload = (body, contentType, original = false) => fetch(`${resolveWorkerBase()}/media/office-cover`, {
       method: "POST",
       headers: {
-        "Content-Type": slot.pending.blob.type || slot.preset.outputType,
+        "Content-Type": contentType,
         "Authorization": `Bearer ${idToken}`,
         "X-Office-Id": officeId(),
-        "X-Office-Image-Variant": slot.preset.variant
+        "X-Office-Image-Variant": slot.preset.variant,
+        ...(original ? { "X-Office-Image-Original": "true" } : {})
       },
-      body: slot.pending.blob
+      body
     });
+
+    if (slot.preset.variant === "logo") {
+      const originalFile = slot.pending.originalFile;
+      const originalResponse = await upload(
+        originalFile,
+        originalFile.type || slot.preset.outputType,
+        true
+      );
+      const originalResult = await originalResponse.json().catch(() => ({}));
+      if (!originalResponse.ok || originalResult.originalStored !== true) {
+        throw new Error(originalResult.message || "تعذر حفظ الصورة الأصلية");
+      }
+    }
+
+    const response = await upload(
+      slot.pending.blob,
+      slot.pending.blob.type || slot.preset.outputType
+    );
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.imageUrl) {
       throw new Error(result.message || "تعذر رفع الصورة");
@@ -657,8 +720,11 @@ function initImageSlots() {
       image: node.querySelector('[data-role="preview-image"]'),
       placeholder: node.querySelector('[data-role="placeholder"]'),
       crop: node.querySelector('[data-role="crop"]'),
+      cropStage: node.querySelector('[data-role="crop-stage"]'),
+      cropCanvas: node.querySelector('[data-role="crop-canvas"]'),
       offsetX: node.querySelector('[data-role="offset-x"]'),
       offsetY: node.querySelector('[data-role="offset-y"]'),
+      zoom: node.querySelector('[data-role="zoom"]'),
       choose: node.querySelector('[data-role="choose"]'),
       save: node.querySelector('[data-role="save"]'),
       cancel: node.querySelector('[data-role="cancel"]'),
@@ -672,6 +738,7 @@ function initImageSlots() {
 
     // نسبة الاقتصاص مصدرها الإعداد في office-domain.js وحده، فلا تُكرر في CSS.
     if (slot.preview) slot.preview.style.aspectRatio = String(preset.aspectRatio);
+    if (slot.cropStage) slot.cropStage.style.aspectRatio = String(preset.aspectRatio);
     if (slot.ratioHint) {
       slot.ratioHint.textContent = `${preset.outputWidth}×${preset.outputHeight}`;
     }
@@ -684,9 +751,42 @@ function initImageSlots() {
       setStatus(slot.status, "");
     });
     if (slot.remove) slot.remove.addEventListener("click", () => onSlotRemove(slot));
-    [slot.offsetX, slot.offsetY].forEach(input => {
+    [slot.offsetX, slot.offsetY, slot.zoom].forEach(input => {
       if (input) input.addEventListener("input", () => refreshSlotPending(slot));
     });
+    if (slot.cropStage) {
+      let drag = null;
+      const finishDrag = event => {
+        if (!drag) return;
+        if (event?.pointerId === drag.pointerId && slot.cropStage.hasPointerCapture?.(event.pointerId)) {
+          slot.cropStage.releasePointerCapture(event.pointerId);
+        }
+        drag = null;
+        slot.cropStage.classList.remove("is-dragging");
+      };
+      slot.cropStage.addEventListener("pointerdown", event => {
+        if (!slot.pending || !slot.offsetX || !slot.offsetY) return;
+        drag = {
+          pointerId: event.pointerId,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          offsetX: slot.offsetX.valueAsNumber,
+          offsetY: slot.offsetY.valueAsNumber
+        };
+        slot.cropStage.setPointerCapture?.(event.pointerId);
+        slot.cropStage.classList.add("is-dragging");
+      });
+      slot.cropStage.addEventListener("pointermove", event => {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        const width = Math.max(1, slot.cropStage.clientWidth);
+        const height = Math.max(1, slot.cropStage.clientHeight);
+        slot.offsetX.value = String(Math.min(100, Math.max(0, drag.offsetX - ((event.clientX - drag.clientX) / width) * 100)));
+        slot.offsetY.value = String(Math.min(100, Math.max(0, drag.offsetY - ((event.clientY - drag.clientY) / height) * 100)));
+        void refreshSlotPending(slot);
+      });
+      slot.cropStage.addEventListener("pointerup", finishDrag);
+      slot.cropStage.addEventListener("pointercancel", finishDrag);
+    }
 
     imageSlots.set(variant, slot);
   });
@@ -862,13 +962,6 @@ function drawImageCover(ctx, image, x, y, width, height, radius = 0) {
   ctx.restore();
 }
 
-function drawImageContain(ctx, image, x, y, width, height) {
-  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
-  const drawWidth = image.naturalWidth * scale;
-  const drawHeight = image.naturalHeight * scale;
-  ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
-}
-
 function drawQr(ctx, text, x, y, size) {
   if (typeof window.qrcode !== "function") throw new Error("QR_UNAVAILABLE");
   const qr = window.qrcode(0, "M");
@@ -922,10 +1015,7 @@ async function createOfficeCardBlob() {
   if (logoSource) {
     try {
       const logo = await loadImage(logoSource);
-      ctx.fillStyle = "#ffffff";
-      roundedRect(ctx, 820, 28, 175, 132, 24);
-      ctx.fill();
-      drawImageContain(ctx, logo, 838, 42, 139, 104);
+      drawImageCover(ctx, logo, 842, 28, 132, 132, 24);
     } catch (_) {}
   }
 

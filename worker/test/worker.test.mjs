@@ -339,7 +339,12 @@ test("a removable office image is deleted from its own key", async () => {
     const body = await response.json();
     assert.equal(response.status, 200, `${variant}: ${JSON.stringify(body)}`);
     assert.equal(body.removed, true);
-    assert.deepEqual(deletes, [`office-covers/office-alqiq/${variant}`]);
+    assert.deepEqual(
+      deletes,
+      variant === "logo"
+        ? ["office-covers/office-alqiq/logo", "office-covers/office-alqiq/logo-original"]
+        : [`office-covers/office-alqiq/${variant}`]
+    );
   }
 });
 

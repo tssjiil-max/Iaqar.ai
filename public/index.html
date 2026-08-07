@@ -211,21 +211,21 @@
 
     .office-logo {
       width:94px;
-      height:108px;
-      padding:10px;
+      height:94px;
+      padding:0;
       border:2px dashed #C9D6D0;
       border-radius:19px;
       background:#FCFDFC;
-      display:grid;
-      place-items:center;
-      align-content:center;
-      gap:5px;
+      display:block;
+      overflow:hidden;
     }
 
     .office-logo img {
-      width:57px;
-      height:57px;
-      object-fit:contain;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      object-position:center;
+      display:block;
     }
 
     .office-logo span {
@@ -1015,8 +1015,8 @@
       .license-banner h2 { font-size:12px; }
       .verified { padding:7px 8px;font-size:10px; }
       .office-main { grid-template-columns:82px minmax(0,1fr);gap:11px; }
-      .office-logo { width:82px;height:98px; }
-      .office-logo img { width:50px;height:50px; }
+      .office-logo { width:82px;height:82px; }
+      .office-logo img { width:100%;height:100%; }
       .office-info h3 { font-size:18px; }
       .office-line { font-size:12px; }
       .status { font-size:10px; }
@@ -1143,6 +1143,7 @@
     width:100%;
     height:100%;
     object-fit:cover;
+    object-position:center;
     display:block;
   }
 
@@ -1184,6 +1185,26 @@
     display:grid;
     gap:5px;
     margin-top:9px;
+  }
+
+  .identity-crop-stage {
+    width:min(100%,320px);
+    margin:0 auto 5px;
+    padding:0;
+    overflow:hidden;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#eef4f1;
+    cursor:grab;
+    touch-action:none;
+  }
+
+  .identity-crop-stage.is-dragging { cursor:grabbing; }
+
+  .identity-crop-stage canvas {
+    width:100%;
+    height:100%;
+    display:block;
   }
 
   .identity-crop label { color:var(--muted); font-size:10px; font-weight:700; }
@@ -1646,8 +1667,8 @@
 
         <div class="office-main">
           <button class="office-logo" id="officeSettingsBtn" type="button"
-            aria-label="شعار المكتب — فتح إعدادات المكتب">
-            <img src="/icons/default-office.png" alt="شعار المكتب">
+            aria-label="شعار المكتب أو صورته الرسمية — فتح إعدادات المكتب">
+            <img src="/icons/default-office.png" alt="شعار المكتب أو صورته الرسمية">
             <span class="visually-hidden">فتح إعدادات المكتب</span>
           </button>
 
@@ -1747,14 +1768,20 @@
         <div class="identity-grid">
           <article class="identity-slot" data-image-variant="logo">
             <header>
-              <strong>شعار المكتب</strong>
+              <strong>شعار المكتب أو صورته الرسمية</strong>
               <span data-role="ratio-hint"></span>
             </header>
             <div class="identity-preview" data-role="preview">
-              <img data-role="preview-image" alt="معاينة شعار المكتب" hidden>
-              <span class="identity-placeholder" data-role="placeholder">لا يوجد شعار</span>
+              <img data-role="preview-image" alt="معاينة شعار المكتب أو صورته الرسمية" hidden>
+              <span class="identity-placeholder" data-role="placeholder">لا توجد صورة</span>
             </div>
             <div class="identity-crop" data-role="crop" hidden>
+              <div class="identity-crop-stage" data-role="crop-stage"
+                aria-label="اسحب الصورة داخل المربع لضبط موضع القص">
+                <canvas data-role="crop-canvas" width="512" height="512"></canvas>
+              </div>
+              <label for="logoCropZoom">التكبير والتصغير</label>
+              <input id="logoCropZoom" type="range" min="100" max="300" value="100" data-role="zoom">
               <label for="logoCropOffsetY">موضع الاقتصاص الرأسي</label>
               <input id="logoCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
               <label for="logoCropOffsetX">موضع الاقتصاص الأفقي</label>
@@ -1767,7 +1794,7 @@
               <button class="identity-btn danger" type="button" data-role="remove" hidden>إزالة</button>
             </div>
             <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
-              aria-label="اختيار شعار المكتب">
+              aria-label="اختيار شعار المكتب أو صورته الرسمية">
             <p class="identity-status" data-role="status" role="status"></p>
           </article>
 

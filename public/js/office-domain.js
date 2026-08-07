@@ -110,7 +110,7 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const OFFICE_IMAGE_PRESETS = Object.freeze({
   logo: Object.freeze({
     variant: "logo",
-    label: "شعار المكتب",
+    label: "شعار المكتب أو صورته الرسمية",
     aspectRatio: 1,
     outputWidth: 512,
     outputHeight: 512,
@@ -184,7 +184,8 @@ export function cropRectForAspect({
   naturalHeight,
   aspectRatio,
   offsetX = 0.5,
-  offsetY = 0.5
+  offsetY = 0.5,
+  zoom = 1
 } = {}) {
   const width = Math.floor(Number(naturalWidth) || 0);
   const height = Math.floor(Number(naturalHeight) || 0);
@@ -197,8 +198,9 @@ export function cropRectForAspect({
     sourceHeight = height;
     sourceWidth = Math.round(height * ratio);
   }
-  sourceWidth = Math.min(sourceWidth, width);
-  sourceHeight = Math.min(sourceHeight, height);
+  const safeZoom = Math.min(3, Math.max(1, Number(zoom) || 1));
+  sourceWidth = Math.min(Math.max(1, Math.round(sourceWidth / safeZoom)), width);
+  sourceHeight = Math.min(Math.max(1, Math.round(sourceHeight / safeZoom)), height);
 
   const clamp = value => Math.min(1, Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0.5));
   return {

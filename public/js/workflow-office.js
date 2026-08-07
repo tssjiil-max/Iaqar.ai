@@ -1329,6 +1329,22 @@
     return `/?${params.toString()}`;
   }
 
+  function officeNotificationIcon(data = {}) {
+    const fromPayload = String(data.iconUrl || "").trim();
+    if (fromPayload) return fromPayload;
+    try {
+      const runtime = office();
+      const officeId = runtime && runtime.officeId || "platform";
+      const raw = localStorage.getItem(`iaqar.officeProfile.${officeId}`);
+      if (!raw) return "/icons/icon-192.png";
+      const profile = JSON.parse(raw);
+      const logoUrl = String(profile && profile.logoUrl || "").trim();
+      return logoUrl || "/icons/icon-192.png";
+    } catch (_) {
+      return "/icons/icon-192.png";
+    }
+  }
+
   async function preferredFcmBridge() {
     if (!window.IAQAR_FCM_READY) return null;
     try { return await window.IAQAR_FCM_READY; }
@@ -1346,12 +1362,13 @@
     }
     const title = message.notification && message.notification.title || "مكاتب عقارية ذكية";
     const body = message.notification && message.notification.body || "لديك تنبيه جديد";
+    const icon = officeNotificationIcon(data);
     notify(`${title} — ${body}`);
     window.dispatchEvent(new CustomEvent("iaqar:push-received", { detail: { title, body, data } }));
     if (Notification.permission === "granted" && "serviceWorker" in navigator) {
       navigator.serviceWorker.ready.then(registration => registration.showNotification(title, {
         body,
-        icon: "/icons/icon-192.png",
+        icon,
         badge: "/icons/icon-192.png",
         dir: "rtl",
         lang: "ar",

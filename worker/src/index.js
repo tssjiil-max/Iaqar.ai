@@ -668,8 +668,8 @@ export function normalizeOfficeImageVariant(value) {
   return OFFICE_IMAGE_VARIANTS.includes(variant) ? variant : "";
 }
 
-function officeImageKey(officeId, variant) {
-  return `office-covers/${officeId}/${variant}`;
+function officeImageKey(officeId, variant, original = false) {
+  return `office-covers/${officeId}/${variant}${original ? "-original" : ""}`;
 }
 
 async function resolveOfficeImageTarget(request, env) {
@@ -677,21 +677,28 @@ async function resolveOfficeImageTarget(request, env) {
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
   if (!variant) throw appError("unsupported_image_variant", 400, "نوع صورة المكتب غير مدعوم");
+  const original = cleanText(request.headers.get("x-office-image-original"), 10).toLowerCase() === "true";
+  if (original && variant !== "logo") {
+    throw appError("unsupported_original_variant", 400, "حفظ الأصل متاح لصورة المكتب المربعة فقط");
+  }
   await authorizeOfficeRequest(request, env, officeId, "manage");
-  return { officeId, variant, key: officeImageKey(officeId, variant) };
+  return { officeId, variant, original, key: officeImageKey(officeId, variant, original) };
 }
 
 async function uploadOfficeImage(request, env, requestId) {
   const bucket = requireMediaBucket(env);
-  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
+  const { officeId, variant, original, key } = await resolveOfficeImageTarget(request, env);
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
   await bucket.put(key, request.body, {
-    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, variant, uploadedAt: new Date().toISOString() }
+    httpMetadata: { contentType, cacheControl: original ? "private, no-store" : "public, max-age=3600" },
+    customMetadata: { officeId, variant, original: String(original), uploadedAt: new Date().toISOString() }
   });
+  if (original) {
+    return jsonResponse({ ok: true, variant, originalStored: true, storagePath: key, requestId }, 201);
+  }
   const origin = new URL(request.url).origin;
   const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
   // coverUrl محفوظ للتوافق مع أي عميل قديم يقرأ الاسم السابق.
@@ -700,11 +707,18 @@ async function uploadOfficeImage(request, env, requestId) {
 
 async function deleteOfficeImage(request, env, requestId) {
   const bucket = requireMediaBucket(env);
-  const { variant, key } = await resolveOfficeImageTarget(request, env);
+  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
   if (variant === "cover") {
     throw appError("image_not_removable", 400, "الترويسة مطلوبة لبطاقة المكتب ولا يمكن إزالتها");
   }
-  await bucket.delete(key);
+  if (variant === "logo") {
+    await Promise.all([
+      bucket.delete(key),
+      bucket.delete(officeImageKey(officeId, variant, true))
+    ]);
+  } else {
+    await bucket.delete(key);
+  }
   return jsonResponse({ ok: true, variant, removed: true, requestId });
 }
 
@@ -2710,12 +2724,39 @@ async function readOfficeNotificationPreferences({projectId,officeId,accessToken
   }
 }
 
+function officeNotificationIcon(value, officeId) {
+  try {
+    const url = new URL(String(value || ""));
+    const expectedPath = `/media/public/office-covers/${officeId}/logo`;
+    if (url.protocol !== "https:" || decodeURIComponent(url.pathname) !== expectedPath) return "";
+    return url.href;
+  } catch (_) {
+    return "";
+  }
+}
+
+async function readOfficeNotificationIcon({projectId,officeId,accessToken}) {
+  try {
+    const document=await getFirestoreDocument({
+      projectId,segments:["offices",officeId],accessToken,allowMissing:true
+    });
+    const office=document?firestoreFieldsToJs(document.fields||{}):{};
+    return officeNotificationIcon(office.logoUrl,officeId);
+  }catch(error){
+    console.warn("[iaqar-fcm] office image read failed",error&&error.message);
+    return "";
+  }
+}
+
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken}) {
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
   }
-  const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
+  const [devices,iconUrl]=await Promise.all([
+    listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100}),
+    readOfficeNotificationIcon({projectId,officeId,accessToken})
+  ]);
   const brokerFilter=String(assignedBrokerId||"").trim();
   const activeDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
@@ -2737,7 +2778,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken});
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,iconUrl,accessToken});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
@@ -2757,28 +2798,29 @@ function buildFcmTarget(registrationId,registrationType="fid") {
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId=""}) {
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",iconUrl=""}) {
   const relativeLink=buildNotificationLink({officeId,type,recordId});
   const link=new URL(relativeLink,DEFAULT_APP_ORIGIN).href;
   const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const target=buildFcmTarget(registrationId,registrationType);
+  const icon=officeNotificationIcon(iconUrl,officeId)||`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`;
   return {message:{
     ...target,
     notification:{title:String(title||"مكاتب عقارية ذكية"),body:String(body||"لديك تنبيه جديد")},
-    data:{type:String(type),recordId:String(recordId||""),matchId:type==="match"?String(recordId||""):"",dealId:type==="deal"?String(recordId||""):"",officeId:String(officeId),url:link,deliveryId:finalDeliveryId},
+    data:{type:String(type),recordId:String(recordId||""),matchId:type==="match"?String(recordId||""):"",dealId:type==="deal"?String(recordId||""):"",officeId:String(officeId),url:link,deliveryId:finalDeliveryId,iconUrl:icon},
     webpush:{
       headers:{Urgency:type==="match"?"high":"normal"},
-      notification:{icon:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,badge:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
+      notification:{icon,badge:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
       fcm_options:{link}
     }
   }};
 }
 
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken}) {
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,iconUrl="",accessToken}) {
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId}))
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,iconUrl}))
   });
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){
