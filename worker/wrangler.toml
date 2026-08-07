@@ -25,6 +25,7 @@ bucket_name = "iaqar-media"
 [env.staging]
 name = "iaqar-intake-staging"
 workers_dev = true
+compatibility_flags = ["nodejs_compat"]
 
 [env.staging.vars]
 FIREBASE_PROJECT_ID = "iaqar-ai-staging"
@@ -32,7 +33,7 @@ DEPLOYMENT_ENV = "staging"
 META_GRAPH_VERSION = "v25.0"
 META_APP_ID = ""
 META_CONFIG_ID = ""
-FCM_WEB_PUSH_VAPID_KEY = ""
+FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
 
 [[env.staging.r2_buckets]]
 binding = "IAQAR_MEDIA"
