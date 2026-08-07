@@ -59,7 +59,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase9a-v2";
+const IAQAR_CACHE = "iaqar-shell-phase9a-v3";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",

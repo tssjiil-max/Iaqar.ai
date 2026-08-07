@@ -7,6 +7,7 @@ import {
   ATTACHMENT_ACCEPT,
   INTAKE_STATE_LABELS,
   REQUIRED_OPPORTUNITY_FIELDS,
+  completeOpportunityIntake,
   createExtractionAdapter,
   prepareOpportunityIntake,
   sha256Hex,
@@ -154,7 +155,7 @@ function renderMissingForm(missingFields, fields) {
       }).join("")}
     </div>
     <button type="submit" class="add-opportunity-complete" id="addOpportunityComplete">حفظ بعد الاستكمال</button>
-    <p class="add-opportunity-note">التحليل الحالي: محاكاة/تحليل نصي حتمي — ليس ذكاءً اصطناعيًا إنتاجيًا.</p>
+    <p class="add-opportunity-note">تم استخراج البيانات الموجودة فعليًا؛ أكمل الحقول الناقصة فقط.</p>
   `;
   wrap.onsubmit = (event) => {
     event.preventDefault();
@@ -214,6 +215,40 @@ async function uploadSourceFile(officeId, sourceId, file) {
   return payload;
 }
 
+async function requestOpportunityExtraction(officeId, input) {
+  const base = workerBase();
+  if (!base) throw new Error("تعذر الوصول إلى خدمة التحليل");
+  const response = await fetch(`${base.replace(/\/$/, "")}/opportunity/extract`, {
+    method: "POST",
+    headers: {
+      ...(await authHeader()),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      officeId,
+      sourceType: input.sourceType,
+      text: input.text || "",
+      url: input.url || "",
+      mediaPath: input.mediaPath || "",
+      fileName: input.fileName || "",
+      contentType: input.contentType || ""
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.fields) {
+    throw new Error(payload.message || "تعذر استخراج بيانات الفرصة");
+  }
+  return {
+    extractionMode: payload.extractionMode,
+    extractionProvider: payload.extractionProvider,
+    extractionConfidence: payload.extractionConfidence,
+    productionAi: payload.productionAi === true,
+    productionExtraction: payload.productionExtraction === true,
+    extractedText: payload.extractedText || "",
+    fields: payload.fields
+  };
+}
+
 async function persistIntake(result) {
   const office = currentOffice();
   const db = window.firebase?.firestore?.();
@@ -267,31 +302,41 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
   clearMissingForm();
 
   try {
-    let fileChecksumValue = "";
-    let mediaPath = "";
-    if (selectedFile) {
-      setState("uploading");
-      fileChecksumValue = await fileChecksum(selectedFile);
-      // Provisional source id from checksum so upload path is stable.
-      const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
-      const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
-      mediaPath = uploaded.mediaPath || "";
+    let prepared;
+    if (brokerFields && pendingDraft) {
+      prepared = completeOpportunityIntake(pendingDraft, brokerFields);
+    } else {
+      let fileChecksumValue = "";
+      let mediaPath = "";
+      if (selectedFile) {
+        setState("uploading");
+        fileChecksumValue = await fileChecksum(selectedFile);
+        // Provisional source id from checksum so upload path is stable.
+        const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
+        const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
+        mediaPath = uploaded.mediaPath || "";
+      }
+
+      setState("analyzing");
+      prepared = await prepareOpportunityIntake({
+        officeId: office.officeId,
+        brokerId: user.uid,
+        text,
+        file: selectedFile || undefined,
+        fileChecksum: fileChecksumValue,
+        mediaPath
+      }, createExtractionAdapter({
+        extract: (input) => requestOpportunityExtraction(office.officeId, input)
+      }));
+
+      if (mediaPath && prepared?.source) prepared.source.mediaPath = mediaPath;
+      if (fileChecksumValue && prepared.source) {
+        prepared.source.byteSize = selectedFile?.size || prepared.source.byteSize;
+      }
     }
 
-    setState("analyzing");
-    const prepared = await prepareOpportunityIntake({
-      officeId: office.officeId,
-      brokerId: user.uid,
-      text,
-      file: selectedFile || undefined,
-      fileChecksum: fileChecksumValue,
-      mediaPath,
-      brokerFields,
-      allowIncomplete: Boolean(brokerFields)
-    }, createExtractionAdapter());
-
-    if (!prepared.ok) {
-      setState("failed", prepared.error || "");
+    if (!prepared?.ok) {
+      setState("failed", prepared?.error || "تعذر تحليل المصدر");
       lastFailure = { text, file: selectedFile, brokerFields };
       return;
     }
@@ -301,12 +346,6 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
       setState("missing_information");
       renderMissingForm(prepared.missingFields, prepared.fields);
       return;
-    }
-
-    // Ensure mediaPath / checksum land on the source record.
-    if (mediaPath) prepared.source.mediaPath = mediaPath;
-    if (fileChecksumValue) {
-      prepared.source.byteSize = selectedFile?.size || prepared.source.byteSize;
     }
 
     const saved = await persistIntake(prepared);
@@ -351,14 +390,15 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
         createsOperation: Boolean(matching.createsOperation || missingDataSync.created),
         runsMatching: matching.ok === true,
         matchCount: Number(matching.matchCount || 0),
-        productionAi: false,
+        productionAi: prepared.productionAi === true,
+        productionExtraction: prepared.productionExtraction === true,
         ...phase4BoundaryGuarantees(),
         ...phase5BoundaryGuarantees()
       }
     }));
   } catch (error) {
     console.warn("add-opportunity failed", error);
-    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
+    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : (error?.message || "تعذر تحليل المصدر"));
     lastFailure = { text, file: selectedFile, brokerFields, fromRetry };
   } finally {
     setBusy(false);
@@ -377,6 +417,8 @@ function onFileChosen(event) {
   if (!validated.ok) {
     setState("failed", validated.error);
     selectedFile = null;
+    pendingDraft = null;
+    lastFailure = null;
     describeAttachment();
     return;
   }

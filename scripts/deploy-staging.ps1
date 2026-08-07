@@ -123,6 +123,9 @@ try {
   if ($HealthJson.firebaseConfigured -ne $true -or $HealthJson.backendReady -ne $true) {
     Die "Staging Worker is UI-only: firebaseConfigured/backendReady must be true"
   }
+  if ($HealthJson.opportunityExtractionReady -ne $true) {
+    Die "Staging Worker must have its Workers AI opportunity extraction binding"
+  }
   if ($HealthJson.cronEnabled -eq $true) { Die "cronEnabled must be false on staging" }
   Write-Host "Staging health OK (full-functional backendReady)"
 

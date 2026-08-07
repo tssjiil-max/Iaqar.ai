@@ -256,6 +256,10 @@ items.
 **Why.** No OCR/ASR/document-AI provider is configured. §10 forbids claiming production
 integrations. Matching is Phase 4; persisted Operations are Phase 5.
 
+**Superseded on staging only by D-019.** The original simulated attachment fixtures are
+removed once the real staging Workers AI binding and live extraction checks are present.
+Production remains undeployed and therefore unchanged.
+
 ## D-012 — Phase 3 Opportunity Bank uses soft delete + explicit cooperation records
 
 **Directive:** Phase 3 Opportunity Bank (list/detail/edit/archive/delete/share) with
@@ -457,6 +461,34 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 
 **Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
 Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
+
+## D-019 — Real multi-format opportunity extraction on staging
+
+**Phase:** 9A staging hardening of the approved Phase 2 intake
+**Directive:** Extract only values present in the supplied source; ask only for missing
+fields; no fake OCR/ASR/document success; preserve office isolation; no production deploy.
+
+**Decision.**
+
+1. **One authenticated Worker boundary.** `POST /opportunity/extract` authorizes the
+   caller for `officeId`. Binary media is read only from
+   `opportunity-sources/{officeId}/…` and its R2 metadata must match the office and
+   source type.
+2. **Real source conversion.** Direct Arabic text uses the deterministic parser.
+   User-supplied public URLs are fetched only after private-network rejection and a
+   robots check. Images/screenshots/PDF/DOCX/Excel use the staging Workers AI
+   `toMarkdown` binding; Arabic audio uses `whisper-large-v3-turbo`.
+3. **No inferred defaults.** Structured fields are accepted only when their evidence is
+   present in extracted text. Empty/unclear content remains missing, and the broker sees
+   only those missing fields. Invalid, blocked, damaged, silent, or unsupported sources
+   return a specific Arabic reason.
+4. **Staging-only binding.** `[env.staging.ai]` defines `AI`; the production Worker
+   configuration has no AI binding and is not deployed in this phase.
+5. **No repeated paid analysis.** Broker completion reuses the pending extraction and
+   fills missing fields without uploading or analyzing the source again.
+
+**Why.** Replaces fabricated attachment fixtures with real extraction while preserving
+the constitution's honesty, tenant isolation, and production stop boundary.
 
 ## Open questions carried forward
 

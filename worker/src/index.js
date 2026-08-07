@@ -69,6 +69,10 @@ import {
   publicRateLimitKey,
   resetPublicRateLimitStoreForTests
 } from "./public-rate-limit.js";
+import {
+  OPPORTUNITY_EXTRACTION_SOURCE_TYPES,
+  extractOpportunitySource
+} from "./opportunity-extraction.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -195,6 +199,7 @@ export default {
           deploymentEnvironment,
           firebaseConfigured,
           backendReady,
+          opportunityExtractionReady: Boolean(env.AI),
           cronEnabled,
           pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && firebaseConfigured),
           projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
@@ -352,6 +357,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/media/opportunity-source") {
         return await uploadOpportunitySourceMedia(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity/extract") {
+        return await handleOpportunityExtraction(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
@@ -534,7 +543,6 @@ const OPPORTUNITY_SOURCE_TYPES = Object.freeze({
   "image/png": { sourceTypes: ["image", "screenshot"], ext: "png", max: 15 * 1024 * 1024 },
   "image/webp": { sourceTypes: ["image", "screenshot"], ext: "webp", max: 15 * 1024 * 1024 },
   "application/pdf": { sourceTypes: ["pdf"], ext: "pdf", max: 15 * 1024 * 1024 },
-  "application/msword": { sourceTypes: ["word"], ext: "doc", max: 15 * 1024 * 1024 },
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { sourceTypes: ["word"], ext: "docx", max: 15 * 1024 * 1024 },
   "application/vnd.ms-excel": { sourceTypes: ["excel"], ext: "xls", max: 15 * 1024 * 1024 },
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { sourceTypes: ["excel"], ext: "xlsx", max: 15 * 1024 * 1024 },
@@ -579,17 +587,76 @@ async function uploadOpportunitySourceMedia(request, env, requestId) {
       sourceId,
       sourceType,
       uploadedAt: new Date().toISOString(),
-      extractionMode: "simulated_fixture"
+      extractionMode: "pending_production_extraction"
     }
   });
   return jsonResponse({
     ok: true,
     mediaPath: key,
     sourceType,
-    extractionMode: "simulated_fixture",
-    productionAi: false,
+    extractionMode: "pending_production_extraction",
+    analysisPending: true,
     requestId
   }, 201);
+}
+
+async function handleOpportunityExtraction(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const sourceType = cleanText(body.sourceType, 20).toLowerCase();
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!OPPORTUNITY_EXTRACTION_SOURCE_TYPES.includes(sourceType)) {
+    throw appError("unsupported_source_type", 400, "نوع مصدر الفرصة غير مدعوم");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+
+  const extractionInput = {
+    sourceType,
+    text: cleanText(body.text, 12000),
+    url: cleanText(body.url, 2000),
+    fileName: cleanText(body.fileName, 240),
+    contentType: cleanText(body.contentType, 120).toLowerCase()
+  };
+  if (!["text", "url"].includes(sourceType)) {
+    const mediaPath = cleanText(body.mediaPath, 500);
+    const prefix = `opportunity-sources/${officeId}/`;
+    if (!mediaPath.startsWith(prefix) || mediaPath.includes("..")) {
+      throw appError("invalid_media_target", 400, "مسار ملف الفرصة غير صالح");
+    }
+    const object = await requireMediaBucket(env).get(mediaPath);
+    if (!object) throw appError("media_not_found", 404, "ملف الفرصة غير موجود");
+    const metadata = object.customMetadata || {};
+    if (metadata.officeId !== officeId || metadata.sourceType !== sourceType) {
+      throw appError("media_scope_mismatch", 403, "ملف الفرصة لا يتبع هذا المكتب أو نوع المصدر");
+    }
+    const arrayBuffer = typeof object.arrayBuffer === "function"
+      ? await object.arrayBuffer()
+      : await new Response(object.body).arrayBuffer();
+    extractionInput.fileBytes = new Uint8Array(arrayBuffer);
+    extractionInput.fileName = extractionInput.fileName
+      || mediaPath.split("/").pop()
+      || `opportunity.${sourceType}`;
+    const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
+    if (extractionInput.contentType && storedContentType && extractionInput.contentType !== storedContentType) {
+      throw appError("media_type_mismatch", 400, "نوع الملف المرفق لا يطابق الملف المرفوع");
+    }
+    extractionInput.contentType = storedContentType || "application/octet-stream";
+  }
+
+  const extraction = await extractOpportunitySource(extractionInput, env);
+  return jsonResponse({
+    ok: true,
+    sourceType,
+    fields: extraction.fields,
+    missingFields: extraction.missingFields,
+    extractionMode: extraction.extractionMode,
+    extractionProvider: extraction.extractionProvider,
+    extractionConfidence: extraction.extractionConfidence,
+    productionAi: extraction.productionAi,
+    productionExtraction: extraction.productionExtraction,
+    extractedText: extraction.extractedText,
+    requestId
+  });
 }
 
 // متغيّرات هوية المكتب البصرية. الترويسة تبقى "cover" لتوافق الروابط المنشورة سابقًا.

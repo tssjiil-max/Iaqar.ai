@@ -34,6 +34,9 @@ META_APP_ID = ""
 META_CONFIG_ID = ""
 FCM_WEB_PUSH_VAPID_KEY = ""
 
+[env.staging.ai]
+binding = "AI"
+
 [[env.staging.r2_buckets]]
 binding = "IAQAR_MEDIA"
 bucket_name = "iaqar-media"

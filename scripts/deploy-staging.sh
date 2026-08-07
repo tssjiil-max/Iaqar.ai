@@ -131,6 +131,10 @@ if (body.firebaseConfigured !== true || body.backendReady !== true) {
   console.error("Staging Worker is UI-only: firebaseConfigured/backendReady must be true.");
   process.exit(1);
 }
+if (body.opportunityExtractionReady !== true) {
+  console.error("Staging Worker must have its Workers AI opportunity extraction binding.");
+  process.exit(1);
+}
 if (body.cronEnabled === true) {
   console.error("cronEnabled must be false on staging");
   process.exit(1);
