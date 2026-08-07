@@ -107,8 +107,10 @@ The script:
 3. Verifies Cloudflare through account-scoped Workers Scripts and R2 create/delete
    probes; no unsupported token-verification endpoint is used.
 4. Runs the full `npm run test:phase9a` gate.
-5. Deploys Firestore rules and indexes **only** to `iaqar-ai-staging`; this is required
-   for authenticated office members to read their office after login.
+5. Deploys Firestore rules through the official Firebase Rules API **only** to
+   `iaqar-ai-staging`, then verifies the active `cloud.firestore` release points at the
+   new ruleset. This is required for authenticated office members to read their office
+   after login and avoids requiring unrelated Service Usage permissions.
 6. Deploys **only** `wrangler deploy --env staging`.
 7. Syncs normalized Worker staging secrets from private temp files (values not printed).
 8. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`.

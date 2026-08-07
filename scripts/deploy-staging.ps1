@@ -61,11 +61,10 @@ try {
   npm run test:phase9a
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-  Write-Host "--- Firebase Firestore rules + indexes ($StagingFirebaseProject only) ---"
-  npx firebase-tools deploy `
-    --only firestore:rules,firestore:indexes `
-    --project $StagingFirebaseProject `
-    --non-interactive
+  Write-Host "--- Firebase Firestore rules ($StagingFirebaseProject only) ---"
+  node (Join-Path $Root "scripts/deploy-firestore-rules-staging.mjs") `
+    $GacFile `
+    (Join-Path $Root "firestore.rules")
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   Write-Host "--- Cloudflare Worker (staging env only) ---"

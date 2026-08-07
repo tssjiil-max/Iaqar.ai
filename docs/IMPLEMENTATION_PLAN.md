@@ -351,9 +351,10 @@ Delivered:
 - **Deploy auth without FIREBASE_TOKEN:** temp GAC from
   `FIREBASE_SERVICE_ACCOUNT_JSON` → `GOOGLE_APPLICATION_CREDENTIALS` → deleted after;
   required runtime fields are derived into private temp files and synced to Worker staging.
-- **Firestore staging parity:** the staging deploy synchronizes `firestore.rules` and
-  `firestore.indexes.json` to `iaqar-ai-staging` before Worker/Hosting deployment, so
-  authenticated office access uses the tested repository rules rather than project defaults.
+- **Firestore staging parity:** the staging deploy publishes `firestore.rules` through
+  the official Firebase Rules API to `iaqar-ai-staging` and verifies the active release
+  before Worker/Hosting deployment, so authenticated office access uses the tested
+  repository rules rather than project defaults.
 - **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-credentials.mjs`,
   `staging-gac.mjs`, `preflight-staging.mjs`, `smoke-staging.mjs`. The preflight
   normalizes quoted/escaped Firebase fields, verifies local JWT + Google OAuth, and

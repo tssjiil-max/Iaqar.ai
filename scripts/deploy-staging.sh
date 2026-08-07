@@ -62,11 +62,8 @@ node scripts/preflight-staging.mjs "$GAC_FILE"
 echo "--- Full Phase 9A test gate ---"
 npm run test:phase9a
 
-echo "--- Firebase Firestore rules + indexes (${STAGING_FIREBASE_PROJECT} only) ---"
-npx firebase-tools deploy \
-  --only firestore:rules,firestore:indexes \
-  --project "$STAGING_FIREBASE_PROJECT" \
-  --non-interactive
+echo "--- Firebase Firestore rules (${STAGING_FIREBASE_PROJECT} only) ---"
+node scripts/deploy-firestore-rules-staging.mjs "$GAC_FILE" "$ROOT/firestore.rules"
 
 echo "--- Cloudflare Worker (staging env only) ---"
 (
