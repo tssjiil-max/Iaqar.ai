@@ -486,6 +486,12 @@ fields; no fake OCR/ASR/document success; preserve office isolation; no producti
    configuration has no AI binding and is not deployed in this phase.
 5. **No repeated paid analysis.** Broker completion reuses the pending extraction and
    fills missing fields without uploading or analyzing the source again.
+6. **Text + attachment are one source submission.** Broker-entered text supplements
+   OCR/document output instead of being discarded when a file is attached. A property
+   photo with no readable overlay may therefore use the real typed listing text after
+   OCR completes with no text; provider failures still fail explicitly.
+7. **Contextual completeness.** `rooms` is not applicable to land opportunities and is
+   excluded from both the completion form and the Phase 5 missing-data operation.
 
 **Why.** Replaces fabricated attachment fixtures with real extraction while preserving
 the constitution's honesty, tenant isolation, and production stop boundary.

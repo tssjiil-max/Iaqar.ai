@@ -206,7 +206,8 @@ Automated coverage:
 robots-permitted URL content are parsed from real source text. Images/screenshots,
 PDF/DOCX/Excel and Arabic audio use the staging Workers AI binding. Tests require
 missing-only completion and explicit invalid/empty/failure reasons; fabricated
-attachment fixtures are forbidden.
+attachment fixtures are forbidden. Typed text must supplement an attached image/document,
+and land opportunities must not request a rooms value.
 
 ## TEST 6 — Opportunity Bank (and no false Operations for unmatched opportunities)
 

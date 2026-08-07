@@ -23,6 +23,13 @@ export const REQUIRED_EXTRACTED_FIELDS = Object.freeze([
   "rooms"
 ]);
 
+export function requiredExtractedFieldsFor(fields = {}) {
+  const propertyType = String(fields.propertyType || "");
+  return /أرض|ارض/.test(propertyType)
+    ? REQUIRED_EXTRACTED_FIELDS.filter((field) => field !== "rooms")
+    : [...REQUIRED_EXTRACTED_FIELDS];
+}
+
 export class OpportunityExtractionError extends Error {
   constructor(code, status, publicMessage) {
     super(publicMessage);
@@ -232,7 +239,7 @@ export function parseExtractedOpportunityText(rawText) {
     text,
     /(المدينة المنورة|الرياض|جدة|الدمام|مكة المكرمة|مكة|الخبر|الطائف|تبوك|أبها)/
   );
-  const district = firstMatch(text, /حي\s+([^\s،,؛;:.]{2,40})/)
+  const district = firstMatch(text, /(?:حي|مخطط)\s+([^\s،,؛;:.]{2,40})/)
     || firstMatch(text, /(النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ|العزيزية|قباء)/);
   const area = numericValue(
     firstMatch(text, /([0-9]{2,6}(?:\.[0-9]+)?)\s*(?:م2|م²|متر(?:\s+مربع)?)/)
@@ -259,15 +266,21 @@ export function parseExtractedOpportunityText(rawText) {
     area,
     rooms
   };
-  const missingFields = REQUIRED_EXTRACTED_FIELDS.filter((field) => {
+  const requiredFields = requiredExtractedFieldsFor(fields);
+  const missingFields = requiredFields.filter((field) => {
     const value = fields[field];
     return value === "" || value === null || value === undefined;
   });
+  const recognizedFieldCount = REQUIRED_EXTRACTED_FIELDS.filter((field) => {
+    const value = fields[field];
+    return value !== "" && value !== null && value !== undefined;
+  }).length;
   return {
     fields,
     missingFields,
+    recognizedFieldCount,
     extractionConfidence: Math.round(
-      ((REQUIRED_EXTRACTED_FIELDS.length - missingFields.length) / REQUIRED_EXTRACTED_FIELDS.length) * 100
+      ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
     )
   };
 }
@@ -574,16 +587,16 @@ async function extractBinaryText({ sourceType, fileName, contentType, fileBytes,
 
 export async function extractOpportunitySource(input, env, dependencies = {}) {
   const sourceType = String(input?.sourceType || "").toLowerCase();
+  const userText = safeExtractedText(input?.text);
   if (!OPPORTUNITY_EXTRACTION_SOURCE_TYPES.includes(sourceType)) {
     throw new OpportunityExtractionError("unsupported_source_type", 400, "نوع مصدر الفرصة غير مدعوم");
   }
 
   let extracted;
   if (sourceType === "text") {
-    const text = safeExtractedText(input.text);
-    if (!text) throw new OpportunityExtractionError("source_text_empty", 400, "أدخل نص الفرصة");
+    if (!userText) throw new OpportunityExtractionError("source_text_empty", 400, "أدخل نص الفرصة");
     extracted = {
-      text,
+      text: userText,
       extractionMode: "deterministic_text_parser",
       extractionProvider: "iaqar.deterministic_arabic_parser",
       productionAi: false
@@ -599,17 +612,32 @@ export async function extractOpportunitySource(input, env, dependencies = {}) {
     if (!(input.fileBytes instanceof Uint8Array) || input.fileBytes.byteLength === 0) {
       throw new OpportunityExtractionError("source_file_empty", 400, "الملف المرفق فارغ");
     }
-    extracted = await extractBinaryText({
-      sourceType,
-      fileName: input.fileName,
-      contentType: input.contentType,
-      fileBytes: input.fileBytes,
-      ai: env?.AI
-    });
+    try {
+      extracted = await extractBinaryText({
+        sourceType,
+        fileName: input.fileName,
+        contentType: input.contentType,
+        fileBytes: input.fileBytes,
+        ai: env?.AI
+      });
+    } catch (error) {
+      if (!userText || error?.code !== "document_no_text") throw error;
+      extracted = {
+        text: "",
+        extractionMode: sourceType === "image" || sourceType === "screenshot"
+          ? "production_ocr"
+          : "production_document_conversion",
+        extractionProvider: "cloudflare.workers_ai.to_markdown",
+        productionAi: sourceType === "image" || sourceType === "screenshot"
+      };
+    }
   }
 
-  const parsed = parseExtractedOpportunityText(extracted.text);
-  if (parsed.missingFields.length === REQUIRED_EXTRACTED_FIELDS.length) {
+  const analysisText = sourceType === "text"
+    ? extracted.text
+    : safeExtractedText([userText, extracted.text].filter(Boolean).join("\n"));
+  const parsed = parseExtractedOpportunityText(analysisText);
+  if (parsed.recognizedFieldCount === 0) {
     throw new OpportunityExtractionError(
       "no_property_data_found",
       422,
@@ -620,6 +648,7 @@ export async function extractOpportunitySource(input, env, dependencies = {}) {
     ...extracted,
     ...parsed,
     productionExtraction: true,
-    extractedText: extracted.text
+    extractedText: extracted.text,
+    userTextUsed: Boolean(sourceType !== "text" && userText)
   };
 }

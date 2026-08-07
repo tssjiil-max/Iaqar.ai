@@ -54,6 +54,13 @@ export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "rooms"
 ]);
 
+export function requiredOpportunityFieldsFor(fields = {}) {
+  const propertyType = String(fields.propertyType || "");
+  return /أرض|ارض/.test(propertyType)
+    ? REQUIRED_OPPORTUNITY_FIELDS.filter((field) => field !== "rooms")
+    : [...REQUIRED_OPPORTUNITY_FIELDS];
+}
+
 /** MIME / extension maps for the paperclip chooser. */
 export const ATTACHMENT_ACCEPT = [
   "image/*",
@@ -225,7 +232,7 @@ function extractFromText(raw, meta) {
     matchOne(text, /(الرياض|جدة|المدينة المنورة|المدينة|الدمام|مكة|الخبر|الطائف|تبوك|أبها)/) || "";
 
   const district =
-    matchOne(text, /حي\s+([^\s،,]{2,40})/) ||
+    matchOne(text, /(?:حي|مخطط)\s+([^\s،,]{2,40})/) ||
     matchOne(text, /(النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ)/) ||
     "";
 
@@ -281,18 +288,19 @@ function countFilled(fields) {
 }
 
 export function listMissingFields(fields) {
-  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => {
+  return requiredOpportunityFieldsFor(fields).filter((key) => {
     const value = fields?.[key];
     return value === null || value === undefined || String(value).trim() === "";
   });
 }
 
 export function computeDataCompleteness(fields) {
+  const requiredFields = requiredOpportunityFieldsFor(fields);
   const missing = listMissingFields(fields);
-  const filled = REQUIRED_OPPORTUNITY_FIELDS.length - missing.length;
+  const filled = requiredFields.length - missing.length;
   return {
     missingFields: missing,
-    dataCompleteness: Math.round((filled / REQUIRED_OPPORTUNITY_FIELDS.length) * 100),
+    dataCompleteness: Math.round((filled / requiredFields.length) * 100),
     isComplete: missing.length === 0
   };
 }

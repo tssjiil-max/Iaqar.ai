@@ -31,6 +31,22 @@ test("direct Arabic text extracts only values present in the source", async () =
   assert.equal(extraction.productionAi, false);
 });
 
+test("staging report sample extracts land fields and treats rooms as not applicable", async () => {
+  const text = "للبيع قطعة أرض في مخطط الصفوة بالمدينة المنورة، المساحة 500 متر، السعر 600 ألف ريال";
+  const extraction = await extractOpportunitySource({ sourceType: "text", text }, {});
+  assert.deepEqual(extraction.fields, {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الصفوة",
+    priceOrBudget: 600000,
+    area: 500,
+    rooms: null
+  });
+  assert.deepEqual(extraction.missingFields, []);
+});
+
 test("parser leaves absent values missing instead of inventing defaults", () => {
   const parsed = parseExtractedOpportunityText("مطلوب شقة في الرياض");
   assert.equal(parsed.fields.opportunityKind, "REQUEST");
@@ -109,6 +125,25 @@ test("image, screenshot, PDF, Word, and Excel use real document conversion outpu
   }
   assert.equal(calls.length, 5);
   assert.ok(calls.every((call) => call.blob instanceof Blob));
+});
+
+test("typed listing text supplements a property photo with no readable ad text", async () => {
+  const text = "للبيع قطعة أرض في مخطط الصفوة بالمدينة المنورة، المساحة 500 متر، السعر 600 ألف ريال";
+  const extraction = await extractOpportunitySource({
+    sourceType: "image",
+    text,
+    fileName: "property-photo.png",
+    contentType: "image/png",
+    fileBytes: new Uint8Array([1, 2, 3])
+  }, { AI: { toMarkdown: async () => ({ data: "" }) } });
+  assert.equal(extraction.extractionMode, "production_ocr");
+  assert.equal(extraction.productionAi, true);
+  assert.equal(extraction.userTextUsed, true);
+  assert.equal(extraction.extractedText, "");
+  assert.equal(extraction.fields.propertyType, "أرض");
+  assert.equal(extraction.fields.city, "المدينة المنورة");
+  assert.equal(extraction.fields.priceOrBudget, 600000);
+  assert.deepEqual(extraction.missingFields, []);
 });
 
 test("Arabic audio uses production ASR transcript before field parsing", async () => {

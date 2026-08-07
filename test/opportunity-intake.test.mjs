@@ -140,6 +140,22 @@ test("missing-field flow asks only for absent required fields", async () => {
   assert.deepEqual(completed.missingFields, []);
 });
 
+test("land opportunities do not ask for a non-applicable rooms field", () => {
+  const completeness = computeDataCompleteness({
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الصفوة",
+    priceOrBudget: 600000,
+    area: 500,
+    rooms: null
+  });
+  assert.equal(completeness.isComplete, true);
+  assert.deepEqual(completeness.missingFields, []);
+  assert.equal(completeness.dataCompleteness, 100);
+});
+
 test("broker completion reuses extracted values and asks again only for fields still absent", async () => {
   const extracted = await prepareOpportunityIntake({
     officeId: "office-a",
@@ -268,6 +284,42 @@ test("attachment intake uses Worker extraction and never fabricates attachment f
   assert.equal(result.opportunity.productionAi, false);
   assert.equal(result.opportunity.propertyType, "فيلا");
   assert.equal(result.source.extractedText.includes("حي الملقا"), true);
+});
+
+test("file intake forwards the broker's typed text to the Worker extraction adapter", async () => {
+  let received;
+  const adapter = createExtractionAdapter({
+    extract: async (input) => {
+      received = input;
+      return {
+        extractionMode: "production_ocr",
+        extractionProvider: "cloudflare.workers_ai.to_markdown",
+        productionAi: true,
+        productionExtraction: true,
+        extractionConfidence: 100,
+        extractedText: "",
+        fields: {
+          opportunityKind: "OFFER", purpose: "SALE", propertyType: "أرض",
+          city: "المدينة المنورة", district: "الصفوة", priceOrBudget: 600000,
+          area: 500, rooms: null
+        }
+      };
+    }
+  });
+  const text = "للبيع قطعة أرض في مخطط الصفوة بالمدينة المنورة، المساحة 500 متر، السعر 600 ألف ريال";
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text,
+    file: { name: "property.png", type: "image/png", size: 2048 },
+    fileChecksum: "image-checksum",
+    mediaPath: "opportunity-sources/office-a/src_image/property.png"
+  }, adapter);
+  assert.equal(received.text, text);
+  assert.equal(received.sourceType, "image");
+  assert.ok(received.mediaPath.endsWith("property.png"));
+  assert.equal(result.state, "saved");
+  assert.deepEqual(result.missingFields, []);
 });
 
 test("failed upload style validation is retryable", () => {
