@@ -9,6 +9,7 @@ import {
   SOURCE_TYPES,
   buildDeduplicationFingerprint,
   buildOpportunityRecord,
+  completeOpportunityIntake,
   computeDataCompleteness,
   createExtractionAdapter,
   detectSourceTypeFromFile,
@@ -46,12 +47,26 @@ test("attachment intake detects image, screenshot, pdf, word, excel, audio", () 
 
 test("attachment validation rejects oversize and unknown types", () => {
   assert.equal(validateAttachment({ name: "x.bin", type: "application/octet-stream", size: 10 }).ok, false);
+  assert.match(validateAttachment({ name: "empty.pdf", type: "application/pdf", size: 0 }).error, /فارغ/);
   assert.equal(validateAttachment({ name: "big.pdf", type: "application/pdf", size: 20 * 1024 * 1024 }).ok, false);
   assert.equal(validateAttachment({ name: "ok.pdf", type: "application/pdf", size: 1000 }).ok, true);
 });
 
-test("URL intake extracts available fields via deterministic parser (not production AI)", async () => {
-  const adapter = createExtractionAdapter();
+test("URL intake consumes authenticated Worker extraction without parsing the URL string itself", async () => {
+  const adapter = createExtractionAdapter({
+    extract: async () => ({
+      extractionMode: "public_url_content",
+      extractionProvider: "iaqar.authorized_http_content",
+      productionAi: false,
+      productionExtraction: true,
+      extractionConfidence: 50,
+      extractedText: "عرض للبيع فيلا في الرياض",
+      fields: {
+        opportunityKind: "OFFER", purpose: "SALE", propertyType: "فيلا", city: "الرياض",
+        district: "", priceOrBudget: null, area: null, rooms: null
+      }
+    })
+  });
   const result = await prepareOpportunityIntake({
     officeId: "office-a",
     brokerId: "broker-a",
@@ -61,7 +76,9 @@ test("URL intake extracts available fields via deterministic parser (not product
   assert.equal(result.ok, true);
   assert.equal(result.opportunity.sourceType, "url");
   assert.equal(result.extraction.productionAi, false);
-  assert.equal(result.extraction.extractionMode, "deterministic_text_parser");
+  assert.equal(result.extraction.productionExtraction, true);
+  assert.equal(result.extraction.extractionMode, "public_url_content");
+  assert.equal(result.fields?.propertyType || result.opportunity.propertyType, "فيلا");
   assert.equal(result.createsOperation, false);
   assert.equal(result.runsMatching, false);
   assert.ok(result.opportunity.deduplicationFingerprint);
@@ -79,6 +96,7 @@ test("text intake extracts Arabic listing signals and tracks missing fields", as
   assert.equal(result.ok, true);
   assert.ok(["saved", "missing_information"].includes(result.state));
   assert.equal(result.productionAi, false);
+  assert.equal(result.productionExtraction, true);
   if (result.state === "saved") {
     assert.equal(result.opportunity.propertyType, "شقة");
     assert.equal(result.opportunity.city, "الرياض");
@@ -120,6 +138,45 @@ test("missing-field flow asks only for absent required fields", async () => {
   assert.equal(completed.opportunity.internalStatus, "READY");
   assert.equal(completed.opportunity.dataCompleteness, 100);
   assert.deepEqual(completed.missingFields, []);
+});
+
+test("land opportunities do not ask for a non-applicable rooms field", () => {
+  const completeness = computeDataCompleteness({
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الصفوة",
+    priceOrBudget: 600000,
+    area: 500,
+    rooms: null
+  });
+  assert.equal(completeness.isComplete, true);
+  assert.deepEqual(completeness.missingFields, []);
+  assert.equal(completeness.dataCompleteness, 100);
+});
+
+test("broker completion reuses extracted values and asks again only for fields still absent", async () => {
+  const extracted = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: "عرض للبيع شقة في حي النرجس الرياض"
+  });
+  assert.equal(extracted.state, "missing_information");
+  const stillMissing = completeOpportunityIntake(extracted, { area: 180 });
+  assert.equal(stillMissing.state, "missing_information");
+  assert.equal(stillMissing.fields.propertyType, "شقة");
+  assert.equal(stillMissing.fields.area, 180);
+  assert.equal(stillMissing.missingFields.includes("area"), false);
+
+  const completed = completeOpportunityIntake(stillMissing, {
+    priceOrBudget: 1200000,
+    rooms: 4
+  });
+  assert.equal(completed.state, "saved");
+  assert.deepEqual(completed.missingFields, []);
+  assert.equal(completed.opportunity.propertyType, "شقة");
+  assert.equal(completed.opportunity.area, 180);
 });
 
 test("duplicate prevention uses a stable office-scoped fingerprint", async () => {
@@ -197,19 +254,72 @@ test("successful Opportunity persistence payload includes every required field",
   assert.deepEqual(listMissingFields({ ...fields, district: "" }), ["district"]);
 });
 
-test("attachment intake uses simulated fixtures and never claims production AI", async () => {
+test("attachment intake uses Worker extraction and never fabricates attachment fixtures", async () => {
+  const adapter = createExtractionAdapter({
+    extract: async () => ({
+      extractionMode: "production_document_conversion",
+      extractionProvider: "cloudflare.workers_ai.to_markdown",
+      productionAi: false,
+      productionExtraction: true,
+      extractionConfidence: 100,
+      extractedText: "عرض للبيع فيلا في حي الملقا الرياض 5 غرف مساحة 400 متر السعر 2500000 ريال",
+      fields: {
+        opportunityKind: "OFFER", purpose: "SALE", propertyType: "فيلا", city: "الرياض",
+        district: "الملقا", priceOrBudget: 2500000, area: 400, rooms: 5
+      }
+    })
+  });
   const result = await prepareOpportunityIntake({
     officeId: "office-a",
     brokerId: "broker-a",
     file: { name: "offer.pdf", type: "application/pdf", size: 2048 },
     fileChecksum: "abc123",
     allowIncomplete: true
-  });
+  }, adapter);
   assert.equal(result.ok, true);
   assert.equal(result.opportunity.sourceType, "pdf");
-  assert.equal(result.extraction.extractionMode, "simulated_fixture");
+  assert.equal(result.extraction.extractionMode, "production_document_conversion");
+  assert.equal(result.extraction.productionExtraction, true);
   assert.equal(result.extraction.productionAi, false);
   assert.equal(result.opportunity.productionAi, false);
+  assert.equal(result.opportunity.propertyType, "فيلا");
+  assert.equal(result.source.extractedText.includes("حي الملقا"), true);
+});
+
+test("file intake forwards the broker's typed text to the Worker extraction adapter", async () => {
+  let received;
+  const adapter = createExtractionAdapter({
+    extract: async (input) => {
+      received = input;
+      return {
+        extractionMode: "production_ocr",
+        extractionProvider: "cloudflare.workers_ai.to_markdown",
+        productionAi: true,
+        productionExtraction: true,
+        extractionConfidence: 100,
+        extractedText: "",
+        fields: {
+          opportunityKind: "OFFER", purpose: "SALE", propertyType: "أرض",
+          city: "المدينة المنورة", district: "الصفوة", priceOrBudget: 600000,
+          area: 500, rooms: null
+        }
+      };
+    }
+  });
+  const text = "للبيع قطعة أرض في مخطط الصفوة بالمدينة المنورة، المساحة 500 متر، السعر 600 ألف ريال";
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text,
+    file: { name: "property.png", type: "image/png", size: 2048 },
+    fileChecksum: "image-checksum",
+    mediaPath: "opportunity-sources/office-a/src_image/property.png"
+  }, adapter);
+  assert.equal(received.text, text);
+  assert.equal(received.sourceType, "image");
+  assert.ok(received.mediaPath.endsWith("property.png"));
+  assert.equal(result.state, "saved");
+  assert.deepEqual(result.missingFields, []);
 });
 
 test("failed upload style validation is retryable", () => {
@@ -291,12 +401,15 @@ test("Add Opportunity card exists on the home page with the approved compact row
   }
 });
 
-test("shell source wires the Phase 2 module and keeps extraction honesty copy", () => {
+test("shell source wires real extraction without simulated attachment fixtures", () => {
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(shell.includes("js/add-opportunity.js"));
   assert.ok(shell.includes("id=\"addOpportunity\""));
   const domain = readRepositoryFile("public", "js", "opportunity-intake-domain.js");
-  assert.ok(domain.includes("simulated_fixture"));
+  const controller = readRepositoryFile("public", "js", "add-opportunity.js");
+  assert.equal(domain.includes("iaqar.simulated_fixture"), false);
+  assert.equal(controller.includes("محاكاة/تحليل نصي حتمي"), false);
+  assert.ok(controller.includes("/opportunity/extract"));
   assert.ok(domain.includes("productionAi: false") || domain.includes("productionAi"));
   assert.equal(domain.includes("production connected"), false);
 });

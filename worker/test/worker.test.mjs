@@ -74,9 +74,9 @@ test("Firebase service account JWT identifies the exact private key", async () =
 });
 
 test("office login normalizes every Saudi mobile format to one canonical value", () => {
-  assert.equal(normalizeLoginPhone("0551234567"), "+966551234567");
-  assert.equal(normalizeLoginPhone("966551234567"), "+966551234567");
-  assert.equal(normalizeLoginPhone("+966 55 123 4567"), "+966551234567");
+  assert.equal(normalizeLoginPhone("0552019909"), "+966552019909");
+  assert.equal(normalizeLoginPhone("966552019909"), "+966552019909");
+  assert.equal(normalizeLoginPhone("+966552019909"), "+966552019909");
 });
 
 test("office login derives the legacy local value for old directory records", () => {
@@ -117,6 +117,7 @@ test("health is inbound-only", async () => {
   assert.equal(body.deploymentEnvironment, "production");
   assert.equal(body.firebaseConfigured, false);
   assert.equal(body.backendReady, false);
+  assert.equal(body.opportunityExtractionReady, false);
   assert.equal(body.cronEnabled, true);
 });
 
@@ -131,6 +132,30 @@ test("health reports staging when DEPLOYMENT_ENV=staging", async () => {
   assert.equal(body.outboundMessaging, false);
   assert.equal(body.cronEnabled, false);
   assert.equal(body.backendReady, false);
+});
+
+test("health reports staging opportunity extraction only when the AI binding exists", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/health"),
+    { ...env, DEPLOYMENT_ENV: "staging", AI: { run() {}, toMarkdown() {} } }
+  );
+  const body = await response.json();
+  assert.equal(body.opportunityExtractionReady, true);
+});
+
+test("opportunity extraction endpoint requires an authenticated office member", async () => {
+  const response = await worker.fetch(new Request("https://example.test/opportunity/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      officeId: "office-a",
+      sourceType: "text",
+      text: "عرض للبيع شقة في الرياض"
+    })
+  }), { ...env, DEPLOYMENT_ENV: "staging", AI: { run() {}, toMarkdown() {} } });
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "authentication_required");
 });
 
 test("health backendReady is true when Firebase secrets exist", async () => {
@@ -314,7 +339,12 @@ test("a removable office image is deleted from its own key", async () => {
     const body = await response.json();
     assert.equal(response.status, 200, `${variant}: ${JSON.stringify(body)}`);
     assert.equal(body.removed, true);
-    assert.deepEqual(deletes, [`office-covers/office-alqiq/${variant}`]);
+    assert.deepEqual(
+      deletes,
+      variant === "logo"
+        ? ["office-covers/office-alqiq/logo", "office-covers/office-alqiq/logo-original"]
+        : [`office-covers/office-alqiq/${variant}`]
+    );
   }
 });
 

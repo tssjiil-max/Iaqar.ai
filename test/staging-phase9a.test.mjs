@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -15,6 +15,7 @@ import {
   createServiceAccountJwt,
   parseFirebaseServiceAccountJson
 } from "../scripts/staging-credentials.mjs";
+import { deployStagingFirestoreRules } from "../scripts/deploy-firestore-rules-staging.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -89,6 +90,9 @@ test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
   assert.equal(stagingBlock.includes('name = "iaqar-macrodroid-intake"'), false);
   assert.ok(stagingBlock.includes('FIREBASE_PROJECT_ID = "iaqar-ai-staging"'));
   assert.equal(stagingBlock.includes('FIREBASE_PROJECT_ID = "aqar-b5d76"'), false);
+  assert.ok(stagingBlock.includes("[env.staging.ai]"));
+  assert.ok(stagingBlock.includes('binding = "AI"'));
+  assert.equal(toml.slice(0, toml.indexOf("[env.staging]")).includes("[ai]"), false);
   assert.ok(/crons\s*=\s*\[\s*\]/.test(stagingBlock) || stagingBlock.includes("crons = []"));
 
   const rc = JSON.parse(read(".firebaserc"));
@@ -99,6 +103,7 @@ test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
 test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   const script = read("scripts", "deploy-staging.sh");
   assert.ok(script.includes("wrangler deploy --env staging"));
+  assert.ok(script.includes("deploy-firestore-rules-staging.mjs"));
   assert.ok(script.includes("hosting:channel:deploy staging"));
   assert.ok(script.includes("iaqar-ai-staging"));
   assert.ok(script.includes("FIREBASE_SERVICE_ACCOUNT_JSON"));
@@ -109,6 +114,8 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(script.includes("preflight-staging.mjs"));
   assert.ok(script.includes("npm run test:phase9a"));
   assert.ok(script.includes("backendReady"));
+  assert.ok(script.includes("opportunityExtractionReady"));
+  assert.ok(script.includes("for attempt in 1 2 3 4 5 6"));
   assert.ok(script.includes("smoke-staging.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
   // Must not require FIREBASE_TOKEN or pass it to firebase-tools (ignore-note is OK).
@@ -125,13 +132,61 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(ps1.includes("GOOGLE_APPLICATION_CREDENTIALS"));
   assert.ok(ps1.includes("preflight-staging.mjs"));
   assert.ok(ps1.includes("npm run test:phase9a"));
+  assert.ok(ps1.includes("opportunityExtractionReady"));
+  assert.ok(ps1.includes("foreach ($attempt in 1..6)"));
+  assert.ok(ps1.includes("deploy-firestore-rules-staging.mjs"));
   assert.equal(ps1.includes("--token $env:FIREBASE_TOKEN"), false);
   assert.ok(ps1.includes("iaqar-ai-staging"));
 
   assert.ok(existsSync(path.join(root, "scripts", "staging-gac.mjs")));
   assert.ok(existsSync(path.join(root, "scripts", "staging-credentials.mjs")));
   assert.ok(existsSync(path.join(root, "scripts", "preflight-staging.mjs")));
+  assert.ok(existsSync(path.join(root, "scripts", "deploy-firestore-rules-staging.mjs")));
   assert.ok(existsSync(path.join(root, "docs", "STAGING-DEPLOY.md")));
+});
+
+test("Phase 9A deploys and verifies Firestore rules through the staging-only Rules API", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "iaqar-rules-deploy-"));
+  const gacPath = path.join(dir, "sa.json");
+  const rulesPath = path.join(dir, "firestore.rules");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" }
+  });
+  writeFileSync(gacPath, JSON.stringify({
+    type: "service_account",
+    project_id: "iaqar-ai-staging",
+    private_key_id: "0123456789abcdef0123456789abcdef01234567", // pragma: allowlist secret
+    private_key: privateKey, // pragma: allowlist secret
+    client_email: "rules@iaqar-ai-staging.iam.gserviceaccount.com" // pragma: allowlist secret
+  }));
+  writeFileSync(rulesPath, "rules_version = '2';");
+
+  const calls = [];
+  const rulesetName = "projects/iaqar-ai-staging/rulesets/ruleset-test";
+  const releaseName = "projects/iaqar-ai-staging/releases/cloud.firestore";
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method || "GET", body: init.body });
+    if (calls.length === 1) return Response.json({ access_token: "test-access-token" }); // pragma: allowlist secret
+    if (calls.length === 2) return Response.json({ name: rulesetName });
+    return Response.json({ name: releaseName, rulesetName });
+  };
+
+  try {
+    const result = await deployStagingFirestoreRules({ gacPath, rulesPath, fetchImpl });
+    assert.equal(result.projectId, "iaqar-ai-staging");
+    assert.equal(result.rulesetName, rulesetName);
+    assert.deepEqual(calls.map(call => call.method), ["POST", "POST", "PATCH", "GET"]);
+    assert.ok(calls.every(call => !call.url.includes("aqar-b5d76")));
+    const source = JSON.parse(calls[1].body).source.files[0];
+    assert.deepEqual(source, { name: "firestore.rules", content: "rules_version = '2';" });
+    const update = JSON.parse(calls[2].body);
+    assert.equal(update.release.rulesetName, rulesetName);
+    assert.equal(update.updateMask, "rulesetName");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("Phase 9A staging-gac parses a complete JSON secret and writes private temp credentials", () => {
@@ -287,4 +342,5 @@ test("Phase 9A package scripts expose deploy:staging and smoke:staging", () => {
   assert.equal(pkg.scripts["deploy:staging"], "bash scripts/deploy-staging.sh");
   assert.equal(pkg.scripts["smoke:staging"], "node scripts/smoke-staging.mjs");
   assert.ok(pkg.scripts["test:phase9a"]);
+  assert.ok(read("scripts", "smoke-staging.mjs").includes("opportunityExtractionReady"));
 });

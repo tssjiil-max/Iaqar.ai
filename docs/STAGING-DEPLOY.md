@@ -27,7 +27,7 @@ Staging is full-functional only when **all** of the following hold:
 2. Staging Hosting channel is deployed on **`iaqar-ai-staging`**
 3. Worker `/health` reports `deploymentEnvironment: "staging"`,
    `projectId: "iaqar-ai-staging"`, `firebaseConfigured: true`, `backendReady: true`,
-   `outboundMessaging: false`, `cronEnabled: false`
+   `opportunityExtractionReady: true`, `outboundMessaging: false`, `cronEnabled: false`
 4. Browser on the channel has `window.IAQAR.workerBase` → staging Worker
 5. Channel uses `/__/firebase/init.js` for project `iaqar-ai-staging`
 
@@ -82,6 +82,8 @@ Recommended IAM on that service account for Hosting channel deploy:
 Optional (FCM push on staging): `FCM_WEB_PUSH_VAPID_KEY` for the staging Worker.
 
 Leave `META_*` empty — outbound Cloud API stays blocked; drafts/handoff still work.
+Workers AI uses the staging-only `AI` binding and does not require a model API key in
+the Worker. The Cloudflare account must have Workers AI enabled.
 
 ## Cloud Agent secret injection
 
@@ -107,13 +109,18 @@ The script:
 3. Verifies Cloudflare through account-scoped Workers Scripts and R2 create/delete
    probes; no unsupported token-verification endpoint is used.
 4. Runs the full `npm run test:phase9a` gate.
-5. Deploys **only** `wrangler deploy --env staging`.
-6. Syncs normalized Worker staging secrets from private temp files (values not printed).
-7. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`.
-8. Requires `/health` `backendReady: true` and `projectId: iaqar-ai-staging`.
-9. Runs `scripts/smoke-staging.mjs`.
-10. Deletes the temp GAC and normalized secret files on exit.
-11. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set.
+5. Deploys Firestore rules through the official Firebase Rules API **only** to
+   `iaqar-ai-staging`, then verifies the active `cloud.firestore` release points at the
+   new ruleset. This is required for authenticated office members to read their office
+   after login and avoids requiring unrelated Service Usage permissions.
+6. Deploys **only** `wrangler deploy --env staging`.
+7. Syncs normalized Worker staging secrets from private temp files (values not printed).
+8. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`.
+9. Requires `/health` `backendReady: true`, `opportunityExtractionReady: true`, and
+   `projectId: iaqar-ai-staging`.
+10. Runs `scripts/smoke-staging.mjs`.
+11. Deletes the temp GAC and normalized secret files on exit.
+12. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set.
 
 ## After deploy
 
@@ -121,7 +128,8 @@ The script:
 2. Confirm `window.IAQAR.deploymentEnvironment === "staging"`.
 3. Confirm `window.IAQAR.firebaseProjectId === "iaqar-ai-staging"`.
 4. Confirm `window.IAQAR.workerBase` ends with `iaqar-intake-staging`.
-5. Hit staging Worker `/health` — `backendReady: true`, `projectId: iaqar-ai-staging`.
+5. Hit staging Worker `/health` — `backendReady: true`,
+   `opportunityExtractionReady: true`, `projectId: iaqar-ai-staging`.
 
 ## Explicitly out of Phase 9A
 

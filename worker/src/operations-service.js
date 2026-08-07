@@ -15,11 +15,7 @@ import {
   phase5BoundaryGuarantees,
   shouldCreateMatchReview
 } from "./operations-domain.js";
-
-const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
-  "opportunityKind", "purpose", "propertyType", "city",
-  "district", "priceOrBudget", "area", "rooms"
-]);
+import { requiredExtractedFieldsFor } from "./opportunity-extraction.js";
 
 const FIELD_LABELS_AR = Object.freeze({
   opportunityKind: "نوع الفرصة",
@@ -39,7 +35,7 @@ function isBlank(value) {
 }
 
 export function listMissingOpportunityFields(opportunity = {}) {
-  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => isBlank(opportunity[key]));
+  return requiredExtractedFieldsFor(opportunity).filter((key) => isBlank(opportunity[key]));
 }
 
 export function missingFieldLabels(missingFields = []) {

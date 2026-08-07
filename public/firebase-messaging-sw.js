@@ -16,7 +16,7 @@ self.addEventListener("push", event => {
   const title = notification.title || "مكاتب عقارية ذكية";
   const options = {
     body: notification.body || "توجد مطابقة عقارية أو متابعة جديدة",
-    icon: notification.icon || "/icons/icon-192.png",
+    icon: notification.icon || data.iconUrl || "/icons/icon-192.png",
     badge: notification.badge || "/icons/icon-192.png",
     dir: "rtl",
     lang: "ar",
@@ -59,7 +59,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase9a-v2";
+const IAQAR_CACHE = "iaqar-shell-phase9a-v5";
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",

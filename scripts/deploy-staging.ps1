@@ -61,6 +61,12 @@ try {
   npm run test:phase9a
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+  Write-Host "--- Firebase Firestore rules ($StagingFirebaseProject only) ---"
+  node (Join-Path $Root "scripts/deploy-firestore-rules-staging.mjs") `
+    $GacFile `
+    (Join-Path $Root "firestore.rules")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   Write-Host "--- Cloudflare Worker (staging env only) ---"
   Push-Location (Join-Path $Root "worker")
   try {
@@ -103,11 +109,22 @@ try {
   }
 
   Write-Host "--- Smoke: staging Worker /health (must be backendReady) ---"
-  try {
-    $HealthJson = Invoke-RestMethod -Uri "$StagingWorkerUrl/health" -TimeoutSec 30
-  } catch {
-    Die "Staging Worker health check failed at $StagingWorkerUrl/health"
+  $HealthJson = $null
+  foreach ($attempt in 1..6) {
+    try {
+      $candidate = Invoke-RestMethod -Uri "$StagingWorkerUrl/health" -TimeoutSec 30
+      $HealthJson = $candidate
+      if ($candidate.deploymentEnvironment -eq "staging" `
+          -and $candidate.projectId -eq "iaqar-ai-staging" `
+          -and $candidate.opportunityExtractionReady -eq $true) {
+        break
+      }
+    } catch {
+      $HealthJson = $null
+    }
+    if ($attempt -lt 6) { Start-Sleep -Seconds 5 }
   }
+  if (-not $HealthJson) { Die "Staging Worker health check failed at $StagingWorkerUrl/health" }
   if (-not $HealthJson.ok) { Die "health.ok is false" }
   if ($HealthJson.deploymentEnvironment -ne "staging") { Die "deploymentEnvironment must be staging" }
   if ($HealthJson.projectId -and $HealthJson.projectId -ne "iaqar-ai-staging") {
@@ -116,6 +133,9 @@ try {
   if ($HealthJson.outboundMessaging -eq $true) { Die "outboundMessaging must remain false on staging" }
   if ($HealthJson.firebaseConfigured -ne $true -or $HealthJson.backendReady -ne $true) {
     Die "Staging Worker is UI-only: firebaseConfigured/backendReady must be true"
+  }
+  if ($HealthJson.opportunityExtractionReady -ne $true) {
+    Die "Staging Worker must have its Workers AI opportunity extraction binding"
   }
   if ($HealthJson.cronEnabled -eq $true) { Die "cronEnabled must be false on staging" }
   Write-Host "Staging health OK (full-functional backendReady)"

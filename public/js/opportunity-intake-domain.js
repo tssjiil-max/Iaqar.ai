@@ -1,8 +1,8 @@
 /**
  * Phase 2 — Unified Opportunity Intake domain.
  *
- * Deterministic detection, normalization, simulated/deterministic extraction,
- * missing-field tracking, and deduplication. No production AI is claimed here.
+ * Deterministic detection/normalization, extraction adapter contracts,
+ * missing-field tracking, and deduplication.
  */
 
 export const INTAKE_STATES = Object.freeze([
@@ -54,14 +54,19 @@ export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "rooms"
 ]);
 
+export function requiredOpportunityFieldsFor(fields = {}) {
+  const propertyType = String(fields.propertyType || "");
+  return /أرض|ارض/.test(propertyType)
+    ? REQUIRED_OPPORTUNITY_FIELDS.filter((field) => field !== "rooms")
+    : [...REQUIRED_OPPORTUNITY_FIELDS];
+}
+
 /** MIME / extension maps for the paperclip chooser. */
 export const ATTACHMENT_ACCEPT = [
   "image/*",
   "application/pdf",
   ".pdf",
-  "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".doc",
   ".docx",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -132,9 +137,8 @@ export function detectSourceTypeFromFile(file) {
     /\.(xlsx|xls|csv)$/.test(name)
   ) return "excel";
   if (
-    type.includes("word") ||
-    type.includes("msword") ||
-    /\.(docx|doc|rtf)$/.test(name)
+    type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    name.endsWith(".docx")
   ) return "word";
   if (type.startsWith("image/")) {
     // Screenshots commonly keep "screenshot" in the filename.
@@ -146,42 +150,57 @@ export function detectSourceTypeFromFile(file) {
 
 export function validateAttachment(file) {
   if (!file) return { ok: false, error: "لم يتم اختيار ملف" };
+  if (!Number(file.size)) {
+    return { ok: false, error: "الملف فارغ ولا يحتوي على بيانات قابلة للتحليل" };
+  }
   if (file.size > MAX_FILE_BYTES) {
     return { ok: false, error: "حجم الملف يتجاوز 15 ميجابايت" };
   }
   const sourceType = detectSourceTypeFromFile(file);
   if (!SOURCE_TYPES.includes(sourceType) || sourceType === "url" || sourceType === "text") {
-    return { ok: false, error: "نوع الملف غير مدعوم" };
+    return { ok: false, error: "نوع الملف غير مدعوم؛ استخدم صورة أو PDF أو DOCX أو Excel أو ملفًا صوتيًا" };
   }
   return { ok: true, sourceType };
 }
 
 /**
- * Extraction adapter boundary.
- * - deterministic_text_parser: regex heuristics over text/URL (not AI).
- * - simulated_fixture: labeled fixtures for binary attachments until a real provider exists.
+ * Extraction adapter boundary. The browser controller supplies the authenticated Worker
+ * adapter in production. This local fallback parses direct text only and never fabricates
+ * attachment fields.
  */
 export function createExtractionAdapter(options = {}) {
-  const mode = options.mode === "simulated_fixture" ? "simulated_fixture" : "auto";
+  const remoteExtract = typeof options.extract === "function" ? options.extract : null;
 
   return {
     labelFor(sourceType) {
-      if (sourceType === "text" || sourceType === "url") return "deterministic_text_parser";
-      return "simulated_fixture";
+      if (remoteExtract) return "authenticated_worker_extraction";
+      if (sourceType === "text") return "deterministic_text_parser";
+      return "unavailable";
     },
 
     async extract(input) {
+      if (remoteExtract) return remoteExtract(input);
       const sourceType = input.sourceType;
       const label = this.labelFor(sourceType);
       if (label === "deterministic_text_parser") {
-        return extractFromText(input.text || input.url || "", { sourceType, label });
+        return extractFromText(input.text || "", { sourceType, label });
       }
-      // Simulated fixtures — never claim production OCR/ASR/document AI.
-      return extractFromSimulatedAttachment(input, { label });
+      return {
+        extractionMode: "unavailable",
+        extractionProvider: "none",
+        productionAi: false,
+        productionExtraction: false,
+        extractionConfidence: 0,
+        fields: Object.fromEntries(REQUIRED_OPPORTUNITY_FIELDS.map((field) => [
+          field,
+          ["priceOrBudget", "area", "rooms"].includes(field) ? null : ""
+        ])),
+        rawHints: { sourceType, unavailable: true }
+      };
     },
 
     get mode() {
-      return mode;
+      return remoteExtract ? "authenticated_worker_extraction" : "local_text_only";
     }
   };
 }
@@ -213,7 +232,7 @@ function extractFromText(raw, meta) {
     matchOne(text, /(الرياض|جدة|المدينة المنورة|المدينة|الدمام|مكة|الخبر|الطائف|تبوك|أبها)/) || "";
 
   const district =
-    matchOne(text, /حي\s+([^\s،,]{2,40})/) ||
+    matchOne(text, /(?:حي|مخطط)\s+([^\s،,]{2,40})/) ||
     matchOne(text, /(النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ)/) ||
     "";
 
@@ -232,6 +251,7 @@ function extractFromText(raw, meta) {
     extractionMode: meta.label,
     extractionProvider: "iaqar.deterministic_text_parser",
     productionAi: false,
+    productionExtraction: true,
     extractionConfidence: confidence,
     fields: {
       opportunityKind,
@@ -244,42 +264,6 @@ function extractFromText(raw, meta) {
       rooms: rooms || null
     },
     rawHints: { sourceType: meta.sourceType, textLength: text.length, lowerHost: lower.slice(0, 40) }
-  };
-}
-
-function extractFromSimulatedAttachment(input, meta) {
-  // Deterministic fixture keyed by source type — partial fields only.
-  const fixtures = {
-    image: { propertyType: "شقة", city: "", district: "", opportunityKind: "", purpose: "" },
-    screenshot: { propertyType: "", city: "الرياض", district: "", opportunityKind: "", purpose: "" },
-    pdf: { propertyType: "فيلا", city: "", district: "", opportunityKind: "OFFER", purpose: "" },
-    word: { propertyType: "", city: "", district: "", opportunityKind: "REQUEST", purpose: "PURCHASE" },
-    excel: { propertyType: "أرض", city: "الرياض", district: "", opportunityKind: "OFFER", purpose: "SALE" },
-    audio: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "RENT" }
-  };
-  const base = fixtures[input.sourceType] || {};
-  const fields = {
-    opportunityKind: base.opportunityKind || "",
-    purpose: base.purpose || "",
-    propertyType: base.propertyType || "",
-    city: base.city || "",
-    district: base.district || "",
-    priceOrBudget: null,
-    area: null,
-    rooms: null
-  };
-  const filled = countFilled(fields);
-  return {
-    extractionMode: meta.label,
-    extractionProvider: "iaqar.simulated_fixture",
-    productionAi: false,
-    extractionConfidence: Math.round((filled / REQUIRED_OPPORTUNITY_FIELDS.length) * 40),
-    fields,
-    rawHints: {
-      sourceType: input.sourceType,
-      fileName: safeText(input.fileName, 240),
-      simulated: true
-    }
   };
 }
 
@@ -304,18 +288,19 @@ function countFilled(fields) {
 }
 
 export function listMissingFields(fields) {
-  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => {
+  return requiredOpportunityFieldsFor(fields).filter((key) => {
     const value = fields?.[key];
     return value === null || value === undefined || String(value).trim() === "";
   });
 }
 
 export function computeDataCompleteness(fields) {
+  const requiredFields = requiredOpportunityFieldsFor(fields);
   const missing = listMissingFields(fields);
-  const filled = REQUIRED_OPPORTUNITY_FIELDS.length - missing.length;
+  const filled = requiredFields.length - missing.length;
   return {
     missingFields: missing,
-    dataCompleteness: Math.round((filled / REQUIRED_OPPORTUNITY_FIELDS.length) * 100),
+    dataCompleteness: Math.round((filled / requiredFields.length) * 100),
     isComplete: missing.length === 0
   };
 }
@@ -405,9 +390,10 @@ export function buildOpportunityRecord({
     lifecycleStatus: completeness.isComplete ? "ACTIVE" : "ACTIVE",
     deduplicationFingerprint,
     missingFields: completeness.missingFields,
-    extractionMode: extraction?.extractionMode || "simulated_fixture",
-    extractionProvider: extraction?.extractionProvider || "iaqar.simulated_fixture",
-    productionAi: false,
+    extractionMode: extraction?.extractionMode || "unavailable",
+    extractionProvider: extraction?.extractionProvider || "none",
+    productionAi: extraction?.productionAi === true,
+    productionExtraction: extraction?.productionExtraction === true,
     cooperationState: "NOT_SHARED",
     cooperationStatus: "NOT_SHARED",
     version: 1,
@@ -429,6 +415,7 @@ export function buildSourceRecord({
   fileName = "",
   contentType = "",
   byteSize = 0,
+  extractedText = "",
   now = new Date()
 }) {
   return {
@@ -443,6 +430,7 @@ export function buildSourceRecord({
     fileName: safeText(fileName, 240),
     contentType: safeText(contentType, 120),
     byteSize: Number(byteSize) || 0,
+    extractedText: safeText(extractedText),
     createdAt: now.toISOString(),
     schemaVersion: 1
   };
@@ -522,7 +510,8 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     text,
     url,
     fileName,
-    contentType
+    contentType,
+    mediaPath
   });
 
   let fields = { ...extraction.fields };
@@ -539,7 +528,8 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     mediaPath,
     fileName,
     contentType,
-    byteSize
+    byteSize,
+    extractedText: extraction.extractedText
   });
 
   if (!completeness.isComplete && !input.allowIncomplete) {
@@ -551,7 +541,8 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
       extraction,
       source,
       deduplicationFingerprint: fingerprint,
-      productionAi: false
+      productionAi: extraction.productionAi === true,
+      productionExtraction: extraction.productionExtraction === true
     };
   }
 
@@ -575,6 +566,44 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     deduplicationFingerprint: fingerprint,
     createsOperation: false,
     runsMatching: false,
-    productionAi: false
+    productionAi: extraction.productionAi === true,
+    productionExtraction: extraction.productionExtraction === true
+  };
+}
+
+export function completeOpportunityIntake(prepared, brokerFields = {}) {
+  if (!prepared?.ok || prepared.state !== "missing_information" || !prepared.source || !prepared.extraction) {
+    throw new Error("prepared_intake_required");
+  }
+  const fields = mergeBrokerProvidedFields(prepared.fields, brokerFields);
+  const completeness = computeDataCompleteness(fields);
+  if (!completeness.isComplete) {
+    return {
+      ...prepared,
+      fields,
+      missingFields: completeness.missingFields
+    };
+  }
+  const opportunity = buildOpportunityRecord({
+    officeId: prepared.source.officeId,
+    brokerId: prepared.source.brokerId,
+    sourceType: prepared.source.sourceType,
+    sourceReference: prepared.source.id,
+    fields,
+    extraction: prepared.extraction,
+    deduplicationFingerprint: prepared.deduplicationFingerprint
+  });
+  return {
+    ok: true,
+    state: "saved",
+    opportunity,
+    source: prepared.source,
+    extraction: prepared.extraction,
+    missingFields: [],
+    deduplicationFingerprint: prepared.deduplicationFingerprint,
+    createsOperation: false,
+    runsMatching: false,
+    productionAi: prepared.extraction.productionAi === true,
+    productionExtraction: prepared.extraction.productionExtraction === true
   };
 }
