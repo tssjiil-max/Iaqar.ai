@@ -16,8 +16,8 @@ self.addEventListener("push", event => {
   const title = notification.title || "مكاتب عقارية ذكية";
   const options = {
     body: notification.body || "توجد مطابقة عقارية أو متابعة جديدة",
-    icon: notification.icon || "/icons/icon-192.png",
-    badge: notification.badge || "/icons/icon-192.png",
+    icon: notification.icon || data.logoUrl || "/icons/icon-192.png",
+    badge: notification.badge || data.logoUrl || "/icons/icon-192.png",
     dir: "rtl",
     lang: "ar",
     data: {
@@ -69,6 +69,9 @@ const IAQAR_SHELL = [
   "/js/access-gate.js",
   "/js/firebase-office.js",
   "/js/fcm-fid.js",
+  "/js/runtime-config.js",
+  "/js/office-domain.js",
+  "/js/office-image-crop.js",
   "/js/office-settings.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",

@@ -237,7 +237,11 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeCover(request, env, requestId);
+        return await uploadOfficeImage(request, env, requestId);
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
+        return await deleteOfficeImage(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
@@ -379,29 +383,63 @@ async function uploadPublicIntakeMedia(request, env, requestId) {
   return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
 }
 
-async function uploadOfficeCover(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
+export const OFFICE_IMAGE_VARIANTS = Object.freeze(["cover", "logo", "logo-original"]);
+
+export function normalizeOfficeImageVariant(value) {
+  const variant = cleanText(value, 40).toLowerCase();
+  if (!variant) return "cover";
+  return OFFICE_IMAGE_VARIANTS.includes(variant) ? variant : "";
+}
+
+function officeImageKey(officeId, variant) {
+  return `office-covers/${officeId}/${variant}`;
+}
+
+async function resolveOfficeImageTarget(request, env) {
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
+  if (!variant) throw appError("unsupported_image_variant", 400, "نوع صورة المكتب غير مدعوم");
   await authorizeOfficeRequest(request, env, officeId, "manage");
+  return { officeId, variant, key: officeImageKey(officeId, variant) };
+}
+
+async function uploadOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
   const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
   const size = requestBodyLength(request);
   if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "اختر صورة JPG أو PNG أو WebP");
   if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "حجم صورة المكتب يتجاوز 10 ميجابايت");
-  const key = `office-covers/${officeId}/cover`;
   await bucket.put(key, request.body, {
     httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
+    customMetadata: { officeId, variant, uploadedAt: new Date().toISOString() }
   });
   const origin = new URL(request.url).origin;
-  const coverUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  return jsonResponse({ ok: true, coverUrl, requestId }, 201);
+  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
+  return jsonResponse({
+    ok: true,
+    variant,
+    imageUrl,
+    coverUrl: variant === "cover" || variant === "logo" ? imageUrl : undefined,
+    requestId
+  }, 201);
+}
+
+async function deleteOfficeImage(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const { variant, key } = await resolveOfficeImageTarget(request, env);
+  if (variant === "cover") {
+    throw appError("image_not_removable", 400, "الترويسة مطلوبة لبطاقة المكتب ولا يمكن إزالتها");
+  }
+  await bucket.delete(key);
+  return jsonResponse({ ok: true, variant, removed: true, requestId });
 }
 
 async function servePublicOfficeCover(url, env) {
   const bucket = requireMediaBucket(env);
   const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/cover$/.test(key)) {
+  if (!/^office-covers\/[a-z0-9_-]{1,80}\/(cover|logo|logo-original)$/.test(key)) {
     throw appError("media_not_found", 404, "الصورة غير موجودة");
   }
   const object = await bucket.get(key);
@@ -1721,6 +1759,18 @@ async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,re
 }
 
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",accessToken}) {
+  let iconUrl = `${DEFAULT_APP_ORIGIN}/icons/icon-192.png`;
+  try {
+    const officeDoc = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId],
+      accessToken,
+      allowMissing: true
+    });
+    const office = officeDoc ? firestoreFieldsToJs(officeDoc.fields || {}) : {};
+    if (office.logoUrl) iconUrl = String(office.logoUrl);
+  } catch (_) {}
+
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
   const activeDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
@@ -1734,7 +1784,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   const summary={registered:activeDevices.length,sent:0,failed:0,disabled:0};
   for(const device of activeDevices){
     try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken});
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken,iconUrl});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
@@ -1754,28 +1804,29 @@ function buildFcmTarget(registrationId,registrationType="fid") {
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId=""}) {
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",iconUrl=""}) {
   const relativeLink=buildNotificationLink({officeId,type,recordId});
   const link=new URL(relativeLink,DEFAULT_APP_ORIGIN).href;
   const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const target=buildFcmTarget(registrationId,registrationType);
+  const icon=String(iconUrl||`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`);
   return {message:{
     ...target,
     notification:{title:String(title||"مكاتب عقارية ذكية"),body:String(body||"لديك تنبيه جديد")},
-    data:{type:String(type),recordId:String(recordId||""),matchId:type==="match"?String(recordId||""):"",dealId:type==="deal"?String(recordId||""):"",officeId:String(officeId),url:link,deliveryId:finalDeliveryId},
+    data:{type:String(type),recordId:String(recordId||""),matchId:type==="match"?String(recordId||""):"",dealId:type==="deal"?String(recordId||""):"",officeId:String(officeId),url:link,deliveryId:finalDeliveryId,logoUrl:icon},
     webpush:{
       headers:{Urgency:type==="match"?"high":"normal"},
-      notification:{icon:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,badge:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
+      notification:{icon,badge:icon,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
       fcm_options:{link}
     }
   }};
 }
 
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken}) {
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,iconUrl=""}) {
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId}))
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,iconUrl}))
   });
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){
