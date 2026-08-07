@@ -60,19 +60,150 @@ function numericValue(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+const ARABIC_NUMBER_VALUES = Object.freeze({
+  صفر: 0,
+  واحد: 1,
+  واحدة: 1,
+  أحد: 1,
+  احد: 1,
+  اثنان: 2,
+  اثنين: 2,
+  اثنتان: 2,
+  اثنتين: 2,
+  ثلاثة: 3,
+  ثلاث: 3,
+  أربعة: 4,
+  اربعة: 4,
+  أربع: 4,
+  اربع: 4,
+  خمسة: 5,
+  خمس: 5,
+  ستة: 6,
+  ست: 6,
+  سبعة: 7,
+  سبع: 7,
+  ثمانية: 8,
+  ثمان: 8,
+  تسعة: 9,
+  تسع: 9,
+  عشرة: 10,
+  عشر: 10,
+  أحدعشر: 11,
+  احدعشر: 11,
+  اثناعشر: 12,
+  اثنيعشر: 12,
+  عشرون: 20,
+  عشرين: 20,
+  ثلاثون: 30,
+  ثلاثين: 30,
+  أربعون: 40,
+  اربعون: 40,
+  أربعين: 40,
+  اربعين: 40,
+  خمسون: 50,
+  خمسين: 50,
+  ستون: 60,
+  ستين: 60,
+  سبعون: 70,
+  سبعين: 70,
+  ثمانون: 80,
+  ثمانين: 80,
+  تسعون: 90,
+  تسعين: 90,
+  مئة: 100,
+  مائة: 100,
+  مئه: 100,
+  مائه: 100,
+  مئتان: 200,
+  مائتان: 200,
+  مئتين: 200,
+  مائتين: 200,
+  ثلاثمئة: 300,
+  ثلاثمائة: 300,
+  أربعمئة: 400,
+  اربعمئة: 400,
+  أربعمائة: 400,
+  اربعمائة: 400,
+  خمسمئة: 500,
+  خمسمائة: 500,
+  ستمئة: 600,
+  ستمائة: 600,
+  سبعمئة: 700,
+  سبعمائة: 700,
+  ثمانمئة: 800,
+  ثمانمائة: 800,
+  تسعمئة: 900,
+  تسعمائة: 900
+});
+
+const ARABIC_NUMBER_SCALES = Object.freeze({
+  ألف: 1_000,
+  الف: 1_000,
+  آلاف: 1_000,
+  الاف: 1_000,
+  مليون: 1_000_000,
+  مليونان: 1_000_000,
+  مليونين: 1_000_000,
+  ملايين: 1_000_000
+});
+
+function normalizedNumberToken(token) {
+  const normalized = String(token || "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[^\u0621-\u064A]/g, "");
+  if (ARABIC_NUMBER_VALUES[normalized] !== undefined || ARABIC_NUMBER_SCALES[normalized]) {
+    return normalized;
+  }
+  if (normalized.startsWith("و")) {
+    const withoutConjunction = normalized.slice(1);
+    if (ARABIC_NUMBER_VALUES[withoutConjunction] !== undefined || ARABIC_NUMBER_SCALES[withoutConjunction]) {
+      return withoutConjunction;
+    }
+  }
+  return "";
+}
+
+export function parseArabicNumberWords(value) {
+  let total = 0;
+  let current = 0;
+  let recognized = 0;
+  for (const rawToken of String(value || "").split(/\s+/)) {
+    const token = normalizedNumberToken(rawToken);
+    if (!token) continue;
+    recognized += 1;
+    const scale = ARABIC_NUMBER_SCALES[token];
+    if (scale) {
+      total += (current || 1) * scale;
+      current = 0;
+    } else {
+      current += ARABIC_NUMBER_VALUES[token];
+    }
+  }
+  return recognized ? total + current : null;
+}
+
+function arabicWordsNear(text, expression) {
+  const match = text.match(expression);
+  return match ? parseArabicNumberWords(match[1]) : null;
+}
+
 function scaledMoney(text) {
   const labelled = text.match(
     /(?:السعر|سعر|الميزانية|ميزانية|المطلوب|بحدود|بـ)\s*[:：]?\s*([0-9][0-9,.]*)\s*(مليون|ملايين|ألف|الف)?/i
   );
   const fallback = text.match(/([0-9][0-9,.]*)\s*(مليون|ملايين|ألف|الف|ريال)/i);
   const match = labelled || fallback;
-  if (!match) return null;
-  const base = numericValue(match[1]);
-  if (base == null) return null;
-  const unit = match[2] || "";
-  if (/مليون|ملايين/.test(unit)) return Math.round(base * 1_000_000);
-  if (/ألف|الف/.test(unit)) return Math.round(base * 1_000);
-  return base >= 1000 ? Math.round(base) : null;
+  if (match) {
+    const base = numericValue(match[1]);
+    const unit = match[2] || "";
+    if (base != null && /مليون|ملايين/.test(unit)) return Math.round(base * 1_000_000);
+    if (base != null && /ألف|الف/.test(unit)) return Math.round(base * 1_000);
+    if (base != null && base >= 1000) return Math.round(base);
+  }
+  return arabicWordsNear(
+    text,
+    /(?:السعر|سعر|الميزانية|ميزانية|المطلوب|بحدود)\s*[:：]?\s*([\u0621-\u064A\s]+?)(?:ريال|ر\.?\s?س|$)/i
+  );
 }
 
 export function parseExtractedOpportunityText(rawText) {
@@ -106,10 +237,16 @@ export function parseExtractedOpportunityText(rawText) {
   const area = numericValue(
     firstMatch(text, /([0-9]{2,6}(?:\.[0-9]+)?)\s*(?:م2|م²|متر(?:\s+مربع)?)/)
       || firstMatch(text, /(?:المساحة|مساحة)\s*[:：]?\s*([0-9]{2,6}(?:\.[0-9]+)?)/)
+  ) || arabicWordsNear(
+    text,
+    /(?:المساحة|مساحة)\s*[:：]?\s*([\u0621-\u064A\s]+?)\s*(?:م2|م²|متر(?:\s+مربع)?)/
   );
   const rooms = numericValue(
     firstMatch(text, /(?:^|[^0-9])([0-9]{1,2})\s*(?:غرف(?:ة| نوم)?|غرفة)/)
       || firstMatch(text, /(?:عدد الغرف|غرف)\s*[:：]?\s*([0-9]{1,2})/)
+  ) || arabicWordsNear(
+    text,
+    /((?:[\u0621-\u064A]+\s+){0,5}[\u0621-\u064A]+)\s+(?:غرف(?:ة| نوم)?|غرفة)/
   );
   const priceOrBudget = scaledMoney(text);
   const fields = {

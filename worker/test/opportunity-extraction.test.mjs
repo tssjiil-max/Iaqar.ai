@@ -5,6 +5,7 @@ import {
   extractOpportunitySource,
   htmlToVisibleText,
   normalizePublicSourceUrl,
+  parseArabicNumberWords,
   parseExtractedOpportunityText
 } from "../src/opportunity-extraction.js";
 
@@ -129,6 +130,25 @@ test("Arabic audio uses production ASR transcript before field parsing", async (
   assert.equal(extraction.extractionMode, "production_asr");
   assert.equal(extraction.productionAi, true);
   assert.equal(extraction.fields.rooms, 4);
+});
+
+test("spoken Arabic number words from Whisper map to contextual numeric fields", () => {
+  assert.equal(parseArabicNumberWords("أربع"), 4);
+  assert.equal(parseArabicNumberWords("مئة وثمانون"), 180);
+  assert.equal(parseArabicNumberWords("مليون ومئتان ألف"), 1200000);
+  for (const phrase of ["مائة وثمانين", "مئة وثمانون"]) {
+    assert.equal(parseArabicNumberWords(phrase), 180);
+  }
+  for (const phrase of ["مائتان ألف", "مئتين ألف", "مائتين ألف"]) {
+    assert.equal(parseArabicNumberWords(phrase), 200000);
+  }
+
+  const transcript = "عرض للبيع شقة في حي النرجس الرياض أربع غرف مساحة مئة وثمانون متر السعر مليون ومئتان ألف ريال";
+  const parsed = parseExtractedOpportunityText(transcript);
+  assert.equal(parsed.fields.rooms, 4);
+  assert.equal(parsed.fields.area, 180);
+  assert.equal(parsed.fields.priceOrBudget, 1200000);
+  assert.deepEqual(parsed.missingFields, []);
 });
 
 test("missing AI output and unsupported files return explicit reasons", async () => {
