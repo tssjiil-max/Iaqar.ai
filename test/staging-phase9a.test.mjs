@@ -90,6 +90,9 @@ test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
   assert.equal(stagingBlock.includes('name = "iaqar-macrodroid-intake"'), false);
   assert.ok(stagingBlock.includes('FIREBASE_PROJECT_ID = "iaqar-ai-staging"'));
   assert.equal(stagingBlock.includes('FIREBASE_PROJECT_ID = "aqar-b5d76"'), false);
+  assert.ok(stagingBlock.includes("[env.staging.ai]"));
+  assert.ok(stagingBlock.includes('binding = "AI"'));
+  assert.equal(toml.slice(0, toml.indexOf("[env.staging]")).includes("[ai]"), false);
   assert.ok(/crons\s*=\s*\[\s*\]/.test(stagingBlock) || stagingBlock.includes("crons = []"));
 
   const rc = JSON.parse(read(".firebaserc"));
@@ -111,6 +114,8 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(script.includes("preflight-staging.mjs"));
   assert.ok(script.includes("npm run test:phase9a"));
   assert.ok(script.includes("backendReady"));
+  assert.ok(script.includes("opportunityExtractionReady"));
+  assert.ok(script.includes("for attempt in 1 2 3 4 5 6"));
   assert.ok(script.includes("smoke-staging.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
   // Must not require FIREBASE_TOKEN or pass it to firebase-tools (ignore-note is OK).
@@ -127,6 +132,8 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(ps1.includes("GOOGLE_APPLICATION_CREDENTIALS"));
   assert.ok(ps1.includes("preflight-staging.mjs"));
   assert.ok(ps1.includes("npm run test:phase9a"));
+  assert.ok(ps1.includes("opportunityExtractionReady"));
+  assert.ok(ps1.includes("foreach ($attempt in 1..6)"));
   assert.ok(ps1.includes("deploy-firestore-rules-staging.mjs"));
   assert.equal(ps1.includes("--token $env:FIREBASE_TOKEN"), false);
   assert.ok(ps1.includes("iaqar-ai-staging"));
@@ -335,4 +342,5 @@ test("Phase 9A package scripts expose deploy:staging and smoke:staging", () => {
   assert.equal(pkg.scripts["deploy:staging"], "bash scripts/deploy-staging.sh");
   assert.equal(pkg.scripts["smoke:staging"], "node scripts/smoke-staging.mjs");
   assert.ok(pkg.scripts["test:phase9a"]);
+  assert.ok(read("scripts", "smoke-staging.mjs").includes("opportunityExtractionReady"));
 });

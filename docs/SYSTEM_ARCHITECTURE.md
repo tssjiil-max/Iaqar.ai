@@ -85,6 +85,7 @@ Route groups:
 | Previews (test-only, no auth, no writes) | `POST /pipeline/preview`, `/matching/preview`, `/workflow/preview`, `/workflow/readiness/preview`, `/office/analytics/preview` | Pure-function endpoints the test suite drives. |
 | Auth helpers | `POST /auth/phone-login`, `POST /auth/forgot-password` | Phone → custom token; reset link by phone. |
 | Media | `POST /media/public-intake`, `POST /media/office-cover`, `GET /media/public/office-covers/…` | R2 upload/serve. |
+| Opportunity extraction (staging) | `POST /opportunity/extract` | Authenticated, office-scoped extraction: direct Arabic parser; robots-aware URL text; Workers AI OCR/document conversion/Arabic ASR for R2 attachments. Returns extracted fields plus missing fields; never invents absent values. |
 | Admin | `GET /admin/broker-applications`, `POST /admin/broker-applications/action` | Platform-admin only. |
 | FCM | `GET /fcm/config`, `GET /fcm/status`, `POST /fcm/register`, `/fcm/unregister`, `/fcm/test` | Device registry lives server-side only. |
 | Workflow | `POST /workflow/action`, `GET /workflow/timeline`, `GET /office/analytics` | Match/deal progression. |
@@ -92,7 +93,7 @@ Route groups:
 | Cooperation (Phase 6) | `POST /cooperation/lifecycle`, `/cooperation/scope-revoke` | Trusted accept/reject/revoke; auditLogs; shared projection write/cleanup. |
 | Messages (Phase 7) | `POST /messages/draft`, `POST /messages/handoff`, `GET /messages/adapters` | Persisted Arabic drafts + external broker handoff; never Cloud API/Bot send. |
 | Public abuse (Phase 8) | Rate limits on `/pipeline/public-intake`, `/media/public-intake` | Sliding-window 429 `rate_limited` before Firestore/R2 work. |
-| Staging (Phase 9A) | Worker `iaqar-intake-staging` (`FIREBASE_PROJECT_ID=iaqar-ai-staging`); Hosting channel `staging` on project `iaqar-ai-staging` | Full-functional: SA secrets → temp GAC (no `FIREBASE_TOKEN`); `backendReady` gate; staging cron off; R2 `iaqar-media` shared; never overwrites production Hosting/Worker (`aqar-b5d76`). |
+| Staging (Phase 9A) | Worker `iaqar-intake-staging` (`FIREBASE_PROJECT_ID=iaqar-ai-staging`); Hosting channel `staging` on project `iaqar-ai-staging` | Full-functional: SA secrets → temp GAC (no `FIREBASE_TOKEN`); `backendReady` + Workers AI extraction gate; staging cron off; R2 `iaqar-media` shared; never overwrites production Hosting/Worker (`aqar-b5d76`). |
 | Blocked | `/ingest` → 410; other `*messages*`/`*send*` → 403 `outbound_disabled` | Meta/Telegram outbound send refused at the edge (draft APIs excluded). |
 
 Authorization: `authorizeOfficeRequest(request, env, officeId, permission)` verifies the

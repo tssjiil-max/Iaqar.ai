@@ -130,6 +130,9 @@ Phase 2 delivered on this branch:
 - Dedup fingerprints, missing-field flow, visible states, no Operations item / no matching
 - Automated tests under `test/opportunity-intake.test.mjs` + emulator isolation cases
 
+Phase 9A staging supersedes the simulated attachment fixture item through D-019; the
+historical Phase 2 record above is retained to describe what that phase originally shipped.
+
 ## Phase 3 — Opportunity Bank
 
 Depends on: Phase 2.
@@ -355,6 +358,11 @@ Delivered:
   the official Firebase Rules API to `iaqar-ai-staging` and verifies the active release
   before Worker/Hosting deployment, so authenticated office access uses the tested
   repository rules rather than project defaults.
+- **Real staging opportunity extraction:** `[env.staging.ai]` binds Workers AI.
+  Authenticated `POST /opportunity/extract` reads office-scoped R2 attachments and uses
+  real OCR/document conversion or Arabic Whisper ASR; direct text and robots-permitted
+  URL content use deterministic field parsing. Missing values remain empty and only
+  those fields are shown for broker completion. Production remains unchanged.
 - **Scripts:** `deploy-staging.sh` / `.ps1`, `staging-credentials.mjs`,
   `staging-gac.mjs`, `preflight-staging.mjs`, `smoke-staging.mjs`. The preflight
   normalizes quoted/escaped Firebase fields, verifies local JWT + Google OAuth, and

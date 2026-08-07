@@ -27,7 +27,7 @@ Staging is full-functional only when **all** of the following hold:
 2. Staging Hosting channel is deployed on **`iaqar-ai-staging`**
 3. Worker `/health` reports `deploymentEnvironment: "staging"`,
    `projectId: "iaqar-ai-staging"`, `firebaseConfigured: true`, `backendReady: true`,
-   `outboundMessaging: false`, `cronEnabled: false`
+   `opportunityExtractionReady: true`, `outboundMessaging: false`, `cronEnabled: false`
 4. Browser on the channel has `window.IAQAR.workerBase` → staging Worker
 5. Channel uses `/__/firebase/init.js` for project `iaqar-ai-staging`
 
@@ -82,6 +82,8 @@ Recommended IAM on that service account for Hosting channel deploy:
 Optional (FCM push on staging): `FCM_WEB_PUSH_VAPID_KEY` for the staging Worker.
 
 Leave `META_*` empty — outbound Cloud API stays blocked; drafts/handoff still work.
+Workers AI uses the staging-only `AI` binding and does not require a model API key in
+the Worker. The Cloudflare account must have Workers AI enabled.
 
 ## Cloud Agent secret injection
 
@@ -114,7 +116,8 @@ The script:
 6. Deploys **only** `wrangler deploy --env staging`.
 7. Syncs normalized Worker staging secrets from private temp files (values not printed).
 8. Deploys **only** `firebase hosting:channel:deploy staging --project iaqar-ai-staging`.
-9. Requires `/health` `backendReady: true` and `projectId: iaqar-ai-staging`.
+9. Requires `/health` `backendReady: true`, `opportunityExtractionReady: true`, and
+   `projectId: iaqar-ai-staging`.
 10. Runs `scripts/smoke-staging.mjs`.
 11. Deletes the temp GAC and normalized secret files on exit.
 12. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set.
@@ -125,7 +128,8 @@ The script:
 2. Confirm `window.IAQAR.deploymentEnvironment === "staging"`.
 3. Confirm `window.IAQAR.firebaseProjectId === "iaqar-ai-staging"`.
 4. Confirm `window.IAQAR.workerBase` ends with `iaqar-intake-staging`.
-5. Hit staging Worker `/health` — `backendReady: true`, `projectId: iaqar-ai-staging`.
+5. Hit staging Worker `/health` — `backendReady: true`,
+   `opportunityExtractionReady: true`, `projectId: iaqar-ai-staging`.
 
 ## Explicitly out of Phase 9A
 

@@ -97,7 +97,7 @@ health documents.
 | `clients/{id}` | **Worker only** (Phase 8) | Customer request records (`cli_intake_*` or parsed message records). Members read; client write denied. |
 | `owners/{id}` | **Worker only** (Phase 8) | Owner offer records (`own_intake_*`). Members read; client write denied. |
 | `opportunities/{id}` | Phase 2 intake + Phase 3 bank | Unified Opportunity entity (`opp_*`). Phase 3 adds lifecycle/archive/soft-delete and cooperation status fields. Hard client delete denied. |
-| `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. |
+| `opportunitySources/{id}` | Phase 2 intake | Source payload; loaded lazily from bank detail. Binary sources keep their office-scoped R2 `mediaPath` plus the actual `extractedText`; no fabricated attachment fixture values are persisted. |
 | `sharedOpportunities/{id}` | Phase 3 + Phase 6 (target office) | Minimum read-only projection for an accepted cooperation. Contacts forced empty. Phase 6 revoke deletes or sets `revokedAt` so future reads fail. |
 | `matches/{matchId}` | Worker (Phase 4) | `matchId = mat_{sha256(officeId\|canonicalPair\|matchingRuleVersion\|dataVersion)[0..36]}`. Fields include `isCurrent`, `matchingRuleVersion`, `dataVersion`, `canonicalPairKey`, `pairRuleKey`, scores/reasons JSON, opportunity ids, `status` (`active` / `superseded` / …). Client read-only; Worker writes. |
 | `matches/{id}/timeline/{eventId}` | Worker + client | Append-only per-record activity. Read/create = member, update/delete = manager. |

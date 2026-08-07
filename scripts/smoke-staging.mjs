@@ -41,6 +41,9 @@ async function main() {
       if (json.backendReady !== true) {
         throw new Error("backendReady must be true for full-functional staging");
       }
+      if (json.opportunityExtractionReady !== true) {
+        throw new Error("opportunityExtractionReady must be true for staging opportunity analysis");
+      }
     }
   });
 

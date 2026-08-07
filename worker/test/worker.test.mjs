@@ -117,6 +117,7 @@ test("health is inbound-only", async () => {
   assert.equal(body.deploymentEnvironment, "production");
   assert.equal(body.firebaseConfigured, false);
   assert.equal(body.backendReady, false);
+  assert.equal(body.opportunityExtractionReady, false);
   assert.equal(body.cronEnabled, true);
 });
 
@@ -131,6 +132,30 @@ test("health reports staging when DEPLOYMENT_ENV=staging", async () => {
   assert.equal(body.outboundMessaging, false);
   assert.equal(body.cronEnabled, false);
   assert.equal(body.backendReady, false);
+});
+
+test("health reports staging opportunity extraction only when the AI binding exists", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/health"),
+    { ...env, DEPLOYMENT_ENV: "staging", AI: { run() {}, toMarkdown() {} } }
+  );
+  const body = await response.json();
+  assert.equal(body.opportunityExtractionReady, true);
+});
+
+test("opportunity extraction endpoint requires an authenticated office member", async () => {
+  const response = await worker.fetch(new Request("https://example.test/opportunity/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      officeId: "office-a",
+      sourceType: "text",
+      text: "عرض للبيع شقة في الرياض"
+    })
+  }), { ...env, DEPLOYMENT_ENV: "staging", AI: { run() {}, toMarkdown() {} } });
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, "authentication_required");
 });
 
 test("health backendReady is true when Firebase secrets exist", async () => {
