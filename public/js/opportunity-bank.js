@@ -83,6 +83,14 @@ function setStatus(message, tone = "") {
   if (tone) node.classList.add(tone);
 }
 
+function setShareActionStatus(message, tone = "") {
+  const node = document.getElementById("bankShareStatus");
+  if (!node) return setStatus(message, tone);
+  node.textContent = message || "";
+  node.classList.remove("is-error", "is-done");
+  if (tone) node.classList.add(tone);
+}
+
 const state = {
   filter: "active", // active | archived
   unsubscribe: null,
@@ -236,6 +244,7 @@ async function renderDetail(id) {
         <input name="targetOfficeId" required placeholder="office-...">
       </label>
       <button type="submit" class="bank-action-primary">إرسال طلب التعاون</button>
+      <p class="bank-share-status section-status" id="bankShareStatus" role="status"></p>
       <p class="bank-note">الافتراضي: قراءة فقط، بدون بيانات تواصل، والملكية تبقى لهذا المكتب.</p>
     </form>
   `;
@@ -504,7 +513,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
 
   const mode = await readOfficeCooperationMode();
   if (!cooperationModeAllowsExplicitRequest(mode)) {
-    setStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
+    setShareActionStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
     return;
   }
 
@@ -514,11 +523,11 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     opportunityIds
   );
   if (!ownedCheck.ok) {
-    setStatus("لا يمكن مشاركة فرص لا تتبع هذا المكتب", "is-error");
+    setShareActionStatus("لا يمكن مشاركة فرص لا تتبع هذا المكتب", "is-error");
     return;
   }
 
-  setStatus("جارٍ إرسال طلب التعاون…");
+  setShareActionStatus("جارٍ إرسال طلب التعاون…");
   const built = await buildCooperationRequest({
     originatingOfficeId: officeId(),
     originatingBrokerId: user.uid,
@@ -529,7 +538,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     createdBy: user.uid
   });
   if (!built.ok) {
-    setStatus("تعذر تجهيز طلب التعاون", "is-error");
+    setShareActionStatus("تعذر تجهيز طلب التعاون", "is-error");
     return;
   }
 
@@ -539,7 +548,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     if (existing.exists) {
       const status = String(existing.data()?.status || "").toUpperCase();
       if (status === SHARE_REQUEST_STATUS.PENDING || status === SHARE_REQUEST_STATUS.ACCEPTED) {
-        setStatus("يوجد طلب تعاون نشط أو معلّق مسبقًا", "is-done");
+        setShareActionStatus("يوجد طلب تعاون نشط أو معلّق مسبقًا", "is-done");
         return;
       }
     }
@@ -548,10 +557,9 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     // Update opportunity cooperation status to pending for singles/selected.
     const batch = runtime.db.batch();
     for (const oppId of ownedCheck.accepted) {
+      const record = state.records.get(oppId) || {};
       const oppRef = runtime.db.collection("offices").doc(officeId()).collection("opportunities").doc(oppId);
       batch.set(oppRef, {
-        officeId: officeId(),
-        currentOwningOfficeId: officeId(),
         cooperationState: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
         cooperationStatus: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
         activeCooperationId: built.request.id,
@@ -560,7 +568,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     }
     await batch.commit();
 
-    setStatus("تم إرسال طلب التعاون", "is-done");
+    setShareActionStatus("تم إرسال طلب التعاون", "is-done");
     toast("تم إرسال طلب التعاون");
     await syncCooperationOperation(built.request.id);
     window.dispatchEvent(new CustomEvent("iaqar:cooperation-request-created", {
@@ -574,7 +582,10 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     }));
   } catch (error) {
     console.warn("[iaqar] cooperation request", error);
-    setStatus("تعذر إرسال طلب التعاون", "is-error");
+    const message = String(error?.message || "").includes("permission")
+      ? "تعذر إرسال طلب التعاون — صلاحيات غير كافية"
+      : (error?.message || "تعذر إرسال طلب التعاون");
+    setShareActionStatus(message, "is-error");
   }
 }
 
