@@ -55,6 +55,7 @@ function firstMatch(text, expression, group = 1) {
 
 function numericValue(value) {
   const normalized = String(value || "").replace(/[,\s]/g, "");
+  if (!normalized) return null;
   const number = Number(normalized);
   return Number.isFinite(number) ? number : null;
 }
@@ -107,7 +108,7 @@ export function parseExtractedOpportunityText(rawText) {
       || firstMatch(text, /(?:المساحة|مساحة)\s*[:：]?\s*([0-9]{2,6}(?:\.[0-9]+)?)/)
   );
   const rooms = numericValue(
-    firstMatch(text, /([0-9]{1,2})\s*(?:غرف(?:ة| نوم)?|غرفة)/)
+    firstMatch(text, /(?:^|[^0-9])([0-9]{1,2})\s*(?:غرف(?:ة| نوم)?|غرفة)/)
       || firstMatch(text, /(?:عدد الغرف|غرف)\s*[:：]?\s*([0-9]{1,2})/)
   );
   const priceOrBudget = scaledMoney(text);
