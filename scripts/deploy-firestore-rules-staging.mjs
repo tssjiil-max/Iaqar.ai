@@ -89,8 +89,11 @@ export async function deployStagingFirestoreRules({
       method: "PATCH",
       headers,
       body: JSON.stringify({
-        name: RELEASE_NAME,
-        rulesetName: ruleset.name
+        release: {
+          name: RELEASE_NAME,
+          rulesetName: ruleset.name
+        },
+        updateMask: "rulesetName"
       }),
       signal: AbortSignal.timeout(30_000)
     })

@@ -174,7 +174,9 @@ test("Phase 9A deploys and verifies Firestore rules through the staging-only Rul
     assert.ok(calls.every(call => !call.url.includes("aqar-b5d76")));
     const source = JSON.parse(calls[1].body).source.files[0];
     assert.deepEqual(source, { name: "firestore.rules", content: "rules_version = '2';" });
-    assert.equal(JSON.parse(calls[2].body).rulesetName, rulesetName);
+    const update = JSON.parse(calls[2].body);
+    assert.equal(update.release.rulesetName, rulesetName);
+    assert.equal(update.updateMask, "rulesetName");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
