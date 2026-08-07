@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, isLoginDirectoryActive, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -54,8 +54,10 @@ test("office login normalizes every Saudi mobile format to one canonical value",
   assert.equal(normalizeLoginPhone("+966 55 123 4567"), "+966551234567");
 });
 
-test("office login derives the legacy local value for old directory records", () => {
-  assert.equal(legacyLocalLoginPhone("+966551234567"), "0551234567");
+test("approved login directory stays active when active field is missing", () => {
+  assert.equal(isLoginDirectoryActive({ uid: "u1", officeId: "office-1", email: "a@b.test" }), true);
+  assert.equal(isLoginDirectoryActive({ active: true }), true);
+  assert.equal(isLoginDirectoryActive({ active: false }), false);
 });
 
 test("office login falls back to a legacy directory record and creates the canonical record", async () => {
