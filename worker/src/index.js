@@ -576,7 +576,7 @@ async function decideBrokerApplication(request, env, requestId) {
       fields: {
         uid: firestoreString(application.applicantUid),
         officeId: firestoreString(officeId),
-        email: firestoreString(application.email),
+        email: firestoreString(String(application.email || "").trim().toLowerCase()),
         phone: firestoreString(normalizedPhone),
         active: firestoreBoolean(true),
         updatedAt: firestoreTimestamp(now)
@@ -595,32 +595,54 @@ async function decideBrokerApplication(request, env, requestId) {
   return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
 }
 
+function isLoginDirectoryActive(directory) {
+  if (!directory || typeof directory !== "object") return false;
+  // الحسابات المعتمدة قبل حقل active تُعامل كفعّالة ما لم يُعطَّل صراحةً.
+  return directory.active !== false;
+}
+
 async function handlePhoneLogin(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
   const phone = normalizeLoginPhone(body.phone);
   const password = cleanText(body.password, 200);
   const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  if (!phone || password.length < 8 || !apiKey) {
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "invalid_input", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
+  }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
-  const phoneHash = await sha256Hex(phone);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
   const rateHash = await sha256Hex(`${phone}|${ip}`);
   const rateSegments = ["loginRateLimits", rateHash];
   const rateDoc = await getFirestoreDocument({ projectId, segments: rateSegments, accessToken, allowMissing: true });
   const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
   const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
-  if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email || !directory.uid || !directory.officeId) {
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  if (blockedUntil > Date.now()) {
+    console.warn("[iaqar-login] blocked", { phone: maskPhone(phone), requestId });
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "rate_limited", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
   }
+  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
+  if (!directoryDoc) {
+    console.warn("[iaqar-login] directory missing", { phone: maskPhone(phone), requestId });
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "directory_missing", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
+  }
+  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
+  if (!isLoginDirectoryActive(directory) || !directory.email || !directory.uid || !directory.officeId) {
+    console.warn("[iaqar-login] directory inactive or incomplete", {
+      phone: maskPhone(phone),
+      active: directory.active,
+      hasEmail: Boolean(directory.email),
+      hasUid: Boolean(directory.uid),
+      officeId: directory.officeId || "",
+      requestId
+    });
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "directory_inactive", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
+  }
+  const loginEmail = String(directory.email || "").trim().toLowerCase();
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: directory.email, password, returnSecureToken: true })
+    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
   });
   if (!signInResponse.ok) {
     const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
@@ -633,10 +655,14 @@ async function handlePhoneLogin(request, env, requestId) {
       blockedUntil: firestoreTimestamp(failureCount >= 5 ? new Date(Date.now() + 15 * 60_000) : now),
       updatedAt: firestoreTimestamp(now)
     }});
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+    console.warn("[iaqar-login] password rejected", { phone: maskPhone(phone), requestId });
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "password_invalid", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
   }
   const signedIn = await signInResponse.json();
-  if (signedIn.localId !== directory.uid) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  if (signedIn.localId !== directory.uid) {
+    console.warn("[iaqar-login] uid mismatch", { phone: maskPhone(phone), requestId });
+    return jsonResponse({ ok: false, error: "invalid_login", reason: "uid_mismatch", message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId }, 401);
+  }
   await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
     failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
     blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
@@ -646,7 +672,7 @@ async function handlePhoneLogin(request, env, requestId) {
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
     uid: directory.uid, officeId: directory.officeId
   });
-  return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
+  return jsonResponse({ ok: true, customToken, officeId: normalizeOfficeId(directory.officeId), requestId });
 }
 
 async function handleForgotPassword(request, env, requestId) {
@@ -662,7 +688,7 @@ async function handleForgotPassword(request, env, requestId) {
   const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
   if (!directoryDoc) return jsonResponse(generic);
   const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email) return jsonResponse(generic);
+  if (!isLoginDirectoryActive(directory) || !directory.email) return jsonResponse(generic);
   const cooldownDoc = await getFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken, allowMissing: true });
   const cooldown = cooldownDoc ? firestoreFieldsToJs(cooldownDoc.fields || {}) : {};
   const previous = cooldown.lastRequestedAt ? Date.parse(cooldown.lastRequestedAt) : 0;
@@ -2523,36 +2549,43 @@ async function resolveLoginDirectory({ projectId, phone, accessToken }) {
   });
   if (canonicalDoc) return { directoryDoc: canonicalDoc, phoneHash: canonicalHash, migratedLegacy: false };
 
-  const legacyPhone = legacyLocalLoginPhone(phone);
-  const legacyHash = legacyPhone ? await sha256Hex(legacyPhone) : "";
-  if (!legacyHash || legacyHash === canonicalHash) {
-    return { directoryDoc: null, phoneHash: canonicalHash, migratedLegacy: false };
-  }
-  const legacyDoc = await getFirestoreDocument({
-    projectId, segments: ["loginDirectory", legacyHash], accessToken, allowMissing: true
-  });
-  if (!legacyDoc) return { directoryDoc: null, phoneHash: canonicalHash, migratedLegacy: false };
+  const legacyCandidates = [
+    legacyLocalLoginPhone(phone),
+    phone.startsWith("+966") ? phone.slice(1) : "",
+    phone.startsWith("+966") ? `966${phone.slice(4)}` : ""
+  ].filter((value, index, list) => value && list.indexOf(value) === index);
 
-  const legacyDirectory = firestoreFieldsToJs(legacyDoc.fields || {});
-  if (legacyDirectory.uid && legacyDirectory.officeId && legacyDirectory.email) {
-    try {
-      await setFirestoreDocument({
-        projectId, segments: ["loginDirectory", canonicalHash], accessToken,
-        fields: {
-          uid: firestoreString(legacyDirectory.uid),
-          officeId: firestoreString(legacyDirectory.officeId),
-          email: firestoreString(String(legacyDirectory.email).toLowerCase()),
-          phone: firestoreString(phone),
-          active: firestoreBoolean(legacyDirectory.active === true),
-          migratedFromLegacy: firestoreBoolean(true),
-          updatedAt: firestoreTimestamp(new Date())
-        }
-      });
-    } catch (error) {
-      console.warn("[iaqar] legacy phone directory migration deferred", error && error.message);
+  for (const legacyPhone of legacyCandidates) {
+    const legacyHash = await sha256Hex(legacyPhone);
+    if (legacyHash === canonicalHash) continue;
+    const legacyDoc = await getFirestoreDocument({
+      projectId, segments: ["loginDirectory", legacyHash], accessToken, allowMissing: true
+    });
+    if (!legacyDoc) continue;
+
+    const legacyDirectory = firestoreFieldsToJs(legacyDoc.fields || {});
+    if (legacyDirectory.uid && legacyDirectory.officeId && legacyDirectory.email) {
+      try {
+        await setFirestoreDocument({
+          projectId, segments: ["loginDirectory", canonicalHash], accessToken,
+          fields: {
+            uid: firestoreString(legacyDirectory.uid),
+            officeId: firestoreString(legacyDirectory.officeId),
+            email: firestoreString(String(legacyDirectory.email).toLowerCase()),
+            phone: firestoreString(phone),
+            active: firestoreBoolean(isLoginDirectoryActive(legacyDirectory)),
+            migratedFromLegacy: firestoreBoolean(true),
+            updatedAt: firestoreTimestamp(new Date())
+          }
+        });
+      } catch (error) {
+        console.warn("[iaqar] legacy phone directory migration deferred", error && error.message);
+      }
     }
+    return { directoryDoc: legacyDoc, phoneHash: canonicalHash, migratedLegacy: true };
   }
-  return { directoryDoc: legacyDoc, phoneHash: canonicalHash, migratedLegacy: true };
+
+  return { directoryDoc: null, phoneHash: canonicalHash, migratedLegacy: false };
 }
 function maskEmail(value) {
   const email = String(value || "");
@@ -2601,4 +2634,4 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
+export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, isLoginDirectoryActive, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };

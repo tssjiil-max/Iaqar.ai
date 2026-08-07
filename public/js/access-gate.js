@@ -79,6 +79,14 @@
     if (digits.startsWith("5") && digits.length === 9) digits = `0${digits}`;
     return /^05\d{8}$/.test(digits) ? digits : "";
   };
+  // نفس منطق normalizeLoginPhone في worker/src/index.js لضمان تطابق دليل الدخول.
+  const normalizeLoginPhone = value => {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00966")) digits = digits.slice(2);
+    if (digits.startsWith("966")) digits = digits.slice(3);
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    return /^5\d{8}$/.test(digits) ? `+966${digits}` : "";
+  };
   const validFullName = value => String(value || "").trim().split(/\s+/).filter(Boolean).length >= 2;
 
   async function uploadPublicMedia({ file, targetOffice, intakeId, kind, index = 0 }) {
@@ -296,8 +304,9 @@
       if (!brokerPhone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       submit.disabled = true;
       try {
+        const brokerEmail = String(fields.get("email") || "").trim().toLowerCase();
         const credential = await firebase.auth().createUserWithEmailAndPassword(
-          String(fields.get("email") || "").trim(),
+          brokerEmail,
           String(fields.get("password") || "")
         );
         const idToken = await credential.user.getIdToken();
@@ -306,8 +315,8 @@
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({
           brokerName: String(fields.get("brokerName") || "").trim(),
-          phone: brokerPhone,
-          email: String(fields.get("email") || "").trim().toLowerCase(),
+          phone: normalizeLoginPhone(brokerPhone) || brokerPhone,
+          email: brokerEmail,
           falLicense: String(fields.get("falLicense") || "").replace(/\D/g, "").slice(0, 20),
           officeName: String(fields.get("officeName") || "").trim()
           })
@@ -344,7 +353,8 @@
     gate.querySelector("#loginForm").onsubmit = async event => {
       event.preventDefault();
       const fields = new FormData(event.currentTarget);
-      const phone = normalizeSaudiPhone(fields.get("phone"));
+      const phoneLocal = normalizeSaudiPhone(fields.get("phone"));
+      const phone = normalizeLoginPhone(phoneLocal);
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       try {
         const response = await fetch(`${WORKER_BASE}/auth/phone-login`, {
@@ -352,11 +362,30 @@
           body: JSON.stringify({ phone, password: String(fields.get("password") || ""), apiKey: firebase.app().options.apiKey })
         });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.customToken || !payload.officeId) throw new Error("LOGIN_FAILED");
+        if (!response.ok || !payload.customToken || !payload.officeId) {
+          console.error("[iaqar] broker login rejected", {
+            status: response.status,
+            error: payload.error || "login_failed",
+            reason: payload.reason || "missing_token_or_office",
+            message: payload.message || "",
+            officeId: payload.officeId || null
+          });
+          throw new Error(payload.reason || payload.error || "LOGIN_FAILED");
+        }
         await firebase.auth().signInWithCustomToken(payload.customToken);
-        await verifyAccess(payload.officeId, true);
+        const accessGranted = await verifyAccess(payload.officeId, true);
+        if (!accessGranted) {
+          console.error("[iaqar] broker login office access denied", {
+            officeId: payload.officeId,
+            requestedOfficeId: officeId || null
+          });
+          throw new Error("OFFICE_ACCESS_DENIED");
+        }
       } catch (error) {
-        console.warn("[iaqar] login", error);
+        console.error("[iaqar] broker login failed", {
+          reason: String(error && error.message || "unknown"),
+          officeId: officeId || null
+        });
         try { await firebase.auth().signOut(); } catch (_) {}
         showStatus("بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.");
       }
@@ -371,7 +400,7 @@
     gate.querySelector(".access-back").onclick = () => loginForm();
     gate.querySelector("#forgotForm").onsubmit = async event => {
       event.preventDefault();
-      const phone = normalizeSaudiPhone(new FormData(event.currentTarget).get("phone"));
+      const phone = normalizeLoginPhone(normalizeSaudiPhone(new FormData(event.currentTarget).get("phone")));
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const button = event.currentTarget.querySelector("button"); button.disabled = true;
       try {
@@ -398,23 +427,43 @@
     };
   }
   async function verifyAccess(target, navigate) {
-    if (!target) return loginForm("أدخل رمز المكتب المعتمد.");
+    if (!target) {
+      if (navigate) return false;
+      loginForm("أدخل رمز المكتب المعتمد.");
+      return false;
+    }
     if (target === "platform") {
       try {
         const token = await firebase.auth().currentUser.getIdTokenResult(true);
-        if (token.claims.platformAdmin === true || token.claims.admin === true) return adminApplications();
+        if (token.claims.platformAdmin === true || token.claims.admin === true) {
+          adminApplications();
+          return true;
+        }
       } catch (_) {}
-      return loginForm("هذا الحساب ليس من إدارة المنصة.");
+      if (navigate) return false;
+      loginForm("هذا الحساب ليس من إدارة المنصة.");
+      return false;
     }
     try {
-      await db().collection("offices").doc(target).get({ source: "server" });
+      const snap = await db().collection("offices").doc(target).get({ source: "server" });
+      if (!snap.exists) throw new Error("OFFICE_NOT_FOUND");
       localStorage.setItem("iaqar.officeId", target);
-      if (navigate || target !== officeId) return location.replace(`${location.pathname}?office=${encodeURIComponent(target)}`);
+      if (navigate || target !== officeId) {
+        location.replace(`${location.pathname}?office=${encodeURIComponent(target)}`);
+        return true;
+      }
       document.body.classList.remove("access-locked");
       gate.remove();
+      return true;
     } catch (error) {
-      console.warn("[iaqar] access denied", error);
+      console.error("[iaqar] office access denied", {
+        officeId: target,
+        reason: error && error.message ? error.message : "permission_denied",
+        code: error && error.code ? error.code : null
+      });
+      if (navigate) return false;
       loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
+      return false;
     }
   }
 
