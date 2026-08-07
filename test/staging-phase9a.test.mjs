@@ -115,6 +115,7 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(script.includes("npm run test:phase9a"));
   assert.ok(script.includes("backendReady"));
   assert.ok(script.includes("opportunityExtractionReady"));
+  assert.ok(script.includes("for attempt in 1 2 3 4 5 6"));
   assert.ok(script.includes("smoke-staging.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
   // Must not require FIREBASE_TOKEN or pass it to firebase-tools (ignore-note is OK).
@@ -132,6 +133,7 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(ps1.includes("preflight-staging.mjs"));
   assert.ok(ps1.includes("npm run test:phase9a"));
   assert.ok(ps1.includes("opportunityExtractionReady"));
+  assert.ok(ps1.includes("foreach ($attempt in 1..6)"));
   assert.ok(ps1.includes("deploy-firestore-rules-staging.mjs"));
   assert.equal(ps1.includes("--token $env:FIREBASE_TOKEN"), false);
   assert.ok(ps1.includes("iaqar-ai-staging"));

@@ -106,7 +106,24 @@ fi
 rm -f "$CHANNEL_LOG"
 
 echo "--- Smoke: staging Worker /health (must be backendReady) ---"
-HEALTH_JSON="$(curl -fsS --max-time 30 "${STAGING_WORKER_URL}/health" || true)"
+HEALTH_JSON=""
+for attempt in 1 2 3 4 5 6; do
+  HEALTH_JSON="$(curl -fsS --max-time 30 "${STAGING_WORKER_URL}/health" || true)"
+  if [[ -n "$HEALTH_JSON" ]] && echo "$HEALTH_JSON" | node -e '
+    const fs = require("fs");
+    try {
+      const body = JSON.parse(fs.readFileSync(0, "utf8"));
+      process.exit(body.deploymentEnvironment === "staging"
+        && body.projectId === "iaqar-ai-staging"
+        && body.opportunityExtractionReady === true ? 0 : 1);
+    } catch (_) {
+      process.exit(1);
+    }
+  '; then
+    break
+  fi
+  if [[ "$attempt" -lt 6 ]]; then sleep 5; fi
+done
 if [[ -z "$HEALTH_JSON" ]]; then
   die "Staging Worker health check failed at ${STAGING_WORKER_URL}/health"
 fi

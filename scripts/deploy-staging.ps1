@@ -109,11 +109,22 @@ try {
   }
 
   Write-Host "--- Smoke: staging Worker /health (must be backendReady) ---"
-  try {
-    $HealthJson = Invoke-RestMethod -Uri "$StagingWorkerUrl/health" -TimeoutSec 30
-  } catch {
-    Die "Staging Worker health check failed at $StagingWorkerUrl/health"
+  $HealthJson = $null
+  foreach ($attempt in 1..6) {
+    try {
+      $candidate = Invoke-RestMethod -Uri "$StagingWorkerUrl/health" -TimeoutSec 30
+      $HealthJson = $candidate
+      if ($candidate.deploymentEnvironment -eq "staging" `
+          -and $candidate.projectId -eq "iaqar-ai-staging" `
+          -and $candidate.opportunityExtractionReady -eq $true) {
+        break
+      }
+    } catch {
+      $HealthJson = $null
+    }
+    if ($attempt -lt 6) { Start-Sleep -Seconds 5 }
   }
+  if (-not $HealthJson) { Die "Staging Worker health check failed at $StagingWorkerUrl/health" }
   if (-not $HealthJson.ok) { Die "health.ok is false" }
   if ($HealthJson.deploymentEnvironment -ne "staging") { Die "deploymentEnvironment must be staging" }
   if ($HealthJson.projectId -and $HealthJson.projectId -ne "iaqar-ai-staging") {
