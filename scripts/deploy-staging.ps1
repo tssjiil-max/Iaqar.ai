@@ -61,6 +61,13 @@ try {
   npm run test:phase9a
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+  Write-Host "--- Firebase Firestore rules + indexes ($StagingFirebaseProject only) ---"
+  npx firebase-tools deploy `
+    --only firestore:rules,firestore:indexes `
+    --project $StagingFirebaseProject `
+    --non-interactive
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   Write-Host "--- Cloudflare Worker (staging env only) ---"
   Push-Location (Join-Path $Root "worker")
   try {

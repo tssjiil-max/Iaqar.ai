@@ -99,6 +99,8 @@ test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
 test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   const script = read("scripts", "deploy-staging.sh");
   assert.ok(script.includes("wrangler deploy --env staging"));
+  assert.ok(script.includes("--only firestore:rules,firestore:indexes"));
+  assert.ok(script.includes('--project "$STAGING_FIREBASE_PROJECT"'));
   assert.ok(script.includes("hosting:channel:deploy staging"));
   assert.ok(script.includes("iaqar-ai-staging"));
   assert.ok(script.includes("FIREBASE_SERVICE_ACCOUNT_JSON"));
@@ -125,6 +127,8 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(ps1.includes("GOOGLE_APPLICATION_CREDENTIALS"));
   assert.ok(ps1.includes("preflight-staging.mjs"));
   assert.ok(ps1.includes("npm run test:phase9a"));
+  assert.ok(ps1.includes("--only firestore:rules,firestore:indexes"));
+  assert.ok(ps1.includes("--project $StagingFirebaseProject"));
   assert.equal(ps1.includes("--token $env:FIREBASE_TOKEN"), false);
   assert.ok(ps1.includes("iaqar-ai-staging"));
 

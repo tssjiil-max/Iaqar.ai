@@ -74,9 +74,9 @@ test("Firebase service account JWT identifies the exact private key", async () =
 });
 
 test("office login normalizes every Saudi mobile format to one canonical value", () => {
-  assert.equal(normalizeLoginPhone("0551234567"), "+966551234567");
-  assert.equal(normalizeLoginPhone("966551234567"), "+966551234567");
-  assert.equal(normalizeLoginPhone("+966 55 123 4567"), "+966551234567");
+  assert.equal(normalizeLoginPhone("0552019909"), "+966552019909");
+  assert.equal(normalizeLoginPhone("966552019909"), "+966552019909");
+  assert.equal(normalizeLoginPhone("+966552019909"), "+966552019909");
 });
 
 test("office login derives the legacy local value for old directory records", () => {
