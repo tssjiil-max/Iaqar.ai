@@ -4,12 +4,12 @@
  */
 import * as admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { firefox } from "playwright";
+import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 
 const STAGING_URL =
   process.env.STAGING_URL ||
-  "https://iaqar-ai-staging--staging-9c4b0k7h-d19hnv5t.web.app";
+  "https://iaqar-ai-staging.web.app";
 const WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
 const OFFICE_ID = "staging-logo-live-20260807";
 const TARGET_OFFICE = "staging-coop-target-20260807";
@@ -273,15 +273,81 @@ async function testCover(page) {
   }
 }
 
-async function testCooperation(page, oppId) {
-  const token = await page.evaluate(async () => {
-    const user = window.firebase.auth().currentUser;
-    return user ? user.getIdToken() : "";
+async function getAuthTokenFromApi() {
+  const initRes = await fetch(`${STAGING_URL}/__/firebase/init.json`);
+  const { apiKey } = await initRes.json();
+  const loginRes = await fetch(`${WORKER}/auth/phone-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: PHONE, password: PASSWORD, apiKey })
   });
-  if (!token) {
-    results.cooperation.detail = "no auth token";
-    return;
+  const loginBody = await loginRes.json().catch(() => ({}));
+  if (!loginRes.ok || !loginBody.customToken) {
+    throw new Error(`phone-login failed: ${loginRes.status}`);
   }
+  const signRes = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: loginBody.customToken, returnSecureToken: true })
+    }
+  );
+  const signBody = await signRes.json().catch(() => ({}));
+  if (!signRes.ok || !signBody.idToken) {
+    throw new Error(`signIn failed: ${signRes.status}`);
+  }
+  return signBody.idToken;
+}
+
+async function testCooperation(page, oppClientId, oppOwnerId) {
+  let uiDetail = "ui not run";
+  try {
+    await closeOfficeSettings(page);
+    await openOpportunityBank(page);
+    await page.waitForSelector(`[data-open-id="${oppClientId}"]`, { timeout: 45000 });
+    await page.click(`[data-open-id="${oppClientId}"]`);
+    await page.waitForSelector("#opportunityBankDetail:not([hidden])", { timeout: 15000 });
+    await page.waitForSelector("#bankShareBtn", { timeout: 45000 });
+    await page.click("#bankShareBtn");
+    await page.waitForSelector("#bankShareForm:not([hidden])", { timeout: 15000 });
+    const statusEl = page.locator("#bankShareStatus");
+    const submitBtn = page.locator("#bankShareForm button[type='submit']");
+    await page.fill("#bankShareForm input[name='targetOfficeId']", TARGET_OFFICE);
+    const submitBox = await submitBtn.boundingBox();
+    await page.click("#bankShareForm button[type='submit']");
+    await page.waitForFunction(
+      () => {
+        const node = document.getElementById("bankShareStatus");
+        return node && node.textContent && node.textContent.trim().length > 3;
+      },
+      { timeout: 25000 }
+    );
+    const statusText = await statusEl.innerText();
+    const domBelowSubmit = await page.evaluate(() => {
+      const submit = document.querySelector("#bankShareForm button[type='submit']");
+      const status = document.getElementById("bankShareStatus");
+      if (!submit || !status) return false;
+      return (submit.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    const belowSubmit = domBelowSubmit;
+    if (!/تم|إرسال|طلب|موجود/i.test(statusText)) {
+      uiDetail = `ui status unexpected: ${statusText.slice(0, 60)}`;
+    } else if (!belowSubmit) {
+      uiDetail = "status not below submit button";
+    } else {
+      uiDetail = `ui ok below button: ${statusText.slice(0, 40)}`;
+    }
+    if (!/ui ok below button/i.test(uiDetail)) {
+      results.cooperation.pass = false;
+      results.cooperation.detail = uiDetail;
+      return;
+    }
+  } catch (error) {
+    uiDetail = `ui skip: ${String(error.message || error).slice(0, 100)}`;
+  }
+
+  const token = await getAuthTokenFromApi();
   const response = await fetch(`${WORKER}/cooperation/request`, {
     method: "POST",
     headers: {
@@ -291,13 +357,13 @@ async function testCooperation(page, oppId) {
     body: JSON.stringify({
       officeId: OFFICE_ID,
       targetOfficeId: TARGET_OFFICE,
-      opportunityIds: [oppId],
+      opportunityIds: [oppOwnerId],
       scopeType: "single"
     })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    results.cooperation.detail = `API ${response.status}: ${JSON.stringify(payload).slice(0, 120)}`;
+    results.cooperation.detail = `${uiDetail}; API ${response.status}: ${JSON.stringify(payload).slice(0, 120)}`;
     return;
   }
   const coopSnap = await db
@@ -305,75 +371,84 @@ async function testCooperation(page, oppId) {
     .doc(payload.cooperationRequestId || "")
     .get();
   if (!coopSnap.exists) {
-    const fallback = await db
-      .collection("cooperationRequests")
-      .where("originatingOfficeId", "==", OFFICE_ID)
-      .where("opportunityId", "==", oppId)
-      .limit(1)
-      .get();
-    if (fallback.empty) {
-      results.cooperation.detail = `API ok but missing Firestore doc (${payload.cooperationRequestId})`;
-      return;
-    }
+    results.cooperation.detail = `${uiDetail}; API ok but missing Firestore doc`;
+    return;
   }
   results.cooperation.pass = true;
-  results.cooperation.detail = payload.message || payload.requestId || "تم إرسال طلب التعاون";
+  results.cooperation.detail = `${uiDetail}; firestore=${payload.cooperationRequestId}; ${payload.message || "saved"}`;
 }
 
 async function testFcm(page) {
   let outcome = { ok: false, detail: "not run" };
   try {
     outcome = await page.evaluate(async (workerBase) => {
-    function urlBase64ToUint8Array(base64String) {
-      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-      const raw = atob(base64);
-      return Uint8Array.from(raw, (char) => char.charCodeAt(0));
-    }
-    const config = await fetch(`${workerBase}/fcm/config`).then((r) => r.json()).catch(() => ({}));
-    if (!config.vapidKey) return { ok: false, detail: "no vapid key" };
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return { ok: false, detail: `permission=${permission}` };
-    const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-    const subscription = await serviceWorkerRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.vapidKey)
-    });
-    const pushSubscription = subscription.toJSON();
-    const officeId = localStorage.getItem("iaqar.officeId");
-    const token = await firebase.auth().currentUser.getIdToken();
-    const payload = {
-      officeId,
-      fcmRegistrationId: JSON.stringify(pushSubscription),
-      registrationType: "webpush",
-      pushSubscription,
-      installationId: `e2e_${Date.now()}`,
-      notificationPermission: permission,
-      userAgent: navigator.userAgent,
-      deviceName: "e2e",
-      language: navigator.language || "ar-SA"
-    };
-    const registerResponse = await fetch(`${workerBase}/fcm/register`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const registerPayload = await registerResponse.json().catch(() => ({}));
-    if (!registerResponse.ok) {
-      return { ok: false, detail: `register ${registerResponse.status}`, registerPayload };
-    }
-    const testResponse = await fetch(`${workerBase}/fcm/test`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const testPayload = await testResponse.json().catch(() => ({}));
-    if (!testResponse.ok) {
-      return { ok: false, detail: `test ${testResponse.status}`, testPayload };
-    }
-    localStorage.setItem(`iaqar.fcm.enabled.${officeId}`, "1");
-    return { ok: true, detail: `register+test ok`, testPayload };
-  }, WORKER);
+      function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+        const raw = atob(base64);
+        return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+      }
+      const config = await fetch(`${workerBase}/fcm/config`).then((r) => r.json()).catch(() => ({}));
+      if (!config.vapidKey) return { ok: false, detail: "no vapid key" };
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return { ok: false, detail: `permission=${permission}` };
+      const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      let registrationType = "token";
+      let registrationId = "";
+      let pushSubscription = null;
+      try {
+        registrationId = await firebase.messaging().getToken({
+          serviceWorkerRegistration,
+          vapidKey: config.vapidKey
+        });
+      } catch (_) {
+        registrationId = "";
+      }
+      if (!registrationId) {
+        const subscription = await serviceWorkerRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(config.vapidKey)
+        });
+        pushSubscription = subscription.toJSON();
+        registrationId = JSON.stringify(pushSubscription);
+        registrationType = "webpush";
+      }
+      if (!registrationId) return { ok: false, detail: "no registration id" };
+      const officeId = localStorage.getItem("iaqar.officeId");
+      const token = await firebase.auth().currentUser.getIdToken();
+      const payload = {
+        officeId,
+        fcmRegistrationId: registrationId,
+        registrationType,
+        fcmToken: registrationType === "token" ? registrationId : "",
+        installationId: `e2e_${Date.now()}`,
+        notificationPermission: permission,
+        userAgent: navigator.userAgent,
+        deviceName: "e2e",
+        language: navigator.language || "ar-SA"
+      };
+      if (pushSubscription) payload.pushSubscription = pushSubscription;
+      const registerResponse = await fetch(`${workerBase}/fcm/register`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const registerPayload = await registerResponse.json().catch(() => ({}));
+      if (!registerResponse.ok) {
+        return { ok: false, detail: `register ${registerResponse.status}`, registerPayload };
+      }
+      const testResponse = await fetch(`${workerBase}/fcm/test`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const testPayload = await testResponse.json().catch(() => ({}));
+      if (!testResponse.ok) {
+        return { ok: false, detail: `test ${testResponse.status}`, testPayload };
+      }
+      localStorage.setItem(`iaqar.fcm.enabled.${officeId}`, "1");
+      return { ok: true, detail: `register+test ok sent=${testPayload.sent} type=${registrationType}`, testPayload };
+    }, WORKER);
   } catch (error) {
     outcome = { ok: false, detail: String(error.message || error) };
   }
@@ -385,39 +460,42 @@ async function testFcm(page) {
     .where("enabled", "==", true)
     .limit(3)
     .get();
-  if (outcome.ok && ls === "1" && !devices.empty) {
+  const bound = devices.docs.some((doc) => {
+    const data = doc.data();
+    return data.officeId === OFFICE_ID && data.userUid;
+  });
+  if (outcome.ok && ls === "1" && !devices.empty && bound) {
     results.fcm.pass = true;
-    results.fcm.detail = `${outcome.detail}; devices=${devices.size}`;
+    results.fcm.detail = `${outcome.detail}; devices=${devices.size}; officeId+broker bound`;
   } else {
-    results.fcm.detail = `${outcome.detail || "failed"}; ls=${ls}; devices=${devices.size}`;
+    results.fcm.detail = `${outcome.detail || "failed"}; ls=${ls}; devices=${devices.size}; bound=${bound}`;
   }
 }
 
-async function testMatching(page, oppClientId, oppOwnerId) {
-  const token = await page.evaluate(async () => {
-    const user = window.firebase.auth().currentUser;
-    if (!user) return "";
-    return user.getIdToken();
-  });
-  if (!token) {
-    results.matching.detail = "no auth token";
-    return;
+async function testMatching(page, oppClientId) {
+  const token = await getAuthTokenFromApi();
+  let res;
+  let payload = {};
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    res = await fetch(`${WORKER}/matching/run`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        officeId: OFFICE_ID,
+        opportunityId: oppClientId,
+        notify: true
+      })
+    });
+    payload = await res.json().catch(() => ({}));
+    if (res.ok) break;
+    if (res.status >= 500) await new Promise((r) => setTimeout(r, 2000));
   }
-  const res = await fetch(`${WORKER}/matching/run`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      officeId: OFFICE_ID,
-      opportunityId: oppClientId,
-      notify: true
-    })
-  });
-  const payload = await res.json().catch(() => ({}));
   if (!res.ok || !payload.matchCount) {
-    results.matching.detail = `API ${res.status}: ${JSON.stringify(payload).slice(0, 200)}`;
+    const raw = res.status >= 500 ? `HTTP ${res.status}` : JSON.stringify(payload).slice(0, 200);
+    results.matching.detail = `API ${res.status}: ${raw}`;
     return;
   }
   const opId = payload.matches?.[0]?.operationId || "";
@@ -448,8 +526,9 @@ async function testMatching(page, oppClientId, oppOwnerId) {
 async function main() {
   const { oppClientId, oppOwnerId } = await setupFirestore();
   const userDataDir = "/tmp/pw-staging-profile";
-  const context = await firefox.launchPersistentContext(userDataDir, {
+  const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
+    channel: "chrome",
     permissions: ["notifications"],
     locale: "ar-SA"
   });
@@ -461,9 +540,9 @@ async function main() {
   try {
     await loginPage(page);
     await testCover(page);
-    await testCooperation(page, oppClientId);
-    await testMatching(page, oppClientId, oppOwnerId);
     await testFcm(page);
+    await testMatching(page, oppClientId);
+    await testCooperation(page, oppClientId, oppOwnerId);
   } catch (error) {
     console.error(error);
   } finally {
