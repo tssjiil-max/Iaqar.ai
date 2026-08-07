@@ -528,55 +528,36 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
   }
 
   setShareActionStatus("جارٍ إرسال طلب التعاون…");
-  const built = await buildCooperationRequest({
-    originatingOfficeId: officeId(),
-    originatingBrokerId: user.uid,
-    targetOfficeId,
-    opportunityIds: ownedCheck.accepted,
-    opportunityId: scopeType === "single" ? ownedCheck.accepted[0] : "",
-    scopeType,
-    createdBy: user.uid
-  });
-  if (!built.ok) {
-    setShareActionStatus("تعذر تجهيز طلب التعاون", "is-error");
-    return;
-  }
-
   try {
-    const ref = runtime.db.collection("cooperationRequests").doc(built.request.id);
-    const existing = await ref.get();
-    if (existing.exists) {
-      const status = String(existing.data()?.status || "").toUpperCase();
-      if (status === SHARE_REQUEST_STATUS.PENDING || status === SHARE_REQUEST_STATUS.ACCEPTED) {
-        setShareActionStatus("يوجد طلب تعاون نشط أو معلّق مسبقًا", "is-done");
-        return;
-      }
+    const token = await user.getIdToken();
+    const response = await fetch(`${workerBaseUrl()}/cooperation/request`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        officeId: officeId(),
+        targetOfficeId,
+        opportunityIds: ownedCheck.accepted,
+        scopeType
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.message || "تعذر إرسال طلب التعاون");
     }
-    await ref.set(built.request, { merge: false });
-
-    // Update opportunity cooperation status to pending for singles/selected.
-    const batch = runtime.db.batch();
-    for (const oppId of ownedCheck.accepted) {
-      const record = state.records.get(oppId) || {};
-      const oppRef = runtime.db.collection("offices").doc(officeId()).collection("opportunities").doc(oppId);
-      batch.set(oppRef, {
-        cooperationState: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
-        cooperationStatus: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
-        activeCooperationId: built.request.id,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
-    await batch.commit();
-
-    setShareActionStatus("تم إرسال طلب التعاون", "is-done");
-    toast("تم إرسال طلب التعاون");
-    await syncCooperationOperation(built.request.id);
+    const message = payload.message || "تم إرسال طلب التعاون";
+    setShareActionStatus(message, payload.duplicate ? "is-done" : "is-done");
+    if (!payload.duplicate) toast("تم إرسال طلب التعاون");
+    const requestId = payload.cooperationRequestId || payload.requestId || "";
+    if (requestId) await syncCooperationOperation(requestId);
     window.dispatchEvent(new CustomEvent("iaqar:cooperation-request-created", {
       detail: {
         ...phase3BoundaryGuarantees(),
         ...phase5BoundaryGuarantees(),
         ...phase6BoundaryGuarantees(),
-        requestId: built.request.id,
+        requestId,
         createsAutomaticCooperation: false
       }
     }));

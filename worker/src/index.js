@@ -45,7 +45,8 @@ import {
 } from "./cooperation-phase6-domain.js";
 import {
   runCooperationLifecycle,
-  revokeBankSharingScope
+  revokeBankSharingScope,
+  createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
 import {
   MESSAGE_CHANNELS,
@@ -274,6 +275,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/operations/missing-data") {
         return await handleOperationsMissingData(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/request") {
+        return await handleCooperationRequestCreate(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
@@ -2269,6 +2274,55 @@ async function handleOperationsMissingData(request, env, requestId) {
     boundaries: phase5BoundaryGuarantees(),
     requestId
   });
+}
+
+async function handleCooperationRequestCreate(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const targetOfficeId = normalizeOfficeId(body.targetOfficeId);
+  const scopeType = cleanText(body.scopeType || "single", 20);
+  const opportunityIds = Array.isArray(body.opportunityIds)
+    ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
+    : [];
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!targetOfficeId) throw appError("target_office_required", 400, "معرّف المكتب المستهدف مطلوب");
+  if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "معرّف الفرصة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await createExplicitCooperationRequest({
+    projectId,
+    originatingOfficeId: officeId,
+    originatingBrokerId: identity.uid || "",
+    targetOfficeId,
+    opportunityIds,
+    scopeType,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(
+      result.error || "cooperation_request_failed",
+      result.status || 400,
+      result.message || "تعذر إرسال طلب التعاون"
+    );
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    targetOfficeId,
+    cooperationRequestId: result.requestId,
+    duplicate: Boolean(result.duplicate),
+    message: result.message || "تم إرسال طلب التعاون",
+    boundaries: result.boundaries || phase6BoundaryGuarantees(),
+    requestId
+  }, result.duplicate ? 200 : 201);
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {
