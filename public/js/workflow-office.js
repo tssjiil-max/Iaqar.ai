@@ -938,6 +938,12 @@
 
   function closeWorkflowUi() {
     const overlay = document.getElementById("iaqarWorkflowOverlay");
+    if (!overlay || overlay.hidden) return;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+  }
+
+  function hideWorkflowOverlay() {
+    const overlay = document.getElementById("iaqarWorkflowOverlay");
     if (overlay) overlay.hidden = true;
     activeWorkflowDetail = null;
   }
@@ -955,6 +961,7 @@
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
     workflowBody().innerHTML = `<div class="iaqar-workflow-summary">جارٍ تحميل بيانات العميل والمالك...</div>`;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "iaqarWorkflowOverlay" } }));
     const [owner, client] = await Promise.all([
       workflowContact(activeWorkflowDetail, "owner").catch(() => null),
       workflowContact(activeWorkflowDetail, "client").catch(() => null)
@@ -1381,7 +1388,16 @@
     }
   }
 
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  }
+
   async function createFcmRegistration(config, serviceWorkerRegistration) {
+    const tokenOptions = { serviceWorkerRegistration };
+    if (config.vapidKey) tokenOptions.vapidKey = config.vapidKey;
     const bridge = await preferredFcmBridge();
     if (bridge && typeof bridge.register === "function") {
       try {
@@ -1391,14 +1407,29 @@
         console.warn("[iaqar] FID registration failed; using token fallback", error);
       }
     }
-    if (!window.firebase || typeof window.firebase.messaging !== "function") throw new Error("خدمة الإشعارات غير متاحة");
-    const token = await window.firebase.messaging().getToken({ vapidKey: config.vapidKey, serviceWorkerRegistration });
-    if (!token) throw new Error("لم يتم إنشاء معرّف الجهاز");
-    return { id: token, type: "token" };
+    if (window.firebase && typeof window.firebase.messaging === "function") {
+      try {
+        const token = await window.firebase.messaging().getToken(tokenOptions);
+        if (token) return { id: token, type: "token" };
+      } catch (error) {
+        console.warn("[iaqar] FCM token registration failed; using Web Push fallback", error);
+      }
+    }
+    if (!config.vapidKey) throw new Error("يلزم مفتاح Web Push في الخادم");
+    const subscription = await serviceWorkerRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(config.vapidKey)
+    });
+    const pushSubscription = subscription.toJSON();
+    return {
+      id: JSON.stringify(pushSubscription),
+      type: "webpush",
+      pushSubscription
+    };
   }
 
   function registrationPayload(runtime, registration, permission) {
-    return {
+    const payload = {
       officeId: runtime.officeId,
       fcmRegistrationId: registration.id,
       registrationType: registration.type,
@@ -1410,6 +1441,8 @@
       notificationPermission: permission,
       appVersion: APP_VERSION
     };
+    if (registration.pushSubscription) payload.pushSubscription = registration.pushSubscription;
+    return payload;
   }
 
   async function registerNotificationDevice({ requestPermission = false, sendTest = false, silent = false } = {}) {
@@ -1419,9 +1452,14 @@
       return false;
     }
     const config = await getFcmConfig();
-    if (!config.enabled || !config.vapidKey) {
+    if (!config.serverReady) {
       setNotificationStatus("بانتظار إعداد FCM");
-      if (!silent) notify(config.vapidConfigured && !config.serverReady ? "بيانات Firebase في الخادم غير مكتملة" : "يلزم إكمال مفتاح Web Push في الخادم");
+      if (!silent) notify("بيانات Firebase في الخادم غير مكتملة");
+      return false;
+    }
+    if (!config.vapidKey) {
+      setNotificationStatus("بانتظار مفتاح Web Push");
+      if (!silent) notify("يلزم إكمال مفتاح Web Push في الخادم");
       return false;
     }
     let permission = Notification.permission;
@@ -1474,8 +1512,14 @@
     if (!runtime || !runtime.officeId || runtime.officeId === "platform") return;
     const enabled = localStorage.getItem(`iaqar.fcm.enabled.${runtime.officeId}`) === "1";
     if (!enabled || !("Notification" in window) || Notification.permission !== "granted") return;
-    try { await registerNotificationDevice({ requestPermission: false, sendTest: false, silent: true }); }
-    catch (error) { console.warn("[iaqar] notification registration refresh", error); }
+    try {
+      const ok = await registerNotificationDevice({ requestPermission: false, sendTest: false, silent: true });
+      if (!ok) setNotificationStatus("مفعّلة — جارٍ إعادة الربط");
+    }
+    catch (error) {
+      console.warn("[iaqar] notification registration refresh", error);
+      setNotificationStatus("مفعّلة — تعذر تحديث التسجيل مؤقتًا");
+    }
   }
 
   async function disableNotifications() {
@@ -1533,7 +1577,11 @@
       localStorage.removeItem(`iaqar.fcm.enabled.${runtime.officeId}`);
       return setNotificationStatus("مرفوضة على الجهاز");
     }
-    setNotificationStatus(enabled ? "مفعّلة لهذا المكتب" : "غير مفعّلة");
+    if (!enabled) return setNotificationStatus("غير مفعّلة");
+    if ("Notification" in window && Notification.permission !== "granted") {
+      return setNotificationStatus("بانتظار إذن الجهاز");
+    }
+    setNotificationStatus("مفعّلة لهذا المكتب");
   }
 
   function isStandalone() {
@@ -1541,12 +1589,22 @@
   }
 
   function refreshInstallStatus() {
-    const node = document.getElementById("installAppStatus");
+    const node = document.getElementById("pwaInstallStatus");
+    const btn = document.getElementById("pwaInstallBtn");
+    const iosHint = document.getElementById("pwaInstallIosHint");
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isStandalone()) {
+      if (node) node.textContent = "مثبّت على الجهاز";
+      if (btn) btn.hidden = true;
+      if (iosHint) iosHint.hidden = true;
+      return;
+    }
+    if (btn) btn.hidden = !deferredInstallPrompt;
+    if (iosHint) iosHint.hidden = !isIos;
     if (!node) return;
-    if (isStandalone()) node.textContent = "مثبّت على الجهاز";
-    else if (deferredInstallPrompt) node.textContent = "اضغط للتثبيت";
-    else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) node.textContent = "من مشاركة ← إضافة للشاشة";
-    else node.textContent = "من قائمة المتصفح ← تثبيت";
+    if (deferredInstallPrompt) node.textContent = "اضغط «تثبيت التطبيق» أدناه";
+    else if (isIos) node.textContent = "اتبع التعليمات أدناه لإضافة الاختصار";
+    else node.textContent = "من قائمة المتصفح ← تثبيت التطبيق";
   }
 
   async function installAppShortcut() {
@@ -1590,10 +1648,10 @@
         if (event.key === "Enter" || event.key === " ") toggleNotifications();
       });
     }
-    const installItem = document.getElementById("installAppControl");
-    if (installItem) {
-      installItem.addEventListener("click", installAppShortcut);
-      installItem.addEventListener("keydown", event => {
+    const installBtn = document.getElementById("pwaInstallBtn");
+    if (installBtn) {
+      installBtn.addEventListener("click", installAppShortcut);
+      installBtn.addEventListener("keydown", event => {
         if (event.key === "Enter" || event.key === " ") installAppShortcut();
       });
     }
@@ -1607,6 +1665,7 @@
       refreshInstallStatus();
       notify("تم تثبيت اختصار مكاتب عقارية ذكية");
     });
+    window.addEventListener("iaqar:workflow-overlay-closed", hideWorkflowOverlay);
     refreshNotificationStatus();
     refreshInstallStatus();
 
