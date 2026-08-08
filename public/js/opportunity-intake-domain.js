@@ -40,7 +40,8 @@ export const PURPOSES = Object.freeze([
   "SALE",
   "PURCHASE",
   "RENT",
-  "LEASE_REQUEST"
+  "LEASE_REQUEST",
+  "INVESTMENT"
 ]);
 
 export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
@@ -204,6 +205,8 @@ function extractFromText(raw, meta) {
     purpose = "PURCHASE";
   } else if (/بيع|للبيع/.test(text)) {
     purpose = "SALE";
+  } else if (/استثمار|استثماري/.test(text)) {
+    purpose = "INVESTMENT";
   }
 
   const propertyType =
@@ -248,7 +251,6 @@ function extractFromText(raw, meta) {
 }
 
 function extractFromSimulatedAttachment(input, meta) {
-  // Deterministic fixture keyed by source type — partial fields only.
   const fixtures = {
     image: { propertyType: "شقة", city: "", district: "", opportunityKind: "", purpose: "" },
     screenshot: { propertyType: "", city: "الرياض", district: "", opportunityKind: "", purpose: "" },
@@ -257,16 +259,20 @@ function extractFromSimulatedAttachment(input, meta) {
     excel: { propertyType: "أرض", city: "الرياض", district: "", opportunityKind: "OFFER", purpose: "SALE" },
     audio: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "RENT" }
   };
+  const hint = safeText([input.fileName, input.text].filter(Boolean).join(" "));
+  const fromHint = hint
+    ? extractFromText(hint, { sourceType: input.sourceType, label: meta.label }).fields
+    : null;
   const base = fixtures[input.sourceType] || {};
   const fields = {
-    opportunityKind: base.opportunityKind || "",
-    purpose: base.purpose || "",
-    propertyType: base.propertyType || "",
-    city: base.city || "",
-    district: base.district || "",
-    priceOrBudget: null,
-    area: null,
-    rooms: null
+    opportunityKind: fromHint?.opportunityKind || base.opportunityKind || "",
+    purpose: fromHint?.purpose || base.purpose || "",
+    propertyType: fromHint?.propertyType || base.propertyType || "",
+    city: fromHint?.city || base.city || "",
+    district: fromHint?.district || base.district || "",
+    priceOrBudget: fromHint?.priceOrBudget ?? null,
+    area: fromHint?.area ?? null,
+    rooms: fromHint?.rooms ?? null
   };
   const filled = countFilled(fields);
   return {

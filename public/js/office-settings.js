@@ -173,14 +173,22 @@ function writeSpecialtiesToForm(list) {
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
   if (logo) {
-    if (current.logoUrl) logo.src = current.logoUrl;
-    else if (logo.dataset.defaultSrc) logo.src = logo.dataset.defaultSrc;
-  }
-  if (el.cardCover) {
-    const coverSource = current.coverUrl || current.displayImageUrl;
-    el.cardCover.src = coverSource || "";
-    el.cardCover.hidden = !coverSource;
-    if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = Boolean(coverSource);
+    const logoSource = String(current.logoUrl || "").trim();
+    if (logoSource) {
+      logo.hidden = false;
+      logo.onerror = () => {
+        logo.hidden = true;
+        if (logo.dataset.defaultSrc) {
+          logo.hidden = false;
+          logo.src = logo.dataset.defaultSrc;
+        }
+      };
+      logo.onload = () => { logo.hidden = false; };
+      if (logo.src !== logoSource) logo.src = logoSource;
+    } else if (logo.dataset.defaultSrc) {
+      logo.hidden = false;
+      logo.src = logo.dataset.defaultSrc;
+    }
   }
 }
 
@@ -192,10 +200,31 @@ function applyImageSlots() {
 }
 
 function setSlotPreview(slot, source) {
-  slot.image.src = source || "";
-  slot.image.hidden = !source;
-  if (slot.placeholder) slot.placeholder.hidden = Boolean(source);
-  if (slot.remove) slot.remove.hidden = !(slot.preset.removable && source);
+  const url = String(source || "").trim();
+  if (!url) {
+    slot.image.hidden = true;
+    slot.image.removeAttribute("src");
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+    return;
+  }
+  if (slot.placeholder) slot.placeholder.hidden = true;
+  slot.image.hidden = false;
+  slot.image.onerror = () => {
+    slot.image.hidden = true;
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+  };
+  slot.image.onload = () => {
+    slot.image.hidden = false;
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  };
+  if (slot.image.src !== url) slot.image.src = url;
+  else if (slot.image.complete && slot.image.naturalWidth > 0) {
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  }
 }
 
 function apply(data) {
@@ -222,7 +251,7 @@ function apply(data) {
     const node = document.getElementById(id);
     if (node) node.textContent = value;
   });
-  const specialtyRow = document.querySelector(".specialty-status-row");
+  const specialtyRow = document.getElementById("officeServicesBar");
   if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
 }
 
@@ -1197,17 +1226,55 @@ function closeOpportunityBank() {
 // ---------------------------------------------------------------------------
 
 function openSettings() {
-  el.overlay.hidden = false;
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay) return;
+  overlay.hidden = false;
   document.body.style.overflow = "hidden";
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-opened"));
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "officeSettings" } }));
+}
+
+function completeSettingsClose() {
+  if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+    window.IAQAR.closeOpportunityBank({ fromPopstate: true });
+  } else {
+    const bankOverlay = document.getElementById("opportunityBank");
+    if (bankOverlay) bankOverlay.hidden = true;
+  }
+  const overlay = document.getElementById("officeSettings");
+  if (overlay) overlay.hidden = true;
+  const bankOverlay = document.getElementById("opportunityBank");
+  if (!bankOverlay || bankOverlay.hidden) document.body.style.overflow = "";
 }
 
 function closeSettings() {
-  closeOpportunityBank();
-  el.overlay.hidden = true;
-  document.body.style.overflow = "";
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay || overlay.hidden) return;
+  if (window.history?.state?.iaqarOverlay) {
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+    return;
+  }
+  completeSettingsClose();
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-closed"));
 }
+
+function ensureSettingsNavDelegation() {
+  if (globalThis.__iaqarOfficeSettingsNavDelegation) return;
+  globalThis.__iaqarOfficeSettingsNavDelegation = true;
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#officeSettingsClose")) {
+      event.preventDefault();
+      if (typeof window.IAQAR?.closeOfficeSettings === "function") {
+        window.IAQAR.closeOfficeSettings();
+      }
+    }
+  });
+}
+ensureSettingsNavDelegation();
+
+window.IAQAR = window.IAQAR || {};
+window.IAQAR.openOfficeSettings = openSettings;
+window.IAQAR.closeOfficeSettings = closeSettings;
 
 async function onLogout() {
   const user = authUser();
@@ -1218,6 +1285,11 @@ async function onLogout() {
   try {
     await firebase.auth().signOut();
     toast("تم تسجيل الخروج");
+    const officeId = window.IAQAR?.office?.officeId || "";
+    const next = officeId && officeId !== "platform"
+      ? `${location.pathname}?office=${encodeURIComponent(officeId)}`
+      : location.pathname;
+    location.assign(next);
   } catch (_) {
     toast("تعذر تسجيل الخروج الآن");
   }
@@ -1244,6 +1316,7 @@ function init() {
   el.form = document.getElementById("officeProfileForm");
   el.overlay = document.getElementById("officeSettings");
   if (!el.form || !el.overlay) return;
+  if (el.overlay.dataset.officeSettingsBound === "1") return;
 
   el.officeName = document.getElementById("officeNameInput");
   el.nameAvailability = document.getElementById("officeNameAvailability");
@@ -1269,11 +1342,9 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
-  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn,#officeSettingsCoverBtn");
+  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
-  el.cardCover = document.getElementById("officeCardCover");
-  el.cardCoverEmpty = document.getElementById("officeCardCoverEmpty");
   el.bankOverlay = document.getElementById("opportunityBank");
 
   if (el.cardLogo && el.cardLogo.getAttribute("src")) {
@@ -1300,8 +1371,19 @@ function init() {
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (el.bankOverlay && !el.bankOverlay.hidden) closeOpportunityBank();
-    else if (!el.overlay.hidden) closeSettings();
+    if (el.bankOverlay && !el.bankOverlay.hidden) {
+      if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+        window.IAQAR.closeOpportunityBank();
+      } else {
+        closeOpportunityBank();
+      }
+      return;
+    }
+    if (!document.getElementById("officeSettings")?.hidden) closeSettings();
+  });
+
+  window.addEventListener("iaqar:office-settings-closed", () => {
+    completeSettingsClose();
   });
 
   el.officeName.addEventListener("input", () => {
@@ -1335,6 +1417,7 @@ function init() {
   } catch (_) {
     updateAuthState(null);
   }
+  el.overlay.dataset.officeSettingsBound = "1";
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
