@@ -135,9 +135,8 @@ test("Phase 8 a11y smoke: Office Card and dialogs keep accessible names", async 
     assert.ok(logoBtn, "office logo control exists");
     assert.match(logoBtn.getAttribute("aria-label") || "", /إعدادات المكتب/);
 
-    const coverBtn = document.getElementById("officeSettingsCoverBtn");
-    assert.ok(coverBtn, "cover control exists");
-    assert.match(coverBtn.getAttribute("aria-label") || "", /صورة المكتب/);
+    const coverWrap = document.getElementById("officeCardCoverWrap");
+    assert.ok(coverWrap, "cover banner region exists");
 
     const settingsDialog = document.querySelector(".settings-sheet[role='dialog'][aria-modal='true']");
     assert.ok(settingsDialog, "settings dialog is modal");

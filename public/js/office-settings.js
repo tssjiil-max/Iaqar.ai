@@ -173,18 +173,47 @@ function writeSpecialtiesToForm(list) {
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
   if (logo) {
-    if (current.logoUrl) logo.src = current.logoUrl;
-    else if (logo.dataset.defaultSrc) logo.src = logo.dataset.defaultSrc;
-  }
-  if (el.cardCover) {
-    const coverSource = current.coverUrl || current.displayImageUrl;
-    el.cardCover.src = coverSource || "";
-    el.cardCover.hidden = !coverSource;
-    if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = Boolean(coverSource);
-    if (coverSource) {
-      el.cardCover.onload = () => {
-        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
+    const logoSource = String(current.logoUrl || "").trim();
+    if (logoSource) {
+      logo.hidden = false;
+      logo.onerror = () => {
+        logo.hidden = true;
+        if (logo.dataset.defaultSrc) {
+          logo.hidden = false;
+          logo.src = logo.dataset.defaultSrc;
+        }
       };
+      logo.onload = () => { logo.hidden = false; };
+      if (logo.src !== logoSource) logo.src = logoSource;
+    } else if (logo.dataset.defaultSrc) {
+      logo.hidden = false;
+      logo.src = logo.dataset.defaultSrc;
+    }
+  }
+
+  const coverWrap = el.cardCoverWrap;
+  const coverSource = String(current.coverUrl || "").trim();
+  if (el.cardCover) {
+    if (!coverSource) {
+      el.cardCover.hidden = true;
+      el.cardCover.removeAttribute("src");
+      if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
+      if (coverWrap) coverWrap.classList.add("is-empty");
+    } else {
+      if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
+      if (coverWrap) coverWrap.classList.remove("is-empty");
+      el.cardCover.hidden = false;
+      el.cardCover.onerror = () => {
+        el.cardCover.hidden = true;
+        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = false;
+        if (coverWrap) coverWrap.classList.add("is-empty");
+      };
+      el.cardCover.onload = () => {
+        el.cardCover.hidden = false;
+        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
+        if (coverWrap) coverWrap.classList.remove("is-empty");
+      };
+      if (el.cardCover.src !== coverSource) el.cardCover.src = coverSource;
     }
   }
 }
@@ -197,10 +226,31 @@ function applyImageSlots() {
 }
 
 function setSlotPreview(slot, source) {
-  slot.image.src = source || "";
-  slot.image.hidden = !source;
-  if (slot.placeholder) slot.placeholder.hidden = Boolean(source);
-  if (slot.remove) slot.remove.hidden = !(slot.preset.removable && source);
+  const url = String(source || "").trim();
+  if (!url) {
+    slot.image.hidden = true;
+    slot.image.removeAttribute("src");
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+    return;
+  }
+  if (slot.placeholder) slot.placeholder.hidden = true;
+  slot.image.hidden = false;
+  slot.image.onerror = () => {
+    slot.image.hidden = true;
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+  };
+  slot.image.onload = () => {
+    slot.image.hidden = false;
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  };
+  if (slot.image.src !== url) slot.image.src = url;
+  else if (slot.image.complete && slot.image.naturalWidth > 0) {
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  }
 }
 
 function apply(data) {
@@ -1318,9 +1368,10 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
-  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn,#officeSettingsCoverBtn");
+  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
+  el.cardCoverWrap = document.getElementById("officeCardCoverWrap");
   el.cardCover = document.getElementById("officeCardCover");
   el.cardCoverEmpty = document.getElementById("officeCardCoverEmpty");
   el.bankOverlay = document.getElementById("opportunityBank");

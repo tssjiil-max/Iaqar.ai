@@ -19,7 +19,7 @@ async function shell() {
 
 // --- TEST 1 -----------------------------------------------------------------
 
-test("TEST 1: the office card offers exactly two settings entry points — logo and cover", async () => {
+test("TEST 1: the office card offers one settings entry point — the display image", async () => {
   const context = await shell();
   try {
     const { document } = context;
@@ -27,24 +27,23 @@ test("TEST 1: the office card offers exactly two settings entry points — logo 
     assert.ok(card, "the office card section must exist");
 
     const logo = document.getElementById("officeSettingsBtn");
-    const cover = document.getElementById("officeSettingsCoverBtn");
-    assert.ok(logo && card.contains(logo), "the logo entry point must live on the office card");
-    assert.ok(cover && card.contains(cover), "the cover entry point must live on the office card");
+    const coverWrap = document.getElementById("officeCardCoverWrap");
+    assert.ok(logo && card.contains(logo), "the display image entry point must live on the office card");
+    assert.ok(coverWrap && card.contains(coverWrap), "the cover banner must live on the office card");
+    assert.equal(coverWrap.tagName, "DIV", "cover must not be a button");
 
-    for (const button of [logo, cover]) {
-      assert.equal(button.tagName, "BUTTON");
-      assert.equal(button.getAttribute("type"), "button");
-      assert.ok(
-        (button.getAttribute("aria-label") || "").includes("إعدادات المكتب"),
-        "each entry point needs an accessible name naming the settings"
-      );
-    }
+    assert.equal(logo.tagName, "BUTTON");
+    assert.equal(logo.getAttribute("type"), "button");
+    assert.ok(
+      (logo.getAttribute("aria-label") || "").includes("إعدادات المكتب"),
+      "the entry point needs an accessible name naming the settings"
+    );
   } finally {
     context.close();
   }
 });
 
-test("TEST 1: clicking the office logo opens Office Settings", async () => {
+test("TEST 1: clicking the office display image opens Office Settings", async () => {
   const context = await shell();
   try {
     const { document, window } = context;
@@ -60,40 +59,36 @@ test("TEST 1: clicking the office logo opens Office Settings", async () => {
   }
 });
 
-test("TEST 1: clicking the office cover image opens Office Settings", async () => {
+test("TEST 1: clicking the cover banner does not open Office Settings", async () => {
   const context = await shell();
   try {
     const { document, window } = context;
     const overlay = document.getElementById("officeSettings");
-    assert.equal(overlay.hasAttribute("hidden"), true);
-
-    document.getElementById("officeSettingsCoverBtn").dispatchEvent(
-      new window.MouseEvent("click", { bubbles: true })
-    );
-    assert.equal(overlay.hasAttribute("hidden"), false, "settings must open on cover click");
+    const coverWrap = document.getElementById("officeCardCoverWrap");
+    assert.ok(coverWrap);
+    coverWrap.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    assert.equal(overlay.hasAttribute("hidden"), true, "cover must not open settings");
   } finally {
     context.close();
   }
 });
 
-test("TEST 1: both entry points respond to Enter and Space", async () => {
-  for (const id of ["officeSettingsBtn", "officeSettingsCoverBtn"]) {
-    for (const key of ["Enter", " "]) {
-      const context = await shell();
-      try {
-        const { document, window } = context;
-        const overlay = document.getElementById("officeSettings");
-        document.getElementById(id).dispatchEvent(
-          new window.KeyboardEvent("keydown", { key, bubbles: true })
-        );
-        assert.equal(
-          overlay.hasAttribute("hidden"),
-          false,
-          `${id} must open settings on ${key === " " ? "Space" : key}`
-        );
-      } finally {
-        context.close();
-      }
+test("TEST 1: the display image responds to Enter and Space", async () => {
+  for (const key of ["Enter", " "]) {
+    const context = await shell();
+    try {
+      const { document, window } = context;
+      const overlay = document.getElementById("officeSettings");
+      document.getElementById("officeSettingsBtn").dispatchEvent(
+        new window.KeyboardEvent("keydown", { key, bubbles: true })
+      );
+      assert.equal(
+        overlay.hasAttribute("hidden"),
+        false,
+        `officeSettingsBtn must open settings on ${key === " " ? "Space" : key}`
+      );
+    } finally {
+      context.close();
     }
   }
 });
@@ -359,18 +354,21 @@ test("the office card shows logo, cover, name, broker, license, city; services b
     assert.ok(document.getElementById("officeDisplaySpecialties"), "services bar must show specialties");
     assert.ok(document.getElementById("officeServicesBar"), "services bar section required");
     assert.ok(card.querySelector("#officeSettingsBtn img"), "the logo image must render on the card");
-    assert.ok(card.querySelector("#officeCardCover"), "the cover image must render on the card");
+    const coverWrap = document.getElementById("officeCardCoverWrap");
+    assert.ok(coverWrap, "the cover banner must render on the card");
   } finally {
     context.close();
   }
 });
 
-test("the office cover falls back to a placeholder instead of a broken image", async () => {
+test("the office cover falls back to hidden empty state instead of a broken image", async () => {
   const context = await shell();
   try {
     const { document } = context;
+    const wrap = document.getElementById("officeCardCoverWrap");
     assert.equal(document.getElementById("officeCardCover").hidden, true);
-    assert.equal(document.getElementById("officeCardCoverEmpty").hidden, false);
+    assert.ok(wrap?.classList.contains("is-empty"));
+    assert.equal(document.getElementById("officeCardCoverEmpty").hidden, true);
   } finally {
     context.close();
   }
