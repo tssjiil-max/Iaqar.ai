@@ -190,32 +190,6 @@ function applyOfficeCardImages() {
       logo.src = logo.dataset.defaultSrc;
     }
   }
-
-  const coverWrap = el.cardCoverWrap;
-  const coverSource = String(current.coverUrl || "").trim();
-  if (el.cardCover) {
-    if (!coverSource) {
-      el.cardCover.hidden = true;
-      el.cardCover.removeAttribute("src");
-      if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
-      if (coverWrap) coverWrap.classList.add("is-empty");
-    } else {
-      if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
-      if (coverWrap) coverWrap.classList.remove("is-empty");
-      el.cardCover.hidden = false;
-      el.cardCover.onerror = () => {
-        el.cardCover.hidden = true;
-        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = false;
-        if (coverWrap) coverWrap.classList.add("is-empty");
-      };
-      el.cardCover.onload = () => {
-        el.cardCover.hidden = false;
-        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
-        if (coverWrap) coverWrap.classList.remove("is-empty");
-      };
-      if (el.cardCover.src !== coverSource) el.cardCover.src = coverSource;
-    }
-  }
 }
 
 function applyImageSlots() {
@@ -1371,9 +1345,6 @@ function init() {
   el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
-  el.cardCoverWrap = document.getElementById("officeCardCoverWrap");
-  el.cardCover = document.getElementById("officeCardCover");
-  el.cardCoverEmpty = document.getElementById("officeCardCoverEmpty");
   el.bankOverlay = document.getElementById("opportunityBank");
 
   if (el.cardLogo && el.cardLogo.getAttribute("src")) {

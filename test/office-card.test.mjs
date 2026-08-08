@@ -27,10 +27,9 @@ test("TEST 1: the office card offers one settings entry point — the display im
     assert.ok(card, "the office card section must exist");
 
     const logo = document.getElementById("officeSettingsBtn");
-    const coverWrap = document.getElementById("officeCardCoverWrap");
     assert.ok(logo && card.contains(logo), "the display image entry point must live on the office card");
-    assert.ok(coverWrap && card.contains(coverWrap), "the cover banner must live on the office card");
-    assert.equal(coverWrap.tagName, "DIV", "cover must not be a button");
+    assert.equal(document.getElementById("officeCardCoverWrap"), null, "office card banner must be removed");
+    assert.equal(document.getElementById("officeCardCover"), null, "office card cover image must be removed");
 
     assert.equal(logo.tagName, "BUTTON");
     assert.equal(logo.getAttribute("type"), "button");
@@ -59,15 +58,12 @@ test("TEST 1: clicking the office display image opens Office Settings", async ()
   }
 });
 
-test("TEST 1: clicking the cover banner does not open Office Settings", async () => {
+test("TEST 1: no office card banner exists on the home page", async () => {
   const context = await shell();
   try {
-    const { document, window } = context;
-    const overlay = document.getElementById("officeSettings");
-    const coverWrap = document.getElementById("officeCardCoverWrap");
-    assert.ok(coverWrap);
-    coverWrap.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    assert.equal(overlay.hasAttribute("hidden"), true, "cover must not open settings");
+    const { document } = context;
+    assert.equal(document.getElementById("officeCardCoverWrap"), null);
+    assert.equal(document.querySelector(".office-cover"), null);
   } finally {
     context.close();
   }
@@ -354,21 +350,18 @@ test("the office card shows logo, cover, name, broker, license, city; services b
     assert.ok(document.getElementById("officeDisplaySpecialties"), "services bar must show specialties");
     assert.ok(document.getElementById("officeServicesBar"), "services bar section required");
     assert.ok(card.querySelector("#officeSettingsBtn img"), "the logo image must render on the card");
-    const coverWrap = document.getElementById("officeCardCoverWrap");
-    assert.ok(coverWrap, "the cover banner must render on the card");
   } finally {
     context.close();
   }
 });
 
-test("the office cover falls back to hidden empty state instead of a broken image", async () => {
+test("the office card has no in-card banner region", async () => {
   const context = await shell();
   try {
     const { document } = context;
-    const wrap = document.getElementById("officeCardCoverWrap");
-    assert.equal(document.getElementById("officeCardCover").hidden, true);
-    assert.ok(wrap?.classList.contains("is-empty"));
-    assert.equal(document.getElementById("officeCardCoverEmpty").hidden, true);
+    assert.equal(document.getElementById("officeCardCoverWrap"), null);
+    assert.equal(document.getElementById("officeCardCover"), null);
+    assert.equal(document.querySelector("section.card.license .office-cover"), null);
   } finally {
     context.close();
   }
