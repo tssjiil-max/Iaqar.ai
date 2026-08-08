@@ -141,13 +141,14 @@ test("the preview aspect ratio is taken from the preset at runtime, not hard-cod
   const context = await shell();
   try {
     const { document } = context;
-    assert.equal(document.querySelector('[data-image-variant="logo"] [data-role="preview"]').style.aspectRatio, "1");
+    const logoWrap = document.querySelector('[data-image-variant="logo"] .office-logo-preview-wrap');
+    assert.ok(logoWrap, "logo preview wrap should exist");
+    assert.ok(logoWrap.classList.contains("office-logo-preview-wrap"));
     const cover = document.querySelector('[data-image-variant="cover"] [data-role="preview"]').style.aspectRatio;
     assert.ok(Number(cover) > 1.5, `cover preview ratio should be wide, got ${cover}`);
-    assert.equal(
-      document.querySelector('[data-image-variant="logo"] [data-role="ratio-hint"]').textContent,
-      "512×512"
-    );
+    const sizeHint = document.querySelector('[data-image-variant="logo"] .office-logo-size-hint');
+    assert.ok(sizeHint);
+    assert.equal(sizeHint.textContent, "المقاس الموصى به: 512×512");
   } finally {
     context.close();
   }

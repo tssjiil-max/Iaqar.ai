@@ -1116,7 +1116,7 @@
     position:relative;
   }
 
-  .identity-slot[data-image-variant="logo"] .identity-preview {
+  .identity-slot[data-image-variant="logo"] .identity-preview:not(.office-logo-preview-wrap) {
     max-height:96px;
     aspect-ratio:1 / 1;
   }
@@ -1124,6 +1124,97 @@
   .identity-slot[data-image-variant="cover"] .identity-preview {
     max-height:72px;
     aspect-ratio:2.547 / 1;
+  }
+
+  /* معاينة شعار المكتب — مربع 144×144 مستقل (لا يشارك البانر) */
+  .office-logo-size-hint {
+    margin:0 0 8px;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+    line-height:1.4;
+  }
+
+  .office-logo-preview-wrap {
+    inline-size:144px;
+    block-size:144px;
+    width:144px;
+    height:144px;
+    max-width:144px;
+    max-height:144px;
+    min-width:0;
+    min-height:0;
+    aspect-ratio:1 / 1;
+    margin-inline:auto;
+    margin-block:0;
+    overflow:hidden;
+    flex:0 0 144px;
+    box-sizing:border-box;
+    border-radius:12px;
+    background:var(--green-pale);
+    border:1px dashed #C9D6D0;
+    position:relative;
+  }
+
+  .identity-slot[data-image-variant="logo"] .office-logo-preview-wrap {
+    width:144px !important;
+    height:144px !important;
+    max-width:144px !important;
+    max-height:144px !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    flex-grow:0 !important;
+    flex-shrink:0 !important;
+    flex-basis:144px !important;
+  }
+
+  .office-logo-preview-img {
+    display:block;
+    width:100%;
+    height:100%;
+    inline-size:100%;
+    block-size:100%;
+    max-width:100%;
+    max-height:100%;
+    object-fit:cover;
+    object-position:center;
+    margin:0;
+    padding:0;
+    flex-grow:0;
+  }
+
+  .office-logo-preview-wrap .office-logo-preview-img {
+    width:100% !important;
+    height:100% !important;
+    max-width:100% !important;
+    max-height:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+  }
+
+  .office-logo-preview-wrap .identity-placeholder {
+    position:absolute;
+    inset:0;
+    display:grid;
+    place-items:center;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+    margin:0;
+    padding:0;
+  }
+
+  @media (max-width:480px) {
+    .office-logo-preview-wrap,
+    .identity-slot[data-image-variant="logo"] .office-logo-preview-wrap {
+      inline-size:144px;
+      block-size:144px;
+      width:144px;
+      height:144px;
+      max-width:144px;
+      max-height:144px;
+      flex:0 0 144px;
+    }
   }
 
   .identity-preview img {
@@ -1924,10 +2015,10 @@
           <article class="identity-slot" data-image-variant="logo">
             <header>
               <strong>شعار المكتب / صورة العرض</strong>
-              <span data-role="ratio-hint"></span>
             </header>
-            <div class="identity-preview" data-role="preview">
-              <img data-role="preview-image" alt="معاينة شعار المكتب" hidden>
+            <p class="office-logo-size-hint">المقاس الموصى به: 512×512</p>
+            <div class="office-logo-preview-wrap identity-preview" data-role="preview">
+              <img class="office-logo-preview-img" data-role="preview-image" alt="معاينة شعار المكتب" hidden>
               <span class="identity-placeholder" data-role="placeholder">لا يوجد شعار</span>
             </div>
             <div class="identity-crop" data-role="crop" hidden>

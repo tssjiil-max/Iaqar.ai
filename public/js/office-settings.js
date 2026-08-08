@@ -699,8 +699,10 @@ function initImageSlots() {
     };
     if (!slot.image || !slot.file || !slot.choose || !slot.save) return;
 
-    // نسبة الاقتصاص مصدرها الإعداد في office-domain.js وحده، فلا تُكرر في CSS.
-    if (slot.preview) slot.preview.style.aspectRatio = String(preset.aspectRatio);
+    // نسبة الاقتصاص مصدرها الإعداد في office-domain.js؛ شعار المكتب يُقيَّد بـ CSS المستقل.
+    if (slot.preview && preset.variant !== "logo") {
+      slot.preview.style.aspectRatio = String(preset.aspectRatio);
+    }
     if (slot.ratioHint) {
       slot.ratioHint.textContent = `${preset.outputWidth}×${preset.outputHeight}`;
     }
