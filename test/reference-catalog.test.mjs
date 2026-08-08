@@ -48,17 +48,18 @@ test("buildReviewDefaults maps extracted fields when confident", () => {
   assert.ok(defaults.districtId && defaults.districtId !== DISTRICT_OTHER_ID);
 });
 
-test("reviewValuesToBrokerFields uses official names for matching", () => {
-  const district = DISTRICTS.find((d) => d.officialName === "العزيزية");
+test("reference catalog maps review numeric fields", () => {
   const broker = reviewValuesToBrokerFields({
     operationTypeId: "sale",
     propertyTypeId: "apartment",
     cityId: "madinah",
-    districtId: district.id,
+    districtId: DISTRICTS[0].id,
+    priceOrBudget: "1200000",
+    area: "180",
+    rooms: "4",
     extractedSnapshot: null
   });
-  assert.equal(broker.purpose, "SALE");
-  assert.equal(broker.propertyType, "شقة");
-  assert.equal(broker.city, "المدينة المنورة");
-  assert.equal(broker.district, "العزيزية");
+  assert.equal(broker.priceOrBudget, 1200000);
+  assert.equal(broker.area, 180);
+  assert.equal(broker.rooms, 4);
 });

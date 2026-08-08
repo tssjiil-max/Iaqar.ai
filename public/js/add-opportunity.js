@@ -126,6 +126,12 @@ function clearIntakeForm() {
   if (missing) missing.hidden = true;
   const retry = $("addOpportunityRetry");
   if (retry) retry.hidden = true;
+  const reviewOverlay = $("opportunityReviewOverlay");
+  if (reviewOverlay && !reviewOverlay.hidden) {
+    reviewOverlay.hidden = true;
+    document.body.style.overflow = "";
+    window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
+  }
   updateClearButtonVisibility();
   setState("idle");
 }
@@ -304,7 +310,10 @@ async function approveFromReview(brokerExtras) {
       purpose: brokerExtras.purpose,
       propertyType: brokerExtras.propertyType,
       city: brokerExtras.city,
-      district: brokerExtras.district
+      district: brokerExtras.district,
+      priceOrBudget: brokerExtras.priceOrBudget,
+      area: brokerExtras.area,
+      rooms: brokerExtras.rooms
     };
 
     const prepared = await prepareOpportunityIntake({

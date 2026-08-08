@@ -1689,6 +1689,10 @@
       });
     }
     window.addEventListener("iaqar:firebase-ready", startLiveData);
+    window.addEventListener("iaqar:opportunity-ingested", () => {
+      loadAnalytics();
+      emitOperations();
+    });
     if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
 
     const params = new URLSearchParams(location.search);

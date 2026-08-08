@@ -1108,11 +1108,22 @@
 
   .identity-preview {
     width:100%;
+    max-height:112px;
     border-radius:12px;
     background:var(--green-pale);
     border:1px dashed #C9D6D0;
     overflow:hidden;
     position:relative;
+  }
+
+  .identity-slot[data-image-variant="logo"] .identity-preview {
+    max-height:96px;
+    aspect-ratio:1 / 1;
+  }
+
+  .identity-slot[data-image-variant="cover"] .identity-preview {
+    max-height:72px;
+    aspect-ratio:2.547 / 1;
   }
 
   .identity-preview img {
@@ -1178,10 +1189,29 @@
 
   .link-actions {
     display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:7px;
-    margin-top:9px;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    margin-top:10px;
   }
+
+  .link-action-btn {
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--green-pale);
+    color:var(--green);
+    font:inherit;
+    font-size:11px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:0 10px;
+    cursor:pointer;
+  }
+
+  .link-action-btn:active { background:#e8f5f1; }
 
   .office-qr-wrap {
     margin-top:11px;
@@ -1213,8 +1243,55 @@
     cursor:pointer;
   }
 
-  .pref-row span { font-size:12px; font-weight:700; }
-  .pref-row input { width:19px; height:19px; accent-color:var(--green); flex:0 0 auto; }
+  .pref-row span { font-size:12px; font-weight:700; flex:1; text-align:right; }
+
+  .pref-switch {
+    position:relative;
+    width:44px;
+    height:26px;
+    flex:0 0 auto;
+  }
+
+  .pref-switch input {
+    opacity:0;
+    width:0;
+    height:0;
+    position:absolute;
+  }
+
+  .pref-switch-slider {
+    position:absolute;
+    inset:0;
+    border-radius:999px;
+    background:#DEE7E2;
+    transition:background .2s ease;
+  }
+
+  .pref-switch-slider::after {
+    content:"";
+    position:absolute;
+    top:3px;
+    left:3px;
+    width:20px;
+    height:20px;
+    border-radius:50%;
+    background:#fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.12);
+    transition:transform .2s ease;
+  }
+
+  .pref-switch input:checked + .pref-switch-slider {
+    background:var(--green);
+  }
+
+  .pref-switch input:checked + .pref-switch-slider::after {
+    transform:translateX(18px);
+  }
+
+  .pref-switch input:focus-visible + .pref-switch-slider {
+    outline:2px solid rgba(0,92,75,.25);
+    outline-offset:2px;
+  }
 
   .bank-entry {
     width:100%;
@@ -1258,6 +1335,11 @@
     border-radius:13px;
     background:#FBFDFC;
     cursor:pointer;
+  }
+
+  .coop-option:has(input:checked) {
+    border-color:rgba(0,92,75,.35);
+    background:var(--green-soft);
   }
 
   .coop-option input { width:19px; height:19px; margin:1px 0 0; accent-color:var(--green); }
@@ -1499,8 +1581,20 @@
     font-weight:700;
   }
 
+  .review-field {
+    display:grid;
+    gap:4px;
+  }
+
+  .review-field > span {
+    color:var(--muted);
+    font-size:11px;
+    font-weight:700;
+  }
+
   .search-select-input,
-  .review-manual input {
+  .review-manual input,
+  .review-field input {
     height:40px;
     border:1px solid var(--line);
     border-radius:12px;
@@ -1829,7 +1923,7 @@
         <div class="identity-grid">
           <article class="identity-slot" data-image-variant="logo">
             <header>
-              <strong>شعار المكتب</strong>
+              <strong>شعار المكتب / صورة العرض</strong>
               <span data-role="ratio-hint"></span>
             </header>
             <div class="identity-preview" data-role="preview">
@@ -1850,32 +1944,6 @@
             </div>
             <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
               aria-label="اختيار شعار المكتب">
-            <p class="identity-status" data-role="status" role="status"></p>
-          </article>
-
-          <article class="identity-slot" data-image-variant="display">
-            <header>
-              <strong>صورة المكتب</strong>
-              <span data-role="ratio-hint"></span>
-            </header>
-            <div class="identity-preview" data-role="preview">
-              <img data-role="preview-image" alt="معاينة صورة المكتب" hidden>
-              <span class="identity-placeholder" data-role="placeholder">لا توجد صورة</span>
-            </div>
-            <div class="identity-crop" data-role="crop" hidden>
-              <label for="displayCropOffsetY">موضع الاقتصاص الرأسي</label>
-              <input id="displayCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
-              <label for="displayCropOffsetX">موضع الاقتصاص الأفقي</label>
-              <input id="displayCropOffsetX" type="range" min="0" max="100" value="50" data-role="offset-x">
-            </div>
-            <div class="identity-actions">
-              <button class="identity-btn" type="button" data-role="choose">اختيار صورة</button>
-              <button class="identity-btn" type="button" data-role="save" disabled>حفظ الصورة</button>
-              <button class="identity-btn" type="button" data-role="cancel" hidden>إلغاء</button>
-              <button class="identity-btn danger" type="button" data-role="remove" hidden>إزالة</button>
-            </div>
-            <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
-              aria-label="اختيار صورة المكتب">
             <p class="identity-status" data-role="status" role="status"></p>
           </article>
 
@@ -1954,14 +2022,14 @@
         <p class="section-help">رابط ثابت لصفحة المكتب العامة. يستقبل طلبات العملاء وعروض الملاك مباشرة.</p>
         <div class="office-link-row">
           <input id="officeLinkInput" readonly aria-label="رابط المكتب">
-          <button class="office-copy-btn" id="copyOfficeLinkBtn" type="button">نسخ</button>
         </div>
         <div class="link-actions">
-          <button class="identity-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
-          <button class="identity-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
+          <button class="link-action-btn" id="copyOfficeLinkBtn" type="button">نسخ الرابط</button>
+          <button class="link-action-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
+          <button class="link-action-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
             aria-controls="officeQrWrap">إظهار رمز QR</button>
-          <button class="identity-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة العامة</button>
-          <button class="identity-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
+          <button class="link-action-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة العامة</button>
+          <button class="link-action-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
         </div>
         <div class="office-qr-wrap" id="officeQrWrap" hidden>
           <canvas id="officeQrCanvas" width="336" height="336" role="img"
@@ -1981,27 +2049,27 @@
         <div class="pref-list" id="notificationPrefsList">
           <label class="pref-row">
             <span>إشعارات المطابقات</span>
-            <input type="checkbox" name="notificationPreference" value="matchNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="matchNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات الملاك والعملاء</span>
-            <input type="checkbox" name="notificationPreference" value="ownerCustomerNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="ownerCustomerNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات التعاون</span>
-            <input type="checkbox" name="notificationPreference" value="cooperationNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="cooperationNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات الرسائل</span>
-            <input type="checkbox" name="notificationPreference" value="messageNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="messageNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات المواعيد والمتابعات</span>
-            <input type="checkbox" name="notificationPreference" value="appointmentNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="appointmentNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات النظام المهمة</span>
-            <input type="checkbox" name="notificationPreference" value="systemNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="systemNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
         </div>
         <p class="section-status" id="notificationPrefsStatus" role="status"></p>

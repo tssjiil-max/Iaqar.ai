@@ -213,6 +213,9 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "") {
     cityManual: city ? "" : safeTrim(extractionFields.city),
     districtId: district?.id || "",
     districtManual: district ? "" : safeTrim(extractionFields.district),
+    priceOrBudget: extractionFields.priceOrBudget ?? "",
+    area: extractionFields.area ?? "",
+    rooms: extractionFields.rooms ?? "",
     extractedSnapshot: {
       opportunityKind: extractionFields.opportunityKind || "",
       purpose: extractionFields.purpose || "",
@@ -252,6 +255,11 @@ export function reviewValuesToBrokerFields(review) {
     propertyType,
     city: cityName === "مدينة أخرى" ? safeTrim(review.cityManual) : cityName,
     district: districtName,
+    priceOrBudget: review.priceOrBudget === "" || review.priceOrBudget == null
+      ? null
+      : Number(review.priceOrBudget),
+    area: review.area === "" || review.area == null ? null : Number(review.area),
+    rooms: review.rooms === "" || review.rooms == null ? null : Number(review.rooms),
     reviewOperationTypeId: review.operationTypeId,
     reviewPropertyTypeId: review.propertyTypeId,
     reviewCityId: review.cityId,

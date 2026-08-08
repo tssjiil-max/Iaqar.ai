@@ -68,6 +68,9 @@ function renderReviewForm(defaults) {
       ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
       ${searchField("districtId", "الحي", districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
       ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+      ${numericField("priceOrBudget", "السعر / الميزانية (ريال)", defaults.priceOrBudget)}
+      ${numericField("area", "المساحة (م²)", defaults.area)}
+      ${numericField("rooms", "عدد الغرف", defaults.rooms)}
       <div class="review-actions">
         <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
         <button type="button" class="review-cancel" id="opportunityReviewCancel">إلغاء</button>
@@ -119,6 +122,16 @@ function manualField(name, label, value, visible) {
     <label class="review-manual" data-manual-for="${name.replace("Manual", "Id")}" ${visible ? "" : "hidden"}>
       <span>${label}</span>
       <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80">
+    </label>
+  `;
+}
+
+function numericField(name, label, value) {
+  const display = value === "" || value == null ? "" : String(value);
+  return `
+    <label class="review-field">
+      <span>${label}</span>
+      <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal">
     </label>
   `;
 }
@@ -198,6 +211,9 @@ function readReviewForm() {
     cityManual: data.cityManual || "",
     districtId: data.districtId || "",
     districtManual: data.districtManual || "",
+    priceOrBudget: data.priceOrBudget || "",
+    area: data.area || "",
+    rooms: data.rooms || "",
     extractedSnapshot: activeDraft?.fields ? {
       opportunityKind: activeDraft.fields.opportunityKind || "",
       purpose: activeDraft.fields.purpose || "",
