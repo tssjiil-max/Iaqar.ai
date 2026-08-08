@@ -4,7 +4,7 @@
 (() => {
   "use strict";
 
-  const OVERLAY_ORDER = ["iaqarWorkflowOverlay", "opportunityBank", "officeSettings"];
+  const OVERLAY_ORDER = ["opportunityReviewOverlay", "iaqarWorkflowOverlay", "opportunityBank", "officeSettings"];
 
   function topOverlayId() {
     for (const id of OVERLAY_ORDER) {
@@ -42,6 +42,12 @@
     if (id === "officeSettings") {
       el.hidden = true;
       window.dispatchEvent(new CustomEvent("iaqar:office-settings-closed"));
+      syncBodyScroll();
+      return;
+    }
+    if (id === "opportunityReviewOverlay") {
+      el.hidden = true;
+      window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
       syncBodyScroll();
       return;
     }

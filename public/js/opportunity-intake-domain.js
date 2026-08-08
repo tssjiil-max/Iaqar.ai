@@ -40,7 +40,8 @@ export const PURPOSES = Object.freeze([
   "SALE",
   "PURCHASE",
   "RENT",
-  "LEASE_REQUEST"
+  "LEASE_REQUEST",
+  "INVESTMENT"
 ]);
 
 export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
@@ -204,6 +205,8 @@ function extractFromText(raw, meta) {
     purpose = "PURCHASE";
   } else if (/بيع|للبيع/.test(text)) {
     purpose = "SALE";
+  } else if (/استثمار|استثماري/.test(text)) {
+    purpose = "INVESTMENT";
   }
 
   const propertyType =

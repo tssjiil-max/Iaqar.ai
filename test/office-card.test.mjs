@@ -202,6 +202,7 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
     assert.deepEqual(sections, [
       "header.card header",
       "section.card license",
+      "section.card services-bar",
       "section.card workspace",
       "section.card add-opportunity"
     ]);
@@ -220,6 +221,7 @@ test("TEST 2: nothing outside the app shell could act as a fixed bottom bar", as
     assert.deepEqual(bodyChildren, [
       "svg#.",
       "div#.app",
+      "div#opportunityReviewOverlay.settings-overlay",
       "div#officeSettings.settings-overlay",
       "div#opportunityBank.settings-overlay",
       "div#toast.toast"
@@ -341,7 +343,7 @@ test("TEST 15: the empty state returns after real records are cleared", async ()
 
 // --- Approved office card content (directive §6) -----------------------------
 
-test("the office card shows logo, cover, name, broker, license, city and services", async () => {
+test("the office card shows logo, cover, name, broker, license, city; services bar shows specialties", async () => {
   const context = await shell();
   try {
     const { document } = context;
@@ -350,11 +352,12 @@ test("the office card shows logo, cover, name, broker, license, city and service
       "officeDisplayName",
       "officeDisplayBroker",
       "officeDisplayLicense",
-      "officeDisplayCity",
-      "officeDisplaySpecialties"
+      "officeDisplayCity"
     ]) {
       assert.ok(card.querySelector(`#${id}`), `${id} must be on the office card`);
     }
+    assert.ok(document.getElementById("officeDisplaySpecialties"), "services bar must show specialties");
+    assert.ok(document.getElementById("officeServicesBar"), "services bar section required");
     assert.ok(card.querySelector("#officeSettingsBtn img"), "the logo image must render on the card");
     assert.ok(card.querySelector("#officeCardCover"), "the cover image must render on the card");
   } finally {

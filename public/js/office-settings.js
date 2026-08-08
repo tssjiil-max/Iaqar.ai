@@ -227,7 +227,7 @@ function apply(data) {
     const node = document.getElementById(id);
     if (node) node.textContent = value;
   });
-  const specialtyRow = document.querySelector(".specialty-status-row");
+  const specialtyRow = document.getElementById("officeServicesBar");
   if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
 }
 
