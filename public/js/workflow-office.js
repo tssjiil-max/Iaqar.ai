@@ -58,6 +58,7 @@
   let dealItems = [];
   let intakeItems = [];
   let operationItems = [];
+  let savedOpportunityWorkspaceItems = [];
   let analyticsItem = null;
   const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
   const timelineCache = new Map();
@@ -431,10 +432,48 @@
     };
   }
 
+  function pruneSavedOpportunityWorkspaceItems() {
+    const covered = new Set(
+      operationItems.map(item => String(item.opportunityId || "").trim()).filter(Boolean)
+    );
+    savedOpportunityWorkspaceItems = savedOpportunityWorkspaceItems.filter(
+      item => !covered.has(String(item.opportunityId || "").trim())
+    );
+  }
+
+  function buildSavedOpportunityWorkspaceItem(opportunityId, matchCount = 0) {
+    const id = String(opportunityId || "").trim();
+    if (!id) return null;
+    const matches = Number(matchCount || 0);
+    return {
+      id: `saved-opportunity-${id}`,
+      recordId: id,
+      recordType: "opportunity",
+      operationType: "OPPORTUNITY_SAVED",
+      main: "bank",
+      priority: 0,
+      isAlert: false,
+      icon: "i-clipboard-list",
+      title: "فرصة جديدة محفوظة",
+      subtitle: matches > 0 ? `تم العثور على ${matches} مطابقة` : "أُضيفت إلى بنك الفرص",
+      time: "الآن",
+      detailsLines: [
+        matches > 0
+          ? `تم حفظ الفرصة وإنشاء ${matches} مطابقة جديدة.`
+          : "تم حفظ الفرصة بنجاح — راجع التفاصيل في بنك الفرص."
+      ],
+      actionLabel: "فتح بنك الفرص",
+      secondaryActionLabel: "إغلاق",
+      canDismiss: false,
+      opportunityId: id
+    };
+  }
+
   function emitOperations() {
-    // Phase 5: Operations Center shows only persisted actionable Operations.
-    // Matches/deals/intake remain available for legacy workflow handlers, not the home list.
-    const items = [...operationItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    // Phase 5: Operations Center shows persisted Operations plus brief saved-opportunity feedback.
+    pruneSavedOpportunityWorkspaceItems();
+    const items = [...operationItems, ...savedOpportunityWorkspaceItems]
+      .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
   }
 
@@ -589,6 +628,7 @@
       .limit(50)
       .onSnapshot(snapshot => {
         operationItems = snapshot.docs.map(projectPersistedOperation);
+        pruneSavedOpportunityWorkspaceItems();
         emitOperations();
       }, onError);
 
@@ -1243,6 +1283,14 @@
       await handleOperationPrimary(detail);
       return;
     }
+    if (detail.recordType === "opportunity") {
+      if (window.IAQAR && typeof window.IAQAR.openOpportunityBank === "function") {
+        window.IAQAR.openOpportunityBank();
+      } else {
+        document.getElementById("openOpportunityBankBtn")?.click();
+      }
+      return;
+    }
     if (["match", "deal"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
@@ -1254,6 +1302,13 @@
     if (detail.recordType === "summary") return;
     if (detail.recordType === "operation") {
       await handleOperationSecondary(detail);
+      return;
+    }
+    if (detail.recordType === "opportunity") {
+      savedOpportunityWorkspaceItems = savedOpportunityWorkspaceItems.filter(
+        item => item.recordId !== (detail.recordId || detail.id)
+      );
+      emitOperations();
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {
@@ -1689,8 +1744,21 @@
       });
     }
     window.addEventListener("iaqar:firebase-ready", startLiveData);
-    window.addEventListener("iaqar:opportunity-ingested", () => {
+    window.addEventListener("iaqar:opportunity-ingested", (event) => {
+      const detail = event.detail || {};
       loadAnalytics();
+      if (!detail.duplicate && detail.opportunityId) {
+        const savedItem = buildSavedOpportunityWorkspaceItem(
+          detail.opportunityId,
+          detail.matchCount
+        );
+        if (savedItem) {
+          savedOpportunityWorkspaceItems = [
+            savedItem,
+            ...savedOpportunityWorkspaceItems.filter(item => item.recordId !== savedItem.recordId)
+          ].slice(0, 3);
+        }
+      }
       emitOperations();
     });
     if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
