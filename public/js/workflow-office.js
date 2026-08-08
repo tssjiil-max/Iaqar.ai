@@ -469,6 +469,23 @@
     };
   }
 
+  function pushSavedOpportunityToWorkspace({ opportunityId, duplicate = false, matchCount = 0 } = {}) {
+    const id = String(opportunityId || "").trim();
+    if (!id) return;
+    const savedItem = buildSavedOpportunityWorkspaceItem(id, matchCount);
+    if (!savedItem) return;
+    if (duplicate) {
+      savedItem.title = "فرصة محفوظة مسبقًا";
+      savedItem.subtitle = "لم يُنشأ سجل جديد";
+      savedItem.detailsLines = ["هذه الفرصة موجودة بالفعل في بنك الفرص."];
+    }
+    savedOpportunityWorkspaceItems = [
+      savedItem,
+      ...savedOpportunityWorkspaceItems.filter(item => item.recordId !== savedItem.recordId)
+    ].slice(0, 3);
+    emitOperations();
+  }
+
   function emitOperations() {
     // Phase 5: Operations Center shows persisted Operations plus brief saved-opportunity feedback.
     pruneSavedOpportunityWorkspaceItems();
@@ -1747,19 +1764,11 @@
     window.addEventListener("iaqar:opportunity-ingested", (event) => {
       const detail = event.detail || {};
       loadAnalytics();
-      if (!detail.duplicate && detail.opportunityId) {
-        const savedItem = buildSavedOpportunityWorkspaceItem(
-          detail.opportunityId,
-          detail.matchCount
-        );
-        if (savedItem) {
-          savedOpportunityWorkspaceItems = [
-            savedItem,
-            ...savedOpportunityWorkspaceItems.filter(item => item.recordId !== savedItem.recordId)
-          ].slice(0, 3);
-        }
+      if (detail.opportunityId) {
+        pushSavedOpportunityToWorkspace(detail);
+      } else {
+        emitOperations();
       }
-      emitOperations();
     });
     if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
 
@@ -1773,6 +1782,8 @@
   }
 
   window.addEventListener("beforeunload", stopLiveData);
+  window.IAQAR = window.IAQAR || {};
+  window.IAQAR.pushSavedOpportunityToWorkspace = pushSavedOpportunityToWorkspace;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

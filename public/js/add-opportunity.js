@@ -340,6 +340,13 @@ async function approveFromReview(brokerExtras) {
     };
 
     const saved = await persistIntake(prepared, reviewMeta);
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: 0
+      });
+    }
     setState("saved", saved.duplicate ? "هذه الفرصة محفوظة مسبقًا" : "");
     toast(saved.duplicate ? "الفرصة مكررة — لم يُنشأ سجل جديد" : "تم حفظ الفرصة");
     clearIntakeForm();
@@ -380,6 +387,13 @@ async function approveFromReview(brokerExtras) {
         ...phase5BoundaryGuarantees()
       }
     }));
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: Number(matching.matchCount || 0)
+      });
+    }
   } finally {
     executing = false;
     setBusy(false);
