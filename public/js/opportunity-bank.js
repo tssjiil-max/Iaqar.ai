@@ -168,6 +168,21 @@ async function lazyLoadSource(record) {
   return data;
 }
 
+function closeBankDetailInternal() {
+  if (!state.activeId) return false;
+  state.activeId = null;
+  const panel = $("opportunityBankDetail");
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  return true;
+}
+
+function isBankDetailOpen() {
+  return Boolean(state.activeId);
+}
+
 async function renderDetail(id) {
   const panel = $("opportunityBankDetail");
   if (!panel) return;
@@ -251,6 +266,7 @@ async function renderDetail(id) {
 
   setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
   wireDetailHandlers(id, record);
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
 }
 
 function rowsCountLabel() {
@@ -262,12 +278,7 @@ function rowsCountLabel() {
 
 function wireDetailHandlers(id, record) {
   $("bankDetailClose")?.addEventListener("click", () => {
-    state.activeId = null;
-    const panel = $("opportunityBankDetail");
-    if (panel) {
-      panel.hidden = true;
-      panel.innerHTML = "";
-    }
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
   });
 
   $("bankEditForm")?.addEventListener("submit", async (event) => {
@@ -959,9 +970,27 @@ export function openOpportunityBank() {
       ...phase6BoundaryGuarantees()
     }
   }));
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "opportunityBank" } }));
 }
 
-export function closeOpportunityBank() {
+export function closeOpportunityBank(options = {}) {
+  let { fromPopstate = false } = options;
+  if (!fromPopstate) {
+    if (state.activeId) {
+      if (window.history?.state?.iaqarOverlay) window.history.back();
+      else closeBankDetailInternal();
+    }
+    const overlay = $("opportunityBank");
+    if (overlay && !overlay.hidden) {
+      if (window.history?.state?.iaqarOverlay) {
+        window.history.back();
+        return;
+      }
+      fromPopstate = true;
+    } else {
+      return;
+    }
+  }
   stopListener();
   const overlay = $("opportunityBank");
   if (overlay) overlay.hidden = true;
@@ -1038,6 +1067,8 @@ function boot() {
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.openOpportunityBank = openOpportunityBank;
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;
+  window.IAQAR.isBankDetailOpen = isBankDetailOpen;
+  window.IAQAR.closeBankDetailInternal = closeBankDetailInternal;
 }
 
 function syncFilterButtons() {

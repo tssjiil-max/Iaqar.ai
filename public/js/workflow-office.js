@@ -938,6 +938,12 @@
 
   function closeWorkflowUi() {
     const overlay = document.getElementById("iaqarWorkflowOverlay");
+    if (!overlay || overlay.hidden) return;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+  }
+
+  function hideWorkflowOverlay() {
+    const overlay = document.getElementById("iaqarWorkflowOverlay");
     if (overlay) overlay.hidden = true;
     activeWorkflowDetail = null;
   }
@@ -955,6 +961,7 @@
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
     workflowBody().innerHTML = `<div class="iaqar-workflow-summary">جارٍ تحميل بيانات العميل والمالك...</div>`;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "iaqarWorkflowOverlay" } }));
     const [owner, client] = await Promise.all([
       workflowContact(activeWorkflowDetail, "owner").catch(() => null),
       workflowContact(activeWorkflowDetail, "client").catch(() => null)
@@ -1582,12 +1589,22 @@
   }
 
   function refreshInstallStatus() {
-    const node = document.getElementById("installAppStatus");
+    const node = document.getElementById("pwaInstallStatus");
+    const btn = document.getElementById("pwaInstallBtn");
+    const iosHint = document.getElementById("pwaInstallIosHint");
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isStandalone()) {
+      if (node) node.textContent = "مثبّت على الجهاز";
+      if (btn) btn.hidden = true;
+      if (iosHint) iosHint.hidden = true;
+      return;
+    }
+    if (btn) btn.hidden = !deferredInstallPrompt;
+    if (iosHint) iosHint.hidden = !isIos;
     if (!node) return;
-    if (isStandalone()) node.textContent = "مثبّت على الجهاز";
-    else if (deferredInstallPrompt) node.textContent = "اضغط للتثبيت";
-    else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) node.textContent = "من مشاركة ← إضافة للشاشة";
-    else node.textContent = "من قائمة المتصفح ← تثبيت";
+    if (deferredInstallPrompt) node.textContent = "اضغط «تثبيت التطبيق» أدناه";
+    else if (isIos) node.textContent = "اتبع التعليمات أدناه لإضافة الاختصار";
+    else node.textContent = "من قائمة المتصفح ← تثبيت التطبيق";
   }
 
   async function installAppShortcut() {
@@ -1631,10 +1648,10 @@
         if (event.key === "Enter" || event.key === " ") toggleNotifications();
       });
     }
-    const installItem = document.getElementById("installAppControl");
-    if (installItem) {
-      installItem.addEventListener("click", installAppShortcut);
-      installItem.addEventListener("keydown", event => {
+    const installBtn = document.getElementById("pwaInstallBtn");
+    if (installBtn) {
+      installBtn.addEventListener("click", installAppShortcut);
+      installBtn.addEventListener("keydown", event => {
         if (event.key === "Enter" || event.key === " ") installAppShortcut();
       });
     }
@@ -1648,6 +1665,7 @@
       refreshInstallStatus();
       notify("تم تثبيت اختصار مكاتب عقارية ذكية");
     });
+    window.addEventListener("iaqar:workflow-overlay-closed", hideWorkflowOverlay);
     refreshNotificationStatus();
     refreshInstallStatus();
 

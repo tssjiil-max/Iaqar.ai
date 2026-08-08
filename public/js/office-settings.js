@@ -1202,17 +1202,55 @@ function closeOpportunityBank() {
 // ---------------------------------------------------------------------------
 
 function openSettings() {
-  el.overlay.hidden = false;
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay) return;
+  overlay.hidden = false;
   document.body.style.overflow = "hidden";
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-opened"));
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "officeSettings" } }));
+}
+
+function completeSettingsClose() {
+  if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+    window.IAQAR.closeOpportunityBank({ fromPopstate: true });
+  } else {
+    const bankOverlay = document.getElementById("opportunityBank");
+    if (bankOverlay) bankOverlay.hidden = true;
+  }
+  const overlay = document.getElementById("officeSettings");
+  if (overlay) overlay.hidden = true;
+  const bankOverlay = document.getElementById("opportunityBank");
+  if (!bankOverlay || bankOverlay.hidden) document.body.style.overflow = "";
 }
 
 function closeSettings() {
-  closeOpportunityBank();
-  el.overlay.hidden = true;
-  document.body.style.overflow = "";
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay || overlay.hidden) return;
+  if (window.history?.state?.iaqarOverlay) {
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+    return;
+  }
+  completeSettingsClose();
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-closed"));
 }
+
+function ensureSettingsNavDelegation() {
+  if (globalThis.__iaqarOfficeSettingsNavDelegation) return;
+  globalThis.__iaqarOfficeSettingsNavDelegation = true;
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#officeSettingsClose")) {
+      event.preventDefault();
+      if (typeof window.IAQAR?.closeOfficeSettings === "function") {
+        window.IAQAR.closeOfficeSettings();
+      }
+    }
+  });
+}
+ensureSettingsNavDelegation();
+
+window.IAQAR = window.IAQAR || {};
+window.IAQAR.openOfficeSettings = openSettings;
+window.IAQAR.closeOfficeSettings = closeSettings;
 
 async function onLogout() {
   const user = authUser();
@@ -1223,6 +1261,11 @@ async function onLogout() {
   try {
     await firebase.auth().signOut();
     toast("تم تسجيل الخروج");
+    const officeId = window.IAQAR?.office?.officeId || "";
+    const next = officeId && officeId !== "platform"
+      ? `${location.pathname}?office=${encodeURIComponent(officeId)}`
+      : location.pathname;
+    location.assign(next);
   } catch (_) {
     toast("تعذر تسجيل الخروج الآن");
   }
@@ -1249,6 +1292,7 @@ function init() {
   el.form = document.getElementById("officeProfileForm");
   el.overlay = document.getElementById("officeSettings");
   if (!el.form || !el.overlay) return;
+  if (el.overlay.dataset.officeSettingsBound === "1") return;
 
   el.officeName = document.getElementById("officeNameInput");
   el.nameAvailability = document.getElementById("officeNameAvailability");
@@ -1305,8 +1349,19 @@ function init() {
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (el.bankOverlay && !el.bankOverlay.hidden) closeOpportunityBank();
-    else if (!el.overlay.hidden) closeSettings();
+    if (el.bankOverlay && !el.bankOverlay.hidden) {
+      if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+        window.IAQAR.closeOpportunityBank();
+      } else {
+        closeOpportunityBank();
+      }
+      return;
+    }
+    if (!document.getElementById("officeSettings")?.hidden) closeSettings();
+  });
+
+  window.addEventListener("iaqar:office-settings-closed", () => {
+    completeSettingsClose();
   });
 
   el.officeName.addEventListener("input", () => {
@@ -1340,6 +1395,7 @@ function init() {
   } catch (_) {
     updateAuthState(null);
   }
+  el.overlay.dataset.officeSettingsBound = "1";
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
