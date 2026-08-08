@@ -122,6 +122,10 @@ function clearIntakeForm() {
   if (input) input.value = "";
   const fileInput = $("addOpportunityFile");
   if (fileInput) fileInput.value = "";
+  const missing = $("addOpportunityMissing");
+  if (missing) missing.hidden = true;
+  const retry = $("addOpportunityRetry");
+  if (retry) retry.hidden = true;
   updateClearButtonVisibility();
   setState("idle");
 }

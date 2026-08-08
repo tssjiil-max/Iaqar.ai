@@ -337,7 +337,7 @@
 
     /* إضافة فرصة — مدمج في آخر الصفحة */
     .add-opportunity {
-      margin-top:9px;
+      margin-top:20px;
       padding:7px 8px 8px;
     }
     .add-opportunity .section-title-bar {
@@ -356,7 +356,7 @@
       height:32px;
       border:1px solid var(--line);
       border-radius:10px;
-      padding:0 34px 0 30px;
+      padding:0 38px 0 34px;
       background:#fff;
       color:var(--text);
       font-size:12px;
@@ -492,39 +492,46 @@
     /* مساحة العمل */
     .workspace {
       margin-top:10px;
-      padding:14px 14px 17px;
+      padding:18px 18px 22px;
     }
 
     .workspace-subtitle {
-      margin:10px 0 0;
+      margin:12px 0 0;
       color:var(--muted);
-      font-size:12px;
+      font-size:13px;
       line-height:1.5;
       text-align:center;
     }
 
     .workspace .list {
-      margin-top:14px;
+      margin-top:18px;
+      min-height:140px;
     }
 
     .workspace .operation {
-      min-height:88px;
-      padding:12px 13px;
+      min-height:114px;
+      padding:14px 15px;
     }
 
     .workspace .operation-icon {
-      width:50px;
-      height:50px;
+      width:65px;
+      height:65px;
     }
 
     .workspace .operation h3 {
-      font-size:15px;
+      font-size:16px;
+    }
+
+    .workspace .operation p {
+      font-size:12px;
     }
 
     .workspace .empty {
-      margin-top:14px;
-      font-size:12px;
-      line-height:1.55;
+      margin-top:18px;
+      padding:28px 12px;
+      min-height:120px;
+      font-size:13px;
+      line-height:1.6;
     }
 
     .list {
@@ -1836,7 +1843,7 @@
             <svg class="icon"><use href="#i-paperclip"></use></svg>
           </button>
           <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
-            hidden aria-label="مسح النص أو المرفق">×</button>
+            hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
         </div>
         <div class="add-opportunity-actions-row">
           <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
