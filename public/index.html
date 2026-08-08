@@ -88,6 +88,7 @@
       grid-template-areas:"logo title bell";
       align-items:center;
       gap:8px;
+      background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
     }
 
     .site-logo {
@@ -160,71 +161,34 @@
       border:2px solid #fff;
     }
 
-    /* بطاقة فال */
+    /* بطاقة المكتب */
     .license { margin-top:14px; }
-
-    .license-banner {
-      min-height:104px;
-      padding:15px 17px;
-      background:linear-gradient(135deg,var(--green),var(--green-2));
-      color:#fff;
-      display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      grid-template-areas:"license-title verify";
-      align-items:center;
-      gap:10px;
-    }
-
-    .license-banner h2 {
-      grid-area:license-title;
-      margin:0;
-      font-size:14px;
-      line-height:1.65;
-      font-weight:800;
-    }
-
-    .verified {
-      grid-area:verify;
-      min-height:43px;
-      padding:8px 11px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.30);
-      background:rgba(255,255,255,.10);
-      display:flex;
-      align-items:center;
-      gap:7px;
-      white-space:nowrap;
-      font-size:12px;
-      font-weight:800;
-    }
-
-    .verified .icon { width:17px;height:17px; }
 
     .office-body { padding:17px 17px 16px; }
 
     .office-main {
       display:grid;
-      grid-template-columns:94px minmax(0,1fr);
+      grid-template-columns:minmax(0,1fr) 78px;
       align-items:center;
-      gap:14px;
+      gap:12px;
     }
 
     .office-logo {
-      width:94px;
-      height:108px;
-      padding:10px;
+      width:78px;
+      height:88px;
+      padding:8px;
       border:2px dashed #C9D6D0;
-      border-radius:19px;
+      border-radius:16px;
       background:#FCFDFC;
       display:grid;
       place-items:center;
       align-content:center;
-      gap:5px;
+      gap:4px;
     }
 
     .office-logo img {
-      width:57px;
-      height:57px;
+      width:52px;
+      height:52px;
       object-fit:contain;
     }
 
@@ -232,6 +196,12 @@
       color:var(--muted);
       font-size:10px;
       font-weight:700;
+    }
+
+    .office-info {
+      min-width:0;
+      text-align:right;
+      direction:rtl;
     }
 
     .office-info h3 {
@@ -252,6 +222,21 @@
     .office-line strong {
       color:var(--text);
       font-weight:800;
+    }
+
+    .office-license-line {
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+
+    .license-verify-icon {
+      width:15px;
+      height:15px;
+      color:var(--success);
+      flex-shrink:0;
     }
 
     .status-row {
@@ -1011,12 +996,9 @@
       .bell { width:42px;height:42px; }
       .brand h1 { font-size:18px; }
       .brand p { font-size:11px; }
-      .license-banner { padding:13px; }
-      .license-banner h2 { font-size:12px; }
-      .verified { padding:7px 8px;font-size:10px; }
-      .office-main { grid-template-columns:82px minmax(0,1fr);gap:11px; }
-      .office-logo { width:82px;height:98px; }
-      .office-logo img { width:50px;height:50px; }
+      .office-main { grid-template-columns:minmax(0,1fr) 70px;gap:10px; }
+      .office-logo { width:70px;height:80px; }
+      .office-logo img { width:46px;height:46px; }
       .office-info h3 { font-size:18px; }
       .office-line { font-size:12px; }
       .status { font-size:10px; }
@@ -1055,7 +1037,7 @@
     background:var(--green-pale);
     overflow:hidden;
     position:relative;
-    aspect-ratio:1.91 / 1;
+    aspect-ratio:2.547 / 1;
     cursor:pointer;
     transition:.18s ease;
   }
@@ -1064,7 +1046,10 @@
     width:100%;
     height:100%;
     object-fit:cover;
+    object-position:center center;
     display:block;
+    position:relative;
+    z-index:1;
   }
 
   .office-cover img[hidden] { display:none; }
@@ -1072,11 +1057,13 @@
   .office-cover-empty {
     position:absolute;
     inset:0;
+    z-index:0;
     display:grid;
     place-items:center;
     color:var(--muted);
     font-size:11px;
     font-weight:700;
+    pointer-events:none;
   }
 
   .office-cover:hover,
@@ -1463,6 +1450,10 @@
     font-size:10px;
     line-height:1.5;
   }
+  .bank-share-status {
+    margin:8px 0 0;
+    min-height:1.2em;
+  }
   .bank-retry {
     margin-top:8px;
     border:1px solid var(--line);
@@ -1509,6 +1500,17 @@
 
   .operation-group:last-child .details {
     border-bottom:0;
+  }
+
+  @media (max-width:430px) {
+    .office-cover {
+      aspect-ratio:2.547 / 1;
+      min-height:0;
+    }
+
+    .office-cover img {
+      object-position:center 42%;
+    }
   }
 
   @media (max-width:365px) {
@@ -1628,14 +1630,6 @@
     </header>
 
     <section class="card license">
-      <div class="license-banner">
-        <h2>الهيئة العامة للعقار — رخصة فال للممارسة العقارية</h2>
-        <div class="verified">
-          <svg class="icon"><use href="#i-check-circle"/></svg>
-          موثق إلكترونياً
-        </div>
-      </div>
-
       <div class="office-body">
         <button class="office-cover" id="officeSettingsCoverBtn" type="button"
           aria-label="صورة المكتب — فتح إعدادات المكتب">
@@ -1645,18 +1639,21 @@
         </button>
 
         <div class="office-main">
+          <div class="office-info">
+            <h3 id="officeDisplayName">مكتب عقاري</h3>
+            <div class="office-line">المرخص له: <strong id="officeDisplayBroker">وسيط عقاري</strong></div>
+            <div class="office-line office-license-line">
+              <span>رقم رخصة فال: <strong id="officeDisplayLicense"></strong></span>
+              <svg class="license-verify-icon" aria-hidden="true"><use href="#i-check-circle"/></svg>
+            </div>
+            <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
+          </div>
+
           <button class="office-logo" id="officeSettingsBtn" type="button"
             aria-label="شعار المكتب — فتح إعدادات المكتب">
             <img src="/icons/default-office.png" alt="شعار المكتب">
             <span class="visually-hidden">فتح إعدادات المكتب</span>
           </button>
-
-          <div class="office-info">
-            <h3 id="officeDisplayName">مكتب عقاري</h3>
-            <div class="office-line">المرخص له: <strong id="officeDisplayBroker">وسيط عقاري</strong></div>
-            <div class="office-line">رقم رخصة فال: <strong id="officeDisplayLicense"></strong></div>
-            <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
-          </div>
         </div>
 
         <div class="status-row specialty-status-row">

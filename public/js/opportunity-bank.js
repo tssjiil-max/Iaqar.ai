@@ -83,6 +83,14 @@ function setStatus(message, tone = "") {
   if (tone) node.classList.add(tone);
 }
 
+function setShareActionStatus(message, tone = "") {
+  const node = document.getElementById("bankShareStatus");
+  if (!node) return setStatus(message, tone);
+  node.textContent = message || "";
+  node.classList.remove("is-error", "is-done");
+  if (tone) node.classList.add(tone);
+}
+
 const state = {
   filter: "active", // active | archived
   unsubscribe: null,
@@ -236,6 +244,7 @@ async function renderDetail(id) {
         <input name="targetOfficeId" required placeholder="office-...">
       </label>
       <button type="submit" class="bank-action-primary">إرسال طلب التعاون</button>
+      <p class="bank-share-status section-status" id="bankShareStatus" role="status"></p>
       <p class="bank-note">الافتراضي: قراءة فقط، بدون بيانات تواصل، والملكية تبقى لهذا المكتب.</p>
     </form>
   `;
@@ -504,7 +513,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
 
   const mode = await readOfficeCooperationMode();
   if (!cooperationModeAllowsExplicitRequest(mode)) {
-    setStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
+    setShareActionStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
     return;
   }
 
@@ -514,67 +523,50 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     opportunityIds
   );
   if (!ownedCheck.ok) {
-    setStatus("لا يمكن مشاركة فرص لا تتبع هذا المكتب", "is-error");
+    setShareActionStatus("لا يمكن مشاركة فرص لا تتبع هذا المكتب", "is-error");
     return;
   }
 
-  setStatus("جارٍ إرسال طلب التعاون…");
-  const built = await buildCooperationRequest({
-    originatingOfficeId: officeId(),
-    originatingBrokerId: user.uid,
-    targetOfficeId,
-    opportunityIds: ownedCheck.accepted,
-    opportunityId: scopeType === "single" ? ownedCheck.accepted[0] : "",
-    scopeType,
-    createdBy: user.uid
-  });
-  if (!built.ok) {
-    setStatus("تعذر تجهيز طلب التعاون", "is-error");
-    return;
-  }
-
+  setShareActionStatus("جارٍ إرسال طلب التعاون…");
   try {
-    const ref = runtime.db.collection("cooperationRequests").doc(built.request.id);
-    const existing = await ref.get();
-    if (existing.exists) {
-      const status = String(existing.data()?.status || "").toUpperCase();
-      if (status === SHARE_REQUEST_STATUS.PENDING || status === SHARE_REQUEST_STATUS.ACCEPTED) {
-        setStatus("يوجد طلب تعاون نشط أو معلّق مسبقًا", "is-done");
-        return;
-      }
-    }
-    await ref.set(built.request, { merge: false });
-
-    // Update opportunity cooperation status to pending for singles/selected.
-    const batch = runtime.db.batch();
-    for (const oppId of ownedCheck.accepted) {
-      const oppRef = runtime.db.collection("offices").doc(officeId()).collection("opportunities").doc(oppId);
-      batch.set(oppRef, {
+    const token = await user.getIdToken();
+    const response = await fetch(`${workerBaseUrl()}/cooperation/request`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
         officeId: officeId(),
-        currentOwningOfficeId: officeId(),
-        cooperationState: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
-        cooperationStatus: cooperationStateFromShareStatus(SHARE_REQUEST_STATUS.PENDING),
-        activeCooperationId: built.request.id,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+        targetOfficeId,
+        opportunityIds: ownedCheck.accepted,
+        scopeType
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.message || "تعذر إرسال طلب التعاون");
     }
-    await batch.commit();
-
-    setStatus("تم إرسال طلب التعاون", "is-done");
-    toast("تم إرسال طلب التعاون");
-    await syncCooperationOperation(built.request.id);
+    const message = payload.message || "تم إرسال طلب التعاون";
+    setShareActionStatus(message, payload.duplicate ? "is-done" : "is-done");
+    if (!payload.duplicate) toast("تم إرسال طلب التعاون");
+    const requestId = payload.cooperationRequestId || payload.requestId || "";
+    if (requestId) await syncCooperationOperation(requestId);
     window.dispatchEvent(new CustomEvent("iaqar:cooperation-request-created", {
       detail: {
         ...phase3BoundaryGuarantees(),
         ...phase5BoundaryGuarantees(),
         ...phase6BoundaryGuarantees(),
-        requestId: built.request.id,
+        requestId,
         createsAutomaticCooperation: false
       }
     }));
   } catch (error) {
     console.warn("[iaqar] cooperation request", error);
-    setStatus("تعذر إرسال طلب التعاون", "is-error");
+    const message = String(error?.message || "").includes("permission")
+      ? "تعذر إرسال طلب التعاون — صلاحيات غير كافية"
+      : (error?.message || "تعذر إرسال طلب التعاون");
+    setShareActionStatus(message, "is-error");
   }
 }
 

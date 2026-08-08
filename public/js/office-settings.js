@@ -181,6 +181,11 @@ function applyOfficeCardImages() {
     el.cardCover.src = coverSource || "";
     el.cardCover.hidden = !coverSource;
     if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = Boolean(coverSource);
+    if (coverSource) {
+      el.cardCover.onload = () => {
+        if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = true;
+      };
+    }
   }
 }
 
