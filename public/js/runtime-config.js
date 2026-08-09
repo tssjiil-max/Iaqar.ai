@@ -37,6 +37,8 @@
     // Explicit override for local smoke of staging wiring.
     if (env === "staging") return "staging";
     if (env === "production" || env === "prod") return "production";
+    // Firebase default site for project iaqar-ai-staging (not only preview channels).
+    if (host.includes("iaqar-ai-staging")) return "staging";
     // Firebase Hosting preview channels: {project}--{channel}-{hash}.web.app
     if (host.includes("--staging")) return "staging";
     if (host.startsWith("staging.") || host.startsWith("staging-")) return "staging";

@@ -266,7 +266,10 @@ test("Add Opportunity card exists on the home page with the approved compact row
     assert.ok(section, "Add Opportunity section required");
     assert.ok(document.getElementById("addOpportunityInput"));
     assert.ok(document.getElementById("addOpportunityPaperclip"));
+    assert.ok(document.getElementById("addOpportunityInputClear"));
     assert.ok(document.getElementById("addOpportunitySubmit"));
+    assert.equal(document.getElementById("addOpportunityProcess"), null);
+    assert.equal(document.getElementById("addOpportunityClear"), null);
     assert.ok(document.getElementById("addOpportunityFile"));
     assert.equal(document.getElementById("addOpportunityFile").hasAttribute("hidden"), true);
 
@@ -294,7 +297,9 @@ test("Add Opportunity card exists on the home page with the approved compact row
 test("shell source wires the Phase 2 module and keeps extraction honesty copy", () => {
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(shell.includes("js/add-opportunity.js"));
+  assert.ok(shell.includes("js/opportunity-review.js"));
   assert.ok(shell.includes("id=\"addOpportunity\""));
+  assert.ok(shell.includes("id=\"opportunityReviewOverlay\""));
   const domain = readRepositoryFile("public", "js", "opportunity-intake-domain.js");
   assert.ok(domain.includes("simulated_fixture"));
   assert.ok(domain.includes("productionAi: false") || domain.includes("productionAi"));

@@ -108,7 +108,7 @@ test("each identity variant has a full upload workflow in the markup", async () 
   const context = await shell();
   try {
     const { document } = context;
-    for (const variant of ["logo", "display", "cover"]) {
+    for (const variant of ["logo", "cover"]) {
       const slot = document.querySelector(`[data-image-variant="${variant}"]`);
       assert.ok(slot, `${variant} slot must exist`);
       for (const role of ["preview", "preview-image", "placeholder", "crop", "offset-x", "offset-y", "choose", "save", "file", "status"]) {
@@ -119,6 +119,7 @@ test("each identity variant has a full upload workflow in the markup", async () 
       assert.ok(file.getAttribute("aria-label"), `${variant} file input needs an accessible name`);
       assert.equal(slot.querySelector('[data-role="status"]').getAttribute("role"), "status");
     }
+    assert.equal(document.querySelector('[data-image-variant="display"]'), null, "unused display slot removed");
   } finally {
     context.close();
   }
@@ -129,7 +130,7 @@ test("remove is offered only for the variants the directive allows removing", as
   try {
     const { document } = context;
     assert.ok(document.querySelector('[data-image-variant="logo"] [data-role="remove"]'));
-    assert.ok(document.querySelector('[data-image-variant="display"] [data-role="remove"]'));
+    assert.equal(document.querySelector('[data-image-variant="display"]'), null);
     assert.equal(document.querySelector('[data-image-variant="cover"] [data-role="remove"]'), null);
   } finally {
     context.close();
@@ -140,13 +141,14 @@ test("the preview aspect ratio is taken from the preset at runtime, not hard-cod
   const context = await shell();
   try {
     const { document } = context;
-    assert.equal(document.querySelector('[data-image-variant="logo"] [data-role="preview"]').style.aspectRatio, "1");
+    const logoWrap = document.querySelector('[data-image-variant="logo"] .office-logo-preview-wrap');
+    assert.ok(logoWrap, "logo preview wrap should exist");
+    assert.ok(logoWrap.classList.contains("office-logo-preview-wrap"));
     const cover = document.querySelector('[data-image-variant="cover"] [data-role="preview"]').style.aspectRatio;
     assert.ok(Number(cover) > 1.5, `cover preview ratio should be wide, got ${cover}`);
-    assert.equal(
-      document.querySelector('[data-image-variant="logo"] [data-role="ratio-hint"]').textContent,
-      "512×512"
-    );
+    const sizeHint = document.querySelector('[data-image-variant="logo"] .office-logo-size-hint');
+    assert.ok(sizeHint);
+    assert.equal(sizeHint.textContent, "المقاس الموصى به: 512×512");
   } finally {
     context.close();
   }
