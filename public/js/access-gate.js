@@ -408,6 +408,13 @@
       catch (_) { try { await firebase.auth().signOut(); } catch (_) {} showStatus("بيانات إدارة المنصة غير صحيحة."); }
     };
   }
+  function showAccessGate() {
+    if (!document.body.classList.contains("access-locked")) {
+      document.body.classList.add("access-locked");
+    }
+    if (!gate.isConnected) document.body.appendChild(gate);
+  }
+
   async function verifyAccess(target, navigate) {
     if (!target) return loginForm("أدخل رمز المكتب المعتمد.");
     if (target === "platform") {
@@ -420,12 +427,27 @@
     try {
       await db().collection("offices").doc(target).get({ source: "server" });
       localStorage.setItem("iaqar.officeId", target);
-      if (navigate || target !== officeId) return location.replace(`${location.pathname}?office=${encodeURIComponent(target)}`);
+      if (navigate || target !== officeId) {
+        location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
+        return;
+      }
       document.body.classList.remove("access-locked");
       gate.remove();
     } catch (error) {
       console.warn("[iaqar] access denied", error);
-      loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
+      const code = String(error && error.code || "");
+      if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
+        frame(`<section class="access-card"><h2>تعذر الاتصال</h2>
+          <p>تحقق من الشبكة ثم أعد المحاولة. لن يُسجَّل خروجك تلقائيًا.</p>
+          <button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button></section>`);
+        gate.querySelector("#accessRetry").onclick = () => verifyAccess(target, navigate);
+        return;
+      }
+      if (code.includes("permission-denied") || code.includes("unauthenticated")) {
+        loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
+        return;
+      }
+      loginForm("تعذر التحقق من صلاحية الدخول. حاول مرة أخرى.");
     }
   }
 
@@ -606,9 +628,33 @@
       }
     }
     refreshRouteFlags();
-    if (isPublicOfficeLink) publicOffice();
-    else if (isPlatformHome) home();
-    else firebase.auth().onAuthStateChanged(user => user ? verifyAccess(officeId, false) : loginForm());
+
+    try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (error) {
+      console.warn("[iaqar] auth persistence", error);
+    }
+
+    let initialAuthResolved = false;
+
+    const routeAfterInitialAuth = (user) => {
+      if (isPublicOfficeLink) publicOffice();
+      else if (isPlatformHome) home();
+      else if (user) verifyAccess(officeId, false);
+      else loginForm();
+    };
+
+    firebase.auth().onAuthStateChanged(user => {
+      if (!initialAuthResolved) {
+        initialAuthResolved = true;
+        routeAfterInitialAuth(user);
+        return;
+      }
+      if (!user && !isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {
+        showAccessGate();
+        loginForm();
+      }
+    });
   }
 
   bootstrapAccess();

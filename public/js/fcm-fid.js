@@ -44,10 +44,9 @@
     });
 
     async function register(options = {}) {
-      await messagingModule.register(messaging, {
-        vapidKey: options.vapidKey,
-        serviceWorkerRegistration: options.serviceWorkerRegistration
-      });
+      const registerOptions = { serviceWorkerRegistration: options.serviceWorkerRegistration };
+      if (options.vapidKey) registerOptions.vapidKey = options.vapidKey;
+      await messagingModule.register(messaging, registerOptions);
       if (currentFid) return currentFid;
       return new Promise((resolve, reject) => {
         let wrappedResolve;

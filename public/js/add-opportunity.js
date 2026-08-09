@@ -1,15 +1,12 @@
 /**
- * Phase 2 — Add Opportunity card controller.
- * Unified intake row: text/link + paperclip + submit. No per-type buttons.
+ * Phase 2 — Add Opportunity: تنفيذ → مراجعة → اعتماد وحفظ (مرة واحدة).
  */
 
 import {
   ATTACHMENT_ACCEPT,
   INTAKE_STATE_LABELS,
-  REQUIRED_OPPORTUNITY_FIELDS,
   createExtractionAdapter,
   prepareOpportunityIntake,
-  sha256Hex,
   validateAttachment
 } from "./opportunity-intake-domain.js";
 import {
@@ -21,16 +18,11 @@ import {
   phase5BoundaryGuarantees,
   requestMissingDataOperationSync
 } from "./operations-domain.js";
+import { openOpportunityReview } from "./opportunity-review.js";
 
-const FIELD_LABELS = Object.freeze({
-  opportunityKind: "نوع الفرصة (عرض / طلب)",
-  purpose: "الغرض",
-  propertyType: "نوع العقار",
-  city: "المدينة",
-  district: "الحي",
-  priceOrBudget: "السعر أو الميزانية",
-  area: "المساحة",
-  rooms: "عدد الغرف"
+const LOCAL_STATE_LABELS = Object.freeze({
+  reviewing: "جارٍ التحليل…",
+  ready: "راجع البيانات ثم اعتماد وحفظ"
 });
 
 function $(id) {
@@ -97,98 +89,61 @@ function setState(state, detail = "") {
   status.dataset.state = state;
   status.classList.toggle("is-error", state === "failed");
   status.classList.toggle("is-done", state === "saved");
-  const label = INTAKE_STATE_LABELS[state] || "";
+  const label = LOCAL_STATE_LABELS[state] || INTAKE_STATE_LABELS[state] || "";
   status.textContent = detail ? `${label}${label ? " — " : ""}${detail}` : label;
   if (retry) retry.hidden = state !== "failed";
 }
 
 function setBusy(busy) {
-  const submit = $("addOpportunitySubmit");
+  const executeBtn = $("addOpportunitySubmit");
   const input = $("addOpportunityInput");
   const paperclip = $("addOpportunityPaperclip");
-  if (submit) submit.disabled = busy;
+  const clearBtn = $("addOpportunityInputClear");
+  if (executeBtn) {
+    executeBtn.disabled = busy;
+    if (busy && executeBtn.dataset.busyLabel) executeBtn.textContent = executeBtn.dataset.busyLabel;
+    else if (!busy && executeBtn.dataset.originalText) executeBtn.textContent = executeBtn.dataset.originalText;
+  }
   if (input) input.disabled = busy;
   if (paperclip) paperclip.disabled = busy;
+  if (clearBtn) clearBtn.disabled = busy;
 }
 
-function clearMissingForm() {
-  const wrap = $("addOpportunityMissing");
-  if (!wrap) return;
-  wrap.hidden = true;
-  wrap.innerHTML = "";
-}
-
-function renderMissingForm(missingFields, fields) {
-  const wrap = $("addOpportunityMissing");
-  if (!wrap) return;
-  wrap.hidden = false;
-  wrap.innerHTML = `
-    <p class="add-opportunity-missing-title">أكمل الحقول الناقصة فقط</p>
-    <div class="add-opportunity-missing-grid">
-      ${missingFields.map((key) => {
-        if (key === "opportunityKind") {
-          return `<label>${FIELD_LABELS[key]}
-            <select name="${key}" required>
-              <option value="">اختر</option>
-              <option value="OFFER" ${fields.opportunityKind === "OFFER" ? "selected" : ""}>عرض</option>
-              <option value="REQUEST" ${fields.opportunityKind === "REQUEST" ? "selected" : ""}>طلب</option>
-            </select>
-          </label>`;
-        }
-        if (key === "purpose") {
-          return `<label>${FIELD_LABELS[key]}
-            <select name="${key}" required>
-              <option value="">اختر</option>
-              <option value="SALE">بيع</option>
-              <option value="PURCHASE">شراء</option>
-              <option value="RENT">إيجار</option>
-              <option value="LEASE_REQUEST">طلب إيجار</option>
-            </select>
-          </label>`;
-        }
-        const inputType = ["priceOrBudget", "area", "rooms"].includes(key) ? "number" : "text";
-        const value = fields[key] == null ? "" : fields[key];
-        return `<label>${FIELD_LABELS[key]}
-          <input name="${key}" type="${inputType}" value="${String(value).replace(/"/g, "&quot;")}" required>
-        </label>`;
-      }).join("")}
-    </div>
-    <button type="submit" class="add-opportunity-complete" id="addOpportunityComplete">حفظ بعد الاستكمال</button>
-    <p class="add-opportunity-note">التحليل الحالي: محاكاة/تحليل نصي حتمي — ليس ذكاءً اصطناعيًا إنتاجيًا.</p>
-  `;
-  wrap.onsubmit = (event) => {
-    event.preventDefault();
-    const brokerFields = readMissingFieldsFromForm();
-    void runPipeline({ brokerFields });
-  };
-}
-
-function readMissingFieldsFromForm() {
-  const wrap = $("addOpportunityMissing");
-  const data = {};
-  if (!wrap) return data;
-  for (const key of REQUIRED_OPPORTUNITY_FIELDS) {
-    const node = wrap.querySelector(`[name="${key}"]`);
-    if (node) data[key] = node.value;
-  }
-  return data;
-}
-
-let pendingDraft = null;
 let lastFailure = null;
 let selectedFile = null;
+let executing = false;
+let intakeContext = null;
 
-function describeAttachment() {
-  const chip = $("addOpportunityFileChip");
-  const label = $("addOpportunityFileName");
-  if (!chip || !label) return;
-  if (!selectedFile) {
-    chip.hidden = true;
-    label.textContent = "";
-    return;
+function clearIntakeForm() {
+  lastFailure = null;
+  selectedFile = null;
+  intakeContext = null;
+  const input = $("addOpportunityInput");
+  if (input) input.value = "";
+  const fileInput = $("addOpportunityFile");
+  if (fileInput) fileInput.value = "";
+  const missing = $("addOpportunityMissing");
+  if (missing) missing.hidden = true;
+  const retry = $("addOpportunityRetry");
+  if (retry) retry.hidden = true;
+  const reviewOverlay = $("opportunityReviewOverlay");
+  if (reviewOverlay && !reviewOverlay.hidden) {
+    reviewOverlay.hidden = true;
+    document.body.style.overflow = "";
+    window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
   }
-  chip.hidden = false;
-  label.textContent = selectedFile.name;
+  updateClearButtonVisibility();
+  setState("idle");
+}
+
+function updateClearButtonVisibility() {
+  const clearBtn = $("addOpportunityInputClear");
+  const input = $("addOpportunityInput");
+  const executeBtn = $("addOpportunitySubmit");
+  if (!clearBtn) return;
+  const hasContent = Boolean((input?.value || "").trim() || selectedFile);
+  clearBtn.hidden = !hasContent;
+  if (executeBtn && !executing) executeBtn.disabled = !hasContent;
 }
 
 async function uploadSourceFile(officeId, sourceId, file) {
@@ -214,7 +169,7 @@ async function uploadSourceFile(officeId, sourceId, file) {
   return payload;
 }
 
-async function persistIntake(result) {
+async function persistIntake(result, reviewMeta = {}) {
   const office = currentOffice();
   const db = window.firebase?.firestore?.();
   if (!office?.paths || !db) throw new Error("firestore_unavailable");
@@ -229,21 +184,75 @@ async function persistIntake(result) {
     return { duplicate: true, opportunityId: result.opportunity.id, sourceId: result.source.id };
   }
 
+  const opportunityPayload = {
+    ...result.opportunity,
+    ...reviewMeta,
+    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+  };
+
   const batch = db.batch();
   batch.set(sourceRef, {
     ...result.source,
     createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
   });
-  batch.set(opportunityRef, {
-    ...result.opportunity,
-    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-  });
+  batch.set(opportunityRef, opportunityPayload);
   await batch.commit();
   return { duplicate: false, opportunityId: result.opportunity.id, sourceId: result.source.id };
 }
 
-async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
+async function runExtractionPipeline() {
+  const office = currentOffice();
+  const user = currentUser();
+  if (!office?.officeId) throw new Error("office_missing");
+  if (!user?.uid) throw new Error("auth_required");
+
+  const input = $("addOpportunityInput");
+  const text = (input?.value || "").trim();
+
+  let fileChecksumValue = "";
+  let mediaPath = "";
+  if (selectedFile) {
+    setState("uploading");
+    fileChecksumValue = await fileChecksum(selectedFile);
+    const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
+    const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
+    mediaPath = uploaded.mediaPath || "";
+  }
+
+  setState("analyzing");
+  const prepared = await prepareOpportunityIntake({
+    officeId: office.officeId,
+    brokerId: user.uid,
+    text,
+    file: selectedFile || undefined,
+    fileChecksum: fileChecksumValue,
+    mediaPath,
+    allowIncomplete: true
+  }, createExtractionAdapter());
+
+  if (!prepared.ok) {
+    throw new Error(prepared.error || "prepare_failed");
+  }
+
+  if (mediaPath) prepared.source.mediaPath = mediaPath;
+  if (fileChecksumValue && selectedFile) {
+    prepared.source.byteSize = selectedFile.size || prepared.source.byteSize;
+  }
+
+  intakeContext = {
+    text,
+    fileChecksumValue,
+    mediaPath,
+    fileName: selectedFile?.name || "",
+    contentType: selectedFile?.type || ""
+  };
+
+  return prepared;
+}
+
+async function startExecute() {
+  if (executing) return;
   const office = currentOffice();
   const user = currentUser();
   if (!office?.officeId) {
@@ -259,65 +268,95 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
   const text = (input?.value || "").trim();
   if (!text && !selectedFile) {
     setState("failed", "أدخل رابطًا أو نصًا أو أرفق ملفًا");
-    lastFailure = { text, file: selectedFile, brokerFields };
+    lastFailure = { text, file: selectedFile };
     return;
   }
 
+  executing = true;
   setBusy(true);
-  clearMissingForm();
+  lastFailure = null;
 
   try {
-    let fileChecksumValue = "";
-    let mediaPath = "";
-    if (selectedFile) {
-      setState("uploading");
-      fileChecksumValue = await fileChecksum(selectedFile);
-      // Provisional source id from checksum so upload path is stable.
-      const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
-      const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
-      mediaPath = uploaded.mediaPath || "";
-    }
+    const prepared = await runExtractionPipeline();
+    setState("reviewing");
+    openOpportunityReview({
+      fields: prepared.fields || {},
+      extended: prepared.extraction?.extended,
+      needsReview: prepared.extraction?.needsReview,
+      sourceText: text,
+      prepared
+    }, approveFromReview);
+  } catch (error) {
+    console.warn("add-opportunity execute failed", error);
+    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
+    lastFailure = { text, file: selectedFile };
+  } finally {
+    executing = false;
+    setBusy(false);
+  }
+}
 
-    setState("analyzing");
+async function approveFromReview(brokerExtras) {
+  if (executing) return;
+  executing = true;
+  setBusy(true);
+
+  try {
+    const office = currentOffice();
+    const user = currentUser();
+    if (!office?.officeId || !user?.uid) throw new Error("auth_required");
+    if (!intakeContext) throw new Error("context_missing");
+
+    const brokerFields = {
+      opportunityKind: brokerExtras.opportunityKind,
+      purpose: brokerExtras.purpose,
+      propertyType: brokerExtras.propertyType,
+      city: brokerExtras.city,
+      district: brokerExtras.district,
+      priceOrBudget: brokerExtras.priceOrBudget,
+      area: brokerExtras.area,
+      rooms: brokerExtras.rooms,
+      bathrooms: brokerExtras.bathrooms,
+      floorNumber: brokerExtras.floorNumber,
+      annualRent: brokerExtras.annualRent,
+      paymentInstallments: brokerExtras.paymentInstallments,
+      optionalMonthlyRentAfterSixMonths: brokerExtras.optionalMonthlyRentAfterSixMonths
+    };
+
     const prepared = await prepareOpportunityIntake({
       officeId: office.officeId,
       brokerId: user.uid,
-      text,
-      file: selectedFile || undefined,
-      fileChecksum: fileChecksumValue,
-      mediaPath,
+      text: intakeContext.text,
+      fileChecksum: intakeContext.fileChecksumValue,
+      mediaPath: intakeContext.mediaPath,
+      fileName: intakeContext.fileName,
+      contentType: intakeContext.contentType,
       brokerFields,
-      allowIncomplete: Boolean(brokerFields)
+      allowIncomplete: true
     }, createExtractionAdapter());
 
-    if (!prepared.ok) {
-      setState("failed", prepared.error || "");
-      lastFailure = { text, file: selectedFile, brokerFields };
-      return;
-    }
+    if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
+    if (intakeContext.mediaPath) prepared.source.mediaPath = intakeContext.mediaPath;
 
-    if (prepared.state === "missing_information") {
-      pendingDraft = prepared;
-      setState("missing_information");
-      renderMissingForm(prepared.missingFields, prepared.fields);
-      return;
-    }
+    const reviewMeta = {
+      reviewOperationTypeId: brokerExtras.reviewOperationTypeId || "",
+      reviewPropertyTypeId: brokerExtras.reviewPropertyTypeId || "",
+      reviewCityId: brokerExtras.reviewCityId || "",
+      reviewDistrictId: brokerExtras.reviewDistrictId || "",
+      extractedSnapshot: brokerExtras.extractedSnapshot || null
+    };
 
-    // Ensure mediaPath / checksum land on the source record.
-    if (mediaPath) prepared.source.mediaPath = mediaPath;
-    if (fileChecksumValue) {
-      prepared.source.byteSize = selectedFile?.size || prepared.source.byteSize;
+    const saved = await persistIntake(prepared, reviewMeta);
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: 0
+      });
     }
-
-    const saved = await persistIntake(prepared);
     setState("saved", saved.duplicate ? "هذه الفرصة محفوظة مسبقًا" : "");
     toast(saved.duplicate ? "الفرصة مكررة — لم يُنشأ سجل جديد" : "تم حفظ الفرصة");
-    pendingDraft = null;
-    lastFailure = null;
-    selectedFile = null;
-    describeAttachment();
-    if (input) input.value = "";
-    clearMissingForm();
+    clearIntakeForm();
 
     let matching = { ok: false, matchCount: 0, skipped: true };
     let missingDataSync = { ok: false, created: false };
@@ -331,7 +370,6 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
           opportunityId: saved.opportunityId,
           notify: true
         });
-        // Explicit missing-data sync covers NEEDS_DATA even when rematch finds no pairs.
         missingDataSync = await requestMissingDataOperationSync({
           workerBase: workerBase(),
           idToken: token,
@@ -356,11 +394,15 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
         ...phase5BoundaryGuarantees()
       }
     }));
-  } catch (error) {
-    console.warn("add-opportunity failed", error);
-    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
-    lastFailure = { text, file: selectedFile, brokerFields, fromRetry };
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: Number(matching.matchCount || 0)
+      });
+    }
   } finally {
+    executing = false;
     setBusy(false);
   }
 }
@@ -377,11 +419,11 @@ function onFileChosen(event) {
   if (!validated.ok) {
     setState("failed", validated.error);
     selectedFile = null;
-    describeAttachment();
+    updateClearButtonVisibility();
     return;
   }
   selectedFile = file;
-  describeAttachment();
+  updateClearButtonVisibility();
   setState("idle");
 }
 
@@ -393,24 +435,24 @@ function boot() {
   const fileInput = $("addOpportunityFile");
   if (fileInput) fileInput.setAttribute("accept", ATTACHMENT_ACCEPT);
 
+  const executeBtn = $("addOpportunitySubmit");
+  if (executeBtn) {
+    executeBtn.dataset.originalText = executeBtn.textContent;
+    executeBtn.dataset.busyLabel = "جارٍ التنفيذ…";
+  }
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    void runPipeline();
+    void startExecute();
   });
 
+  executeBtn?.addEventListener("click", () => void startExecute());
   $("addOpportunityPaperclip")?.addEventListener("click", onPaperclip);
+  $("addOpportunityInputClear")?.addEventListener("click", () => clearIntakeForm());
+  $("addOpportunityInput")?.addEventListener("input", () => updateClearButtonVisibility());
   fileInput?.addEventListener("change", onFileChosen);
-  $("addOpportunityRetry")?.addEventListener("click", () => {
-    if (lastFailure?.brokerFields) {
-      void runPipeline({ brokerFields: lastFailure.brokerFields, fromRetry: true });
-    } else {
-      void runPipeline({ fromRetry: true });
-    }
-  });
-  $("addOpportunityClearFile")?.addEventListener("click", () => {
-    selectedFile = null;
-    describeAttachment();
-  });
+  $("addOpportunityRetry")?.addEventListener("click", () => void startExecute());
+  updateClearButtonVisibility();
 }
 
 if (document.readyState === "loading") {
@@ -420,7 +462,8 @@ if (document.readyState === "loading") {
 }
 
 export const __test = {
-  runPipeline,
+  startExecute,
+  approveFromReview,
   setSelectedFile(file) { selectedFile = file; },
   getSelectedFile() { return selectedFile; }
 };

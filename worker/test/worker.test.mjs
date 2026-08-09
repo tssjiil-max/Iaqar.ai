@@ -891,16 +891,40 @@ test("Phase 5 operations endpoints require authentication", async () => {
 });
 
 test("Phase 6 cooperation lifecycle endpoints require authentication", async () => {
-  for (const path of ["/cooperation/lifecycle", "/cooperation/scope-revoke"]) {
-    const response = await worker.fetch(new Request(`https://example.test${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  const endpoints = [
+    {
+      path: "/cooperation/request",
+      body: {
+        officeId: "office-a",
+        targetOfficeId: "office-b",
+        opportunityIds: ["opp_1"],
+        scopeType: "single"
+      }
+    },
+    {
+      path: "/cooperation/lifecycle",
+      body: {
         officeId: "office-a",
         cooperationId: "coop_1",
         sharingScopeId: "scope_1",
         action: "ACCEPT"
-      })
+      }
+    },
+    {
+      path: "/cooperation/scope-revoke",
+      body: {
+        officeId: "office-a",
+        cooperationId: "coop_1",
+        sharingScopeId: "scope_1",
+        action: "ACCEPT"
+      }
+    }
+  ];
+  for (const { path, body } of endpoints) {
+    const response = await worker.fetch(new Request(`https://example.test${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
     }), env);
     assert.equal(response.status, 401, path);
   }
