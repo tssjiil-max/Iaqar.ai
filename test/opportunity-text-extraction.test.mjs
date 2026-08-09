@@ -116,4 +116,6 @@ test("intake pipeline uses phrase extractor for text (not single-keyword propert
   assert.equal(prepared.opportunity.annualRent, 22000);
   assert.equal(prepared.opportunity.bathrooms, 3);
   assert.equal(prepared.opportunity.floorNumber, 1);
+  assert.equal(prepared.fields?.propertyType, "شقة");
+  assert.equal(prepared.fields?.rooms, 4);
 });

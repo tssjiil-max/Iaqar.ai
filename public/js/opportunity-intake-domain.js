@@ -580,6 +580,7 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     state: "saved",
     opportunity,
     source,
+    fields,
     extraction,
     missingFields: completeness.missingFields,
     deduplicationFingerprint: fingerprint,
