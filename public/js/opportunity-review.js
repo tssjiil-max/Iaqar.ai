@@ -43,34 +43,56 @@ function openReviewOverlay(draft, onApprove) {
   if (!overlay) return;
   activeDraft = draft;
   onApproveCallback = onApprove;
-  const defaults = buildReviewDefaults(draft.fields || {}, draft.sourceText || "");
+  const defaults = buildReviewDefaults(
+    draft.fields || {},
+    draft.sourceText || "",
+    {
+      extended: draft.extended || draft.fields?.extended,
+      needsReview: draft.needsReview || draft.fields?.needsReview
+    }
+  );
   renderReviewForm(defaults);
   overlay.hidden = false;
   document.body.style.overflow = "hidden";
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "opportunityReviewOverlay" } }));
 }
 
+function reviewLabel(name, label, needsReview) {
+  const flag = needsReview && needsReview[name];
+  return flag ? `${label} (يحتاج مراجعة)` : label;
+}
+
 function renderReviewForm(defaults) {
   const body = $("opportunityReviewBody");
   if (!body) return;
+  const needs = defaults.needsReview || {};
+  const snapshotLines = [
+    defaults.extractedSnapshot?.transactionType,
+    defaults.extractedSnapshot?.propertyType,
+    defaults.extractedSnapshot?.district,
+    defaults.extractedSnapshot?.annualRent ? `${defaults.extractedSnapshot.annualRent} ريال سنوي` : ""
+  ].filter(Boolean);
+
   body.innerHTML = `
     <p class="review-hint">راجع القيم المستخرجة وعدّل ما يلزم قبل الحفظ النهائي.</p>
-    ${defaults.extractedSnapshot?.propertyType || defaults.extractedSnapshot?.district
-      ? `<p class="review-extracted">مستخرَج: ${escapeHtml(
-        [defaults.extractedSnapshot.propertyType, defaults.extractedSnapshot.city, defaults.extractedSnapshot.district]
-          .filter(Boolean).join(" — ")
-      )}</p>` : ""}
+    ${snapshotLines.length
+      ? `<p class="review-extracted">مستخرَج: ${escapeHtml(snapshotLines.join(" — "))}</p>` : ""}
     <form id="opportunityReviewForm" class="review-form" autocomplete="off">
-      ${searchField("operationTypeId", "نوع العملية", OPERATION_TYPES, defaults.operationTypeId, "label")}
-      ${searchField("propertyTypeId", "نوع العقار", PROPERTY_TYPES, defaults.propertyTypeId, "label")}
+      ${searchField("operationTypeId", reviewLabel("transactionType", "نوع العملية", needs), OPERATION_TYPES, defaults.operationTypeId, "label")}
+      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label")}
       ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
-      ${searchField("cityId", "المدينة", CITIES, defaults.cityId, "label")}
+      ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
       ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
-      ${searchField("districtId", "الحي", districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
+      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
       ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+      ${numericField("annualRent", reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs), defaults.annualRent || defaults.priceOrBudget)}
+      ${numericField("optionalMonthlyRent", "الإيجار الشهري الاختياري (ريال)", defaults.optionalMonthlyRent)}
+      ${numericField("paymentInstallments", reviewLabel("paymentInstallments", "عدد الدفعات", needs), defaults.paymentInstallments)}
       ${numericField("priceOrBudget", "السعر / الميزانية (ريال)", defaults.priceOrBudget)}
-      ${numericField("area", "المساحة (م²)", defaults.area)}
-      ${numericField("rooms", "عدد الغرف", defaults.rooms)}
+      ${numericField("area", reviewLabel("area", "المساحة (م²)", needs), defaults.area)}
+      ${numericField("rooms", reviewLabel("rooms", "عدد الغرف", needs), defaults.rooms)}
+      ${numericField("bathrooms", reviewLabel("bathrooms", "دورات المياه", needs), defaults.bathrooms)}
+      ${numericField("floorNumber", reviewLabel("floorNumber", "رقم الدور / الطابق", needs), defaults.floorNumber)}
       <div class="review-actions">
         <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
         <button type="button" class="review-cancel" id="opportunityReviewCancel">إلغاء</button>
@@ -211,9 +233,14 @@ function readReviewForm() {
     cityManual: data.cityManual || "",
     districtId: data.districtId || "",
     districtManual: data.districtManual || "",
-    priceOrBudget: data.priceOrBudget || "",
+    priceOrBudget: data.priceOrBudget || data.annualRent || "",
     area: data.area || "",
     rooms: data.rooms || "",
+    bathrooms: data.bathrooms || "",
+    floorNumber: data.floorNumber || "",
+    annualRent: data.annualRent || "",
+    paymentInstallments: data.paymentInstallments || "",
+    optionalMonthlyRentAfterSixMonths: data.optionalMonthlyRent || "",
     extractedSnapshot: activeDraft?.fields ? {
       opportunityKind: activeDraft.fields.opportunityKind || "",
       purpose: activeDraft.fields.purpose || "",

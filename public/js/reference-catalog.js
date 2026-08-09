@@ -198,30 +198,48 @@ export function mapOperationToBrokerFields(operationId, hintKind = "") {
   return { purpose: op.purpose, opportunityKind };
 }
 
-export function buildReviewDefaults(extractionFields = {}, sourceText = "") {
+export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta = {}) {
   const text = String(sourceText || "");
+  const extended = meta.extended || extractionFields.extended || {};
   const op = matchOperationType(extractionFields, text);
-  const property = matchPropertyType(extractionFields.propertyType || text);
-  const city = matchCity(extractionFields.city || text);
-  const district = matchDistrict(extractionFields.district || text, city?.id || "madinah");
+  const propertyLabel = safeTrim(extractionFields.propertyType || extended.propertyType);
+  const property = propertyLabel ? matchPropertyType(propertyLabel) : null;
+  const cityLabel = safeTrim(extractionFields.city);
+  const city = cityLabel ? matchCity(cityLabel) : null;
+  const districtLabel = safeTrim(extractionFields.district || extended.district);
+  const district = districtLabel
+    ? matchDistrict(districtLabel, city?.id || "madinah")
+    : matchDistrict(districtLabel || text, city?.id || "madinah");
+
+  const priceVal = extractionFields.priceOrBudget ?? extended.annualRent ?? extended.optionalMonthlyRentAfterSixMonths ?? "";
 
   return {
     operationTypeId: op?.id || "",
-    propertyTypeId: property?.id || (extractionFields.propertyType ? "other" : ""),
-    propertyTypeManual: property ? "" : safeTrim(extractionFields.propertyType),
+    propertyTypeId: property?.id || (propertyLabel ? "other" : ""),
+    propertyTypeManual: property ? "" : propertyLabel,
     cityId: city?.id || "",
-    cityManual: city ? "" : safeTrim(extractionFields.city),
+    cityManual: city ? "" : cityLabel,
     districtId: district?.id || "",
-    districtManual: district ? "" : safeTrim(extractionFields.district),
-    priceOrBudget: extractionFields.priceOrBudget ?? "",
-    area: extractionFields.area ?? "",
-    rooms: extractionFields.rooms ?? "",
+    districtManual: district ? "" : districtLabel,
+    priceOrBudget: priceVal === "" || priceVal == null ? "" : priceVal,
+    area: extractionFields.area ?? extended.area ?? "",
+    rooms: extractionFields.rooms ?? extended.rooms ?? "",
+    bathrooms: extended.bathrooms ?? extractionFields.bathrooms ?? "",
+    floorNumber: extended.floorNumber ?? extractionFields.floorNumber ?? "",
+    annualRent: extended.annualRent ?? "",
+    paymentInstallments: extended.paymentInstallments ?? "",
+    optionalMonthlyRent: extended.optionalMonthlyRentAfterSixMonths ?? "",
+    needsReview: meta.needsReview || extractionFields.needsReview || {},
     extractedSnapshot: {
       opportunityKind: extractionFields.opportunityKind || "",
       purpose: extractionFields.purpose || "",
-      propertyType: extractionFields.propertyType || "",
-      city: extractionFields.city || "",
-      district: extractionFields.district || ""
+      propertyType: propertyLabel,
+      city: cityLabel,
+      district: districtLabel,
+      transactionType: extended.transactionType || "",
+      bathrooms: extended.bathrooms ?? null,
+      floorNumber: extended.floorNumber ?? null,
+      annualRent: extended.annualRent ?? null
     }
   };
 }
@@ -256,10 +274,20 @@ export function reviewValuesToBrokerFields(review) {
     city: cityName === "مدينة أخرى" ? safeTrim(review.cityManual) : cityName,
     district: districtName,
     priceOrBudget: review.priceOrBudget === "" || review.priceOrBudget == null
-      ? null
+      ? (review.annualRent === "" || review.annualRent == null ? null : Number(review.annualRent))
       : Number(review.priceOrBudget),
     area: review.area === "" || review.area == null ? null : Number(review.area),
     rooms: review.rooms === "" || review.rooms == null ? null : Number(review.rooms),
+    bathrooms: review.bathrooms === "" || review.bathrooms == null ? null : Number(review.bathrooms),
+    floorNumber: review.floorNumber === "" || review.floorNumber == null ? null : Number(review.floorNumber),
+    annualRent: review.annualRent === "" || review.annualRent == null ? null : Number(review.annualRent),
+    paymentInstallments: review.paymentInstallments === "" || review.paymentInstallments == null
+      ? null
+      : Number(review.paymentInstallments),
+    optionalMonthlyRentAfterSixMonths: review.optionalMonthlyRentAfterSixMonths === ""
+      || review.optionalMonthlyRentAfterSixMonths == null
+      ? null
+      : Number(review.optionalMonthlyRentAfterSixMonths),
     reviewOperationTypeId: review.operationTypeId,
     reviewPropertyTypeId: review.propertyTypeId,
     reviewCityId: review.cityId,

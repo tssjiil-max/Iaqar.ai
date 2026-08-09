@@ -281,6 +281,8 @@ async function startExecute() {
     setState("reviewing");
     openOpportunityReview({
       fields: prepared.fields || {},
+      extended: prepared.extraction?.extended,
+      needsReview: prepared.extraction?.needsReview,
       sourceText: text,
       prepared
     }, approveFromReview);
@@ -313,7 +315,12 @@ async function approveFromReview(brokerExtras) {
       district: brokerExtras.district,
       priceOrBudget: brokerExtras.priceOrBudget,
       area: brokerExtras.area,
-      rooms: brokerExtras.rooms
+      rooms: brokerExtras.rooms,
+      bathrooms: brokerExtras.bathrooms,
+      floorNumber: brokerExtras.floorNumber,
+      annualRent: brokerExtras.annualRent,
+      paymentInstallments: brokerExtras.paymentInstallments,
+      optionalMonthlyRentAfterSixMonths: brokerExtras.optionalMonthlyRentAfterSixMonths
     };
 
     const prepared = await prepareOpportunityIntake({
