@@ -1153,6 +1153,17 @@
     position:relative;
   }
 
+  .office-logo-preview-wrap.identity-preview {
+    width:144px !important;
+    height:144px !important;
+    max-width:144px !important;
+    max-height:144px !important;
+    min-width:144px !important;
+    min-height:144px !important;
+    margin-inline:auto;
+    flex:0 0 144px !important;
+  }
+
   .identity-slot[data-image-variant="logo"] .identity-preview:not(.office-logo-preview-wrap) {
     max-height:96px;
     aspect-ratio:1 / 1;
@@ -1373,11 +1384,24 @@
 
   .pref-row span { font-size:12px; font-weight:700; flex:1; text-align:right; }
 
+  .pref-row .pref-switch {
+    display:block;
+    position:relative;
+    width:54px;
+    height:31px;
+    min-width:54px;
+    max-width:56px;
+    flex:0 0 54px;
+    box-sizing:border-box;
+  }
+
   .pref-switch {
     position:relative;
     width:54px;
     height:31px;
-    flex:0 0 auto;
+    flex:0 0 54px;
+    display:block;
+    box-sizing:border-box;
   }
 
   .pref-switch input {
