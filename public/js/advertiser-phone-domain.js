@@ -176,3 +176,64 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
     contactNotes: safeText(advertiser.contactNotes, 500)
   };
 }
+
+/** Unified read adapter for legacy and current advertiser phone fields. */
+export function readAdvertiserPhoneFromRecord(record = {}) {
+  const candidates = [
+    record.advertiserPhoneNormalized,
+    record.advertiserPhone,
+    record.ownerPhone,
+    record.contactPhone,
+    record.phone
+  ];
+  for (const value of candidates) {
+    const normalized = normalizeAdvertiserPhoneE164(value);
+    if (normalized) {
+      return {
+        phone: normalized,
+        raw: safeText(record.advertiserPhoneRaw || value, 40),
+        source: safeText(record.advertiserPhoneSource, 80),
+        role: safeText(record.advertiserRole, 20),
+        contactStatus: safeText(record.advertiserContactStatus, 30)
+      };
+    }
+  }
+  return {
+    phone: "",
+    raw: "",
+    source: safeText(record.advertiserPhoneSource, 80),
+    role: safeText(record.advertiserRole, 20),
+    contactStatus: safeText(record.advertiserContactStatus, 30)
+  };
+}
+
+export function buildAdvertiserContactSection(record = {}) {
+  const info = readAdvertiserPhoneFromRecord(record);
+  const rows = [];
+  rows.push({
+    label: "رقم الجوال",
+    value: info.phone || "لا يوجد رقم معلن محفوظ لهذه الفرصة"
+  });
+  if (info.role) {
+    rows.push({ label: "صفة المعلن", value: advertiserRoleLabel(info.role) });
+  }
+  if (info.source) {
+    rows.push({ label: "مصدر الرقم", value: info.source });
+  }
+  if (info.contactStatus) {
+    rows.push({ label: "حالة التواصل", value: advertiserContactStatusLabel(info.contactStatus) });
+  }
+  return { title: "بيانات المعلن", rows, phone: info.phone };
+}
+
+export function buildAdvertiserContactActions(record = {}) {
+  const info = readAdvertiserPhoneFromRecord(record);
+  const phone = info.phone;
+  const actions = [
+    { action: "call", label: "اتصال", phone, disabled: !phone },
+    { action: "whatsapp", label: "واتساب", phone, disabled: !phone },
+    { action: "copy", label: "نسخ الرقم", phone, disabled: !phone },
+    { action: "prep", label: "تجهيز رسالة الاستكمال", phone, disabled: false }
+  ];
+  return actions;
+}

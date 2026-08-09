@@ -324,6 +324,27 @@ export function buildSoftDeletePatch(existing, { now = new Date(), actorUid = ""
   };
 }
 
+export function validatePermanentDelete(record, { officeId = "" } = {}) {
+  if (!record) return { allowed: false, reason: "الفرصة غير موجودة" };
+  const currentOffice = safeText(officeId, 80);
+  const ownerOffice = safeText(record.officeId, 80);
+  const originOffice = safeText(record.originatingOfficeId, 80);
+  if (!currentOffice || ownerOffice !== currentOffice) {
+    return { allowed: false, reason: "لا يمكن حذف فرصة لا تملكها مكتبك" };
+  }
+  if (originOffice && originOffice !== currentOffice) {
+    return { allowed: false, reason: "هذه فرصة مشاركة من مكتب آخر" };
+  }
+  if (record.activeCooperationId) {
+    return { allowed: false, reason: "لا يمكن الحذف لوجود طلب تعاون نشط" };
+  }
+  const archived = isArchivedOpportunity(record);
+  if (!archived) {
+    return { allowed: false, reason: "انقل الفرصة إلى المؤرشفة قبل الحذف النهائي" };
+  }
+  return { allowed: true };
+}
+
 export function defaultSharePermissions() {
   return Object.freeze({
     readOnly: true,

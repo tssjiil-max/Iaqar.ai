@@ -438,6 +438,7 @@
     }
     .add-opportunity-execute.is-ready:not(:disabled) {
       background:var(--green);
+      color:#fff;
     }
     .add-opportunity-execute:disabled {
       opacity:1;
@@ -2240,6 +2241,21 @@
     </section>
   </div>
 
+  <div class="settings-overlay" id="permanentDeleteOverlay" hidden>
+    <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="permanentDeleteTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="permanentDeleteTitle">حذف نهائي</h2>
+          <p id="permanentDeleteMessage">سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟</p>
+        </div>
+      </div>
+      <div class="permanent-delete-actions">
+        <button type="button" class="bank-action" id="permanentDeleteCancel">إلغاء</button>
+        <button type="button" class="bank-action danger" id="permanentDeleteConfirm">حذف نهائي</button>
+      </div>
+    </section>
+  </div>
+
   <div class="settings-overlay" id="officeSettings" hidden>
     <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="officeSettingsTitle">
       <div class="settings-head">
@@ -2800,6 +2816,7 @@
 
     render();
   </script>
+  <script src="js/notification-navigation.js"></script>
   <script src="js/workflow-office.js"></script>
 </body>
 </html>

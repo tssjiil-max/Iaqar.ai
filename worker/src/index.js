@@ -676,8 +676,43 @@ async function handleBrokerApplication(request, env, requestId) {
       !email.includes("@") || falLicense.length < 6 || officeName.length < 4) {
     throw appError("invalid_broker_application", 400, "بيانات طلب الوسيط غير مكتملة");
   }
+  if (!/^\d{6,20}$/.test(falLicense)) {
+    throw appError("fal_invalid", 400, "رقم رخصة فال غير صالح");
+  }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  const phoneHash = await sha256Hex(phone);
+  const loginDirectory = await getFirestoreDocument({
+    projectId,
+    segments: ["loginDirectory", phoneHash],
+    accessToken,
+    allowMissing: true
+  });
+  if (loginDirectory) {
+    const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
+    if (existingLogin.uid && existingLogin.uid !== identity.sub) {
+      throw appError("phone_already_used", 409, "رقم الجوال مستخدم مسبقًا");
+    }
+  }
+  const pendingApps = await listCollectionDocuments({
+    projectId,
+    segments: ["brokerApplications"],
+    accessToken,
+    pageSize: 200
+  });
+  for (const doc of pendingApps) {
+    const row = firestoreFieldsToJs(doc.fields || {});
+    if (row.status !== "pending") continue;
+    if (String(row.email || "").toLowerCase() === email) {
+      throw appError("email_already_used", 409, "البريد مستخدم في طلب قائم");
+    }
+    if (String(row.falLicense || "").replace(/\D/g, "") === falLicense) {
+      throw appError("fal_already_used", 409, "رقم فال مستخدم في طلب قائم");
+    }
+    if (normalizeLoginPhone(row.phone) === phone) {
+      throw appError("phone_already_used", 409, "رقم الجوال مستخدم في طلب قائم");
+    }
+  }
   const applicationId = `broker_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
   const now = new Date();
   await setFirestoreDocument({
@@ -2619,13 +2654,23 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   else if(type==="broker_application"){
     params.set("adminApplications","1");
     if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
+  } else if(type==="message"||type==="conversation"){
+    if(safeRecordId)params.set("openMessage",safeRecordId);
+    else params.set("openNotifications","1");
+  } else if(safeRecordId.startsWith("opp_")){
+    params.set("openOpportunity",safeRecordId);
+  } else if(
+    safeRecordId.startsWith("coop_")
+    || type==="cooperation_request"
+    || type==="cooperation_response"
+  ){
+    if(safeRecordId)params.set("openCooperation",safeRecordId);
+    else params.set("openNotifications","1");
   } else if(
     type==="client_request"
     || type==="owner_offer"
     || type==="missing_data"
     || type==="operation"
-    || type==="cooperation_request"
-    || type==="cooperation_response"
     || type==="system"
     || String(safeRecordId).startsWith("op_")
   ){

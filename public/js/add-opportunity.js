@@ -108,6 +108,7 @@ function setBusy(busy) {
   if (input) input.disabled = busy;
   if (paperclip) paperclip.disabled = busy;
   if (clearBtn) clearBtn.disabled = busy;
+  if (!busy) updateClearButtonVisibility();
 }
 
 let lastFailure = null;

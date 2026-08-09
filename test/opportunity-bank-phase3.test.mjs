@@ -257,15 +257,16 @@ test("shell wires opportunity-bank module and keeps settings entry", () => {
   assert.ok(shell.includes("id=\"bankFilterArchived\""));
   assert.ok(shell.includes("id=\"opportunityBankDetail\""));
   assert.ok(shell.includes("id=\"bankLoadMoreBtn\""));
-  assert.ok(shell.includes("id=\"bankDeleteConfirm\"") || readRepositoryFile("public", "js", "opportunity-bank.js").includes("bankDeleteConfirm"));
+  assert.ok(shell.includes("id=\"permanentDeleteOverlay\"") || readRepositoryFile("public", "js", "opportunity-bank.js").includes("permanentDeleteOverlay"));
   assert.equal(/data-main=\"deals\"/.test(shell), false);
 });
 
 test("delete requires an explicit confirmation step in the bank UI", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("bankDeleteConfirm"));
-  assert.ok(bank.includes("تأكيد الحذف"));
-  assert.ok(bank.includes("bankDeleteConfirmBtn"));
+  const shell = readRepositoryFile("public", "index.html");
+  assert.ok(bank.includes("permanentDeleteOverlay") || shell.includes("id=\"permanentDeleteOverlay\""));
+  assert.ok(bank.includes("سيتم حذف هذه الفرصة نهائيًا"));
+  assert.ok(bank.includes("permanentDeleteConfirm"));
 });
 
 test("new Opportunity defaults to NOT_SHARED / لم تُشارك", () => {

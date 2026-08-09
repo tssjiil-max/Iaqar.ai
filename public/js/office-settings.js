@@ -940,7 +940,7 @@ async function createOfficeCardBlob() {
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
-  canvas.height = 1020;
+  canvas.height = 1080;
   const ctx = canvas.getContext("2d");
   const link = officeLink();
 
@@ -949,67 +949,68 @@ async function createOfficeCardBlob() {
 
   try {
     const platformLogo = await loadImage("/icons/icon-192.png");
-    drawImageContain(ctx, platformLogo, 502, 22, 44, 44);
+    drawImageContain(ctx, platformLogo, 48, 28, 40, 40);
   } catch (_) {}
 
   ctx.direction = "rtl";
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
   ctx.fillStyle = "#005C4B";
-  ctx.font = "700 26px Tajawal, Arial, sans-serif";
-  ctx.fillText("مكاتب عقارية ذكية", 540, 88);
-
-  ctx.fillStyle = "#E8F5E8";
-  roundedRect(ctx, 56, 108, 968, 70, 18);
-  ctx.fill();
-  ctx.fillStyle = "#087064";
-  ctx.font = "800 38px Tajawal, Arial, sans-serif";
-  ctx.fillText(current.officeName, 540, 156);
+  ctx.font = "600 22px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 108, 58);
 
   const displaySrc = current.displayImageUrl || current.logoUrl || "";
+  const imageCenterX = 540;
+  const imageY = 118;
   if (displaySrc) {
     try {
       const displayImg = await loadImage(displaySrc);
-      drawImageCover(ctx, displayImg, 80, 210, 148, 148, 22);
+      drawImageCover(ctx, displayImg, imageCenterX - 74, imageY, 148, 148, 22);
     } catch (_) {}
   }
 
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#073f35";
+  ctx.font = "800 42px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.officeName, imageCenterX, imageY + 196);
+
   ctx.textAlign = "right";
   ctx.fillStyle = "#073f35";
-  ctx.font = "700 34px Tajawal, Arial, sans-serif";
-  ctx.fillText(current.brokerName, 940, 248);
-  ctx.font = "600 26px Tajawal, Arial, sans-serif";
-  ctx.fillStyle = "#4a635c";
-  ctx.fillText("المرخص له", 940, 286);
+  ctx.font = "700 30px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.brokerName, 940, 360);
+  ctx.font = "500 22px Tajawal, Arial, sans-serif";
+  ctx.fillStyle = "#6a7d77";
+  ctx.fillText("المرخص له", 940, 396);
 
+  const specialty = specialtyText(current.specialties) || "—";
   const rows = [
     ["رخصة فال", current.licenseNumber],
     ["المدينة", current.city],
-    ["التخصص", specialtyText(current.specialties) || "—"]
+    ["التخصصات", specialty]
   ];
-  let rowY = 340;
+  let rowY = 450;
   for (const [label, value] of rows) {
     ctx.fillStyle = "#6a7d77";
     ctx.font = "500 24px Tajawal, Arial, sans-serif";
     ctx.fillText(label, 940, rowY);
     ctx.fillStyle = "#073f35";
     ctx.font = "700 28px Tajawal, Arial, sans-serif";
-    ctx.fillText(value, 700, rowY);
+    ctx.fillText(value || "—", 700, rowY);
     rowY += 52;
   }
 
-  drawQr(ctx, link, 96, 500, 220);
+  drawQr(ctx, link, 96, 620, 220);
   ctx.textAlign = "center";
   ctx.fillStyle = "#073f35";
   ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 740);
+  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 880);
 
   ctx.textAlign = "right";
   ctx.fillStyle = "#087064";
   ctx.font = "700 24px Tajawal, Arial, sans-serif";
-  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 820);
+  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 940);
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
-  ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 870);
+  ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
 
   return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
 }

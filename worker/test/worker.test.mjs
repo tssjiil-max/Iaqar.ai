@@ -865,6 +865,13 @@ test("Phase 5 boundaries allow drafts but never claim send or deals", async () =
   assert.equal(g.addsBottomNavigation, false);
 });
 
+test("opportunity notification links open opportunity detail", () => {
+  assert.equal(
+    buildNotificationLink({ officeId: "office-1", type: "match", recordId: "opp_abc" }),
+    "/?officeId=office-1&openOpportunity=opp_abc"
+  );
+});
+
 test("Phase 5 operation deep links open Operations Center records", () => {
   assert.equal(
     buildNotificationLink({ officeId: "office-1", type: "missing_data", recordId: "op_abc" }),

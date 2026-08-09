@@ -1437,12 +1437,100 @@
   }
 
   function notificationUrl(data = {}) {
-    if (data.url) return data.url;
+    if (window.IAQAR?.buildNotificationRelativeUrl) {
+      return window.IAQAR.buildNotificationRelativeUrl(data);
+    }
+    if (data.url && String(data.url).startsWith("/")) return data.url;
     const runtime = office();
     const params = new URLSearchParams({ officeId: runtime && runtime.officeId || "platform" });
     if (data.dealId) params.set("openDeal", data.dealId);
     else if (data.matchId || data.recordId) params.set("openMatch", data.matchId || data.recordId);
     return `/?${params.toString()}`;
+  }
+
+  function openNotificationCenter() {
+    const workspace = document.getElementById("workspace");
+    if (workspace) workspace.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
+  }
+
+  function navigateNotificationTarget(target) {
+    if (!target) return openNotificationCenter();
+    const user = window.firebase?.auth?.()?.currentUser;
+    if (!user) {
+      notify("سجل دخول المكتب لعرض هذا الإشعار");
+      return;
+    }
+    const runtime = office();
+    if (!runtime?.officeId) return;
+    const requestedOffice = String(target.officeId || "").trim();
+    if (requestedOffice && requestedOffice !== "platform" && requestedOffice !== runtime.officeId) {
+      notify("هذا الإشعار يخص مكتبًا آخر");
+      return openNotificationCenter();
+    }
+
+    switch (target.kind) {
+      case "opportunity":
+        if (target.id && window.IAQAR?.openOpportunityDetail) {
+          void window.IAQAR.openOpportunityDetail(target.id);
+        } else if (window.IAQAR?.openOpportunityBank) {
+          window.IAQAR.openOpportunityBank();
+        } else openNotificationCenter();
+        break;
+      case "cooperation":
+        if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
+        setTimeout(() => {
+          const panel = document.getElementById("bankIncomingRequests");
+          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 600);
+        break;
+      case "message":
+        if (target.id) {
+          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
+        } else openNotificationCenter();
+        break;
+      case "deal":
+        window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "deals" } }));
+        break;
+      case "match":
+        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
+          void window.IAQAR.openOpportunityDetail(target.id);
+        } else {
+          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
+        }
+        break;
+      case "operation":
+        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
+          void window.IAQAR.openOpportunityDetail(target.id);
+        } else if (target.id?.startsWith("coop_")) {
+          if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
+        } else {
+          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
+        }
+        break;
+      case "admin":
+        const params = new URLSearchParams();
+        params.set("office", "platform");
+        params.set("adminApplications", "1");
+        if (target.id) params.set("openBrokerApplication", target.id);
+        window.location.href = `/?${params.toString()}`;
+        break;
+      case "url":
+        const path = String(target.path || "");
+        if (path && path !== "/" && !path.includes("view=public")) {
+          window.location.href = path.startsWith("/") ? path : `/${path}`;
+        } else openNotificationCenter();
+        break;
+      case "center":
+      default:
+        openNotificationCenter();
+    }
+  }
+
+  function handleNotificationDeepLinkFromData(data = {}) {
+    if (window.IAQAR?.buildNotificationTargetFromData) {
+      navigateNotificationTarget(window.IAQAR.buildNotificationTargetFromData(data));
+    }
   }
 
   async function preferredFcmBridge() {
@@ -1810,12 +1898,17 @@
     if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
 
     const params = new URLSearchParams(location.search);
-    const openMatch = params.get("openMatch");
-    const openDeal = params.get("openDeal");
-    const openOperation = params.get("openOperation");
-    if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
-    if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
-    if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
+    const deepLink = window.IAQAR?.parseNotificationSearchParams?.(params);
+    if (deepLink) {
+      setTimeout(() => navigateNotificationTarget(deepLink), 900);
+    } else {
+      const openMatch = params.get("openMatch");
+      const openDeal = params.get("openDeal");
+      const openOperation = params.get("openOperation");
+      if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
+      if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
+      if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
+    }
   }
 
   window.addEventListener("beforeunload", stopLiveData);
