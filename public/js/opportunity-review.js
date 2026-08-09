@@ -1,0 +1,545 @@
+/**
+ * Opportunity review overlay — searchable catalog fields + advertiser data before final save.
+ */
+
+import {
+  CITIES,
+  DISTRICT_OTHER_ID,
+  DISTRICTS,
+  OPERATION_TYPES,
+  PROPERTY_TYPES,
+  buildReviewDefaults,
+  districtsForCity,
+  filterBySearch,
+  reviewValuesToBrokerFields
+} from "./reference-catalog.js";
+import {
+  ADVERTISER_CONTACT_STATUSES,
+  ADVERTISER_ROLES,
+  MARKETING_CONSENT_STATUSES,
+  buildAdvertiserCompletionMessage,
+  extractAdvertiserPhonesFromText,
+  normalizeAdvertiserPhoneE164,
+  whatsappDigitsFromE164
+} from "./advertiser-phone-domain.js";
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+let activeDraft = null;
+let onApproveCallback = null;
+let advertiserExtractedAuto = false;
+let advertiserCandidates = [];
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function officeContext() {
+  return window.IAQAR?.office || {};
+}
+
+function e164ToLocalInput(e164) {
+  const digits = String(e164 || "").replace(/\D/g, "");
+  if (/^9665\d{8}$/.test(digits)) return digits.slice(3);
+  if (/^05\d{8}$/.test(digits)) return digits.slice(1);
+  if (/^5\d{8}$/.test(digits)) return digits;
+  return "";
+}
+
+function closeReview() {
+  const overlay = $("opportunityReviewOverlay");
+  if (!overlay) return;
+  overlay.hidden = true;
+  document.body.style.overflow = "";
+  window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+  activeDraft = null;
+  advertiserExtractedAuto = false;
+  advertiserCandidates = [];
+  closeAdvertiserMessageModal();
+}
+
+function closeAdvertiserMessageModal() {
+  const modal = $("advertiserMessageOverlay");
+  if (modal) modal.hidden = true;
+}
+
+function openReviewOverlay(draft, onApprove) {
+  const overlay = $("opportunityReviewOverlay");
+  if (!overlay) return;
+  activeDraft = draft;
+  onApproveCallback = onApprove;
+  advertiserCandidates = extractAdvertiserPhonesFromText(draft.sourceText || "");
+  advertiserExtractedAuto = advertiserCandidates.length > 0;
+  const defaults = buildReviewDefaults(
+    draft.fields || {},
+    draft.sourceText || "",
+    {
+      extended: draft.extended || draft.fields?.extended,
+      needsReview: draft.needsReview || draft.fields?.needsReview
+    }
+  );
+  renderReviewForm(defaults);
+  overlay.hidden = false;
+  document.body.style.overflow = "hidden";
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "opportunityReviewOverlay" } }));
+}
+
+function reviewLabel(name, label, needsReview) {
+  const flag = needsReview && needsReview[name];
+  return flag ? `${label} (يحتاج مراجعة)` : label;
+}
+
+function renderAdvertiserSection(defaults) {
+  const primary = advertiserCandidates.length === 1 ? advertiserCandidates[0] : null;
+  const localPhone = primary ? e164ToLocalInput(primary.advertiserPhoneNormalized) : "";
+  const roleOptions = ADVERTISER_ROLES.map((r) =>
+    `<option value="${r.id}" ${r.id === "UNKNOWN" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const contactOptions = ADVERTISER_CONTACT_STATUSES.map((r) =>
+    `<option value="${r.id}" ${r.id === "NOT_CONTACTED" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const marketingOptions = MARKETING_CONSENT_STATUSES.map((r) =>
+    `<option value="${r.id}" ${r.id === "NOT_STARTED" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const multiPick = advertiserCandidates.length > 1
+    ? `<div class="advertiser-phone-multi">
+        <span>تم العثور على ${advertiserCandidates.length} أرقام — اختر للمراجعة:</span>
+        <select id="advertiserPhonePick" class="advertiser-phone-pick">
+          ${advertiserCandidates.map((c, i) =>
+            `<option value="${i}" ${i === 0 ? "selected" : ""}>${escapeHtml(c.advertiserPhoneNormalized)}</option>`
+          ).join("")}
+        </select>
+      </div>`
+    : "";
+
+  return `
+    <section class="review-advertiser-card" aria-labelledby="reviewAdvertiserTitle">
+      <h3 id="reviewAdvertiserTitle">بيانات المعلن</h3>
+      ${multiPick}
+      <label class="review-field advertiser-phone-field">
+        <span>رقم جوال المعلن</span>
+        <div class="advertiser-phone-row">
+          <span class="advertiser-phone-prefix" aria-hidden="true">+966</span>
+          <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="9"
+            placeholder="5XXXXXXXX" value="${escapeHtml(localPhone)}"
+            aria-label="رقم جوال المعلن بدون مفتاح الدولة">
+        </div>
+        <small class="advertiser-extracted-hint" id="advertiserPhoneExtractedHint"
+          ${advertiserExtractedAuto && localPhone ? "" : "hidden"}>تم استخراجه من الإعلان</small>
+      </label>
+      <label class="review-field">
+        <span>صفة المعلن</span>
+        <select name="advertiserRole">${roleOptions}</select>
+      </label>
+      <label class="review-field">
+        <span>حالة التواصل</span>
+        <select name="advertiserContactStatus">${contactOptions}</select>
+      </label>
+      <label class="review-field">
+        <span>حالة استكمال إجراءات التسويق</span>
+        <select name="marketingConsentStatus">${marketingOptions}</select>
+      </label>
+      <button type="button" class="review-advertiser-prep" id="advertiserPrepMessageBtn"
+        ${localPhone ? "" : "disabled"}>تجهيز رسالة الاستكمال</button>
+    </section>
+  `;
+}
+
+function renderReviewForm(defaults) {
+  const body = $("opportunityReviewBody");
+  if (!body) return;
+  const needs = defaults.needsReview || {};
+  const snapshotLines = [
+    defaults.extractedSnapshot?.transactionType,
+    defaults.extractedSnapshot?.propertyType,
+    defaults.extractedSnapshot?.district,
+    defaults.extractedSnapshot?.annualRent ? `${defaults.extractedSnapshot.annualRent} ريال سنوي` : ""
+  ].filter(Boolean);
+
+  body.innerHTML = `
+    <p class="review-hint">راجع القيم المستخرجة وعدّل ما يلزم قبل الحفظ النهائي.</p>
+    ${snapshotLines.length
+      ? `<p class="review-extracted">مستخرَج: ${escapeHtml(snapshotLines.join(" — "))}</p>` : ""}
+    <form id="opportunityReviewForm" class="review-form" autocomplete="off">
+      ${searchField("operationTypeId", reviewLabel("transactionType", "نوع العملية", needs), OPERATION_TYPES, defaults.operationTypeId, "label")}
+      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label")}
+      ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
+      ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
+      ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
+      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
+      ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+      ${numericField("annualRent", reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs), defaults.annualRent || defaults.priceOrBudget)}
+      ${numericField("optionalMonthlyRent", "الإيجار الشهري الاختياري (ريال)", defaults.optionalMonthlyRent)}
+      ${numericField("paymentInstallments", reviewLabel("paymentInstallments", "عدد الدفعات", needs), defaults.paymentInstallments)}
+      ${numericField("priceOrBudget", "السعر / الميزانية (ريال)", defaults.priceOrBudget)}
+      ${numericField("area", reviewLabel("area", "المساحة (م²)", needs), defaults.area)}
+      ${numericField("rooms", reviewLabel("rooms", "عدد الغرف", needs), defaults.rooms)}
+      ${numericField("bathrooms", reviewLabel("bathrooms", "دورات المياه", needs), defaults.bathrooms)}
+      ${numericField("floorNumber", reviewLabel("floorNumber", "رقم الدور / الطابق", needs), defaults.floorNumber)}
+      ${renderAdvertiserSection(defaults)}
+      <div class="review-actions">
+        <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
+        <button type="button" class="review-cancel" id="opportunityReviewCancel">إلغاء</button>
+      </div>
+      <p class="review-status" id="opportunityReviewStatus" role="status"></p>
+    </form>
+  `;
+
+  wireSearchFields(body);
+  wireAdvertiserSection();
+  const form = $("opportunityReviewForm");
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitReview();
+  });
+  $("opportunityReviewCancel")?.addEventListener("click", () => closeReview());
+}
+
+function wireAdvertiserSection() {
+  const phoneInput = document.querySelector('input[name="advertiserPhoneLocal"]');
+  const hint = $("advertiserPhoneExtractedHint");
+  const prepBtn = $("advertiserPrepMessageBtn");
+  const pick = $("advertiserPhonePick");
+
+  const syncPrepState = () => {
+    const local = (phoneInput?.value || "").replace(/\D/g, "");
+    const valid = /^5\d{8}$/.test(local);
+    if (prepBtn) prepBtn.disabled = !valid;
+  };
+
+  phoneInput?.addEventListener("input", () => {
+    advertiserExtractedAuto = false;
+    if (hint) hint.hidden = true;
+    syncPrepState();
+  });
+
+  pick?.addEventListener("change", () => {
+    const idx = Number(pick.value);
+    const candidate = advertiserCandidates[idx];
+    if (candidate && phoneInput) {
+      phoneInput.value = e164ToLocalInput(candidate.advertiserPhoneNormalized);
+      advertiserExtractedAuto = true;
+      if (hint) hint.hidden = false;
+      syncPrepState();
+    }
+  });
+
+  prepBtn?.addEventListener("click", () => openAdvertiserMessageModal());
+  syncPrepState();
+}
+
+function readAdvertiserForm() {
+  const form = $("opportunityReviewForm");
+  if (!form) return {};
+  const data = Object.fromEntries(new FormData(form).entries());
+  const local = String(data.advertiserPhoneLocal || "").replace(/\D/g, "");
+  const normalized = /^5\d{8}$/.test(local) ? normalizeAdvertiserPhoneE164(local) : "";
+  const primary = advertiserCandidates.length === 1 ? advertiserCandidates[0] : null;
+  return {
+    advertiserPhoneRaw: normalized
+      ? (primary?.advertiserPhoneRaw || `0${local}`)
+      : "",
+    advertiserPhoneNormalized: normalized,
+    advertiserPhoneSource: normalized && advertiserExtractedAuto
+      ? (primary?.advertiserPhoneSource || "text_extraction")
+      : (normalized ? "manual_entry" : ""),
+    advertiserPhoneEvidence: normalized && advertiserExtractedAuto
+      ? (primary?.advertiserPhoneEvidence || "")
+      : "",
+    advertiserRole: data.advertiserRole || "UNKNOWN",
+    advertiserContactStatus: data.advertiserContactStatus || "NOT_CONTACTED",
+    marketingConsentStatus: data.marketingConsentStatus || "NOT_STARTED",
+    lastContactAt: null,
+    contactNotes: ""
+  };
+}
+
+function currentReviewPropertyLabels() {
+  const form = $("opportunityReviewForm");
+  if (!form) return {};
+  const propertyTypeInput = form.querySelector('[data-search-for="propertyTypeId"]');
+  const districtInput = form.querySelector('[data-search-for="districtId"]');
+  const cityInput = form.querySelector('[data-search-for="cityId"]');
+  return {
+    propertyType: propertyTypeInput?.value || activeDraft?.fields?.propertyType || "",
+    district: districtInput?.value || activeDraft?.fields?.district || "",
+    city: cityInput?.value || activeDraft?.fields?.city || ""
+  };
+}
+
+function openAdvertiserMessageModal() {
+  const advertiser = readAdvertiserForm();
+  if (!advertiser.advertiserPhoneNormalized) return;
+  const office = officeContext();
+  const labels = currentReviewPropertyLabels();
+  const message = buildAdvertiserCompletionMessage({
+    brokerName: office.brokerName || office.displayBroker || "",
+    officeName: office.officeName || office.displayName || "",
+    licenseNumber: office.licenseNumber || office.falLicense || "",
+    propertyType: labels.propertyType,
+    district: labels.district,
+    city: labels.city
+  });
+  const modal = $("advertiserMessageOverlay");
+  const target = $("advertiserMessageTarget");
+  const textarea = $("advertiserMessageText");
+  if (!modal || !textarea) return;
+  if (target) target.textContent = advertiser.advertiserPhoneNormalized;
+  textarea.value = message;
+  modal.hidden = false;
+}
+
+function wireAdvertiserMessageModal() {
+  const modal = $("advertiserMessageOverlay");
+  if (!modal || modal.dataset.bound === "1") return;
+  modal.dataset.bound = "1";
+  const textarea = $("advertiserMessageText");
+  $("advertiserMessageCopy")?.addEventListener("click", () => {
+    void navigator.clipboard?.writeText(textarea?.value || "");
+  });
+  $("advertiserMessageWhatsApp")?.addEventListener("click", () => {
+    const advertiser = readAdvertiserForm();
+    const digits = whatsappDigitsFromE164(advertiser.advertiserPhoneNormalized);
+    if (!digits) return;
+    const url = `https://wa.me/${digits}?text=${encodeURIComponent(textarea?.value || "")}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    const statusSelect = document.querySelector('select[name="advertiserContactStatus"]');
+    if (statusSelect) statusSelect.value = "OPENED_WHATSAPP";
+    window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
+      detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
+    }));
+    closeAdvertiserMessageModal();
+  });
+  $("advertiserMessageCancel")?.addEventListener("click", () => closeAdvertiserMessageModal());
+  $("advertiserMessageClose")?.addEventListener("click", () => closeAdvertiserMessageModal());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeAdvertiserMessageModal();
+  });
+}
+
+function districtOptions(cityId) {
+  const list = districtsForCity(cityId || "madinah");
+  return [
+    ...list,
+    {
+      id: DISTRICT_OTHER_ID,
+      officialName: "حي آخر / غير موجود في القائمة",
+      label: "حي آخر / غير موجود في القائمة"
+    }
+  ];
+}
+
+function searchField(name, label, items, selectedId, labelKey = "label", districtManual = "") {
+  const selected = items.find((i) => i.id === selectedId);
+  const display = selected
+    ? escapeHtml(selected[labelKey] || selected.label || "")
+    : (name === "districtId" && selectedId === DISTRICT_OTHER_ID
+      ? "حي آخر / غير موجود في القائمة"
+      : "");
+  return `
+    <label class="search-field" data-field="${name}">
+      <span>${label}</span>
+      <input type="text" class="search-select-input" data-search-for="${name}" placeholder="ابحث أو اختر…" value="${display}">
+      <input type="hidden" name="${name}" value="${escapeHtml(selectedId || "")}">
+      <ul class="search-select-list" data-list-for="${name}" hidden></ul>
+    </label>
+  `;
+}
+
+function manualField(name, label, value, visible) {
+  return `
+    <label class="review-manual" data-manual-for="${name.replace("Manual", "Id")}" ${visible ? "" : "hidden"}>
+      <span>${label}</span>
+      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80">
+    </label>
+  `;
+}
+
+function numericField(name, label, value) {
+  const display = value === "" || value == null ? "" : String(value);
+  return `
+    <label class="review-field">
+      <span>${label}</span>
+      <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal">
+    </label>
+  `;
+}
+
+function wireSearchFields(root) {
+  root.querySelectorAll(".search-select-input").forEach((input) => {
+    const field = input.dataset.searchFor;
+    const list = root.querySelector(`[data-list-for="${field}"]`);
+    const hidden = root.querySelector(`input[name="${field}"]`);
+    const items = field === "districtId"
+      ? districtOptions(root.querySelector('input[name="cityId"]')?.value || "madinah")
+      : field === "operationTypeId" ? OPERATION_TYPES
+        : field === "propertyTypeId" ? PROPERTY_TYPES
+          : CITIES;
+
+    const render = (query = "") => {
+      const labelKey = field === "districtId" ? "officialName" : "label";
+      const filtered = filterBySearch(query, items, labelKey).slice(0, 40);
+      list.innerHTML = filtered.map((item) =>
+        `<li><button type="button" data-pick-id="${escapeHtml(item.id)}" data-pick-label="${escapeHtml(item[labelKey] || item.label || "")}">${escapeHtml(item[labelKey] || item.label || "")}</button></li>`
+      ).join("");
+      list.hidden = filtered.length === 0;
+    };
+
+    input.addEventListener("focus", () => {
+      render(input.value);
+      list.hidden = false;
+    });
+    input.addEventListener("input", () => render(input.value));
+    list.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-pick-id]");
+      if (!btn) return;
+      hidden.value = btn.dataset.pickId || "";
+      input.value = btn.dataset.pickLabel || "";
+      list.hidden = true;
+      syncManualVisibility(root);
+      if (field === "cityId") refreshDistrictField(root);
+    });
+    document.addEventListener("click", (event) => {
+      if (!input.parentElement.contains(event.target)) list.hidden = true;
+    });
+  });
+}
+
+function refreshDistrictField(root) {
+  const districtInput = root.querySelector('[data-search-for="districtId"]');
+  const districtHidden = root.querySelector('input[name="districtId"]');
+  if (districtInput) districtInput.value = "";
+  if (districtHidden) districtHidden.value = "";
+  const list = root.querySelector('[data-list-for="districtId"]');
+  if (list) list.innerHTML = "";
+  syncManualVisibility(root);
+}
+
+function syncManualVisibility(root) {
+  const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value;
+  const cityId = root.querySelector('input[name="cityId"]')?.value;
+  const districtId = root.querySelector('input[name="districtId"]')?.value;
+  const propManual = root.querySelector('[data-manual-for="propertyTypeId"]');
+  const cityManual = root.querySelector('[data-manual-for="cityId"]');
+  const distManual = root.querySelector('[data-manual-for="districtId"]');
+  if (propManual) propManual.hidden = propertyId !== "other";
+  if (cityManual) cityManual.hidden = cityId !== "other";
+  if (distManual) distManual.hidden = districtId !== DISTRICT_OTHER_ID;
+}
+
+function readReviewForm() {
+  const form = $("opportunityReviewForm");
+  if (!form) return null;
+  const data = Object.fromEntries(new FormData(form).entries());
+  return {
+    operationTypeId: data.operationTypeId || "",
+    propertyTypeId: data.propertyTypeId || "",
+    propertyTypeManual: data.propertyTypeManual || "",
+    cityId: data.cityId || "",
+    cityManual: data.cityManual || "",
+    districtId: data.districtId || "",
+    districtManual: data.districtManual || "",
+    priceOrBudget: data.priceOrBudget || data.annualRent || "",
+    area: data.area || "",
+    rooms: data.rooms || "",
+    bathrooms: data.bathrooms || "",
+    floorNumber: data.floorNumber || "",
+    annualRent: data.annualRent || "",
+    paymentInstallments: data.paymentInstallments || "",
+    optionalMonthlyRentAfterSixMonths: data.optionalMonthlyRent || "",
+    extractedSnapshot: activeDraft?.fields ? {
+      opportunityKind: activeDraft.fields.opportunityKind || "",
+      purpose: activeDraft.fields.purpose || "",
+      propertyType: activeDraft.fields.propertyType || "",
+      city: activeDraft.fields.city || "",
+      district: activeDraft.fields.district || ""
+    } : null
+  };
+}
+
+function setReviewStatus(message, isError = false) {
+  const node = $("opportunityReviewStatus");
+  if (!node) return;
+  node.textContent = message;
+  node.classList.toggle("is-error", isError);
+}
+
+async function submitReview() {
+  const review = readReviewForm();
+  if (!review) return;
+  if (!review.operationTypeId) return setReviewStatus("اختر نوع العملية", true);
+  if (!review.propertyTypeId) return setReviewStatus("اختر نوع العقار", true);
+  if (review.propertyTypeId === "other" && !review.propertyTypeManual.trim()) {
+    return setReviewStatus("اكتب نوع العقار", true);
+  }
+  if (!review.cityId) return setReviewStatus("اختر المدينة", true);
+  if (review.cityId === "other" && !review.cityManual.trim()) {
+    return setReviewStatus("اكتب المدينة", true);
+  }
+  if (!review.districtId) return setReviewStatus("اختر الحي", true);
+  if (review.districtId === DISTRICT_OTHER_ID && !review.districtManual.trim()) {
+    return setReviewStatus("اكتب اسم الحي", true);
+  }
+
+  const approveBtn = $("opportunityReviewApprove");
+  if (approveBtn) {
+    approveBtn.disabled = true;
+    approveBtn.textContent = "جارٍ الحفظ…";
+  }
+  setReviewStatus("");
+
+  try {
+    const brokerExtras = reviewValuesToBrokerFields(review);
+    const advertiser = readAdvertiserForm();
+    if (typeof onApproveCallback === "function") {
+      await onApproveCallback(brokerExtras, review, advertiser);
+    }
+    closeReview();
+  } catch (error) {
+    console.warn("[iaqar] review approve", error);
+    setReviewStatus("تعذر الحفظ. حاول مرة أخرى.", true);
+  } finally {
+    if (approveBtn) {
+      approveBtn.disabled = false;
+      approveBtn.textContent = "اعتماد وحفظ";
+    }
+  }
+}
+
+function bootReviewOverlay() {
+  const overlay = $("opportunityReviewOverlay");
+  if (!overlay || overlay.dataset.bound === "1") return;
+  overlay.dataset.bound = "1";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeReview();
+  });
+  $("opportunityReviewClose")?.addEventListener("click", () => closeReview());
+  wireAdvertiserMessageModal();
+  window.addEventListener("iaqar:opportunity-review-closed", () => {
+    overlay.hidden = true;
+    document.body.style.overflow = "";
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootReviewOverlay, { once: true });
+} else {
+  bootReviewOverlay();
+}
+
+export function openOpportunityReview(draft, onApprove) {
+  openReviewOverlay(draft, onApprove);
+}
+
+export const __test = {
+  buildReviewDefaults,
+  reviewValuesToBrokerFields,
+  readReviewForm,
+  extractAdvertiserPhonesFromText
+};

@@ -79,21 +79,44 @@
       overflow:visible;
     }
 
-    /* الترويسة: الشعار يمين والجرس يسار كما في المرجع */
+    /* الترويسة: الشعار يمين وعنوان متوازن */
     .header {
-      min-height:92px;
-      padding:10px 14px;
+      min-height:74px;
+      padding:8px 12px;
       display:grid;
-      grid-template-columns:58px minmax(0,1fr) 46px;
-      grid-template-areas:"logo title bell";
+      grid-template-columns:52px minmax(0,1fr);
+      grid-template-areas:"logo title";
       align-items:center;
       gap:8px;
+      background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
+      position:relative;
     }
+
+    .header-back {
+      position:absolute;
+      left:10px;
+      top:50%;
+      transform:translateY(-50%);
+      width:34px;
+      height:34px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+      color:var(--green);
+      display:grid;
+      place-items:center;
+      box-shadow:0 4px 12px rgba(0,63,52,.06);
+      z-index:2;
+    }
+
+    .header-back[hidden] { display:none; }
+
+    .header-back .icon { width:18px;height:18px; }
 
     .site-logo {
       grid-area:logo;
-      width:58px;
-      height:66px;
+      width:52px;
+      height:58px;
       padding:0;
       border:0;
       border-radius:0;
@@ -104,8 +127,8 @@
     }
 
     .site-logo img {
-      width:58px;
-      height:66px;
+      width:52px;
+      height:58px;
       object-fit:contain;
       display:block;
       filter:drop-shadow(0 3px 5px rgba(0,63,52,.10));
@@ -133,99 +156,47 @@
       font-weight:800;
     }
 
-    .bell {
-      grid-area:bell;
-      width:46px;
-      height:46px;
-      border:1px solid var(--line);
-      border-radius:17px;
-      background:#fff;
-      color:var(--green);
-      display:grid;
-      place-items:center;
-      position:relative;
-      box-shadow:0 5px 14px rgba(0,63,52,.05);
+    /* بطاقة المكتب */
+    .license { margin-top:11px; }
+
+    .office-body { padding:12px 12px 11px; }
+
+    .office-name-bar {
+      margin-bottom:8px;
     }
 
-    .bell .icon { width:20px;height:20px; }
-    .bell::after {
-      content:"";
-      position:absolute;
-      top:8px;
-      right:8px;
-      width:8px;
-      height:8px;
-      border-radius:50%;
-      background:#C62828;
-      border:2px solid #fff;
-    }
-
-    /* بطاقة فال */
-    .license { margin-top:14px; }
-
-    .license-banner {
-      min-height:104px;
-      padding:15px 17px;
-      background:linear-gradient(135deg,var(--green),var(--green-2));
-      color:#fff;
-      display:grid;
-      grid-template-columns:minmax(0,1fr) auto;
-      grid-template-areas:"license-title verify";
-      align-items:center;
-      gap:10px;
-    }
-
-    .license-banner h2 {
-      grid-area:license-title;
+    .office-name-bar h3 {
       margin:0;
-      font-size:14px;
-      line-height:1.65;
+      color:var(--green);
+      font-size:17px;
+      line-height:1.3;
       font-weight:800;
     }
-
-    .verified {
-      grid-area:verify;
-      min-height:43px;
-      padding:8px 11px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.30);
-      background:rgba(255,255,255,.10);
-      display:flex;
-      align-items:center;
-      gap:7px;
-      white-space:nowrap;
-      font-size:12px;
-      font-weight:800;
-    }
-
-    .verified .icon { width:17px;height:17px; }
-
-    .office-body { padding:17px 17px 16px; }
 
     .office-main {
       display:grid;
-      grid-template-columns:94px minmax(0,1fr);
+      grid-template-columns:minmax(0,1fr) 58px;
       align-items:center;
-      gap:14px;
+      gap:8px;
     }
 
     .office-logo {
-      width:94px;
-      height:108px;
-      padding:10px;
+      width:58px;
+      height:66px;
+      padding:0;
       border:2px dashed #C9D6D0;
-      border-radius:19px;
+      border-radius:16px;
       background:#FCFDFC;
-      display:grid;
-      place-items:center;
-      align-content:center;
-      gap:5px;
+      display:block;
+      overflow:hidden;
     }
 
     .office-logo img {
-      width:57px;
-      height:57px;
-      object-fit:contain;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      border-radius:14px;
     }
 
     .office-logo span {
@@ -234,24 +205,104 @@
       font-weight:700;
     }
 
-    .office-info h3 {
-      margin:0 0 8px;
-      color:var(--green);
-      font-size:21px;
-      line-height:1.3;
-      font-weight:800;
+    .office-info {
+      min-width:0;
+      text-align:right;
+      direction:rtl;
     }
 
     .office-line {
-      margin-top:5px;
-      color:var(--muted);
-      font-size:13px;
-      line-height:1.65;
+      margin-top:4px;
+      color:#6b7570;
+      font-size:12px;
+      line-height:1.55;
     }
 
     .office-line strong {
       color:var(--text);
       font-weight:800;
+    }
+
+    .office-license-line {
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+
+    .license-verify-icon {
+      width:15px;
+      height:15px;
+      color:var(--success);
+      flex-shrink:0;
+      fill:none;
+      stroke:none;
+    }
+
+    .license-verify-icon circle {
+      fill:var(--success);
+    }
+
+    .license-verify-icon path {
+      fill:none;
+      stroke:#fff;
+      stroke-width:2.2;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+    }
+
+    .section-title-bar {
+      padding:9px 12px;
+      border-radius:14px;
+      background:var(--green-soft);
+      text-align:center;
+    }
+
+    .section-title-bar h2 {
+      margin:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      color:var(--green);
+      font-size:16px;
+      font-weight:800;
+      line-height:1.35;
+    }
+
+    .workspace-count-badge {
+      min-width:18px;
+      height:18px;
+      padding:0 5px;
+      border-radius:999px;
+      background:var(--green);
+      color:#fff;
+      font-size:10px;
+      font-weight:800;
+      line-height:18px;
+      text-align:center;
+    }
+
+    .services-bar {
+      margin-top:11px;
+      padding:0;
+      overflow:hidden;
+    }
+
+    .services-bar-inner {
+      min-height:40px;
+      padding:8px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      color:var(--success);
+      background:#E8F5E8;
+      font-size:12px;
+      font-weight:800;
+      text-align:center;
+      line-height:1.45;
     }
 
     .status-row {
@@ -298,99 +349,114 @@
     }
 
 
-    /* إضافة فرصة — بوابة الإدخال الموحدة (المرحلة 2) */
+    /* إضافة فرصة — مدمج في آخر الصفحة */
     .add-opportunity {
-      margin-top:13px;
-      padding:16px;
+      margin-top:20px;
+      padding:7px 8px 8px;
     }
-    .add-opportunity-head {
-      display:flex;
-      align-items:center;
-      gap:10px;
-      margin-bottom:12px;
+    .add-opportunity .section-title-bar {
+      padding:7px 10px;
     }
-    .add-opportunity-head h2 {
-      margin:0;
-      color:var(--green);
-      font-size:20px;
-      font-weight:800;
-    }
-    .add-opportunity-head p {
-      margin:3px 0 0;
-      color:var(--muted);
-      font-size:11px;
-    }
+    .add-opportunity .section-title-bar h2 { font-size:14px; }
     .add-opportunity-row {
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) 104px;
+      gap:8px;
+      align-items:center;
+      margin-top:6px;
+    }
+    .add-opportunity-input-wrap {
+      position:relative;
       display:flex;
       align-items:center;
-      gap:8px;
-    }
-    .add-opportunity-row input[type=text] {
-      flex:1;
       min-width:0;
-      height:44px;
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:0 12px;
+    }
+    .add-opportunity-input-wrap input[type=text] {
+      width:100%;
+      min-width:0;
+      height:52px;
+      border:1px solid #c8d6cf;
+      border-radius:12px;
+      padding:0 40px 0 36px;
       background:#fff;
       color:var(--text);
       font-size:13px;
     }
-    .add-opportunity-icon-btn,
-    .add-opportunity-submit {
-      width:44px;
-      height:44px;
-      border-radius:14px;
-      border:1px solid var(--line);
-      background:#fff;
+    .add-opportunity-input-wrap input[type=text]:focus {
+      outline:none;
+      border-color:rgba(0,92,75,.42);
+      box-shadow:0 0 0 2px rgba(0,92,75,.08);
+    }
+    .add-opportunity-inline-clip {
+      position:absolute;
+      right:4px;
+      top:50%;
+      transform:translateY(-50%);
+      width:26px;
+      height:26px;
+      border:0;
+      border-radius:8px;
+      background:var(--green-pale);
       color:var(--green);
       display:grid;
       place-items:center;
-      flex:0 0 auto;
       cursor:pointer;
     }
-    .add-opportunity-submit {
-      width:auto;
-      min-width:44px;
-      padding:0 14px;
+    .add-opportunity-input-clear {
+      position:absolute;
+      left:4px;
+      top:50%;
+      transform:translateY(-50%);
+      width:24px;
+      height:24px;
       border:0;
-      background:var(--green);
-      color:#fff;
+      border-radius:8px;
+      background:transparent;
+      color:var(--muted);
+      font-size:16px;
+      line-height:1;
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+    }
+    .add-opportunity-input-clear[hidden] { display:none; }
+    .add-opportunity-input-clear:disabled { opacity:.45; cursor:default; }
+    .add-opportunity-inline-clip:disabled { opacity:.55; }
+    .add-opportunity-inline-clip .icon { width:14px;height:14px; }
+    .add-opportunity-execute {
+      width:100%;
+      height:52px;
+      min-height:52px;
+      border-radius:12px;
+      padding:0 10px;
       font-size:12px;
       font-weight:800;
+      cursor:pointer;
+      border:0;
+      background:#b8c9c0;
+      color:#fff;
     }
-    .add-opportunity-submit:disabled,
-    .add-opportunity-icon-btn:disabled {
-      opacity:.55;
+    .add-opportunity-execute.is-ready:not(:disabled) {
+      background:var(--green);
+      color:#fff;
+    }
+    .add-opportunity-execute:disabled {
+      opacity:1;
       cursor:default;
     }
-    .add-opportunity-file-chip {
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      margin-top:8px;
-      padding:6px 10px;
-      border-radius:999px;
-      background:var(--green-pale);
-      color:var(--green);
-      font-size:11px;
-      font-weight:700;
-      max-width:100%;
-    }
-    .add-opportunity-file-chip button {
-      border:0;
-      background:transparent;
-      color:#8b2f2a;
-      cursor:pointer;
-      font-size:11px;
-      font-weight:800;
-    }
-    .add-opportunity-status {
-      margin:8px 1px 0;
-      min-height:16px;
+    .add-opportunity-attachment-hint {
+      margin:4px 2px 0;
       color:var(--muted);
-      font-size:11px;
-      line-height:1.5;
+      font-size:10px;
+      line-height:1.4;
+    }
+    .add-opportunity-attachment-hint[hidden] { display:none; }
+    .add-opportunity-status {
+      margin:6px 1px 0;
+      min-height:14px;
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.45;
     }
     .add-opportunity-status.is-error { color:#a1332c; }
     .add-opportunity-status.is-done { color:var(--success); }
@@ -460,62 +526,48 @@
 
     /* مساحة العمل */
     .workspace {
-      margin-top:13px;
-      padding:16px;
+      margin-top:10px;
+      padding:18px 18px 22px;
     }
 
-    .workspace-head {
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-    }
-
-    .workspace-title {
-      display:flex;
-      align-items:center;
-      gap:10px;
-    }
-
-    .workspace-symbol {
-      width:43px;
-      height:43px;
-      border:1px solid var(--line);
-      border-radius:14px;
-      background:#fff;
-      color:var(--green);
-      display:grid;
-      place-items:center;
-    }
-
-    .workspace-symbol .icon { width:22px;height:22px; }
-
-    .workspace h2 {
-      margin:0;
-      color:var(--green);
-      font-size:22px;
-      font-weight:800;
-    }
-
-    .workspace p.subtitle {
-      margin:3px 0 0;
+    .workspace-subtitle {
+      margin:12px 0 0;
       color:var(--muted);
-      font-size:11px;
-    }
-
-    .total {
-      min-width:40px;
-      height:40px;
-      padding:0 8px;
-      border-radius:13px;
-      background:var(--green);
-      color:#fff;
-      display:grid;
-      place-items:center;
       font-size:13px;
-      font-weight:800;
+      line-height:1.5;
+      text-align:center;
     }
 
+    .workspace .list {
+      margin-top:18px;
+      min-height:140px;
+    }
+
+    .workspace .operation {
+      min-height:114px;
+      padding:14px 15px;
+    }
+
+    .workspace .operation-icon {
+      width:65px;
+      height:65px;
+    }
+
+    .workspace .operation h3 {
+      font-size:16px;
+    }
+
+    .workspace .operation p {
+      font-size:12px;
+    }
+
+    .workspace .empty {
+      margin-top:18px;
+      padding:28px 12px;
+      min-height:120px;
+      font-size:13px;
+      line-height:1.6;
+    }
 
     .list {
       margin-top:14px;
@@ -1002,26 +1054,20 @@
     @media(max-width:365px) {
       .app { padding:9px 9px 24px; }
       .header {
-        min-height:86px;
-        grid-template-columns:52px minmax(0,1fr) 42px;
-        padding:9px 11px;
+        min-height:68px;
+        grid-template-columns:48px minmax(0,1fr);
+        padding:7px 10px;
       }
-      .site-logo { width:52px;height:58px; }
-      .site-logo img { width:52px;height:58px; }
-      .bell { width:42px;height:42px; }
+      .site-logo { width:48px;height:54px; }
+      .site-logo img { width:48px;height:54px; }
       .brand h1 { font-size:18px; }
       .brand p { font-size:11px; }
-      .license-banner { padding:13px; }
-      .license-banner h2 { font-size:12px; }
-      .verified { padding:7px 8px;font-size:10px; }
-      .office-main { grid-template-columns:82px minmax(0,1fr);gap:11px; }
-      .office-logo { width:82px;height:98px; }
-      .office-logo img { width:50px;height:50px; }
-      .office-info h3 { font-size:18px; }
+      .office-main { grid-template-columns:minmax(0,1fr) 52px;gap:7px; }
+      .office-logo { width:52px;height:60px; }
+      .office-name-bar h3 { font-size:15px; }
       .office-line { font-size:12px; }
-      .status { font-size:10px; }
-      .workspace { padding:13px; }
-      .workspace h2 { font-size:20px; }
+      .workspace { padding:15px; }
+      .section-title-bar h2 { font-size:15px; }
       .operation { grid-template-columns:42px minmax(0,1fr) 50px;padding:10px; }
       .operation-icon { width:42px;height:42px; }
       .operation h3 { font-size:13px; }
@@ -1044,45 +1090,13 @@
     border:0;
   }
 
-  /* صورة المكتب في البطاقة: مدخل ثانٍ معتمد لإعدادات المكتب */
-  .office-cover {
-    display:block;
-    width:100%;
-    margin-bottom:14px;
-    padding:0;
-    border:1px solid var(--line);
-    border-radius:var(--radius-lg);
-    background:var(--green-pale);
-    overflow:hidden;
-    position:relative;
-    aspect-ratio:1.91 / 1;
-    cursor:pointer;
-    transition:.18s ease;
+  .identity-placeholder[hidden] {
+    display:none !important;
   }
 
-  .office-cover img {
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-  }
-
-  .office-cover img[hidden] { display:none; }
-
-  .office-cover-empty {
-    position:absolute;
-    inset:0;
-    display:grid;
-    place-items:center;
-    color:var(--muted);
-    font-size:11px;
-    font-weight:700;
-  }
-
-  .office-cover:hover,
   .office-logo:hover { border-color:var(--green); }
 
-  .office-cover:focus-visible {
+  .office-logo:focus-visible {
     outline:3px solid rgba(0,92,75,.22);
     outline-offset:3px;
   }
@@ -1132,11 +1146,124 @@
 
   .identity-preview {
     width:100%;
+    max-height:112px;
     border-radius:12px;
     background:var(--green-pale);
     border:1px dashed #C9D6D0;
     overflow:hidden;
     position:relative;
+  }
+
+  .office-logo-preview-wrap.identity-preview {
+    width:144px !important;
+    height:144px !important;
+    max-width:144px !important;
+    max-height:144px !important;
+    min-width:144px !important;
+    min-height:144px !important;
+    margin-inline:auto;
+    flex:0 0 144px !important;
+  }
+
+  .identity-slot[data-image-variant="logo"] .identity-preview:not(.office-logo-preview-wrap) {
+    max-height:96px;
+    aspect-ratio:1 / 1;
+  }
+
+  .identity-slot[data-image-variant="cover"] .identity-preview {
+    max-height:72px;
+    aspect-ratio:2.547 / 1;
+  }
+
+  /* معاينة شعار المكتب — مربع 144×144 مستقل (لا يشارك البانر) */
+  .office-logo-size-hint {
+    margin:0 0 8px;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+    line-height:1.4;
+  }
+
+  .office-logo-preview-wrap {
+    inline-size:144px;
+    block-size:144px;
+    width:144px;
+    height:144px;
+    max-width:144px;
+    max-height:144px;
+    min-width:0;
+    min-height:0;
+    aspect-ratio:1 / 1;
+    margin-inline:auto;
+    margin-block:0;
+    overflow:hidden;
+    flex:0 0 144px;
+    box-sizing:border-box;
+    border-radius:12px;
+    background:var(--green-pale);
+    border:1px dashed #C9D6D0;
+    position:relative;
+  }
+
+  .identity-slot[data-image-variant="logo"] .office-logo-preview-wrap {
+    width:144px !important;
+    height:144px !important;
+    max-width:144px !important;
+    max-height:144px !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    flex-grow:0 !important;
+    flex-shrink:0 !important;
+    flex-basis:144px !important;
+  }
+
+  .office-logo-preview-img {
+    display:block;
+    width:100%;
+    height:100%;
+    inline-size:100%;
+    block-size:100%;
+    max-width:100%;
+    max-height:100%;
+    object-fit:cover;
+    object-position:center;
+    margin:0;
+    padding:0;
+    flex-grow:0;
+  }
+
+  .office-logo-preview-wrap .office-logo-preview-img {
+    width:100% !important;
+    height:100% !important;
+    max-width:100% !important;
+    max-height:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+  }
+
+  .office-logo-preview-wrap .identity-placeholder {
+    position:absolute;
+    inset:0;
+    display:grid;
+    place-items:center;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+    margin:0;
+    padding:0;
+  }
+
+  @media (max-width:480px) {
+    .office-logo-preview-wrap,
+    .identity-slot[data-image-variant="logo"] .office-logo-preview-wrap {
+      inline-size:144px;
+      block-size:144px;
+      width:144px;
+      height:144px;
+      max-width:144px;
+      max-height:144px;
+      flex:0 0 144px;
+    }
   }
 
   .identity-preview img {
@@ -1202,10 +1329,29 @@
 
   .link-actions {
     display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:7px;
-    margin-top:9px;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    margin-top:10px;
   }
+
+  .link-action-btn {
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--green-pale);
+    color:var(--green);
+    font:inherit;
+    font-size:11px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:0 10px;
+    cursor:pointer;
+  }
+
+  .link-action-btn:active { background:#e8f5f1; }
 
   .office-qr-wrap {
     margin-top:11px;
@@ -1229,7 +1375,7 @@
     align-items:center;
     justify-content:space-between;
     gap:10px;
-    min-height:46px;
+    min-height:60px;
     padding:8px 11px;
     border:1px solid var(--line);
     border-radius:13px;
@@ -1237,8 +1383,68 @@
     cursor:pointer;
   }
 
-  .pref-row span { font-size:12px; font-weight:700; }
-  .pref-row input { width:19px; height:19px; accent-color:var(--green); flex:0 0 auto; }
+  .pref-row span { font-size:12px; font-weight:700; flex:1; text-align:right; }
+
+  .pref-row .pref-switch {
+    display:block;
+    position:relative;
+    width:54px;
+    height:31px;
+    min-width:54px;
+    max-width:56px;
+    flex:0 0 54px;
+    box-sizing:border-box;
+  }
+
+  .pref-switch {
+    position:relative;
+    width:54px;
+    height:31px;
+    flex:0 0 54px;
+    display:block;
+    box-sizing:border-box;
+  }
+
+  .pref-switch input {
+    opacity:0;
+    width:0;
+    height:0;
+    position:absolute;
+  }
+
+  .pref-switch-slider {
+    position:absolute;
+    inset:0;
+    border-radius:999px;
+    background:#DEE7E2;
+    transition:background .2s ease;
+  }
+
+  .pref-switch-slider::after {
+    content:"";
+    position:absolute;
+    top:3px;
+    left:3px;
+    width:25px;
+    height:25px;
+    border-radius:50%;
+    background:#fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.12);
+    transition:transform .2s ease;
+  }
+
+  .pref-switch input:checked + .pref-switch-slider {
+    background:var(--green);
+  }
+
+  .pref-switch input:checked + .pref-switch-slider::after {
+    transform:translateX(23px);
+  }
+
+  .pref-switch input:focus-visible + .pref-switch-slider {
+    outline:2px solid rgba(0,92,75,.25);
+    outline-offset:2px;
+  }
 
   .bank-entry {
     width:100%;
@@ -1282,6 +1488,11 @@
     border-radius:13px;
     background:#FBFDFC;
     cursor:pointer;
+  }
+
+  .coop-option:has(input:checked) {
+    border-color:rgba(0,92,75,.35);
+    background:var(--green-soft);
   }
 
   .coop-option input { width:19px; height:19px; margin:1px 0 0; accent-color:var(--green); }
@@ -1463,6 +1674,10 @@
     font-size:10px;
     line-height:1.5;
   }
+  .bank-share-status {
+    margin:8px 0 0;
+    min-height:1.2em;
+  }
   .bank-retry {
     margin-top:8px;
     border:1px solid var(--line);
@@ -1488,6 +1703,301 @@
   .bank-row dt { color:var(--muted); font-size:10px; font-weight:700; }
   .bank-row dd { margin:0; color:var(--text); font-size:11px; font-weight:700; }
 
+  .review-hint {
+    margin:0 0 10px;
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.55;
+  }
+
+  .review-extracted {
+    margin:0 0 10px;
+    padding:8px 10px;
+    border-radius:12px;
+    background:var(--green-pale);
+    color:var(--green);
+    font-size:11px;
+    line-height:1.5;
+  }
+
+  .review-form { display:grid; gap:10px; }
+
+  .search-field {
+    display:grid;
+    gap:4px;
+    position:relative;
+  }
+
+  .search-field > span {
+    color:var(--muted);
+    font-size:11px;
+    font-weight:700;
+  }
+
+  .review-field {
+    display:grid;
+    gap:4px;
+  }
+
+  .review-field > span {
+    color:var(--muted);
+    font-size:11px;
+    font-weight:700;
+  }
+
+  .search-select-input,
+  .review-manual input,
+  .review-field input {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+    color:var(--text);
+    font-size:13px;
+    width:100%;
+  }
+
+  .search-select-list {
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0;
+    right:0;
+    z-index:5;
+    max-height:180px;
+    overflow:auto;
+    margin:0;
+    padding:4px;
+    list-style:none;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    box-shadow:var(--shadow);
+  }
+
+  .search-select-list li { margin:0; }
+
+  .search-select-list button {
+    width:100%;
+    border:0;
+    background:transparent;
+    text-align:right;
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:12px;
+    font-weight:700;
+    color:var(--text);
+    cursor:pointer;
+  }
+
+  .search-select-list button:hover { background:var(--green-pale); }
+
+  .review-manual[hidden] { display:none; }
+
+  .review-actions {
+    display:grid;
+    gap:8px;
+    margin-top:4px;
+  }
+
+  .review-approve {
+    width:100%;
+    min-height:44px;
+    border:0;
+    border-radius:14px;
+    background:var(--green);
+    color:#fff;
+    font-size:13px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .review-cancel {
+    width:100%;
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .review-status {
+    margin:6px 0 0;
+    min-height:14px;
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  .review-status.is-error { color:#a1332c; }
+
+  .review-advertiser-card {
+    margin-top:4px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--green-pale);
+    display:grid;
+    gap:8px;
+  }
+
+  .review-advertiser-card h3 {
+    margin:0;
+    color:var(--green);
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .advertiser-phone-row {
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    gap:6px;
+    align-items:center;
+  }
+
+  .advertiser-phone-prefix {
+    padding:0 10px;
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    color:var(--text);
+    font-size:12px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+  }
+
+  .advertiser-extracted-hint {
+    color:var(--success);
+    font-size:10px;
+    font-weight:700;
+  }
+
+  .advertiser-phone-multi {
+    display:grid;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  .advertiser-phone-pick,
+  .review-advertiser-card select {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+    font-size:13px;
+    width:100%;
+  }
+
+  .review-advertiser-prep {
+    width:100%;
+    min-height:40px;
+    border:0;
+    border-radius:12px;
+    background:var(--green);
+    color:#fff;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .review-advertiser-prep:disabled {
+    opacity:.5;
+    cursor:default;
+  }
+
+  .bank-advertiser-card {
+    margin-top:10px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--green-pale);
+  }
+
+  .bank-advertiser-card h4 {
+    margin:0 0 8px;
+    color:var(--green);
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .bank-advertiser-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:8px;
+  }
+
+  .bank-advertiser-status-form {
+    display:grid;
+    gap:8px;
+    margin-top:8px;
+  }
+
+  .bank-advertiser-status-form label {
+    display:grid;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:700;
+  }
+
+  .bank-advertiser-status-form select {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+  }
+
+  .advertiser-message-actions {
+    display:grid;
+    gap:8px;
+    margin-top:10px;
+  }
+
+  .advertiser-message-actions button {
+    min-height:42px;
+    border-radius:12px;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .advertiser-message-copy {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--green);
+  }
+
+  .advertiser-message-whatsapp {
+    border:0;
+    background:#25d366;
+    color:#063c27;
+  }
+
+  .advertiser-message-cancel {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--muted);
+  }
+
+  #advertiserMessageText {
+    width:100%;
+    min-height:180px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    font-size:13px;
+    line-height:1.55;
+    resize:vertical;
+  }
+
   .operation-icon .icon {
     width:23px;
     height:23px;
@@ -1496,11 +2006,6 @@
   .workspace-symbol .icon {
     width:23px;
     height:23px;
-  }
-
-  .bell .icon {
-    width:21px;
-    height:21px;
   }
 
   .operation-group:last-child .operation {
@@ -1517,7 +2022,6 @@
       height:21px;
     }
 
-    .office-cover { margin-bottom:11px; }
     .identity-actions { grid-template-columns:1fr; }
     .link-actions { grid-template-columns:1fr; }
   }
@@ -1608,11 +2112,17 @@
     <rect x="3" y="3" width="18" height="18" rx="3"/>
     <path d="M12 8v8M8 12h8"/>
   </symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 6l6 6-6 6"/>
+  </symbol>
 </svg>
 
   <div class="app">
 
     <header class="card header">
+      <button type="button" class="header-back" id="appNavBack" hidden aria-label="رجوع">
+        <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+      </button>
       <div class="site-logo">
         <img src="/icons/default-office.png" alt="شعار مكاتب عقارية ذكية">
       </div>
@@ -1621,100 +2131,44 @@
         <h1>مكاتب عقارية ذكية</h1>
         <p>منصة الفرص العقارية</p>
       </div>
-
-      <button class="bell" id="bellBtn" aria-label="التنبيهات">
-        <svg class="icon"><use href="#i-bell"/></svg>
-      </button>
     </header>
 
     <section class="card license">
-      <div class="license-banner">
-        <h2>الهيئة العامة للعقار — رخصة فال للممارسة العقارية</h2>
-        <div class="verified">
-          <svg class="icon"><use href="#i-check-circle"/></svg>
-          موثق إلكترونياً
-        </div>
-      </div>
-
       <div class="office-body">
-        <button class="office-cover" id="officeSettingsCoverBtn" type="button"
-          aria-label="صورة المكتب — فتح إعدادات المكتب">
-          <img id="officeCardCover" alt="" hidden>
-          <span class="office-cover-empty" id="officeCardCoverEmpty">صورة المكتب</span>
-          <span class="visually-hidden">فتح إعدادات المكتب</span>
-        </button>
+        <div class="section-title-bar office-name-bar">
+          <h3 id="officeDisplayName">مكتب عقاري</h3>
+        </div>
 
         <div class="office-main">
+          <div class="office-info">
+            <div class="office-line">المرخص له: <strong id="officeDisplayBroker">وسيط عقاري</strong></div>
+            <div class="office-line office-license-line">
+              <span>رقم رخصة فال: <strong id="officeDisplayLicense"></strong></span>
+              <svg class="license-verify-icon" aria-hidden="true"><use href="#i-check-circle"/></svg>
+            </div>
+            <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
+          </div>
+
           <button class="office-logo" id="officeSettingsBtn" type="button"
-            aria-label="شعار المكتب — فتح إعدادات المكتب">
+            aria-label="صورة العرض — فتح إعدادات المكتب">
             <img src="/icons/default-office.png" alt="شعار المكتب">
             <span class="visually-hidden">فتح إعدادات المكتب</span>
           </button>
-
-          <div class="office-info">
-            <h3 id="officeDisplayName">مكتب عقاري</h3>
-            <div class="office-line">المرخص له: <strong id="officeDisplayBroker">وسيط عقاري</strong></div>
-            <div class="office-line">رقم رخصة فال: <strong id="officeDisplayLicense"></strong></div>
-            <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
-          </div>
-        </div>
-
-        <div class="status-row specialty-status-row">
-          <div class="status live office-specialty-status">
-            <span class="dot"></span>
-            <span><strong id="officeDisplaySpecialties">بيع</strong></span>
-          </div>
         </div>
       </div>
     </section>
 
-
-    <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
-      <div class="add-opportunity-head">
-        <div class="workspace-symbol" aria-hidden="true">
-          <svg class="icon"><use href="#i-plus-square"></use></svg>
-        </div>
-        <div>
-          <h2 id="addOpportunityTitle">إضافة فرصة</h2>
-          <p>رابط أو نص أو مرفق — مصدر واحد يُحوَّل إلى فرصة موحّدة</p>
-        </div>
+    <section class="card services-bar" id="officeServicesBar" aria-label="خدمات المكتب">
+      <div class="services-bar-inner office-specialty-status">
+        <span id="officeDisplaySpecialties">بيع</span>
       </div>
-
-      <form id="addOpportunityForm" autocomplete="off">
-        <div class="add-opportunity-row">
-          <input id="addOpportunityInput" type="text" maxlength="4000"
-            placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
-          <button type="button" class="add-opportunity-icon-btn" id="addOpportunityPaperclip"
-            aria-label="إرفاق ملف">
-            <svg class="icon"><use href="#i-paperclip"></use></svg>
-          </button>
-          <button type="submit" class="add-opportunity-submit" id="addOpportunitySubmit">معالجة</button>
-        </div>
-        <input id="addOpportunityFile" type="file" hidden>
-        <div class="add-opportunity-file-chip" id="addOpportunityFileChip" hidden>
-          <span id="addOpportunityFileName"></span>
-          <button type="button" id="addOpportunityClearFile" aria-label="إزالة المرفق">إزالة</button>
-        </div>
-        <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
-        <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
-      </form>
-
-      <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
     </section>
 
     <section class="card workspace" id="workspace">
-      <div class="workspace-head">
-        <div class="workspace-title">
-          <div class="workspace-symbol">
-            <svg class="icon"><use href="#i-clipboard-list"/></svg>
-          </div>
-          <div>
-            <h2>مساحة العمل</h2>
-            <p class="subtitle" id="workspaceSubtitle">الإجراء التالي المطلوب منك، مرتبًا حسب الأهمية</p>
-          </div>
-        </div>
-        <div class="total" id="total">0</div>
+      <div class="section-title-bar">
+        <h2>مساحة العمل <span class="workspace-count-badge" id="total">0</span></h2>
       </div>
+      <p class="workspace-subtitle" id="workspaceSubtitle">الإجراء التالي المطلوب منك، مرتبًا حسب الأهمية</p>
 
       <div class="list" id="operationList"></div>
       <p class="empty" id="operationsEmpty">
@@ -1722,8 +2176,85 @@
         <br>ستظهر الفرص المباشرة هنا
       </p>
     </section>
+
+    <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
+      <div class="section-title-bar">
+        <h2 id="addOpportunityTitle">إضافة فرصة</h2>
+      </div>
+
+      <form id="addOpportunityForm" autocomplete="off">
+        <div class="add-opportunity-row">
+          <div class="add-opportunity-input-wrap">
+            <input id="addOpportunityInput" type="text" maxlength="4000"
+              placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
+            <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
+              aria-label="إرفاق ملف">
+              <svg class="icon"><use href="#i-paperclip"></use></svg>
+            </button>
+            <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
+              hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
+          </div>
+          <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
+        </div>
+        <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
+        <input id="addOpportunityFile" type="file" hidden>
+        <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
+        <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
+      </form>
+
+      <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
+    </section>
   </div>
 
+
+  <div class="settings-overlay" id="opportunityReviewOverlay" hidden>
+    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="opportunityReviewTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="opportunityReviewTitle">مراجعة الفرصة</h2>
+          <p>راجع البيانات المستخرجة قبل الحفظ النهائي.</p>
+        </div>
+        <button class="settings-close" id="opportunityReviewClose" type="button" aria-label="إغلاق المراجعة">×</button>
+      </div>
+      <div id="opportunityReviewBody"></div>
+    </section>
+  </div>
+
+  <div class="settings-overlay" id="advertiserMessageOverlay" hidden>
+    <section class="settings-sheet advertiser-message-sheet" role="dialog" aria-modal="true" aria-labelledby="advertiserMessageTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="advertiserMessageTitle">رسالة استكمال بيانات المعلن</h2>
+          <p>الرقم المستهدف: <strong id="advertiserMessageTarget"></strong></p>
+        </div>
+        <button class="settings-close" id="advertiserMessageClose" type="button" aria-label="إغلاق">×</button>
+      </div>
+      <label class="review-field">
+        <span>نص الرسالة</span>
+        <textarea id="advertiserMessageText" aria-label="نص رسالة الاستكمال"></textarea>
+      </label>
+      <div class="advertiser-message-actions">
+        <button type="button" class="advertiser-message-copy" id="advertiserMessageCopy">نسخ الرسالة</button>
+        <button type="button" class="advertiser-message-whatsapp" id="advertiserMessageWhatsApp">فتح واتساب</button>
+        <button type="button" class="advertiser-message-cancel" id="advertiserMessageCancel">إلغاء</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="settings-overlay" id="permanentDeleteOverlay" hidden>
+    <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="permanentDeleteTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="permanentDeleteTitle">حذف نهائي</h2>
+          <p id="permanentDeleteMessage">سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟</p>
+        </div>
+      </div>
+      <div class="permanent-delete-actions">
+        <button type="button" class="bank-action" id="permanentDeleteCancel">إلغاء</button>
+        <button type="button" class="bank-action danger" id="permanentDeleteConfirm">حذف نهائي</button>
+      </div>
+    </section>
+  </div>
 
   <div class="settings-overlay" id="officeSettings" hidden>
     <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="officeSettingsTitle">
@@ -1747,11 +2278,11 @@
         <div class="identity-grid">
           <article class="identity-slot" data-image-variant="logo">
             <header>
-              <strong>شعار المكتب</strong>
-              <span data-role="ratio-hint"></span>
+              <strong>شعار المكتب / صورة العرض</strong>
             </header>
-            <div class="identity-preview" data-role="preview">
-              <img data-role="preview-image" alt="معاينة شعار المكتب" hidden>
+            <p class="office-logo-size-hint">المقاس الموصى به: 512×512</p>
+            <div class="office-logo-preview-wrap identity-preview" data-role="preview">
+              <img class="office-logo-preview-img" data-role="preview-image" alt="معاينة شعار المكتب" hidden>
               <span class="identity-placeholder" data-role="placeholder">لا يوجد شعار</span>
             </div>
             <div class="identity-crop" data-role="crop" hidden>
@@ -1768,32 +2299,6 @@
             </div>
             <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
               aria-label="اختيار شعار المكتب">
-            <p class="identity-status" data-role="status" role="status"></p>
-          </article>
-
-          <article class="identity-slot" data-image-variant="display">
-            <header>
-              <strong>صورة المكتب</strong>
-              <span data-role="ratio-hint"></span>
-            </header>
-            <div class="identity-preview" data-role="preview">
-              <img data-role="preview-image" alt="معاينة صورة المكتب" hidden>
-              <span class="identity-placeholder" data-role="placeholder">لا توجد صورة</span>
-            </div>
-            <div class="identity-crop" data-role="crop" hidden>
-              <label for="displayCropOffsetY">موضع الاقتصاص الرأسي</label>
-              <input id="displayCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
-              <label for="displayCropOffsetX">موضع الاقتصاص الأفقي</label>
-              <input id="displayCropOffsetX" type="range" min="0" max="100" value="50" data-role="offset-x">
-            </div>
-            <div class="identity-actions">
-              <button class="identity-btn" type="button" data-role="choose">اختيار صورة</button>
-              <button class="identity-btn" type="button" data-role="save" disabled>حفظ الصورة</button>
-              <button class="identity-btn" type="button" data-role="cancel" hidden>إلغاء</button>
-              <button class="identity-btn danger" type="button" data-role="remove" hidden>إزالة</button>
-            </div>
-            <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
-              aria-label="اختيار صورة المكتب">
             <p class="identity-status" data-role="status" role="status"></p>
           </article>
 
@@ -1872,14 +2377,14 @@
         <p class="section-help">رابط ثابت لصفحة المكتب العامة. يستقبل طلبات العملاء وعروض الملاك مباشرة.</p>
         <div class="office-link-row">
           <input id="officeLinkInput" readonly aria-label="رابط المكتب">
-          <button class="office-copy-btn" id="copyOfficeLinkBtn" type="button">نسخ</button>
         </div>
         <div class="link-actions">
-          <button class="identity-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
-          <button class="identity-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
+          <button class="link-action-btn" id="copyOfficeLinkBtn" type="button">نسخ الرابط</button>
+          <button class="link-action-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
+          <button class="link-action-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
             aria-controls="officeQrWrap">إظهار رمز QR</button>
-          <button class="identity-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة العامة</button>
-          <button class="identity-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
+          <button class="link-action-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة العامة</button>
+          <button class="link-action-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
         </div>
         <div class="office-qr-wrap" id="officeQrWrap" hidden>
           <canvas id="officeQrCanvas" width="336" height="336" role="img"
@@ -1899,27 +2404,27 @@
         <div class="pref-list" id="notificationPrefsList">
           <label class="pref-row">
             <span>إشعارات المطابقات</span>
-            <input type="checkbox" name="notificationPreference" value="matchNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="matchNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات الملاك والعملاء</span>
-            <input type="checkbox" name="notificationPreference" value="ownerCustomerNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="ownerCustomerNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات التعاون</span>
-            <input type="checkbox" name="notificationPreference" value="cooperationNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="cooperationNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات الرسائل</span>
-            <input type="checkbox" name="notificationPreference" value="messageNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="messageNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات المواعيد والمتابعات</span>
-            <input type="checkbox" name="notificationPreference" value="appointmentNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="appointmentNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
           <label class="pref-row">
             <span>إشعارات النظام المهمة</span>
-            <input type="checkbox" name="notificationPreference" value="systemNotifications" checked>
+            <span class="pref-switch"><input type="checkbox" name="notificationPreference" value="systemNotifications" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
         </div>
         <p class="section-status" id="notificationPrefsStatus" role="status"></p>
@@ -1971,6 +2476,18 @@
         <p class="section-status" id="cooperationStatus" role="status"></p>
       </section>
 
+      <section class="settings-section" id="pwaInstallSection">
+        <h3>تثبيت التطبيق</h3>
+        <p class="section-help">
+          ثبّت المنصة على الشاشة الرئيسية للوصول السريع. على iPhone: مشاركة ثم «إضافة إلى الشاشة الرئيسية».
+        </p>
+        <p class="section-help" id="pwaInstallIosHint" hidden>
+          على iPhone/iPad: افتح قائمة المشاركة ثم اختر «إضافة إلى الشاشة الرئيسية». لا يتوفر التثبيت التلقائي على iOS.
+        </p>
+        <button type="button" class="identity-btn" id="pwaInstallBtn" hidden>تثبيت التطبيق</button>
+        <p class="section-status" id="pwaInstallStatus" role="status">جاهز للتثبيت عند دعم المتصفح</p>
+      </section>
+
       <div class="integration-card">
         <div class="integration-row">
           <strong>واتساب أعمال</strong>
@@ -1993,10 +2510,6 @@
           <div class="safety-item" id="officeNotificationControl" role="button" tabindex="0">
             <span>إشعارات هذا الجهاز</span>
             <strong id="officeNotificationStatus">غير مفعّلة</strong>
-          </div>
-          <div class="safety-item" id="installAppControl" role="button" tabindex="0">
-            <span>تثبيت اختصار الموقع</span>
-            <strong id="installAppStatus">جاهز للتثبيت</strong>
           </div>
         </div>
 
@@ -2059,9 +2572,11 @@
   <script type="module" src="js/fcm-fid.js"></script>
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>
+  <script src="js/app-navigation.js"></script>
   <script src="js/qrcode.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>
+  <script type="module" src="js/opportunity-review.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
   <script type="module" src="js/operations-domain-bridge.js"></script>
@@ -2299,25 +2814,9 @@
       scrollToOperation(requested.id);
     });
 
-    document.getElementById("bellBtn").addEventListener("click", () => {
-      const firstAlert = data
-        .filter(item => item.isAlert)
-        .sort((a, b) => a.priority - b.priority)[0];
-
-      if (!firstAlert) {
-        notify("لا توجد عمليات جديدة تحتاج انتباه");
-        return;
-      }
-
-      state.opened = firstAlert.id;
-      render();
-      dispatchOpened(firstAlert);
-      scrollToOperation(firstAlert.id);
-      notify("تم فتح أول عملية تحتاج انتباه");
-    });
-
     render();
   </script>
+  <script src="js/notification-navigation.js"></script>
   <script src="js/workflow-office.js"></script>
 </body>
 </html>

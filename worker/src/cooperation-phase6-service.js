@@ -6,10 +6,12 @@ import {
   COOPERATION_AUDIT_ACTIONS,
   applyCooperationDecision,
   buildCooperationAuditEntry,
+  buildCooperationRequestId,
   buildRevocationCleanupPlan,
   buildSharedProjection,
   cooperationModeAllowsAccept,
   cooperationModeAllowsExplicitRequest,
+  defaultCooperationRequestPermissions,
   normalizeCooperationMode,
   opportunityStatusFromShare,
   phase6BoundaryGuarantees
@@ -463,6 +465,184 @@ export async function revokeBankSharingScope({
     ok: true,
     sharingScopeId,
     status: "REVOKED",
+    boundaries: phase6BoundaryGuarantees()
+  };
+}
+
+export async function createExplicitCooperationRequest({
+  projectId,
+  originatingOfficeId,
+  originatingBrokerId,
+  targetOfficeId,
+  opportunityIds,
+  scopeType = "single",
+  accessToken,
+  deps
+}) {
+  const origin = String(originatingOfficeId || "").trim().toLowerCase();
+  const target = String(targetOfficeId || "").trim().toLowerCase();
+  if (!origin || !target) return { ok: false, error: "office_ids_required", status: 400 };
+  if (origin === target) return { ok: false, error: "same_office", status: 400 };
+
+  const ids = [...new Set((opportunityIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  if (scopeType === "single" && ids.length !== 1) {
+    return { ok: false, error: "single_opportunity_required", status: 400 };
+  }
+  if (scopeType === "selected" && ids.length < 1) {
+    return { ok: false, error: "selection_required", status: 400 };
+  }
+
+  const mode = await readCooperationMode({
+    projectId,
+    officeId: origin,
+    accessToken,
+    getFirestoreDocument: deps.getFirestoreDocument,
+    firestoreFieldsToJs: deps.firestoreFieldsToJs
+  });
+  if (!cooperationModeAllowsExplicitRequest(mode)) {
+    return {
+      ok: false,
+      error: "cooperation_disabled",
+      status: 403,
+      message: "التعاون معطّل في إعدادات هذا المكتب"
+    };
+  }
+
+  for (const oppId of ids) {
+    const oppDoc = await deps.getFirestoreDocument({
+      projectId,
+      segments: ["offices", origin, "opportunities", oppId],
+      accessToken,
+      allowMissing: true
+    });
+    if (!oppDoc) {
+      return { ok: false, error: "opportunity_not_found", status: 404, message: "الفرصة غير موجودة" };
+    }
+    const opp = deps.firestoreFieldsToJs(oppDoc.fields || {});
+    if (String(opp.officeId || "").trim().toLowerCase() !== origin) {
+      return {
+        ok: false,
+        error: "opportunity_forbidden",
+        status: 403,
+        message: "لا يمكن مشاركة فرص لا تتبع هذا المكتب"
+      };
+    }
+  }
+
+  const opportunityKey = scopeType === "single" ? ids[0] : ids.slice().sort().join(",");
+  let idNonce = "";
+  const previewId = await buildCooperationRequestId({
+    originatingOfficeId: origin,
+    targetOfficeId: target,
+    opportunityId: opportunityKey,
+    scopeType
+  });
+  const previewDoc = await deps.getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", previewId],
+    accessToken,
+    allowMissing: true
+  });
+  if (previewDoc) {
+    const preview = deps.firestoreFieldsToJs(previewDoc.fields || {});
+    const previewStatus = String(preview.status || "").toUpperCase();
+    if (previewStatus === "PENDING" || previewStatus === "ACCEPTED") {
+      return {
+        ok: true,
+        duplicate: true,
+        requestId: previewId,
+        message: "يوجد طلب تعاون نشط أو معلّق مسبقًا"
+      };
+    }
+    if (["REJECTED", "REVOKED", "ENDED"].includes(previewStatus)) {
+      idNonce = String(Date.now());
+    }
+  }
+
+  const requestId = await buildCooperationRequestId({
+    originatingOfficeId: origin,
+    targetOfficeId: target,
+    opportunityId: opportunityKey,
+    scopeType,
+    idNonce
+  });
+
+  const existingDoc = await deps.getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", requestId],
+    accessToken,
+    allowMissing: true
+  });
+  if (existingDoc) {
+    const existing = deps.firestoreFieldsToJs(existingDoc.fields || {});
+    const status = String(existing.status || "").toUpperCase();
+    if (status === "PENDING" || status === "ACCEPTED") {
+      return {
+        ok: true,
+        duplicate: true,
+        requestId,
+        message: "يوجد طلب تعاون نشط أو معلّق مسبقًا"
+      };
+    }
+  }
+
+  const now = new Date();
+  const permissions = defaultCooperationRequestPermissions();
+  const fh = deps.firestoreHelpers || firestoreHelpersBundle(deps);
+  await deps.setFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", requestId],
+    accessToken,
+    fields: {
+      id: fh.firestoreString(requestId),
+      originatingOfficeId: fh.firestoreString(origin),
+      originatingBrokerId: fh.firestoreString(originatingBrokerId),
+      targetOfficeId: fh.firestoreString(target),
+      targetBrokerId: fh.firestoreString(""),
+      opportunityId: fh.firestoreString(scopeType === "single" ? ids[0] : ""),
+      opportunityIds: { arrayValue: { values: ids.map((id) => ({ stringValue: id })) } },
+      scopeType: fh.firestoreString(scopeType),
+      requestedAt: fh.firestoreString(now.toISOString()),
+      status: fh.firestoreString("PENDING"),
+      permissions: {
+        mapValue: {
+          fields: {
+            readOnly: { booleanValue: true },
+            minimumData: { booleanValue: true },
+            contactVisible: { booleanValue: false },
+            ownershipModifiable: { booleanValue: false },
+            canDelete: { booleanValue: false },
+            canArchive: { booleanValue: false },
+            unrestrictedAttachmentDownload: { booleanValue: false },
+            canReshare: { booleanValue: false }
+          }
+        }
+      },
+      createdBy: fh.firestoreString(originatingBrokerId),
+      createdAt: fh.firestoreTimestamp(now),
+      updatedAt: fh.firestoreTimestamp(now),
+      schemaVersion: fh.firestoreInteger(1)
+    }
+  });
+
+  for (const oppId of ids) {
+    await patchOpportunityCooperation({
+      projectId,
+      officeId: origin,
+      opportunityId: oppId,
+      shareStatus: "PENDING",
+      cooperationId: requestId,
+      accessToken,
+      setFirestoreDocument: deps.setFirestoreDocument,
+      firestoreHelpers: fh
+    });
+  }
+
+  return {
+    ok: true,
+    requestId,
+    duplicate: false,
+    message: "تم إرسال طلب التعاون",
     boundaries: phase6BoundaryGuarantees()
   };
 }

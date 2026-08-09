@@ -105,7 +105,7 @@ test("Phase 8 PWA: manifest has no deals shortcut; icons and SW cache are curren
   assert.ok(shortcutText.includes("open=operations") || shortcutText.includes("open=add-opportunity"));
 
   const sw = readRepositoryFile("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-phase9a-v2"));
+  assert.ok(sw.includes("iaqar-shell-phase9a-v8"));
   assert.ok(sw.includes("runtime-config.js"));
   assert.ok(sw.includes("/js/operations-domain-bridge.js"));
   assert.ok(sw.includes("/js/messaging-domain-bridge.js"));
@@ -134,10 +134,7 @@ test("Phase 8 a11y smoke: Office Card and dialogs keep accessible names", async 
     const logoBtn = document.getElementById("officeSettingsBtn");
     assert.ok(logoBtn, "office logo control exists");
     assert.match(logoBtn.getAttribute("aria-label") || "", /إعدادات المكتب/);
-
-    const coverBtn = document.getElementById("officeSettingsCoverBtn");
-    assert.ok(coverBtn, "cover control exists");
-    assert.match(coverBtn.getAttribute("aria-label") || "", /صورة المكتب/);
+    assert.equal(document.getElementById("officeCardCoverWrap"), null);
 
     const settingsDialog = document.querySelector(".settings-sheet[role='dialog'][aria-modal='true']");
     assert.ok(settingsDialog, "settings dialog is modal");
