@@ -173,14 +173,22 @@ function writeSpecialtiesToForm(list) {
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
   if (logo) {
-    if (current.logoUrl) logo.src = current.logoUrl;
-    else if (logo.dataset.defaultSrc) logo.src = logo.dataset.defaultSrc;
-  }
-  if (el.cardCover) {
-    const coverSource = current.coverUrl || current.displayImageUrl;
-    el.cardCover.src = coverSource || "";
-    el.cardCover.hidden = !coverSource;
-    if (el.cardCoverEmpty) el.cardCoverEmpty.hidden = Boolean(coverSource);
+    const logoSource = String(current.logoUrl || "").trim();
+    if (logoSource) {
+      logo.hidden = false;
+      logo.onerror = () => {
+        logo.hidden = true;
+        if (logo.dataset.defaultSrc) {
+          logo.hidden = false;
+          logo.src = logo.dataset.defaultSrc;
+        }
+      };
+      logo.onload = () => { logo.hidden = false; };
+      if (logo.src !== logoSource) logo.src = logoSource;
+    } else if (logo.dataset.defaultSrc) {
+      logo.hidden = false;
+      logo.src = logo.dataset.defaultSrc;
+    }
   }
 }
 
@@ -192,10 +200,31 @@ function applyImageSlots() {
 }
 
 function setSlotPreview(slot, source) {
-  slot.image.src = source || "";
-  slot.image.hidden = !source;
-  if (slot.placeholder) slot.placeholder.hidden = Boolean(source);
-  if (slot.remove) slot.remove.hidden = !(slot.preset.removable && source);
+  const url = String(source || "").trim();
+  if (!url) {
+    slot.image.hidden = true;
+    slot.image.removeAttribute("src");
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+    return;
+  }
+  if (slot.placeholder) slot.placeholder.hidden = true;
+  slot.image.hidden = false;
+  slot.image.onerror = () => {
+    slot.image.hidden = true;
+    if (slot.placeholder) slot.placeholder.hidden = false;
+    if (slot.remove) slot.remove.hidden = true;
+  };
+  slot.image.onload = () => {
+    slot.image.hidden = false;
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  };
+  if (slot.image.src !== url) slot.image.src = url;
+  else if (slot.image.complete && slot.image.naturalWidth > 0) {
+    if (slot.placeholder) slot.placeholder.hidden = true;
+    if (slot.remove) slot.remove.hidden = !(slot.preset.removable && url);
+  }
 }
 
 function apply(data) {
@@ -222,7 +251,7 @@ function apply(data) {
     const node = document.getElementById(id);
     if (node) node.textContent = value;
   });
-  const specialtyRow = document.querySelector(".specialty-status-row");
+  const specialtyRow = document.getElementById("officeServicesBar");
   if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
 }
 
@@ -670,8 +699,10 @@ function initImageSlots() {
     };
     if (!slot.image || !slot.file || !slot.choose || !slot.save) return;
 
-    // نسبة الاقتصاص مصدرها الإعداد في office-domain.js وحده، فلا تُكرر في CSS.
-    if (slot.preview) slot.preview.style.aspectRatio = String(preset.aspectRatio);
+    // نسبة الاقتصاص مصدرها الإعداد في office-domain.js؛ شعار المكتب يُقيَّد بـ CSS المستقل.
+    if (slot.preview && preset.variant !== "logo") {
+      slot.preview.style.aspectRatio = String(preset.aspectRatio);
+    }
     if (slot.ratioHint) {
       slot.ratioHint.textContent = `${preset.outputWidth}×${preset.outputHeight}`;
     }
@@ -909,82 +940,182 @@ async function createOfficeCardBlob() {
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
-  canvas.height = 1350;
+  canvas.height = 1080;
   const ctx = canvas.getContext("2d");
   const link = officeLink();
 
-  ctx.fillStyle = "#f4f8f6";
+  ctx.fillStyle = "#f6faf8";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#087064";
-  ctx.fillRect(0, 0, canvas.width, 190);
 
-  const logoSource = current.logoUrl || (el.cardLogo && el.cardLogo.src) || "";
-  if (logoSource) {
+  try {
+    const platformLogo = await loadImage("/icons/icon-192.png");
+    drawImageContain(ctx, platformLogo, 48, 28, 40, 40);
+  } catch (_) {}
+
+  ctx.direction = "rtl";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#005C4B";
+  ctx.font = "600 22px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 108, 58);
+
+  const displaySrc = current.displayImageUrl || current.logoUrl || "";
+  const imageCenterX = 540;
+  const imageY = 118;
+  if (displaySrc) {
     try {
-      const logo = await loadImage(logoSource);
-      ctx.fillStyle = "#ffffff";
-      roundedRect(ctx, 820, 28, 175, 132, 24);
-      ctx.fill();
-      drawImageContain(ctx, logo, 838, 42, 139, 104);
+      const displayImg = await loadImage(displaySrc);
+      drawImageCover(ctx, displayImg, imageCenterX - 74, imageY, 148, 148, 22);
     } catch (_) {}
   }
 
-  ctx.direction = "rtl";
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 43px Tajawal, Arial, sans-serif";
-  ctx.fillText("مكاتب عقارية ذكية", 770, 82);
-  ctx.font = "500 25px Tajawal, Arial, sans-serif";
-  ctx.fillStyle = "#d7ece7";
-  ctx.fillText("بطاقة المكتب العقاري", 770, 126);
-
-  const cover = await loadImage(current.coverUrl || current.displayImageUrl);
-  drawImageCover(ctx, cover, 60, 225, 960, 420, 32);
-
-  ctx.fillStyle = "#ffffff";
-  roundedRect(ctx, 60, 680, 960, 610, 34);
-  ctx.fill();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#073f35";
+  ctx.font = "800 42px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.officeName, imageCenterX, imageY + 196);
 
   ctx.textAlign = "right";
   ctx.fillStyle = "#073f35";
-  ctx.font = "700 51px Tajawal, Arial, sans-serif";
-  ctx.fillText(current.officeName, 950, 765);
-  ctx.font = "600 31px Tajawal, Arial, sans-serif";
-  ctx.fillStyle = "#36584f";
-  ctx.fillText(`الوسيط: ${current.brokerName}`, 950, 825);
+  ctx.font = "700 30px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.brokerName, 940, 360);
+  ctx.font = "500 22px Tajawal, Arial, sans-serif";
+  ctx.fillStyle = "#6a7d77";
+  ctx.fillText("المرخص له", 940, 396);
 
+  const specialty = specialtyText(current.specialties) || "—";
   const rows = [
     ["رخصة فال", current.licenseNumber],
     ["المدينة", current.city],
-    ["الجوال", current.phone],
-    ["التخصص", specialtyText(current.specialties) || "—"]
+    ["التخصصات", specialty]
   ];
-  let rowY = 900;
+  let rowY = 450;
   for (const [label, value] of rows) {
     ctx.fillStyle = "#6a7d77";
-    ctx.font = "500 25px Tajawal, Arial, sans-serif";
-    ctx.fillText(label, 950, rowY);
+    ctx.font = "500 24px Tajawal, Arial, sans-serif";
+    ctx.fillText(label, 940, rowY);
     ctx.fillStyle = "#073f35";
-    ctx.font = "700 29px Tajawal, Arial, sans-serif";
-    ctx.fillText(value, 700, rowY);
-    rowY += 58;
+    ctx.font = "700 28px Tajawal, Arial, sans-serif";
+    ctx.fillText(value || "—", 700, rowY);
+    rowY += 52;
   }
 
-  drawQr(ctx, link, 105, 890, 265);
+  drawQr(ctx, link, 96, 620, 220);
   ctx.textAlign = "center";
   ctx.fillStyle = "#073f35";
   ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("امسح الرمز لزيارة المكتب", 238, 1190);
+  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 880);
 
   ctx.textAlign = "right";
-  ctx.fillStyle = "#e87512";
-  ctx.font = "700 25px Tajawal, Arial, sans-serif";
-  ctx.fillText(link.replace(/^https?:\/\//, ""), 950, 1210);
+  ctx.fillStyle = "#087064";
+  ctx.font = "700 24px Tajawal, Arial, sans-serif";
+  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 940);
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
-  ctx.fillText("طلبات العملاء وعروض الملاك تصل مباشرة إلى المكتب", 950, 1250);
+  ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
 
   return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+}
+
+async function createOpportunityShareCardBlob({
+  propertyType = "",
+  city = "",
+  district = "",
+  priceOrBudget = "",
+  imageSrc = ""
+} = {}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 900;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#f6faf8";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  try {
+    const platformLogo = await loadImage("/icons/icon-192.png");
+    drawImageContain(ctx, platformLogo, 502, 18, 40, 40);
+  } catch (_) {}
+
+  ctx.direction = "rtl";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#005C4B";
+  ctx.font = "700 24px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 540, 78);
+
+  ctx.fillStyle = "#E8F5E8";
+  roundedRect(ctx, 56, 96, 968, 58, 16);
+  ctx.fill();
+  ctx.fillStyle = "#087064";
+  ctx.font = "800 34px Tajawal, Arial, sans-serif";
+  const title = [propertyType, district || city].filter(Boolean).join(" — ") || "فرصة عقارية";
+  ctx.fillText(title, 540, 138);
+
+  const imageBox = { x: 80, y: 170, w: 280, h: 210 };
+  ctx.fillStyle = "#e8ecea";
+  roundedRect(ctx, imageBox.x, imageBox.y, imageBox.w, imageBox.h, 18);
+  ctx.fill();
+  let drewImage = false;
+  if (imageSrc) {
+    try {
+      const propertyImg = await loadImage(imageSrc);
+      drawImageCover(ctx, propertyImg, imageBox.x, imageBox.y, imageBox.w, imageBox.h, 18);
+      drewImage = true;
+    } catch (_) {}
+  }
+  if (!drewImage) {
+    ctx.fillStyle = "#9ab0a8";
+    ctx.font = "600 22px Tajawal, Arial, sans-serif";
+    ctx.fillText("صورة العقار", imageBox.x + imageBox.w / 2, imageBox.y + imageBox.h / 2 + 8);
+  }
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#073f35";
+  ctx.font = "700 30px Tajawal, Arial, sans-serif";
+  if (city) ctx.fillText(`المدينة: ${city}`, 940, 220);
+  if (priceOrBudget) {
+    ctx.font = "700 28px Tajawal, Arial, sans-serif";
+    ctx.fillText(`السعر / الميزانية: ${priceOrBudget} ريال`, 940, 268);
+  }
+
+  ctx.fillStyle = "#71817c";
+  ctx.font = "500 20px Tajawal, Arial, sans-serif";
+  ctx.fillText("فرصة عقارية من منصة مكاتب عقارية ذكية", 940, 860);
+
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+}
+
+async function shareOpportunityCard(record, source = null) {
+  const imageSrc = extractPropertyImageUrl(source?.text || source?.url || "");
+  const blob = await createOpportunityShareCardBlob({
+    propertyType: record.propertyType || "",
+    city: record.city || "",
+    district: record.district || "",
+    priceOrBudget: record.priceOrBudget ?? record.price ?? "",
+    imageSrc
+  });
+  if (!blob) throw new Error("CARD_FAILED");
+  const file = new File([blob], `فرصة-${record.propertyType || "عقارية"}.png`, { type: "image/png" });
+  const text = [
+    record.propertyType || "فرصة عقارية",
+    record.district ? `الحي: ${record.district}` : "",
+    record.city ? `المدينة: ${record.city}` : "",
+    record.priceOrBudget ? `السعر: ${record.priceOrBudget} ريال` : ""
+  ].filter(Boolean).join("\n");
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: record.propertyType || "فرصة عقارية", text });
+    window.dispatchEvent(new CustomEvent("iaqar:share-handoff", { detail: { state: "OPENED_EXTERNAL" } }));
+    return;
+  }
+  const downloadUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = downloadUrl;
+  anchor.download = file.name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+}
+
+function extractPropertyImageUrl(text) {
+  const raw = String(text || "");
+  const match = raw.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
+  return match ? match[0] : "";
 }
 
 async function shareOfficeCard() {
@@ -1004,7 +1135,6 @@ async function shareOfficeCard() {
       `الوسيط: ${current.brokerName}`,
       `رخصة فال: ${current.licenseNumber}`,
       `المدينة: ${current.city}`,
-      `الجوال: ${current.phone}`,
       "زيارة المكتب والتسجيل:",
       link
     ].join("\n");
@@ -1197,17 +1327,56 @@ function closeOpportunityBank() {
 // ---------------------------------------------------------------------------
 
 function openSettings() {
-  el.overlay.hidden = false;
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay) return;
+  overlay.hidden = false;
   document.body.style.overflow = "hidden";
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-opened"));
+  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "officeSettings" } }));
+}
+
+function completeSettingsClose() {
+  if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+    window.IAQAR.closeOpportunityBank({ fromPopstate: true });
+  } else {
+    const bankOverlay = document.getElementById("opportunityBank");
+    if (bankOverlay) bankOverlay.hidden = true;
+  }
+  const overlay = document.getElementById("officeSettings");
+  if (overlay) overlay.hidden = true;
+  const bankOverlay = document.getElementById("opportunityBank");
+  if (!bankOverlay || bankOverlay.hidden) document.body.style.overflow = "";
 }
 
 function closeSettings() {
-  closeOpportunityBank();
-  el.overlay.hidden = true;
-  document.body.style.overflow = "";
+  const overlay = document.getElementById("officeSettings");
+  if (!overlay || overlay.hidden) return;
+  if (window.history?.state?.iaqarOverlay) {
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+    return;
+  }
+  completeSettingsClose();
   window.dispatchEvent(new CustomEvent("iaqar:office-settings-closed"));
 }
+
+function ensureSettingsNavDelegation() {
+  if (globalThis.__iaqarOfficeSettingsNavDelegation) return;
+  globalThis.__iaqarOfficeSettingsNavDelegation = true;
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#officeSettingsClose")) {
+      event.preventDefault();
+      if (typeof window.IAQAR?.closeOfficeSettings === "function") {
+        window.IAQAR.closeOfficeSettings();
+      }
+    }
+  });
+}
+ensureSettingsNavDelegation();
+
+window.IAQAR = window.IAQAR || {};
+window.IAQAR.openOfficeSettings = openSettings;
+window.IAQAR.closeOfficeSettings = closeSettings;
+window.IAQAR.shareOpportunityCard = shareOpportunityCard;
 
 async function onLogout() {
   const user = authUser();
@@ -1218,6 +1387,11 @@ async function onLogout() {
   try {
     await firebase.auth().signOut();
     toast("تم تسجيل الخروج");
+    const officeId = window.IAQAR?.office?.officeId || "";
+    const next = officeId && officeId !== "platform"
+      ? `${location.pathname}?office=${encodeURIComponent(officeId)}`
+      : location.pathname;
+    location.assign(next);
   } catch (_) {
     toast("تعذر تسجيل الخروج الآن");
   }
@@ -1244,6 +1418,7 @@ function init() {
   el.form = document.getElementById("officeProfileForm");
   el.overlay = document.getElementById("officeSettings");
   if (!el.form || !el.overlay) return;
+  if (el.overlay.dataset.officeSettingsBound === "1") return;
 
   el.officeName = document.getElementById("officeNameInput");
   el.nameAvailability = document.getElementById("officeNameAvailability");
@@ -1269,11 +1444,9 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
-  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn,#officeSettingsCoverBtn");
+  el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
-  el.cardCover = document.getElementById("officeCardCover");
-  el.cardCoverEmpty = document.getElementById("officeCardCoverEmpty");
   el.bankOverlay = document.getElementById("opportunityBank");
 
   if (el.cardLogo && el.cardLogo.getAttribute("src")) {
@@ -1300,8 +1473,19 @@ function init() {
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (el.bankOverlay && !el.bankOverlay.hidden) closeOpportunityBank();
-    else if (!el.overlay.hidden) closeSettings();
+    if (el.bankOverlay && !el.bankOverlay.hidden) {
+      if (typeof window.IAQAR?.closeOpportunityBank === "function") {
+        window.IAQAR.closeOpportunityBank();
+      } else {
+        closeOpportunityBank();
+      }
+      return;
+    }
+    if (!document.getElementById("officeSettings")?.hidden) closeSettings();
+  });
+
+  window.addEventListener("iaqar:office-settings-closed", () => {
+    completeSettingsClose();
   });
 
   el.officeName.addEventListener("input", () => {
@@ -1335,6 +1519,7 @@ function init() {
   } catch (_) {
     updateAuthState(null);
   }
+  el.overlay.dataset.officeSettingsBound = "1";
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

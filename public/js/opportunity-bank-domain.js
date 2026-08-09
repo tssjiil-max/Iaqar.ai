@@ -324,6 +324,27 @@ export function buildSoftDeletePatch(existing, { now = new Date(), actorUid = ""
   };
 }
 
+export function validatePermanentDelete(record, { officeId = "" } = {}) {
+  if (!record) return { allowed: false, reason: "الفرصة غير موجودة" };
+  const currentOffice = safeText(officeId, 80);
+  const ownerOffice = safeText(record.officeId, 80);
+  const originOffice = safeText(record.originatingOfficeId, 80);
+  if (!currentOffice || ownerOffice !== currentOffice) {
+    return { allowed: false, reason: "لا يمكن حذف فرصة لا تملكها مكتبك" };
+  }
+  if (originOffice && originOffice !== currentOffice) {
+    return { allowed: false, reason: "هذه فرصة مشاركة من مكتب آخر" };
+  }
+  if (record.activeCooperationId) {
+    return { allowed: false, reason: "لا يمكن الحذف لوجود طلب تعاون نشط" };
+  }
+  const archived = isArchivedOpportunity(record);
+  if (!archived) {
+    return { allowed: false, reason: "انقل الفرصة إلى المؤرشفة قبل الحذف النهائي" };
+  }
+  return { allowed: true };
+}
+
 export function defaultSharePermissions() {
   return Object.freeze({
     readOnly: true,
@@ -347,10 +368,11 @@ export async function cooperationRequestId({
   originatingOfficeId,
   targetOfficeId,
   opportunityId = "",
-  scopeType = "single"
+  scopeType = "single",
+  idNonce = ""
 }) {
   const hex = await sha256Hex(
-    `${safeText(originatingOfficeId)}|${safeText(targetOfficeId)}|${safeText(scopeType)}|${safeText(opportunityId)}|PENDING`
+    `${safeText(originatingOfficeId)}|${safeText(targetOfficeId)}|${safeText(scopeType)}|${safeText(opportunityId)}|${safeText(idNonce)}|PENDING`
   );
   return `coop_${hex.slice(0, 40)}`;
 }
@@ -363,6 +385,7 @@ export async function buildCooperationRequest({
   opportunityId = "",
   opportunityIds = null,
   scopeType = "single",
+  idNonce = "",
   now = new Date(),
   createdBy = ""
 }) {
@@ -382,7 +405,8 @@ export async function buildCooperationRequest({
     originatingOfficeId: origin,
     targetOfficeId: target,
     opportunityId: scopeType === "single" ? ids[0] : ids.slice().sort().join(","),
-    scopeType
+    scopeType,
+    idNonce
   });
 
   return {
