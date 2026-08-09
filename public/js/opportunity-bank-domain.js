@@ -347,10 +347,11 @@ export async function cooperationRequestId({
   originatingOfficeId,
   targetOfficeId,
   opportunityId = "",
-  scopeType = "single"
+  scopeType = "single",
+  idNonce = ""
 }) {
   const hex = await sha256Hex(
-    `${safeText(originatingOfficeId)}|${safeText(targetOfficeId)}|${safeText(scopeType)}|${safeText(opportunityId)}|PENDING`
+    `${safeText(originatingOfficeId)}|${safeText(targetOfficeId)}|${safeText(scopeType)}|${safeText(opportunityId)}|${safeText(idNonce)}|PENDING`
   );
   return `coop_${hex.slice(0, 40)}`;
 }
@@ -363,6 +364,7 @@ export async function buildCooperationRequest({
   opportunityId = "",
   opportunityIds = null,
   scopeType = "single",
+  idNonce = "",
   now = new Date(),
   createdBy = ""
 }) {
@@ -382,7 +384,8 @@ export async function buildCooperationRequest({
     originatingOfficeId: origin,
     targetOfficeId: target,
     opportunityId: scopeType === "single" ? ids[0] : ids.slice().sort().join(","),
-    scopeType
+    scopeType,
+    idNonce
   });
 
   return {
