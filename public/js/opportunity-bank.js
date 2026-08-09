@@ -34,13 +34,16 @@ import {
   ADVERTISER_ROLES,
   ADVERTISER_CONTACT_STATUSES,
   MARKETING_CONSENT_STATUSES,
-  buildAdvertiserCompletionMessage,
+  buildAdvertiserDataPatch,
+  buildAdvertiserWhatsAppMessage,
   buildAdvertiserContactActions,
-  buildAdvertiserContactSection,
+  e164ToLocalInput,
   marketingConsentStatusLabel,
+  readAdvertiserDisplayName,
   readAdvertiserPhoneFromRecord,
-  whatsappDigitsFromE164
+  setAdvertiserMessageModalContext
 } from "./advertiser-phone-domain.js";
+import { officeLinkFor } from "./office-domain.js";
 import {
   phase6BoundaryGuarantees,
   cooperationModeAllowsExplicitRequest,
@@ -199,8 +202,10 @@ function isOwnedOpportunityRecord(record) {
 }
 
 function renderAdvertiserBankCard(record) {
-  const section = buildAdvertiserContactSection(record);
-  const phone = readAdvertiserPhoneFromRecord(record).phone;
+  const phoneInfo = readAdvertiserPhoneFromRecord(record);
+  const phone = phoneInfo.phone;
+  const displayName = readAdvertiserDisplayName(record);
+  const localPhone = e164ToLocalInput(phone);
   const roleOpts = ADVERTISER_ROLES.map((r) =>
     `<option value="${r.id}" ${record.advertiserRole === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
   ).join("");
@@ -219,25 +224,150 @@ function renderAdvertiserBankCard(record) {
     return `<button type="button" class="bank-action" id="${idAttr}" ${disabled}>${escapeHtml(action.label)}</button>`;
   }).join("");
   return `
-    <section class="bank-advertiser-card" aria-labelledby="bankAdvertiserTitle">
-      <h4 id="bankAdvertiserTitle">${escapeHtml(section.title)}</h4>
-      <dl class="bank-detail-grid">
-        ${section.rows.map((row) => `<dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.value)}</dd>`).join("")}
-        <dt>استكمال الإجراءات</dt><dd>${escapeHtml(marketingConsentStatusLabel(record.marketingConsentStatus))}</dd>
-        <dt>آخر متابعة</dt><dd>${lastContact}</dd>
-      </dl>
+    <section class="bank-advertiser-card" aria-labelledby="bankAdvertiserTitle" id="bankAdvertiserCard">
+      <h4 id="bankAdvertiserTitle">بيانات المعلن</h4>
+      <form id="bankAdvertiserEditForm" class="bank-advertiser-edit-form" autocomplete="off">
+        <label>اسم أو وصف المعلن
+          <input type="text" name="advertiserDisplayName" maxlength="120"
+            placeholder="إضافة اسم أو وصف" value="${escapeHtml(displayName)}">
+        </label>
+        <label>رقم الجوال
+          <div class="bank-advertiser-phone-row">
+            <span class="bank-advertiser-phone-prefix" aria-hidden="true">+966</span>
+            <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="9"
+              placeholder="${phone ? "" : "5XXXXXXXX"}" value="${escapeHtml(localPhone)}"
+              aria-label="رقم جوال المعلن">
+          </div>
+          <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
+          ${phone ? "" : `<p class="advertiser-message-meta">لا يوجد رقم معلن محفوظ</p>`}
+        </label>
+        <label>صفة المعلن
+          <select name="advertiserRole">${roleOpts}</select>
+        </label>
+        <button type="submit" class="bank-advertiser-save">حفظ بيانات المعلن</button>
+      </form>
+      <button type="button" class="bank-advertiser-add-phone" id="bankAdvertiserAddPhone"
+        ${phone ? "hidden" : ""}>إضافة رقم المعلن</button>
       <div class="bank-advertiser-actions">
         ${actionButtons}
         <button type="button" class="bank-action" id="bankAdvertiserStatusBtn">تحديث الحالة</button>
       </div>
       <form id="bankAdvertiserStatusForm" class="bank-advertiser-status-form" hidden>
-        <label>صفة المعلن<select name="advertiserRole">${roleOpts}</select></label>
         <label>حالة التواصل<select name="advertiserContactStatus">${contactOpts}</select></label>
         <label>استكمال الإجراءات<select name="marketingConsentStatus">${marketingOpts}</select></label>
         <button type="submit" class="bank-action-primary">حفظ الحالة</button>
       </form>
+      <dl class="bank-detail-grid" style="margin-top:8px">
+        <dt>استكمال الإجراءات</dt><dd>${escapeHtml(marketingConsentStatusLabel(record.marketingConsentStatus))}</dd>
+        <dt>آخر متابعة</dt><dd>${lastContact}</dd>
+      </dl>
     </section>
   `;
+}
+
+function officeContextForAdvertiser() {
+  return window.IAQAR?.office || {};
+}
+
+function officePublicLink() {
+  const office = officeContextForAdvertiser();
+  return officeLinkFor({
+    origin: window.location.origin,
+    publicSlug: office.publicSlug || "",
+    officeId: office.officeId || officeId()
+  });
+}
+
+function openBankAdvertiserWhatsApp(record, phone) {
+  if (!phone) return;
+  const office = officeContextForAdvertiser();
+  const displayName = readAdvertiserDisplayName(record);
+  const message = buildAdvertiserWhatsAppMessage({
+    brokerName: office.brokerName || office.displayBroker || "",
+    officeName: office.officeName || office.displayName || "",
+    licenseNumber: office.licenseNumber || office.falLicense || "",
+    propertyType: record.propertyType || "",
+    district: record.district || "",
+    city: record.city || "",
+    officeLink: officePublicLink(),
+    advertiserDisplayName: displayName
+  });
+  const modal = document.getElementById("advertiserMessageOverlay");
+  const target = document.getElementById("advertiserMessageTarget");
+  const nameEl = document.getElementById("advertiserMessageAdvertiserName");
+  const title = document.getElementById("advertiserMessageTitle");
+  const textarea = document.getElementById("advertiserMessageText");
+  if (!modal || !textarea) return;
+  if (title) title.textContent = "رسالة التواصل مع المعلن";
+  if (target) target.textContent = phone;
+  if (nameEl) {
+    if (displayName) {
+      nameEl.hidden = false;
+      nameEl.textContent = `المعلن: ${displayName} — `;
+    } else {
+      nameEl.hidden = true;
+      nameEl.textContent = "";
+    }
+  }
+  textarea.value = message;
+  const opportunityId = record.id || state.activeId;
+  setAdvertiserMessageModalContext({
+    phone,
+    opportunityId,
+    onWhatsAppOpened: async () => {
+      if (!opportunityId) return;
+      try {
+        await patchOpportunity(opportunityId, {
+          advertiserContactStatus: "OPENED_WHATSAPP",
+          lastContactAt: new Date().toISOString()
+        });
+        const existing = state.records.get(opportunityId);
+        if (existing) {
+          state.records.set(opportunityId, {
+            ...existing,
+            advertiserContactStatus: "OPENED_WHATSAPP",
+            lastContactAt: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        console.warn("[iaqar] advertiser whatsapp status", error);
+      }
+    }
+  });
+  modal.hidden = false;
+}
+
+async function saveAdvertiserData(id, record, form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+  const result = buildAdvertiserDataPatch(record, data);
+  const errorEl = document.getElementById("bankAdvertiserPhoneError");
+  if (!result.ok) {
+    if (errorEl) {
+      errorEl.textContent = result.error || "رقم الجوال غير صحيح";
+      errorEl.hidden = false;
+    }
+    setStatus(result.error || "تعذر حفظ بيانات المعلن", "is-error");
+    return false;
+  }
+  if (errorEl) errorEl.hidden = true;
+  const user = authUser();
+  const patch = {
+    ...result.patch,
+    updatedAt: new Date().toISOString(),
+    updatedBy: user?.uid || ""
+  };
+  try {
+    await patchOpportunity(id, patch);
+    state.records.set(id, { ...record, ...patch, id });
+    setStatus("تم حفظ بيانات المعلن", "is-done");
+    toast("تم حفظ بيانات المعلن");
+    await renderDetail(id);
+    return true;
+  } catch (error) {
+    console.warn("[iaqar] advertiser save", error);
+    setStatus("تعذر حفظ بيانات المعلن", "is-error");
+    return false;
+  }
 }
 
 function isBankDetailOpen() {
@@ -359,22 +489,53 @@ function wireDetailHandlers(id, record) {
     if (form) form.hidden = !form.hidden;
   });
 
-  const advertiserPhone = readAdvertiserPhoneFromRecord(record).phone;
+  function currentAdvertiserPhone() {
+    return readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
+  }
+
+  function currentAdvertiserRecord() {
+    return state.records.get(id) || record;
+  }
+
   $("bankAdvertisercall")?.addEventListener("click", () => {
-    if (!advertiserPhone) return;
-    window.location.href = `tel:${advertiserPhone}`;
+    const phone = currentAdvertiserPhone();
+    if (!phone) return;
+    window.location.href = `tel:${phone}`;
   });
-  $("bankAdvertiserwhatsapp")?.addEventListener("click", () => openBankAdvertiserWhatsApp(record, advertiserPhone));
+  $("bankAdvertiserwhatsapp")?.addEventListener("click", () => {
+    const phone = currentAdvertiserPhone();
+    openBankAdvertiserWhatsApp(currentAdvertiserRecord(), phone);
+  });
   $("bankAdvertisercopy")?.addEventListener("click", async () => {
-    if (!advertiserPhone) return;
+    const phone = currentAdvertiserPhone();
+    if (!phone) return;
     try {
-      await navigator.clipboard.writeText(advertiserPhone);
+      await navigator.clipboard.writeText(phone);
       toast("تم نسخ الرقم");
     } catch {
       toast("تعذر نسخ الرقم");
     }
   });
-  $("bankAdvertiserprep")?.addEventListener("click", () => openBankAdvertiserWhatsApp(record, advertiserPhone, true));
+  $("bankAdvertiseredit")?.addEventListener("click", () => {
+    const form = document.getElementById("bankAdvertiserEditForm");
+    const phoneInput = form?.querySelector('input[name="advertiserPhoneLocal"]');
+    if (phoneInput) {
+      phoneInput.focus();
+      phoneInput.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  });
+  $("bankAdvertiserAddPhone")?.addEventListener("click", () => {
+    const form = document.getElementById("bankAdvertiserEditForm");
+    const phoneInput = form?.querySelector('input[name="advertiserPhoneLocal"]');
+    if (phoneInput) {
+      phoneInput.focus();
+      phoneInput.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  });
+  $("bankAdvertiserEditForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await saveAdvertiserData(id, currentAdvertiserRecord(), event.currentTarget);
+  });
 
   $("bankHideSharedBtn")?.addEventListener("click", () => void hideSharedOpportunity(id));
 
@@ -383,7 +544,6 @@ function wireDetailHandlers(id, record) {
     const data = Object.fromEntries(new FormData(event.currentTarget).entries());
     try {
       await patchOpportunity(id, {
-        advertiserRole: data.advertiserRole,
         advertiserContactStatus: data.advertiserContactStatus,
         marketingConsentStatus: data.marketingConsentStatus,
         lastContactAt: new Date().toISOString()
@@ -630,38 +790,6 @@ async function softDeleteOpportunity(id, existing) {
     console.warn("[iaqar] bank delete", error);
     setStatus("تعذر الحذف", "is-error");
   }
-}
-
-function openBankAdvertiserWhatsApp(record, phone, prepOnly = false) {
-  if (!phone) return;
-  const office = window.IAQAR?.office || {};
-  const message = buildAdvertiserCompletionMessage({
-    brokerName: office.brokerName || "",
-    officeName: office.officeName || "",
-    licenseNumber: office.licenseNumber || office.falLicense || "",
-    propertyType: record.propertyType || "",
-    district: record.district || "",
-    city: record.city || ""
-  });
-  const modal = document.getElementById("advertiserMessageOverlay");
-  const target = document.getElementById("advertiserMessageTarget");
-  const textarea = document.getElementById("advertiserMessageText");
-  if (!modal || !textarea) return;
-  if (target) target.textContent = phone;
-  textarea.value = message;
-  modal.hidden = false;
-  if (prepOnly) return;
-  const waBtn = document.getElementById("advertiserMessageWhatsApp");
-  if (!waBtn) return;
-  waBtn.addEventListener("click", () => {
-    const digits = whatsappDigitsFromE164(phone);
-    if (!digits) return;
-    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(textarea.value || "")}`, "_blank", "noopener,noreferrer");
-    window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
-      detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
-    }));
-    modal.hidden = true;
-  }, { once: true });
 }
 
 function confirmPermanentDelete(id, record) {

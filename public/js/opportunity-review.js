@@ -19,6 +19,8 @@ import {
   MARKETING_CONSENT_STATUSES,
   buildAdvertiserCompletionMessage,
   extractAdvertiserPhonesFromText,
+  getAdvertiserMessageModalContext,
+  clearAdvertiserMessageModalContext,
   normalizeAdvertiserPhoneE164,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
@@ -304,20 +306,33 @@ function wireAdvertiserMessageModal() {
     void navigator.clipboard?.writeText(textarea?.value || "");
   });
   $("advertiserMessageWhatsApp")?.addEventListener("click", () => {
+    const ctx = getAdvertiserMessageModalContext();
     const advertiser = readAdvertiserForm();
-    const digits = whatsappDigitsFromE164(advertiser.advertiserPhoneNormalized);
+    const phone = ctx?.phone || advertiser.advertiserPhoneNormalized;
+    const digits = whatsappDigitsFromE164(phone);
     if (!digits) return;
     const url = `https://wa.me/${digits}?text=${encodeURIComponent(textarea?.value || "")}`;
     window.open(url, "_blank", "noopener,noreferrer");
-    const statusSelect = document.querySelector('select[name="advertiserContactStatus"]');
-    if (statusSelect) statusSelect.value = "OPENED_WHATSAPP";
-    window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
-      detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
-    }));
+    if (ctx?.onWhatsAppOpened) {
+      void ctx.onWhatsAppOpened();
+    } else {
+      const statusSelect = document.querySelector('select[name="advertiserContactStatus"]');
+      if (statusSelect) statusSelect.value = "OPENED_WHATSAPP";
+      window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
+        detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
+      }));
+    }
+    clearAdvertiserMessageModalContext();
     closeAdvertiserMessageModal();
   });
-  $("advertiserMessageCancel")?.addEventListener("click", () => closeAdvertiserMessageModal());
-  $("advertiserMessageClose")?.addEventListener("click", () => closeAdvertiserMessageModal());
+  $("advertiserMessageCancel")?.addEventListener("click", () => {
+    clearAdvertiserMessageModalContext();
+    closeAdvertiserMessageModal();
+  });
+  $("advertiserMessageClose")?.addEventListener("click", () => {
+    clearAdvertiserMessageModalContext();
+    closeAdvertiserMessageModal();
+  });
   modal.addEventListener("click", (event) => {
     if (event.target === modal) closeAdvertiserMessageModal();
   });

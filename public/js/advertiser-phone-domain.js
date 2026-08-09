@@ -49,6 +49,45 @@ export function whatsappDigitsFromE164(e164) {
   return "";
 }
 
+export function e164ToLocalInput(e164) {
+  const normalized = normalizeAdvertiserPhoneE164(e164);
+  if (!normalized) return "";
+  return normalized.replace(/^\+966/, "");
+}
+
+export function safeAdvertiserDisplayName(value) {
+  const text = safeText(value, 120).replace(/[<>`]/g, "");
+  return text.trim();
+}
+
+export function readAdvertiserDisplayName(record = {}) {
+  return safeAdvertiserDisplayName(record.advertiserDisplayName || "");
+}
+
+export function validateAdvertiserPhoneLocalInput(localDigits) {
+  const local = String(localDigits || "").replace(/\D/g, "");
+  if (!local) return { ok: true, e164: "", error: "" };
+  const e164 = normalizeAdvertiserPhoneE164(local.length === 9 ? local : `0${local}`);
+  if (!e164) {
+    return { ok: false, e164: "", error: "رقم الجوال غير صحيح — استخدم صيغة 05XXXXXXXX" };
+  }
+  return { ok: true, e164, error: "" };
+}
+
+let advertiserMessageModalContext = null;
+
+export function setAdvertiserMessageModalContext(context) {
+  advertiserMessageModalContext = context && typeof context === "object" ? { ...context } : null;
+}
+
+export function getAdvertiserMessageModalContext() {
+  return advertiserMessageModalContext;
+}
+
+export function clearAdvertiserMessageModalContext() {
+  advertiserMessageModalContext = null;
+}
+
 function contextWindow(text, start, end, radius = 42) {
   const from = Math.max(0, start - radius);
   const to = Math.min(text.length, end + radius);
@@ -124,6 +163,57 @@ export function marketingConsentStatusLabel(id) {
   return MARKETING_CONSENT_STATUSES.find((r) => r.id === id)?.label || id || "—";
 }
 
+export function buildAdvertiserWhatsAppMessage({
+  brokerName = "",
+  officeName = "",
+  licenseNumber = "",
+  propertyType = "",
+  district = "",
+  city = "",
+  officeLink = "",
+  advertiserDisplayName = ""
+} = {}) {
+  const displayName = safeAdvertiserDisplayName(advertiserDisplayName);
+  let greeting = "السلام عليكم";
+  if (displayName) {
+    if (/^أبو\s*/u.test(displayName)) greeting = `السلام عليكم ${displayName}`;
+    else greeting = `السلام عليكم أستاذ/أبو ${displayName}`;
+  }
+
+  const broker = safeText(brokerName) || safeText(officeName) || "الوسيط";
+  const office = safeText(officeName) || "المكتب";
+  const license = safeText(licenseNumber);
+  let introLine = `معكم ${broker} من ${office}`;
+  if (license) introLine += `، وسيط عقاري مرخص برقم فال ${license}.`;
+  else introLine += "، وسيط عقاري.";
+
+  const property = safeText(propertyType) || "العقار";
+  const districtText = safeText(district);
+  const cityText = safeText(city);
+  let propertyPhrase = `اطلعت على إعلانكم بخصوص ${property}`;
+  if (districtText && cityText) propertyPhrase += ` في ${districtText} — ${cityText}`;
+  else if (districtText) propertyPhrase += ` في حي ${districtText}`;
+  else if (cityText) propertyPhrase += ` في ${cityText}`;
+  propertyPhrase +=
+    "، وأرغب في التعاون معكم لتسويق العقار وعرضه على شبكة من الوسطاء والعملاء المهتمين، بعد موافقتكم واستكمال الإجراءات اللازمة.";
+
+  const link = safeText(officeLink, 500);
+  const lines = [
+    `${greeting}،`,
+    "",
+    introLine,
+    "",
+    propertyPhrase,
+    "",
+    "يسعدني تزويدكم بمزيد من التفاصيل والتعريف بخدمات المكتب."
+  ];
+  if (link) {
+    lines.push("", "رابط بطاقة المكتب للتحقق:", link);
+  }
+  lines.push("", "شاكرين لكم.");
+  return lines.join("\n");
+}
+
 export function buildAdvertiserCompletionMessage({
   brokerName = "",
   officeName = "",
@@ -163,8 +253,10 @@ export function buildAdvertiserCompletionMessage({
 export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {}) {
   const phone = normalizeAdvertiserPhoneE164(advertiser.advertiserPhoneNormalized || advertiser.phone);
   const raw = safeText(advertiser.advertiserPhoneRaw || advertiser.phoneRaw, 40);
+  const displayName = safeAdvertiserDisplayName(advertiser.advertiserDisplayName);
   return {
     ...base,
+    advertiserDisplayName: displayName,
     advertiserPhoneRaw: phone ? raw : "",
     advertiserPhoneNormalized: phone,
     advertiserPhoneSource: safeText(advertiser.advertiserPhoneSource, 40),
@@ -175,6 +267,32 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
     lastContactAt: advertiser.lastContactAt || null,
     contactNotes: safeText(advertiser.contactNotes, 500)
   };
+}
+
+export function buildAdvertiserDataPatch(existing = {}, input = {}) {
+  const displayName = safeAdvertiserDisplayName(input.advertiserDisplayName);
+  const phoneCheck = validateAdvertiserPhoneLocalInput(input.advertiserPhoneLocal);
+  if (!phoneCheck.ok) return { ok: false, error: phoneCheck.error };
+
+  const hadPhone = Boolean(readAdvertiserPhoneFromRecord(existing).phone);
+  const patch = {
+    advertiserDisplayName: displayName,
+    advertiserRole: safeText(input.advertiserRole || existing.advertiserRole || "UNKNOWN", 20)
+  };
+
+  if (phoneCheck.e164) {
+    const local = String(input.advertiserPhoneLocal || "").replace(/\D/g, "");
+    patch.advertiserPhoneNormalized = phoneCheck.e164;
+    patch.advertiserPhoneRaw = safeText(input.advertiserPhoneRaw || `0${local}`, 40);
+    if (!hadPhone && !existing.advertiserPhoneSource) {
+      patch.advertiserPhoneSource = "manual_entry";
+    }
+  } else {
+    patch.advertiserPhoneNormalized = "";
+    patch.advertiserPhoneRaw = "";
+  }
+
+  return { ok: true, patch };
 }
 
 /** Unified read adapter for legacy and current advertiser phone fields. */
@@ -209,31 +327,30 @@ export function readAdvertiserPhoneFromRecord(record = {}) {
 
 export function buildAdvertiserContactSection(record = {}) {
   const info = readAdvertiserPhoneFromRecord(record);
+  const displayName = readAdvertiserDisplayName(record);
   const rows = [];
   rows.push({
-    label: "رقم الجوال",
-    value: info.phone || "لا يوجد رقم معلن محفوظ لهذه الفرصة"
+    label: "اسم أو وصف المعلن",
+    value: displayName || "إضافة اسم أو وصف"
   });
-  if (info.role) {
-    rows.push({ label: "صفة المعلن", value: advertiserRoleLabel(info.role) });
-  }
-  if (info.source) {
-    rows.push({ label: "مصدر الرقم", value: info.source });
-  }
-  if (info.contactStatus) {
+  rows.push({
+    label: "رقم الجوال",
+    value: info.phone || "لا يوجد رقم معلن محفوظ"
+  });
+  rows.push({ label: "صفة المعلن", value: advertiserRoleLabel(info.role || "UNKNOWN") });
+  if (info.contactStatus && info.contactStatus !== "NOT_CONTACTED") {
     rows.push({ label: "حالة التواصل", value: advertiserContactStatusLabel(info.contactStatus) });
   }
-  return { title: "بيانات المعلن", rows, phone: info.phone };
+  return { title: "بيانات المعلن", rows, phone: info.phone, displayName };
 }
 
 export function buildAdvertiserContactActions(record = {}) {
   const info = readAdvertiserPhoneFromRecord(record);
   const phone = info.phone;
-  const actions = [
+  return [
     { action: "call", label: "اتصال", phone, disabled: !phone },
-    { action: "whatsapp", label: "واتساب", phone, disabled: !phone },
     { action: "copy", label: "نسخ الرقم", phone, disabled: !phone },
-    { action: "prep", label: "تجهيز رسالة الاستكمال", phone, disabled: false }
+    { action: "whatsapp", label: "واتساب", phone, disabled: !phone },
+    { action: "edit", label: "تعديل البيانات", phone, disabled: false }
   ];
-  return actions;
 }

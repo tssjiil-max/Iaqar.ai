@@ -1988,7 +1988,92 @@
     background:#fff;
   }
 
-  .advertiser-message-actions {
+  .bank-advertiser-edit-form {
+    display:grid;
+    gap:8px;
+    margin-top:6px;
+  }
+
+  .bank-advertiser-edit-form label {
+    display:grid;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:700;
+  }
+
+  .bank-advertiser-edit-form input[type=text],
+  .bank-advertiser-edit-form input[type=tel],
+  .bank-advertiser-edit-form select {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+    font-size:13px;
+    box-sizing:border-box;
+  }
+
+  .bank-advertiser-phone-row {
+    display:grid;
+    grid-template-columns:52px minmax(0, 1fr);
+    gap:6px;
+    align-items:center;
+  }
+
+  .bank-advertiser-phone-prefix {
+    height:40px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#f4f8f6;
+    font-size:12px;
+    font-weight:800;
+    color:var(--green);
+  }
+
+  .bank-advertiser-phone-error {
+    color:#a1332c;
+    font-size:11px;
+    font-weight:700;
+  }
+
+  .bank-advertiser-phone-error[hidden] { display:none; }
+
+  .bank-advertiser-save {
+    min-height:40px;
+    border:0;
+    border-radius:12px;
+    background:var(--green);
+    color:#fff;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .bank-advertiser-add-phone {
+    margin-top:6px;
+    min-height:38px;
+    border:1px dashed var(--green);
+    border-radius:12px;
+    background:#fff;
+    color:var(--green);
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .bank-advertiser-add-phone[hidden] { display:none; }
+
+  .advertiser-message-meta {
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.5;
+  }
+
+  .advertiser-message-meta strong { color:var(--ink); }
     display:grid;
     gap:8px;
     margin-top:10px;
@@ -2257,14 +2342,17 @@
     <section class="settings-sheet advertiser-message-sheet" role="dialog" aria-modal="true" aria-labelledby="advertiserMessageTitle">
       <div class="settings-head">
         <div>
-          <h2 id="advertiserMessageTitle">رسالة استكمال بيانات المعلن</h2>
-          <p>الرقم المستهدف: <strong id="advertiserMessageTarget"></strong></p>
+          <h2 id="advertiserMessageTitle">رسالة التواصل مع المعلن</h2>
+          <p class="advertiser-message-meta" id="advertiserMessageMeta">
+            <span id="advertiserMessageAdvertiserName" hidden></span>
+            <span>رقم الجوال: <strong id="advertiserMessageTarget"></strong></span>
+          </p>
         </div>
         <button class="settings-close" id="advertiserMessageClose" type="button" aria-label="إغلاق">×</button>
       </div>
       <label class="review-field">
         <span>نص الرسالة</span>
-        <textarea id="advertiserMessageText" aria-label="نص رسالة الاستكمال"></textarea>
+        <textarea id="advertiserMessageText" aria-label="نص رسالة التواصل مع المعلن"></textarea>
       </label>
       <div class="advertiser-message-actions">
         <button type="button" class="advertiser-message-copy" id="advertiserMessageCopy">نسخ الرسالة</button>
