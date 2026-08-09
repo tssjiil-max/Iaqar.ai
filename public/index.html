@@ -351,7 +351,7 @@
 
     /* إضافة فرصة — مدمج في آخر الصفحة */
     .add-opportunity {
-      margin-top:20px;
+      margin-top:28px;
       padding:7px 8px 8px;
     }
     .add-opportunity .section-title-bar {
@@ -360,9 +360,9 @@
     .add-opportunity .section-title-bar h2 { font-size:14px; }
     .add-opportunity-row {
       display:grid;
-      grid-template-columns:minmax(0, 1fr) 104px;
+      grid-template-columns:minmax(0, 1fr) 96px;
       gap:8px;
-      align-items:center;
+      align-items:stretch;
       margin-top:6px;
     }
     .add-opportunity-input-wrap {
@@ -370,22 +370,25 @@
       display:flex;
       align-items:center;
       min-width:0;
+      height:52px;
     }
     .add-opportunity-input-wrap input[type=text] {
       width:100%;
       min-width:0;
       height:52px;
-      border:1px solid #c8d6cf;
+      box-sizing:border-box;
+      border:1px solid #d4e3de;
       border-radius:12px;
-      padding:0 40px 0 36px;
+      padding:0 44px 0 40px;
       background:#fff;
       color:var(--text);
-      font-size:13px;
+      font-size:14px;
+      line-height:1.35;
     }
     .add-opportunity-input-wrap input[type=text]:focus {
       outline:none;
-      border-color:rgba(0,92,75,.42);
-      box-shadow:0 0 0 2px rgba(0,92,75,.08);
+      border-color:rgba(0,92,75,.45);
+      box-shadow:0 0 0 2px rgba(0,92,75,.1);
     }
     .add-opportunity-inline-clip {
       position:absolute;
@@ -427,25 +430,55 @@
       width:100%;
       height:52px;
       min-height:52px;
+      box-sizing:border-box;
       border-radius:12px;
-      padding:0 10px;
+      padding:0 8px;
       font-size:12px;
       font-weight:800;
       cursor:pointer;
       border:0;
       background:#b8c9c0;
       color:#fff;
+      position:relative;
+      transition:background .12s ease;
     }
     .add-opportunity-execute.is-ready:not(:disabled) {
       background:var(--green);
       color:#fff;
+      cursor:pointer;
     }
     .add-opportunity-execute:disabled {
       opacity:1;
+      cursor:not-allowed;
+      background:#b8c9c0;
+      color:#fff;
+    }
+    .add-opportunity-execute.is-busy:disabled {
       cursor:default;
+      background:var(--green);
+      color:#fff;
+    }
+    .add-opportunity-execute.is-busy::after {
+      content:"";
+      position:absolute;
+      right:10px;
+      top:50%;
+      width:14px;
+      height:14px;
+      margin-top:-7px;
+      border:2px solid rgba(255,255,255,.35);
+      border-top-color:#fff;
+      border-radius:50%;
+      animation:add-opp-spin .65s linear infinite;
+    }
+    @keyframes add-opp-spin {
+      to { transform:rotate(360deg); }
     }
     .add-opportunity-attachment-hint {
-      margin:4px 2px 0;
+      margin:6px 2px 0;
+      padding:6px 10px;
+      border-radius:8px;
+      background:var(--green-pale);
       color:var(--muted);
       font-size:10px;
       line-height:1.4;

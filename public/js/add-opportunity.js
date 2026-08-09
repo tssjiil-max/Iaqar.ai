@@ -95,20 +95,43 @@ function setState(state, detail = "") {
   if (retry) retry.hidden = state !== "failed";
 }
 
+function hasValidInputFromValues(text, file) {
+  return String(text || "").trim().length > 0 || Boolean(file);
+}
+
+export { hasValidInputFromValues };
+
+function hasValidInput() {
+  const input = $("addOpportunityInput");
+  return hasValidInputFromValues(input?.value || "", selectedFile);
+}
+
+function syncExecuteButton() {
+  const clearBtn = $("addOpportunityInputClear");
+  const executeBtn = $("addOpportunitySubmit");
+  const valid = hasValidInput();
+  if (clearBtn) clearBtn.hidden = !valid;
+  if (!executeBtn) return;
+  const disabled = executing || !valid;
+  executeBtn.disabled = disabled;
+  executeBtn.classList.toggle("is-ready", valid && !executing);
+  executeBtn.setAttribute("aria-disabled", String(disabled));
+}
+
 function setBusy(busy) {
   const executeBtn = $("addOpportunitySubmit");
   const input = $("addOpportunityInput");
   const paperclip = $("addOpportunityPaperclip");
   const clearBtn = $("addOpportunityInputClear");
   if (executeBtn) {
-    executeBtn.disabled = busy;
+    executeBtn.classList.toggle("is-busy", busy);
     if (busy && executeBtn.dataset.busyLabel) executeBtn.textContent = executeBtn.dataset.busyLabel;
     else if (!busy && executeBtn.dataset.originalText) executeBtn.textContent = executeBtn.dataset.originalText;
   }
   if (input) input.disabled = busy;
   if (paperclip) paperclip.disabled = busy;
   if (clearBtn) clearBtn.disabled = busy;
-  if (!busy) updateClearButtonVisibility();
+  syncExecuteButton();
 }
 
 let lastFailure = null;
@@ -134,7 +157,19 @@ function clearIntakeForm() {
     document.body.style.overflow = "";
     window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
   }
-  updateClearButtonVisibility();
+  syncExecuteButton();
+  updateAttachmentHint();
+  setState("idle");
+}
+
+function clearDraftInput() {
+  lastFailure = null;
+  selectedFile = null;
+  const input = $("addOpportunityInput");
+  if (input) input.value = "";
+  const fileInput = $("addOpportunityFile");
+  if (fileInput) fileInput.value = "";
+  syncExecuteButton();
   updateAttachmentHint();
   setState("idle");
 }
@@ -151,18 +186,6 @@ function updateAttachmentHint() {
   }
 }
 
-function updateClearButtonVisibility() {
-  const clearBtn = $("addOpportunityInputClear");
-  const input = $("addOpportunityInput");
-  const executeBtn = $("addOpportunitySubmit");
-  if (!clearBtn) return;
-  const hasContent = Boolean((input?.value || "").trim() || selectedFile);
-  clearBtn.hidden = !hasContent;
-  if (executeBtn && !executing) {
-    executeBtn.disabled = !hasContent;
-    executeBtn.classList.toggle("is-ready", hasContent);
-  }
-}
 
 async function uploadSourceFile(officeId, sourceId, file) {
   const base = workerBase();
@@ -442,11 +465,11 @@ function onFileChosen(event) {
   if (!validated.ok) {
     setState("failed", validated.error);
     selectedFile = null;
-    updateClearButtonVisibility();
+    syncExecuteButton();
     return;
   }
   selectedFile = file;
-  updateClearButtonVisibility();
+  syncExecuteButton();
   updateAttachmentHint();
   setState("idle");
 }
@@ -472,11 +495,12 @@ function boot() {
 
   executeBtn?.addEventListener("click", () => void startExecute());
   $("addOpportunityPaperclip")?.addEventListener("click", onPaperclip);
-  $("addOpportunityInputClear")?.addEventListener("click", () => clearIntakeForm());
-  $("addOpportunityInput")?.addEventListener("input", () => updateClearButtonVisibility());
+  $("addOpportunityInputClear")?.addEventListener("click", () => clearDraftInput());
+  $("addOpportunityInput")?.addEventListener("input", () => syncExecuteButton());
+  $("addOpportunityInput")?.addEventListener("change", () => syncExecuteButton());
   fileInput?.addEventListener("change", onFileChosen);
   $("addOpportunityRetry")?.addEventListener("click", () => void startExecute());
-  updateClearButtonVisibility();
+  syncExecuteButton();
 }
 
 if (document.readyState === "loading") {
@@ -488,6 +512,9 @@ if (document.readyState === "loading") {
 export const __test = {
   startExecute,
   approveFromReview,
+  hasValidInputFromValues,
+  hasValidInput,
+  syncExecuteButton,
   setSelectedFile(file) { selectedFile = file; },
   getSelectedFile() { return selectedFile; }
 };
