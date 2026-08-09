@@ -29,7 +29,7 @@ export const ADVERTISER_CONTACT_STATUSES = Object.freeze([
 export const MARKETING_CONSENT_STATUSES = Object.freeze([
   { id: "NOT_STARTED", label: "لم تبدأ" },
   { id: "AWAITING_RESPONSE", label: "بانتظار الرد" },
-  { id: "PRELIMINARY_YES", label: "وافق مبدئيًا على استكمال الإجراءات" },
+  { id: "PRELIMINARY_YES", label: "موافقة مبدئية" },
   { id: "REFUSED", label: "رفض" },
   { id: "NEEDS_FOLLOWUP", label: "يحتاج متابعة" }
 ]);
@@ -163,6 +163,23 @@ export function marketingConsentStatusLabel(id) {
   return MARKETING_CONSENT_STATUSES.find((r) => r.id === id)?.label || id || "—";
 }
 
+/** True when display name is a real person name (not generic role/descriptor). */
+export function isRealAdvertiserNameForGreeting(name) {
+  const text = safeAdvertiserDisplayName(name);
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (/^(وسيط|مالك|معلن|وسيط عقاري|المالك|المعلن)$/iu.test(trimmed)) return false;
+  if (/^(مالك|معلن|وسيط|إعلان)\s/iu.test(trimmed)) return false;
+  return true;
+}
+
+export function buildAdvertiserGreeting(displayName = "") {
+  if (isRealAdvertiserNameForGreeting(displayName)) {
+    return `السلام عليكم أستاذ ${safeAdvertiserDisplayName(displayName)}`;
+  }
+  return "السلام عليكم";
+}
+
 export function buildAdvertiserWhatsAppMessage({
   brokerName = "",
   officeName = "",
@@ -173,12 +190,7 @@ export function buildAdvertiserWhatsAppMessage({
   officeLink = "",
   advertiserDisplayName = ""
 } = {}) {
-  const displayName = safeAdvertiserDisplayName(advertiserDisplayName);
-  let greeting = "السلام عليكم";
-  if (displayName) {
-    if (/^أبو\s*/u.test(displayName)) greeting = `السلام عليكم ${displayName}`;
-    else greeting = `السلام عليكم أستاذ/أبو ${displayName}`;
-  }
+  const greeting = buildAdvertiserGreeting(advertiserDisplayName);
 
   const broker = safeText(brokerName) || safeText(officeName) || "الوسيط";
   const office = safeText(officeName) || "المكتب";

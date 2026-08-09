@@ -6,6 +6,8 @@ import {
   buildAdvertiserCompletionMessage,
   buildAdvertiserWhatsAppMessage,
   buildAdvertiserDataPatch,
+  buildAdvertiserGreeting,
+  isRealAdvertiserNameForGreeting,
   pickPrimaryAdvertiserPhone,
   validateAdvertiserPhoneLocalInput,
   safeAdvertiserDisplayName,
@@ -68,8 +70,17 @@ test("whatsapp cooperation message has no undefined", () => {
   assert.ok(!msg.includes("undefined"));
   assert.ok(!msg.includes("null"));
   assert.ok(msg.includes("أبو محمد"));
+  assert.ok(msg.includes("أستاذ"));
+  assert.ok(!msg.includes("أستاذ/أبو"));
   assert.ok(msg.includes("شقة"));
   assert.ok(msg.includes("https://example.com/o/test"));
+});
+
+test("greeting uses generic salutation for role descriptors", () => {
+  assert.equal(buildAdvertiserGreeting("وسيط"), "السلام عليكم");
+  assert.equal(buildAdvertiserGreeting("مالك شقة العوالي"), "السلام عليكم");
+  assert.equal(buildAdvertiserGreeting("أحمد"), "السلام عليكم أستاذ أحمد");
+  assert.ok(!buildAdvertiserWhatsAppMessage({ advertiserDisplayName: "وسيط" }).includes("أبو"));
 });
 
 test("whatsapp message without license omits fal phrase", () => {

@@ -542,12 +542,18 @@ function wireDetailHandlers(id, record) {
   $("bankAdvertiserStatusForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const user = authUser();
+    const existing = state.records.get(id) || record;
+    const patch = {
+      advertiserContactStatus: data.advertiserContactStatus,
+      marketingConsentStatus: data.marketingConsentStatus,
+      lastContactAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: user?.uid || ""
+    };
     try {
-      await patchOpportunity(id, {
-        advertiserContactStatus: data.advertiserContactStatus,
-        marketingConsentStatus: data.marketingConsentStatus,
-        lastContactAt: new Date().toISOString()
-      });
+      await patchOpportunity(id, patch);
+      state.records.set(id, { ...existing, ...patch, id });
       setStatus("تم تحديث حالة المعلن", "is-done");
       await renderDetail(id);
     } catch (error) {
@@ -986,6 +992,50 @@ async function createScopedShare() {
   }
 }
 
+async function resolveOfficeBrokerLabel(targetOfficeId) {
+  const runtime = officeRuntime();
+  const target = String(targetOfficeId || "").trim();
+  if (!target) return "الوسيط";
+  if (!runtime?.db) return target;
+  try {
+    const snap = await runtime.db.collection("publicOffices").doc(target).get();
+    if (!snap.exists) return target;
+    const data = snap.data() || {};
+    return data.brokerName || data.officeName || target;
+  } catch {
+    return target;
+  }
+}
+
+function confirmStopOpportunityShare(sharingScopeId, brokerName) {
+  const modal = document.getElementById("stopShareOverlay");
+  const message = document.getElementById("stopShareMessage");
+  const cancelBtn = document.getElementById("stopShareCancel");
+  const confirmBtn = document.getElementById("stopShareConfirm");
+  if (!modal || !confirmBtn || !cancelBtn) {
+    void revokeScopedShare(sharingScopeId);
+    return;
+  }
+  const label = String(brokerName || "الوسيط").trim();
+  if (message) {
+    message.textContent =
+      `هل تريد إيقاف مشاركة الفرصة مع ${label}؟ ستتوقف المشاركة مع هذا الوسيط فقط، ولن تُحذف الفرصة الأصلية من بنك الفرص.`;
+  }
+  modal.hidden = false;
+  const close = () => {
+    modal.hidden = true;
+    cancelBtn.removeEventListener("click", onCancel);
+    confirmBtn.removeEventListener("click", onConfirm);
+  };
+  const onCancel = () => close();
+  const onConfirm = () => {
+    close();
+    void revokeScopedShare(sharingScopeId);
+  };
+  cancelBtn.addEventListener("click", onCancel);
+  confirmBtn.addEventListener("click", onConfirm);
+}
+
 async function revokeScopedShare(sharingScopeId) {
   const user = authUser();
   if (!user?.getIdToken || !sharingScopeId) {
@@ -1006,8 +1056,8 @@ async function revokeScopedShare(sharingScopeId) {
       setStatus(result.message || "تعذر إنهاء نطاق المشاركة", "is-error");
       return;
     }
-    setStatus("انتهى نطاق المشاركة", "is-done");
-    toast("تم إنهاء نطاق المشاركة");
+    setStatus("تم إيقاف مشاركة الفرصة", "is-done");
+    toast("تم إيقاف مشاركة الفرصة");
     await loadOutgoingScopes();
   } catch (error) {
     console.warn("[iaqar] scope revoke", error);
@@ -1027,23 +1077,32 @@ async function loadOutgoingScopes() {
     const active = snap.docs
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((scope) => scope.status === "ACTIVE" && scope.enabled !== false && !scope.revokedAt);
+    const names = await Promise.all(
+      active.map((scope) => resolveOfficeBrokerLabel(scope.targetOfficeId))
+    );
     if (!active.length) {
       panel.hidden = true;
       panel.innerHTML = "";
       return;
     }
     panel.hidden = false;
-    panel.innerHTML = `<h3>نطاقات المشاركة النشطة</h3>${active.map((scope) => `
+    panel.innerHTML = `<h3>نطاقات المشاركة النشطة</h3>${active.map((scope, index) => `
       <div class="bank-incoming-item">
         <div>
-          <strong>إلى ${escapeHtml(scope.targetOfficeId || "")}</strong>
+          <strong>إلى ${escapeHtml(names[index] || scope.targetOfficeId || "")}</strong>
           <p>${Number(scope.opportunityIds?.length || 0)} فرصة — قابل للإلغاء</p>
         </div>
-        <button type="button" class="bank-action" data-revoke-scope="${escapeHtml(scope.id)}">إنهاء النطاق</button>
+        <button type="button" class="bank-action" data-revoke-scope="${escapeHtml(scope.id)}"
+          data-broker-name="${escapeHtml(names[index] || scope.targetOfficeId || "")}">إيقاف مشاركة الفرصة</button>
       </div>
     `).join("")}`;
     panel.querySelectorAll("[data-revoke-scope]").forEach((btn) => {
-      btn.addEventListener("click", () => void revokeScopedShare(btn.getAttribute("data-revoke-scope")));
+      btn.addEventListener("click", () => {
+        confirmStopOpportunityShare(
+          btn.getAttribute("data-revoke-scope"),
+          btn.getAttribute("data-broker-name")
+        );
+      });
     });
   } catch (error) {
     console.warn("[iaqar] outgoing scopes", error);

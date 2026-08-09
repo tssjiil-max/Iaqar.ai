@@ -2078,35 +2078,58 @@
   }
 
   .advertiser-message-meta strong { color:var(--ink); }
+
+  .advertiser-message-sheet .review-field {
     display:grid;
+    gap:6px;
+    margin-top:4px;
+  }
+
+  .advertiser-message-sheet .review-field > span {
+    font-size:12px;
+    font-weight:700;
+    color:var(--muted);
+  }
+
+  .advertiser-message-actions {
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
     gap:8px;
-    margin-top:10px;
+    margin-top:14px;
   }
 
   .advertiser-message-actions button {
-    min-height:42px;
+    min-height:44px;
     border-radius:12px;
-    font-size:12px;
+    font-family:Tajawal, sans-serif;
+    font-size:13px;
     font-weight:800;
     cursor:pointer;
+    padding:0 10px;
+    line-height:1.2;
+    appearance:none;
+    -webkit-appearance:none;
+    box-sizing:border-box;
   }
 
-  .advertiser-message-copy {
-    border:1px solid var(--line);
+  .advertiser-message-copy,
+  .advertiser-message-cancel {
+    border:1px solid rgba(0,92,75,.28);
     background:#fff;
     color:var(--green);
   }
 
   .advertiser-message-whatsapp {
     border:0;
-    background:#25d366;
-    color:#063c27;
+    background:var(--green);
+    color:#fff;
   }
 
-  .advertiser-message-cancel {
-    border:1px solid var(--line);
-    background:#fff;
-    color:var(--muted);
+  .advertiser-message-copy:disabled,
+  .advertiser-message-cancel:disabled,
+  .advertiser-message-whatsapp:disabled {
+    opacity:.5;
+    cursor:not-allowed;
   }
 
   #advertiserMessageText {
@@ -2362,6 +2385,21 @@
         <button type="button" class="advertiser-message-copy" id="advertiserMessageCopy">نسخ الرسالة</button>
         <button type="button" class="advertiser-message-whatsapp" id="advertiserMessageWhatsApp">فتح واتساب</button>
         <button type="button" class="advertiser-message-cancel" id="advertiserMessageCancel">إلغاء</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="settings-overlay" id="stopShareOverlay" hidden>
+    <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="stopShareTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="stopShareTitle">إيقاف مشاركة الفرصة</h2>
+          <p id="stopShareMessage"></p>
+        </div>
+      </div>
+      <div class="permanent-delete-actions">
+        <button type="button" class="bank-action" id="stopShareCancel">إلغاء</button>
+        <button type="button" class="bank-action danger" id="stopShareConfirm">إيقاف المشاركة</button>
       </div>
     </section>
   </div>
