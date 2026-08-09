@@ -213,6 +213,7 @@ test("TEST 2: nothing outside the app shell could act as a fixed bottom bar", as
       "svg#.",
       "div#.app",
       "div#opportunityReviewOverlay.settings-overlay",
+      "div#advertiserMessageOverlay.settings-overlay",
       "div#officeSettings.settings-overlay",
       "div#opportunityBank.settings-overlay",
       "div#toast.toast"

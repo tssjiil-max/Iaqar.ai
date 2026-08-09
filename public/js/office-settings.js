@@ -940,82 +940,181 @@ async function createOfficeCardBlob() {
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
-  canvas.height = 1350;
+  canvas.height = 1020;
   const ctx = canvas.getContext("2d");
   const link = officeLink();
 
-  ctx.fillStyle = "#f4f8f6";
+  ctx.fillStyle = "#f6faf8";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#087064";
-  ctx.fillRect(0, 0, canvas.width, 190);
 
-  const logoSource = current.logoUrl || (el.cardLogo && el.cardLogo.src) || "";
-  if (logoSource) {
+  try {
+    const platformLogo = await loadImage("/icons/icon-192.png");
+    drawImageContain(ctx, platformLogo, 502, 22, 44, 44);
+  } catch (_) {}
+
+  ctx.direction = "rtl";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#005C4B";
+  ctx.font = "700 26px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 540, 88);
+
+  ctx.fillStyle = "#E8F5E8";
+  roundedRect(ctx, 56, 108, 968, 70, 18);
+  ctx.fill();
+  ctx.fillStyle = "#087064";
+  ctx.font = "800 38px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.officeName, 540, 156);
+
+  const displaySrc = current.displayImageUrl || current.logoUrl || "";
+  if (displaySrc) {
     try {
-      const logo = await loadImage(logoSource);
-      ctx.fillStyle = "#ffffff";
-      roundedRect(ctx, 820, 28, 175, 132, 24);
-      ctx.fill();
-      drawImageContain(ctx, logo, 838, 42, 139, 104);
+      const displayImg = await loadImage(displaySrc);
+      drawImageCover(ctx, displayImg, 80, 210, 148, 148, 22);
     } catch (_) {}
   }
 
-  ctx.direction = "rtl";
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 43px Tajawal, Arial, sans-serif";
-  ctx.fillText("مكاتب عقارية ذكية", 770, 82);
-  ctx.font = "500 25px Tajawal, Arial, sans-serif";
-  ctx.fillStyle = "#d7ece7";
-  ctx.fillText("بطاقة المكتب العقاري", 770, 126);
-
-  const cover = await loadImage(current.coverUrl || current.displayImageUrl);
-  drawImageCover(ctx, cover, 60, 225, 960, 420, 32);
-
-  ctx.fillStyle = "#ffffff";
-  roundedRect(ctx, 60, 680, 960, 610, 34);
-  ctx.fill();
-
   ctx.textAlign = "right";
   ctx.fillStyle = "#073f35";
-  ctx.font = "700 51px Tajawal, Arial, sans-serif";
-  ctx.fillText(current.officeName, 950, 765);
-  ctx.font = "600 31px Tajawal, Arial, sans-serif";
-  ctx.fillStyle = "#36584f";
-  ctx.fillText(`الوسيط: ${current.brokerName}`, 950, 825);
+  ctx.font = "700 34px Tajawal, Arial, sans-serif";
+  ctx.fillText(current.brokerName, 940, 248);
+  ctx.font = "600 26px Tajawal, Arial, sans-serif";
+  ctx.fillStyle = "#4a635c";
+  ctx.fillText("المرخص له", 940, 286);
 
   const rows = [
     ["رخصة فال", current.licenseNumber],
     ["المدينة", current.city],
-    ["الجوال", current.phone],
     ["التخصص", specialtyText(current.specialties) || "—"]
   ];
-  let rowY = 900;
+  let rowY = 340;
   for (const [label, value] of rows) {
     ctx.fillStyle = "#6a7d77";
-    ctx.font = "500 25px Tajawal, Arial, sans-serif";
-    ctx.fillText(label, 950, rowY);
+    ctx.font = "500 24px Tajawal, Arial, sans-serif";
+    ctx.fillText(label, 940, rowY);
     ctx.fillStyle = "#073f35";
-    ctx.font = "700 29px Tajawal, Arial, sans-serif";
+    ctx.font = "700 28px Tajawal, Arial, sans-serif";
     ctx.fillText(value, 700, rowY);
-    rowY += 58;
+    rowY += 52;
   }
 
-  drawQr(ctx, link, 105, 890, 265);
+  drawQr(ctx, link, 96, 500, 220);
   ctx.textAlign = "center";
   ctx.fillStyle = "#073f35";
   ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("امسح الرمز لزيارة المكتب", 238, 1190);
+  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 740);
 
   ctx.textAlign = "right";
-  ctx.fillStyle = "#e87512";
-  ctx.font = "700 25px Tajawal, Arial, sans-serif";
-  ctx.fillText(link.replace(/^https?:\/\//, ""), 950, 1210);
+  ctx.fillStyle = "#087064";
+  ctx.font = "700 24px Tajawal, Arial, sans-serif";
+  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 820);
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
-  ctx.fillText("طلبات العملاء وعروض الملاك تصل مباشرة إلى المكتب", 950, 1250);
+  ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 870);
 
   return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+}
+
+async function createOpportunityShareCardBlob({
+  propertyType = "",
+  city = "",
+  district = "",
+  priceOrBudget = "",
+  imageSrc = ""
+} = {}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 900;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#f6faf8";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  try {
+    const platformLogo = await loadImage("/icons/icon-192.png");
+    drawImageContain(ctx, platformLogo, 502, 18, 40, 40);
+  } catch (_) {}
+
+  ctx.direction = "rtl";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#005C4B";
+  ctx.font = "700 24px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 540, 78);
+
+  ctx.fillStyle = "#E8F5E8";
+  roundedRect(ctx, 56, 96, 968, 58, 16);
+  ctx.fill();
+  ctx.fillStyle = "#087064";
+  ctx.font = "800 34px Tajawal, Arial, sans-serif";
+  const title = [propertyType, district || city].filter(Boolean).join(" — ") || "فرصة عقارية";
+  ctx.fillText(title, 540, 138);
+
+  const imageBox = { x: 80, y: 170, w: 280, h: 210 };
+  ctx.fillStyle = "#e8ecea";
+  roundedRect(ctx, imageBox.x, imageBox.y, imageBox.w, imageBox.h, 18);
+  ctx.fill();
+  let drewImage = false;
+  if (imageSrc) {
+    try {
+      const propertyImg = await loadImage(imageSrc);
+      drawImageCover(ctx, propertyImg, imageBox.x, imageBox.y, imageBox.w, imageBox.h, 18);
+      drewImage = true;
+    } catch (_) {}
+  }
+  if (!drewImage) {
+    ctx.fillStyle = "#9ab0a8";
+    ctx.font = "600 22px Tajawal, Arial, sans-serif";
+    ctx.fillText("صورة العقار", imageBox.x + imageBox.w / 2, imageBox.y + imageBox.h / 2 + 8);
+  }
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#073f35";
+  ctx.font = "700 30px Tajawal, Arial, sans-serif";
+  if (city) ctx.fillText(`المدينة: ${city}`, 940, 220);
+  if (priceOrBudget) {
+    ctx.font = "700 28px Tajawal, Arial, sans-serif";
+    ctx.fillText(`السعر / الميزانية: ${priceOrBudget} ريال`, 940, 268);
+  }
+
+  ctx.fillStyle = "#71817c";
+  ctx.font = "500 20px Tajawal, Arial, sans-serif";
+  ctx.fillText("فرصة عقارية من منصة مكاتب عقارية ذكية", 940, 860);
+
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+}
+
+async function shareOpportunityCard(record, source = null) {
+  const imageSrc = extractPropertyImageUrl(source?.text || source?.url || "");
+  const blob = await createOpportunityShareCardBlob({
+    propertyType: record.propertyType || "",
+    city: record.city || "",
+    district: record.district || "",
+    priceOrBudget: record.priceOrBudget ?? record.price ?? "",
+    imageSrc
+  });
+  if (!blob) throw new Error("CARD_FAILED");
+  const file = new File([blob], `فرصة-${record.propertyType || "عقارية"}.png`, { type: "image/png" });
+  const text = [
+    record.propertyType || "فرصة عقارية",
+    record.district ? `الحي: ${record.district}` : "",
+    record.city ? `المدينة: ${record.city}` : "",
+    record.priceOrBudget ? `السعر: ${record.priceOrBudget} ريال` : ""
+  ].filter(Boolean).join("\n");
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: record.propertyType || "فرصة عقارية", text });
+    window.dispatchEvent(new CustomEvent("iaqar:share-handoff", { detail: { state: "OPENED_EXTERNAL" } }));
+    return;
+  }
+  const downloadUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = downloadUrl;
+  anchor.download = file.name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+}
+
+function extractPropertyImageUrl(text) {
+  const raw = String(text || "");
+  const match = raw.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
+  return match ? match[0] : "";
 }
 
 async function shareOfficeCard() {
@@ -1035,7 +1134,6 @@ async function shareOfficeCard() {
       `الوسيط: ${current.brokerName}`,
       `رخصة فال: ${current.licenseNumber}`,
       `المدينة: ${current.city}`,
-      `الجوال: ${current.phone}`,
       "زيارة المكتب والتسجيل:",
       link
     ].join("\n");
@@ -1277,6 +1375,7 @@ ensureSettingsNavDelegation();
 window.IAQAR = window.IAQAR || {};
 window.IAQAR.openOfficeSettings = openSettings;
 window.IAQAR.closeOfficeSettings = closeSettings;
+window.IAQAR.shareOpportunityCard = shareOpportunityCard;
 
 async function onLogout() {
   const user = authUser();

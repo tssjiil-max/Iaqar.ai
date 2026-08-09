@@ -469,7 +469,15 @@
     };
   }
 
-  function pushSavedOpportunityToWorkspace({ opportunityId, duplicate = false, matchCount = 0 } = {}) {
+  function pushSavedOpportunityToWorkspace({
+    opportunityId,
+    duplicate = false,
+    matchCount = 0,
+    advertiserPhone = "",
+    propertyType = "",
+    district = "",
+    marketingConsentStatus = ""
+  } = {}) {
     const id = String(opportunityId || "").trim();
     if (!id) return;
     const savedItem = buildSavedOpportunityWorkspaceItem(id, matchCount);
@@ -483,6 +491,35 @@
       savedItem,
       ...savedOpportunityWorkspaceItems.filter(item => item.recordId !== savedItem.recordId)
     ].slice(0, 3);
+
+    const phone = String(advertiserPhone || "").trim();
+    const needsFollowup = phone
+      && !["PRELIMINARY_YES", "REFUSED"].includes(String(marketingConsentStatus || "").toUpperCase());
+    if (needsFollowup && !duplicate) {
+      const label = [propertyType, district].filter(Boolean).join(" — ");
+      const followup = {
+        id: `advertiser-followup-${id}`,
+        recordId: id,
+        recordType: "opportunity",
+        operationType: "ADVERTISER_FOLLOWUP",
+        main: "bank",
+        priority: 1,
+        isAlert: false,
+        icon: "i-user-clock",
+        title: label ? `استكمال بيانات معلن فرصة ${label}` : "استكمال بيانات المعلن",
+        subtitle: "راجع رقم المعلن ورسالة الاستكمال",
+        time: "الآن",
+        detailsLines: ["يوجد رقم معلن — أكمل التواصل وتحديث الحالة يدويًا."],
+        actionLabel: "فتح بنك الفرص",
+        secondaryActionLabel: "إغلاق",
+        canDismiss: true,
+        opportunityId: id
+      };
+      savedOpportunityWorkspaceItems = [
+        followup,
+        ...savedOpportunityWorkspaceItems.filter(item => item.id !== followup.id)
+      ].slice(0, 4);
+    }
     emitOperations();
   }
 

@@ -19,6 +19,7 @@ import {
   requestMissingDataOperationSync
 } from "./operations-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
+import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 
 const LOCAL_STATE_LABELS = Object.freeze({
   reviewing: "جارٍ التحليل…",
@@ -133,7 +134,20 @@ function clearIntakeForm() {
     window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
   }
   updateClearButtonVisibility();
+  updateAttachmentHint();
   setState("idle");
+}
+
+function updateAttachmentHint() {
+  const hint = $("addOpportunityAttachmentHint");
+  if (!hint) return;
+  if (selectedFile) {
+    hint.textContent = `مرفق: ${selectedFile.name}`;
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+    hint.textContent = "";
+  }
 }
 
 function updateClearButtonVisibility() {
@@ -143,7 +157,10 @@ function updateClearButtonVisibility() {
   if (!clearBtn) return;
   const hasContent = Boolean((input?.value || "").trim() || selectedFile);
   clearBtn.hidden = !hasContent;
-  if (executeBtn && !executing) executeBtn.disabled = !hasContent;
+  if (executeBtn && !executing) {
+    executeBtn.disabled = !hasContent;
+    executeBtn.classList.toggle("is-ready", hasContent);
+  }
 }
 
 async function uploadSourceFile(officeId, sourceId, file) {
@@ -296,7 +313,7 @@ async function startExecute() {
   }
 }
 
-async function approveFromReview(brokerExtras) {
+async function approveFromReview(brokerExtras, review, advertiser = {}) {
   if (executing) return;
   executing = true;
   setBusy(true);
@@ -343,7 +360,8 @@ async function approveFromReview(brokerExtras) {
       reviewPropertyTypeId: brokerExtras.reviewPropertyTypeId || "",
       reviewCityId: brokerExtras.reviewCityId || "",
       reviewDistrictId: brokerExtras.reviewDistrictId || "",
-      extractedSnapshot: brokerExtras.extractedSnapshot || null
+      extractedSnapshot: brokerExtras.extractedSnapshot || null,
+      ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
     };
 
     const saved = await persistIntake(prepared, reviewMeta);
@@ -351,7 +369,11 @@ async function approveFromReview(brokerExtras) {
       window.IAQAR.pushSavedOpportunityToWorkspace({
         opportunityId: saved.opportunityId,
         duplicate: saved.duplicate,
-        matchCount: 0
+        matchCount: 0,
+        advertiserPhone: reviewMeta.advertiserPhoneNormalized || "",
+        propertyType: brokerExtras.propertyType || "",
+        district: brokerExtras.district || "",
+        marketingConsentStatus: reviewMeta.marketingConsentStatus || ""
       });
     }
     setState("saved", saved.duplicate ? "هذه الفرصة محفوظة مسبقًا" : "");
@@ -424,6 +446,7 @@ function onFileChosen(event) {
   }
   selectedFile = file;
   updateClearButtonVisibility();
+  updateAttachmentHint();
   setState("idle");
 }
 

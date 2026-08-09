@@ -213,7 +213,7 @@
 
     .office-line {
       margin-top:4px;
-      color:var(--muted);
+      color:#6b7570;
       font-size:12px;
       line-height:1.55;
     }
@@ -236,6 +236,20 @@
       height:15px;
       color:var(--success);
       flex-shrink:0;
+      fill:none;
+      stroke:none;
+    }
+
+    .license-verify-icon circle {
+      fill:var(--success);
+    }
+
+    .license-verify-icon path {
+      fill:none;
+      stroke:#fff;
+      stroke-width:2.2;
+      stroke-linecap:round;
+      stroke-linejoin:round;
     }
 
     .section-title-bar {
@@ -344,22 +358,34 @@
       padding:7px 10px;
     }
     .add-opportunity .section-title-bar h2 { font-size:14px; }
+    .add-opportunity-row {
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) 104px;
+      gap:8px;
+      align-items:center;
+      margin-top:6px;
+    }
     .add-opportunity-input-wrap {
       position:relative;
       display:flex;
       align-items:center;
-      margin-top:6px;
+      min-width:0;
     }
     .add-opportunity-input-wrap input[type=text] {
       width:100%;
       min-width:0;
-      height:32px;
-      border:1px solid var(--line);
-      border-radius:10px;
-      padding:0 38px 0 34px;
+      height:52px;
+      border:1px solid #c8d6cf;
+      border-radius:12px;
+      padding:0 40px 0 36px;
       background:#fff;
       color:var(--text);
-      font-size:12px;
+      font-size:13px;
+    }
+    .add-opportunity-input-wrap input[type=text]:focus {
+      outline:none;
+      border-color:rgba(0,92,75,.42);
+      box-shadow:0 0 0 2px rgba(0,92,75,.08);
     }
     .add-opportunity-inline-clip {
       position:absolute;
@@ -397,25 +423,33 @@
     .add-opportunity-input-clear:disabled { opacity:.45; cursor:default; }
     .add-opportunity-inline-clip:disabled { opacity:.55; }
     .add-opportunity-inline-clip .icon { width:14px;height:14px; }
-    .add-opportunity-actions-row {
-      margin-top:6px;
-    }
     .add-opportunity-execute {
       width:100%;
-      min-height:32px;
-      border-radius:10px;
-      padding:0 12px;
-      font-size:11px;
+      height:52px;
+      min-height:52px;
+      border-radius:12px;
+      padding:0 10px;
+      font-size:12px;
       font-weight:800;
       cursor:pointer;
       border:0;
-      background:var(--green);
+      background:#b8c9c0;
       color:#fff;
     }
+    .add-opportunity-execute.is-ready:not(:disabled) {
+      background:var(--green);
+    }
     .add-opportunity-execute:disabled {
-      opacity:.55;
+      opacity:1;
       cursor:default;
     }
+    .add-opportunity-attachment-hint {
+      margin:4px 2px 0;
+      color:var(--muted);
+      font-size:10px;
+      line-height:1.4;
+    }
+    .add-opportunity-attachment-hint[hidden] { display:none; }
     .add-opportunity-status {
       margin:6px 1px 0;
       min-height:14px;
@@ -1329,7 +1363,7 @@
     align-items:center;
     justify-content:space-between;
     gap:10px;
-    min-height:46px;
+    min-height:60px;
     padding:8px 11px;
     border:1px solid var(--line);
     border-radius:13px;
@@ -1341,8 +1375,8 @@
 
   .pref-switch {
     position:relative;
-    width:44px;
-    height:26px;
+    width:54px;
+    height:31px;
     flex:0 0 auto;
   }
 
@@ -1366,8 +1400,8 @@
     position:absolute;
     top:3px;
     left:3px;
-    width:20px;
-    height:20px;
+    width:25px;
+    height:25px;
     border-radius:50%;
     background:#fff;
     box-shadow:0 1px 4px rgba(0,0,0,.12);
@@ -1379,7 +1413,7 @@
   }
 
   .pref-switch input:checked + .pref-switch-slider::after {
-    transform:translateX(18px);
+    transform:translateX(23px);
   }
 
   .pref-switch input:focus-visible + .pref-switch-slider {
@@ -1774,6 +1808,171 @@
 
   .review-status.is-error { color:#a1332c; }
 
+  .review-advertiser-card {
+    margin-top:4px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--green-pale);
+    display:grid;
+    gap:8px;
+  }
+
+  .review-advertiser-card h3 {
+    margin:0;
+    color:var(--green);
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .advertiser-phone-row {
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    gap:6px;
+    align-items:center;
+  }
+
+  .advertiser-phone-prefix {
+    padding:0 10px;
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    color:var(--text);
+    font-size:12px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+  }
+
+  .advertiser-extracted-hint {
+    color:var(--success);
+    font-size:10px;
+    font-weight:700;
+  }
+
+  .advertiser-phone-multi {
+    display:grid;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+  }
+
+  .advertiser-phone-pick,
+  .review-advertiser-card select {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+    font-size:13px;
+    width:100%;
+  }
+
+  .review-advertiser-prep {
+    width:100%;
+    min-height:40px;
+    border:0;
+    border-radius:12px;
+    background:var(--green);
+    color:#fff;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .review-advertiser-prep:disabled {
+    opacity:.5;
+    cursor:default;
+  }
+
+  .bank-advertiser-card {
+    margin-top:10px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--green-pale);
+  }
+
+  .bank-advertiser-card h4 {
+    margin:0 0 8px;
+    color:var(--green);
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .bank-advertiser-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:8px;
+  }
+
+  .bank-advertiser-status-form {
+    display:grid;
+    gap:8px;
+    margin-top:8px;
+  }
+
+  .bank-advertiser-status-form label {
+    display:grid;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:700;
+  }
+
+  .bank-advertiser-status-form select {
+    height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 10px;
+    background:#fff;
+  }
+
+  .advertiser-message-actions {
+    display:grid;
+    gap:8px;
+    margin-top:10px;
+  }
+
+  .advertiser-message-actions button {
+    min-height:42px;
+    border-radius:12px;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .advertiser-message-copy {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--green);
+  }
+
+  .advertiser-message-whatsapp {
+    border:0;
+    background:#25d366;
+    color:#063c27;
+  }
+
+  .advertiser-message-cancel {
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--muted);
+  }
+
+  #advertiserMessageText {
+    width:100%;
+    min-height:180px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    font-size:13px;
+    line-height:1.55;
+    resize:vertical;
+  }
+
   .operation-icon .icon {
     width:23px;
     height:23px;
@@ -1959,19 +2158,20 @@
       </div>
 
       <form id="addOpportunityForm" autocomplete="off">
-        <div class="add-opportunity-input-wrap">
-          <input id="addOpportunityInput" type="text" maxlength="4000"
-            placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
-          <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
-            aria-label="إرفاق ملف">
-            <svg class="icon"><use href="#i-paperclip"></use></svg>
-          </button>
-          <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
-            hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
-        </div>
-        <div class="add-opportunity-actions-row">
+        <div class="add-opportunity-row">
+          <div class="add-opportunity-input-wrap">
+            <input id="addOpportunityInput" type="text" maxlength="4000"
+              placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
+            <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
+              aria-label="إرفاق ملف">
+              <svg class="icon"><use href="#i-paperclip"></use></svg>
+            </button>
+            <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
+              hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
+          </div>
           <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
         </div>
+        <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
         <input id="addOpportunityFile" type="file" hidden>
         <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
         <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
@@ -1992,6 +2192,27 @@
         <button class="settings-close" id="opportunityReviewClose" type="button" aria-label="إغلاق المراجعة">×</button>
       </div>
       <div id="opportunityReviewBody"></div>
+    </section>
+  </div>
+
+  <div class="settings-overlay" id="advertiserMessageOverlay" hidden>
+    <section class="settings-sheet advertiser-message-sheet" role="dialog" aria-modal="true" aria-labelledby="advertiserMessageTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="advertiserMessageTitle">رسالة استكمال بيانات المعلن</h2>
+          <p>الرقم المستهدف: <strong id="advertiserMessageTarget"></strong></p>
+        </div>
+        <button class="settings-close" id="advertiserMessageClose" type="button" aria-label="إغلاق">×</button>
+      </div>
+      <label class="review-field">
+        <span>نص الرسالة</span>
+        <textarea id="advertiserMessageText" aria-label="نص رسالة الاستكمال"></textarea>
+      </label>
+      <div class="advertiser-message-actions">
+        <button type="button" class="advertiser-message-copy" id="advertiserMessageCopy">نسخ الرسالة</button>
+        <button type="button" class="advertiser-message-whatsapp" id="advertiserMessageWhatsApp">فتح واتساب</button>
+        <button type="button" class="advertiser-message-cancel" id="advertiserMessageCancel">إلغاء</button>
+      </div>
     </section>
   </div>
 

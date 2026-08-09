@@ -30,6 +30,16 @@ import {
   requestMissingDataOperationSync
 } from "./operations-domain.js";
 import {
+  ADVERTISER_CONTACT_STATUSES,
+  ADVERTISER_ROLES,
+  MARKETING_CONSENT_STATUSES,
+  advertiserContactStatusLabel,
+  advertiserRoleLabel,
+  buildAdvertiserCompletionMessage,
+  marketingConsentStatusLabel,
+  whatsappDigitsFromE164
+} from "./advertiser-phone-domain.js";
+import {
   phase6BoundaryGuarantees,
   cooperationModeAllowsExplicitRequest,
   cooperationModeAllowsAccept,
@@ -179,6 +189,45 @@ function closeBankDetailInternal() {
   return true;
 }
 
+function renderAdvertiserBankCard(record) {
+  const phone = record.advertiserPhoneNormalized || "";
+  if (!phone) return "";
+  const roleOpts = ADVERTISER_ROLES.map((r) =>
+    `<option value="${r.id}" ${record.advertiserRole === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const contactOpts = ADVERTISER_CONTACT_STATUSES.map((r) =>
+    `<option value="${r.id}" ${record.advertiserContactStatus === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const marketingOpts = MARKETING_CONSENT_STATUSES.map((r) =>
+    `<option value="${r.id}" ${record.marketingConsentStatus === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
+  ).join("");
+  const lastContact = record.lastContactAt
+    ? escapeHtml(String(record.lastContactAt))
+    : "—";
+  return `
+    <section class="bank-advertiser-card" aria-labelledby="bankAdvertiserTitle">
+      <h4 id="bankAdvertiserTitle">المعلن</h4>
+      <dl class="bank-detail-grid">
+        <dt>الجوال</dt><dd>${escapeHtml(phone)}</dd>
+        <dt>الصفة</dt><dd>${escapeHtml(advertiserRoleLabel(record.advertiserRole))}</dd>
+        <dt>حالة التواصل</dt><dd>${escapeHtml(advertiserContactStatusLabel(record.advertiserContactStatus))}</dd>
+        <dt>استكمال الإجراءات</dt><dd>${escapeHtml(marketingConsentStatusLabel(record.marketingConsentStatus))}</dd>
+        <dt>آخر متابعة</dt><dd>${lastContact}</dd>
+      </dl>
+      <div class="bank-advertiser-actions">
+        <button type="button" class="bank-action" id="bankAdvertiserPrepBtn">تجهيز رسالة</button>
+        <button type="button" class="bank-action" id="bankAdvertiserStatusBtn">تحديث الحالة</button>
+      </div>
+      <form id="bankAdvertiserStatusForm" class="bank-advertiser-status-form" hidden>
+        <label>صفة المعلن<select name="advertiserRole">${roleOpts}</select></label>
+        <label>حالة التواصل<select name="advertiserContactStatus">${contactOpts}</select></label>
+        <label>استكمال الإجراءات<select name="marketingConsentStatus">${marketingOpts}</select></label>
+        <button type="submit" class="bank-action-primary">حفظ الحالة</button>
+      </form>
+    </section>
+  `;
+}
+
 function isBankDetailOpen() {
   return Boolean(state.activeId);
 }
@@ -196,6 +245,7 @@ async function renderDetail(id) {
   setStatus("جارٍ تجهيز التفاصيل…");
   const source = await lazyLoadSource(record);
   const detail = bankDetailView(id, record, { includeSource: true, source });
+  const advertiserCard = renderAdvertiserBankCard(record);
   state.activeId = id;
   panel.hidden = false;
 
@@ -218,6 +268,7 @@ async function renderDetail(id) {
       <dt>حالة التعاون</dt><dd>${escapeHtml(detail.cooperationStatus)}</dd>
       ${detail.contactName ? `<dt>الاسم</dt><dd>${escapeHtml(detail.contactName)}</dd>` : ""}
     </dl>
+    ${advertiserCard}
     ${detail.sourcePreview ? `
       <div class="bank-source-preview">
         <strong>المصدر</strong>
@@ -240,6 +291,7 @@ async function renderDetail(id) {
     </form>
 
     <div class="bank-actions">
+      <button type="button" class="bank-action" id="bankShareOpportunityBtn">مشاركة الفرصة</button>
       ${archived
         ? `<button type="button" class="bank-action" id="bankRestoreBtn">استعادة</button>`
         : `<button type="button" class="bank-action" id="bankArchiveBtn">أرشفة</button>`}
@@ -277,6 +329,72 @@ function rowsCountLabel() {
 }
 
 function wireDetailHandlers(id, record) {
+  $("bankShareOpportunityBtn")?.addEventListener("click", async () => {
+    try {
+      const source = await lazyLoadSource(record);
+      if (typeof window.IAQAR?.shareOpportunityCard === "function") {
+        await window.IAQAR.shareOpportunityCard(record, source);
+      }
+    } catch (error) {
+      console.warn("[iaqar] share opportunity", error);
+      setStatus("تعذر تجهيز بطاقة الفرصة", "is-error");
+    }
+  });
+
+  $("bankAdvertiserStatusBtn")?.addEventListener("click", () => {
+    const form = $("bankAdvertiserStatusForm");
+    if (form) form.hidden = !form.hidden;
+  });
+
+  $("bankAdvertiserPrepBtn")?.addEventListener("click", () => {
+    const office = window.IAQAR?.office || {};
+    const message = buildAdvertiserCompletionMessage({
+      brokerName: office.brokerName || "",
+      officeName: office.officeName || "",
+      licenseNumber: office.licenseNumber || office.falLicense || "",
+      propertyType: record.propertyType || "",
+      district: record.district || "",
+      city: record.city || ""
+    });
+    const phone = record.advertiserPhoneNormalized || "";
+    const digits = whatsappDigitsFromE164(phone);
+    if (!digits) return;
+    const modal = document.getElementById("advertiserMessageOverlay");
+    const target = document.getElementById("advertiserMessageTarget");
+    const textarea = document.getElementById("advertiserMessageText");
+    if (!modal || !textarea) return;
+    if (target) target.textContent = phone;
+    textarea.value = message;
+    modal.hidden = false;
+    document.getElementById("advertiserMessageWhatsApp").addEventListener("click", () => {
+      const digits = whatsappDigitsFromE164(phone);
+      if (!digits) return;
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(textarea.value || "")}`, "_blank", "noopener");
+      window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
+        detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
+      }));
+      modal.hidden = true;
+    }, { once: true });
+  });
+
+  $("bankAdvertiserStatusForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget).entries());
+    try {
+      await patchOpportunity(id, {
+        advertiserRole: data.advertiserRole,
+        advertiserContactStatus: data.advertiserContactStatus,
+        marketingConsentStatus: data.marketingConsentStatus,
+        lastContactAt: new Date().toISOString()
+      });
+      setStatus("تم تحديث حالة المعلن", "is-done");
+      await renderDetail(id);
+    } catch (error) {
+      console.warn("[iaqar] advertiser status", error);
+      setStatus("تعذر تحديث الحالة", "is-error");
+    }
+  });
+
   $("bankDetailClose")?.addEventListener("click", () => {
     window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
   });
