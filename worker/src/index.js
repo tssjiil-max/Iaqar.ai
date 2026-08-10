@@ -244,6 +244,10 @@ export default {
         return jsonResponse({ ok: true, parsed: parseRealEstateMessage(cleanText(body.messageText, 12000), cleanText(body.senderPhone, 60), cleanText(body.senderName, 200)), requestId });
       }
 
+      if (request.method === "POST" && url.pathname === "/pipeline/url-resolve") {
+        return await handlePipelineUrlResolve(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/matching/preview") {
         const body = await request.json().catch(() => ({}));
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
@@ -3692,6 +3696,199 @@ function maskEmail(value) {
   return `${visible}${"*".repeat(Math.max(3, name.length - visible.length))}${email.slice(at)}`;
 }
 function cleanText(value, maxLength) { return String(value == null ? "" : value).replace(/\u0000/g, "").trim().slice(0, maxLength); }
+
+const LISTING_FETCH_MAX_BYTES = 2 * 1024 * 1024;
+const LISTING_FETCH_TIMEOUT_MS = 15000;
+const LISTING_FETCH_MAX_REDIRECTS = 4;
+
+function isPrivateOrLocalHost(hostname) {
+  const host = String(hostname || "").trim().toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "0.0.0.0") return true;
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!ipv4) return false;
+  const parts = ipv4.slice(1).map((n) => Number(n));
+  if (parts.some((n) => n > 255)) return true;
+  if (parts[0] === 10) return true;
+  if (parts[0] === 127) return true;
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  return false;
+}
+
+function normalizeListingFetchUrl(raw) {
+  const text = cleanText(raw, 2000);
+  if (!text) return "";
+  try {
+    const withProtocol = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    if (isPrivateOrLocalHost(parsed.hostname)) return "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)));
+}
+
+function extractJsonLdListingText(html) {
+  const chunks = [];
+  const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  while ((match = re.exec(html))) {
+    const raw = match[1].trim();
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      const nodes = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of nodes) {
+        if (!node || typeof node !== "object") continue;
+        for (const key of ["description", "name", "headline"]) {
+          const value = cleanText(node[key], 12000);
+          if (value) chunks.push(value);
+        }
+      }
+    } catch {
+      /* ignore malformed JSON-LD */
+    }
+  }
+  return chunks.join("\n").trim();
+}
+
+function extractListingTextFromHtml(html) {
+  let source = String(html || "");
+  const jsonLd = extractJsonLdListingText(source);
+  source = source.replace(/<script[\s\S]*?<\/script>/gi, " ");
+  source = source.replace(/<style[\s\S]*?<\/style>/gi, " ");
+  source = source.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ");
+  const titleMatch = source.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, " ")) : "";
+  const metaChunks = [];
+  for (const re of [
+    /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/gi
+  ]) {
+    let m;
+    while ((m = re.exec(source))) metaChunks.push(decodeHtmlEntities(m[1]));
+  }
+  const bodyText = decodeHtmlEntities(source.replace(/<[^>]+>/g, " "));
+  const combined = [jsonLd, title, metaChunks.join("\n"), bodyText]
+    .map((part) => cleanText(part, 12000))
+    .filter(Boolean)
+    .join("\n");
+  return cleanText(combined.replace(/\s+/g, " "), 12000);
+}
+
+async function fetchListingPage(url, redirectCount = 0) {
+  if (redirectCount > LISTING_FETCH_MAX_REDIRECTS) {
+    return { ok: false, error: "too_many_redirects" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LISTING_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "IAQAR-ListingResolver/1.0 (+https://iaqar.ai)",
+        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ar,en;q=0.8"
+      }
+    });
+    clearTimeout(timer);
+    const status = response.status;
+    if (status >= 300 && status < 400) {
+      const location = response.headers.get("location") || "";
+      const nextUrl = normalizeListingFetchUrl(new URL(location, url).toString());
+      if (!nextUrl) return { ok: false, error: "redirect_blocked", diagnostics: { status, redirect: location } };
+      return await fetchListingPage(nextUrl, redirectCount + 1);
+    }
+    if (!response.ok) {
+      return { ok: false, error: "fetch_failed", diagnostics: { status, redirect: null } };
+    }
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > LISTING_FETCH_MAX_BYTES) {
+      return {
+        ok: false,
+        error: "response_too_large",
+        diagnostics: { status, contentType, byteLength: buffer.byteLength }
+      };
+    }
+    const html = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+    const text = extractListingTextFromHtml(html);
+    if (!text) {
+      return {
+        ok: false,
+        error: "empty_listing_text",
+        diagnostics: { status, contentType, byteLength: buffer.byteLength, textLength: 0 }
+      };
+    }
+    return {
+      ok: true,
+      text,
+      diagnostics: {
+        status,
+        contentType,
+        byteLength: buffer.byteLength,
+        textLength: text.length,
+        redirectCount
+      }
+    };
+  } catch (error) {
+    clearTimeout(timer);
+    return {
+      ok: false,
+      error: error?.name === "AbortError" ? "fetch_timeout" : "fetch_failed",
+      diagnostics: { message: String(error?.message || error) }
+    };
+  }
+}
+
+async function handlePipelineUrlResolve(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  if (!officeId) throw appError("office_id_required", 400, "معرّف المكتب مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const targetUrl = normalizeListingFetchUrl(body.url);
+  if (!targetUrl) throw appError("invalid_url", 400, "الرابط غير صالح");
+  const fetched = await fetchListingPage(targetUrl);
+  if (!fetched.ok) {
+    return jsonResponse({
+      ok: false,
+      error: fetched.error || "url_resolve_failed",
+      url: targetUrl,
+      diagnostics: fetched.diagnostics || null,
+      requestId
+    }, 422);
+  }
+  return jsonResponse({
+    ok: true,
+    url: targetUrl,
+    text: fetched.text,
+    textLength: fetched.text.length,
+    diagnostics: fetched.diagnostics,
+    requestId
+  });
+}
+
 function constantTimeEqual(left, right) {
   const a = new TextEncoder().encode(String(left));
   const b = new TextEncoder().encode(String(right));
@@ -3745,5 +3942,6 @@ export {
   applyExternalHandoff, whatsappAdapterContract, telegramWebhookValidationFixture,
   resolveTemplateCode, whatsappDigits,
   evaluatePublicRateLimit, consumePublicRateLimit, publicRateLimitKey,
-  resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS
+  resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS,
+  extractListingTextFromHtml
 };

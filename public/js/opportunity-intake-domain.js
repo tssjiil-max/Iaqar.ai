@@ -505,7 +505,12 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     contentType = input.file.type || contentType;
     byteSize = input.file.size || byteSize;
   } else if (!sourceType) {
-    sourceType = detectSourceTypeFromText(text);
+    const explicitUrl = normalizeUrl(input.url || "");
+    if (explicitUrl) {
+      sourceType = "url";
+    } else {
+      sourceType = detectSourceTypeFromText(text);
+    }
   }
 
   if (!SOURCE_TYPES.includes(sourceType)) {
@@ -513,11 +518,20 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
   }
 
   if (sourceType === "url") {
-    url = normalizeUrl(text || input.url);
+    url = normalizeUrl(input.url || (isHttpUrl(text) ? text : ""));
     if (!url) {
       return { ok: false, state: "failed", error: "الرابط غير صالح", retryable: true };
     }
-    text = url;
+    const listingText = safeText(input.listingText || (text && text !== url ? text : ""));
+    if (!listingText) {
+      return {
+        ok: false,
+        state: "failed",
+        error: "تعذر استخراج بيانات الإعلان من الرابط",
+        retryable: true
+      };
+    }
+    text = listingText;
   }
 
   if ((sourceType === "text" || sourceType === "url") && !text) {

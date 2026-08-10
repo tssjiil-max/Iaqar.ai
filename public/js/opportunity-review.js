@@ -548,6 +548,11 @@ if (document.readyState === "loading") {
   bootReviewOverlay();
 }
 
+export function dismissOpportunityReviewIfOpen() {
+  const overlay = $("opportunityReviewOverlay");
+  if (overlay && !overlay.hidden) closeReview();
+}
+
 export function openOpportunityReview(draft, onApprove) {
   openReviewOverlay(draft, onApprove);
 }

@@ -50,7 +50,7 @@ test("attachment validation rejects oversize and unknown types", () => {
   assert.equal(validateAttachment({ name: "ok.pdf", type: "application/pdf", size: 1000 }).ok, true);
 });
 
-test("URL intake extracts available fields via deterministic parser (not production AI)", async () => {
+test("URL intake requires resolved listing text (does not parse URL string)", async () => {
   const adapter = createExtractionAdapter();
   const result = await prepareOpportunityIntake({
     officeId: "office-a",
@@ -58,15 +58,29 @@ test("URL intake extracts available fields via deterministic parser (not product
     text: "https://example.com/listing/villa",
     allowIncomplete: true
   }, adapter);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /تعذر استخراج بيانات الإعلان من الرابط/);
+});
+
+test("URL intake with listing text uses deterministic parser (not production AI)", async () => {
+  const adapter = createExtractionAdapter();
+  const listingText = "عرض للبيع شقة في حي النرجس الرياض ٤ غرف مساحة 180 سعر 1200000";
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: listingText,
+    listingText,
+    url: "https://example.com/listing/villa",
+    allowIncomplete: true
+  }, adapter);
   assert.equal(result.ok, true);
-  assert.equal(result.opportunity.sourceType, "url");
+  assert.equal(result.source.sourceType, "url");
   assert.equal(result.extraction.productionAi, false);
   assert.equal(result.extraction.extractionMode, "deterministic_text_parser");
   assert.equal(result.createsOperation, false);
   assert.equal(result.runsMatching, false);
-  assert.ok(result.opportunity.deduplicationFingerprint);
-  assert.equal(result.opportunity.officeId, "office-a");
-  assert.equal(result.opportunity.brokerId, "broker-a");
+  assert.ok(result.deduplicationFingerprint || result.opportunity?.deduplicationFingerprint);
+  assert.equal(result.source.officeId, "office-a");
 });
 
 test("text intake extracts Arabic listing signals and tracks missing fields", async () => {

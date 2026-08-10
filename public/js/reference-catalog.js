@@ -209,9 +209,13 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
   const districtLabel = safeTrim(extractionFields.district || extended.district);
   const district = districtLabel
     ? matchDistrict(districtLabel, city?.id || "madinah")
-    : matchDistrict(districtLabel || text, city?.id || "madinah");
+    : null;
 
-  const priceVal = extractionFields.priceOrBudget ?? extended.annualRent ?? extended.optionalMonthlyRentAfterSixMonths ?? "";
+  const priceVal = extractionFields.priceOrBudget
+    ?? extended.salePrice
+    ?? extended.annualRent
+    ?? extended.optionalMonthlyRentAfterSixMonths
+    ?? "";
 
   return {
     operationTypeId: op?.id || "",

@@ -6,6 +6,7 @@ import {
   ATTACHMENT_ACCEPT,
   INTAKE_STATE_LABELS,
   createExtractionAdapter,
+  detectSourceTypeFromText,
   prepareOpportunityIntake,
   validateAttachment
 } from "./opportunity-intake-domain.js";
@@ -18,7 +19,7 @@ import {
   phase5BoundaryGuarantees,
   requestMissingDataOperationSync
 } from "./operations-domain.js";
-import { openOpportunityReview } from "./opportunity-review.js";
+import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportunity-review.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 
 const LOCAL_STATE_LABELS = Object.freeze({
@@ -242,6 +243,31 @@ async function persistIntake(result, reviewMeta = {}) {
   return { duplicate: false, opportunityId: result.opportunity.id, sourceId: result.source.id };
 }
 
+async function resolveUrlListingText(url, officeId) {
+  const base = workerBase();
+  if (!base) return { ok: false, error: "worker_base_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetch(`${base}/pipeline/url-resolve`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ url, officeId })
+  });
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.text || "").trim();
+  if (!response.ok || !body.ok || !text) {
+    return {
+      ok: false,
+      error: body.error || "url_resolve_failed",
+      diagnostics: body.diagnostics || null
+    };
+  }
+  return { ok: true, text, diagnostics: body.diagnostics || null };
+}
+
 async function runExtractionPipeline() {
   const office = currentOffice();
   const user = currentUser();
@@ -249,7 +275,22 @@ async function runExtractionPipeline() {
   if (!user?.uid) throw new Error("auth_required");
 
   const input = $("addOpportunityInput");
-  const text = (input?.value || "").trim();
+  const inputText = (input?.value || "").trim();
+  const isUrl = detectSourceTypeFromText(inputText) === "url";
+  let listingText = inputText;
+  let urlDiagnostics = null;
+
+  if (isUrl) {
+    setState("analyzing");
+    const resolved = await resolveUrlListingText(inputText, office.officeId);
+    if (!resolved.ok) {
+      const err = new Error("url_extraction_failed");
+      err.diagnostics = resolved.diagnostics;
+      throw err;
+    }
+    listingText = resolved.text;
+    urlDiagnostics = resolved.diagnostics;
+  }
 
   let fileChecksumValue = "";
   let mediaPath = "";
@@ -265,7 +306,9 @@ async function runExtractionPipeline() {
   const prepared = await prepareOpportunityIntake({
     officeId: office.officeId,
     brokerId: user.uid,
-    text,
+    text: listingText,
+    listingText: isUrl ? listingText : undefined,
+    url: isUrl ? inputText : undefined,
     file: selectedFile || undefined,
     fileChecksum: fileChecksumValue,
     mediaPath,
@@ -282,7 +325,10 @@ async function runExtractionPipeline() {
   }
 
   intakeContext = {
-    text,
+    inputText,
+    listingText,
+    sourceUrl: isUrl ? inputText : "",
+    urlDiagnostics,
     fileChecksumValue,
     mediaPath,
     fileName: selectedFile?.name || "",
@@ -316,6 +362,8 @@ async function startExecute() {
   executing = true;
   setBusy(true);
   lastFailure = null;
+  intakeContext = null;
+  dismissOpportunityReviewIfOpen();
 
   try {
     const prepared = await runExtractionPipeline();
@@ -324,12 +372,16 @@ async function startExecute() {
       fields: prepared.fields || {},
       extended: prepared.extraction?.extended,
       needsReview: prepared.extraction?.needsReview,
-      sourceText: text,
+      sourceText: intakeContext?.listingText || "",
       prepared
     }, approveFromReview);
   } catch (error) {
     console.warn("add-opportunity execute failed", error);
-    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
+    if (error?.message === "url_extraction_failed") {
+      setState("failed", "تعذر استخراج بيانات الإعلان من الرابط");
+    } else {
+      setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
+    }
     lastFailure = { text, file: selectedFile };
   } finally {
     executing = false;
@@ -367,7 +419,9 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     const prepared = await prepareOpportunityIntake({
       officeId: office.officeId,
       brokerId: user.uid,
-      text: intakeContext.text,
+      text: intakeContext.listingText || intakeContext.inputText,
+      listingText: intakeContext.listingText,
+      url: intakeContext.sourceUrl || undefined,
       fileChecksum: intakeContext.fileChecksumValue,
       mediaPath: intakeContext.mediaPath,
       fileName: intakeContext.fileName,

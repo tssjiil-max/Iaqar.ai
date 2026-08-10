@@ -32,6 +32,20 @@ export const ACCEPTANCE_FIXTURE_TEXT = `🏡 شقة للإيجار | حي الس
 
 📍 حي السلام`;
 
+/** Regression fixture — أرض للبيع في الرانوناء (STAGING URL intake). */
+export const RANONA_LAND_REGRESSION_FIXTURE_TEXT = `أرض للبيع
+المدينة المنورة
+حي الرانوناء
+المساحة 431.75 م²
+السعر المطلوب 580000 ريال
+سعر الوحدة 1390 ريال
+جوال: 0507561577
+رقم المخطط: 716 / ت / 1416
+رقم القطعة: 860 / 2
+الواجهة: شرقية
+عرض الشارع: 18
+العمق: 39.25`;
+
 function makeField(value, evidence = "", confidence = 0) {
   const hasValue = value !== null && value !== undefined && value !== "";
   return {
@@ -112,7 +126,7 @@ const FLOOR_LEVEL_PATTERNS = [
 const PROPERTY_PHRASE_RULES = [
   { type: "شقة", patterns: [/شقة\s+للإيجار/i, /شقة\s+للبيع/i, /شقة\s+للايجار/i, /^شقة(?:\s|$)/i, /(?:^|\s)شقة(?:\s|$)/i] },
   { type: "فيلا", patterns: [/فيلا\s+للإيجار/i, /فيلا\s+للبيع/i, /^فيلا(?:\s|$)/i, /فيلا\s+مكونة/i, /(?:^|\s)فيلا(?:\s|$)/i] },
-  { type: "أرض", patterns: [/أرض\s+للبيع/i, /^أرض(?:\s|$)/i, /ارض\s+للبيع/i] },
+  { type: "أرض", patterns: [/أرض\s+للبيع/i, /للبيع\s+أرض/i, /للبيع\s+ارض/i, /^أرض(?:\s|$)/i, /ارض\s+للبيع/i] },
   { type: "عمارة", patterns: [/عمارة\s+للبيع/i, /^عمارة(?:\s|$)/i, /عمارة\s+مكونة/i] },
   { type: "مستودع", patterns: [/مستودع\s+للإيجار/i, /مستودع\s+للبيع/i, /^مستودع(?:\s|$)/i] },
   { type: "محل", patterns: [/محل\s+للإيجار/i, /محل\s+للبيع/i, /^محل(?:\s|$)/i] },
@@ -222,8 +236,13 @@ function extractTransactionType(text, title) {
 }
 
 function extractDistrict(text) {
+  const ranona = text.match(/(?:في\s+)?(?:حي\s+)?الرانوناء/i);
+  if (ranona) {
+    return makeField("الرانوناء", ranona[0], 0.96);
+  }
   const patterns = [
     /حي\s+([^\n|،,]{2,40})/i,
+    /في\s+حي\s+([^\n|،,]{2,40})/i,
     /📍\s*حي\s+([^\n،,]+)/i,
     /\|\s*حي\s+([^\n|،,]+)/i
   ];
@@ -237,9 +256,44 @@ function extractDistrict(text) {
   return emptyField();
 }
 
+function extractSalePrice(text) {
+  const abbreviated = text.match(/المطلوب\s+([\d][\d,،]*)\s*الف/i);
+  if (abbreviated) {
+    const base = parseNumberToken(abbreviated[1]);
+    if (base != null && base >= 10) {
+      return makeField(base * 1000, abbreviated[0], 0.95);
+    }
+  }
+  const labeled = text.match(
+    /(?:السعر\s*المطلوب|سعر\s*البيع|السعر\s*المطلوب|سعر)[:\s]*([\d][\d,،.\s\u066C]*)\s*ريال/i
+  );
+  if (labeled) {
+    const amount = parseNumberToken(String(labeled[1]).replace(/[.,](?=\d{3})/g, ""));
+    if (amount != null && amount >= 10000) {
+      return makeField(amount, labeled[0], 0.97);
+    }
+  }
+  const amounts = [];
+  for (const m of text.matchAll(/([\d][\d,،\s\u066C]*)\s*ريال/gi)) {
+    const amount = parseNumberToken(String(m[1]).replace(/[.,](?=\d{3})/g, ""));
+    if (amount != null && amount >= 10000) amounts.push(amount);
+  }
+  if (!amounts.length) return emptyField();
+  const max = Math.max(...amounts);
+  return makeField(max, String(max), 0.86);
+}
+
+function extractPricePerSquareMeter(text) {
+  const m = text.match(/سعر\s*الوحدة[:\s]*([\d][\d,،.\s\u066C]*)/i);
+  if (!m) return emptyField();
+  const amount = parseNumberToken(String(m[1]).replace(/[.,](?=\d{3})/g, ""));
+  if (amount == null || amount <= 0) return emptyField();
+  return makeField(amount, m[0], 0.9);
+}
+
 function extractCity(text) {
   const cities = [
-    { name: "المدينة المنورة", re: /المدينة\s+المنورة|مدينة\s+المنورة/i },
+    { name: "المدينة المنورة", re: /المدينة\s+المنورة|مدينة\s+المنورة|المدينة\s*:\s*Madinah|\bMadinah\b/i },
     { name: "الرياض", re: /\bالرياض\b/i },
     { name: "جدة", re: /\bجدة\b/i },
     { name: "الدمام", re: /\bالدمام\b/i },
@@ -295,6 +349,22 @@ function extractPaymentInstallments(text) {
 }
 
 function extractArea(text) {
+  const labeled = text.match(/مساحة\s*العقار\s*[:：]\s*([\d]{1,5}(?:[.,]\d+)?)/i);
+  if (labeled) {
+    const raw = String(labeled[1]).replace(",", ".");
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 20 && n <= 200000) {
+      return makeField(n, labeled[0], 0.94);
+    }
+  }
+  const decimal = text.match(/([\d]{1,5}(?:[.,]\d+)?)\s*(?:م2|م²|متر\s*مربع|متر)/i);
+  if (decimal) {
+    const raw = String(decimal[1]).replace(",", ".");
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 20 && n <= 200000) {
+      return makeField(n, decimal[0], 0.92);
+    }
+  }
   const m = text.match(/([\d]{2,5})\s*(?:م2|م²|متر)/i);
   if (m) return makeField(parseNumberToken(m[1]), m[0], 0.9);
   return emptyField();
@@ -399,7 +469,7 @@ function validateContext(fields, text) {
     }
   }
 
-  if (next.city?.value && !text.match(/الرياض|جدة|الدمام|مكة|المدينة/i)) {
+  if (next.city?.value && !text.match(/الرياض|جدة|الدمام|مكة|المدينة|Madinah/i)) {
     next.city = emptyField();
   }
 
@@ -448,9 +518,12 @@ function mapLegacyFields(fields) {
 
   const annual = gateField(fields.annualRent).value;
   const monthly = gateField(fields.optionalMonthlyRentAfterSixMonths).value;
+  const sale = gateField(fields.salePrice).value;
   let priceOrBudget = null;
-  if (annual != null) priceOrBudget = annual;
+  if (transaction === "بيع" && sale != null) priceOrBudget = sale;
+  else if (annual != null) priceOrBudget = annual;
   else if (monthly != null) priceOrBudget = monthly;
+  else if (sale != null) priceOrBudget = sale;
 
   return {
     opportunityKind: gateField({ value: opportunityKind, evidence: fields.transactionType?.evidence, confidence: fields.transactionType?.confidence || 0 }).value || "",
@@ -467,6 +540,8 @@ function mapLegacyFields(fields) {
 function mapExtendedFields(fields) {
   return {
     transactionType: gateField(fields.transactionType).value,
+    salePrice: gateField(fields.salePrice).value,
+    pricePerSquareMeter: gateField(fields.pricePerSquareMeter).value,
     annualRent: gateField(fields.annualRent).value,
     paymentInstallments: gateField(fields.paymentInstallments).value,
     optionalMonthlyRentAfterSixMonths: gateField(fields.optionalMonthlyRentAfterSixMonths).value,
@@ -524,6 +599,8 @@ export function extractArabicOpportunityText(rawText) {
     floorPosition: floorParts.floorPosition,
     floorsCount: extractFloorsCount(normalized),
     area: extractArea(normalized),
+    salePrice: extractSalePrice(normalized),
+    pricePerSquareMeter: extractPricePerSquareMeter(normalized),
     livingRoom: extractLivingRoom(normalized),
     kitchen: extractKitchen(normalized),
     condition: extractCondition(normalized),
