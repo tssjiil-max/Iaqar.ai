@@ -7,6 +7,7 @@ import {
   INTAKE_STATE_LABELS,
   createExtractionAdapter,
   detectSourceTypeFromText,
+  normalizeUrl,
   prepareOpportunityIntake,
   validateAttachment
 } from "./opportunity-intake-domain.js";
@@ -273,7 +274,7 @@ async function uploadSourceFile(officeId, sourceId, file) {
   return payload;
 }
 
-async function resolveMediaListingText(mediaPath, officeId) {
+async function resolveMediaListingText(mediaPath, officeId, file = null) {
   const base = workerBase();
   if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
   const headers = {
@@ -284,7 +285,12 @@ async function resolveMediaListingText(mediaPath, officeId) {
   const response = await fetchWithTimeout(`${base}/pipeline/media-extract`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ officeId, mediaPath })
+    body: JSON.stringify({
+      officeId,
+      mediaPath,
+      fileName: file?.name || "",
+      contentType: file?.type || ""
+    })
   }, extractionTimeoutMs);
   const body = await response.json().catch(() => ({}));
   const text = String(body.text || "").trim();
@@ -361,13 +367,14 @@ async function runExtractionPipeline() {
   const inputText = (input?.value || "").trim();
   const sourceIdentity = intakeIdentity(inputText, selectedFile);
   const isUrl = detectSourceTypeFromText(inputText) === "url";
+  const normalizedInputUrl = isUrl ? normalizeUrl(inputText) : "";
   let listingText = inputText;
   let urlDiagnostics = null;
   let mediaExtractionMode = "";
 
   if (isUrl) {
     setState("analyzing");
-    const resolved = await resolveUrlListingText(inputText, office.officeId);
+    const resolved = await resolveUrlListingText(normalizedInputUrl, office.officeId);
     if (!resolved.ok) {
       const err = new Error("url_extraction_failed");
       err.diagnostics = resolved.diagnostics;
@@ -392,7 +399,7 @@ async function runExtractionPipeline() {
 
     if (!listingText && (sourceType === "image" || sourceType === "screenshot")) {
       setState("analyzing");
-      const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId);
+      const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId, selectedFile);
       if (!mediaResolved.ok) throw new Error("extraction_failed");
       listingText = mediaResolved.text;
       mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
@@ -406,7 +413,7 @@ async function runExtractionPipeline() {
     brokerId: user.uid,
     text: listingText,
     listingText: isUrl || useTextParser ? listingText : undefined,
-    url: isUrl ? inputText : undefined,
+    url: isUrl ? normalizedInputUrl : undefined,
     sourceType: useTextParser ? "text" : undefined,
     file: useTextParser ? undefined : (selectedFile || undefined),
     fileChecksum: fileChecksumValue,
@@ -434,7 +441,7 @@ async function runExtractionPipeline() {
   intakeContext = {
     inputText,
     listingText,
-    sourceUrl: isUrl ? inputText : "",
+    sourceUrl: isUrl ? normalizedInputUrl : "",
     sourceType: prepared.source?.sourceType || sourceType || (useTextParser ? "text" : ""),
     urlDiagnostics,
     fileChecksumValue,

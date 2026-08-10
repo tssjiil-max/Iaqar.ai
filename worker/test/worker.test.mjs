@@ -210,6 +210,132 @@ test("public intake media rejects an unsupported content type", async () => {
 
 const trialEnv = { ...env, ALLOW_TRIAL_NO_AUTH: "true" };
 
+test("modern media extraction route reads an existing scoped image and reaches Workers AI", async () => {
+  const calls = [];
+  const mediaEnv = {
+    ...trialEnv,
+    IAQAR_MEDIA: {
+      get: async (key) => {
+        assert.equal(key, "opportunity-sources/office-alqiq/src_runtime/image.png");
+        return {
+          customMetadata: { officeId: "office-alqiq", sourceType: "image" },
+          httpMetadata: { contentType: "image/png" },
+          arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer
+        };
+      }
+    },
+    AI: {
+      run: async (_model, input) => {
+        calls.push(input);
+        if (input.prompt === "agree") return { response: "agreed" };
+        return { response: "أرض للبيع في المدينة المنورة حي الرانوناء" };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://example.test/pipeline/media-extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      officeId: "office-alqiq",
+      mediaPath: "opportunity-sources/office-alqiq/src_runtime/image.png",
+      fileName: "image.png",
+      contentType: "image/png"
+    })
+  }), mediaEnv);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.match(body.text, /أرض للبيع/);
+  assert.equal(body.contentType, "image/png");
+  const visionCall = calls.find((input) => Array.isArray(input.messages));
+  assert.ok(visionCall, "Workers AI vision call required");
+  assert.match(visionCall.messages[0].content[1].image_url.url, /^data:image\/png;base64,/);
+});
+
+test("modern URL resolver normalizes bare hosts and follows safe redirects", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (calls.length === 1) {
+      return new Response("", {
+        status: 302,
+        headers: { Location: "https://sa.aqar.fm/ad/92f89b67" }
+      });
+    }
+    return new Response("<html><body>أرض للبيع في المدينة المنورة حي الرانوناء</body></html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://example.test/pipeline/url-resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ officeId: "office-alqiq", url: "a.aqar.fm/r/92f89b67" })
+    }), trialEnv);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(calls[0], "https://a.aqar.fm/r/92f89b67");
+    assert.equal(calls[1], "https://sa.aqar.fm/ad/92f89b67");
+    assert.match(body.text, /الرانوناء/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("modern URL resolver preserves a full URL without duplicating the scheme", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return new Response("<html><body>شقة للإيجار حي السلام</body></html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" }
+    });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://example.test/pipeline/url-resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        officeId: "office-alqiq",
+        url: "https://a.aqar.fm/r/92f89b67"
+      })
+    }), trialEnv);
+    assert.equal(response.status, 200);
+    assert.equal(calls[0], "https://a.aqar.fm/r/92f89b67");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("modern URL resolver returns an explicit DNS failure without fabricated data", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const error = new TypeError("fetch failed");
+    error.cause = new Error("getaddrinfo ENOTFOUND a.aqar.fm");
+    throw error;
+  };
+  try {
+    const response = await worker.fetch(new Request("https://example.test/pipeline/url-resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ officeId: "office-alqiq", url: "a.aqar.fm/r/92f89b67" })
+    }), trialEnv);
+    const body = await response.json();
+    assert.equal(response.status, 422);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "dns_failed");
+    assert.match(body.diagnostics.message, /ENOTFOUND/);
+    assert.equal("text" in body, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function officeImageRequest({ variant, method = "POST", contentType = "image/png", officeId = "office-alqiq" } = {}) {
   const headers = { "X-Office-Id": officeId };
   if (variant !== undefined) headers["X-Office-Image-Variant"] = variant;

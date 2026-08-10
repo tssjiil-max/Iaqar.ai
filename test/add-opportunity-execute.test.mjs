@@ -166,6 +166,31 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
   }
 });
 
+test("bare hostname/path is normalized and sent through the modern URL resolver", async () => {
+  const calls = [];
+  const fetchStub = async (url, options = {}) => {
+    calls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
+    return Response.json({
+      ok: true,
+      text: "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال",
+      diagnostics: { status: 200, redirectCount: 1 }
+    });
+  };
+  const { context, module } = await loadController(fetchStub);
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "a.aqar.fm/r/92f89b67";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://staging-worker.example.test/pipeline/url-resolve");
+    assert.equal(calls[0].body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
+  } finally {
+    context.close();
+  }
+});
+
 test("hanging extraction aborts into failed state and releases busy UI", async () => {
   let aborted = false;
   const fetchStub = async (_url, options = {}) => new Promise((_resolve, reject) => {

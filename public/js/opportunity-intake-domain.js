@@ -99,6 +99,7 @@ export const ATTACHMENT_ACCEPT = [
 ].join(",");
 
 const URL_RE = /^(https?:\/\/|www\.)\S+/i;
+const BARE_HOST_PATH_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,62})\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#][^\s]*)?$/i;
 const MAX_TEXT = 12000;
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
@@ -216,7 +217,7 @@ export function requiredOpportunityFieldsFor(fields = {}) {
 
 export function isHttpUrl(value) {
   const text = safeText(value, 2000);
-  if (!URL_RE.test(text)) return false;
+  if (!URL_RE.test(text) && !BARE_HOST_PATH_RE.test(text)) return false;
   try {
     const withProtocol = /^https?:\/\//i.test(text) ? text : `https://${text}`;
     const url = new URL(withProtocol);

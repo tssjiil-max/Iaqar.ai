@@ -25,7 +25,15 @@ import { loadShell } from "./helpers/shell.mjs";
 test("source-type detection distinguishes URL and text", () => {
   assert.equal(detectSourceTypeFromText("https://example.com/listing/1"), "url");
   assert.equal(detectSourceTypeFromText("www.example.com/a"), "url");
+  assert.equal(detectSourceTypeFromText("a.aqar.fm/r/92f89b67"), "url");
+  assert.equal(normalizeUrl("a.aqar.fm/r/92f89b67"), "https://a.aqar.fm/r/92f89b67");
+  assert.equal(
+    normalizeUrl("https://a.aqar.fm/r/92f89b67"),
+    "https://a.aqar.fm/r/92f89b67"
+  );
   assert.equal(detectSourceTypeFromText("مطلوب شقة في النرجس"), "text");
+  assert.equal(detectSourceTypeFromText("شقة للبيع في حي السلام"), "text");
+  assert.equal(normalizeUrl("شقة للبيع في حي السلام"), "");
   assert.equal(isHttpUrl("not a url"), false);
   assert.equal(normalizeUrl("HTTPS://Example.COM/Path/"), "https://example.com/Path");
 });
