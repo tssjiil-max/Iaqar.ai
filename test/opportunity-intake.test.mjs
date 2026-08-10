@@ -16,8 +16,11 @@ import {
   detectSourceTypeFromText,
   isHttpUrl,
   listMissingFields,
+  mergeBrokerProvidedFields,
+  normalizeOpportunityFields,
   normalizeUrl,
   prepareOpportunityIntake,
+  requiredOpportunityFieldsFor,
   validateAttachment
 } from "../public/js/opportunity-intake-domain.js";
 import { readRepositoryFile } from "./helpers/shell.mjs";
@@ -354,13 +357,13 @@ test("officeId isolation is embedded in fingerprints and records", async () => {
   const left = await prepareOpportunityIntake({
     officeId: "office-a",
     brokerId: "broker-a",
-    text: "نفس النص",
+    text: "مطلوب شقة في الرياض",
     allowIncomplete: true
   });
   const right = await prepareOpportunityIntake({
     officeId: "office-b",
     brokerId: "broker-b",
-    text: "نفس النص",
+    text: "مطلوب شقة في الرياض",
     allowIncomplete: true
   });
   assert.notEqual(left.deduplicationFingerprint, right.deduplicationFingerprint);
@@ -396,6 +399,331 @@ test("Add Opportunity card exists on the home page with the approved compact row
     // Still no bottom nav / deals page.
     assert.equal(document.querySelector("nav"), null);
     assert.equal(document.querySelector("[data-main='deals']"), null);
+  } finally {
+    context.close();
+  }
+});
+
+test("sale land review and saved record keep sale price out of rent fields", async () => {
+  const adapter = createExtractionAdapter({
+    extract: async () => ({
+      extractionMode: "production_ocr",
+      extractionProvider: "cloudflare.workers_ai.to_markdown",
+      productionAi: true,
+      productionExtraction: true,
+      extractionConfidence: 100,
+      fields: {
+        opportunityKind: "OFFER",
+        purpose: "SALE",
+        transactionType: "بيع",
+        propertyType: "أرض",
+        city: "المدينة المنورة",
+        district: "الرانوناء",
+        salePrice: 1600000,
+        annualRent: null,
+        area: 431.75,
+        rooms: null
+      }
+    })
+  });
+  const review = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: "إعلان بيع أرض",
+    requireReview: true
+  }, adapter);
+  assert.equal(review.state, "review");
+  assert.equal(review.fields.transactionType, "بيع");
+  assert.equal(review.fields.salePrice, 1600000);
+  assert.equal(review.fields.annualRent, null);
+  assert.equal(requiredOpportunityFieldsFor(review.fields).includes("rooms"), false);
+
+  const saved = completeOpportunityIntake(review);
+  assert.equal(saved.state, "saved");
+  assert.equal(saved.opportunity.salePrice, 1600000);
+  assert.equal(saved.opportunity.annualRent, null);
+  assert.equal(saved.opportunity.monthlyRent, null);
+  assert.equal(saved.opportunity.priceOrBudget, 1600000);
+  assert.equal(saved.opportunity.rooms, null);
+  assert.equal(saved.opportunity.bathrooms, null);
+});
+
+test("rental apartment review preserves annual, installments, optional monthly, and floor fields", async () => {
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: `
+      شقة للإيجار في المدينة المنورة حي السلام
+      4 غرف صالة مطبخ 3 دورات مياه الدور الأول مجددة بالكامل
+      22000 ريال سنويًا على دفعتين
+      بعد أول 6 أشهر يمكن الاستمرار شهريًا بـ1850
+    `,
+    requireReview: true
+  });
+  assert.equal(result.state, "review");
+  assert.equal(result.fields.transactionType, "إيجار");
+  assert.equal(result.fields.propertyType, "شقة");
+  assert.equal(result.fields.district, "السلام");
+  assert.equal(result.fields.annualRent, 22000);
+  assert.equal(result.fields.paymentInstallments, 2);
+  assert.equal(result.fields.optionalMonthlyRentAfterSixMonths, 1850);
+  assert.equal(result.fields.monthlyRent, null);
+  assert.equal(result.fields.salePrice, null);
+  assert.equal(result.fields.rooms, 4);
+  assert.equal(result.fields.bathrooms, 3);
+  assert.equal(result.fields.floorNumber, 1);
+
+  const saved = completeOpportunityIntake(result, { area: 140 });
+  assert.equal(saved.state, "saved");
+  assert.equal(saved.opportunity.annualRent, 22000);
+  assert.equal(saved.opportunity.optionalMonthlyRentAfterSixMonths, 1850);
+  assert.equal(saved.opportunity.salePrice, null);
+});
+
+test("real Madinah land advert stays source-derived and normalizes advertiser phone", async () => {
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: `
+      للبيع أرض في المدينة المنورة الرانوناء
+      المساحة 431.75 م²
+      السعر 580000 ريال
+      رقم مسؤول الإعلان 0507561577
+    `,
+    requireReview: true
+  });
+  assert.equal(result.fields.transactionType, "بيع");
+  assert.equal(result.fields.propertyType, "أرض");
+  assert.equal(result.fields.city, "المدينة المنورة");
+  assert.equal(result.fields.district, "الرانوناء");
+  assert.equal(result.fields.area, 431.75);
+  assert.equal(result.fields.salePrice, 580000);
+  assert.equal(result.fields.annualRent, null);
+  assert.equal(result.fields.advertiserPhoneNormalized, "+966507561577");
+});
+
+test("changing an established transaction clears its old financial meaning", () => {
+  const changed = mergeBrokerProvidedFields({
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    salePrice: 1600000,
+    priceOrBudget: 1600000
+  }, {
+    purpose: "RENT",
+    salePrice: 1600000
+  });
+  assert.equal(changed.purpose, "RENT");
+  assert.equal(changed.salePrice, null);
+  assert.equal(changed.annualRent, null);
+  assert.equal(changed.priceOrBudget, null);
+});
+
+test("unknown transaction requests purpose first without displaying both money models", () => {
+  const fields = normalizeOpportunityFields({
+    opportunityKind: "OFFER",
+    propertyType: "شقة",
+    city: "",
+    district: "",
+    priceOrBudget: 900000,
+    area: 120,
+    rooms: 3
+  });
+  const required = requiredOpportunityFieldsFor(fields);
+  assert.ok(required.includes("purpose"));
+  assert.equal(required.includes("salePrice"), false);
+  assert.equal(required.includes("annualRent"), false);
+  assert.equal(fields.salePrice, null);
+  assert.equal(fields.annualRent, null);
+});
+
+let intakeModuleCounter = 0;
+
+async function loadIntakeController(fetchStub) {
+  const user = {
+    uid: "broker-a",
+    getIdToken: async () => "test-token"
+  };
+  const firebase = {
+    auth: () => ({ currentUser: user }),
+    firestore: () => null
+  };
+  const context = await loadShell({
+    bootSettingsModule: false,
+    firebase,
+    officeRuntime: { officeId: "office-a" },
+    fetch: fetchStub
+  });
+  context.window.IAQAR.resolveWorkerBase = () => "https://staging-worker.example.test";
+  const specifier = new URL("../public/js/add-opportunity.js", import.meta.url);
+  specifier.searchParams.set("intakeTest", String(++intakeModuleCounter));
+  const module = await import(specifier.href);
+  return { context, module };
+}
+
+function extractionResponse(fields) {
+  return new Response(JSON.stringify({
+    ok: true,
+    extractionMode: "production_ocr",
+    extractionProvider: "cloudflare.workers_ai.to_markdown",
+    extractionConfidence: 100,
+    productionAi: true,
+    productionExtraction: true,
+    fields
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+test("transaction-aware Review shows sale land fields and hides rent and room fields", async () => {
+  const saleFields = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    transactionType: "بيع",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الرانوناء",
+    salePrice: 1600000,
+    annualRent: null,
+    area: 431.75,
+    rooms: null
+  };
+  const { context, module } = await loadIntakeController(async () => extractionResponse(saleFields));
+  try {
+    context.document.getElementById("addOpportunityInput").value = "إعلان بيع أرض";
+    await module.__test.runPipeline();
+    const review = context.document.getElementById("addOpportunityMissing");
+    assert.equal(review.hidden, false);
+    assert.equal(review.querySelector('[name="purpose"]').value, "SALE");
+    assert.equal(review.querySelector('[name="propertyType"]').value, "أرض");
+    assert.equal(review.querySelector('[name="salePrice"]').value, "1600000");
+    assert.equal(review.querySelector('[name="annualRent"]'), null);
+    assert.equal(review.querySelector('[name="monthlyRent"]'), null);
+    assert.equal(review.querySelector('[name="paymentInstallments"]'), null);
+    assert.equal(review.querySelector('[name="rooms"]'), null);
+    assert.equal(review.querySelector('[name="bathrooms"]'), null);
+  } finally {
+    context.close();
+  }
+});
+
+test("transaction-aware Review shows rent fields and hides sale price", async () => {
+  const rentFields = {
+    opportunityKind: "OFFER",
+    purpose: "RENT",
+    transactionType: "إيجار",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "السلام",
+    annualRent: 22000,
+    monthlyRent: null,
+    optionalMonthlyRentAfterSixMonths: 1850,
+    paymentInstallments: 2,
+    salePrice: null,
+    area: 140,
+    rooms: 4,
+    bathrooms: 3,
+    floorNumber: 1
+  };
+  const { context, module } = await loadIntakeController(async () => extractionResponse(rentFields));
+  try {
+    context.document.getElementById("addOpportunityInput").value = "إعلان إيجار شقة";
+    await module.__test.runPipeline();
+    const review = context.document.getElementById("addOpportunityMissing");
+    assert.equal(review.querySelector('[name="purpose"]').value, "RENT");
+    assert.equal(review.querySelector('[name="annualRent"]').value, "22000");
+    assert.equal(review.querySelector('[name="paymentInstallments"]').value, "2");
+    assert.equal(review.querySelector('[name="optionalMonthlyRentAfterSixMonths"]').value, "1850");
+    assert.equal(review.querySelector('[name="salePrice"]'), null);
+  } finally {
+    context.close();
+  }
+});
+
+test("extraction timeout fails closed, clears busy and stale fields, and allows retry", async () => {
+  let mode = "delay";
+  let aborted = false;
+  const fields = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الرانوناء",
+    salePrice: 580000,
+    area: 431.75
+  };
+  const fetchStub = async (_url, init = {}) => {
+    if (mode === "success") return extractionResponse(fields);
+    return new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+    });
+  };
+  const { context, module } = await loadIntakeController(fetchStub);
+  try {
+    module.__test.setExtractionTimeoutMs(10);
+    context.document.getElementById("addOpportunityInput").value = "إعلان صورة جديد";
+    await module.__test.runPipeline();
+    assert.equal(aborted, true);
+    assert.equal(context.document.getElementById("addOpportunityStatus").dataset.state, "failed");
+    assert.match(context.document.getElementById("addOpportunityStatus").textContent, /تعذر إكمال تحليل الإعلان/);
+    assert.equal(context.document.getElementById("addOpportunitySubmit").disabled, false);
+    assert.equal(context.document.getElementById("addOpportunityMissing").hidden, true);
+    assert.equal(module.__test.getPendingDraft(), null);
+    assert.equal(context.document.getElementById("addOpportunityRetry").hidden, false);
+
+    mode = "success";
+    await module.__test.runPipeline({ fromRetry: true });
+    assert.equal(context.document.getElementById("addOpportunityStatus").dataset.state, "review");
+    assert.equal(context.document.getElementById("addOpportunityMissing").hidden, false);
+  } finally {
+    context.close();
+  }
+});
+
+test("new intake never inherits a previous city after success or failure", async () => {
+  let responseFields = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "الرياض",
+    district: "النرجس",
+    salePrice: 800000,
+    area: 400
+  };
+  let fail = false;
+  const fetchStub = async () => fail
+    ? new Response(JSON.stringify({ error: "worker_failure" }), { status: 500 })
+    : extractionResponse(responseFields);
+  const { context, module } = await loadIntakeController(fetchStub);
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "فرصة أ في الرياض";
+    await module.__test.runPipeline();
+    assert.equal(module.__test.getPendingDraft().fields.city, "الرياض");
+
+    input.value = "فرصة ب في المدينة المنورة";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    assert.equal(module.__test.getPendingDraft(), null);
+    assert.equal(context.document.getElementById("addOpportunityMissing").hidden, true);
+
+    fail = true;
+    await module.__test.runPipeline();
+    assert.equal(module.__test.getPendingDraft(), null);
+    assert.equal(context.document.querySelector('#addOpportunityMissing [name="city"]'), null);
+
+    fail = false;
+    responseFields = {
+      ...responseFields,
+      city: "المدينة المنورة",
+      district: "الرانوناء",
+      salePrice: 580000
+    };
+    await module.__test.runPipeline({ fromRetry: true });
+    assert.equal(module.__test.getPendingDraft().fields.city, "المدينة المنورة");
+    assert.notEqual(module.__test.getPendingDraft().fields.city, "الرياض");
   } finally {
     context.close();
   }
