@@ -50,7 +50,7 @@ test("attachment validation rejects oversize and unknown types", () => {
   assert.equal(validateAttachment({ name: "ok.pdf", type: "application/pdf", size: 1000 }).ok, true);
 });
 
-test("URL intake extracts available fields via deterministic parser (not production AI)", async () => {
+test("URL intake requires resolved listing text (does not parse URL string)", async () => {
   const adapter = createExtractionAdapter();
   const result = await prepareOpportunityIntake({
     officeId: "office-a",
@@ -58,15 +58,29 @@ test("URL intake extracts available fields via deterministic parser (not product
     text: "https://example.com/listing/villa",
     allowIncomplete: true
   }, adapter);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /تعذر استخراج بيانات الإعلان من الرابط/);
+});
+
+test("URL intake with listing text uses deterministic parser (not production AI)", async () => {
+  const adapter = createExtractionAdapter();
+  const listingText = "عرض للبيع شقة في حي النرجس الرياض ٤ غرف مساحة 180 سعر 1200000";
+  const result = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: listingText,
+    listingText,
+    url: "https://example.com/listing/villa",
+    allowIncomplete: true
+  }, adapter);
   assert.equal(result.ok, true);
-  assert.equal(result.opportunity.sourceType, "url");
+  assert.equal(result.source.sourceType, "url");
   assert.equal(result.extraction.productionAi, false);
   assert.equal(result.extraction.extractionMode, "deterministic_text_parser");
   assert.equal(result.createsOperation, false);
   assert.equal(result.runsMatching, false);
-  assert.ok(result.opportunity.deduplicationFingerprint);
-  assert.equal(result.opportunity.officeId, "office-a");
-  assert.equal(result.opportunity.brokerId, "broker-a");
+  assert.ok(result.deduplicationFingerprint || result.opportunity?.deduplicationFingerprint);
+  assert.equal(result.source.officeId, "office-a");
 });
 
 test("text intake extracts Arabic listing signals and tracks missing fields", async () => {
@@ -266,7 +280,10 @@ test("Add Opportunity card exists on the home page with the approved compact row
     assert.ok(section, "Add Opportunity section required");
     assert.ok(document.getElementById("addOpportunityInput"));
     assert.ok(document.getElementById("addOpportunityPaperclip"));
+    assert.ok(document.getElementById("addOpportunityInputClear"));
     assert.ok(document.getElementById("addOpportunitySubmit"));
+    assert.equal(document.getElementById("addOpportunityProcess"), null);
+    assert.equal(document.getElementById("addOpportunityClear"), null);
     assert.ok(document.getElementById("addOpportunityFile"));
     assert.equal(document.getElementById("addOpportunityFile").hasAttribute("hidden"), true);
 
@@ -294,7 +311,9 @@ test("Add Opportunity card exists on the home page with the approved compact row
 test("shell source wires the Phase 2 module and keeps extraction honesty copy", () => {
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(shell.includes("js/add-opportunity.js"));
+  assert.ok(shell.includes("js/opportunity-review.js"));
   assert.ok(shell.includes("id=\"addOpportunity\""));
+  assert.ok(shell.includes("id=\"opportunityReviewOverlay\""));
   const domain = readRepositoryFile("public", "js", "opportunity-intake-domain.js");
   assert.ok(domain.includes("simulated_fixture"));
   assert.ok(domain.includes("productionAi: false") || domain.includes("productionAi"));

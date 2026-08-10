@@ -1,9 +1,11 @@
 /**
  * Phase 2 — Unified Opportunity Intake domain.
  *
- * Deterministic detection, normalization, simulated/deterministic extraction,
+ * Deterministic phrase/context Arabic extraction, simulated fixtures for binary attachments,
  * missing-field tracking, and deduplication. No production AI is claimed here.
  */
+
+import { extractArabicOpportunityText } from "./opportunity-text-extraction.js";
 
 export const INTAKE_STATES = Object.freeze([
   "idle",
@@ -40,7 +42,8 @@ export const PURPOSES = Object.freeze([
   "SALE",
   "PURCHASE",
   "RENT",
-  "LEASE_REQUEST"
+  "LEASE_REQUEST",
+  "INVESTMENT"
 ]);
 
 export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
@@ -52,6 +55,24 @@ export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "priceOrBudget",
   "area",
   "rooms"
+]);
+
+export const EXTENDED_OPPORTUNITY_FIELDS = Object.freeze([
+  "bathrooms",
+  "floorNumber",
+  "floorPosition",
+  "floorsCount",
+  "annualRent",
+  "paymentInstallments",
+  "optionalMonthlyRentAfterSixMonths",
+  "livingRoom",
+  "kitchen",
+  "condition",
+  "electricityMeter",
+  "waterAndSewagePaidBy",
+  "electricityPaidBy",
+  "ownerConditions",
+  "transactionType"
 ]);
 
 /** MIME / extension maps for the paperclip chooser. */
@@ -187,86 +208,51 @@ export function createExtractionAdapter(options = {}) {
 }
 
 function extractFromText(raw, meta) {
-  const text = normalizeDigits(safeText(raw));
-  const lower = text.toLowerCase();
-
-  let opportunityKind = "";
-  if (/عرض|للبيع|للإيجار|ايجار|إيجار|مؤجر|أملك|املك|عقاري للبيع/.test(text)) {
-    opportunityKind = "OFFER";
-  } else if (/مطلوب|أبحث|ابحث|أبي|ابي|أريد|اريد|شراء|استئجار/.test(text)) {
-    opportunityKind = "REQUEST";
-  }
-
-  let purpose = "";
-  if (/للإيجار|للايجار|ايجار|إيجار|استئجار|مؤجر/.test(text)) {
-    purpose = opportunityKind === "REQUEST" ? "LEASE_REQUEST" : "RENT";
-  } else if (/شراء|أشتري|اشتري|مشتري/.test(text)) {
-    purpose = "PURCHASE";
-  } else if (/بيع|للبيع/.test(text)) {
-    purpose = "SALE";
-  }
-
-  const propertyType =
-    matchOne(text, /(فيلا|منزل|بيت|شقة|دور|أرض|ارض|عمارة|مكتب|محل|مستودع|استراحة)/) || "";
-
-  const city =
-    matchOne(text, /(الرياض|جدة|المدينة المنورة|المدينة|الدمام|مكة|الخبر|الطائف|تبوك|أبها)/) || "";
-
-  const district =
-    matchOne(text, /حي\s+([^\s،,]{2,40})/) ||
-    matchOne(text, /(النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ)/) ||
-    "";
-
-  const priceOrBudget = extractNumber(text, /(?:سعر|بميزانية|ميزانية|بـ|ب)\s*([0-9][0-9,\.]{2,})/i) ||
-    extractNumber(text, /([0-9][0-9,\.]{3,})\s*(?:ألف|الف|مليون)?/);
-
-  const area = extractNumber(text, /([0-9]{2,5})\s*(?:م2|م²|متر)/);
-  const rooms = extractNumber(text, /([0-9]{1,2})\s*(?:غرف|غرفة|غرف نوم)/);
-
-  const filled = countFilled({
-    opportunityKind, purpose, propertyType, city, district, priceOrBudget, area, rooms
-  });
-  const confidence = Math.round((filled / REQUIRED_OPPORTUNITY_FIELDS.length) * 100);
+  const parsed = extractArabicOpportunityText(raw);
+  const fields = { ...parsed.legacyFields };
 
   return {
     extractionMode: meta.label,
     extractionProvider: "iaqar.deterministic_text_parser",
     productionAi: false,
-    extractionConfidence: confidence,
-    fields: {
-      opportunityKind,
-      purpose,
-      propertyType,
-      city,
-      district,
-      priceOrBudget: priceOrBudget || null,
-      area: area || null,
-      rooms: rooms || null
-    },
-    rawHints: { sourceType: meta.sourceType, textLength: text.length, lowerHost: lower.slice(0, 40) }
+    extractionConfidence: parsed.extractionConfidence,
+    fields,
+    extended: parsed.extended,
+    publicShape: parsed.publicShape,
+    needsReview: parsed.needsReview,
+    fieldEvidence: parsed.fieldEvidence,
+    structured: parsed.structured,
+    rawHints: {
+      sourceType: meta.sourceType,
+      textLength: parsed.normalizedText.length,
+      pipeline: "normalize→extract→validate→resolve"
+    }
   };
 }
 
 function extractFromSimulatedAttachment(input, meta) {
-  // Deterministic fixture keyed by source type — partial fields only.
   const fixtures = {
     image: { propertyType: "شقة", city: "", district: "", opportunityKind: "", purpose: "" },
-    screenshot: { propertyType: "", city: "الرياض", district: "", opportunityKind: "", purpose: "" },
+    screenshot: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "" },
     pdf: { propertyType: "فيلا", city: "", district: "", opportunityKind: "OFFER", purpose: "" },
     word: { propertyType: "", city: "", district: "", opportunityKind: "REQUEST", purpose: "PURCHASE" },
-    excel: { propertyType: "أرض", city: "الرياض", district: "", opportunityKind: "OFFER", purpose: "SALE" },
+    excel: { propertyType: "أرض", city: "", district: "", opportunityKind: "OFFER", purpose: "SALE" },
     audio: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "RENT" }
   };
+  const hint = safeText([input.fileName, input.text].filter(Boolean).join(" "));
+  const fromHint = hint
+    ? extractFromText(hint, { sourceType: input.sourceType, label: meta.label }).fields
+    : null;
   const base = fixtures[input.sourceType] || {};
   const fields = {
-    opportunityKind: base.opportunityKind || "",
-    purpose: base.purpose || "",
-    propertyType: base.propertyType || "",
-    city: base.city || "",
-    district: base.district || "",
-    priceOrBudget: null,
-    area: null,
-    rooms: null
+    opportunityKind: fromHint?.opportunityKind || base.opportunityKind || "",
+    purpose: fromHint?.purpose || base.purpose || "",
+    propertyType: fromHint?.propertyType || base.propertyType || "",
+    city: fromHint?.city || base.city || "",
+    district: fromHint?.district || base.district || "",
+    priceOrBudget: fromHint?.priceOrBudget ?? null,
+    area: fromHint?.area ?? null,
+    rooms: fromHint?.rooms ?? null
   };
   const filled = countFilled(fields);
   return {
@@ -281,19 +267,6 @@ function extractFromSimulatedAttachment(input, meta) {
       simulated: true
     }
   };
-}
-
-function matchOne(text, re) {
-  const m = text.match(re);
-  if (!m) return "";
-  return safeText(m[1] || m[0], 80);
-}
-
-function extractNumber(text, re) {
-  const m = text.match(re);
-  if (!m) return null;
-  const n = Number(String(m[1]).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : null;
 }
 
 function countFilled(fields) {
@@ -411,6 +384,34 @@ export function buildOpportunityRecord({
     cooperationState: "NOT_SHARED",
     cooperationStatus: "NOT_SHARED",
     version: 1,
+    // Extended structured extraction (backward-compatible optional fields).
+    bathrooms: extraction?.extended?.bathrooms ?? fields.bathrooms ?? null,
+    floorNumber: extraction?.extended?.floorNumber ?? fields.floorNumber ?? null,
+    floorPosition: extraction?.extended?.floorPosition ?? fields.floorPosition ?? null,
+    floorsCount: extraction?.extended?.floorsCount ?? fields.floorsCount ?? null,
+    annualRent: extraction?.extended?.annualRent ?? fields.annualRent ?? null,
+    paymentInstallments: extraction?.extended?.paymentInstallments ?? fields.paymentInstallments ?? null,
+    optionalMonthlyRentAfterSixMonths:
+      extraction?.extended?.optionalMonthlyRentAfterSixMonths ?? fields.optionalMonthlyRentAfterSixMonths ?? null,
+    livingRoom: extraction?.extended?.livingRoom ?? fields.livingRoom ?? null,
+    kitchen: extraction?.extended?.kitchen ?? fields.kitchen ?? null,
+    condition: extraction?.extended?.condition ?? fields.condition ?? null,
+    electricityMeter: extraction?.extended?.electricityMeter ?? fields.electricityMeter ?? null,
+    waterAndSewagePaidBy: extraction?.extended?.waterAndSewagePaidBy ?? fields.waterAndSewagePaidBy ?? null,
+    electricityPaidBy: extraction?.extended?.electricityPaidBy ?? fields.electricityPaidBy ?? null,
+    ownerConditions: extraction?.extended?.ownerConditions ?? fields.ownerConditions ?? null,
+    transactionTypeLabel: extraction?.extended?.transactionType ?? fields.transactionTypeLabel ?? null,
+    extractionFieldEvidence: extraction?.fieldEvidence || null,
+    extractionNeedsReview: extraction?.needsReview || null,
+    advertiserPhoneRaw: safeText(fields.advertiserPhoneRaw, 40),
+    advertiserPhoneNormalized: safeText(fields.advertiserPhoneNormalized, 20),
+    advertiserPhoneSource: safeText(fields.advertiserPhoneSource, 40),
+    advertiserPhoneEvidence: safeText(fields.advertiserPhoneEvidence, 200),
+    advertiserRole: safeText(fields.advertiserRole || "UNKNOWN", 20),
+    advertiserContactStatus: safeText(fields.advertiserContactStatus || "NOT_CONTACTED", 30),
+    marketingConsentStatus: safeText(fields.marketingConsentStatus || "NOT_STARTED", 30),
+    lastContactAt: fields.lastContactAt || null,
+    contactNotes: safeText(fields.contactNotes, 500),
     // Legacy projection helpers used by the Opportunity Bank list.
     recordType: fields.opportunityKind === "OFFER" ? "owner" : "client",
     status: "active",
@@ -457,6 +458,21 @@ export function mergeBrokerProvidedFields(baseFields, provided = {}) {
         : safeText(provided[key], 80);
     }
   }
+  for (const key of EXTENDED_OPPORTUNITY_FIELDS) {
+    const value = provided[key];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value) && value.length) {
+      next[key] = value;
+      continue;
+    }
+    if (typeof value === "boolean") {
+      next[key] = value;
+      continue;
+    }
+    if (String(value).trim() !== "") {
+      next[key] = typeof value === "number" ? value : safeText(value, 120);
+    }
+  }
   return next;
 }
 
@@ -489,7 +505,12 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     contentType = input.file.type || contentType;
     byteSize = input.file.size || byteSize;
   } else if (!sourceType) {
-    sourceType = detectSourceTypeFromText(text);
+    const explicitUrl = normalizeUrl(input.url || "");
+    if (explicitUrl) {
+      sourceType = "url";
+    } else {
+      sourceType = detectSourceTypeFromText(text);
+    }
   }
 
   if (!SOURCE_TYPES.includes(sourceType)) {
@@ -497,11 +518,20 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
   }
 
   if (sourceType === "url") {
-    url = normalizeUrl(text || input.url);
+    url = normalizeUrl(input.url || (isHttpUrl(text) ? text : ""));
     if (!url) {
       return { ok: false, state: "failed", error: "الرابط غير صالح", retryable: true };
     }
-    text = url;
+    const listingText = safeText(input.listingText || (text && text !== url ? text : ""));
+    if (!listingText) {
+      return {
+        ok: false,
+        state: "failed",
+        error: "تعذر استخراج بيانات الإعلان من الرابط",
+        retryable: true
+      };
+    }
+    text = listingText;
   }
 
   if ((sourceType === "text" || sourceType === "url") && !text) {
@@ -526,6 +556,9 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
   });
 
   let fields = { ...extraction.fields };
+  if (extraction.extended) {
+    fields = { ...fields, ...extraction.extended };
+  }
   if (input.brokerFields) fields = mergeBrokerProvidedFields(fields, input.brokerFields);
 
   const completeness = computeDataCompleteness(fields);
@@ -570,6 +603,7 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     state: "saved",
     opportunity,
     source,
+    fields,
     extraction,
     missingFields: completeness.missingFields,
     deduplicationFingerprint: fingerprint,

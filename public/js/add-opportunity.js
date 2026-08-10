@@ -1,15 +1,13 @@
 /**
- * Phase 2 — Add Opportunity card controller.
- * Unified intake row: text/link + paperclip + submit. No per-type buttons.
+ * Phase 2 — Add Opportunity: تنفيذ → مراجعة → اعتماد وحفظ (مرة واحدة).
  */
 
 import {
   ATTACHMENT_ACCEPT,
   INTAKE_STATE_LABELS,
-  REQUIRED_OPPORTUNITY_FIELDS,
   createExtractionAdapter,
+  detectSourceTypeFromText,
   prepareOpportunityIntake,
-  sha256Hex,
   validateAttachment
 } from "./opportunity-intake-domain.js";
 import {
@@ -21,17 +19,15 @@ import {
   phase5BoundaryGuarantees,
   requestMissingDataOperationSync
 } from "./operations-domain.js";
+import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportunity-review.js";
+import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 
-const FIELD_LABELS = Object.freeze({
-  opportunityKind: "نوع الفرصة (عرض / طلب)",
-  purpose: "الغرض",
-  propertyType: "نوع العقار",
-  city: "المدينة",
-  district: "الحي",
-  priceOrBudget: "السعر أو الميزانية",
-  area: "المساحة",
-  rooms: "عدد الغرف"
+const LOCAL_STATE_LABELS = Object.freeze({
+  ready: "راجع البيانات ثم اعتماد وحفظ"
 });
+
+const EXTRACTION_TIMEOUT_MS = 45000;
+const MEDIA_EXTRACT_TIMEOUT_MS = 90000;
 
 function $(id) {
   return document.getElementById(id);
@@ -97,99 +93,150 @@ function setState(state, detail = "") {
   status.dataset.state = state;
   status.classList.toggle("is-error", state === "failed");
   status.classList.toggle("is-done", state === "saved");
-  const label = INTAKE_STATE_LABELS[state] || "";
+  const label = LOCAL_STATE_LABELS[state] || INTAKE_STATE_LABELS[state] || "";
   status.textContent = detail ? `${label}${label ? " — " : ""}${detail}` : label;
   if (retry) retry.hidden = state !== "failed";
 }
 
+function hasValidInputFromValues(text, file) {
+  return String(text || "").trim().length > 0 || Boolean(file);
+}
+
+export { hasValidInputFromValues };
+
+function hasValidInput() {
+  const input = $("addOpportunityInput");
+  return hasValidInputFromValues(input?.value || "", selectedFile);
+}
+
+function syncExecuteButton() {
+  const clearBtn = $("addOpportunityInputClear");
+  const executeBtn = $("addOpportunitySubmit");
+  const valid = hasValidInput();
+  if (clearBtn) clearBtn.hidden = !valid;
+  if (!executeBtn) return;
+  const disabled = executing || !valid;
+  executeBtn.disabled = disabled;
+  executeBtn.classList.toggle("is-ready", valid && !executing);
+  executeBtn.setAttribute("aria-disabled", String(disabled));
+}
+
 function setBusy(busy) {
-  const submit = $("addOpportunitySubmit");
+  const executeBtn = $("addOpportunitySubmit");
   const input = $("addOpportunityInput");
   const paperclip = $("addOpportunityPaperclip");
-  if (submit) submit.disabled = busy;
+  const clearBtn = $("addOpportunityInputClear");
+  if (executeBtn) {
+    executeBtn.classList.toggle("is-busy", busy);
+    if (busy && executeBtn.dataset.busyLabel) executeBtn.textContent = executeBtn.dataset.busyLabel;
+    else if (!busy && executeBtn.dataset.originalText) executeBtn.textContent = executeBtn.dataset.originalText;
+  }
   if (input) input.disabled = busy;
   if (paperclip) paperclip.disabled = busy;
+  if (clearBtn) clearBtn.disabled = busy;
+  syncExecuteButton();
 }
 
-function clearMissingForm() {
-  const wrap = $("addOpportunityMissing");
-  if (!wrap) return;
-  wrap.hidden = true;
-  wrap.innerHTML = "";
-}
-
-function renderMissingForm(missingFields, fields) {
-  const wrap = $("addOpportunityMissing");
-  if (!wrap) return;
-  wrap.hidden = false;
-  wrap.innerHTML = `
-    <p class="add-opportunity-missing-title">أكمل الحقول الناقصة فقط</p>
-    <div class="add-opportunity-missing-grid">
-      ${missingFields.map((key) => {
-        if (key === "opportunityKind") {
-          return `<label>${FIELD_LABELS[key]}
-            <select name="${key}" required>
-              <option value="">اختر</option>
-              <option value="OFFER" ${fields.opportunityKind === "OFFER" ? "selected" : ""}>عرض</option>
-              <option value="REQUEST" ${fields.opportunityKind === "REQUEST" ? "selected" : ""}>طلب</option>
-            </select>
-          </label>`;
-        }
-        if (key === "purpose") {
-          return `<label>${FIELD_LABELS[key]}
-            <select name="${key}" required>
-              <option value="">اختر</option>
-              <option value="SALE">بيع</option>
-              <option value="PURCHASE">شراء</option>
-              <option value="RENT">إيجار</option>
-              <option value="LEASE_REQUEST">طلب إيجار</option>
-            </select>
-          </label>`;
-        }
-        const inputType = ["priceOrBudget", "area", "rooms"].includes(key) ? "number" : "text";
-        const value = fields[key] == null ? "" : fields[key];
-        return `<label>${FIELD_LABELS[key]}
-          <input name="${key}" type="${inputType}" value="${String(value).replace(/"/g, "&quot;")}" required>
-        </label>`;
-      }).join("")}
-    </div>
-    <button type="submit" class="add-opportunity-complete" id="addOpportunityComplete">حفظ بعد الاستكمال</button>
-    <p class="add-opportunity-note">التحليل الحالي: محاكاة/تحليل نصي حتمي — ليس ذكاءً اصطناعيًا إنتاجيًا.</p>
-  `;
-  wrap.onsubmit = (event) => {
-    event.preventDefault();
-    const brokerFields = readMissingFieldsFromForm();
-    void runPipeline({ brokerFields });
-  };
-}
-
-function readMissingFieldsFromForm() {
-  const wrap = $("addOpportunityMissing");
-  const data = {};
-  if (!wrap) return data;
-  for (const key of REQUIRED_OPPORTUNITY_FIELDS) {
-    const node = wrap.querySelector(`[name="${key}"]`);
-    if (node) data[key] = node.value;
-  }
-  return data;
-}
-
-let pendingDraft = null;
 let lastFailure = null;
 let selectedFile = null;
+let executing = false;
+let intakeContext = null;
+/** Resume path: same execute session with missing-field completion (not a new intake). */
+let resumeIntakeSession = null;
 
-function describeAttachment() {
-  const chip = $("addOpportunityFileChip");
-  const label = $("addOpportunityFileName");
-  if (!chip || !label) return;
-  if (!selectedFile) {
-    chip.hidden = true;
-    label.textContent = "";
-    return;
-  }
-  chip.hidden = false;
-  label.textContent = selectedFile.name;
+function resetForNewIntake() {
+  lastFailure = null;
+  intakeContext = null;
+  resumeIntakeSession = null;
+  dismissOpportunityReviewIfOpen();
 }
+
+function logExtractionTrace(event, meta = {}) {
+  console.info("[iaqar:intake-extraction]", event, {
+    status: meta.status ?? null,
+    durationMs: meta.durationMs ?? null,
+    sourceType: meta.sourceType ?? null,
+    hasMediaPath: Boolean(meta.hasMediaPath),
+    hasFields: Boolean(meta.hasFields),
+    extractionMode: meta.extractionMode ?? null
+  });
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = EXTRACTION_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function countCoreFields(fields = {}) {
+  const keys = ["propertyType", "city", "district", "priceOrBudget", "area", "purpose"];
+  return keys.filter((key) => {
+    const value = fields[key];
+    return value !== null && value !== undefined && String(value).trim() !== "";
+  }).length;
+}
+
+function hasContradictoryCity(fields = {}) {
+  const city = String(fields.city || "").trim();
+  const district = String(fields.district || "").trim();
+  if (city !== "الرياض") return false;
+  if (!district) return false;
+  return /رانوناء|قباء|السلام|العزيزية|العقيق|الحرة|الهجرة/i.test(district);
+}
+
+function canOpenReview(prepared) {
+  if (!prepared?.ok) return false;
+  const fields = prepared.fields || {};
+  if (hasContradictoryCity(fields)) return false;
+  if (countCoreFields(fields) < 2) return false;
+  return true;
+}
+
+function clearIntakeForm() {
+  resetForNewIntake();
+  selectedFile = null;
+  const input = $("addOpportunityInput");
+  if (input) input.value = "";
+  const fileInput = $("addOpportunityFile");
+  if (fileInput) fileInput.value = "";
+  const missing = $("addOpportunityMissing");
+  if (missing) missing.hidden = true;
+  const retry = $("addOpportunityRetry");
+  if (retry) retry.hidden = true;
+  syncExecuteButton();
+  updateAttachmentHint();
+  setState("idle");
+}
+
+function clearDraftInput() {
+  lastFailure = null;
+  selectedFile = null;
+  resumeIntakeSession = null;
+  const input = $("addOpportunityInput");
+  if (input) input.value = "";
+  const fileInput = $("addOpportunityFile");
+  if (fileInput) fileInput.value = "";
+  syncExecuteButton();
+  updateAttachmentHint();
+  setState("idle");
+}
+
+function updateAttachmentHint() {
+  const hint = $("addOpportunityAttachmentHint");
+  if (!hint) return;
+  if (selectedFile) {
+    hint.textContent = `مرفق: ${selectedFile.name}`;
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+    hint.textContent = "";
+  }
+}
+
 
 async function uploadSourceFile(officeId, sourceId, file) {
   const base = workerBase();
@@ -202,7 +249,7 @@ async function uploadSourceFile(officeId, sourceId, file) {
     "X-Source-Type": validateAttachment(file).sourceType || "image",
     "X-File-Name": encodeURIComponent(file.name || "attachment")
   };
-  const response = await fetch(`${base.replace(/\/$/, "")}/media/opportunity-source`, {
+  const response = await fetchWithTimeout(`${base.replace(/\/$/, "")}/media/opportunity-source`, {
     method: "POST",
     headers,
     body: file
@@ -214,7 +261,28 @@ async function uploadSourceFile(officeId, sourceId, file) {
   return payload;
 }
 
-async function persistIntake(result) {
+async function resolveMediaListingText(mediaPath, officeId) {
+  const base = workerBase();
+  if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetchWithTimeout(`${base}/pipeline/media-extract`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ officeId, mediaPath })
+  }, MEDIA_EXTRACT_TIMEOUT_MS);
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.text || "").trim();
+  if (!response.ok || !body.ok || !text) {
+    return { ok: false, error: body.error || "media_extract_failed" };
+  }
+  return { ok: true, text, extractionMode: body.extractionMode || "" };
+}
+
+async function persistIntake(result, reviewMeta = {}) {
   const office = currentOffice();
   const db = window.firebase?.firestore?.();
   if (!office?.paths || !db) throw new Error("firestore_unavailable");
@@ -229,21 +297,181 @@ async function persistIntake(result) {
     return { duplicate: true, opportunityId: result.opportunity.id, sourceId: result.source.id };
   }
 
+  const opportunityPayload = {
+    ...result.opportunity,
+    ...reviewMeta,
+    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+  };
+
   const batch = db.batch();
   batch.set(sourceRef, {
     ...result.source,
     createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
   });
-  batch.set(opportunityRef, {
-    ...result.opportunity,
-    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-  });
+  batch.set(opportunityRef, opportunityPayload);
   await batch.commit();
   return { duplicate: false, opportunityId: result.opportunity.id, sourceId: result.source.id };
 }
 
-async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
+async function resolveUrlListingText(url, officeId) {
+  const base = workerBase();
+  if (!base) return { ok: false, error: "worker_base_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetchWithTimeout(`${base}/pipeline/url-resolve`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ url, officeId })
+  });
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.text || "").trim();
+  if (!response.ok || !body.ok || !text) {
+    return {
+      ok: false,
+      error: body.error || "url_resolve_failed",
+      diagnostics: body.diagnostics || null
+    };
+  }
+  return { ok: true, text, diagnostics: body.diagnostics || null };
+}
+
+async function runExtractionPipeline() {
+  const office = currentOffice();
+  const user = currentUser();
+  if (!office?.officeId) throw new Error("office_missing");
+  if (!user?.uid) throw new Error("auth_required");
+
+  const input = $("addOpportunityInput");
+  const inputText = (input?.value || "").trim();
+  const isUrl = detectSourceTypeFromText(inputText) === "url";
+  let listingText = inputText;
+  let urlDiagnostics = null;
+  let mediaExtractionMode = "";
+
+  if (isUrl) {
+    setState("analyzing");
+    const resolved = await resolveUrlListingText(inputText, office.officeId);
+    if (!resolved.ok) {
+      const err = new Error("url_extraction_failed");
+      err.diagnostics = resolved.diagnostics;
+      throw err;
+    }
+    listingText = resolved.text;
+    urlDiagnostics = resolved.diagnostics;
+  }
+
+  let fileChecksumValue = "";
+  let mediaPath = "";
+  let sourceType = "";
+  if (selectedFile) {
+    const validated = validateAttachment(selectedFile);
+    if (!validated.ok) throw new Error("attachment_invalid");
+    sourceType = validated.sourceType;
+    setState("uploading");
+    fileChecksumValue = await fileChecksum(selectedFile);
+    const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
+    const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
+    mediaPath = uploaded.mediaPath || "";
+
+    if (!listingText && (sourceType === "image" || sourceType === "screenshot")) {
+      setState("analyzing");
+      const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId);
+      if (!mediaResolved.ok) throw new Error("extraction_failed");
+      listingText = mediaResolved.text;
+      mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
+    }
+  }
+
+  const useTextParser = Boolean(String(listingText || "").trim());
+  setState("analyzing");
+  const prepared = await prepareOpportunityIntake({
+    officeId: office.officeId,
+    brokerId: user.uid,
+    text: listingText,
+    listingText: isUrl || useTextParser ? listingText : undefined,
+    url: isUrl ? inputText : undefined,
+    sourceType: useTextParser ? "text" : undefined,
+    file: useTextParser ? undefined : (selectedFile || undefined),
+    fileChecksum: fileChecksumValue,
+    mediaPath,
+    fileName: selectedFile?.name || "",
+    contentType: selectedFile?.type || "",
+    byteSize: selectedFile?.size || 0,
+    allowIncomplete: true
+  }, createExtractionAdapter());
+
+  if (!prepared.ok) {
+    throw new Error(prepared.error || "prepare_failed");
+  }
+
+  if (mediaPath) prepared.source.mediaPath = mediaPath;
+  if (sourceType && !useTextParser) prepared.source.sourceType = sourceType;
+  if (fileChecksumValue && selectedFile) {
+    prepared.source.byteSize = selectedFile.size || prepared.source.byteSize;
+  }
+  if (mediaExtractionMode && prepared.extraction) {
+    prepared.extraction.extractionMode = mediaExtractionMode;
+    prepared.extraction.productionAi = false;
+  }
+
+  intakeContext = {
+    inputText,
+    listingText,
+    sourceUrl: isUrl ? inputText : "",
+    sourceType: prepared.source?.sourceType || sourceType || (useTextParser ? "text" : ""),
+    urlDiagnostics,
+    fileChecksumValue,
+    mediaPath,
+    fileName: selectedFile?.name || "",
+    contentType: selectedFile?.type || ""
+  };
+
+  return prepared;
+}
+
+async function requestOpportunityExtraction() {
+  const started = performance.now();
+  let traceMeta = {
+    status: "failed",
+    durationMs: 0,
+    sourceType: null,
+    hasMediaPath: false,
+    hasFields: false,
+    extractionMode: null
+  };
+  try {
+    const prepared = await runExtractionPipeline();
+    traceMeta = {
+      status: "ok",
+      durationMs: Math.round(performance.now() - started),
+      sourceType: intakeContext?.sourceType || prepared.source?.sourceType || null,
+      hasMediaPath: Boolean(intakeContext?.mediaPath),
+      hasFields: countCoreFields(prepared.fields) >= 2,
+      extractionMode: prepared.extraction?.extractionMode || null
+    };
+    logExtractionTrace("complete", traceMeta);
+    return prepared;
+  } catch (error) {
+    traceMeta.durationMs = Math.round(performance.now() - started);
+    if (error?.name === "AbortError") {
+      traceMeta.status = "timeout";
+      const timeoutError = new Error("extraction_timeout");
+      timeoutError.cause = error;
+      logExtractionTrace("complete", traceMeta);
+      throw timeoutError;
+    }
+    traceMeta.status = "failed";
+    logExtractionTrace("complete", traceMeta);
+    throw error;
+  }
+}
+
+async function startExecute() {
+  if (executing) return;
   const office = currentOffice();
   const user = currentUser();
   if (!office?.officeId) {
@@ -259,65 +487,117 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
   const text = (input?.value || "").trim();
   if (!text && !selectedFile) {
     setState("failed", "أدخل رابطًا أو نصًا أو أرفق ملفًا");
-    lastFailure = { text, file: selectedFile, brokerFields };
+    lastFailure = { text, file: selectedFile };
     return;
   }
 
+  executing = true;
   setBusy(true);
-  clearMissingForm();
+  resetForNewIntake();
 
   try {
-    let fileChecksumValue = "";
-    let mediaPath = "";
-    if (selectedFile) {
-      setState("uploading");
-      fileChecksumValue = await fileChecksum(selectedFile);
-      // Provisional source id from checksum so upload path is stable.
-      const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
-      const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
-      mediaPath = uploaded.mediaPath || "";
+    const prepared = await requestOpportunityExtraction();
+    if (!canOpenReview(prepared)) {
+      throw new Error("extraction_failed");
     }
+    setState("ready");
+    resumeIntakeSession = {
+      preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
+    };
+    openOpportunityReview({
+      fields: prepared.fields || {},
+      extended: prepared.extraction?.extended,
+      needsReview: prepared.extraction?.needsReview,
+      sourceText: intakeContext?.listingText || "",
+      prepared
+    }, approveFromReview);
+  } catch (error) {
+    console.warn("add-opportunity execute failed", error);
+    if (error?.message === "extraction_timeout") {
+      setState("failed", "تعذر إكمال تحليل الإعلان. حاول مرة أخرى.");
+    } else if (error?.message === "url_extraction_failed") {
+      setState("failed", "تعذر استخراج بيانات الإعلان من الرابط");
+    } else if (error?.message === "extraction_failed") {
+      setState("failed", "تعذر استخراج بيانات الإعلان");
+    } else {
+      setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
+    }
+    lastFailure = { text, file: selectedFile };
+  } finally {
+    executing = false;
+    setBusy(false);
+  }
+}
 
-    setState("analyzing");
+async function approveFromReview(brokerExtras, review, advertiser = {}) {
+  if (executing) return;
+  executing = true;
+  setBusy(true);
+
+  try {
+    const office = currentOffice();
+    const user = currentUser();
+    if (!office?.officeId || !user?.uid) throw new Error("auth_required");
+    if (!intakeContext) throw new Error("context_missing");
+
+    const brokerFields = {
+      opportunityKind: brokerExtras.opportunityKind,
+      purpose: brokerExtras.purpose,
+      propertyType: brokerExtras.propertyType,
+      city: brokerExtras.city,
+      district: brokerExtras.district,
+      priceOrBudget: brokerExtras.priceOrBudget,
+      area: brokerExtras.area,
+      rooms: brokerExtras.rooms,
+      bathrooms: brokerExtras.bathrooms,
+      floorNumber: brokerExtras.floorNumber,
+      annualRent: brokerExtras.annualRent,
+      paymentInstallments: brokerExtras.paymentInstallments,
+      optionalMonthlyRentAfterSixMonths: brokerExtras.optionalMonthlyRentAfterSixMonths
+    };
+
     const prepared = await prepareOpportunityIntake({
       officeId: office.officeId,
       brokerId: user.uid,
-      text,
-      file: selectedFile || undefined,
-      fileChecksum: fileChecksumValue,
-      mediaPath,
+      text: intakeContext.listingText || intakeContext.inputText,
+      listingText: intakeContext.listingText,
+      url: intakeContext.sourceUrl || undefined,
+      sourceType: intakeContext.sourceType || undefined,
+      fileChecksum: intakeContext.fileChecksumValue,
+      mediaPath: intakeContext.mediaPath,
+      fileName: intakeContext.fileName,
+      contentType: intakeContext.contentType,
       brokerFields,
-      allowIncomplete: Boolean(brokerFields)
+      allowIncomplete: true
     }, createExtractionAdapter());
 
-    if (!prepared.ok) {
-      setState("failed", prepared.error || "");
-      lastFailure = { text, file: selectedFile, brokerFields };
-      return;
-    }
+    if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
+    if (intakeContext.mediaPath) prepared.source.mediaPath = intakeContext.mediaPath;
 
-    if (prepared.state === "missing_information") {
-      pendingDraft = prepared;
-      setState("missing_information");
-      renderMissingForm(prepared.missingFields, prepared.fields);
-      return;
-    }
+    const reviewMeta = {
+      reviewOperationTypeId: brokerExtras.reviewOperationTypeId || "",
+      reviewPropertyTypeId: brokerExtras.reviewPropertyTypeId || "",
+      reviewCityId: brokerExtras.reviewCityId || "",
+      reviewDistrictId: brokerExtras.reviewDistrictId || "",
+      extractedSnapshot: brokerExtras.extractedSnapshot || null,
+      ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
+    };
 
-    // Ensure mediaPath / checksum land on the source record.
-    if (mediaPath) prepared.source.mediaPath = mediaPath;
-    if (fileChecksumValue) {
-      prepared.source.byteSize = selectedFile?.size || prepared.source.byteSize;
+    const saved = await persistIntake(prepared, reviewMeta);
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: 0,
+        advertiserPhone: reviewMeta.advertiserPhoneNormalized || "",
+        propertyType: brokerExtras.propertyType || "",
+        district: brokerExtras.district || "",
+        marketingConsentStatus: reviewMeta.marketingConsentStatus || ""
+      });
     }
-
-    const saved = await persistIntake(prepared);
     setState("saved", saved.duplicate ? "هذه الفرصة محفوظة مسبقًا" : "");
     toast(saved.duplicate ? "الفرصة مكررة — لم يُنشأ سجل جديد" : "تم حفظ الفرصة");
-    pendingDraft = null;
-    lastFailure = null;
-    selectedFile = null;
-    describeAttachment();
-    if (input) input.value = "";
-    clearMissingForm();
+    clearIntakeForm();
 
     let matching = { ok: false, matchCount: 0, skipped: true };
     let missingDataSync = { ok: false, created: false };
@@ -331,7 +611,6 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
           opportunityId: saved.opportunityId,
           notify: true
         });
-        // Explicit missing-data sync covers NEEDS_DATA even when rematch finds no pairs.
         missingDataSync = await requestMissingDataOperationSync({
           workerBase: workerBase(),
           idToken: token,
@@ -356,11 +635,15 @@ async function runPipeline({ brokerFields = null, fromRetry = false } = {}) {
         ...phase5BoundaryGuarantees()
       }
     }));
-  } catch (error) {
-    console.warn("add-opportunity failed", error);
-    setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
-    lastFailure = { text, file: selectedFile, brokerFields, fromRetry };
+    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+      window.IAQAR.pushSavedOpportunityToWorkspace({
+        opportunityId: saved.opportunityId,
+        duplicate: saved.duplicate,
+        matchCount: Number(matching.matchCount || 0)
+      });
+    }
   } finally {
+    executing = false;
     setBusy(false);
   }
 }
@@ -377,11 +660,12 @@ function onFileChosen(event) {
   if (!validated.ok) {
     setState("failed", validated.error);
     selectedFile = null;
-    describeAttachment();
+    syncExecuteButton();
     return;
   }
   selectedFile = file;
-  describeAttachment();
+  syncExecuteButton();
+  updateAttachmentHint();
   setState("idle");
 }
 
@@ -393,24 +677,25 @@ function boot() {
   const fileInput = $("addOpportunityFile");
   if (fileInput) fileInput.setAttribute("accept", ATTACHMENT_ACCEPT);
 
+  const executeBtn = $("addOpportunitySubmit");
+  if (executeBtn) {
+    executeBtn.dataset.originalText = executeBtn.textContent;
+    executeBtn.dataset.busyLabel = "جارٍ التنفيذ…";
+  }
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    void runPipeline();
+    void startExecute();
   });
 
+  executeBtn?.addEventListener("click", () => void startExecute());
   $("addOpportunityPaperclip")?.addEventListener("click", onPaperclip);
+  $("addOpportunityInputClear")?.addEventListener("click", () => clearDraftInput());
+  $("addOpportunityInput")?.addEventListener("input", () => syncExecuteButton());
+  $("addOpportunityInput")?.addEventListener("change", () => syncExecuteButton());
   fileInput?.addEventListener("change", onFileChosen);
-  $("addOpportunityRetry")?.addEventListener("click", () => {
-    if (lastFailure?.brokerFields) {
-      void runPipeline({ brokerFields: lastFailure.brokerFields, fromRetry: true });
-    } else {
-      void runPipeline({ fromRetry: true });
-    }
-  });
-  $("addOpportunityClearFile")?.addEventListener("click", () => {
-    selectedFile = null;
-    describeAttachment();
-  });
+  $("addOpportunityRetry")?.addEventListener("click", () => void startExecute());
+  syncExecuteButton();
 }
 
 if (document.readyState === "loading") {
@@ -420,7 +705,14 @@ if (document.readyState === "loading") {
 }
 
 export const __test = {
-  runPipeline,
+  startExecute,
+  approveFromReview,
+  hasValidInputFromValues,
+  hasValidInput,
+  syncExecuteButton,
+  canOpenReview,
+  countCoreFields,
+  requestOpportunityExtraction,
   setSelectedFile(file) { selectedFile = file; },
   getSelectedFile() { return selectedFile; }
 };
