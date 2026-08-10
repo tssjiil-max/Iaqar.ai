@@ -107,6 +107,23 @@ test("URL intake with resolved listing text preserves URL and fields", async () 
   assert.notEqual(prepared.source.text, prepared.source.url);
 });
 
+test("simulated screenshot fixture does not inject الرياض as city default", async () => {
+  const adapter = createExtractionAdapter();
+  const extraction = await adapter.extract({
+    sourceType: "screenshot",
+    fileName: "Screenshot.png",
+    text: ""
+  });
+  assert.notEqual(extraction.fields.city, "الرياض");
+  assert.equal(extraction.fields.city, "");
+});
+
+test("review gate rejects الرياض paired with Medina district names", () => {
+  const fields = { propertyType: "أرض", city: "الرياض", district: "الرانوناء", priceOrBudget: 580000 };
+  const contradictory = fields.city === "الرياض" && /رانوناء/i.test(String(fields.district || ""));
+  assert.equal(contradictory, true);
+});
+
 test("extractListingTextFromHtml prefers JSON-LD description", () => {
   const html = `<html><head><script type="application/ld+json">{"@type":"Product","description":"أرض للبيع في حي الرانوناء المدينة المنورة"}</script></head><body>footer الرياض</body></html>`;
   const text = extractListingTextFromHtml(html);

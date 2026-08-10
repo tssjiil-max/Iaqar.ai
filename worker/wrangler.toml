@@ -14,6 +14,9 @@ FCM_WEB_PUSH_VAPID_KEY = ""
 [triggers]
 crons = ["0 * * * *"]
 
+[ai]
+binding = "AI"
+
 [[r2_buckets]]
 binding = "IAQAR_MEDIA"
 bucket_name = "iaqar-media"
@@ -34,6 +37,9 @@ META_GRAPH_VERSION = "v25.0"
 META_APP_ID = ""
 META_CONFIG_ID = ""
 FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
+
+[env.staging.ai]
+binding = "AI"
 
 [[env.staging.r2_buckets]]
 binding = "IAQAR_MEDIA"

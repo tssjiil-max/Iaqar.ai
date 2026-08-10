@@ -248,6 +248,10 @@ export default {
         return await handlePipelineUrlResolve(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/pipeline/media-extract") {
+        return await handlePipelineMediaExtract(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/matching/preview") {
         const body = await request.json().catch(() => ({}));
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
@@ -3860,6 +3864,71 @@ async function fetchListingPage(url, redirectCount = 0) {
       diagnostics: { message: String(error?.message || error) }
     };
   }
+}
+
+async function handlePipelineMediaExtract(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  const mediaPath = cleanText(body.mediaPath, 500);
+  if (!officeId || !mediaPath) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  if (!mediaPath.startsWith(`opportunity-sources/${officeId}/`)) {
+    throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  if (!env.AI) {
+    return jsonResponse({ ok: false, error: "media_extraction_unavailable", requestId }, 503);
+  }
+
+  const bucket = requireMediaBucket(env);
+  const object = await bucket.get(mediaPath);
+  if (!object) throw appError("media_not_found", 404, "الملف غير موجود");
+
+  const bytes = await object.arrayBuffer();
+  if (bytes.byteLength > LISTING_FETCH_MAX_BYTES) {
+    return jsonResponse({ ok: false, error: "response_too_large", requestId }, 422);
+  }
+
+  const contentType = object.httpMetadata?.contentType || "image/jpeg";
+  const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(bytes)}`;
+  const aiResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "انسخ كل النص العربي الظاهر في صورة إعلان عقاري كما هو. أعد النص فقط بدون شرح."
+        },
+        { type: "image_url", image_url: { url: dataUrl } }
+      ]
+    }],
+    max_tokens: 2048
+  });
+
+  const rawText = typeof aiResult === "string"
+    ? aiResult
+    : String(aiResult?.response || aiResult?.result?.response || "");
+  const text = cleanText(rawText, 12000);
+  if (!text) {
+    return jsonResponse({ ok: false, error: "empty_listing_text", requestId }, 422);
+  }
+  return jsonResponse({
+    ok: true,
+    text,
+    textLength: text.length,
+    extractionMode: "workers_ai_vision_adapter",
+    productionAi: false,
+    requestId
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 async function handlePipelineUrlResolve(request, env, requestId) {

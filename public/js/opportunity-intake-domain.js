@@ -233,10 +233,10 @@ function extractFromText(raw, meta) {
 function extractFromSimulatedAttachment(input, meta) {
   const fixtures = {
     image: { propertyType: "شقة", city: "", district: "", opportunityKind: "", purpose: "" },
-    screenshot: { propertyType: "", city: "الرياض", district: "", opportunityKind: "", purpose: "" },
+    screenshot: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "" },
     pdf: { propertyType: "فيلا", city: "", district: "", opportunityKind: "OFFER", purpose: "" },
     word: { propertyType: "", city: "", district: "", opportunityKind: "REQUEST", purpose: "PURCHASE" },
-    excel: { propertyType: "أرض", city: "الرياض", district: "", opportunityKind: "OFFER", purpose: "SALE" },
+    excel: { propertyType: "أرض", city: "", district: "", opportunityKind: "OFFER", purpose: "SALE" },
     audio: { propertyType: "", city: "", district: "", opportunityKind: "", purpose: "RENT" }
   };
   const hint = safeText([input.fileName, input.text].filter(Boolean).join(" "));

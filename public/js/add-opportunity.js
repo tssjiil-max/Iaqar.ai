@@ -23,9 +23,10 @@ import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportu
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 
 const LOCAL_STATE_LABELS = Object.freeze({
-  reviewing: "جارٍ التحليل…",
   ready: "راجع البيانات ثم اعتماد وحفظ"
 });
+
+const EXTRACTION_TIMEOUT_MS = 40000;
 
 function $(id) {
   return document.getElementById(id);
@@ -139,11 +140,64 @@ let lastFailure = null;
 let selectedFile = null;
 let executing = false;
 let intakeContext = null;
+/** Resume path: same execute session with missing-field completion (not a new intake). */
+let resumeIntakeSession = null;
+
+function resetForNewIntake() {
+  lastFailure = null;
+  intakeContext = null;
+  resumeIntakeSession = null;
+  dismissOpportunityReviewIfOpen();
+}
+
+function logExtractionTrace(event, meta = {}) {
+  console.info("[iaqar:intake-extraction]", event, {
+    status: meta.status ?? null,
+    durationMs: meta.durationMs ?? null,
+    sourceType: meta.sourceType ?? null,
+    hasMediaPath: Boolean(meta.hasMediaPath),
+    hasFields: Boolean(meta.hasFields),
+    extractionMode: meta.extractionMode ?? null
+  });
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = EXTRACTION_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function countCoreFields(fields = {}) {
+  const keys = ["propertyType", "city", "district", "priceOrBudget", "area", "purpose"];
+  return keys.filter((key) => {
+    const value = fields[key];
+    return value !== null && value !== undefined && String(value).trim() !== "";
+  }).length;
+}
+
+function hasContradictoryCity(fields = {}) {
+  const city = String(fields.city || "").trim();
+  const district = String(fields.district || "").trim();
+  if (city !== "الرياض") return false;
+  if (!district) return false;
+  return /رانوناء|قباء|السلام|العزيزية|العقيق|الحرة|الهجرة/i.test(district);
+}
+
+function canOpenReview(prepared) {
+  if (!prepared?.ok) return false;
+  const fields = prepared.fields || {};
+  if (hasContradictoryCity(fields)) return false;
+  if (countCoreFields(fields) < 2) return false;
+  return true;
+}
 
 function clearIntakeForm() {
-  lastFailure = null;
+  resetForNewIntake();
   selectedFile = null;
-  intakeContext = null;
   const input = $("addOpportunityInput");
   if (input) input.value = "";
   const fileInput = $("addOpportunityFile");
@@ -152,12 +206,6 @@ function clearIntakeForm() {
   if (missing) missing.hidden = true;
   const retry = $("addOpportunityRetry");
   if (retry) retry.hidden = true;
-  const reviewOverlay = $("opportunityReviewOverlay");
-  if (reviewOverlay && !reviewOverlay.hidden) {
-    reviewOverlay.hidden = true;
-    document.body.style.overflow = "";
-    window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
-  }
   syncExecuteButton();
   updateAttachmentHint();
   setState("idle");
@@ -166,6 +214,7 @@ function clearIntakeForm() {
 function clearDraftInput() {
   lastFailure = null;
   selectedFile = null;
+  resumeIntakeSession = null;
   const input = $("addOpportunityInput");
   if (input) input.value = "";
   const fileInput = $("addOpportunityFile");
@@ -199,7 +248,7 @@ async function uploadSourceFile(officeId, sourceId, file) {
     "X-Source-Type": validateAttachment(file).sourceType || "image",
     "X-File-Name": encodeURIComponent(file.name || "attachment")
   };
-  const response = await fetch(`${base.replace(/\/$/, "")}/media/opportunity-source`, {
+  const response = await fetchWithTimeout(`${base.replace(/\/$/, "")}/media/opportunity-source`, {
     method: "POST",
     headers,
     body: file
@@ -209,6 +258,27 @@ async function uploadSourceFile(officeId, sourceId, file) {
     throw new Error(payload.publicMessage || payload.error || "upload_failed");
   }
   return payload;
+}
+
+async function resolveMediaListingText(mediaPath, officeId) {
+  const base = workerBase();
+  if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetchWithTimeout(`${base}/pipeline/media-extract`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ officeId, mediaPath })
+  });
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.text || "").trim();
+  if (!response.ok || !body.ok || !text) {
+    return { ok: false, error: body.error || "media_extract_failed" };
+  }
+  return { ok: true, text, extractionMode: body.extractionMode || "" };
 }
 
 async function persistIntake(result, reviewMeta = {}) {
@@ -251,7 +321,7 @@ async function resolveUrlListingText(url, officeId) {
     "Content-Type": "application/json",
     "X-Office-Id": officeId
   };
-  const response = await fetch(`${base}/pipeline/url-resolve`, {
+  const response = await fetchWithTimeout(`${base}/pipeline/url-resolve`, {
     method: "POST",
     headers,
     body: JSON.stringify({ url, officeId })
@@ -279,6 +349,7 @@ async function runExtractionPipeline() {
   const isUrl = detectSourceTypeFromText(inputText) === "url";
   let listingText = inputText;
   let urlDiagnostics = null;
+  let mediaExtractionMode = "";
 
   if (isUrl) {
     setState("analyzing");
@@ -294,24 +365,41 @@ async function runExtractionPipeline() {
 
   let fileChecksumValue = "";
   let mediaPath = "";
+  let sourceType = "";
   if (selectedFile) {
+    const validated = validateAttachment(selectedFile);
+    if (!validated.ok) throw new Error("attachment_invalid");
+    sourceType = validated.sourceType;
     setState("uploading");
     fileChecksumValue = await fileChecksum(selectedFile);
     const provisional = `src_${fileChecksumValue.slice(0, 40)}`;
     const uploaded = await uploadSourceFile(office.officeId, provisional, selectedFile);
     mediaPath = uploaded.mediaPath || "";
+
+    if (!listingText && (sourceType === "image" || sourceType === "screenshot")) {
+      setState("analyzing");
+      const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId);
+      if (!mediaResolved.ok) throw new Error("extraction_failed");
+      listingText = mediaResolved.text;
+      mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
+    }
   }
 
+  const useTextParser = Boolean(String(listingText || "").trim());
   setState("analyzing");
   const prepared = await prepareOpportunityIntake({
     officeId: office.officeId,
     brokerId: user.uid,
     text: listingText,
-    listingText: isUrl ? listingText : undefined,
+    listingText: isUrl || useTextParser ? listingText : undefined,
     url: isUrl ? inputText : undefined,
-    file: selectedFile || undefined,
+    sourceType: useTextParser ? "text" : undefined,
+    file: useTextParser ? undefined : (selectedFile || undefined),
     fileChecksum: fileChecksumValue,
     mediaPath,
+    fileName: selectedFile?.name || "",
+    contentType: selectedFile?.type || "",
+    byteSize: selectedFile?.size || 0,
     allowIncomplete: true
   }, createExtractionAdapter());
 
@@ -320,14 +408,20 @@ async function runExtractionPipeline() {
   }
 
   if (mediaPath) prepared.source.mediaPath = mediaPath;
+  if (sourceType && !useTextParser) prepared.source.sourceType = sourceType;
   if (fileChecksumValue && selectedFile) {
     prepared.source.byteSize = selectedFile.size || prepared.source.byteSize;
+  }
+  if (mediaExtractionMode && prepared.extraction) {
+    prepared.extraction.extractionMode = mediaExtractionMode;
+    prepared.extraction.productionAi = false;
   }
 
   intakeContext = {
     inputText,
     listingText,
     sourceUrl: isUrl ? inputText : "",
+    sourceType: prepared.source?.sourceType || sourceType || (useTextParser ? "text" : ""),
     urlDiagnostics,
     fileChecksumValue,
     mediaPath,
@@ -336,6 +430,43 @@ async function runExtractionPipeline() {
   };
 
   return prepared;
+}
+
+async function requestOpportunityExtraction() {
+  const started = performance.now();
+  let traceMeta = {
+    status: "failed",
+    durationMs: 0,
+    sourceType: null,
+    hasMediaPath: false,
+    hasFields: false,
+    extractionMode: null
+  };
+  try {
+    const prepared = await runExtractionPipeline();
+    traceMeta = {
+      status: "ok",
+      durationMs: Math.round(performance.now() - started),
+      sourceType: intakeContext?.sourceType || prepared.source?.sourceType || null,
+      hasMediaPath: Boolean(intakeContext?.mediaPath),
+      hasFields: countCoreFields(prepared.fields) >= 2,
+      extractionMode: prepared.extraction?.extractionMode || null
+    };
+    logExtractionTrace("complete", traceMeta);
+    return prepared;
+  } catch (error) {
+    traceMeta.durationMs = Math.round(performance.now() - started);
+    if (error?.name === "AbortError") {
+      traceMeta.status = "timeout";
+      const timeoutError = new Error("extraction_timeout");
+      timeoutError.cause = error;
+      logExtractionTrace("complete", traceMeta);
+      throw timeoutError;
+    }
+    traceMeta.status = "failed";
+    logExtractionTrace("complete", traceMeta);
+    throw error;
+  }
 }
 
 async function startExecute() {
@@ -361,13 +492,17 @@ async function startExecute() {
 
   executing = true;
   setBusy(true);
-  lastFailure = null;
-  intakeContext = null;
-  dismissOpportunityReviewIfOpen();
+  resetForNewIntake();
 
   try {
-    const prepared = await runExtractionPipeline();
-    setState("reviewing");
+    const prepared = await requestOpportunityExtraction();
+    if (!canOpenReview(prepared)) {
+      throw new Error("extraction_failed");
+    }
+    setState("ready");
+    resumeIntakeSession = {
+      preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
+    };
     openOpportunityReview({
       fields: prepared.fields || {},
       extended: prepared.extraction?.extended,
@@ -377,8 +512,12 @@ async function startExecute() {
     }, approveFromReview);
   } catch (error) {
     console.warn("add-opportunity execute failed", error);
-    if (error?.message === "url_extraction_failed") {
+    if (error?.message === "extraction_timeout") {
+      setState("failed", "تعذر إكمال تحليل الإعلان. حاول مرة أخرى.");
+    } else if (error?.message === "url_extraction_failed") {
       setState("failed", "تعذر استخراج بيانات الإعلان من الرابط");
+    } else if (error?.message === "extraction_failed") {
+      setState("failed", "تعذر استخراج بيانات الإعلان");
     } else {
       setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
     }
@@ -422,6 +561,7 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
       text: intakeContext.listingText || intakeContext.inputText,
       listingText: intakeContext.listingText,
       url: intakeContext.sourceUrl || undefined,
+      sourceType: intakeContext.sourceType || undefined,
       fileChecksum: intakeContext.fileChecksumValue,
       mediaPath: intakeContext.mediaPath,
       fileName: intakeContext.fileName,
@@ -569,6 +709,9 @@ export const __test = {
   hasValidInputFromValues,
   hasValidInput,
   syncExecuteButton,
+  canOpenReview,
+  countCoreFields,
+  requestOpportunityExtraction,
   setSelectedFile(file) { selectedFile = file; },
   getSelectedFile() { return selectedFile; }
 };
