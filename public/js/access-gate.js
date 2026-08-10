@@ -71,6 +71,7 @@
     .file-help{font-size:12px!important;color:#71817d!important;margin:0!important}.access-status{display:none;margin-top:11px;
       padding:11px;border-radius:13px;font-size:14px;line-height:1.6}.access-status.show{display:block}
     .access-status.ok{background:#e8f7f2;color:#07634f}.access-status.err{background:#fff0f0;color:#9e3434}
+    .access-field-error{color:#9e3434;font-size:12px;line-height:1.4;margin-top:2px}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
@@ -289,12 +290,12 @@
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>تسجيل وسيط عقاري</h2><p>لن يُنشأ المكتب إلا بعد التحقق من رخصة فال واعتماد إدارة المنصة.</p>
       <form class="access-form" id="brokerForm">
-        <label><span>اسم الوسيط *</span><input name="brokerName" maxlength="80" required></label>
-        <label><span>رقم الجوال *</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        <label><span>البريد الإلكتروني للاسترجاع *</span><input name="email" type="email" maxlength="120" required></label>
-        <label><span>رقم رخصة فال *</span><input name="falLicense" inputmode="numeric" maxlength="20" required></label>
-        <label class="full"><span>اسم المكتب المقترح *</span><input name="officeName" minlength="4" maxlength="80" required></label>
-        <label class="full"><span>كلمة مرور الحساب *</span><input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+        <label><span>اسم الوسيط *</span><input name="brokerName" maxlength="80" required><span class="access-field-error" data-field-error="brokerName"></span></label>
+        <label><span>رقم الجوال *</span><input name="phone" inputmode="tel" maxlength="20" required><span class="access-field-error" data-field-error="phone"></span></label>
+        <label><span>البريد الإلكتروني للاسترجاع *</span><input name="email" type="email" maxlength="120" required><span class="access-field-error" data-field-error="email"></span></label>
+        <label><span>رقم رخصة فال *</span><input name="falLicense" inputmode="numeric" maxlength="20" required><span class="access-field-error" data-field-error="falLicense"></span></label>
+        <label class="full"><span>اسم المكتب المقترح *</span><input name="officeName" minlength="4" maxlength="80" required><span class="access-field-error" data-field-error="officeName"></span></label>
+        <label class="full"><span>كلمة مرور الحساب *</span><input name="password" type="password" minlength="8" autocomplete="new-password" required><span class="access-field-error" data-field-error="password"></span></label>
         <label class="full"><button class="access-btn" type="submit">إرسال طلب الاعتماد</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`);
     gate.querySelector(".access-back").onclick = home;
@@ -303,14 +304,52 @@
       const form = event.currentTarget;
       const fields = new FormData(form);
       const submit = form.querySelector("button[type=submit]");
+      const clearBrokerFieldErrors = () => {
+        form.querySelectorAll("[data-field-error]").forEach(node => node.textContent = "");
+      };
+      const showBrokerFieldError = (name, message) => {
+        const node = form.querySelector(`[data-field-error="${name}"]`);
+        if (node) node.textContent = message || "";
+      };
+      const mapBrokerApplyError = (payload = {}, fallback = "") => {
+        const code = String(payload.error || "").toLowerCase();
+        const message = String(payload.message || payload.publicMessage || fallback || "").trim();
+        clearBrokerFieldErrors();
+        if (code === "email_already_used" || message.includes("البريد")) {
+          showBrokerFieldError("email", message || "البريد مستخدم مسبقًا");
+          return message || "البريد مستخدم مسبقًا";
+        }
+        if (code === "phone_already_used" || message.includes("الجوال")) {
+          showBrokerFieldError("phone", message || "رقم الجوال مستخدم مسبقًا");
+          return message || "رقم الجوال مستخدم مسبقًا";
+        }
+        if (code === "fal_already_used" || code === "fal_invalid" || message.includes("فال")) {
+          showBrokerFieldError("falLicense", message || "رقم رخصة فال غير صالح أو مستخدم");
+          return message || "رقم رخصة فال غير صالح أو مستخدم";
+        }
+        if (code === "invalid_broker_application") {
+          showBrokerFieldError("officeName", message || "بيانات الطلب غير مكتملة");
+          return message || "بيانات الطلب غير مكتملة";
+        }
+        if (code === "auth_required" || code === "admin_required") {
+          return message || "يلزم تسجيل الدخول لإرسال الطلب";
+        }
+        return message || fallback || "تعذر إرسال الطلب الآن";
+      };
       const brokerPhone = normalizeSaudiPhone(fields.get("phone"));
-      if (!brokerPhone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      clearBrokerFieldErrors();
+      if (!brokerPhone) {
+        showBrokerFieldError("phone", "أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+        return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      }
       submit.disabled = true;
+      let createdUser = null;
       try {
         const credential = await firebase.auth().createUserWithEmailAndPassword(
           String(fields.get("email") || "").trim(),
           String(fields.get("password") || "")
         );
+        createdUser = credential.user;
         const idToken = await credential.user.getIdToken();
         const response = await fetch(`${resolveWorkerBase()}/broker/apply`, {
           method: "POST",
@@ -323,13 +362,41 @@
           officeName: String(fields.get("officeName") || "").trim()
           })
         });
-        if (!response.ok) throw new Error("APPLICATION_FAILED");
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const mapped = mapBrokerApplyError(payload, "تعذر حفظ طلب المكتب");
+          if (createdUser) {
+            try { await createdUser.delete(); } catch (_) {}
+            try { await firebase.auth().signOut(); } catch (_) {}
+          }
+          return showStatus(mapped);
+        }
         await firebase.auth().signOut();
         form.reset();
+        clearBrokerFieldErrors();
         showStatus("تم استلام الطلب وحالته «بانتظار الاعتماد». ستتواصل الإدارة معك بعد التحقق من رخصة فال.", true);
       } catch (error) {
         console.warn("[iaqar] broker application", error);
-        showStatus("تعذر إرسال الطلب الآن. تحقق من البيانات وحاول مرة أخرى.");
+        if (createdUser) {
+          try { await createdUser.delete(); } catch (_) {}
+          try { await firebase.auth().signOut(); } catch (_) {}
+        }
+        const code = String(error?.code || "");
+        clearBrokerFieldErrors();
+        if (code === "auth/email-already-in-use") {
+          showBrokerFieldError("email", "البريد مستخدم مسبقًا");
+          showStatus("البريد مستخدم مسبقًا");
+        } else if (code === "auth/weak-password") {
+          showBrokerFieldError("password", "كلمة المرور ضعيفة — استخدم 8 أحرف أو أكثر");
+          showStatus("كلمة المرور غير صالحة");
+        } else if (code === "auth/invalid-email") {
+          showBrokerFieldError("email", "البريد غير صالح");
+          showStatus("البريد غير صالح");
+        } else if (code === "auth/network-request-failed") {
+          showStatus("مشكلة اتصال مؤقتة — حاول بعد قليل");
+        } else {
+          showStatus("تعذر إنشاء حساب الدخول — تحقق من البيانات وحاول مرة أخرى");
+        }
       } finally { submit.disabled = false; }
     };
   }
@@ -408,6 +475,13 @@
       catch (_) { try { await firebase.auth().signOut(); } catch (_) {} showStatus("بيانات إدارة المنصة غير صحيحة."); }
     };
   }
+  function showAccessGate() {
+    if (!document.body.classList.contains("access-locked")) {
+      document.body.classList.add("access-locked");
+    }
+    if (!gate.isConnected) document.body.appendChild(gate);
+  }
+
   async function verifyAccess(target, navigate) {
     if (!target) return loginForm("أدخل رمز المكتب المعتمد.");
     if (target === "platform") {
@@ -420,12 +494,27 @@
     try {
       await db().collection("offices").doc(target).get({ source: "server" });
       localStorage.setItem("iaqar.officeId", target);
-      if (navigate || target !== officeId) return location.replace(`${location.pathname}?office=${encodeURIComponent(target)}`);
+      if (navigate || target !== officeId) {
+        location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
+        return;
+      }
       document.body.classList.remove("access-locked");
       gate.remove();
     } catch (error) {
       console.warn("[iaqar] access denied", error);
-      loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
+      const code = String(error && error.code || "");
+      if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
+        frame(`<section class="access-card"><h2>تعذر الاتصال</h2>
+          <p>تحقق من الشبكة ثم أعد المحاولة. لن يُسجَّل خروجك تلقائيًا.</p>
+          <button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button></section>`);
+        gate.querySelector("#accessRetry").onclick = () => verifyAccess(target, navigate);
+        return;
+      }
+      if (code.includes("permission-denied") || code.includes("unauthenticated")) {
+        loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
+        return;
+      }
+      loginForm("تعذر التحقق من صلاحية الدخول. حاول مرة أخرى.");
     }
   }
 
@@ -606,9 +695,33 @@
       }
     }
     refreshRouteFlags();
-    if (isPublicOfficeLink) publicOffice();
-    else if (isPlatformHome) home();
-    else firebase.auth().onAuthStateChanged(user => user ? verifyAccess(officeId, false) : loginForm());
+
+    try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (error) {
+      console.warn("[iaqar] auth persistence", error);
+    }
+
+    let initialAuthResolved = false;
+
+    const routeAfterInitialAuth = (user) => {
+      if (isPublicOfficeLink) publicOffice();
+      else if (isPlatformHome) home();
+      else if (user) verifyAccess(officeId, false);
+      else loginForm();
+    };
+
+    firebase.auth().onAuthStateChanged(user => {
+      if (!initialAuthResolved) {
+        initialAuthResolved = true;
+        routeAfterInitialAuth(user);
+        return;
+      }
+      if (!user && !isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {
+        showAccessGate();
+        loginForm();
+      }
+    });
   }
 
   bootstrapAccess();

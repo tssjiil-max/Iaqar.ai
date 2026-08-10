@@ -163,6 +163,32 @@ export async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+export function defaultCooperationRequestPermissions() {
+  return {
+    readOnly: true,
+    minimumData: true,
+    contactVisible: false,
+    ownershipModifiable: false,
+    canDelete: false,
+    canArchive: false,
+    unrestrictedAttachmentDownload: false,
+    canReshare: false
+  };
+}
+
+export async function buildCooperationRequestId({
+  originatingOfficeId,
+  targetOfficeId,
+  opportunityId = "",
+  scopeType = "single",
+  idNonce = ""
+}) {
+  const hex = await sha256Hex(
+    `${String(originatingOfficeId || "").trim()}|${String(targetOfficeId || "").trim()}|${String(scopeType || "single")}|${String(opportunityId || "")}|${String(idNonce || "")}|PENDING`
+  );
+  return `coop_${hex.slice(0, 40)}`;
+}
+
 export async function cooperationAuditId({
   action,
   cooperationId = "",

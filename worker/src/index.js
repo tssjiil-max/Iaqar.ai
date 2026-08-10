@@ -29,6 +29,7 @@ import {
   shouldCreateMatchReview,
   applyOperationLifecycle
 } from "./operations-domain.js";
+import webpush from "web-push";
 import {
   createMatchReviewBundle,
   expireOperationsForMatchIds,
@@ -44,7 +45,8 @@ import {
 } from "./cooperation-phase6-domain.js";
 import {
   runCooperationLifecycle,
-  revokeBankSharingScope
+  revokeBankSharingScope,
+  createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
 import {
   MESSAGE_CHANNELS,
@@ -273,6 +275,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/operations/missing-data") {
         return await handleOperationsMissingData(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/request") {
+        return await handleCooperationRequestCreate(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
@@ -670,8 +676,43 @@ async function handleBrokerApplication(request, env, requestId) {
       !email.includes("@") || falLicense.length < 6 || officeName.length < 4) {
     throw appError("invalid_broker_application", 400, "بيانات طلب الوسيط غير مكتملة");
   }
+  if (!/^\d{6,20}$/.test(falLicense)) {
+    throw appError("fal_invalid", 400, "رقم رخصة فال غير صالح");
+  }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  const phoneHash = await sha256Hex(phone);
+  const loginDirectory = await getFirestoreDocument({
+    projectId,
+    segments: ["loginDirectory", phoneHash],
+    accessToken,
+    allowMissing: true
+  });
+  if (loginDirectory) {
+    const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
+    if (existingLogin.uid && existingLogin.uid !== identity.sub) {
+      throw appError("phone_already_used", 409, "رقم الجوال مستخدم مسبقًا");
+    }
+  }
+  const pendingApps = await listCollectionDocuments({
+    projectId,
+    segments: ["brokerApplications"],
+    accessToken,
+    pageSize: 200
+  });
+  for (const doc of pendingApps) {
+    const row = firestoreFieldsToJs(doc.fields || {});
+    if (row.status !== "pending") continue;
+    if (String(row.email || "").toLowerCase() === email) {
+      throw appError("email_already_used", 409, "البريد مستخدم في طلب قائم");
+    }
+    if (String(row.falLicense || "").replace(/\D/g, "") === falLicense) {
+      throw appError("fal_already_used", 409, "رقم فال مستخدم في طلب قائم");
+    }
+    if (normalizeLoginPhone(row.phone) === phone) {
+      throw appError("phone_already_used", 409, "رقم الجوال مستخدم في طلب قائم");
+    }
+  }
   const applicationId = `broker_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
   const now = new Date();
   await setFirestoreDocument({
@@ -713,7 +754,8 @@ async function handleBrokerApplication(request, env, requestId) {
     body: `${brokerName} — رخصة فال ${falLicense}`,
     type: "broker_application",
     recordId: applicationId,
-    accessToken
+    accessToken,
+    env
   }).catch(error => console.warn("[iaqar-broker] admin push failed", error && error.message));
   return jsonResponse({ ok: true, applicationId, status: "pending", requestId }, 201);
 }
@@ -975,7 +1017,7 @@ async function handleSharedIntake(request, env, requestId) {
 
   const result = await processInboundMessage({
     projectId, officeId, inboxDocumentId: documentId, messageText, senderName, senderPhone,
-    receivedAt: safeReceivedAt, source, accessToken
+    receivedAt: safeReceivedAt, source, accessToken, env
   });
   return jsonResponse({
     ok: true, duplicate: false, documentId, officeId, kind: result.kind,
@@ -1063,7 +1105,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
 
   const matches = await findAndSaveMatches({
     projectId, officeId, parsed, sourceCollection: targetCollection,
-    sourceRecordId: recordId, opportunityId, accessToken
+    sourceRecordId: recordId, opportunityId, accessToken, env
   });
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
@@ -1073,7 +1115,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   }});
 
   if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken });
+    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
   }
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
@@ -1443,7 +1485,7 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
 }
 
 
-async function processInboundMessage({ projectId, officeId, inboxDocumentId, messageText, senderName, senderPhone, receivedAt, source = "whatsapp_cloud_api", accessToken }) {
+async function processInboundMessage({ projectId, officeId, inboxDocumentId, messageText, senderName, senderPhone, receivedAt, source = "whatsapp_cloud_api", accessToken, env = null }) {
   const parsed = parseRealEstateMessage(messageText, senderPhone, senderName);
   const now = new Date();
 
@@ -1492,7 +1534,7 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
 
   const matches = await findAndSaveMatches({
     projectId, officeId, parsed, sourceCollection: targetCollection,
-    sourceRecordId: recordId, opportunityId, accessToken
+    sourceRecordId: recordId, opportunityId, accessToken, env
   });
 
   await setFirestoreDocument({
@@ -1515,7 +1557,7 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   });
 
   if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken });
+    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
   }
   return { kind: parsed.kind, matches: matches.length };
 }
@@ -1750,12 +1792,12 @@ function operationsFirestoreHelpers() {
   };
 }
 
-function operationsDeps() {
+function operationsDeps(env = null) {
   return {
     setFirestoreDocument,
     getFirestoreDocument,
     listCollectionDocuments,
-    sendOfficePush,
+    sendOfficePush: (args) => sendOfficePush({ ...args, env }),
     firestoreHelpers: operationsFirestoreHelpers()
   };
 }
@@ -1809,7 +1851,7 @@ async function persistScoredMatch({
   projectId, officeId, source, candidate, sourceRef, counterpartRef,
   sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
   opportunityId, counterpartOpportunityId, scored, rank, accessToken,
-  notifyOperation = false, assignedBrokerId = ""
+  notifyOperation = false, assignedBrokerId = "", env = null
 }) {
   const pairKey = canonicalPairKey(sourceRef, counterpartRef);
   const dataVersion = await relevantDataVersion(source, candidate);
@@ -1940,7 +1982,7 @@ async function persistScoredMatch({
       assignedBrokerId,
       notifyPush: notifyOperation === true,
       accessToken,
-      deps: operationsDeps()
+      deps: operationsDeps(env)
     });
     persisted.operationId = bundle.operation?.id || "";
     persisted.operationCreated = Boolean(bundle.created);
@@ -1952,7 +1994,7 @@ async function persistScoredMatch({
   return persisted;
 }
 
-async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken }) {
+async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken, env = null }) {
   const counterpart = sourceCollection === "owners" ? "clients" : "owners";
   const docs = await listCollectionDocuments({
     projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES
@@ -1982,7 +2024,8 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
       counterpartCollection: counterpart, counterpartRecordId: candidateId,
       opportunityId, counterpartOpportunityId: "",
       scored, rank: index + 1, accessToken,
-      notifyOperation: false
+      notifyOperation: false,
+      env
     });
     results.push(persisted);
   }
@@ -1990,7 +2033,7 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
 }
 
 async function findAndSaveMatchesForOpportunity({
-  projectId, officeId, opportunityId, accessToken, notify = false
+  projectId, officeId, opportunityId, accessToken, notify = false, env = null
 }) {
   const oppDoc = await getFirestoreDocument({
     projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, allowMissing: true
@@ -2073,7 +2116,8 @@ async function findAndSaveMatchesForOpportunity({
       opportunityId, counterpartOpportunityId: candidateId,
       scored, rank: index + 1, accessToken,
       notifyOperation: notify === true,
-      assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || "")
+      assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || ""),
+      env
     });
     results.push(persisted);
   }
@@ -2087,7 +2131,7 @@ async function findAndSaveMatchesForOpportunity({
       opportunity,
       opportunityId,
       accessToken,
-      deps: operationsDeps()
+      deps: operationsDeps(env)
     });
   } catch (error) {
     console.warn("[iaqar-ops] missing-data upsert failed", error && error.message);
@@ -2098,7 +2142,7 @@ async function findAndSaveMatchesForOpportunity({
     const fresh = results.filter((item) => !item.duplicate && item.operationCreated);
     if (fresh.length > 0) {
       await sendOfficeMatchNotifications({
-        projectId, officeId, matches: fresh, parsed: source, accessToken, skipPush: true
+        projectId, officeId, matches: fresh, parsed: source, accessToken, skipPush: true, env
       }).catch((error) => console.warn("[iaqar-ops] legacy alert write", error && error.message));
     }
   }
@@ -2130,7 +2174,7 @@ async function handleMatchingRun(request, env, requestId) {
   const accessToken = await getGoogleAccessToken(env);
   const notify = body.notify === true;
   const result = await findAndSaveMatchesForOpportunity({
-    projectId, officeId, opportunityId, accessToken, notify
+    projectId, officeId, opportunityId, accessToken, notify, env
   });
   return jsonResponse({
     ok: true,
@@ -2216,7 +2260,7 @@ async function handleOperationsFromCooperation(request, env, requestId) {
     projectId,
     cooperation,
     accessToken,
-    deps: operationsDeps()
+    deps: operationsDeps(env)
   });
   return jsonResponse({
     ok: true,
@@ -2252,7 +2296,7 @@ async function handleOperationsMissingData(request, env, requestId) {
     opportunity,
     opportunityId,
     accessToken,
-    deps: operationsDeps()
+    deps: operationsDeps(env)
   });
   return jsonResponse({
     ok: true,
@@ -2265,6 +2309,55 @@ async function handleOperationsMissingData(request, env, requestId) {
     boundaries: phase5BoundaryGuarantees(),
     requestId
   });
+}
+
+async function handleCooperationRequestCreate(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const targetOfficeId = normalizeOfficeId(body.targetOfficeId);
+  const scopeType = cleanText(body.scopeType || "single", 20);
+  const opportunityIds = Array.isArray(body.opportunityIds)
+    ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
+    : [];
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!targetOfficeId) throw appError("target_office_required", 400, "معرّف المكتب المستهدف مطلوب");
+  if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "معرّف الفرصة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await createExplicitCooperationRequest({
+    projectId,
+    originatingOfficeId: officeId,
+    originatingBrokerId: identity.uid || "",
+    targetOfficeId,
+    opportunityIds,
+    scopeType,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(
+      result.error || "cooperation_request_failed",
+      result.status || 400,
+      result.message || "تعذر إرسال طلب التعاون"
+    );
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    targetOfficeId,
+    cooperationRequestId: result.requestId,
+    duplicate: Boolean(result.duplicate),
+    message: result.message || "تم إرسال طلب التعاون",
+    boundaries: result.boundaries || phase6BoundaryGuarantees(),
+    requestId
+  }, result.duplicate ? 200 : 201);
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {
@@ -2289,7 +2382,7 @@ async function handleCooperationLifecycle(request, env, requestId) {
     reason,
     accessToken,
     deps: {
-      ...operationsDeps(),
+      ...operationsDeps(env),
       deleteFirestoreDocument,
       firestoreFieldsToJs,
       upsertCooperationOperations
@@ -2519,7 +2612,7 @@ async function listCollectionDocuments({projectId,segments,accessToken,pageSize=
   const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
 }
 
-async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false}) {
+async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null}) {
   const top=matches[0]; const now=new Date();
   const alertId=`alt_${top.matchId}`;
   // Lock-screen-safe / preference-safe copy — no district, phone, or full opportunity text.
@@ -2544,7 +2637,8 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       type: "match",
       recordId: top.operationId || top.matchId,
       assignedBrokerId: top.assignedBrokerId || "",
-      accessToken
+      accessToken,
+      env
     });
   }
 }
@@ -2560,13 +2654,23 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   else if(type==="broker_application"){
     params.set("adminApplications","1");
     if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
+  } else if(type==="message"||type==="conversation"){
+    if(safeRecordId)params.set("openMessage",safeRecordId);
+    else params.set("openNotifications","1");
+  } else if(safeRecordId.startsWith("opp_")){
+    params.set("openOpportunity",safeRecordId);
+  } else if(
+    safeRecordId.startsWith("coop_")
+    || type==="cooperation_request"
+    || type==="cooperation_response"
+  ){
+    if(safeRecordId)params.set("openCooperation",safeRecordId);
+    else params.set("openNotifications","1");
   } else if(
     type==="client_request"
     || type==="owner_offer"
     || type==="missing_data"
     || type==="operation"
-    || type==="cooperation_request"
-    || type==="cooperation_response"
     || type==="system"
     || String(safeRecordId).startsWith("op_")
   ){
@@ -2643,7 +2747,7 @@ async function readOfficeNotificationPreferences({projectId,officeId,accessToken
   }
 }
 
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken}) {
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null}) {
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
@@ -2656,7 +2760,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
       deviceId:decodeURIComponent(String(doc.name||"").split("/").pop()||""),
       ...value,
       registrationId:value.fcmRegistrationId||value.fcmToken||"",
-      registrationType:value.registrationType==="fid"?"fid":"token"
+      registrationType:value.registrationType==="fid"?"fid":value.registrationType==="webpush"?"webpush":"token"
     };
   }).filter(device=>{
     if(device.enabled===false||!device.registrationId)return false;
@@ -2670,7 +2774,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken});
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken,env});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
@@ -2684,9 +2788,30 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   return summary;
 }
 
+function configureWebPushVapid(env) {
+  const publicKey = cleanText(env.FCM_WEB_PUSH_VAPID_KEY, 200);
+  const privateKey = cleanText(env.FCM_VAPID_PRIVATE_KEY, 200);
+  if (!publicKey || !privateKey) return false;
+  webpush.setVapidDetails(`mailto:staging@${env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID}.web`, publicKey, privateKey);
+  return true;
+}
+
+async function sendWebPushNotification({ env, subscriptionJson, title, body, type = "match", recordId = "", officeId = "" }) {
+  if (!configureWebPushVapid(env)) throw new Error("Web Push VAPID keys are not configured");
+  const subscription = JSON.parse(String(subscriptionJson || ""));
+  const relativeLink = buildNotificationLink({ officeId, type, recordId });
+  const link = new URL(relativeLink, DEFAULT_APP_ORIGIN).href;
+  await webpush.sendNotification(subscription, JSON.stringify({
+    notification: { title: String(title || "مكاتب عقارية ذكية"), body: String(body || "لديك تنبيه جديد") },
+    data: { type: String(type), recordId: String(recordId || ""), officeId: String(officeId), url: link }
+  }));
+  return { ok: true };
+}
+
 function buildFcmTarget(registrationId,registrationType="fid") {
   const id=cleanText(registrationId,4096);
   if(!id)throw new Error("FCM registration ID is required");
+  if(registrationType==="webpush")return { webpush: {} };
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
@@ -2707,7 +2832,11 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   }};
 }
 
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken}) {
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null}) {
+  if(registrationType==="webpush"){
+    await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId});
+    return { name: "webpush" };
+  }
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
@@ -2737,7 +2866,14 @@ async function getFcmStatus(request,url,env,requestId) {
 
 async function registerFcmDevice(request,env,requestId) {
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId),registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096),registrationType=body.registrationType==="fid"?"fid":"token"; if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
+  const officeId=normalizeOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
   const identity=await authorizeOfficeRequest(request,env,officeId,"member");
   const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
   const existing=await getFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,allowMissing:true});
@@ -2755,7 +2891,14 @@ async function registerFcmDevice(request,env,requestId) {
 
 async function unregisterFcmDevice(request,env,requestId) {
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId),registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096),registrationType=body.registrationType==="fid"?"fid":"token"; if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
+  const officeId=normalizeOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
   const identity=await authorizeOfficeRequest(request,env,officeId,"member");
   const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
   await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields:{officeId:firestoreString(officeId),fcmRegistrationId:firestoreString(registrationId),registrationType:firestoreString(registrationType),fcmToken:firestoreString(registrationType==="token"?registrationId:""),platform:firestoreString("web"),enabled:firestoreBoolean(false),disabledReason:firestoreString("disabled_by_user"),installationId:firestoreOptionalString(installationId),userUid:firestoreOptionalString(identity.uid),updatedAt:firestoreTimestamp(now),updatedByUid:firestoreOptionalString(identity.uid)}});
@@ -2764,7 +2907,14 @@ async function unregisterFcmDevice(request,env,requestId) {
 
 async function sendFcmTestNotification(request,env,requestId) {
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId),registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096),registrationType=body.registrationType==="fid"?"fid":"token",installationId=cleanText(body.installationId,160);
+  const officeId=normalizeOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  const installationId=cleanText(body.installationId,160);
   if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
   await authorizeOfficeRequest(request,env,officeId,"member");
   const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`;
@@ -2773,7 +2923,7 @@ async function sendFcmTestNotification(request,env,requestId) {
   const savedRegistration=device&&(device.fcmRegistrationId||device.fcmToken||"");
   if(!device||device.enabled===false||savedRegistration!==registrationId)throw appError("device_not_registered",409,"الجهاز غير مسجل للإشعارات");
   try{
-    await sendFcmMessage({projectId,registrationId,registrationType,title:"تم تفعيل إشعارات المكتب",body:"سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.",type:"notification_test",recordId:`test_${Date.now()}`,officeId,accessToken});
+    await sendFcmMessage({projectId,registrationId,registrationType,title:"تم تفعيل إشعارات المكتب",body:"سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.",type:"notification_test",recordId:`test_${Date.now()}`,officeId,accessToken,env});
   }catch(error){
     if(error&&error.staleToken)await disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
     throw appError("fcm_test_failed",502,"تم تسجيل الجهاز لكن تعذر وصول الإشعار التجريبي");
@@ -3144,7 +3294,7 @@ async function processOverdueFollowups(env,scheduledTime=Date.now()){
     await setFirestoreDocument({projectId,segments:["offices",officeId,collection,recordId],accessToken,fields:{
       attentionRequired:firestoreBoolean(true),followUpNotifiedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
     }});
-    await sendOfficePush({projectId,officeId,title,body:body||"لديك متابعة مستحقة الآن",type:entry.recordType,recordId,accessToken});
+    await sendOfficePush({projectId,officeId,title,body:body||"لديك متابعة مستحقة الآن",type:entry.recordType,recordId,accessToken,env});
     notified+=1;
   }
   console.info("[iaqar-followups] completed",{checked:records.length,notified});
