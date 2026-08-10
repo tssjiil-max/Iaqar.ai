@@ -23,9 +23,16 @@ export const REQUIRED_EXTRACTED_FIELDS = Object.freeze([
 
 export function requiredExtractedFieldsFor(fields = {}) {
   const required = [...REQUIRED_EXTRACTED_FIELDS];
-  if (fields.purpose === "SALE") required.push("salePrice");
-  else if (fields.purpose === "RENT") required.push("annualRent");
-  else if (fields.purpose === "PURCHASE" || fields.purpose === "LEASE_REQUEST") required.push("budget");
+  const hasLegacyFinancialValue = fields.priceOrBudget !== null
+    && fields.priceOrBudget !== undefined
+    && String(fields.priceOrBudget).trim() !== "";
+  if (fields.purpose === "SALE") {
+    required.push(fields.salePrice == null && hasLegacyFinancialValue ? "priceOrBudget" : "salePrice");
+  } else if (fields.purpose === "RENT") {
+    required.push(fields.annualRent == null && hasLegacyFinancialValue ? "priceOrBudget" : "annualRent");
+  } else if (fields.purpose === "PURCHASE" || fields.purpose === "LEASE_REQUEST") {
+    required.push(fields.budget == null && hasLegacyFinancialValue ? "priceOrBudget" : "budget");
+  }
   if (!/أرض|ارض/.test(String(fields.propertyType || ""))) required.push("rooms");
   return required;
 }
