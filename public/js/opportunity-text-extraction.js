@@ -309,10 +309,10 @@ function extractPricePerSquareMeter(text) {
 function extractCity(text) {
   const cities = [
     { name: "المدينة المنورة", re: /المدينة\s+المنورة|مدينة\s+المنورة|المدينة\s*:\s*Madinah|\bMadinah\b/i },
-    { name: "الرياض", re: /\bالرياض\b/i },
-    { name: "جدة", re: /\bجدة\b/i },
-    { name: "الدمام", re: /\bالدمام\b/i },
-    { name: "مكة", re: /مكة\s+المكرمة|\bمكة\b/i }
+    { name: "الرياض", re: /(?:^|[\s،,|])الرياض(?:$|[\s،,|])/i },
+    { name: "جدة", re: /(?:^|[\s،,|])جدة(?:$|[\s،,|])/i },
+    { name: "الدمام", re: /(?:^|[\s،,|])الدمام(?:$|[\s،,|])/i },
+    { name: "مكة", re: /مكة\s+المكرمة|(?:^|[\s،,|])مكة(?:$|[\s،,|])/i }
   ];
   for (const c of cities) {
     const m = text.match(c.re);
