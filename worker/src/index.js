@@ -3888,25 +3888,27 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     return jsonResponse({ ok: false, error: "response_too_large", requestId }, 422);
   }
 
-  const contentType = object.httpMetadata?.contentType || "image/jpeg";
-  const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(bytes)}`;
-  const aiResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-    messages: [{
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "انسخ كل النص العربي الظاهر في صورة إعلان عقاري كما هو. أعد النص فقط بدون شرح."
-        },
-        { type: "image_url", image_url: { url: dataUrl } }
-      ]
-    }],
-    max_tokens: 2048
-  });
+  const contentType = normalizeVisionImageContentType(
+    object.httpMetadata?.contentType || "",
+    mediaPath
+  );
+  const dataUrl = `data:${contentType};base64,${bytesToBase64(new Uint8Array(bytes))}`;
+  const visionPrompt = "انسخ كل النص العربي الظاهر في صورة إعلان عقاري كما هو. أعد النص فقط بدون شرح.";
+  let aiResult;
+  try {
+    aiResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+      messages: [{ role: "user", content: visionPrompt }],
+      image: dataUrl,
+      max_tokens: 2048
+    });
+  } catch (error) {
+    console.warn("[iaqar-media-extract] vision adapter failed", error && error.message);
+    return jsonResponse({ ok: false, error: "media_ai_failed", requestId }, 422);
+  }
 
   const rawText = typeof aiResult === "string"
     ? aiResult
-    : String(aiResult?.response || aiResult?.result?.response || "");
+    : String(aiResult?.response || aiResult?.result?.response || aiResult?.result || "");
   const text = cleanText(rawText, 12000);
   if (!text) {
     return jsonResponse({ ok: false, error: "empty_listing_text", requestId }, 422);
@@ -3921,14 +3923,20 @@ async function handlePipelineMediaExtract(request, env, requestId) {
   });
 }
 
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
+function bytesToBase64(bytes) {
   let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
+  for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function normalizeVisionImageContentType(contentType, mediaPath) {
+  const normalized = String(contentType || "").trim().toLowerCase();
+  if (normalized.startsWith("image/")) return normalized;
+  const lowerPath = String(mediaPath || "").toLowerCase();
+  if (lowerPath.endsWith(".png")) return "image/png";
+  if (lowerPath.endsWith(".webp")) return "image/webp";
+  if (lowerPath.endsWith(".gif")) return "image/gif";
+  return "image/jpeg";
 }
 
 async function handlePipelineUrlResolve(request, env, requestId) {
