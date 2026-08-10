@@ -3858,10 +3858,16 @@ async function fetchListingPage(url, redirectCount = 0) {
     };
   } catch (error) {
     clearTimeout(timer);
+    const message = String(error?.cause?.message || error?.message || error);
+    const errorCode = error?.name === "AbortError"
+      ? "fetch_timeout"
+      : /ENOTFOUND|EAI_AGAIN|getaddrinfo|dns/i.test(message)
+        ? "dns_failed"
+        : "fetch_failed";
     return {
       ok: false,
-      error: error?.name === "AbortError" ? "fetch_timeout" : "fetch_failed",
-      diagnostics: { message: String(error?.message || error) }
+      error: errorCode,
+      diagnostics: { message }
     };
   }
 }
@@ -3893,6 +3899,8 @@ async function handlePipelineMediaExtract(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
   const mediaPath = cleanText(body.mediaPath, 500);
+  const fileName = cleanText(body.fileName, 240);
+  const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
   if (!officeId || !mediaPath) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
   if (!mediaPath.startsWith(`opportunity-sources/${officeId}/`)) {
     throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
@@ -3905,6 +3913,21 @@ async function handlePipelineMediaExtract(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const object = await bucket.get(mediaPath);
   if (!object) throw appError("media_not_found", 404, "الملف غير موجود");
+  const metadata = object.customMetadata || {};
+  if (metadata.officeId && metadata.officeId !== officeId) {
+    throw appError("media_scope_mismatch", 403, "الملف لا يتبع هذا المكتب");
+  }
+  if (metadata.sourceType && !["image", "screenshot"].includes(metadata.sourceType)) {
+    throw appError("unsupported_media", 415, "هذا المسار مخصص لاستخراج الصور");
+  }
+  const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
+  if (requestedContentType && storedContentType && requestedContentType !== storedContentType) {
+    throw appError("media_type_mismatch", 400, "نوع الملف لا يطابق الملف المرفوع");
+  }
+  const contentType = storedContentType || requestedContentType;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+    throw appError("unsupported_media", 415, "نوع الصورة غير مدعوم");
+  }
 
   const bytes = await object.arrayBuffer();
   if (bytes.byteLength > LISTING_FETCH_MAX_BYTES) {
@@ -3913,7 +3936,7 @@ async function handlePipelineMediaExtract(request, env, requestId) {
 
   const visionPrompt = "اقرأ النص العربي الظاهر في الصورة حرفياً فقط. لا تخترع ولا تكرر. أعد النص المقروء فقط.";
   const imageBytes = new Uint8Array(bytes);
-  const dataUrl = `data:image/jpeg;base64,${bytesToBase64(imageBytes)}`;
+  const dataUrl = `data:${contentType};base64,${bytesToBase64(imageBytes)}`;
   const visionInput = {
     messages: [{
       role: "user",
@@ -3945,6 +3968,8 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     textLength: text.length,
     extractionMode: "workers_ai_vision_adapter",
     productionAi: false,
+    fileName,
+    contentType,
     requestId
   });
 }

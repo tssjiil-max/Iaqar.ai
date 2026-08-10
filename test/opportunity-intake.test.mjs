@@ -25,7 +25,15 @@ import { loadShell } from "./helpers/shell.mjs";
 test("source-type detection distinguishes URL and text", () => {
   assert.equal(detectSourceTypeFromText("https://example.com/listing/1"), "url");
   assert.equal(detectSourceTypeFromText("www.example.com/a"), "url");
+  assert.equal(detectSourceTypeFromText("a.aqar.fm/r/92f89b67"), "url");
+  assert.equal(normalizeUrl("a.aqar.fm/r/92f89b67"), "https://a.aqar.fm/r/92f89b67");
+  assert.equal(
+    normalizeUrl("https://a.aqar.fm/r/92f89b67"),
+    "https://a.aqar.fm/r/92f89b67"
+  );
   assert.equal(detectSourceTypeFromText("مطلوب شقة في النرجس"), "text");
+  assert.equal(detectSourceTypeFromText("شقة للبيع في حي السلام"), "text");
+  assert.equal(normalizeUrl("شقة للبيع في حي السلام"), "");
   assert.equal(isHttpUrl("not a url"), false);
   assert.equal(normalizeUrl("HTTPS://Example.COM/Path/"), "https://example.com/Path");
 });
@@ -207,8 +215,41 @@ test("successful Opportunity persistence payload includes every required field",
     assert.ok(key in opportunity, `missing ${key}`);
   }
   assert.equal(opportunity.productionAi, false);
+  assert.equal(opportunity.salePrice, 2500000);
+  assert.equal(opportunity.annualRent, null);
+  assert.equal(opportunity.budget, null);
   assert.equal(computeDataCompleteness(fields).isComplete, true);
   assert.deepEqual(listMissingFields({ ...fields, district: "" }), ["district"]);
+});
+
+test("land completeness and persistence do not require building room fields", () => {
+  const fields = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الرانوناء",
+    salePrice: 580000,
+    priceOrBudget: 580000,
+    area: 431.75,
+    rooms: null,
+    bathrooms: 3
+  };
+  assert.equal(computeDataCompleteness(fields).isComplete, true);
+  assert.deepEqual(listMissingFields(fields), []);
+  const opportunity = buildOpportunityRecord({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    sourceType: "text",
+    sourceReference: "src_land",
+    fields,
+    extraction: { extended: { salePrice: 580000, annualRent: null } },
+    deduplicationFingerprint: "land-fingerprint"
+  });
+  assert.equal(opportunity.salePrice, 580000);
+  assert.equal(opportunity.annualRent, null);
+  assert.equal(opportunity.rooms, null);
+  assert.equal(opportunity.bathrooms, null);
 });
 
 test("attachment intake uses simulated fixtures and never claims production AI", async () => {

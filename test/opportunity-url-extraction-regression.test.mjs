@@ -23,6 +23,8 @@ test("RANONA land regression — parser output matches required fields", () => {
   assert.equal(fields.city, "المدينة المنورة");
   assert.equal(fields.district, "الرانوناء");
   assert.equal(fields.priceOrBudget, 580000);
+  assert.equal(ext.salePrice, 580000);
+  assert.equal(ext.annualRent, null);
   assert.equal(fields.area, 431.75);
   assert.equal(ext.pricePerSquareMeter, 1390);
   assert.notEqual(fields.city, "الرياض");
@@ -59,6 +61,9 @@ test("RANONA land regression — review defaults and matching payload", async ()
   assert.equal(prepared.fields.city, "المدينة المنورة");
   assert.equal(prepared.fields.district, "الرانوناء");
   assert.equal(prepared.fields.priceOrBudget, 580000);
+  assert.equal(prepared.opportunity.salePrice, 580000);
+  assert.equal(prepared.opportunity.annualRent, null);
+  assert.equal(prepared.opportunity.rooms, null);
   assert.equal(prepared.fields.area, 431.75);
   assert.notEqual(prepared.fields.city, "الرياض");
 

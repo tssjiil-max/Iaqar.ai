@@ -24,6 +24,7 @@ test("acceptance fixture — شقة للإيجار with الدور الأول mu
   assert.equal(s.district, "السلام");
   assert.equal(s.city, null);
   assert.equal(s.annualRent, 22000);
+  assert.equal(s.salePrice, null);
   assert.equal(s.paymentInstallments, 2);
   assert.equal(s.optionalMonthlyRentAfterSixMonths, 1850);
   assert.equal(s.rooms, 4);
@@ -42,6 +43,7 @@ test("acceptance fixture — شقة للإيجار with الدور الأول mu
   assert.equal(result.legacyFields.priceOrBudget, 22000);
   assert.equal(result.legacyFields.rooms, 4);
   assert.equal(result.legacyFields.city, "");
+  assert.equal(result.extended.salePrice, null);
 });
 
 test("1) دور مستقل للإيجار، الدور الثاني", () => {
@@ -94,6 +96,32 @@ test("8) الإيجار ٢٢٬٠٠٠ ريال على دفعتين", () => {
   assert.equal(s.paymentInstallments, 2);
 });
 
+test("sale land keeps sale price out of every rent field", () => {
+  const result = extractArabicOpportunityText(
+    "أرض للبيع في المدينة المنورة حي الرانوناء المساحة 431.75 م² السعر المطلوب 580000 ريال"
+  );
+  const s = shape(result);
+  assert.equal(s.transactionType, "بيع");
+  assert.equal(s.propertyType, "أرض");
+  assert.equal(s.city, "المدينة المنورة");
+  assert.equal(s.district, "الرانوناء");
+  assert.equal(s.area, 431.75);
+  assert.equal(s.salePrice, 580000);
+  assert.equal(s.annualRent, null);
+  assert.equal(s.monthlyRent, null);
+  assert.equal(s.paymentInstallments, null);
+  assert.equal(result.legacyFields.priceOrBudget, 580000);
+});
+
+test("mixed or unknown transaction text does not guess sale or rent semantics", () => {
+  const result = extractArabicOpportunityText("عقار للبيع أو للإيجار بسعر 900000 ريال");
+  assert.equal(result.publicShape.transactionType, null);
+  assert.equal(result.publicShape.salePrice, null);
+  assert.equal(result.publicShape.annualRent, null);
+  assert.equal(result.legacyFields.purpose, "");
+  assert.equal(result.legacyFields.priceOrBudget, null);
+});
+
 test("intake pipeline uses phrase extractor for text (not single-keyword propertyType)", async () => {
   const adapter = createExtractionAdapter();
   const extraction = await adapter.extract({
@@ -114,6 +142,8 @@ test("intake pipeline uses phrase extractor for text (not single-keyword propert
   assert.equal(prepared.ok, true);
   assert.equal(prepared.opportunity.propertyType, "شقة");
   assert.equal(prepared.opportunity.annualRent, 22000);
+  assert.equal(prepared.opportunity.salePrice, null);
+  assert.equal(prepared.opportunity.optionalMonthlyRentAfterSixMonths, 1850);
   assert.equal(prepared.opportunity.bathrooms, 3);
   assert.equal(prepared.opportunity.floorNumber, 1);
   assert.equal(prepared.fields?.propertyType, "شقة");
