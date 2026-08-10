@@ -18,16 +18,16 @@ export const REQUIRED_EXTRACTED_FIELDS = Object.freeze([
   "propertyType",
   "city",
   "district",
-  "priceOrBudget",
-  "area",
-  "rooms"
+  "area"
 ]);
 
 export function requiredExtractedFieldsFor(fields = {}) {
-  const propertyType = String(fields.propertyType || "");
-  return /أرض|ارض/.test(propertyType)
-    ? REQUIRED_EXTRACTED_FIELDS.filter((field) => field !== "rooms")
-    : [...REQUIRED_EXTRACTED_FIELDS];
+  const required = [...REQUIRED_EXTRACTED_FIELDS];
+  if (fields.purpose === "SALE") required.push("salePrice");
+  else if (fields.purpose === "RENT") required.push("annualRent");
+  else if (fields.purpose === "PURCHASE" || fields.purpose === "LEASE_REQUEST") required.push("budget");
+  if (!/أرض|ارض/.test(String(fields.propertyType || ""))) required.push("rooms");
+  return required;
 }
 
 export class OpportunityExtractionError extends Error {
@@ -213,6 +213,62 @@ function scaledMoney(text) {
   );
 }
 
+function optionalMonthlyRent(text) {
+  const patterns = [
+    /بعد\s+(?:أول\s+)?6\s+أشهر[\s\S]{0,100}?شهري[^\s0-9]{0,3}\s*(?:بـ|ب)?\s*([0-9][0-9,.]*)/i,
+    /بعد\s+(?:أول\s+)?ستة\s+أشهر[\s\S]{0,100}?شهري[^\s0-9]{0,3}\s*(?:بـ|ب)?\s*([0-9][0-9,.]*)/i,
+    /بعد\s+(?:أول\s+)?6\s+أشهر[\s\S]{0,100}?([0-9][0-9,.]*)\s*(?:ريال)?\s*شهري/i
+  ];
+  for (const pattern of patterns) {
+    const value = numericValue(firstMatch(text, pattern));
+    if (value != null) return value;
+  }
+  return null;
+}
+
+function annualRentValue(text) {
+  const labelled = numericValue(
+    firstMatch(text, /(?:الإيجار\s+السنوي|سنوي[ًاا]?)\s*[:：]?\s*([0-9][0-9,.]*)/i)
+  );
+  if (labelled != null) return labelled;
+  return numericValue(
+    firstMatch(text, /([0-9][0-9,.]*)\s*(?:ريال|ر\.?\s?س)?\s*سنوي[ًاا]?/i)
+  );
+}
+
+function installmentCount(text) {
+  const numeric = numericValue(
+    firstMatch(text, /(?:على|بواقع)\s*([0-9]{1,2})\s*دفعات?/)
+      || firstMatch(text, /عدد\s*الدفعات\s*[:：]?\s*([0-9]{1,2})/)
+  );
+  if (numeric != null) return numeric;
+  if (/دفعتين|دفعتان/.test(text)) return 2;
+  if (/ثلاث\s+دفعات/.test(text)) return 3;
+  if (/أربع\s+دفعات|اربع\s+دفعات/.test(text)) return 4;
+  if (/دفعة\s+واحدة/.test(text)) return 1;
+  return null;
+}
+
+function floorNumber(text) {
+  const numeric = numericValue(firstMatch(text, /(?:الدور|الطابق)\s*(?:رقم\s*)?([0-9]{1,2})/));
+  if (numeric != null) return numeric;
+  const ordinals = [
+    [/(?:الدور|الطابق)\s+(?:الأول|الاول)/, 1],
+    [/(?:الدور|الطابق)\s+الثاني/, 2],
+    [/(?:الدور|الطابق)\s+الثالث/, 3],
+    [/(?:الدور|الطابق)\s+الرابع/, 4]
+  ];
+  return ordinals.find(([expression]) => expression.test(text))?.[1] ?? null;
+}
+
+function normalizeAdvertiserPhone(value) {
+  const digits = normalizeExtractionDigits(value).replace(/\D/g, "");
+  if (/^05[0-9]{8}$/.test(digits)) return `+966${digits.slice(1)}`;
+  if (/^5[0-9]{8}$/.test(digits)) return `+966${digits}`;
+  if (/^9665[0-9]{8}$/.test(digits)) return `+${digits}`;
+  return "";
+}
+
 export function parseExtractedOpportunityText(rawText) {
   const text = safeExtractedText(rawText);
   let opportunityKind = "";
@@ -233,14 +289,14 @@ export function parseExtractedOpportunityText(rawText) {
 
   const propertyType = firstMatch(
     text,
-    /(فيلا|دوبلكس|منزل|بيت شعبي|بيت|شقة|دور|أرض سكنية|أرض تجارية|أرض|ارض|عمارة|مكتب|محل|مستودع|استراحة|مزرعة|قصر|مجمع سكني|مجمع تجاري)/
+    /(فيلا|دوبلكس|منزل|بيت شعبي|بيت|شقة|(?<!ال)دور|أرض سكنية|أرض تجارية|أرض|ارض|عمارة|مكتب|محل|مستودع|استراحة|مزرعة|قصر|مجمع سكني|مجمع تجاري)/
   );
   const city = firstMatch(
     text,
     /(المدينة المنورة|الرياض|جدة|الدمام|مكة المكرمة|مكة|الخبر|الطائف|تبوك|أبها)/
   );
   const district = firstMatch(text, /(?:حي|مخطط)\s+([^\s،,؛;:.]{2,40})/)
-    || firstMatch(text, /(النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ|العزيزية|قباء)/);
+    || firstMatch(text, /(الرانوناء|السلام|النرجس|الياسمين|الملقا|العارض|العقيق|النخيل|الروضة|الشاطئ|العزيزية|قباء)/);
   const area = numericValue(
     firstMatch(text, /([0-9]{2,6}(?:\.[0-9]+)?)\s*(?:م2|م²|متر(?:\s+مربع)?)/)
       || firstMatch(text, /(?:المساحة|مساحة)\s*[:：]?\s*([0-9]{2,6}(?:\.[0-9]+)?)/)
@@ -255,24 +311,53 @@ export function parseExtractedOpportunityText(rawText) {
     text,
     /((?:[\u0621-\u064A]+\s+){0,5}[\u0621-\u064A]+)\s+(?:غرف(?:ة| نوم)?|غرفة)/
   );
+  const bathrooms = numericValue(
+    firstMatch(text, /(?:^|[^0-9])([0-9]{1,2})\s*(?:دورات مياه|دورة مياه|حمامات|حمام)/)
+  ) || arabicWordsNear(
+    text,
+    /((?:[\u0621-\u064A]+\s+){0,5}[\u0621-\u064A]+)\s+(?:دورات مياه|دورة مياه|حمامات|حمام)/
+  );
   const priceOrBudget = scaledMoney(text);
+  const optionalMonthlyRentAfterSixMonths = purpose === "RENT" ? optionalMonthlyRent(text) : null;
+  const salePrice = purpose === "SALE" ? priceOrBudget : null;
+  const annualRent = purpose === "RENT" ? (annualRentValue(text) ?? priceOrBudget) : null;
+  const budget = purpose === "PURCHASE" || purpose === "LEASE_REQUEST" ? priceOrBudget : null;
   const fields = {
     opportunityKind,
     purpose,
+    transactionType: purpose === "SALE"
+      ? "بيع"
+      : purpose === "PURCHASE"
+        ? "شراء"
+        : purpose === "RENT"
+          ? "إيجار"
+          : purpose === "LEASE_REQUEST"
+            ? "طلب إيجار"
+            : "",
     propertyType,
     city,
     district,
-    priceOrBudget,
+    salePrice,
+    annualRent,
+    monthlyRent: null,
+    optionalMonthlyRentAfterSixMonths,
+    paymentInstallments: purpose === "RENT" ? installmentCount(text) : null,
+    budget,
+    priceOrBudget: purpose === "RENT" ? annualRent : priceOrBudget,
     area,
-    rooms
+    rooms,
+    bathrooms,
+    floorNumber: floorNumber(text),
+    advertiserPhoneNormalized: normalizeAdvertiserPhone(
+      firstMatch(text, /((?:\+?966|0)?5[0-9]{8})/)
+    )
   };
   const requiredFields = requiredExtractedFieldsFor(fields);
   const missingFields = requiredFields.filter((field) => {
     const value = fields[field];
     return value === "" || value === null || value === undefined;
   });
-  const recognizedFieldCount = REQUIRED_EXTRACTED_FIELDS.filter((field) => {
-    const value = fields[field];
+  const recognizedFieldCount = Object.values(fields).filter((value) => {
     return value !== "" && value !== null && value !== undefined;
   }).length;
   return {

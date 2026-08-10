@@ -19,12 +19,22 @@ test("direct Arabic text extracts only values present in the source", async () =
   assert.deepEqual(extraction.fields, {
     opportunityKind: "OFFER",
     purpose: "SALE",
+    transactionType: "بيع",
     propertyType: "شقة",
     city: "الرياض",
     district: "النرجس",
+    salePrice: 1200000,
+    annualRent: null,
+    monthlyRent: null,
+    optionalMonthlyRentAfterSixMonths: null,
+    paymentInstallments: null,
+    budget: null,
     priceOrBudget: 1200000,
     area: 180,
-    rooms: 4
+    rooms: 4,
+    bathrooms: null,
+    floorNumber: null,
+    advertiserPhoneNormalized: ""
   });
   assert.deepEqual(extraction.missingFields, []);
   assert.equal(extraction.productionExtraction, true);
@@ -37,12 +47,22 @@ test("staging report sample extracts land fields and treats rooms as not applica
   assert.deepEqual(extraction.fields, {
     opportunityKind: "OFFER",
     purpose: "SALE",
+    transactionType: "بيع",
     propertyType: "أرض",
     city: "المدينة المنورة",
     district: "الصفوة",
+    salePrice: 600000,
+    annualRent: null,
+    monthlyRent: null,
+    optionalMonthlyRentAfterSixMonths: null,
+    paymentInstallments: null,
+    budget: null,
     priceOrBudget: 600000,
     area: 500,
-    rooms: null
+    rooms: null,
+    bathrooms: null,
+    floorNumber: null,
+    advertiserPhoneNormalized: ""
   });
   assert.deepEqual(extraction.missingFields, []);
 });
@@ -55,7 +75,61 @@ test("parser leaves absent values missing instead of inventing defaults", () => 
   assert.equal(parsed.fields.district, "");
   assert.equal(parsed.fields.priceOrBudget, null);
   assert.ok(parsed.missingFields.includes("district"));
-  assert.ok(parsed.missingFields.includes("priceOrBudget"));
+  assert.ok(parsed.missingFields.includes("purpose"));
+  assert.equal(parsed.missingFields.includes("salePrice"), false);
+  assert.equal(parsed.missingFields.includes("annualRent"), false);
+});
+
+test("sale land keeps sale price separate from every rent field", () => {
+  const parsed = parseExtractedOpportunityText(
+    "عرض مالك للبيع أرض في المدينة المنورة حي الرانوناء المساحة 500 م² السعر 1600000 ريال"
+  );
+  assert.equal(parsed.fields.transactionType, "بيع");
+  assert.equal(parsed.fields.propertyType, "أرض");
+  assert.equal(parsed.fields.salePrice, 1600000);
+  assert.equal(parsed.fields.annualRent, null);
+  assert.equal(parsed.fields.monthlyRent, null);
+  assert.equal(parsed.fields.paymentInstallments, null);
+  assert.equal(parsed.missingFields.includes("rooms"), false);
+});
+
+test("rental apartment separates annual and optional monthly rent and floor semantics", () => {
+  const parsed = parseExtractedOpportunityText(`
+    شقة للإيجار حي السلام
+    4 غرف صالة مطبخ 3 دورات مياه
+    الدور الأول مجددة بالكامل
+    22000 ريال سنويًا على دفعتين
+    بعد أول 6 أشهر يمكن الاستمرار شهريًا بـ1850
+  `);
+  assert.equal(parsed.fields.transactionType, "إيجار");
+  assert.equal(parsed.fields.purpose, "RENT");
+  assert.equal(parsed.fields.propertyType, "شقة");
+  assert.equal(parsed.fields.district, "السلام");
+  assert.equal(parsed.fields.annualRent, 22000);
+  assert.equal(parsed.fields.paymentInstallments, 2);
+  assert.equal(parsed.fields.optionalMonthlyRentAfterSixMonths, 1850);
+  assert.equal(parsed.fields.monthlyRent, null);
+  assert.equal(parsed.fields.salePrice, null);
+  assert.equal(parsed.fields.rooms, 4);
+  assert.equal(parsed.fields.bathrooms, 3);
+  assert.equal(parsed.fields.floorNumber, 1);
+});
+
+test("real Madinah land advert extracts sale semantics and normalized advertiser phone", () => {
+  const parsed = parseExtractedOpportunityText(`
+    للبيع أرض في المدينة المنورة الرانوناء
+    المساحة 431.75 م²
+    السعر 580000 ريال
+    رقم مسؤول الإعلان 0507561577
+  `);
+  assert.equal(parsed.fields.transactionType, "بيع");
+  assert.equal(parsed.fields.propertyType, "أرض");
+  assert.equal(parsed.fields.city, "المدينة المنورة");
+  assert.equal(parsed.fields.district, "الرانوناء");
+  assert.equal(parsed.fields.area, 431.75);
+  assert.equal(parsed.fields.salePrice, 580000);
+  assert.equal(parsed.fields.annualRent, null);
+  assert.equal(parsed.fields.advertiserPhoneNormalized, "+966507561577");
 });
 
 test("public real-estate URL reads allowed HTML and parses visible listing text", async () => {
