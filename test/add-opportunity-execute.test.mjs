@@ -86,10 +86,6 @@ async function loadController(fetchStub = null) {
   return { context, module };
 }
 
-function hiddenField(document, name) {
-  return document.querySelector(`[name="${name}"]`)?.closest("label")?.hidden;
-}
-
 test("sale-land Review shows sale price only and hides rent/building fields", async () => {
   const { context, module } = await loadController();
   try {
@@ -99,7 +95,7 @@ test("sale-land Review shows sale price only and hides rent/building fields", as
       "المدينة المنورة",
       "حي الرانوناء،",
       "المساحة 431.75 م²",
-      "السعر المطلوب 580000 ريال",
+      "السعر المطلوب 1600000 ريال",
       "جوال: 0507561577"
     ].join(" ");
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
@@ -108,13 +104,22 @@ test("sale-land Review shows sale price only and hides rent/building fields", as
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
     assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "sale");
     assert.equal(context.document.querySelector('[name="propertyTypeId"]').value, "land");
-    assert.equal(context.document.querySelector('[name="salePrice"]').value, "580000");
-    assert.equal(hiddenField(context.document, "salePrice"), false);
-    assert.equal(hiddenField(context.document, "annualRent"), true);
-    assert.equal(hiddenField(context.document, "monthlyRent"), true);
-    assert.equal(hiddenField(context.document, "paymentInstallments"), true);
-    assert.equal(hiddenField(context.document, "rooms"), true);
-    assert.equal(hiddenField(context.document, "bathrooms"), true);
+    assert.equal(context.document.querySelector('[name="salePrice"]').value, "1600000");
+    for (const name of [
+      "annualRent",
+      "monthlyRent",
+      "optionalMonthlyRent",
+      "paymentInstallments",
+      "budget",
+      "rooms",
+      "bathrooms",
+      "kitchen",
+      "livingRoom"
+    ]) {
+      assert.equal(context.document.querySelector(`[name="${name}"]`), null, `${name} must not render`);
+    }
+    assert.equal(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed]'), null);
+    assert.ok(context.document.querySelectorAll(".review-field, .search-field").length <= 11);
     assert.equal(context.document.querySelector('[name="advertiserPhoneLocal"]').value, "507561577");
   } finally {
     context.close();
@@ -136,8 +141,63 @@ test("rental Review shows rent fields and hides sale price", async () => {
     assert.equal(context.document.querySelector('[name="rooms"]').value, "4");
     assert.equal(context.document.querySelector('[name="bathrooms"]').value, "3");
     assert.equal(context.document.querySelector('[name="floorNumber"]').value, "1");
-    assert.equal(hiddenField(context.document, "salePrice"), true);
-    assert.equal(hiddenField(context.document, "annualRent"), false);
+    assert.equal(context.document.querySelector('[name="salePrice"]'), null);
+    assert.equal(context.document.querySelector('[name="budget"]'), null);
+    assert.ok(context.document.querySelector('[name="annualRent"]'));
+  } finally {
+    context.close();
+  }
+});
+
+test("rent Review omits optional monthly field when extraction has no such meaning", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "شقة للإيجار حي السلام، 4 غرف 3 دورات مياه الدور الأول 22000 ريال سنويًا على دفعتين";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+    assert.ok(context.document.querySelector('[name="annualRent"]'));
+    assert.equal(context.document.querySelector('[name="optionalMonthlyRent"]'), null);
+    assert.equal(context.document.querySelector('[name="salePrice"]'), null);
+  } finally {
+    context.close();
+  }
+});
+
+test("unknown transaction asks first, then reshapes Review immediately", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "أرض في المدينة المنورة حي الرانوناء، المساحة 431.75 م²";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+
+    const operation = context.document.querySelector('[name="operationTypeId"]');
+    assert.equal(operation.value, "");
+    assert.equal(context.document.querySelector('[name="salePrice"]'), null);
+    assert.equal(context.document.querySelector('[name="annualRent"]'), null);
+    assert.equal(
+      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
+      "none"
+    );
+    assert.ok(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed="true"]'));
+    assert.equal(context.document.getElementById("opportunityReviewBody").textContent.includes("(يحتاج مراجعة)"), false);
+
+    const operationSearch = context.document.querySelector('[data-search-for="operationTypeId"]');
+    operationSearch.dispatchEvent(new context.window.Event("focus"));
+    context.document.querySelector('[data-list-for="operationTypeId"] [data-pick-id="sale"]')
+      .dispatchEvent(new context.window.Event("click", { bubbles: true }));
+
+    assert.equal(operation.value, "sale");
+    assert.equal(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed]'), null);
+    assert.ok(context.document.querySelector('[name="salePrice"]'));
+    assert.equal(context.document.querySelector('[name="annualRent"]'), null);
+    assert.equal(context.document.querySelector('[name="rooms"]'), null);
+    assert.equal(context.document.querySelector('[data-field="propertyTypeId"] [data-review-needed]'), null);
+    assert.equal(
+      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
+      ""
+    );
   } finally {
     context.close();
   }

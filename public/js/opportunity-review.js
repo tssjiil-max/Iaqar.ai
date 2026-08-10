@@ -34,6 +34,7 @@ let activeDraft = null;
 let onApproveCallback = null;
 let advertiserExtractedAuto = false;
 let advertiserCandidates = [];
+let activeReviewValues = {};
 
 function escapeHtml(value) {
   return String(value || "")
@@ -95,7 +96,9 @@ function openReviewOverlay(draft, onApprove) {
 
 function reviewLabel(name, label, needsReview) {
   const flag = needsReview && needsReview[name];
-  return flag ? `${label} (يحتاج مراجعة)` : label;
+  return flag
+    ? `${label} <span data-review-needed="true" title="يحتاج مراجعة" aria-label="يحتاج مراجعة" style="color:#b7791f;font-size:13px">●</span>`
+    : label;
 }
 
 function renderAdvertiserSection(defaults) {
@@ -159,6 +162,19 @@ function renderReviewForm(defaults) {
   if (!body) return;
   const needs = defaults.needsReview || {};
   const mode = reviewTransactionMode(defaults.operationTypeId);
+  activeReviewValues = {
+    salePrice: defaults.salePrice,
+    annualRent: defaults.annualRent,
+    monthlyRent: defaults.monthlyRent,
+    optionalMonthlyRent: defaults.optionalMonthlyRent,
+    paymentInstallments: defaults.paymentInstallments,
+    budget: defaults.budget,
+    investmentValue: defaults.investmentValue,
+    area: defaults.area,
+    rooms: defaults.rooms,
+    bathrooms: defaults.bathrooms,
+    floorNumber: defaults.floorNumber
+  };
   const snapshotLines = [
     defaults.extractedSnapshot?.transactionType,
     defaults.extractedSnapshot?.propertyType,
@@ -183,17 +199,8 @@ function renderReviewForm(defaults) {
       ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
       ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
       ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
-      ${numericField("salePrice", reviewLabel("salePrice", "السعر المطلوب (ريال)", needs), defaults.salePrice, { group: "sale" })}
-      ${numericField("annualRent", reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs), defaults.annualRent, { group: "rent" })}
-      ${numericField("monthlyRent", "الإيجار الشهري (ريال)", defaults.monthlyRent, { group: "rent" })}
-      ${numericField("optionalMonthlyRent", "الإيجار الشهري الاختياري بعد أول 6 أشهر (ريال)", defaults.optionalMonthlyRent, { group: "rent" })}
-      ${numericField("paymentInstallments", reviewLabel("paymentInstallments", "عدد الدفعات", needs), defaults.paymentInstallments, { group: "rent" })}
-      ${numericField("budget", "الميزانية (ريال)", defaults.budget, { group: "budget" })}
-      ${numericField("investmentValue", "القيمة الاستثمارية (ريال)", defaults.investmentValue, { group: "investment" })}
-      ${numericField("area", reviewLabel("area", "المساحة (م²)", needs), defaults.area)}
-      ${numericField("rooms", reviewLabel("rooms", "عدد الغرف", needs), defaults.rooms, { buildingOnly: true })}
-      ${numericField("bathrooms", reviewLabel("bathrooms", "دورات المياه", needs), defaults.bathrooms, { buildingOnly: true })}
-      ${numericField("floorNumber", reviewLabel("floorNumber", "رقم الدور / الطابق", needs), defaults.floorNumber, { buildingOnly: true })}
+      <div id="reviewTransactionFields" style="display:contents"></div>
+      <div id="reviewPropertyFields" style="display:contents"></div>
       ${renderAdvertiserSection(defaults)}
       <div class="review-actions">
         <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
@@ -204,7 +211,16 @@ function renderReviewForm(defaults) {
   `;
 
   wireSearchFields(body);
-  syncReviewConditionalVisibility(body);
+  renderDynamicReviewFields(body, defaults);
+  body.oninput = (event) => {
+    const name = event.target?.name;
+    if (name && Object.prototype.hasOwnProperty.call(activeReviewValues, name)) {
+      activeReviewValues[name] = event.target.value;
+      if (String(event.target.value || "").trim()) {
+        event.target.closest("label")?.querySelector("[data-review-needed]")?.remove();
+      }
+    }
+  };
   wireAdvertiserSection();
   const form = $("opportunityReviewForm");
   form?.addEventListener("submit", (event) => {
@@ -387,12 +403,10 @@ function manualField(name, label, value, visible) {
   `;
 }
 
-function numericField(name, label, value, options = {}) {
+function numericField(name, label, value) {
   const display = value === "" || value == null ? "" : String(value);
-  const group = options.group ? ` data-transaction-group="${escapeHtml(options.group)}"` : "";
-  const buildingOnly = options.buildingOnly ? " data-building-only=\"true\"" : "";
   return `
-    <label class="review-field"${group}${buildingOnly}>
+    <label class="review-field">
       <span>${label}</span>
       <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal">
     </label>
@@ -429,6 +443,7 @@ function wireSearchFields(root) {
       if (!btn) return;
       hidden.value = btn.dataset.pickId || "";
       input.value = btn.dataset.pickLabel || "";
+      input.closest("label")?.querySelector("[data-review-needed]")?.remove();
       list.hidden = true;
       syncManualVisibility(root);
       if (field === "cityId") refreshDistrictField(root);
@@ -443,16 +458,110 @@ function wireSearchFields(root) {
 }
 
 function syncReviewConditionalVisibility(root) {
+  renderDynamicReviewFields(root, {
+    needsReview: activeDraft?.needsReview || activeDraft?.fields?.needsReview || {}
+  });
+}
+
+function captureDynamicReviewValues(root) {
+  for (const name of Object.keys(activeReviewValues)) {
+    const input = root.querySelector(`[name="${name}"]`);
+    if (input) activeReviewValues[name] = input.value;
+  }
+}
+
+function renderDynamicReviewFields(root, defaults = {}) {
+  captureDynamicReviewValues(root);
   const operationId = root.querySelector('input[name="operationTypeId"]')?.value || "";
   const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value || "";
   const mode = reviewTransactionMode(operationId);
-  root.querySelectorAll("[data-transaction-group]").forEach((field) => {
-    field.hidden = field.dataset.transactionGroup !== mode;
+  const needs = defaults.needsReview || activeDraft?.needsReview || activeDraft?.fields?.needsReview || {};
+  const transactionFields = root.querySelector("#reviewTransactionFields");
+  const propertyFields = root.querySelector("#reviewPropertyFields");
+  const awaitingTransaction = mode === "unknown";
+  for (const fieldName of ["propertyTypeId", "cityId", "districtId"]) {
+    const field = root.querySelector(`[data-field="${fieldName}"]`);
+    if (field) field.style.display = awaitingTransaction ? "none" : "";
+  }
+  root.querySelectorAll(".review-manual").forEach((field) => {
+    if (awaitingTransaction) field.style.display = "none";
+    else field.style.removeProperty("display");
   });
-  const land = propertyId === "land";
-  root.querySelectorAll("[data-building-only]").forEach((field) => {
-    field.hidden = land;
-  });
+  const advertiserSection = root.querySelector(".review-advertiser-card");
+  if (advertiserSection) advertiserSection.style.display = awaitingTransaction ? "none" : "";
+
+  if (transactionFields) {
+    const fields = [];
+    if (mode === "sale") {
+      fields.push(numericField(
+        "salePrice",
+        reviewLabel("salePrice", "السعر المطلوب (ريال)", needs),
+        activeReviewValues.salePrice
+      ));
+    } else if (mode === "rent") {
+      fields.push(numericField(
+        "annualRent",
+        reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs),
+        activeReviewValues.annualRent
+      ));
+      fields.push(numericField(
+        "paymentInstallments",
+        reviewLabel("paymentInstallments", "عدد الدفعات", needs),
+        activeReviewValues.paymentInstallments
+      ));
+      if (activeReviewValues.optionalMonthlyRent !== "" && activeReviewValues.optionalMonthlyRent != null) {
+        fields.push(numericField(
+          "optionalMonthlyRent",
+          reviewLabel(
+            "optionalMonthlyRentAfterSixMonths",
+            "الإيجار الشهري الاختياري بعد أول 6 أشهر (ريال)",
+            needs
+          ),
+          activeReviewValues.optionalMonthlyRent
+        ));
+      }
+      if (activeReviewValues.monthlyRent !== "" && activeReviewValues.monthlyRent != null) {
+        fields.push(numericField("monthlyRent", "الإيجار الشهري (ريال)", activeReviewValues.monthlyRent));
+      }
+    } else if (mode === "budget") {
+      fields.push(numericField("budget", "الميزانية (ريال)", activeReviewValues.budget));
+    } else if (mode === "investment") {
+      fields.push(numericField(
+        "investmentValue",
+        "القيمة الاستثمارية (ريال)",
+        activeReviewValues.investmentValue
+      ));
+    }
+    transactionFields.innerHTML = fields.join("");
+  }
+
+  if (propertyFields) {
+    if (awaitingTransaction) {
+      propertyFields.innerHTML = "";
+      return;
+    }
+    const fields = [
+      numericField("area", reviewLabel("area", "المساحة (م²)", needs), activeReviewValues.area)
+    ];
+    if (propertyId && propertyId !== "land") {
+      fields.push(numericField(
+        "rooms",
+        reviewLabel("rooms", "عدد الغرف", needs),
+        activeReviewValues.rooms
+      ));
+      fields.push(numericField(
+        "bathrooms",
+        reviewLabel("bathrooms", "دورات المياه", needs),
+        activeReviewValues.bathrooms
+      ));
+      fields.push(numericField(
+        "floorNumber",
+        reviewLabel("floorNumber", "رقم الدور / الطابق", needs),
+        activeReviewValues.floorNumber
+      ));
+    }
+    propertyFields.innerHTML = fields.join("");
+  }
 }
 
 function refreshDistrictField(root) {
@@ -596,5 +705,6 @@ export const __test = {
   reviewValuesToBrokerFields,
   readReviewForm,
   syncReviewConditionalVisibility,
+  renderDynamicReviewFields,
   extractAdvertiserPhonesFromText
 };
