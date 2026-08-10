@@ -1364,15 +1364,53 @@
   .identity-status.is-error { color:#a1332c; }
   .identity-status.is-done { color:var(--success); }
 
-  .link-actions {
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
+  .office-link-field {
+    display:flex;
+    align-items:center;
     gap:8px;
     margin-top:10px;
   }
 
+  .office-link-field input {
+    flex:1;
+    min-width:0;
+    min-height:42px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:0 12px;
+    background:#FBFDFC;
+    color:var(--text);
+    font-size:11px;
+    direction:ltr;
+    text-align:left;
+  }
+
+  .office-link-copy {
+    flex:0 0 auto;
+    min-height:42px;
+    min-width:52px;
+    padding:0 12px;
+    border:0;
+    border-radius:12px;
+    background:var(--green);
+    color:#fff;
+    font:inherit;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .office-link-copy:active { background:#0f6b4f; }
+
+  .link-actions {
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:6px;
+    margin-top:10px;
+  }
+
   .link-action-btn {
-    min-height:40px;
+    min-height:36px;
     border:1px solid var(--line);
     border-radius:12px;
     background:var(--green-pale);
@@ -2168,8 +2206,94 @@
     }
 
     .identity-actions { grid-template-columns:1fr; }
-    .link-actions { grid-template-columns:1fr; }
+    .link-actions { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   }
+
+  .main-tabs {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:10px;
+  }
+
+  .main-tab {
+    min-height:44px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#f7fbf9;
+    color:var(--muted);
+    font:inherit;
+    font-size:13px;
+    font-weight:800;
+    cursor:pointer;
+    padding:0 10px;
+  }
+
+  .main-tab.is-active,
+  .main-tab[aria-selected="true"] {
+    background:var(--green);
+    border-color:var(--green);
+    color:#fff;
+  }
+
+  .main-tab-panel[hidden],
+  .sub-tab-panel[hidden] { display:none; }
+
+  .main-tab-panels { margin-top:10px; }
+
+  .tab-panel-intro {
+    margin:0 4px 10px;
+    text-align:center;
+  }
+
+  .tab-panel-title {
+    margin:0;
+    font-size:18px;
+    font-weight:900;
+    line-height:1.3;
+  }
+
+  .tab-panel-help {
+    margin:6px 0 0;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.5;
+    font-weight:400;
+  }
+
+  .sub-tabs {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+    margin:0 0 10px;
+  }
+
+  .sub-tab {
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    color:var(--muted);
+    font:inherit;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+    padding:0 8px;
+  }
+
+  .sub-tab.is-active,
+  .sub-tab[aria-selected="true"] {
+    background:var(--green-pale);
+    border-color:var(--green);
+    color:var(--green);
+  }
+
+  .opportunity-bank-panel {
+    margin-top:0;
+    padding:16px 16px 20px;
+  }
+
+  .opportunity-bank-panel .bank-toolbar { margin-top:4px; }
 </style>
 
 </head>
@@ -2309,46 +2433,108 @@
       </div>
     </section>
 
-    <section class="card workspace" id="workspace">
-      <div class="section-title-bar">
-        <h2>مساحة العمل <span class="workspace-count-badge" id="total">0</span></h2>
-      </div>
-      <p class="workspace-subtitle" id="workspaceSubtitle">الإجراء التالي المطلوب منك، مرتبًا حسب الأهمية</p>
+    <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية">
+      <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
+        aria-selected="true" aria-controls="mainPanelOperations">مركز العمليات</button>
+      <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"
+        aria-selected="false" aria-controls="mainPanelOpportunities">الفرص</button>
+    </nav>
 
-      <div class="list" id="operationList"></div>
-      <p class="empty" id="operationsEmpty">
-        لا توجد فرص حالياً
-        <br>ستظهر الفرص المباشرة هنا
-      </p>
-    </section>
-
-    <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
-      <div class="section-title-bar">
-        <h2 id="addOpportunityTitle">إضافة فرصة</h2>
-      </div>
-
-      <form id="addOpportunityForm" autocomplete="off">
-        <div class="add-opportunity-row">
-          <div class="add-opportunity-input-wrap">
-            <input id="addOpportunityInput" type="text" maxlength="4000"
-              placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
-            <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
-              aria-label="إرفاق ملف">
-              <svg class="icon"><use href="#i-paperclip"></use></svg>
-            </button>
-            <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
-              hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
+    <div class="main-tab-panels" id="mainTabPanels">
+      <div class="main-tab-panel" id="mainPanelOperations" role="tabpanel" aria-labelledby="mainTabOperations">
+        <section class="card workspace" id="workspace">
+          <div class="section-title-bar">
+            <h2>مركز العمليات <span class="workspace-count-badge" id="total">0</span></h2>
           </div>
-          <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
-        </div>
-        <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
-        <input id="addOpportunityFile" type="file" hidden>
-        <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
-        <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
-      </form>
+          <p class="workspace-subtitle" id="workspaceSubtitle">الإجراءات والمطابقات التي تحتاج انتباهك الآن.</p>
 
-      <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
-    </section>
+          <div class="list" id="operationList"></div>
+          <p class="empty" id="operationsEmpty">
+            لا توجد فرص حالياً
+            <br>ستظهر الفرص المباشرة هنا
+          </p>
+        </section>
+      </div>
+
+      <div class="main-tab-panel" id="mainPanelOpportunities" role="tabpanel"
+        aria-labelledby="mainTabOpportunities" hidden>
+        <div class="tab-panel-intro">
+          <h2 class="tab-panel-title">الفرص</h2>
+          <p class="tab-panel-help">أضف فرصًا جديدة وأدر فرص مكتبك الحالية.</p>
+        </div>
+
+        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="الفرص">
+          <button type="button" class="sub-tab is-active" id="oppTabAdd" role="tab"
+            aria-selected="true" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
+          <button type="button" class="sub-tab" id="oppTabBank" role="tab"
+            aria-selected="false" aria-controls="oppPanelBank">بنك الفرص</button>
+        </nav>
+
+        <div class="sub-tab-panels" id="oppSubTabPanels">
+          <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd">
+            <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
+              <div class="section-title-bar">
+                <h2 id="addOpportunityTitle">إضافة فرصة</h2>
+              </div>
+              <p class="workspace-subtitle">أضف إعلانًا أو رابطًا أو صورة، وراجع البيانات قبل الحفظ.</p>
+
+              <form id="addOpportunityForm" autocomplete="off">
+                <div class="add-opportunity-row">
+                  <div class="add-opportunity-input-wrap">
+                    <input id="addOpportunityInput" type="text" maxlength="4000"
+                      placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
+                    <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
+                      aria-label="إرفاق ملف">
+                      <svg class="icon"><use href="#i-paperclip"></use></svg>
+                    </button>
+                    <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
+                      hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
+                  </div>
+                  <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
+                </div>
+                <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
+                <input id="addOpportunityFile" type="file" hidden>
+                <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
+                <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
+              </form>
+
+              <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
+            </section>
+          </div>
+
+          <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank" hidden>
+            <section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1"
+              aria-labelledby="opportunityBankTitle">
+              <div class="section-title-bar">
+                <h2 id="opportunityBankTitle">بنك الفرص</h2>
+              </div>
+              <p class="tab-panel-help">كل فرص مكتبك المحفوظة والنشطة في مكان واحد.</p>
+
+              <div class="bank-toolbar">
+                <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
+                <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
+                <input id="bankScopeTarget" type="text" placeholder="معرّف المكتب المستهدف للمشاركة"
+                  aria-label="معرّف المكتب المستهدف">
+                <button type="button" class="bank-action" id="bankShareSelectedBtn">مشاركة المحدد</button>
+                <button type="button" class="bank-action" id="bankCreateScopeBtn">نطاق مشاركة</button>
+              </div>
+
+              <p class="section-status" id="opportunityBankStatus" role="status"></p>
+              <button type="button" class="bank-retry" id="opportunityBankRetry" hidden>إعادة المحاولة</button>
+              <div class="bank-list" id="opportunityBankList"></div>
+              <button type="button" class="bank-action" id="bankLoadMoreBtn" hidden>تحميل المزيد</button>
+              <div class="bank-incoming" id="bankIncomingRequests" hidden>
+                <h3>طلبات تعاون واردة</h3>
+                <div id="bankIncomingList"></div>
+              </div>
+              <div class="bank-incoming" id="bankSharedWithUs" hidden></div>
+              <div class="bank-incoming" id="bankOutgoingScopes" hidden></div>
+              <div class="bank-detail" id="opportunityBankDetail" hidden></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
 
@@ -2431,67 +2617,6 @@
 
 
 
-      <section class="settings-section" id="officeIdentitySection">
-        <h3>الهوية البصرية</h3>
-        <p class="section-help">
-          تظهر هذه الصور في بطاقة المكتب وفي رابط المكتب ومواد المشاركة ورمز QR،
-          فتبقى هوية المكتب واحدة في كل مكان.
-        </p>
-
-        <div class="identity-grid">
-          <article class="identity-slot" data-image-variant="logo">
-            <header>
-              <strong>شعار المكتب / صورة العرض</strong>
-            </header>
-            <p class="office-logo-size-hint">المقاس الموصى به: 512×512</p>
-            <div class="office-logo-preview-wrap identity-preview" data-role="preview">
-              <img class="office-logo-preview-img" data-role="preview-image" alt="معاينة شعار المكتب" hidden>
-              <span class="identity-placeholder" data-role="placeholder">لا يوجد شعار</span>
-            </div>
-            <div class="identity-crop" data-role="crop" hidden>
-              <label for="logoCropOffsetY">موضع الاقتصاص الرأسي</label>
-              <input id="logoCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
-              <label for="logoCropOffsetX">موضع الاقتصاص الأفقي</label>
-              <input id="logoCropOffsetX" type="range" min="0" max="100" value="50" data-role="offset-x">
-            </div>
-            <div class="identity-actions">
-              <button class="identity-btn" type="button" data-role="choose">اختيار صورة</button>
-              <button class="identity-btn" type="button" data-role="save" disabled>حفظ الصورة</button>
-              <button class="identity-btn" type="button" data-role="cancel" hidden>إلغاء</button>
-              <button class="identity-btn danger" type="button" data-role="remove" hidden>إزالة</button>
-            </div>
-            <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
-              aria-label="اختيار شعار المكتب">
-            <p class="identity-status" data-role="status" role="status"></p>
-          </article>
-
-          <article class="identity-slot" data-image-variant="cover">
-            <header>
-              <strong>ترويسة عريضة للمشاركة</strong>
-              <span data-role="ratio-hint"></span>
-            </header>
-            <div class="identity-preview" data-role="preview">
-              <img id="officeCoverPreview" data-role="preview-image" alt="معاينة ترويسة المكتب" hidden>
-              <span class="identity-placeholder" data-role="placeholder">لا توجد ترويسة</span>
-            </div>
-            <div class="identity-crop" data-role="crop" hidden>
-              <label for="coverCropOffsetY">موضع الاقتصاص الرأسي</label>
-              <input id="coverCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
-              <label for="coverCropOffsetX">موضع الاقتصاص الأفقي</label>
-              <input id="coverCropOffsetX" type="range" min="0" max="100" value="50" data-role="offset-x">
-            </div>
-            <div class="identity-actions">
-              <button class="identity-btn" type="button" data-role="choose">اختيار صورة</button>
-              <button class="identity-btn" type="button" data-role="save" disabled>حفظ الصورة</button>
-              <button class="identity-btn" type="button" data-role="cancel" hidden>إلغاء</button>
-            </div>
-            <input id="officeCoverInput" type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
-              aria-label="اختيار ترويسة المكتب">
-            <p class="identity-status" data-role="status" role="status"></p>
-          </article>
-        </div>
-      </section>
-
       <form class="office-settings-card" id="officeProfileForm" autocomplete="off">
         <h3 class="office-settings-title">بيانات المكتب</h3>
         <div class="office-settings-grid">
@@ -2535,18 +2660,54 @@
         <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط حسب officeId.</p>
       </form>
 
+      <section class="settings-section" id="officeIdentitySection">
+        <h3>الهوية البصرية</h3>
+        <p class="section-help">
+          تظهر هذه الصور في بطاقة المكتب وفي رابط المكتب ومواد المشاركة ورمز QR،
+          فتبقى هوية المكتب واحدة في كل مكان.
+        </p>
+
+        <div class="identity-grid">
+          <article class="identity-slot" data-image-variant="logo">
+            <header>
+              <strong>شعار المكتب / صورة العرض</strong>
+            </header>
+            <p class="office-logo-size-hint">المقاس الموصى به: 512×512</p>
+            <div class="office-logo-preview-wrap identity-preview" data-role="preview">
+              <img class="office-logo-preview-img" data-role="preview-image" alt="معاينة شعار المكتب" hidden>
+              <span class="identity-placeholder" data-role="placeholder">لا يوجد شعار</span>
+            </div>
+            <div class="identity-crop" data-role="crop" hidden>
+              <label for="logoCropOffsetY">موضع الاقتصاص الرأسي</label>
+              <input id="logoCropOffsetY" type="range" min="0" max="100" value="50" data-role="offset-y">
+              <label for="logoCropOffsetX">موضع الاقتصاص الأفقي</label>
+              <input id="logoCropOffsetX" type="range" min="0" max="100" value="50" data-role="offset-x">
+            </div>
+            <div class="identity-actions">
+              <button class="identity-btn" type="button" data-role="choose">اختيار صورة</button>
+              <button class="identity-btn" type="button" data-role="save" disabled>حفظ الصورة</button>
+              <button class="identity-btn" type="button" data-role="cancel" hidden>إلغاء</button>
+              <button class="identity-btn danger" type="button" data-role="remove" hidden>إزالة</button>
+            </div>
+            <input type="file" accept="image/jpeg,image/png,image/webp" data-role="file"
+              aria-label="اختيار شعار المكتب">
+            <p class="identity-status" data-role="status" role="status"></p>
+          </article>
+        </div>
+      </section>
+
       <section class="settings-section" id="officeLinkSection">
         <h3>رابط المكتب</h3>
-        <p class="section-help">رابط ثابت لصفحة المكتب العامة. يستقبل طلبات العملاء وعروض الملاك مباشرة.</p>
-        <div class="office-link-row">
+        <p class="section-help">رابط صفحتك العامة لمشاركته مع العملاء والملاك.</p>
+        <div class="office-link-field">
           <input id="officeLinkInput" readonly aria-label="رابط المكتب">
+          <button class="office-link-copy" id="copyOfficeLinkBtn" type="button">نسخ</button>
         </div>
         <div class="link-actions">
-          <button class="link-action-btn" id="copyOfficeLinkBtn" type="button">نسخ الرابط</button>
           <button class="link-action-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
           <button class="link-action-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
-            aria-controls="officeQrWrap">إظهار رمز QR</button>
-          <button class="link-action-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة العامة</button>
+            aria-controls="officeQrWrap">رمز QR</button>
+          <button class="link-action-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة</button>
           <button class="link-action-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
         </div>
         <div class="office-qr-wrap" id="officeQrWrap" hidden>
@@ -2556,6 +2717,38 @@
           <button class="identity-btn" id="downloadOfficeQrBtn" type="button">تنزيل الرمز</button>
         </div>
         <p class="section-status" id="officeLinkStatus" role="status"></p>
+      </section>
+
+      <section class="settings-section" id="cooperationSection">
+        <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
+        <p class="section-help">
+          ملكية الفرصة تبقى لمكتبك في كل الأحوال، وبيانات تواصل المالك أو العميل
+          لا تُكشف تلقائيًا لأي وسيط متعاون.
+        </p>
+        <div class="coop-options" id="cooperationOptions">
+          <label class="coop-option">
+            <input type="radio" name="cooperationMode" value="DISABLED">
+            <span>
+              <strong>إيقاف التعاون</strong>
+              <small>لا يستقبل المكتب أي طلب تعاون من وسطاء آخرين.</small>
+            </span>
+          </label>
+          <label class="coop-option">
+            <input type="radio" name="cooperationMode" value="APPROVAL_REQUIRED" checked>
+            <span>
+              <strong>التعاون بموافقة الوسيط لكل طلب</strong>
+              <small>يصل الطلب إلى المكتب، ولا يُفتح أي وصول قبل موافقتك.</small>
+            </span>
+          </label>
+          <label class="coop-option">
+            <input type="radio" name="cooperationMode" value="SMART_AUTOMATIC">
+            <span>
+              <strong>تعاون ذكي تلقائي وفق القواعد المعتمدة</strong>
+              <small>يُفتح وصول محدود تلقائيًا وفق القواعد، وبيانات التواصل تبقى مخفية.</small>
+            </span>
+          </label>
+        </div>
+        <p class="section-status" id="cooperationStatus" role="status"></p>
       </section>
 
       <section class="settings-section" id="notificationPrefsSection">
@@ -2591,52 +2784,6 @@
           </label>
         </div>
         <p class="section-status" id="notificationPrefsStatus" role="status"></p>
-      </section>
-
-      <section class="settings-section" id="opportunityBankSection">
-        <h3>بنك الفرص</h3>
-        <p class="section-help">فرص هذا المكتب المحفوظة. خاصة به، ولا يراها أي مكتب آخر.</p>
-        <button class="bank-entry" id="openOpportunityBankBtn" type="button">
-          <span class="bank-entry-icon" aria-hidden="true">
-            <svg class="icon"><use href="#i-briefcase"/></svg>
-          </span>
-          <span>
-            <strong>بنك الفرص</strong>
-            <small>فتح الفرص المحفوظة لهذا المكتب</small>
-          </span>
-        </button>
-      </section>
-
-      <section class="settings-section" id="cooperationSection">
-        <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
-        <p class="section-help">
-          ملكية الفرصة تبقى لمكتبك في كل الأحوال، وبيانات تواصل المالك أو العميل
-          لا تُكشف تلقائيًا لأي وسيط متعاون.
-        </p>
-        <div class="coop-options" id="cooperationOptions">
-          <label class="coop-option">
-            <input type="radio" name="cooperationMode" value="DISABLED">
-            <span>
-              <strong>إيقاف التعاون</strong>
-              <small>لا يستقبل المكتب أي طلب تعاون من وسطاء آخرين.</small>
-            </span>
-          </label>
-          <label class="coop-option">
-            <input type="radio" name="cooperationMode" value="APPROVAL_REQUIRED" checked>
-            <span>
-              <strong>التعاون بموافقة الوسيط لكل طلب</strong>
-              <small>يصل الطلب إلى المكتب، ولا يُفتح أي وصول قبل موافقتك.</small>
-            </span>
-          </label>
-          <label class="coop-option">
-            <input type="radio" name="cooperationMode" value="SMART_AUTOMATIC">
-            <span>
-              <strong>تعاون ذكي تلقائي وفق القواعد المعتمدة</strong>
-              <small>يُفتح وصول محدود تلقائيًا وفق القواعد، وبيانات التواصل تبقى مخفية.</small>
-            </span>
-          </label>
-        </div>
-        <p class="section-status" id="cooperationStatus" role="status"></p>
       </section>
 
       <section class="settings-section" id="pwaInstallSection">
@@ -2692,38 +2839,6 @@
     </section>
   </div>
 
-  <div class="settings-overlay" id="opportunityBank" hidden>
-    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="opportunityBankTitle">
-      <div class="settings-head">
-        <div>
-          <h2 id="opportunityBankTitle">بنك الفرص</h2>
-          <p>فرص هذا المكتب فقط. لا يظهر هنا أي سجل يتبع مكتبًا آخر.</p>
-        </div>
-        <button class="settings-close" id="opportunityBankClose" type="button" aria-label="إغلاق بنك الفرص والعودة">×</button>
-      </div>
-
-      <div class="bank-toolbar">
-        <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
-        <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
-        <input id="bankScopeTarget" type="text" placeholder="معرّف المكتب المستهدف للمشاركة" aria-label="معرّف المكتب المستهدف">
-        <button type="button" class="bank-action" id="bankShareSelectedBtn">مشاركة المحدد</button>
-        <button type="button" class="bank-action" id="bankCreateScopeBtn">نطاق مشاركة</button>
-      </div>
-
-      <p class="section-status" id="opportunityBankStatus" role="status"></p>
-      <button type="button" class="bank-retry" id="opportunityBankRetry" hidden>إعادة المحاولة</button>
-      <div class="bank-list" id="opportunityBankList"></div>
-      <button type="button" class="bank-action" id="bankLoadMoreBtn" hidden>تحميل المزيد</button>
-      <div class="bank-incoming" id="bankIncomingRequests" hidden>
-        <h3>طلبات تعاون واردة</h3>
-        <div id="bankIncomingList"></div>
-      </div>
-      <div class="bank-incoming" id="bankSharedWithUs" hidden></div>
-      <div class="bank-incoming" id="bankOutgoingScopes" hidden></div>
-      <div class="bank-detail" id="opportunityBankDetail" hidden></div>
-    </section>
-  </div>
-
   <div class="toast" id="toast"></div>
   <!-- ربط Firebase دون أي تغيير مرئي في الواجهة -->
   <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
@@ -2736,6 +2851,7 @@
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>
   <script src="js/app-navigation.js"></script>
+  <script src="js/home-tabs.js"></script>
   <script src="js/qrcode.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>

@@ -197,5 +197,6 @@ test("shell and worker wire Phase 4 rematch without Deals page or bottom nav", (
   assert.ok(worker.includes("/matching/run"));
   assert.ok(worker.includes("MATCHING_RULE_VERSION"));
   assert.equal(/data-main=\"deals\"/.test(shell), false);
-  assert.equal(/<nav[\s>]/.test(shell), false);
+  assert.ok(shell.includes("id=\"mainTabs\""));
+  assert.equal(/bottom-nav/i.test(shell), false);
 });

@@ -342,7 +342,7 @@ test("Add Opportunity card exists on the home page with the approved compact row
     assert.deepEqual(permanentTypeButtons, []);
 
     // Still no bottom nav / deals page.
-    assert.equal(document.querySelector("nav"), null);
+    assert.ok(document.getElementById("mainTabs"));
     assert.equal(document.querySelector("[data-main='deals']"), null);
   } finally {
     context.close();

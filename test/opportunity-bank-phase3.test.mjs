@@ -59,22 +59,24 @@ const sample = {
   rawText: "secret"
 };
 
-test("بنك الفرص entry opens from Office Settings and is not a home section", async () => {
+test("بنك الفرص lives under Opportunities sub-tabs, not Settings", async () => {
   const context = await loadShell({ bootSettingsModule: true });
   try {
     const { document } = context;
-    assert.ok(document.getElementById("openOpportunityBankBtn"));
-    assert.ok(document.getElementById("opportunityBankSection"));
-    assert.ok(document.getElementById("opportunityBank"));
-    assert.equal(document.getElementById("opportunityBank").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("openOpportunityBankBtn"), null);
+    assert.equal(document.getElementById("opportunityBankSection"), null);
+    assert.ok(document.getElementById("oppTabBank"));
+    assert.ok(document.getElementById("mainTabOpportunities"));
+    assert.ok(document.querySelector(".app").contains(document.getElementById("opportunityBank")));
+    assert.equal(document.getElementById("officeSettings").contains(document.getElementById("opportunityBank")), false);
 
     // Not a permanent home-page section inside .app
     const homeIds = Array.from(document.querySelector(".app").children).map((n) => n.id || n.className);
     assert.equal(homeIds.includes("opportunityBank"), false);
     assert.ok([...document.querySelector(".app").children].every((n) => n.id !== "opportunityBank"));
 
-    // No bottom nav / deals
-    assert.equal(document.querySelector("nav"), null);
+    // Main tabs exist; no bottom nav / deals page
+    assert.ok(document.getElementById("mainTabs"));
     assert.equal(document.querySelector("[data-main='deals']"), null);
   } finally {
     context.close();
@@ -250,10 +252,13 @@ test("Phase 3 boundaries: no match, operations, messaging, or matching engine", 
   assert.equal(g.runsMatchingEngine, false);
 });
 
-test("shell wires opportunity-bank module and keeps settings entry", () => {
+test("shell wires opportunity-bank module and main Opportunities tabs", () => {
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(shell.includes("js/opportunity-bank.js"));
-  assert.ok(shell.includes("id=\"openOpportunityBankBtn\""));
+  assert.ok(shell.includes("js/home-tabs.js"));
+  assert.ok(shell.includes("id=\"mainTabOperations\""));
+  assert.ok(shell.includes("id=\"oppTabBank\""));
+  assert.equal(shell.includes("id=\"openOpportunityBankBtn\""), false);
   assert.ok(shell.includes("id=\"bankFilterArchived\""));
   assert.ok(shell.includes("id=\"opportunityBankDetail\""));
   assert.ok(shell.includes("id=\"bankLoadMoreBtn\""));

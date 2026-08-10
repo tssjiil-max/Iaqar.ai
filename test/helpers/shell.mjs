@@ -75,6 +75,12 @@ export async function loadShell(options = {}) {
   if (officeRuntime) window.IAQAR.office = officeRuntime;
   if (fetchStub) window.fetch = fetchStub;
 
+  const homeTabsSource = readFileSync(
+    path.join(repositoryRoot, "public", "js", "home-tabs.js"),
+    "utf8"
+  );
+  window.eval(homeTabsSource);
+
   for (const name of [
     "window", "document", "localStorage", "sessionStorage", "CustomEvent", "Event",
     "Image", "HTMLElement", "Node", "getComputedStyle", "File", "Blob"

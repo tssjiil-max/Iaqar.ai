@@ -19,9 +19,8 @@ test("all approved settings sections are present", async () => {
     for (const [id, heading] of [
       ["officeIdentitySection", "الهوية البصرية"],
       ["officeLinkSection", "رابط المكتب"],
-      ["notificationPrefsSection", "الإشعارات"],
-      ["opportunityBankSection", "بنك الفرص"],
-      ["cooperationSection", "السماح بالتعاون الذكي بين الوسطاء"]
+      ["cooperationSection", "السماح بالتعاون الذكي بين الوسطاء"],
+      ["notificationPrefsSection", "الإشعارات"]
     ]) {
       const section = sheet.querySelector(`#${id}`);
       assert.ok(section, `${id} must exist inside the settings sheet`);
@@ -108,7 +107,7 @@ test("each identity variant has a full upload workflow in the markup", async () 
   const context = await shell();
   try {
     const { document } = context;
-    for (const variant of ["logo", "cover"]) {
+    for (const variant of ["logo"]) {
       const slot = document.querySelector(`[data-image-variant="${variant}"]`);
       assert.ok(slot, `${variant} slot must exist`);
       for (const role of ["preview", "preview-image", "placeholder", "crop", "offset-x", "offset-y", "choose", "save", "file", "status"]) {
@@ -131,7 +130,7 @@ test("remove is offered only for the variants the directive allows removing", as
     const { document } = context;
     assert.ok(document.querySelector('[data-image-variant="logo"] [data-role="remove"]'));
     assert.equal(document.querySelector('[data-image-variant="display"]'), null);
-    assert.equal(document.querySelector('[data-image-variant="cover"] [data-role="remove"]'), null);
+    assert.equal(document.querySelector('[data-image-variant="cover"]'), null);
   } finally {
     context.close();
   }
@@ -144,11 +143,10 @@ test("the preview aspect ratio is taken from the preset at runtime, not hard-cod
     const logoWrap = document.querySelector('[data-image-variant="logo"] .office-logo-preview-wrap');
     assert.ok(logoWrap, "logo preview wrap should exist");
     assert.ok(logoWrap.classList.contains("office-logo-preview-wrap"));
-    const cover = document.querySelector('[data-image-variant="cover"] [data-role="preview"]').style.aspectRatio;
-    assert.ok(Number(cover) > 1.5, `cover preview ratio should be wide, got ${cover}`);
     const sizeHint = document.querySelector('[data-image-variant="logo"] .office-logo-size-hint');
     assert.ok(sizeHint);
     assert.equal(sizeHint.textContent, "المقاس الموصى به: 512×512");
+    assert.equal(document.querySelector('[data-image-variant="cover"]'), null);
   } finally {
     context.close();
   }
@@ -191,7 +189,7 @@ test("an oversized file is rejected before any upload is attempted", async () =>
   });
   try {
     const { document, window } = context;
-    const slot = document.querySelector('[data-image-variant="cover"]');
+    const slot = document.querySelector('[data-image-variant="logo"]');
     const file = slot.querySelector('[data-role="file"]');
     Object.defineProperty(file, "files", {
       value: [{ type: "image/png", size: 11 * 1024 * 1024, name: "big.png" }],
@@ -248,33 +246,31 @@ test("the office link is a real per-office URL, not a placeholder", async () => 
 
 // --- 7.6 opportunity bank entry --------------------------------------------
 
-test("the opportunity bank entry is named exactly بنك الفرص and opens its own panel", async () => {
+test("the opportunity bank lives under Opportunities, not Office Settings", async () => {
   const context = await shell();
   try {
-    const { document, window } = context;
-    const entry = document.getElementById("openOpportunityBankBtn");
-    assert.ok(entry, "the entry card must exist");
-    assert.equal(entry.querySelector("strong").textContent.trim(), "بنك الفرص");
-
-    const overlay = document.getElementById("opportunityBank");
-    assert.equal(overlay.hasAttribute("hidden"), true);
-    entry.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    assert.equal(overlay.hasAttribute("hidden"), false, "the bank must open from the entry card");
-    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "بنك الفرص");
+    const { document } = context;
+    assert.equal(document.getElementById("openOpportunityBankBtn"), null);
+    assert.equal(document.getElementById("opportunityBankSection"), null);
+    assert.ok(document.getElementById("oppTabBank"));
+    assert.ok(document.getElementById("mainTabOpportunities"));
+    assert.ok(document.querySelector(".app").contains(document.getElementById("opportunityBank")));
+    assert.equal(document.getElementById("officeSettings").contains(document.getElementById("opportunityBank")), false);
   } finally {
     context.close();
   }
 });
 
-test("the opportunity bank never becomes a fourth home-page section", async () => {
-  const context = await shell();
+test("the بنك الفرص sub-tab reveals the inline bank panel", async () => {
+  const context = await loadShell({ bootSettingsModule: true });
   try {
     const { document } = context;
-    const overlay = document.getElementById("opportunityBank");
-    assert.equal(document.querySelector(".app").contains(overlay), false);
-    // Its only entry point is inside Office Settings.
-    const entry = document.getElementById("openOpportunityBankBtn");
-    assert.equal(document.getElementById("officeSettings").contains(entry), true);
+    assert.equal(document.getElementById("opportunityBank").dataset.inlineBank, "1");
+    assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), true);
+    document.getElementById("mainTabOpportunities").click();
+    document.getElementById("oppTabBank").click();
+    assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
+    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "بنك الفرص");
   } finally {
     context.close();
   }

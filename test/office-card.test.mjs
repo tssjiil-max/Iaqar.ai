@@ -157,13 +157,14 @@ test("TEST 1: the accessible names of the entry points are not rendered as visib
 
 // --- TEST 2 -----------------------------------------------------------------
 
-test("TEST 2: the home page has no navigation element at all", async () => {
+test("TEST 2: the home page has main tabs but no bottom navigation bar", async () => {
   const context = await shell();
   try {
     const { document } = context;
-    assert.equal(document.querySelector("nav"), null);
-    assert.equal(document.querySelector("[role=navigation]"), null);
-    assert.equal(document.querySelector("[role=tablist]"), null);
+    assert.ok(document.getElementById("mainTabs"));
+    assert.ok(document.querySelector("#mainTabs[role=tablist]"));
+    assert.equal(document.querySelector(".bottom-nav"), null);
+    assert.equal(document.querySelector("[data-main='deals']"), null);
   } finally {
     context.close();
   }
@@ -194,8 +195,8 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
       "header.card header",
       "section.card license",
       "section.card services-bar",
-      "section.card workspace",
-      "section.card add-opportunity"
+      "nav.main-tabs",
+      "div.main-tab-panels"
     ]);
   } finally {
     context.close();
@@ -217,7 +218,6 @@ test("TEST 2: nothing outside the app shell could act as a fixed bottom bar", as
       "div#stopShareOverlay.settings-overlay",
       "div#permanentDeleteOverlay.settings-overlay",
       "div#officeSettings.settings-overlay",
-      "div#opportunityBank.settings-overlay",
       "div#toast.toast"
     ]);
   } finally {

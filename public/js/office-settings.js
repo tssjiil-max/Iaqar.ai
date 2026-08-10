@@ -1340,12 +1340,13 @@ function completeSettingsClose() {
     window.IAQAR.closeOpportunityBank({ fromPopstate: true });
   } else {
     const bankOverlay = document.getElementById("opportunityBank");
-    if (bankOverlay) bankOverlay.hidden = true;
+    if (bankOverlay && bankOverlay.dataset.inlineBank !== "1") bankOverlay.hidden = true;
   }
   const overlay = document.getElementById("officeSettings");
   if (overlay) overlay.hidden = true;
   const bankOverlay = document.getElementById("opportunityBank");
-  if (!bankOverlay || bankOverlay.hidden) document.body.style.overflow = "";
+  const inlineBank = bankOverlay?.dataset.inlineBank === "1";
+  if (!bankOverlay || bankOverlay.hidden || inlineBank) document.body.style.overflow = "";
 }
 
 function closeSettings() {
@@ -1473,7 +1474,7 @@ function init() {
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (el.bankOverlay && !el.bankOverlay.hidden) {
+    if (el.bankOverlay && el.bankOverlay.dataset.inlineBank !== "1" && !el.bankOverlay.hidden) {
       if (typeof window.IAQAR?.closeOpportunityBank === "function") {
         window.IAQAR.closeOpportunityBank();
       } else {

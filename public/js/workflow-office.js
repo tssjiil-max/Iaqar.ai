@@ -1305,13 +1305,11 @@
     await postOperationAction(operationId, "START");
     notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
     if (detail.operationType === "MISSING_DATA") {
-      const bankBtn = document.getElementById("openOpportunityBankBtn");
-      if (bankBtn) bankBtn.click();
+      if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
       return;
     }
     if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
-      const bankBtn = document.getElementById("openOpportunityBankBtn");
-      if (bankBtn) bankBtn.click();
+      if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
     }
   }
 
@@ -1340,8 +1338,6 @@
     if (detail.recordType === "opportunity") {
       if (window.IAQAR && typeof window.IAQAR.openOpportunityBank === "function") {
         window.IAQAR.openOpportunityBank();
-      } else {
-        document.getElementById("openOpportunityBankBtn")?.click();
       }
       return;
     }

@@ -1383,24 +1383,73 @@ function startListener() {
   void loadOutgoingScopes();
 }
 
-export function openOpportunityBank() {
-  const overlay = $("opportunityBank");
-  if (!overlay) return;
-  overlay.hidden = false;
-  document.body.style.overflow = "hidden";
-  const retry = $("opportunityBankRetry");
-  if (retry) retry.hidden = true;
-  startListener();
+function isInlineBankRoot() {
+  return $("opportunityBank")?.dataset.inlineBank === "1";
+}
+
+function emitBankOpened() {
   window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-opened", {
     detail: {
       arabicStatuses: [...FIVE_ARABIC_COOPERATION_STATUSES],
       ...phase6BoundaryGuarantees()
     }
   }));
+}
+
+export function activateOpportunityBankInline() {
+  const retry = $("opportunityBankRetry");
+  if (retry) retry.hidden = true;
+  startListener();
+  emitBankOpened();
+}
+
+export function pauseOpportunityBankInline() {
+  if (state.activeId) closeBankDetailInternal();
+  stopListener();
+}
+
+export function openOpportunityBank() {
+  const bankRoot = $("opportunityBank");
+  if (!bankRoot) return;
+
+  if (isInlineBankRoot()) {
+    window.IAQAR?.homeTabs?.switchTo("opportunities", "bank");
+    const bankPanel = document.getElementById("oppPanelBank");
+    if (bankPanel) bankPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    activateOpportunityBankInline();
+    return;
+  }
+
+  bankRoot.hidden = false;
+  document.body.style.overflow = "hidden";
+  const retry = $("opportunityBankRetry");
+  if (retry) retry.hidden = true;
+  startListener();
+  emitBankOpened();
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "opportunityBank" } }));
 }
 
 export function closeOpportunityBank(options = {}) {
+  if (isInlineBankRoot()) {
+    let { fromPopstate = false } = options;
+    if (!fromPopstate) {
+      if (state.activeId) {
+        if (window.history?.state?.iaqarOverlay) {
+          window.history.back();
+          return;
+        }
+        closeBankDetailInternal();
+      }
+      return;
+    }
+    pauseOpportunityBankInline();
+    state.selected.clear();
+    state.lastDoc = null;
+    state.hasMore = false;
+    window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-closed"));
+    return;
+  }
+
   let { fromPopstate = false } = options;
   if (!fromPopstate) {
     if (state.activeId) {
@@ -1435,18 +1484,18 @@ export function closeOpportunityBank(options = {}) {
 }
 
 function boot() {
-  const openBtn = $("openOpportunityBankBtn");
-  const closeBtn = $("opportunityBankClose");
-  const overlay = $("opportunityBank");
-  if (!openBtn || !overlay) return;
-  if (overlay.dataset.bound === "1") return;
-  overlay.dataset.bound = "1";
+  const bankRoot = $("opportunityBank");
+  if (!bankRoot) return;
+  if (bankRoot.dataset.bound === "1") return;
+  bankRoot.dataset.bound = "1";
 
-  openBtn.addEventListener("click", () => openOpportunityBank());
-  closeBtn?.addEventListener("click", () => closeOpportunityBank());
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeOpportunityBank();
-  });
+  if (!isInlineBankRoot()) {
+    const closeBtn = $("opportunityBankClose");
+    closeBtn?.addEventListener("click", () => closeOpportunityBank());
+    bankRoot.addEventListener("click", (event) => {
+      if (event.target === bankRoot) closeOpportunityBank();
+    });
+  }
   $("opportunityBankRetry")?.addEventListener("click", () => {
     const retry = $("opportunityBankRetry");
     if (retry) retry.hidden = true;
@@ -1497,6 +1546,8 @@ function boot() {
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.openOpportunityBank = openOpportunityBank;
+  window.IAQAR.activateOpportunityBankInline = activateOpportunityBankInline;
+  window.IAQAR.pauseOpportunityBankInline = pauseOpportunityBankInline;
   window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
     openOpportunityBank();
     await loadBankPage({ reset: true });
