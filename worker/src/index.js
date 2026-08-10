@@ -3866,6 +3866,27 @@ async function fetchListingPage(url, redirectCount = 0) {
   }
 }
 
+const LLAMA_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
+let llamaVisionLicenseAccepted = false;
+
+async function ensureLlamaVisionLicenseAccepted(env) {
+  if (llamaVisionLicenseAccepted || !env.AI) return;
+  try {
+    await env.AI.run(LLAMA_VISION_MODEL, {
+      messages: [{ role: "user", content: "agree" }],
+      max_tokens: 8
+    });
+  } catch (_) {
+    // Agreement may already be recorded for this account.
+  }
+  llamaVisionLicenseAccepted = true;
+}
+
+async function runLlamaVisionExtract(env, input) {
+  await ensureLlamaVisionLicenseAccepted(env);
+  return await env.AI.run(LLAMA_VISION_MODEL, input);
+}
+
 async function handlePipelineMediaExtract(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
@@ -3896,7 +3917,7 @@ async function handlePipelineMediaExtract(request, env, requestId) {
   const visionPrompt = "انسخ كل النص العربي الظاهر في صورة إعلان عقاري كما هو. أعد النص فقط بدون شرح.";
   let aiResult;
   try {
-    aiResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+    aiResult = await runLlamaVisionExtract(env, {
       messages: [{ role: "user", content: visionPrompt }],
       image: dataUrl,
       max_tokens: 2048
