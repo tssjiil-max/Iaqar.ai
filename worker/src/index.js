@@ -3871,20 +3871,22 @@ let llamaVisionLicenseAccepted = false;
 
 async function ensureLlamaVisionLicenseAccepted(env) {
   if (llamaVisionLicenseAccepted || !env.AI) return;
-  try {
-    await env.AI.run(LLAMA_VISION_MODEL, {
-      messages: [{ role: "user", content: "agree" }],
-      max_tokens: 8
-    });
-  } catch (_) {
-    // Agreement may already be recorded for this account.
-  }
+  await env.AI.run(LLAMA_VISION_MODEL, { prompt: "agree" });
   llamaVisionLicenseAccepted = true;
 }
 
 async function runLlamaVisionExtract(env, input) {
   await ensureLlamaVisionLicenseAccepted(env);
-  return await env.AI.run(LLAMA_VISION_MODEL, input);
+  try {
+    return await env.AI.run(LLAMA_VISION_MODEL, input);
+  } catch (error) {
+    if (String(error?.message || "").includes("agree")) {
+      llamaVisionLicenseAccepted = false;
+      await ensureLlamaVisionLicenseAccepted(env);
+      return await env.AI.run(LLAMA_VISION_MODEL, input);
+    }
+    throw error;
+  }
 }
 
 async function handlePipelineMediaExtract(request, env, requestId) {
@@ -3909,19 +3911,22 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     return jsonResponse({ ok: false, error: "response_too_large", requestId }, 422);
   }
 
-  const contentType = normalizeVisionImageContentType(
-    object.httpMetadata?.contentType || "",
-    mediaPath
-  );
-  const dataUrl = `data:${contentType};base64,${bytesToBase64(new Uint8Array(bytes))}`;
-  const visionPrompt = "انسخ كل النص العربي الظاهر في صورة إعلان عقاري كما هو. أعد النص فقط بدون شرح.";
+  const visionPrompt = "اقرأ النص العربي الظاهر في الصورة حرفياً فقط. لا تخترع ولا تكرر. أعد النص المقروء فقط.";
+  const imageBytes = new Uint8Array(bytes);
+  const dataUrl = `data:image/jpeg;base64,${bytesToBase64(imageBytes)}`;
+  const visionInput = {
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: visionPrompt },
+        { type: "image_url", image_url: { url: dataUrl } }
+      ]
+    }],
+    max_tokens: 1024
+  };
   let aiResult;
   try {
-    aiResult = await runLlamaVisionExtract(env, {
-      messages: [{ role: "user", content: visionPrompt }],
-      image: dataUrl,
-      max_tokens: 2048
-    });
+    aiResult = await runLlamaVisionExtract(env, visionInput);
   } catch (error) {
     console.warn("[iaqar-media-extract] vision adapter failed", error && error.message);
     return jsonResponse({ ok: false, error: "media_ai_failed", requestId }, 422);
@@ -3948,16 +3953,6 @@ function bytesToBase64(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
-}
-
-function normalizeVisionImageContentType(contentType, mediaPath) {
-  const normalized = String(contentType || "").trim().toLowerCase();
-  if (normalized.startsWith("image/")) return normalized;
-  const lowerPath = String(mediaPath || "").toLowerCase();
-  if (lowerPath.endsWith(".png")) return "image/png";
-  if (lowerPath.endsWith(".webp")) return "image/webp";
-  if (lowerPath.endsWith(".gif")) return "image/gif";
-  return "image/jpeg";
 }
 
 async function handlePipelineUrlResolve(request, env, requestId) {

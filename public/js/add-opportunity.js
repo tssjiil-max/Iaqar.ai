@@ -26,7 +26,8 @@ const LOCAL_STATE_LABELS = Object.freeze({
   ready: "راجع البيانات ثم اعتماد وحفظ"
 });
 
-const EXTRACTION_TIMEOUT_MS = 40000;
+const EXTRACTION_TIMEOUT_MS = 45000;
+const MEDIA_EXTRACT_TIMEOUT_MS = 90000;
 
 function $(id) {
   return document.getElementById(id);
@@ -272,7 +273,7 @@ async function resolveMediaListingText(mediaPath, officeId) {
     method: "POST",
     headers,
     body: JSON.stringify({ officeId, mediaPath })
-  });
+  }, MEDIA_EXTRACT_TIMEOUT_MS);
   const body = await response.json().catch(() => ({}));
   const text = String(body.text || "").trim();
   if (!response.ok || !body.ok || !text) {
