@@ -26,8 +26,8 @@ const LOCAL_STATE_LABELS = Object.freeze({
   ready: "راجع البيانات ثم اعتماد وحفظ"
 });
 
-const EXTRACTION_TIMEOUT_MS = 45000;
-const MEDIA_EXTRACT_TIMEOUT_MS = 90000;
+const EXTRACTION_TIMEOUT_MS = 40000;
+let extractionTimeoutMs = EXTRACTION_TIMEOUT_MS;
 
 function $(id) {
   return document.getElementById(id);
@@ -151,6 +151,13 @@ function resetForNewIntake() {
   dismissOpportunityReviewIfOpen();
 }
 
+function intakeIdentity(text, file) {
+  const fileIdentity = file
+    ? `${file.name || ""}|${file.type || ""}|${file.size || 0}|${file.lastModified || 0}`
+    : "";
+  return `${String(text || "").trim()}|${fileIdentity}`;
+}
+
 function logExtractionTrace(event, meta = {}) {
   console.info("[iaqar:intake-extraction]", event, {
     status: meta.status ?? null,
@@ -162,9 +169,10 @@ function logExtractionTrace(event, meta = {}) {
   });
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = EXTRACTION_TIMEOUT_MS) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = extractionTimeoutMs) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const boundedTimeout = Math.min(Number(timeoutMs) || EXTRACTION_TIMEOUT_MS, EXTRACTION_TIMEOUT_MS);
+  const timer = window.setTimeout(() => controller.abort(), boundedTimeout);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
@@ -190,7 +198,12 @@ function hasContradictoryCity(fields = {}) {
 
 function canOpenReview(prepared) {
   if (!prepared?.ok) return false;
+  if (!prepared.extraction || prepared.extraction.extractionMode === "simulated_fixture") return false;
   const fields = prepared.fields || {};
+  const hasRealFields = Object.values(fields).some((value) =>
+    value !== null && value !== undefined && String(value).trim() !== ""
+  );
+  if (!hasRealFields) return false;
   if (hasContradictoryCity(fields)) return false;
   if (countCoreFields(fields) < 2) return false;
   return true;
@@ -213,9 +226,8 @@ function clearIntakeForm() {
 }
 
 function clearDraftInput() {
-  lastFailure = null;
+  resetForNewIntake();
   selectedFile = null;
-  resumeIntakeSession = null;
   const input = $("addOpportunityInput");
   if (input) input.value = "";
   const fileInput = $("addOpportunityFile");
@@ -273,7 +285,7 @@ async function resolveMediaListingText(mediaPath, officeId) {
     method: "POST",
     headers,
     body: JSON.stringify({ officeId, mediaPath })
-  }, MEDIA_EXTRACT_TIMEOUT_MS);
+  }, extractionTimeoutMs);
   const body = await response.json().catch(() => ({}));
   const text = String(body.text || "").trim();
   if (!response.ok || !body.ok || !text) {
@@ -347,6 +359,7 @@ async function runExtractionPipeline() {
 
   const input = $("addOpportunityInput");
   const inputText = (input?.value || "").trim();
+  const sourceIdentity = intakeIdentity(inputText, selectedFile);
   const isUrl = detectSourceTypeFromText(inputText) === "url";
   let listingText = inputText;
   let urlDiagnostics = null;
@@ -427,7 +440,8 @@ async function runExtractionPipeline() {
     fileChecksumValue,
     mediaPath,
     fileName: selectedFile?.name || "",
-    contentType: selectedFile?.type || ""
+    contentType: selectedFile?.type || "",
+    sourceIdentity
   };
 
   return prepared;
@@ -522,6 +536,7 @@ async function startExecute() {
     } else {
       setState("failed", error?.message === "upload_failed" ? "فشل رفع الملف" : "");
     }
+    resetForNewIntake();
     lastFailure = { text, file: selectedFile };
   } finally {
     executing = false;
@@ -539,6 +554,8 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     const user = currentUser();
     if (!office?.officeId || !user?.uid) throw new Error("auth_required");
     if (!intakeContext) throw new Error("context_missing");
+    const currentIdentity = intakeIdentity($("addOpportunityInput")?.value || "", selectedFile);
+    if (currentIdentity !== intakeContext.sourceIdentity) throw new Error("context_changed");
 
     const brokerFields = {
       opportunityKind: brokerExtras.opportunityKind,
@@ -547,11 +564,14 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
       city: brokerExtras.city,
       district: brokerExtras.district,
       priceOrBudget: brokerExtras.priceOrBudget,
+      salePrice: brokerExtras.salePrice,
+      budget: brokerExtras.budget,
       area: brokerExtras.area,
       rooms: brokerExtras.rooms,
       bathrooms: brokerExtras.bathrooms,
       floorNumber: brokerExtras.floorNumber,
       annualRent: brokerExtras.annualRent,
+      monthlyRent: brokerExtras.monthlyRent,
       paymentInstallments: brokerExtras.paymentInstallments,
       optionalMonthlyRentAfterSixMonths: brokerExtras.optionalMonthlyRentAfterSixMonths
     };
@@ -663,6 +683,7 @@ function onFileChosen(event) {
     syncExecuteButton();
     return;
   }
+  resetForNewIntake();
   selectedFile = file;
   syncExecuteButton();
   updateAttachmentHint();
@@ -691,7 +712,10 @@ function boot() {
   executeBtn?.addEventListener("click", () => void startExecute());
   $("addOpportunityPaperclip")?.addEventListener("click", onPaperclip);
   $("addOpportunityInputClear")?.addEventListener("click", () => clearDraftInput());
-  $("addOpportunityInput")?.addEventListener("input", () => syncExecuteButton());
+  $("addOpportunityInput")?.addEventListener("input", () => {
+    if (intakeContext || resumeIntakeSession || lastFailure) resetForNewIntake();
+    syncExecuteButton();
+  });
   $("addOpportunityInput")?.addEventListener("change", () => syncExecuteButton());
   fileInput?.addEventListener("change", onFileChosen);
   $("addOpportunityRetry")?.addEventListener("click", () => void startExecute());
@@ -712,7 +736,20 @@ export const __test = {
   syncExecuteButton,
   canOpenReview,
   countCoreFields,
+  fetchWithTimeout,
+  intakeIdentity,
   requestOpportunityExtraction,
-  setSelectedFile(file) { selectedFile = file; },
-  getSelectedFile() { return selectedFile; }
+  resetForNewIntake,
+  setExtractionTimeoutMs(value) {
+    extractionTimeoutMs = Number(value) > 0
+      ? Math.min(Number(value), EXTRACTION_TIMEOUT_MS)
+      : EXTRACTION_TIMEOUT_MS;
+  },
+  setSelectedFile(file) {
+    resetForNewIntake();
+    selectedFile = file;
+  },
+  getSelectedFile() { return selectedFile; },
+  getIntakeContext() { return intakeContext; },
+  getLastFailure() { return lastFailure; }
 };

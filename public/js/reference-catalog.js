@@ -198,6 +198,14 @@ export function mapOperationToBrokerFields(operationId, hintKind = "") {
   return { purpose: op.purpose, opportunityKind };
 }
 
+export function reviewTransactionMode(operationId) {
+  if (operationId === "sale") return "sale";
+  if (operationId === "rent") return "rent";
+  if (operationId === "purchase") return "budget";
+  if (operationId === "investment") return "investment";
+  return "unknown";
+}
+
 export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta = {}) {
   const text = String(sourceText || "");
   const extended = meta.extended || extractionFields.extended || {};
@@ -211,11 +219,12 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
     ? matchDistrict(districtLabel, city?.id || "madinah")
     : null;
 
-  const priceVal = extractionFields.priceOrBudget
-    ?? extended.salePrice
-    ?? extended.annualRent
-    ?? extended.optionalMonthlyRentAfterSixMonths
-    ?? "";
+  const mode = reviewTransactionMode(op?.id || "");
+  const legacyValue = extractionFields.priceOrBudget ?? "";
+  const salePrice = extended.salePrice ?? (mode === "sale" ? legacyValue : "");
+  const annualRent = extended.annualRent ?? (mode === "rent" ? legacyValue : "");
+  const budget = extended.budget ?? (mode === "budget" ? legacyValue : "");
+  const investmentValue = mode === "investment" ? legacyValue : "";
 
   return {
     operationTypeId: op?.id || "",
@@ -225,14 +234,18 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
     cityManual: city ? "" : cityLabel,
     districtId: district?.id || "",
     districtManual: district ? "" : districtLabel,
-    priceOrBudget: priceVal === "" || priceVal == null ? "" : priceVal,
+    salePrice: salePrice === "" || salePrice == null ? "" : salePrice,
+    annualRent: annualRent === "" || annualRent == null ? "" : annualRent,
+    monthlyRent: extended.monthlyRent ?? "",
+    optionalMonthlyRent: extended.optionalMonthlyRentAfterSixMonths ?? "",
+    paymentInstallments: extended.paymentInstallments ?? "",
+    budget: budget === "" || budget == null ? "" : budget,
+    investmentValue: investmentValue === "" || investmentValue == null ? "" : investmentValue,
+    priceOrBudget: legacyValue === "" || legacyValue == null ? "" : legacyValue,
     area: extractionFields.area ?? extended.area ?? "",
     rooms: extractionFields.rooms ?? extended.rooms ?? "",
     bathrooms: extended.bathrooms ?? extractionFields.bathrooms ?? "",
     floorNumber: extended.floorNumber ?? extractionFields.floorNumber ?? "",
-    annualRent: extended.annualRent ?? "",
-    paymentInstallments: extended.paymentInstallments ?? "",
-    optionalMonthlyRent: extended.optionalMonthlyRentAfterSixMonths ?? "",
     needsReview: meta.needsReview || extractionFields.needsReview || {},
     extractedSnapshot: {
       opportunityKind: extractionFields.opportunityKind || "",
@@ -243,7 +256,9 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
       transactionType: extended.transactionType || "",
       bathrooms: extended.bathrooms ?? null,
       floorNumber: extended.floorNumber ?? null,
-      annualRent: extended.annualRent ?? null
+      salePrice: extended.salePrice ?? null,
+      annualRent: extended.annualRent ?? null,
+      budget: extended.budget ?? null
     }
   };
 }
@@ -262,6 +277,39 @@ export function reviewValuesToBrokerFields(review) {
     review.operationTypeId,
     review.extractedSnapshot?.opportunityKind
   );
+  const mode = reviewTransactionMode(review.operationTypeId);
+  const isLand = review.propertyTypeId === "land" || property?.label === "أرض";
+  const salePrice = mode === "sale" && review.salePrice !== "" && review.salePrice != null
+    ? Number(review.salePrice)
+    : null;
+  const annualRent = mode === "rent" && review.annualRent !== "" && review.annualRent != null
+    ? Number(review.annualRent)
+    : null;
+  const monthlyRent = mode === "rent" && review.monthlyRent !== "" && review.monthlyRent != null
+    ? Number(review.monthlyRent)
+    : null;
+  const optionalMonthlyRentAfterSixMonths = mode === "rent"
+    && review.optionalMonthlyRentAfterSixMonths !== ""
+    && review.optionalMonthlyRentAfterSixMonths != null
+    ? Number(review.optionalMonthlyRentAfterSixMonths)
+    : null;
+  const budget = mode === "budget" && review.budget !== "" && review.budget != null
+    ? Number(review.budget)
+    : null;
+  const investmentValue = mode === "investment"
+    && review.investmentValue !== ""
+    && review.investmentValue != null
+    ? Number(review.investmentValue)
+    : null;
+  const priceOrBudget = mode === "sale"
+    ? salePrice
+    : mode === "rent"
+      ? annualRent
+      : mode === "budget"
+        ? budget
+        : mode === "investment"
+          ? investmentValue
+          : null;
 
   let propertyType = property?.label || "";
   if (review.propertyTypeId === "other") propertyType = safeTrim(review.propertyTypeManual);
@@ -277,21 +325,19 @@ export function reviewValuesToBrokerFields(review) {
     propertyType,
     city: cityName === "مدينة أخرى" ? safeTrim(review.cityManual) : cityName,
     district: districtName,
-    priceOrBudget: review.priceOrBudget === "" || review.priceOrBudget == null
-      ? (review.annualRent === "" || review.annualRent == null ? null : Number(review.annualRent))
-      : Number(review.priceOrBudget),
+    salePrice,
+    annualRent,
+    monthlyRent,
+    optionalMonthlyRentAfterSixMonths,
+    budget,
+    priceOrBudget,
     area: review.area === "" || review.area == null ? null : Number(review.area),
-    rooms: review.rooms === "" || review.rooms == null ? null : Number(review.rooms),
-    bathrooms: review.bathrooms === "" || review.bathrooms == null ? null : Number(review.bathrooms),
-    floorNumber: review.floorNumber === "" || review.floorNumber == null ? null : Number(review.floorNumber),
-    annualRent: review.annualRent === "" || review.annualRent == null ? null : Number(review.annualRent),
-    paymentInstallments: review.paymentInstallments === "" || review.paymentInstallments == null
+    rooms: isLand || review.rooms === "" || review.rooms == null ? null : Number(review.rooms),
+    bathrooms: isLand || review.bathrooms === "" || review.bathrooms == null ? null : Number(review.bathrooms),
+    floorNumber: isLand || review.floorNumber === "" || review.floorNumber == null ? null : Number(review.floorNumber),
+    paymentInstallments: mode !== "rent" || review.paymentInstallments === "" || review.paymentInstallments == null
       ? null
       : Number(review.paymentInstallments),
-    optionalMonthlyRentAfterSixMonths: review.optionalMonthlyRentAfterSixMonths === ""
-      || review.optionalMonthlyRentAfterSixMonths == null
-      ? null
-      : Number(review.optionalMonthlyRentAfterSixMonths),
     reviewOperationTypeId: review.operationTypeId,
     reviewPropertyTypeId: review.propertyTypeId,
     reviewCityId: review.cityId,

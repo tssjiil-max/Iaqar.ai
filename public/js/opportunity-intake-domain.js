@@ -58,11 +58,14 @@ export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
 ]);
 
 export const EXTENDED_OPPORTUNITY_FIELDS = Object.freeze([
+  "salePrice",
+  "budget",
   "bathrooms",
   "floorNumber",
   "floorPosition",
   "floorsCount",
   "annualRent",
+  "monthlyRent",
   "paymentInstallments",
   "optionalMonthlyRentAfterSixMonths",
   "livingRoom",
@@ -108,6 +111,107 @@ export function normalizeDigits(value) {
   return String(value == null ? "" : value).replace(/[٠-٩]/g, (digit) =>
     String(digit.charCodeAt(0) - 1632)
   ).replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776));
+}
+
+const PURPOSE_BY_TRANSACTION = Object.freeze({
+  SALE: "SALE",
+  PURCHASE: "PURCHASE",
+  RENT: "RENT",
+  LEASE_REQUEST: "LEASE_REQUEST",
+  INVESTMENT: "INVESTMENT",
+  "بيع": "SALE",
+  "شراء": "PURCHASE",
+  "إيجار": "RENT",
+  "ايجار": "RENT",
+  "طلب إيجار": "LEASE_REQUEST",
+  "طلب ايجار": "LEASE_REQUEST",
+  "استثمار": "INVESTMENT"
+});
+
+const TRANSACTION_BY_PURPOSE = Object.freeze({
+  SALE: "بيع",
+  PURCHASE: "شراء",
+  RENT: "إيجار",
+  LEASE_REQUEST: "طلب إيجار",
+  INVESTMENT: "استثمار"
+});
+
+const NUMERIC_FIELDS = new Set([
+  "salePrice",
+  "annualRent",
+  "monthlyRent",
+  "optionalMonthlyRentAfterSixMonths",
+  "paymentInstallments",
+  "budget",
+  "priceOrBudget",
+  "area",
+  "rooms",
+  "bathrooms",
+  "floorNumber",
+  "floorsCount"
+]);
+
+function nullableNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(normalizeDigits(value).replace(/,/g, ""));
+  return Number.isFinite(number) ? number : null;
+}
+
+export function normalizePurpose(value) {
+  const text = safeText(value, 30);
+  return PURPOSE_BY_TRANSACTION[text.toUpperCase()] || PURPOSE_BY_TRANSACTION[text] || "";
+}
+
+export function isLandProperty(value) {
+  return /أرض|ارض/.test(safeText(value, 40));
+}
+
+export function normalizeOpportunityFinancials(fields = {}) {
+  const purpose = normalizePurpose(fields.purpose || fields.transactionType || fields.transactionTypeLabel);
+  const legacy = nullableNumber(fields.priceOrBudget ?? fields.price);
+  const salePrice = purpose === "SALE" ? (nullableNumber(fields.salePrice) ?? legacy) : null;
+  const annualRent = purpose === "RENT" ? (nullableNumber(fields.annualRent) ?? legacy) : null;
+  const monthlyRent = purpose === "RENT" ? nullableNumber(fields.monthlyRent) : null;
+  const optionalMonthlyRentAfterSixMonths = purpose === "RENT"
+    ? nullableNumber(fields.optionalMonthlyRentAfterSixMonths)
+    : null;
+  const paymentInstallments = purpose === "RENT" ? nullableNumber(fields.paymentInstallments) : null;
+  const budget = purpose === "PURCHASE" || purpose === "LEASE_REQUEST"
+    ? (nullableNumber(fields.budget) ?? legacy)
+    : null;
+  const priceOrBudget = purpose === "SALE"
+    ? salePrice
+    : purpose === "RENT"
+      ? annualRent
+      : purpose === "PURCHASE" || purpose === "LEASE_REQUEST"
+        ? budget
+        : purpose === "INVESTMENT"
+          ? legacy
+          : legacy;
+  return {
+    ...fields,
+    purpose,
+    transactionType: TRANSACTION_BY_PURPOSE[purpose] || "",
+    salePrice,
+    annualRent,
+    monthlyRent,
+    optionalMonthlyRentAfterSixMonths,
+    paymentInstallments,
+    budget,
+    priceOrBudget
+  };
+}
+
+export function requiredOpportunityFieldsFor(fields = {}) {
+  const normalized = normalizeOpportunityFinancials(fields);
+  const required = ["opportunityKind", "purpose", "propertyType", "city", "district"];
+  if (normalized.purpose === "SALE") required.push("salePrice");
+  else if (normalized.purpose === "RENT") required.push("annualRent");
+  else if (normalized.purpose === "PURCHASE" || normalized.purpose === "LEASE_REQUEST") required.push("budget");
+  else if (normalized.purpose === "INVESTMENT") required.push("priceOrBudget");
+  required.push("area");
+  if (!isLandProperty(normalized.propertyType)) required.push("rooms");
+  return required;
 }
 
 export function isHttpUrl(value) {
@@ -277,18 +381,21 @@ function countFilled(fields) {
 }
 
 export function listMissingFields(fields) {
-  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => {
-    const value = fields?.[key];
+  const normalized = normalizeOpportunityFinancials(fields);
+  return requiredOpportunityFieldsFor(normalized).filter((key) => {
+    const value = normalized[key];
     return value === null || value === undefined || String(value).trim() === "";
   });
 }
 
 export function computeDataCompleteness(fields) {
-  const missing = listMissingFields(fields);
-  const filled = REQUIRED_OPPORTUNITY_FIELDS.length - missing.length;
+  const normalized = normalizeOpportunityFinancials(fields);
+  const required = requiredOpportunityFieldsFor(normalized);
+  const missing = listMissingFields(normalized);
+  const filled = required.length - missing.length;
   return {
     missingFields: missing,
-    dataCompleteness: Math.round((filled / REQUIRED_OPPORTUNITY_FIELDS.length) * 100),
+    dataCompleteness: Math.round((filled / required.length) * 100),
     isComplete: missing.length === 0
   };
 }
@@ -343,7 +450,8 @@ export function buildOpportunityRecord({
   now = new Date(),
   existingId = ""
 }) {
-  const completeness = computeDataCompleteness(fields);
+  const normalizedFields = normalizeOpportunityFinancials(fields);
+  const completeness = computeDataCompleteness(normalizedFields);
   const internalStatus = completeness.isComplete ? "READY" : "NEEDS_DATA";
   const id = existingId || opportunityDocumentId(deduplicationFingerprint);
   const timestamp = now.toISOString();
@@ -359,19 +467,23 @@ export function buildOpportunityRecord({
     updatedAt: timestamp,
     sourceType,
     sourceReference: safeText(sourceReference, 500),
-    opportunityKind: safeText(fields.opportunityKind, 20),
-    purpose: safeText(fields.purpose, 20),
-    propertyType: safeText(fields.propertyType, 40),
-    city: safeText(fields.city, 80),
-    district: safeText(fields.district, 80),
-    priceOrBudget: fields.priceOrBudget == null || fields.priceOrBudget === ""
+    opportunityKind: safeText(normalizedFields.opportunityKind, 20),
+    purpose: normalizedFields.purpose,
+    propertyType: safeText(normalizedFields.propertyType, 40),
+    city: safeText(normalizedFields.city, 80),
+    district: safeText(normalizedFields.district, 80),
+    salePrice: normalizedFields.salePrice,
+    annualRent: normalizedFields.annualRent,
+    monthlyRent: normalizedFields.monthlyRent,
+    optionalMonthlyRentAfterSixMonths: normalizedFields.optionalMonthlyRentAfterSixMonths,
+    paymentInstallments: normalizedFields.paymentInstallments,
+    budget: normalizedFields.budget,
+    priceOrBudget: normalizedFields.priceOrBudget,
+    price: normalizedFields.priceOrBudget,
+    area: normalizedFields.area == null || normalizedFields.area === "" ? null : Number(normalizedFields.area),
+    rooms: isLandProperty(normalizedFields.propertyType)
       ? null
-      : Number(fields.priceOrBudget),
-    price: fields.priceOrBudget == null || fields.priceOrBudget === ""
-      ? null
-      : Number(fields.priceOrBudget),
-    area: fields.area == null || fields.area === "" ? null : Number(fields.area),
-    rooms: fields.rooms == null || fields.rooms === "" ? null : Number(fields.rooms),
+      : (normalizedFields.rooms == null || normalizedFields.rooms === "" ? null : Number(normalizedFields.rooms)),
     extractionConfidence: Number(extraction?.extractionConfidence || 0),
     dataCompleteness: completeness.dataCompleteness,
     internalStatus,
@@ -385,22 +497,18 @@ export function buildOpportunityRecord({
     cooperationStatus: "NOT_SHARED",
     version: 1,
     // Extended structured extraction (backward-compatible optional fields).
-    bathrooms: extraction?.extended?.bathrooms ?? fields.bathrooms ?? null,
-    floorNumber: extraction?.extended?.floorNumber ?? fields.floorNumber ?? null,
-    floorPosition: extraction?.extended?.floorPosition ?? fields.floorPosition ?? null,
-    floorsCount: extraction?.extended?.floorsCount ?? fields.floorsCount ?? null,
-    annualRent: extraction?.extended?.annualRent ?? fields.annualRent ?? null,
-    paymentInstallments: extraction?.extended?.paymentInstallments ?? fields.paymentInstallments ?? null,
-    optionalMonthlyRentAfterSixMonths:
-      extraction?.extended?.optionalMonthlyRentAfterSixMonths ?? fields.optionalMonthlyRentAfterSixMonths ?? null,
-    livingRoom: extraction?.extended?.livingRoom ?? fields.livingRoom ?? null,
-    kitchen: extraction?.extended?.kitchen ?? fields.kitchen ?? null,
-    condition: extraction?.extended?.condition ?? fields.condition ?? null,
-    electricityMeter: extraction?.extended?.electricityMeter ?? fields.electricityMeter ?? null,
-    waterAndSewagePaidBy: extraction?.extended?.waterAndSewagePaidBy ?? fields.waterAndSewagePaidBy ?? null,
-    electricityPaidBy: extraction?.extended?.electricityPaidBy ?? fields.electricityPaidBy ?? null,
-    ownerConditions: extraction?.extended?.ownerConditions ?? fields.ownerConditions ?? null,
-    transactionTypeLabel: extraction?.extended?.transactionType ?? fields.transactionTypeLabel ?? null,
+    bathrooms: isLandProperty(normalizedFields.propertyType) ? null : (normalizedFields.bathrooms ?? null),
+    floorNumber: isLandProperty(normalizedFields.propertyType) ? null : (normalizedFields.floorNumber ?? null),
+    floorPosition: normalizedFields.floorPosition ?? null,
+    floorsCount: normalizedFields.floorsCount ?? null,
+    livingRoom: normalizedFields.livingRoom ?? null,
+    kitchen: normalizedFields.kitchen ?? null,
+    condition: normalizedFields.condition ?? null,
+    electricityMeter: normalizedFields.electricityMeter ?? null,
+    waterAndSewagePaidBy: normalizedFields.waterAndSewagePaidBy ?? null,
+    electricityPaidBy: normalizedFields.electricityPaidBy ?? null,
+    ownerConditions: normalizedFields.ownerConditions ?? null,
+    transactionTypeLabel: normalizedFields.transactionType || null,
     extractionFieldEvidence: extraction?.fieldEvidence || null,
     extractionNeedsReview: extraction?.needsReview || null,
     advertiserPhoneRaw: safeText(fields.advertiserPhoneRaw, 40),
@@ -413,7 +521,7 @@ export function buildOpportunityRecord({
     lastContactAt: fields.lastContactAt || null,
     contactNotes: safeText(fields.contactNotes, 500),
     // Legacy projection helpers used by the Opportunity Bank list.
-    recordType: fields.opportunityKind === "OFFER" ? "owner" : "client",
+    recordType: normalizedFields.opportunityKind === "OFFER" ? "owner" : "client",
     status: "active",
     schemaVersion: 4
   };
@@ -450,17 +558,26 @@ export function buildSourceRecord({
 }
 
 export function mergeBrokerProvidedFields(baseFields, provided = {}) {
-  const next = { ...baseFields };
-  for (const key of REQUIRED_OPPORTUNITY_FIELDS) {
-    if (provided[key] !== undefined && provided[key] !== null && String(provided[key]).trim() !== "") {
-      next[key] = typeof baseFields[key] === "number" || key === "priceOrBudget" || key === "area" || key === "rooms"
-        ? (Number(provided[key]) || provided[key])
-        : safeText(provided[key], 80);
-    }
+  const normalizedBase = normalizeOpportunityFinancials(baseFields);
+  const nextPurpose = Object.prototype.hasOwnProperty.call(provided, "purpose")
+    ? normalizePurpose(provided.purpose)
+    : normalizedBase.purpose;
+  const purposeChanged = Boolean(normalizedBase.purpose && nextPurpose && normalizedBase.purpose !== nextPurpose);
+  const next = { ...normalizedBase };
+  if (purposeChanged) {
+    for (const key of [
+      "salePrice", "annualRent", "monthlyRent", "optionalMonthlyRentAfterSixMonths",
+      "paymentInstallments", "budget", "priceOrBudget"
+    ]) next[key] = null;
   }
-  for (const key of EXTENDED_OPPORTUNITY_FIELDS) {
+  for (const key of [...REQUIRED_OPPORTUNITY_FIELDS, ...EXTENDED_OPPORTUNITY_FIELDS]) {
+    if (!Object.prototype.hasOwnProperty.call(provided, key)) continue;
     const value = provided[key];
-    if (value === undefined || value === null) continue;
+    if (value === undefined) continue;
+    if (value === null || String(value).trim() === "") {
+      next[key] = NUMERIC_FIELDS.has(key) ? null : "";
+      continue;
+    }
     if (Array.isArray(value) && value.length) {
       next[key] = value;
       continue;
@@ -469,11 +586,9 @@ export function mergeBrokerProvidedFields(baseFields, provided = {}) {
       next[key] = value;
       continue;
     }
-    if (String(value).trim() !== "") {
-      next[key] = typeof value === "number" ? value : safeText(value, 120);
-    }
+    next[key] = NUMERIC_FIELDS.has(key) ? nullableNumber(value) : safeText(value, 120);
   }
-  return next;
+  return normalizeOpportunityFinancials(next);
 }
 
 /**
@@ -560,6 +675,7 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
     fields = { ...fields, ...extraction.extended };
   }
   if (input.brokerFields) fields = mergeBrokerProvidedFields(fields, input.brokerFields);
+  else fields = normalizeOpportunityFinancials(fields);
 
   const completeness = computeDataCompleteness(fields);
   const source = buildSourceRecord({

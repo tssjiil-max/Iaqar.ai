@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readRepositoryFile } from "./helpers/shell.mjs";
+import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
 function hasValidInputFromValues(text, file) {
   return String(text || "").trim().length > 0 || Boolean(file);
@@ -23,11 +23,176 @@ test("hasValidInput: file alone is valid", () => {
 test("add-opportunity.js wires syncExecuteButton on input", () => {
   const source = readRepositoryFile("public", "js", "add-opportunity.js");
   assert.ok(source.includes("function syncExecuteButton"));
-  assert.ok(source.includes("addEventListener(\"input\", () => syncExecuteButton())"));
+  assert.ok(source.includes("addEventListener(\"input\", () => {"));
   assert.ok(source.includes("hasValidInputFromValues"));
 });
 
 test("index.html uses single-row grid for add opportunity", () => {
   const html = readRepositoryFile("public", "index.html");
   assert.ok(html.includes("grid-template-columns:minmax(0, 1fr) 96px"));
+});
+
+test("approved modern shell keeps تنفيذ, Workspace, and no old FAL banner", () => {
+  const html = readRepositoryFile("public", "index.html");
+  assert.equal(html.includes("license-banner"), false);
+  assert.equal(html.includes("الهيئة العامة للعقار"), false);
+  assert.match(html, /id="addOpportunitySubmit"[^>]*>تنفيذ<\/button>/);
+  assert.equal(html.includes(">معالجة</button>"), false);
+  assert.ok(html.includes("مساحة العمل"));
+  assert.ok(html.includes("office-name-bar"));
+});
+
+test("Review gate accepts real partial fields and rejects simulated or empty extraction", async () => {
+  const { context, module } = await loadController();
+  try {
+    assert.equal(module.__test.canOpenReview({
+      ok: true,
+      fields: { propertyType: "أرض", city: "المدينة المنورة" },
+      extraction: { extractionMode: "deterministic_text_parser" }
+    }), true);
+    assert.equal(module.__test.canOpenReview({
+      ok: true,
+      fields: { propertyType: "أرض", city: "المدينة المنورة" },
+      extraction: { extractionMode: "simulated_fixture" }
+    }), false);
+    assert.equal(module.__test.canOpenReview({
+      ok: true,
+      fields: {},
+      extraction: { extractionMode: "deterministic_text_parser" }
+    }), false);
+  } finally {
+    context.close();
+  }
+});
+
+let controllerInstance = 0;
+
+async function loadController(fetchStub = null) {
+  const user = { uid: "broker-a", getIdToken: async () => "token" };
+  const firebase = {
+    auth: () => ({ currentUser: user }),
+    firestore: () => null
+  };
+  const context = await loadShell({
+    bootSettingsModule: false,
+    firebase,
+    officeRuntime: { officeId: "office-a", city: "الرياض" },
+    fetch: fetchStub
+  });
+  context.window.IAQAR.resolveWorkerBase = () => "https://staging-worker.example.test";
+  const specifier = new URL("../public/js/add-opportunity.js", import.meta.url);
+  specifier.searchParams.set("executeTest", String(++controllerInstance));
+  const module = await import(specifier.href);
+  return { context, module };
+}
+
+function hiddenField(document, name) {
+  return document.querySelector(`[name="${name}"]`)?.closest("label")?.hidden;
+}
+
+test("sale-land Review shows sale price only and hides rent/building fields", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = [
+      "أرض للبيع",
+      "المدينة المنورة",
+      "حي الرانوناء،",
+      "المساحة 431.75 م²",
+      "السعر المطلوب 580000 ريال",
+      "جوال: 0507561577"
+    ].join(" ");
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+
+    assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
+    assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "sale");
+    assert.equal(context.document.querySelector('[name="propertyTypeId"]').value, "land");
+    assert.equal(context.document.querySelector('[name="salePrice"]').value, "580000");
+    assert.equal(hiddenField(context.document, "salePrice"), false);
+    assert.equal(hiddenField(context.document, "annualRent"), true);
+    assert.equal(hiddenField(context.document, "monthlyRent"), true);
+    assert.equal(hiddenField(context.document, "paymentInstallments"), true);
+    assert.equal(hiddenField(context.document, "rooms"), true);
+    assert.equal(hiddenField(context.document, "bathrooms"), true);
+    assert.equal(context.document.querySelector('[name="advertiserPhoneLocal"]').value, "507561577");
+  } finally {
+    context.close();
+  }
+});
+
+test("rental Review shows rent fields and hides sale price", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "شقة للإيجار حي السلام، 4 غرف صالة مطبخ 3 دورات مياه الدور الأول 22000 ريال سنويًا على دفعتين بعد أول 6 أشهر يمكن الاستمرار شهريًا بـ1850 ريال";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+
+    assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "rent");
+    assert.equal(context.document.querySelector('[name="annualRent"]').value, "22000");
+    assert.equal(context.document.querySelector('[name="paymentInstallments"]').value, "2");
+    assert.equal(context.document.querySelector('[name="optionalMonthlyRent"]').value, "1850");
+    assert.equal(context.document.querySelector('[name="rooms"]').value, "4");
+    assert.equal(context.document.querySelector('[name="bathrooms"]').value, "3");
+    assert.equal(context.document.querySelector('[name="floorNumber"]').value, "1");
+    assert.equal(hiddenField(context.document, "salePrice"), true);
+    assert.equal(hiddenField(context.document, "annualRent"), false);
+  } finally {
+    context.close();
+  }
+});
+
+test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "أرض للبيع في الرياض حي النرجس، المساحة 500 م² السعر المطلوب 600000 ريال";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+
+    input.value = "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    assert.equal(module.__test.getIntakeContext(), null);
+    assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
+
+    await module.__test.startExecute();
+    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "المدينة المنورة");
+    assert.notEqual(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.match(module.__test.getIntakeContext().listingText, /المدينة المنورة/);
+  } finally {
+    context.close();
+  }
+});
+
+test("hanging extraction aborts into failed state and releases busy UI", async () => {
+  let aborted = false;
+  const fetchStub = async (_url, options = {}) => new Promise((_resolve, reject) => {
+    options.signal?.addEventListener("abort", () => {
+      aborted = true;
+      reject(new DOMException("aborted", "AbortError"));
+    }, { once: true });
+  });
+  const { context, module } = await loadController(fetchStub);
+  try {
+    module.__test.setExtractionTimeoutMs(10);
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "https://example.test/listing";
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    const started = Date.now();
+    await module.__test.startExecute();
+
+    assert.equal(aborted, true);
+    assert.ok(Date.now() - started < 1000);
+    assert.equal(context.document.getElementById("addOpportunityStatus").dataset.state, "failed");
+    assert.match(context.document.getElementById("addOpportunityStatus").textContent, /تعذر إكمال تحليل الإعلان/);
+    assert.equal(context.document.getElementById("addOpportunitySubmit").disabled, false);
+    assert.equal(context.document.getElementById("addOpportunitySubmit").textContent, "تنفيذ");
+    assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
+    assert.equal(module.__test.getIntakeContext(), null);
+    assert.equal(context.document.getElementById("addOpportunityRetry").hidden, false);
+  } finally {
+    context.close();
+  }
 });

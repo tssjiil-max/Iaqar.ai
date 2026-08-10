@@ -11,6 +11,7 @@ import {
   buildReviewDefaults,
   districtsForCity,
   filterBySearch,
+  reviewTransactionMode,
   reviewValuesToBrokerFields
 } from "./reference-catalog.js";
 import {
@@ -157,11 +158,17 @@ function renderReviewForm(defaults) {
   const body = $("opportunityReviewBody");
   if (!body) return;
   const needs = defaults.needsReview || {};
+  const mode = reviewTransactionMode(defaults.operationTypeId);
   const snapshotLines = [
     defaults.extractedSnapshot?.transactionType,
     defaults.extractedSnapshot?.propertyType,
     defaults.extractedSnapshot?.district,
-    defaults.extractedSnapshot?.annualRent ? `${defaults.extractedSnapshot.annualRent} ريال سنوي` : ""
+    mode === "sale" && defaults.extractedSnapshot?.salePrice
+      ? `${defaults.extractedSnapshot.salePrice} ريال سعر بيع`
+      : "",
+    mode === "rent" && defaults.extractedSnapshot?.annualRent
+      ? `${defaults.extractedSnapshot.annualRent} ريال سنوي`
+      : ""
   ].filter(Boolean);
 
   body.innerHTML = `
@@ -176,14 +183,17 @@ function renderReviewForm(defaults) {
       ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
       ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
       ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
-      ${numericField("annualRent", reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs), defaults.annualRent || defaults.priceOrBudget)}
-      ${numericField("optionalMonthlyRent", "الإيجار الشهري الاختياري (ريال)", defaults.optionalMonthlyRent)}
-      ${numericField("paymentInstallments", reviewLabel("paymentInstallments", "عدد الدفعات", needs), defaults.paymentInstallments)}
-      ${numericField("priceOrBudget", "السعر / الميزانية (ريال)", defaults.priceOrBudget)}
+      ${numericField("salePrice", reviewLabel("salePrice", "السعر المطلوب (ريال)", needs), defaults.salePrice, { group: "sale" })}
+      ${numericField("annualRent", reviewLabel("annualRent", "الإيجار السنوي (ريال)", needs), defaults.annualRent, { group: "rent" })}
+      ${numericField("monthlyRent", "الإيجار الشهري (ريال)", defaults.monthlyRent, { group: "rent" })}
+      ${numericField("optionalMonthlyRent", "الإيجار الشهري الاختياري بعد أول 6 أشهر (ريال)", defaults.optionalMonthlyRent, { group: "rent" })}
+      ${numericField("paymentInstallments", reviewLabel("paymentInstallments", "عدد الدفعات", needs), defaults.paymentInstallments, { group: "rent" })}
+      ${numericField("budget", "الميزانية (ريال)", defaults.budget, { group: "budget" })}
+      ${numericField("investmentValue", "القيمة الاستثمارية (ريال)", defaults.investmentValue, { group: "investment" })}
       ${numericField("area", reviewLabel("area", "المساحة (م²)", needs), defaults.area)}
-      ${numericField("rooms", reviewLabel("rooms", "عدد الغرف", needs), defaults.rooms)}
-      ${numericField("bathrooms", reviewLabel("bathrooms", "دورات المياه", needs), defaults.bathrooms)}
-      ${numericField("floorNumber", reviewLabel("floorNumber", "رقم الدور / الطابق", needs), defaults.floorNumber)}
+      ${numericField("rooms", reviewLabel("rooms", "عدد الغرف", needs), defaults.rooms, { buildingOnly: true })}
+      ${numericField("bathrooms", reviewLabel("bathrooms", "دورات المياه", needs), defaults.bathrooms, { buildingOnly: true })}
+      ${numericField("floorNumber", reviewLabel("floorNumber", "رقم الدور / الطابق", needs), defaults.floorNumber, { buildingOnly: true })}
       ${renderAdvertiserSection(defaults)}
       <div class="review-actions">
         <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
@@ -194,6 +204,7 @@ function renderReviewForm(defaults) {
   `;
 
   wireSearchFields(body);
+  syncReviewConditionalVisibility(body);
   wireAdvertiserSection();
   const form = $("opportunityReviewForm");
   form?.addEventListener("submit", (event) => {
@@ -376,10 +387,12 @@ function manualField(name, label, value, visible) {
   `;
 }
 
-function numericField(name, label, value) {
+function numericField(name, label, value, options = {}) {
   const display = value === "" || value == null ? "" : String(value);
+  const group = options.group ? ` data-transaction-group="${escapeHtml(options.group)}"` : "";
+  const buildingOnly = options.buildingOnly ? " data-building-only=\"true\"" : "";
   return `
-    <label class="review-field">
+    <label class="review-field"${group}${buildingOnly}>
       <span>${label}</span>
       <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal">
     </label>
@@ -419,10 +432,26 @@ function wireSearchFields(root) {
       list.hidden = true;
       syncManualVisibility(root);
       if (field === "cityId") refreshDistrictField(root);
+      if (field === "operationTypeId" || field === "propertyTypeId") {
+        syncReviewConditionalVisibility(root);
+      }
     });
     document.addEventListener("click", (event) => {
       if (!input.parentElement.contains(event.target)) list.hidden = true;
     });
+  });
+}
+
+function syncReviewConditionalVisibility(root) {
+  const operationId = root.querySelector('input[name="operationTypeId"]')?.value || "";
+  const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value || "";
+  const mode = reviewTransactionMode(operationId);
+  root.querySelectorAll("[data-transaction-group]").forEach((field) => {
+    field.hidden = field.dataset.transactionGroup !== mode;
+  });
+  const land = propertyId === "land";
+  root.querySelectorAll("[data-building-only]").forEach((field) => {
+    field.hidden = land;
   });
 }
 
@@ -452,6 +481,8 @@ function readReviewForm() {
   const form = $("opportunityReviewForm");
   if (!form) return null;
   const data = Object.fromEntries(new FormData(form).entries());
+  const mode = reviewTransactionMode(data.operationTypeId || "");
+  const land = data.propertyTypeId === "land";
   return {
     operationTypeId: data.operationTypeId || "",
     propertyTypeId: data.propertyTypeId || "",
@@ -460,14 +491,17 @@ function readReviewForm() {
     cityManual: data.cityManual || "",
     districtId: data.districtId || "",
     districtManual: data.districtManual || "",
-    priceOrBudget: data.priceOrBudget || data.annualRent || "",
+    salePrice: mode === "sale" ? (data.salePrice || "") : "",
+    annualRent: mode === "rent" ? (data.annualRent || "") : "",
+    monthlyRent: mode === "rent" ? (data.monthlyRent || "") : "",
+    optionalMonthlyRentAfterSixMonths: mode === "rent" ? (data.optionalMonthlyRent || "") : "",
+    paymentInstallments: mode === "rent" ? (data.paymentInstallments || "") : "",
+    budget: mode === "budget" ? (data.budget || "") : "",
+    investmentValue: mode === "investment" ? (data.investmentValue || "") : "",
     area: data.area || "",
-    rooms: data.rooms || "",
-    bathrooms: data.bathrooms || "",
-    floorNumber: data.floorNumber || "",
-    annualRent: data.annualRent || "",
-    paymentInstallments: data.paymentInstallments || "",
-    optionalMonthlyRentAfterSixMonths: data.optionalMonthlyRent || "",
+    rooms: land ? "" : (data.rooms || ""),
+    bathrooms: land ? "" : (data.bathrooms || ""),
+    floorNumber: land ? "" : (data.floorNumber || ""),
     extractedSnapshot: activeDraft?.fields ? {
       opportunityKind: activeDraft.fields.opportunityKind || "",
       purpose: activeDraft.fields.purpose || "",
@@ -561,5 +595,6 @@ export const __test = {
   buildReviewDefaults,
   reviewValuesToBrokerFields,
   readReviewForm,
+  syncReviewConditionalVisibility,
   extractAdvertiserPhonesFromText
 };

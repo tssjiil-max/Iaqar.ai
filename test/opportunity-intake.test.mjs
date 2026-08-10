@@ -207,8 +207,41 @@ test("successful Opportunity persistence payload includes every required field",
     assert.ok(key in opportunity, `missing ${key}`);
   }
   assert.equal(opportunity.productionAi, false);
+  assert.equal(opportunity.salePrice, 2500000);
+  assert.equal(opportunity.annualRent, null);
+  assert.equal(opportunity.budget, null);
   assert.equal(computeDataCompleteness(fields).isComplete, true);
   assert.deepEqual(listMissingFields({ ...fields, district: "" }), ["district"]);
+});
+
+test("land completeness and persistence do not require building room fields", () => {
+  const fields = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الرانوناء",
+    salePrice: 580000,
+    priceOrBudget: 580000,
+    area: 431.75,
+    rooms: null,
+    bathrooms: 3
+  };
+  assert.equal(computeDataCompleteness(fields).isComplete, true);
+  assert.deepEqual(listMissingFields(fields), []);
+  const opportunity = buildOpportunityRecord({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    sourceType: "text",
+    sourceReference: "src_land",
+    fields,
+    extraction: { extended: { salePrice: 580000, annualRent: null } },
+    deduplicationFingerprint: "land-fingerprint"
+  });
+  assert.equal(opportunity.salePrice, 580000);
+  assert.equal(opportunity.annualRent, null);
+  assert.equal(opportunity.rooms, null);
+  assert.equal(opportunity.bathrooms, null);
 });
 
 test("attachment intake uses simulated fixtures and never claims production AI", async () => {
