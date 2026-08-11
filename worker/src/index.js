@@ -1151,6 +1151,7 @@ function structuredPublicIntakeToParsed(intake) {
     priceMin: isOwner ? amount : (detailsParsed.priceMin || 0),
     priceMax: isOwner ? amount : (amount || detailsParsed.priceMax || detailsParsed.price || 0),
     area: Number(intake.area || detailsParsed.area || 0), rooms: Number(intake.rooms || detailsParsed.rooms || 0),
+    bathrooms: Number(intake.bathrooms || detailsParsed.bathrooms || 0),
     streetWidth: Number(intake.streetWidth || detailsParsed.streetWidth || 0), phone, senderName,
     urgency: detailsParsed.urgency || "normal", financingReady: Boolean(intake.financingReady || detailsParsed.financingReady),
     directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
@@ -3799,6 +3800,11 @@ function extractListingTextFromHtml(html) {
   return cleanText(combined.replace(/\s+/g, " "), 12000);
 }
 
+function isListingFetchBlockedText(text) {
+  const sample = cleanText(text, 4000);
+  return /You have been blocked|تم حظرك|لا يمكنك الوصول للموقع|حمايتها من الهجمات/i.test(sample);
+}
+
 async function fetchListingPage(url, redirectCount = 0) {
   if (redirectCount > LISTING_FETCH_MAX_REDIRECTS) {
     return { ok: false, error: "too_many_redirects" };
@@ -3838,6 +3844,13 @@ async function fetchListingPage(url, redirectCount = 0) {
     }
     const html = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
     const text = extractListingTextFromHtml(html);
+    if (isListingFetchBlockedText(text)) {
+      return {
+        ok: false,
+        error: "source_blocked",
+        diagnostics: { status, contentType, byteLength: buffer.byteLength, textLength: text.length, blocked: true }
+      };
+    }
     if (!text) {
       return {
         ok: false,

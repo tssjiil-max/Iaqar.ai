@@ -74,6 +74,16 @@ function workerBase() {
   return PRODUCTION_WORKER_BASE;
 }
 
+async function readOfficeCityDefault() {
+  const office = currentOffice();
+  if (!office?.db || !office.officeId || office.officeId === "platform") return "";
+  try {
+    const snap = await office.db.collection("publicOffices").doc(office.officeId).get();
+    if (snap.exists) return String(snap.data()?.city || "").trim();
+  } catch (_) { /* ignore */ }
+  return "";
+}
+
 async function authHeader() {
   const user = currentUser();
   if (!user?.getIdToken) return {};
@@ -198,6 +208,7 @@ function hasContradictoryCity(fields = {}) {
 }
 
 function canOpenReview(prepared) {
+  if (prepared?.manualUrlContinuation) return true;
   if (!prepared?.ok) return false;
   if (!prepared.extraction || prepared.extraction.extractionMode === "simulated_fixture") return false;
   const fields = prepared.fields || {};
@@ -371,17 +382,38 @@ async function runExtractionPipeline() {
   let listingText = inputText;
   let urlDiagnostics = null;
   let mediaExtractionMode = "";
+  let manualUrlMeta = null;
 
   if (isUrl) {
     setState("analyzing");
     const resolved = await resolveUrlListingText(normalizedInputUrl, office.officeId);
     if (!resolved.ok) {
-      const err = new Error("url_extraction_failed");
-      err.diagnostics = resolved.diagnostics;
-      throw err;
+      const blockedErrors = new Set([
+        "source_blocked",
+        "dns_failed",
+        "fetch_failed",
+        "redirect_blocked",
+        "fetch_timeout"
+      ]);
+      if (blockedErrors.has(String(resolved.error || ""))) {
+        listingText = "";
+        urlDiagnostics = resolved.diagnostics || null;
+        manualUrlMeta = {
+          manualUrlContinuation: true,
+          urlBlockedReason: resolved.error || "url_resolve_failed",
+          urlBlockedMessage: resolved.error === "source_blocked"
+            ? "منصة عقار تمنع الجلب التلقائي من الخادم. يمكنك إكمال البيانات يدويًا."
+            : "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا."
+        };
+      } else {
+        const err = new Error("url_extraction_failed");
+        err.diagnostics = resolved.diagnostics;
+        throw err;
+      }
+    } else {
+      listingText = resolved.text;
+      urlDiagnostics = resolved.diagnostics;
     }
-    listingText = resolved.text;
-    urlDiagnostics = resolved.diagnostics;
   }
 
   let fileChecksumValue = "";
@@ -421,11 +453,18 @@ async function runExtractionPipeline() {
     fileName: selectedFile?.name || "",
     contentType: selectedFile?.type || "",
     byteSize: selectedFile?.size || 0,
-    allowIncomplete: true
+    allowIncomplete: true,
+    allowUrlWithoutListing: Boolean(manualUrlMeta?.manualUrlContinuation)
   }, createExtractionAdapter());
 
   if (!prepared.ok) {
     throw new Error(prepared.error || "prepare_failed");
+  }
+
+  if (manualUrlMeta?.manualUrlContinuation) {
+    prepared.manualUrlContinuation = true;
+    prepared.urlBlockedMessage = manualUrlMeta.urlBlockedMessage || "";
+    prepared.urlBlockedReason = manualUrlMeta.urlBlockedReason || "";
   }
 
   if (mediaPath) prepared.source.mediaPath = mediaPath;
@@ -439,6 +478,7 @@ async function runExtractionPipeline() {
   }
 
   intakeContext = {
+    ...(manualUrlMeta || {}),
     inputText,
     listingText,
     sourceUrl: isUrl ? normalizedInputUrl : "",
@@ -518,10 +558,17 @@ async function startExecute() {
 
   try {
     const prepared = await requestOpportunityExtraction();
+    if (!prepared.fields?.city) {
+      const defaultCity = await readOfficeCityDefault();
+      if (defaultCity) prepared.fields.city = defaultCity;
+    }
     if (!canOpenReview(prepared)) {
       throw new Error("extraction_failed");
     }
     setState("ready");
+    if (prepared.urlBlockedMessage) {
+      setState("missing_information", prepared.urlBlockedMessage);
+    }
     resumeIntakeSession = {
       preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
     };

@@ -2368,7 +2368,8 @@
     gap:6px;
   }
 
-  .bank-share-scope-actions input[type=text] {
+  .bank-share-scope-actions input[type=text],
+  .bank-share-scope-actions input[type=search] {
     width:100%;
     min-height:40px;
     border:1px solid var(--line);
@@ -2379,9 +2380,45 @@
     background:#fff;
   }
 
+  .bank-office-search-label {
+    font-size:12px;
+    font-weight:800;
+    color:var(--muted);
+  }
+
+  .bank-office-search-results {
+    display:grid;
+    gap:6px;
+    margin-top:4px;
+  }
+
+  .bank-office-search-item {
+    display:grid;
+    gap:2px;
+    text-align:right;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px 10px;
+    background:#fff;
+    cursor:pointer;
+    font:inherit;
+  }
+
+  .bank-office-search-item span {
+    color:var(--muted);
+    font-size:11px;
+  }
+
+  .bank-share-selected-office {
+    margin:4px 0 0;
+    font-size:12px;
+    font-weight:800;
+    color:var(--brand-dark);
+  }
+
   .bank-share-scope-actions .bank-action-row {
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:1fr;
     gap:6px;
   }
 
@@ -2595,7 +2632,7 @@
 
           <div class="list" id="operationList"></div>
           <p class="empty" id="operationsEmpty">
-            لا توجد فرص حالياً
+            لا توجد إجراءات تحتاج انتباهك حاليًا.
             <br>ستظهر الفرص المباشرة هنا
           </p>
         </section>
@@ -2662,15 +2699,19 @@
 
               <div class="bank-share-scope" aria-labelledby="bankShareScopeTitle">
                 <div class="bank-share-scope-label">
-                  <span class="bank-share-scope-title" id="bankShareScopeTitle">مشاركة الفرصة</span>
-                  <span class="bank-share-scope-help">مع المكاتب الأخرى</span>
+                  <span class="bank-share-scope-title" id="bankShareScopeTitle">مشاركة مع مكتب محدد</span>
                 </div>
                 <div class="bank-share-scope-actions">
-                  <input id="bankScopeTarget" type="text" placeholder="معرّف المكتب المستهدف"
-                    aria-label="معرّف المكتب المستهدف">
+                  <label class="bank-office-search-label" for="bankScopeOfficeSearch">ابحث عن مكتب</label>
+                  <input id="bankScopeOfficeSearch" type="search" placeholder="اسم المكتب أو المدينة"
+                    aria-label="ابحث عن مكتب" autocomplete="off">
+                  <input id="bankScopeTarget" type="hidden" value="">
+                  <div class="bank-office-search-results" id="bankScopeSearchResults" hidden></div>
+                  <p class="bank-share-selected-office" id="bankScopeSelectedLabel" hidden></p>
+                  <p class="bank-share-selection-hint section-status" id="bankShareSelectionHint" hidden
+                    role="status"></p>
                   <div class="bank-action-row">
                     <button type="button" class="bank-action" id="bankShareSelectedBtn">مشاركة المحدد</button>
-                    <button type="button" class="bank-action" id="bankCreateScopeBtn">تفعيل المشاركة</button>
                   </div>
                 </div>
               </div>
@@ -3005,6 +3046,7 @@
   <script src="/__/firebase/init.js"></script>
   <script src="js/runtime-config.js"></script>
   <script type="module" src="js/fcm-fid.js"></script>
+  <script type="module" src="js/public-client-intake-domain.js"></script>
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>
   <script src="js/app-navigation.js"></script>

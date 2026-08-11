@@ -118,6 +118,97 @@ const state = {
   busy: false
 };
 
+let shareInFlight = false;
+let publicOfficeDirectoryCache = null;
+
+async function loadPublicOfficeDirectory() {
+  if (publicOfficeDirectoryCache) return publicOfficeDirectoryCache;
+  const runtime = officeRuntime();
+  if (!runtime?.db) return [];
+  try {
+    const snap = await runtime.db.collection("publicOffices").limit(150).get();
+    publicOfficeDirectoryCache = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.warn("[iaqar] office directory", error);
+    publicOfficeDirectoryCache = [];
+  }
+  return publicOfficeDirectoryCache;
+}
+
+function filterPublicOffices(query, offices) {
+  const current = officeId();
+  const normalized = String(query || "").trim().toLowerCase();
+  return offices
+    .filter((row) => {
+      const id = String(row.officeId || row.id || "").trim().toLowerCase();
+      if (!id || id === current) return false;
+      if (!normalized) return true;
+      const name = String(row.officeName || "").toLowerCase();
+      const city = String(row.city || "").toLowerCase();
+      const license = String(row.licenseNumber || "");
+      return name.includes(normalized) || city.includes(normalized) || license.includes(normalized);
+    })
+    .slice(0, 8);
+}
+
+function bindOfficeSearch({ searchInput, hiddenInput, labelNode, resultsNode }) {
+  if (!searchInput || !hiddenInput) return;
+  const renderResults = (rows) => {
+    if (!resultsNode) return;
+    if (!rows.length) {
+      resultsNode.hidden = true;
+      resultsNode.innerHTML = "";
+      return;
+    }
+    resultsNode.hidden = false;
+    resultsNode.innerHTML = rows.map((row) => {
+      const id = String(row.officeId || row.id || "");
+      const license = row.licenseNumber ? ` — فال ${escapeHtml(row.licenseNumber)}` : "";
+      return `<button type="button" class="bank-office-search-item" data-office-pick="${escapeHtml(id)}">
+        <strong>${escapeHtml(row.officeName || id)}</strong>
+        <span>${escapeHtml(row.city || "")}${license}</span>
+      </button>`;
+    }).join("");
+    resultsNode.querySelectorAll("[data-office-pick]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const picked = btn.getAttribute("data-office-pick") || "";
+        hiddenInput.value = picked;
+        if (labelNode) {
+          labelNode.hidden = false;
+          labelNode.textContent = `المكتب المحدد: ${btn.querySelector("strong")?.textContent || picked}`;
+        }
+        searchInput.value = btn.querySelector("strong")?.textContent || picked;
+        resultsNode.hidden = true;
+        resultsNode.innerHTML = "";
+      });
+    });
+  };
+  searchInput.addEventListener("input", async () => {
+    hiddenInput.value = "";
+    if (labelNode) labelNode.hidden = true;
+    const offices = await loadPublicOfficeDirectory();
+    renderResults(filterPublicOffices(searchInput.value, offices));
+  });
+  searchInput.addEventListener("focus", async () => {
+    const offices = await loadPublicOfficeDirectory();
+    renderResults(filterPublicOffices(searchInput.value, offices));
+  });
+}
+
+function syncShareSelectionHint() {
+  const hint = $("bankShareSelectionHint");
+  if (!hint) return;
+  if (state.selected.size === 0) {
+    hint.hidden = false;
+    hint.textContent = "حدّد فرصة واحدة على الأقل";
+    hint.classList.add("is-error");
+  } else {
+    hint.hidden = true;
+    hint.textContent = "";
+    hint.classList.remove("is-error");
+  }
+}
+
 function stopListener() {
   if (state.unsubscribe) {
     try { state.unsubscribe(); } catch (_) {}
@@ -450,10 +541,13 @@ async function renderDetail(id) {
       ${deleteBlock}
     </div>
     <form id="bankShareForm" class="bank-share-form" hidden autocomplete="off">
-      <label>معرّف المكتب المستهدف
-        <input name="targetOfficeId" required placeholder="office-...">
+      <label>ابحث عن مكتب
+        <input type="search" id="bankDetailOfficeSearch" placeholder="اسم المكتب أو المدينة" autocomplete="off">
       </label>
-      <button type="submit" class="bank-action-primary">إرسال طلب التعاون</button>
+      <input type="hidden" name="targetOfficeId" id="bankDetailScopeTarget">
+      <div class="bank-office-search-results" id="bankDetailScopeSearchResults" hidden></div>
+      <p class="bank-share-selected-office" id="bankDetailScopeSelectedLabel" hidden></p>
+      <button type="submit" class="bank-action-primary">مشاركة مع المكتب المحدد</button>
       <p class="bank-share-status section-status" id="bankShareStatus" role="status"></p>
       <p class="bank-note">الافتراضي: قراءة فقط، بدون بيانات تواصل، والملكية تبقى لهذا المكتب.</p>
     </form>
@@ -582,8 +676,18 @@ function wireDetailHandlers(id, record) {
   });
   $("bankShareForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const targetOfficeId = new FormData(event.currentTarget).get("targetOfficeId");
+    const targetOfficeId = String($("bankDetailScopeTarget")?.value || "").trim();
+    if (!targetOfficeId) {
+      setShareActionStatus("اختر مكتبًا من نتائج البحث", "is-error");
+      return;
+    }
     await createShareRequest({ opportunityIds: [id], targetOfficeId, scopeType: "single" });
+  });
+  bindOfficeSearch({
+    searchInput: $("bankDetailOfficeSearch"),
+    hiddenInput: $("bankDetailScopeTarget"),
+    labelNode: $("bankDetailScopeSelectedLabel"),
+    resultsNode: $("bankDetailScopeSearchResults")
   });
   $("bankRevokeBtn")?.addEventListener("click", () => void revokeCooperation(id, record));
 }
@@ -957,9 +1061,13 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
 async function createScopedShare() {
   const user = authUser();
   const runtime = officeRuntime();
-  const targetOfficeId = $("bankScopeTarget")?.value?.trim();
+  const targetOfficeId = String($("bankScopeTarget")?.value || "").trim();
   if (!runtime?.db || !user || !targetOfficeId) {
-    setStatus("أدخل معرّف المكتب المستهدف", "is-error");
+    setStatus("اختر مكتبًا من نتائج البحث", "is-error");
+    return;
+  }
+  if (!state.selected.size) {
+    syncShareSelectionHint();
     return;
   }
   const mode = await readOfficeCooperationMode();
@@ -992,16 +1100,16 @@ async function createScopedShare() {
   }
 }
 
-async function resolveOfficeBrokerLabel(targetOfficeId) {
+async function resolveOfficeShareLabel(targetOfficeId) {
   const runtime = officeRuntime();
   const target = String(targetOfficeId || "").trim();
-  if (!target) return "الوسيط";
+  if (!target) return "مكتب";
   if (!runtime?.db) return target;
   try {
     const snap = await runtime.db.collection("publicOffices").doc(target).get();
     if (!snap.exists) return target;
     const data = snap.data() || {};
-    return data.brokerName || data.officeName || target;
+    return data.officeName || data.brokerName || target;
   } catch {
     return target;
   }
@@ -1070,15 +1178,33 @@ async function loadOutgoingScopes() {
   const panel = $("bankOutgoingScopes");
   if (!runtime?.db || !panel) return;
   try {
-    const snap = await runtime.db.collection("bankSharingScopes")
+    const scopeSnap = await runtime.db.collection("bankSharingScopes")
       .where("originatingOfficeId", "==", officeId())
       .limit(20)
       .get();
-    const active = snap.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((scope) => scope.status === "ACTIVE" && scope.enabled !== false && !scope.revokedAt);
+    const scopeRows = scopeSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data(), shareKind: "scope" }))
+      .filter((scope) => scope.status === "ACTIVE" && scope.enabled !== false && !scope.revokedAt)
+      .filter((scope) => Array.isArray(scope.opportunityIds) && scope.opportunityIds.length > 0);
+
+    const coopSnap = await runtime.db.collection("cooperationRequests")
+      .where("originatingOfficeId", "==", officeId())
+      .limit(30)
+      .get();
+    const coopRows = coopSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data(), shareKind: "cooperation" }))
+      .filter((row) => ["PENDING", "ACCEPTED"].includes(String(row.status || "").toUpperCase()))
+      .map((row) => ({
+        ...row,
+        opportunityIds: Array.isArray(row.opportunityIds) && row.opportunityIds.length
+          ? row.opportunityIds
+          : (row.opportunityId ? [row.opportunityId] : [])
+      }))
+      .filter((row) => row.opportunityIds.length > 0);
+
+    const active = [...coopRows, ...scopeRows];
     const names = await Promise.all(
-      active.map((scope) => resolveOfficeBrokerLabel(scope.targetOfficeId))
+      active.map((scope) => resolveOfficeShareLabel(scope.targetOfficeId))
     );
     if (!active.length) {
       panel.hidden = true;
@@ -1086,16 +1212,27 @@ async function loadOutgoingScopes() {
       return;
     }
     panel.hidden = false;
-    panel.innerHTML = `<h3>مشاركات نشطة مع مكاتب أخرى</h3>${active.map((scope, index) => `
+    panel.innerHTML = `<h3>مشاركات نشطة مع مكاتب أخرى</h3>${active.map((scope, index) => {
+      const officeLabel = names[index] || scope.targetOfficeId || "";
+      const statusLabel = scope.shareKind === "cooperation"
+        ? cooperationStatusLabel(cooperationStateFromShareStatus(scope.status))
+        : "قابل للإلغاء";
+      const revokeAttrs = scope.shareKind === "scope"
+        ? `data-revoke-scope="${escapeHtml(scope.id)}" data-broker-name="${escapeHtml(officeLabel)}"`
+        : "";
+      const revokeBtn = scope.shareKind === "scope"
+        ? `<button type="button" class="bank-action" data-revoke-scope="${escapeHtml(scope.id)}"
+          data-broker-name="${escapeHtml(officeLabel)}">إيقاف مشاركة الفرصة</button>`
+        : "";
+      return `
       <div class="bank-incoming-item">
         <div>
-          <strong>إلى ${escapeHtml(names[index] || scope.targetOfficeId || "")}</strong>
-          <p>${Number(scope.opportunityIds?.length || 0)} فرصة — قابل للإلغاء</p>
+          <strong>إلى مكتب ${escapeHtml(officeLabel)}</strong>
+          <p>${Number(scope.opportunityIds?.length || 0)} فرصة — ${escapeHtml(statusLabel)}</p>
         </div>
-        <button type="button" class="bank-action" data-revoke-scope="${escapeHtml(scope.id)}"
-          data-broker-name="${escapeHtml(names[index] || scope.targetOfficeId || "")}">إيقاف مشاركة الفرصة</button>
-      </div>
-    `).join("")}`;
+        ${revokeBtn}
+      </div>`;
+    }).join("")}`;
     panel.querySelectorAll("[data-revoke-scope]").forEach((btn) => {
       btn.addEventListener("click", () => {
         confirmStopOpportunityShare(
@@ -1159,6 +1296,7 @@ function bindListClicks() {
     if (!id) return;
     if (event.target.checked) state.selected.add(id);
     else state.selected.delete(id);
+    syncShareSelectionHint();
   });
 }
 
@@ -1515,22 +1653,37 @@ function boot() {
     setStatus(rowsCountLabel());
   });
   $("bankShareSelectedBtn")?.addEventListener("click", async () => {
-    const target = $("bankScopeTarget")?.value?.trim();
+    if (shareInFlight) return;
+    const target = String($("bankScopeTarget")?.value || "").trim();
     if (!target) {
-      setStatus("أدخل معرّف المكتب المستهدف", "is-error");
+      setStatus("اختر مكتبًا من نتائج البحث", "is-error");
       return;
     }
     if (!state.selected.size) {
-      setStatus("حدّد فرصة واحدة على الأقل", "is-error");
+      syncShareSelectionHint();
       return;
     }
-    await createShareRequest({
-      opportunityIds: [...state.selected],
-      targetOfficeId: target,
-      scopeType: "selected"
-    });
+    shareInFlight = true;
+    const btn = $("bankShareSelectedBtn");
+    if (btn) btn.disabled = true;
+    try {
+      await createShareRequest({
+        opportunityIds: [...state.selected],
+        targetOfficeId: target,
+        scopeType: "selected"
+      });
+    } finally {
+      shareInFlight = false;
+      if (btn) btn.disabled = false;
+    }
   });
-  $("bankCreateScopeBtn")?.addEventListener("click", () => void createScopedShare());
+  bindOfficeSearch({
+    searchInput: $("bankScopeOfficeSearch"),
+    hiddenInput: $("bankScopeTarget"),
+    labelNode: $("bankScopeSelectedLabel"),
+    resultsNode: $("bankScopeSearchResults")
+  });
+  syncShareSelectionHint();
   $("bankIncomingList")?.addEventListener("click", (event) => {
     const acceptId = event.target.closest?.("[data-accept-request]")?.getAttribute("data-accept-request");
     const rejectId = event.target.closest?.("[data-reject-request]")?.getAttribute("data-reject-request");

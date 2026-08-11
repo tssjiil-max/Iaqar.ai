@@ -336,6 +336,28 @@ test("modern URL resolver returns an explicit DNS failure without fabricated dat
   }
 });
 
+test("modern URL resolver detects anti-bot block pages without treating them as listing text", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    "<html><body>You have been blocked | تم حظرك</body></html>",
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+  );
+  try {
+    const response = await worker.fetch(new Request("https://example.test/pipeline/url-resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ officeId: "office-alqiq", url: "https://sa.aqar.fm/ad/test" })
+    }), trialEnv);
+    const body = await response.json();
+    assert.equal(response.status, 422);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "source_blocked");
+    assert.equal(body.diagnostics?.blocked, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function officeImageRequest({ variant, method = "POST", contentType = "image/png", officeId = "office-alqiq" } = {}) {
   const headers = { "X-Office-Id": officeId };
   if (variant !== undefined) headers["X-Office-Image-Variant"] = variant;

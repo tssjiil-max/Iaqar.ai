@@ -639,7 +639,7 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
       return { ok: false, state: "failed", error: "الرابط غير صالح", retryable: true };
     }
     const listingText = safeText(input.listingText || (text && text !== url ? text : ""));
-    if (!listingText) {
+    if (!listingText && !input.allowUrlWithoutListing) {
       return {
         ok: false,
         state: "failed",
@@ -647,7 +647,8 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
         retryable: true
       };
     }
-    text = listingText;
+    if (!listingText) text = url;
+    else text = listingText;
   }
 
   if ((sourceType === "text" || sourceType === "url") && !text) {

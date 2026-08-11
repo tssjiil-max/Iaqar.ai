@@ -1655,6 +1655,7 @@
   async function registerNotificationDevice({ requestPermission = false, sendTest = false, silent = false } = {}) {
     if (!runtimeOfficeReady(silent)) return false;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      setNotificationStatus("غير متاحة في هذا المتصفح");
       if (!silent) notify("خدمة الإشعارات غير متاحة في هذا المتصفح");
       return false;
     }
@@ -1672,8 +1673,8 @@
     let permission = Notification.permission;
     if (requestPermission && permission !== "granted") permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      setNotificationStatus(permission === "denied" ? "مرفوضة على الجهاز" : "غير مفعّلة");
-      if (!silent && permission === "denied") notify("لم يتم السماح بالإشعارات");
+      setNotificationStatus(permission === "denied" ? "محظورة من المتصفح" : "غير مفعّلة");
+      if (!silent && permission === "denied") notify("الإشعارات محظورة من إعدادات المتصفح.");
       return false;
     }
     const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
@@ -1710,7 +1711,16 @@
       if (!activated) refreshNotificationStatus();
     } catch (error) {
       setNotificationStatus("تعذر التفعيل");
-      notify(error.message || "تعذر تفعيل الإشعارات");
+      const permission = typeof Notification !== "undefined" ? Notification.permission : "default";
+      if (permission === "denied") {
+        notify("الإشعارات محظورة من إعدادات المتصفح.");
+      } else if (String(error?.message || "").includes("Web Push")) {
+        notify("يلزم إكمال مفتاح Web Push في الخادم");
+      } else if (String(error?.message || "").includes("Firebase") || String(error?.message || "").includes("إعدادات")) {
+        notify("بيانات Firebase في الخادم غير مكتملة");
+      } else {
+        notify(error.message || "تعذر تفعيل الإشعارات");
+      }
     }
   }
 
