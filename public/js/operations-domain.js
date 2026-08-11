@@ -125,10 +125,18 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
   const missingFields = missingFieldsFrom(op, metadata);
   const status = String(op.status || OPERATION_STATUS.OPEN).toUpperCase();
   const priority = String(op.priority || OPERATION_PRIORITY.NORMAL).toUpperCase();
-  const title = String(op.titleText || "إجراء مطلوب");
-  const summary = String(op.summaryText || "");
-  const action = String(op.recommendedActionText || "عرض التفاصيل");
-  const detailsLines = [summary];
+  let title = String(op.titleText || "إجراء مطلوب");
+  let summary = String(op.summaryText || "");
+  let action = String(op.recommendedActionText || "عرض التفاصيل");
+  const detailsLines = summary ? [summary] : [];
+
+  if (type === OPERATION_TYPES.MISSING_DATA) {
+    title = "استكمال بيانات الفرصة";
+    summary = "يرجى استكمال البيانات لتفعيل المطابقة.";
+    action = "استكمال البيانات";
+    detailsLines.length = 0;
+    detailsLines.push(summary);
+  }
 
   if (type === OPERATION_TYPES.MATCH_REVIEW) {
     const score = Number(metadata.opportunityScore || metadata.score || op.score || 0);

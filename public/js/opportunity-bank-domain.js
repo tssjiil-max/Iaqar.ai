@@ -147,6 +147,18 @@ export function isActiveOpportunity(record = {}) {
  * Project a Phase 2/3 opportunity into the bank list row.
  * Extends Phase 1 projection with purpose and Phase 2 field aliases.
  */
+export function bankOpportunityKindDisplayLabel(record = {}) {
+  const kind = String(record.opportunityKind || record.recordType || record.kind || "").toUpperCase();
+  const purpose = String(record.purpose || "").toUpperCase();
+  const isOffer = kind === "OFFER" || kind === "OWNER" || kind === "OWNER_OFFER";
+  const isRequest = kind === "REQUEST" || kind === "CLIENT" || kind === "CLIENT_REQUEST";
+  if (isOffer && purpose === "SALE") return "عرض بيع";
+  if (isOffer && purpose === "RENT") return "عرض إيجار";
+  if (isRequest && purpose === "PURCHASE") return "طلب شراء";
+  if (isRequest && purpose === "LEASE_REQUEST") return "طلب استئجار";
+  return "";
+}
+
 export function bankListItem(id, record = {}) {
   const base = opportunityBankRow(id, {
     ...record,
@@ -163,8 +175,11 @@ export function bankListItem(id, record = {}) {
     LEASE_REQUEST: "طلب إيجار"
   };
 
+  const displayKindLabel = bankOpportunityKindDisplayLabel(record);
+
   return {
     ...base,
+    kindLabel: displayKindLabel || base.kindLabel,
     purpose: purposeLabels[String(record.purpose || "").toUpperCase()] || safeText(record.purpose) || "—",
     opportunityKind: safeText(record.opportunityKind) || "",
     lifecycleStatus: normalizeLifecycle(record.lifecycleStatus),

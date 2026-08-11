@@ -959,7 +959,7 @@ async function createScopedShare() {
   const runtime = officeRuntime();
   const targetOfficeId = $("bankScopeTarget")?.value?.trim();
   if (!runtime?.db || !user || !targetOfficeId) {
-    setStatus("أدخل معرّف المكتب المستهدف للنطاق", "is-error");
+    setStatus("أدخل معرّف المكتب المستهدف", "is-error");
     return;
   }
   const mode = await readOfficeCooperationMode();
@@ -977,18 +977,18 @@ async function createScopedShare() {
     filters: { activeOnly: true }
   });
   if (!built.ok) {
-    setStatus("تعذر تجهيز نطاق المشاركة", "is-error");
+    setStatus("تعذر تجهيز المشاركة", "is-error");
     return;
   }
-  setStatus("جارٍ حفظ نطاق المشاركة…");
+  setStatus("جارٍ حفظ المشاركة…");
   try {
     await runtime.db.collection("bankSharingScopes").doc(built.scope.id).set(built.scope);
-    setStatus("تم تفعيل نطاق المشاركة (قابل للإلغاء)", "is-done");
-    toast("تم حفظ نطاق المشاركة");
+    setStatus("تم تفعيل المشاركة (قابل للإلغاء)", "is-done");
+    toast("تم حفظ المشاركة");
     await loadOutgoingScopes();
   } catch (error) {
     console.warn("[iaqar] bank scope", error);
-    setStatus("تعذر حفظ نطاق المشاركة", "is-error");
+    setStatus("تعذر حفظ المشاركة", "is-error");
   }
 }
 
@@ -1042,7 +1042,7 @@ async function revokeScopedShare(sharingScopeId) {
     setStatus("يلزم تسجيل الدخول", "is-error");
     return;
   }
-  setStatus("جارٍ إنهاء نطاق المشاركة…");
+  setStatus("جارٍ إنهاء المشاركة…");
   try {
     const token = await user.getIdToken();
     const result = await requestScopeRevoke({
@@ -1053,7 +1053,7 @@ async function revokeScopedShare(sharingScopeId) {
       reason: "broker_revoked_scope"
     });
     if (!result.ok) {
-      setStatus(result.message || "تعذر إنهاء نطاق المشاركة", "is-error");
+      setStatus(result.message || "تعذر إنهاء المشاركة", "is-error");
       return;
     }
     setStatus("تم إيقاف مشاركة الفرصة", "is-done");
@@ -1061,7 +1061,7 @@ async function revokeScopedShare(sharingScopeId) {
     await loadOutgoingScopes();
   } catch (error) {
     console.warn("[iaqar] scope revoke", error);
-    setStatus("تعذر إنهاء نطاق المشاركة", "is-error");
+    setStatus("تعذر إنهاء المشاركة", "is-error");
   }
 }
 
@@ -1086,7 +1086,7 @@ async function loadOutgoingScopes() {
       return;
     }
     panel.hidden = false;
-    panel.innerHTML = `<h3>نطاقات المشاركة النشطة</h3>${active.map((scope, index) => `
+    panel.innerHTML = `<h3>مشاركات نشطة مع مكاتب أخرى</h3>${active.map((scope, index) => `
       <div class="bank-incoming-item">
         <div>
           <strong>إلى ${escapeHtml(names[index] || scope.targetOfficeId || "")}</strong>

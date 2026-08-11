@@ -523,10 +523,19 @@
     emitOperations();
   }
 
+  function isSavedOpportunityPresentationItem(item) {
+    const type = String(item?.operationType || "").toUpperCase();
+    return type === "OPPORTUNITY_SAVED"
+      || String(item?.title || "").trim() === "فرصة محفوظة مسبقًا";
+  }
+
   function emitOperations() {
-    // Phase 5: Operations Center shows persisted Operations plus brief saved-opportunity feedback.
+    // Phase 5: Operations Center shows persisted Operations; hide save-success feedback only.
     pruneSavedOpportunityWorkspaceItems();
-    const items = [...operationItems, ...savedOpportunityWorkspaceItems]
+    const workspaceItems = savedOpportunityWorkspaceItems.filter(
+      (item) => !isSavedOpportunityPresentationItem(item)
+    );
+    const items = [...operationItems, ...workspaceItems]
       .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
   }
@@ -1305,7 +1314,12 @@
     await postOperationAction(operationId, "START");
     notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
     if (detail.operationType === "MISSING_DATA") {
-      if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
+      const opportunityId = String(detail.opportunityId || "").trim();
+      if (opportunityId && window.IAQAR?.openOpportunityDetail) {
+        void window.IAQAR.openOpportunityDetail(opportunityId);
+      } else if (window.IAQAR?.openOpportunityBank) {
+        window.IAQAR.openOpportunityBank();
+      }
       return;
     }
     if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
