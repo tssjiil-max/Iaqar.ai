@@ -72,6 +72,8 @@
       padding:11px;border-radius:13px;font-size:14px;line-height:1.6}.access-status.show{display:block}
     .access-status.ok{background:#e8f7f2;color:#07634f}.access-status.err{background:#fff0f0;color:#9e3434}
     .access-field-error{color:#9e3434;font-size:12px;line-height:1.4;margin-top:2px}
+    .access-remember{display:flex!important;align-items:center;gap:8px;font-weight:700}
+    .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
@@ -169,25 +171,79 @@
       }
     } catch (_) {}
   }
-  function intakeForm(kind, targetOffice) {
+  async function resolveIntakeDefaultCity(targetOffice) {
+    const target = String(targetOffice || "").trim().toLowerCase();
+    if (target && target !== "platform") {
+      try {
+        const publicSnap = await db().collection("publicOffices").doc(target).get();
+        if (publicSnap.exists) {
+          const city = String(publicSnap.data()?.city || "").trim();
+          if (city) return city;
+        }
+        const officeSnap = await db().collection("offices").doc(target).get();
+        if (officeSnap.exists) {
+          const city = String(officeSnap.data()?.city || "").trim();
+          if (city) return city;
+        }
+      } catch (_) { /* ignore */ }
+    }
+    const remembered = window.IAQARPublicClientIntake?.readRememberedCity?.() || "";
+    return remembered || "";
+  }
+
+  function clientIntakeApi() {
+    return window.IAQARPublicClientIntake || null;
+  }
+
+  function renderDynamicClientFields(container, requestKind, propertyType) {
+    const api = clientIntakeApi();
+    if (!container || !api) return;
+    const defs = api.dynamicFieldDefs(requestKind, propertyType);
+    container.innerHTML = defs.map((field) => {
+      if (field.type === "select") {
+        const options = (field.options || []).map((opt) =>
+          `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`
+        ).join("");
+        return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
+          <select name="${escapeHtml(field.name)}">${options}</select></label>`;
+      }
+      return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
+        <input name="${escapeHtml(field.name)}" type="${field.type || "text"}"
+          ${field.inputMode ? `inputmode="${field.inputMode}"` : ""}
+          ${field.maxLength ? `maxlength="${field.maxLength}"` : ""}></label>`;
+    }).join("");
+  }
+
+  async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
+    const defaultCity = await resolveIntakeDefaultCity(targetOffice);
+    const clientApi = clientIntakeApi();
+    const propertyOptions = owner
+      ? PROPERTY_TYPES
+      : (clientApi?.INTAKE_PROPERTY_TYPES || PROPERTY_TYPES);
+    const requestKindOptions = clientApi?.REQUEST_KINDS || [];
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        <label><span>نوع العقار</span><select name="propertyType" id="propertyTypeSelect">
-          <option value="">اختر نوع العقار</option>${optionList(PROPERTY_TYPES)}<option value="__other__">أخرى</option>
-        </select></label>
-        <label><span>الحي</span><select name="district" id="districtSelect">
+        ${owner ? "" : `<label><span>نوع الطلب (إلزامي)</span><select name="requestKind" id="requestKindSelect" required>
+          <option value="">اختر نوع الطلب</option>
+          ${requestKindOptions.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}</select></label>`}
+        <label><span>نوع العقار (إلزامي)</span><select name="propertyType" id="propertyTypeSelect" required>
+          <option value="">اختر نوع العقار</option>${optionList(propertyOptions)}${owner ? `<option value="__other__">أخرى</option>` : ""}</select></label>
+        <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
+          value="${escapeHtml(defaultCity)}"></label>
+        <label><span>الحي (إلزامي)</span><select name="district" id="districtSelect" required>
           <option value="">اختر الحي</option>${optionList(MADINAH_DISTRICTS)}<option value="__other__">حي جديد / غير موجود</option>
         </select></label>
         <label class="conditional-field full" id="otherPropertyWrap" hidden><span>اكتب نوع العقار</span>
           <input name="otherPropertyType" maxlength="40"></label>
         <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
           <input name="otherDistrict" maxlength="80"></label>
-        <label class="full"><span>تفاصيل إضافية</span><textarea name="details" maxlength="1000"></textarea></label>
+        ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
+        <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
           <p class="file-help">يمكن إرسال العرض دون صور، ويطلبها الوسيط لاحقًا عبر واتساب. بحد أقصى 8 ميجابايت للصورة.</p></label>
@@ -199,18 +255,36 @@
     gate.querySelector(".access-back").onclick = isPublicOfficeLink ? publicOffice : home;
     const propertySelect = gate.querySelector("#propertyTypeSelect");
     const districtSelect = gate.querySelector("#districtSelect");
+    const requestKindSelect = gate.querySelector("#requestKindSelect");
+    const dynamicFields = gate.querySelector("#clientDynamicFields");
     const otherPropertyWrap = gate.querySelector("#otherPropertyWrap");
     const otherDistrictWrap = gate.querySelector("#otherDistrictWrap");
+    const refreshClientDynamic = () => {
+      if (owner || !dynamicFields) return;
+      const requestKind = requestKindSelect?.value || "";
+      const propertyType = String(propertySelect?.value || "") === "__other__"
+        ? gate.querySelector('input[name="otherPropertyType"]')?.value || ""
+        : propertySelect?.value || "";
+      renderDynamicClientFields(dynamicFields, requestKind, propertyType);
+    };
     const toggleOther = (select, wrap) => {
       const visible = select.value === "__other__";
       wrap.hidden = !visible;
       const input = wrap.querySelector("input");
-      input.required = visible;
-      if (!visible) input.value = "";
+      if (visible) input.required = true;
+      else {
+        input.required = false;
+        input.value = "";
+      }
       if (visible) setTimeout(() => input.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+      if (!owner) refreshClientDynamic();
     };
     propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
     districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
+    if (requestKindSelect) {
+      requestKindSelect.onchange = () => refreshClientDynamic();
+      refreshClientDynamic();
+    }
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
@@ -222,6 +296,10 @@
       if (!validFullName(name)) return showStatus("أدخل الاسم الثنائي على الأقل.");
       const phone = normalizeSaudiPhone(fields.get("phone"));
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      const city = String(fields.get("city") || "").trim();
+      if (!city) return showStatus("أدخل المدينة.");
+      const requestKind = owner ? "" : String(fields.get("requestKind") || "").trim();
+      if (!owner && !requestKind) return showStatus("اختر نوع الطلب.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -235,9 +313,11 @@
         const propertyType = String(fields.get("propertyType") || "") === "__other__"
           ? String(fields.get("otherPropertyType") || "").trim()
           : String(fields.get("propertyType") || "").trim();
+        if (!propertyType) return showStatus("اختر نوع العقار.");
         const district = String(fields.get("district") || "") === "__other__"
           ? String(fields.get("otherDistrict") || "").trim()
           : String(fields.get("district") || "").trim();
+        if (!district) return showStatus("اختر الحي.");
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {
@@ -251,27 +331,68 @@
             }));
           }
         }
-        await ref.set({
-          officeId: targetOffice, kind,
-          name,
-          phone,
-          city: "المدينة المنورة",
-          propertyType,
-          district,
-          details: String(fields.get("details") || "").trim(),
-          mediaPaths,
-          imageCount: images.length,
-          hasVideo: Boolean(video),
-          mediaMissing: owner && images.length === 0,
-          completeness: owner ? (images.length ? 90 : 65) : 80,
-          source: targetOffice === "platform" ? "platform_public" : "office_public_link",
-          status: "new",
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        let intakePayload;
+        if (owner) {
+          intakePayload = {
+            officeId: targetOffice, kind,
+            name,
+            phone,
+            city,
+            propertyType,
+            district,
+            details: String(fields.get("details") || "").trim(),
+            mediaPaths,
+            imageCount: images.length,
+            hasVideo: Boolean(video),
+            mediaMissing: images.length === 0,
+            completeness: images.length ? 90 : 65,
+            source: targetOffice === "platform" ? "platform_public" : "office_public_link",
+            status: "new",
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+        } else {
+          const api = clientIntakeApi();
+          if (!api) throw new Error("INTAKE_MODULE_MISSING");
+          const formValues = {
+            name,
+            phone,
+            city,
+            district,
+            propertyType,
+            requestKind,
+            details: fields.get("details"),
+            budget: fields.get("budget"),
+            annualRent: fields.get("annualRent"),
+            area: fields.get("area"),
+            rooms: fields.get("rooms"),
+            bathrooms: fields.get("bathrooms"),
+            streetWidth: fields.get("streetWidth"),
+            facing: fields.get("facing"),
+            condition: fields.get("condition"),
+            furnished: fields.get("furnished"),
+            paymentInstallments: fields.get("paymentInstallments")
+          };
+          const built = api.buildClientIntakeDocument(formValues, {
+            targetOffice,
+            source: targetOffice === "platform" ? "platform_public" : "office_public_link"
+          });
+          intakePayload = {
+            ...built,
+            officeId: targetOffice,
+            mediaPaths: [],
+            imageCount: 0,
+            hasVideo: false,
+            mediaMissing: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          if (targetOffice === "platform") api.rememberLastCity(city);
+        }
+        await ref.set(intakePayload);
         let matchingResult = null;
         try { matchingResult = await triggerPublicIntakeMatching(targetOffice, ref.id); }
         catch (matchingError) { console.warn("[iaqar] matching queued", matchingError); }
         form.reset();
+        if (targetOffice === "platform" && city) clientIntakeApi()?.rememberLastCity?.(city);
         if (matchingResult && Number(matchingResult.matches || 0) > 0) {
           showStatus(`تم الإرسال واكتشاف ${matchingResult.matches} مطابقة مناسبة.`, true);
         } else {
@@ -406,6 +527,8 @@
       <form class="access-form" id="loginForm">
         <label class="full"><span>رقم الجوال</span><input name="phone" inputmode="tel" autocomplete="username" required></label>
         <label class="full"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="full access-remember"><input type="checkbox" name="remember" id="rememberLogin" checked>
+          <span>البقاء مسجلًا</span></label>
         <label class="full"><button class="access-btn light" type="button" id="togglePassword">إظهار كلمة المرور</button></label>
         <label class="full"><button class="access-btn" type="submit">تسجيل الدخول</button></label>
         <label class="full"><button class="access-btn light" type="button" id="forgotPassword">نسيت كلمة المرور</button></label>
@@ -424,6 +547,14 @@
       const fields = new FormData(event.currentTarget);
       const phone = normalizeSaudiPhone(fields.get("phone"));
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
+      try {
+        await firebase.auth().setPersistence(
+          remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
+        );
+      } catch (error) {
+        console.warn("[iaqar] auth persistence", error);
+      }
       try {
         const response = await fetch(`${resolveWorkerBase()}/auth/phone-login`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -432,6 +563,10 @@
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.customToken || !payload.officeId) throw new Error("LOGIN_FAILED");
         await firebase.auth().signInWithCustomToken(payload.customToken);
+        try {
+          if (remember) localStorage.setItem("iaqar.auth.remember", "1");
+          else localStorage.removeItem("iaqar.auth.remember");
+        } catch (_) { /* ignore */ }
         await verifyAccess(payload.officeId, true);
       } catch (error) {
         console.warn("[iaqar] login", error);
@@ -697,7 +832,10 @@
     refreshRouteFlags();
 
     try {
-      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      const remembered = localStorage.getItem("iaqar.auth.remember") === "1";
+      await firebase.auth().setPersistence(
+        remembered ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
+      );
     } catch (error) {
       console.warn("[iaqar] auth persistence", error);
     }

@@ -6,6 +6,7 @@
  */
 
 import { extractArabicOpportunityText } from "./opportunity-text-extraction.js";
+import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 
 export const INTAKE_STATES = Object.freeze([
   "idle",
@@ -75,7 +76,11 @@ export const EXTENDED_OPPORTUNITY_FIELDS = Object.freeze([
   "waterAndSewagePaidBy",
   "electricityPaidBy",
   "ownerConditions",
-  "transactionType"
+  "transactionType",
+  "advertiserRole",
+  "advertiserPhoneRaw",
+  "advertiserPhoneNormalized",
+  "contactPhone"
 ]);
 
 /** MIME / extension maps for the paperclip chooser. */
@@ -453,7 +458,8 @@ export function buildOpportunityRecord({
 }) {
   const normalizedFields = normalizeOpportunityFinancials(fields);
   const completeness = computeDataCompleteness(normalizedFields);
-  const internalStatus = completeness.isComplete ? "READY" : "NEEDS_DATA";
+  const readiness = evaluateMatchingReadiness({ ...normalizedFields, ...fields });
+  const internalStatus = readiness.isReadyForMatching ? "READY" : "NEEDS_DATA";
   const id = existingId || opportunityDocumentId(deduplicationFingerprint);
   const timestamp = now.toISOString();
 
@@ -488,6 +494,8 @@ export function buildOpportunityRecord({
     extractionConfidence: Number(extraction?.extractionConfidence || 0),
     dataCompleteness: completeness.dataCompleteness,
     internalStatus,
+    matchingReadiness: readiness.matchingReadiness,
+    matchingReadinessMissing: readiness.matchingReadinessMissing,
     lifecycleStatus: completeness.isComplete ? "ACTIVE" : "ACTIVE",
     deduplicationFingerprint,
     missingFields: completeness.missingFields,
@@ -639,7 +647,7 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
       return { ok: false, state: "failed", error: "الرابط غير صالح", retryable: true };
     }
     const listingText = safeText(input.listingText || (text && text !== url ? text : ""));
-    if (!listingText) {
+    if (!listingText && !input.allowUrlWithoutListing) {
       return {
         ok: false,
         state: "failed",
@@ -647,7 +655,8 @@ export async function prepareOpportunityIntake(input, adapter = createExtraction
         retryable: true
       };
     }
-    text = listingText;
+    if (!listingText) text = url;
+    else text = listingText;
   }
 
   if ((sourceType === "text" || sourceType === "url") && !text) {

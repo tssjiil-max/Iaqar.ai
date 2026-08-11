@@ -380,6 +380,14 @@ export default {
         return await servePublicOfficeCover(url, env);
       }
 
+      if (request.method === "GET" && url.pathname === "/media/office") {
+        return await serveOfficeMedia(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/media/office-library") {
+        return await uploadOfficeLibraryMedia(request, env, requestId);
+      }
+
       if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
         return await listBrokerApplications(request, env, requestId);
       }
@@ -669,6 +677,88 @@ async function servePublicOfficeCover(url, env) {
   headers.set("cache-control", "public, max-age=3600");
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
+}
+
+const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
+
+async function serveOfficeMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const url = new URL(request.url);
+  const officeId = normalizeOfficeId(url.searchParams.get("officeId") || request.headers.get("x-office-id"));
+  const mediaPath = cleanText(url.searchParams.get("path"), 500);
+  if (!officeId || !mediaPath) throw appError("media_path_required", 400, "مسار الوسائط مطلوب");
+  if (!OFFICE_MEDIA_KEY_PATTERN.test(mediaPath) || !mediaPath.includes(`/${officeId}/`)) {
+    throw appError("media_forbidden", 403, "مسار الوسائط غير مسموح");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const object = await bucket.get(mediaPath);
+  if (!object) throw appError("media_not_found", 404, "الملف غير موجود");
+  const headers = new Headers(corsHeaders());
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "private, max-age=300");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
+}
+
+const OFFICE_LIBRARY_TYPES = Object.freeze({
+  "application/pdf": { ext: "pdf", max: 15 * 1024 * 1024 },
+  "image/jpeg": { ext: "jpg", max: 8 * 1024 * 1024 },
+  "image/png": { ext: "png", max: 8 * 1024 * 1024 },
+  "image/webp": { ext: "webp", max: 8 * 1024 * 1024 },
+  "application/msword": { ext: "doc", max: 15 * 1024 * 1024 },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { ext: "docx", max: 15 * 1024 * 1024 }
+});
+
+async function uploadOfficeLibraryMedia(request, env, requestId) {
+  const bucket = requireMediaBucket(env);
+  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const fileName = cleanText(request.headers.get("x-file-name"), 240) || "file";
+  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  const size = requestBodyLength(request);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const spec = OFFICE_LIBRARY_TYPES[contentType];
+  if (!spec) throw appError("unsupported_media", 415, "نوع الملف غير مدعوم في المكتبة");
+  if (size > spec.max) throw appError("file_too_large", 413, "حجم الملف يتجاوز الحد المسموح");
+  const safeName = fileName.replace(/[^a-zA-Z0-9._\u0600-\u06FF-]+/g, "-").slice(0, 80) || `file.${spec.ext}`;
+  const itemId = `lib_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const key = `office-library/${officeId}/${itemId}/${safeName}`;
+  await bucket.put(key, request.body, {
+    httpMetadata: { contentType },
+    customMetadata: { officeId, itemId, uploadedAt: new Date().toISOString() }
+  });
+  return jsonResponse({ ok: true, mediaPath: key, itemId, fileName: safeName, contentType, requestId }, 201);
+}
+
+function evaluatePublicIntakeReadiness(intake = {}, parsed = {}) {
+  const missing = [];
+  const isOwner = intake.kind === "owner";
+  const purpose = isOwner
+    ? (String(parsed.transactionType || intake.transactionType || "sale").toLowerCase() === "rent" ? "RENT" : "SALE")
+    : (String(parsed.transactionType || intake.transactionType || "").toLowerCase() === "rent" ? "LEASE_REQUEST" : "PURCHASE");
+  if (!purpose) missing.push("purpose");
+  if (!cleanText(intake.propertyType || parsed.propertyType, 80)) missing.push("propertyType");
+  if (!cleanText(intake.city || parsed.city, 80)) missing.push("city");
+  if (!cleanText(intake.district || parsed.district, 80)) missing.push("district");
+  const amount = Number(intake.amount || parsed.price || parsed.priceMax || 0);
+  if (!(amount > 0)) missing.push("priceOrBudget");
+  if (!isOwner && intake.kind !== "client") missing.push("advertiserRole");
+  const phone = normalizeSaudiPhone(intake.phone || parsed.phone);
+  if (!phone) missing.push("contactPhone");
+  const roleOk = isOwner ? "OWNER" : "CLIENT";
+  if (!roleOk) missing.push("advertiserRole");
+  return {
+    matchingReadiness: missing.length === 0 ? "READY_FOR_MATCHING" : "NEEDS_COMPLETION",
+    matchingReadinessMissing: missing,
+    advertiserRole: roleOk,
+    purpose
+  };
+}
+
+function firestoreStringArray(values = []) {
+  const items = (Array.isArray(values) ? values : []).map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 12);
+  return { arrayValue: { values: items.map((value) => ({ stringValue: value })) } };
 }
 
 async function handleBrokerApplication(request, env, requestId) {
@@ -1068,6 +1158,10 @@ async function handlePublicIntakeMatching(request, env, requestId) {
 
   const now = new Date();
   const parsed = structuredPublicIntakeToParsed(intake);
+  const readiness = evaluatePublicIntakeReadiness(intake, parsed);
+  const mediaPaths = Array.isArray(intake.mediaPaths)
+    ? intake.mediaPaths.map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 6)
+    : [];
   const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
   const prefix = targetCollection === "owners" ? "own" : "cli";
   const recordId = `${prefix}_intake_${intakeId}`.slice(0, 180);
@@ -1098,7 +1192,16 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     sourceCollection: firestoreString(targetCollection),
     sourceRecordId: firestoreString(recordId),
     workflowStage: firestoreString("new"),
-    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2)
+    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
+    purpose: firestoreString(readiness.purpose),
+    advertiserRole: firestoreString(readiness.advertiserRole),
+    advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
+    contactPhone: firestoreOptionalString(parsed.phone),
+    matchingReadiness: firestoreString(readiness.matchingReadiness),
+    matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
+    mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
+    imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
+    hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
   }});
 
   const contactId = String(parsed.phone || "").replace(/\D/g, "");
@@ -1151,6 +1254,7 @@ function structuredPublicIntakeToParsed(intake) {
     priceMin: isOwner ? amount : (detailsParsed.priceMin || 0),
     priceMax: isOwner ? amount : (amount || detailsParsed.priceMax || detailsParsed.price || 0),
     area: Number(intake.area || detailsParsed.area || 0), rooms: Number(intake.rooms || detailsParsed.rooms || 0),
+    bathrooms: Number(intake.bathrooms || detailsParsed.bathrooms || 0),
     streetWidth: Number(intake.streetWidth || detailsParsed.streetWidth || 0), phone, senderName,
     urgency: detailsParsed.urgency || "normal", financingReady: Boolean(intake.financingReady || detailsParsed.financingReady),
     directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
@@ -3799,6 +3903,11 @@ function extractListingTextFromHtml(html) {
   return cleanText(combined.replace(/\s+/g, " "), 12000);
 }
 
+function isListingFetchBlockedText(text) {
+  const sample = cleanText(text, 4000);
+  return /You have been blocked|تم حظرك|لا يمكنك الوصول للموقع|حمايتها من الهجمات/i.test(sample);
+}
+
 async function fetchListingPage(url, redirectCount = 0) {
   if (redirectCount > LISTING_FETCH_MAX_REDIRECTS) {
     return { ok: false, error: "too_many_redirects" };
@@ -3838,6 +3947,13 @@ async function fetchListingPage(url, redirectCount = 0) {
     }
     const html = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
     const text = extractListingTextFromHtml(html);
+    if (isListingFetchBlockedText(text)) {
+      return {
+        ok: false,
+        error: "source_blocked",
+        diagnostics: { status, contentType, byteLength: buffer.byteLength, textLength: text.length, blocked: true }
+      };
+    }
     if (!text) {
       return {
         ok: false,

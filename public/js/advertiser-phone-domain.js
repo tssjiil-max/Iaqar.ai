@@ -11,6 +11,7 @@ const PRICE_CONTEXT_RE = /(?:السعر|سعر|مبلغ|ريال\s*سنوي|إي
 
 export const ADVERTISER_ROLES = Object.freeze([
   { id: "OWNER", label: "مالك" },
+  { id: "CLIENT", label: "عميل" },
   { id: "DELEGATE", label: "مفوض" },
   { id: "BROKER", label: "وسيط عقاري" },
   { id: "UNKNOWN", label: "غير محدد" }

@@ -523,10 +523,19 @@
     emitOperations();
   }
 
+  function isSavedOpportunityPresentationItem(item) {
+    const type = String(item?.operationType || "").toUpperCase();
+    return type === "OPPORTUNITY_SAVED"
+      || String(item?.title || "").trim() === "فرصة محفوظة مسبقًا";
+  }
+
   function emitOperations() {
-    // Phase 5: Operations Center shows persisted Operations plus brief saved-opportunity feedback.
+    // Phase 5: Operations Center shows persisted Operations; hide save-success feedback only.
     pruneSavedOpportunityWorkspaceItems();
-    const items = [...operationItems, ...savedOpportunityWorkspaceItems]
+    const workspaceItems = savedOpportunityWorkspaceItems.filter(
+      (item) => !isSavedOpportunityPresentationItem(item)
+    );
+    const items = [...operationItems, ...workspaceItems]
       .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
   }
@@ -1305,13 +1314,16 @@
     await postOperationAction(operationId, "START");
     notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
     if (detail.operationType === "MISSING_DATA") {
-      const bankBtn = document.getElementById("openOpportunityBankBtn");
-      if (bankBtn) bankBtn.click();
+      const opportunityId = String(detail.opportunityId || "").trim();
+      if (opportunityId && window.IAQAR?.openOpportunityDetail) {
+        void window.IAQAR.openOpportunityDetail(opportunityId);
+      } else if (window.IAQAR?.openOpportunityBank) {
+        window.IAQAR.openOpportunityBank();
+      }
       return;
     }
     if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
-      const bankBtn = document.getElementById("openOpportunityBankBtn");
-      if (bankBtn) bankBtn.click();
+      if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
     }
   }
 
@@ -1340,8 +1352,6 @@
     if (detail.recordType === "opportunity") {
       if (window.IAQAR && typeof window.IAQAR.openOpportunityBank === "function") {
         window.IAQAR.openOpportunityBank();
-      } else {
-        document.getElementById("openOpportunityBankBtn")?.click();
       }
       return;
     }
@@ -1645,6 +1655,7 @@
   async function registerNotificationDevice({ requestPermission = false, sendTest = false, silent = false } = {}) {
     if (!runtimeOfficeReady(silent)) return false;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      setNotificationStatus("غير متاحة في هذا المتصفح");
       if (!silent) notify("خدمة الإشعارات غير متاحة في هذا المتصفح");
       return false;
     }
@@ -1662,8 +1673,8 @@
     let permission = Notification.permission;
     if (requestPermission && permission !== "granted") permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      setNotificationStatus(permission === "denied" ? "مرفوضة على الجهاز" : "غير مفعّلة");
-      if (!silent && permission === "denied") notify("لم يتم السماح بالإشعارات");
+      setNotificationStatus(permission === "denied" ? "محظورة من المتصفح" : "غير مفعّلة");
+      if (!silent && permission === "denied") notify("الإشعارات محظورة من إعدادات المتصفح.");
       return false;
     }
     const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
@@ -1700,7 +1711,16 @@
       if (!activated) refreshNotificationStatus();
     } catch (error) {
       setNotificationStatus("تعذر التفعيل");
-      notify(error.message || "تعذر تفعيل الإشعارات");
+      const permission = typeof Notification !== "undefined" ? Notification.permission : "default";
+      if (permission === "denied") {
+        notify("الإشعارات محظورة من إعدادات المتصفح.");
+      } else if (String(error?.message || "").includes("Web Push")) {
+        notify("يلزم إكمال مفتاح Web Push في الخادم");
+      } else if (String(error?.message || "").includes("Firebase") || String(error?.message || "").includes("إعدادات")) {
+        notify("بيانات Firebase في الخادم غير مكتملة");
+      } else {
+        notify(error.message || "تعذر تفعيل الإشعارات");
+      }
     }
   }
 

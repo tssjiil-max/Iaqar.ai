@@ -326,7 +326,7 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
   try {
     const { document, window } = shell;
     const empty = document.getElementById("operationsEmpty");
-    assert.ok(empty.textContent.includes("لا توجد فرص حالياً"));
+    assert.ok(empty.textContent.includes("لا توجد إجراءات تحتاج انتباهك حاليًا"));
     assert.ok(empty.textContent.includes("ستظهر الفرص المباشرة هنا"));
 
     const ui = projectOperationToUiItem({
