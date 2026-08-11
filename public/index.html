@@ -39,12 +39,17 @@
 
     html {
       scroll-behavior:smooth;
-      min-height:100%;
+      height:100%;
+      min-height:100dvh;
+      min-height:-webkit-fill-available;
     }
     body {
       margin:0;
       min-height:100dvh;
-      min-height:100vh;
+      min-height:-webkit-fill-available;
+      height:100%;
+      display:flex;
+      flex-direction:column;
       background:
         radial-gradient(circle at 94% 3%, rgba(197,160,89,.07), transparent 18%),
         linear-gradient(180deg,#FAFCFB 0%,var(--bg) 100%);
@@ -59,20 +64,33 @@
 
     .app {
       width:min(100%,432px);
-      margin:auto;
+      margin:0 auto;
       padding:12px 12px calc(16px + env(safe-area-inset-bottom, 0px));
-      min-height:100dvh;
-      min-height:100vh;
+      flex:1 1 auto;
       display:flex;
       flex-direction:column;
+      min-height:0;
       box-sizing:border-box;
     }
 
     .app > .header,
     .app > .license,
-    .app > .services-bar,
-    .app > .main-tabs {
+    .app > .services-bar {
       flex-shrink:0;
+    }
+
+    .app-content-shell {
+      flex:1 0 auto;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+      width:100%;
+    }
+
+    .card.workspace,
+    .card.add-opportunity,
+    .card.opportunity-bank-panel {
+      overflow:visible;
     }
 
     .card {
@@ -372,7 +390,7 @@
       padding:7px 8px 8px;
       display:flex;
       flex-direction:column;
-      flex:1 1 auto;
+      flex:1 0 auto;
       min-height:0;
     }
     .add-opportunity .section-title-bar {
@@ -584,7 +602,7 @@
       padding:18px 18px 22px;
       display:flex;
       flex-direction:column;
-      flex:1 1 auto;
+      flex:1 0 auto;
       min-height:0;
     }
 
@@ -598,8 +616,9 @@
 
     .workspace .list {
       margin-top:18px;
-      flex:1 1 auto;
+      flex:1 0 auto;
       min-height:140px;
+      overflow:visible;
     }
 
     .workspace .operation {
@@ -2241,6 +2260,7 @@
     grid-template-columns:1fr 1fr;
     gap:8px;
     margin-top:10px;
+    flex-shrink:0;
   }
 
   .main-tab {
@@ -2268,7 +2288,7 @@
 
   .main-tab-panels {
     margin-top:10px;
-    flex:1 1 auto;
+    flex:1 0 auto;
     display:flex;
     flex-direction:column;
     min-height:0;
@@ -2277,14 +2297,7 @@
   .main-tab-panel:not([hidden]) {
     display:flex;
     flex-direction:column;
-    flex:1 1 auto;
-    min-height:0;
-  }
-
-  #mainPanelOpportunities:not([hidden]) {
-    display:flex;
-    flex-direction:column;
-    flex:1 1 auto;
+    flex:1 0 auto;
     min-height:0;
   }
 
@@ -2294,7 +2307,7 @@
   }
 
   .sub-tab-panels {
-    flex:1 1 auto;
+    flex:1 0 auto;
     display:flex;
     flex-direction:column;
     min-height:0;
@@ -2303,21 +2316,22 @@
   .sub-tab-panel:not([hidden]) {
     display:flex;
     flex-direction:column;
-    flex:1 1 auto;
+    flex:1 0 auto;
     min-height:0;
   }
 
   .main-tab-panel > .card.workspace,
   .sub-tab-panel > .card.add-opportunity,
   .sub-tab-panel > .card.opportunity-bank-panel {
-    flex:1 1 auto;
+    flex:1 0 auto;
     min-height:0;
+    width:100%;
   }
 
   .opportunity-bank-panel {
     display:flex;
     flex-direction:column;
-    flex:1 1 auto;
+    flex:1 0 auto;
     min-height:0;
   }
 
@@ -2563,6 +2577,7 @@
       </div>
     </section>
 
+    <div class="app-content-shell" id="appContentShell">
     <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية">
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
         aria-selected="true" aria-controls="mainPanelOperations">مركز العمليات</button>
@@ -2675,6 +2690,7 @@
           </div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 

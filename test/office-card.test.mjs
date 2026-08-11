@@ -195,8 +195,7 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
       "header.card header",
       "section.card license",
       "section.card services-bar",
-      "nav.main-tabs",
-      "div.main-tab-panels"
+      "div.app-content-shell"
     ]);
   } finally {
     context.close();
