@@ -106,3 +106,15 @@ test("buildAdvertiserDataPatch stores display name", () => {
   assert.equal(result.patch.advertiserDisplayName, "مالك شقة العوالي");
   assert.equal(result.patch.advertiserPhoneNormalized, "+966551234567");
 });
+
+test("readAdvertiserDisplayName falls back to contactName from public intake", async () => {
+  const { readAdvertiserDisplayName } = await import("../public/js/advertiser-phone-domain.js");
+  assert.equal(
+    readAdvertiserDisplayName({ contactName: "سلطان الصاعدي", advertiserDisplayName: "" }),
+    "سلطان الصاعدي"
+  );
+  assert.equal(
+    readAdvertiserDisplayName({ advertiserDisplayName: "أحمد", contactName: "قديم" }),
+    "أحمد"
+  );
+});

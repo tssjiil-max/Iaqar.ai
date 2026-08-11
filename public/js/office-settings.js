@@ -15,11 +15,13 @@ import {
   normalizeOfficeNameKey,
   normalizePublicSlug,
   officeLinkFor,
+  resolveCurrentOfficeImage,
   resolveNotificationPreferences,
   safeText,
   sanitizeNotificationPreferences,
   validateImageFile,
-  validateOfficeName
+  validateOfficeName,
+  withOfficeImageCacheBust
 } from "./office-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
@@ -173,7 +175,10 @@ function writeSpecialtiesToForm(list) {
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
   if (logo) {
-    const logoSource = String(current.logoUrl || "").trim();
+    const logoSource = withOfficeImageCacheBust(
+      resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
+      current.updatedAt || current.identityUpdatedAt || ""
+    );
     if (logoSource) {
       logo.hidden = false;
       logo.onerror = () => {
@@ -596,7 +601,7 @@ async function persistImageUrl(variant, url) {
     runtime.db.collection("publicOffices").doc(officeId())
       .set({ officeId: officeId(), [field]: url, updatedAt: now }, { merge: true })
   ]);
-  current = clean({ ...current, [field]: url });
+  current = clean({ ...current, [field]: url, updatedAt: Date.now() });
   saveLocal(current);
   applyOfficeCardImages();
 }
@@ -958,7 +963,10 @@ async function createOfficeCardBlob() {
   ctx.font = "600 22px Tajawal, Arial, sans-serif";
   ctx.fillText("مكاتب عقارية ذكية", 108, 58);
 
-  const displaySrc = current.displayImageUrl || current.logoUrl || "";
+  const displaySrc = withOfficeImageCacheBust(
+    resolveCurrentOfficeImage(current),
+    current.updatedAt || current.identityUpdatedAt || ""
+  );
   const imageCenterX = 540;
   const imageY = 118;
   if (displaySrc) {
@@ -1386,6 +1394,10 @@ async function onLogout() {
     return;
   }
   try {
+    try { localStorage.removeItem("iaqar.auth.remember"); } catch (_) { /* ignore */ }
+    try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);
+    } catch (_) { /* ignore */ }
     await firebase.auth().signOut();
     toast("تم تسجيل الخروج");
     const officeId = window.IAQAR?.office?.officeId || "";

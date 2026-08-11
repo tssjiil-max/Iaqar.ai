@@ -693,7 +693,24 @@
         operationItems = snapshot.docs.map(projectPersistedOperation);
         pruneSavedOpportunityWorkspaceItems();
         emitOperations();
-      }, onError);
+      }, (error) => {
+        console.warn("[iaqar] operations listener", error);
+        // Fallback without orderBy if composite index/query fails — still surface MATCH_REVIEW.
+        operationsRef
+          .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
+          .limit(50)
+          .get()
+          .then((snapshot) => {
+            operationItems = snapshot.docs.map(projectPersistedOperation)
+              .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+            pruneSavedOpportunityWorkspaceItems();
+            emitOperations();
+          })
+          .catch((fallbackError) => {
+            console.warn("[iaqar] operations fallback", fallbackError);
+            onError(fallbackError);
+          });
+      });
 
     liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub, opsUnsub];
     // Ensure empty authoritative state until the first operations snapshot arrives.
@@ -1926,7 +1943,14 @@
       const openDeal = params.get("openDeal");
       const openOperation = params.get("openOperation");
       if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
-      if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
+      if (openMatch) setTimeout(() => {
+        const byMatch = operationItems.find((item) =>
+          item.id === openMatch || item.matchId === openMatch || item.recordId === openMatch
+        );
+        window.dispatchEvent(new CustomEvent("iaqar:open-operation", {
+          detail: { id: byMatch?.id || openMatch, matchId: openMatch, main: "opportunities" }
+        }));
+      }, 900);
       if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
     }
   }

@@ -97,3 +97,55 @@ export function emptyBankFilters() {
     matchingReadiness: ""
   };
 }
+
+/** True when the broker entered search text or any query filter (not lifecycle tab alone). */
+export function hasActiveBankQuery(filters = {}) {
+  const normalized = filters && typeof filters === "object" ? filters : {};
+  return Boolean(
+    safeText(normalized.search, 120)
+    || safeText(normalized.city, 80)
+    || safeText(normalized.district, 80)
+    || safeText(normalized.purpose, 40)
+    || safeText(normalized.propertyType, 80)
+    || safeText(normalized.matchingReadiness, 40)
+  );
+}
+
+/**
+ * Summarize office bank counts from lightweight metadata rows.
+ * Uses existing matchingReadiness / lifecycle fields — no parallel taxonomy.
+ */
+export function summarizeBankCounts(records = []) {
+  const summary = {
+    total: 0,
+    readyForMatching: 0,
+    needsCompletion: 0,
+    archived: 0,
+    active: 0
+  };
+  for (const record of records) {
+    if (!record || record.deletedAt || record.lifecycleStatus === "DELETED") continue;
+    const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
+    if (archived) {
+      summary.archived += 1;
+      summary.total += 1;
+      continue;
+    }
+    summary.active += 1;
+    summary.total += 1;
+    const readiness = resolveRecordMatchingReadiness(record);
+    if (readiness === MATCHING_READINESS.READY_FOR_MATCHING) summary.readyForMatching += 1;
+    else summary.needsCompletion += 1;
+  }
+  return summary;
+}
+
+export function emptyBankSummary() {
+  return {
+    total: 0,
+    readyForMatching: 0,
+    needsCompletion: 0,
+    archived: 0,
+    active: 0
+  };
+}

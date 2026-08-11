@@ -1195,8 +1195,10 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
     purpose: firestoreString(readiness.purpose),
     advertiserRole: firestoreString(readiness.advertiserRole),
+    advertiserDisplayName: firestoreOptionalString(parsed.senderName),
     advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
     contactPhone: firestoreOptionalString(parsed.phone),
+    contactName: firestoreOptionalString(parsed.senderName),
     matchingReadiness: firestoreString(readiness.matchingReadiness),
     matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
     mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
@@ -2136,6 +2138,8 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
       counterpartCollection: counterpart, counterpartRecordId: candidateId,
       opportunityId, counterpartOpportunityId: "",
       scored, rank: index + 1, accessToken,
+      // Create MATCH_REVIEW Operation (+ in-app notification). Push is deferred to
+      // sendOfficeMatchNotifications only when operationId exists (no orphan pushes).
       notifyOperation: false,
       env
     });
@@ -2725,16 +2729,27 @@ async function listCollectionDocuments({projectId,segments,accessToken,pageSize=
 }
 
 async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null}) {
-  const top=matches[0]; const now=new Date();
+  // Notification without a real Operations Center action is a product failure.
+  // Prefer a match that already has a MATCH_REVIEW operation id.
+  const actionable = (Array.isArray(matches) ? matches : []).filter((row) =>
+    row && row.matchId && String(row.operationId || "").trim()
+  );
+  const top = actionable[0] || null;
+  if (!top) {
+    console.warn("[iaqar-ops] match notification skipped — no MATCH_REVIEW operationId");
+    return { sent: false, reason: "missing_operation" };
+  }
+  const now=new Date();
   const alertId=`alt_${top.matchId}`;
   // Lock-screen-safe / preference-safe copy — no district, phone, or full opportunity text.
   const title = "لديك مطابقة جديدة تحتاج مراجعتك.";
   const body = "لديك مطابقة جديدة تحتاج مراجعتك.";
+  const operationId = String(top.operationId || "").trim();
   await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
     officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
     title:firestoreString(title),body:firestoreString(body),
     matchId:firestoreString(top.matchId),
-    operationId:firestoreString(top.operationId || ""),
+    operationId:firestoreString(operationId),
     score:firestoreInteger(top.score),
     opportunityScore:firestoreInteger(Number(top.opportunityScore || top.score || 0)),
     isBestOpportunity:firestoreBoolean(Boolean(top.isBestOpportunity)),
@@ -2746,13 +2761,15 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       officeId,
       title,
       body,
-      type: "match",
-      recordId: top.operationId || top.matchId,
+      // Deep-link as operation so Operations Center can open the actionable item.
+      type: "operation",
+      recordId: operationId,
       assignedBrokerId: top.assignedBrokerId || "",
       accessToken,
       env
     });
   }
+  return { sent: !skipPush, reason: "ok", operationId, matchId: top.matchId };
 }
 
 function buildNotificationLink({officeId,type="match",recordId=""}) {

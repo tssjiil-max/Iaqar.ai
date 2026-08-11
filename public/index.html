@@ -2391,6 +2391,53 @@
   }
   .bank-readiness-badge.is-incomplete { background:#fff4e8; color:#9a5b12; }
   .bank-readiness-line { margin:0 0 10px; font-size:13px; }
+  .bank-summary-card {
+    margin: 8px 0 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #f7fbf9;
+  }
+  .bank-summary-title {
+    margin: 0 0 10px;
+    font-size: 16px;
+    color: var(--heading, #073f35);
+  }
+  .bank-summary-stats {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+  .bank-summary-stats li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .bank-summary-stats strong {
+    color: var(--heading, #073f35);
+    font-size: 15px;
+  }
+  .bank-query-hint {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .bank-results-count {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--heading, #073f35);
+  }
+  .phone-ltr {
+    unicode-bidi: isolate;
+    direction: ltr;
+    display: inline-block;
+  }
   .bank-action-sub { display:block; font-size:11px; font-weight:400; color:var(--muted); }
   .bank-media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
   .bank-media-item img, .bank-media-item video { width:100%; border-radius:10px; display:block; }
@@ -3350,11 +3397,16 @@
       const items = Array.isArray(detail.items) ? detail.items : [];
       if (detail.authoritative || items.length > 0) {
         data = items;
-        if (state.pendingOpen && data.some(item => item.id === state.pendingOpen.id)) {
-          state.opened = state.pendingOpen.id;
+        const pendingMatches = (item) => state.pendingOpen && (
+          item.id === state.pendingOpen.id
+          || (state.pendingOpen.matchId && item.matchId === state.pendingOpen.matchId)
+          || item.matchId === state.pendingOpen.id
+        );
+        if (state.pendingOpen && data.some(pendingMatches)) {
+          const item = data.find(pendingMatches);
+          state.opened = item.id;
           state.pendingOpen = null;
           render();
-          const item = data.find(entry => entry.id === state.opened);
           dispatchOpened(item);
           scrollToOperation(state.opened);
           return;
@@ -3366,23 +3418,28 @@
 
     window.addEventListener("iaqar:open-operation", event => {
       const detail = event.detail || {};
-      const requested = { id: detail.id || null };
+      const requested = { id: detail.id || null, matchId: detail.matchId || null };
       state.opened = requested.id;
-      if (!requested.id) {
+      if (!requested.id && !requested.matchId) {
         state.pendingOpen = null;
         render();
         return;
       }
-      const item = data.find(entry => entry.id === requested.id);
+      const item = data.find(entry =>
+        entry.id === requested.id
+        || (requested.matchId && entry.matchId === requested.matchId)
+        || entry.matchId === requested.id
+      );
       if (!item) {
         state.pendingOpen = requested;
         render();
         return;
       }
+      state.opened = item.id;
       state.pendingOpen = null;
       render();
       dispatchOpened(item);
-      scrollToOperation(requested.id);
+      scrollToOperation(item.id);
     });
 
     render();

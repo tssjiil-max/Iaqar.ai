@@ -216,3 +216,24 @@ test("the worker accepts exactly the variants the client can produce", () => {
     "the public media route must allow-list exactly the office image keys"
   );
 });
+
+test("resolveCurrentOfficeImage prefers display then cover then logo", async () => {
+  const {
+    resolveCurrentOfficeImage,
+    withOfficeImageCacheBust,
+    formatPhoneDisplayHtml
+  } = await import("../public/js/office-domain.js");
+  assert.equal(resolveCurrentOfficeImage({
+    displayImageUrl: "https://img/display",
+    coverUrl: "https://img/legacy-cover",
+    logoUrl: "https://img/logo"
+  }), "https://img/display");
+  assert.equal(resolveCurrentOfficeImage({
+    coverUrl: "https://img/cover",
+    logoUrl: "https://img/logo"
+  }), "https://img/cover");
+  assert.equal(resolveCurrentOfficeImage({ logoUrl: "https://img/logo" }), "https://img/logo");
+  assert.match(withOfficeImageCacheBust("https://img/x", 123), /v=123/);
+  assert.match(formatPhoneDisplayHtml("+966552019909"), /dir="ltr"/);
+  assert.match(formatPhoneDisplayHtml("+966552019909"), /\+966552019909/);
+});

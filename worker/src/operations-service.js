@@ -38,8 +38,16 @@ function isBlank(value) {
   return String(value).trim() === "";
 }
 
+function isLandPropertyType(value) {
+  return /أرض|ارض/i.test(String(value || "").trim());
+}
+
 export function listMissingOpportunityFields(opportunity = {}) {
-  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => isBlank(opportunity[key]));
+  const required = REQUIRED_OPPORTUNITY_FIELDS.filter((key) => {
+    if (key === "rooms" && isLandPropertyType(opportunity.propertyType)) return false;
+    return true;
+  });
+  return required.filter((key) => isBlank(opportunity[key]));
 }
 
 export function missingFieldLabels(missingFields = []) {

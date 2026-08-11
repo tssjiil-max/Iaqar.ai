@@ -150,6 +150,31 @@
       else intakeForm(button.dataset.go, "platform");
     });
   }
+  function resolvePublicOfficeImage(data = {}) {
+    const display = String(data.displayImageUrl || "").trim();
+    if (display) return display;
+    const cover = String(data.coverUrl || "").trim();
+    if (cover) return cover;
+    return String(data.logoUrl || "").trim();
+  }
+
+  function withImageCacheBust(url, updatedAt) {
+    const source = String(url || "").trim();
+    if (!source) return "";
+    let stamp = "";
+    if (updatedAt && typeof updatedAt.toMillis === "function") stamp = String(updatedAt.toMillis());
+    else if (updatedAt && typeof updatedAt.seconds === "number") stamp = String(updatedAt.seconds * 1000);
+    else if (updatedAt) stamp = String(updatedAt).trim();
+    if (!stamp) return source;
+    return `${source}${source.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp)}`;
+  }
+
+  function phoneDisplayHtml(phone) {
+    const raw = String(phone || "").trim();
+    if (!raw) return "";
+    return `<span class="phone-ltr" dir="ltr">${escapeHtml(raw)}</span>`;
+  }
+
   async function publicOffice() {
     frame(`<section class="access-card"><h2>خدمات المكتب</h2>
       <p>ارفع طلبك مباشرة دون تسجيل، ولا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.</p>
@@ -163,11 +188,17 @@
       const snap = await db().collection("publicOffices").doc(officeId).get();
       if (snap.exists) {
         const data = snap.data() || {};
+        const imageUrl = withImageCacheBust(
+          resolvePublicOfficeImage(data),
+          data.updatedAt || data.identityUpdatedAt || ""
+        );
+        const phoneHtml = data.phone ? ` — تواصل ${phoneDisplayHtml(data.phone)}` : "";
+        const whatsappHtml = data.whatsapp ? ` — واتساب ${phoneDisplayHtml(data.whatsapp)}` : "";
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${data.coverUrl ? `<img src="${escapeHtml(data.coverUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
-          <br>${escapeHtml(data.city || "")}${data.phone ? ` — تواصل ${escapeHtml(data.phone)}` : ""}${data.whatsapp ? ` — واتساب ${escapeHtml(data.whatsapp)}` : ""}</p>`;
+          <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>`;
       }
     } catch (_) {}
   }
@@ -564,8 +595,7 @@
         if (!response.ok || !payload.customToken || !payload.officeId) throw new Error("LOGIN_FAILED");
         await firebase.auth().signInWithCustomToken(payload.customToken);
         try {
-          if (remember) localStorage.setItem("iaqar.auth.remember", "1");
-          else localStorage.removeItem("iaqar.auth.remember");
+          localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
         } catch (_) { /* ignore */ }
         await verifyAccess(payload.officeId, true);
       } catch (error) {
@@ -832,7 +862,10 @@
     refreshRouteFlags();
 
     try {
-      const remembered = localStorage.getItem("iaqar.auth.remember") === "1";
+      // Default LOCAL when preference is unset (checkbox defaults to stay signed in).
+      // Explicit "0" means SESSION. Never demote an existing LOCAL session by accident.
+      const rememberFlag = localStorage.getItem("iaqar.auth.remember");
+      const remembered = rememberFlag !== "0";
       await firebase.auth().setPersistence(
         remembered ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
       );

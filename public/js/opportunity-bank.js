@@ -57,7 +57,10 @@ import { DEFAULT_COOPERATION_MODE } from "./office-domain.js";
 import {
   collectBankFilterOptions,
   emptyBankFilters,
-  matchesBankQueryFilters
+  emptyBankSummary,
+  hasActiveBankQuery,
+  matchesBankQueryFilters,
+  summarizeBankCounts
 } from "./opportunity-bank-filters-domain.js";
 import {
   evaluateMatchingReadiness,
@@ -69,6 +72,7 @@ import {
   telegramShareUrl,
   whatsAppShareUrl
 } from "./listing-share-domain.js";
+import { isLandProperty } from "./opportunity-intake-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -126,11 +130,15 @@ const state = {
   queryFilters: emptyBankFilters(),
   unsubscribe: null,
   records: new Map(),
+  facetMeta: [],
+  summary: emptyBankSummary(),
   activeId: null,
   sourceCache: new Map(),
   lastDoc: null,
   hasMore: false,
-  busy: false
+  busy: false,
+  resultTotal: 0,
+  scanExhausted: false
 };
 
 let publicOfficeDirectoryCache = null;
@@ -209,8 +217,13 @@ function bindOfficeSearch({ searchInput, hiddenInput, labelNode, resultsNode }) 
   });
 }
 
+function facetSourceRecords() {
+  if (state.facetMeta.length) return state.facetMeta;
+  return [...state.records.values()];
+}
+
 function syncFilterControls() {
-  const options = collectBankFilterOptions([...state.records.values()]);
+  const options = collectBankFilterOptions(facetSourceRecords());
   const citySelect = $("bankFilterCity");
   const districtSelect = $("bankFilterDistrict");
   const propertySelect = $("bankFilterPropertyType");
@@ -222,12 +235,10 @@ function syncFilterControls() {
   }
   if (districtSelect) {
     const current = state.queryFilters.district;
+    const source = facetSourceRecords();
     const districts = state.queryFilters.city
-      ? options.districts.filter((district) => {
-        const match = [...state.records.values()].find((row) =>
-          row.city === state.queryFilters.city && row.district === district);
-        return Boolean(match);
-      })
+      ? options.districts.filter((district) => source.some((row) =>
+        row.city === state.queryFilters.city && row.district === district))
       : options.districts;
     districtSelect.innerHTML = `<option value="">كل الأحياء</option>${districts.map((district) =>
       `<option value="${escapeHtml(district)}" ${district === current ? "selected" : ""}>${escapeHtml(district)}</option>`
@@ -239,6 +250,21 @@ function syncFilterControls() {
       `<option value="${escapeHtml(type)}" ${type === current ? "selected" : ""}>${escapeHtml(type)}</option>`
     ).join("")}`;
   }
+}
+
+function syncFilterInputsFromState() {
+  const search = $("bankFilterSearch");
+  const city = $("bankFilterCity");
+  const district = $("bankFilterDistrict");
+  const purpose = $("bankFilterPurpose");
+  const propertyType = $("bankFilterPropertyType");
+  const status = $("bankFilterStatus");
+  if (search) search.value = state.queryFilters.search || "";
+  if (city) city.value = state.queryFilters.city || "";
+  if (district) district.value = state.queryFilters.district || "";
+  if (purpose) purpose.value = state.queryFilters.purpose || "";
+  if (propertyType) propertyType.value = state.queryFilters.propertyType || "";
+  if (status) status.value = state.queryFilters.matchingReadiness || "";
 }
 
 function passesListFilters(record) {
@@ -333,8 +359,28 @@ function isVisibleForFilter(record) {
 
 function renderList() {
   const list = $("opportunityBankList");
+  const loadMoreBtn = $("bankLoadMoreBtn");
   if (!list) return;
   syncFilterControls();
+
+  if (!hasActiveBankQuery(state.queryFilters)) {
+    const summary = state.summary || emptyBankSummary();
+    list.innerHTML = `
+      <div class="bank-summary-card" id="bankSummaryCard">
+        <h3 class="bank-summary-title">ملخص بنك الفرص</h3>
+        <ul class="bank-summary-stats">
+          <li><span>إجمالي الفرص</span><strong>${summary.total}</strong></li>
+          <li><span>جاهزة للمطابقة</span><strong>${summary.readyForMatching}</strong></li>
+          <li><span>تحتاج استكمال</span><strong>${summary.needsCompletion}</strong></li>
+          <li><span>المؤرشفة</span><strong>${summary.archived}</strong></li>
+        </ul>
+        <p class="bank-query-hint">حدد بحثًا أو فلترًا لعرض الفرص</p>
+      </div>
+    `;
+    if (loadMoreBtn) loadMoreBtn.hidden = true;
+    return;
+  }
+
   const rows = [...state.records.entries()]
     .filter(([, record]) => passesListFilters(record))
     .map(([id, record]) => ({
@@ -343,11 +389,18 @@ function renderList() {
     }));
 
   if (!rows.length) {
-    list.innerHTML = "";
+    list.innerHTML = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث أو الفلاتر.</p>`;
+    if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
     return;
   }
 
-  list.innerHTML = rows.map((row) => {
+  const totalLabel = state.resultTotal > 0
+    ? `${state.resultTotal} نتيجة`
+    : `${rows.length} نتيجة`;
+
+  list.innerHTML = `
+    <p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>
+    ${rows.map((row) => {
     const readiness = matchingReadinessLabel(
       row.matchingReadiness || evaluateMatchingReadiness(row).matchingReadiness
     );
@@ -359,17 +412,16 @@ function renderList() {
           <span class="bank-readiness-badge">${escapeHtml(readiness)}</span>
         </div>
         <dl>
-          <dt>الغرض</dt><dd>${escapeHtml(row.purpose)}</dd>
           <dt>الموقع</dt><dd>${escapeHtml(row.location)}</dd>
           <dt>${escapeHtml(row.amountLabel)}</dt><dd>${escapeHtml(row.amountText)}</dd>
-          ${row.attributes.length ? `<dt>المواصفات</dt><dd>${escapeHtml(row.attributes.join(" • "))}</dd>` : ""}
           <dt>تاريخ الإضافة</dt><dd>${escapeHtml(row.dateAdded)}</dd>
-          <dt>حالة التعاون</dt><dd>${escapeHtml(row.cooperationStatus)}</dd>
         </dl>
       </button>
     </article>
   `;
-  }).join("");
+  }).join("")}
+  `;
+  if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
 }
 
 async function lazyLoadSource(record) {
@@ -598,6 +650,7 @@ async function renderDetail(id) {
     sourceMediaPath: source?.mediaPath || ""
   });
   const needsCompletion = readiness.matchingReadiness === MATCHING_READINESS.NEEDS_COMPLETION;
+  const landProperty = isLandProperty(record.propertyType);
   state.activeId = id;
   panel.hidden = false;
 
@@ -625,7 +678,7 @@ async function renderDetail(id) {
       <dt>الحي</dt><dd>${escapeHtml(detail.district)}</dd>
       <dt>السعر / الميزانية</dt><dd>${escapeHtml(detail.priceOrBudget)}</dd>
       <dt>المساحة</dt><dd>${detail.area == null ? "—" : escapeHtml(detail.area)}</dd>
-      <dt>الغرف</dt><dd>${detail.rooms == null ? "—" : escapeHtml(detail.rooms)}</dd>
+      ${landProperty ? "" : `<dt>الغرف</dt><dd>${detail.rooms == null ? "—" : escapeHtml(detail.rooms)}</dd>`}
       <dt>تاريخ الإضافة</dt><dd>${escapeHtml(detail.dateAdded)}</dd>
       <dt>حالة التعاون</dt><dd>${escapeHtml(detail.cooperationStatus)}</dd>
       ${detail.contactName ? `<dt>الاسم</dt><dd>${escapeHtml(detail.contactName)}</dd>` : ""}
@@ -641,20 +694,19 @@ async function renderDetail(id) {
       </div>` : ""}
 
     <form id="bankEditForm" class="bank-edit-form" autocomplete="off">
-      <h4>تعديل / استكمال البيانات</h4>
+      <h4>${needsCompletion ? "استكمال البيانات" : "تعديل البيانات"}</h4>
       <div class="bank-edit-grid">
         <label>نوع العقار<input name="propertyType" value="${escapeHtml(record.propertyType || "")}"></label>
         <label>المدينة<input name="city" value="${escapeHtml(record.city || "")}"></label>
         <label>الحي<input name="district" value="${escapeHtml(record.district || "")}"></label>
         <label>السعر / الميزانية<input name="priceOrBudget" type="number" value="${record.priceOrBudget ?? record.price ?? ""}"></label>
         <label>المساحة<input name="area" type="number" value="${record.area ?? ""}"></label>
-        <label>الغرف<input name="rooms" type="number" value="${record.rooms ?? ""}"></label>
+        ${landProperty ? "" : `<label>الغرف<input name="rooms" type="number" value="${record.rooms ?? ""}"></label>`}
       </div>
       <button type="submit" class="bank-action-primary">${needsCompletion ? "استكمال البيانات" : "حفظ التعديلات"}</button>
     </form>
 
     <div class="bank-actions">
-      ${needsCompletion ? `<button type="button" class="bank-action-primary" id="bankCompleteDataBtn">استكمال البيانات</button>` : ""}
       <button type="button" class="bank-action" id="bankCooperateBtn">
         إتاحة للتعاون
         <small class="bank-action-sub">مع المكاتب الأخرى</small>
@@ -701,19 +753,17 @@ async function renderDetail(id) {
 }
 
 function rowsCountLabel() {
-  const count = [...state.records.values()].filter(passesListFilters).length;
+  if (!hasActiveBankQuery(state.queryFilters)) {
+    const summary = state.summary || emptyBankSummary();
+    return `إجمالي ${summary.total} — جاهزة ${summary.readyForMatching} — استكمال ${summary.needsCompletion} — مؤرشفة ${summary.archived}`;
+  }
+  const count = state.resultTotal || [...state.records.values()].filter(passesListFilters).length;
   return state.filter === "archived"
-    ? `${count} فرصة مؤرشفة`
-    : (count ? `${count} فرصة نشطة` : "لا توجد فرص في هذا التصفية");
+    ? `${count} نتيجة مؤرشفة`
+    : `${count} نتيجة`;
 }
 
 function wireDetailHandlers(id, record) {
-  $("bankCompleteDataBtn")?.addEventListener("click", () => {
-    const form = $("bankEditForm");
-    form?.scrollIntoView({ behavior: "smooth", block: "start" });
-    form?.querySelector("input,select,textarea")?.focus();
-  });
-
   $("bankDirectShareBtn")?.addEventListener("click", () => {
     const form = $("bankDirectShareForm");
     const coopForm = $("bankCooperateForm");
@@ -1623,6 +1673,56 @@ function baseOpportunityQuery(db) {
     .orderBy("createdAt", "desc");
 }
 
+async function loadBankSummary() {
+  const runtime = officeRuntime();
+  const user = authUser();
+  if (!runtime?.db || !user || !officeId()) {
+    setStatus("سجل دخول المكتب لعرض بنك الفرص", "is-error");
+    return;
+  }
+  setStatus("جارٍ تحميل ملخص بنك الفرص…");
+  try {
+    let snapshot;
+    try {
+      snapshot = await baseOpportunityQuery(runtime.db)
+        .select(
+          "city",
+          "district",
+          "propertyType",
+          "purpose",
+          "matchingReadiness",
+          "lifecycleStatus",
+          "archivedAt",
+          "deletedAt",
+          "contactName",
+          "advertiserDisplayName",
+          "opportunityKind"
+        )
+        .get();
+    } catch (selectError) {
+      console.warn("[iaqar] bank summary select fallback", selectError);
+      snapshot = await baseOpportunityQuery(runtime.db).limit(500).get();
+    }
+    state.facetMeta = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...(docSnap.data() || {})
+    }));
+    state.summary = summarizeBankCounts(state.facetMeta);
+    renderList();
+    setStatus(rowsCountLabel());
+    await loadIncomingRequests();
+  } catch (error) {
+    console.warn("[iaqar] opportunity bank summary", error);
+    setStatus("تعذر تحميل ملخص بنك الفرص — أعد المحاولة", "is-error");
+    const retry = $("opportunityBankRetry");
+    if (retry) retry.hidden = false;
+  }
+}
+
+/**
+ * Query-driven page load: scan office-scoped pages until BANK_PAGE_SIZE matches
+ * the active search/filters (or the cursor is exhausted). Never dumps the full bank into DOM.
+ */
 async function loadBankPage({ reset = false } = {}) {
   const runtime = officeRuntime();
   const user = authUser();
@@ -1634,28 +1734,74 @@ async function loadBankPage({ reset = false } = {}) {
     return;
   }
 
-  if (state.busy) return;
-  state.busy = true;
-  setStatus(reset ? "جارٍ تحميل فرص المكتب…" : "جارٍ تحميل المزيد…");
-
-  try {
-    let query = baseOpportunityQuery(runtime.db).limit(BANK_PAGE_SIZE);
-    if (!reset && state.lastDoc) {
-      query = baseOpportunityQuery(runtime.db).startAfter(state.lastDoc).limit(BANK_PAGE_SIZE);
-    }
+  if (!hasActiveBankQuery(state.queryFilters)) {
     if (reset) {
       state.records.clear();
       state.lastDoc = null;
       state.hasMore = false;
+      state.resultTotal = 0;
+      state.scanExhausted = false;
+    }
+    await loadBankSummary();
+    return;
+  }
+
+  if (state.busy) return;
+  state.busy = true;
+  setStatus(reset ? "جارٍ البحث في بنك الفرص…" : "جارٍ تحميل المزيد…");
+
+  try {
+    if (reset) {
+      state.records.clear();
+      state.lastDoc = null;
+      state.hasMore = false;
+      state.resultTotal = 0;
+      state.scanExhausted = false;
     }
 
-    const snapshot = await query.get();
-    snapshot.docs.forEach((docSnap) => {
-      state.records.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() || {}) });
-    });
-    state.lastDoc = snapshot.docs.length ? snapshot.docs[snapshot.docs.length - 1] : state.lastDoc;
-    state.hasMore = snapshot.docs.length >= BANK_PAGE_SIZE;
-    if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
+    let matchedThisPass = 0;
+    let scans = 0;
+    const maxScans = 25;
+
+    while (matchedThisPass < BANK_PAGE_SIZE && scans < maxScans && !state.scanExhausted) {
+      scans += 1;
+      let query = baseOpportunityQuery(runtime.db).limit(BANK_PAGE_SIZE);
+      if (state.lastDoc) {
+        query = baseOpportunityQuery(runtime.db).startAfter(state.lastDoc).limit(BANK_PAGE_SIZE);
+      }
+      const snapshot = await query.get();
+      if (!snapshot.docs.length) {
+        state.scanExhausted = true;
+        state.hasMore = false;
+        break;
+      }
+      state.lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      if (snapshot.docs.length < BANK_PAGE_SIZE) {
+        state.scanExhausted = true;
+      }
+
+      for (const docSnap of snapshot.docs) {
+        const record = { id: docSnap.id, ...(docSnap.data() || {}) };
+        if (!isVisibleForFilter(record)) continue;
+        if (!matchesBankQueryFilters(record, state.queryFilters)) continue;
+        if (state.records.has(docSnap.id)) continue;
+        state.records.set(docSnap.id, record);
+        matchedThisPass += 1;
+        if (matchedThisPass >= BANK_PAGE_SIZE) break;
+      }
+    }
+
+    state.hasMore = !state.scanExhausted;
+    state.resultTotal = state.records.size + (state.hasMore ? 0 : 0);
+    // Approximate visible total: exact when exhausted, otherwise "at least N".
+    if (state.scanExhausted) {
+      state.resultTotal = [...state.records.values()].filter(passesListFilters).length;
+    } else {
+      state.resultTotal = Math.max(
+        [...state.records.values()].filter(passesListFilters).length,
+        state.records.size
+      );
+    }
 
     await syncOpportunityCooperationFromRequests();
     renderList();
@@ -1665,9 +1811,7 @@ async function loadBankPage({ reset = false } = {}) {
     setStatus(
       visible
         ? rowsCountLabel()
-        : (state.filter === "archived"
-          ? "لا توجد فرص مؤرشفة."
-          : "لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.")
+        : "لا توجد نتائج مطابقة للبحث أو الفلاتر."
     );
   } catch (error) {
     console.warn("[iaqar] opportunity bank", error);
@@ -1680,12 +1824,30 @@ async function loadBankPage({ reset = false } = {}) {
 }
 
 function startListener() {
-  // Phase 3 uses cursor pagination (get + startAfter) instead of an unbounded snapshot.
   stopListener();
-  void loadBankPage({ reset: true });
+  state.records.clear();
+  state.lastDoc = null;
+  state.hasMore = false;
+  state.resultTotal = 0;
+  state.scanExhausted = false;
+  void loadBankSummary();
   void loadIncomingRequests();
   void loadSharedWithUs();
   void loadOutgoingScopes();
+}
+
+function scheduleBankQueryRefresh() {
+  if (!hasActiveBankQuery(state.queryFilters)) {
+    state.records.clear();
+    state.lastDoc = null;
+    state.hasMore = false;
+    state.resultTotal = 0;
+    state.scanExhausted = false;
+    renderList();
+    setStatus(rowsCountLabel());
+    return;
+  }
+  void loadBankPage({ reset: true });
 }
 
 function isInlineBankRoot() {
@@ -1802,58 +1964,49 @@ function boot() {
   $("opportunityBankRetry")?.addEventListener("click", () => {
     const retry = $("opportunityBankRetry");
     if (retry) retry.hidden = true;
-    void loadBankPage({ reset: true });
+    if (hasActiveBankQuery(state.queryFilters)) void loadBankPage({ reset: true });
+    else void loadBankSummary();
   });
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
     state.filter = "active";
     syncFilterButtons();
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterArchived")?.addEventListener("click", () => {
     state.filter = "archived";
     syncFilterButtons();
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterSearch")?.addEventListener("input", (event) => {
     state.queryFilters.search = event.currentTarget.value || "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterCity")?.addEventListener("change", (event) => {
     state.queryFilters.city = event.currentTarget.value || "";
     state.queryFilters.district = "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterDistrict")?.addEventListener("change", (event) => {
     state.queryFilters.district = event.currentTarget.value || "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterPurpose")?.addEventListener("change", (event) => {
     state.queryFilters.purpose = event.currentTarget.value || "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterPropertyType")?.addEventListener("change", (event) => {
     state.queryFilters.propertyType = event.currentTarget.value || "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterStatus")?.addEventListener("change", (event) => {
     state.queryFilters.matchingReadiness = event.currentTarget.value || "";
-    renderList();
-    setStatus(rowsCountLabel());
+    scheduleBankQueryRefresh();
   });
   $("bankFilterClearBtn")?.addEventListener("click", () => {
     state.queryFilters = emptyBankFilters();
-    const search = $("bankFilterSearch");
-    if (search) search.value = "";
-    renderList();
-    setStatus(rowsCountLabel());
+    syncFilterInputsFromState();
+    scheduleBankQueryRefresh();
   });
   $("bankIncomingList")?.addEventListener("click", (event) => {
     const acceptId = event.target.closest?.("[data-accept-request]")?.getAttribute("data-accept-request");
@@ -1874,8 +2027,20 @@ function boot() {
   window.IAQAR.pauseOpportunityBankInline = pauseOpportunityBankInline;
   window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
     openOpportunityBank();
-    await loadBankPage({ reset: true });
-    if (opportunityId) await renderDetail(opportunityId);
+    if (!opportunityId) return;
+    // Detail deep-link loads the single opportunity without dumping the full bank.
+    const runtime = officeRuntime();
+    if (!runtime?.db || !officeId()) return;
+    try {
+      const snap = await runtime.db.collection("offices").doc(officeId())
+        .collection("opportunities").doc(opportunityId).get();
+      if (snap.exists) {
+        state.records.set(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
+        await renderDetail(opportunityId);
+      }
+    } catch (error) {
+      console.warn("[iaqar] open opportunity detail", error);
+    }
   };
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;
   window.IAQAR.isBankDetailOpen = isBankDetailOpen;

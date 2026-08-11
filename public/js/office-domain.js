@@ -485,3 +485,43 @@ export function opportunityBankRow(id, record = {}) {
     cooperationStatus: cooperationStatusLabel(record.cooperationStatus || record.cooperationState)
   };
 }
+
+/**
+ * Single source of truth for the current office visual identity image.
+ * Prefer the newest explicit display image, then cover, then logo.
+ * Never invent a legacy fallback URL when a current field exists.
+ */
+export function resolveCurrentOfficeImage(office = {}) {
+  const display = safeText(office.displayImageUrl).slice(0, 2000);
+  if (display) return display;
+  const cover = safeText(office.coverUrl).slice(0, 2000);
+  if (cover) return cover;
+  return safeText(office.logoUrl).slice(0, 2000);
+}
+
+/** Cache-bust an image URL when office updatedAt is known. */
+export function withOfficeImageCacheBust(url, updatedAt) {
+  const source = safeText(url).slice(0, 2000);
+  if (!source) return "";
+  if (!updatedAt) return source;
+  let stamp = "";
+  if (typeof updatedAt?.toMillis === "function") stamp = String(updatedAt.toMillis());
+  else if (typeof updatedAt?.seconds === "number") stamp = String(updatedAt.seconds * 1000);
+  else if (updatedAt instanceof Date) stamp = String(updatedAt.getTime());
+  else stamp = String(updatedAt).trim();
+  if (!stamp) return source;
+  const sep = source.includes("?") ? "&" : "?";
+  return `${source}${sep}v=${encodeURIComponent(stamp)}`;
+}
+
+/** Visual LTR isolation for phone numbers inside RTL pages (display only). */
+export function formatPhoneDisplayHtml(phone, { escapeHtml } = {}) {
+  const raw = safeText(phone).slice(0, 40);
+  if (!raw) return "";
+  const esc = typeof escapeHtml === "function"
+    ? escapeHtml
+    : (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+  return `<span class="phone-ltr" dir="ltr">${esc(raw)}</span>`;
+}

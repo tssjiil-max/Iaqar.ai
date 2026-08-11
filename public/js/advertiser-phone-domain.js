@@ -62,7 +62,14 @@ export function safeAdvertiserDisplayName(value) {
 }
 
 export function readAdvertiserDisplayName(record = {}) {
-  return safeAdvertiserDisplayName(record.advertiserDisplayName || "");
+  return safeAdvertiserDisplayName(
+    record.advertiserDisplayName
+      || record.contactName
+      || record.name
+      || record.senderName
+      || record.fullName
+      || ""
+  );
 }
 
 export function validateAdvertiserPhoneLocalInput(localDigits) {

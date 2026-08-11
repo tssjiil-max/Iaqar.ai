@@ -129,6 +129,17 @@ test("createdAt cannot be changed through edit patch builder", () => {
   assert.equal(result.ok, false);
 });
 
+test("land edit patch clears rooms and bathrooms", () => {
+  const result = buildEditPatch(
+    { ...sample, propertyType: "أرض", rooms: 3, bathrooms: 2 },
+    { propertyType: "أرض تجارية", city: "المدينة المنورة" },
+    { actorUid: "broker-a" }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.patch.rooms, null);
+  assert.equal(result.patch.bathrooms, null);
+});
+
 test("archive / restore / soft-delete are idempotent and preserve audit fields", () => {
   const archived = buildArchivePatch(sample, { actorUid: "broker-a" });
   assert.equal(archived.ok, true);

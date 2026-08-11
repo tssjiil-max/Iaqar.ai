@@ -117,6 +117,19 @@ test("6. missing-data condition creates one MISSING_DATA Operation", async () =>
   assert.match(op.summaryText, /الحقول الناقصة/);
 });
 
+test("6b. land opportunities do not treat rooms as missing", () => {
+  const missing = listMissingOpportunityFields({
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض تجارية",
+    city: "المدينة المنورة",
+    district: "أبيار علي",
+    priceOrBudget: 500000,
+    area: 400
+  });
+  assert.equal(missing.includes("rooms"), false);
+});
+
 test("7. completing missing data closes via COMPLETE lifecycle", () => {
   const result = applyOperationLifecycle(
     { status: OPERATION_STATUS.OPEN },

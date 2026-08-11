@@ -261,6 +261,14 @@ export function buildEditPatch(existing, input = {}, { now = new Date(), actorUi
     }
   }
 
+  const nextPropertyType = patch.propertyType !== undefined
+    ? patch.propertyType
+    : existing.propertyType;
+  if (/أرض|ارض/i.test(String(nextPropertyType || ""))) {
+    patch.rooms = null;
+    patch.bathrooms = null;
+  }
+
   if (Object.keys(patch).length === 0) {
     return { ok: false, error: "no_editable_fields" };
   }
