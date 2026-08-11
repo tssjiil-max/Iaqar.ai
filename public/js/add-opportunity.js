@@ -639,7 +639,20 @@ async function startExecute() {
       if (defaultCity) prepared.fields.city = defaultCity;
     }
     if (!canOpenReview(prepared)) {
-      throw new Error("extraction_failed");
+      const inputText = ($("addOpportunityInput")?.value || "").trim();
+      const isUrlIntake = detectSourceTypeFromText(inputText) === "url"
+        || Boolean(intakeContext?.sourceUrl)
+        || prepared?.source?.sourceType === "url"
+        || Boolean(prepared?.manualUrlContinuation);
+      if (isUrlIntake) {
+        // Haraj/AQAR/etc. may return shell HTML with no usable listing fields.
+        prepared.manualUrlContinuation = true;
+        prepared.urlBlockedReason = prepared.urlBlockedReason || "listing_text_insufficient";
+        prepared.urlBlockedMessage = prepared.urlBlockedMessage
+          || "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا.";
+      } else {
+        throw new Error("extraction_failed");
+      }
     }
     const draftSaved = await persistIntake(prepared, {
       autoSavedAt: new Date().toISOString(),

@@ -5,6 +5,15 @@
 import { safeText } from "./opportunity-intake-domain.js";
 import { evaluateMatchingReadiness, MATCHING_READINESS } from "./opportunity-readiness-domain.js";
 
+function normalizeSearchNeedle(value) {
+  return String(value == null ? "" : value)
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
+    .replace(/[٬,]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 const PURPOSE_ALIASES = Object.freeze({
   بيع: "SALE",
   شراء: "PURCHASE",
@@ -33,9 +42,9 @@ export function resolveRecordMatchingReadiness(record = {}) {
 }
 
 export function matchesBankQueryFilters(record = {}, filters = {}) {
-  const search = safeText(filters.search, 120).toLowerCase();
+  const search = normalizeSearchNeedle(safeText(filters.search, 120));
   if (search) {
-    const haystack = [
+    const haystack = normalizeSearchNeedle([
       record.propertyType,
       record.city,
       record.district,
@@ -49,7 +58,7 @@ export function matchesBankQueryFilters(record = {}, filters = {}) {
       record.budget,
       record.annualRent,
       record.area
-    ].map((part) => safeText(part, 200).toLowerCase()).join(" ");
+    ].map((part) => safeText(part, 200)).join(" "));
     if (!haystack.includes(search)) return false;
   }
 

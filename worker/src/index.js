@@ -3937,7 +3937,16 @@ function extractListingTextFromHtml(html) {
 
 function isListingFetchBlockedText(text) {
   const sample = cleanText(text, 4000);
-  return /You have been blocked|تم حظرك|لا يمكنك الوصول للموقع|حمايتها من الهجمات/i.test(sample);
+  if (/You have been blocked|تم حظرك|لا يمكنك الوصول للموقع|حمايتها من الهجمات/i.test(sample)) {
+    return true;
+  }
+  // Haraj (and similar) login/shell pages without a concrete listing body.
+  if (/حراج|haraj/i.test(sample)
+    && /دخــــول|تسجيل حساب|اتفاقية الاستخدام|سياسة الخصوصية/i.test(sample)
+    && !/(للبيع|للإيجار|السعر|المساحة|حي\s+\S+)/i.test(sample)) {
+    return true;
+  }
+  return false;
 }
 
 async function fetchListingPage(url, redirectCount = 0) {
