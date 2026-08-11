@@ -661,7 +661,11 @@ async function submitReview() {
     closeReview();
   } catch (error) {
     console.warn("[iaqar] review approve", error);
-    setReviewStatus("تعذر الحفظ. حاول مرة أخرى.", true);
+    const code = String(error?.message || error?.code || "");
+    const detail = code && code !== "undefined"
+      ? `تعذر الحفظ (${code}). حاول مرة أخرى.`
+      : "تعذر الحفظ. حاول مرة أخرى.";
+    setReviewStatus(detail, true);
   } finally {
     if (approveBtn) {
       approveBtn.disabled = false;

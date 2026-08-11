@@ -59,7 +59,8 @@ export async function requestOpportunityRematch({
       "Content-Type": "application/json",
       Authorization: `Bearer ${idToken}`
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000)
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {

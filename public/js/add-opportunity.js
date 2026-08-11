@@ -738,50 +738,52 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     toast("تم تحديث الفرصة في بنك الفرص");
     clearIntakeForm();
 
-    let matching = { ok: false, matchCount: 0, skipped: true };
-    let missingDataSync = { ok: false, created: false };
-    const readyForMatching = isEligibleForMatchingRun({ ...prepared.opportunity, ...reviewMeta });
-    if (readyForMatching && shouldRematchAfterOpportunityWrite({ duplicate: false })) {
-      try {
-        const token = await user.getIdToken();
-        matching = await requestOpportunityRematch({
-          workerBase: workerBase(),
-          idToken: token,
-          officeId: office.officeId,
+    // Rematch/ops must not block the review approve UI (can hang on slow Worker).
+    void (async () => {
+      let matching = { ok: false, matchCount: 0, skipped: true };
+      let missingDataSync = { ok: false, created: false };
+      const readyForMatching = isEligibleForMatchingRun({ ...prepared.opportunity, ...reviewMeta });
+      if (readyForMatching && shouldRematchAfterOpportunityWrite({ duplicate: false })) {
+        try {
+          const token = await user.getIdToken();
+          matching = await requestOpportunityRematch({
+            workerBase: workerBase(),
+            idToken: token,
+            officeId: office.officeId,
+            opportunityId: saved.opportunityId,
+            notify: true
+          });
+          missingDataSync = await requestMissingDataOperationSync({
+            workerBase: workerBase(),
+            idToken: token,
+            officeId: office.officeId,
+            opportunityId: saved.opportunityId
+          });
+        } catch (error) {
+          console.warn("[iaqar] rematch/ops after intake", error);
+          matching = { ok: false, error: "rematch_failed", matchCount: 0 };
+        }
+      }
+      window.dispatchEvent(new CustomEvent("iaqar:opportunity-ingested", {
+        detail: {
           opportunityId: saved.opportunityId,
-          notify: true
+          duplicate: saved.duplicate,
+          createsOperation: Boolean(matching.createsOperation || missingDataSync.created),
+          runsMatching: matching.ok === true,
+          matchCount: Number(matching.matchCount || 0),
+          productionAi: false,
+          ...phase4BoundaryGuarantees(),
+          ...phase5BoundaryGuarantees()
+        }
+      }));
+      if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
+        window.IAQAR.pushSavedOpportunityToWorkspace({
+          opportunityId: saved.opportunityId,
+          duplicate: saved.duplicate,
+          matchCount: Number(matching.matchCount || 0)
         });
-        missingDataSync = await requestMissingDataOperationSync({
-          workerBase: workerBase(),
-          idToken: token,
-          officeId: office.officeId,
-          opportunityId: saved.opportunityId
-        });
-      } catch (error) {
-        console.warn("[iaqar] rematch/ops after intake", error);
-        matching = { ok: false, error: "rematch_failed", matchCount: 0 };
       }
-    }
-
-    window.dispatchEvent(new CustomEvent("iaqar:opportunity-ingested", {
-      detail: {
-        opportunityId: saved.opportunityId,
-        duplicate: saved.duplicate,
-        createsOperation: Boolean(matching.createsOperation || missingDataSync.created),
-        runsMatching: matching.ok === true,
-        matchCount: Number(matching.matchCount || 0),
-        productionAi: false,
-        ...phase4BoundaryGuarantees(),
-        ...phase5BoundaryGuarantees()
-      }
-    }));
-    if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
-      window.IAQAR.pushSavedOpportunityToWorkspace({
-        opportunityId: saved.opportunityId,
-        duplicate: saved.duplicate,
-        matchCount: Number(matching.matchCount || 0)
-      });
-    }
+    })();
   } finally {
     executing = false;
     setBusy(false);
