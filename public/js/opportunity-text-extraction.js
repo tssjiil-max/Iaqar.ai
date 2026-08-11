@@ -241,6 +241,20 @@ function extractTransactionType(text, title) {
   return emptyField();
 }
 
+function cleanExtractedDistrictName(raw) {
+  let name = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!name) return "";
+  // Stop before common listing continuations glued onto one line.
+  // Note: JS \\b is Latin-only — do not use it for Arabic tokens.
+  name = name.split(
+    /\s+(?:المساحة|مساحة|السعر|سعر|للتواصل|رقم|جوال|واتساب|غرفة|غرف|متر|م²|م2|ريال|ألف|الف)(?=\s|$|[0-9])/i
+  )[0] || name;
+  name = name.replace(/[|،,.:؛]+$/g, "").trim();
+  // Keep a short district label (1–4 Arabic tokens), not the rest of the ad.
+  const tokens = name.split(/\s+/).filter(Boolean).slice(0, 4);
+  return tokens.join(" ").trim();
+}
+
 function extractDistrict(text) {
   const ranona = text.match(/(?:في\s+)?(?:حي\s+)?الرانوناء/i);
   if (ranona) {
@@ -255,8 +269,8 @@ function extractDistrict(text) {
   for (const re of patterns) {
     const m = text.match(re);
     if (m) {
-      const name = String(m[1]).trim().replace(/\s+/g, " ");
-      return makeField(name, m[0], 0.95);
+      const name = cleanExtractedDistrictName(m[1]);
+      if (name) return makeField(name, m[0], 0.95);
     }
   }
   return emptyField();

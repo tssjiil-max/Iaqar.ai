@@ -328,28 +328,55 @@ async function persistIntake(result, reviewMeta = {}, options = {}) {
     return { duplicate: true, opportunityId, sourceId: result.source.id };
   }
 
-  const opportunityPayload = buildOpportunityPersistPayload({
+  const opportunityPayload = sanitizeFirestoreWrite(buildOpportunityPersistPayload({
     opportunity: result.opportunity,
     reviewMeta,
     opportunityId,
     existingData: existing.exists ? (existing.data() || {}) : null,
     serverTimestamp: window.firebase.firestore.FieldValue.serverTimestamp()
-  });
+  }));
 
   const batch = db.batch();
   // opportunitySources: members may create but only managers may update.
   // After auto-save, approve must not rewrite the source doc.
   if (!existing.exists) {
-    batch.set(sourceRef, {
+    batch.set(sourceRef, sanitizeFirestoreWrite({
       ...result.source,
       opportunityId,
       createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    });
+    }));
   }
   batch.set(opportunityRef, opportunityPayload, { merge: Boolean(existing.exists) });
   await batch.commit();
   return { duplicate: false, opportunityId, sourceId: result.source.id };
+}
+
+/** Firestore rejects undefined and NaN; strip them before batch writes. */
+export function sanitizeFirestoreWrite(value) {
+  if (value === undefined || typeof value === "function") return undefined;
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isNaN(value)) return null;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeFirestoreWrite(item))
+      .filter((item) => item !== undefined);
+  }
+  if (value && typeof value === "object") {
+    // Keep Firestore FieldValue / Timestamp / Date / GeoPoint intact.
+    if (typeof value.isEqual === "function") return value;
+    if (typeof value.toDate === "function") return value;
+    if (Object.prototype.toString.call(value) === "[object Date]") return value;
+    const ctor = value.constructor;
+    if (ctor && ctor !== Object && ctor !== Array) return value;
+    const out = {};
+    for (const [key, entry] of Object.entries(value)) {
+      const next = sanitizeFirestoreWrite(entry);
+      if (next !== undefined) out[key] = next;
+    }
+    return out;
+  }
+  return value;
 }
 
 /**
@@ -661,7 +688,7 @@ async function startExecute() {
 }
 
 async function approveFromReview(brokerExtras, review, advertiser = {}) {
-  if (executing) return;
+  if (executing) throw new Error("save_in_progress");
   executing = true;
   setBusy(true);
 
@@ -863,6 +890,7 @@ export const __test = {
   requestOpportunityExtraction,
   resetForNewIntake,
   buildOpportunityPersistPayload,
+  sanitizeFirestoreWrite,
   setExtractionTimeoutMs(value) {
     extractionTimeoutMs = Number(value) > 0
       ? Math.min(Number(value), EXTRACTION_TIMEOUT_MS)

@@ -179,7 +179,41 @@ export function matchDistrict(raw = "", cityId = "madinah") {
       }
     }
   }
-  return best;
+  if (best) return best;
+  // Polluted one-line extractions labels: try the first Arabic token(s).
+  const tokens = hay.split(/\s+/).filter(Boolean);
+  for (let n = Math.min(3, tokens.length); n >= 1; n -= 1) {
+    const head = tokens.slice(0, n).join(" ");
+    for (const district of DISTRICTS) {
+      if (!district.active) continue;
+      for (const alias of district.aliases) {
+        const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
+        if (a && (head === a || a.includes(head) || head.includes(a)) && a.length >= 3) {
+          if (!best || a.length >= bestLen) {
+            best = district;
+            bestLen = a.length;
+          }
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/**
+ * District picker filter: never drop "حي آخر" behind the 40-item cap,
+ * and keep it visible when the typed query matches no official district.
+ */
+export function filterDistrictOptions(query, items, limit = 40) {
+  const list = Array.isArray(items) ? items : [];
+  const other = list.find((item) => item.id === DISTRICT_OTHER_ID) || null;
+  const rest = list.filter((item) => item.id !== DISTRICT_OTHER_ID);
+  const filtered = filterBySearch(query, rest, "officialName");
+  const cap = Math.max(1, Number(limit) || 40);
+  const result = filtered.slice(0, other ? cap - 1 : cap);
+  if (other) result.push(other);
+  return result;
 }
 
 export function districtsForCity(cityId) {
@@ -215,9 +249,14 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
   const cityLabel = safeTrim(extractionFields.city);
   const city = cityLabel ? matchCity(cityLabel) : null;
   const districtLabel = safeTrim(extractionFields.district || extended.district);
+  const cityIdForDistrict = city?.id || "madinah";
   const district = districtLabel
-    ? matchDistrict(districtLabel, city?.id || "madinah")
+    ? matchDistrict(districtLabel, cityIdForDistrict)
     : null;
+  // Unmatched extracted district → "حي آخر" so the broker can confirm/edit before save.
+  const unmatchedDistrictManual = !district && districtLabel
+    ? districtLabel.split(/\s+/).slice(0, 4).join(" ").trim()
+    : "";
 
   const mode = reviewTransactionMode(op?.id || "");
   const legacyValue = extractionFields.priceOrBudget ?? "";
@@ -232,8 +271,8 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
     propertyTypeManual: property ? "" : propertyLabel,
     cityId: city?.id || "",
     cityManual: city ? "" : cityLabel,
-    districtId: district?.id || "",
-    districtManual: district ? "" : districtLabel,
+    districtId: district?.id || (unmatchedDistrictManual ? DISTRICT_OTHER_ID : ""),
+    districtManual: district ? "" : unmatchedDistrictManual,
     salePrice: salePrice === "" || salePrice == null ? "" : salePrice,
     annualRent: annualRent === "" || annualRent == null ? "" : annualRent,
     monthlyRent: extended.monthlyRent ?? "",

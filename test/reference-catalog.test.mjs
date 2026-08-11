@@ -8,6 +8,7 @@ import {
   buildReviewDefaults,
   districtsForCity,
   filterBySearch,
+  filterDistrictOptions,
   matchDistrict,
   reviewValuesToBrokerFields
 } from "../public/js/reference-catalog.js";
@@ -148,4 +149,33 @@ test("unknown operation does not assign a generic amount to sale, rent, or budge
   assert.equal(broker.annualRent, null);
   assert.equal(broker.budget, null);
   assert.equal(broker.priceOrBudget, null);
+});
+
+test("unmatched extracted district opens as حي آخر with short manual name", () => {
+  const defaults = buildReviewDefaults({
+    purpose: "SALE",
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "العوالي"
+  }, "أرض للبيع حي العوالي");
+  assert.equal(defaults.districtId, DISTRICT_OTHER_ID);
+  assert.equal(defaults.districtManual, "العوالي");
+});
+
+test("filterDistrictOptions always keeps حي آخر even under the item cap", () => {
+  const items = [
+    ...DISTRICTS.slice(0, 60).map((d) => ({ ...d })),
+    {
+      id: DISTRICT_OTHER_ID,
+      officialName: "حي آخر / غير موجود في القائمة"
+    }
+  ];
+  const emptyQuery = filterDistrictOptions("", items, 40);
+  assert.ok(emptyQuery.some((d) => d.id === DISTRICT_OTHER_ID));
+  assert.ok(emptyQuery.length <= 40);
+
+  const unknown = filterDistrictOptions("العوالي", items, 40);
+  assert.equal(unknown.length, 1);
+  assert.equal(unknown[0].id, DISTRICT_OTHER_ID);
 });

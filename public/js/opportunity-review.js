@@ -11,6 +11,7 @@ import {
   buildReviewDefaults,
   districtsForCity,
   filterBySearch,
+  filterDistrictOptions,
   reviewTransactionMode,
   reviewValuesToBrokerFields
 } from "./reference-catalog.js";
@@ -426,7 +427,9 @@ function wireSearchFields(root) {
 
     const render = (query = "") => {
       const labelKey = field === "districtId" ? "officialName" : "label";
-      const filtered = filterBySearch(query, items, labelKey).slice(0, 40);
+      const filtered = field === "districtId"
+        ? filterDistrictOptions(query, items, 40)
+        : filterBySearch(query, items, labelKey).slice(0, 40);
       list.innerHTML = filtered.map((item) =>
         `<li><button type="button" data-pick-id="${escapeHtml(item.id)}" data-pick-label="${escapeHtml(item[labelKey] || item.label || "")}">${escapeHtml(item[labelKey] || item.label || "")}</button></li>`
       ).join("");
@@ -441,8 +444,16 @@ function wireSearchFields(root) {
     list.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-pick-id]");
       if (!btn) return;
+      const typedQuery = String(input.value || "").trim();
       hidden.value = btn.dataset.pickId || "";
       input.value = btn.dataset.pickLabel || "";
+      if (field === "districtId" && btn.dataset.pickId === DISTRICT_OTHER_ID) {
+        const manual = root.querySelector('[name="districtManual"]');
+        if (manual && !String(manual.value || "").trim()) {
+          const looksLikeOtherLabel = /حي\s*آخر|غير موجود/.test(typedQuery);
+          if (typedQuery && !looksLikeOtherLabel) manual.value = typedQuery.slice(0, 80);
+        }
+      }
       input.closest("label")?.querySelector("[data-review-needed]")?.remove();
       list.hidden = true;
       syncManualVisibility(root);

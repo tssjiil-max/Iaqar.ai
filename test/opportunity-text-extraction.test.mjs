@@ -149,3 +149,13 @@ test("intake pipeline uses phrase extractor for text (not single-keyword propert
   assert.equal(prepared.fields?.propertyType, "شقة");
   assert.equal(prepared.fields?.rooms, 4);
 });
+
+test("sale land one-line district must not swallow price/area tokens", () => {
+  const result = extractArabicOpportunityText(
+    "أرض للبيع في المدينة المنورة حي العوالي المساحة 500 متر السعر 860000 ريال للتواصل 0555123456"
+  );
+  const s = shape(result);
+  assert.equal(s.district, "العوالي");
+  assert.equal(s.salePrice, 860000);
+  assert.equal(s.area, 500);
+});
