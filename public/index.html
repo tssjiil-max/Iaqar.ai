@@ -36,9 +36,14 @@
     }
 
     * { box-sizing:border-box; }
-    html { scroll-behavior:smooth; }
+
+    html {
+      scroll-behavior:smooth;
+      min-height:100%;
+    }
     body {
       margin:0;
+      min-height:100dvh;
       min-height:100vh;
       background:
         radial-gradient(circle at 94% 3%, rgba(197,160,89,.07), transparent 18%),
@@ -55,7 +60,19 @@
     .app {
       width:min(100%,432px);
       margin:auto;
-      padding:12px 12px 28px;
+      padding:12px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+      min-height:100dvh;
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      box-sizing:border-box;
+    }
+
+    .app > .header,
+    .app > .license,
+    .app > .services-bar,
+    .app > .main-tabs {
+      flex-shrink:0;
     }
 
     .card {
@@ -351,8 +368,12 @@
 
     /* إضافة فرصة — مدمج في آخر الصفحة */
     .add-opportunity {
-      margin-top:28px;
+      margin-top:0;
       padding:7px 8px 8px;
+      display:flex;
+      flex-direction:column;
+      flex:1 1 auto;
+      min-height:0;
     }
     .add-opportunity .section-title-bar {
       padding:7px 10px;
@@ -559,8 +580,12 @@
 
     /* مساحة العمل */
     .workspace {
-      margin-top:10px;
+      margin-top:0;
       padding:18px 18px 22px;
+      display:flex;
+      flex-direction:column;
+      flex:1 1 auto;
+      min-height:0;
     }
 
     .workspace-subtitle {
@@ -573,6 +598,7 @@
 
     .workspace .list {
       margin-top:18px;
+      flex:1 1 auto;
       min-height:140px;
     }
 
@@ -597,6 +623,7 @@
     .workspace .empty {
       margin-top:18px;
       padding:28px 12px;
+      flex:1 1 auto;
       min-height:120px;
       font-size:13px;
       line-height:1.6;
@@ -2237,21 +2264,61 @@
   }
 
   .main-tab-panel[hidden],
-  .sub-tab-panel[hidden] { display:none; }
+  .sub-tab-panel[hidden] { display:none !important; }
 
   .main-tab-panels {
     margin-top:10px;
-    min-height:calc(100dvh - 248px - env(safe-area-inset-bottom, 0px));
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+
+  .main-tab-panel:not([hidden]) {
+    display:flex;
+    flex-direction:column;
+    flex:1 1 auto;
+    min-height:0;
+  }
+
+  #mainPanelOpportunities:not([hidden]) {
+    display:flex;
+    flex-direction:column;
+    flex:1 1 auto;
+    min-height:0;
+  }
+
+  .tab-panel-intro,
+  .sub-tabs {
+    flex-shrink:0;
+  }
+
+  .sub-tab-panels {
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+
+  .sub-tab-panel:not([hidden]) {
+    display:flex;
+    flex-direction:column;
+    flex:1 1 auto;
+    min-height:0;
   }
 
   .main-tab-panel > .card.workspace,
   .sub-tab-panel > .card.add-opportunity,
   .sub-tab-panel > .card.opportunity-bank-panel {
-    min-height:calc(100dvh - 292px - env(safe-area-inset-bottom, 0px));
+    flex:1 1 auto;
+    min-height:0;
   }
 
-  .sub-tab-panels {
-    min-height:calc(100dvh - 340px - env(safe-area-inset-bottom, 0px));
+  .opportunity-bank-panel {
+    display:flex;
+    flex-direction:column;
+    flex:1 1 auto;
+    min-height:0;
   }
 
   .bank-share-scope {
@@ -2277,9 +2344,9 @@
 
   .bank-share-scope-help {
     font-size:11px;
-    font-weight:500;
+    font-weight:400;
     color:var(--muted);
-    line-height:1.4;
+    line-height:1.45;
   }
 
   .bank-share-scope-actions {
@@ -2953,8 +3020,16 @@
     const toast = document.getElementById("toast");
 
     // قائمة واحدة لكل الإجراءات المطلوبة، دون أي تبويب أو صفحة منفصلة.
+    function isSavedOpportunityFeedback(item) {
+      const type = String(item?.operationType || "").toUpperCase();
+      const title = String(item?.title || "").trim();
+      return type === "OPPORTUNITY_SAVED" || title === "فرصة محفوظة مسبقًا";
+    }
+
     function visibleItems() {
-      return [...data].sort((a, b) => a.priority - b.priority);
+      return [...data]
+        .filter(item => !isSavedOpportunityFeedback(item))
+        .sort((a, b) => a.priority - b.priority);
     }
 
     function escapeHtml(value) {
