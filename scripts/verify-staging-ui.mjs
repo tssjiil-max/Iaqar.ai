@@ -151,9 +151,9 @@ async function verifyUrl(browser, url, label) {
     const html = scope?.innerHTML || "";
     const helpStyle = scope?.querySelector(".bank-share-scope-help");
     return {
-      shareTitle: html.includes("مشاركة الفرصة"),
-      shareHelp: html.includes("مع المكاتب الأخرى"),
-      oldScope: html.includes("نطاق المشاركة") || html.includes("نطاق مشاركة"),
+      shareTitle: html.includes("مشاركة مع مكتب محدد"),
+      shareHelp: html.includes("ابحث عن مكتب"),
+      oldScope: html.includes("نطاق المشاركة") || html.includes("نطاق مشاركة") || html.includes("معرّف المكتب المستهدف"),
       helpFontSize: helpStyle ? getComputedStyle(helpStyle).fontSize : "",
       helpWeight: helpStyle ? getComputedStyle(helpStyle).fontWeight : ""
     };
