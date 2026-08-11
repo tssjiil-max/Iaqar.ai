@@ -328,28 +328,68 @@ async function persistIntake(result, reviewMeta = {}, options = {}) {
     return { duplicate: true, opportunityId, sourceId: result.source.id };
   }
 
-  const opportunityPayload = {
-    ...result.opportunity,
-    id: opportunityId,
-    ...reviewMeta,
-    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-  };
-  if (!existing.exists) {
-    opportunityPayload.createdAt = window.firebase.firestore.FieldValue.serverTimestamp();
-  }
+  const opportunityPayload = buildOpportunityPersistPayload({
+    opportunity: result.opportunity,
+    reviewMeta,
+    opportunityId,
+    existingData: existing.exists ? (existing.data() || {}) : null,
+    serverTimestamp: window.firebase.firestore.FieldValue.serverTimestamp()
+  });
 
   const batch = db.batch();
-  batch.set(sourceRef, {
-    ...result.source,
-    opportunityId,
-    createdAt: existing.exists
-      ? (existing.data()?.createdAt || window.firebase.firestore.FieldValue.serverTimestamp())
-      : window.firebase.firestore.FieldValue.serverTimestamp(),
-    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
-  batch.set(opportunityRef, opportunityPayload, { merge: true });
+  // opportunitySources: members may create but only managers may update.
+  // After auto-save, approve must not rewrite the source doc.
+  if (!existing.exists) {
+    batch.set(sourceRef, {
+      ...result.source,
+      opportunityId,
+      createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+  batch.set(opportunityRef, opportunityPayload, { merge: Boolean(existing.exists) });
   await batch.commit();
   return { duplicate: false, opportunityId, sourceId: result.source.id };
+}
+
+/**
+ * Build opportunity write payload that never mutates immutable create-time fields on merge.
+ * createdAt/brokerId/originating* must stay equal to the stored resource for Firestore rules.
+ */
+export function buildOpportunityPersistPayload({
+  opportunity = {},
+  reviewMeta = {},
+  opportunityId = "",
+  existingData = null,
+  serverTimestamp = null
+} = {}) {
+  const payload = {
+    ...opportunity,
+    id: opportunityId || opportunity.id,
+    ...reviewMeta,
+    updatedAt: serverTimestamp
+  };
+  if (!existingData) {
+    payload.createdAt = serverTimestamp;
+    return payload;
+  }
+  // Merge/approve path: strip or freeze ownership + create-time fields.
+  delete payload.createdAt;
+  if (existingData.brokerId != null) payload.brokerId = existingData.brokerId;
+  if (existingData.officeId != null) payload.officeId = existingData.officeId;
+  if (existingData.originatingOfficeId != null) {
+    payload.originatingOfficeId = existingData.originatingOfficeId;
+  }
+  if (existingData.originatingBrokerId != null) {
+    payload.originatingBrokerId = existingData.originatingBrokerId;
+  }
+  if (existingData.currentOwningOfficeId != null) {
+    payload.currentOwningOfficeId = existingData.currentOwningOfficeId;
+  }
+  if (existingData.deduplicationFingerprint != null) {
+    payload.deduplicationFingerprint = existingData.deduplicationFingerprint;
+  }
+  return payload;
 }
 
 async function resolveUrlListingText(url, officeId) {
@@ -820,6 +860,7 @@ export const __test = {
   intakeIdentity,
   requestOpportunityExtraction,
   resetForNewIntake,
+  buildOpportunityPersistPayload,
   setExtractionTimeoutMs(value) {
     extractionTimeoutMs = Number(value) > 0
       ? Math.min(Number(value), EXTRACTION_TIMEOUT_MS)

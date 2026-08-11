@@ -713,8 +713,23 @@ const OFFICE_LIBRARY_TYPES = Object.freeze({
 async function uploadOfficeLibraryMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
-  const fileName = cleanText(request.headers.get("x-file-name"), 240) || "file";
-  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
+  let fileNameRaw = cleanText(request.headers.get("x-file-name"), 240) || "file";
+  try {
+    fileNameRaw = decodeURIComponent(fileNameRaw);
+  } catch (_) { /* keep raw */ }
+  const fileName = cleanText(fileNameRaw, 240) || "file";
+  let contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase().split(";")[0].trim();
+  if (!contentType || contentType === "application/octet-stream") {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".pdf")) contentType = "application/pdf";
+    else if (lower.endsWith(".png")) contentType = "image/png";
+    else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) contentType = "image/jpeg";
+    else if (lower.endsWith(".webp")) contentType = "image/webp";
+    else if (lower.endsWith(".doc")) contentType = "application/msword";
+    else if (lower.endsWith(".docx")) {
+      contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+  }
   const size = requestBodyLength(request);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   await authorizeOfficeRequest(request, env, officeId, "member");

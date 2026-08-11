@@ -67,6 +67,58 @@ test("Review gate accepts real partial fields and rejects simulated or empty ext
   }
 });
 
+test("merge persist payload never rewrites createdAt or ownership fields", async () => {
+  const { context, module } = await loadController();
+  try {
+    const stamp = { __serverTimestamp: true };
+    const created = module.__test.buildOpportunityPersistPayload({
+      opportunity: {
+        city: "المدينة المنورة",
+        brokerId: "broker-a",
+        officeId: "office-a",
+        createdAt: "2026-01-01T00:00:00.000Z"
+      },
+      reviewMeta: { brokerConfirmed: true },
+      opportunityId: "opp_1",
+      existingData: null,
+      serverTimestamp: stamp
+    });
+    assert.equal(created.createdAt, stamp);
+
+    const merged = module.__test.buildOpportunityPersistPayload({
+      opportunity: {
+        city: "جدة",
+        brokerId: "broker-hijack",
+        officeId: "office-b",
+        createdAt: "1999-01-01T00:00:00.000Z",
+        originatingOfficeId: "office-evil",
+        deduplicationFingerprint: "new-fp"
+      },
+      reviewMeta: { brokerConfirmed: true },
+      opportunityId: "opp_1",
+      existingData: {
+        brokerId: "broker-a",
+        officeId: "office-a",
+        originatingOfficeId: "office-a",
+        originatingBrokerId: "broker-a",
+        currentOwningOfficeId: "office-a",
+        deduplicationFingerprint: "old-fp",
+        createdAt: { seconds: 1 }
+      },
+      serverTimestamp: stamp
+    });
+    assert.equal("createdAt" in merged, false);
+    assert.equal(merged.brokerId, "broker-a");
+    assert.equal(merged.officeId, "office-a");
+    assert.equal(merged.originatingOfficeId, "office-a");
+    assert.equal(merged.deduplicationFingerprint, "old-fp");
+    assert.equal(merged.city, "جدة");
+    assert.equal(merged.brokerConfirmed, true);
+  } finally {
+    context.close();
+  }
+});
+
 let controllerInstance = 0;
 
 async function loadController(fetchStub = null) {

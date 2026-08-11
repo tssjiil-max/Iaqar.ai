@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readRepositoryFile } from "./helpers/shell.mjs";
 import {
   buildAgreementLibraryEntries,
   buildLibraryItem,
@@ -31,4 +32,12 @@ test("library row label for manual file uses file name", () => {
     mediaPath: "office-library/office-a/x/عقد.pdf"
   });
   assert.equal(libraryRowLabel(item), "عقد.pdf");
+});
+
+test("library upload encodes Arabic file names for HTTP headers", () => {
+  const source = readRepositoryFile("public", "js", "office-library.js");
+  assert.ok(source.includes("encodeURIComponent(file.name"));
+  assert.ok(source.includes("guessLibraryContentType"));
+  const worker = readRepositoryFile("worker", "src", "index.js");
+  assert.ok(worker.includes("decodeURIComponent(fileNameRaw)"));
 });

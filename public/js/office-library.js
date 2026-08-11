@@ -32,7 +32,31 @@ function workerBase() {
   if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
     return window.IAQAR.resolveWorkerBase();
   }
+  if (window.IAQAR?.workerBase) {
+    return String(window.IAQAR.workerBase).replace(/\/$/, "");
+  }
+  try {
+    const host = String(window.location?.hostname || "").toLowerCase();
+    if (host.includes("--staging") || host.startsWith("staging.") || host.includes("iaqar-ai-staging")) {
+      return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+    }
+  } catch (_) { /* ignore */ }
   return "";
+}
+
+function guessLibraryContentType(file) {
+  const typed = String(file?.type || "").split(";")[0].trim().toLowerCase();
+  if (typed && typed !== "application/octet-stream") return typed;
+  const name = String(file?.name || "").toLowerCase();
+  if (name.endsWith(".pdf")) return "application/pdf";
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+  if (name.endsWith(".webp")) return "image/webp";
+  if (name.endsWith(".doc")) return "application/msword";
+  if (name.endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  return typed || "application/octet-stream";
 }
 
 function setStatus(message, tone = "") {
@@ -130,22 +154,23 @@ async function uploadLibraryFile(file) {
   const base = workerBase();
   if (!runtime?.db || !user || !base || !officeId()) throw new Error("auth_required");
   const token = await user.getIdToken();
+  const contentType = guessLibraryContentType(file);
   const response = await fetch(`${base}/media/office-library`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Office-Id": officeId(),
-      "X-File-Name": file.name,
-      "Content-Type": file.type || "application/octet-stream"
+      "X-File-Name": encodeURIComponent(file.name || "file"),
+      "Content-Type": contentType
     },
     body: file
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok || !body.ok) throw new Error(body.error || "upload_failed");
+  if (!response.ok || !body.ok) throw new Error(body.error || body.message || "upload_failed");
   const item = buildLibraryItem({
     officeId: officeId(),
     fileName: body.fileName || file.name,
-    contentType: file.type || body.contentType || "",
+    contentType: contentType || body.contentType || "",
     mediaPath: body.mediaPath,
     note: "",
     createdBy: user.uid
