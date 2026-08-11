@@ -478,6 +478,7 @@ async function runExtractionPipeline() {
           manualUrlContinuation: true,
           urlBlockedReason: errorCode,
           urlBlockedMessage: errorCode === "source_blocked"
+            && /aqar\.fm|sa\.aqar/i.test(String(normalizedInputUrl || inputText || ""))
             ? "منصة عقار تمنع الجلب التلقائي من الخادم. يمكنك إكمال البيانات يدويًا."
             : "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا."
         };

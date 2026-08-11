@@ -137,6 +137,7 @@ const state = {
   lastDoc: null,
   hasMore: false,
   busy: false,
+  pendingQueryRefresh: false,
   resultTotal: 0,
   scanExhausted: false
 };
@@ -1823,6 +1824,10 @@ async function loadBankPage({ reset = false } = {}) {
     if (retry) retry.hidden = false;
   } finally {
     state.busy = false;
+    if (state.pendingQueryRefresh) {
+      state.pendingQueryRefresh = false;
+      scheduleBankQueryRefresh();
+    }
   }
 }
 
@@ -1846,8 +1851,12 @@ function scheduleBankQueryRefresh() {
     state.hasMore = false;
     state.resultTotal = 0;
     state.scanExhausted = false;
-    renderList();
-    setStatus(rowsCountLabel());
+    state.pendingQueryRefresh = false;
+    void loadBankSummary();
+    return;
+  }
+  if (state.busy) {
+    state.pendingQueryRefresh = true;
     return;
   }
   void loadBankPage({ reset: true });
