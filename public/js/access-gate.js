@@ -151,11 +151,11 @@
     });
   }
   function resolvePublicOfficeImage(data = {}) {
+    const logo = String(data.logoUrl || "").trim();
+    if (logo) return logo;
     const display = String(data.displayImageUrl || "").trim();
     if (display) return display;
-    const cover = String(data.coverUrl || "").trim();
-    if (cover) return cover;
-    return String(data.logoUrl || "").trim();
+    return String(data.coverUrl || "").trim();
   }
 
   function withImageCacheBust(url, updatedAt) {
@@ -580,9 +580,13 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
+        // Persistence MUST be set before signInWithCustomToken.
         await firebase.auth().setPersistence(
           remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
         );
+        try {
+          localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
+        } catch (_) { /* ignore */ }
       } catch (error) {
         console.warn("[iaqar] auth persistence", error);
       }
@@ -594,9 +598,7 @@
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.customToken || !payload.officeId) throw new Error("LOGIN_FAILED");
         await firebase.auth().signInWithCustomToken(payload.customToken);
-        try {
-          localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
-        } catch (_) { /* ignore */ }
+        await firebase.auth().currentUser?.getIdToken(true);
         await verifyAccess(payload.officeId, true);
       } catch (error) {
         console.warn("[iaqar] login", error);
@@ -657,6 +659,8 @@
       return loginForm("هذا الحساب ليس من إدارة المنصة.");
     }
     try {
+      const user = firebase.auth().currentUser;
+      if (user?.getIdToken) await user.getIdToken();
       await db().collection("offices").doc(target).get({ source: "server" });
       localStorage.setItem("iaqar.officeId", target);
       if (navigate || target !== officeId) {
@@ -674,6 +678,24 @@
           <button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button></section>`);
         gate.querySelector("#accessRetry").onclick = () => verifyAccess(target, navigate);
         return;
+      }
+      // Transient auth race after restore: retry once before forcing login UI.
+      if ((code.includes("permission-denied") || code.includes("unauthenticated"))
+        && firebase.auth().currentUser) {
+        try {
+          await firebase.auth().currentUser.getIdToken(true);
+          await db().collection("offices").doc(target).get({ source: "server" });
+          localStorage.setItem("iaqar.officeId", target);
+          if (navigate || target !== officeId) {
+            location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
+            return;
+          }
+          document.body.classList.remove("access-locked");
+          gate.remove();
+          return;
+        } catch (retryError) {
+          console.warn("[iaqar] access retry", retryError);
+        }
       }
       if (code.includes("permission-denied") || code.includes("unauthenticated")) {
         loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
@@ -862,8 +884,8 @@
     refreshRouteFlags();
 
     try {
-      // Default LOCAL when preference is unset (checkbox defaults to stay signed in).
-      // Explicit "0" means SESSION. Never demote an existing LOCAL session by accident.
+      // Prefer LOCAL by default so "البقاء مسجلًا" survives close/reopen.
+      // Explicit "0" forces SESSION. Set persistence before listening for auth.
       const rememberFlag = localStorage.getItem("iaqar.auth.remember");
       const remembered = rememberFlag !== "0";
       await firebase.auth().setPersistence(
@@ -875,17 +897,31 @@
 
     let initialAuthResolved = false;
 
-    const routeAfterInitialAuth = (user) => {
-      if (isPublicOfficeLink) publicOffice();
-      else if (isPlatformHome) home();
-      else if (user) verifyAccess(officeId, false);
-      else loginForm();
+    const routeAfterInitialAuth = async (user) => {
+      if (isPublicOfficeLink) {
+        publicOffice();
+        return;
+      }
+      if (isPlatformHome) {
+        home();
+        return;
+      }
+      if (user) {
+        try {
+          await user.getIdToken(/* forceRefresh */ false);
+        } catch (error) {
+          console.warn("[iaqar] auth token", error);
+        }
+        await verifyAccess(officeId, false);
+        return;
+      }
+      loginForm();
     };
 
     firebase.auth().onAuthStateChanged(user => {
       if (!initialAuthResolved) {
         initialAuthResolved = true;
-        routeAfterInitialAuth(user);
+        void routeAfterInitialAuth(user);
         return;
       }
       if (!user && !isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {

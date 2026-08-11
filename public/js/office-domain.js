@@ -488,15 +488,15 @@ export function opportunityBankRow(id, record = {}) {
 
 /**
  * Single source of truth for the current office visual identity image.
- * Prefer the newest explicit display image, then cover, then logo.
+ * Prefer logo (Office Card identity), then display, then cover.
  * Never invent a legacy fallback URL when a current field exists.
  */
 export function resolveCurrentOfficeImage(office = {}) {
+  const logo = safeText(office.logoUrl).slice(0, 2000);
+  if (logo) return logo;
   const display = safeText(office.displayImageUrl).slice(0, 2000);
   if (display) return display;
-  const cover = safeText(office.coverUrl).slice(0, 2000);
-  if (cover) return cover;
-  return safeText(office.logoUrl).slice(0, 2000);
+  return safeText(office.coverUrl).slice(0, 2000);
 }
 
 /** Cache-bust an image URL when office updatedAt is known. */
