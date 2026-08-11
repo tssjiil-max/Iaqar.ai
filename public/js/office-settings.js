@@ -175,13 +175,26 @@ function writeSpecialtiesToForm(list) {
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
   if (logo) {
+    const oid = officeId();
+    const worker = resolveWorkerBase();
+    const canonicalLogo = oid && worker
+      ? `${worker}/media/public/office-covers/${encodeURIComponent(oid)}/logo`
+      : "";
     const logoSource = withOfficeImageCacheBust(
-      resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
-      current.updatedAt || current.identityUpdatedAt || ""
+      canonicalLogo || resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
+      current.updatedAt || Date.now()
     );
     if (logoSource) {
       logo.hidden = false;
       logo.onerror = () => {
+        const fallback = withOfficeImageCacheBust(
+          resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
+          current.updatedAt || ""
+        );
+        if (fallback && logo.src !== fallback) {
+          logo.src = fallback;
+          return;
+        }
         logo.hidden = true;
         if (logo.dataset.defaultSrc) {
           logo.hidden = false;
@@ -976,9 +989,14 @@ async function createOfficeCardBlob() {
   ctx.font = "600 22px Tajawal, Arial, sans-serif";
   ctx.fillText("مكاتب عقارية ذكية", 108, 58);
 
+  const oid = officeId();
+  const worker = resolveWorkerBase();
+  const canonicalLogo = oid && worker
+    ? `${worker}/media/public/office-covers/${encodeURIComponent(oid)}/logo`
+    : "";
   const displaySrc = withOfficeImageCacheBust(
-    resolveCurrentOfficeImage(current),
-    current.updatedAt || current.identityUpdatedAt || ""
+    canonicalLogo || resolveCurrentOfficeImage(current),
+    current.updatedAt || Date.now()
   );
   const imageCenterX = 540;
   const imageY = 118;

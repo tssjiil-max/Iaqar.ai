@@ -155,10 +155,9 @@
     const canonicalLogo = oid && oid !== "platform"
       ? `${resolveWorkerBase()}/media/public/office-covers/${encodeURIComponent(oid)}/logo`
       : "";
-    const logo = String(data.logoUrl || "").trim();
-    // Prefer the live R2 logo object (current upload) over a stale cover URL.
-    if (logo && /\/logo(?:\?|$)/.test(logo)) return logo;
+    // Always prefer the live R2 logo object so public and Office Card stay aligned.
     if (canonicalLogo) return canonicalLogo;
+    const logo = String(data.logoUrl || "").trim();
     if (logo) return logo;
     const display = String(data.displayImageUrl || "").trim();
     if (display) return display;
