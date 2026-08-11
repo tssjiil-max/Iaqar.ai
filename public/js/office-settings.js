@@ -298,9 +298,22 @@ async function loadFirestore() {
         logoUrl: data.logoUrl,
         displayImageUrl: data.displayImageUrl,
         coverUrl: data.coverUrl,
-        publicSlug: data.publicSlug
+        publicSlug: data.publicSlug,
+        updatedAt: data.updatedAt || Date.now()
       });
       saveLocal(current);
+      // Keep publicOffices image fields mirrored to the current office identity (SSOT).
+      try {
+        await runtime.db.collection("publicOffices").doc(officeId()).set({
+          officeId: officeId(),
+          logoUrl: safeText(data.logoUrl).slice(0, 2000),
+          displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
+          coverUrl: safeText(data.coverUrl).slice(0, 2000),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (mirrorError) {
+        console.warn("[iaqar] public office image mirror", mirrorError);
+      }
     }
     el.note.textContent = "البيانات متزامنة مع Firestore لهذا المكتب.";
     return true;

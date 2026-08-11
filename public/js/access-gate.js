@@ -150,8 +150,15 @@
       else intakeForm(button.dataset.go, "platform");
     });
   }
-  function resolvePublicOfficeImage(data = {}) {
+  function resolvePublicOfficeImage(data = {}, targetOfficeId = "") {
+    const oid = String(targetOfficeId || "").trim().toLowerCase();
+    const canonicalLogo = oid && oid !== "platform"
+      ? `${resolveWorkerBase()}/media/public/office-covers/${encodeURIComponent(oid)}/logo`
+      : "";
     const logo = String(data.logoUrl || "").trim();
+    // Prefer the live R2 logo object (current upload) over a stale cover URL.
+    if (logo && /\/logo(?:\?|$)/.test(logo)) return logo;
+    if (canonicalLogo) return canonicalLogo;
     if (logo) return logo;
     const display = String(data.displayImageUrl || "").trim();
     if (display) return display;
@@ -165,7 +172,7 @@
     if (updatedAt && typeof updatedAt.toMillis === "function") stamp = String(updatedAt.toMillis());
     else if (updatedAt && typeof updatedAt.seconds === "number") stamp = String(updatedAt.seconds * 1000);
     else if (updatedAt) stamp = String(updatedAt).trim();
-    if (!stamp) return source;
+    if (!stamp) stamp = String(Date.now());
     return `${source}${source.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp)}`;
   }
 
@@ -188,14 +195,22 @@
       const snap = await db().collection("publicOffices").doc(officeId).get();
       if (snap.exists) {
         const data = snap.data() || {};
-        const imageUrl = withImageCacheBust(
-          resolvePublicOfficeImage(data),
-          data.updatedAt || data.identityUpdatedAt || ""
+        const primary = withImageCacheBust(
+          resolvePublicOfficeImage(data, officeId),
+          data.updatedAt || Date.now()
         );
+        const fallbackCover = withImageCacheBust(String(data.coverUrl || "").trim(), data.updatedAt || "");
+        const fallbackDisplay = withImageCacheBust(String(data.displayImageUrl || "").trim(), data.updatedAt || "");
+        const fallback = fallbackCover || fallbackDisplay || "";
         const phoneHtml = data.phone ? ` — تواصل ${phoneDisplayHtml(data.phone)}` : "";
         const whatsappHtml = data.whatsapp ? ` — واتساب ${phoneDisplayHtml(data.whatsapp)}` : "";
+        const imgTag = primary
+          ? `<img src="${escapeHtml(primary)}" alt="صورة المكتب" data-fallback="${escapeHtml(fallback)}"
+              style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px"
+              onerror="if(this.dataset.fallback){this.src=this.dataset.fallback;this.dataset.fallback='';}else{this.remove();}">`
+          : "";
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="صورة المكتب" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px">` : ""}
+          ${imgTag}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>`;
