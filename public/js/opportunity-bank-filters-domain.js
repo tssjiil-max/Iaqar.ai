@@ -42,7 +42,13 @@ export function matchesBankQueryFilters(record = {}, filters = {}) {
       record.contactName,
       record.opportunityKind,
       record.purpose,
-      record.advertiserDisplayName
+      record.advertiserDisplayName,
+      record.salePrice,
+      record.priceOrBudget,
+      record.price,
+      record.budget,
+      record.annualRent,
+      record.area
     ].map((part) => safeText(part, 200).toLowerCase()).join(" ");
     if (!haystack.includes(search)) return false;
   }

@@ -61,3 +61,16 @@ test("summarizeBankCounts uses readiness and archived lifecycle", () => {
   assert.equal(summary.archived, 1);
   assert.deepEqual(emptyBankSummary().total, 0);
 });
+
+test("bank search matches numeric price and area fields", () => {
+  const priced = {
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "العوالي",
+    salePrice: 863333,
+    area: 530
+  };
+  assert.equal(matchesBankQueryFilters(priced, { search: "863333" }), true);
+  assert.equal(matchesBankQueryFilters(priced, { search: "530" }), true);
+  assert.equal(matchesBankQueryFilters(priced, { search: "999999" }), false);
+});

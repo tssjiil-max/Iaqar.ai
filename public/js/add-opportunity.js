@@ -464,20 +464,20 @@ async function runExtractionPipeline() {
     setState("analyzing");
     const resolved = await resolveUrlListingText(normalizedInputUrl, office.officeId);
     if (!resolved.ok) {
-      const blockedErrors = new Set([
-        "source_blocked",
-        "dns_failed",
-        "fetch_failed",
-        "redirect_blocked",
-        "fetch_timeout"
+      const hardFailErrors = new Set([
+        "authentication_required",
+        "office_required",
+        "forbidden"
       ]);
-      if (blockedErrors.has(String(resolved.error || ""))) {
+      const errorCode = String(resolved.error || "url_resolve_failed");
+      // Any fetch/parse blockage becomes manual URL continuation (AQAR/Haraj/etc.).
+      if (!hardFailErrors.has(errorCode)) {
         listingText = "";
         urlDiagnostics = resolved.diagnostics || null;
         manualUrlMeta = {
           manualUrlContinuation: true,
-          urlBlockedReason: resolved.error || "url_resolve_failed",
-          urlBlockedMessage: resolved.error === "source_blocked"
+          urlBlockedReason: errorCode,
+          urlBlockedMessage: errorCode === "source_blocked"
             ? "منصة عقار تمنع الجلب التلقائي من الخادم. يمكنك إكمال البيانات يدويًا."
             : "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا."
         };
