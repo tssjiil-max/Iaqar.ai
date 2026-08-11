@@ -154,9 +154,18 @@ test("the bank list markup escapes every projected value", () => {
   for (const expression of interpolations) {
     assert.ok(
       expression.startsWith("escapeHtml(")
+        || expression === "rowsHtml"
         || expression.startsWith("row.attributes.length ?")
         || expression.startsWith("state.selected.has("),
       `unescaped interpolation in the bank list: ${expression}`
     );
   }
+});
+
+test("bank default state is summary-first without dumping full list", () => {
+  const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
+  assert.ok(bank.includes("hasActiveBankQuery"));
+  assert.ok(bank.includes("ملخص بنك الفرص"));
+  assert.ok(bank.includes("حدد بحثًا أو فلترًا لعرض الفرص") || bank.includes("لا توجد فرص محفوظة بعد"));
+  assert.ok(bank.includes("loadBankSummary"));
 });

@@ -365,16 +365,19 @@ function renderList() {
 
   if (!hasActiveBankQuery(state.queryFilters)) {
     const summary = state.summary || emptyBankSummary();
+    const emptyNote = summary.total === 0
+      ? "لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها."
+      : "حدد بحثًا أو فلترًا لعرض الفرص";
     list.innerHTML = `
       <div class="bank-summary-card" id="bankSummaryCard">
         <h3 class="bank-summary-title">ملخص بنك الفرص</h3>
         <ul class="bank-summary-stats">
-          <li><span>إجمالي الفرص</span><strong>${summary.total}</strong></li>
-          <li><span>جاهزة للمطابقة</span><strong>${summary.readyForMatching}</strong></li>
-          <li><span>تحتاج استكمال</span><strong>${summary.needsCompletion}</strong></li>
-          <li><span>المؤرشفة</span><strong>${summary.archived}</strong></li>
+          <li><span>إجمالي الفرص</span><strong>${escapeHtml(summary.total)}</strong></li>
+          <li><span>جاهزة للمطابقة</span><strong>${escapeHtml(summary.readyForMatching)}</strong></li>
+          <li><span>تحتاج استكمال</span><strong>${escapeHtml(summary.needsCompletion)}</strong></li>
+          <li><span>المؤرشفة</span><strong>${escapeHtml(summary.archived)}</strong></li>
         </ul>
-        <p class="bank-query-hint">حدد بحثًا أو فلترًا لعرض الفرص</p>
+        <p class="bank-query-hint">${escapeHtml(emptyNote)}</p>
       </div>
     `;
     if (loadMoreBtn) loadMoreBtn.hidden = true;
@@ -394,13 +397,9 @@ function renderList() {
     return;
   }
 
-  const totalLabel = state.resultTotal > 0
-    ? `${state.resultTotal} نتيجة`
-    : `${rows.length} نتيجة`;
+  const totalLabel = (state.resultTotal > 0 ? String(state.resultTotal) : String(rows.length)) + " نتيجة";
 
-  list.innerHTML = `
-    <p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>
-    ${rows.map((row) => {
+  const rowsHtml = rows.map((row) => {
     const readiness = matchingReadinessLabel(
       row.matchingReadiness || evaluateMatchingReadiness(row).matchingReadiness
     );
@@ -419,7 +418,11 @@ function renderList() {
       </button>
     </article>
   `;
-  }).join("")}
+  }).join("");
+
+  list.innerHTML = `
+    <p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>
+    ${rowsHtml}
   `;
   if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
 }
