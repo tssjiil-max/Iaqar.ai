@@ -147,15 +147,13 @@ async function verifyUrl(browser, url, label) {
   await page.waitForTimeout(300);
   const bank = await measurePanel(page, "#oppPanelBank", "#opportunityBank");
   const bankLabels = await page.evaluate(() => {
-    const scope = document.querySelector(".bank-share-scope");
-    const html = scope?.innerHTML || "";
-    const helpStyle = scope?.querySelector(".bank-share-scope-help");
+    const filters = document.querySelector(".bank-filters");
+    const html = filters?.innerHTML || "";
     return {
-      shareTitle: html.includes("مشاركة مع مكتب محدد"),
-      shareHelp: html.includes("ابحث عن مكتب"),
-      oldScope: html.includes("نطاق المشاركة") || html.includes("نطاق مشاركة") || html.includes("معرّف المكتب المستهدف"),
-      helpFontSize: helpStyle ? getComputedStyle(helpStyle).fontSize : "",
-      helpWeight: helpStyle ? getComputedStyle(helpStyle).fontWeight : ""
+      bankSearch: html.includes("ابحث في بنك الفرص"),
+      bankFilters: Boolean(filters),
+      oldBulkShare: Boolean(document.querySelector(".bank-share-scope")),
+      clearFilters: html.includes("مسح الفلاتر")
     };
   });
 
@@ -213,7 +211,7 @@ const pass = {
   missingTitle: r.missingUi.title === "استكمال بيانات الفرصة",
   missingSubtitle: r.missingUi.subtitle === "يرجى استكمال البيانات لتفعيل المطابقة.",
   missingAction: r.missingUi.action === "استكمال البيانات",
-  shareLabels: r.bank.labels.shareTitle && r.bank.labels.shareHelp && !r.bank.labels.oldScope,
+  shareLabels: r.bank.labels.bankSearch && r.bank.labels.bankFilters && !r.bank.labels.oldBulkShare,
   settingsOk: !r.settings.bankInSettings && !r.settings.wideCover,
   noOverflow: !r.operations.overflowX && !r.bank.overflowX
 };

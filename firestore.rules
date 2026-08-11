@@ -26,7 +26,7 @@ service cloud.firestore {
       return collectionName in [
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
-        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake'
+        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library'
       ];
     }
     function validOfficeProfile() {
@@ -97,6 +97,20 @@ service cloud.firestore {
         allow create, update: if canManage(officeId)
           && request.resource.data.officeId == officeId;
         allow delete: if false;
+      }
+
+      // المكتبة الخاصة بالمكتب — ملفات داخلية واتفاقيات مشتركة.
+      match /library/{itemId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && request.resource.data.fileName is string
+          && request.resource.data.fileName.size() <= 240;
+        allow update: if isOfficeMember(officeId)
+          && request.resource.data.officeId == officeId
+          && resource.data.officeId == officeId;
+        allow delete: if canManage(officeId)
+          && resource.data.officeId == officeId;
       }
 
       // تفضيلات الوسيط الشخصية: لا يكتبها أحد غير صاحبها.

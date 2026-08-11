@@ -1135,7 +1135,7 @@ async function shareOfficeCard() {
       `الوسيط: ${current.brokerName}`,
       `رخصة فال: ${current.licenseNumber}`,
       `المدينة: ${current.city}`,
-      "زيارة المكتب والتسجيل:",
+      "زيارة المكتب وإضافة عرض أو طلب بدون تسجيل",
       link
     ].join("\n");
     const blob = await createOfficeCardBlob();

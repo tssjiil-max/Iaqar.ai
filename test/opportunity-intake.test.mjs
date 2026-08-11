@@ -134,12 +134,15 @@ test("missing-field flow asks only for absent required fields", async () => {
       district: "النرجس",
       priceOrBudget: 900000,
       area: 160,
-      rooms: 3
+      rooms: 3,
+      advertiserRole: "OWNER",
+      advertiserPhoneRaw: "0501234567"
     },
     allowIncomplete: true
   });
   assert.equal(completed.state, "saved");
   assert.equal(completed.opportunity.internalStatus, "READY");
+  assert.equal(completed.opportunity.matchingReadiness, "READY_FOR_MATCHING");
   assert.equal(completed.opportunity.dataCompleteness, 100);
   assert.deepEqual(completed.missingFields, []);
 });

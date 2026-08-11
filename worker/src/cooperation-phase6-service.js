@@ -305,6 +305,17 @@ export async function runCooperationLifecycle({
         firestoreHelpers
       });
     }
+    await writeAgreementLibraryEntriesOnAccept({
+      projectId,
+      accessToken,
+      agreementId: cooperationId,
+      originatingOfficeId: origin,
+      targetOfficeId: target,
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers
+    });
   }
 
   if (["REJECTED", "REVOKED", "ENDED"].includes(String(nextStatus).toUpperCase())) {
@@ -645,6 +656,82 @@ export async function createExplicitCooperationRequest({
     message: "تم إرسال طلب التعاون",
     boundaries: phase6BoundaryGuarantees()
   };
+}
+
+async function readPublicOfficeName({
+  projectId, officeId, accessToken, getFirestoreDocument, firestoreFieldsToJs
+}) {
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["publicOffices", officeId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!doc) return officeId;
+  const data = firestoreFieldsToJs(doc.fields || {});
+  return String(data.officeName || data.brokerName || officeId).trim() || officeId;
+}
+
+async function writeAgreementLibraryEntriesOnAccept({
+  projectId,
+  accessToken,
+  agreementId,
+  originatingOfficeId,
+  targetOfficeId,
+  commissionRate = null,
+  getFirestoreDocument,
+  setFirestoreDocument,
+  firestoreFieldsToJs,
+  firestoreHelpers: fh
+}) {
+  const origin = String(originatingOfficeId || "").trim();
+  const target = String(targetOfficeId || "").trim();
+  if (!origin || !target || !agreementId) return;
+  const [originName, targetName] = await Promise.all([
+    readPublicOfficeName({ projectId, officeId: origin, accessToken, getFirestoreDocument, firestoreFieldsToJs }),
+    readPublicOfficeName({ projectId, officeId: target, accessToken, getFirestoreDocument, firestoreFieldsToJs })
+  ]);
+  const now = new Date();
+  const baseFields = {
+    kind: fh.firestoreString("agreement"),
+    agreementId: fh.firestoreString(agreementId),
+    fileName: fh.firestoreString("اتفاقية-تعاون.pdf"),
+    contentType: fh.firestoreString("application/pdf"),
+    mediaPath: fh.firestoreString(""),
+    agreementStatus: fh.firestoreString("ACTIVE"),
+    commissionRate: commissionRate == null ? null : fh.firestoreInteger(Number(commissionRate) || 0),
+    createdAt: fh.firestoreTimestamp(now),
+    updatedAt: fh.firestoreTimestamp(now),
+    schemaVersion: fh.firestoreInteger(1)
+  };
+  const originItemId = `lib_agreement_${agreementId}_origin`.slice(0, 180);
+  const targetItemId = `lib_agreement_${agreementId}_target`.slice(0, 180);
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", origin, "library", originItemId],
+    accessToken,
+    fields: {
+      ...baseFields,
+      id: fh.firestoreString(originItemId),
+      officeId: fh.firestoreString(origin),
+      counterpartOfficeId: fh.firestoreString(target),
+      counterpartOfficeName: fh.firestoreString(targetName),
+      note: fh.firestoreString(`اتفاقية تعاون مع ${targetName}`)
+    }
+  });
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", target, "library", targetItemId],
+    accessToken,
+    fields: {
+      ...baseFields,
+      id: fh.firestoreString(targetItemId),
+      officeId: fh.firestoreString(target),
+      counterpartOfficeId: fh.firestoreString(origin),
+      counterpartOfficeName: fh.firestoreString(originName),
+      note: fh.firestoreString(`اتفاقية تعاون مع ${originName}`)
+    }
+  });
 }
 
 export {

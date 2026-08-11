@@ -22,6 +22,7 @@ import {
 } from "./operations-domain.js";
 import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportunity-review.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
+import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
 
 const LOCAL_STATE_LABELS = Object.freeze({
   ready: "راجع البيانات ثم اعتماد وحفظ"
@@ -311,36 +312,44 @@ async function resolveMediaListingText(mediaPath, officeId, file = null) {
   return { ok: true, text, extractionMode: body.extractionMode || "" };
 }
 
-async function persistIntake(result, reviewMeta = {}) {
+async function persistIntake(result, reviewMeta = {}, options = {}) {
   const office = currentOffice();
   const db = window.firebase?.firestore?.();
   if (!office?.paths || !db) throw new Error("firestore_unavailable");
 
+  const opportunityId = options.opportunityId || result.opportunity.id;
   const sourceRef = db.collection("offices").doc(office.officeId)
     .collection("opportunitySources").doc(result.source.id);
   const opportunityRef = db.collection("offices").doc(office.officeId)
-    .collection("opportunities").doc(result.opportunity.id);
+    .collection("opportunities").doc(opportunityId);
 
   const existing = await opportunityRef.get();
-  if (existing.exists) {
-    return { duplicate: true, opportunityId: result.opportunity.id, sourceId: result.source.id };
+  if (existing.exists && !options.merge) {
+    return { duplicate: true, opportunityId, sourceId: result.source.id };
   }
 
   const opportunityPayload = {
     ...result.opportunity,
+    id: opportunityId,
     ...reviewMeta,
-    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
   };
+  if (!existing.exists) {
+    opportunityPayload.createdAt = window.firebase.firestore.FieldValue.serverTimestamp();
+  }
 
   const batch = db.batch();
   batch.set(sourceRef, {
     ...result.source,
-    createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
-  });
-  batch.set(opportunityRef, opportunityPayload);
+    opportunityId,
+    createdAt: existing.exists
+      ? (existing.data()?.createdAt || window.firebase.firestore.FieldValue.serverTimestamp())
+      : window.firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  batch.set(opportunityRef, opportunityPayload, { merge: true });
   await batch.commit();
-  return { duplicate: false, opportunityId: result.opportunity.id, sourceId: result.source.id };
+  return { duplicate: false, opportunityId, sourceId: result.source.id };
 }
 
 async function resolveUrlListingText(url, officeId) {
@@ -565,13 +574,26 @@ async function startExecute() {
     if (!canOpenReview(prepared)) {
       throw new Error("extraction_failed");
     }
+    const draftSaved = await persistIntake(prepared, {
+      autoSavedAt: new Date().toISOString(),
+      urlBlockedReason: prepared.urlBlockedReason || ""
+    }, { merge: true }).catch((error) => {
+      console.warn("[iaqar] auto-save draft", error);
+      return {
+        opportunityId: prepared.opportunity.id,
+        sourceId: prepared.source.id,
+        duplicate: false,
+        draftSaveSkipped: true
+      };
+    });
+    resumeIntakeSession = {
+      opportunityId: draftSaved.opportunityId,
+      preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
+    };
     setState("ready");
     if (prepared.urlBlockedMessage) {
       setState("missing_information", prepared.urlBlockedMessage);
     }
-    resumeIntakeSession = {
-      preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
-    };
     openOpportunityReview({
       fields: prepared.fields || {},
       extended: prepared.extraction?.extended,
@@ -657,11 +679,14 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
       ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
     };
 
-    const saved = await persistIntake(prepared, reviewMeta);
+    const saved = await persistIntake(prepared, reviewMeta, {
+      merge: true,
+      opportunityId: resumeIntakeSession?.opportunityId || prepared.opportunity.id
+    });
     if (window.IAQAR && typeof window.IAQAR.pushSavedOpportunityToWorkspace === "function") {
       window.IAQAR.pushSavedOpportunityToWorkspace({
         opportunityId: saved.opportunityId,
-        duplicate: saved.duplicate,
+        duplicate: false,
         matchCount: 0,
         advertiserPhone: reviewMeta.advertiserPhoneNormalized || "",
         propertyType: brokerExtras.propertyType || "",
@@ -669,13 +694,14 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
         marketingConsentStatus: reviewMeta.marketingConsentStatus || ""
       });
     }
-    setState("saved", saved.duplicate ? "هذه الفرصة محفوظة مسبقًا" : "");
-    toast(saved.duplicate ? "الفرصة مكررة — لم يُنشأ سجل جديد" : "تم حفظ الفرصة");
+    setState("saved", "");
+    toast("تم تحديث الفرصة في بنك الفرص");
     clearIntakeForm();
 
     let matching = { ok: false, matchCount: 0, skipped: true };
     let missingDataSync = { ok: false, created: false };
-    if (shouldRematchAfterOpportunityWrite({ duplicate: saved.duplicate })) {
+    const readyForMatching = isEligibleForMatchingRun({ ...prepared.opportunity, ...reviewMeta });
+    if (readyForMatching && shouldRematchAfterOpportunityWrite({ duplicate: false })) {
       try {
         const token = await user.getIdToken();
         matching = await requestOpportunityRematch({

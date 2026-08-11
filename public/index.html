@@ -997,6 +997,14 @@
     .office-save-btn { border:0; background:var(--green); color:#fff; }
     .office-logout-btn { border:1px solid var(--line); background:#fff; color:#8b2f2a; }
     .office-logout-btn:disabled { opacity:.45; }
+    .library-toolbar { display:flex; gap:8px; margin-bottom:10px; }
+    .library-list { display:grid; gap:8px; }
+    .library-row {
+      display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+      border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff;
+    }
+    .library-row-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .library-empty { color:var(--muted); font-size:13px; margin:0; }
     .office-settings-note {
       margin:9px 1px 0;
       color:var(--muted);
@@ -2335,6 +2343,60 @@
     min-height:0;
   }
 
+  .bank-filters {
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin:10px 0 12px;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fafcfb;
+  }
+  @media (min-width:720px) {
+    .bank-filters {
+      grid-template-columns:1.4fr repeat(5, minmax(0,1fr)) auto;
+      align-items:center;
+    }
+  }
+  .bank-filters select,
+  .bank-filter-search input {
+    width:100%;
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 10px;
+    font:inherit;
+    background:#fff;
+  }
+  .bank-filter-clear {
+    min-height:40px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+    color:var(--muted);
+    font:inherit;
+    cursor:pointer;
+  }
+  .bank-row-clickable { width:100%; text-align:inherit; border:0; background:transparent; cursor:pointer; }
+  .bank-row-head { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .bank-readiness-badge {
+    font-size:11px;
+    font-weight:700;
+    padding:3px 8px;
+    border-radius:999px;
+    background:#eef8f0;
+    color:#1f6b3b;
+    white-space:nowrap;
+  }
+  .bank-readiness-badge.is-incomplete { background:#fff4e8; color:#9a5b12; }
+  .bank-readiness-line { margin:0 0 10px; font-size:13px; }
+  .bank-action-sub { display:block; font-size:11px; font-weight:400; color:var(--muted); }
+  .bank-media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+  .bank-media-item img, .bank-media-item video { width:100%; border-radius:10px; display:block; }
+  .bank-listing-share-panel { margin-top:10px; padding:10px; border:1px dashed var(--line); border-radius:12px; }
+  .bank-listing-share-actions { display:flex; flex-wrap:wrap; gap:8px; }
+
   .bank-share-scope {
     margin-top:10px;
     padding:10px 12px;
@@ -2697,23 +2759,33 @@
                 <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
               </div>
 
-              <div class="bank-share-scope" aria-labelledby="bankShareScopeTitle">
-                <div class="bank-share-scope-label">
-                  <span class="bank-share-scope-title" id="bankShareScopeTitle">مشاركة مع مكتب محدد</span>
-                </div>
-                <div class="bank-share-scope-actions">
-                  <label class="bank-office-search-label" for="bankScopeOfficeSearch">ابحث عن مكتب</label>
-                  <input id="bankScopeOfficeSearch" type="search" placeholder="اسم المكتب أو المدينة"
-                    aria-label="ابحث عن مكتب" autocomplete="off">
-                  <input id="bankScopeTarget" type="hidden" value="">
-                  <div class="bank-office-search-results" id="bankScopeSearchResults" hidden></div>
-                  <p class="bank-share-selected-office" id="bankScopeSelectedLabel" hidden></p>
-                  <p class="bank-share-selection-hint section-status" id="bankShareSelectionHint" hidden
-                    role="status"></p>
-                  <div class="bank-action-row">
-                    <button type="button" class="bank-action" id="bankShareSelectedBtn">مشاركة المحدد</button>
-                  </div>
-                </div>
+              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث وتصفية بنك الفرص">
+                <label class="bank-filter-search">
+                  <span class="visually-hidden">بحث في بنك الفرص</span>
+                  <input type="search" id="bankFilterSearch" placeholder="ابحث في بنك الفرص" autocomplete="off">
+                </label>
+                <select id="bankFilterCity" aria-label="تصفية المدينة">
+                  <option value="">كل المدن</option>
+                </select>
+                <select id="bankFilterDistrict" aria-label="تصفية الحي">
+                  <option value="">كل الأحياء</option>
+                </select>
+                <select id="bankFilterPurpose" aria-label="تصفية نوع العملية">
+                  <option value="">نوع العملية</option>
+                  <option value="SALE">بيع</option>
+                  <option value="PURCHASE">شراء</option>
+                  <option value="RENT">إيجار</option>
+                  <option value="LEASE_REQUEST">استئجار</option>
+                </select>
+                <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
+                  <option value="">نوع العقار</option>
+                </select>
+                <select id="bankFilterStatus" aria-label="تصفية الحالة">
+                  <option value="">الحالة</option>
+                  <option value="READY_FOR_MATCHING">جاهزة للمطابقة</option>
+                  <option value="NEEDS_COMPLETION">تحتاج استكمال</option>
+                </select>
+                <button type="button" class="bank-filter-clear" id="bankFilterClearBtn">مسح الفلاتر</button>
               </div>
 
               <p class="section-status" id="opportunityBankStatus" role="status"></p>
@@ -2917,6 +2989,18 @@
         <p class="section-status" id="officeLinkStatus" role="status"></p>
       </section>
 
+      <section class="settings-section" id="officeLibrarySection">
+        <h3>المكتبة</h3>
+        <p class="section-help">ملفات خاصة بالمكتب — لا يراها مكتب آخر.</p>
+        <div class="library-toolbar">
+          <button type="button" class="identity-btn" id="officeLibraryAddBtn">إضافة ملف</button>
+          <input type="file" id="officeLibraryFileInput" hidden
+            accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx">
+        </div>
+        <div class="library-list" id="officeLibraryList" role="list"></div>
+        <p class="section-status" id="officeLibraryStatus" role="status"></p>
+      </section>
+
       <section class="settings-section" id="cooperationSection">
         <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
         <p class="section-help">
@@ -3052,6 +3136,7 @@
   <script src="js/app-navigation.js"></script>
   <script src="js/home-tabs.js"></script>
   <script src="js/qrcode.js"></script>
+  <script type="module" src="js/office-library.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>
   <script type="module" src="js/opportunity-review.js"></script>
