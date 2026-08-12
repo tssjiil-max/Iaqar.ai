@@ -40,6 +40,15 @@ test("switching tabs shows one content area at a time", async () => {
   }
 });
 
+test("opportunities main nav and bank sub-tabs use approved labels", () => {
+  assert.ok(shellSource.includes('id="mainTabOpportunities"'), "main opportunities tab exists");
+  assert.match(shellSource, /id="mainTabOpportunities"[^>]*>بنك الفرص<\/button>/);
+  assert.ok(shellSource.includes('<h2 class="tab-panel-title">بنك الفرص</h2>'));
+  assert.match(shellSource, /id="oppTabAdd"[^>]*>\+ إضافة فرصة<\/button>/);
+  assert.match(shellSource, /id="oppTabBank"[^>]*>البنك<\/button>/);
+  assert.equal(shellSource.includes('>الفرص</button>'), false, "legacy main tab label must be removed");
+});
+
 test("shell removes share cover UI and settings bank entry", () => {
   assert.equal(shellSource.includes("ترويسة عريضة للمشاركة"), false);
   assert.equal(shellSource.includes("id=\"openOpportunityBankBtn\""), false);
