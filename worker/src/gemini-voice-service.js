@@ -57,7 +57,7 @@ export function validateVoiceAudio({ byteSize = 0, mimeType = "", durationSec = 
   return { ok: true, mimeType: mime, byteSize: size };
 }
 
-function voiceResponseSchema() {
+export function voiceResponseJsonSchema() {
   return {
     type: "object",
     properties: {
@@ -81,12 +81,19 @@ function voiceResponseSchema() {
       advertiserRole: { type: "string", nullable: true },
       description: { type: "string", nullable: true },
       needsReview: {
-        type: "object",
+        type: "array",
         nullable: true,
-        additionalProperties: { type: "boolean" }
+        items: { type: "string" }
       }
-    },
-    additionalProperties: false
+    }
+  };
+}
+
+export function buildGeminiVoiceGenerationConfig() {
+  return {
+    temperature: 0.1,
+    responseMimeType: "application/json",
+    responseJsonSchema: voiceResponseJsonSchema()
   };
 }
 
@@ -101,8 +108,8 @@ function buildVoiceSystemPrompt(context = "office") {
     roleHint,
     "Return JSON only. Use null for any field not explicitly stated.",
     "Never guess city, district, price, rooms, phone, or property type.",
-    "If uncertain, use null and set needsReview.<field>=true.",
-    "Do not convert vague ranges like '500 or 600 thousand' into a single number without needsReview.price=true.",
+    "If uncertain, use null and include the field name in needsReview (array of field names).",
+    "Do not convert vague ranges like '500 or 600 thousand' into a single number without including the price field in needsReview.",
     "Normalize Saudi prices to integer riyals when clearly stated (e.g. 580 thousand -> 580000).",
     "transactionType values: sale, rent, purchase, lease_request, investment (Arabic equivalents allowed in output).",
     "advertiserRole values when stated: OWNER, CLIENT, BROKER, UNKNOWN."
@@ -141,8 +148,21 @@ function sanitizeGeminiPayload(raw = {}) {
     const text = String(value).trim();
     out[key] = text || null;
   }
-  out.needsReview = raw.needsReview && typeof raw.needsReview === "object" ? raw.needsReview : {};
+  out.needsReview = normalizeNeedsReview(raw.needsReview);
   return out;
+}
+
+function normalizeNeedsReview(raw) {
+  if (Array.isArray(raw)) {
+    const out = {};
+    for (const item of raw) {
+      const key = String(item || "").trim();
+      if (key) out[key] = true;
+    }
+    return out;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+  return {};
 }
 
 function parseGeminiJsonResponse(responseJson) {
@@ -201,11 +221,7 @@ export async function analyzeVoiceWithGemini({
             { inline_data: { mime_type: mimeType, data: base64 } }
           ]
         }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          responseSchema: voiceResponseSchema()
-        }
+        generationConfig: buildGeminiVoiceGenerationConfig()
       })
     });
     const bodyText = await response.text();

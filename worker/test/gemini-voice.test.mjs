@@ -6,6 +6,8 @@ import {
   resolveGeminiModel,
   resetVoiceTelemetryForTests,
   getVoiceTelemetrySnapshot,
+  voiceResponseJsonSchema,
+  buildGeminiVoiceGenerationConfig,
 } from "../src/gemini-voice-service.js";
 
 test("resolveGeminiModel uses env override", () => {
@@ -28,6 +30,54 @@ test("validateVoiceAudio rejects oversize", () => {
 test("validateVoiceAudio accepts webm under limit", () => {
   const result = validateVoiceAudio({ byteSize: 1000, mimeType: "audio/webm", durationSec: 30 });
   assert.equal(result.ok, true);
+});
+
+test("buildGeminiVoiceGenerationConfig uses responseJsonSchema only", () => {
+  const config = buildGeminiVoiceGenerationConfig();
+  assert.equal(config.responseMimeType, "application/json");
+  assert.ok(config.responseJsonSchema);
+  assert.equal(config.responseSchema, undefined);
+  assert.equal(config.responseJsonSchema.type, "object");
+  assert.equal(config.responseJsonSchema.properties.needsReview.type, "array");
+  assert.deepEqual(config.responseJsonSchema.properties.needsReview.items, { type: "string" });
+  assert.equal(config.responseJsonSchema.additionalProperties, undefined);
+  assert.equal(
+    Object.keys(config.responseJsonSchema.properties).length,
+    Object.keys(voiceResponseJsonSchema().properties).length
+  );
+});
+
+test("analyzeVoiceWithGemini sends responseJsonSchema not responseSchema", async () => {
+  resetVoiceTelemetryForTests();
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  let capturedBody = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    capturedBody = JSON.parse(String(init?.body || "{}"));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ city: "الرياض", needsReview: ["salePrice"] }) }] } }]
+      }),
+    };
+  };
+
+  try {
+    const result = await analyzeVoiceWithGemini({
+      env: { GEMINI_API_KEY: "test-key", GEMINI_MODEL: "gemini-3.1-flash-lite" },
+      audioBytes: bytes,
+      mimeType: "audio/webm",
+      context: "owner",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(capturedBody.generationConfig.responseMimeType, "application/json");
+    assert.ok(capturedBody.generationConfig.responseJsonSchema);
+    assert.equal(capturedBody.generationConfig.responseSchema, undefined);
+    assert.deepEqual(result.structured.needsReview, { salePrice: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("analyzeVoiceWithGemini returns not configured without key", async () => {
