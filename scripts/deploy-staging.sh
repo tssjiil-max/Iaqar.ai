@@ -75,6 +75,12 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_CLIENT_EMAIL" # // pragma: allowlist secret
   npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY" # // pragma: allowlist secret
   npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY_ID" # // pragma: allowlist secret
+  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+    printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --env staging # // pragma: allowlist secret
+    echo "GEMINI_API_KEY synced to staging Worker (value not printed)."
+  else
+    echo "NOTE: GEMINI_API_KEY not set — voice analyze returns GEMINI_NOT_CONFIGURED until configured."
+  fi
 )
 
 echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"

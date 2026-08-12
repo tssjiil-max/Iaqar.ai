@@ -81,7 +81,7 @@ function openReviewOverlay(draft, onApprove) {
   onApproveCallback = onApprove;
   advertiserCandidates = extractAdvertiserPhonesFromText(draft.sourceText || "");
   advertiserExtractedAuto = advertiserCandidates.length > 0;
-  const defaults = buildReviewDefaults(
+  const defaults = draft.reviewDefaults || buildReviewDefaults(
     draft.fields || {},
     draft.sourceText || "",
     {

@@ -259,6 +259,101 @@
     }).join("");
   }
 
+  function applyPublicVoicePrefill(form, structured, {
+    owner,
+    refreshClientDynamic,
+    propertySelect,
+    districtSelect,
+    otherPropertyWrap,
+    otherDistrictWrap,
+    toggleOther
+  }) {
+    const api = window.IAQARGeminiVoiceIntake;
+    if (!api || !form) return;
+    const manual = {
+      name: form.elements.name?.value || "",
+      phone: form.elements.phone?.value || ""
+    };
+    const values = api.mapGeminiToPublicFormValues(structured, {
+      context: owner ? "owner" : "client",
+      manualValues: manual
+    });
+    const set = (name, value) => {
+      const el = form.elements[name];
+      if (!el || value == null || String(value).trim() === "") return;
+      el.value = String(value);
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    set("name", values.name);
+    set("phone", values.phone);
+    set("city", values.city);
+    if (!owner) set("requestKind", values.requestKind);
+    const propMatch = [...propertySelect.options].find((opt) =>
+      opt.value === values.propertyType || opt.textContent === values.propertyType);
+    if (propMatch) propertySelect.value = propMatch.value;
+    else if (values.propertyType) {
+      propertySelect.value = "__other__";
+      toggleOther(propertySelect, otherPropertyWrap);
+      set("otherPropertyType", values.propertyType);
+    }
+    const distMatch = [...districtSelect.options].find((opt) =>
+      opt.value === values.district || opt.textContent === values.district);
+    if (distMatch) districtSelect.value = distMatch.value;
+    else if (values.district) {
+      districtSelect.value = "__other__";
+      toggleOther(districtSelect, otherDistrictWrap);
+      set("otherDistrict", values.district);
+    }
+    if (!owner) refreshClientDynamic();
+    set("budget", values.budget);
+    set("annualRent", values.annualRent);
+    set("area", values.area);
+    set("rooms", values.rooms);
+    set("bathrooms", values.bathrooms);
+    set("streetWidth", values.streetWidth);
+    set("facing", values.facing);
+    set("details", values.details);
+    showStatus("تم تعبئة النموذج من التسجيل — أكمل الناقص فقط.");
+  }
+
+  async function mountPublicVoicePanel({
+    kind,
+    targetOffice,
+    form,
+    refreshClientDynamic,
+    propertySelect,
+    districtSelect,
+    otherPropertyWrap,
+    otherDistrictWrap,
+    toggleOther
+  }) {
+    const panel = gate.querySelector("#publicVoiceIntakePanel");
+    if (!panel) return;
+    try {
+      const { mountVoiceIntakePanel } = await import("./gemini-voice-intake-ui.js");
+      mountVoiceIntakePanel(panel, {
+        context: kind === "owner" ? "owner" : "client",
+        officeId: targetOffice,
+        workerBase: resolveWorkerBase(),
+        publicRoute: true,
+        startLabel: kind === "owner" ? "إضافة عقار بالصوت" : "إضافة طلب بالصوت",
+        onStructured(structured) {
+          applyPublicVoicePrefill(form, structured, {
+            owner: kind === "owner",
+            refreshClientDynamic,
+            propertySelect,
+            districtSelect,
+            otherPropertyWrap,
+            otherDistrictWrap,
+            toggleOther
+          });
+        }
+      });
+    } catch (error) {
+      console.warn("[iaqar] public voice panel", error);
+    }
+  }
+
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
@@ -270,6 +365,7 @@
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
+      <div id="publicVoiceIntakePanel" class="full"></div>
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
@@ -333,6 +429,17 @@
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
+    void mountPublicVoicePanel({
+      kind,
+      targetOffice,
+      form: gate.querySelector("#intakeForm"),
+      refreshClientDynamic,
+      propertySelect,
+      districtSelect,
+      otherPropertyWrap,
+      otherDistrictWrap,
+      toggleOther
+    });
     gate.querySelector("#intakeForm").onsubmit = async event => {
       event.preventDefault();
       const form = event.currentTarget;

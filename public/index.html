@@ -543,6 +543,56 @@
       font-weight:800;
       cursor:pointer;
     }
+    .voice-intake-panel {
+      margin-top:12px;
+      padding:12px;
+      border:1px dashed var(--line);
+      border-radius:16px;
+      background:var(--green-pale);
+    }
+    .voice-intake-start {
+      width:100%;
+    }
+    .voice-intake-recording {
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      font-weight:700;
+      color:#a1332c;
+    }
+    .voice-intake-dot {
+      color:#a1332c;
+    }
+    .voice-intake-stop,
+    .voice-intake-cancel,
+    .voice-intake-retry,
+    .voice-intake-manual {
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font-size:12px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .voice-intake-status {
+      margin:8px 0 0;
+      min-height:14px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .voice-intake-status.is-error {
+      color:#a1332c;
+    }
+    .voice-intake-actions {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:8px;
+    }
     .add-opportunity-missing {
       margin-top:12px;
       padding:12px;
@@ -2784,6 +2834,7 @@
                   <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
                 </div>
                 <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
+                <div id="addOpportunityVoicePanel" class="voice-intake-panel" aria-label="تسجيل صوتي"></div>
                 <input id="addOpportunityFile" type="file" hidden>
                 <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
                 <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
@@ -3177,6 +3228,7 @@
   <script src="/__/firebase/init.js"></script>
   <script src="js/runtime-config.js"></script>
   <script type="module" src="js/fcm-fid.js"></script>
+  <script type="module" src="js/gemini-voice-intake-domain.js"></script>
   <script type="module" src="js/public-client-intake-domain.js"></script>
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>

@@ -71,6 +71,12 @@ import {
   publicRateLimitKey,
   resetPublicRateLimitStoreForTests
 } from "./public-rate-limit.js";
+import {
+  analyzeVoiceWithGemini,
+  getVoiceTelemetrySnapshot,
+  resolveGeminiModel,
+  validateVoiceAudio
+} from "./gemini-voice-service.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -250,6 +256,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/pipeline/media-extract") {
         return await handlePipelineMediaExtract(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/voice-analyze") {
+        return await handlePipelineVoiceAnalyze(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/public-voice-analyze") {
+        return await handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute: true });
       }
 
       if (request.method === "POST" && url.pathname === "/matching/preview") {
@@ -4052,6 +4066,70 @@ async function runLlamaVisionExtract(env, input) {
   }
 }
 
+async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute = false } = {}) {
+  const officeId = normalizeOfficeId(request.headers.get("X-Office-Id"));
+  const context = cleanText(request.headers.get("X-Voice-Context"), 20).toLowerCase();
+  const durationHeader = Number(request.headers.get("X-Voice-Duration-Sec") || 0);
+  const durationSec = Number.isFinite(durationHeader) && durationHeader > 0 ? durationHeader : null;
+  const contentType = cleanText(request.headers.get("Content-Type"), 120).toLowerCase();
+  const size = requestBodyLength(request);
+
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  if (!["office", "owner", "client"].includes(context)) {
+    throw appError("invalid_voice_context", 400, "سياق التسجيل غير صالح");
+  }
+
+  if (publicRoute) {
+    enforcePublicRouteRateLimit(request, {
+      route: "pipeline/public-voice-analyze",
+      officeId,
+      ...PUBLIC_RATE_LIMITS.PUBLIC_VOICE
+    });
+  } else {
+    await authorizeOfficeRequest(request, env, officeId, "member");
+  }
+
+  const validation = validateVoiceAudio({ byteSize: size, mimeType: contentType, durationSec });
+  if (!validation.ok) {
+    return jsonResponse({ ok: false, error: validation.error, requestId }, 422);
+  }
+
+  const audioBytes = await request.arrayBuffer();
+  if (audioBytes.byteLength !== size) {
+    return jsonResponse({ ok: false, error: "AUDIO_UPLOAD_FAILED", requestId }, 400);
+  }
+
+  const result = await analyzeVoiceWithGemini({
+    env,
+    audioBytes,
+    mimeType: validation.mimeType,
+    context
+  });
+
+  if (!result.ok) {
+    const status = result.error === "GEMINI_QUOTA_EXCEEDED" ? 429 : 422;
+    return jsonResponse({
+      ok: false,
+      error: result.error,
+      retryable: Boolean(result.retryable),
+      model: result.model || resolveGeminiModel(env),
+      telemetry: getVoiceTelemetrySnapshot(),
+      requestId
+    }, status);
+  }
+
+  return jsonResponse({
+    ok: true,
+    structured: result.structured,
+    extractionMode: result.extractionMode,
+    productionAi: result.productionAi,
+    model: result.model,
+    latencyMs: result.latencyMs,
+    telemetry: getVoiceTelemetrySnapshot(),
+    requestId
+  });
+}
+
 async function handlePipelineMediaExtract(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
@@ -4191,7 +4269,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec",
     "Access-Control-Max-Age": "86400"
   };
 }
