@@ -1059,7 +1059,14 @@
   function closeWorkflowUi() {
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     if (!overlay || overlay.hidden) return;
-    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+    overlay.hidden = true;
+    activeWorkflowDetail = null;
+    if (window.history?.state?.iaqarOverlay) {
+      window.history.replaceState(null, "", location.href);
+    }
+    window.dispatchEvent(new CustomEvent("iaqar:workflow-overlay-closed"));
+    window.IAQAR?.navigation?.updateBackButton?.();
+    window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
   }
 
   function hideWorkflowOverlay() {

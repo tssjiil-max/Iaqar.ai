@@ -450,6 +450,8 @@ function closeBankDetailInternal() {
     panel.hidden = true;
     panel.innerHTML = "";
   }
+  window.IAQAR?.navigation?.updateBackButton?.();
+  window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
   return true;
 }
 
@@ -754,6 +756,7 @@ async function renderDetail(id) {
   wireDetailHandlers(id, record);
   void hydrateDetailMediaUrls();
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
+  window.IAQAR?.navigation?.updateBackButton?.();
 }
 
 function rowsCountLabel() {

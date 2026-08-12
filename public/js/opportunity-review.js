@@ -57,16 +57,21 @@ function e164ToLocalInput(e164) {
   return "";
 }
 
-function closeReview() {
+function closeReview(options = {}) {
   const overlay = $("opportunityReviewOverlay");
-  if (!overlay) return;
+  if (!overlay || overlay.hidden) return;
   overlay.hidden = true;
   document.body.style.overflow = "";
-  window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
   activeDraft = null;
   advertiserExtractedAuto = false;
   advertiserCandidates = [];
   closeAdvertiserMessageModal();
+  window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
+  if (!options.explicit && window.history?.state?.iaqarOverlay) {
+    window.history.replaceState(null, "", location.href);
+  }
+  window.IAQAR?.navigation?.updateBackButton?.();
+  window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
 }
 
 function closeAdvertiserMessageModal() {
@@ -714,6 +719,9 @@ export function dismissOpportunityReviewIfOpen() {
 export function openOpportunityReview(draft, onApprove) {
   openReviewOverlay(draft, onApprove);
 }
+
+window.IAQAR = window.IAQAR || {};
+window.IAQAR.closeOpportunityReview = closeReview;
 
 export const __test = {
   buildReviewDefaults,

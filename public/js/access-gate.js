@@ -88,6 +88,7 @@
   </style>`);
 
   gate.className = "access-gate";
+  gate.id = "accessGate";
   document.body.classList.add("access-locked");
   document.body.appendChild(gate);
 
@@ -133,10 +134,19 @@
     return result;
   }
 
-  function frame(content) {
+  function frame(content, screenId = "") {
+    gate.dataset.activeScreen = screenId;
     gate.innerHTML = `<div class="access-shell"><section class="access-brand">
       <img src="${logoSrc}" alt="مكاتب عقارية ذكية"><h1>مكاتب عقارية ذكية</h1>
       <p>منصة تشغيل الوسطاء العقاريين</p></section>${content}</div>`;
+  }
+  function bindAccessBack(handler) {
+    const back = gate.querySelector(".access-back");
+    if (!back) return;
+    back.onclick = (event) => {
+      event.preventDefault();
+      handler();
+    };
   }
   function showStatus(message, ok = false) {
     const node = gate.querySelector("#accessStatus");
@@ -158,6 +168,7 @@
       else if (button.dataset.go === "login") loginForm();
       else intakeForm(button.dataset.go, "platform");
     });
+    gate.dataset.activeScreen = "home";
   }
   function resolvePublicOfficeImage(data = {}, targetOfficeId = "") {
     const oid = String(targetOfficeId || "").trim().toLowerCase();
@@ -196,7 +207,8 @@
       <div id="publicOfficeProfile"></div>
       <div class="access-options"><button class="access-btn" data-go="client">أنا عميل</button>
       <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
-      <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`);
+      <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`, "public-office");
+    gate.dataset.activeScreen = "public-office";
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => intakeForm(button.dataset.go, officeId));
     gate.querySelector("#publicHome").onclick = () => location.assign("/");
     try {
@@ -405,8 +417,8 @@
           <input name="video" type="file" accept="video/mp4,video/webm,video/quicktime">
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
-      </form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = isPublicOfficeLink ? publicOffice : home;
+      </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
+    bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
     const propertySelect = gate.querySelector("#propertyTypeSelect");
     const districtSelect = gate.querySelector("#districtSelect");
     const requestKindSelect = gate.querySelector("#requestKindSelect");
@@ -583,8 +595,8 @@
         <label class="full"><span>اسم المكتب المقترح *</span><input name="officeName" minlength="4" maxlength="80" required><span class="access-field-error" data-field-error="officeName"></span></label>
         <label class="full"><span>كلمة مرور الحساب *</span><input name="password" type="password" minlength="8" autocomplete="new-password" required><span class="access-field-error" data-field-error="password"></span></label>
         <label class="full"><button class="access-btn" type="submit">إرسال طلب الاعتماد</button></label>
-      </form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = home;
+      </form><div id="accessStatus" class="access-status"></div></section>`, "broker-apply");
+    bindAccessBack(home);
     gate.querySelector("#brokerForm").onsubmit = async event => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -698,8 +710,8 @@
         <label class="full"><button class="access-btn" type="submit">تسجيل الدخول</button></label>
         <label class="full"><button class="access-btn light" type="button" id="forgotPassword">نسيت كلمة المرور</button></label>
         <label class="full"><button class="access-btn secondary" type="button" id="platformLogin">دخول إدارة المنصة</button></label>
-      </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`);
-    gate.querySelector(".access-back").onclick = home;
+      </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`, "login");
+    bindAccessBack(home);
     gate.querySelector("#togglePassword").onclick = event => {
       const input = gate.querySelector('input[name="password"]');
       input.type = input.type === "password" ? "text" : "password";
@@ -746,8 +758,8 @@
       <p>أدخل رقم الجوال، وسنرسل رابط إعادة تعيين كلمة المرور إلى البريد المسجل للحساب.</p>
       <form class="access-form" id="forgotForm"><label class="full"><span>رقم الجوال</span>
       <input name="phone" inputmode="tel" required></label><label class="full"><button class="access-btn" type="submit">إرسال رابط الاسترجاع</button></label></form>
-      <div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = () => loginForm();
+      <div id="accessStatus" class="access-status"></div></section>`, "forgot-password");
+    bindAccessBack(() => loginForm());
     gate.querySelector("#forgotForm").onsubmit = async event => {
       event.preventDefault();
       const phone = normalizeSaudiPhone(new FormData(event.currentTarget).get("phone"));
@@ -768,8 +780,8 @@
       <p>هذا الدخول مخصص لمدير المنصة فقط.</p><form class="access-form" id="platformForm">
       <label class="full"><span>البريد الإلكتروني</span><input name="email" type="email" autocomplete="username" required></label>
       <label class="full"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required></label>
-      <label class="full"><button class="access-btn" type="submit">دخول الإدارة</button></label></form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = () => loginForm();
+      <label class="full"><button class="access-btn" type="submit">دخول الإدارة</button></label></form><div id="accessStatus" class="access-status"></div></section>`, "platform-login");
+    bindAccessBack(() => loginForm());
     gate.querySelector("#platformForm").onsubmit = async event => {
       event.preventDefault(); const fields = new FormData(event.currentTarget);
       try { await firebase.auth().signInWithEmailAndPassword(String(fields.get("email") || "").trim(), String(fields.get("password") || "")); await verifyAccess("platform", true); }
