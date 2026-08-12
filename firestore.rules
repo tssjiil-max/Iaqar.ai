@@ -43,6 +43,20 @@ service cloud.firestore {
         allow write: if canManage(officeId);
       }
 
+      match /adminNotes/{noteId} {
+        allow read, write: if isPlatformAdmin();
+      }
+
+      match /activityEvents/{eventId} {
+        allow read: if isPlatformAdmin();
+        allow write: if false;
+      }
+
+      match /activityRollup/{dayId} {
+        allow read: if isPlatformAdmin();
+        allow write: if false;
+      }
+
       match /publicIntake/{docId} {
         allow create: if request.resource.data.officeId == officeId
           && request.resource.data.kind in ['client','owner']
@@ -104,6 +118,13 @@ service cloud.firestore {
       allow read, update, delete: if isPlatformAdmin();
     }
 
+    match /adminAuditLog/{logId} {
+      allow read, write: if isPlatformAdmin();
+    }
+
+    match /loginDirectory/{phoneHash} {
+      allow read, write: if false;
+    }
 
     match /officeNameClaims/{nameKey} {
       allow read: if signedIn();
