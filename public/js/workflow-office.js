@@ -998,8 +998,8 @@
     if (popup) popup.location.replace(handoffUrl);
     else window.location.href = handoffUrl;
     notify(safeChannel === "telegram"
-      ? "فُتحت مسودة تيليجرام خارجيًا — لم يُؤكد الإرسال"
-      : "فُتحت مسودة واتساب خارجيًا — لم يُؤكد الإرسال");
+      ? "فُتح تليجرام — أكّد الإرسال بنفسك"
+      : "فُتح واتساب — أكّد الإرسال بنفسك");
   }
 
   async function openWorkflowWhatsApp(detail) {

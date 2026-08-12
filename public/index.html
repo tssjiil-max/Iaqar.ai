@@ -3343,10 +3343,10 @@
                 </button>
                 ${item.canDismiss ? `<button class="close" data-action="dismiss" data-id="${escapeHtml(item.id)}">${escapeHtml(item.dismissLabel || "صرف النظر")}</button>` : ""}
                 ${item.priorityLabel ? `<span class="time" aria-label="الأولوية">${escapeHtml(item.priorityLabel)}</span>` : ""}
-                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "مسودة واتساب للمالك")}</button>` : ""}
-                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "مسودة واتساب للعميل")}</button>` : ""}
-                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "مسودة تيليجرام للمالك")}</button>` : ""}
-                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "مسودة تيليجرام للعميل")}</button>` : ""}
+                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "إرسال واتساب للمالك")}</button>` : ""}
+                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "إرسال واتساب للعميل")}</button>` : ""}
+                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "إرسال تليجرام للمالك")}</button>` : ""}
+                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "إرسال تليجرام للعميل")}</button>` : ""}
               </div>
             </div>
           </div>

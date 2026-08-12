@@ -1,5 +1,5 @@
 /**
- * Gemini voice intake UI controller — recording + single analyze call.
+ * Gemini voice intake UI controller — explicit recording state machine.
  */
 
 import {
@@ -9,10 +9,47 @@ import {
   voiceErrorMessageAr
 } from "./gemini-voice-intake-domain.js";
 
+export const VOICE_UI_STATE = Object.freeze({
+  IDLE: "idle",
+  REQUESTING_PERMISSION: "requesting_permission",
+  RECORDING: "recording",
+  STOPPING: "stopping",
+  ANALYZING: "analyzing",
+  ERROR: "error"
+});
+
+export const VOICE_STOP_TIMEOUT_MS = 8_000;
+export const VOICE_ANALYZE_TIMEOUT_MS = 45_000;
+
+export function voiceUiVisibility(state = VOICE_UI_STATE.IDLE) {
+  return {
+    showStart: state === VOICE_UI_STATE.IDLE,
+    showRecording: state === VOICE_UI_STATE.RECORDING,
+    showErrorActions: state === VOICE_UI_STATE.ERROR,
+    showAnalyzingStatus: state === VOICE_UI_STATE.STOPPING || state === VOICE_UI_STATE.ANALYZING,
+    blockStart: state === VOICE_UI_STATE.REQUESTING_PERMISSION
+      || state === VOICE_UI_STATE.RECORDING
+      || state === VOICE_UI_STATE.STOPPING
+      || state === VOICE_UI_STATE.ANALYZING
+  };
+}
+
 function pickMimeType() {
   if (typeof MediaRecorder === "undefined") return "";
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function withTimeout(promise, ms, code = "timeout") {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(code)), ms);
+    })
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 export function createVoiceIntakeController({
@@ -24,15 +61,20 @@ export function createVoiceIntakeController({
   publicRoute = false,
   hooks = {}
 } = {}) {
+  let state = VOICE_UI_STATE.IDLE;
   let mediaRecorder = null;
   let mediaStream = null;
   let chunks = [];
   let startedAt = 0;
   let lastBlob = null;
   let lastDurationMs = 0;
-  let analyzing = false;
-  let recording = false;
   let maxTimer = null;
+  let stopInFlight = false;
+
+  function setState(nextState) {
+    state = nextState;
+    hooks.onStateChange?.(nextState, voiceUiVisibility(nextState));
+  }
 
   function endpoint() {
     const base = String(workerBase || "").replace(/\/$/, "");
@@ -41,84 +83,149 @@ export function createVoiceIntakeController({
       : `${base}/pipeline/voice-analyze`;
   }
 
+  function clearMaxTimer() {
+    if (maxTimer) window.clearTimeout(maxTimer);
+    maxTimer = null;
+  }
+
   async function stopTracks() {
     if (mediaStream) {
-      mediaStream.getTracks().forEach((track) => track.stop());
+      mediaStream.getTracks().forEach((track) => {
+        try { track.stop(); } catch (_) { /* ignore */ }
+      });
       mediaStream = null;
     }
   }
 
+  function resetRecorderRefs() {
+    mediaRecorder = null;
+    chunks = [];
+    stopInFlight = false;
+  }
+
+  async function waitForRecorderStop(recorder) {
+    if (!recorder || recorder.state === "inactive") return;
+    await withTimeout(new Promise((resolve) => {
+      recorder.addEventListener("stop", resolve, { once: true });
+      try {
+        if (recorder.state === "recording") recorder.requestData();
+        recorder.stop();
+      } catch (_) {
+        resolve();
+      }
+    }), VOICE_STOP_TIMEOUT_MS, "stop_timeout");
+  }
+
   async function startRecording() {
-    if (recording || analyzing) return { ok: false, error: "busy" };
+    const visibility = voiceUiVisibility(state);
+    if (visibility.blockStart) return { ok: false, error: "busy" };
     if (!navigator.mediaDevices?.getUserMedia) {
+      setState(VOICE_UI_STATE.ERROR);
       return { ok: false, error: "MIC_PERMISSION_DENIED" };
     }
+
+    setState(VOICE_UI_STATE.REQUESTING_PERMISSION);
+    lastBlob = null;
+    lastDurationMs = 0;
+
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
+      setState(VOICE_UI_STATE.ERROR);
       return { ok: false, error: classifyMicError(error) };
     }
+
     const mimeType = pickMimeType();
     chunks = [];
     mediaRecorder = mimeType
       ? new MediaRecorder(mediaStream, { mimeType })
       : new MediaRecorder(mediaStream);
     mediaRecorder.ondataavailable = (event) => {
+      if (state !== VOICE_UI_STATE.RECORDING) return;
       if (event.data && event.data.size > 0) chunks.push(event.data);
     };
+
     startedAt = Date.now();
-    recording = true;
-    hooks.onRecordingChange?.(true);
+    setState(VOICE_UI_STATE.RECORDING);
     mediaRecorder.start(250);
     maxTimer = window.setTimeout(() => {
       void stopRecording();
     }, VOICE_MAX_DURATION_MS);
-    return { ok: true, state: "recording" };
+    return { ok: true, state: VOICE_UI_STATE.RECORDING };
   }
 
   async function cancelRecording() {
-    if (maxTimer) window.clearTimeout(maxTimer);
-    maxTimer = null;
-    recording = false;
-    hooks.onRecordingChange?.(false);
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      try { mediaRecorder.stop(); } catch (_) { /* ignore */ }
+    clearMaxTimer();
+    stopInFlight = false;
+    const recorder = mediaRecorder;
+    resetRecorderRefs();
+    if (recorder && recorder.state !== "inactive") {
+      try { recorder.stop(); } catch (_) { /* ignore */ }
     }
-    mediaRecorder = null;
-    chunks = [];
     lastBlob = null;
+    lastDurationMs = 0;
     await stopTracks();
-    return { ok: true, state: "idle" };
+    setState(VOICE_UI_STATE.IDLE);
+    return { ok: true, state: VOICE_UI_STATE.IDLE };
   }
 
   async function stopRecording() {
-    if (!recording || !mediaRecorder) return { ok: false, error: "not_recording" };
-    if (maxTimer) window.clearTimeout(maxTimer);
-    maxTimer = null;
-    recording = false;
-    hooks.onRecordingChange?.(false);
-    await new Promise((resolve) => {
-      mediaRecorder.addEventListener("stop", resolve, { once: true });
-      try { mediaRecorder.stop(); } catch (_) { resolve(); }
-    });
+    if (state !== VOICE_UI_STATE.RECORDING || stopInFlight) {
+      return { ok: false, error: "not_recording" };
+    }
+    stopInFlight = true;
+    clearMaxTimer();
+    setState(VOICE_UI_STATE.STOPPING);
+
+    const recorder = mediaRecorder;
+    const mimeType = recorder?.mimeType || pickMimeType() || "audio/webm";
+
+    try {
+      await waitForRecorderStop(recorder);
+    } catch {
+      resetRecorderRefs();
+      await stopTracks();
+      setState(VOICE_UI_STATE.ERROR);
+      hooks.onError?.({
+        code: "AUDIO_UPLOAD_FAILED",
+        message: voiceErrorMessageAr("AUDIO_UPLOAD_FAILED"),
+        retryable: true
+      });
+      return { ok: false, error: "stop_timeout" };
+    }
+
     await stopTracks();
-    const mimeType = mediaRecorder.mimeType || pickMimeType() || "audio/webm";
     mediaRecorder = null;
-    lastDurationMs = Date.now() - startedAt;
+    lastDurationMs = Math.max(0, Date.now() - startedAt);
     lastBlob = new Blob(chunks, { type: mimeType });
     chunks = [];
+    stopInFlight = false;
+
     const validation = validateVoiceBlob({ blob: lastBlob, durationMs: lastDurationMs });
     if (!validation.ok) {
-      hooks.onError?.({ code: validation.error, message: voiceErrorMessageAr(validation.error), retryable: false });
+      setState(VOICE_UI_STATE.ERROR);
+      hooks.onError?.({
+        code: validation.error,
+        message: voiceErrorMessageAr(validation.error),
+        retryable: false
+      });
       return { ok: false, error: validation.error };
     }
+
     return analyzeLastRecording();
   }
 
   async function analyzeLastRecording() {
-    if (!lastBlob || analyzing) return { ok: false, error: "no_recording" };
-    analyzing = true;
-    hooks.onAnalyzing?.(true);
+    if (!lastBlob || state === VOICE_UI_STATE.ANALYZING) {
+      return { ok: false, error: "no_recording" };
+    }
+    setState(VOICE_UI_STATE.ANALYZING);
+
+    const abortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const abortTimer = abortController
+      ? window.setTimeout(() => abortController.abort(), VOICE_ANALYZE_TIMEOUT_MS)
+      : null;
+
     try {
       const resolvedOfficeId = typeof getOfficeId === "function"
         ? getOfficeId()
@@ -134,26 +241,43 @@ export function createVoiceIntakeController({
         if (!token) throw new Error("auth_required");
         headers.Authorization = `Bearer ${token}`;
       }
-      const response = await fetch(endpoint(), {
+
+      const fetchPromise = fetch(endpoint(), {
         method: "POST",
         headers,
-        body: lastBlob
+        body: lastBlob,
+        signal: abortController?.signal
       });
+      const response = await (abortController
+        ? withTimeout(fetchPromise, VOICE_ANALYZE_TIMEOUT_MS, "analyze_timeout")
+        : fetchPromise);
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.ok || !body.structured) {
         const code = body.error || "GEMINI_API_FAILED";
-        hooks.onError?.({ code, message: voiceErrorMessageAr(code), retryable: body.retryable !== false });
+        setState(VOICE_UI_STATE.ERROR);
+        hooks.onError?.({
+          code,
+          message: voiceErrorMessageAr(code),
+          retryable: body.retryable !== false
+        });
         return { ok: false, error: code, retryable: body.retryable !== false };
       }
       hooks.onStructured?.(body.structured, body);
+      setState(VOICE_UI_STATE.IDLE);
       return { ok: true, structured: body.structured, meta: body };
-    } catch {
-      const code = "AUDIO_UPLOAD_FAILED";
-      hooks.onError?.({ code, message: voiceErrorMessageAr(code), retryable: true });
+    } catch (error) {
+      const timedOut = String(error?.message || "").includes("timeout")
+        || String(error?.name || "") === "AbortError";
+      const code = timedOut ? "GEMINI_API_FAILED" : "AUDIO_UPLOAD_FAILED";
+      setState(VOICE_UI_STATE.ERROR);
+      hooks.onError?.({
+        code,
+        message: voiceErrorMessageAr(code),
+        retryable: true
+      });
       return { ok: false, error: code, retryable: true };
     } finally {
-      analyzing = false;
-      hooks.onAnalyzing?.(false);
+      if (abortTimer) window.clearTimeout(abortTimer);
     }
   }
 
@@ -161,13 +285,26 @@ export function createVoiceIntakeController({
     startRecording,
     stopRecording,
     cancelRecording,
-    retryAnalyze: () => analyzeLastRecording(),
+    retryAnalyze: () => {
+      if (!lastBlob) {
+        setState(VOICE_UI_STATE.ERROR);
+        hooks.onError?.({
+          code: "audio_empty",
+          message: voiceErrorMessageAr("audio_empty"),
+          retryable: false
+        });
+        return Promise.resolve({ ok: false, error: "no_recording" });
+      }
+      return analyzeLastRecording();
+    },
     continueManually: () => {
+      setState(VOICE_UI_STATE.IDLE);
       hooks.onManualContinue?.();
       return { ok: true };
     },
-    isRecording: () => recording,
-    isAnalyzing: () => analyzing,
+    getState: () => state,
+    isRecording: () => state === VOICE_UI_STATE.RECORDING,
+    isAnalyzing: () => state === VOICE_UI_STATE.ANALYZING || state === VOICE_UI_STATE.STOPPING,
     hasRecording: () => Boolean(lastBlob)
   };
 }
@@ -188,7 +325,7 @@ export function mountVoiceIntakePanel(root, options = {}) {
       <button type="button" class="voice-intake-start identity-btn" data-voice-start>${startLabel}</button>
       <div class="voice-intake-recording" data-voice-recording hidden>
         <span class="voice-intake-dot" aria-hidden="true">●</span>
-        <span>${recordingLabel}</span>
+        <span data-voice-recording-label>${recordingLabel}</span>
         <button type="button" class="voice-intake-stop" data-voice-stop>إيقاف</button>
         <button type="button" class="voice-intake-cancel" data-voice-cancel>إلغاء</button>
       </div>
@@ -210,65 +347,68 @@ export function mountVoiceIntakePanel(root, options = {}) {
     statusEl.classList.toggle("is-error", isError);
   };
 
+  const applyVisibility = (uiState) => {
+    const view = voiceUiVisibility(uiState);
+    if (startBtn) {
+      startBtn.hidden = !view.showStart;
+      startBtn.disabled = view.blockStart && !view.showStart;
+    }
+    if (recordingEl) recordingEl.hidden = !view.showRecording;
+    if (errorActions) errorActions.hidden = !view.showErrorActions;
+    if (view.showAnalyzingStatus) {
+      setStatus(analyzingLabel, false);
+    } else if (uiState !== VOICE_UI_STATE.ERROR) {
+      setStatus("");
+    }
+  };
+
   let controller;
   controller = createVoiceIntakeController({
     ...options,
     hooks: {
-      onRecordingChange(active) {
-        recordingEl.hidden = !active;
-        startBtn.hidden = active;
-        if (active) errorActions.hidden = true;
-      },
-      onAnalyzing(busy) {
-        if (busy) {
-          recordingEl.hidden = true;
-          startBtn.hidden = true;
-          errorActions.hidden = true;
-          setStatus(analyzingLabel);
-        } else if (!controller?.isRecording?.()) {
-          startBtn.hidden = false;
-        }
+      onStateChange(nextState) {
+        applyVisibility(nextState);
       },
       onStructured(structured, meta) {
-        errorActions.hidden = true;
-        setStatus("");
-        startBtn.hidden = false;
-        recordingEl.hidden = true;
         onStructured(structured, meta);
       },
       onError({ message } = {}) {
-        recordingEl.hidden = true;
-        startBtn.hidden = false;
-        errorActions.hidden = false;
         setStatus(message || voiceErrorMessageAr("GEMINI_API_FAILED"), true);
       },
       onManualContinue() {
-        errorActions.hidden = true;
-        setStatus("");
-        startBtn.hidden = false;
         onManualContinue();
       }
     }
   });
 
+  applyVisibility(VOICE_UI_STATE.IDLE);
+
   startBtn?.addEventListener("click", async () => {
     errorActions.hidden = true;
     setStatus("");
     const result = await controller.startRecording();
-    if (!result.ok) {
+    if (!result.ok && controller.getState() === VOICE_UI_STATE.ERROR) {
       setStatus(voiceErrorMessageAr(result.error), true);
-      errorActions.hidden = false;
     }
   });
-  root.querySelector("[data-voice-stop]")?.addEventListener("click", () => void controller.stopRecording());
-  root.querySelector("[data-voice-cancel]")?.addEventListener("click", async () => {
-    await controller.cancelRecording();
-    recordingEl.hidden = true;
-    startBtn.hidden = false;
-    setStatus("");
+
+  root.querySelector("[data-voice-stop]")?.addEventListener("click", () => {
+    void controller.stopRecording();
   });
-  root.querySelector("[data-voice-retry]")?.addEventListener("click", () => void controller.retryAnalyze());
-  root.querySelector("[data-voice-manual]")?.addEventListener("click", () => controller.continueManually());
+
+  root.querySelector("[data-voice-cancel]")?.addEventListener("click", () => {
+    void controller.cancelRecording();
+  });
+
+  root.querySelector("[data-voice-retry]")?.addEventListener("click", () => {
+    errorActions.hidden = true;
+    setStatus("");
+    void controller.retryAnalyze();
+  });
+
+  root.querySelector("[data-voice-manual]")?.addEventListener("click", () => {
+    controller.continueManually();
+  });
 
   return controller;
 }

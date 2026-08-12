@@ -224,7 +224,8 @@ test("MATCH_REVIEW Operations offer draft actions without send claims", () => {
   assert.equal(ui.createsSmartMessageDraft, true);
   assert.equal(ui.sendsWhatsApp, false);
   assert.equal(ui.sendsTelegram, false);
-  assert.match(ui.whatsappOwnerLabel, /مسودة/);
+  assert.match(ui.whatsappOwnerLabel, /إرسال واتساب للمالك/);
+  assert.match(ui.telegramOwnerLabel, /إرسال تليجرام للمالك/);
 
   const missing = projectOperationToUiItem({
     id: "op_missing",
@@ -322,7 +323,8 @@ test("Phase 7 wiring: shell loads messaging bridge; workflow persists drafts", (
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(shell.includes("js/messaging-domain-bridge.js"));
   assert.ok(shell.includes('data-action="telegram-owner"'));
-  assert.ok(shell.includes("مسودة واتساب"));
+  assert.ok(shell.includes("إرسال واتساب"));
+  assert.equal(shell.includes("مسودة واتساب"), false);
 
   const workflow = readRepositoryFile("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("persistAndOpenMessageDraft"));

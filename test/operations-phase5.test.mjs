@@ -401,8 +401,10 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
     }));
     const list = document.getElementById("operationList");
     assert.ok(list.querySelectorAll(".whatsapp-action").length >= 2);
-    assert.ok(list.textContent.includes("مسودة واتساب"));
-    assert.ok(list.textContent.includes("مسودة تيليجرام"));
+    assert.ok(list.textContent.includes("إرسال واتساب"));
+    assert.ok(list.textContent.includes("إرسال تليجرام"));
+    assert.equal(list.textContent.includes("مسودة واتساب"), false);
+    assert.equal(list.textContent.includes("مسودة تيليجرام"), false);
     assert.equal(list.textContent.includes("تم التسليم"), false);
     assert.equal(list.innerHTML.includes("mat_"), false);
   } finally {
