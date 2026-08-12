@@ -26,7 +26,8 @@ service cloud.firestore {
       return collectionName in [
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
-        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library'
+        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
+        'adminNotes', 'activityEvents', 'activityRollup'
       ];
     }
     function validOfficeProfile() {
@@ -50,6 +51,20 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if isOfficeMember(officeId);
         allow write: if canManage(officeId);
+      }
+
+      match /adminNotes/{noteId} {
+        allow read, write: if isPlatformAdmin();
+      }
+
+      match /activityEvents/{eventId} {
+        allow read: if isPlatformAdmin();
+        allow write: if false;
+      }
+
+      match /activityRollup/{dayId} {
+        allow read: if isPlatformAdmin();
+        allow write: if false;
       }
 
       match /publicIntake/{docId} {
@@ -290,6 +305,13 @@ service cloud.firestore {
       allow read, update, delete: if isPlatformAdmin();
     }
 
+    match /adminAuditLog/{logId} {
+      allow read, write: if isPlatformAdmin();
+    }
+
+    match /loginDirectory/{phoneHash} {
+      allow read, write: if false;
+    }
 
     // سجل تفرد أسماء المكاتب على مستوى المنصة. معرّف المستند هو الاسم بعد التطبيع،
     // فيصبح التفرد خصيصة مفتاح أساسي لا نتيجة استعلام، ويمنع التسابق.

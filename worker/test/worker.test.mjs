@@ -1108,6 +1108,18 @@ test("Phase 7 message draft/handoff endpoints require authentication", async () 
   }
 });
 
+test("admin overview requires valid platform admin token", async () => {
+  const adminEnv = {
+    ...env,
+    FIREBASE_CLIENT_EMAIL: "firebase-adminsdk@example.test",
+    FIREBASE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----"
+  };
+  const response = await worker.fetch(new Request("https://example.test/admin/overview", {
+    headers: { Authorization: "Bearer invalid-token" }
+  }), adminEnv);
+  assert.equal(response.status, 401);
+});
+
 test("Phase 7 adapters endpoint and boundaries deny outbound send", async () => {
   const response = await worker.fetch(new Request("https://example.test/messages/adapters"), env);
   assert.equal(response.status, 200);
