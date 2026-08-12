@@ -550,17 +550,32 @@
       border-radius:16px;
       background:var(--green-pale);
     }
+    .voice-intake-recording,
+    .voice-intake-actions {
+      display: none;
+    }
+    .voice-intake-recording.is-active {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #a1332c;
+    }
+    .voice-intake-actions.is-active {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .voice-intake-recording[hidden],
+    .voice-intake-actions[hidden],
+    .voice-intake-start[hidden] {
+      display: none !important;
+    }
     .voice-intake-start {
       width:100%;
-    }
-    .voice-intake-recording {
-      display:flex;
-      flex-wrap:wrap;
-      align-items:center;
-      gap:8px;
-      font-size:13px;
-      font-weight:700;
-      color:#a1332c;
     }
     .voice-intake-dot {
       color:#a1332c;
@@ -586,12 +601,6 @@
     }
     .voice-intake-status.is-error {
       color:#a1332c;
-    }
-    .voice-intake-actions {
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:8px;
     }
     .add-opportunity-missing {
       margin-top:12px;

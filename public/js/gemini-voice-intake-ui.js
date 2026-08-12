@@ -349,12 +349,19 @@ export function mountVoiceIntakePanel(root, options = {}) {
 
   const applyVisibility = (uiState) => {
     const view = voiceUiVisibility(uiState);
+    root.dataset.voiceUiState = uiState;
     if (startBtn) {
       startBtn.hidden = !view.showStart;
       startBtn.disabled = view.blockStart && !view.showStart;
     }
-    if (recordingEl) recordingEl.hidden = !view.showRecording;
-    if (errorActions) errorActions.hidden = !view.showErrorActions;
+    if (recordingEl) {
+      recordingEl.hidden = !view.showRecording;
+      recordingEl.classList.toggle("is-active", view.showRecording);
+    }
+    if (errorActions) {
+      errorActions.hidden = !view.showErrorActions;
+      errorActions.classList.toggle("is-active", view.showErrorActions);
+    }
     if (view.showAnalyzingStatus) {
       setStatus(analyzingLabel, false);
     } else if (uiState !== VOICE_UI_STATE.ERROR) {
@@ -373,6 +380,7 @@ export function mountVoiceIntakePanel(root, options = {}) {
         onStructured(structured, meta);
       },
       onError({ message } = {}) {
+        applyVisibility(controller.getState());
         setStatus(message || voiceErrorMessageAr("GEMINI_API_FAILED"), true);
       },
       onManualContinue() {
@@ -384,10 +392,10 @@ export function mountVoiceIntakePanel(root, options = {}) {
   applyVisibility(VOICE_UI_STATE.IDLE);
 
   startBtn?.addEventListener("click", async () => {
-    errorActions.hidden = true;
     setStatus("");
     const result = await controller.startRecording();
     if (!result.ok && controller.getState() === VOICE_UI_STATE.ERROR) {
+      applyVisibility(VOICE_UI_STATE.ERROR);
       setStatus(voiceErrorMessageAr(result.error), true);
     }
   });
@@ -401,7 +409,6 @@ export function mountVoiceIntakePanel(root, options = {}) {
   });
 
   root.querySelector("[data-voice-retry]")?.addEventListener("click", () => {
-    errorActions.hidden = true;
     setStatus("");
     void controller.retryAnalyze();
   });
