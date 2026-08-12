@@ -129,7 +129,12 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase9a-v9";
+const IAQAR_CACHE = "iaqar-shell-phase9a-v10";
+const IAQAR_NETWORK_ONLY = [
+  "/js/runtime-config.js",
+  "/js/gemini-voice-intake-ui.js",
+  "/js/gemini-voice-intake-domain.js"
+];
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -167,7 +172,8 @@ self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   // Always network for deployment routing — never serve a stale Worker base.
-  if (url.pathname.endsWith("/runtime-config.js")) {
+  if (url.pathname.endsWith("/runtime-config.js")
+    || IAQAR_NETWORK_ONLY.includes(url.pathname)) {
     event.respondWith(fetch(event.request, { cache: "no-store" }));
     return;
   }

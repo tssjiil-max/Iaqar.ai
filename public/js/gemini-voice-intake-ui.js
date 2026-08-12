@@ -21,17 +21,29 @@ export const VOICE_UI_STATE = Object.freeze({
 export const VOICE_STOP_TIMEOUT_MS = 8_000;
 export const VOICE_ANALYZE_TIMEOUT_MS = 45_000;
 
+export const VOICE_UI_BUILD = "20260812-2";
+
 export function voiceUiVisibility(state = VOICE_UI_STATE.IDLE) {
+  const showRecording = state === VOICE_UI_STATE.RECORDING;
+  const showErrorActions = state === VOICE_UI_STATE.ERROR;
   return {
     showStart: state === VOICE_UI_STATE.IDLE,
-    showRecording: state === VOICE_UI_STATE.RECORDING,
-    showErrorActions: state === VOICE_UI_STATE.ERROR,
+    showRecording: showRecording && !showErrorActions,
+    showErrorActions: showErrorActions && !showRecording,
     showAnalyzingStatus: state === VOICE_UI_STATE.STOPPING || state === VOICE_UI_STATE.ANALYZING,
     blockStart: state === VOICE_UI_STATE.REQUESTING_PERMISSION
       || state === VOICE_UI_STATE.RECORDING
       || state === VOICE_UI_STATE.STOPPING
       || state === VOICE_UI_STATE.ANALYZING
   };
+}
+
+function setVoiceSectionVisible(el, visible, displayMode = "flex") {
+  if (!el) return;
+  el.hidden = !visible;
+  el.classList.toggle("is-active", visible);
+  el.style.setProperty("display", visible ? displayMode : "none", "important");
+  el.setAttribute("aria-hidden", visible ? "false" : "true");
 }
 
 function pickMimeType() {
@@ -353,15 +365,10 @@ export function mountVoiceIntakePanel(root, options = {}) {
     if (startBtn) {
       startBtn.hidden = !view.showStart;
       startBtn.disabled = view.blockStart && !view.showStart;
+      startBtn.style.setProperty("display", view.showStart ? "" : "none", "important");
     }
-    if (recordingEl) {
-      recordingEl.hidden = !view.showRecording;
-      recordingEl.classList.toggle("is-active", view.showRecording);
-    }
-    if (errorActions) {
-      errorActions.hidden = !view.showErrorActions;
-      errorActions.classList.toggle("is-active", view.showErrorActions);
-    }
+    setVoiceSectionVisible(recordingEl, view.showRecording, "flex");
+    setVoiceSectionVisible(errorActions, view.showErrorActions, "flex");
     if (view.showAnalyzingStatus) {
       setStatus(analyzingLabel, false);
     } else if (uiState !== VOICE_UI_STATE.ERROR) {

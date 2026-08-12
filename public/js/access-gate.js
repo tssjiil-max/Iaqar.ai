@@ -75,6 +75,15 @@
     .access-remember{display:flex!important;align-items:center;gap:8px;font-weight:700}
     .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
+    .voice-intake-panel{margin-top:12px;padding:12px;border:1px dashed #d4e3de;border-radius:16px;background:#f5faf8}
+    .voice-intake-recording,.voice-intake-actions{display:none!important}
+    .voice-intake-recording.is-active{display:flex!important;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#a1332c}
+    .voice-intake-actions.is-active{display:flex!important;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .voice-intake-recording[hidden],.voice-intake-actions[hidden],.voice-intake-start[hidden]{display:none!important}
+    .voice-intake-start{width:100%}
+    .voice-intake-stop,.voice-intake-cancel,.voice-intake-retry,.voice-intake-manual{border:1px solid #d4e3de;background:#fff;color:#087064;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
+    .voice-intake-status{margin:8px 0 0;min-height:14px;font-size:12px;color:#71817d}
+    .voice-intake-status.is-error{color:#9e3434}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
 
@@ -328,9 +337,10 @@
     toggleOther
   }) {
     const panel = gate.querySelector("#publicVoiceIntakePanel");
-    if (!panel) return;
+    if (!panel || panel.dataset.voiceBound === "1" || panel.dataset.voiceMounting === "1") return;
+    panel.dataset.voiceMounting = "1";
     try {
-      const { mountVoiceIntakePanel } = await import("./gemini-voice-intake-ui.js");
+      const { mountVoiceIntakePanel, VOICE_UI_BUILD } = await import("./gemini-voice-intake-ui.js");
       mountVoiceIntakePanel(panel, {
         context: kind === "owner" ? "owner" : "client",
         officeId: targetOffice,
@@ -349,8 +359,11 @@
           });
         }
       });
+      panel.dataset.voiceBuild = VOICE_UI_BUILD || "";
     } catch (error) {
       console.warn("[iaqar] public voice panel", error);
+    } finally {
+      delete panel.dataset.voiceMounting;
     }
   }
 

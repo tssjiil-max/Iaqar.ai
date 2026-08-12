@@ -41,4 +41,8 @@ test("recording and error visibility are mutually exclusive", () => {
   const error = voiceUiVisibility(VOICE_UI_STATE.ERROR);
   assert.equal(recording.showRecording && recording.showErrorActions, false);
   assert.equal(error.showRecording && error.showErrorActions, false);
+  assert.equal(recording.showRecording, true);
+  assert.equal(recording.showErrorActions, false);
+  assert.equal(error.showErrorActions, true);
+  assert.equal(error.showRecording, false);
 });
