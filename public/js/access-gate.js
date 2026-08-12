@@ -436,7 +436,7 @@
       try {
         const token = await firebase.auth().currentUser.getIdTokenResult(true);
         if (token.claims.platformAdmin === true || token.claims.admin === true) {
-          adminApplications();
+          location.replace("/admin");
           return true;
         }
       } catch (_) {}

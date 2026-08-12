@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#087064">
+  <title>لوحة إدارة IAQAR.AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green:#087064; --green-2:#128c7e; --bg:#f4f8f6; --card:#fff;
+      --line:#dce8e4; --muted:#687c76; --text:#173d35; --danger:#9e3434;
+      --warn:#c56612; --ok:#07634f;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:Tajawal,Arial,sans-serif; }
+    button { font:inherit; cursor:pointer; border:0; }
+    .admin-app { min-height:100svh; padding:12px 12px calc(20px + env(safe-area-inset-bottom)); }
+    .admin-shell { width:min(100%,520px); margin:auto; }
+    .admin-header { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:16px; margin-bottom:10px; }
+    .admin-header h1 { margin:0 0 4px; color:var(--green); font-size:22px; }
+    .admin-header p { margin:0; color:var(--muted); font-size:13px; }
+    .admin-nav { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:12px; }
+    .admin-nav button { padding:12px 10px; border-radius:14px; background:var(--card); border:1px solid var(--line); color:var(--green); font-weight:700; }
+    .admin-nav button.active { background:var(--green-2); color:#fff; border-color:var(--green-2); }
+    .admin-card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px; margin-bottom:10px; }
+    .admin-card h2 { margin:0 0 8px; font-size:18px; color:var(--green); }
+    .admin-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+    .counter { background:#eaf7f3; border-radius:12px; padding:10px; }
+    .counter strong { display:block; font-size:22px; color:var(--green); }
+    .counter span { font-size:12px; color:var(--muted); }
+    .office-card { border:1px solid var(--line); border-radius:16px; padding:12px; margin-bottom:8px; }
+    .office-card h3 { margin:0 0 6px; font-size:16px; }
+    .office-meta { font-size:13px; color:var(--muted); line-height:1.6; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; background:#eaf7f3; color:var(--ok); margin:2px 2px 0 0; }
+    .badge.warn { background:#fff1e5; color:var(--warn); }
+    .badge.danger { background:#fff0f0; color:var(--danger); }
+    .badge.muted { background:#f0f4f3; color:var(--muted); }
+    .actions { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin-top:10px; }
+    .btn { padding:10px 12px; border-radius:12px; font-weight:700; }
+    .btn.primary { background:var(--green-2); color:#fff; }
+    .btn.secondary { background:#fff; color:var(--green); border:1px solid var(--line); }
+    .btn.danger { background:#fff0f0; color:var(--danger); border:1px solid #f3d4d4; }
+    .filters { display:grid; gap:8px; margin-bottom:10px; }
+    .filters input, .filters select, .filters textarea {
+      width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:12px; font:inherit;
+    }
+    .tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+    .tabs button { padding:8px 10px; border-radius:999px; background:#fff; border:1px solid var(--line); font-size:12px; font-weight:700; color:var(--green); }
+    .tabs button.active { background:var(--green); color:#fff; }
+    .status { margin:8px 0; padding:10px; border-radius:12px; font-size:13px; }
+    .status.err { background:#fff0f0; color:var(--danger); }
+    .status.ok { background:#e8f7f2; color:var(--ok); }
+    .detail-section { margin-bottom:12px; }
+    .detail-section h4 { margin:0 0 6px; font-size:14px; color:var(--green); }
+    .detail-row { font-size:13px; line-height:1.7; color:var(--muted); }
+    .login-card { max-width:420px; margin:40px auto; }
+    .hidden { display:none !important; }
+    @media(max-width:420px){ .admin-grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div id="adminRoot" class="admin-app"></div>
+  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"></script>
+  <script src="https://aqar-b5d76.web.app/__/firebase/init.js"></script>
+  <script src="js/admin-console.js"></script>
+</body>
+</html>
