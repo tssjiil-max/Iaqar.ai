@@ -42,6 +42,7 @@
   let liveUnsubscribers = [];
   let liveOfficeKey = "";
   let matchItems = [];
+  let cooperationItems = [];
   let dealItems = [];
   let intakeItems = [];
   let analyticsItem = null;
@@ -217,6 +218,52 @@
       closeReason: item.closeReason || "",
       closingReadinessScore: readiness.score,
       closingReadinessKey: readiness.key
+    };
+  }
+
+  function cooperationOperation(doc) {
+    const item = doc.data();
+    const statusLabels = { pending: "بانتظار الرد", accepted: "مقبولة", declined: "مرفوضة", closed: "مغلقة" };
+    const isNearby = item.matchType === "nearby_neighborhood" || item.isNearbyMatch === true;
+    const lines = [
+      isNearby ? "فرصة قريبة قد تناسب العميل" : "فرصة تعاون — نفس الحي",
+      `نسبة المطابقة: ${Number(item.matchScore || 0)}%`,
+      item.requestedNeighborhood ? `الحي المطلوب: ${item.requestedNeighborhood}` : "",
+      item.listingNeighborhood && isNearby ? `عرض في: ${item.listingNeighborhood}` : "",
+      `الحالة: ${statusLabels[item.status] || item.status || "بانتظار الرد"}`,
+      item.perspectiveRole === "listing_owner"
+        ? "بيانات العميل الخاصة غير مكشوفة قبل قبول التعاون"
+        : "ملكية العميل تبقى في مكتبك — التعاون لا ينقل العميل"
+    ].filter(Boolean);
+    lines.push(...timelineLines("cooperation", doc.id));
+
+    let priority = item.status === "pending" ? 1 : 4;
+    if (isNearby) priority = 2;
+
+    return {
+      id: doc.id,
+      recordId: doc.id,
+      recordType: "cooperation",
+      main: "opportunities",
+      priority,
+      isAlert: item.status === "pending",
+      icon: "i-match",
+      title: item.title || (isNearby ? `فرصة تعاون — حي قريب (${Number(item.matchScore || 0)}%)` : `فرصة تعاون — نفس الحي (${Number(item.matchScore || 0)}%)`),
+      subtitle: item.subtitle || [item.propertyType, item.requestedNeighborhood, isNearby ? "حي قريب" : "نفس الحي"].filter(Boolean).join(" — "),
+      propertyType: item.propertyType || "",
+      district: item.requestedNeighborhood || "",
+      listingNeighborhood: item.listingNeighborhood || "",
+      time: relativeTime(item.updatedAt || item.createdAt),
+      detailsLines: lines,
+      status: item.status || "pending",
+      statusLabel: statusLabels[item.status] || item.status || "بانتظار الرد",
+      matchType: item.matchType || "",
+      isNearbyMatch: isNearby,
+      isCooperation: true,
+      actionLabel: item.status === "pending" ? "إدارة التعاون" : "عرض التعاون",
+      secondaryActionLabel: "عرض التفاصيل",
+      cooperationId: doc.id,
+      perspectiveRole: item.perspectiveRole || ""
     };
   }
 
@@ -430,7 +477,7 @@
   }
 
   function emitOperations() {
-    const baseItems = [...intakeItems, ...matchItems, ...dealItems];
+    const baseItems = [...cooperationItems, ...intakeItems, ...matchItems, ...dealItems];
     const items = analyticsItem ? [analyticsItem, ...baseItems] : baseItems;
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
   }
@@ -549,6 +596,10 @@
       emitOperations();
       loadAnalytics();
     }, onError);
+    const cooperationUnsub = runtime.refs.cooperations.orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
+      cooperationItems = snapshot.docs.map(cooperationOperation);
+      emitOperations();
+    }, onError);
     const dealUnsub = runtime.refs.deals.orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
       dealItems = snapshot.docs.map(dealOperation);
       emitOperations();
@@ -560,25 +611,27 @@
         emitOperations();
         processNewPublicIntakes(snapshot);
       }, onError);
-    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub];
+    liveUnsubscribers = [matchUnsub, cooperationUnsub, dealUnsub, intakeUnsub];
   }
 
   async function loadTimeline(recordType, recordId) {
-    if (!recordId || !["match", "deal"].includes(recordType)) return;
+    if (!recordId || !["match", "deal", "cooperation"].includes(recordType)) return;
     const cacheKey = `${recordType}:${recordId}`;
     if (timelinePending.has(cacheKey)) return;
     timelinePending.add(cacheKey);
     try {
       const runtime = office();
       if (!runtime || !runtime.refs) return;
-      const collection = recordType === "deal" ? runtime.refs.deals : runtime.refs.matches;
+      const collection = recordType === "deal"
+        ? runtime.refs.deals
+        : (recordType === "cooperation" ? runtime.refs.cooperations : runtime.refs.matches);
       const snapshot = await collection.doc(recordId).collection("timeline").orderBy("createdAt", "desc").limit(20).get();
       timelineCache.set(cacheKey, snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      // إعادة قراءة المستند نفسه تضمن تحديث النص بدون إنشاء مستمعات فرعية دائمة.
       const currentDoc = await collection.doc(recordId).get();
       if (currentDoc.exists) {
         if (recordType === "match") matchItems = replaceOperation(matchItems, matchOperation(currentDoc));
-        else dealItems = replaceOperation(dealItems, dealOperation(currentDoc));
+        else if (recordType === "deal") dealItems = replaceOperation(dealItems, dealOperation(currentDoc));
+        else cooperationItems = replaceOperation(cooperationItems, cooperationOperation(currentDoc));
       }
       emitOperations();
     } catch (error) {
@@ -797,6 +850,10 @@
     activeWorkflowDetail = { ...detail };
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
+    if (detail.recordType === "cooperation") {
+      renderCooperationUi();
+      return;
+    }
     workflowBody().innerHTML = `<div class="iaqar-workflow-summary">جارٍ تحميل بيانات العميل والمالك...</div>`;
     const [owner, client] = await Promise.all([
       workflowContact(activeWorkflowDetail, "owner").catch(() => null),
@@ -804,6 +861,18 @@
     ]);
     activeWorkflowContacts = { owner, client };
     renderWorkflowUi();
+  }
+
+  function renderCooperationUi() {
+    const detail = activeWorkflowDetail;
+    if (!detail) return;
+    const body = workflowBody();
+    document.getElementById("iaqarWorkflowTitle").textContent = "فرصة تعاون بين المكاتب";
+    const isNearby = detail.isNearbyMatch === true || detail.matchType === "nearby_neighborhood";
+    const summary = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.title || "فرصة تعاون")}</strong><br>${escapeUi(detail.subtitle || "")}<br>${isNearby ? "حي قريب موثق — الحي المطلوب لم يُغيَّر" : "نفس الحي"}<br>ملكية العميل والعرض تبقى في مكتبيها الأصليين.</div>`;
+    const lines = (detail.detailsLines || []).map(line => `<div>${escapeUi(line)}</div>`).join("");
+    const pending = detail.status === "pending";
+    body.innerHTML = `${summary}<div class="iaqar-workflow-step">${lines}</div>${pending ? `<div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="accept-cooperation">قبول التعاون</button><button class="iaqar-workflow-btn danger" data-ui-action="decline-cooperation">رفض التعاون</button></div>` : `<div class="iaqar-workflow-result closed">الحالة: ${escapeUi(detail.statusLabel || detail.status || "")}</div>`}`;
   }
 
   function contactButtonLabel(role) {
@@ -1019,15 +1088,36 @@
     }
   }
 
+  async function updateCooperationStatus(button, action) {
+    if (!activeWorkflowDetail || activeWorkflowDetail.recordType !== "cooperation") return;
+    setUiBusy(button, true);
+    try {
+      const result = await workflowAction(action, activeWorkflowDetail.recordId, {});
+      activeWorkflowDetail = {
+        ...activeWorkflowDetail,
+        status: result.status || activeWorkflowDetail.status,
+        statusLabel: result.status === "accepted" ? "مقبولة" : result.status === "declined" ? "مرفوضة" : activeWorkflowDetail.statusLabel
+      };
+      renderCooperationUi();
+      notify(result.status === "accepted" ? "تم قبول التعاون" : "تم رفض التعاون");
+    } catch (error) {
+      notify(error.message || "تعذر تحديث التعاون");
+    } finally {
+      setUiBusy(button, false);
+    }
+  }
+
   async function handleWorkflowUiClick(event) {
     const button = event.target.closest("[data-ui-action]");
     if (!button) return;
     const action = button.dataset.uiAction;
     if (action === "close-overlay") return closeWorkflowUi();
-    if (action === "back") return renderWorkflowUi();
+    if (action === "back") return activeWorkflowDetail?.recordType === "cooperation" ? renderCooperationUi() : renderWorkflowUi();
     if (action === "open-schedule") return showScheduleForm();
     if (action === "open-close") return showCloseForm();
     if (action === "open-request") return showRequestForm();
+    if (action === "accept-cooperation") return updateCooperationStatus(button, "accept_cooperation");
+    if (action === "decline-cooperation") return updateCooperationStatus(button, "decline_cooperation");
     if (action === "save-schedule") return saveViewingSchedule(button);
     if (action === "complete") return completeFastDeal(button);
     if (action === "save-close") return saveCloseReason(button);
@@ -1043,7 +1133,7 @@
       else notify("لا توجد فرصة جاهزة الآن");
       return;
     }
-    if (["match", "deal"].includes(detail.recordType)) {
+    if (["match", "deal", "cooperation"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
     }
@@ -1052,7 +1142,7 @@
 
   async function handleSecondaryAction(detail) {
     if (detail.recordType === "summary") return;
-    if (["match", "deal"].includes(detail.recordType)) {
+    if (["match", "deal", "cooperation"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
     }
@@ -1363,7 +1453,7 @@
     window.addEventListener("iaqar:workflow-action", handleAction);
     window.addEventListener("iaqar:operation-opened", event => {
       const detail = event.detail || {};
-      if (["match", "deal"].includes(detail.recordType)) loadTimeline(detail.recordType, detail.recordId);
+      if (["match", "deal", "cooperation"].includes(detail.recordType)) loadTimeline(detail.recordType, detail.recordId);
     });
 
     if ("serviceWorker" in navigator) {
@@ -1412,6 +1502,7 @@
         } else {
           stopLiveData();
           matchItems = [];
+          cooperationItems = [];
           dealItems = [];
           analyticsItem = null;
           emitOperations();
@@ -1424,8 +1515,10 @@
     const params = new URLSearchParams(location.search);
     const openMatch = params.get("openMatch");
     const openDeal = params.get("openDeal");
+    const openCooperation = params.get("openCooperation");
     if (openMatch) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openMatch, main: "opportunities" } })), 900);
     if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
+    if (openCooperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openCooperation, main: "opportunities" } })), 900);
   }
 
   window.addEventListener("beforeunload", stopLiveData);

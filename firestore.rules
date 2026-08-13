@@ -75,6 +75,24 @@ service cloud.firestore {
         allow read, update, delete: if isOfficeMember(officeId);
       }
 
+      match /cooperations/{cooperationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create: if false;
+        allow update: if isOfficeMember(officeId)
+          && request.resource.data.clientOfficeId == resource.data.clientOfficeId
+          && request.resource.data.listingOfficeId == resource.data.listingOfficeId
+          && request.resource.data.requestId == resource.data.requestId
+          && request.resource.data.listingId == resource.data.listingId
+          && request.resource.data.cooperationId == resource.data.cooperationId
+          && request.resource.data.officeId == officeId;
+        allow delete: if false;
+
+        match /timeline/{eventId} {
+          allow read, create: if isOfficeMember(officeId);
+          allow update, delete: if canManage(officeId);
+        }
+      }
+
       // رموز FCM سرية وتدار حصريًا من Cloudflare Worker بحساب الخدمة.
       match /devices/{deviceId} {
         allow read, write: if false;

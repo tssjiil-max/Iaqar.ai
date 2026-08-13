@@ -1,3 +1,10 @@
+import {
+  MATCH_TYPE, COOPERATION_STATUS, classifyDistrictMatch,
+  sanitizeCooperationForClientOffice, sanitizeCooperationForListingOffice,
+  scoreOfficeForAssignment, selectOfficeForAssignment, cooperationTitle, cooperationSubtitle
+} from "./cross-office-matching.js";
+import { districtsMatch, isVerifiedNearbyDistrict, getVerifiedNearbyDistricts } from "./district-proximity.js";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const DEFAULT_PROJECT_ID = "aqar-b5d76";
@@ -10,6 +17,8 @@ const ESTIMATED_WRITES_PER_MESSAGE = 8;
 const MATCH_THRESHOLD = 55;
 const MAX_MATCH_CANDIDATES = 60;
 const MAX_MATCH_RESULTS = 3;
+const MAX_COOPERATION_RESULTS = 3;
+const MAX_BROKER_OFFICES = 100;
 const DEFAULT_CITY = "المدينة المنورة";
 
 const DEAL_STAGE_ORDER = ["contact","viewing","negotiation","agreement","closing","closed"];
@@ -544,6 +553,8 @@ async function decideBrokerApplication(request, env, requestId) {
         specialties: { arrayValue: { values: [] } },
         ownerUid: firestoreString(application.applicantUid),
         approvalStatus: firestoreString("approved"),
+        cooperationEnabled: firestoreBoolean(true),
+        platformAssignmentCount: firestoreInteger(0),
         approvedAt: firestoreTimestamp(now),
         approvedByUid: firestoreString(admin.sub)
       }
@@ -795,17 +806,31 @@ async function handlePublicIntakeMatching(request, env, requestId) {
 
   const now = new Date();
   const parsed = structuredPublicIntakeToParsed(intake);
+  const isPlatformClient = officeId === "platform" && intake.kind === "client";
+  let targetOfficeId = officeId;
+  let assignedOfficeId = null;
+  let assignmentStatus = intake.kind === "client" && officeId === "platform" ? "unassigned" : null;
+
+  if (isPlatformClient) {
+    assignedOfficeId = await assignPublicClientRequest({ projectId, parsed, accessToken });
+    if (assignedOfficeId) {
+      targetOfficeId = assignedOfficeId;
+      assignmentStatus = "assigned";
+      await incrementPlatformAssignmentCount({ projectId, officeId: assignedOfficeId, accessToken });
+    }
+  }
+
   const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
   const prefix = targetCollection === "owners" ? "own" : "cli";
   const recordId = `${prefix}_intake_${intakeId}`.slice(0, 180);
   const opportunityId = `opp_intake_${intakeId}`.slice(0, 180);
   const commonFields = parsedToFirestoreFields(parsed, {
-    officeId, inboxDocumentId: `public_${intakeId}`,
+    officeId: targetOfficeId, inboxDocumentId: `public_${intakeId}`,
     senderName: parsed.senderName, senderPhone: parsed.phone,
     receivedAt: now, source: intake.source || "office_public_link", now
   });
 
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, targetCollection, recordId], accessToken, fields: {
+  await setFirestoreDocument({ projectId, segments: ["offices", targetOfficeId, targetCollection, recordId], accessToken, fields: {
     ...commonFields,
     sourceIntakeId: firestoreString(intakeId),
     city: firestoreString(parsed.city || DEFAULT_CITY),
@@ -815,46 +840,72 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     amount: intake.amount ? firestoreInteger(intake.amount) : null,
     mediaMissing: firestoreBoolean(Boolean(intake.mediaMissing)),
     imageCount: firestoreInteger(Number(intake.imageCount || 0)),
-    hasVideo: firestoreBoolean(Boolean(intake.hasVideo))
+    hasVideo: firestoreBoolean(Boolean(intake.hasVideo)),
+    requestedNeighborhood: firestoreOptionalString(parsed.district || ""),
+    ...(assignedOfficeId ? {
+      assignedOfficeId: firestoreString(assignedOfficeId),
+      assignmentStatus: firestoreString("assigned"),
+      platformIntakeId: firestoreString(intakeId),
+      source: firestoreString("platform_public_assigned")
+    } : {}),
+    ...(assignmentStatus === "unassigned" ? {
+      assignmentStatus: firestoreString("unassigned"),
+      platformIntakeId: firestoreString(intakeId)
+    } : {})
   }});
 
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, fields: {
+  await setFirestoreDocument({ projectId, segments: ["offices", targetOfficeId, "opportunities", opportunityId], accessToken, fields: {
     ...commonFields,
     city: firestoreString(parsed.city || DEFAULT_CITY),
     sourceIntakeId: firestoreString(intakeId),
     sourceCollection: firestoreString(targetCollection),
     sourceRecordId: firestoreString(recordId),
     workflowStage: firestoreString("new"),
-    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2)
+    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
+    requestedNeighborhood: firestoreOptionalString(parsed.district || ""),
+    ...(assignedOfficeId ? { assignedOfficeId: firestoreString(assignedOfficeId), assignmentStatus: firestoreString("assigned") } : {}),
+    ...(assignmentStatus === "unassigned" ? { assignmentStatus: firestoreString("unassigned") } : {})
   }});
 
   const contactId = String(parsed.phone || "").replace(/\D/g, "");
   if (contactId) {
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "contacts", contactId], accessToken, fields: {
-      officeId: firestoreString(officeId), fullName: firestoreOptionalString(parsed.senderName),
+    await setFirestoreDocument({ projectId, segments: ["offices", targetOfficeId, "contacts", contactId], accessToken, fields: {
+      officeId: firestoreString(targetOfficeId), fullName: firestoreOptionalString(parsed.senderName),
       name: firestoreOptionalString(parsed.senderName), phone: firestoreOptionalString(parsed.phone),
       lastRecordId: firestoreString(recordId), lastRecordType: firestoreString(targetCollection === "owners" ? "owner" : "client"),
       updatedAt: firestoreTimestamp(now)
     }});
   }
 
-  const matches = await findAndSaveMatches({
-    projectId, officeId, parsed, sourceCollection: targetCollection,
+  const { matches, cooperations } = await runExtendedMatching({
+    projectId, officeId: targetOfficeId, parsed, sourceCollection: targetCollection,
     sourceRecordId: recordId, opportunityId, accessToken
   });
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
     status: firestoreString("processed"), processingState: firestoreString("processed"),
     processedRecordId: firestoreString(recordId), opportunityId: firestoreString(opportunityId),
-    matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
+    matchCount: firestoreInteger(matches.length), cooperationCount: firestoreInteger(cooperations.length),
+    processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now),
+    ...(assignedOfficeId ? {
+      assignedOfficeId: firestoreString(assignedOfficeId),
+      assignmentStatus: firestoreString("assigned"),
+      processedOfficeId: firestoreString(targetOfficeId)
+    } : {}),
+    ...(assignmentStatus === "unassigned" ? { assignmentStatus: firestoreString("unassigned") } : {})
   }});
 
   if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken });
+    await sendOfficeMatchNotifications({ projectId, officeId: targetOfficeId, matches, parsed, accessToken });
+  }
+  if (cooperations.length > 0) {
+    await sendOfficeCooperationNotifications({ projectId, clientOfficeId: targetOfficeId, cooperations, parsed, accessToken });
   }
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
-    kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null, requestId
+    targetOfficeId, assignedOfficeId, assignmentStatus,
+    kind: parsed.kind, matches: matches.length, cooperations: cooperations.length,
+    bestMatch: matches[0] || null, bestCooperation: cooperations[0] || null, requestId
   }, 201);
 }
 
@@ -1267,7 +1318,7 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
     }
   });
 
-  const matches = await findAndSaveMatches({
+  const { matches, cooperations } = await runExtendedMatching({
     projectId, officeId, parsed, sourceCollection: targetCollection,
     sourceRecordId: recordId, opportunityId, accessToken
   });
@@ -1286,6 +1337,7 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
       sourceRecordId: firestoreString(recordId),
       opportunityId: firestoreString(opportunityId),
       matchCount: firestoreInteger(matches.length),
+      cooperationCount: firestoreInteger(cooperations.length),
       processedAt: firestoreTimestamp(now),
       updatedAt: firestoreTimestamp(now)
     }
@@ -1294,7 +1346,10 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   if (matches.length > 0) {
     await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken });
   }
-  return { kind: parsed.kind, matches: matches.length };
+  if (cooperations.length > 0) {
+    await sendOfficeCooperationNotifications({ projectId, clientOfficeId: officeId, cooperations, parsed, accessToken });
+  }
+  return { kind: parsed.kind, matches: matches.length, cooperations: cooperations.length };
 }
 
 function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
@@ -1508,6 +1563,212 @@ function parsedToFirestoreFields(parsed, context) {
   });
 }
 
+async function listBrokerOffices({ projectId, accessToken }) {
+  const docs = await listCollectionDocuments({ projectId, segments: ["offices"], accessToken, pageSize: MAX_BROKER_OFFICES });
+  return docs.map(doc => {
+    const officeId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    return { officeId, ...firestoreFieldsToJs(doc.fields || {}) };
+  }).filter(office => office.officeId && office.officeId !== "platform" && office.approvalStatus === "approved");
+}
+
+async function assessOfficeInventory({ projectId, officeId, parsed, tier, accessToken }) {
+  const docs = await listCollectionDocuments({ projectId, segments: ["offices", officeId, "owners"], accessToken, pageSize: MAX_MATCH_CANDIDATES });
+  let exactDistrictListings = 0;
+  let nearbyDistrictListings = 0;
+  let matchingPropertyListings = 0;
+  for (const doc of docs) {
+    const candidate = firestoreFieldsToJs(doc.fields || {});
+    if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
+    const propertyMatch = !parsed.propertyType || !candidate.propertyType || districtsMatch(parsed.propertyType, candidate.propertyType);
+    if (!propertyMatch) continue;
+    if (districtsMatch(parsed.district, candidate.district)) {
+      exactDistrictListings += 1;
+      matchingPropertyListings += 1;
+    } else if (tier === "nearby" && isVerifiedNearbyDistrict(parsed.district, candidate.district)) {
+      nearbyDistrictListings += 1;
+      matchingPropertyListings += 1;
+    }
+  }
+  return { exactDistrictListings, nearbyDistrictListings, matchingPropertyListings };
+}
+
+async function assignPublicClientRequest({ projectId, parsed, accessToken }) {
+  const offices = await listBrokerOffices({ projectId, accessToken });
+  if (!offices.length) return null;
+
+  let candidates = [];
+  for (const office of offices) {
+    const inventory = await assessOfficeInventory({ projectId, officeId: office.officeId, parsed, tier: "exact", accessToken });
+    candidates.push(scoreOfficeForAssignment({
+      officeId: office.officeId, officeMeta: office, inventory, parsed, proximityTier: "exact"
+    }));
+  }
+  let selected = selectOfficeForAssignment(candidates);
+  if (selected) return selected.officeId;
+
+  const nearbyDistricts = getVerifiedNearbyDistricts(parsed.district);
+  if (!nearbyDistricts.length) return null;
+
+  candidates = [];
+  for (const office of offices) {
+    const inventory = await assessOfficeInventory({ projectId, officeId: office.officeId, parsed, tier: "nearby", accessToken });
+    candidates.push(scoreOfficeForAssignment({
+      officeId: office.officeId, officeMeta: office, inventory, parsed, proximityTier: "nearby"
+    }));
+  }
+  selected = selectOfficeForAssignment(candidates);
+  return selected ? selected.officeId : null;
+}
+
+async function incrementPlatformAssignmentCount({ projectId, officeId, accessToken }) {
+  const officeDoc = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
+  if (!officeDoc) return;
+  const current = firestoreFieldsToJs(officeDoc.fields || {});
+  const nextCount = Number(current.platformAssignmentCount || 0) + 1;
+  await setFirestoreDocument({
+    projectId, segments: ["offices", officeId], accessToken,
+    fields: {
+      platformAssignmentCount: firestoreInteger(nextCount),
+      lastPlatformAssignmentAt: firestoreTimestamp(new Date())
+    }
+  });
+}
+
+async function findAndSaveCooperations({ projectId, clientOfficeId, parsed, requestId, opportunityId, accessToken }) {
+  const offices = await listBrokerOffices({ projectId, accessToken });
+  const coopOffices = offices.filter(office => office.officeId !== clientOfficeId && office.cooperationEnabled === true);
+  const prepared = [];
+
+  for (const office of coopOffices) {
+    const docs = await listCollectionDocuments({
+      projectId, segments: ["offices", office.officeId, "owners"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+    });
+    for (const doc of docs) {
+      const candidate = firestoreFieldsToJs(doc.fields || {});
+      if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
+      const classification = classifyDistrictMatch(parsed.district, candidate.district);
+      if (!classification) continue;
+      const scored = scoreMatch(parsed, candidate);
+      if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+      const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      prepared.push({ listingOfficeId: office.officeId, candidate, candidateId, scored, classification });
+    }
+  }
+
+  prepared.sort((a, b) => {
+    const levelDiff = Number(a.classification.level || 0) - Number(b.classification.level || 0);
+    if (levelDiff !== 0) return levelDiff;
+    return b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score;
+  });
+
+  const results = [];
+  const topPrepared = prepared.slice(0, MAX_COOPERATION_RESULTS);
+  for (let index = 0; index < topPrepared.length; index += 1) {
+    const { listingOfficeId, candidate, candidateId, scored, classification } = topPrepared[index];
+    const pair = [`${clientOfficeId}|${requestId}`, `${listingOfficeId}|${candidateId}`].sort().join("||");
+    const cooperationId = `coop_${(await sha256Hex(pair)).slice(0, 36)}`;
+    const existing = await getFirestoreDocument({
+      projectId, segments: ["offices", clientOfficeId, "cooperations", cooperationId], accessToken, allowMissing: true
+    });
+    if (existing) continue;
+
+    const now = new Date();
+    const clientView = sanitizeCooperationForClientOffice({
+      parsed, candidate, listingOfficeId, classification, scored
+    });
+    clientView.clientOfficeId = clientOfficeId;
+    clientView.listingOfficeId = listingOfficeId;
+    const listingView = sanitizeCooperationForListingOffice({
+      parsed, candidate, clientOfficeId, classification, scored
+    });
+    listingView.clientOfficeId = clientOfficeId;
+    listingView.listingOfficeId = listingOfficeId;
+
+    const sharedFields = {
+      schemaVersion: firestoreInteger(1),
+      cooperationId: firestoreString(cooperationId),
+      requestId: firestoreString(requestId),
+      clientOfficeId: firestoreString(clientOfficeId),
+      listingId: firestoreString(candidateId),
+      listingOfficeId: firestoreString(listingOfficeId),
+      opportunityId: firestoreOptionalString(opportunityId),
+      matchScore: firestoreInteger(scored.score),
+      opportunityScore: firestoreInteger(scored.opportunityScore),
+      matchType: firestoreString(classification.matchType),
+      matchLevel: firestoreInteger(classification.level),
+      isNearbyMatch: firestoreBoolean(classification.isNearbyMatch),
+      isCooperation: firestoreBoolean(true),
+      requestedNeighborhood: firestoreOptionalString(parsed.district || ""),
+      listingNeighborhood: firestoreOptionalString(candidate.district || ""),
+      propertyType: firestoreOptionalString(parsed.propertyType || candidate.propertyType || ""),
+      transactionType: firestoreOptionalString(parsed.transactionType || candidate.transactionType || ""),
+      status: firestoreString(COOPERATION_STATUS.PENDING),
+      rank: firestoreInteger(index + 1),
+      reasonsJson: firestoreString(JSON.stringify(scored.reasons || [])),
+      warningsJson: firestoreString(JSON.stringify(scored.warnings || [])),
+      createdAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now)
+    };
+
+    await setFirestoreDocument({
+      projectId, segments: ["offices", clientOfficeId, "cooperations", cooperationId], accessToken,
+      fields: {
+        ...sharedFields,
+        officeId: firestoreString(clientOfficeId),
+        perspectiveRole: firestoreString("client_owner"),
+        title: firestoreString(cooperationTitle(clientView, classification.matchType)),
+        subtitle: firestoreString(cooperationSubtitle(clientView))
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", listingOfficeId, "cooperations", cooperationId], accessToken,
+      fields: {
+        ...sharedFields,
+        officeId: firestoreString(listingOfficeId),
+        perspectiveRole: firestoreString("listing_owner"),
+        title: firestoreString(cooperationTitle(listingView, classification.matchType)),
+        subtitle: firestoreString(cooperationSubtitle(listingView))
+      }
+    });
+
+    await setFirestoreDocument({
+      projectId, segments: ["offices", clientOfficeId, "cooperations", cooperationId, "timeline", "evt_created"], accessToken,
+      fields: {
+        officeId: firestoreString(clientOfficeId), recordType: firestoreString("cooperation"),
+        recordId: firestoreString(cooperationId), eventType: firestoreString("cooperation_created"),
+        stage: firestoreString(COOPERATION_STATUS.PENDING),
+        note: firestoreString(`تم إنشاء فرصة تعاون بنسبة ${scored.score}%`),
+        createdAt: firestoreTimestamp(now)
+      }
+    });
+
+    results.push({
+      cooperationId, listingOfficeId, listingId: candidateId, matchScore: scored.score,
+      matchType: classification.matchType, isNearbyMatch: classification.isNearbyMatch,
+      rank: index + 1, title: cooperationTitle(clientView, classification.matchType)
+    });
+  }
+  return results;
+}
+
+async function runExtendedMatching({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken }) {
+  const matches = await findAndSaveMatches({
+    projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken
+  });
+
+  let cooperations = [];
+  if (sourceCollection === "clients" && parsed.kind === "client_request") {
+    const hasStrongSameOffice = matches.some(match => districtsMatch(parsed.district, match.district));
+    if (!hasStrongSameOffice) {
+      cooperations = await findAndSaveCooperations({
+        projectId, clientOfficeId: officeId, parsed,
+        requestId: sourceRecordId, opportunityId, accessToken
+      });
+    }
+  }
+  return { matches, cooperations };
+}
+
 async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken }) {
   const counterpart = sourceCollection === "owners" ? "clients" : "owners";
   const docs = await listCollectionDocuments({ projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES });
@@ -1712,6 +1973,44 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
   await sendOfficePush({projectId,officeId,title,body,type:"match",recordId:top.matchId,accessToken});
 }
 
+async function sendOfficeCooperationNotifications({ projectId, clientOfficeId, cooperations, parsed, accessToken }) {
+  const top = cooperations[0];
+  if (!top) return;
+  const now = new Date();
+  const title = top.title || `فرصة تعاون — ${Number(top.matchScore || 0)}%`;
+  const body = [
+    [parsed.propertyType, parsed.district].filter(Boolean).join(" — "),
+    top.isNearbyMatch ? "حي قريب موثق" : "نفس الحي",
+    "تعاون بين المكاتب دون نقل ملكية العميل"
+  ].filter(Boolean).join(" | ");
+
+  const alertId = `alt_${top.cooperationId}`;
+  await setFirestoreDocument({ projectId, segments: ["offices", clientOfficeId, "alerts", alertId], accessToken, fields: {
+    officeId: firestoreString(clientOfficeId), type: firestoreString("cooperation"), status: firestoreString("unread"),
+    title: firestoreString(title), body: firestoreString(body),
+    cooperationId: firestoreString(top.cooperationId), matchScore: firestoreInteger(Number(top.matchScore || 0)),
+    createdAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
+  }});
+  await sendOfficePush({ projectId, officeId: clientOfficeId, title, body, type: "cooperation", recordId: top.cooperationId, accessToken });
+
+  if (top.listingOfficeId && top.listingOfficeId !== clientOfficeId) {
+    const listingTitle = `طلب تعاون من مكتب آخر — ${Number(top.matchScore || 0)}%`;
+    const listingBody = [
+      parsed.propertyType || "عقار",
+      parsed.district ? `الحي المطلوب: ${parsed.district}` : "",
+      top.isNearbyMatch ? "حي قريب" : "نفس الحي"
+    ].filter(Boolean).join(" — ");
+    const listingAlertId = `alt_${top.cooperationId}_in`;
+    await setFirestoreDocument({ projectId, segments: ["offices", top.listingOfficeId, "alerts", listingAlertId], accessToken, fields: {
+      officeId: firestoreString(top.listingOfficeId), type: firestoreString("cooperation"), status: firestoreString("unread"),
+      title: firestoreString(listingTitle), body: firestoreString(listingBody),
+      cooperationId: firestoreString(top.cooperationId), matchScore: firestoreInteger(Number(top.matchScore || 0)),
+      createdAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
+    }});
+    await sendOfficePush({ projectId, officeId: top.listingOfficeId, title: listingTitle, body: listingBody, type: "cooperation", recordId: top.cooperationId, accessToken });
+  }
+}
+
 function buildNotificationLink({officeId,type="match",recordId=""}) {
   const safeOfficeId=normalizeOfficeId(officeId)||"platform";
   const safeRecordId=cleanText(recordId,200);
@@ -1719,7 +2018,8 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   if(safeOfficeId==="platform")params.set("office","platform"); else params.set("officeId",safeOfficeId);
   if(type==="notification_test"){
     // اختبار التفعيل يفتح المكتب فقط دون محاولة فتح سجل وهمي.
-  } else if(type==="deal")params.set("openDeal",safeRecordId);
+  } else if(type==="cooperation")params.set("openCooperation",safeRecordId);
+  else if(type==="deal")params.set("openDeal",safeRecordId);
   else if(type==="broker_application"){
     params.set("adminApplications","1");
     if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
@@ -1872,7 +2172,9 @@ async function sendFcmTestNotification(request,env,requestId) {
 }
 
 function workflowCollection(recordType) {
-  return recordType === "deal" ? "deals" : "matches";
+  if (recordType === "deal") return "deals";
+  if (recordType === "cooperation") return "cooperations";
+  return "matches";
 }
 
 async function addWorkflowTimeline({projectId,officeId,recordType,recordId,eventType,stage,note="",identity={},accessToken,createdAt=new Date()}) {
@@ -2136,6 +2438,58 @@ async function handleWorkflowAction(request,env,requestId) {
     if(d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"لا يمكن إغلاق صفقة متوقفة");
     const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
     return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:closed.closedSiblings,requestId});
+  }
+
+  if (action === "accept_cooperation" || action === "decline_cooperation" || action === "close_cooperation") {
+    const coopDoc = await getFirestoreDocument({ projectId, segments: ["offices", officeId, "cooperations", recordId], accessToken });
+    const coop = firestoreFieldsToJs(coopDoc.fields || {});
+    if (normalizeOfficeId(coop.officeId) !== officeId) throw appError("cooperation_office_mismatch", 403, "فرصة التعاون لا تتبع هذا المكتب");
+    if (coop.clientOfficeId !== officeId && coop.listingOfficeId !== officeId) {
+      throw appError("cooperation_forbidden", 403, "لا يمكنك إدارة فرصة التعاون هذه");
+    }
+    const currentStatus = cleanText(coop.status || COOPERATION_STATUS.PENDING, 20);
+    if (currentStatus === COOPERATION_STATUS.CLOSED) return jsonResponse({ ok: true, status: currentStatus, requestId });
+
+    let nextStatus = currentStatus;
+    if (action === "accept_cooperation") nextStatus = COOPERATION_STATUS.ACCEPTED;
+    else if (action === "decline_cooperation") nextStatus = COOPERATION_STATUS.DECLINED;
+    else nextStatus = COOPERATION_STATUS.CLOSED;
+
+    const statusFields = {
+      status: firestoreString(nextStatus),
+      updatedAt: firestoreTimestamp(now),
+      lastNote: firestoreOptionalString(note),
+      respondedByUid: firestoreOptionalString(identity.uid)
+    };
+    if (action === "accept_cooperation") statusFields.acceptedAt = firestoreTimestamp(now);
+    if (action === "decline_cooperation") statusFields.declinedAt = firestoreTimestamp(now);
+    if (action === "close_cooperation") statusFields.closedAt = firestoreTimestamp(now);
+
+    const clientOfficeId = normalizeOfficeId(coop.clientOfficeId);
+    const listingOfficeId = normalizeOfficeId(coop.listingOfficeId);
+    const immutable = {
+      clientOfficeId: firestoreString(clientOfficeId),
+      listingOfficeId: firestoreString(listingOfficeId),
+      requestId: firestoreString(coop.requestId || ""),
+      listingId: firestoreString(coop.listingId || ""),
+      cooperationId: firestoreString(recordId)
+    };
+
+    await setFirestoreDocument({
+      projectId, segments: ["offices", clientOfficeId, "cooperations", recordId], accessToken,
+      fields: { ...statusFields, ...immutable }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", listingOfficeId, "cooperations", recordId], accessToken,
+      fields: { ...statusFields, ...immutable }
+    });
+    await addWorkflowTimeline({
+      projectId, officeId, recordType: "cooperation", recordId,
+      eventType: `cooperation_${nextStatus}`, stage: nextStatus,
+      note: note || `تم تحديث حالة التعاون إلى ${nextStatus}`,
+      identity, accessToken, createdAt: now
+    });
+    return jsonResponse({ ok: true, status: nextStatus, cooperationId: recordId, requestId });
   }
 
   throw appError("workflow_action_invalid",400,"الإجراء غير معروف");
