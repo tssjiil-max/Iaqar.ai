@@ -1386,13 +1386,15 @@ function completeSettingsClose() {
   const bankOverlay = document.getElementById("opportunityBank");
   const inlineBank = bankOverlay?.dataset.inlineBank === "1";
   if (!bankOverlay || bankOverlay.hidden || inlineBank) document.body.style.overflow = "";
+  window.IAQAR?.navigation?.updateBackButton?.();
+  window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
 }
 
-function closeSettings() {
+function closeSettings(options = {}) {
   const overlay = document.getElementById("officeSettings");
   if (!overlay || overlay.hidden) return;
-  if (window.history?.state?.iaqarOverlay) {
-    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+  if (!options.explicit && window.history?.state?.iaqarOverlay) {
+    window.IAQAR?.navigation?.requestBack?.();
     return;
   }
   completeSettingsClose();

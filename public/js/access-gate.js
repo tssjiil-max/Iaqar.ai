@@ -75,10 +75,20 @@
     .access-remember{display:flex!important;align-items:center;gap:8px;font-weight:700}
     .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
+    .voice-intake-panel{margin-top:12px;padding:12px;border:1px dashed #d4e3de;border-radius:16px;background:#f5faf8}
+    .voice-intake-recording,.voice-intake-actions{display:none!important}
+    .voice-intake-recording.is-active{display:flex!important;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#a1332c}
+    .voice-intake-actions.is-active{display:flex!important;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .voice-intake-recording[hidden],.voice-intake-actions[hidden],.voice-intake-start[hidden]{display:none!important}
+    .voice-intake-start{width:100%}
+    .voice-intake-stop,.voice-intake-cancel,.voice-intake-retry,.voice-intake-manual{border:1px solid #d4e3de;background:#fff;color:#087064;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
+    .voice-intake-status{margin:8px 0 0;min-height:14px;font-size:12px;color:#71817d}
+    .voice-intake-status.is-error{color:#9e3434}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
 
   gate.className = "access-gate";
+  gate.id = "accessGate";
   document.body.classList.add("access-locked");
   document.body.appendChild(gate);
 
@@ -93,7 +103,6 @@
     if (digits.startsWith("5") && digits.length === 9) digits = `0${digits}`;
     return /^05\d{8}$/.test(digits) ? digits : "";
   };
-  // Mirror worker/src/index.js normalizeLoginPhone for loginDirectory lookup.
   const normalizeLoginPhone = value => {
     let digits = String(value || "").replace(/\D/g, "");
     if (digits.startsWith("00966")) digits = digits.slice(2);
@@ -169,10 +178,19 @@
     return result;
   }
 
-  function frame(content) {
+  function frame(content, screenId = "") {
+    gate.dataset.activeScreen = screenId;
     gate.innerHTML = `<div class="access-shell"><section class="access-brand">
       <img src="${logoSrc}" alt="مكاتب عقارية ذكية"><h1>مكاتب عقارية ذكية</h1>
       <p>منصة تشغيل الوسطاء العقاريين</p></section>${content}</div>`;
+  }
+  function bindAccessBack(handler) {
+    const back = gate.querySelector(".access-back");
+    if (!back) return;
+    back.onclick = (event) => {
+      event.preventDefault();
+      handler();
+    };
   }
   function showStatus(message, ok = false) {
     const node = gate.querySelector("#accessStatus");
@@ -194,6 +212,7 @@
       else if (button.dataset.go === "login") loginForm();
       else intakeForm(button.dataset.go, "platform");
     });
+    gate.dataset.activeScreen = "home";
   }
   function resolvePublicOfficeImage(data = {}, targetOfficeId = "") {
     const oid = String(targetOfficeId || "").trim().toLowerCase();
@@ -232,7 +251,8 @@
       <div id="publicOfficeProfile"></div>
       <div class="access-options"><button class="access-btn" data-go="client">أنا عميل</button>
       <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
-      <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`);
+      <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`, "public-office");
+    gate.dataset.activeScreen = "public-office";
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => intakeForm(button.dataset.go, officeId));
     gate.querySelector("#publicHome").onclick = () => location.assign("/");
     try {
@@ -304,6 +324,105 @@
     }).join("");
   }
 
+  function applyPublicVoicePrefill(form, structured, {
+    owner,
+    refreshClientDynamic,
+    propertySelect,
+    districtSelect,
+    otherPropertyWrap,
+    otherDistrictWrap,
+    toggleOther
+  }) {
+    const api = window.IAQARGeminiVoiceIntake;
+    if (!api || !form) return;
+    const manual = {
+      name: form.elements.name?.value || "",
+      phone: form.elements.phone?.value || ""
+    };
+    const values = api.mapGeminiToPublicFormValues(structured, {
+      context: owner ? "owner" : "client",
+      manualValues: manual
+    });
+    const set = (name, value) => {
+      const el = form.elements[name];
+      if (!el || value == null || String(value).trim() === "") return;
+      el.value = String(value);
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    set("name", values.name);
+    set("phone", values.phone);
+    set("city", values.city);
+    if (!owner) set("requestKind", values.requestKind);
+    const propMatch = [...propertySelect.options].find((opt) =>
+      opt.value === values.propertyType || opt.textContent === values.propertyType);
+    if (propMatch) propertySelect.value = propMatch.value;
+    else if (values.propertyType) {
+      propertySelect.value = "__other__";
+      toggleOther(propertySelect, otherPropertyWrap);
+      set("otherPropertyType", values.propertyType);
+    }
+    const distMatch = [...districtSelect.options].find((opt) =>
+      opt.value === values.district || opt.textContent === values.district);
+    if (distMatch) districtSelect.value = distMatch.value;
+    else if (values.district) {
+      districtSelect.value = "__other__";
+      toggleOther(districtSelect, otherDistrictWrap);
+      set("otherDistrict", values.district);
+    }
+    if (!owner) refreshClientDynamic();
+    set("budget", values.budget);
+    set("annualRent", values.annualRent);
+    set("area", values.area);
+    set("rooms", values.rooms);
+    set("bathrooms", values.bathrooms);
+    set("streetWidth", values.streetWidth);
+    set("facing", values.facing);
+    set("details", values.details);
+    showStatus("تم تعبئة النموذج من التسجيل — أكمل الناقص فقط.");
+  }
+
+  async function mountPublicVoicePanel({
+    kind,
+    targetOffice,
+    form,
+    refreshClientDynamic,
+    propertySelect,
+    districtSelect,
+    otherPropertyWrap,
+    otherDistrictWrap,
+    toggleOther
+  }) {
+    const panel = gate.querySelector("#publicVoiceIntakePanel");
+    if (!panel || panel.dataset.voiceBound === "1" || panel.dataset.voiceMounting === "1") return;
+    panel.dataset.voiceMounting = "1";
+    try {
+      const { mountVoiceIntakePanel, VOICE_UI_BUILD } = await import("./gemini-voice-intake-ui.js");
+      mountVoiceIntakePanel(panel, {
+        context: kind === "owner" ? "owner" : "client",
+        officeId: targetOffice,
+        workerBase: resolveWorkerBase(),
+        publicRoute: true,
+        startLabel: kind === "owner" ? "إضافة عقار بالصوت" : "إضافة طلب بالصوت",
+        onStructured(structured) {
+          applyPublicVoicePrefill(form, structured, {
+            owner: kind === "owner",
+            refreshClientDynamic,
+            propertySelect,
+            districtSelect,
+            otherPropertyWrap,
+            otherDistrictWrap,
+            toggleOther
+          });
+        }
+      });
+      panel.dataset.voiceBuild = VOICE_UI_BUILD || "";
+    } catch (error) {
+      console.warn("[iaqar] public voice panel", error);
+    } finally {
+      delete panel.dataset.voiceMounting;
+    }
+  }
+
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
@@ -315,6 +434,7 @@
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
+      <div id="publicVoiceIntakePanel" class="full"></div>
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
@@ -341,8 +461,8 @@
           <input name="video" type="file" accept="video/mp4,video/webm,video/quicktime">
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
-      </form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = isPublicOfficeLink ? publicOffice : home;
+      </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
+    bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
     const propertySelect = gate.querySelector("#propertyTypeSelect");
     const districtSelect = gate.querySelector("#districtSelect");
     const requestKindSelect = gate.querySelector("#requestKindSelect");
@@ -378,6 +498,17 @@
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
+    void mountPublicVoicePanel({
+      kind,
+      targetOffice,
+      form: gate.querySelector("#intakeForm"),
+      refreshClientDynamic,
+      propertySelect,
+      districtSelect,
+      otherPropertyWrap,
+      otherDistrictWrap,
+      toggleOther
+    });
     gate.querySelector("#intakeForm").onsubmit = async event => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -508,8 +639,8 @@
         <label class="full"><span>اسم المكتب المقترح *</span><input name="officeName" minlength="4" maxlength="80" required><span class="access-field-error" data-field-error="officeName"></span></label>
         <label class="full"><span>كلمة مرور الحساب *</span><input name="password" type="password" minlength="8" autocomplete="new-password" required><span class="access-field-error" data-field-error="password"></span></label>
         <label class="full"><button class="access-btn" type="submit">إرسال طلب الاعتماد</button></label>
-      </form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = home;
+      </form><div id="accessStatus" class="access-status"></div></section>`, "broker-apply");
+    bindAccessBack(home);
     gate.querySelector("#brokerForm").onsubmit = async event => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -622,8 +753,8 @@
         <label class="full"><button class="access-btn light" type="button" id="togglePassword">إظهار كلمة المرور</button></label>
         <label class="full"><button class="access-btn" type="submit">تسجيل الدخول</button></label>
         <label class="full"><button class="access-btn light" type="button" id="forgotPassword">نسيت كلمة المرور</button></label>
-      </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`);
-    gate.querySelector(".access-back").onclick = home;
+      </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`, "login");
+    bindAccessBack(home);
     gate.querySelector("#togglePassword").onclick = event => {
       const input = gate.querySelector('input[name="password"]');
       input.type = input.type === "password" ? "text" : "password";
@@ -637,7 +768,6 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
-        // Persistence MUST be set before Firebase sign-in.
         await firebase.auth().setPersistence(
           remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
         );
@@ -697,8 +827,8 @@
       <p>أدخل رقم الجوال، وسنرسل رابط إعادة تعيين كلمة المرور إلى البريد المسجل للحساب.</p>
       <form class="access-form" id="forgotForm"><label class="full"><span>رقم الجوال</span>
       <input name="phone" inputmode="tel" required></label><label class="full"><button class="access-btn" type="submit">إرسال رابط الاسترجاع</button></label></form>
-      <div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = () => loginForm();
+      <div id="accessStatus" class="access-status"></div></section>`, "forgot-password");
+    bindAccessBack(() => loginForm());
     gate.querySelector("#forgotForm").onsubmit = async event => {
       event.preventDefault();
       const phone = normalizeLoginPhone(normalizeSaudiPhone(new FormData(event.currentTarget).get("phone")));
@@ -719,8 +849,8 @@
       <p>هذا الدخول مخصص لمدير المنصة فقط.</p><form class="access-form" id="platformForm">
       <label class="full"><span>البريد الإلكتروني</span><input name="email" type="email" autocomplete="username" required></label>
       <label class="full"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required></label>
-      <label class="full"><button class="access-btn" type="submit">دخول الإدارة</button></label></form><div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector(".access-back").onclick = () => loginForm();
+      <label class="full"><button class="access-btn" type="submit">دخول الإدارة</button></label></form><div id="accessStatus" class="access-status"></div></section>`, "platform-login");
+    bindAccessBack(() => loginForm());
     gate.querySelector("#platformForm").onsubmit = async event => {
       event.preventDefault(); const fields = new FormData(event.currentTarget);
       try { await firebase.auth().signInWithEmailAndPassword(String(fields.get("email") || "").trim(), String(fields.get("password") || "")); await verifyAccess("platform", true); }
@@ -735,22 +865,13 @@
   }
 
   async function verifyAccess(target, navigate) {
-    if (!target) {
-      if (navigate) return false;
-      loginForm("أدخل رمز المكتب المعتمد.");
-      return false;
-    }
+    if (!target) return loginForm("أدخل رمز المكتب المعتمد.");
     if (target === "platform") {
       try {
         const token = await firebase.auth().currentUser.getIdTokenResult(true);
-        if (token.claims.platformAdmin === true || token.claims.admin === true) {
-          adminApplications();
-          return true;
-        }
+        if (token.claims.platformAdmin === true || token.claims.admin === true) return adminApplications();
       } catch (_) {}
-      if (navigate) return false;
-      loginForm("هذا الحساب ليس من إدارة المنصة.");
-      return false;
+      return loginForm("هذا الحساب ليس من إدارة المنصة.");
     }
     try {
       const user = firebase.auth().currentUser;
@@ -759,22 +880,21 @@
       localStorage.setItem("iaqar.officeId", target);
       if (navigate || target !== officeId) {
         location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
-        return true;
+        return;
       }
       document.body.classList.remove("access-locked");
       gate.remove();
-      return true;
     } catch (error) {
       console.warn("[iaqar] access denied", error);
       const code = String(error && error.code || "");
       if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
-        if (navigate) return false;
         frame(`<section class="access-card"><h2>تعذر الاتصال</h2>
           <p>تحقق من الشبكة ثم أعد المحاولة. لن يُسجَّل خروجك تلقائيًا.</p>
           <button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button></section>`);
         gate.querySelector("#accessRetry").onclick = () => verifyAccess(target, navigate);
-        return false;
+        return;
       }
+      // Transient auth race after restore: retry once before forcing login UI.
       if ((code.includes("permission-denied") || code.includes("unauthenticated"))
         && firebase.auth().currentUser) {
         try {
@@ -783,22 +903,20 @@
           localStorage.setItem("iaqar.officeId", target);
           if (navigate || target !== officeId) {
             location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
-            return true;
+            return;
           }
           document.body.classList.remove("access-locked");
           gate.remove();
-          return true;
+          return;
         } catch (retryError) {
           console.warn("[iaqar] access retry", retryError);
         }
       }
-      if (navigate) return false;
       if (code.includes("permission-denied") || code.includes("unauthenticated")) {
         loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
-        return false;
+        return;
       }
       loginForm("تعذر التحقق من صلاحية الدخول. حاول مرة أخرى.");
-      return false;
     }
   }
 

@@ -4,6 +4,17 @@ import {
   scoreOfficeForAssignment, selectOfficeForAssignment, cooperationTitle, cooperationSubtitle
 } from "./cross-office-matching.js";
 import { districtsMatch, isVerifiedNearbyDistrict, getVerifiedNearbyDistricts } from "./district-proximity.js";
+import {
+  PUBLIC_RATE_LIMITS,
+  consumePublicRateLimit,
+  publicRateLimitKey
+} from "./public-rate-limit.js";
+import {
+  analyzeVoiceWithGemini,
+  getVoiceTelemetrySnapshot,
+  resolveGeminiModel,
+  validateVoiceAudio
+} from "./gemini-voice-service.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -240,6 +251,14 @@ export default {
         return await handlePublicIntakeMatching(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/pipeline/voice-analyze") {
+        return await handlePipelineVoiceAnalyze(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/public-voice-analyze") {
+        return await handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute: true });
+      }
+
       if (request.method === "POST" && url.pathname === "/broker/apply") {
         return await handleBrokerApplication(request, env, requestId);
       }
@@ -372,6 +391,84 @@ function requestBodyLength(request) {
   const value = Number(request.headers.get("content-length") || 0);
   if (!Number.isFinite(value) || value <= 0) throw appError("file_length_required", 411, "تعذر تحديد حجم الملف");
   return value;
+}
+
+function enforcePublicRouteRateLimit(request, { route, officeId = "", limit, windowMs }) {
+  const ip = cleanText(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown", 80);
+  const key = publicRateLimitKey({ route, ip, officeId });
+  const result = consumePublicRateLimit(key, { limit, windowMs });
+  if (!result.ok) {
+    throw appError(
+      "rate_limited",
+      429,
+      "تم تجاوز حد الطلبات مؤقتًا. حاول مرة أخرى بعد قليل."
+    );
+  }
+  return result;
+}
+
+async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute = false } = {}) {
+  const officeId = normalizeOfficeId(request.headers.get("X-Office-Id"));
+  const context = cleanText(request.headers.get("X-Voice-Context"), 20).toLowerCase();
+  const durationHeader = Number(request.headers.get("X-Voice-Duration-Sec") || 0);
+  const durationSec = Number.isFinite(durationHeader) && durationHeader > 0 ? durationHeader : null;
+  const contentType = cleanText(request.headers.get("Content-Type"), 120).toLowerCase();
+  const size = requestBodyLength(request);
+
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  if (!["office", "owner", "client"].includes(context)) {
+    throw appError("invalid_voice_context", 400, "سياق التسجيل غير صالح");
+  }
+
+  if (publicRoute) {
+    enforcePublicRouteRateLimit(request, {
+      route: "pipeline/public-voice-analyze",
+      officeId,
+      ...PUBLIC_RATE_LIMITS.PUBLIC_VOICE
+    });
+  } else {
+    await authorizeOfficeRequest(request, env, officeId, "member");
+  }
+
+  const validation = validateVoiceAudio({ byteSize: size, mimeType: contentType, durationSec });
+  if (!validation.ok) {
+    return jsonResponse({ ok: false, error: validation.error, requestId }, 422);
+  }
+
+  const audioBytes = await request.arrayBuffer();
+  if (audioBytes.byteLength !== size) {
+    return jsonResponse({ ok: false, error: "AUDIO_UPLOAD_FAILED", requestId }, 400);
+  }
+
+  const result = await analyzeVoiceWithGemini({
+    env,
+    audioBytes,
+    mimeType: validation.mimeType,
+    context
+  });
+
+  if (!result.ok) {
+    const status = result.error === "GEMINI_QUOTA_EXCEEDED" ? 429 : 422;
+    return jsonResponse({
+      ok: false,
+      error: result.error,
+      retryable: Boolean(result.retryable),
+      model: result.model || resolveGeminiModel(env),
+      telemetry: getVoiceTelemetrySnapshot(),
+      requestId
+    }, status);
+  }
+
+  return jsonResponse({
+    ok: true,
+    structured: result.structured,
+    extractionMode: result.extractionMode,
+    productionAi: result.productionAi,
+    model: result.model,
+    latencyMs: result.latencyMs,
+    telemetry: getVoiceTelemetrySnapshot(),
+    requestId
+  });
 }
 
 async function uploadPublicIntakeMedia(request, env, requestId) {
@@ -3085,7 +3182,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Voice-Context,X-Voice-Duration-Sec",
     "Access-Control-Max-Age": "86400"
   };
 }

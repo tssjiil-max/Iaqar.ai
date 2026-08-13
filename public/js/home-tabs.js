@@ -41,6 +41,7 @@
     } else if (isInlineBank() && window.IAQAR?.pauseOpportunityBankInline) {
       window.IAQAR.pauseOpportunityBankInline();
     }
+    window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
   }
 
   function setOppTab(sub, options = {}) {
@@ -70,6 +71,7 @@
     if (!isAdd && !skipBankOpen && isInlineBank()) {
       window.IAQAR?.activateOpportunityBankInline?.();
     }
+    window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
   }
 
   function switchTo(main, opp) {
@@ -106,5 +108,10 @@
   if (document.readyState !== "loading") boot();
 
   window.IAQAR = window.IAQAR || {};
-  window.IAQAR.homeTabs = Object.freeze({ switchTo, setMainTab, setOppTab });
+  window.IAQAR.homeTabs = Object.freeze({
+    switchTo,
+    setMainTab,
+    setOppTab,
+    getState: () => ({ main: state.main, opp: state.opp })
+  });
 })();

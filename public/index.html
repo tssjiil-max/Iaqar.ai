@@ -543,6 +543,65 @@
       font-weight:800;
       cursor:pointer;
     }
+    .voice-intake-panel {
+      margin-top:12px;
+      padding:12px;
+      border:1px dashed var(--line);
+      border-radius:16px;
+      background:var(--green-pale);
+    }
+    .voice-intake-recording,
+    .voice-intake-actions {
+      display: none;
+    }
+    .voice-intake-recording.is-active {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #a1332c;
+    }
+    .voice-intake-actions.is-active {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .voice-intake-recording[hidden],
+    .voice-intake-actions[hidden],
+    .voice-intake-start[hidden] {
+      display: none !important;
+    }
+    .voice-intake-start {
+      width:100%;
+    }
+    .voice-intake-dot {
+      color:#a1332c;
+    }
+    .voice-intake-stop,
+    .voice-intake-cancel,
+    .voice-intake-retry,
+    .voice-intake-manual {
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font-size:12px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .voice-intake-status {
+      margin:8px 0 0;
+      min-height:14px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .voice-intake-status.is-error {
+      color:#a1332c;
+    }
     .add-opportunity-missing {
       margin-top:12px;
       padding:12px;
@@ -2355,13 +2414,12 @@
   }
   @media (min-width:720px) {
     .bank-filters {
-      grid-template-columns:1.2fr repeat(8, minmax(0,1fr)) auto auto;
+      grid-template-columns:1.4fr repeat(5, minmax(0,1fr)) auto;
       align-items:center;
     }
   }
   .bank-filters select,
-  .bank-filter-search input,
-  .bank-filter-number input {
+  .bank-filter-search input {
     width:100%;
     min-height:40px;
     border:1px solid var(--line);
@@ -2369,34 +2427,6 @@
     padding:8px 10px;
     font:inherit;
     background:#fff;
-  }
-  .bank-filter-search {
-    display:flex;
-    gap:8px;
-    align-items:center;
-  }
-  .bank-filter-search input {
-    flex:1;
-  }
-  .bank-filter-voice {
-    min-height:40px;
-    min-width:40px;
-    border:1px solid var(--line);
-    border-radius:10px;
-    background:#fff;
-    color:var(--brand);
-    font:inherit;
-    cursor:pointer;
-  }
-  .bank-filter-voice.is-listening {
-    background:#eaf7f3;
-    border-color:var(--brand);
-  }
-  .bank-filter-number span {
-    display:block;
-    font-size:11px;
-    color:var(--muted);
-    margin-bottom:4px;
   }
   .bank-filter-clear {
     min-height:40px;
@@ -2757,7 +2787,7 @@
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
         aria-selected="true" aria-controls="mainPanelOperations">مركز العمليات</button>
       <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"
-        aria-selected="false" aria-controls="mainPanelOpportunities">الفرص</button>
+        aria-selected="false" aria-controls="mainPanelOpportunities">بنك الفرص</button>
     </nav>
 
     <div class="main-tab-panels" id="mainTabPanels">
@@ -2779,15 +2809,15 @@
       <div class="main-tab-panel" id="mainPanelOpportunities" role="tabpanel"
         aria-labelledby="mainTabOpportunities" hidden>
         <div class="tab-panel-intro">
-          <h2 class="tab-panel-title">الفرص</h2>
+          <h2 class="tab-panel-title">بنك الفرص</h2>
           <p class="tab-panel-help">أضف فرصًا جديدة وأدر فرص مكتبك الحالية.</p>
         </div>
 
-        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="الفرص">
+        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="بنك الفرص">
           <button type="button" class="sub-tab is-active" id="oppTabAdd" role="tab"
             aria-selected="true" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
           <button type="button" class="sub-tab" id="oppTabBank" role="tab"
-            aria-selected="false" aria-controls="oppPanelBank">بنك الفرص</button>
+            aria-selected="false" aria-controls="oppPanelBank">البنك</button>
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
@@ -2813,6 +2843,7 @@
                   <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
                 </div>
                 <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
+                <div id="addOpportunityVoicePanel" class="voice-intake-panel" aria-label="تسجيل صوتي"></div>
                 <input id="addOpportunityFile" type="file" hidden>
                 <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
                 <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
@@ -2853,7 +2884,7 @@
                   <option value="SALE">بيع</option>
                   <option value="PURCHASE">شراء</option>
                   <option value="RENT">إيجار</option>
-                  <option value="LEASE_REQUEST">طلب إيجار</option>
+                  <option value="LEASE_REQUEST">استئجار</option>
                 </select>
                 <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
                   <option value="">نوع العقار</option>
@@ -3224,9 +3255,11 @@
   <script src="/__/firebase/init.js"></script>
   <script src="js/runtime-config.js"></script>
   <script type="module" src="js/fcm-fid.js"></script>
+  <script type="module" src="js/gemini-voice-intake-domain.js"></script>
   <script type="module" src="js/public-client-intake-domain.js"></script>
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>
+  <script type="module" src="js/app-navigation-domain.js"></script>
   <script src="js/app-navigation.js"></script>
   <script src="js/home-tabs.js"></script>
   <script src="js/qrcode.js"></script>
@@ -3338,10 +3371,10 @@
                 </button>
                 ${item.canDismiss ? `<button class="close" data-action="dismiss" data-id="${escapeHtml(item.id)}">${escapeHtml(item.dismissLabel || "صرف النظر")}</button>` : ""}
                 ${item.priorityLabel ? `<span class="time" aria-label="الأولوية">${escapeHtml(item.priorityLabel)}</span>` : ""}
-                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "مسودة واتساب للمالك")}</button>` : ""}
-                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "مسودة واتساب للعميل")}</button>` : ""}
-                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "مسودة تيليجرام للمالك")}</button>` : ""}
-                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "مسودة تيليجرام للعميل")}</button>` : ""}
+                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "إرسال واتساب للمالك")}</button>` : ""}
+                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "إرسال واتساب للعميل")}</button>` : ""}
+                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "إرسال تليجرام للمالك")}</button>` : ""}
+                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "إرسال تليجرام للعميل")}</button>` : ""}
               </div>
             </div>
           </div>

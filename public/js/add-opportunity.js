@@ -23,6 +23,13 @@ import {
 import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportunity-review.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
+import { mountVoiceIntakePanel } from "./gemini-voice-intake-ui.js";
+import {
+  buildReviewDefaultsFromGemini,
+  buildVoiceSummaryText,
+  createVoiceExtractionAdapter,
+  mapGeminiToOpportunityFields
+} from "./gemini-voice-intake-domain.js";
 
 const LOCAL_STATE_LABELS = Object.freeze({
   ready: "راجع البيانات ثم اعتماد وحفظ"
@@ -210,6 +217,7 @@ function hasContradictoryCity(fields = {}) {
 
 function canOpenReview(prepared) {
   if (prepared?.manualUrlContinuation) return true;
+  if (prepared?.extraction?.extractionMode === "gemini_voice_adapter") return true;
   if (!prepared?.ok) return false;
   if (!prepared.extraction || prepared.extraction.extractionMode === "simulated_fixture") return false;
   const fields = prepared.fields || {};
@@ -701,6 +709,82 @@ async function startExecute() {
   }
 }
 
+async function startVoiceIntake(structured) {
+  if (executing) return;
+  const office = currentOffice();
+  const user = currentUser();
+  if (!office?.officeId) {
+    setState("failed", "تعذر تحديد المكتب");
+    return;
+  }
+  if (!user?.uid) {
+    setState("failed", "يلزم تسجيل الدخول");
+    return;
+  }
+
+  executing = true;
+  setBusy(true);
+  resetForNewIntake();
+  setState("analyzing");
+
+  try {
+    const summary = buildVoiceSummaryText(structured);
+    const brokerFields = mapGeminiToOpportunityFields(structured, { context: "office" });
+    const prepared = await prepareOpportunityIntake({
+      officeId: office.officeId,
+      brokerId: user.uid,
+      text: summary,
+      sourceType: "text",
+      brokerFields,
+      allowIncomplete: true
+    }, createVoiceExtractionAdapter(structured, { context: "office" }));
+
+    if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
+    if (!canOpenReview(prepared)) throw new Error("extraction_failed");
+
+    intakeContext = {
+      sourceIdentity: `voice:${summary.slice(0, 120)}`,
+      inputText: summary,
+      listingText: summary,
+      sourceType: "text",
+      voiceStructured: structured
+    };
+
+    const draftSaved = await persistIntake(prepared, {
+      autoSavedAt: new Date().toISOString(),
+      voiceIntake: true
+    }, { merge: true }).catch((error) => {
+      console.warn("[iaqar] voice auto-save draft", error);
+      return {
+        opportunityId: prepared.opportunity.id,
+        sourceId: prepared.source.id,
+        duplicate: false,
+        draftSaveSkipped: true
+      };
+    });
+    resumeIntakeSession = {
+      opportunityId: draftSaved.opportunityId,
+      preparedFingerprint: prepared.deduplicationFingerprint || prepared.source?.deduplicationFingerprint
+    };
+
+    setState("ready");
+    openOpportunityReview({
+      fields: prepared.fields || {},
+      extended: prepared.extraction?.extended,
+      needsReview: prepared.extraction?.needsReview,
+      sourceText: summary,
+      prepared,
+      reviewDefaults: buildReviewDefaultsFromGemini(structured, summary)
+    }, approveFromReview);
+  } catch (error) {
+    console.warn("[iaqar] voice intake failed", error);
+    setState("failed", "تعذر تحليل التسجيل. يمكنك إكمال البيانات يدويًا.");
+  } finally {
+    executing = false;
+    setBusy(false);
+  }
+}
+
 async function approveFromReview(brokerExtras, review, advertiser = {}) {
   if (executing) throw new Error("save_in_progress");
   executing = true;
@@ -883,6 +967,21 @@ function boot() {
   fileInput?.addEventListener("change", onFileChosen);
   $("addOpportunityRetry")?.addEventListener("click", () => void startExecute());
   syncExecuteButton();
+
+  const voiceRoot = $("addOpportunityVoicePanel");
+  if (voiceRoot) {
+    mountVoiceIntakePanel(voiceRoot, {
+      context: "office",
+      getOfficeId: () => currentOffice()?.officeId || "",
+      workerBase: workerBase(),
+      getAuthToken: async () => {
+        const user = currentUser();
+        return user?.getIdToken ? user.getIdToken() : "";
+      },
+      onStructured: (structured) => void startVoiceIntake(structured),
+      onManualContinue: () => setState("idle")
+    });
+  }
 }
 
 if (document.readyState === "loading") {
@@ -893,6 +992,7 @@ if (document.readyState === "loading") {
 
 export const __test = {
   startExecute,
+  startVoiceIntake,
   approveFromReview,
   hasValidInputFromValues,
   hasValidInput,
