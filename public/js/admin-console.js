@@ -13,6 +13,7 @@
     }
     return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
   }
+
   const root = document.getElementById("adminRoot");
   const state = {
     page: "overview",
@@ -21,6 +22,7 @@
     offices: [],
     cities: [],
     selectedOfficeId: null,
+    shellMounted: false,
     filters: {
       q: "",
       city: "",
@@ -33,6 +35,45 @@
     }
   };
 
+  const APPROVAL_LABELS = {
+    pending: "بانتظار الاعتماد",
+    approved: "معتمد",
+    rejected: "مرفوض"
+  };
+
+  const ACCOUNT_LABELS = {
+    active: "نشط",
+    suspended: "موقوف"
+  };
+
+  const LICENSE_LABELS = {
+    valid: "ساري",
+    expiring: "ينتهي قريبًا",
+    expired: "منتهي",
+    unknown: "غير معروف"
+  };
+
+  const SUBSCRIPTION_LABELS = {
+    trial: "تجريبي",
+    active: "نشط",
+    expiring: "ينتهي قريبًا",
+    expired: "منتهي",
+    none: "بدون اشتراك"
+  };
+
+  const AUDIT_ACTION_LABELS = {
+    license_updated: "تحديث الترخيص",
+    subscription_updated: "تحديث الاشتراك",
+    office_suspended: "إيقاف المكتب",
+    office_reactivated: "إعادة تفعيل المكتب",
+    admin_note_added: "إضافة ملاحظة إدارية",
+    office_approved: "اعتماد المكتب",
+    office_rejected: "رفض المكتب"
+  };
+
+  const ACTIVITY_THRESHOLD_NOTE =
+    "مستوى النشاط (من الخادم): نشط جدًا — ≥2 عملية منتجة خلال 7 أيام؛ نشط — ≥1 خلال 30 يوم؛ نشاط منخفض — دخول خلال 14 يوم بدون عمليات منتجة؛ غير نشط — بدون نشاط لأكثر من 30 يوم.";
+
   function escapeHtml(value) {
     return String(value || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;" }[c]));
   }
@@ -44,10 +85,44 @@
     return d.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
   }
 
+  function labelFor(map, key) {
+    return map[key] || key || "—";
+  }
+
+  function auditActionLabel(action) {
+    return AUDIT_ACTION_LABELS[action] || action || "—";
+  }
+
   function badgeClass(level) {
     if (level === "very_active" || level === "active") return "badge";
     if (level === "low") return "badge warn";
     return "badge danger";
+  }
+
+  function statusBadgeClass(kind, value) {
+    if (kind === "approval") {
+      if (value === "approved") return "badge";
+      if (value === "pending") return "badge warn";
+      return "badge danger";
+    }
+    if (kind === "account") {
+      return value === "active" ? "badge" : "badge danger";
+    }
+    if (kind === "license" || kind === "subscription") {
+      if (value === "valid" || value === "active" || value === "trial") return "badge";
+      if (value === "expiring") return "badge warn";
+      if (value === "expired") return "badge danger";
+      return "badge muted";
+    }
+    return "badge muted";
+  }
+
+  function loadingHtml(message = "جاري التحميل…") {
+    return `<div class="loading-block">${escapeHtml(message)}</div>`;
+  }
+
+  function emptyState(message = "لا توجد نتائج.") {
+    return `<div class="empty-state">${escapeHtml(message)}</div>`;
   }
 
   async function api(path, options = {}) {
@@ -67,27 +142,56 @@
     return payload;
   }
 
-  function shell(content, title = "لوحة إدارة IAQAR.AI") {
-    root.innerHTML = `<div class="admin-shell">
-      <header class="admin-header">
-        <h1>${escapeHtml(title)}</h1>
-        <p>وحدة إدارة المنصة — للمسؤولين فقط</p>
-      </header>
-      ${content}
-    </div>`;
-  }
-
-  function navHtml() {
-    const items = [
+  function navItems() {
+    return [
       { id: "overview", label: "نظرة عامة" },
       { id: "offices", label: "إدارة المكاتب" },
       { id: "activity", label: "نشاط المكاتب" },
       { id: "subscriptions", label: "الاشتراكات والتراخيص" },
       { id: "audit", label: "السجل الإداري" }
     ];
-    return `<nav class="admin-nav">${items.map(item =>
+  }
+
+  function navHtml() {
+    return navItems().map(item =>
       `<button type="button" data-page="${item.id}" class="${state.page === item.id ? "active" : ""}">${item.label}</button>`
-    ).join("")}</nav>`;
+    ).join("");
+  }
+
+  function destroyShell() {
+    state.shellMounted = false;
+  }
+
+  function ensureShell() {
+    if (state.shellMounted) return;
+    root.innerHTML = `<div class="admin-shell">
+      <header class="admin-header">
+        <div class="admin-brand">
+          <h1>IAQAR.AI</h1>
+          <p>وحدة إدارة المنصة — للمسؤولين فقط</p>
+        </div>
+        <button type="button" class="btn secondary btn-compact" id="adminHeaderLogout">خروج</button>
+      </header>
+      <nav class="admin-nav" id="adminNav">${navHtml()}</nav>
+      <main class="admin-main" id="adminMain"></main>
+    </div>`;
+    state.shellMounted = true;
+    bindNav();
+    const logout = root.querySelector("#adminHeaderLogout");
+    if (logout) logout.onclick = async () => { await firebase.auth().signOut(); render(); };
+  }
+
+  function updateNavActive() {
+    const nav = root.querySelector("#adminNav");
+    if (!nav) return;
+    nav.querySelectorAll("[data-page]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.page === state.page);
+    });
+  }
+
+  function setMainContent(html) {
+    const main = root.querySelector("#adminMain");
+    if (main) main.innerHTML = html;
   }
 
   function bindNav() {
@@ -98,22 +202,27 @@
         render();
       };
     });
-    const logout = root.querySelector("#adminLogout");
-    if (logout) logout.onclick = async () => { await firebase.auth().signOut(); render(); };
   }
 
   function loginView(message = "") {
-    shell(`<section class="admin-card login-card">
-      <h2>دخول إدارة المنصة</h2>
-      <p>هذا الدخول مخصص لمدير المنصة فقط.</p>
-      <form id="adminLoginForm" class="filters">
-        <input name="email" type="email" placeholder="البريد الإلكتروني" required autocomplete="username">
-        <input name="password" type="password" placeholder="كلمة المرور" required autocomplete="current-password">
-        <button class="btn primary" type="submit">دخول الإدارة</button>
-      </form>
-      <div class="status ${message ? "err" : "hidden"}">${escapeHtml(message)}</div>
-      <p style="margin-top:12px;font-size:12px;color:var(--muted)"><a href="/">العودة للمنصة العامة</a></p>
-    </section>`);
+    destroyShell();
+    root.innerHTML = `<div class="admin-shell">
+      <section class="admin-card login-card">
+        <div class="admin-brand" style="margin-bottom:12px">
+          <h1>IAQAR.AI</h1>
+          <p>وحدة إدارة المنصة — للمسؤولين فقط</p>
+        </div>
+        <h2>دخول إدارة المنصة</h2>
+        <p>هذا الدخول مخصص لمدير المنصة فقط.</p>
+        <form id="adminLoginForm" class="filters">
+          <input name="email" type="email" placeholder="البريد الإلكتروني" required autocomplete="username">
+          <input name="password" type="password" placeholder="كلمة المرور" required autocomplete="current-password">
+          <button class="btn primary" type="submit">دخول الإدارة</button>
+        </form>
+        <div class="status ${message ? "err" : "hidden"}">${escapeHtml(message)}</div>
+        <p style="margin-top:12px;font-size:12px;color:var(--muted)"><a href="/">العودة للمنصة العامة</a></p>
+      </section>
+    </div>`;
     root.querySelector("#adminLoginForm").onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
@@ -132,29 +241,43 @@
     };
   }
 
-  async function overviewPage() {
-    const data = await api("/admin/overview");
-    shell(`${navHtml()}
-      <section class="admin-card">
-        <h2>نظرة عامة</h2>
-        <div class="admin-grid">
-          ${counter("إجمالي المكاتب", data.counters.totalOffices)}
-          ${counter("طلبات بانتظار الاعتماد", data.counters.pendingApproval)}
-          ${counter("المكاتب المعتمدة", data.counters.approved)}
-          ${counter("المكاتب النشطة", data.counters.activeAccounts)}
-          ${counter("الموقوفة", data.counters.suspended)}
-          ${counter("اشتراكات منتهية", data.counters.expiredSubscriptions)}
-          ${counter("تراخيص منتهية", data.counters.expiredLicenses)}
-          ${counter("نشطة آخر 7 أيام", data.counters.activeLast7Days)}
-          ${counter("غير نشطة 30 يوم", data.counters.inactiveLast30Days)}
-        </div>
-      </section>
-      <button class="btn secondary" id="adminLogout" style="width:100%">تسجيل الخروج</button>`, "نظرة عامة");
-    bindNav();
+  function counter(label, value, primary = false) {
+    return `<div class="counter${primary ? " primary" : ""}"><strong>${Number(value || 0)}</strong><span>${escapeHtml(label)}</span></div>`;
   }
 
-  function counter(label, value) {
-    return `<div class="counter"><strong>${Number(value || 0)}</strong><span>${escapeHtml(label)}</span></div>`;
+  async function overviewPage() {
+    ensureShell();
+    updateNavActive();
+    setMainContent(loadingHtml());
+    const data = await api("/admin/overview");
+    const c = data.counters || {};
+    setMainContent(`<section class="admin-card">
+      <h2>نظرة عامة</h2>
+      <div class="kpi-section">
+        <h3>حالة المنصة</h3>
+        <div class="admin-grid">
+          ${counter("إجمالي المكاتب", c.totalOffices, true)}
+          ${counter("طلبات الاعتماد", c.pendingApproval, true)}
+          ${counter("المكاتب المعتمدة", c.approved, true)}
+          ${counter("المكاتب النشطة", c.activeAccounts, true)}
+        </div>
+      </div>
+      <div class="kpi-section">
+        <h3>حالات إدارية</h3>
+        <div class="admin-grid">
+          ${counter("الموقوفة", c.suspended)}
+          ${counter("اشتراكات منتهية", c.expiredSubscriptions)}
+          ${counter("تراخيص منتهية", c.expiredLicenses)}
+        </div>
+      </div>
+      <div class="kpi-section">
+        <h3>نشاط المنصة</h3>
+        <div class="admin-grid admin-grid-3">
+          ${counter("نشطة آخر 7 أيام", c.activeLast7Days)}
+          ${counter("غير نشطة 30 يوم", c.inactiveLast30Days)}
+        </div>
+      </div>
+    </section>`);
   }
 
   function officeTabs() {
@@ -171,15 +294,26 @@
     ).join("")}</div>`;
   }
 
+  function officeBadges(o) {
+    return `<div class="badge-row">
+      <span class="${statusBadgeClass("approval", o.approvalStatus)}">${escapeHtml(labelFor(APPROVAL_LABELS, o.approvalStatus))}</span>
+      <span class="${statusBadgeClass("account", o.accountStatus)}">${escapeHtml(labelFor(ACCOUNT_LABELS, o.accountStatus))}</span>
+      <span class="${statusBadgeClass("subscription", o.subscriptionStatus)}">${escapeHtml(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus))}</span>
+      <span class="${statusBadgeClass("license", o.licenseStatus)}">${escapeHtml(labelFor(LICENSE_LABELS, o.licenseStatus))}</span>
+      <span class="${badgeClass(o.activityLevel)}">${escapeHtml(o.activityLevelLabel || labelFor({}, o.activityLevel))}</span>
+    </div>`;
+  }
+
   function officeCard(o) {
     return `<article class="office-card" data-office-id="${escapeHtml(o.officeId)}">
-      <h3>${escapeHtml(o.officeName || o.officeId)}</h3>
+      <div class="office-card-head">
+        <h3>${escapeHtml(o.officeName || o.officeId)}</h3>
+      </div>
       <div class="office-meta">
         ${escapeHtml(o.city || "—")} · فال ${escapeHtml(o.falLicenseNumber || "—")}<br>
-        اعتماد: ${escapeHtml(o.approvalStatus)} · حساب: ${escapeHtml(o.accountStatus)}<br>
-        اشتراك: ${escapeHtml(o.subscriptionStatus)} · آخر نشاط: ${formatDate(o.lastActivityAt)}
+        آخر نشاط: ${formatDate(o.lastActivityAt)} · آخر دخول: ${formatDate(o.lastLoginAt)}
       </div>
-      <span class="${badgeClass(o.activityLevel)}">${escapeHtml(o.activityLevelLabel)}</span>
+      ${officeBadges(o)}
       <div class="actions">${officeActions(o)}</div>
     </article>`;
   }
@@ -235,40 +369,6 @@
     return data;
   }
 
-  async function officesPage() {
-    await loadOffices(state.page === "activity" ? { activityLevel: state.activityFilter } : {});
-    const list = state.offices;
-    shell(`${navHtml()}
-      <section class="admin-card">
-        <h2>${state.page === "activity" ? "نشاط المكاتب" : "إدارة المكاتب"}</h2>
-        ${state.page === "offices" ? officeTabs() : activityFilters()}
-        <div class="filters">
-          <input id="officeSearch" placeholder="بحث: اسم، مرخص له، جوال، فال" value="${escapeHtml(state.filters.q)}">
-          <select id="officeCity"><option value="">كل المدن</option>
-            ${state.cities.map(c => `<option value="${escapeHtml(c)}" ${state.filters.city === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>
-          ${state.officesTab === "all" ? officeDimensionFilters() : ""}
-          <select id="officeSort">
-            <option value="newest">الأحدث تسجيلًا</option>
-            <option value="oldest">الأقدم</option>
-            <option value="last_login">آخر دخول</option>
-            <option value="last_activity">آخر نشاط</option>
-            <option value="most_active">الأكثر نشاطًا</option>
-            <option value="least_active">الأقل نشاطًا</option>
-            <option value="subscription_expiry">أقرب اشتراك للانتهاء</option>
-            <option value="license_expiry">أقرب ترخيص للانتهاء</option>
-          </select>
-          <button type="button" class="btn secondary" id="officeApplyFilters" style="width:100%">تطبيق البحث والفلاتر</button>
-        </div>
-        <div id="officeList">${list.length ? list.map(officeCard).join("") : "<p>لا توجد نتائج.</p>"}</div>
-        <div id="officeStatus" class="status hidden"></div>
-      </section>
-      <button class="btn secondary" id="adminLogout" style="width:100%">تسجيل الخروج</button>`);
-    root.querySelector("#officeSort").value = state.filters.sort;
-    bindNav();
-    bindOfficeFilters();
-    bindOfficeActions();
-  }
-
   function filterSelect(id, label, value, options) {
     return `<select id="${id}" aria-label="${escapeHtml(label)}">
       <option value="">${escapeHtml(label)}</option>
@@ -320,12 +420,66 @@
     ).join("")}</div>`;
   }
 
+  function officesListHtml(list) {
+    return list.length ? list.map(officeCard).join("") : emptyState();
+  }
+
+  function officesPageShellHtml() {
+    const isActivity = state.page === "activity";
+    return `<section class="admin-card">
+      <h2>${isActivity ? "نشاط المكاتب" : "إدارة المكاتب"}</h2>
+      ${isActivity ? `<p class="office-meta" style="margin-bottom:8px">${escapeHtml(ACTIVITY_THRESHOLD_NOTE)}</p>` : ""}
+      ${isActivity ? activityFilters() : officeTabs()}
+      <div class="filters">
+        <input id="officeSearch" placeholder="بحث: اسم، مرخص له، جوال، فال" value="${escapeHtml(state.filters.q)}">
+        <select id="officeCity"><option value="">كل المدن</option>
+          ${state.cities.map(c => `<option value="${escapeHtml(c)}" ${state.filters.city === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>
+        ${state.officesTab === "all" && !isActivity ? officeDimensionFilters() : ""}
+        <select id="officeSort">
+          <option value="newest">الأحدث تسجيلًا</option>
+          <option value="oldest">الأقدم</option>
+          <option value="last_login">آخر دخول</option>
+          <option value="last_activity">آخر نشاط</option>
+          <option value="most_active">الأكثر نشاطًا</option>
+          <option value="least_active">الأقل نشاطًا</option>
+          <option value="subscription_expiry">أقرب اشتراك للانتهاء</option>
+          <option value="license_expiry">أقرب ترخيص للانتهاء</option>
+        </select>
+        <button type="button" class="btn secondary" id="officeApplyFilters" style="width:100%">تطبيق البحث والفلاتر</button>
+      </div>
+      <div id="officeList">${loadingHtml()}</div>
+      <div id="officeStatus" class="status hidden"></div>
+    </section>`;
+  }
+
+  async function officesPage(options = { refreshOnly: false }) {
+    ensureShell();
+    updateNavActive();
+    const listNode = root.querySelector("#officeList");
+    if (!options.refreshOnly || !listNode) {
+      setMainContent(officesPageShellHtml());
+      root.querySelector("#officeSort").value = state.filters.sort;
+      bindOfficeFilters();
+    } else {
+      listNode.innerHTML = loadingHtml();
+    }
+    try {
+      await loadOffices(state.page === "activity" ? { activityLevel: state.activityFilter } : {});
+      const listEl = root.querySelector("#officeList");
+      if (listEl) listEl.innerHTML = officesListHtml(state.offices);
+      bindOfficeActions();
+    } catch (error) {
+      const listEl = root.querySelector("#officeList");
+      if (listEl) listEl.innerHTML = `<div class="status err">${escapeHtml(error.message || "تعذر تحميل المكاتب.")}</div>`;
+    }
+  }
+
   function bindOfficeFilters() {
     root.querySelectorAll("[data-tab]").forEach(btn => {
-      btn.onclick = () => { state.officesTab = btn.dataset.tab; officesPage(); };
+      btn.onclick = () => { state.officesTab = btn.dataset.tab; officesPage({ refreshOnly: false }); };
     });
     root.querySelectorAll("[data-activity-filter]").forEach(btn => {
-      btn.onclick = () => { state.activityFilter = btn.dataset.activityFilter; officesPage(); };
+      btn.onclick = () => { state.activityFilter = btn.dataset.activityFilter; officesPage({ refreshOnly: true }); };
     });
     const search = root.querySelector("#officeSearch");
     const city = root.querySelector("#officeCity");
@@ -341,7 +495,7 @@
         state.filters.subscriptionStatus = root.querySelector("#officeSubscriptionStatus")?.value || "";
         state.filters.activityLevel = root.querySelector("#officeActivityLevel")?.value || "";
       }
-      officesPage();
+      officesPage({ refreshOnly: true });
     };
     search.addEventListener("keydown", event => {
       if (event.key === "Enter") {
@@ -384,7 +538,7 @@
           });
         }
         showStatus("تم اعتماد المكتب.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر الاعتماد."); }
     });
     root.querySelectorAll("[data-reject]").forEach(btn => btn.onclick = async () => {
@@ -405,7 +559,7 @@
           });
         }
         showStatus("تم رفض الطلب.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر الرفض."); }
     });
     root.querySelectorAll("[data-suspend]").forEach(btn => btn.onclick = async () => {
@@ -417,7 +571,7 @@
           body: JSON.stringify({ action: "suspend", officeId: btn.dataset.suspend, reason })
         });
         showStatus("تم إيقاف المكتب.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر الإيقاف."); }
     });
     root.querySelectorAll("[data-reactivate]").forEach(btn => btn.onclick = async () => {
@@ -427,7 +581,7 @@
           body: JSON.stringify({ action: "reactivate", officeId: btn.dataset.reactivate })
         });
         showStatus("تمت إعادة التفعيل.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر إعادة التفعيل."); }
     });
     root.querySelectorAll("[data-subscription]").forEach(btn => btn.onclick = async () => {
@@ -445,7 +599,7 @@
           })
         });
         showStatus("تم تحديث الاشتراك.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر التحديث."); }
     });
     root.querySelectorAll("[data-license]").forEach(btn => btn.onclick = async () => {
@@ -463,7 +617,7 @@
           })
         });
         showStatus("تم تحديث الترخيص.", true);
-        officesPage();
+        officesPage({ refreshOnly: true });
       } catch (e) { showStatus(e.message || "تعذر التحديث."); }
     });
     root.querySelectorAll("[data-note]").forEach(btn => btn.onclick = async () => {
@@ -479,90 +633,121 @@
     });
   }
 
+  function auditEntryHtml(a) {
+    const label = auditActionLabel(a.action);
+    return `<div class="detail-row">
+      ${formatDate(a.performedAt)} — <span class="audit-action">${escapeHtml(label)}</span>
+      <span class="audit-tech">(${escapeHtml(a.action)})</span>
+      ${a.reason ? `<br>${escapeHtml(a.reason)}` : ""}
+    </div>`;
+  }
+
   async function showOfficeDetail(officeId, focusActivity = false) {
+    ensureShell();
+    updateNavActive();
+    setMainContent(loadingHtml("جاري تحميل تفاصيل المكتب…"));
     const data = await api(`/admin/office?officeId=${encodeURIComponent(officeId)}`);
     const o = data.office;
     const s = o.activitySummary || {};
-    shell(`${navHtml()}
-      <section class="admin-card">
-        <button class="btn secondary" id="backToList">← رجوع</button>
-        <h2>${escapeHtml(o.officeName || officeId)}</h2>
-        <div class="detail-section"><h4>بيانات المكتب</h4>
-          <div class="detail-row">المرخص له: ${escapeHtml(o.licenseeName)}<br>جوال: ${escapeHtml(o.phone)}<br>بريد: ${escapeHtml(o.email)}<br>مدينة: ${escapeHtml(o.city)}<br>officeId: ${escapeHtml(o.officeId)}</div></div>
-        <div class="detail-section"><h4>الاعتماد</h4>
-          <div class="detail-row">حالة: ${escapeHtml(o.approvalStatus)}<br>تسجيل: ${formatDate(o.registrationSubmittedAt)}<br>اعتماد: ${formatDate(o.approvedAt)}<br>بواسطة: ${escapeHtml(o.approvedBy || "—")}</div></div>
-        <div class="detail-section"><h4>الترخيص</h4>
-          <div class="detail-row">فال: ${escapeHtml(o.falLicenseNumber)}<br>إصدار: ${formatDate(o.falLicenseIssuedAt)}<br>انتهاء: ${formatDate(o.falLicenseExpiresAt)}<br>حالة: ${escapeHtml(o.licenseStatus)}</div></div>
-        <div class="detail-section"><h4>الاشتراك</h4>
-          <div class="detail-row">حالة: ${escapeHtml(o.subscriptionStatus)}<br>بداية: ${formatDate(o.subscriptionStartedAt)}<br>انتهاء: ${formatDate(o.subscriptionExpiresAt)}<br>متبقي: ${o.subscriptionDaysRemaining ?? "—"} يوم</div></div>
-        <div class="detail-section"><h4>الحساب</h4>
-          <div class="detail-row">حالة: ${escapeHtml(o.accountStatus)}<br>آخر دخول: ${formatDate(o.lastLoginAt)}<br>آخر نشاط: ${formatDate(o.lastActivityAt)}<br>مستوى النشاط: ${escapeHtml(o.activityLevelLabel)}</div></div>
-        <div class="detail-section ${focusActivity ? "" : ""}"><h4>نشاط المكتب</h4>
-          <div class="detail-row">دخول 7d/30d: ${s.loginCount7d}/${s.loginCount30d}<br>فرص 7d/30d: ${s.opportunitiesCreated7d}/${s.opportunitiesCreated30d}<br>فرص نشطة: ${s.activeOpportunitiesCount}<br>مطابقات مراجعة 30d: ${s.matchesReviewed30d}<br>عمليات مكتملة 30d: ${s.completedOperations30d}<br>عروض ملاك 30d: ${s.publicOwnerSubmissions30d}<br>طلبات عملاء 30d: ${s.publicClientSubmissions30d}</div></div>
-        <div class="detail-section"><h4>ملاحظات إدارية</h4>
-          ${(data.notes || []).map(n => `<div class="detail-row">${formatDate(n.createdAt)} — ${escapeHtml(n.note)}</div>`).join("") || '<div class="detail-row">لا توجد ملاحظات.</div>'}
-        </div>
-        <div class="detail-section"><h4>سجل إداري للمكتب</h4>
-          ${(data.audit || []).map(a => `<div class="detail-row">${formatDate(a.performedAt)} — ${escapeHtml(a.action)} ${escapeHtml(a.reason || "")}</div>`).join("") || '<div class="detail-row">لا يوجد سجل.</div>'}
-        </div>
-      </section>`, "تفاصيل المكتب");
-    bindNav();
+    setMainContent(`<section class="admin-card">
+      <button class="btn secondary" id="backToList">← رجوع</button>
+      <h2>${escapeHtml(o.officeName || officeId)}</h2>
+      <div class="badge-row">
+        <span class="${statusBadgeClass("approval", o.approvalStatus)}">${escapeHtml(labelFor(APPROVAL_LABELS, o.approvalStatus))}</span>
+        <span class="${statusBadgeClass("account", o.accountStatus)}">${escapeHtml(labelFor(ACCOUNT_LABELS, o.accountStatus))}</span>
+        <span class="${badgeClass(o.activityLevel)}">${escapeHtml(o.activityLevelLabel)}</span>
+      </div>
+      <div class="detail-section"><h4>بيانات المكتب</h4>
+        <div class="detail-row">المرخص له: ${escapeHtml(o.licenseeName)}<br>جوال: ${escapeHtml(o.phone)}<br>بريد: ${escapeHtml(o.email)}<br>مدينة: ${escapeHtml(o.city)}<br>officeId: ${escapeHtml(o.officeId)}</div></div>
+      <div class="detail-section"><h4>الاعتماد</h4>
+        <div class="detail-row">حالة: ${escapeHtml(labelFor(APPROVAL_LABELS, o.approvalStatus))}<br>تسجيل: ${formatDate(o.registrationSubmittedAt)}<br>اعتماد: ${formatDate(o.approvedAt)}<br>بواسطة: ${escapeHtml(o.approvedBy || "—")}</div></div>
+      <div class="detail-section"><h4>الترخيص</h4>
+        <div class="detail-row">فال: ${escapeHtml(o.falLicenseNumber)}<br>إصدار: ${formatDate(o.falLicenseIssuedAt)}<br>انتهاء: ${formatDate(o.falLicenseExpiresAt)}<br>حالة: ${escapeHtml(labelFor(LICENSE_LABELS, o.licenseStatus))}</div></div>
+      <div class="detail-section"><h4>الاشتراك</h4>
+        <div class="detail-row">حالة: ${escapeHtml(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus))}<br>بداية: ${formatDate(o.subscriptionStartedAt)}<br>انتهاء: ${formatDate(o.subscriptionExpiresAt)}<br>متبقي: ${o.subscriptionDaysRemaining ?? "—"} يوم</div></div>
+      <div class="detail-section"><h4>الحساب</h4>
+        <div class="detail-row">حالة: ${escapeHtml(labelFor(ACCOUNT_LABELS, o.accountStatus))}<br>آخر دخول: ${formatDate(o.lastLoginAt)}<br>آخر نشاط: ${formatDate(o.lastActivityAt)}<br>مستوى النشاط: ${escapeHtml(o.activityLevelLabel)}</div></div>
+      <div class="detail-section ${focusActivity ? "" : ""}"><h4>نشاط المكتب</h4>
+        <p class="office-meta" style="margin-bottom:6px">${escapeHtml(ACTIVITY_THRESHOLD_NOTE)}</p>
+        <div class="detail-row">دخول 7d/30d: ${s.loginCount7d}/${s.loginCount30d}<br>فرص 7d/30d: ${s.opportunitiesCreated7d}/${s.opportunitiesCreated30d}<br>فرص نشطة: ${s.activeOpportunitiesCount}<br>مطابقات مراجعة 30d: ${s.matchesReviewed30d}<br>عمليات مكتملة 30d: ${s.completedOperations30d}<br>عروض ملاك 30d: ${s.publicOwnerSubmissions30d}<br>طلبات عملاء 30d: ${s.publicClientSubmissions30d}</div></div>
+      <div class="detail-section"><h4>ملاحظات إدارية</h4>
+        ${(data.notes || []).map(n => `<div class="detail-row">${formatDate(n.createdAt)} — ${escapeHtml(n.note)}</div>`).join("") || '<div class="detail-row">لا توجد ملاحظات.</div>'}
+      </div>
+      <div class="detail-section"><h4>سجل إداري للمكتب</h4>
+        ${(data.audit || []).map(auditEntryHtml).join("") || '<div class="detail-row">لا يوجد سجل.</div>'}
+      </div>
+    </section>`);
     root.querySelector("#backToList").onclick = () => render();
   }
 
   async function subscriptionsPage() {
+    ensureShell();
+    updateNavActive();
+    setMainContent(loadingHtml());
     await loadOffices({ tab: "approved" });
     const list = state.offices;
-    shell(`${navHtml()}
-      <section class="admin-card">
-        <h2>الاشتراكات والتراخيص</h2>
-        <div id="officeList">${list.map(o => `<article class="office-card">
-          <h3>${escapeHtml(o.officeName)}</h3>
-          <div class="office-meta">اشتراك: ${escapeHtml(o.subscriptionStatus)} · ينتهي ${formatDate(o.subscriptionExpiresAt)}
-          <br>ترخيص: ${escapeHtml(o.licenseStatus)} · ينتهي ${formatDate(o.falLicenseExpiresAt)}</div>
+    setMainContent(`<section class="admin-card">
+      <h2>الاشتراكات والتراخيص</h2>
+      <div id="officeList">${list.length ? list.map(o => `<article class="office-card">
+        <div class="office-card-head"><h3>${escapeHtml(o.officeName)}</h3></div>
+        <div class="office-meta">اشتراك: ${escapeHtml(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus))} · ينتهي ${formatDate(o.subscriptionExpiresAt)}
+        <br>ترخيص: ${escapeHtml(labelFor(LICENSE_LABELS, o.licenseStatus))} · ينتهي ${formatDate(o.falLicenseExpiresAt)}</div>
+        <div class="badge-row">
           ${o.subscriptionStatus === "expired" || o.licenseStatus === "expired" ? '<span class="badge danger">منتهي</span>' : ""}
           ${o.subscriptionStatus === "expiring" || o.licenseStatus === "expiring" ? '<span class="badge warn">ينتهي خلال 30 يوم</span>' : ""}
-          <div class="actions">
-            <button class="btn secondary" data-subscription="${escapeHtml(o.officeId)}">تعديل الاشتراك</button>
-            <button class="btn secondary" data-license="${escapeHtml(o.officeId)}">تحديث الترخيص</button>
-            <button class="btn secondary" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>
-          </div>
-        </article>`).join("")}</div>
-      </section>
-      <button class="btn secondary" id="adminLogout" style="width:100%">تسجيل الخروج</button>`, "الاشتراكات والتراخيص");
-    bindNav();
+        </div>
+        <div class="actions">
+          <button class="btn secondary" data-subscription="${escapeHtml(o.officeId)}">تعديل الاشتراك</button>
+          <button class="btn secondary" data-license="${escapeHtml(o.officeId)}">تحديث الترخيص</button>
+          <button class="btn secondary" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>
+        </div>
+      </article>`).join("") : emptyState("لا توجد مكاتب معتمدة.")}</div>
+    </section>`);
     bindOfficeActions();
   }
 
-  async function auditPage() {
-    const data = await api("/admin/audit-log?limit=150");
-    shell(`${navHtml()}
-      <section class="admin-card">
-        <h2>السجل الإداري</h2>
-        ${(data.entries || []).map(e => `<article class="office-card">
-          <div class="office-meta"><strong>${escapeHtml(e.action)}</strong><br>
-          مكتب: ${escapeHtml(e.officeId || "—")}<br>
-          بواسطة: ${escapeHtml(e.performedBy)} · ${formatDate(e.performedAt)}<br>
-          ${escapeHtml(e.reason || "")}</div>
-        </article>`).join("") || "<p>لا يوجد سجل.</p>"}
-      </section>
-      <button class="btn secondary" id="adminLogout" style="width:100%">تسجيل الخروج</button>`, "السجل الإداري");
-    bindNav();
+  function globalAuditEntryHtml(e) {
+    const label = auditActionLabel(e.action);
+    return `<article class="office-card">
+      <div class="audit-action">${escapeHtml(label)}</div>
+      <div class="audit-tech">${escapeHtml(e.action)}</div>
+      <div class="office-meta" style="margin-top:6px">
+        مكتب: ${escapeHtml(e.officeId || "—")}<br>
+        بواسطة: ${escapeHtml(e.performedBy)} · ${formatDate(e.performedAt)}<br>
+        ${escapeHtml(e.reason || "")}
+      </div>
+    </article>`;
   }
 
-  async function deniedView() {
-    shell(`<section class="admin-card login-card">
-      <h2>الوصول مرفوض</h2>
-      <p>هذا الحساب ليس من إدارة المنصة. لا يتم تحميل بيانات الإدارة.</p>
-      <button class="btn secondary" id="adminLogout">تسجيل الخروج</button>
-      <p style="margin-top:12px"><a href="/">العودة للمنصة العامة</a></p>
+  async function auditPage() {
+    ensureShell();
+    updateNavActive();
+    setMainContent(loadingHtml());
+    const data = await api("/admin/audit-log?limit=150");
+    const entries = data.entries || [];
+    setMainContent(`<section class="admin-card">
+      <h2>السجل الإداري</h2>
+      ${entries.length ? entries.map(globalAuditEntryHtml).join("") : emptyState("لا يوجد سجل.")}
     </section>`);
+  }
+
+  function deniedView() {
+    destroyShell();
+    root.innerHTML = `<div class="admin-shell">
+      <section class="admin-card login-card">
+        <h2>الوصول مرفوض</h2>
+        <p>هذا الحساب ليس من إدارة المنصة. لا يتم تحميل بيانات الإدارة.</p>
+        <button class="btn secondary" id="adminLogout">تسجيل الخروج</button>
+        <p style="margin-top:12px"><a href="/">العودة للمنصة العامة</a></p>
+      </section>
+    </div>`;
     root.querySelector("#adminLogout").onclick = async () => { await firebase.auth().signOut(); render(); };
   }
 
   async function render() {
     if (!window.firebase || !firebase.apps || !firebase.apps.length) {
-      shell('<section class="admin-card"><p>تعذر بدء المنصة. حدّث الصفحة.</p></section>');
+      destroyShell();
+      root.innerHTML = '<div class="admin-shell"><section class="admin-card"><p>تعذر بدء المنصة. حدّث الصفحة.</p></section></div>';
       return;
     }
     const user = firebase.auth().currentUser;
@@ -582,14 +767,15 @@
     }
     try {
       if (state.page === "overview") await overviewPage();
-      else if (state.page === "offices") await officesPage();
-      else if (state.page === "activity") await officesPage();
+      else if (state.page === "offices") await officesPage({ refreshOnly: false });
+      else if (state.page === "activity") await officesPage({ refreshOnly: false });
       else if (state.page === "subscriptions") await subscriptionsPage();
       else if (state.page === "audit") await auditPage();
       else await overviewPage();
     } catch (error) {
-      shell(`${navHtml()}<section class="admin-card"><div class="status err">${escapeHtml(error.message || "تعذر تحميل لوحة الإدارة.")}</div></section>`);
-      bindNav();
+      ensureShell();
+      updateNavActive();
+      setMainContent(`<section class="admin-card"><div class="status err">${escapeHtml(error.message || "تعذر تحميل لوحة الإدارة.")}</div></section>`);
     }
   }
 
