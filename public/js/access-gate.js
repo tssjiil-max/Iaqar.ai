@@ -22,7 +22,7 @@
     }
     try {
       const host = String(window.location && window.location.hostname || "").toLowerCase();
-      if (host.includes("--staging") || host.startsWith("staging.")) {
+      if (host.includes("iaqar-ai-staging") || host.includes("--staging") || host.startsWith("staging.")) {
         return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
       }
     } catch (_) { /* ignore */ }
@@ -104,6 +104,7 @@
   const validFullName = value => String(value || "").trim().split(/\s+/).filter(Boolean).length >= 2;
 
   function loginFailureMessage(stage, detail = {}) {
+    const isStaging = window.IAQAR && window.IAQAR.deploymentEnvironment === "staging";
     if (stage === "office_access") return "هذا الحساب غير مخوّل للمكتب المطلوب.";
     if (stage === "custom_token") {
       return detail.code === "auth/invalid-custom-token" || detail.code === "auth/custom-token-mismatch"
@@ -113,7 +114,29 @@
     if (detail.reason === "auth_sa_project_mismatch") {
       return "تعذر إكمال تسجيل الدخول — إعداد الخادم غير متطابق مع مشروع Firebase.";
     }
-    if (detail.reason === "rate_limited") return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
+    if (detail.reason === "rate_limited" || detail.reason === "too_many_requests") {
+      return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
+    }
+    if (detail.reason === "directory_missing") {
+      return isStaging ? "فشل الدخول: رقم الجوال غير مسجل في loginDirectory." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (detail.reason === "directory_inactive") {
+      return isStaging ? "فشل الدخول: سجل loginDirectory غير مفعّل أو ناقص." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (stage === "password_sign_in") {
+      if (detail.code === "auth/wrong-password" || detail.code === "auth/invalid-credential" || detail.code === "auth/user-not-found") {
+        return isStaging ? "فشل التحقق من كلمة المرور في Firebase Auth." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+      }
+      if (detail.code === "auth/too-many-requests") return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
+      if (detail.code === "auth/user-disabled") return "الحساب معطّل.";
+    }
+    if (detail.reason === "password_invalid") {
+      return isStaging ? "فشل التحقق من كلمة المرور على الخادم (signInWithPassword)." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (detail.reason === "uid_mismatch") {
+      return isStaging ? "فشل الدخول: uid في loginDirectory لا يطابق حساب Firebase." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (isStaging && detail.reason) return `فشل تسجيل الدخول (${detail.reason}).`;
     return "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
   }
 
@@ -616,7 +639,7 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
-        // Persistence MUST be set before signInWithCustomToken.
+        // Persistence MUST be set before Firebase sign-in.
         await firebase.auth().setPersistence(
           remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
         );
@@ -627,26 +650,27 @@
         console.warn("[iaqar] auth persistence", error);
       }
       try {
-        const response = await fetch(`${resolveWorkerBase()}/auth/phone-login`, {
+        const resolveResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login-resolve`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, password: String(fields.get("password") || ""), apiKey: firebase.app().options.apiKey })
+          body: JSON.stringify({ phone })
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.customToken || !payload.officeId) {
-          console.warn("[iaqar] phone-login rejected", {
-            status: response.status,
-            reason: payload.reason || "missing_token_or_office",
-            error: payload.error || "login_failed"
+        const resolvePayload = await resolveResponse.json().catch(() => ({}));
+        if (!resolveResponse.ok || !resolvePayload.loginEmail || !resolvePayload.officeId) {
+          console.warn("[iaqar] phone-login-resolve rejected", {
+            status: resolveResponse.status,
+            reason: resolvePayload.reason || "resolve_failed",
+            error: resolvePayload.error || "login_failed"
           });
-          showStatus(loginFailureMessage("phone_login", { reason: payload.reason || "" }));
+          showStatus(loginFailureMessage("phone_resolve", { reason: resolvePayload.reason || "" }));
           return;
         }
+        const password = String(fields.get("password") || "");
         try {
-          await firebase.auth().signInWithCustomToken(payload.customToken);
+          await firebase.auth().signInWithEmailAndPassword(resolvePayload.loginEmail, password);
         } catch (error) {
-          console.warn("[iaqar] custom token sign-in", error);
+          console.warn("[iaqar] email/password sign-in", error);
           try { await firebase.auth().signOut(); } catch (_) {}
-          showStatus(loginFailureMessage("custom_token", { code: error && error.code }));
+          showStatus(loginFailureMessage("password_sign_in", { code: error && error.code }));
           return;
         }
         try {
@@ -657,9 +681,9 @@
           showStatus(loginFailureMessage("id_token", { code: error && error.code }));
           return;
         }
-        const accessGranted = await verifyAccess(payload.officeId, true);
+        const accessGranted = await verifyAccess(resolvePayload.officeId, true);
         if (!accessGranted) {
-          console.warn("[iaqar] office access denied after login", { officeId: payload.officeId });
+          console.warn("[iaqar] office access denied after login", { officeId: resolvePayload.officeId });
           try { await firebase.auth().signOut(); } catch (_) {}
           showStatus(loginFailureMessage("office_access"));
         }
