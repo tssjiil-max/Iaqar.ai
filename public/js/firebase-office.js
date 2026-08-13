@@ -1,7 +1,17 @@
 (() => {
   "use strict";
 
-  const PROJECT_ID = "aqar-b5d76";
+  function resolveFirebaseProjectId() {
+    if (window.IAQAR && window.IAQAR.firebaseProjectId) return window.IAQAR.firebaseProjectId;
+    try {
+      const id = window.firebase && window.firebase.app && window.firebase.app().options
+        ? window.firebase.app().options.projectId
+        : "";
+      if (id) return id;
+    } catch (_) { /* app not ready */ }
+    return "aqar-b5d76";
+  }
+  const PROJECT_ID = resolveFirebaseProjectId();
   const STORAGE_KEY = "iaqar.officeId";
   const DEFAULT_OFFICE_ID = "platform";
   const ROOT_COLLECTION = "offices";
@@ -51,6 +61,9 @@
       opportunities: `${base}/opportunities`,
       deals: `${base}/deals`,
       matches: `${base}/matches`,
+      cooperations: `${base}/cooperations`,
+      operations: `${base}/operations`,
+      notifications: `${base}/notifications`,
       alerts: `${base}/alerts`,
       devices: `${base}/devices`,
       inbox: `${base}/inbox`,
@@ -115,6 +128,9 @@
       opportunities: officeRef.collection("opportunities"),
       deals: officeRef.collection("deals"),
       matches: officeRef.collection("matches"),
+      cooperations: officeRef.collection("cooperations"),
+      operations: officeRef.collection("operations"),
+      notifications: officeRef.collection("notifications"),
       alerts: officeRef.collection("alerts"),
       devices: officeRef.collection("devices"),
       inbox: officeRef.collection("inbox"),

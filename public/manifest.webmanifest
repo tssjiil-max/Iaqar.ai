@@ -14,13 +14,13 @@
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "share_target": {
@@ -41,9 +41,9 @@
   ],
   "shortcuts": [
     {
-      "name": "الفرص",
-      "short_name": "الفرص",
-      "url": "/?source=pwa&open=opportunities",
+      "name": "مركز العمليات",
+      "short_name": "العمليات",
+      "url": "/?source=pwa&open=operations",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -53,9 +53,9 @@
       ]
     },
     {
-      "name": "الصفقات",
-      "short_name": "الصفقات",
-      "url": "/?source=pwa&open=deals",
+      "name": "إضافة فرصة",
+      "short_name": "فرصة",
+      "url": "/?source=pwa&open=add-opportunity",
       "icons": [
         {
           "src": "/icons/icon-192.png",

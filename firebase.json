@@ -8,6 +8,44 @@
     ],
     "cleanUrls": true,
     "trailingSlash": false,
+    "headers": [
+      {
+        "source": "/js/runtime-config.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "source": "/js/gemini-voice-intake-ui.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "source": "/js/gemini-voice-intake-domain.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "/o/**",
@@ -18,5 +56,15 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
   }
 }

@@ -16,3 +16,28 @@ crons = ["0 * * * *"]
 [[r2_buckets]]
 binding = "IAQAR_MEDIA"
 bucket_name = "iaqar-media"
+
+# Staging Worker — deploy ONLY via: wrangler deploy --env staging
+[env.staging]
+name = "iaqar-intake-staging"
+workers_dev = true
+
+[env.staging.vars]
+FIREBASE_PROJECT_ID = "iaqar-ai-staging"
+DEPLOYMENT_ENV = "staging"
+FIREBASE_WEB_API_KEY = "AIzaSyDoP_FMh_ibKRotJmE7F4WBeEUfLJeAX4k"
+META_GRAPH_VERSION = "v25.0"
+META_APP_ID = ""
+META_CONFIG_ID = ""
+FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+
+[env.staging.ai]
+binding = "AI"
+
+[[env.staging.r2_buckets]]
+binding = "IAQAR_MEDIA"
+bucket_name = "iaqar-media"
+
+[env.staging.triggers]
+crons = []
