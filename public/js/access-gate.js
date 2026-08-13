@@ -22,7 +22,7 @@
     }
     try {
       const host = String(window.location && window.location.hostname || "").toLowerCase();
-      if (host.includes("--staging") || host.startsWith("staging.")) {
+      if (host.includes("iaqar-ai-staging") || host.includes("--staging") || host.startsWith("staging.")) {
         return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
       }
     } catch (_) { /* ignore */ }
@@ -103,6 +103,77 @@
     if (digits.startsWith("5") && digits.length === 9) digits = `0${digits}`;
     return /^05\d{8}$/.test(digits) ? digits : "";
   };
+  const normalizeLoginPhone = value => {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00966")) digits = digits.slice(2);
+    if (digits.startsWith("966")) digits = digits.slice(3);
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    return /^5\d{8}$/.test(digits) ? `+966${digits}` : "";
+  };
+  let authGuardState = "loading";
+  let authInitComplete = false;
+  let accessVerificationInFlight = false;
+  let accessGrantedForOffice = false;
+  let explicitSignOutRequested = false;
+
+  function authDiag(event, detail = {}) {
+    try {
+      console.info(`[iaqar-auth] ${event}`, detail);
+    } catch (_) { /* ignore */ }
+  }
+
+  async function authSignOut(source, reason = "") {
+    authDiag("SIGNOUT_CALL_SOURCE", { source, reason });
+    explicitSignOutRequested = source === "user_logout" || source === "admin_logout";
+    try { await firebase.auth().signOut(); } catch (_) {}
+    authGuardState = "unauthenticated";
+    accessGrantedForOffice = false;
+  }
+
+  function loginRedirect(target, source) {
+    authDiag("LOGIN_REDIRECT_SOURCE", { source, target });
+    location.assign(target);
+  }
+
+  function loginFailureMessage(stage, detail = {}) {
+    const isStaging = window.IAQAR && window.IAQAR.deploymentEnvironment === "staging";
+    if (stage === "office_access") return "هذا الحساب غير مخوّل للمكتب المطلوب.";
+    if (detail.reason === "rate_limited" || detail.reason === "too_many_requests") {
+      return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
+    }
+    if (detail.reason === "directory_missing") {
+      return isStaging ? "فشل الدخول: رقم الجوال غير مسجل في loginDirectory." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (detail.reason === "directory_inactive") {
+      return isStaging ? "فشل الدخول: سجل loginDirectory غير مفعّل أو ناقص." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+    }
+    if (stage === "password_sign_in") {
+      if (detail.code === "auth/wrong-password" || detail.code === "auth/invalid-credential" || detail.code === "auth/user-not-found") {
+        return isStaging ? "فشل التحقق من كلمة المرور في Firebase Auth." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+      }
+      if (detail.code === "auth/too-many-requests") return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
+      if (detail.code === "auth/user-disabled") return "الحساب معطّل.";
+    }
+    if (isStaging && detail.reason) return `فشل تسجيل الدخول (${detail.reason}).`;
+    return "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
+  }
+
+  function showAccessError(title, message, retryHandler) {
+    showAccessGate();
+    frame(`<section class="access-card"><h2>${title}</h2>
+      <p>${message}</p>
+      ${retryHandler ? '<button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button>' : ""}
+      <button class="access-btn light" id="accessSignOut" type="button" style="margin-top:10px">تسجيل الخروج</button>
+    </section>`);
+    if (retryHandler) gate.querySelector("#accessRetry").onclick = retryHandler;
+    const signOutBtn = gate.querySelector("#accessSignOut");
+    if (signOutBtn) {
+      signOutBtn.onclick = async () => {
+        await authSignOut("user_logout", "access_error_sign_out");
+        loginForm();
+      };
+    }
+  }
   const validFullName = value => String(value || "").trim().split(/\s+/).filter(Boolean).length >= 2;
 
   async function uploadPublicMedia({ file, targetOffice, intakeId, kind, index = 0 }) {
@@ -665,11 +736,11 @@
           const mapped = mapBrokerApplyError(payload, "تعذر حفظ طلب المكتب");
           if (createdUser) {
             try { await createdUser.delete(); } catch (_) {}
-            try { await firebase.auth().signOut(); } catch (_) {}
+            await authSignOut("broker_apply_cleanup", mapped);
           }
           return showStatus(mapped);
         }
-        await firebase.auth().signOut();
+        await authSignOut("broker_apply_success", "pending_approval");
         form.reset();
         clearBrokerFieldErrors();
         showStatus("تم استلام الطلب وحالته «بانتظار الاعتماد». ستتواصل الإدارة معك بعد التحقق من رخصة فال.", true);
@@ -677,7 +748,7 @@
         console.warn("[iaqar] broker application", error);
         if (createdUser) {
           try { await createdUser.delete(); } catch (_) {}
-          try { await firebase.auth().signOut(); } catch (_) {}
+          await authSignOut("broker_apply_error", code);
         }
         const code = String(error?.code || "");
         clearBrokerFieldErrors();
@@ -726,10 +797,10 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
-        // Persistence MUST be set before signInWithCustomToken.
         await firebase.auth().setPersistence(
           remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
         );
+        authDiag("AUTH_PERSISTENCE", { remember, mode: remember ? "LOCAL" : "SESSION" });
         try {
           localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
         } catch (_) { /* ignore */ }
@@ -737,19 +808,57 @@
         console.warn("[iaqar] auth persistence", error);
       }
       try {
-        const response = await fetch(`${resolveWorkerBase()}/auth/phone-login`, {
+        const resolveResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login-resolve`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, password: String(fields.get("password") || ""), apiKey: firebase.app().options.apiKey })
+          body: JSON.stringify({ phone: normalizeLoginPhone(phone) })
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.customToken || !payload.officeId) throw new Error("LOGIN_FAILED");
-        await firebase.auth().signInWithCustomToken(payload.customToken);
-        await firebase.auth().currentUser?.getIdToken(true);
-        await verifyAccess(payload.officeId, true);
+        const resolvePayload = await resolveResponse.json().catch(() => ({}));
+        if (!resolveResponse.ok || !resolvePayload.loginEmail || !resolvePayload.officeId) {
+          authDiag("AUTH_GUARD_DECISION", {
+            decision: "login_failed",
+            stage: "phone_resolve",
+            reason: resolvePayload.reason || "resolve_failed"
+          });
+          showStatus(loginFailureMessage("phone_resolve", { reason: resolvePayload.reason || "" }));
+          return;
+        }
+        authDiag("OFFICE_ID_RESULT", { officeId: resolvePayload.officeId });
+        const password = String(fields.get("password") || "");
+        let signedInUser;
+        try {
+          const credential = await firebase.auth().signInWithEmailAndPassword(resolvePayload.loginEmail, password);
+          signedInUser = credential.user;
+        } catch (error) {
+          console.warn("[iaqar] email/password sign-in", error);
+          await authSignOut("login_password_rejected", error && error.code);
+          showStatus(loginFailureMessage("password_sign_in", { code: error && error.code }));
+          return;
+        }
+        authDiag("AUTH_LOGIN_SUCCESS", {
+          uid: signedInUser?.uid || null,
+          email: signedInUser?.email || resolvePayload.loginEmail
+        });
+        authDiag("AUTH_UID", { uid: signedInUser?.uid || null });
+        authDiag("AUTH_EMAIL", { email: signedInUser?.email || resolvePayload.loginEmail });
+        try {
+          await signedInUser?.getIdToken(true);
+        } catch (error) {
+          console.warn("[iaqar] id token refresh", error);
+          await authSignOut("login_id_token_failed", error && error.code);
+          showStatus(loginFailureMessage("id_token", { code: error && error.code }));
+          return;
+        }
+        const accessGranted = await verifyAccess(resolvePayload.officeId, true);
+        if (!accessGranted) {
+          authDiag("AUTH_GUARD_DECISION", {
+            decision: "office_access_not_granted",
+            officeId: resolvePayload.officeId
+          });
+        }
       } catch (error) {
         console.warn("[iaqar] login", error);
-        try { await firebase.auth().signOut(); } catch (_) {}
-        showStatus("بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.");
+        await authSignOut("login_unknown_error", error && error.message);
+        showStatus(loginFailureMessage("unknown"));
       }
     };
   }
@@ -785,7 +894,7 @@
     gate.querySelector("#platformForm").onsubmit = async event => {
       event.preventDefault(); const fields = new FormData(event.currentTarget);
       try { await firebase.auth().signInWithEmailAndPassword(String(fields.get("email") || "").trim(), String(fields.get("password") || "")); await verifyAccess("platform", true); }
-      catch (_) { try { await firebase.auth().signOut(); } catch (_) {} showStatus("بيانات إدارة المنصة غير صحيحة."); }
+      catch (_) { await authSignOut("platform_login_failed", "invalid_credentials"); showStatus("بيانات إدارة المنصة غير صحيحة."); }
     };
   }
   function showAccessGate() {
@@ -796,58 +905,148 @@
   }
 
   async function verifyAccess(target, navigate) {
-    if (!target) return loginForm("أدخل رمز المكتب المعتمد.");
+    if (!target) {
+      loginForm("أدخل رمز المكتب المعتمد.");
+      return false;
+    }
     if (target === "platform") {
       try {
         const token = await firebase.auth().currentUser.getIdTokenResult(true);
-        if (token.claims.platformAdmin === true || token.claims.admin === true) return adminApplications();
+        if (token.claims.platformAdmin === true || token.claims.admin === true) {
+          authGuardState = "authenticated";
+          adminApplications();
+          return true;
+        }
       } catch (_) {}
-      return loginForm("هذا الحساب ليس من إدارة المنصة.");
+      loginForm("هذا الحساب ليس من إدارة المنصة.");
+      return false;
     }
+    const user = firebase.auth().currentUser;
+    if (!user) {
+      authDiag("AUTH_GUARD_DECISION", { decision: "unauthenticated", target });
+      authGuardState = "unauthenticated";
+      return false;
+    }
+    accessVerificationInFlight = true;
+    authGuardState = "loading";
+    authDiag("PROFILE_LOOKUP_START", { target, uid: user.uid, navigate });
     try {
-      const user = firebase.auth().currentUser;
-      if (user?.getIdToken) await user.getIdToken();
-      await db().collection("offices").doc(target).get({ source: "server" });
+      if (user.getIdToken) await user.getIdToken();
+      const officeRef = db().collection("offices").doc(target);
+      const memberRef = officeRef.collection("members").doc(user.uid);
+      const [officeSnap, memberSnap] = await Promise.all([
+        officeRef.get({ source: "server" }),
+        memberRef.get({ source: "server" })
+      ]);
+      const memberData = memberSnap.exists ? (memberSnap.data() || {}) : {};
+      const officeData = officeSnap.exists ? (officeSnap.data() || {}) : {};
+      const isOwner = officeData.ownerUid === user.uid;
+      authDiag("PROFILE_LOOKUP_RESULT", {
+        officeExists: officeSnap.exists,
+        memberExists: memberSnap.exists,
+        isOwner,
+        memberPath: `offices/${target}/members/${user.uid}`
+      });
+      authDiag("OFFICE_ID_RESULT", { officeId: target, fromUrl: officeId });
+      authDiag("ROLE_RESULT", { role: memberData.role || (isOwner ? "owner" : null) });
+      authDiag("ACCOUNT_STATUS_RESULT", {
+        active: memberData.active,
+        approved: memberData.approved,
+        memberActive: memberData.active !== false,
+        isOwner
+      });
+      if (!officeSnap.exists) {
+        authDiag("AUTH_GUARD_DECISION", { decision: "office_missing", target });
+        showAccessError(
+          "المكتب غير موجود",
+          `تعذر العثور على المكتب «${target}». تحقق من الرابط أو تواصل مع الإدارة.`,
+          () => verifyAccess(target, navigate)
+        );
+        return false;
+      }
+      if (!memberSnap.exists && !isOwner) {
+        authDiag("AUTH_GUARD_DECISION", { decision: "member_missing", target, uid: user.uid });
+        showAccessError(
+          "عضوية المكتب غير موجودة",
+          `لا يوجد سجل عضوية في offices/${target}/members/${user.uid}. لن يُعاد توجيهك تلقائيًا.`,
+          null
+        );
+        return false;
+      }
+      if (memberSnap.exists && memberData.active === false) {
+        authDiag("AUTH_GUARD_DECISION", { decision: "member_inactive", target, uid: user.uid });
+        await authSignOut("member_inactive", "confirmed_disabled");
+        loginForm("هذا الحساب معطّل لهذا المكتب.");
+        return false;
+      }
       localStorage.setItem("iaqar.officeId", target);
+      authGuardState = "authenticated";
+      accessGrantedForOffice = true;
+      authDiag("AUTH_GUARD_DECISION", { decision: "authenticated", target });
       if (navigate || target !== officeId) {
-        location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
-        return;
+        loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_navigate");
+        return true;
       }
       document.body.classList.remove("access-locked");
       gate.remove();
+      return true;
     } catch (error) {
       console.warn("[iaqar] access denied", error);
       const code = String(error && error.code || "");
       if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
-        frame(`<section class="access-card"><h2>تعذر الاتصال</h2>
-          <p>تحقق من الشبكة ثم أعد المحاولة. لن يُسجَّل خروجك تلقائيًا.</p>
-          <button class="access-btn" id="accessRetry" type="button">إعادة المحاولة</button></section>`);
-        gate.querySelector("#accessRetry").onclick = () => verifyAccess(target, navigate);
-        return;
+        authDiag("AUTH_GUARD_DECISION", { decision: "network_error", target, code });
+        showAccessError(
+          "تعذر الاتصال",
+          "تحقق من الشبكة ثم أعد المحاولة. لن يُسجَّل خروجك تلقائيًا.",
+          () => verifyAccess(target, navigate)
+        );
+        return false;
       }
-      // Transient auth race after restore: retry once before forcing login UI.
       if ((code.includes("permission-denied") || code.includes("unauthenticated"))
         && firebase.auth().currentUser) {
         try {
           await firebase.auth().currentUser.getIdToken(true);
-          await db().collection("offices").doc(target).get({ source: "server" });
-          localStorage.setItem("iaqar.officeId", target);
-          if (navigate || target !== officeId) {
-            location.assign(`${location.pathname}?office=${encodeURIComponent(target)}`);
-            return;
+          const officeRef = db().collection("offices").doc(target);
+          const memberRef = officeRef.collection("members").doc(firebase.auth().currentUser.uid);
+          const [officeSnap, memberSnap] = await Promise.all([
+            officeRef.get({ source: "server" }),
+            memberRef.get({ source: "server" })
+          ]);
+          if (officeSnap.exists && memberSnap.exists) {
+            localStorage.setItem("iaqar.officeId", target);
+            authGuardState = "authenticated";
+            accessGrantedForOffice = true;
+            authDiag("AUTH_GUARD_DECISION", { decision: "authenticated_after_retry", target });
+            if (navigate || target !== officeId) {
+              loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_retry_navigate");
+              return true;
+            }
+            document.body.classList.remove("access-locked");
+            gate.remove();
+            return true;
           }
-          document.body.classList.remove("access-locked");
-          gate.remove();
-          return;
         } catch (retryError) {
           console.warn("[iaqar] access retry", retryError);
         }
       }
       if (code.includes("permission-denied") || code.includes("unauthenticated")) {
-        loginForm("هذا الحساب غير مخوّل للمكتب المطلوب.");
-        return;
+        authDiag("AUTH_GUARD_DECISION", { decision: "permission_denied", target, code });
+        showAccessError(
+          "غير مخوّل",
+          "هذا الحساب غير مخوّل للمكتب المطلوب. يمكنك تسجيل الخروج أو التواصل مع إدارة المكتب.",
+          null
+        );
+        return false;
       }
-      loginForm("تعذر التحقق من صلاحية الدخول. حاول مرة أخرى.");
+      authDiag("AUTH_GUARD_DECISION", { decision: "verify_failed", target, code });
+      showAccessError(
+        "تعذر التحقق",
+        "تعذر التحقق من صلاحية الدخول. حاول مرة أخرى.",
+        () => verifyAccess(target, navigate)
+      );
+      return false;
+    } finally {
+      accessVerificationInFlight = false;
     }
   }
 
@@ -858,7 +1057,7 @@
       <button class="access-btn light" id="enableAdminNotifications" style="width:100%;margin-top:12px">تفعيل إشعارات طلبات الوسطاء</button>
       <button class="access-btn secondary" id="adminLogout" style="width:100%;margin-top:12px">تسجيل الخروج</button>
       <div id="accessStatus" class="access-status"></div></section>`);
-    gate.querySelector("#adminLogout").onclick = async () => { await firebase.auth().signOut(); home(); };
+    gate.querySelector("#adminLogout").onclick = async () => { await authSignOut("admin_logout", "user_requested"); home(); };
     const notificationButton = gate.querySelector("#enableAdminNotifications");
     notificationButton.onclick = () => enableAdminNotifications(true);
     if (localStorage.getItem("iaqar.fcm.enabled.platform") === "1") {
@@ -1030,20 +1229,40 @@
     refreshRouteFlags();
 
     try {
-      // Prefer LOCAL by default so "البقاء مسجلًا" survives close/reopen.
-      // Explicit "0" forces SESSION. Set persistence before listening for auth.
       const rememberFlag = localStorage.getItem("iaqar.auth.remember");
       const remembered = rememberFlag !== "0";
       await firebase.auth().setPersistence(
         remembered ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
       );
+      authDiag("AUTH_PERSISTENCE", { remember: remembered, mode: remembered ? "LOCAL" : "SESSION", phase: "bootstrap" });
     } catch (error) {
       console.warn("[iaqar] auth persistence", error);
     }
 
-    let initialAuthResolved = false;
+    async function waitForAuthReady() {
+      if (typeof firebase.auth().authStateReady === "function") {
+        await firebase.auth().authStateReady();
+        return;
+      }
+      await new Promise((resolve) => {
+        const unsubscribe = firebase.auth().onAuthStateChanged(() => {
+          unsubscribe();
+          resolve();
+        });
+      });
+    }
+
+    await waitForAuthReady();
+    authInitComplete = true;
+
+    let initialAuthHandled = false;
 
     const routeAfterInitialAuth = async (user) => {
+      authDiag("AUTH_STATE_CHANGED", {
+        uid: user?.uid || null,
+        email: user?.email || null,
+        phase: "initial_route"
+      });
       if (isPublicOfficeLink) {
         publicOffice();
         return;
@@ -1053,26 +1272,55 @@
         return;
       }
       if (user) {
+        authDiag("AUTH_UID", { uid: user.uid });
+        authDiag("AUTH_EMAIL", { email: user.email || null });
         try {
-          await user.getIdToken(/* forceRefresh */ false);
+          await user.getIdToken(false);
         } catch (error) {
           console.warn("[iaqar] auth token", error);
         }
+        authGuardState = "loading";
         await verifyAccess(officeId, false);
         return;
       }
+      authGuardState = "unauthenticated";
+      authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "no_user_on_init" });
       loginForm();
     };
 
     firebase.auth().onAuthStateChanged(user => {
-      if (!initialAuthResolved) {
-        initialAuthResolved = true;
+      authDiag("AUTH_STATE_CHANGED", {
+        uid: user?.uid || null,
+        email: user?.email || null,
+        phase: initialAuthHandled ? "subsequent" : "first"
+      });
+      if (!initialAuthHandled) {
+        initialAuthHandled = true;
         void routeAfterInitialAuth(user);
         return;
       }
-      if (!user && !isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {
-        showAccessGate();
-        loginForm();
+      if (authGuardState === "loading" || accessVerificationInFlight) {
+        authDiag("AUTH_GUARD_DECISION", { decision: "ignore_auth_change", reason: "loading" });
+        return;
+      }
+      if (!user) {
+        if (!accessGrantedForOffice && !explicitSignOutRequested) {
+          authDiag("AUTH_GUARD_DECISION", { decision: "ignore_null_user", reason: "not_granted_yet" });
+          return;
+        }
+        accessGrantedForOffice = false;
+        authGuardState = "unauthenticated";
+        explicitSignOutRequested = false;
+        if (!isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {
+          authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "signed_out" });
+          showAccessGate();
+          loginForm();
+        }
+        return;
+      }
+      if (!accessGrantedForOffice && !isPlatformHome && !isPublicOfficeLink && officeId && officeId !== "platform") {
+        authGuardState = "loading";
+        void verifyAccess(officeId, false);
       }
     });
   }

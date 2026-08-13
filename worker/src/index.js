@@ -366,6 +366,10 @@ export default {
         return await handleBrokerApplication(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/auth/phone-login-resolve") {
+        return await handlePhoneLoginResolve(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/auth/phone-login") {
         return await handlePhoneLogin(request, env, requestId);
       }
@@ -1007,6 +1011,62 @@ async function decideBrokerApplication(request, env, requestId) {
   return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
 }
 
+async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId }) {
+  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
+  if (!directoryDoc) {
+    console.warn("[iaqar-login] directory missing", { phone: maskPhone(phone), requestId });
+    return {
+      error: jsonResponse({
+        ok: false, error: "invalid_login", reason: "directory_missing",
+        message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId
+      }, 401)
+    };
+  }
+  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
+  if (directory.active !== true || !directory.email || !directory.uid || !directory.officeId) {
+    console.warn("[iaqar-login] directory inactive or incomplete", {
+      phone: maskPhone(phone),
+      active: directory.active,
+      hasEmail: Boolean(directory.email),
+      hasUid: Boolean(directory.uid),
+      officeId: directory.officeId || "",
+      requestId
+    });
+    return {
+      error: jsonResponse({
+        ok: false, error: "invalid_login", reason: "directory_inactive",
+        message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId
+      }, 401)
+    };
+  }
+  return {
+    directory,
+    loginEmail: String(directory.email || "").trim().toLowerCase()
+  };
+}
+
+async function handlePhoneLoginResolve(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const phone = normalizeLoginPhone(body.phone);
+  if (!phone) {
+    return jsonResponse({
+      ok: false, error: "invalid_login", reason: "invalid_input",
+      message: "رقم الجوال غير صحيح", requestId
+    }, 401);
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
+  if (lookup.error) return lookup.error;
+  return jsonResponse({
+    ok: true,
+    loginEmail: lookup.loginEmail,
+    officeId: normalizeOfficeId(lookup.directory.officeId),
+    requestId
+  });
+}
+
 async function handlePhoneLogin(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
@@ -1016,7 +1076,6 @@ async function handlePhoneLogin(request, env, requestId) {
   if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
-  const phoneHash = await sha256Hex(phone);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
   const rateHash = await sha256Hex(`${phone}|${ip}`);
   const rateSegments = ["loginRateLimits", rateHash];
@@ -1024,15 +1083,17 @@ async function handlePhoneLogin(request, env, requestId) {
   const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
   const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
   if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email || !directory.uid || !directory.officeId) {
+  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
+  if (lookup.error) {
+    const errorResponse = lookup.error;
+    if (typeof errorResponse.json === "function") return errorResponse;
     throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
   }
+  const directory = lookup.directory;
+  const loginEmail = lookup.loginEmail;
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: directory.email, password, returnSecureToken: true })
+    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
   });
   if (!signInResponse.ok) {
     const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
