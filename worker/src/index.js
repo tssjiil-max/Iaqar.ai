@@ -137,13 +137,24 @@ export default {
       }
 
       if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
+        const deploymentEnvironment = String(env.DEPLOYMENT_ENV || "production").toLowerCase() === "staging"
+          ? "staging"
+          : "production";
+        const firebaseConfigured = hasFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
         return jsonResponse({
           ok: true,
           service: "iaqar-whatsapp-official-intake",
           mode: "inbound-only",
           outboundMessaging: false,
-          pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && hasFirebaseSecrets(env)),
-          projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
+          deploymentEnvironment,
+          firebaseConfigured,
+          backendReady: firebaseConfigured,
+          cronEnabled: deploymentEnvironment !== "staging",
+          pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && firebaseConfigured),
+          projectId,
+          firebaseClientEmailDomain: firebaseAdminProjectDomain(env),
+          firebaseAdminProjectMatch: firebaseAdminMatchesProject(env, projectId),
           webhook: "/meta/webhook",
           requestId,
           time: new Date().toISOString()
@@ -678,6 +689,20 @@ async function handlePhoneLogin(request, env, requestId) {
     failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
     blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
   }});
+  if (!firebaseAdminMatchesProject(env, projectId)) {
+    console.warn("[iaqar-login] service account project mismatch", {
+      projectId,
+      clientEmailDomain: firebaseAdminProjectDomain(env),
+      requestId
+    });
+    return jsonResponse({
+      ok: false,
+      error: "invalid_login",
+      reason: "auth_sa_project_mismatch",
+      message: "تعذر إكمال تسجيل الدخول — إعداد الخادم غير متطابق مع مشروع Firebase",
+      requestId
+    }, 500);
+  }
   const customToken = await createFirebaseCustomToken({
     clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
@@ -2765,6 +2790,19 @@ function firebaseServiceAccount(env = {}) {
 function hasFirebaseSecrets(env) {
   const { clientEmail, privateKey } = firebaseServiceAccount(env);
   return Boolean(clientEmail && privateKey);
+}
+
+function firebaseAdminProjectDomain(env) {
+  const email = String(firebaseServiceAccount(env).clientEmail || "");
+  const at = email.indexOf("@");
+  return at > 0 ? email.slice(at + 1) : "";
+}
+
+function firebaseAdminMatchesProject(env, projectId) {
+  const domain = firebaseAdminProjectDomain(env);
+  if (!domain || !projectId) return false;
+  const expected = `${String(projectId).trim()}.iam.gserviceaccount.com`;
+  return domain === expected;
 }
 
 function assertFirebaseSecrets(env) {
