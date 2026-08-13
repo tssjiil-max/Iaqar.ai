@@ -10,7 +10,16 @@
     offices: [],
     cities: [],
     selectedOfficeId: null,
-    filters: { q: "", city: "", sort: "newest" }
+    filters: {
+      q: "",
+      city: "",
+      sort: "newest",
+      approvalStatus: "",
+      accountStatus: "",
+      licenseStatus: "",
+      subscriptionStatus: "",
+      activityLevel: ""
+    }
   };
 
   function escapeHtml(value) {
@@ -188,15 +197,28 @@
     return detail;
   }
 
-  async function loadOffices(extra = {}) {
-    const params = new URLSearchParams({
+  function officeFilterParams(extra = {}) {
+    const params = {
       tab: state.officesTab === "all" ? "" : state.officesTab,
       q: state.filters.q,
       city: state.filters.city,
       sort: state.filters.sort,
       ...extra
-    });
-    const data = await api(`/admin/offices?${params.toString()}`);
+    };
+    if (state.officesTab === "all") {
+      if (state.filters.approvalStatus) params.approvalStatus = state.filters.approvalStatus;
+      if (state.filters.accountStatus) params.accountStatus = state.filters.accountStatus;
+      if (state.filters.licenseStatus) params.licenseStatus = state.filters.licenseStatus;
+      if (state.filters.subscriptionStatus) params.subscriptionStatus = state.filters.subscriptionStatus;
+      if (state.filters.activityLevel) params.activityLevel = state.filters.activityLevel;
+    }
+    return new URLSearchParams(Object.fromEntries(
+      Object.entries(params).filter(([, value]) => value !== "" && value != null)
+    ));
+  }
+
+  async function loadOffices(extra = {}) {
+    const data = await api(`/admin/offices?${officeFilterParams(extra).toString()}`);
     state.offices = data.offices || [];
     state.cities = data.cities || [];
     return data;
@@ -213,6 +235,7 @@
           <input id="officeSearch" placeholder="بحث: اسم، مرخص له، جوال، فال" value="${escapeHtml(state.filters.q)}">
           <select id="officeCity"><option value="">كل المدن</option>
             ${state.cities.map(c => `<option value="${escapeHtml(c)}" ${state.filters.city === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>
+          ${state.officesTab === "all" ? officeDimensionFilters() : ""}
           <select id="officeSort">
             <option value="newest">الأحدث تسجيلًا</option>
             <option value="oldest">الأقدم</option>
@@ -223,6 +246,7 @@
             <option value="subscription_expiry">أقرب اشتراك للانتهاء</option>
             <option value="license_expiry">أقرب ترخيص للانتهاء</option>
           </select>
+          <button type="button" class="btn secondary" id="officeApplyFilters" style="width:100%">تطبيق البحث والفلاتر</button>
         </div>
         <div id="officeList">${list.length ? list.map(officeCard).join("") : "<p>لا توجد نتائج.</p>"}</div>
         <div id="officeStatus" class="status hidden"></div>
@@ -232,6 +256,44 @@
     bindNav();
     bindOfficeFilters();
     bindOfficeActions();
+  }
+
+  function filterSelect(id, label, value, options) {
+    return `<select id="${id}" aria-label="${escapeHtml(label)}">
+      <option value="">${escapeHtml(label)}</option>
+      ${options.map(o => `<option value="${escapeHtml(o.value)}" ${value === o.value ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
+    </select>`;
+  }
+
+  function officeDimensionFilters() {
+    return `${filterSelect("officeApprovalStatus", "حالة الاعتماد", state.filters.approvalStatus, [
+      { value: "pending", label: "بانتظار الاعتماد" },
+      { value: "approved", label: "معتمد" },
+      { value: "rejected", label: "مرفوض" }
+    ])}
+    ${filterSelect("officeAccountStatus", "حالة الحساب", state.filters.accountStatus, [
+      { value: "active", label: "نشط" },
+      { value: "suspended", label: "موقوف" }
+    ])}
+    ${filterSelect("officeLicenseStatus", "حالة الترخيص", state.filters.licenseStatus, [
+      { value: "valid", label: "ساري" },
+      { value: "expiring", label: "ينتهي قريبًا" },
+      { value: "expired", label: "منتهي" },
+      { value: "unknown", label: "غير معروف" }
+    ])}
+    ${filterSelect("officeSubscriptionStatus", "حالة الاشتراك", state.filters.subscriptionStatus, [
+      { value: "trial", label: "تجريبي" },
+      { value: "active", label: "نشط" },
+      { value: "expiring", label: "ينتهي قريبًا" },
+      { value: "expired", label: "منتهي" },
+      { value: "none", label: "بدون اشتراك" }
+    ])}
+    ${filterSelect("officeActivityLevel", "مستوى النشاط", state.filters.activityLevel, [
+      { value: "very_active", label: "نشط جدًا" },
+      { value: "active", label: "نشط" },
+      { value: "low", label: "نشاط منخفض" },
+      { value: "inactive", label: "غير نشط" }
+    ])}`;
   }
 
   function activityFilters() {
@@ -261,11 +323,31 @@
       state.filters.q = search.value.trim();
       state.filters.city = city.value;
       state.filters.sort = sort.value;
+      if (state.officesTab === "all") {
+        state.filters.approvalStatus = root.querySelector("#officeApprovalStatus")?.value || "";
+        state.filters.accountStatus = root.querySelector("#officeAccountStatus")?.value || "";
+        state.filters.licenseStatus = root.querySelector("#officeLicenseStatus")?.value || "";
+        state.filters.subscriptionStatus = root.querySelector("#officeSubscriptionStatus")?.value || "";
+        state.filters.activityLevel = root.querySelector("#officeActivityLevel")?.value || "";
+      }
       officesPage();
     };
-    search.onchange = apply;
+    search.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        apply();
+      }
+    });
     city.onchange = apply;
     sort.onchange = apply;
+    root.querySelector("#officeApplyFilters")?.addEventListener("click", apply);
+    [
+      "#officeApprovalStatus",
+      "#officeAccountStatus",
+      "#officeLicenseStatus",
+      "#officeSubscriptionStatus",
+      "#officeActivityLevel"
+    ].forEach(selector => root.querySelector(selector)?.addEventListener("change", apply));
   }
 
   function showStatus(msg, ok = false) {
