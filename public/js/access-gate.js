@@ -800,7 +800,10 @@
     if (target === "platform") {
       try {
         const token = await firebase.auth().currentUser.getIdTokenResult(true);
-        if (token.claims.platformAdmin === true || token.claims.admin === true) return adminApplications();
+        if (token.claims.platformAdmin === true || token.claims.admin === true) {
+          location.replace("/admin");
+          return;
+        }
       } catch (_) {}
       return loginForm("هذا الحساب ليس من إدارة المنصة.");
     }
