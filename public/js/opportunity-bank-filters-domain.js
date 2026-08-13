@@ -4,6 +4,20 @@
 
 import { safeText } from "./opportunity-intake-domain.js";
 import { evaluateMatchingReadiness, MATCHING_READINESS } from "./opportunity-readiness-domain.js";
+import {
+  bankFilterCityOptions,
+  bankFilterNeighborhoodOptions,
+  bankFilterPropertyTypeOptions,
+  matchOperationType,
+  mapOperationToBrokerFields,
+  matchPropertyType,
+  matchDistrict,
+  neighborhoodsEquivalent,
+  normalizeNeighborhood,
+  normalizePropertyTypeLabel,
+  propertyTypesEquivalent,
+  parseVoiceSearchCriteria
+} from "./reference-catalog.js";
 
 function normalizeSearchNeedle(value) {
   return String(value == null ? "" : value)
@@ -14,11 +28,40 @@ function normalizeSearchNeedle(value) {
     .trim();
 }
 
+function parseOptionalNumber(value) {
+  const raw = normalizeSearchNeedle(safeText(value, 40));
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function recordPriceValue(record = {}) {
+  const candidates = [
+    record.salePrice,
+    record.priceOrBudget,
+    record.price,
+    record.budget,
+    record.annualRent,
+    record.monthlyRent
+  ];
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function recordAreaValue(record = {}) {
+  const parsed = Number(record.area);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 const PURPOSE_ALIASES = Object.freeze({
   بيع: "SALE",
   شراء: "PURCHASE",
   إيجار: "RENT",
   استئجار: "LEASE_REQUEST",
+  "طلب إيجار": "LEASE_REQUEST",
   sale: "SALE",
   purchase: "PURCHASE",
   rent: "RENT",
@@ -44,10 +87,13 @@ export function resolveRecordMatchingReadiness(record = {}) {
 export function matchesBankQueryFilters(record = {}, filters = {}) {
   const search = normalizeSearchNeedle(safeText(filters.search, 120));
   if (search) {
+    const canonicalDistrict = normalizeNeighborhood(record.district);
     const haystack = normalizeSearchNeedle([
       record.propertyType,
+      normalizePropertyTypeLabel(record.propertyType),
       record.city,
       record.district,
+      canonicalDistrict,
       record.contactName,
       record.opportunityKind,
       record.purpose,
@@ -66,13 +112,13 @@ export function matchesBankQueryFilters(record = {}, filters = {}) {
   if (city && safeText(record.city, 80) !== city) return false;
 
   const district = safeText(filters.district, 80);
-  if (district && safeText(record.district, 80) !== district) return false;
+  if (district && !neighborhoodsEquivalent(record.district, district)) return false;
 
   const purpose = normalizePurposeFilter(filters.purpose);
   if (purpose && safeText(record.purpose, 30).toUpperCase() !== purpose) return false;
 
   const propertyType = safeText(filters.propertyType, 80);
-  if (propertyType && safeText(record.propertyType, 80) !== propertyType) return false;
+  if (propertyType && !propertyTypesEquivalent(record.propertyType, propertyType)) return false;
 
   const status = safeText(filters.matchingReadiness, 40);
   if (status) {
@@ -80,17 +126,29 @@ export function matchesBankQueryFilters(record = {}, filters = {}) {
     if (readiness !== status) return false;
   }
 
+  const priceMin = parseOptionalNumber(filters.priceMin);
+  const priceMax = parseOptionalNumber(filters.priceMax);
+  const recordPrice = recordPriceValue(record);
+  if (priceMin != null && recordPrice != null && recordPrice < priceMin) return false;
+  if (priceMax != null && recordPrice != null && recordPrice > priceMax) return false;
+
+  const areaMin = parseOptionalNumber(filters.areaMin);
+  const areaMax = parseOptionalNumber(filters.areaMax);
+  const recordArea = recordAreaValue(record);
+  if (areaMin != null && recordArea != null && recordArea < areaMin) return false;
+  if (areaMax != null && recordArea != null && recordArea > areaMax) return false;
+
   return true;
 }
 
 export function collectBankFilterOptions(records = []) {
-  const cities = new Set();
-  const districts = new Set();
-  const propertyTypes = new Set();
+  const cities = new Set(bankFilterCityOptions());
+  const districts = new Set(bankFilterNeighborhoodOptions());
+  const propertyTypes = new Set(bankFilterPropertyTypeOptions());
   for (const record of records) {
     const city = safeText(record.city, 80);
-    const district = safeText(record.district, 80);
-    const propertyType = safeText(record.propertyType, 80);
+    const district = normalizeNeighborhood(record.district);
+    const propertyType = normalizePropertyTypeLabel(record.propertyType);
     if (city) cities.add(city);
     if (district) districts.add(district);
     if (propertyType) propertyTypes.add(propertyType);
@@ -109,7 +167,11 @@ export function emptyBankFilters() {
     district: "",
     purpose: "",
     propertyType: "",
-    matchingReadiness: ""
+    matchingReadiness: "",
+    priceMin: "",
+    priceMax: "",
+    areaMin: "",
+    areaMax: ""
   };
 }
 
@@ -123,8 +185,25 @@ export function hasActiveBankQuery(filters = {}) {
     || safeText(normalized.purpose, 40)
     || safeText(normalized.propertyType, 80)
     || safeText(normalized.matchingReadiness, 40)
+    || safeText(normalized.priceMin, 40)
+    || safeText(normalized.priceMax, 40)
+    || safeText(normalized.areaMin, 40)
+    || safeText(normalized.areaMax, 40)
   );
 }
+
+export function mergeVoiceCriteriaIntoFilters(current = {}, transcript = "") {
+  const parsed = parseVoiceSearchCriteria(transcript);
+  const next = { ...emptyBankFilters(), ...current };
+  if (parsed.search) next.search = parsed.search;
+  if (parsed.city) next.city = parsed.city;
+  if (parsed.district) next.district = parsed.district;
+  if (parsed.purpose) next.purpose = parsed.purpose;
+  if (parsed.propertyType) next.propertyType = parsed.propertyType;
+  return next;
+}
+
+export { parseVoiceSearchCriteria };
 
 /**
  * Summarize office bank counts from lightweight metadata rows.

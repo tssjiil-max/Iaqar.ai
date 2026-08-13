@@ -60,8 +60,13 @@ import {
   emptyBankSummary,
   hasActiveBankQuery,
   matchesBankQueryFilters,
+  mergeVoiceCriteriaIntoFilters,
   summarizeBankCounts
 } from "./opportunity-bank-filters-domain.js";
+import {
+  createVoiceSearchSession,
+  isVoiceSearchSupported
+} from "./opportunity-bank-voice-domain.js";
 import {
   evaluateMatchingReadiness,
   matchingReadinessLabel,
@@ -139,7 +144,8 @@ const state = {
   busy: false,
   pendingQueryRefresh: false,
   resultTotal: 0,
-  scanExhausted: false
+  scanExhausted: false,
+  voiceSession: null
 };
 
 let publicOfficeDirectoryCache = null;
@@ -260,12 +266,20 @@ function syncFilterInputsFromState() {
   const purpose = $("bankFilterPurpose");
   const propertyType = $("bankFilterPropertyType");
   const status = $("bankFilterStatus");
+  const priceMin = $("bankFilterPriceMin");
+  const priceMax = $("bankFilterPriceMax");
+  const areaMin = $("bankFilterAreaMin");
+  const areaMax = $("bankFilterAreaMax");
   if (search) search.value = state.queryFilters.search || "";
   if (city) city.value = state.queryFilters.city || "";
   if (district) district.value = state.queryFilters.district || "";
   if (purpose) purpose.value = state.queryFilters.purpose || "";
   if (propertyType) propertyType.value = state.queryFilters.propertyType || "";
   if (status) status.value = state.queryFilters.matchingReadiness || "";
+  if (priceMin) priceMin.value = state.queryFilters.priceMin || "";
+  if (priceMax) priceMax.value = state.queryFilters.priceMax || "";
+  if (areaMin) areaMin.value = state.queryFilters.areaMin || "";
+  if (areaMax) areaMax.value = state.queryFilters.areaMax || "";
 }
 
 function passesListFilters(record) {
@@ -2014,6 +2028,64 @@ function boot() {
   $("bankFilterStatus")?.addEventListener("change", (event) => {
     state.queryFilters.matchingReadiness = event.currentTarget.value || "";
     scheduleBankQueryRefresh();
+  });
+  $("bankFilterPriceMin")?.addEventListener("input", (event) => {
+    state.queryFilters.priceMin = event.currentTarget.value || "";
+    scheduleBankQueryRefresh();
+  });
+  $("bankFilterPriceMax")?.addEventListener("input", (event) => {
+    state.queryFilters.priceMax = event.currentTarget.value || "";
+    scheduleBankQueryRefresh();
+  });
+  $("bankFilterAreaMin")?.addEventListener("input", (event) => {
+    state.queryFilters.areaMin = event.currentTarget.value || "";
+    scheduleBankQueryRefresh();
+  });
+  $("bankFilterAreaMax")?.addEventListener("input", (event) => {
+    state.queryFilters.areaMax = event.currentTarget.value || "";
+    scheduleBankQueryRefresh();
+  });
+  $("bankFilterVoiceBtn")?.addEventListener("click", () => {
+    if (!isVoiceSearchSupported()) {
+      toast("المتصفح لا يدعم البحث الصوتي — استخدم البحث اليدوي.");
+      return;
+    }
+    const button = $("bankFilterVoiceBtn");
+    if (state.voiceSession) {
+      state.voiceSession.stop();
+      state.voiceSession = null;
+      if (button) {
+        button.classList.remove("is-listening");
+        button.setAttribute("aria-pressed", "false");
+      }
+      return;
+    }
+    state.voiceSession = createVoiceSearchSession({
+      onResult(transcript) {
+        if (!transcript) return;
+        state.queryFilters = mergeVoiceCriteriaIntoFilters(state.queryFilters, transcript);
+        syncFilterInputsFromState();
+        syncFilterControls();
+        scheduleBankQueryRefresh();
+        toast("تم تطبيق معايير البحث الصوتي.");
+      },
+      onError(error) {
+        if (error?.message) toast(error.message);
+      },
+      onEnd() {
+        state.voiceSession = null;
+        const voiceButton = $("bankFilterVoiceBtn");
+        if (voiceButton) {
+          voiceButton.classList.remove("is-listening");
+          voiceButton.setAttribute("aria-pressed", "false");
+        }
+      }
+    });
+    if (button) {
+      button.classList.add("is-listening");
+      button.setAttribute("aria-pressed", "true");
+    }
+    state.voiceSession.start();
   });
   $("bankFilterClearBtn")?.addEventListener("click", () => {
     state.queryFilters = emptyBankFilters();

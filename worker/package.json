@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/worker.test.mjs && node test/cross-office.test.mjs",
+    "test": "node test/worker.test.mjs && node test/cross-office.test.mjs && node test/reference-catalog-filters.test.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

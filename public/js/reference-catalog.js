@@ -14,9 +14,10 @@ const MADINAH_DISTRICT_NAMES = Object.freeze([
   "المتنزه", "المزيين", "المغيسلة", "المفرحات", "المهدية", "المناخة", "الملك فهد",
   "النخيل", "النصر", "النقاء", "النقمى", "النواعم", "الهدراء", "الهجرة", "الوبرة",
   "باقدو", "بضاعة", "بني بياضة", "بني حارثة", "بني ظفر", "بني النجار", "تلعة الهبوب",
-  "جبل أحد", "جبل عير", "جماء أم خالد", "جشم", "حرة الوبرة", "حمراء الأسد", "حزرة الجنوب",
+  "جبل أحد", "جبل عير", "جماء أم خالد", "جشم", "حمراء الأسد", "حزرة الجنوب",
   "ذو الحليفة", "رهط", "سد الغابة", "سكة الحديد", "سيد الشهداء", "شوران", "طيبة", "عروة",
-  "عين الخيف", "قربان", "نبلاء", "وادي العقيق", "وادي مذينب", "وادي مهزور", "ورقان", "وعيرة"
+  "عين الخيف", "قربان", "نبلاء", "وادي العقيق", "وادي مذينب", "وادي مهزور", "ورقان", "وعيرة",
+  "قباء", "العوالي", "الزهرة", "الحرة الشرقية", "الحرة الغربية", "الغابة", "الشيبية", "العاقول"
 ]);
 
 export const DISTRICT_SOURCE_META = Object.freeze({
@@ -36,19 +37,27 @@ export const OPERATION_TYPES = Object.freeze([
 ]);
 
 export const PROPERTY_TYPES = Object.freeze([
-  { id: "land", label: "أرض", matchTerms: ["أرض", "ارض", "أرض سكنية", "أرض تجارية"] },
+  { id: "land", label: "أرض", matchTerms: ["أرض", "ارض"] },
+  { id: "land_residential", label: "أرض سكنية", matchTerms: ["أرض سكنية", "ارض سكنية"] },
+  { id: "land_commercial", label: "أرض تجارية", matchTerms: ["أرض تجارية", "ارض تجارية"] },
+  { id: "land_agricultural", label: "أرض زراعية", matchTerms: ["أرض زراعية", "ارض زراعية", "مزرعة"] },
   { id: "apartment", label: "شقة", matchTerms: ["شقة", "شقه"] },
   { id: "villa", label: "فيلا", matchTerms: ["فيلا", "فيلة"] },
   { id: "floor", label: "دور", matchTerms: ["دور", "أدوار"] },
+  { id: "duplex", label: "دوبلكس", matchTerms: ["دوبلكس", "دبلكس"] },
   { id: "building", label: "عمارة", matchTerms: ["عمارة", "عماره"] },
-  { id: "house", label: "منزل", matchTerms: ["منزل", "بيت", "بيت شعبي"] },
-  { id: "rest_house", label: "استراحة", matchTerms: ["استراحة", "استراحه"] },
+  { id: "residential_building", label: "عمارة سكنية", matchTerms: ["عمارة سكنية"] },
+  { id: "commercial_building", label: "عمارة تجارية", matchTerms: ["عمارة تجارية", "مبنى تجاري", "مجمع تجاري"] },
+  { id: "mixed_building", label: "سكني تجاري", matchTerms: ["سكني تجاري", "تجاري سكني"] },
+  { id: "house", label: "بيت", matchTerms: ["بيت", "منزل", "بيت شعبي"] },
+  { id: "palace", label: "قصر", matchTerms: ["قصر"] },
+  { id: "rest_house", label: "استراحة", matchTerms: ["استراحة", "استراحه", "شاليه"] },
   { id: "farm", label: "مزرعة", matchTerms: ["مزرعة", "مزرعه"] },
   { id: "shop", label: "محل", matchTerms: ["محل", "محل تجاري"] },
   { id: "office", label: "مكتب", matchTerms: ["مكتب"] },
   { id: "showroom", label: "معرض", matchTerms: ["معرض"] },
   { id: "warehouse", label: "مستودع", matchTerms: ["مستودع"] },
-  { id: "commercial_building", label: "مبنى تجاري", matchTerms: ["مبنى تجاري", "مجمع تجاري"] },
+  { id: "residential_complex", label: "مجمع سكني", matchTerms: ["مجمع سكني"] },
   { id: "hotel", label: "فندق", matchTerms: ["فندق"] },
   { id: "furnished", label: "شقق مفروشة / مخدومة", matchTerms: ["شقق مفروشة", "مفروشة", "مخدومة"] },
   { id: "other", label: "أخرى", matchTerms: [] }
@@ -86,6 +95,115 @@ export const DISTRICTS = Object.freeze(
 );
 
 export const DISTRICT_OTHER_ID = "__other_district__";
+
+/** Alternate spellings / legacy values → canonical Medina neighborhood name. */
+export const NEIGHBORHOOD_ALIASES = Object.freeze({
+  "حرة الوبرة": "الوبرة",
+  "حي الوبرة": "الوبرة",
+  "حي حرة الوبرة": "الوبرة",
+  "مهزور": "وادي مهزور",
+  "حي عروة": "عروة",
+  "حي الجمعة": "الجمعة",
+  "حي الإسكان": "الإسكان",
+  "حي السلام": "السلام",
+  "حي العزيزية": "العزيزية",
+  "حي الرانوناء": "الرانوناء",
+  "حي الفيصلية": "الفيصلية"
+});
+
+/** Canonical Medina neighborhood names — single source for dropdowns and filters. */
+export const MEDINA_NEIGHBORHOODS = Object.freeze(
+  DISTRICTS.filter((district) => district.cityId === "madinah" && district.active)
+    .map((district) => district.officialName)
+);
+
+export function stripNeighborhoodPollution(raw) {
+  let name = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!name) return "";
+  name = name.split(/\s*[\*×x]\s*/)[0].trim();
+  name = name.split(
+    /\s+(?:المساحة|مساحة|السعر|سعر|للتواصل|رقم|جوال|واتساب|غرفة|غرف|متر|م²|m2|ريال|ألف|الف)(?:\s*[:：]\s*|\s+|$|[0-9])/i
+  )[0].trim();
+  name = name.replace(/[|،,.:؛*]+$/g, "").trim();
+  return name.split(/\s+/).filter(Boolean).slice(0, 4).join(" ").trim();
+}
+
+export function normalizeNeighborhood(value) {
+  const cleaned = stripNeighborhoodPollution(value);
+  if (!cleaned) return "";
+  const directAlias = NEIGHBORHOOD_ALIASES[cleaned];
+  if (directAlias) return directAlias;
+  const exact = DISTRICTS.find((district) => district.active && district.officialName === cleaned);
+  if (exact) return exact.officialName;
+  const matched = matchDistrict(cleaned, "madinah");
+  if (matched) return matched.officialName;
+  return cleaned;
+}
+
+export function neighborhoodsEquivalent(left, right) {
+  const a = normalizeNeighborhood(left);
+  const b = normalizeNeighborhood(right);
+  return Boolean(a && b && normalizeSearchText(a) === normalizeSearchText(b));
+}
+
+export function normalizePropertyTypeLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const matched = matchPropertyType(raw);
+  if (matched && matched.id !== "other") return matched.label;
+  return raw;
+}
+
+export function propertyTypesEquivalent(left, right) {
+  const a = normalizePropertyTypeLabel(left);
+  const b = normalizePropertyTypeLabel(right);
+  if (!a || !b) return false;
+  return normalizeSearchText(a) === normalizeSearchText(b);
+}
+
+export function medinaCityLabel() {
+  return CITIES.find((city) => city.id === "madinah")?.label || "المدينة المنورة";
+}
+
+export function bankFilterNeighborhoodOptions() {
+  return [...MEDINA_NEIGHBORHOODS];
+}
+
+export function bankFilterPropertyTypeOptions() {
+  return PROPERTY_TYPES.filter((item) => item.id !== "other").map((item) => item.label);
+}
+
+export function bankFilterCityOptions() {
+  return [medinaCityLabel()];
+}
+
+export function parseVoiceSearchCriteria(transcript = "") {
+  const text = String(transcript || "").trim();
+  const filters = {
+    search: text,
+    city: "",
+    district: "",
+    purpose: "",
+    propertyType: "",
+    priceMin: "",
+    priceMax: "",
+    areaMin: "",
+    areaMax: ""
+  };
+  if (!text) return filters;
+  const city = matchCity(text);
+  if (city?.id === "madinah") filters.city = city.label;
+  const district = matchDistrict(text, "madinah");
+  if (district) filters.district = district.officialName;
+  const property = matchPropertyType(text);
+  if (property && property.id !== "other") filters.propertyType = property.label;
+  const operation = matchOperationType({}, text);
+  if (operation) {
+    const mapped = mapOperationToBrokerFields(operation.id);
+    filters.purpose = mapped.purpose || "";
+  }
+  return filters;
+}
 
 export function normalizeSearchText(value) {
   return String(value || "")

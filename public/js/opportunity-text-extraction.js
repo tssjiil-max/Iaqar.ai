@@ -244,12 +244,13 @@ function extractTransactionType(text, title) {
 function cleanExtractedDistrictName(raw) {
   let name = String(raw || "").trim().replace(/\s+/g, " ");
   if (!name) return "";
+  name = name.split(/\s*[\*×x]\s*/)[0].trim();
   // Stop before common listing continuations glued onto one line.
   // Note: JS \\b is Latin-only — do not use it for Arabic tokens.
   name = name.split(
-    /\s+(?:المساحة|مساحة|السعر|سعر|للتواصل|رقم|جوال|واتساب|غرفة|غرف|متر|م²|م2|ريال|ألف|الف)(?=\s|$|[0-9])/i
+    /\s+(?:المساحة|مساحة|السعر|سعر|للتواصل|رقم|جوال|واتساب|غرفة|غرف|متر|م²|م2|ريال|ألف|الف)(?:\s*[:：]\s*|\s+|$|[0-9])/i
   )[0] || name;
-  name = name.replace(/[|،,.:؛]+$/g, "").trim();
+  name = name.replace(/[|،,.:؛*]+$/g, "").trim();
   // Keep a short district label (1–4 Arabic tokens), not the rest of the ad.
   const tokens = name.split(/\s+/).filter(Boolean).slice(0, 4);
   return tokens.join(" ").trim();

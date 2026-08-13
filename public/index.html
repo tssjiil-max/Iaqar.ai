@@ -2355,12 +2355,13 @@
   }
   @media (min-width:720px) {
     .bank-filters {
-      grid-template-columns:1.4fr repeat(5, minmax(0,1fr)) auto;
+      grid-template-columns:1.2fr repeat(8, minmax(0,1fr)) auto auto;
       align-items:center;
     }
   }
   .bank-filters select,
-  .bank-filter-search input {
+  .bank-filter-search input,
+  .bank-filter-number input {
     width:100%;
     min-height:40px;
     border:1px solid var(--line);
@@ -2368,6 +2369,34 @@
     padding:8px 10px;
     font:inherit;
     background:#fff;
+  }
+  .bank-filter-search {
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  .bank-filter-search input {
+    flex:1;
+  }
+  .bank-filter-voice {
+    min-height:40px;
+    min-width:40px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+    color:var(--brand);
+    font:inherit;
+    cursor:pointer;
+  }
+  .bank-filter-voice.is-listening {
+    background:#eaf7f3;
+    border-color:var(--brand);
+  }
+  .bank-filter-number span {
+    display:block;
+    font-size:11px;
+    color:var(--muted);
+    margin-bottom:4px;
   }
   .bank-filter-clear {
     min-height:40px;
@@ -2810,9 +2839,11 @@
                 <label class="bank-filter-search">
                   <span class="visually-hidden">بحث في بنك الفرص</span>
                   <input type="search" id="bankFilterSearch" placeholder="ابحث في بنك الفرص" autocomplete="off">
+                  <button type="button" class="bank-filter-voice" id="bankFilterVoiceBtn" aria-label="بحث صوتي" aria-pressed="false" title="بحث صوتي">🎤</button>
                 </label>
                 <select id="bankFilterCity" aria-label="تصفية المدينة">
                   <option value="">كل المدن</option>
+                  <option value="المدينة المنورة">المدينة المنورة</option>
                 </select>
                 <select id="bankFilterDistrict" aria-label="تصفية الحي">
                   <option value="">كل الأحياء</option>
@@ -2822,11 +2853,27 @@
                   <option value="SALE">بيع</option>
                   <option value="PURCHASE">شراء</option>
                   <option value="RENT">إيجار</option>
-                  <option value="LEASE_REQUEST">استئجار</option>
+                  <option value="LEASE_REQUEST">طلب إيجار</option>
                 </select>
                 <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
                   <option value="">نوع العقار</option>
                 </select>
+                <label class="bank-filter-number">
+                  <span>السعر من</span>
+                  <input type="number" id="bankFilterPriceMin" inputmode="numeric" min="0" placeholder="حد أدنى">
+                </label>
+                <label class="bank-filter-number">
+                  <span>السعر إلى</span>
+                  <input type="number" id="bankFilterPriceMax" inputmode="numeric" min="0" placeholder="حد أعلى">
+                </label>
+                <label class="bank-filter-number">
+                  <span>المساحة من</span>
+                  <input type="number" id="bankFilterAreaMin" inputmode="numeric" min="0" placeholder="م²">
+                </label>
+                <label class="bank-filter-number">
+                  <span>المساحة إلى</span>
+                  <input type="number" id="bankFilterAreaMax" inputmode="numeric" min="0" placeholder="م²">
+                </label>
                 <select id="bankFilterStatus" aria-label="تصفية الحالة">
                   <option value="">الحالة</option>
                   <option value="READY_FOR_MATCHING">جاهزة للمطابقة</option>
