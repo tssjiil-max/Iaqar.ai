@@ -62,15 +62,23 @@
   };
 
   const AUDIT_ACTION_LABELS = {
-    license_updated: "تم تحديث الترخيص",
-    subscription_updated: "تم تحديث الاشتراك",
-    office_suspended: "تم إيقاف المكتب",
-    office_reactivated: "تمت إعادة تفعيل المكتب",
+    license_updated: "تحديث الترخيص",
+    subscription_updated: "تحديث الاشتراك",
+    office_suspended: "إيقاف المكتب",
+    office_reactivated: "إعادة تفعيل المكتب",
     admin_note_added: "إضافة ملاحظة إدارية",
-    office_approved: "تمت الموافقة على الطلب",
-    office_rejected: "تم رفض الطلب",
-    application_approved: "تمت الموافقة على الطلب",
-    application_rejected: "تم رفض الطلب"
+    office_approved: "اعتماد المكتب",
+    office_rejected: "رفض المكتب",
+    application_approved: "اعتماد المكتب",
+    application_rejected: "رفض المكتب"
+  };
+
+  const PAGE_SUBTITLES = {
+    overview: "ملخص حالة المنصة والتنبيهات الإدارية",
+    offices: "بحث وإدارة المكاتب والاعتمادات",
+    activity: "متابعة نشاط المكاتب على المنصة",
+    subscriptions: "متابعة الاشتراكات والتراخيص",
+    audit: "سجل الإجراءات الإدارية"
   };
 
   const ACTIVITY_THRESHOLD_NOTE =
@@ -143,10 +151,20 @@
     ];
   }
 
-  function navButtons(className) {
-    return navItems().map(item =>
-      `<button type="button" data-page="${item.id}" class="${className}${state.page === item.id ? " active" : ""}" aria-current="${state.page === item.id ? "page" : "false"}">${item.label}</button>`
-    ).join("");
+  function navButtons() {
+    const items = navItems();
+    return items.map((item, index) => {
+      const isLastOdd = items.length % 2 === 1 && index === items.length - 1;
+      const extraClass = isLastOdd ? " nav-last-balanced" : "";
+      return `<button type="button" data-page="${item.id}" class="${extraClass}${state.page === item.id ? " active" : ""}" aria-current="${state.page === item.id ? "page" : "false"}">${item.label}</button>`;
+    }).join("");
+  }
+
+  function pageHero(title, subtitle = "") {
+    return `<div class="page-hero admin-card">
+      <h2>${escapeHtml(title)}</h2>
+      ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ""}
+    </div>`;
   }
 
   function destroyShell() {
@@ -157,21 +175,12 @@
   function ensureShell() {
     if (state.shellMounted) return;
     root.innerHTML = `<div class="admin-workspace">
-      <header class="admin-topbar">
-        <div>
-          <h1>إدارة منصة IAQAR.AI</h1>
-          <p>لوحة التحكم المركزية لإدارة المكاتب والاشتراكات والتراخيص</p>
-        </div>
+      <header class="brand-bar">
+        <div class="brand-mark">IAQAR.AI<small>إدارة المنصة</small></div>
         <button type="button" class="btn secondary" id="adminHeaderLogout" aria-label="تسجيل الخروج">خروج</button>
       </header>
-      <nav class="admin-mobile-nav" id="adminMobileNav" aria-label="تنقل الإدارة">${navButtons("")}</nav>
-      <div class="admin-body">
-        <aside class="admin-sidebar" id="adminSidebar" aria-label="القائمة الجانبية">
-          <div class="sidebar-brand">IAQAR.AI</div>
-          ${navButtons("")}
-        </aside>
-        <main class="admin-main" id="adminMain" role="main"></main>
-      </div>
+      <nav class="admin-nav-grid" id="adminNav" aria-label="تنقل الإدارة">${navButtons()}</nav>
+      <main class="admin-main" id="adminMain" role="main"></main>
     </div>`;
     state.shellMounted = true;
     bindNav();
@@ -335,22 +344,23 @@
     const offices = officesData.offices || [];
     const licenseAttention = offices.filter(o => o.licenseStatus === "expiring" || o.licenseStatus === "expired").length;
     const alerts = buildAlerts(c, offices);
-    setMainContent(`<div class="page-head"><h2>نظرة عامة</h2></div>
+    setMainContent(`${pageHero("نظرة عامة", PAGE_SUBTITLES.overview)}
       <div class="kpi-row" role="group" aria-label="مؤشرات المنصة">
         ${kpiCard("إجمالي المكاتب", c.totalOffices)}
-        ${kpiCard("المكاتب النشطة", c.activeAccounts)}
+        ${kpiCard("النشطة", c.activeAccounts)}
+        ${kpiCard("المعتمدة", c.approved)}
         ${kpiCard("بانتظار الاعتماد", c.pendingApproval)}
-        ${kpiCard("المكاتب الموقوفة", c.suspended)}
-        ${kpiCard("تراخيص تحتاج متابعة", licenseAttention)}
+        ${kpiCard("الموقوفة", c.suspended)}
+        ${kpiCard("تحتاج متابعة", licenseAttention)}
       </div>
       <section class="admin-card">
-        <h3 style="margin:0 0 8px;font-size:14px;color:var(--green)">مركز تنبيهات الإدارة</h3>
+        <h3 class="section-title">مركز تنبيهات الإدارة</h3>
         ${alerts.length ? `<div class="alert-list">${alerts.map(a =>
           `<div class="alert-item">
             <span>${escapeHtml(a.label)}</span>
             <div class="actions-inline">
               <strong>${a.count}</strong>
-              <button type="button" class="btn link" data-alert-nav="${escapeHtml(a.page)}" data-alert-tab="${escapeHtml(a.tab || "")}" data-alert-filter="${escapeHtml(a.filter || "")}">عرض</button>
+              <button type="button" class="btn secondary" data-alert-nav="${escapeHtml(a.page)}" data-alert-tab="${escapeHtml(a.tab || "")}" data-alert-filter="${escapeHtml(a.filter || "")}">عرض</button>
             </div>
           </div>`
         ).join("")}</div>` : `<div class="alert-ok">المنصة تعمل بشكل طبيعي — لا توجد إجراءات مطلوبة</div>`}
@@ -454,36 +464,37 @@
       <td>${statusChip(labelFor(LICENSE_LABELS, o.licenseStatus), o.licenseStatus === "expired" ? "danger" : o.licenseStatus === "expiring" ? "warn" : "ok")}</td>
       <td>${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : o.subscriptionStatus === "expiring" ? "warn" : "ok")}</td>
       <td>${formatDate(o.lastActivityAt)}</td>
-      <td><div class="actions-inline">${officeActionButtons(o, true)}</div></td>
+      <td><div class="actions-inline">${officeActionButtons(o, false)}</div></td>
     </tr>`;
   }
 
   function officeMobileCard(o) {
     const status = compositeStatus(o);
-    return `<article class="mobile-row-card">
+    return `<article class="office-card">
       <h4>${escapeHtml(o.officeName || "—")}</h4>
-      <div class="row-line">الوسيط: ${escapeHtml(o.licenseeName || "—")} · ${escapeHtml(o.city || "—")}</div>
-      <div class="row-line" style="margin:6px 0">${statusChip(status.label, status.tone)}
-        ${statusChip(labelFor(LICENSE_LABELS, o.licenseStatus), o.licenseStatus === "expired" ? "danger" : "muted")}
-        ${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : "muted")}
-      </div>
-      <div class="row-line">آخر نشاط: ${formatDate(o.lastActivityAt)}</div>
-      <div class="actions-inline" style="margin-top:8px">${officeActionButtons(o, true)}</div>
+      <div class="broker-name">${escapeHtml(o.licenseeName || "—")}</div>
+      <div class="info-line"><strong>الحالة:</strong> ${statusChip(status.label, status.tone)}</div>
+      <div class="info-line"><strong>المدينة:</strong> ${escapeHtml(o.city || "—")}</div>
+      <div class="info-line"><strong>الترخيص:</strong> ${statusChip(labelFor(LICENSE_LABELS, o.licenseStatus), o.licenseStatus === "expired" ? "danger" : o.licenseStatus === "expiring" ? "warn" : "ok")}</div>
+      <div class="info-line"><strong>الاشتراك:</strong> ${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : o.subscriptionStatus === "expiring" ? "warn" : "ok")}</div>
+      <div class="card-actions">${officeActionButtons(o, true)}</div>
     </article>`;
   }
 
-  function officeActionButtons(o, compact = false) {
-    const cls = compact ? "btn link" : "btn secondary";
-    const detail = `<button type="button" class="${cls}" data-detail="${escapeHtml(o.officeId)}">تفاصيل</button>`;
+  function officeActionButtons(o, mobileCard = false) {
+    const detail = mobileCard
+      ? `<button type="button" class="btn primary block" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>`
+      : `<button type="button" class="btn secondary" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>`;
     if (state.page === "activity") return detail;
+    const cls = "btn secondary";
     if (o.approvalStatus === "pending") {
-      return `${detail}<button type="button" class="${cls}" data-approve="${escapeHtml(o.officeId)}">اعتماد</button><button type="button" class="${cls}" data-reject="${escapeHtml(o.officeId)}">رفض</button>`;
+      return `${detail}<button type="button" class="${cls}" data-approve="${escapeHtml(o.officeId)}">اعتماد</button><button type="button" class="btn danger" data-reject="${escapeHtml(o.officeId)}">رفض</button>`;
     }
     if (o.accountStatus === "suspended") {
-      return `${detail}<button type="button" class="${cls}" data-reactivate="${escapeHtml(o.officeId)}">إعادة التفعيل</button>`;
+      return `${detail}<button type="button" class="btn primary" data-reactivate="${escapeHtml(o.officeId)}">إعادة التفعيل</button>`;
     }
     if (o.approvalStatus === "approved") {
-      return `${detail}<button type="button" class="${cls}" data-suspend="${escapeHtml(o.officeId)}">إيقاف</button>`;
+      return `${detail}<button type="button" class="btn danger" data-suspend="${escapeHtml(o.officeId)}">إيقاف المكتب</button>`;
     }
     return detail;
   }
@@ -508,16 +519,17 @@
       <td>${statusChip(o.activityLevelLabel || "—", o.activityLevel === "inactive" || o.activityLevel === "low" ? "warn" : "ok")}</td>
       <td>${formatDate(o.lastActivityAt)}</td>
       <td>${formatDate(o.lastLoginAt)}</td>
-      <td><button type="button" class="btn link" data-detail="${escapeHtml(o.officeId)}">تفاصيل</button></td>
+      <td><button type="button" class="btn secondary" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button></td>
     </tr>`;
   }
 
   function activityMobileCard(o) {
-    return `<article class="mobile-row-card">
+    return `<article class="office-card">
       <h4>${escapeHtml(o.officeName || "—")}</h4>
-      <div class="row-line">${statusChip(o.activityLevelLabel || "—", o.activityLevel === "inactive" ? "danger" : "ok")}</div>
-      <div class="row-line">آخر نشاط: ${formatDate(o.lastActivityAt)} · آخر دخول: ${formatDate(o.lastLoginAt)}</div>
-      <button type="button" class="btn link" data-detail="${escapeHtml(o.officeId)}">تفاصيل</button>
+      <div class="info-line"><strong>مستوى النشاط:</strong> ${statusChip(o.activityLevelLabel || "—", o.activityLevel === "inactive" ? "danger" : o.activityLevel === "low" ? "warn" : "ok")}</div>
+      <div class="info-line"><strong>آخر نشاط:</strong> ${formatDate(o.lastActivityAt)}</div>
+      <div class="info-line"><strong>آخر دخول:</strong> ${formatDate(o.lastLoginAt)}</div>
+      <div class="card-actions"><button type="button" class="btn primary block" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button></div>
     </article>`;
   }
 
@@ -550,7 +562,7 @@
     updateNavActive();
     const listNode = root.querySelector("#officeData");
     if (!options.refreshOnly || !listNode) {
-      setMainContent(`<div class="page-head"><h2>إدارة المكاتب</h2></div>
+      setMainContent(`${pageHero("إدارة المكاتب", PAGE_SUBTITLES.offices)}
         <section class="admin-card">
           ${controlBarHtml(true)}
           <div id="officeData">${loadingHtml()}</div>
@@ -577,9 +589,9 @@
     updateNavActive();
     const listNode = root.querySelector("#activityData");
     if (!options.refreshOnly || !listNode) {
-      setMainContent(`<div class="page-head"><h2>النشاط</h2></div>
+      setMainContent(`${pageHero("النشاط", PAGE_SUBTITLES.activity)}
         <section class="admin-card">
-          <p class="detail-row" style="margin-bottom:8px">${escapeHtml(ACTIVITY_THRESHOLD_NOTE)}</p>
+          <p class="detail-row" style="margin-bottom:16px">${escapeHtml(ACTIVITY_THRESHOLD_NOTE)}</p>
           ${activityFilters()}
           <div class="control-bar">
             <input id="officeSearch" type="search" placeholder="بحث" value="${escapeHtml(state.filters.q)}" aria-label="بحث">
@@ -837,12 +849,22 @@
 
   function auditEntryHtml(a) {
     return `<tr>
-      <td><span class="audit-label">${escapeHtml(auditActionLabel(a.action))}</span><br><span class="audit-code">${escapeHtml(a.action)}</span></td>
+      <td><span class="audit-label">${escapeHtml(auditActionLabel(a.action))}</span></td>
       <td>${escapeHtml(a.officeId || "—")}</td>
       <td>${escapeHtml(a.performedBy || "—")}</td>
       <td>${formatDate(a.performedAt)}</td>
       <td>${escapeHtml(a.reason || "—")}</td>
     </tr>`;
+  }
+
+  function auditMobileCard(e) {
+    return `<article class="audit-card">
+      <div class="audit-label">${escapeHtml(auditActionLabel(e.action))}</div>
+      <div class="audit-line"><strong>مكتب:</strong> ${escapeHtml(e.officeId || "—")}</div>
+      <div class="audit-line"><strong>بواسطة:</strong> ${escapeHtml(e.performedBy || "—")}</div>
+      <div class="audit-line"><strong>التاريخ:</strong> ${formatDate(e.performedAt)}</div>
+      ${e.reason ? `<div class="audit-line">${escapeHtml(e.reason)}</div>` : ""}
+    </article>`;
   }
 
   async function showOfficeDetail(officeId) {
@@ -853,11 +875,11 @@
     const o = data.office;
     const s = o.activitySummary || {};
     const status = compositeStatus(o);
-    setMainContent(`<div class="page-head">
-      <h2>${escapeHtml(o.officeName || officeId)}</h2>
-      <button type="button" class="btn secondary" id="backToList">رجوع</button>
-    </div>
-    <div style="margin-bottom:10px">${statusChip(status.label, status.tone)} ${statusChip(o.activityLevelLabel, o.activityLevel === "inactive" ? "warn" : "ok")}</div>
+    setMainContent(`${pageHero(o.officeName || officeId, "تفاصيل المكتب")}
+      <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        ${statusChip(status.label, status.tone)} ${statusChip(o.activityLevelLabel, o.activityLevel === "inactive" ? "warn" : "ok")}
+        <button type="button" class="btn secondary" id="backToList">رجوع</button>
+      </div>
     <div class="detail-grid">
       <section class="detail-panel"><h3>بيانات المكتب</h3>
         <div class="detail-row"><dt>المدينة: </dt><dd>${escapeHtml(o.city || "—")}</dd><br>
@@ -890,7 +912,7 @@
       </section>
       <section class="detail-panel span-3"><h3>سجل إداري للمكتب</h3>
         ${(data.audit || []).length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>الإجراء</th><th>الوقت</th><th>تفاصيل</th></tr></thead><tbody>
-          ${(data.audit || []).map(a => `<tr><td>${escapeHtml(auditActionLabel(a.action))}<br><span class="audit-code">${escapeHtml(a.action)}</span></td><td>${formatDate(a.performedAt)}</td><td>${escapeHtml(a.reason || "—")}</td></tr>`).join("")}
+          ${(data.audit || []).map(a => `<tr><td>${escapeHtml(auditActionLabel(a.action))}</td><td>${formatDate(a.performedAt)}</td><td>${escapeHtml(a.reason || "—")}</td></tr>`).join("")}
         </tbody></table></div>` : '<div class="detail-row">لا يوجد سجل.</div>'}
       </section>
       <section class="detail-panel danger-zone span-3"><h3>الإجراءات الإدارية</h3>
@@ -919,9 +941,9 @@
       <td>${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : o.subscriptionStatus === "expiring" ? "warn" : "ok")}</td>
       <td>${formatDate(o.subscriptionExpiresAt)}</td>
       <td><div class="actions-inline">
-        <button type="button" class="btn link" data-detail="${escapeHtml(o.officeId)}">تفاصيل</button>
-        <button type="button" class="btn link" data-subscription="${escapeHtml(o.officeId)}">اشتراك</button>
-        <button type="button" class="btn link" data-license="${escapeHtml(o.officeId)}">ترخيص</button>
+        <button type="button" class="btn secondary" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>
+        <button type="button" class="btn secondary" data-subscription="${escapeHtml(o.officeId)}">تعديل الاشتراك</button>
+        <button type="button" class="btn secondary" data-license="${escapeHtml(o.officeId)}">تحديث الترخيص</button>
       </div></td>
     </tr>`;
   }
@@ -935,23 +957,23 @@
     const attention = list.filter(o =>
       ["expired", "expiring"].includes(o.subscriptionStatus) || ["expired", "expiring"].includes(o.licenseStatus)
     );
-    setMainContent(`<div class="page-head"><h2>الاشتراكات والتراخيص</h2></div>
+    setMainContent(`${pageHero("الاشتراكات والتراخيص", PAGE_SUBTITLES.subscriptions)}
       <section class="admin-card">
-        ${attention.length ? `<p class="detail-row" style="margin-bottom:8px;color:var(--warn)">${attention.length} مكتب يحتاج متابعة اشتراك/ترخيص</p>` : ""}
+        ${attention.length ? `<p class="detail-row" style="margin-bottom:16px;color:var(--warn)">${attention.length} مكتب يحتاج متابعة اشتراك/ترخيص</p>` : ""}
         <div class="table-wrap data-table-desktop">
           <table class="data-table" aria-label="الاشتراكات والتراخيص">
             <thead><tr><th>المكتب</th><th>الترخيص</th><th>انتهاء الترخيص</th><th>الاشتراك</th><th>انتهاء الاشتراك</th><th>إجراء</th></tr></thead>
             <tbody>${list.length ? list.map(subscriptionTableRow).join("") : `<tr><td colspan="6">${emptyState("لا توجد مكاتب معتمدة.")}</td></tr>`}</tbody>
           </table>
         </div>
-        <div class="mobile-card-list">${list.map(o => `<article class="mobile-row-card">
+        <div class="mobile-card-list">${list.map(o => `<article class="office-card">
           <h4>${escapeHtml(o.officeName)}</h4>
-          <div class="row-line">ترخيص: ${statusChip(labelFor(LICENSE_LABELS, o.licenseStatus), o.licenseStatus === "expired" ? "danger" : "warn")} · ${formatDate(o.falLicenseExpiresAt)}</div>
-          <div class="row-line">اشتراك: ${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : "warn")} · ${formatDate(o.subscriptionExpiresAt)}</div>
-          <div class="actions-inline">
-            <button type="button" class="btn link" data-detail="${escapeHtml(o.officeId)}">تفاصيل</button>
-            <button type="button" class="btn link" data-subscription="${escapeHtml(o.officeId)}">اشتراك</button>
-            <button type="button" class="btn link" data-license="${escapeHtml(o.officeId)}">ترخيص</button>
+          <div class="info-line"><strong>الترخيص:</strong> ${statusChip(labelFor(LICENSE_LABELS, o.licenseStatus), o.licenseStatus === "expired" ? "danger" : "warn")} · ${formatDate(o.falLicenseExpiresAt)}</div>
+          <div class="info-line"><strong>الاشتراك:</strong> ${statusChip(labelFor(SUBSCRIPTION_LABELS, o.subscriptionStatus), o.subscriptionStatus === "expired" ? "danger" : "warn")} · ${formatDate(o.subscriptionExpiresAt)}</div>
+          <div class="card-actions actions-inline">
+            <button type="button" class="btn primary block" data-detail="${escapeHtml(o.officeId)}">عرض التفاصيل</button>
+            <button type="button" class="btn secondary" data-subscription="${escapeHtml(o.officeId)}">تعديل الاشتراك</button>
+            <button type="button" class="btn secondary" data-license="${escapeHtml(o.officeId)}">تحديث الترخيص</button>
           </div>
         </article>`).join("") || emptyState("لا توجد مكاتب معتمدة.")}</div>
       </section>`);
@@ -964,7 +986,7 @@
     setMainContent(loadingHtml());
     const data = await api("/admin/audit-log?limit=150");
     const entries = data.entries || [];
-    setMainContent(`<div class="page-head"><h2>السجل الإداري</h2></div>
+    setMainContent(`${pageHero("السجل الإداري", PAGE_SUBTITLES.audit)}
       <section class="admin-card">
         <div class="table-wrap data-table-desktop">
           <table class="data-table" aria-label="السجل الإداري">
@@ -972,12 +994,7 @@
             <tbody>${entries.length ? entries.map(auditEntryHtml).join("") : `<tr><td colspan="5">${emptyState("لا يوجد سجل.")}</td></tr>`}</tbody>
           </table>
         </div>
-        <div class="mobile-card-list">${entries.map(e => `<article class="mobile-row-card">
-          <div class="audit-label">${escapeHtml(auditActionLabel(e.action))}</div>
-          <div class="audit-code">${escapeHtml(e.action)}</div>
-          <div class="row-line">مكتب: ${escapeHtml(e.officeId || "—")} · ${formatDate(e.performedAt)}</div>
-          <div class="row-line">${escapeHtml(e.reason || "")}</div>
-        </article>`).join("") || emptyState("لا يوجد سجل.")}</div>
+        <div class="mobile-card-list">${entries.map(auditMobileCard).join("") || emptyState("لا يوجد سجل.")}</div>
       </section>`);
   }
 
