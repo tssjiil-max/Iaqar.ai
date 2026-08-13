@@ -2,7 +2,9 @@
 /**
  * Staging admin console closure verification.
  * Uses existing platform-admin via custom token (no password printed).
+ * Creates temporary lifecycle test documents and removes them in finally.
  */
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +40,8 @@ const out = {
   NORMAL_OFFICE_BLOCKED: "FAIL",
   PUBLIC_BLOCKED: "FAIL",
   DUPLICATE_OFFICE: "PRESENT",
+  TEST_CLEANUP: "SKIPPED",
+  TEST_DATA_REMOVED: "SKIPPED",
   FCM_VAPID_FINDING: "",
   PRODUCTION_TOUCHED: "NO",
   FINAL_STATUS: "FAIL"
@@ -122,6 +126,138 @@ function tabLoads(res) {
   return res.status === 200 && res.payload.ok === true;
 }
 
+function normalizeLoginPhone(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = digits.slice(2);
+  if (digits.startsWith("966")) digits = digits.slice(3);
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  return /^5\d{8}$/.test(digits) ? `+966${digits}` : "";
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+async function firestoreDelete(accessToken, segments) {
+  const docPath = segments.map(encodeURIComponent).join("/");
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/${docPath}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return response.status === 200 || response.status === 404;
+}
+
+async function listCollectionDocs(accessToken, collectionPath) {
+  const docs = [];
+  let pageToken = "";
+  do {
+    const url = new URL(`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/${collectionPath}`);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) break;
+    const body = await response.json();
+    docs.push(...(body.documents || []));
+    pageToken = body.nextPageToken || "";
+  } while (pageToken);
+  return docs;
+}
+
+async function deleteOfficeSubcollections(accessToken, officeId) {
+  for (const sub of ["members", "adminNotes", "activityEvents", "activityRollup"]) {
+    const docs = await listCollectionDocs(accessToken, `offices/${officeId}/${sub}`);
+    for (const doc of docs) {
+      const id = String(doc.name || "").split("/").pop();
+      if (id) await firestoreDelete(accessToken, ["offices", officeId, sub, id]);
+    }
+  }
+}
+
+async function deleteAuditLogsForOffice(accessToken, officeId) {
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:runQuery`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "adminAuditLog" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "officeId" },
+              op: "EQUAL",
+              value: { stringValue: officeId }
+            }
+          }
+        }
+      })
+    }
+  );
+  if (!response.ok) return;
+  const rows = await response.json();
+  for (const row of rows) {
+    const name = row.document?.name;
+    if (!name) continue;
+    const rel = name.split("/documents/")[1];
+    if (!rel) continue;
+    await firestoreDelete(accessToken, rel.split("/"));
+  }
+}
+
+async function cleanupTestArtifacts(accessToken, artifacts) {
+  const { officeId, applicationId, testPhone, testApplicantUid } = artifacts;
+  if (!officeId || !accessToken) return { ok: false, reason: "missing officeId or access token" };
+  try {
+    if (testApplicantUid) {
+      await firestoreDelete(accessToken, ["offices", officeId, "members", testApplicantUid]);
+    }
+    await deleteOfficeSubcollections(accessToken, officeId);
+    await firestoreDelete(accessToken, ["offices", officeId]);
+    await firestoreDelete(accessToken, ["publicOffices", officeId]);
+    if (applicationId) await firestoreDelete(accessToken, ["brokerApplications", applicationId]);
+    const normalizedPhone = normalizeLoginPhone(testPhone);
+    if (normalizedPhone) {
+      await firestoreDelete(accessToken, ["loginDirectory", sha256Hex(normalizedPhone)]);
+    }
+    await deleteAuditLogsForOffice(accessToken, officeId);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error.message || String(error) };
+  }
+}
+
+async function reportLegacyTestArtifacts(idToken) {
+  const byPrefix = await api(idToken, `/admin/offices?tab=all&q=${encodeURIComponent(TEST_OFFICE_PREFIX)}`);
+  const byName = await api(idToken, `/admin/offices?tab=all&q=${encodeURIComponent("Admin Lifecycle Test")}`);
+  const seen = new Set();
+  const legacy = [];
+  for (const source of [byPrefix.payload.offices || [], byName.payload.offices || []]) {
+    for (const office of source) {
+      if (!office?.officeId || seen.has(office.officeId)) continue;
+      const isLifecycle =
+        String(office.officeId).startsWith(TEST_OFFICE_PREFIX) ||
+        office.officeName === "Admin Lifecycle Test" ||
+        office.licenseeName === "Closure Test Broker" ||
+        /^closure-\d+@iaqar-ai\.internal$/i.test(String(office.email || ""));
+      if (!isLifecycle) continue;
+      seen.add(office.officeId);
+      legacy.push({
+        collection: "offices",
+        documentId: office.officeId,
+        reason: "Created by verify-admin-staging-closure.mjs lifecycle fixture (prefix/name/email pattern)"
+      });
+    }
+  }
+  console.log("LEGACY_TEST_ARTIFACTS:");
+  if (!legacy.length) {
+    console.log("  (none detected via admin API)");
+    return;
+  }
+  for (const item of legacy) {
+    console.log(`  collection=${item.collection} documentId=${item.documentId} reason=${item.reason}`);
+  }
+}
+
 function assessActivity(office) {
   const s = office.activitySummary || office;
   const hasLogin = office.lastLoginAt != null && office.lastLoginAt !== "";
@@ -152,7 +288,20 @@ async function verifyRulesDeployed(serviceAccount) {
 }
 
 async function main() {
-  const { idToken, uid: adminUid, serviceAccount } = await getAdminIdToken();
+  const artifacts = {
+    officeId: null,
+    applicationId: null,
+    testPhone: null,
+    testApplicantUid: null
+  };
+  let accessToken = null;
+  let idToken = null;
+  let approveOk = false;
+
+  try {
+  const auth = await getAdminIdToken();
+  idToken = auth.idToken;
+  const { uid: adminUid, serviceAccount } = auth;
   out.ADMIN_LIVE_LOGIN = "PASS";
 
   out.RULES_STAGING_DEPLOYED = await verifyRulesDeployed(serviceAccount) ? "YES" : "NO";
@@ -181,13 +330,17 @@ async function main() {
   const allRes = await api(idToken, "/admin/offices?tab=all");
   out.ALL_OFFICES = tabLoads(allRes) && (allRes.payload.offices || []).length > 0 ? "PASS" : "FAIL";
 
-  const accessToken = await getAccessToken(serviceAccount);
+  accessToken = await getAccessToken(serviceAccount);
   const testOfficeId = `${TEST_OFFICE_PREFIX}${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
   const applicationId = `broker_closure_${Date.now()}`;
   const testPhone = `059${String(Date.now()).slice(-7)}`;
-  const testEmail = `closure-${Date.now()}@iaqar-ai.internal`;
   const testApplicantUid = `closure-applicant-${Date.now()}`;
   const now = new Date().toISOString();
+
+  artifacts.officeId = testOfficeId;
+  artifacts.applicationId = applicationId;
+  artifacts.testPhone = testPhone;
+  artifacts.testApplicantUid = testApplicantUid;
 
   await firestorePatch(accessToken, testOfficeId, {
     officeId: fsString(testOfficeId),
@@ -208,7 +361,7 @@ async function main() {
       fields: {
         brokerName: fsString("Closure Test Broker"),
         phone: fsString(testPhone),
-        email: fsString(testEmail),
+        email: fsString(`closure-${Date.now()}@iaqar-ai.internal`),
         falLicense: fsString("1234567890"),
         officeName: fsString("Admin Lifecycle Test"),
         officeId: fsString(testOfficeId),
@@ -227,7 +380,7 @@ async function main() {
   });
   const approvedAfter = await api(idToken, `/admin/offices?tab=approved&q=${encodeURIComponent(testOfficeId)}`);
   const approvedOffice = (approvedAfter.payload.offices || []).find(o => o.officeId === testOfficeId);
-  const approveOk = approveRes.status === 200 && approveRes.payload.ok && approvedOffice?.approvalStatus === "approved";
+  approveOk = approveRes.status === 200 && approveRes.payload.ok && approvedOffice?.approvalStatus === "approved";
 
   const suspendRes = await api(idToken, "/admin/office/action", {
     method: "POST",
@@ -368,6 +521,26 @@ async function main() {
   const allPass = critical.every(Boolean);
   const somePass = critical.some(Boolean);
   out.FINAL_STATUS = allPass ? "PASS" : somePass ? "PARTIAL" : "FAIL";
+
+  await reportLegacyTestArtifacts(idToken);
+  } finally {
+    if (accessToken && artifacts.officeId) {
+      const cleanup = await cleanupTestArtifacts(accessToken, artifacts);
+      out.TEST_CLEANUP = cleanup.ok ? "PASS" : `FAIL (${cleanup.reason})`;
+      if (idToken) {
+        const verify = await api(idToken, `/admin/offices?tab=all&q=${encodeURIComponent(artifacts.officeId)}`);
+        const remaining = (verify.payload.offices || []).filter(o => o.officeId === artifacts.officeId);
+        out.TEST_DATA_REMOVED = remaining.length === 0 ? "PASS" : "FAIL";
+        const appCheck = await fetch(
+          `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/brokerApplications/${artifacts.applicationId}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (appCheck.status !== 404) {
+          out.TEST_DATA_REMOVED = "FAIL";
+        }
+      }
+    }
+  }
 
   for (const [k, v] of Object.entries(out)) {
     console.log(`${k}: ${v}`);
