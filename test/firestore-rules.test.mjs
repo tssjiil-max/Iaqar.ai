@@ -170,6 +170,19 @@ test("TEST 4: server-only collections stay closed to clients", () => {
   assert.match(condensed(matchBlock("/whatsapp_accounts/{phoneNumberId}")), /allow read, write: if false/);
   assert.match(condensed(matchBlock("/_system/{document=**}")), /allow read, write: if false/);
   assert.match(condensed(matchBlock("/brokerApplications/{applicationId}")), /allow create: if false/);
+  assert.match(condensed(matchBlock("/brokerApplications/{applicationId}")), /allow read, update, delete: if isPlatformAdmin\(\)/);
+});
+
+test("platform admin audit logs are read-only for admins and immutable from clients", () => {
+  const block = condensed(matchBlock("/adminAuditLogs/{auditId}"));
+  assert.match(block, /allow read: if isPlatformAdmin\(\)/);
+  assert.match(block, /allow create, update, delete: if false/);
+});
+
+test("office activityEvents and adminNotes are restricted office collections", () => {
+  const helper = condensed(rules.slice(rules.indexOf("function isRestrictedOfficeCollection")));
+  assert.match(helper, /'activityEvents'/);
+  assert.match(helper, /'adminNotes'/);
 });
 
 test("TEST 4: the only world-readable collection is the public office projection", () => {

@@ -36,6 +36,10 @@ export class AdminApi {
   }
 
   overview() { return this.request("/admin/overview"); }
+  applications(params = {}) {
+    const query = new URLSearchParams(params);
+    return this.request(`/admin/applications?${query.toString()}`);
+  }
   offices(params = {}) {
     const query = new URLSearchParams(params);
     return this.request(`/admin/offices?${query.toString()}`);
@@ -60,6 +64,12 @@ export class AdminApi {
     return this.request("/admin/broker-applications/action", {
       method: "POST",
       body: JSON.stringify({ applicationId, action: "reject", reason })
+    });
+  }
+  reviewApplication(applicationId, reason = "") {
+    return this.request("/admin/broker-applications/action", {
+      method: "POST",
+      body: JSON.stringify({ applicationId, action: "under_review", reason })
     });
   }
   suspendOffice(officeId, reason) {
@@ -94,21 +104,35 @@ export class AdminApi {
   }
 }
 
-export const OFFICE_TABS = [
-  { id: "pending", label: "طلبات جديدة" },
+export const APPLICATION_TABS = [
+  { id: "pending", label: "بانتظار المراجعة" },
+  { id: "under_review", label: "قيد المراجعة" },
   { id: "approved", label: "المعتمدة" },
+  { id: "rejected", label: "المرفوضة" }
+];
+
+export const OFFICE_TABS = [
+  { id: "all", label: "كل المكاتب" },
+  { id: "approved", label: "المعتمدة" },
+  { id: "pending", label: "معلّقة" },
   { id: "suspended", label: "الموقوفة" },
-  { id: "expired", label: "المنتهية" },
   { id: "rejected", label: "المرفوضة" },
-  { id: "all", label: "كل المكاتب" }
+  { id: "active", label: "النشطة" },
+  { id: "inactive", label: "غير النشطة" },
+  { id: "license_expiring", label: "ترخيص ينتهي قريبًا" },
+  { id: "license_expired", label: "ترخيص منتهي" },
+  { id: "subscription_expiring", label: "اشتراك ينتهي قريبًا" },
+  { id: "subscription_expired", label: "اشتراك منتهي" },
+  { id: "expired", label: "منتهية" }
 ];
 
 export const MAIN_VIEWS = [
   { id: "overview", label: "نظرة عامة" },
-  { id: "offices", label: "إدارة المكاتب" },
-  { id: "activity", label: "نشاط المكاتب" },
-  { id: "billing", label: "الاشتراكات والتراخيص" },
-  { id: "audit", label: "السجل الإداري" }
+  { id: "applications", label: "طلبات التسجيل" },
+  { id: "offices", label: "المكاتب" },
+  { id: "activity", label: "النشاط" },
+  { id: "billing", label: "التراخيص والاشتراكات" },
+  { id: "audit", label: "سجل الإدارة" }
 ];
 
 export function formatDate(value) {

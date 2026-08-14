@@ -3,6 +3,7 @@
  */
 
 export const APPROVAL_STATUSES = Object.freeze(["pending", "approved", "rejected"]);
+export const APPLICATION_STATUSES = Object.freeze(["pending", "under_review", "approved", "rejected"]);
 export const ACCOUNT_STATUSES = Object.freeze(["active", "suspended"]);
 export const LICENSE_STATUSES = Object.freeze(["valid", "expiring", "expired", "unknown"]);
 export const SUBSCRIPTION_STATUSES = Object.freeze(["trial", "active", "expiring", "expired", "none"]);
@@ -11,6 +12,17 @@ export const ACTIVITY_LEVELS = Object.freeze({
   active: "نشط",
   low: "نشاط منخفض",
   inactive: "غير نشط"
+});
+
+/** Centralized activity / expiry thresholds — do not scatter magic numbers elsewhere. */
+export const ACTIVITY_CONFIG = Object.freeze({
+  LICENSE_EXPIRY_WARNING_DAYS: 30,
+  SUBSCRIPTION_EXPIRY_WARNING_DAYS: 30,
+  ACTIVE_ACTIVITY_DAYS: 7,
+  INACTIVE_ACTIVITY_DAYS: 30,
+  VERY_ACTIVE_PRODUCT_SCORE: 8,
+  ACTIVE_PRODUCT_SCORE: 3,
+  LOW_PRODUCT_SCORE: 1
 });
 
 const MS_DAY = 86400000;
@@ -45,16 +57,17 @@ export function resolveLicenseStatus(licenseExpiresAt, now = Date.now()) {
   if (!ms) return "unknown";
   const days = daysUntil(ms, now);
   if (days < 0) return "expired";
-  if (days <= 30) return "expiring";
+  if (days <= ACTIVITY_CONFIG.LICENSE_EXPIRY_WARNING_DAYS) return "expiring";
   return "valid";
 }
 
 export function resolveSubscriptionStatus(subscriptionStatus, subscriptionExpiresAt, now = Date.now()) {
   const raw = safeText(subscriptionStatus).toLowerCase();
+  const warningDays = ACTIVITY_CONFIG.SUBSCRIPTION_EXPIRY_WARNING_DAYS;
   if (SUBSCRIPTION_STATUSES.includes(raw) && raw !== "expiring") {
     if (raw === "active" || raw === "trial") {
       const ms = parseTimestamp(subscriptionExpiresAt);
-      if (ms && daysUntil(ms, now) <= 30 && daysUntil(ms, now) >= 0) return "expiring";
+      if (ms && daysUntil(ms, now) <= warningDays && daysUntil(ms, now) >= 0) return "expiring";
     }
     return raw;
   }
@@ -62,7 +75,7 @@ export function resolveSubscriptionStatus(subscriptionStatus, subscriptionExpire
   if (!ms) return "none";
   const days = daysUntil(ms, now);
   if (days < 0) return "expired";
-  if (days <= 30) return "expiring";
+  if (days <= warningDays) return "expiring";
   return raw === "trial" ? "trial" : "active";
 }
 
@@ -96,10 +109,22 @@ export function classifyActivityLevel(metrics = {}, now = Date.now()) {
   const lastActivityMs = parseTimestamp(metrics.lastActivityAt);
   const daysSinceActivity = lastActivityMs ? Math.floor((now - lastActivityMs) / MS_DAY) : null;
 
-  if (productScore >= 8) return "very_active";
-  if (productScore >= 3 || (daysSinceActivity != null && daysSinceActivity <= 7)) return "active";
-  if (productScore >= 1 || (daysSinceActivity != null && daysSinceActivity <= 30)) return "low";
+  if (productScore >= ACTIVITY_CONFIG.VERY_ACTIVE_PRODUCT_SCORE) return "very_active";
+  if (productScore >= ACTIVITY_CONFIG.ACTIVE_PRODUCT_SCORE ||
+    (daysSinceActivity != null && daysSinceActivity <= ACTIVITY_CONFIG.ACTIVE_ACTIVITY_DAYS)) return "active";
+  if (productScore >= ACTIVITY_CONFIG.LOW_PRODUCT_SCORE ||
+    (daysSinceActivity != null && daysSinceActivity <= ACTIVITY_CONFIG.INACTIVE_ACTIVITY_DAYS)) return "low";
   return "inactive";
+}
+
+export function isOfficeRecentlyActive(office = {}, now = Date.now()) {
+  const ms = parseTimestamp(office.lastActivityAt);
+  return Boolean(ms && now - ms <= ACTIVITY_CONFIG.ACTIVE_ACTIVITY_DAYS * MS_DAY);
+}
+
+export function isOfficeInactive(office = {}, now = Date.now()) {
+  const ms = parseTimestamp(office.lastActivityAt);
+  return !ms || now - ms > ACTIVITY_CONFIG.INACTIVE_ACTIVITY_DAYS * MS_DAY;
 }
 
 export function officeMatchesTab(office, tab) {
@@ -116,6 +141,18 @@ export function officeMatchesTab(office, tab) {
       return row.subscriptionStatus === "expired" || row.licenseStatus === "expired";
     case "rejected":
       return row.approvalStatus === "rejected";
+    case "active":
+      return row.approvalStatus === "approved" && row.accountStatus === "active" && isOfficeRecentlyActive(row);
+    case "inactive":
+      return row.approvalStatus === "approved" && row.accountStatus === "active" && isOfficeInactive(row);
+    case "license_expiring":
+      return row.licenseStatus === "expiring";
+    case "license_expired":
+      return row.licenseStatus === "expired";
+    case "subscription_expiring":
+      return row.subscriptionStatus === "expiring";
+    case "subscription_expired":
+      return row.subscriptionStatus === "expired";
     case "all":
       return row.officeId !== "platform";
     default:
@@ -126,7 +163,9 @@ export function officeMatchesTab(office, tab) {
 export function applicationMatchesTab(application, tab) {
   const status = safeText(application.status).toLowerCase();
   if (tab === "pending") return status === "pending";
+  if (tab === "under_review") return status === "under_review";
   if (tab === "rejected") return status === "rejected";
+  if (tab === "approved") return status === "approved";
   return false;
 }
 
@@ -172,16 +211,13 @@ export function buildOverviewCounts(offices = [], applications = [], now = Date.
   const officeRows = offices
     .map((row) => backfillOfficeRecord(row, now))
     .filter((row) => row.officeId && row.officeId !== "platform");
-  const pendingApps = applications.filter((row) => safeText(row.status).toLowerCase() === "pending");
+  const pendingApps = applications.filter((row) => {
+    const status = safeText(row.status).toLowerCase();
+    return status === "pending" || status === "under_review";
+  });
   const rejectedApps = applications.filter((row) => safeText(row.status).toLowerCase() === "rejected");
-  const active7d = officeRows.filter((row) => {
-    const ms = parseTimestamp(row.lastActivityAt);
-    return ms && now - ms <= 7 * MS_DAY;
-  }).length;
-  const inactive30d = officeRows.filter((row) => {
-    const ms = parseTimestamp(row.lastActivityAt);
-    return !ms || now - ms > 30 * MS_DAY;
-  }).length;
+  const active7d = officeRows.filter((row) => isOfficeRecentlyActive(row, now)).length;
+  const inactive30d = officeRows.filter((row) => isOfficeInactive(row, now)).length;
 
   return {
     totalOffices: officeRows.length,
@@ -189,8 +225,15 @@ export function buildOverviewCounts(offices = [], applications = [], now = Date.
     approvedOffices: officeRows.filter((row) => row.approvalStatus === "approved").length,
     activeAccounts: officeRows.filter((row) => row.accountStatus === "active").length,
     suspendedOffices: officeRows.filter((row) => row.accountStatus === "suspended").length,
-    expiredSubscriptions: officeRows.filter((row) => row.subscriptionStatus === "expired").length,
+    rejectedApplications: rejectedApps.length,
+    activeOffices: officeRows.filter((row) =>
+      row.approvalStatus === "approved" && row.accountStatus === "active" && isOfficeRecentlyActive(row, now)).length,
+    inactiveOffices: officeRows.filter((row) =>
+      row.approvalStatus === "approved" && row.accountStatus === "active" && isOfficeInactive(row, now)).length,
+    licensesExpiringSoon: officeRows.filter((row) => row.licenseStatus === "expiring").length,
     expiredLicenses: officeRows.filter((row) => row.licenseStatus === "expired").length,
+    subscriptionsExpiringSoon: officeRows.filter((row) => row.subscriptionStatus === "expiring").length,
+    expiredSubscriptions: officeRows.filter((row) => row.subscriptionStatus === "expired").length,
     activeLast7Days: active7d,
     inactiveLast30Days: inactive30d
   };

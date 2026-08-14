@@ -82,6 +82,7 @@ import {
   handleAdminAuditLog,
   handleAdminLicenseUpdate,
   handleAdminNoteAdd,
+  handleAdminApplications,
   handleAdminOfficeActivity,
   handleAdminOfficeDetail,
   handleAdminOffices,
@@ -427,6 +428,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/admin/broker-applications/action") {
         return await decideBrokerApplication(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/applications") {
+        return await handleAdminApplications(request, url, env, requestId, getAdminHelpers());
       }
 
       if (request.method === "GET" && url.pathname === "/admin/overview") {
@@ -966,7 +971,7 @@ async function listBrokerApplications(request, env, requestId) {
   const applications = docs.map(doc => {
     const data = firestoreFieldsToJs(doc.fields || {});
     return { id: String(doc.name || "").split("/").pop(), ...data };
-  }).filter(item => item.status === "pending");
+  }).filter(item => ["pending", "under_review"].includes(cleanText(item.status, 40).toLowerCase()));
   return jsonResponse({ ok: true, applications, requestId });
 }
 
@@ -977,7 +982,7 @@ async function decideBrokerApplication(request, env, requestId) {
   const applicationId = cleanText(body.applicationId, 120);
   const action = cleanText(body.action, 20);
   const officeId = normalizeOfficeId(body.officeId);
-  if (!applicationId || !["approve", "reject"].includes(action)) {
+  if (!applicationId || !["approve", "reject", "under_review"].includes(action)) {
     throw appError("decision_invalid", 400, "قرار الطلب غير صالح");
   }
   if (action === "approve" && (!officeId || officeId === "platform")) {
@@ -989,7 +994,12 @@ async function decideBrokerApplication(request, env, requestId) {
     projectId, segments: ["brokerApplications", applicationId], accessToken
   });
   const application = firestoreFieldsToJs(applicationDoc.fields || {});
-  if (application.status !== "pending") throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
+  const currentStatus = cleanText(application.status, 40).toLowerCase();
+  if (action === "under_review") {
+    if (currentStatus !== "pending") throw appError("already_decided", 409, "لا يمكن وضع الطلب قيد المراجعة في حالته الحالية");
+  } else if (!["pending", "under_review"].includes(currentStatus)) {
+    throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
+  }
   const now = new Date();
   if (action === "approve") {
     const normalizedPhone = normalizeLoginPhone(application.phone);
@@ -1058,13 +1068,41 @@ async function decideBrokerApplication(request, env, requestId) {
       }
     });
   }
+  if (action === "under_review") {
+    await setFirestoreDocument({
+      projectId, segments: ["brokerApplications", applicationId], accessToken,
+      fields: {
+        status: firestoreString("under_review"),
+        reviewStartedAt: firestoreTimestamp(now),
+        reviewedByUid: firestoreString(admin.sub),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    const auditId = `aud_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
+    await setFirestoreDocument({
+      projectId,
+      segments: ["adminAuditLogs", auditId],
+      accessToken,
+      fields: {
+        officeId: firestoreString(""),
+        action: firestoreString("application_under_review"),
+        performedBy: firestoreString(admin.sub),
+        performedAt: firestoreTimestamp(now),
+        reason: firestoreString(cleanText(body.reason, 500)),
+        beforeJson: firestoreString(JSON.stringify(application)),
+        afterJson: firestoreString(JSON.stringify({ applicationId, status: "under_review" }))
+      }
+    });
+    return jsonResponse({ ok: true, applicationId, status: "under_review", requestId });
+  }
   await setFirestoreDocument({
     projectId, segments: ["brokerApplications", applicationId], accessToken,
     fields: {
       status: firestoreString(action === "approve" ? "approved" : "rejected"),
       officeId: firestoreOptionalString(action === "approve" ? officeId : ""),
       decidedAt: firestoreTimestamp(now),
-      decidedByUid: firestoreString(admin.sub)
+      decidedByUid: firestoreString(admin.sub),
+      updatedAt: firestoreTimestamp(now)
     }
   });
   const adminHelpers = getAdminHelpers();
@@ -1075,7 +1113,7 @@ async function decideBrokerApplication(request, env, requestId) {
     accessToken,
     fields: {
       officeId: firestoreString(action === "approve" ? officeId : ""),
-      action: firestoreString(action === "approve" ? "office_approved" : "office_rejected"),
+      action: firestoreString(action === "approve" ? "office_approved" : "application_rejected"),
       performedBy: firestoreString(admin.sub),
       performedAt: firestoreTimestamp(now),
       reason: firestoreString(cleanText(body.reason, 500)),
@@ -1096,7 +1134,13 @@ async function decideBrokerApplication(request, env, requestId) {
       metadata: { applicationId, approvedBy: admin.sub }
     }).catch(() => {});
   }
-  return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
+  return jsonResponse({
+    ok: true,
+    applicationId,
+    status: action === "approve" ? "approved" : "rejected",
+    officeId: action === "approve" ? officeId : "",
+    requestId
+  });
 }
 
 async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId }) {
