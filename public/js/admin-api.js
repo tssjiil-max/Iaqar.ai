@@ -50,6 +50,13 @@ export class AdminApi {
     const query = new URLSearchParams(params);
     return this.request(`/admin/audit-log?${query.toString()}`);
   }
+  activityList(params = {}) {
+    const query = new URLSearchParams(params);
+    return this.request(`/admin/activity?${query.toString()}`);
+  }
+  backfillOffices() {
+    return this.request("/admin/migrate/backfill-offices", { method: "POST", body: "{}" });
+  }
   approveApplication(applicationId, officeId) {
     return this.request("/admin/broker-applications/action", {
       method: "POST",
@@ -102,6 +109,13 @@ export const OFFICE_TABS = [
   { id: "rejected", label: "المرفوضة" },
   { id: "all", label: "كل المكاتب" }
 ];
+
+export const ACTIVITY_LEVEL_LABELS = {
+  very_active: "نشط جدًا",
+  active: "نشط",
+  low: "نشاط منخفض",
+  inactive: "غير نشط"
+};
 
 export const MAIN_VIEWS = [
   { id: "overview", label: "نظرة عامة" },
