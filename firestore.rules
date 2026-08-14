@@ -26,7 +26,8 @@ service cloud.firestore {
       return collectionName in [
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
-        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library'
+        'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
+        'activityEvents', 'adminNotes'
       ];
     }
     function validOfficeProfile() {
@@ -211,6 +212,18 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      // أحداث نشاط المكتب — للإدارة فقط، والكتابة عبر Worker.
+      match /activityEvents/{eventId} {
+        allow read: if isPlatformAdmin();
+        allow create, update, delete: if false;
+      }
+
+      // ملاحظات إدارية — للإدارة فقط، والكتابة عبر Worker.
+      match /adminNotes/{noteId} {
+        allow read: if isPlatformAdmin();
+        allow create, update, delete: if false;
+      }
+
       // سجلات العملاء/الملاك (المرحلة 8): قراءة الأعضاء — الكتابة عبر Worker فقط.
       match /clients/{clientId} {
         allow read: if isOfficeMember(officeId);
@@ -288,6 +301,11 @@ service cloud.firestore {
     match /brokerApplications/{applicationId} {
       allow create: if false;
       allow read, update, delete: if isPlatformAdmin();
+    }
+
+    match /adminAuditLogs/{auditId} {
+      allow read: if isPlatformAdmin();
+      allow create, update, delete: if false;
     }
 
 

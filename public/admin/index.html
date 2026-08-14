@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>لوحة إدارة IAQAR.AI</title>
+  <link rel="icon" href="/icons/icon-192.png">
+  <style>
+    :root {
+      --bg: #f4f8f6;
+      --card: #fff;
+      --line: #dce8e4;
+      --text: #173d35;
+      --muted: #687c76;
+      --brand: #087064;
+      --accent: #128c7e;
+      --danger: #9e3434;
+      --ok: #07634f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tajawal, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100svh;
+    }
+    .shell { max-width: 960px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(8, 112, 100, 0.05);
+    }
+    h1, h2 { color: var(--brand); margin: 0 0 8px; }
+    p { color: var(--muted); line-height: 1.7; margin: 0 0 12px; }
+    .nav {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      margin-bottom: 12px;
+    }
+    .nav button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--brand);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: 700 14px Tajawal;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .nav button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: 800 15px Tajawal;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      width: 100%;
+    }
+    .btn.secondary { background: #fff; color: var(--brand); border: 1.5px solid var(--accent); }
+    .btn.danger { background: #fff0f0; color: var(--danger); border: 1px solid #f0c7c7; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: #f8fcfa;
+    }
+    .stat strong { display: block; font-size: 24px; color: var(--brand); }
+    .stat span { font-size: 13px; color: var(--muted); }
+    .toolbar { display: grid; gap: 8px; margin-bottom: 12px; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      font: 500 15px Tajawal;
+      background: #fff;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .tabs button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font: 700 13px Tajawal;
+      cursor: pointer;
+    }
+    .tabs button.active { background: #eaf7f3; color: var(--brand); }
+    .list-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+    .list-item h3 { margin: 0 0 6px; font-size: 16px; color: var(--brand); }
+    .meta { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eaf7f3;
+      color: var(--brand);
+      margin-left: 6px;
+    }
+    .status { display: none; margin-top: 10px; padding: 10px; border-radius: 12px; font-size: 14px; }
+    .status.show { display: block; }
+    .status.err { background: #fff0f0; color: var(--danger); }
+    .status.ok { background: #e8f7f2; color: var(--ok); }
+    .hidden { display: none !important; }
+    .row-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell" id="app">
+    <div class="card" id="loginCard">
+      <h1>لوحة إدارة IAQAR.AI</h1>
+      <p>دخول مخصص لمدير المنصة فقط.</p>
+      <form id="loginForm" class="toolbar">
+        <input name="email" type="email" autocomplete="username" placeholder="البريد الإلكتروني" required>
+        <input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required>
+        <button class="btn" type="submit">دخول الإدارة</button>
+      </form>
+      <div id="status" class="status"></div>
+    </div>
+    <div id="console" class="hidden">
+      <div class="card">
+        <h1>لوحة إدارة IAQAR.AI</h1>
+        <p id="adminUserLine">مرحبًا</p>
+        <div class="nav" id="mainNav"></div>
+        <button class="btn secondary" id="logoutBtn" type="button">تسجيل الخروج</button>
+      </div>
+      <div id="viewRoot"></div>
+      <div id="consoleStatus" class="status"></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"></script>
+  <script src="/__/firebase/init.js"></script>
+  <script src="/js/runtime-config.js"></script>
+  <script type="module" src="/js/admin-console.js"></script>
+</body>
+</html>
