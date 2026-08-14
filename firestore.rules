@@ -91,6 +91,11 @@ service cloud.firestore {
           allow read, create: if isOfficeMember(officeId);
           allow update, delete: if canManage(officeId);
         }
+
+        match /communications/{communicationId} {
+          allow read, create: if isOfficeMember(officeId);
+          allow update, delete: if canManage(officeId);
+        }
       }
     }
 
