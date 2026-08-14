@@ -204,6 +204,103 @@ export function countRecentByCreatedAt(items, days, now = Date.now()) {
   }).length;
 }
 
+export function buildMigrationPatch(office = {}, now = Date.now()) {
+  const officeId = safeText(office.officeId || office.id);
+  if (!officeId || officeId === "platform") return null;
+  const patch = { officeId };
+  const approvalStatus = safeText(office.approvalStatus).toLowerCase();
+  if (!APPROVAL_STATUSES.includes(approvalStatus)) patch.approvalStatus = "approved";
+  const accountStatus = safeText(office.accountStatus).toLowerCase();
+  if (!ACCOUNT_STATUSES.includes(accountStatus)) patch.accountStatus = "active";
+  const subscriptionStatus = safeText(office.subscriptionStatus).toLowerCase();
+  if (!SUBSCRIPTION_STATUSES.includes(subscriptionStatus)) {
+    patch.subscriptionStatus = resolveSubscriptionStatus("", office.subscriptionExpiresAt, now);
+  }
+  const licenseStatus = safeText(office.licenseStatus).toLowerCase();
+  if (!LICENSE_STATUSES.includes(licenseStatus)) {
+    patch.licenseStatus = resolveLicenseStatus(office.licenseExpiresAt, now);
+  }
+  if (!office.registeredAt && office.createdAt) patch.registeredAt = office.createdAt;
+  if (!office.approvedAt && patch.approvalStatus === "approved" && office.createdAt) {
+    patch.approvedAt = office.createdAt;
+  }
+  return Object.keys(patch).length > 1 ? patch : null;
+}
+
+export function bumpActivitySummaryCounters(summary = {}, eventType) {
+  const next = { ...summary };
+  const bump = (key) => { next[key] = Number(next[key] || 0) + 1; };
+  switch (eventType) {
+    case "login":
+      bump("loginCount7d");
+      bump("loginCount30d");
+      break;
+    case "opportunity_created":
+      bump("opportunitiesCreated7d");
+      bump("opportunitiesCreated30d");
+      break;
+    case "match_reviewed":
+      bump("matchesReviewed30d");
+      break;
+    case "operation_completed":
+      bump("completedOperations30d");
+      break;
+    case "public_owner_submission":
+      bump("publicOwnerSubmissions30d");
+      break;
+    case "public_client_submission":
+      bump("publicClientSubmissions30d");
+      break;
+    default:
+      break;
+  }
+  return next;
+}
+
+export function activityLevelFromSummary(summary = {}, now = Date.now()) {
+  return classifyActivityLevel({
+    opportunities7d: summary.opportunitiesCreated7d,
+    operationsCompleted7d: summary.completedOperations30d,
+    matchReviews7d: summary.matchesReviewed30d,
+    publicOwnerSubmissions7d: summary.publicOwnerSubmissions30d,
+    publicClientSubmissions7d: summary.publicClientSubmissions30d,
+    lastActivityAt: summary.lastActivityAt
+  }, now);
+}
+
+export function matchesActivityLevelFilter(level, filter) {
+  if (!filter) return true;
+  return safeText(level).toLowerCase() === safeText(filter).toLowerCase();
+}
+
+export function buildActivityListRow(office = {}, now = Date.now()) {
+  const row = backfillOfficeRecord(office, now);
+  let summary = {};
+  if (office.activitySummary && typeof office.activitySummary === "object") {
+    summary = office.activitySummary;
+  } else if (office.activitySummaryJson && typeof office.activitySummaryJson === "string") {
+    try {
+      summary = JSON.parse(office.activitySummaryJson);
+    } catch (_) {
+      summary = {};
+    }
+  }
+  const activityLevel = summary.activityLevel || activityLevelFromSummary({
+    ...summary,
+    lastActivityAt: row.lastActivityAt
+  }, now);
+  return {
+    officeId: row.officeId,
+    officeName: row.officeName,
+    city: row.city,
+    lastLoginAt: row.lastLoginAt || summary.lastLoginAt || null,
+    lastActivityAt: row.lastActivityAt || summary.lastActivityAt || null,
+    activityLevel,
+    opportunities30d: Number(summary.opportunitiesCreated30d || 0),
+    completedOperations30d: Number(summary.completedOperations30d || 0)
+  };
+}
+
 export function buildActivitySummary({
   office = {},
   opportunities = [],

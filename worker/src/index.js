@@ -78,8 +78,11 @@ import {
   validateVoiceAudio
 } from "./gemini-voice-service.js";
 import {
+  assertOfficeAccountActive,
   createAdminHelpers,
+  handleAdminActivityList,
   handleAdminAuditLog,
+  handleAdminBackfillOffices,
   handleAdminLicenseUpdate,
   handleAdminNoteAdd,
   handleAdminOfficeActivity,
@@ -467,6 +470,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/admin/office/note") {
         return await handleAdminNoteAdd(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/activity") {
+        return await handleAdminActivityList(request, url, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/migrate/backfill-offices") {
+        return await handleAdminBackfillOffices(request, env, requestId, getAdminHelpers());
       }
 
       if (request.method === "GET" && url.pathname === "/fcm/config") {
@@ -983,6 +994,10 @@ async function decideBrokerApplication(request, env, requestId) {
   if (action === "approve" && (!officeId || officeId === "platform")) {
     throw appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   }
+  if (action === "reject") {
+    const reason = cleanText(body.reason, 500);
+    if (reason.length < 4) throw appError("reason_required", 400, "يلزم ذكر سبب الرفض");
+  }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const applicationDoc = await getFirestoreDocument({
@@ -1064,7 +1079,12 @@ async function decideBrokerApplication(request, env, requestId) {
       status: firestoreString(action === "approve" ? "approved" : "rejected"),
       officeId: firestoreOptionalString(action === "approve" ? officeId : ""),
       decidedAt: firestoreTimestamp(now),
-      decidedByUid: firestoreString(admin.sub)
+      decidedByUid: firestoreString(admin.sub),
+      ...(action === "reject" ? {
+        rejectionReason: firestoreString(cleanText(body.reason, 500)),
+        rejectedAt: firestoreTimestamp(now),
+        rejectedBy: firestoreString(admin.sub)
+      } : {})
     }
   });
   const adminHelpers = getAdminHelpers();
@@ -1147,6 +1167,11 @@ async function handlePhoneLoginResolve(request, env, requestId) {
   const accessToken = await getGoogleAccessToken(env);
   const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
   if (lookup.error) return lookup.error;
+  await assertOfficeAccountActive(getAdminHelpers(), {
+    projectId,
+    accessToken,
+    officeId: normalizeOfficeId(lookup.directory.officeId)
+  });
   return jsonResponse({
     ok: true,
     loginEmail: lookup.loginEmail,
@@ -1177,6 +1202,11 @@ async function handlePhoneLogin(request, env, requestId) {
     if (typeof errorResponse.json === "function") return errorResponse;
     throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
   }
+  await assertOfficeAccountActive(getAdminHelpers(), {
+    projectId,
+    accessToken,
+    officeId: normalizeOfficeId(lookup.directory.officeId)
+  });
   const directory = lookup.directory;
   const loginEmail = lookup.loginEmail;
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
@@ -1414,6 +1444,21 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   if (matches.length > 0) {
     await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
   }
+  const adminHelpers = getAdminHelpers();
+  await recordAdminActivityEvent(adminHelpers, {
+    projectId,
+    accessToken,
+    officeId,
+    eventType: targetCollection === "owners" ? "public_owner_submission" : "public_client_submission",
+    metadata: { intakeId, opportunityId, source: "public_intake" }
+  }).catch(() => {});
+  await recordAdminActivityEvent(adminHelpers, {
+    projectId,
+    accessToken,
+    officeId,
+    eventType: "opportunity_created",
+    metadata: { opportunityId, source: "public_intake" }
+  }).catch(() => {});
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
     kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null, requestId
@@ -3748,9 +3793,12 @@ function getAdminHelpers() {
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,
+    firestoreBoolean,
     firestoreDocumentUrl,
     cleanText,
     normalizeOfficeId,
+    normalizeLoginPhone,
+    sha256Hex,
     appError,
     jsonResponse,
     DEFAULT_PROJECT_ID
