@@ -30,7 +30,8 @@ test("buildMigrationPatch is idempotent and never fabricates dates", () => {
     accountStatus: "active",
     subscriptionStatus: "trial",
     licenseStatus: "valid",
-    createdAt: "2026-01-01T00:00:00.000Z"
+    createdAt: "2026-01-01T00:00:00.000Z",
+    registeredAt: "2026-01-01T00:00:00.000Z"
   };
   assert.equal(buildMigrationPatch(office), null);
   const legacy = { officeId: "office-b", createdAt: "2026-01-01T00:00:00.000Z" };
@@ -105,7 +106,7 @@ test("activityLevelFromSummary uses product metrics", () => {
     completedOperations30d: 1,
     lastActivityAt: "2026-08-13T00:00:00.000Z"
   }, Date.parse("2026-08-14T00:00:00.000Z"));
-  assert.equal(level, "active");
+  assert.equal(level, "very_active");
 });
 
 test("buildActivityListRow attributes metrics to officeId", () => {
@@ -134,7 +135,7 @@ test("sortOffices supports registration and activity ordering", () => {
 });
 
 test("approval preserves officeId without duplicate semantics in migration patch", () => {
-  const patch = buildMigrationPatch({ officeId: "same-id", approvalStatus: "approved" });
+  const patch = buildMigrationPatch({ officeId: "same-id", approvalStatus: "approved", accountStatus: "active", subscriptionStatus: "none", licenseStatus: "unknown" });
   assert.equal(patch, null);
   const pendingPatch = buildMigrationPatch({ officeId: "same-id" });
   assert.equal(pendingPatch.officeId, "same-id");

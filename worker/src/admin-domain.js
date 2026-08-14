@@ -275,9 +275,16 @@ export function matchesActivityLevelFilter(level, filter) {
 
 export function buildActivityListRow(office = {}, now = Date.now()) {
   const row = backfillOfficeRecord(office, now);
-  const summary = office.activitySummary && typeof office.activitySummary === "object"
-    ? office.activitySummary
-    : {};
+  let summary = {};
+  if (office.activitySummary && typeof office.activitySummary === "object") {
+    summary = office.activitySummary;
+  } else if (office.activitySummaryJson && typeof office.activitySummaryJson === "string") {
+    try {
+      summary = JSON.parse(office.activitySummaryJson);
+    } catch (_) {
+      summary = {};
+    }
+  }
   const activityLevel = summary.activityLevel || activityLevelFromSummary({
     ...summary,
     lastActivityAt: row.lastActivityAt
