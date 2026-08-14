@@ -3,6 +3,13 @@
  * Stages: normalize → structured extract (value/evidence/confidence) → validate → resolve conflicts.
  */
 
+import {
+  extractAnnualRentAmount,
+  extractBudgetAmount,
+  extractMonetaryAmount,
+  normalizeArabicMagnitudeNumber
+} from "./arabic-magnitude.js";
+
 export const CONFIDENCE_AUTO_FILL = 0.85;
 
 export const ACCEPTANCE_FIXTURE_TEXT = `🏡 شقة للإيجار | حي السلام
@@ -161,9 +168,16 @@ function extractPropertyTypeCandidates(text, title, firstSent) {
       for (const pat of rule.patterns) {
         const m = src.chunk.match(pat);
         if (m) {
+          let label = rule.type;
+          if (rule.type === "أرض") {
+            const extended = src.chunk.slice(m.index).match(
+              /^أرض(?:\s+(?:تجارية|استثمارية|سكنية|زراعية|صناعية|خام|مزرعة|سكنيه|تجاريه|استثماريه))+?/i
+            );
+            if (extended) label = extended[0].trim();
+          }
           candidates.push({
             field: "propertyType",
-            ...makeField(rule.type, m[0], src.confidence),
+            ...makeField(label, m[0], src.confidence),
             source: src.label
           });
           break;
@@ -277,6 +291,10 @@ function extractDistrict(text) {
 }
 
 function extractSalePrice(text) {
+  const magnitude = extractMonetaryAmount(text);
+  if (magnitude?.amount != null && magnitude.amount > 0) {
+    return makeField(magnitude.amount, magnitude.evidence, 0.97);
+  }
   const abbreviated = text.match(/المطلوب\s+([\d][\d,،]*)\s*الف/i);
   if (abbreviated) {
     const base = parseNumberToken(abbreviated[1]);
@@ -304,11 +322,18 @@ function extractSalePrice(text) {
 }
 
 function extractBudget(text) {
+  const magnitude = extractBudgetAmount(text);
+  if (magnitude?.amount != null && magnitude.amount > 0) {
+    return makeField(magnitude.amount, magnitude.evidence, 0.96);
+  }
   const labeled = text.match(
     /(?:الميزانية|ميزانية|حد\s*الشراء|بحدود)\s*[:：]?\s*([\d][\d,،.\s\u066C]*)\s*(?:ريال|ر\.?\s?س)?/i
   );
   if (!labeled) return emptyField();
-  const amount = parseNumberToken(String(labeled[1]).replace(/[.,](?=\d{3})/g, ""));
+  const amount = normalizeArabicMagnitudeNumber(
+    parseNumberToken(String(labeled[1]).replace(/[.,](?=\d{3})/g, "")),
+    { fieldKind: "money" }
+  );
   return amount != null && amount > 0 ? makeField(amount, labeled[0], 0.96) : emptyField();
 }
 
@@ -354,6 +379,10 @@ function extractAnnualRent(text) {
   if (rentM && /دفعتين|دفعات?|سنوي/i.test(text)) {
     return makeField(parseNumberToken(rentM[1]), rentM[0], 0.94);
   }
+  const magnitude = extractAnnualRentAmount(text);
+  if (magnitude?.amount != null && magnitude.amount > 0) {
+    return makeField(magnitude.amount, magnitude.evidence, 0.98);
+  }
   return emptyField();
 }
 
@@ -384,6 +413,14 @@ function extractArea(text) {
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 20 && n <= 200000) {
       return makeField(n, labeled[0], 0.94);
+    }
+  }
+  const possessive = text.match(/مساحتها\s+([\d]{2,6}(?:[.,]\d+)?)/i);
+  if (possessive) {
+    const raw = String(possessive[1]).replace(",", ".");
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 20 && n <= 200000) {
+      return makeField(n, possessive[0], 0.93);
     }
   }
   const decimal = text.match(/([\d]{1,5}(?:[.,]\d+)?)\s*(?:م2|م²|متر\s*مربع|متر)/i);

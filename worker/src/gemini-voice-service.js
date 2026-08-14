@@ -2,6 +2,8 @@
  * Gemini voice analysis — server-side only. No API keys in the browser.
  */
 
+import { applyMonetaryNormalization, normalizeArabicMagnitudeNumber } from "../../public/js/arabic-magnitude.js";
+
 const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -110,7 +112,7 @@ function buildVoiceSystemPrompt(context = "office") {
     "Never guess city, district, price, rooms, phone, or property type.",
     "If uncertain, use null and include the field name in needsReview (array of field names).",
     "Do not convert vague ranges like '500 or 600 thousand' into a single number without including the price field in needsReview.",
-    "Normalize Saudi prices to integer riyals when clearly stated (e.g. 580 thousand -> 580000).",
+    "Normalize Saudi prices to integer riyals when clearly stated (e.g. 50 million -> 50000000, 580 thousand -> 580000, مليون ونصف -> 1500000).",
     "transactionType values: sale, rent, purchase, lease_request, investment (Arabic equivalents allowed in output).",
     "advertiserRole values when stated: OWNER, CLIENT, BROKER, UNKNOWN."
   ].join("\n");
@@ -141,6 +143,12 @@ function sanitizeGeminiPayload(raw = {}) {
       continue;
     }
     if (["salePrice", "annualRent", "budget", "area", "rooms", "bathrooms", "floorNumber", "streetWidth"].includes(key)) {
+      if (typeof value === "string" && /مليون|مليار|ألف|الف|خمس|عشر/i.test(value)) {
+        const fieldKind = key === "area" || key === "streetWidth" ? "plain" : "money";
+        const parsed = normalizeArabicMagnitudeNumber(value, { fieldKind });
+        out[key] = parsed;
+        continue;
+      }
       const num = Number(value);
       out[key] = Number.isFinite(num) ? num : null;
       continue;
@@ -179,7 +187,7 @@ function parseGeminiJsonResponse(responseJson) {
     if (!match) throw new Error("TRANSCRIPTION_EXTRACTION_FAILED");
     parsed = JSON.parse(match[0]);
   }
-  return sanitizeGeminiPayload(parsed);
+  return applyMonetaryNormalization(sanitizeGeminiPayload(parsed), "");
 }
 
 export function bytesToBase64(bytes) {

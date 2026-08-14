@@ -157,7 +157,7 @@ test("sale-land Review shows sale price only and hides rent/building fields", as
 
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
     assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "sale");
-    assert.equal(context.document.querySelector('[name="propertyTypeId"]').value, "land");
+    assert.equal(context.document.querySelector('[name="propertyType"]').value, "أرض");
     assert.equal(context.document.querySelector('[name="salePrice"]').value, "1600000");
     for (const name of [
       "annualRent",
@@ -231,7 +231,7 @@ test("unknown transaction asks first, then reshapes Review immediately", async (
     assert.equal(context.document.querySelector('[name="salePrice"]'), null);
     assert.equal(context.document.querySelector('[name="annualRent"]'), null);
     assert.equal(
-      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
+      context.document.querySelector('[data-field="propertyType"]').style.display,
       "none"
     );
     assert.ok(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed="true"]'));
@@ -247,9 +247,9 @@ test("unknown transaction asks first, then reshapes Review immediately", async (
     assert.ok(context.document.querySelector('[name="salePrice"]'));
     assert.equal(context.document.querySelector('[name="annualRent"]'), null);
     assert.equal(context.document.querySelector('[name="rooms"]'), null);
-    assert.equal(context.document.querySelector('[data-field="propertyTypeId"] [data-review-needed]'), null);
+    assert.equal(context.document.querySelector('[data-field="propertyType"] [data-review-needed]'), null);
     assert.equal(
-      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
+      context.document.querySelector('[data-field="propertyType"]').style.display,
       ""
     );
   } finally {
@@ -264,7 +264,7 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     input.value = "أرض للبيع في الرياض حي النرجس، المساحة 500 م² السعر المطلوب 600000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.equal(context.document.querySelector('[name="city"]').value, "الرياض");
 
     input.value = "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
@@ -272,8 +272,8 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
 
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "المدينة المنورة");
-    assert.notEqual(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.equal(context.document.querySelector('[name="city"]').value, "المدينة المنورة");
+    assert.notEqual(context.document.querySelector('[name="city"]').value, "الرياض");
     assert.match(module.__test.getIntakeContext().listingText, /المدينة المنورة/);
   } finally {
     context.close();

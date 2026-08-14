@@ -240,23 +240,17 @@ export function reviewTransactionMode(operationId) {
   return "unknown";
 }
 
+function safeTrim(v) {
+  return String(v == null ? "" : v).trim();
+}
+
 export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta = {}) {
   const text = String(sourceText || "");
   const extended = meta.extended || extractionFields.extended || {};
   const op = matchOperationType(extractionFields, text);
   const propertyLabel = safeTrim(extractionFields.propertyType || extended.propertyType);
-  const property = propertyLabel ? matchPropertyType(propertyLabel) : null;
   const cityLabel = safeTrim(extractionFields.city);
-  const city = cityLabel ? matchCity(cityLabel) : null;
   const districtLabel = safeTrim(extractionFields.district || extended.district);
-  const cityIdForDistrict = city?.id || "madinah";
-  const district = districtLabel
-    ? matchDistrict(districtLabel, cityIdForDistrict)
-    : null;
-  // Unmatched extracted district → "حي آخر" so the broker can confirm/edit before save.
-  const unmatchedDistrictManual = !district && districtLabel
-    ? districtLabel.split(/\s+/).slice(0, 4).join(" ").trim()
-    : "";
 
   const mode = reviewTransactionMode(op?.id || "");
   const legacyValue = extractionFields.priceOrBudget ?? "";
@@ -267,12 +261,9 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
 
   return {
     operationTypeId: op?.id || "",
-    propertyTypeId: property?.id || (propertyLabel ? "other" : ""),
-    propertyTypeManual: property ? "" : propertyLabel,
-    cityId: city?.id || "",
-    cityManual: city ? "" : cityLabel,
-    districtId: district?.id || (unmatchedDistrictManual ? DISTRICT_OTHER_ID : ""),
-    districtManual: district ? "" : unmatchedDistrictManual,
+    propertyType: propertyLabel,
+    city: cityLabel,
+    district: districtLabel,
     salePrice: salePrice === "" || salePrice == null ? "" : salePrice,
     annualRent: annualRent === "" || annualRent == null ? "" : annualRent,
     monthlyRent: extended.monthlyRent ?? "",
@@ -302,22 +293,25 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
   };
 }
 
-function safeTrim(v) {
-  return String(v == null ? "" : v).trim();
+export function normalizeCityLabel(raw = "") {
+  const label = safeTrim(raw);
+  if (!label) return "";
+  const matched = matchCity(label);
+  return matched?.label || label;
+}
+
+export function isLandPropertyLabel(value = "") {
+  return /أرض|ارض/.test(safeTrim(value));
 }
 
 export function reviewValuesToBrokerFields(review) {
-  const op = OPERATION_TYPES.find((o) => o.id === review.operationTypeId);
-  const property = PROPERTY_TYPES.find((p) => p.id === review.propertyTypeId);
-  const city = CITIES.find((c) => c.id === review.cityId);
-  const district = DISTRICTS.find((d) => d.id === review.districtId);
-
   const broker = mapOperationToBrokerFields(
     review.operationTypeId,
     review.extractedSnapshot?.opportunityKind
   );
   const mode = reviewTransactionMode(review.operationTypeId);
-  const isLand = review.propertyTypeId === "land" || property?.label === "أرض";
+  const propertyType = safeTrim(review.propertyType);
+  const isLand = isLandPropertyLabel(propertyType);
   const salePrice = mode === "sale" && review.salePrice !== "" && review.salePrice != null
     ? Number(review.salePrice)
     : null;
@@ -350,19 +344,18 @@ export function reviewValuesToBrokerFields(review) {
           ? investmentValue
           : null;
 
-  let propertyType = property?.label || "";
-  if (review.propertyTypeId === "other") propertyType = safeTrim(review.propertyTypeManual);
-  let cityName = city?.label || "";
-  if (review.cityId === "other") cityName = safeTrim(review.cityManual);
-  let districtName = district?.officialName || "";
-  if (review.districtId === DISTRICT_OTHER_ID || !districtName) {
-    districtName = safeTrim(review.districtManual);
-  }
+  const cityName = normalizeCityLabel(review.city);
+  const districtName = safeTrim(review.district);
+  const matchedProperty = matchPropertyType(propertyType);
+  const matchedCity = matchCity(cityName);
+  const matchedDistrict = districtName
+    ? matchDistrict(districtName, matchedCity?.id || "madinah")
+    : null;
 
   return {
     ...broker,
     propertyType,
-    city: cityName === "مدينة أخرى" ? safeTrim(review.cityManual) : cityName,
+    city: cityName,
     district: districtName,
     salePrice,
     annualRent,
@@ -378,9 +371,9 @@ export function reviewValuesToBrokerFields(review) {
       ? null
       : Number(review.paymentInstallments),
     reviewOperationTypeId: review.operationTypeId,
-    reviewPropertyTypeId: review.propertyTypeId,
-    reviewCityId: review.cityId,
-    reviewDistrictId: review.districtId === DISTRICT_OTHER_ID ? "" : review.districtId,
+    reviewPropertyTypeId: matchedProperty?.id || (propertyType ? "other" : ""),
+    reviewCityId: matchedCity?.id || (cityName ? "other" : ""),
+    reviewDistrictId: matchedDistrict?.id || (districtName ? DISTRICT_OTHER_ID : ""),
     extractedSnapshot: review.extractedSnapshot || null
   };
 }

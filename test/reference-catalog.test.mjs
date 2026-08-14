@@ -44,17 +44,17 @@ test("buildReviewDefaults maps extracted fields when confident", () => {
     district: "العزيزية"
   }, "عرض للبيع شقة في حي العزيزية المدينة المنورة");
   assert.equal(defaults.operationTypeId, "sale");
-  assert.equal(defaults.propertyTypeId, "apartment");
-  assert.equal(defaults.cityId, "madinah");
-  assert.ok(defaults.districtId && defaults.districtId !== DISTRICT_OTHER_ID);
+  assert.equal(defaults.propertyType, "شقة");
+  assert.equal(defaults.city, "المدينة المنورة");
+  assert.equal(defaults.district, "العزيزية");
 });
 
 test("reference catalog maps review numeric fields", () => {
   const broker = reviewValuesToBrokerFields({
     operationTypeId: "sale",
-    propertyTypeId: "apartment",
-    cityId: "madinah",
-    districtId: DISTRICTS[0].id,
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: DISTRICTS[0].officialName,
     salePrice: "1200000",
     annualRent: "22000",
     area: "180",
@@ -84,9 +84,9 @@ test("review defaults and broker fields keep sale and rent values separate", () 
 
   const rent = reviewValuesToBrokerFields({
     operationTypeId: "rent",
-    propertyTypeId: "apartment",
-    cityId: "madinah",
-    districtId: DISTRICTS.find((item) => item.officialName === "السلام").id,
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "السلام",
     salePrice: "1600000",
     annualRent: "22000",
     monthlyRent: "",
@@ -108,9 +108,9 @@ test("review defaults and broker fields keep sale and rent values separate", () 
 test("land review never carries room, bathroom, or floor values", () => {
   const land = reviewValuesToBrokerFields({
     operationTypeId: "sale",
-    propertyTypeId: "land",
-    cityId: "madinah",
-    districtId: DISTRICTS.find((item) => item.officialName === "الرانوناء").id,
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "الرانوناء",
     salePrice: "580000",
     area: "431.75",
     rooms: "4",
@@ -138,9 +138,9 @@ test("unknown operation does not assign a generic amount to sale, rent, or budge
 
   const broker = reviewValuesToBrokerFields({
     operationTypeId: "",
-    propertyTypeId: "apartment",
-    cityId: "madinah",
-    districtId: DISTRICTS[0].id,
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: DISTRICTS[0].officialName,
     salePrice: "900000",
     annualRent: "900000",
     budget: "900000"
@@ -151,7 +151,7 @@ test("unknown operation does not assign a generic amount to sale, rent, or budge
   assert.equal(broker.priceOrBudget, null);
 });
 
-test("unmatched extracted district opens as حي آخر with short manual name", () => {
+test("unmatched extracted district keeps free-text district label", () => {
   const defaults = buildReviewDefaults({
     purpose: "SALE",
     opportunityKind: "OFFER",
@@ -159,8 +159,7 @@ test("unmatched extracted district opens as حي آخر with short manual name",
     city: "المدينة المنورة",
     district: "العوالي"
   }, "أرض للبيع حي العوالي");
-  assert.equal(defaults.districtId, DISTRICT_OTHER_ID);
-  assert.equal(defaults.districtManual, "العوالي");
+  assert.equal(defaults.district, "العوالي");
 });
 
 test("filterDistrictOptions always keeps حي آخر even under the item cap", () => {

@@ -3,15 +3,10 @@
  */
 
 import {
-  CITIES,
-  DISTRICT_OTHER_ID,
-  DISTRICTS,
   OPERATION_TYPES,
-  PROPERTY_TYPES,
   buildReviewDefaults,
-  districtsForCity,
   filterBySearch,
-  filterDistrictOptions,
+  isLandPropertyLabel,
   reviewTransactionMode,
   reviewValuesToBrokerFields
 } from "./reference-catalog.js";
@@ -199,12 +194,9 @@ function renderReviewForm(defaults) {
       ? `<p class="review-extracted">مستخرَج: ${escapeHtml(snapshotLines.join(" — "))}</p>` : ""}
     <form id="opportunityReviewForm" class="review-form" autocomplete="off">
       ${searchField("operationTypeId", reviewLabel("transactionType", "نوع العملية", needs), OPERATION_TYPES, defaults.operationTypeId, "label")}
-      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label")}
-      ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
-      ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
-      ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
-      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
-      ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+      ${textField("propertyType", reviewLabel("propertyType", "نوع العقار", needs), defaults.propertyType)}
+      ${textField("city", reviewLabel("city", "المدينة", needs), defaults.city)}
+      ${textField("district", reviewLabel("district", "الحي", needs), defaults.district)}
       <div id="reviewTransactionFields" style="display:contents"></div>
       <div id="reviewPropertyFields" style="display:contents"></div>
       ${renderAdvertiserSection(defaults)}
@@ -298,13 +290,10 @@ function readAdvertiserForm() {
 function currentReviewPropertyLabels() {
   const form = $("opportunityReviewForm");
   if (!form) return {};
-  const propertyTypeInput = form.querySelector('[data-search-for="propertyTypeId"]');
-  const districtInput = form.querySelector('[data-search-for="districtId"]');
-  const cityInput = form.querySelector('[data-search-for="cityId"]');
   return {
-    propertyType: propertyTypeInput?.value || activeDraft?.fields?.propertyType || "",
-    district: districtInput?.value || activeDraft?.fields?.district || "",
-    city: cityInput?.value || activeDraft?.fields?.city || ""
+    propertyType: form.querySelector('[name="propertyType"]')?.value || activeDraft?.fields?.propertyType || "",
+    district: form.querySelector('[name="district"]')?.value || activeDraft?.fields?.district || "",
+    city: form.querySelector('[name="city"]')?.value || activeDraft?.fields?.city || ""
   };
 }
 
@@ -371,40 +360,24 @@ function wireAdvertiserMessageModal() {
   });
 }
 
-function districtOptions(cityId) {
-  const list = districtsForCity(cityId || "madinah");
-  return [
-    ...list,
-    {
-      id: DISTRICT_OTHER_ID,
-      officialName: "حي آخر / غير موجود في القائمة",
-      label: "حي آخر / غير موجود في القائمة"
-    }
-  ];
+function textField(name, label, value) {
+  return `
+    <label class="review-field" data-field="${name}">
+      <span>${label}</span>
+      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="120">
+    </label>
+  `;
 }
 
-function searchField(name, label, items, selectedId, labelKey = "label", districtManual = "") {
+function searchField(name, label, items, selectedId, labelKey = "label") {
   const selected = items.find((i) => i.id === selectedId);
-  const display = selected
-    ? escapeHtml(selected[labelKey] || selected.label || "")
-    : (name === "districtId" && selectedId === DISTRICT_OTHER_ID
-      ? "حي آخر / غير موجود في القائمة"
-      : "");
+  const display = selected ? escapeHtml(selected[labelKey] || selected.label || "") : "";
   return `
     <label class="search-field" data-field="${name}">
       <span>${label}</span>
       <input type="text" class="search-select-input" data-search-for="${name}" placeholder="ابحث أو اختر…" value="${display}">
       <input type="hidden" name="${name}" value="${escapeHtml(selectedId || "")}">
       <ul class="search-select-list" data-list-for="${name}" hidden></ul>
-    </label>
-  `;
-}
-
-function manualField(name, label, value, visible) {
-  return `
-    <label class="review-manual" data-manual-for="${name.replace("Manual", "Id")}" ${visible ? "" : "hidden"}>
-      <span>${label}</span>
-      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80">
     </label>
   `;
 }
@@ -424,17 +397,11 @@ function wireSearchFields(root) {
     const field = input.dataset.searchFor;
     const list = root.querySelector(`[data-list-for="${field}"]`);
     const hidden = root.querySelector(`input[name="${field}"]`);
-    const items = field === "districtId"
-      ? districtOptions(root.querySelector('input[name="cityId"]')?.value || "madinah")
-      : field === "operationTypeId" ? OPERATION_TYPES
-        : field === "propertyTypeId" ? PROPERTY_TYPES
-          : CITIES;
+    const items = field === "operationTypeId" ? OPERATION_TYPES : [];
 
     const render = (query = "") => {
-      const labelKey = field === "districtId" ? "officialName" : "label";
-      const filtered = field === "districtId"
-        ? filterDistrictOptions(query, items, 40)
-        : filterBySearch(query, items, labelKey).slice(0, 40);
+      const labelKey = "label";
+      const filtered = filterBySearch(query, items, labelKey).slice(0, 40);
       list.innerHTML = filtered.map((item) =>
         `<li><button type="button" data-pick-id="${escapeHtml(item.id)}" data-pick-label="${escapeHtml(item[labelKey] || item.label || "")}">${escapeHtml(item[labelKey] || item.label || "")}</button></li>`
       ).join("");
@@ -449,21 +416,11 @@ function wireSearchFields(root) {
     list.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-pick-id]");
       if (!btn) return;
-      const typedQuery = String(input.value || "").trim();
       hidden.value = btn.dataset.pickId || "";
       input.value = btn.dataset.pickLabel || "";
-      if (field === "districtId" && btn.dataset.pickId === DISTRICT_OTHER_ID) {
-        const manual = root.querySelector('[name="districtManual"]');
-        if (manual && !String(manual.value || "").trim()) {
-          const looksLikeOtherLabel = /حي\s*آخر|غير موجود/.test(typedQuery);
-          if (typedQuery && !looksLikeOtherLabel) manual.value = typedQuery.slice(0, 80);
-        }
-      }
       input.closest("label")?.querySelector("[data-review-needed]")?.remove();
       list.hidden = true;
-      syncManualVisibility(root);
-      if (field === "cityId") refreshDistrictField(root);
-      if (field === "operationTypeId" || field === "propertyTypeId") {
+      if (field === "operationTypeId") {
         syncReviewConditionalVisibility(root);
       }
     });
@@ -489,20 +446,16 @@ function captureDynamicReviewValues(root) {
 function renderDynamicReviewFields(root, defaults = {}) {
   captureDynamicReviewValues(root);
   const operationId = root.querySelector('input[name="operationTypeId"]')?.value || "";
-  const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value || "";
+  const propertyText = root.querySelector('[name="propertyType"]')?.value || "";
   const mode = reviewTransactionMode(operationId);
   const needs = defaults.needsReview || activeDraft?.needsReview || activeDraft?.fields?.needsReview || {};
   const transactionFields = root.querySelector("#reviewTransactionFields");
   const propertyFields = root.querySelector("#reviewPropertyFields");
   const awaitingTransaction = mode === "unknown";
-  for (const fieldName of ["propertyTypeId", "cityId", "districtId"]) {
+  for (const fieldName of ["propertyType", "city", "district"]) {
     const field = root.querySelector(`[data-field="${fieldName}"]`);
     if (field) field.style.display = awaitingTransaction ? "none" : "";
   }
-  root.querySelectorAll(".review-manual").forEach((field) => {
-    if (awaitingTransaction) field.style.display = "none";
-    else field.style.removeProperty("display");
-  });
   const advertiserSection = root.querySelector(".review-advertiser-card");
   if (advertiserSection) advertiserSection.style.display = awaitingTransaction ? "none" : "";
 
@@ -559,7 +512,7 @@ function renderDynamicReviewFields(root, defaults = {}) {
     const fields = [
       numericField("area", reviewLabel("area", "المساحة (م²)", needs), activeReviewValues.area)
     ];
-    if (propertyId && propertyId !== "land") {
+    if (!isLandPropertyLabel(propertyText)) {
       fields.push(numericField(
         "rooms",
         reviewLabel("rooms", "عدد الغرف", needs),
@@ -580,42 +533,17 @@ function renderDynamicReviewFields(root, defaults = {}) {
   }
 }
 
-function refreshDistrictField(root) {
-  const districtInput = root.querySelector('[data-search-for="districtId"]');
-  const districtHidden = root.querySelector('input[name="districtId"]');
-  if (districtInput) districtInput.value = "";
-  if (districtHidden) districtHidden.value = "";
-  const list = root.querySelector('[data-list-for="districtId"]');
-  if (list) list.innerHTML = "";
-  syncManualVisibility(root);
-}
-
-function syncManualVisibility(root) {
-  const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value;
-  const cityId = root.querySelector('input[name="cityId"]')?.value;
-  const districtId = root.querySelector('input[name="districtId"]')?.value;
-  const propManual = root.querySelector('[data-manual-for="propertyTypeId"]');
-  const cityManual = root.querySelector('[data-manual-for="cityId"]');
-  const distManual = root.querySelector('[data-manual-for="districtId"]');
-  if (propManual) propManual.hidden = propertyId !== "other";
-  if (cityManual) cityManual.hidden = cityId !== "other";
-  if (distManual) distManual.hidden = districtId !== DISTRICT_OTHER_ID;
-}
-
 function readReviewForm() {
   const form = $("opportunityReviewForm");
   if (!form) return null;
   const data = Object.fromEntries(new FormData(form).entries());
   const mode = reviewTransactionMode(data.operationTypeId || "");
-  const land = data.propertyTypeId === "land";
+  const land = isLandPropertyLabel(data.propertyType || "");
   return {
     operationTypeId: data.operationTypeId || "",
-    propertyTypeId: data.propertyTypeId || "",
-    propertyTypeManual: data.propertyTypeManual || "",
-    cityId: data.cityId || "",
-    cityManual: data.cityManual || "",
-    districtId: data.districtId || "",
-    districtManual: data.districtManual || "",
+    propertyType: data.propertyType || "",
+    city: data.city || "",
+    district: data.district || "",
     salePrice: mode === "sale" ? (data.salePrice || "") : "",
     annualRent: mode === "rent" ? (data.annualRent || "") : "",
     monthlyRent: mode === "rent" ? (data.monthlyRent || "") : "",
@@ -648,18 +576,8 @@ async function submitReview() {
   const review = readReviewForm();
   if (!review) return;
   if (!review.operationTypeId) return setReviewStatus("اختر نوع العملية", true);
-  if (!review.propertyTypeId) return setReviewStatus("اختر نوع العقار", true);
-  if (review.propertyTypeId === "other" && !review.propertyTypeManual.trim()) {
-    return setReviewStatus("اكتب نوع العقار", true);
-  }
-  if (!review.cityId) return setReviewStatus("اختر المدينة", true);
-  if (review.cityId === "other" && !review.cityManual.trim()) {
-    return setReviewStatus("اكتب المدينة", true);
-  }
-  if (!review.districtId) return setReviewStatus("اختر الحي", true);
-  if (review.districtId === DISTRICT_OTHER_ID && !review.districtManual.trim()) {
-    return setReviewStatus("اكتب اسم الحي", true);
-  }
+  if (!review.propertyType.trim()) return setReviewStatus("اكتب نوع العقار", true);
+  if (!review.city.trim()) return setReviewStatus("اكتب المدينة", true);
 
   const approveBtn = $("opportunityReviewApprove");
   if (approveBtn) {

@@ -8,6 +8,7 @@ import {
   normalizeDigits,
   safeText
 } from "./opportunity-intake-domain.js";
+import { applyMonetaryNormalization, normalizeArabicMagnitudeNumber } from "./arabic-magnitude.js";
 import { buildReviewDefaults } from "./reference-catalog.js";
 
 export const VOICE_MAX_DURATION_MS = 120_000;
@@ -53,6 +54,11 @@ export function normalizeGeminiVoicePayload(raw = {}) {
       continue;
     }
     if (["salePrice", "annualRent", "budget", "area", "rooms", "bathrooms", "floorNumber", "streetWidth"].includes(key)) {
+      if (typeof value === "string" && /مليون|مليار|ألف|الف|خمس|عشر/i.test(value)) {
+        const parsed = normalizeArabicMagnitudeNumber(value, { fieldKind: key === "area" || key === "streetWidth" || key === "plotNumber" ? "plain" : "money" });
+        out[key] = parsed;
+        continue;
+      }
       const num = Number(normalizeDigits(value).replace(/,/g, ""));
       out[key] = Number.isFinite(num) ? num : null;
       continue;
@@ -76,35 +82,37 @@ function inferPurposeAndKind(transactionType = "", context = "office") {
   return { purpose: "SALE", opportunityKind: context === "client" ? "REQUEST" : "OFFER" };
 }
 
-export function mapGeminiToOpportunityFields(structured = {}, { context = "office" } = {}) {
+export function mapGeminiToOpportunityFields(structured = {}, { context = "office", sourceText = "" } = {}) {
   const payload = normalizeGeminiVoicePayload(structured);
-  const { purpose, opportunityKind } = inferPurposeAndKind(payload.transactionType, context);
-  const propertyType = payload.propertyType || "";
+  const monetary = applyMonetaryNormalization(payload, sourceText || buildVoiceSummaryText(structured));
+  const normalizedPayload = { ...payload, ...monetary };
+  const { purpose, opportunityKind } = inferPurposeAndKind(normalizedPayload.transactionType, context);
+  const propertyType = normalizedPayload.propertyType || "";
   const land = isLandProperty(propertyType);
-  const priceOrBudget = payload.salePrice ?? payload.annualRent ?? payload.budget ?? null;
+  const priceOrBudget = normalizedPayload.salePrice ?? normalizedPayload.annualRent ?? normalizedPayload.budget ?? null;
 
   const fields = {
     opportunityKind,
     purpose,
     propertyType,
-    city: payload.city || "",
-    district: payload.district || "",
-    salePrice: payload.salePrice,
-    annualRent: payload.annualRent,
-    budget: payload.budget,
+    city: normalizedPayload.city || "",
+    district: normalizedPayload.district || "",
+    salePrice: normalizedPayload.salePrice,
+    annualRent: normalizedPayload.annualRent,
+    budget: normalizedPayload.budget,
     priceOrBudget,
-    area: payload.area,
-    rooms: land ? null : payload.rooms,
-    bathrooms: land ? null : payload.bathrooms,
-    floorNumber: land ? null : payload.floorNumber,
-    streetWidth: payload.streetWidth,
-    direction: payload.direction,
-    planNumber: payload.planNumber,
-    plotNumber: payload.plotNumber,
-    advertiserPhoneRaw: payload.advertiserPhone || "",
-    advertiserPhoneNormalized: payload.advertiserPhone || "",
-    advertiserRole: payload.advertiserRole || (context === "owner" ? "OWNER" : context === "client" ? "CLIENT" : "UNKNOWN"),
-    contactNotes: payload.description || ""
+    area: normalizedPayload.area,
+    rooms: land ? null : normalizedPayload.rooms,
+    bathrooms: land ? null : normalizedPayload.bathrooms,
+    floorNumber: land ? null : normalizedPayload.floorNumber,
+    streetWidth: normalizedPayload.streetWidth,
+    direction: normalizedPayload.direction,
+    planNumber: normalizedPayload.planNumber,
+    plotNumber: normalizedPayload.plotNumber,
+    advertiserPhoneRaw: normalizedPayload.advertiserPhone || "",
+    advertiserPhoneNormalized: normalizedPayload.advertiserPhone || "",
+    advertiserRole: normalizedPayload.advertiserRole || (context === "owner" ? "OWNER" : context === "client" ? "CLIENT" : "UNKNOWN"),
+    contactNotes: normalizedPayload.description || ""
   };
   return mergeBrokerProvidedFields({}, fields);
 }
@@ -124,9 +132,11 @@ export function buildVoiceSummaryText(structured = {}) {
   ].filter(Boolean).join(" | ").slice(0, 500);
 }
 
-export function createVoiceExtractionAdapter(structured = {}, { context = "office" } = {}) {
-  const fields = mapGeminiToOpportunityFields(structured, { context });
+export function createVoiceExtractionAdapter(structured = {}, { context = "office", sourceText = "" } = {}) {
+  const summary = sourceText || buildVoiceSummaryText(structured);
+  const fields = mapGeminiToOpportunityFields(structured, { context, sourceText: summary });
   const payload = normalizeGeminiVoicePayload(structured);
+  const monetary = applyMonetaryNormalization(payload, summary);
   return {
     extract: async () => ({
       fields,
@@ -134,9 +144,9 @@ export function createVoiceExtractionAdapter(structured = {}, { context = "offic
         transactionType: payload.transactionType,
         propertyType: payload.propertyType,
         district: payload.district,
-        salePrice: payload.salePrice,
-        annualRent: payload.annualRent,
-        budget: payload.budget,
+        salePrice: monetary.salePrice ?? payload.salePrice,
+        annualRent: monetary.annualRent ?? payload.annualRent,
+        budget: monetary.budget ?? payload.budget,
         area: payload.area,
         rooms: fields.rooms,
         bathrooms: fields.bathrooms,

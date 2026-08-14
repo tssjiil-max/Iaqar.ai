@@ -40,13 +40,12 @@ test("RANONA land regression — review defaults and matching payload", async ()
 
   const defaults = buildReviewDefaults(fields, RANONA_LAND_REGRESSION_FIXTURE_TEXT, { extended: ext });
   assert.equal(defaults.operationTypeId, "sale");
-  assert.equal(defaults.propertyTypeId, "land");
-  assert.equal(defaults.cityId, "madinah");
-  assert.ok(defaults.districtId);
+  assert.equal(defaults.propertyType, "أرض");
+  assert.equal(defaults.city, "المدينة المنورة");
+  assert.equal(defaults.district, "الرانوناء");
   assert.equal(defaults.priceOrBudget, 580000);
   assert.equal(defaults.area, 431.75);
-  assert.notEqual(defaults.cityId, "riyadh");
-  assert.notEqual(defaults.cityManual, "الرياض");
+  assert.notEqual(defaults.city, "الرياض");
 
   const adapter = createExtractionAdapter();
   const prepared = await prepareOpportunityIntake({
@@ -121,6 +120,15 @@ test("simulated screenshot fixture does not inject الرياض as city default"
   });
   assert.notEqual(extraction.fields.city, "الرياض");
   assert.equal(extraction.fields.city, "");
+});
+
+test("50 million sale price in text extraction", () => {
+  const parsed = extractArabicOpportunityText(
+    "أرض تجارية استثمارية للبيع\nالمدينة المنورة\nمساحتها 50000\nالمطلوب 50 مليون\nجوال 0552019909"
+  );
+  assert.equal(parsed.publicShape.salePrice, 50_000_000);
+  assert.equal(parsed.publicShape.area, 50000);
+  assert.match(parsed.publicShape.propertyType || "", /أرض/);
 });
 
 test("review gate rejects الرياض paired with Medina district names", () => {
