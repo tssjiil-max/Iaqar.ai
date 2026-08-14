@@ -2,7 +2,7 @@
  * Gemini voice analysis — server-side only. No API keys in the browser.
  */
 
-const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
