@@ -107,18 +107,41 @@ function reviewLabel(name, label, needsReview) {
     : label;
 }
 
+function reviewContextFromDraft() {
+  const fields = activeDraft?.fields || {};
+  return {
+    purpose: fields.purpose || activeDraft?.prepared?.opportunity?.purpose || "",
+    opportunityKind: fields.opportunityKind || activeDraft?.prepared?.opportunity?.opportunityKind || ""
+  };
+}
+
 function renderAdvertiserSection(defaults) {
+  const savedPhone = defaults.advertiserPhoneNormalized || "";
   const primary = advertiserCandidates.length === 1 ? advertiserCandidates[0] : null;
-  const localPhone = primary ? e164ToLocalInput(primary.advertiserPhoneNormalized) : "";
-  const roleOptions = ADVERTISER_ROLES.map((r) =>
-    `<option value="${r.id}" ${r.id === "UNKNOWN" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
-  const contactOptions = ADVERTISER_CONTACT_STATUSES.map((r) =>
-    `<option value="${r.id}" ${r.id === "NOT_CONTACTED" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
-  const marketingOptions = MARKETING_CONSENT_STATUSES.map((r) =>
-    `<option value="${r.id}" ${r.id === "NOT_STARTED" ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
+  const localPhone = savedPhone
+    ? e164ToLocalInput(savedPhone)
+    : (primary ? e164ToLocalInput(primary.advertiserPhoneNormalized) : "");
+  const savedRole = String(defaults.advertiserRole || "").trim();
+  const roleOptions = ADVERTISER_ROLES.map((r) => {
+    const selected = savedRole
+      ? r.id === savedRole
+      : r.id === "UNKNOWN";
+    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
+  }).join("");
+  const savedContact = String(defaults.advertiserContactStatus || "").trim();
+  const contactOptions = ADVERTISER_CONTACT_STATUSES.map((r) => {
+    const selected = savedContact
+      ? r.id === savedContact
+      : r.id === "NOT_CONTACTED";
+    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
+  }).join("");
+  const savedMarketing = String(defaults.marketingConsentStatus || "").trim();
+  const marketingOptions = MARKETING_CONSENT_STATUSES.map((r) => {
+    const selected = savedMarketing
+      ? r.id === savedMarketing
+      : r.id === "NOT_STARTED";
+    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
+  }).join("");
   const multiPick = advertiserCandidates.length > 1
     ? `<div class="advertiser-phone-multi">
         <span>تم العثور على ${advertiserCandidates.length} أرقام — اختر للمراجعة:</span>
@@ -167,7 +190,10 @@ function renderReviewForm(defaults) {
   const body = $("opportunityReviewBody");
   if (!body) return;
   const needs = defaults.needsReview || {};
-  const mode = reviewTransactionMode(defaults.operationTypeId);
+  const mode = reviewTransactionMode(defaults.operationTypeId, {
+    purpose: defaults.extractedSnapshot?.purpose || activeDraft?.fields?.purpose || "",
+    opportunityKind: defaults.extractedSnapshot?.opportunityKind || activeDraft?.fields?.opportunityKind || ""
+  });
   activeReviewValues = {
     salePrice: defaults.salePrice,
     annualRent: defaults.annualRent,
@@ -490,7 +516,8 @@ function renderDynamicReviewFields(root, defaults = {}) {
   captureDynamicReviewValues(root);
   const operationId = root.querySelector('input[name="operationTypeId"]')?.value || "";
   const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value || "";
-  const mode = reviewTransactionMode(operationId);
+  const ctx = reviewContextFromDraft();
+  const mode = reviewTransactionMode(operationId, ctx);
   const needs = defaults.needsReview || activeDraft?.needsReview || activeDraft?.fields?.needsReview || {};
   const transactionFields = root.querySelector("#reviewTransactionFields");
   const propertyFields = root.querySelector("#reviewPropertyFields");
@@ -540,7 +567,11 @@ function renderDynamicReviewFields(root, defaults = {}) {
         fields.push(numericField("monthlyRent", "الإيجار الشهري (ريال)", activeReviewValues.monthlyRent));
       }
     } else if (mode === "budget") {
-      fields.push(numericField("budget", "الميزانية (ريال)", activeReviewValues.budget));
+      fields.push(numericField(
+        "budget",
+        reviewLabel("budget", "الميزانية (ريال)", needs),
+        activeReviewValues.budget
+      ));
     } else if (mode === "investment") {
       fields.push(numericField(
         "investmentValue",
@@ -606,7 +637,8 @@ function readReviewForm() {
   const form = $("opportunityReviewForm");
   if (!form) return null;
   const data = Object.fromEntries(new FormData(form).entries());
-  const mode = reviewTransactionMode(data.operationTypeId || "");
+  const ctx = reviewContextFromDraft();
+  const mode = reviewTransactionMode(data.operationTypeId || "", ctx);
   const land = data.propertyTypeId === "land";
   return {
     operationTypeId: data.operationTypeId || "",

@@ -28,7 +28,7 @@ function hasAppropriatePrice(fields = {}) {
     return Number(fields.annualRent ?? legacy) > 0;
   }
   if (purpose === "PURCHASE" || purpose === "LEASE_REQUEST") {
-    return Number(fields.budget ?? legacy) > 0;
+    return Number(fields.budget ?? fields.annualRent ?? legacy) > 0;
   }
   if (purpose === "INVESTMENT") {
     return Number(legacy) > 0;
