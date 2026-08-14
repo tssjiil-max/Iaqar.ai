@@ -1,11 +1,19 @@
-import { AdminApi, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
+import { AdminApi, APPLICATION_TABS, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
+import {
+  createAdminFrame,
+  currentAdminFrame,
+  popAdminFrame,
+  pushAdminFrame,
+  resolveAdminBackAction,
+  shouldShowAdminBack
+} from "./admin-navigation-domain.js";
 
 const state = {
-  view: "overview",
-  officeTab: "pending",
+  navStack: [createAdminFrame("overview")],
+  officeTab: "all",
+  applicationTab: "pending",
   search: "",
   sort: "registered_desc",
-  selectedOfficeId: "",
   activityOfficeId: ""
 };
 
@@ -18,7 +26,8 @@ const els = {
   mainNav: document.getElementById("mainNav"),
   viewRoot: document.getElementById("viewRoot"),
   adminUserLine: document.getElementById("adminUserLine"),
-  logoutBtn: document.getElementById("logoutBtn")
+  logoutBtn: document.getElementById("logoutBtn"),
+  adminBackBtn: document.getElementById("adminBackBtn")
 };
 
 const api = new AdminApi(async () => {
@@ -26,6 +35,31 @@ const api = new AdminApi(async () => {
   if (!user) throw new Error("auth_required");
   return user.getIdToken();
 });
+
+function currentView() {
+  return currentAdminFrame(state.navStack).view;
+}
+
+function navigateToView(view, extras = {}) {
+  state.navStack = [createAdminFrame(view, extras)];
+  renderChrome();
+  return renderView();
+}
+
+function openDetail(view, extras = {}) {
+  state.navStack = pushAdminFrame(state.navStack, createAdminFrame(view, extras));
+  renderChrome();
+  return renderView();
+}
+
+function handleAdminBack() {
+  const action = resolveAdminBackAction(state.navStack);
+  if (!action) return;
+  const result = popAdminFrame(state.navStack);
+  state.navStack = result.stack;
+  renderChrome();
+  return renderView();
+}
 
 function showStatus(node, message, ok = false) {
   if (!node || !message) {
@@ -50,17 +84,20 @@ async function ensurePlatformAdmin(user) {
   throw new Error("admin_required");
 }
 
-function renderMainNav() {
+function renderChrome() {
+  const view = currentView();
   els.mainNav.innerHTML = MAIN_VIEWS.map((item) =>
-    `<button type="button" data-view="${item.id}" class="${state.view === item.id ? "active" : ""}">${item.label}</button>`
+    `<button type="button" data-view="${item.id}" class="${view === item.id ? "active" : ""}">${item.label}</button>`
   ).join("");
   els.mainNav.querySelectorAll("button").forEach((button) => {
     button.onclick = () => {
-      state.view = button.dataset.view;
-      renderMainNav();
-      renderView().catch((error) => showStatus(els.consoleStatus, error.message));
+      navigateToView(button.dataset.view).catch((error) => showStatus(els.consoleStatus, error.message));
     };
   });
+  if (els.adminBackBtn) {
+    els.adminBackBtn.classList.toggle("hidden", !shouldShowAdminBack(state.navStack));
+    els.adminBackBtn.onclick = () => handleAdminBack().catch((error) => showStatus(els.consoleStatus, error.message));
+  }
 }
 
 async function renderOverview() {
@@ -73,12 +110,15 @@ async function renderOverview() {
         ${stat("إجمالي المكاتب", o.totalOffices)}
         ${stat("طلبات بانتظار الاعتماد", o.pendingApprovals)}
         ${stat("المكاتب المعتمدة", o.approvedOffices)}
-        ${stat("النشطة", o.activeAccounts)}
+        ${stat("الطلبات المرفوضة", o.rejectedApplications)}
+        ${stat("الحسابات النشطة", o.activeAccounts)}
         ${stat("الموقوفة", o.suspendedOffices)}
-        ${stat("اشتراكات منتهية", o.expiredSubscriptions)}
+        ${stat("مكاتب نشطة", o.activeOffices)}
+        ${stat("مكاتب غير نشطة", o.inactiveOffices)}
+        ${stat("تراخيص تنتهي قريبًا", o.licensesExpiringSoon)}
         ${stat("تراخيص منتهية", o.expiredLicenses)}
-        ${stat("نشطة آخر 7 أيام", o.activeLast7Days)}
-        ${stat("غير نشطة آخر 30 يوم", o.inactiveLast30Days)}
+        ${stat("اشتراكات تنتهي قريبًا", o.subscriptionsExpiringSoon)}
+        ${stat("اشتراكات منتهية", o.expiredSubscriptions)}
       </div>
     </div>`;
 }
@@ -87,9 +127,9 @@ function stat(label, value) {
   return `<div class="stat"><strong>${Number(value || 0)}</strong><span>${escapeHtml(label)}</span></div>`;
 }
 
-function officeTabsHtml() {
-  return `<div class="tabs">${OFFICE_TABS.map((tab) =>
-    `<button type="button" data-tab="${tab.id}" class="${state.officeTab === tab.id ? "active" : ""}">${tab.label}</button>`
+function tabsHtml(tabs, activeId, attrName) {
+  return `<div class="tabs">${tabs.map((tab) =>
+    `<button type="button" data-${attrName}="${tab.id}" class="${activeId === tab.id ? "active" : ""}">${tab.label}</button>`
   ).join("")}</div>`;
 }
 
@@ -108,24 +148,28 @@ function officeToolbarHtml() {
   </div>`;
 }
 
+function renderApplicationItem(item) {
+  const officeId = suggestOfficeId(item.officeName, item.applicationId);
+  const statusLabel = item.status === "under_review" ? "قيد المراجعة" : "طلب جديد";
+  return `<article class="list-item" data-application="${escapeHtml(item.applicationId)}">
+    <h3>${escapeHtml(item.brokerName)} <span class="badge">${escapeHtml(statusLabel)}</span></h3>
+    <div class="meta">
+      فال: ${escapeHtml(item.licenseNumber)}<br>
+      الجوال: ${escapeHtml(item.phone)}<br>
+      البريد: ${escapeHtml(item.email)}<br>
+      المكتب: ${escapeHtml(item.officeName)}<br>
+      الحالة: ${escapeHtml(item.status)}
+    </div>
+    <input data-office-input="${escapeHtml(item.applicationId)}" value="${escapeHtml(officeId)}" aria-label="رمز المكتب">
+    <div class="row-actions">
+      <button class="btn" data-approve="${escapeHtml(item.applicationId)}">اعتماد</button>
+      <button class="btn secondary" data-review="${escapeHtml(item.applicationId)}">قيد المراجعة</button>
+      <button class="btn danger" data-reject="${escapeHtml(item.applicationId)}">رفض</button>
+    </div>
+  </article>`;
+}
+
 function renderOfficeItem(item) {
-  if (item.recordType === "application") {
-    const officeId = suggestOfficeId(item.officeName, item.applicationId);
-    return `<article class="list-item" data-application="${escapeHtml(item.applicationId)}">
-      <h3>${escapeHtml(item.brokerName)} <span class="badge">طلب جديد</span></h3>
-      <div class="meta">
-        فال: ${escapeHtml(item.licenseNumber)}<br>
-        الجوال: ${escapeHtml(item.phone)}<br>
-        البريد: ${escapeHtml(item.email)}<br>
-        المكتب: ${escapeHtml(item.officeName)}
-      </div>
-      <input data-office-input="${escapeHtml(item.applicationId)}" value="${escapeHtml(officeId)}" aria-label="رمز المكتب">
-      <div class="row-actions">
-        <button class="btn" data-approve="${escapeHtml(item.applicationId)}">اعتماد</button>
-        <button class="btn danger" data-reject="${escapeHtml(item.applicationId)}">رفض</button>
-      </div>
-    </article>`;
-  }
   return `<article class="list-item" data-office="${escapeHtml(item.officeId)}">
     <h3>${escapeHtml(item.officeName || item.officeId)}</h3>
     <div class="meta">
@@ -141,8 +185,49 @@ function renderOfficeItem(item) {
   </article>`;
 }
 
+async function renderApplications() {
+  els.viewRoot.innerHTML = `<div class="card"><h2>طلبات التسجيل</h2>${tabsHtml(APPLICATION_TABS, state.applicationTab, "app-tab")}<div id="applicationList"><p>جارٍ التحميل...</p></div></div>`;
+  const listNode = document.getElementById("applicationList");
+  els.viewRoot.querySelectorAll("[data-app-tab]").forEach((button) => {
+    button.onclick = () => {
+      state.applicationTab = button.dataset.appTab;
+      renderApplications().catch((error) => showStatus(els.consoleStatus, error.message));
+    };
+  });
+  const payload = await api.applications({ tab: state.applicationTab, sort: state.sort, limit: 100 });
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  listNode.innerHTML = items.length
+    ? items.map(renderApplicationItem).join("")
+    : "<p>لا توجد طلبات في هذا القسم.</p>";
+
+  listNode.querySelectorAll("[data-approve],[data-reject],[data-review]").forEach((button) => {
+    button.onclick = async () => {
+      const id = button.dataset.approve || button.dataset.reject || button.dataset.review;
+      const approve = Boolean(button.dataset.approve);
+      const reject = Boolean(button.dataset.reject);
+      const review = Boolean(button.dataset.review);
+      button.disabled = true;
+      try {
+        if (approve) {
+          const input = listNode.querySelector(`[data-office-input="${CSS.escape(id)}"]`);
+          await api.approveApplication(id, input ? input.value : "");
+        } else if (reject) {
+          await api.rejectApplication(id);
+        } else if (review) {
+          await api.reviewApplication(id);
+        }
+        showStatus(els.consoleStatus, approve ? "تم اعتماد المكتب." : (reject ? "تم رفض الطلب." : "تم وضع الطلب قيد المراجعة."), true);
+        await renderApplications();
+      } catch (error) {
+        showStatus(els.consoleStatus, error.message);
+        button.disabled = false;
+      }
+    };
+  });
+}
+
 async function renderOffices() {
-  els.viewRoot.innerHTML = `<div class="card"><h2>إدارة المكاتب</h2>${officeTabsHtml()}${officeToolbarHtml()}<div id="officeList"><p>جارٍ التحميل...</p></div></div>`;
+  els.viewRoot.innerHTML = `<div class="card"><h2>المكاتب</h2>${tabsHtml(OFFICE_TABS, state.officeTab, "tab")}${officeToolbarHtml()}<div id="officeList"><p>جارٍ التحميل...</p></div></div>`;
   const listNode = document.getElementById("officeList");
   els.viewRoot.querySelectorAll("[data-tab]").forEach((button) => {
     button.onclick = () => {
@@ -166,41 +251,18 @@ async function renderOffices() {
     ? items.map(renderOfficeItem).join("")
     : "<p>لا توجد سجلات في هذا القسم.</p>";
 
-  listNode.querySelectorAll("[data-approve],[data-reject]").forEach((button) => {
-    button.onclick = async () => {
-      const id = button.dataset.approve || button.dataset.reject;
-      const approve = Boolean(button.dataset.approve);
-      button.disabled = true;
-      try {
-        if (approve) {
-          const input = listNode.querySelector(`[data-office-input="${CSS.escape(id)}"]`);
-          await api.approveApplication(id, input ? input.value : "");
-        } else {
-          await api.rejectApplication(id);
-        }
-        showStatus(els.consoleStatus, approve ? "تم اعتماد المكتب." : "تم رفض الطلب.", true);
-        await renderOffices();
-      } catch (error) {
-        showStatus(els.consoleStatus, error.message);
-        button.disabled = false;
-      }
-    };
-  });
   listNode.querySelectorAll("[data-detail]").forEach((button) => {
-    button.onclick = () => openOfficeDetail(button.dataset.detail);
+    button.onclick = () => openDetail("office-detail", { officeId: button.dataset.detail }).catch((error) => showStatus(els.consoleStatus, error.message));
   });
   listNode.querySelectorAll("[data-activity]").forEach((button) => {
     button.onclick = () => {
       state.activityOfficeId = button.dataset.activity;
-      state.view = "activity";
-      renderMainNav();
-      renderView();
+      navigateToView("activity").catch((error) => showStatus(els.consoleStatus, error.message));
     };
   });
 }
 
-async function openOfficeDetail(officeId) {
-  state.selectedOfficeId = officeId;
+async function renderOfficeDetail(officeId) {
   const [detail, activity] = await Promise.all([
     api.officeDetail(officeId),
     api.officeActivity(officeId)
@@ -211,7 +273,6 @@ async function openOfficeDetail(officeId) {
   const audit = Array.isArray(detail.audit) ? detail.audit : [];
   els.viewRoot.innerHTML = `
     <div class="card">
-      <button class="btn secondary" id="backToOffices" type="button">← رجوع إلى المكاتب</button>
       <h2>${escapeHtml(office.officeName || officeId)}</h2>
       <div class="meta">
         رمز المكتب: ${escapeHtml(officeId)}<br>
@@ -251,21 +312,16 @@ async function openOfficeDetail(officeId) {
       <h2>السجل الإداري</h2>
       ${audit.length ? audit.map((row) => `<div class="list-item"><div class="meta">${escapeHtml(row.action)} · ${formatDate(row.performedAt)}<br>${escapeHtml(row.reason || "")}</div></div>`).join("") : "<p>لا توجد أحداث.</p>"}
     </div>`;
-  document.getElementById("backToOffices").onclick = () => {
-    state.view = "offices";
-    renderMainNav();
-    renderView();
-  };
   document.getElementById("suspendBtn").onclick = async () => {
     const reason = document.getElementById("suspendReason").value;
     await api.suspendOffice(officeId, reason);
     showStatus(els.consoleStatus, "تم إيقاف المكتب.", true);
-    openOfficeDetail(officeId);
+    await renderOfficeDetail(officeId);
   };
   document.getElementById("reactivateBtn").onclick = async () => {
     await api.reactivateOffice(officeId);
     showStatus(els.consoleStatus, "تمت إعادة التفعيل.", true);
-    openOfficeDetail(officeId);
+    await renderOfficeDetail(officeId);
   };
   document.getElementById("saveSubscriptionBtn").onclick = async () => {
     await api.updateSubscription(
@@ -274,25 +330,26 @@ async function openOfficeDetail(officeId) {
       document.getElementById("subscriptionExpiresAt").value
     );
     showStatus(els.consoleStatus, "تم تحديث الاشتراك.", true);
-    openOfficeDetail(officeId);
+    await renderOfficeDetail(officeId);
   };
   document.getElementById("saveLicenseBtn").onclick = async () => {
     await api.updateLicense(officeId, document.getElementById("licenseExpiresAt").value);
     showStatus(els.consoleStatus, "تم تحديث الترخيص.", true);
-    openOfficeDetail(officeId);
+    await renderOfficeDetail(officeId);
   };
   document.getElementById("saveNoteBtn").onclick = async () => {
     await api.addNote(officeId, document.getElementById("adminNote").value);
     showStatus(els.consoleStatus, "تمت إضافة الملاحظة.", true);
-    openOfficeDetail(officeId);
+    await renderOfficeDetail(officeId);
   };
 }
 
 function renderActivityLines(act) {
-  if (!act.historicalDataAvailable) return "لا توجد بيانات تاريخية";
+  if (!act.historicalDataAvailable) return "لا توجد بيانات سابقة";
   return `
     آخر دخول: ${formatDate(act.lastLoginAt)}<br>
     آخر نشاط فعلي: ${formatDate(act.lastActivityAt)}<br>
+    حالة النشاط: ${escapeHtml(act.activityLevel || "غير نشط")}<br>
     مرات الدخول 7 أيام: ${Number(act.loginCount7d || 0)} · 30 يوم: ${Number(act.loginCount30d || 0)}<br>
     فرص مضافة 7 أيام: ${Number(act.opportunities7d || 0)} · 30 يوم: ${Number(act.opportunities30d || 0)}<br>
     الفرص النشطة: ${Number(act.activeOpportunities || 0)}<br>
@@ -304,7 +361,7 @@ function renderActivityLines(act) {
 }
 
 async function renderActivityView() {
-  els.viewRoot.innerHTML = `<div class="card"><h2>نشاط المكاتب</h2>
+  els.viewRoot.innerHTML = `<div class="card"><h2>النشاط</h2>
     <div class="toolbar">
       <input id="activityOfficeId" placeholder="رمز المكتب" value="${escapeHtml(state.activityOfficeId)}">
       <button class="btn" id="loadActivityBtn" type="button">عرض النشاط</button>
@@ -325,7 +382,7 @@ async function renderActivityView() {
 async function renderBillingView() {
   const payload = await api.offices({ tab: "all", sort: "subscription_expiry_asc", limit: 100 });
   const items = (payload.items || []).filter((row) => row.recordType === "office");
-  els.viewRoot.innerHTML = `<div class="card"><h2>الاشتراكات والتراخيص</h2>
+  els.viewRoot.innerHTML = `<div class="card"><h2>التراخيص والاشتراكات</h2>
     ${items.map((row) => `<div class="list-item"><h3>${escapeHtml(row.officeName || row.officeId)}</h3>
       <div class="meta">الاشتراك: ${escapeHtml(row.subscriptionStatus)} · ينتهي: ${formatDate(row.subscriptionExpiresAt)}<br>
       الترخيص: ${escapeHtml(row.licenseStatus)} · ينتهي: ${formatDate(row.licenseExpiresAt)}</div>
@@ -333,14 +390,14 @@ async function renderBillingView() {
     </div>`).join("") || "<p>لا توجد مكاتب.</p>"}
   </div>`;
   els.viewRoot.querySelectorAll("[data-detail]").forEach((button) => {
-    button.onclick = () => openOfficeDetail(button.dataset.detail);
+    button.onclick = () => openDetail("office-detail", { officeId: button.dataset.detail }).catch((error) => showStatus(els.consoleStatus, error.message));
   });
 }
 
 async function renderAuditView() {
   const payload = await api.auditLog({ limit: 100 });
   const items = Array.isArray(payload.items) ? payload.items : [];
-  els.viewRoot.innerHTML = `<div class="card"><h2>السجل الإداري</h2>
+  els.viewRoot.innerHTML = `<div class="card"><h2>سجل الإدارة</h2>
     ${items.map((row) => `<div class="list-item"><div class="meta">
       <strong>${escapeHtml(row.action)}</strong><br>
       المكتب: ${escapeHtml(row.officeId || "—")}<br>
@@ -353,11 +410,14 @@ async function renderAuditView() {
 
 async function renderView() {
   showStatus(els.consoleStatus, "");
-  if (state.view === "overview") return renderOverview();
-  if (state.view === "offices") return renderOffices();
-  if (state.view === "activity") return renderActivityView();
-  if (state.view === "billing") return renderBillingView();
-  if (state.view === "audit") return renderAuditView();
+  const frame = currentAdminFrame(state.navStack);
+  if (frame.view === "office-detail" && frame.officeId) return renderOfficeDetail(frame.officeId);
+  if (frame.view === "overview") return renderOverview();
+  if (frame.view === "applications") return renderApplications();
+  if (frame.view === "offices") return renderOffices();
+  if (frame.view === "activity") return renderActivityView();
+  if (frame.view === "billing") return renderBillingView();
+  if (frame.view === "audit") return renderAuditView();
 }
 
 async function enterConsole(user) {
@@ -365,7 +425,7 @@ async function enterConsole(user) {
   els.loginCard.classList.add("hidden");
   els.console.classList.remove("hidden");
   els.adminUserLine.textContent = `مرحبًا ${user.email || "مدير المنصة"}`;
-  renderMainNav();
+  renderChrome();
   await renderView();
 }
 

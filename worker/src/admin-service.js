@@ -147,6 +147,58 @@ export async function handleAdminOverview(request, env, requestId, helpers) {
   });
 }
 
+export async function handleAdminApplications(request, url, env, requestId, helpers) {
+  helpers.assertFirebaseSecrets(env);
+  await helpers.requirePlatformIdentity(request, env, true);
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const tab = helpers.cleanText(url.searchParams.get("tab") || "pending", 40) || "pending";
+  const search = helpers.cleanText(url.searchParams.get("search") || "", 120);
+  const sortKey = helpers.cleanText(url.searchParams.get("sort") || "registered_desc", 40);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+
+  const applicationDocs = await listAllCollectionDocuments({
+    projectId, segments: ["brokerApplications"], accessToken, helpers
+  });
+
+  let rows = applicationDocs
+    .map((doc) => docToRow(doc, helpers))
+    .filter((row) => applicationMatchesTab(row, tab))
+    .map((row) => ({
+      recordType: "application",
+      applicationId: row.id,
+      officeId: row.officeId || "",
+      officeName: row.officeName,
+      brokerName: row.brokerName,
+      phone: row.phone,
+      email: row.email,
+      licenseNumber: row.falLicense,
+      city: row.city || "المدينة المنورة",
+      status: row.status,
+      registeredAt: row.createdAt,
+      decidedAt: row.decidedAt || null,
+      decidedByUid: row.decidedByUid || null,
+      reviewStartedAt: row.reviewStartedAt || null
+    }));
+
+  if (search) rows = rows.filter((row) => officeSearchMatch(row, search));
+  rows = sortOffices(rows, sortKey);
+  const total = rows.length;
+  const start = (page - 1) * limit;
+  const items = rows.slice(start, start + limit);
+
+  return helpers.jsonResponse({
+    ok: true,
+    tab,
+    page,
+    limit,
+    total,
+    items,
+    requestId
+  });
+}
+
 export async function handleAdminOffices(request, url, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   await helpers.requirePlatformIdentity(request, env, true);
@@ -159,45 +211,23 @@ export async function handleAdminOffices(request, url, env, requestId, helpers) 
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
 
-  const [officeDocs, applicationDocs] = await Promise.all([
-    listAllCollectionDocuments({ projectId, segments: ["offices"], accessToken, helpers }),
-    listAllCollectionDocuments({ projectId, segments: ["brokerApplications"], accessToken, helpers })
+  const [officeDocs] = await Promise.all([
+    listAllCollectionDocuments({ projectId, segments: ["offices"], accessToken, helpers })
   ]);
 
-  let rows = [];
-  if (tab === "pending" || tab === "rejected") {
-    rows = applicationDocs
-      .map((doc) => docToRow(doc, helpers))
-      .filter((row) => applicationMatchesTab(row, tab))
-      .map((row) => ({
-        recordType: "application",
-        applicationId: row.id,
-        officeId: row.officeId || "",
-        officeName: row.officeName,
-        brokerName: row.brokerName,
-        phone: row.phone,
-        email: row.email,
-        licenseNumber: row.falLicense,
-        city: "المدينة المنورة",
-        approvalStatus: tab,
-        accountStatus: "active",
-        registeredAt: row.createdAt,
-        status: row.status
-      }));
-  } else {
-    rows = officeDocs
-      .map((doc) => backfillOfficeRecord(docToRow(doc, helpers)))
-      .filter((row) => row.officeId !== "platform")
-      .filter((row) => officeMatchesTab(row, tab))
-      .map((row) => ({ recordType: "office", ...row }));
-  }
+  const rows = officeDocs
+    .map((doc) => backfillOfficeRecord(docToRow(doc, helpers)))
+    .filter((row) => row.officeId !== "platform")
+    .filter((row) => officeMatchesTab(row, tab))
+    .map((row) => ({ recordType: "office", ...row }));
 
-  if (search) rows = rows.filter((row) => officeSearchMatch(row, search));
-  if (city) rows = rows.filter((row) => helpers.safeText(row.city) === city);
-  rows = sortOffices(rows, sortKey);
-  const total = rows.length;
+  let filtered = rows;
+  if (search) filtered = filtered.filter((row) => officeSearchMatch(row, search));
+  if (city) filtered = filtered.filter((row) => helpers.safeText(row.city) === city);
+  filtered = sortOffices(filtered, sortKey);
+  const total = filtered.length;
   const start = (page - 1) * limit;
-  const items = rows.slice(start, start + limit);
+  const items = filtered.slice(start, start + limit);
 
   return helpers.jsonResponse({
     ok: true,
