@@ -171,7 +171,7 @@ function extractPropertyTypeCandidates(text, title, firstSent) {
           let label = rule.type;
           if (rule.type === "أرض") {
             const extended = src.chunk.slice(m.index).match(
-              /^أرض(?:\s+(?:تجارية|استثمارية|سكنية|زراعية|صناعية|خام|مزرعة|سكنيه|تجاريه|استثماريه))+?/i
+              /^أرض(?:\s+(?:تجارية|استثمارية|سكنية|زراعية|صناعية|خام|مزرعة|سكنيه|تجاريه|استثماريه)){1,2}/i
             );
             if (extended) label = extended[0].trim();
           }

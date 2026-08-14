@@ -115,7 +115,10 @@ export function matchOperationType(fields = {}, text = "") {
   const kind = String(fields.opportunityKind || "").toUpperCase();
   const hay = normalizeSearchText(text);
 
-  if (purpose === "INVESTMENT" || /استثمار/.test(text)) {
+  if (purpose === "SALE" || /بيع|للبيع/.test(hay)) {
+    return OPERATION_TYPES.find((o) => o.id === "sale");
+  }
+  if (purpose === "INVESTMENT" || (/استثمار/.test(text) && !/استثمارية|استثماري/.test(text))) {
     return OPERATION_TYPES.find((o) => o.id === "investment");
   }
   if (purpose === "PURCHASE" || kind === "REQUEST" && /شراء|مطلوب|ابحث/.test(text)) {
@@ -126,9 +129,6 @@ export function matchOperationType(fields = {}, text = "") {
   }
   if (purpose === "RENT" || /ايجار|إيجار|للإيجار/.test(text)) {
     return OPERATION_TYPES.find((o) => o.id === "rent");
-  }
-  if (purpose === "SALE" || /بيع|للبيع/.test(hay)) {
-    return OPERATION_TYPES.find((o) => o.id === "sale");
   }
   return null;
 }
