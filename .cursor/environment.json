@@ -1,0 +1,4 @@
+{
+  "install": "bash .cursor/scripts/install-deps.sh",
+  "start": "bash .cursor/scripts/start-services.sh"
+}
