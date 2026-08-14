@@ -4,10 +4,15 @@
 
 import {
   ACTIVITY_LEVELS,
+  activityLevelFromSummary,
   applicationMatchesTab,
   backfillOfficeRecord,
+  buildActivityListRow,
   buildActivitySummary,
+  buildMigrationPatch,
   buildOverviewCounts,
+  bumpActivitySummaryCounters,
+  matchesActivityLevelFilter,
   officeMatchesTab,
   officeSearchMatch,
   sortOffices
@@ -19,6 +24,13 @@ function docId(doc) {
 
 function docToRow(doc, helpers) {
   const data = helpers.firestoreFieldsToJs(doc.fields || {});
+  if (data.activitySummaryJson && typeof data.activitySummaryJson === "string") {
+    try {
+      data.activitySummary = JSON.parse(data.activitySummaryJson);
+    } catch (_) {
+      data.activitySummary = {};
+    }
+  }
   return { id: docId(doc), ...data };
 }
 
@@ -68,6 +80,51 @@ async function writeAdminAudit(helpers, {
   return auditId;
 }
 
+async function loadOfficeSummary(helpers, { projectId, accessToken, officeId }) {
+  const officeDoc = await helpers.getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!officeDoc) return {};
+  const office = helpers.firestoreFieldsToJs(officeDoc.fields || {});
+  if (office.activitySummaryJson && typeof office.activitySummaryJson === "string") {
+    try {
+      return JSON.parse(office.activitySummaryJson);
+    } catch (_) {
+      return {};
+    }
+  }
+  return office.activitySummary && typeof office.activitySummary === "object" ? office.activitySummary : {};
+}
+
+async function setLoginDirectoryActive(helpers, { projectId, accessToken, phone, active }) {
+  if (!phone || typeof helpers.normalizeLoginPhone !== "function" || typeof helpers.sha256Hex !== "function") {
+    return;
+  }
+  const normalizedPhone = helpers.normalizeLoginPhone(phone);
+  if (!normalizedPhone) return;
+  const phoneHash = await helpers.sha256Hex(normalizedPhone);
+  const loginDoc = await helpers.getFirestoreDocument({
+    projectId,
+    segments: ["loginDirectory", phoneHash],
+    accessToken,
+    allowMissing: true
+  });
+  if (!loginDoc) return;
+  const now = new Date();
+  await helpers.setFirestoreDocument({
+    projectId,
+    segments: ["loginDirectory", phoneHash],
+    accessToken,
+    fields: {
+      active: helpers.firestoreBoolean(Boolean(active)),
+      updatedAt: helpers.firestoreTimestamp(now)
+    }
+  });
+}
+
 async function recordActivityEvent(helpers, {
   projectId,
   accessToken,
@@ -78,14 +135,23 @@ async function recordActivityEvent(helpers, {
   if (!officeId || officeId === "platform") return;
   const eventId = `evt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
   const now = new Date();
+  const existingSummary = await loadOfficeSummary(helpers, { projectId, accessToken, officeId });
+  const summary = bumpActivitySummaryCounters(existingSummary, eventType);
+  summary.lastActivityAt = now.toISOString();
+  if (eventType === "login") summary.lastLoginAt = now.toISOString();
+  summary.activityLevel = activityLevelFromSummary(summary, now.getTime());
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "activityEvents", eventId],
     accessToken,
     fields: {
       officeId: helpers.firestoreString(officeId),
+      type: helpers.firestoreString(eventType),
       eventType: helpers.firestoreString(eventType),
       occurredAt: helpers.firestoreTimestamp(now),
+      createdAt: helpers.firestoreTimestamp(now),
+      actorUid: helpers.firestoreString(helpers.safeText(metadata.uid)),
+      source: helpers.firestoreString(helpers.safeText(metadata.source, "worker")),
       metadataJson: helpers.firestoreString(JSON.stringify(metadata || {}))
     }
   });
@@ -96,6 +162,7 @@ async function recordActivityEvent(helpers, {
     fields: {
       officeId: helpers.firestoreString(officeId),
       lastActivityAt: helpers.firestoreTimestamp(now),
+      activitySummaryJson: helpers.firestoreString(JSON.stringify(summary)),
       ...(eventType === "login" ? { lastLoginAt: helpers.firestoreTimestamp(now) } : {})
     }
   });
@@ -311,6 +378,12 @@ export async function handleAdminSuspend(request, env, requestId, helpers) {
       updatedAt: helpers.firestoreTimestamp(now)
     }
   });
+  await setLoginDirectoryActive(helpers, {
+    projectId,
+    accessToken,
+    phone: before.phone,
+    active: false
+  });
   const after = { ...before, accountStatus: "suspended", suspensionReason: reason };
   const auditId = await writeAdminAudit(helpers, {
     projectId,
@@ -350,6 +423,12 @@ export async function handleAdminReactivate(request, env, requestId, helpers) {
       suspensionReason: helpers.firestoreString(""),
       updatedAt: helpers.firestoreTimestamp(now)
     }
+  });
+  await setLoginDirectoryActive(helpers, {
+    projectId,
+    accessToken,
+    phone: before.phone,
+    active: true
   });
   const after = { ...before, accountStatus: "active" };
   const auditId = await writeAdminAudit(helpers, {
@@ -478,6 +557,107 @@ export async function handleAdminAuditLog(request, url, env, requestId, helpers)
   if (officeId) items = items.filter((row) => row.officeId === officeId);
   items.sort((a, b) => Date.parse(b.performedAt || 0) - Date.parse(a.performedAt || 0));
   return helpers.jsonResponse({ ok: true, items: items.slice(0, limit), requestId });
+}
+
+export async function handleAdminActivityList(request, url, env, requestId, helpers) {
+  helpers.assertFirebaseSecrets(env);
+  await helpers.requirePlatformIdentity(request, env, true);
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const activityLevel = helpers.cleanText(url.searchParams.get("activityLevel") || "", 40);
+  const sortKey = helpers.cleanText(url.searchParams.get("sort") || "activity_desc", 40);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const officeDocs = await listAllCollectionDocuments({ projectId, segments: ["offices"], accessToken, helpers });
+  let rows = officeDocs
+    .map((doc) => buildActivityListRow(docToRow(doc, helpers)))
+    .filter((row) => row.officeId && row.officeId !== "platform")
+    .filter((row) => matchesActivityLevelFilter(row.activityLevel, activityLevel));
+  rows = sortOffices(rows.map((row) => ({
+    ...row,
+    registeredAt: row.lastActivityAt,
+    lastActivityAt: row.lastActivityAt
+  })), sortKey === "login_desc" ? "login_desc" : "activity_desc")
+    .map((row) => ({
+      officeId: row.officeId,
+      officeName: row.officeName,
+      city: row.city,
+      lastLoginAt: row.lastLoginAt,
+      lastActivityAt: row.lastActivityAt,
+      activityLevel: row.activityLevel,
+      opportunities30d: row.opportunities30d,
+      completedOperations30d: row.completedOperations30d
+    }));
+  const total = rows.length;
+  const start = (page - 1) * limit;
+  return helpers.jsonResponse({
+    ok: true,
+    page,
+    limit,
+    total,
+    items: rows.slice(start, start + limit),
+    activityLevels: ACTIVITY_LEVELS,
+    requestId
+  });
+}
+
+export async function handleAdminBackfillOffices(request, env, requestId, helpers) {
+  helpers.assertFirebaseSecrets(env);
+  const admin = await helpers.requirePlatformIdentity(request, env, true);
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const officeDocs = await listAllCollectionDocuments({ projectId, segments: ["offices"], accessToken, helpers });
+  const now = new Date();
+  let updated = 0;
+  let skipped = 0;
+  for (const doc of officeDocs) {
+    const office = docToRow(doc, helpers);
+    const patch = buildMigrationPatch(office, now.getTime());
+    if (!patch) {
+      skipped += 1;
+      continue;
+    }
+    const fields = {
+      officeId: helpers.firestoreString(patch.officeId),
+      updatedAt: helpers.firestoreTimestamp(now)
+    };
+    if (patch.approvalStatus) fields.approvalStatus = helpers.firestoreString(patch.approvalStatus);
+    if (patch.accountStatus) fields.accountStatus = helpers.firestoreString(patch.accountStatus);
+    if (patch.subscriptionStatus) fields.subscriptionStatus = helpers.firestoreString(patch.subscriptionStatus);
+    if (patch.licenseStatus) fields.licenseStatus = helpers.firestoreString(patch.licenseStatus);
+    if (patch.registeredAt) fields.registeredAt = helpers.firestoreTimestamp(new Date(patch.registeredAt));
+    if (patch.approvedAt) fields.approvedAt = helpers.firestoreTimestamp(new Date(patch.approvedAt));
+    await helpers.setFirestoreDocument({
+      projectId,
+      segments: ["offices", patch.officeId],
+      accessToken,
+      fields
+    });
+    await writeAdminAudit(helpers, {
+      projectId,
+      accessToken,
+      officeId: patch.officeId,
+      action: "office_backfilled",
+      performedBy: admin.sub,
+      after: patch
+    }).catch(() => {});
+    updated += 1;
+  }
+  return helpers.jsonResponse({ ok: true, updated, skipped, total: officeDocs.length, requestId });
+}
+
+export async function assertOfficeAccountActive(helpers, { projectId, accessToken, officeId }) {
+  const officeDoc = await helpers.getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!officeDoc) return;
+  const office = backfillOfficeRecord(helpers.firestoreFieldsToJs(officeDoc.fields || {}));
+  if (office.accountStatus === "suspended") {
+    throw helpers.appError("office_suspended", 403, "تم إيقاف هذا المكتب. تواصل مع إدارة المنصة.");
+  }
 }
 
 export function createAdminHelpers(bundle) {

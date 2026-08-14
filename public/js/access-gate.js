@@ -355,16 +355,16 @@
     owner,
     refreshClientDynamic,
     propertySelect,
-    districtSelect,
     otherPropertyWrap,
-    otherDistrictWrap,
     toggleOther
   }) {
     const api = window.IAQARGeminiVoiceIntake;
     if (!api || !form) return;
     const manual = {
       name: form.elements.name?.value || "",
-      phone: form.elements.phone?.value || ""
+      phone: form.elements.phone?.value || "",
+      city: form.elements.city?.value || "",
+      district: form.elements.district?.value || ""
     };
     const values = api.mapGeminiToPublicFormValues(structured, {
       context: owner ? "owner" : "client",
@@ -379,6 +379,7 @@
     set("name", values.name);
     set("phone", values.phone);
     set("city", values.city);
+    set("district", values.district);
     if (!owner) set("requestKind", values.requestKind);
     const propMatch = [...propertySelect.options].find((opt) =>
       opt.value === values.propertyType || opt.textContent === values.propertyType);
@@ -387,14 +388,6 @@
       propertySelect.value = "__other__";
       toggleOther(propertySelect, otherPropertyWrap);
       set("otherPropertyType", values.propertyType);
-    }
-    const distMatch = [...districtSelect.options].find((opt) =>
-      opt.value === values.district || opt.textContent === values.district);
-    if (distMatch) districtSelect.value = distMatch.value;
-    else if (values.district) {
-      districtSelect.value = "__other__";
-      toggleOther(districtSelect, otherDistrictWrap);
-      set("otherDistrict", values.district);
     }
     if (!owner) refreshClientDynamic();
     set("budget", values.budget);
@@ -414,9 +407,7 @@
     form,
     refreshClientDynamic,
     propertySelect,
-    districtSelect,
     otherPropertyWrap,
-    otherDistrictWrap,
     toggleOther
   }) {
     const panel = gate.querySelector("#publicVoiceIntakePanel");
@@ -435,9 +426,7 @@
             owner: kind === "owner",
             refreshClientDynamic,
             propertySelect,
-            districtSelect,
             otherPropertyWrap,
-            otherDistrictWrap,
             toggleOther
           });
         }
@@ -472,13 +461,9 @@
           <option value="">اختر نوع العقار</option>${optionList(propertyOptions)}${owner ? `<option value="__other__">أخرى</option>` : ""}</select></label>
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
-        <label><span>الحي (إلزامي)</span><select name="district" id="districtSelect" required>
-          <option value="">اختر الحي</option>${optionList(MADINAH_DISTRICTS)}<option value="__other__">حي جديد / غير موجود</option>
-        </select></label>
+        <label><span>الحي (إلزامي)</span><input name="district" id="intakeDistrictInput" maxlength="80" required></label>
         <label class="conditional-field full" id="otherPropertyWrap" hidden><span>اكتب نوع العقار</span>
           <input name="otherPropertyType" maxlength="40"></label>
-        <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
-          <input name="otherDistrict" maxlength="80"></label>
         ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
@@ -491,11 +476,9 @@
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
     const propertySelect = gate.querySelector("#propertyTypeSelect");
-    const districtSelect = gate.querySelector("#districtSelect");
     const requestKindSelect = gate.querySelector("#requestKindSelect");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
     const otherPropertyWrap = gate.querySelector("#otherPropertyWrap");
-    const otherDistrictWrap = gate.querySelector("#otherDistrictWrap");
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
       const requestKind = requestKindSelect?.value || "";
@@ -517,7 +500,6 @@
       if (!owner) refreshClientDynamic();
     };
     propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
-    districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
     if (requestKindSelect) {
       requestKindSelect.onchange = () => refreshClientDynamic();
       refreshClientDynamic();
@@ -531,9 +513,7 @@
       form: gate.querySelector("#intakeForm"),
       refreshClientDynamic,
       propertySelect,
-      districtSelect,
       otherPropertyWrap,
-      otherDistrictWrap,
       toggleOther
     });
     gate.querySelector("#intakeForm").onsubmit = async event => {
@@ -562,10 +542,8 @@
           ? String(fields.get("otherPropertyType") || "").trim()
           : String(fields.get("propertyType") || "").trim();
         if (!propertyType) return showStatus("اختر نوع العقار.");
-        const district = String(fields.get("district") || "") === "__other__"
-          ? String(fields.get("otherDistrict") || "").trim()
-          : String(fields.get("district") || "").trim();
-        if (!district) return showStatus("اختر الحي.");
+        const district = String(fields.get("district") || "").trim();
+        if (!district) return showStatus("أدخل الحي.");
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {

@@ -46,6 +46,8 @@ test("buildReviewDefaults maps extracted fields when confident", () => {
   assert.equal(defaults.operationTypeId, "sale");
   assert.equal(defaults.propertyTypeId, "apartment");
   assert.equal(defaults.cityId, "madinah");
+  assert.equal(defaults.city, "المدينة المنورة");
+  assert.equal(defaults.district, "العزيزية");
   assert.ok(defaults.districtId && defaults.districtId !== DISTRICT_OTHER_ID);
 });
 
@@ -161,6 +163,22 @@ test("unmatched extracted district opens as حي آخر with short manual name",
   }, "أرض للبيع حي العوالي");
   assert.equal(defaults.districtId, DISTRICT_OTHER_ID);
   assert.equal(defaults.districtManual, "العوالي");
+});
+
+test("reviewValuesToBrokerFields prefers editable city and district text", () => {
+  const broker = reviewValuesToBrokerFields({
+    operationTypeId: "sale",
+    propertyTypeId: "land",
+    city: "المدينة المنورة",
+    district: "العوالي",
+    cityId: "riyadh",
+    districtId: DISTRICTS[0].id,
+    salePrice: "580000",
+    area: "431.75",
+    extractedSnapshot: { opportunityKind: "OFFER" }
+  });
+  assert.equal(broker.city, "المدينة المنورة");
+  assert.equal(broker.district, "العوالي");
 });
 
 test("filterDistrictOptions always keeps حي آخر even under the item cap", () => {

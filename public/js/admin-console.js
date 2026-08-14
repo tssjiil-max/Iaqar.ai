@@ -1,4 +1,4 @@
-import { AdminApi, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
+import { AdminApi, ACTIVITY_LEVEL_LABELS, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
 
 const state = {
   view: "overview",
@@ -6,7 +6,9 @@ const state = {
   search: "",
   sort: "registered_desc",
   selectedOfficeId: "",
-  activityOfficeId: ""
+  activityOfficeId: "",
+  activityLevel: "",
+  activitySort: "activity_desc"
 };
 
 const els = {
@@ -108,6 +110,11 @@ function officeToolbarHtml() {
   </div>`;
 }
 
+function activityBadge(level) {
+  const label = ACTIVITY_LEVEL_LABELS[level] || level || "غير نشط";
+  return `<span class="badge">${escapeHtml(label)}</span>`;
+}
+
 function renderOfficeItem(item) {
   if (item.recordType === "application") {
     const officeId = suggestOfficeId(item.officeName, item.applicationId);
@@ -116,8 +123,7 @@ function renderOfficeItem(item) {
       <div class="meta">
         فال: ${escapeHtml(item.licenseNumber)}<br>
         الجوال: ${escapeHtml(item.phone)}<br>
-        البريد: ${escapeHtml(item.email)}<br>
-        المكتب: ${escapeHtml(item.officeName)}
+        المدينة: ${escapeHtml(item.city || "—")}
       </div>
       <input data-office-input="${escapeHtml(item.applicationId)}" value="${escapeHtml(officeId)}" aria-label="رمز المكتب">
       <div class="row-actions">
@@ -129,14 +135,13 @@ function renderOfficeItem(item) {
   return `<article class="list-item" data-office="${escapeHtml(item.officeId)}">
     <h3>${escapeHtml(item.officeName || item.officeId)}</h3>
     <div class="meta">
-      ${escapeHtml(item.brokerName || "")}<br>
-      فال: ${escapeHtml(item.licenseNumber || "")} · الجوال: ${escapeHtml(item.phone || "")}<br>
-      الاعتماد: ${escapeHtml(item.approvalStatus)} · الحساب: ${escapeHtml(item.accountStatus)}<br>
-      الاشتراك: ${escapeHtml(item.subscriptionStatus)} · الترخيص: ${escapeHtml(item.licenseStatus)}
+      ${escapeHtml(item.city || "—")}<br>
+      فال: ${escapeHtml(item.licenseNumber || "")}<br>
+      الحساب: ${escapeHtml(item.accountStatus)} · الاشتراك: ${escapeHtml(item.subscriptionStatus)}<br>
+      آخر نشاط: ${formatDate(item.lastActivityAt)}
     </div>
     <div class="row-actions">
       <button class="btn secondary" data-detail="${escapeHtml(item.officeId)}">عرض التفاصيل</button>
-      <button class="btn secondary" data-activity="${escapeHtml(item.officeId)}">عرض النشاط</button>
     </div>
   </article>`;
 }
@@ -176,7 +181,13 @@ async function renderOffices() {
           const input = listNode.querySelector(`[data-office-input="${CSS.escape(id)}"]`);
           await api.approveApplication(id, input ? input.value : "");
         } else {
-          await api.rejectApplication(id);
+          const reason = window.prompt("سبب الرفض (مطلوب):", "");
+          if (!reason || reason.trim().length < 4) {
+            showStatus(els.consoleStatus, "يلزم ذكر سبب الرفض.");
+            button.disabled = false;
+            return;
+          }
+          await api.rejectApplication(id, reason.trim());
         }
         showStatus(els.consoleStatus, approve ? "تم اعتماد المكتب." : "تم رفض الطلب.", true);
         await renderOffices();
@@ -306,20 +317,50 @@ function renderActivityLines(act) {
 async function renderActivityView() {
   els.viewRoot.innerHTML = `<div class="card"><h2>نشاط المكاتب</h2>
     <div class="toolbar">
-      <input id="activityOfficeId" placeholder="رمز المكتب" value="${escapeHtml(state.activityOfficeId)}">
-      <button class="btn" id="loadActivityBtn" type="button">عرض النشاط</button>
+      <select id="activityLevelFilter">
+        <option value="">كل المستويات</option>
+        <option value="very_active" ${state.activityLevel === "very_active" ? "selected" : ""}>نشط جدًا</option>
+        <option value="active" ${state.activityLevel === "active" ? "selected" : ""}>نشط</option>
+        <option value="low" ${state.activityLevel === "low" ? "selected" : ""}>نشاط منخفض</option>
+        <option value="inactive" ${state.activityLevel === "inactive" ? "selected" : ""}>غير نشط</option>
+      </select>
+      <select id="activitySort">
+        <option value="activity_desc" ${state.activitySort === "activity_desc" ? "selected" : ""}>الأكثر نشاطًا</option>
+        <option value="activity_asc" ${state.activitySort === "activity_asc" ? "selected" : ""}>الأقل نشاطًا</option>
+        <option value="login_desc" ${state.activitySort === "login_desc" ? "selected" : ""}>آخر دخول</option>
+      </select>
     </div>
-    <div id="activityPanel"><p>أدخل رمز مكتب لعرض نشاطه.</p></div>
+    <div id="activityPanel"><p>جارٍ التحميل...</p></div>
   </div>`;
-  const load = async () => {
-    const officeId = document.getElementById("activityOfficeId").value.trim();
-    if (!officeId) return;
-    state.activityOfficeId = officeId;
-    const payload = await api.officeActivity(officeId);
-    document.getElementById("activityPanel").innerHTML = `<div class="meta">${renderActivityLines(payload.activity || {})}</div>`;
+  document.getElementById("activityLevelFilter").onchange = (event) => {
+    state.activityLevel = event.target.value;
+    renderActivityView().catch((error) => showStatus(els.consoleStatus, error.message));
   };
-  document.getElementById("loadActivityBtn").onclick = () => load().catch((error) => showStatus(els.consoleStatus, error.message));
-  if (state.activityOfficeId) await load();
+  document.getElementById("activitySort").onchange = (event) => {
+    state.activitySort = event.target.value;
+    renderActivityView().catch((error) => showStatus(els.consoleStatus, error.message));
+  };
+  const payload = await api.activityList({
+    activityLevel: state.activityLevel,
+    sort: state.activitySort,
+    limit: 100
+  });
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  document.getElementById("activityPanel").innerHTML = items.length
+    ? items.map((row) => `<article class="list-item">
+      <h3>${escapeHtml(row.officeName || row.officeId)} ${activityBadge(row.activityLevel)}</h3>
+      <div class="meta">
+        ${escapeHtml(row.city || "—")}<br>
+        آخر دخول: ${formatDate(row.lastLoginAt)}<br>
+        آخر نشاط: ${formatDate(row.lastActivityAt)}<br>
+        فرص آخر 30 يوم: ${Number(row.opportunities30d || 0)} · عمليات مكتملة: ${Number(row.completedOperations30d || 0)}
+      </div>
+      <button class="btn secondary" data-detail="${escapeHtml(row.officeId)}" type="button">عرض التفاصيل</button>
+    </article>`).join("")
+    : "<p>لا توجد بيانات نشاط.</p>";
+  document.getElementById("activityPanel").querySelectorAll("[data-detail]").forEach((button) => {
+    button.onclick = () => openOfficeDetail(button.dataset.detail);
+  });
 }
 
 async function renderBillingView() {

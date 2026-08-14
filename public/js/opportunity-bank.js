@@ -268,6 +268,83 @@ function syncFilterInputsFromState() {
   if (status) status.value = state.queryFilters.matchingReadiness || "";
 }
 
+const PURPOSE_FILTER_LABELS = Object.freeze({
+  SALE: "بيع",
+  PURCHASE: "شراء",
+  RENT: "إيجار",
+  LEASE_REQUEST: "استئجار"
+});
+
+function updateBankHeaderCount() {
+  const host = $("bankHeaderCount");
+  if (!host) return;
+  const summary = state.summary || emptyBankSummary();
+  const total = summary.total || 0;
+  if (state.filter === "archived") {
+    host.textContent = summary.archived === 1
+      ? "فرصة مؤرشفة واحدة"
+      : `${summary.archived} فرصة مؤرشفة`;
+    return;
+  }
+  if (total > 0) {
+    host.textContent = `النشطة ${summary.active} · المؤرشفة ${summary.archived}`;
+    return;
+  }
+  host.textContent = "0 فرصة";
+}
+
+function syncBankFilterPanelVisibility() {
+  const panel = $("bankFiltersPanel");
+  const toggle = $("bankFiltersToggle");
+  if (!panel || !toggle) return;
+  const open = panel.classList.contains("is-open");
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.textContent = open ? "إخفاء الفلاتر" : "فلاتر";
+}
+
+function renderActiveFilterChips() {
+  const host = $("bankActiveFilters");
+  if (!host) return;
+  const chips = [];
+  if (state.queryFilters.city) {
+    chips.push({ key: "city", label: state.queryFilters.city });
+  }
+  if (state.queryFilters.district) {
+    chips.push({ key: "district", label: state.queryFilters.district });
+  }
+  if (state.queryFilters.purpose) {
+    chips.push({
+      key: "purpose",
+      label: PURPOSE_FILTER_LABELS[state.queryFilters.purpose] || state.queryFilters.purpose
+    });
+  }
+  if (state.queryFilters.propertyType) {
+    chips.push({ key: "propertyType", label: state.queryFilters.propertyType });
+  }
+  if (state.queryFilters.matchingReadiness) {
+    const readinessLabel = state.queryFilters.matchingReadiness === "READY_FOR_MATCHING"
+      ? "جاهزة للمطابقة"
+      : "تحتاج استكمال";
+    chips.push({ key: "matchingReadiness", label: readinessLabel });
+  }
+  if (state.queryFilters.search) {
+    chips.push({ key: "search", label: `بحث: ${state.queryFilters.search}` });
+  }
+  host.hidden = chips.length === 0;
+  host.innerHTML = chips.map((chip) =>
+    `<button type="button" class="bank-filter-chip" data-clear-filter="${escapeHtml(chip.key)}">${escapeHtml(chip.label)} ×</button>`
+  ).join("");
+  host.querySelectorAll("[data-clear-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.getAttribute("data-clear-filter");
+      if (!key) return;
+      state.queryFilters[key] = "";
+      syncFilterInputsFromState();
+      scheduleBankQueryRefresh();
+    });
+  });
+}
+
 function passesListFilters(record) {
   return isVisibleForFilter(record) && matchesBankQueryFilters(record, state.queryFilters);
 }
@@ -362,28 +439,10 @@ function renderList() {
   const list = $("opportunityBankList");
   const loadMoreBtn = $("bankLoadMoreBtn");
   if (!list) return;
+  updateBankHeaderCount();
+  renderActiveFilterChips();
+  syncBankFilterPanelVisibility();
   syncFilterControls();
-
-  if (!hasActiveBankQuery(state.queryFilters)) {
-    const summary = state.summary || emptyBankSummary();
-    const emptyNote = summary.total === 0
-      ? "لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها."
-      : "حدد بحثًا أو فلترًا لعرض الفرص";
-    list.innerHTML = `
-      <div class="bank-summary-card" id="bankSummaryCard">
-        <h3 class="bank-summary-title">ملخص بنك الفرص</h3>
-        <ul class="bank-summary-stats">
-          <li><span>إجمالي الفرص</span><strong>${escapeHtml(summary.total)}</strong></li>
-          <li><span>جاهزة للمطابقة</span><strong>${escapeHtml(summary.readyForMatching)}</strong></li>
-          <li><span>تحتاج استكمال</span><strong>${escapeHtml(summary.needsCompletion)}</strong></li>
-          <li><span>المؤرشفة</span><strong>${escapeHtml(summary.archived)}</strong></li>
-        </ul>
-        <p class="bank-query-hint">${escapeHtml(emptyNote)}</p>
-      </div>
-    `;
-    if (loadMoreBtn) loadMoreBtn.hidden = true;
-    return;
-  }
 
   const rows = [...state.records.entries()]
     .filter(([, record]) => passesListFilters(record))
@@ -393,17 +452,25 @@ function renderList() {
     }));
 
   if (!rows.length) {
-    list.innerHTML = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث أو الفلاتر.</p>`;
+    const emptyNote = hasActiveBankQuery(state.queryFilters)
+      ? "لا توجد نتائج مطابقة. عدّل البحث أو الفلاتر."
+      : (state.summary?.total
+        ? "لا توجد فرص في هذا العرض."
+        : "لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.");
+    list.innerHTML = `<p class="bank-query-hint">${escapeHtml(emptyNote)}</p>`;
     if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
     return;
   }
 
-  const totalLabel = (state.resultTotal > 0 ? String(state.resultTotal) : String(rows.length)) + " نتيجة";
+  const totalLabel = state.scanExhausted && !state.hasMore
+    ? `${escapeHtml(String(rows.length))} نتيجة`
+    : `${escapeHtml(String(rows.length))}+ نتيجة`;
 
   const rowsHtml = rows.map((row) => {
     const readiness = matchingReadinessLabel(
       row.matchingReadiness || evaluateMatchingReadiness(row).matchingReadiness
     );
+    const summaryParts = [row.location, row.amountText].filter(Boolean);
     return `
     <article class="bank-row" data-opportunity-id="${escapeHtml(row.id)}">
       <button type="button" class="bank-row-main bank-row-clickable" data-open-id="${escapeHtml(row.id)}">
@@ -411,11 +478,8 @@ function renderList() {
           <h3>${escapeHtml(row.kindLabel)} — ${escapeHtml(row.propertyType)}</h3>
           <span class="bank-readiness-badge">${escapeHtml(readiness)}</span>
         </div>
-        <dl>
-          <dt>الموقع</dt><dd>${escapeHtml(row.location)}</dd>
-          <dt>${escapeHtml(row.amountLabel)}</dt><dd>${escapeHtml(row.amountText)}</dd>
-          <dt>تاريخ الإضافة</dt><dd>${escapeHtml(row.dateAdded)}</dd>
-        </dl>
+        <p class="bank-row-summary">${escapeHtml(summaryParts.join(" · "))}</p>
+        <p class="bank-row-meta-line">تاريخ الإضافة: ${escapeHtml(row.dateAdded)}</p>
       </button>
     </article>
   `;
@@ -1715,7 +1779,7 @@ async function loadBankSummary() {
       ...(docSnap.data() || {})
     }));
     state.summary = summarizeBankCounts(state.facetMeta);
-    renderList();
+    updateBankHeaderCount();
     setStatus(rowsCountLabel());
     await loadIncomingRequests();
   } catch (error) {
@@ -1726,10 +1790,6 @@ async function loadBankSummary() {
   }
 }
 
-/**
- * Query-driven page load: scan office-scoped pages until BANK_PAGE_SIZE matches
- * the active search/filters (or the cursor is exhausted). Never dumps the full bank into DOM.
- */
 async function loadBankPage({ reset = false } = {}) {
   const runtime = officeRuntime();
   const user = authUser();
@@ -1741,21 +1801,9 @@ async function loadBankPage({ reset = false } = {}) {
     return;
   }
 
-  if (!hasActiveBankQuery(state.queryFilters)) {
-    if (reset) {
-      state.records.clear();
-      state.lastDoc = null;
-      state.hasMore = false;
-      state.resultTotal = 0;
-      state.scanExhausted = false;
-    }
-    await loadBankSummary();
-    return;
-  }
-
   if (state.busy) return;
   state.busy = true;
-  setStatus(reset ? "جارٍ البحث في بنك الفرص…" : "جارٍ تحميل المزيد…");
+  setStatus(reset ? "جارٍ تحميل بنك الفرص…" : "جارٍ تحميل المزيد…");
 
   try {
     if (reset) {
@@ -1799,8 +1847,6 @@ async function loadBankPage({ reset = false } = {}) {
     }
 
     state.hasMore = !state.scanExhausted;
-    state.resultTotal = state.records.size + (state.hasMore ? 0 : 0);
-    // Approximate visible total: exact when exhausted, otherwise "at least N".
     if (state.scanExhausted) {
       state.resultTotal = [...state.records.values()].filter(passesListFilters).length;
     } else {
@@ -1818,7 +1864,9 @@ async function loadBankPage({ reset = false } = {}) {
     setStatus(
       visible
         ? rowsCountLabel()
-        : "لا توجد نتائج مطابقة للبحث أو الفلاتر."
+        : (hasActiveBankQuery(state.queryFilters)
+          ? "لا توجد نتائج مطابقة للبحث أو الفلاتر."
+          : rowsCountLabel())
     );
   } catch (error) {
     console.warn("[iaqar] opportunity bank", error);
@@ -1834,6 +1882,11 @@ async function loadBankPage({ reset = false } = {}) {
   }
 }
 
+async function loadBankInitial() {
+  await loadBankSummary();
+  await loadBankPage({ reset: true });
+}
+
 function startListener() {
   stopListener();
   state.records.clear();
@@ -1841,23 +1894,13 @@ function startListener() {
   state.hasMore = false;
   state.resultTotal = 0;
   state.scanExhausted = false;
-  void loadBankSummary();
+  void loadBankInitial();
   void loadIncomingRequests();
   void loadSharedWithUs();
   void loadOutgoingScopes();
 }
 
 function scheduleBankQueryRefresh() {
-  if (!hasActiveBankQuery(state.queryFilters)) {
-    state.records.clear();
-    state.lastDoc = null;
-    state.hasMore = false;
-    state.resultTotal = 0;
-    state.scanExhausted = false;
-    state.pendingQueryRefresh = false;
-    void loadBankSummary();
-    return;
-  }
   if (state.busy) {
     state.pendingQueryRefresh = true;
     return;
@@ -1979,8 +2022,7 @@ function boot() {
   $("opportunityBankRetry")?.addEventListener("click", () => {
     const retry = $("opportunityBankRetry");
     if (retry) retry.hidden = true;
-    if (hasActiveBankQuery(state.queryFilters)) void loadBankPage({ reset: true });
-    else void loadBankSummary();
+    void loadBankInitial();
   });
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
@@ -2022,6 +2064,12 @@ function boot() {
     state.queryFilters = emptyBankFilters();
     syncFilterInputsFromState();
     scheduleBankQueryRefresh();
+  });
+  $("bankFiltersToggle")?.addEventListener("click", () => {
+    const panel = $("bankFiltersPanel");
+    if (!panel) return;
+    panel.classList.toggle("is-open");
+    syncBankFilterPanelVisibility();
   });
   $("bankIncomingList")?.addEventListener("click", (event) => {
     const acceptId = event.target.closest?.("[data-accept-request]")?.getAttribute("data-accept-request");
