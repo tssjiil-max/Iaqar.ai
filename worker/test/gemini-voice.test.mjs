@@ -12,7 +12,7 @@ import {
 
 test("resolveGeminiModel uses env override", () => {
   assert.equal(resolveGeminiModel({ GEMINI_MODEL: "custom-model" }), "custom-model");
-  assert.equal(resolveGeminiModel({}), "gemini-2.0-flash-lite");
+  assert.equal(resolveGeminiModel({}), "gemini-3.1-flash-lite");
 });
 
 test("validateVoiceAudio rejects bad mime", () => {

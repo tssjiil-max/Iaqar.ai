@@ -161,7 +161,14 @@
   try {
     runtime.app = window.firebase.app();
     runtime.db = window.firebase.firestore(runtime.app);
-    runtime.db.settings({ ignoreUndefinedProperties: true });
+    try {
+      runtime.db.settings({ ignoreUndefinedProperties: true });
+    } catch (settingsError) {
+      const message = String(settingsError?.message || settingsError || "");
+      if (!message.includes("already been started")) {
+        throw settingsError;
+      }
+    }
 
     runtime.refs = buildOfficeRefs(runtime.officeId);
 
