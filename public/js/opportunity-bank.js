@@ -76,6 +76,7 @@ import {
   telegramShareUrl,
   whatsAppShareUrl
 } from "./listing-share-domain.js";
+import { isLandProperty } from "./opportunity-intake-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
 import { buildReviewDefaults } from "./reference-catalog.js";
 
@@ -667,6 +668,7 @@ async function renderDetail(id) {
     sourceMediaPath: source?.mediaPath || ""
   });
   const needsCompletion = readiness.matchingReadiness === MATCHING_READINESS.NEEDS_COMPLETION;
+  const landProperty = isLandProperty(record.propertyType);
   state.activeId = id;
   panel.hidden = false;
 
