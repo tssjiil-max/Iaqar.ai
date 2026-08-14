@@ -77,6 +77,21 @@ import {
   resolveGeminiModel,
   validateVoiceAudio
 } from "./gemini-voice-service.js";
+import {
+  createAdminHelpers,
+  handleAdminAuditLog,
+  handleAdminLicenseUpdate,
+  handleAdminNoteAdd,
+  handleAdminOfficeActivity,
+  handleAdminOfficeDetail,
+  handleAdminOffices,
+  handleAdminOverview,
+  handleAdminReactivate,
+  handleAdminSubscriptionUpdate,
+  handleAdminSuspend,
+  recordAdminActivityEvent,
+  recordOfficeLoginActivity
+} from "./admin-service.js";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -412,6 +427,46 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/admin/broker-applications/action") {
         return await decideBrokerApplication(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/overview") {
+        return await handleAdminOverview(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/offices") {
+        return await handleAdminOffices(request, url, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/office") {
+        return await handleAdminOfficeDetail(request, url, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/office/activity") {
+        return await handleAdminOfficeActivity(request, url, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/audit-log") {
+        return await handleAdminAuditLog(request, url, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/suspend") {
+        return await handleAdminSuspend(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/reactivate") {
+        return await handleAdminReactivate(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/subscription") {
+        return await handleAdminSubscriptionUpdate(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/license") {
+        return await handleAdminLicenseUpdate(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/note") {
+        return await handleAdminNoteAdd(request, env, requestId, getAdminHelpers());
       }
 
       if (request.method === "GET" && url.pathname === "/fcm/config") {
@@ -960,8 +1015,12 @@ async function decideBrokerApplication(request, env, requestId) {
         specialties: { arrayValue: { values: [] } },
         ownerUid: firestoreString(application.applicantUid),
         approvalStatus: firestoreString("approved"),
+        accountStatus: firestoreString("active"),
+        subscriptionStatus: firestoreString("trial"),
         approvedAt: firestoreTimestamp(now),
-        approvedByUid: firestoreString(admin.sub)
+        approvedByUid: firestoreString(admin.sub),
+        registeredAt: firestoreTimestamp(now),
+        createdAt: firestoreTimestamp(now)
       }
     });
     await setFirestoreDocument({
@@ -1008,6 +1067,35 @@ async function decideBrokerApplication(request, env, requestId) {
       decidedByUid: firestoreString(admin.sub)
     }
   });
+  const adminHelpers = getAdminHelpers();
+  const auditId = `aud_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
+  await setFirestoreDocument({
+    projectId,
+    segments: ["adminAuditLogs", auditId],
+    accessToken,
+    fields: {
+      officeId: firestoreString(action === "approve" ? officeId : ""),
+      action: firestoreString(action === "approve" ? "office_approved" : "office_rejected"),
+      performedBy: firestoreString(admin.sub),
+      performedAt: firestoreTimestamp(now),
+      reason: firestoreString(cleanText(body.reason, 500)),
+      beforeJson: firestoreString(JSON.stringify(application)),
+      afterJson: firestoreString(JSON.stringify({
+        applicationId,
+        status: action === "approve" ? "approved" : "rejected",
+        officeId: action === "approve" ? officeId : ""
+      }))
+    }
+  });
+  if (action === "approve") {
+    await recordAdminActivityEvent(adminHelpers, {
+      projectId,
+      accessToken,
+      officeId,
+      eventType: "office_approved",
+      metadata: { applicationId, approvedBy: admin.sub }
+    }).catch(() => {});
+  }
   return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
 }
 
@@ -1119,6 +1207,12 @@ async function handlePhoneLogin(request, env, requestId) {
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
     uid: directory.uid, officeId: directory.officeId
   });
+  await recordOfficeLoginActivity(getAdminHelpers(), {
+    projectId,
+    accessToken,
+    officeId: directory.officeId,
+    uid: directory.uid
+  }).catch(() => {});
   return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
 }
 
@@ -3642,6 +3736,25 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
     throw appError("firestore_write_failed", 502, "تعذر حفظ ربط واتساب");
   }
   return response.json();
+}
+
+function getAdminHelpers() {
+  return createAdminHelpers({
+    assertFirebaseSecrets,
+    requirePlatformIdentity,
+    getGoogleAccessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreFieldsToJs,
+    firestoreString,
+    firestoreTimestamp,
+    firestoreDocumentUrl,
+    cleanText,
+    normalizeOfficeId,
+    appError,
+    jsonResponse,
+    DEFAULT_PROJECT_ID
+  });
 }
 
 function firestoreDocumentUrl(projectId, segments) {
