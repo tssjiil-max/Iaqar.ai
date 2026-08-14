@@ -2402,6 +2402,88 @@
     min-height:0;
   }
 
+  .bank-filters-panel {
+    margin: 8px 0 12px;
+  }
+  .bank-filters-panel:not(.is-open) {
+    display: none;
+  }
+  .bank-filters-toggle {
+    margin-inline-start: auto;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--green);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    min-height: 36px;
+  }
+  .bank-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 12px;
+    margin-bottom: 4px;
+  }
+  .bank-page-header h2 {
+    margin: 0;
+  }
+  .bank-header-count {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .bank-search-primary {
+    display: block;
+    margin: 8px 0 10px;
+  }
+  .bank-search-primary input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font: inherit;
+    background: #fff;
+  }
+  .bank-active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 8px;
+  }
+  .bank-active-filters:not(:empty) {
+    display: flex;
+  }
+  .bank-filter-chip {
+    border: 1px solid var(--line);
+    background: #f7fbf9;
+    color: var(--green);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 32px;
+  }
+  .bank-row-summary {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--text);
+    font-weight: 700;
+    line-height: 1.45;
+  }
+  .bank-row-meta-line {
+    margin: 4px 0 0;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
   .bank-filters {
     display:grid;
     grid-template-columns:1fr;
@@ -2856,42 +2938,49 @@
           <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank" hidden>
             <section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1"
               aria-labelledby="opportunityBankTitle">
-              <div class="section-title-bar">
+              <div class="bank-page-header">
                 <h2 id="opportunityBankTitle">بنك الفرص</h2>
+                <p class="bank-header-count" id="bankHeaderCount" aria-live="polite"></p>
               </div>
-              <p class="tab-panel-help">كل فرص مكتبك المحفوظة والنشطة في مكان واحد.</p>
+
+              <label class="bank-search-primary">
+                <span class="visually-hidden">بحث في بنك الفرص</span>
+                <input type="search" id="bankFilterSearch" placeholder="بحث في بنك الفرص" autocomplete="off">
+              </label>
 
               <div class="bank-toolbar">
                 <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
                 <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
+                <button type="button" class="bank-filters-toggle" id="bankFiltersToggle"
+                  aria-expanded="false" aria-controls="bankFiltersPanel">فلاتر</button>
               </div>
 
-              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث وتصفية بنك الفرص">
-                <label class="bank-filter-search">
-                  <span class="visually-hidden">بحث في بنك الفرص</span>
-                  <input type="search" id="bankFilterSearch" placeholder="ابحث في بنك الفرص" autocomplete="off">
-                </label>
-                <select id="bankFilterCity" aria-label="تصفية المدينة">
-                  <option value="">كل المدن</option>
-                </select>
-                <select id="bankFilterDistrict" aria-label="تصفية الحي">
-                  <option value="">كل الأحياء</option>
-                </select>
-                <select id="bankFilterPurpose" aria-label="تصفية نوع العملية">
-                  <option value="">نوع العملية</option>
-                  <option value="SALE">بيع</option>
-                  <option value="PURCHASE">شراء</option>
-                  <option value="RENT">إيجار</option>
-                  <option value="LEASE_REQUEST">استئجار</option>
-                </select>
-                <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
-                  <option value="">نوع العقار</option>
-                </select>
-                <select id="bankFilterStatus" aria-label="تصفية الحالة">
-                  <option value="">الحالة</option>
-                  <option value="READY_FOR_MATCHING">جاهزة للمطابقة</option>
-                  <option value="NEEDS_COMPLETION">تحتاج استكمال</option>
-                </select>
+              <div class="bank-active-filters" id="bankActiveFilters" hidden></div>
+
+              <div class="bank-filters-panel" id="bankFiltersPanel">
+                <div class="bank-filters" id="bankFiltersBar" aria-label="فلاتر بنك الفرص">
+                  <select id="bankFilterCity" aria-label="تصفية المدينة">
+                    <option value="">كل المدن</option>
+                  </select>
+                  <select id="bankFilterDistrict" aria-label="تصفية الحي">
+                    <option value="">كل الأحياء</option>
+                  </select>
+                  <select id="bankFilterPurpose" aria-label="تصفية نوع العملية">
+                    <option value="">نوع العملية</option>
+                    <option value="SALE">بيع</option>
+                    <option value="PURCHASE">شراء</option>
+                    <option value="RENT">إيجار</option>
+                    <option value="LEASE_REQUEST">استئجار</option>
+                  </select>
+                  <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
+                    <option value="">نوع العقار</option>
+                  </select>
+                  <select id="bankFilterStatus" aria-label="تصفية الحالة">
+                    <option value="">الحالة</option>
+                    <option value="READY_FOR_MATCHING">جاهزة للمطابقة</option>
+                    <option value="NEEDS_COMPLETION">تحتاج استكمال</option>
+                  </select>
+                </div>
                 <button type="button" class="bank-filter-clear" id="bankFilterClearBtn">مسح الفلاتر</button>
               </div>
 

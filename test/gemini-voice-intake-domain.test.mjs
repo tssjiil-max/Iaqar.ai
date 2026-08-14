@@ -54,6 +54,7 @@ test("public client rent maps budget and rooms", () => {
   const normalized = normalizeGeminiVoicePayload({
     transactionType: "إيجار",
     propertyType: "شقة",
+    city: "المدينة المنورة",
     district: "السلام",
     rooms: 4,
     annualRent: 22000,
@@ -65,7 +66,8 @@ test("public client rent maps budget and rooms", () => {
   assert.equal(mapped.requestKind, "rent");
   assert.equal(mapped.rooms, 4);
   assert.equal(mapped.annualRent, 22000);
-  assert.equal(mapped.city, "");
+  assert.equal(mapped.city, "المدينة المنورة");
+  assert.equal(mapped.district, "السلام");
 });
 
 test("public owner preserves manual phone in merge", () => {
@@ -97,6 +99,8 @@ test("buildReviewDefaultsFromGemini for office land sale", () => {
   const review = buildReviewDefaultsFromGemini(normalized, "summary");
   assert.equal(review.operationTypeId, "sale");
   assert.equal(review.salePrice, 580000);
+  assert.equal(review.city, "المدينة المنورة");
+  assert.equal(review.district, "الرانوناء");
   assert.ok(review.rooms == null || review.rooms === "");
 });
 

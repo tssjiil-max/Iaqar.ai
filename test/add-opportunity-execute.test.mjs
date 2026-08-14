@@ -264,7 +264,7 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     input.value = "أرض للبيع في الرياض حي النرجس، المساحة 500 م² السعر المطلوب 600000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.equal(context.document.querySelector('[name="city"]').value, "الرياض");
 
     input.value = "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
@@ -272,8 +272,8 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
 
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "المدينة المنورة");
-    assert.notEqual(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.equal(context.document.querySelector('[name="city"]').value, "المدينة المنورة");
+    assert.notEqual(context.document.querySelector('[name="city"]').value, "الرياض");
     assert.match(module.__test.getIntakeContext().listingText, /المدينة المنورة/);
   } finally {
     context.close();

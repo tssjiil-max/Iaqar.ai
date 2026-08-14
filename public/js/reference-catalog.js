@@ -269,6 +269,8 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
     operationTypeId: op?.id || "",
     propertyTypeId: property?.id || (propertyLabel ? "other" : ""),
     propertyTypeManual: property ? "" : propertyLabel,
+    city: cityLabel || city?.label || "",
+    district: districtLabel || district?.officialName || "",
     cityId: city?.id || "",
     cityManual: city ? "" : cityLabel,
     districtId: district?.id || (unmatchedDistrictManual ? DISTRICT_OTHER_ID : ""),
@@ -304,6 +306,10 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
 
 function safeTrim(v) {
   return String(v == null ? "" : v).trim();
+}
+
+export function normalizeLocationLabel(value) {
+  return safeTrim(value).replace(/\s+/g, " ");
 }
 
 export function reviewValuesToBrokerFields(review) {
@@ -352,11 +358,19 @@ export function reviewValuesToBrokerFields(review) {
 
   let propertyType = property?.label || "";
   if (review.propertyTypeId === "other") propertyType = safeTrim(review.propertyTypeManual);
-  let cityName = city?.label || "";
-  if (review.cityId === "other") cityName = safeTrim(review.cityManual);
-  let districtName = district?.officialName || "";
-  if (review.districtId === DISTRICT_OTHER_ID || !districtName) {
-    districtName = safeTrim(review.districtManual);
+  let cityName = normalizeLocationLabel(review.city);
+  if (!cityName) {
+    const cityMatch = CITIES.find((c) => c.id === review.cityId);
+    cityName = cityMatch?.label || "";
+    if (review.cityId === "other") cityName = normalizeLocationLabel(review.cityManual);
+  }
+  let districtName = normalizeLocationLabel(review.district);
+  if (!districtName) {
+    const districtMatch = DISTRICTS.find((d) => d.id === review.districtId);
+    districtName = districtMatch?.officialName || "";
+    if (review.districtId === DISTRICT_OTHER_ID || !districtName) {
+      districtName = normalizeLocationLabel(review.districtManual);
+    }
   }
 
   return {
