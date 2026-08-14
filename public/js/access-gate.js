@@ -207,6 +207,12 @@
     };
     propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
     districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
+    if (window.IAQAR_VOICE_INTAKE) {
+      window.IAQAR_VOICE_INTAKE.attachVoiceIntake(gate.querySelector("#intakeForm"), {
+        propertyTypes: PROPERTY_TYPES,
+        districts: MADINAH_DISTRICTS
+      });
+    }
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
@@ -261,6 +267,11 @@
           mediaMissing: owner && images.length === 0,
           completeness: owner ? (images.length ? 90 : 65) : 80,
           source: targetOffice === "platform" ? "platform_public" : "office_public_link",
+          lifecycleStatus: "NEW",
+          normalizedSource: targetOffice === "platform" ? "public_site" : "office_link",
+          contactType: owner ? "owner" : "buyer",
+          contactName: name,
+          contactPhone: phone,
           status: "new",
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
