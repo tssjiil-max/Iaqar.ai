@@ -14,11 +14,14 @@ import {
   buildCooperationRequest,
   buildEditPatch,
   buildRestorePatch,
+  buildReviewCompletionPatch,
   buildSoftDeletePatch,
   cooperationStateFromShareStatus,
   cooperationStatusLabel,
   shareRequestStatusLabel,
   phase3BoundaryGuarantees,
+  recordToReviewFields,
+  readinessMissingToNeedsReview,
   validateOwnedOpportunityIds,
   validatePermanentDelete
 } from "./opportunity-bank-domain.js";
@@ -35,6 +38,7 @@ import {
   buildAdvertiserDataPatch,
   buildAdvertiserWhatsAppMessage,
   formatLocalPhoneDisplay,
+  mergeAdvertiserFieldsIntoOpportunity,
   whatsappDigitsFromE164,
   readAdvertiserDisplayName,
   readAdvertiserPhoneFromRecord
@@ -112,12 +116,13 @@ import {
 } from "./opportunity-contact-outcome-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
-import { PROPERTY_TYPES, districtsForCity } from "./reference-catalog.js";
+import { PROPERTY_TYPES, districtsForCity, buildReviewDefaults } from "./reference-catalog.js";
 import {
   buildSuitableOfficesTiersHtml,
   buildSharedPreviewHtml,
   buildIncomingCooperationItemHtml
 } from "./suitable-offices-ui.js";
+import { openOpportunityReview } from "./opportunity-review.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -178,6 +183,7 @@ const state = {
   facetMeta: [],
   summary: emptyBankSummary(),
   activeId: null,
+  bankReviewOpportunityId: null,
   sourceCache: new Map(),
   lastDoc: null,
   hasMore: false,
@@ -419,6 +425,9 @@ function bankRowHtml(row) {
   const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
     ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
     : "";
+  const completeBtn = !card.isReadyForMatching && isOwnedOpportunityRecord(record)
+    ? `<button type="button" class="bank-action bank-row-complete" data-complete-id="${escapeHtml(row.id)}">استكمال البيانات</button>`
+    : "";
   return `
     <article
       class="bank-row bank-row-card"
@@ -444,6 +453,7 @@ function bankRowHtml(row) {
         </div>
       </div>
     </article>
+    ${completeBtn}
   `;
 }
 
@@ -2132,6 +2142,10 @@ function wireDetailHandlers(id, record) {
     window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
   });
 
+  $("bankOpenReviewBtn")?.addEventListener("click", () => {
+    openBankOpportunityReview(id, state.records.get(id) || record);
+  });
+
   $("bankArchiveBtn")?.addEventListener("click", () => void archiveOpportunity(id, record));
   $("bankRestoreBtn")?.addEventListener("click", () => void restoreOpportunity(id, record));
   $("bankDeleteBtn")?.addEventListener("click", () => confirmPermanentDelete(id, record));
@@ -2369,6 +2383,74 @@ async function rematchOpportunity(id, { reason = "edit" } = {}) {
   }
 }
 
+function bankReviewDraft(record = {}) {
+  const fields = recordToReviewFields(record);
+  const readiness = evaluateMatchingReadiness(record);
+  const needsReview = readinessMissingToNeedsReview(readiness.matchingReadinessMissing, record);
+  const phoneInfo = readAdvertiserPhoneFromRecord(record);
+  const reviewDefaults = buildReviewDefaults(fields, "", {
+    extended: fields.extended,
+    needsReview
+  });
+  reviewDefaults.advertiserRole = record.advertiserRole || "";
+  reviewDefaults.advertiserPhoneNormalized = phoneInfo.phone || "";
+  reviewDefaults.advertiserContactStatus = record.advertiserContactStatus || "";
+  reviewDefaults.marketingConsentStatus = record.marketingConsentStatus || "";
+  return {
+    fields,
+    extended: fields.extended,
+    needsReview,
+    reviewDefaults,
+    sourceText: record.rawText || ""
+  };
+}
+
+function openBankOpportunityReview(id, record) {
+  if (!record || !id) return;
+  if (!isOwnedOpportunityRecord(record)) {
+    setStatus("لا يمكن تعديل فرصة لا تملكها مكتبك", "is-error");
+    return;
+  }
+  state.bankReviewOpportunityId = id;
+  const draft = bankReviewDraft(record);
+  draft.prepared = { opportunity: { id, ...record } };
+  openOpportunityReview(draft, approveBankOpportunityReview);
+}
+
+async function approveBankOpportunityReview(brokerExtras, review, advertiser = {}) {
+  const id = state.bankReviewOpportunityId;
+  if (!id) throw new Error("opportunity_missing");
+  const existing = state.records.get(id);
+  if (!existing) throw new Error("opportunity_missing");
+  const user = authUser();
+  const editResult = buildReviewCompletionPatch(existing, brokerExtras, { actorUid: user?.uid || "" });
+  if (!editResult.ok) {
+    throw new Error(editResult.error || "patch_failed");
+  }
+  const patch = {
+    ...editResult.patch,
+    ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
+  };
+  const readiness = evaluateMatchingReadiness({ ...existing, ...patch });
+  patch.matchingReadiness = readiness.matchingReadiness;
+  patch.matchingReadinessMissing = readiness.matchingReadinessMissing;
+
+  await patchOpportunity(id, patch);
+  state.records.set(id, { ...existing, ...patch, id });
+  state.bankReviewOpportunityId = null;
+
+  await rematchOpportunity(id, { reason: "edit" });
+  renderList();
+  if (state.activeId === id) {
+    await renderDetail(id);
+  }
+  setStatus(
+    readiness.isReadyForMatching ? "الفرصة جاهزة للمطابقة" : "ما زالت تحتاج استكمال",
+    "is-done"
+  );
+  toast(readiness.isReadyForMatching ? "تم استكمال البيانات" : "تم حفظ التعديلات");
+}
+
 async function saveEdit(id, existing, input) {
   const user = authUser();
   const result = buildEditPatch(existing, input, { actorUid: user?.uid || "" });
@@ -2386,6 +2468,7 @@ async function saveEdit(id, existing, input) {
     await patchOpportunity(id, result.patch);
     state.records.set(id, { ...existing, ...result.patch, id });
     await rematchOpportunity(id, { reason: "edit" });
+    renderList();
     setStatus("تم حفظ التعديلات", "is-done");
     toast("تم حفظ الفرصة");
     await renderDetail(id);
@@ -3026,6 +3109,16 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
+    const completeNode = event.target.closest("[data-complete-id]");
+    if (completeNode) {
+      const completeId = completeNode.getAttribute("data-complete-id");
+      if (completeId) {
+        const record = state.records.get(completeId);
+        if (record) openBankOpportunityReview(completeId, record);
+      }
+      event.preventDefault();
+      return;
+    }
     if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, button, a")) return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
@@ -3546,7 +3639,8 @@ function boot() {
       const snap = await runtime.db.collection("offices").doc(officeId())
         .collection("opportunities").doc(opportunityId).get();
       if (snap.exists) {
-        state.records.set(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
+        const record = { id: opportunityId, ...(snap.data() || {}) };
+        state.records.set(opportunityId, record);
         await renderDetail(opportunityId);
         scrollBankDetailIntoView();
       }
