@@ -75,6 +75,7 @@ import {
 } from "./listing-share-domain.js";
 import { isLandProperty } from "./opportunity-intake-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
+import { buildBankListCardView } from "./bank-list-card-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
 import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
@@ -336,36 +337,80 @@ function isVisibleForFilter(record) {
   return true;
 }
 
+function bankStatCell(label, value) {
+  if (!value) return "";
+  return `<div class="bank-stat"><span class="bank-stat-label">${escapeHtml(label)}</span><strong class="bank-stat-value">${escapeHtml(value)}</strong></div>`;
+}
+
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
-  const card = buildOpportunityCardView({ ...record, id: row.id });
+  const card = buildBankListCardView({ ...record, id: row.id });
   const followupClass = card.nextActionOverdue ? " is-overdue" : "";
-  const followup = card.nextActionLabel !== "غير محدد"
+  const stats = [
+    bankStatCell(isOwnerRecord(record) ? "السعر" : "الميزانية", card.priceText),
+    bankStatCell("المساحة", card.areaText),
+    bankStatCell("الغرف", card.roomsText)
+  ].filter(Boolean).join("");
+  const statsRow = stats ? `<div class="bank-row-stats">${stats}</div>` : "";
+  const followup = card.nextActionLabel
     ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
     : "";
   const matchLine = card.bestMatchScoreText
     ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>`
     : "";
+  const sourceLine = card.sourceShort
+    ? `<p class="bank-row-source">${escapeHtml(card.sourceShort)}</p>`
+    : "";
+  const readinessClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
+  const statusClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
   return `
-    <article class="bank-row" data-opportunity-id="${escapeHtml(row.id)}">
-      <button type="button" class="bank-row-main bank-row-clickable" data-open-id="${escapeHtml(row.id)}">
-        <div class="bank-row-head">
-          <span class="bank-kind-badge">${escapeHtml(card.kindBadge)}</span>
-          <h3>${escapeHtml(card.description)}</h3>
+    <article
+      class="bank-row bank-row-card"
+      role="button"
+      tabindex="0"
+      data-opportunity-id="${escapeHtml(row.id)}"
+      data-open-id="${escapeHtml(row.id)}"
+      aria-label="${escapeHtml(card.ariaLabel)}">
+      <div class="bank-row-header">
+        <span class="bank-kind-badge">${escapeHtml(card.kindBadge)}</span>
+        <h3 class="bank-row-title">${escapeHtml(card.title)}</h3>
+        <span class="bank-readiness-badge${statusClass}">${escapeHtml(card.headerStatus)}</span>
+      </div>
+      <div class="bank-row-body">
+        ${card.location ? `<p class="bank-row-location">${escapeHtml(card.location)}</p>` : ""}
+        ${statsRow}
+        <p class="bank-row-readiness${readinessClass}">${escapeHtml(card.readinessLine)}</p>
+        <div class="bank-row-footer">
+          <p class="bank-row-contact">${card.contactLineMarkup}</p>
+          ${followup}
+          ${matchLine}
+          ${sourceLine}
         </div>
-        <p class="bank-row-line">${escapeHtml(card.location)}</p>
-        <p class="bank-row-line">${escapeHtml(card.priceOrBudget)} · ${escapeHtml(card.area)}</p>
-        <p class="bank-row-line bank-row-contact">${contactLineMarkup({ ...record, id: row.id })}</p>
-        <p class="bank-row-line bank-row-meta">
-          <span>${escapeHtml(card.sourceLabel)}</span>
-          <span>${escapeHtml(card.dataCompletenessLabel)}</span>
-          <span>${escapeHtml(card.contactStatusLabel)}</span>
-        </p>
-        ${followup}
-        ${matchLine}
-      </button>
+      </div>
     </article>
   `;
+}
+
+function isOwnerRecord(record = {}) {
+  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
+  return record.contactType === "owner"
+    || kind === "OWNER"
+    || kind === "OWNER_OFFER"
+    || kind === "OFFER";
+}
+
+let bankDetailOpenLock = "";
+
+async function openBankDetailFromList(opportunityId) {
+  if (!opportunityId || bankDetailOpenLock === opportunityId) return;
+  bankDetailOpenLock = opportunityId;
+  try {
+    await renderDetail(opportunityId);
+  } finally {
+    window.setTimeout(() => {
+      if (bankDetailOpenLock === opportunityId) bankDetailOpenLock = "";
+    }, 400);
+  }
 }
 
 function renderSummaryHtml(summary = emptyBankSummary()) {
@@ -1930,10 +1975,20 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    const openId = event.target.closest?.("[data-open-id]")?.getAttribute("data-open-id");
-    if (openId) {
-      void renderDetail(openId);
-    }
+    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn")) return;
+    const row = event.target.closest(".bank-row[data-open-id]");
+    if (!row) return;
+    const openId = row.getAttribute("data-open-id");
+    if (!openId) return;
+    event.preventDefault();
+    void openBankDetailFromList(openId);
+  });
+  list.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target.closest(".bank-row[data-open-id]");
+    if (!row) return;
+    event.preventDefault();
+    void openBankDetailFromList(row.getAttribute("data-open-id"));
   });
 }
 
