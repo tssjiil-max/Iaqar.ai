@@ -88,25 +88,17 @@ async function pickNeighborhood(page, name) {
   const query = name.length > 4 ? name.slice(0, 4) : name.slice(0, 2);
   await input.fill(query);
   await page.waitForTimeout(600);
-  const exact = page.locator(`.arabic-suggest-list button[data-pick="${name}"]`).first();
-  if (await exact.count()) {
-    await exact.click();
+  const scoped = page.locator(`[data-suggest-for="officeNeighborhoodSearch"] button[data-pick="${name}"]`).first();
+  if (await scoped.count()) {
+    await scoped.click({ force: true });
     await page.waitForTimeout(200);
     return true;
   }
-  const fuzzy = page.locator(".arabic-suggest-list button").filter({ hasText: name }).first();
+  const fuzzy = page.locator('[data-suggest-for="officeNeighborhoodSearch"] button').filter({ hasText: name }).first();
   if (await fuzzy.count()) {
-    await fuzzy.click();
+    await fuzzy.click({ force: true });
     await page.waitForTimeout(200);
     return true;
-  }
-  const any = page.locator(".arabic-suggest-list button").first();
-  if (await any.count()) {
-    const label = await any.getAttribute("data-pick");
-    console.log("fallback pick", label);
-    await any.click();
-    await page.waitForTimeout(200);
-    return label === name;
   }
   return false;
 }
@@ -131,6 +123,21 @@ async function main() {
 
   await page.locator("#officeSettingsBtn").click();
   await page.waitForSelector("#officeNeighborhoodSearch", { timeout: 10000 });
+
+  const cityInput = page.locator("#officeCityInput");
+  const currentCity = await cityInput.inputValue();
+  if (currentCity !== "المدينة المنورة") {
+    await cityInput.fill("المدينة المنورة");
+    await cityInput.dispatchEvent("change");
+    await page.waitForTimeout(300);
+  }
+  await page.evaluate(() => {
+    if (typeof window.IAQAR?.officeSettingsTestHooks?.readNeighborhoodsFromForm === "function") {
+      // trigger refresh after city change via DOM
+      document.getElementById("officeCityInput")?.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+  await page.waitForTimeout(400);
 
   for (const name of PICKS) {
     const ok = await pickNeighborhood(page, name);

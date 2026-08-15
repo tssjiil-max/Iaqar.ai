@@ -299,6 +299,15 @@ function initNeighborhoodEditor() {
       );
       refreshNeighborhoodSuggestOptions();
     });
+    el.city.addEventListener("input", () => {
+      clearTimeout(init.cityNeighborhoodTimer);
+      init.cityNeighborhoodTimer = setTimeout(() => {
+        writeNeighborhoodsToForm(
+          normalizeServiceNeighborhoodIds(selectedServiceNeighborhoodIds, el.city.value)
+        );
+        refreshNeighborhoodSuggestOptions();
+      }, 300);
+    });
   }
 }
 
