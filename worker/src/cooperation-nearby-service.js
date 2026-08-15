@@ -4,6 +4,10 @@
 
 import { scoreMatch, MATCH_THRESHOLD } from "./matching-engine.js";
 import { normalizeCooperationMode } from "./cooperation-phase6-domain.js";
+import {
+  evaluateMatchingReadiness,
+  missingFieldLabelsArabic
+} from "../../public/js/opportunity-readiness-domain.js";
 
 const MADINAH_DISTRICT_IDS = Object.freeze({
   "الوبرة": "madinah-016",
@@ -110,4 +114,24 @@ export async function buildCooperationNearbySuggestions({
 
   suggestions.sort((a, b) => a.tier - b.tier || b.matchScore - a.matchScore);
   return suggestions.slice(0, 4);
+}
+
+export function resolveNearbyEmptyReason(sourceOpportunity = {}, suggestions = []) {
+  if (Array.isArray(suggestions) && suggestions.length) return null;
+  const readiness = evaluateMatchingReadiness(sourceOpportunity);
+  if (!readiness.isReadyForMatching) {
+    return {
+      code: "incomplete_data",
+      missing: readiness.matchingReadinessMissing || [],
+      missingLabels: missingFieldLabelsArabic(readiness.matchingReadinessMissing || [])
+    };
+  }
+  if (String(sourceOpportunity.cooperationListing || "").toUpperCase() !== "OPEN") {
+    return { code: "not_enabled" };
+  }
+  const districtId = resolveDistrictId(sourceOpportunity.district);
+  if (!districtId) {
+    return { code: "no_same_neighborhood" };
+  }
+  return { code: "no_adjacent" };
 }

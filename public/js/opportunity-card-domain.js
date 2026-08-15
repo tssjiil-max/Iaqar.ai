@@ -39,8 +39,42 @@ function kindBadge(record = {}) {
   return isOwnerRecord(record) ? "عرض مالك" : "طلب عميل";
 }
 
+function normalizePropertyTypeDisplay(value) {
+  const raw = safeText(value, 80);
+  const lower = raw.toLowerCase().trim();
+  if (lower === "office") return "مكتب";
+  if (lower === "office للبيع" || lower === "office for sale") return "مكتب للبيع";
+  return raw;
+}
+
+function htmlEsc(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
+}
+
+function contactLineParts(record = {}) {
+  const name = readAdvertiserDisplayName(record);
+  const firstName = name.split(/\s+/)[0] || "";
+  const masked = maskPhoneForDisplay(
+    record.advertiserPhoneNormalized || record.contactPhone || record.phone
+  );
+  return { firstName, masked };
+}
+
+export function contactLineMarkup(record = {}) {
+  const { firstName, masked } = contactLineParts(record);
+  if (firstName && masked) {
+    return `${htmlEsc(firstName)} • <span class="phone-ltr" dir="ltr">${htmlEsc(masked)}</span>`;
+  }
+  if (masked) return `<span class="phone-ltr" dir="ltr">${htmlEsc(masked)}</span>`;
+  if (firstName) return htmlEsc(firstName);
+  return "غير محدد";
+}
+
 function propertyDescription(record = {}) {
-  const propertyType = safeText(record.propertyType, 80);
+  const propertyType = normalizePropertyTypeDisplay(record.propertyType);
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
   const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? "للإيجار"
     : purpose === "SALE" || purpose === "PURCHASE" ? "للبيع"

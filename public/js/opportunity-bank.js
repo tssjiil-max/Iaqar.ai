@@ -17,6 +17,7 @@ import {
   buildSoftDeletePatch,
   cooperationStateFromShareStatus,
   cooperationStatusLabel,
+  shareRequestStatusLabel,
   phase3BoundaryGuarantees,
   validateOwnedOpportunityIds,
   validatePermanentDelete
@@ -73,7 +74,8 @@ import {
   whatsAppShareUrl
 } from "./listing-share-domain.js";
 import { isLandProperty } from "./opportunity-intake-domain.js";
-import { buildOpportunityCardView } from "./opportunity-card-domain.js";
+import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
+import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
 
 function $(id) {
@@ -351,7 +353,7 @@ function bankRowHtml(row) {
         </div>
         <p class="bank-row-line">${escapeHtml(card.location)}</p>
         <p class="bank-row-line">${escapeHtml(card.priceOrBudget)} · ${escapeHtml(card.area)}</p>
-        <p class="bank-row-line bank-row-contact">${escapeHtml(card.contactLine)}</p>
+        <p class="bank-row-line bank-row-contact">${contactLineMarkup({ ...record, id: row.id })}</p>
         <p class="bank-row-line bank-row-meta">
           <span>${escapeHtml(card.sourceLabel)}</span>
           <span>${escapeHtml(card.dataCompletenessLabel)}</span>
@@ -405,7 +407,11 @@ function renderList() {
     bodyHtml = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث.</p>`;
     if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
   } else {
-    const totalLabel = (state.resultTotal > 0 ? String(state.resultTotal) : String(rows.length)) + " نتيجة";
+    const loadedCount = rows.length;
+    const filteredTotal = state.resultTotal > 0 ? state.resultTotal : loadedCount;
+    const totalLabel = loadedCount < filteredTotal || state.hasMore
+      ? `عرض ${escapeHtml(String(loadedCount))} من ${escapeHtml(String(filteredTotal))} فرصة`
+      : `${escapeHtml(String(filteredTotal))} نتيجة`;
     const rowsHtml = rows.map((row) => bankRowHtml(row)).join("");
     bodyHtml = `<p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>${rowsHtml}`;
     if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
@@ -646,7 +652,7 @@ async function renderDetail(id) {
       <h4>${escapeHtml(card.description)}</h4>
       <p>${escapeHtml(card.location)}</p>
       <p>${escapeHtml(card.priceOrBudget)} · ${escapeHtml(card.area)}</p>
-      <p class="bank-row-contact">${escapeHtml(card.contactLine)}</p>
+      <p class="bank-row-contact">${contactLineMarkup({ ...record, id })}</p>
       <p class="bank-status-row">
         <span>${escapeHtml(card.dataCompletenessLabel)}</span>
         <span>${escapeHtml(card.contactStatusLabel)}</span>
@@ -779,10 +785,16 @@ function rowsCountLabel() {
     const summary = state.summary || emptyBankSummary();
     return `إجمالي ${summary.total} — جاهزة ${summary.readyForMatching} — استكمال ${summary.needsCompletion} — مؤرشفة ${summary.archived}`;
   }
-  const count = state.resultTotal || [...state.records.values()].filter(passesListFilters).length;
-  return state.filter === "archived"
-    ? `${count} نتيجة مؤرشفة`
-    : `${count} نتيجة`;
+  const loadedCount = [...state.records.values()].filter(passesListFilters).length;
+  const filteredTotal = state.resultTotal || loadedCount;
+  if (state.filter === "archived") {
+    return loadedCount < filteredTotal || state.hasMore
+      ? `عرض ${loadedCount} من ${filteredTotal} فرصة مؤرشفة`
+      : `${filteredTotal} نتيجة مؤرشفة`;
+  }
+  return loadedCount < filteredTotal || state.hasMore
+    ? `عرض ${loadedCount} من ${filteredTotal} فرصة`
+    : `${filteredTotal} نتيجة`;
 }
 
 function wireDetailHandlers(id, record) {
@@ -823,17 +835,37 @@ function wireDetailHandlers(id, record) {
       setShareActionStatus("التعاون معطّل في إعدادات هذا المكتب", "is-error");
       return;
     }
+    const current = state.records.get(id) || record;
+    const readiness = evaluateMatchingReadiness(current);
+    if (!readiness.isReadyForMatching) {
+      const names = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
+      setShareActionStatus(
+        names.length ? `أكمل: ${names.join("، ")} قبل إتاحة التعاون.` : "أكمل بيانات الفرصة قبل إتاحة التعاون.",
+        "is-error"
+      );
+      return;
+    }
+    if (String(current.cooperationListing || "").toUpperCase() === "OPEN") {
+      setShareActionStatus("الفرصة متاحة للتعاون مسبقًا", "is-done");
+      toast("الفرصة متاحة للتعاون مسبقًا");
+      return;
+    }
+    const user = authUser();
     try {
       await patchOpportunity(id, {
         cooperationListing: "OPEN",
-        cooperationListingAt: new Date().toISOString()
+        cooperationListingAt: new Date().toISOString(),
+        cooperationEnabled: true,
+        cooperationEnabledBy: user?.uid || "",
+        cooperationEnabledAt: new Date().toISOString()
       });
-      state.records.set(id, { ...state.records.get(id), cooperationListing: "OPEN" });
+      await reloadOpportunityFromBackend(id);
       setShareActionStatus("تمت إتاحة الفرصة للتعاون مع المكاتب الأخرى", "is-done");
       toast("تمت إتاحة الفرصة للتعاون");
+      await renderDetail(id);
     } catch (error) {
       console.warn("[iaqar] cooperation listing", error);
-      setShareActionStatus("تعذر إتاحة التعاون", "is-error");
+      setShareActionStatus(mapClientPatchError(error, "تعذر إتاحة التعاون"), "is-error");
     }
   });
 
@@ -874,9 +906,12 @@ function wireDetailHandlers(id, record) {
     const existing = state.records.get(id) || record;
     const data = Object.fromEntries(new FormData(form).entries());
     const editResult = buildEditPatch(existing, data, { actorUid: authUser()?.uid || "" });
-    if (!editResult.ok) {
-      setStatus(editResult.error || "تعذر حفظ التغييرات", "is-error");
-      if (statusNode) statusNode.textContent = editResult.error || "تعذر الحفظ";
+    if (!editResult.ok && editResult.error !== "no_editable_fields") {
+      const msg = editResult.error === "ownership_fields_protected"
+        ? "لا تملك صلاحية تعديل هذه الفرصة."
+        : (editResult.error || "تعذر حفظ التغييرات");
+      setStatus(msg, "is-error");
+      if (statusNode) statusNode.textContent = msg;
       return;
     }
     const advResult = buildAdvertiserDataPatch(existing, data);
@@ -889,54 +924,67 @@ function wireDetailHandlers(id, record) {
       if (statusNode) statusNode.textContent = advResult.error || "رقم الجوال غير صحيح";
       return;
     }
+    const editPatch = editResult.ok ? editResult.patch : {};
+    const hasEditChanges = Object.keys(editPatch).length > 0;
+    const hasAdvChanges = Object.keys(advResult.patch).some((key) => {
+      return String(advResult.patch[key] ?? "") !== String(existing[key] ?? "");
+    });
+    if (!hasEditChanges && !hasAdvChanges) {
+      setStatus("لا توجد حقول قابلة للحفظ", "is-error");
+      if (statusNode) statusNode.textContent = "لا توجد تغييرات للحفظ";
+      return;
+    }
     btn.disabled = true;
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
+    const mergedPreview = normalizeOpportunityFinancials({ ...existing, ...editPatch, ...advResult.patch });
+    const readiness = evaluateMatchingReadiness(mergedPreview);
     const patch = {
-      ...editResult.patch,
+      ...editPatch,
       ...advResult.patch,
-      updatedAt: new Date().toISOString(),
+      ...readinessFieldsForClient(mergedPreview, readiness),
       updatedBy: authUser()?.uid || ""
     };
     try {
       await patchOpportunity(id, patch);
-      state.records.set(id, { ...existing, ...patch, id });
+      await reloadOpportunityFromBackend(id);
       if (statusNode) statusNode.textContent = "تم حفظ التغييرات";
       setStatus("تم حفظ التغييرات", "is-done");
       toast("تم حفظ التغييرات");
       await renderDetail(id);
     } catch (error) {
       console.warn("[iaqar] unified save", error);
-      if (statusNode) statusNode.textContent = "تعذر حفظ التغييرات";
-      setStatus("تعذر حفظ التغييرات", "is-error");
+      const msg = mapClientPatchError(error, "تعذر حفظ التغييرات");
+      if (statusNode) statusNode.textContent = msg;
+      setStatus(msg, "is-error");
     } finally {
       btn.disabled = false;
     }
+  }
+
+  function readinessFieldsForClient(record, readiness = evaluateMatchingReadiness(record)) {
+    return {
+      matchingReadiness: readiness.matchingReadiness,
+      matchingReadinessMissing: readiness.matchingReadinessMissing || []
+    };
   }
 
   $("bankUnifiedSaveBtn")?.addEventListener("click", () => void saveUnifiedChanges());
 
   document.querySelectorAll("[data-contact-outcome]").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
       const outcome = btn.getAttribute("data-contact-outcome");
-      const user = authUser();
-      const patch = {
-        lastContactAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        updatedBy: user?.uid || ""
-      };
-      if (outcome === "CONTACTED") patch.advertiserContactStatus = "RESPONDED";
-      else if (outcome === "NO_RESPONSE") patch.advertiserContactStatus = "NO_RESPONSE";
-      else if (outcome === "FOLLOW_UP") patch.advertiserContactStatus = "CALL_LATER";
-      else if (outcome === "REFUSED") patch.advertiserContactStatus = "REFUSED";
-      else if (outcome === "AGREED") patch.marketingConsentStatus = "PRELIMINARY_YES";
+      const buttons = document.querySelectorAll("[data-contact-outcome]");
+      buttons.forEach((node) => { node.disabled = true; });
       try {
-        await patchOpportunity(id, patch);
-        state.records.set(id, { ...state.records.get(id), ...patch, id });
+        await recordContactOutcome(id, outcome);
         toast("تم تسجيل نتيجة التواصل");
         await renderDetail(id);
       } catch (error) {
         console.warn("[iaqar] contact outcome", error);
-        toast("تعذر تسجيل نتيجة التواصل");
+        toast(error.message || "تعذر تسجيل نتيجة التواصل");
+      } finally {
+        buttons.forEach((node) => { node.disabled = false; });
       }
     });
   });
@@ -1044,22 +1092,99 @@ function wireDetailHandlers(id, record) {
   $("bankRevokeBtn")?.addEventListener("click", () => void revokeCooperation(id, record));
 }
 
-async function patchOpportunity(id, patch) {
+function mapClientPatchError(error, fallback = "تعذر الحفظ؛ حاول مرة أخرى.") {
+  const code = String(error?.code || error?.message || "").trim();
+  switch (code) {
+    case "opportunity_not_found":
+      return "لم يتم العثور على الفرصة.";
+    case "office_mismatch":
+      return "لا تملك صلاحية تعديل هذه الفرصة.";
+    case "patch_empty":
+      return "لا توجد حقول قابلة للحفظ.";
+    case "cooperation_incomplete":
+      return error?.message || "أكمل بيانات الفرصة قبل إتاحة التعاون.";
+    case "firestore_write_failed":
+      return "تعذر الوصول إلى خدمة الحفظ.";
+    case "invalid_budget":
+    case "قيمة الميزانية غير صالحة.":
+      return "قيمة الميزانية غير صالحة.";
+    case "auth_required":
+      return "سجل دخول المكتب أولًا.";
+    default:
+      return error?.message && /[^\x00-\x7F]/.test(error.message) ? error.message : fallback;
+  }
+}
+
+async function reloadOpportunityFromBackend(id) {
   const runtime = officeRuntime();
+  if (!runtime?.db || !officeId() || !id) return null;
+  const snap = await runtime.db.collection("offices").doc(officeId())
+    .collection("opportunities").doc(id).get();
+  if (!snap.exists) return null;
+  const record = { id, ...(snap.data() || {}) };
+  state.records.set(id, record);
+  return record;
+}
+
+async function patchOpportunity(id, patch) {
   const user = authUser();
-  if (!runtime?.db || !user) throw new Error("auth_required");
-  // Phase 3 bank domain itself never creates matches; Phase 4 rematch is a separate Worker call.
+  if (!user?.getIdToken) throw Object.assign(new Error("auth_required"), { code: "auth_required" });
   const boundaries = phase3BoundaryGuarantees();
   if (boundaries.createsMatch) {
     throw new Error("phase_boundary_violation");
   }
-  await runtime.db.collection("offices").doc(officeId())
-    .collection("opportunities").doc(id)
-    .set({
-      ...patch,
+  const token = await user.getIdToken();
+  const response = await fetch(`${workerBaseUrl()}/opportunity/patch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "X-Office-Id": officeId()
+    },
+    body: JSON.stringify({
       officeId: officeId(),
-      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+      opportunityId: id,
+      patch
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload.message || mapClientPatchError({ code: payload.error });
+    throw Object.assign(new Error(message), { code: payload.error || "patch_failed" });
+  }
+  if (payload.opportunity) {
+    state.records.set(id, { ...payload.opportunity, id });
+  }
+  return payload;
+}
+
+async function recordContactOutcome(id, outcome) {
+  const user = authUser();
+  if (!user?.getIdToken) throw Object.assign(new Error("auth_required"), { code: "auth_required" });
+  const token = await user.getIdToken();
+  const response = await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "X-Office-Id": officeId()
+    },
+    body: JSON.stringify({
+      officeId: officeId(),
+      opportunityId: id,
+      action: "contact_outcome",
+      contactOutcome: outcome
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(payload.message || "تعذر تسجيل نتيجة التواصل"),
+      { code: payload.error || "contact_outcome_failed" }
+    );
+  }
+  await reloadOpportunityFromBackend(id);
+  return payload;
 }
 
 function workerBaseUrl() {
@@ -1551,12 +1676,12 @@ async function loadCooperationNearbySuggestions(opportunityId, record) {
       body: JSON.stringify({ officeId: officeId(), opportunityId })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !Array.isArray(payload.suggestions)) {
-      panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">لا توجد اقتراحات متاحة الآن.</p>`;
+    if (!response.ok) {
+      panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">${escapeHtml(nearbyEmptyMessage("load_failed"))}</p>`;
       return;
     }
-    if (!payload.suggestions.length) {
-      panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">لا توجد مكاتب بفرص مطابقة في نطاق الحي حاليًا.</p>`;
+    if (!Array.isArray(payload.suggestions) || !payload.suggestions.length) {
+      panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">${escapeHtml(nearbyEmptyMessage(payload.emptyReason || {}))}</p>`;
       return;
     }
     panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4>
@@ -1579,15 +1704,31 @@ async function loadCooperationNearbySuggestions(opportunityId, record) {
     });
   } catch (error) {
     console.warn("[iaqar] cooperation nearby", error);
-    panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">تعذر تحميل الاقتراحات.</p>`;
+    panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">${escapeHtml(nearbyEmptyMessage("load_failed"))}</p>`;
   }
 }
 
 function shareStatusLabel(scope = {}) {
   if (scope.shareKind === "cooperation") {
-    return cooperationStatusLabel(cooperationStateFromShareStatus(scope.status));
+    return shareRequestStatusLabel(scope.status)
+      || cooperationStatusLabel(cooperationStateFromShareStatus(scope.status));
   }
-  return "قابلة للإلغاء";
+  return shareRequestStatusLabel(scope.status) || "قابلة للإلغاء";
+}
+
+function nearbyEmptyMessage(emptyReason = {}) {
+  const code = String(emptyReason?.code || emptyReason || "").trim();
+  if (code === "incomplete_data") {
+    const labels = Array.isArray(emptyReason.missingLabels)
+      ? emptyReason.missingLabels
+      : missingFieldLabelsArabic(emptyReason.missing || []);
+    const fields = labels.length ? labels.join("، ") : "الميزانية، المساحة";
+    return `أكمل بيانات الفرصة لتشغيل البحث عن المكاتب القريبة: ${fields}.`;
+  }
+  if (code === "not_enabled") return "لم تُتح هذه الفرصة للتعاون بعد.";
+  if (code === "no_same_neighborhood") return "لا توجد عروض مطابقة داخل الحي.";
+  if (code === "no_adjacent") return "لا توجد عروض مطابقة في الأحياء المجاورة.";
+  return "تعذر تحميل اقتراحات التعاون؛ حاول مرة أخرى.";
 }
 
 function renderOutgoingShareDetail(scopeKey) {

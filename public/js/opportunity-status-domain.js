@@ -73,9 +73,6 @@ function lifecycleStatus(record = {}) {
 export function normalizeDataCompleteness(record = {}) {
   const readiness = evaluateMatchingReadiness(record);
   if (readiness.isReadyForMatching) return DATA_COMPLETENESS.READY_FOR_MATCHING;
-  const missing = readiness.matchingReadinessMissing || [];
-  const filledCount = 7 - missing.length;
-  if (filledCount >= 5 && missing.length <= 2) return DATA_COMPLETENESS.COMPLETE;
   return DATA_COMPLETENESS.INCOMPLETE;
 }
 

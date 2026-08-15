@@ -322,7 +322,7 @@ export function buildAdvertiserDataPatch(existing = {}, input = {}) {
     if (!hadPhone && !existing.advertiserPhoneSource) {
       patch.advertiserPhoneSource = "manual_entry";
     }
-  } else {
+  } else if (!hadPhone) {
     patch.advertiserPhoneNormalized = "";
     patch.advertiserPhoneRaw = "";
   }

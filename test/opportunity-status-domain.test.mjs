@@ -9,9 +9,20 @@ import {
   OUTCOME_STATUS
 } from "../public/js/opportunity-status-domain.js";
 
-test("normalizeDataCompleteness maps readiness to three domains", () => {
+test("normalizeDataCompleteness maps readiness to domains without false complete", () => {
   const incomplete = normalizeDataCompleteness({ purpose: "SALE" });
   assert.equal(incomplete, DATA_COMPLETENESS.INCOMPLETE);
+
+  const partial = normalizeDataCompleteness({
+    purpose: "PURCHASE",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "العوالي",
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678",
+    area: 120
+  });
+  assert.equal(partial, DATA_COMPLETENESS.INCOMPLETE);
 
   const ready = normalizeDataCompleteness({
     purpose: "SALE",

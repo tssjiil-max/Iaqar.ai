@@ -39,6 +39,20 @@ export const SHARE_REQUEST_STATUS = Object.freeze({
   ENDED: "ENDED"
 });
 
+export const SHARE_REQUEST_STATUS_LABELS = Object.freeze({
+  PENDING: "بانتظار الموافقة",
+  ACCEPTED: "مقبولة",
+  REJECTED: "مرفوضة",
+  REVOKED: "منتهية",
+  ENDED: "منتهية",
+  CLOSED: "منتهية"
+});
+
+export function shareRequestStatusLabel(status) {
+  const key = String(status || "").trim().toUpperCase();
+  return SHARE_REQUEST_STATUS_LABELS[key] || cooperationStatusLabel(status);
+}
+
 /** Fields the originating office may edit in Phase 3. */
 export const EDITABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind",
@@ -250,8 +264,13 @@ export function buildEditPatch(existing, input = {}, { now = new Date(), actorUi
   for (const key of EDITABLE_OPPORTUNITY_FIELDS) {
     if (input[key] === undefined) continue;
     if (["priceOrBudget", "area", "rooms", "bathrooms"].includes(key)) {
-      const num = Number(input[key]);
-      patch[key] = Number.isFinite(num) ? num : null;
+      const raw = input[key];
+      if (raw === "" || raw === null) continue;
+      const num = Number(raw);
+      if (!Number.isFinite(num)) {
+        return { ok: false, error: key === "priceOrBudget" ? "قيمة الميزانية غير صالحة." : "قيمة رقمية غير صالحة." };
+      }
+      patch[key] = num;
     } else if (key === "nearbyDistricts") {
       patch[key] = Array.isArray(input[key])
         ? input[key].map((value) => safeText(value, 80)).filter(Boolean).slice(0, 12)

@@ -48,7 +48,15 @@ import {
   revokeBankSharingScope,
   createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
-import { buildCooperationNearbySuggestions } from "./cooperation-nearby-service.js";
+import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
+import {
+  sanitizeOpportunityPatch,
+  mergeOpportunityFinancialPatch,
+  readinessFieldsForRecord,
+  validateCooperationListingEnable,
+  mapPatchErrorMessage
+} from "./opportunity-patch-service.js";
+import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
 import {
   MESSAGE_CHANNELS,
   MESSAGE_SEND_STATE,
@@ -526,6 +534,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/opportunity/lifecycle") {
         return handleOpportunityLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity/patch") {
+        return handleOpportunityPatch(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname === "/workflow/timeline") {
@@ -2260,8 +2272,10 @@ async function addOpportunityCommunication({ projectId, officeId, opportunityId,
     accessToken,
     fields: compactFields({
       officeId: firestoreString(officeId),
+      opportunityId: firestoreString(opportunityId),
       type: firestoreString(payload.type || "whatsapp"),
       action: firestoreString(payload.action || "opened"),
+      result: firestoreOptionalString(payload.result || payload.contactOutcome || ""),
       statusBefore: firestoreOptionalString(payload.statusBefore || ""),
       statusAfter: firestoreOptionalString(payload.statusAfter || ""),
       createdAt: firestoreTimestamp(now),
@@ -2368,6 +2382,50 @@ async function handleOpportunityLifecycle(request, env, requestId) {
       payload: { type: "whatsapp", action: "opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
     });
     return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else if (action === "contact_outcome") {
+    const outcome = cleanText(body.contactOutcome, 40).toUpperCase();
+    fields.lastContactAt = firestoreTimestamp(now);
+    let contactResult = outcome;
+    if (outcome === "CONTACTED") {
+      fields.advertiserContactStatus = firestoreString("RESPONDED");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+      contactResult = "RESPONDED";
+    } else if (outcome === "NO_RESPONSE") {
+      fields.advertiserContactStatus = firestoreString("NO_RESPONSE");
+      contactResult = "NO_RESPONSE";
+    } else if (outcome === "FOLLOW_UP") {
+      fields.advertiserContactStatus = firestoreString("CALL_LATER");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
+      contactResult = "CALL_LATER";
+    } else if (outcome === "REFUSED") {
+      fields.advertiserContactStatus = firestoreString("REFUSED");
+      contactResult = "REFUSED";
+    } else if (outcome === "AGREED") {
+      fields.marketingConsentStatus = firestoreString("PRELIMINARY_YES");
+      contactResult = "PRELIMINARY_YES";
+    } else {
+      throw appError("contact_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
+    }
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "contact",
+        action: "contact_outcome",
+        result: contactResult,
+        contactOutcome: outcome,
+        statusBefore,
+        statusAfter: contactResult,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      contactOutcome: outcome,
+      advertiserContactStatus: contactResult,
+      requestId
+    });
   } else {
     throw appError("lifecycle_action_invalid", 400, "إجراء دورة الفرصة غير معروف");
   }
@@ -2409,6 +2467,111 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     recordId,
     lifecycleStatus: finalStatus,
     lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[finalStatus] || finalStatus,
+    requestId
+  });
+}
+
+function opportunityPatchToFirestoreFields(patch = {}) {
+  const fields = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null || value === undefined) {
+      fields[key] = null;
+      continue;
+    }
+    if (typeof value === "number") {
+      fields[key] = firestoreInteger(value);
+      continue;
+    }
+    if (typeof value === "boolean") {
+      fields[key] = firestoreBoolean(value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      fields[key] = firestoreStringArray(value);
+      continue;
+    }
+    fields[key] = firestoreString(String(value));
+  }
+  return fields;
+}
+
+async function handleOpportunityPatch(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) {
+    throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
+  }
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date();
+
+  const opportunityDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!opportunityDoc) {
+    throw appError("opportunity_not_found", 404, mapPatchErrorMessage("opportunity_not_found"));
+  }
+  const existing = firestoreFieldsToJs(opportunityDoc.fields || {});
+  if (normalizeOfficeId(existing.officeId) !== officeId) {
+    throw appError("office_mismatch", 403, mapPatchErrorMessage("office_mismatch"));
+  }
+
+  let sanitized = sanitizeOpportunityPatch(body.patch || {});
+  if (!Object.keys(sanitized).length) {
+    throw appError("patch_empty", 400, mapPatchErrorMessage("patch_empty"));
+  }
+
+  if (
+    String(sanitized.cooperationListing || "").toUpperCase() === "OPEN"
+    && String(existing.cooperationListing || "").toUpperCase() !== "OPEN"
+  ) {
+    const gate = validateCooperationListingEnable({ ...existing, ...sanitized });
+    if (!gate.ok) {
+      const labels = missingFieldLabelsArabic(gate.missing || []);
+      throw appError(
+        "cooperation_incomplete",
+        400,
+        labels.length ? `أكمل: ${labels.join("، ")} قبل إتاحة التعاون.` : mapPatchErrorMessage("cooperation_incomplete")
+      );
+    }
+    sanitized.cooperationEnabled = true;
+    sanitized.cooperationEnabledBy = identity.uid || "";
+    sanitized.cooperationEnabledAt = now.toISOString();
+  }
+
+  const financialPatch = mergeOpportunityFinancialPatch(existing, sanitized);
+  const merged = { ...existing, ...financialPatch };
+  const readinessFields = readinessFieldsForRecord(merged);
+  const version = Number(existing.version || 1) + 1;
+  const allPatch = {
+    ...financialPatch,
+    ...readinessFields,
+    updatedBy: identity.uid || "",
+    version
+  };
+
+  const fields = opportunityPatchToFirestoreFields(allPatch);
+  fields.officeId = firestoreString(officeId);
+  fields.updatedAt = firestoreTimestamp(now);
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    fields
+  });
+
+  const finalRecord = { ...merged, ...readinessFields, version };
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    opportunity: finalRecord,
     requestId
   });
 }
@@ -3014,12 +3177,16 @@ async function handleCooperationNearbySuggestions(request, env, requestId) {
     publicOffices,
     officeOpportunities
   });
+  const emptyReason = suggestions.length
+    ? ""
+    : resolveNearbyEmptyReason(sourceOpportunity, suggestions);
 
   return jsonResponse({
     ok: true,
     officeId,
     opportunityId,
     suggestions,
+    emptyReason,
     boundaries: {
       ...phase6BoundaryGuarantees(),
       usesDeviceGps: false,
