@@ -363,6 +363,9 @@ function bankRowHtml(row) {
     : "";
   const readinessClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
   const statusClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
+  const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
+    ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
+    : "";
   return `
     <article
       class="bank-row bank-row-card"
@@ -381,7 +384,7 @@ function bankRowHtml(row) {
         ${statsRow}
         <p class="bank-row-readiness${readinessClass}">${escapeHtml(card.readinessLine)}</p>
         <div class="bank-row-footer">
-          <p class="bank-row-contact">${card.contactLineMarkup}</p>
+          ${contactHtml}
           ${followup}
           ${matchLine}
           ${sourceLine}
