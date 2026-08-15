@@ -173,6 +173,11 @@ service cloud.firestore {
           );
         // الحذف الصلب ممنوع للعملاء — الحذف الآمن يتم عبر حقول lifecycle فقط.
         allow delete: if false;
+
+        match /communications/{communicationId} {
+          allow read, create: if isOfficeMember(officeId);
+          allow update, delete: if canManage(officeId);
+        }
       }
 
       // المطابقات (المرحلة 4): القراءة لأعضاء المكتب فقط — الكتابة عبر Worker (Admin SDK).

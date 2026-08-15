@@ -580,6 +580,13 @@
           }
         }
         let intakePayload;
+        const lifecycleFields = {
+          lifecycleStatus: "NEW",
+          normalizedSource: targetOffice === "platform" ? "public_site" : "office_link",
+          contactType: owner ? "owner" : "buyer",
+          contactName: name,
+          contactPhone: phone
+        };
         if (owner) {
           intakePayload = {
             officeId: targetOffice, kind,
@@ -596,6 +603,7 @@
             completeness: images.length ? 90 : 65,
             source: targetOffice === "platform" ? "platform_public" : "office_public_link",
             status: "new",
+            ...lifecycleFields,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           };
         } else {
@@ -631,6 +639,7 @@
             imageCount: 0,
             hasVideo: false,
             mediaMissing: false,
+            ...lifecycleFields,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           };
           if (targetOffice === "platform") api.rememberLastCity(city);

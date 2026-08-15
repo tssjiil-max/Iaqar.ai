@@ -92,6 +92,21 @@ import {
   recordAdminActivityEvent,
   recordOfficeLoginActivity
 } from "./admin-service.js";
+import {
+  LIFECYCLE_STATUS,
+  LIFECYCLE_STATUS_LABELS,
+  normalizeOpportunitySource,
+  getOpportunityLifecycleStatus,
+  normalizeSaudiPhoneForWhatsApp,
+  buildOpportunitySummary,
+  buildOpportunityWhatsAppMessage,
+  resolveSelectOption,
+  extractDistrictFromVoice,
+  parseVoiceOpportunityFields,
+  whatsappActionTypeForStatus,
+  isArchivedLifecycle,
+  isActiveLifecycle as isOpportunityLifecycleActive
+} from "./opportunity-lifecycle.mjs";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -501,6 +516,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/workflow/action") {
         return handleWorkflowAction(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity/lifecycle") {
+        return handleOpportunityLifecycle(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname === "/workflow/timeline") {
@@ -1408,7 +1427,9 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
     status: firestoreString("processed"), processingState: firestoreString("processed"),
     processedRecordId: firestoreString(recordId), opportunityId: firestoreString(opportunityId),
-    matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
+    matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now),
+    ...lifecycleFieldsForIntake(intake, now),
+    lifecycleStatus: firestoreString(matches.length > 0 ? LIFECYCLE_STATUS.MATCHED : LIFECYCLE_STATUS.NEW)
   }});
 
   if (matches.length > 0) {
@@ -1804,6 +1825,32 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   }
 
   const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
+  const contactType = parsed.kind === "owner_offer" ? "owner" : "buyer";
+  const existingOpportunity = await findActiveOpportunityByPhone({
+    projectId, officeId, phone: parsed.phone || senderPhone, contactType, accessToken
+  });
+  if (existingOpportunity) {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", inboxDocumentId],
+      accessToken,
+      fields: {
+        processingState: firestoreString("processed"),
+        status: firestoreString("processed"),
+        isProcessed: firestoreBoolean(true),
+        classifiedAs: firestoreString(parsed.kind),
+        extractedJson: firestoreString(JSON.stringify(parsed)),
+        sourceCollection: firestoreString(targetCollection),
+        sourceRecordId: firestoreString(existingOpportunity.data.sourceRecordId || ""),
+        opportunityId: firestoreString(existingOpportunity.opportunityId),
+        duplicateOpportunity: firestoreBoolean(true),
+        processedAt: firestoreTimestamp(now),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    return { kind: parsed.kind, matches: 0, duplicateOpportunity: true, opportunityId: existingOpportunity.opportunityId };
+  }
+
   const recordId = `${parsed.kind === "owner_offer" ? "own" : "cli"}_${inboxDocumentId.replace(/^wa_/, "").slice(0, 32)}`;
   const commonFields = parsedToFirestoreFields(parsed, {
     officeId, inboxDocumentId, senderName, senderPhone, receivedAt, source, now
@@ -2050,10 +2097,28 @@ function normalizeSaudiPhone(value) {
 }
 
 function parsedToFirestoreFields(parsed, context) {
+  const normalizedSource = normalizeOpportunitySource(context.source || "whatsapp_cloud_api");
+  const contactType = parsed.kind === "owner_offer" ? "owner" : (parsed.kind === "client_request" ? "buyer" : "unknown");
   return compactFields({
     schemaVersion: firestoreInteger(3), officeId: firestoreString(context.officeId),
-    source: firestoreString(context.source || "whatsapp_cloud_api"), sourceInboxId: firestoreString(context.inboxDocumentId),
+    source: firestoreString(context.source || "whatsapp_cloud_api"),
+    normalizedSource: firestoreString(normalizedSource),
+    sourceInboxId: firestoreString(context.inboxDocumentId),
     recordType: firestoreString(parsed.kind), status: firestoreString("active"), workflowStage: firestoreString("new"),
+    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
+    contactType: firestoreString(contactType),
+    contactName: firestoreOptionalString(parsed.senderName || context.senderName),
+    contactPhone: firestoreOptionalString(parsed.phone || context.senderPhone),
+    lastContactAt: null,
+    nextFollowUpAt: null,
+    lastContactMethod: null,
+    lastWhatsAppAt: null,
+    lastWhatsAppOpenedAt: null,
+    closureReason: null,
+    closedAt: null,
+    archivedAt: null,
+    lifecycleUpdatedAt: firestoreTimestamp(context.now),
+    lifecycleUpdatedBy: firestoreOptionalString(context.lifecycleUpdatedBy || ""),
     rawText: firestoreString(parsed.rawText), city: firestoreOptionalString(parsed.city || DEFAULT_CITY), propertyType: firestoreOptionalString(parsed.propertyType),
     district: firestoreOptionalString(parsed.district), transactionType: firestoreOptionalString(parsed.transactionType),
     price: parsed.price ? firestoreInteger(parsed.price) : null,
@@ -2064,10 +2129,198 @@ function parsedToFirestoreFields(parsed, context) {
     streetWidth: parsed.streetWidth ? firestoreInteger(parsed.streetWidth) : null,
     urgency: firestoreString(parsed.urgency || "normal"), financingReady: firestoreBoolean(Boolean(parsed.financingReady)),
     directOwner: firestoreBoolean(Boolean(parsed.directOwner)), furnished: firestoreBoolean(Boolean(parsed.furnished)),
-    confidence: firestoreInteger(parsed.confidence || 0), contactPhone: firestoreOptionalString(parsed.phone || context.senderPhone),
-    contactName: firestoreOptionalString(parsed.senderName || context.senderName), completeness: firestoreInteger(parsed.completeness),
+    confidence: firestoreInteger(parsed.confidence || 0), completeness: firestoreInteger(parsed.completeness),
     missingFieldsJson: firestoreString(JSON.stringify(parsed.missing)), receivedAt: firestoreTimestamp(context.receivedAt),
     createdAt: firestoreTimestamp(context.now), updatedAt: firestoreTimestamp(context.now)
+  });
+}
+
+function lifecycleFieldsForIntake(intake = {}, now = new Date()) {
+  const isOwner = intake.kind === "owner";
+  const normalizedSource = normalizeOpportunitySource(intake.source || "office_public_link");
+  return compactFields({
+    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
+    normalizedSource: firestoreString(normalizedSource),
+    contactType: firestoreString(isOwner ? "owner" : "buyer"),
+    contactName: firestoreOptionalString(intake.name),
+    contactPhone: firestoreOptionalString(intake.phone),
+    lifecycleUpdatedAt: firestoreTimestamp(now)
+  });
+}
+
+async function findActiveOpportunityByPhone({ projectId, officeId, phone, contactType, accessToken }) {
+  const digits = normalizeSaudiPhoneForWhatsApp(phone);
+  if (!digits) return null;
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 80
+  });
+  for (const doc of docs) {
+    const data = firestoreFieldsToJs(doc.fields || {});
+    if (normalizeOfficeId(data.officeId) !== officeId) continue;
+    const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || "");
+    if (docPhone !== digits) continue;
+    if (contactType && data.contactType && data.contactType !== contactType) continue;
+    const status = getOpportunityLifecycleStatus(data);
+    if ([LIFECYCLE_STATUS.CLOSED_WON, LIFECYCLE_STATUS.CLOSED_LOST, LIFECYCLE_STATUS.ARCHIVED].includes(status)) continue;
+    const docId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    return { opportunityId: docId, data };
+  }
+  return null;
+}
+
+async function addOpportunityCommunication({ projectId, officeId, opportunityId, payload, accessToken, now = new Date() }) {
+  const communicationId = `comm_${(await sha256Hex(`${opportunityId}|${now.toISOString()}|${payload.action || "event"}`)).slice(0, 24)}`;
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId, "communications", communicationId],
+    accessToken,
+    fields: compactFields({
+      officeId: firestoreString(officeId),
+      type: firestoreString(payload.type || "whatsapp"),
+      action: firestoreString(payload.action || "opened"),
+      statusBefore: firestoreOptionalString(payload.statusBefore || ""),
+      statusAfter: firestoreOptionalString(payload.statusAfter || ""),
+      createdAt: firestoreTimestamp(now),
+      createdBy: firestoreOptionalString(payload.createdBy || "")
+    })
+  });
+  return communicationId;
+}
+
+async function resolveOpportunityRecord({ projectId, officeId, body, accessToken }) {
+  const recordType = cleanText(body.recordType || "opportunity", 30);
+  const recordId = cleanText(body.recordId || body.opportunityId, 180);
+  if (!recordId) throw appError("record_id_required", 400, "معرّف الفرصة مطلوب");
+
+  if (recordType === "intake") {
+    const intakeDoc = await getFirestoreDocument({
+      projectId, segments: ["offices", officeId, "publicIntake", recordId], accessToken
+    });
+    const intake = firestoreFieldsToJs(intakeDoc.fields || {});
+    if (normalizeOfficeId(intake.officeId) !== officeId) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
+    return {
+      collection: "publicIntake",
+      recordId,
+      data: intake,
+      opportunityId: intake.opportunityId || "",
+      contactType: intake.kind === "owner" ? "owner" : "buyer"
+    };
+  }
+
+  const opportunityDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken
+  });
+  const data = firestoreFieldsToJs(opportunityDoc.fields || {});
+  if (normalizeOfficeId(data.officeId) !== officeId) throw appError("office_mismatch", 403, "الفرصة لا تتبع هذا المكتب");
+  return {
+    collection: "opportunities",
+    recordId,
+    data,
+    opportunityId: recordId,
+    contactType: data.contactType || (data.recordType === "owner_offer" ? "owner" : "buyer")
+  };
+}
+
+async function handleOpportunityLifecycle(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const action = cleanText(body.action, 60);
+  if (!officeId || !action) throw appError("lifecycle_data_missing", 400, "بيانات دورة الفرصة غير مكتملة");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date();
+  const resolved = await resolveOpportunityRecord({ projectId, officeId, body, accessToken });
+  const statusBefore = getOpportunityLifecycleStatus(resolved.data);
+  const collection = resolved.collection;
+  const recordId = resolved.recordId;
+  const opportunityId = resolved.opportunityId || recordId;
+  const fields = { officeId: firestoreString(officeId), updatedAt: firestoreTimestamp(now), lifecycleUpdatedAt: firestoreTimestamp(now), lifecycleUpdatedBy: firestoreString(identity.uid) };
+
+  if (action === "update_status") {
+    const next = cleanText(body.lifecycleStatus, 40);
+    if (!LIFECYCLE_STATUS_LABELS[next]) throw appError("lifecycle_status_invalid", 400, "حالة الفرصة غير صحيحة");
+    fields.lifecycleStatus = firestoreString(next);
+    if (next === LIFECYCLE_STATUS.CONTACTED) {
+      fields.lastContactAt = firestoreTimestamp(now);
+      fields.lastContactMethod = firestoreOptionalString(body.lastContactMethod || "manual");
+    }
+    if (next === LIFECYCLE_STATUS.FOLLOW_UP && body.nextFollowUpAt) {
+      const followUp = new Date(body.nextFollowUpAt);
+      if (!Number.isNaN(followUp.getTime())) fields.nextFollowUpAt = firestoreTimestamp(followUp);
+    }
+  } else if (action === "confirm_contact") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+    fields.lastContactAt = firestoreTimestamp(now);
+    fields.lastContactMethod = firestoreString(cleanText(body.lastContactMethod || "whatsapp", 30));
+  } else if (action === "set_followup") {
+    const followUp = body.nextFollowUpAt ? new Date(body.nextFollowUpAt) : defaultNextFollowUp(Number(body.followUpDays || 1) * 24);
+    if (Number.isNaN(followUp.getTime())) throw appError("followup_invalid", 400, "موعد المتابعة غير صحيح");
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
+    fields.nextFollowUpAt = firestoreTimestamp(followUp);
+  } else if (action === "close_won") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || "تمت بنجاح", 200));
+  } else if (action === "close_lost") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || body.reason || "لم تتم", 200));
+  } else if (action === "archive") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
+    fields.archivedAt = firestoreTimestamp(now);
+  } else if (action === "whatsapp_opened") {
+    fields.lastWhatsAppOpenedAt = firestoreTimestamp(now);
+    fields.lastWhatsAppAt = firestoreTimestamp(now);
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: { type: "whatsapp", action: "opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
+    });
+    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else {
+    throw appError("lifecycle_action_invalid", 400, "إجراء دورة الفرصة غير معروف");
+  }
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+  const finalStatus = action === "update_status" ? cleanText(body.lifecycleStatus, 40)
+    : action === "confirm_contact" ? LIFECYCLE_STATUS.CONTACTED
+    : action === "set_followup" ? LIFECYCLE_STATUS.FOLLOW_UP
+    : action === "close_won" ? LIFECYCLE_STATUS.CLOSED_WON
+    : action === "close_lost" ? LIFECYCLE_STATUS.CLOSED_LOST
+    : action === "archive" ? LIFECYCLE_STATUS.ARCHIVED
+    : statusBefore;
+
+  await addOpportunityCommunication({
+    projectId, officeId, opportunityId, accessToken, now,
+    payload: {
+      type: cleanText(body.communicationType || "lifecycle", 30),
+      action: cleanText(body.communicationAction || action, 40),
+      statusBefore,
+      statusAfter: finalStatus,
+      createdBy: identity.uid
+    }
+  });
+
+  if (resolved.data.sourceRecordId && collection === "opportunities") {
+    const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
+    if (["clients", "owners"].includes(sourceCollection)) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
+        fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
+      }).catch(() => {});
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    recordType: collection === "publicIntake" ? "intake" : "opportunity",
+    recordId,
+    lifecycleStatus: finalStatus,
+    lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[finalStatus] || finalStatus,
+    requestId
   });
 }
 
@@ -4470,5 +4723,9 @@ export {
   resolveTemplateCode, whatsappDigits,
   evaluatePublicRateLimit, consumePublicRateLimit, publicRateLimitKey,
   resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS,
-  extractListingTextFromHtml
+  extractListingTextFromHtml,
+  normalizeOpportunitySource, getOpportunityLifecycleStatus, normalizeSaudiPhoneForWhatsApp,
+  buildOpportunitySummary, buildOpportunityWhatsAppMessage, resolveSelectOption,
+  extractDistrictFromVoice, parseVoiceOpportunityFields, whatsappActionTypeForStatus,
+  isArchivedLifecycle, isOpportunityLifecycleActive
 };

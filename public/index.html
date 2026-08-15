@@ -673,6 +673,28 @@
       text-align:center;
     }
 
+    .workspace-filters {
+      display:flex;
+      gap:8px;
+      margin:10px 0 4px;
+    }
+
+    .workspace-filter {
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font:700 13px Tajawal;
+      cursor:pointer;
+    }
+
+    .workspace-filter.active {
+      background:var(--green);
+      color:#fff;
+      border-color:var(--green);
+    }
+
     .workspace .list {
       margin-top:18px;
       flex:1 0 auto;
@@ -2798,6 +2820,11 @@
           </div>
           <p class="workspace-subtitle" id="workspaceSubtitle">الإجراءات والمطابقات التي تحتاج انتباهك الآن.</p>
 
+          <div class="workspace-filters" id="opportunityViewFilters" hidden>
+            <button type="button" class="workspace-filter active" data-opportunity-view="active">النشطة</button>
+            <button type="button" class="workspace-filter" data-opportunity-view="archived">المنتهية</button>
+          </div>
+
           <div class="list" id="operationList"></div>
           <p class="empty" id="operationsEmpty">
             لا توجد إجراءات تحتاج انتباهك حاليًا.
@@ -3239,6 +3266,8 @@
   <script type="module" src="js/fcm-fid.js"></script>
   <script type="module" src="js/gemini-voice-intake-domain.js"></script>
   <script type="module" src="js/public-client-intake-domain.js"></script>
+  <script src="js/opportunity-lifecycle.js"></script>
+  <script src="js/voice-intake.js"></script>
   <script src="js/access-gate.js"></script>
   <script src="js/firebase-office.js"></script>
   <script type="module" src="js/app-navigation-domain.js"></script>
@@ -3381,6 +3410,12 @@
     }
 
     document.addEventListener("click", event => {
+      const viewButton = event.target.closest("[data-opportunity-view]");
+      if (viewButton && window.IAQAR_WORKFLOW && typeof window.IAQAR_WORKFLOW.setOpportunityView === "function") {
+        window.IAQAR_WORKFLOW.setOpportunityView(viewButton.dataset.opportunityView);
+        return;
+      }
+
       const operation = event.target.closest("[data-id].operation");
       if (operation) {
         state.opened = state.opened === operation.dataset.id
@@ -3457,6 +3492,14 @@
     window.addEventListener("iaqar:operations-data", event => {
       const detail = event.detail || {};
       const items = Array.isArray(detail.items) ? detail.items : [];
+      const filters = document.getElementById("opportunityViewFilters");
+      if (filters) {
+        const hasLifecycleItems = items.some(item => ["intake", "opportunity"].includes(item.recordType));
+        filters.hidden = !hasLifecycleItems;
+        filters.querySelectorAll("[data-opportunity-view]").forEach(button => {
+          button.classList.toggle("active", button.dataset.opportunityView === (detail.opportunityView || "active"));
+        });
+      }
       if (detail.authoritative || items.length > 0) {
         data = items;
         const pendingMatches = (item) => state.pendingOpen && (
