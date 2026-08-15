@@ -52,8 +52,8 @@ test("office logo is rectangular with cover and clamp dimensions", () => {
   assert.ok(css.includes(".card.license .office-logo"));
   assert.ok(css.includes("aspect-ratio:4/5"));
   assert.ok(css.includes("object-fit:cover"));
-  assert.ok(css.includes("clamp(100px,25.6vw,118px)"));
-  assert.ok(css.includes("clamp(118px,30.26vw,136px)"));
+  assert.ok(css.includes("clamp(112px,29vw,124px)"));
+  assert.ok(css.includes("clamp(132px,34vw,148px)"));
   assert.ok(css.includes("border-radius:17px"));
   assert.equal(css.includes("border-radius:50%"), false);
 });
@@ -86,7 +86,7 @@ test("office card image min width at 390px viewport is at least 94px", () => {
 });
 
 test("service worker cache bumped for office card deploy", () => {
-  assert.ok(sw.includes("iaqar-shell-office-card-v1"));
+  assert.ok(sw.includes("iaqar-shell-neighborhoods-v1"));
 });
 
 test("office card CSS does not change header or operations center rules", () => {

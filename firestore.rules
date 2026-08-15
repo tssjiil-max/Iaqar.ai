@@ -39,7 +39,16 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && validServiceNeighborhoodIdsField();
+    }
+    function validServiceNeighborhoodIdsField() {
+      return !('serviceNeighborhoodIds' in request.resource.data)
+        || (
+          request.resource.data.serviceNeighborhoodIds is list
+          && request.resource.data.serviceNeighborhoodIds.size() >= 1
+          && request.resource.data.serviceNeighborhoodIds.size() <= 5
+        );
     }
 
     match /offices/{officeId} {

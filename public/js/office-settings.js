@@ -23,7 +23,17 @@ import {
   validateOfficeName,
   withOfficeImageCacheBust
 } from "./office-domain.js";
-import { buildDefaultServiceNeighborhoodIds } from "./neighborhood-adjacency-domain.js";
+import { neighborhoodIdsForCity } from "./neighborhood-adjacency-domain.js";
+import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
+import {
+  districtIdFromOfficialName,
+  districtLabelById,
+  districtOptionsForCity,
+  normalizeServiceNeighborhoodIds,
+  SERVICE_NEIGHBORHOOD_MAX,
+  SERVICE_NEIGHBORHOOD_MESSAGES,
+  validateServiceNeighborhoodIds
+} from "./service-neighborhood-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -53,6 +63,7 @@ const defaults = {
   licenseNumber: "",
   city: "المدينة المنورة",
   specialties: [],
+  serviceNeighborhoodIds: [],
   logoUrl: "",
   displayImageUrl: "",
   coverUrl: "",
@@ -72,6 +83,7 @@ let authClaims = {};
 let notificationPreferences = defaultNotificationPreferences();
 let cooperationMode = DEFAULT_COOPERATION_MODE;
 let nameCheckToken = 0;
+let selectedServiceNeighborhoodIds = [];
 
 function officeRuntime() {
   return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -136,6 +148,10 @@ function clean(data) {
     licenseNumber: safeText(data.licenseNumber, defaults.licenseNumber).replace(/[^0-9]/g, "").slice(0, 20),
     city: safeText(data.city, defaults.city).slice(0, 60),
     specialties: normalizedSpecialties(data.specialties),
+    serviceNeighborhoodIds: normalizeServiceNeighborhoodIds(
+      data.serviceNeighborhoodIds,
+      safeText(data.city, defaults.city).slice(0, 60)
+    ),
     logoUrl: safeText(data.logoUrl).slice(0, 2000),
     displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
     coverUrl: safeText(data.coverUrl).slice(0, 2000),
@@ -169,9 +185,123 @@ function writeSpecialtiesToForm(list) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
+function renderOfficeCardNeighborhoods(ids = []) {
+  const chips = document.getElementById("officeDisplayNeighborhoods");
+  const empty = document.getElementById("officeDisplayNeighborhoodsEmpty");
+  const list = Array.isArray(ids) ? ids : [];
+  if (!chips) return;
+  chips.innerHTML = list
+    .map((id) => `<span class="office-neighborhood-chip">${districtLabelById(id)}</span>`)
+    .join("");
+  if (empty) empty.hidden = list.length > 0;
+}
+
+function setNeighborhoodEditorError(message = "") {
+  if (!el.neighborhoodError) return;
+  el.neighborhoodError.textContent = message || "";
+}
+
+function updateNeighborhoodCount() {
+  if (!el.neighborhoodCount) return;
+  const remaining = SERVICE_NEIGHBORHOOD_MAX - selectedServiceNeighborhoodIds.length;
+  el.neighborhoodCount.textContent =
+    `تم اختيار ${selectedServiceNeighborhoodIds.length} من ${SERVICE_NEIGHBORHOOD_MAX} — المتبقي ${remaining}`;
+}
+
+function renderNeighborhoodEditorChips() {
+  if (!el.neighborhoodChips) return;
+  el.neighborhoodChips.innerHTML = selectedServiceNeighborhoodIds
+    .map((id) => `
+      <span class="office-neighborhood-editor-chip" data-id="${id}">
+        <span>${districtLabelById(id)}</span>
+        <button type="button" data-remove-neighborhood="${id}" aria-label="إزالة ${districtLabelById(id)}">×</button>
+      </span>
+    `)
+    .join("");
+  updateNeighborhoodCount();
+}
+
+function readNeighborhoodsFromForm() {
+  return [...selectedServiceNeighborhoodIds];
+}
+
+function writeNeighborhoodsToForm(ids = []) {
+  selectedServiceNeighborhoodIds = normalizeServiceNeighborhoodIds(ids, el.city?.value || current.city);
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+}
+
+function addNeighborhoodId(id) {
+  const city = el.city?.value || current.city;
+  if (!id) return false;
+  if (selectedServiceNeighborhoodIds.includes(id)) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.duplicate);
+    return false;
+  }
+  if (selectedServiceNeighborhoodIds.length >= SERVICE_NEIGHBORHOOD_MAX) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.max);
+    return false;
+  }
+  if (!neighborhoodIdsForCity(city).includes(id)) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.city);
+    return false;
+  }
+  selectedServiceNeighborhoodIds = normalizeServiceNeighborhoodIds(
+    [...selectedServiceNeighborhoodIds, id],
+    city
+  );
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+  return true;
+}
+
+function removeNeighborhoodId(id) {
+  selectedServiceNeighborhoodIds = selectedServiceNeighborhoodIds.filter((entry) => entry !== id);
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+}
+
+function refreshNeighborhoodSuggestOptions() {
+  const city = el.city?.value || current.city;
+  const options = districtOptionsForCity(city).filter(
+    (name) => !selectedServiceNeighborhoodIds.includes(districtIdFromOfficialName(name, city))
+  );
+  if (!el.neighborhoodSearch) return;
+  el.neighborhoodSearch.value = "";
+  delete el.neighborhoodSearch.dataset.arabicSuggestWired;
+  const staleList = el.neighborhoodSearch.parentElement?.querySelector(".arabic-suggest-list");
+  if (staleList) staleList.remove();
+  wireArabicSuggestInput(el.neighborhoodSearch, options, {
+    onPick: (label) => {
+      const id = districtIdFromOfficialName(label, city);
+      if (id) addNeighborhoodId(id);
+      el.neighborhoodSearch.value = "";
+      refreshNeighborhoodSuggestOptions();
+    }
+  });
+}
+
+function initNeighborhoodEditor() {
+  if (!el.neighborhoodSearch || el.neighborhoodSearch.dataset.neighborhoodEditorBound === "1") return;
+  el.neighborhoodSearch.dataset.neighborhoodEditorBound = "1";
+  refreshNeighborhoodSuggestOptions();
+  if (el.neighborhoodChips) {
+    el.neighborhoodChips.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-remove-neighborhood]");
+      if (!btn) return;
+      removeNeighborhoodId(btn.getAttribute("data-remove-neighborhood") || "");
+    });
+  }
+  if (el.city) {
+    el.city.addEventListener("change", () => {
+      writeNeighborhoodsToForm(
+        normalizeServiceNeighborhoodIds(selectedServiceNeighborhoodIds, el.city.value)
+      );
+      refreshNeighborhoodSuggestOptions();
+    });
+  }
+}
+
 
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
@@ -255,6 +385,7 @@ function apply(data) {
   el.city.value = current.city;
   if (el.link) el.link.value = officeLink();
   writeSpecialtiesToForm(current.specialties);
+  writeNeighborhoodsToForm(current.serviceNeighborhoodIds);
   applyImageSlots();
   applyOfficeCardImages();
 
@@ -271,6 +402,7 @@ function apply(data) {
   });
   const specialtyWrap = document.getElementById("officeDisplaySpecialtiesWrap");
   if (specialtyWrap) specialtyWrap.hidden = !current.specialties.length;
+  renderOfficeCardNeighborhoods(current.serviceNeighborhoodIds);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +440,9 @@ async function loadFirestore() {
         licenseNumber: data.licenseNumber || data.falLicense,
         city: data.city,
         specialties: data.specialties,
+        serviceNeighborhoodIds: Array.isArray(data.serviceNeighborhoodIds)
+          ? data.serviceNeighborhoodIds
+          : [],
         logoUrl: data.logoUrl,
         displayImageUrl: data.displayImageUrl,
         coverUrl: data.coverUrl,
@@ -389,7 +524,7 @@ async function reserveOfficeName(runtime, user, data) {
       displayImageUrl: data.displayImageUrl,
       coverUrl: data.coverUrl,
       publicSlug: data.publicSlug,
-      serviceNeighborhoodIds: buildDefaultServiceNeighborhoodIds(data.city),
+      serviceNeighborhoodIds: data.serviceNeighborhoodIds || [],
       cooperationMode: cooperationMode,
       updatedAt: serverTimestamp()
     }, { merge: true });
@@ -417,8 +552,22 @@ async function onSave(event) {
     licenseNumber: el.license.value,
     city: el.city.value,
     specialties: readSpecialtiesFromForm(),
+    serviceNeighborhoodIds: readNeighborhoodsFromForm(),
     publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value, officeId())
   });
+
+  const neighborhoodCheck = validateServiceNeighborhoodIds(
+    data.serviceNeighborhoodIds,
+    data.city,
+    { requireMin: true }
+  );
+  if (!neighborhoodCheck.ok) {
+    setNeighborhoodEditorError(neighborhoodCheck.message);
+    toast(neighborhoodCheck.message);
+    return;
+  }
+  data.serviceNeighborhoodIds = neighborhoodCheck.ids;
+  setNeighborhoodEditorError("");
 
   if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
     toast("أكمل بيانات المكتب المطلوبة");
@@ -1610,6 +1759,10 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
+  el.neighborhoodSearch = document.getElementById("officeNeighborhoodSearch");
+  el.neighborhoodChips = document.getElementById("officeNeighborhoodChips");
+  el.neighborhoodCount = document.getElementById("officeNeighborhoodCount");
+  el.neighborhoodError = document.getElementById("officeNeighborhoodError");
   el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
@@ -1620,6 +1773,7 @@ function init() {
   }
 
   initImageSlots();
+  initNeighborhoodEditor();
   writeCooperationToForm(cooperationMode);
   writePreferencesToForm(notificationPreferences);
   apply(loadLocal() || defaults);
@@ -1691,5 +1845,8 @@ window.IAQAR = window.IAQAR || {};
 window.IAQAR.officeSettingsTestHooks = Object.freeze({
   imageVariants: OFFICE_IMAGE_VARIANTS,
   readPreferencesFromForm: () => readPreferencesFromForm(),
-  currentCooperationMode: () => cooperationMode
+  currentCooperationMode: () => cooperationMode,
+  readNeighborhoodsFromForm: () => readNeighborhoodsFromForm(),
+  validateServiceNeighborhoodIds: (ids, city, options) =>
+    validateServiceNeighborhoodIds(ids, city, options)
 });

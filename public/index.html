@@ -279,14 +279,14 @@
 
     .card.license .office-main {
       display:grid;
-      grid-template-columns:minmax(0,1fr) clamp(100px,25.6vw,118px);
+      grid-template-columns:minmax(0,1fr) clamp(112px,29vw,124px);
       align-items:start;
       gap:10px 12px;
     }
 
     .card.license .office-logo {
-      width:clamp(100px,25.6vw,118px);
-      height:clamp(118px,30.26vw,136px);
+      width:clamp(112px,29vw,124px);
+      height:clamp(132px,34vw,148px);
       aspect-ratio:4/5;
       padding:0;
       margin-top:0;
@@ -296,6 +296,7 @@
       display:block;
       overflow:hidden;
       flex-shrink:0;
+      align-self:start;
     }
 
     .card.license .office-logo img {
@@ -345,6 +346,54 @@
     }
 
     .card.license .office-services-inline[hidden] { display:none; }
+
+    .card.license .office-neighborhood-block {
+      margin-top:8px;
+      min-width:0;
+    }
+
+    .card.license .office-neighborhood-heading {
+      color:var(--green-dark);
+      font-size:clamp(11px,2.8vw,12px);
+      font-weight:700;
+      line-height:1.4;
+      margin-bottom:6px;
+      text-align:right;
+    }
+
+    .card.license .office-neighborhood-chips {
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      justify-content:flex-start;
+      direction:rtl;
+      max-width:100%;
+    }
+
+    .card.license .office-neighborhood-chip {
+      display:inline-flex;
+      align-items:center;
+      max-width:100%;
+      padding:4px 10px;
+      border-radius:999px;
+      background:var(--green-soft);
+      color:var(--green-dark);
+      font-size:clamp(10px,2.7vw,11px);
+      font-weight:700;
+      line-height:1.35;
+      white-space:nowrap;
+    }
+
+    .card.license .office-neighborhood-empty {
+      margin:0;
+      color:#5C7468;
+      font-size:clamp(10px,2.7vw,11px);
+      font-weight:500;
+      line-height:1.45;
+      text-align:right;
+    }
+
+    .card.license .office-neighborhood-empty[hidden] { display:none; }
 
     .office-license-line {
       display:flex;
@@ -1173,6 +1222,62 @@
       height: 17px;
       accent-color: var(--green);
     }
+
+    #officeSettings .office-neighborhood-field {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      font-family: "Tajawal Office", Tajawal, "Noto Sans Arabic", Arial, sans-serif;
+    }
+
+    #officeSettings .office-neighborhood-field legend {
+      margin-bottom: 6px;
+      color: var(--green-dark);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    #officeSettings .office-neighborhood-editor-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      direction: rtl;
+    }
+
+    #officeSettings .office-neighborhood-editor-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green-dark);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #officeSettings .office-neighborhood-editor-chip button {
+      border: 0;
+      background: transparent;
+      color: var(--green-dark);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+
+    #officeSettings .office-neighborhood-count {
+      color: #5C7468;
+      font-weight: 500;
+    }
+
+    #officeSettings .office-neighborhood-error {
+      color: #8b2f2a;
+      font-weight: 700;
+    }
+
+    #officeSettings .office-neighborhood-error:empty { display: none; }
 
     .specialty-status-row {
       grid-template-columns: 1fr;
@@ -3117,6 +3222,13 @@
               <svg class="license-verify-icon" aria-hidden="true"><use href="#i-check-circle"/></svg>
             </div>
             <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
+            <div class="office-neighborhood-block" id="officeDisplayNeighborhoodsWrap">
+              <div class="office-neighborhood-heading">أحياء التخصص</div>
+              <div class="office-neighborhood-chips" id="officeDisplayNeighborhoods" aria-live="polite"></div>
+              <p class="office-neighborhood-empty" id="officeDisplayNeighborhoodsEmpty">
+                حدد من حي واحد إلى 5 أحياء كتخصص للمكتب
+              </p>
+            </div>
           </div>
 
           <button class="office-logo" id="officeSettingsBtn" type="button"
@@ -3362,6 +3474,20 @@
               <label><input type="checkbox" name="officeSpecialty" value="property_management"> <span>إدارة أملاك</span></label>
             </div>
             <small class="office-field-help">اختياري — اختر ما يناسب نشاط المكتب، ويمكن تركها فارغة.</small>
+          </fieldset>
+          <fieldset class="office-field full office-neighborhood-field">
+            <legend>أحياء تخصص المكتب</legend>
+            <small class="office-field-help">
+              اختر من حي واحد إلى 5 أحياء. يمكنك العمل في جميع أحياء المدينة، ويُستخدم التخصص لتحسين المطابقة والتعاون.
+            </small>
+            <label class="office-field full">
+              <span>بحث عن حي</span>
+              <input id="officeNeighborhoodSearch" class="arabic-suggest-input" type="search"
+                autocomplete="off" placeholder="ابحث واختر حيًا">
+            </label>
+            <div class="office-neighborhood-editor-chips" id="officeNeighborhoodChips" aria-live="polite"></div>
+            <small class="office-field-help office-neighborhood-count" id="officeNeighborhoodCount" role="status"></small>
+            <small class="office-field-help office-neighborhood-error" id="officeNeighborhoodError" role="alert"></small>
           </fieldset>
         </div>
         <div class="office-settings-actions">

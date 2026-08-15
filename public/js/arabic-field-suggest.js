@@ -57,7 +57,12 @@ export function wireArabicSuggestInput(input, options = [], config = {}) {
     const btn = event.target.closest("[data-pick]");
     if (!btn) return;
     event.preventDefault();
-    input.value = btn.getAttribute("data-pick") || "";
+    const picked = btn.getAttribute("data-pick") || "";
+    if (typeof config.onPick === "function") {
+      config.onPick(picked, input);
+    } else {
+      input.value = picked;
+    }
     list.hidden = true;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));

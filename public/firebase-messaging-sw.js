@@ -129,7 +129,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-office-card-v1";
+const IAQAR_CACHE = "iaqar-shell-neighborhoods-v1";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",
