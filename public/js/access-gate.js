@@ -84,6 +84,12 @@
     .voice-intake-stop,.voice-intake-cancel,.voice-intake-retry,.voice-intake-manual{border:1px solid #d4e3de;background:#fff;color:#087064;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
     .voice-intake-status{margin:8px 0 0;min-height:14px;font-size:12px;color:#71817d}
     .voice-intake-status.is-error{color:#9e3434}
+    .arabic-suggest-wrap{position:relative;display:grid;gap:0}
+    .arabic-suggest-input{width:100%}
+    .arabic-suggest-list{list-style:none;margin:4px 0 0;padding:0;border:1px solid #d4e3de;border-radius:12px;background:#fff;max-height:180px;overflow:auto;z-index:5}
+    .arabic-suggest-list[hidden]{display:none!important}
+    .arabic-suggest-list button{width:100%;border:0;background:none;padding:10px 12px;text-align:right;font:500 15px Tajawal;cursor:pointer;color:#173d35}
+    .arabic-suggest-list button:hover{background:#eaf7f3}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
 
@@ -351,14 +357,44 @@
     }).join("");
   }
 
+  function wireArabicSuggestInput(input, options = []) {
+    if (!input || input.dataset.arabicSuggestWired === "1") return;
+    input.dataset.arabicSuggestWired = "1";
+    input.classList.add("arabic-suggest-input");
+    const wrap = input.closest("label") || input.parentElement;
+    if (wrap) wrap.classList.add("arabic-suggest-wrap");
+    const list = document.createElement("ul");
+    list.className = "arabic-suggest-list";
+    list.hidden = true;
+    input.insertAdjacentElement("afterend", list);
+    const source = (options || []).map((v) => String(v || "").trim()).filter(Boolean);
+    const render = (query = "") => {
+      const q = String(query || "").trim().toLowerCase();
+      const filtered = source.filter((entry) => !q || entry.toLowerCase().includes(q)).slice(0, 12);
+      list.innerHTML = filtered.map((entry) =>
+        `<li><button type="button" data-pick="${escapeHtml(entry)}">${escapeHtml(entry)}</button></li>`
+      ).join("");
+      list.hidden = filtered.length === 0;
+    };
+    input.addEventListener("focus", () => render(input.value));
+    input.addEventListener("input", () => render(input.value));
+    list.addEventListener("mousedown", (event) => {
+      const btn = event.target.closest("[data-pick]");
+      if (!btn) return;
+      event.preventDefault();
+      input.value = btn.getAttribute("data-pick") || "";
+      list.hidden = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    document.addEventListener("click", (event) => {
+      if (!wrap?.contains(event.target)) list.hidden = true;
+    });
+  }
+
   function applyPublicVoicePrefill(form, structured, {
     owner,
-    refreshClientDynamic,
-    propertySelect,
-    districtSelect,
-    otherPropertyWrap,
-    otherDistrictWrap,
-    toggleOther
+    refreshClientDynamic
   }) {
     const api = window.IAQARGeminiVoiceIntake;
     if (!api || !form) return;
@@ -374,28 +410,15 @@
       const el = form.elements[name];
       if (!el || value == null || String(value).trim() === "") return;
       el.value = String(value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     };
     set("name", values.name);
     set("phone", values.phone);
     set("city", values.city);
     if (!owner) set("requestKind", values.requestKind);
-    const propMatch = [...propertySelect.options].find((opt) =>
-      opt.value === values.propertyType || opt.textContent === values.propertyType);
-    if (propMatch) propertySelect.value = propMatch.value;
-    else if (values.propertyType) {
-      propertySelect.value = "__other__";
-      toggleOther(propertySelect, otherPropertyWrap);
-      set("otherPropertyType", values.propertyType);
-    }
-    const distMatch = [...districtSelect.options].find((opt) =>
-      opt.value === values.district || opt.textContent === values.district);
-    if (distMatch) districtSelect.value = distMatch.value;
-    else if (values.district) {
-      districtSelect.value = "__other__";
-      toggleOther(districtSelect, otherDistrictWrap);
-      set("otherDistrict", values.district);
-    }
+    set("propertyType", values.propertyType);
+    set("district", values.district);
     if (!owner) refreshClientDynamic();
     set("budget", values.budget);
     set("annualRent", values.annualRent);
@@ -405,19 +428,14 @@
     set("streetWidth", values.streetWidth);
     set("facing", values.facing);
     set("details", values.details);
-    showStatus("تم تعبئة النموذج من التسجيل — أكمل الناقص فقط.");
+    showStatus("تم تعبئة النموذج من التسجيل — راجع الحقول قبل الإرسال.");
   }
 
   async function mountPublicVoicePanel({
     kind,
     targetOffice,
     form,
-    refreshClientDynamic,
-    propertySelect,
-    districtSelect,
-    otherPropertyWrap,
-    otherDistrictWrap,
-    toggleOther
+    refreshClientDynamic
   }) {
     const panel = gate.querySelector("#publicVoiceIntakePanel");
     if (!panel || panel.dataset.voiceBound === "1" || panel.dataset.voiceMounting === "1") return;
@@ -433,12 +451,7 @@
         onStructured(structured) {
           applyPublicVoicePrefill(form, structured, {
             owner: kind === "owner",
-            refreshClientDynamic,
-            propertySelect,
-            districtSelect,
-            otherPropertyWrap,
-            otherDistrictWrap,
-            toggleOther
+            refreshClientDynamic
           });
         }
       });
@@ -468,17 +481,14 @@
         ${owner ? "" : `<label><span>نوع الطلب (إلزامي)</span><select name="requestKind" id="requestKindSelect" required>
           <option value="">اختر نوع الطلب</option>
           ${requestKindOptions.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}</select></label>`}
-        <label><span>نوع العقار (إلزامي)</span><select name="propertyType" id="propertyTypeSelect" required>
-          <option value="">اختر نوع العقار</option>${optionList(propertyOptions)}${owner ? `<option value="__other__">أخرى</option>` : ""}</select></label>
+        <label class="full"><span>نوع العقار (إلزامي)</span>
+          <input name="propertyType" id="propertyTypeInput" class="arabic-suggest-input" maxlength="40" required autocomplete="off"
+            placeholder="اكتب نوع العقار"></label>
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
-        <label><span>الحي (إلزامي)</span><select name="district" id="districtSelect" required>
-          <option value="">اختر الحي</option>${optionList(MADINAH_DISTRICTS)}<option value="__other__">حي جديد / غير موجود</option>
-        </select></label>
-        <label class="conditional-field full" id="otherPropertyWrap" hidden><span>اكتب نوع العقار</span>
-          <input name="otherPropertyType" maxlength="40"></label>
-        <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
-          <input name="otherDistrict" maxlength="80"></label>
+        <label class="full"><span>الحي (إلزامي)</span>
+          <input name="district" id="districtInput" class="arabic-suggest-input" maxlength="80" required autocomplete="off"
+            placeholder="اكتب اسم الحي"></label>
         ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
@@ -490,38 +500,23 @@
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
-    const propertySelect = gate.querySelector("#propertyTypeSelect");
-    const districtSelect = gate.querySelector("#districtSelect");
+    const propertyInput = gate.querySelector("#propertyTypeInput");
+    const districtInput = gate.querySelector("#districtInput");
     const requestKindSelect = gate.querySelector("#requestKindSelect");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
-    const otherPropertyWrap = gate.querySelector("#otherPropertyWrap");
-    const otherDistrictWrap = gate.querySelector("#otherDistrictWrap");
+    wireArabicSuggestInput(propertyInput, propertyOptions);
+    wireArabicSuggestInput(districtInput, MADINAH_DISTRICTS);
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
       const requestKind = requestKindSelect?.value || "";
-      const propertyType = String(propertySelect?.value || "") === "__other__"
-        ? gate.querySelector('input[name="otherPropertyType"]')?.value || ""
-        : propertySelect?.value || "";
+      const propertyType = String(propertyInput?.value || "").trim();
       renderDynamicClientFields(dynamicFields, requestKind, propertyType);
     };
-    const toggleOther = (select, wrap) => {
-      const visible = select.value === "__other__";
-      wrap.hidden = !visible;
-      const input = wrap.querySelector("input");
-      if (visible) input.required = true;
-      else {
-        input.required = false;
-        input.value = "";
-      }
-      if (visible) setTimeout(() => input.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
-      if (!owner) refreshClientDynamic();
-    };
-    propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
-    districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
     if (requestKindSelect) {
       requestKindSelect.onchange = () => refreshClientDynamic();
       refreshClientDynamic();
     }
+    if (propertyInput) propertyInput.addEventListener("input", () => refreshClientDynamic());
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
@@ -529,12 +524,7 @@
       kind,
       targetOffice,
       form: gate.querySelector("#intakeForm"),
-      refreshClientDynamic,
-      propertySelect,
-      districtSelect,
-      otherPropertyWrap,
-      otherDistrictWrap,
-      toggleOther
+      refreshClientDynamic
     });
     gate.querySelector("#intakeForm").onsubmit = async event => {
       event.preventDefault();
@@ -558,14 +548,10 @@
       submit.textContent = owner ? "جارٍ رفع العرض..." : "جارٍ إرسال الطلب...";
       try {
         const ref = db().collection("offices").doc(targetOffice).collection("publicIntake").doc();
-        const propertyType = String(fields.get("propertyType") || "") === "__other__"
-          ? String(fields.get("otherPropertyType") || "").trim()
-          : String(fields.get("propertyType") || "").trim();
-        if (!propertyType) return showStatus("اختر نوع العقار.");
-        const district = String(fields.get("district") || "") === "__other__"
-          ? String(fields.get("otherDistrict") || "").trim()
-          : String(fields.get("district") || "").trim();
-        if (!district) return showStatus("اختر الحي.");
+        const propertyType = String(fields.get("propertyType") || "").trim();
+        if (!propertyType) return showStatus("أدخل نوع العقار.");
+        const district = String(fields.get("district") || "").trim();
+        if (!district) return showStatus("أدخل الحي.");
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {

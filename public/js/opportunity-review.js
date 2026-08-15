@@ -468,27 +468,7 @@ function wireSearchFields(root) {
     input.addEventListener("blur", () => {
       if (field !== "propertyTypeId" && field !== "districtId") return;
       const typed = String(input.value || "").trim();
-      if (!typed) return;
-      const cityId = root.querySelector('input[name="cityId"]')?.value || "madinah";
-      const result = field === "propertyTypeId"
-        ? conservativeMatchPropertyType(typed)
-        : conservativeMatchDistrict(typed, cityId);
-      if (result.confirmed && result.match) {
-        hidden.value = result.match.id;
-        input.value = result.display;
-        updateDistrictWarning(root, field, typed, result);
-      } else if (field === "districtId") {
-        hidden.value = DISTRICT_OTHER_ID;
-        const manual = root.querySelector('[name="districtManual"]');
-        if (manual) manual.value = result.display || typed;
-        updateDistrictWarning(root, field, typed, result);
-        syncManualVisibility(root);
-      } else if (field === "propertyTypeId") {
-        hidden.value = "other";
-        const manual = root.querySelector('[name="propertyTypeManual"]');
-        if (manual) manual.value = result.display || typed;
-        syncManualVisibility(root);
-      }
+      updateDistrictWarning(root, field, typed);
     });
     list.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-pick-id]");
@@ -656,10 +636,12 @@ function readReviewForm() {
     operationTypeId: data.operationTypeId || "",
     propertyTypeId: data.propertyTypeId || "",
     propertyTypeManual: data.propertyTypeManual || "",
+    propertyTypeDisplay: form.querySelector('[data-search-for="propertyTypeId"]')?.value || "",
     cityId: data.cityId || "",
     cityManual: data.cityManual || "",
     districtId: data.districtId || "",
     districtManual: data.districtManual || "",
+    districtDisplay: form.querySelector('[data-search-for="districtId"]')?.value || "",
     salePrice: mode === "sale" ? (data.salePrice || "") : "",
     annualRent: mode === "rent" ? (data.annualRent || "") : "",
     monthlyRent: mode === "rent" ? (data.monthlyRent || "") : "",
@@ -692,17 +674,15 @@ async function submitReview() {
   const review = readReviewForm();
   if (!review) return;
   if (!review.operationTypeId) return setReviewStatus("اختر نوع العملية", true);
-  if (!review.propertyTypeId) return setReviewStatus("اختر نوع العقار", true);
-  if (review.propertyTypeId === "other" && !review.propertyTypeManual.trim()) {
-    return setReviewStatus("اكتب نوع العقار", true);
+  if (!String(review.propertyTypeDisplay || "").trim()) {
+    return setReviewStatus("أدخل نوع العقار", true);
   }
   if (!review.cityId) return setReviewStatus("اختر المدينة", true);
   if (review.cityId === "other" && !review.cityManual.trim()) {
     return setReviewStatus("اكتب المدينة", true);
   }
-  if (!review.districtId) return setReviewStatus("اختر الحي", true);
-  if (review.districtId === DISTRICT_OTHER_ID && !review.districtManual.trim()) {
-    return setReviewStatus("اكتب اسم الحي", true);
+  if (!String(review.districtDisplay || "").trim()) {
+    return setReviewStatus("أدخل الحي", true);
   }
 
   const approveBtn = $("opportunityReviewApprove");

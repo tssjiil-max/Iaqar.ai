@@ -890,14 +890,35 @@ async function previewPublicLink() {
 // Office card image (share material)
 // ---------------------------------------------------------------------------
 
-function loadImage(src) {
+function loadImage(src, options = {}) {
+  const crossOrigin = options.crossOrigin !== false;
+  const timeoutMs = Number(options.timeoutMs || 10000);
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = reject;
+    if (crossOrigin) image.crossOrigin = "anonymous";
+    const timer = setTimeout(() => reject(new Error("IMAGE_TIMEOUT")), timeoutMs);
+    image.onload = () => {
+      clearTimeout(timer);
+      resolve(image);
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("IMAGE_ERROR"));
+    };
     image.src = src;
   });
+}
+
+async function loadImageSafe(primarySrc) {
+  const candidates = [primarySrc, "/icons/default-office.png", "/icons/icon-192.png"].filter(Boolean);
+  for (const src of candidates) {
+    for (const crossOrigin of [true, false]) {
+      try {
+        return await loadImage(src, { crossOrigin, timeoutMs: 8000 });
+      } catch (_) { /* try next */ }
+    }
+  }
+  throw new Error("IMAGE_LOAD_FAILED");
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -955,6 +976,17 @@ function drawQr(ctx, text, x, y, size) {
   }
 }
 
+function officeShareCardRequiredFields() {
+  const fields = [
+    ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
+    ["اسم الوسيط", current.brokerName && current.brokerName !== defaults.brokerName],
+    ["رخصة فال", current.licenseNumber],
+    ["رقم الجوال", current.phone],
+    ["المدينة", current.city]
+  ];
+  return fields.filter(([, valid]) => !valid).map(([label]) => label);
+}
+
 function officeMissingFields() {
   const fields = [
     ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
@@ -968,9 +1000,6 @@ function officeMissingFields() {
 }
 
 async function createOfficeCardBlob() {
-  const missing = officeMissingFields();
-  if (missing.length) throw new Error(`MISSING:${missing.join("، ")}`);
-
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1080;
@@ -981,7 +1010,7 @@ async function createOfficeCardBlob() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   try {
-    const platformLogo = await loadImage("/icons/icon-192.png");
+    const platformLogo = await loadImageSafe("/icons/icon-192.png");
     drawImageContain(ctx, platformLogo, 48, 28, 40, 40);
   } catch (_) {}
 
@@ -1002,10 +1031,18 @@ async function createOfficeCardBlob() {
   );
   const imageCenterX = 540;
   const imageY = 118;
+  let drewOfficeImage = false;
   if (displaySrc) {
     try {
-      const displayImg = await loadImage(displaySrc);
+      const displayImg = await loadImageSafe(displaySrc);
       drawImageCover(ctx, displayImg, imageCenterX - 74, imageY, 148, 148, 22);
+      drewOfficeImage = true;
+    } catch (_) {}
+  }
+  if (!drewOfficeImage) {
+    try {
+      const fallbackImg = await loadImageSafe("/icons/default-office.png");
+      drawImageCover(ctx, fallbackImg, imageCenterX - 74, imageY, 148, 148, 22);
     } catch (_) {}
   }
 
@@ -1054,7 +1091,12 @@ async function createOfficeCardBlob() {
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
   ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
 
-  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("BLOB_FAILED"));
+      else resolve(blob);
+    }, "image/png", 0.95);
+  });
 }
 
 async function createOpportunityShareCardBlob({
@@ -1121,7 +1163,12 @@ async function createOpportunityShareCardBlob({
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
   ctx.fillText("فرصة عقارية من منصة مكاتب عقارية ذكية", 940, 860);
 
-  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("BLOB_FAILED"));
+      else resolve(blob);
+    }, "image/png", 0.95);
+  });
 }
 
 async function shareOpportunityCard(record, source = null) {
@@ -1161,7 +1208,7 @@ function extractPropertyImageUrl(text) {
 }
 
 async function shareOfficeLinkCard() {
-  const missing = officeMissingFields();
+  const missing = officeShareCardRequiredFields();
   if (missing.length) {
     setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${missing.join("، ")}`, "is-error");
     return;
@@ -1209,6 +1256,10 @@ async function shareOfficeLinkCard() {
     if (error && error.name === "AbortError") return;
     if (String(error && error.message || "").startsWith("MISSING:")) {
       setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${error.message.slice(8)}`, "is-error");
+    } else if (error && error.message === "BLOB_FAILED") {
+      setStatus(el.linkStatus, "تعذر إنشاء صورة البطاقة — حاول مرة أخرى", "is-error");
+    } else if (error && error.message === "IMAGE_LOAD_FAILED") {
+      setStatus(el.linkStatus, "تعذر تحميل صورة المكتب — تم إنشاء بطاقة بالشعار الافتراضي", "is-error");
     } else {
       console.warn("[iaqar] office link card", error);
       setStatus(el.linkStatus, "تعذر إنشاء بطاقة المكتب الآن", "is-error");

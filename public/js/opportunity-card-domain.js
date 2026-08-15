@@ -13,6 +13,11 @@ import {
   evaluateMatchingReadiness,
   missingFieldLabelsArabic
 } from "./opportunity-readiness-domain.js";
+import {
+  formatLocationLine,
+  normalizePropertyTypeDisplay,
+  sanitizeDisplayField
+} from "./display-sanitize-domain.js";
 
 const LC = typeof window !== "undefined" && window.IAQAR_LIFECYCLE
   ? window.IAQAR_LIFECYCLE
@@ -39,14 +44,6 @@ function kindBadge(record = {}) {
   return isOwnerRecord(record) ? "عرض مالك" : "طلب عميل";
 }
 
-function normalizePropertyTypeDisplay(value) {
-  const raw = safeText(value, 80);
-  const lower = raw.toLowerCase().trim();
-  if (lower === "office") return "مكتب";
-  if (lower === "office للبيع" || lower === "office for sale") return "مكتب للبيع";
-  return raw;
-}
-
 function htmlEsc(text) {
   return String(text || "")
     .replace(/&/g, "&amp;")
@@ -55,12 +52,12 @@ function htmlEsc(text) {
 }
 
 function contactLineParts(record = {}) {
-  const name = readAdvertiserDisplayName(record);
-  const firstName = name.split(/\s+/)[0] || "";
+  const name = sanitizeDisplayField(readAdvertiserDisplayName(record));
+  const firstName = name.display.split(/\s+/)[0] || "";
   const masked = maskPhoneForDisplay(
     record.advertiserPhoneNormalized || record.contactPhone || record.phone
   );
-  return { firstName, masked };
+  return { firstName: name.needsReview ? "" : firstName, masked };
 }
 
 export function contactLineMarkup(record = {}) {
@@ -74,22 +71,27 @@ export function contactLineMarkup(record = {}) {
 }
 
 function propertyDescription(record = {}) {
-  const propertyType = normalizePropertyTypeDisplay(record.propertyType);
+  const propertyType = sanitizeDisplayField(
+    normalizePropertyTypeDisplay(record.propertyType)
+  ).display;
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
   const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? "للإيجار"
     : purpose === "SALE" || purpose === "PURCHASE" ? "للبيع"
     : "";
-  if (propertyType && purposeWord) return `${propertyType} ${purposeWord}`;
+  if (propertyType && propertyType !== "تحتاج مراجعة" && purposeWord) {
+    return `${propertyType} ${purposeWord}`;
+  }
   if (propertyType) return propertyType;
-  if (LC?.buildOpportunitySummary) return LC.buildOpportunitySummary(record);
+  if (LC?.buildOpportunitySummary) {
+    const summary = LC.buildOpportunitySummary(record);
+    return sanitizeDisplayField(summary).display || "غير محدد";
+  }
   return "غير محدد";
 }
 
 function locationLine(record = {}) {
-  const city = safeText(record.city, 80);
-  const district = safeText(record.district, 80);
-  if (city && district) return `${city} — ${district}`;
-  return city || district || "غير محدد";
+  const line = formatLocationLine(record.city, record.district);
+  return line || "غير محدد";
 }
 
 function moneyLine(record = {}) {
@@ -115,18 +117,9 @@ function areaLine(record = {}) {
 }
 
 function contactLine(record = {}) {
-  const name = readAdvertiserDisplayName(record);
-  const firstName = name.split(/\s+/)[0] || "";
-  const phone = formatLocalPhoneDisplay(
-    record.advertiserPhoneNormalized || record.contactPhone || record.phone
-  );
-  const masked = maskPhoneForDisplay(
-    record.advertiserPhoneNormalized || record.contactPhone || record.phone
-  );
-  if (firstName && masked) return `${firstName} • ${masked}`;
-  if (masked) return masked;
-  if (firstName) return firstName;
-  return "غير محدد";
+  const markup = contactLineMarkup(record);
+  if (markup === "غير محدد") return markup;
+  return markup.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&quot;/g, "\"");
 }
 
 function sourceLabel(record = {}) {
@@ -189,6 +182,7 @@ export function buildOpportunityCardView(record = {}, context = {}) {
     priceOrBudget: moneyLine(record),
     area: areaLine(record),
     contactLine: contactLine(record),
+    contactLineMarkup: contactLineMarkup(record),
     sourceLabel: sourceLabel(record),
     dataCompletenessLabel: statuses.dataCompletenessLabel,
     contactStatusLabel: statuses.contactStatusLabel,

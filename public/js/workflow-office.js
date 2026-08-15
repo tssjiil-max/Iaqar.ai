@@ -21,6 +21,28 @@
   const LC = () => window.IAQAR_LIFECYCLE || {};
   const OPP = () => window.IAQAR_OPPORTUNITY?.card || null;
 
+  function sanitizeOpsText(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const lower = raw.toLowerCase();
+    if (["ms", "dd", "dd dd", "ii", "ا ب"].includes(lower)) return "";
+    if (/^سلمى\s*ii$/i.test(raw)) return "";
+    if (raw.length <= 2 && !/^\d+$/.test(raw)) return "";
+    if (/^(?:[\u0621-\u064A]\s+){1,4}[\u0621-\u064A]$/.test(raw)) return "";
+    return raw;
+  }
+
+  function buildOpsSubtitle(card, fallbackParts = []) {
+    if (!card) return fallbackParts.filter(Boolean).join(" — ");
+    const parts = [
+      card.description,
+      card.location !== "غير محدد" ? card.location : "",
+      card.priceOrBudget !== "غير محدد" ? card.priceOrBudget : "",
+      card.area !== "غير محدد" ? card.area : ""
+    ].filter(Boolean);
+    return parts.join(" · ") || fallbackParts.filter(Boolean).join(" — ");
+  }
+
   const MATCH_STATUS = Object.freeze({
     new: { key: "active", label: "نشطة", mark: "🟢", next: "التواصل مع الطرفين" },
     active: { key: "active", label: "نشطة", mark: "🟢", next: "التواصل مع الطرفين" },
@@ -307,7 +329,11 @@
       isAlert: item.status === "new",
       icon: isOwner ? "i-house-check" : "i-user-clock",
       title: isOwner ? "عرض جديد من مالك" : "طلب جديد من عميل",
-      subtitle: [item.propertyType, item.district, item.name].filter(Boolean).join(" — "),
+      subtitle: buildOpsSubtitle(null, [
+        sanitizeOpsText(item.propertyType),
+        sanitizeOpsText(item.district),
+        sanitizeOpsText(item.name)
+      ]),
       propertyType: item.propertyType || "",
       district: item.district || "",
       time: relativeTime(item.createdAt),
@@ -354,9 +380,11 @@
       ? OPP().buildOpportunityCardView({ ...item, id: doc.id, opportunityId: doc.id })
       : null;
     const title = card?.kindBadge || (isOwner ? "عرض مالك" : "طلب عميل");
-    const subtitle = card
-      ? [card.description, card.location, card.priceOrBudget !== "غير محدد" ? card.priceOrBudget : ""].filter(Boolean).join(" — ")
-      : [item.propertyType, item.district, lifecycleLabel].filter(Boolean).join(" — ");
+    const subtitle = buildOpsSubtitle(card, [
+      sanitizeOpsText(item.propertyType),
+      sanitizeOpsText(item.district),
+      lifecycleLabel
+    ]);
     return {
       id: `opp-${doc.id}`,
       recordId: doc.id,
@@ -367,6 +395,9 @@
       icon: isOwner ? "i-house-check" : "i-user-clock",
       title,
       subtitle,
+      opsStatusLine: card
+        ? `${card.dataCompletenessLabel} · ${card.contactStatusLabel}${card.nextActionLabel !== "غير محدد" ? ` · ${card.nextActionLabel}` : ""}`
+        : "",
       propertyType: item.propertyType || "",
       district: item.district || "",
       time: relativeTime(item.updatedAt || item.createdAt || item.receivedAt),
@@ -394,8 +425,8 @@
       lifecycleStatus,
       lifecycleStatusLabel: lifecycleLabel,
       workflowStage: lifecycleStatus,
-      nextAction: "إدارة الفرصة",
-      actionLabel: "إدارة الفرصة",
+      nextAction: card?.nextActionLabel !== "غير محدد" ? card.nextActionLabel : "تفاصيل الفرصة",
+      actionLabel: "تفاصيل الفرصة",
       secondaryActionLabel: "إغلاق التفاصيل",
       kind: isOwner ? "owner" : "client",
       contactType: isOwner ? "owner" : "buyer",
@@ -1825,6 +1856,19 @@
       return;
     }
     if (detail.recordType === "opportunity") {
+      const oppId = String(detail.recordId || detail.opportunityId || "")
+        .replace(/^opp-/, "");
+      if (oppId && window.IAQAR?.openOpportunityDetail) {
+        await window.IAQAR.openOpportunityDetail(oppId);
+        return;
+      }
+    }
+    if (detail.recordType === "intake") {
+      const oppId = String(detail.opportunityId || "").trim();
+      if (oppId && window.IAQAR?.openOpportunityDetail) {
+        await window.IAQAR.openOpportunityDetail(oppId);
+        return;
+      }
       await openWorkflowUi(detail);
       return;
     }
@@ -1844,10 +1888,7 @@
       return;
     }
     if (detail.recordType === "opportunity") {
-      savedOpportunityWorkspaceItems = savedOpportunityWorkspaceItems.filter(
-        item => item.recordId !== (detail.recordId || detail.id)
-      );
-      emitOperations();
+      window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {

@@ -405,14 +405,12 @@ export function reviewValuesToBrokerFields(review) {
           ? investmentValue
           : null;
 
-  let propertyType = property?.label || "";
-  if (review.propertyTypeId === "other") propertyType = safeTrim(review.propertyTypeManual);
+  let propertyType = safeTrim(review.propertyTypeDisplay) || safeTrim(review.propertyTypeManual);
+  if (!propertyType && property) propertyType = property.label || "";
   let cityName = city?.label || "";
   if (review.cityId === "other") cityName = safeTrim(review.cityManual);
-  let districtName = district?.officialName || "";
-  if (review.districtId === DISTRICT_OTHER_ID || !districtName) {
-    districtName = safeTrim(review.districtManual);
-  }
+  let districtName = safeTrim(review.districtDisplay) || safeTrim(review.districtManual);
+  if (!districtName && district) districtName = district.officialName || "";
 
   return {
     ...broker,

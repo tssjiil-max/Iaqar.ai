@@ -129,12 +129,13 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase10-v1";
+const IAQAR_CACHE = "iaqar-shell-phase11-v1";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",
   "/js/gemini-voice-intake-domain.js"
 ];
+const IAQAR_NAVIGATION = ["/", "/index.html"];
 const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -154,7 +155,11 @@ const IAQAR_SHELL = [
   "/js/whatsapp-office.js",
   "/js/operations-domain-bridge.js",
   "/js/messaging-domain-bridge.js",
-  "/js/workflow-office.js"
+  "/js/workflow-office.js",
+  "/js/display-sanitize-domain.js",
+  "/js/arabic-field-suggest.js",
+  "/js/opportunity-card-domain.js",
+  "/js/header-scroll.js"
 ];
 
 self.addEventListener("install", event => {
@@ -175,6 +180,20 @@ self.addEventListener("fetch", event => {
   if (url.pathname.endsWith("/runtime-config.js")
     || IAQAR_NETWORK_ONLY.includes(url.pathname)) {
     event.respondWith(fetch(event.request, { cache: "no-store" }));
+    return;
+  }
+  if (IAQAR_NAVIGATION.includes(url.pathname) || url.pathname.endsWith(".html")) {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })
+        .then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(IAQAR_CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+    );
     return;
   }
   event.respondWith(fetch(event.request).then(response => {

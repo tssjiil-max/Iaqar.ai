@@ -116,10 +116,17 @@
     return `${amount.toLocaleString("ar-SA")} ريال`;
   }
 
+  function formatDistrictForSummary(district = "") {
+    const raw = String(district || "").trim();
+    if (!raw) return "";
+    if (/^حي[\s\u200f\u200e]/i.test(raw) || /^حي$/i.test(raw)) return raw;
+    return `حي ${raw}`;
+  }
+
   function buildOpportunitySummary(opportunity = {}) {
     const parts = [];
     const propertyType = String(opportunity.propertyType || "").trim();
-    const district = String(opportunity.district || "").trim();
+    const district = formatDistrictForSummary(opportunity.district || "");
     const transactionType = String(opportunity.transactionType || "").trim();
     const isOwner = opportunity.contactType === "owner"
       || opportunity.kind === "owner"
@@ -127,7 +134,7 @@
       || opportunity.kind === "owner_offer";
 
     if (propertyType) parts.push(propertyType);
-    if (district) parts.push(`حي ${district}`);
+    if (district) parts.push(district);
     const rooms = Number(opportunity.rooms || 0);
     if (rooms > 0) parts.push(`${rooms} غرف`);
     const area = Number(opportunity.area || 0);

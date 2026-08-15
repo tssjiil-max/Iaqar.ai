@@ -77,6 +77,8 @@ import { isLandProperty } from "./opportunity-intake-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
+import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
+import { PROPERTY_TYPES, districtsForCity } from "./reference-catalog.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -670,9 +672,9 @@ async function renderDetail(id) {
       <details class="bank-section" open>
         <summary>بيانات العقار / الطلب</summary>
         <div class="bank-edit-grid">
-          <label>نوع العقار<input name="propertyType" value="${escapeHtml(record.propertyType || "")}"></label>
+          <label>نوع العقار<input name="propertyType" class="arabic-suggest-input" autocomplete="off" value="${escapeHtml(record.propertyType || "")}"></label>
           <label>المدينة<input name="city" value="${escapeHtml(record.city || "")}"></label>
-          <label>الحي<input name="district" value="${escapeHtml(record.district || "")}"></label>
+          <label>الحي<input name="district" class="arabic-suggest-input" autocomplete="off" value="${escapeHtml(record.district || "")}"></label>
           <label>السعر / الميزانية<input name="priceOrBudget" type="number" value="${record.priceOrBudget ?? record.price ?? ""}"></label>
           <label>المساحة<input name="area" type="number" value="${record.area ?? ""}"></label>
           ${landProperty ? "" : `<label>الغرف<input name="rooms" type="number" value="${record.rooms ?? ""}"></label>`}
@@ -774,6 +776,7 @@ async function renderDetail(id) {
     }).join("");
   }
   wireDetailHandlers(id, record);
+  wireBankFormArabicInputs(record);
   void hydrateDetailMediaUrls();
   void loadCooperationNearbySuggestions(id, record);
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
@@ -795,6 +798,17 @@ function rowsCountLabel() {
   return loadedCount < filteredTotal || state.hasMore
     ? `عرض ${loadedCount} من ${filteredTotal} فرصة`
     : `${filteredTotal} نتيجة`;
+}
+
+function wireBankFormArabicInputs(record = {}) {
+  const form = $("bankUnifiedForm");
+  if (!form) return;
+  const propertyInput = form.querySelector('input[name="propertyType"]');
+  const districtInput = form.querySelector('input[name="district"]');
+  const propertyOptions = PROPERTY_TYPES.map((entry) => entry.label);
+  const districtOptions = districtsForCity("madinah").map((entry) => entry.officialName);
+  if (propertyInput) wireArabicSuggestInput(propertyInput, propertyOptions);
+  if (districtInput) wireArabicSuggestInput(districtInput, districtOptions);
 }
 
 function wireDetailHandlers(id, record) {

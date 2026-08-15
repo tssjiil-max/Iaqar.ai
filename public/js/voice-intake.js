@@ -26,31 +26,89 @@
     return true;
   }
 
+  function setFieldValue(field, value, { markReview = false } = {}) {
+    if (!field || !value) return false;
+    if (field.tagName === "SELECT") return setSelectValue(field, value);
+    field.value = String(value);
+    if (markReview) field.classList.add("voice-needs-review");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  function extractSpokenDistrict(transcript = "") {
+    const match = String(transcript || "").match(/حي\s+[^\s،,.]+(?:\s+[^\s،,.]+)?/);
+    return match ? match[0].trim() : "";
+  }
+
+  function extractSpokenPropertyType(transcript = "") {
+    const text = String(transcript || "");
+    const patterns = [
+      /مكتب\s+للبيع/,
+      /مكتب/,
+      /عمارة/,
+      /شقة/,
+      /فيلا/,
+      /دور/,
+      /أرض\s+سكنية/,
+      /أرض\s+تجارية/,
+      /أرض/,
+      /ارض/,
+      /محل/,
+      /استراحة/,
+      /مزرعة/
+    ];
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m) return m[0].trim();
+    }
+    return "";
+  }
+
   function applyVoiceFields(form, parsed, options = {}) {
-    const propertySelect = form.querySelector('[name="propertyType"], #propertyTypeSelect, #intakePropertyType');
-    const districtSelect = form.querySelector('[name="district"], #districtSelect, #intakeDistrict');
+    const transcript = options.transcript || "";
+    const propertyField = form.querySelector(
+      '[name="propertyType"], #propertyTypeInput, #propertyTypeSelect, #intakePropertyType'
+    );
+    const districtField = form.querySelector(
+      '[name="district"], #districtInput, #districtSelect, #intakeDistrict'
+    );
     const detailsField = form.querySelector('[name="details"], #intakeDetails');
     const unmatched = [];
 
-    if (parsed.propertyType && propertySelect) {
-      const applied = setSelectValue(propertySelect, parsed.propertyType);
+    if (parsed.propertyType && propertyField) {
+      const applied = setFieldValue(propertyField, parsed.propertyType);
       if (!applied) unmatched.push("propertyType");
+    } else if (propertyField && transcript) {
+      const spoken = extractSpokenPropertyType(transcript);
+      if (spoken) {
+        setFieldValue(propertyField, spoken, { markReview: true });
+      } else if (parsed.unmatched && parsed.unmatched.includes("propertyType")) {
+        unmatched.push("propertyType");
+      }
     } else if (parsed.unmatched && parsed.unmatched.includes("propertyType")) {
       unmatched.push("propertyType");
     }
 
-    if (parsed.district && districtSelect) {
-      const applied = setSelectValue(districtSelect, parsed.district);
-      if (!applied) {
+    if (parsed.district && districtField) {
+      const applied = setFieldValue(districtField, parsed.district);
+      if (!applied && districtField.tagName === "SELECT") {
         const otherWrap = form.querySelector("#otherDistrictWrap");
-        if (districtSelect.querySelector('option[value="__other__"]')) {
-          districtSelect.value = "__other__";
-          districtSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        if (districtField.querySelector('option[value="__other__"]')) {
+          districtField.value = "__other__";
+          districtField.dispatchEvent(new Event("change", { bubbles: true }));
           const otherInput = form.querySelector('[name="otherDistrict"]');
           if (otherInput) otherInput.value = parsed.district;
         } else {
           unmatched.push("district");
         }
+      }
+    } else if (districtField && transcript) {
+      const spoken = extractSpokenDistrict(transcript);
+      if (spoken) {
+        setFieldValue(districtField, spoken, { markReview: true });
+      } else if (parsed.unmatched && parsed.unmatched.includes("district")) {
+        unmatched.push("district");
       }
     }
 
@@ -113,8 +171,8 @@
           propertyTypes: options.propertyTypes || [],
           districts: options.districts || []
         });
-        const unmatched = applyVoiceFields(form, parsed, options);
-        if (unmatched.length) status.textContent = "لم يتم التعرف على بعض الخيارات";
+        const unmatched = applyVoiceFields(form, parsed, { ...options, transcript });
+        if (unmatched.length) status.textContent = "تم تعبئة النص المسموع — راجع الحقول المعلّمة";
         else status.textContent = "تم تعبئة الحقول من الصوت";
       };
       recognizer.onerror = () => {

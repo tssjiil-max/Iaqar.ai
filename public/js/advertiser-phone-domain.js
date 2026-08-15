@@ -225,9 +225,16 @@ export function buildAdvertiserWhatsAppMessage({
   const property = safeText(propertyType) || "العقار";
   const districtText = safeText(district);
   const cityText = safeText(city);
+  const districtPhrase = (() => {
+    if (!districtText) return "";
+    if (/^حي[\s\u200f\u200e]/i.test(districtText) || /^حي$/i.test(districtText.trim())) {
+      return ` في ${districtText}`;
+    }
+    return ` في حي ${districtText}`;
+  })();
   let propertyPhrase = `اطلعت على إعلانكم بخصوص ${property}`;
   if (districtText && cityText) propertyPhrase += ` في ${districtText} — ${cityText}`;
-  else if (districtText) propertyPhrase += ` في حي ${districtText}`;
+  else if (districtText) propertyPhrase += districtPhrase;
   else if (cityText) propertyPhrase += ` في ${cityText}`;
   propertyPhrase +=
     "، وأرغب في التعاون معكم لتسويق العقار وعرضه على شبكة من الوسطاء والعملاء المهتمين، بعد موافقتكم واستكمال الإجراءات اللازمة.";
@@ -267,8 +274,13 @@ export function buildAdvertiserCompletionMessage({
   let locationPhrase = "";
   const districtText = safeText(district);
   const cityText = safeText(city);
+  const districtPhrase = districtText
+    ? ((/^حي[\s\u200f\u200e]/i.test(districtText) || /^حي$/i.test(districtText.trim()))
+      ? ` في ${districtText}`
+      : ` في حي ${districtText}`)
+    : "";
   if (districtText && cityText) locationPhrase = ` في ${districtText} — ${cityText}`;
-  else if (districtText) locationPhrase = ` في حي ${districtText}`;
+  else if (districtText) locationPhrase = districtPhrase;
   else if (cityText) locationPhrase = ` في ${cityText}`;
 
   return [
