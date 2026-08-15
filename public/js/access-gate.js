@@ -789,7 +789,6 @@
         <label class="full"><button class="access-btn light" type="button" id="togglePassword">إظهار كلمة المرور</button></label>
         <label class="full"><button class="access-btn" type="submit">تسجيل الدخول</button></label>
         <label class="full"><button class="access-btn light" type="button" id="forgotPassword">نسيت كلمة المرور</button></label>
-        <label class="full"><button class="access-btn secondary" type="button" id="platformLogin">دخول إدارة المنصة</button></label>
       </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`, "login");
     bindAccessBack(home);
     gate.querySelector("#togglePassword").onclick = event => {
@@ -798,7 +797,6 @@
       event.currentTarget.textContent = input.type === "password" ? "إظهار كلمة المرور" : "إخفاء كلمة المرور";
     };
     gate.querySelector("#forgotPassword").onclick = forgotPasswordForm;
-    gate.querySelector("#platformLogin").onclick = platformLoginForm;
     gate.querySelector("#loginForm").onsubmit = async event => {
       event.preventDefault();
       const fields = new FormData(event.currentTarget);

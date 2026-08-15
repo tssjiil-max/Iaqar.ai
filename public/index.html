@@ -73,6 +73,14 @@
       box-sizing:border-box;
     }
 
+    @media (min-width:768px) {
+      .app { width:min(100%,720px); padding:14px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+    }
+
+    @media (min-width:1024px) {
+      .app { width:min(100%,960px); }
+    }
+
     .app > .header,
     .app > .license,
     .app > .services-bar {
@@ -116,13 +124,13 @@
 
     /* الترويسة: الشعار يمين وعنوان متوازن */
     .header {
-      min-height:74px;
-      padding:8px 12px;
+      min-height:56px;
+      padding:6px 9px;
       display:grid;
-      grid-template-columns:52px minmax(0,1fr);
+      grid-template-columns:39px minmax(0,1fr);
       grid-template-areas:"logo title";
       align-items:center;
-      gap:8px;
+      gap:6px;
       background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
       position:relative;
     }
@@ -150,8 +158,8 @@
 
     .site-logo {
       grid-area:logo;
-      width:52px;
-      height:58px;
+      width:39px;
+      height:44px;
       padding:0;
       border:0;
       border-radius:0;
@@ -162,8 +170,8 @@
     }
 
     .site-logo img {
-      width:52px;
-      height:58px;
+      width:39px;
+      height:44px;
       object-fit:contain;
       display:block;
       filter:drop-shadow(0 3px 5px rgba(0,63,52,.10));
@@ -178,7 +186,7 @@
     .brand h1 {
       margin:0;
       color:var(--green);
-      font-size:clamp(19px,5.4vw,23px);
+      font-size:clamp(17px,4.8vw,20px);
       line-height:1.18;
       font-weight:800;
       white-space:nowrap;
@@ -1913,6 +1921,49 @@
   .bank-row dt { color:var(--muted); font-size:10px; font-weight:700; }
   .bank-row dd { margin:0; color:var(--text); font-size:11px; font-weight:700; }
 
+  .bank-kind-badge {
+    display:inline-block;
+    margin-bottom:4px;
+    padding:2px 8px;
+    border-radius:999px;
+    background:#ecf8f2;
+    color:var(--green);
+    font-size:10px;
+    font-weight:800;
+  }
+
+  .bank-row-line { margin:0 0 4px; font-size:11px; line-height:1.45; color:var(--text); }
+  .bank-row-contact { color:var(--muted); }
+  .bank-row-meta { display:flex; flex-wrap:wrap; gap:6px; color:var(--muted); font-size:10px; }
+  .bank-row-followup { margin:4px 0 0; font-size:10px; font-weight:800; color:var(--green); }
+  .bank-row-followup.is-overdue { color:#b42318; }
+  .bank-row-match { margin:4px 0 0; font-size:10px; font-weight:800; color:var(--green); }
+
+  .bank-missing-banner {
+    margin:10px 0;
+    padding:10px 12px;
+    border-radius:12px;
+    font-size:12px;
+    line-height:1.5;
+  }
+  .bank-missing-banner.is-incomplete { background:#fff4e5; color:#8a4b00; }
+  .bank-missing-banner.is-ready { background:#ecf8f2; color:var(--green); }
+
+  .bank-section { margin:10px 0; padding:10px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+  .bank-section summary { cursor:pointer; font-weight:800; color:var(--green); }
+  .bank-status-row { display:flex; flex-wrap:wrap; gap:6px; font-size:10px; color:var(--muted); }
+  .bank-unified-save-wrap {
+    position:sticky;
+    bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+    margin:12px 0 0;
+    padding:10px 0 4px;
+    background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 28%);
+    z-index:3;
+  }
+  .bank-unified-save-wrap .bank-action-primary { width:100%; }
+  .bank-contact-outcomes { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .bank-followup-quick { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
+
   .review-hint {
     margin:0 0 10px;
     color:var(--muted);
@@ -3210,7 +3261,7 @@
         <p class="section-help" id="pwaInstallIosHint" hidden>
           على iPhone/iPad: افتح قائمة المشاركة ثم اختر «إضافة إلى الشاشة الرئيسية». لا يتوفر التثبيت التلقائي على iOS.
         </p>
-        <button type="button" class="identity-btn" id="pwaInstallBtn" hidden>تثبيت التطبيق</button>
+        <button type="button" class="identity-btn" id="pwaInstallBtn" hidden>تثبيت التطبيق على الجهاز</button>
         <p class="section-status" id="pwaInstallStatus" role="status">جاهز للتثبيت عند دعم المتصفح</p>
       </section>
 
@@ -3549,6 +3600,7 @@
 
     render();
   </script>
+  <script type="module" src="js/opportunity-domain-bridge.js"></script>
   <script src="js/notification-navigation.js"></script>
   <script src="js/workflow-office.js"></script>
 </body>

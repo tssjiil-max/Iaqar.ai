@@ -1428,6 +1428,13 @@ async function onLogout() {
   }
   try {
     try { localStorage.removeItem("iaqar.auth.remember"); } catch (_) { /* ignore */ }
+    try { localStorage.removeItem("iaqar.pendingSharedMessage"); } catch (_) { /* ignore */ }
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach((key) => {
+        if (/^iaqar\.(draft|pending|cache)\./i.test(key)) localStorage.removeItem(key);
+      });
+    } catch (_) { /* ignore */ }
     try {
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);
     } catch (_) { /* ignore */ }

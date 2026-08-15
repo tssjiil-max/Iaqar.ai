@@ -65,7 +65,7 @@ import {
 import {
   evaluateMatchingReadiness,
   matchingReadinessLabel,
-  MATCHING_READINESS
+  missingFieldLabelsArabic
 } from "./opportunity-readiness-domain.js";
 import {
   buildListingShareMessage,
@@ -73,6 +73,8 @@ import {
   whatsAppShareUrl
 } from "./listing-share-domain.js";
 import { isLandProperty } from "./opportunity-intake-domain.js";
+import { buildOpportunityCardView } from "./opportunity-card-domain.js";
+import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -358,6 +360,38 @@ function isVisibleForFilter(record) {
   return true;
 }
 
+function bankRowHtml(row) {
+  const record = state.records.get(row.id) || row;
+  const card = buildOpportunityCardView({ ...record, id: row.id });
+  const followupClass = card.nextActionOverdue ? " is-overdue" : "";
+  const followup = card.nextActionLabel !== "غير محدد"
+    ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
+    : "";
+  const matchLine = card.bestMatchScoreText
+    ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>`
+    : "";
+  return `
+    <article class="bank-row" data-opportunity-id="${escapeHtml(row.id)}">
+      <button type="button" class="bank-row-main bank-row-clickable" data-open-id="${escapeHtml(row.id)}">
+        <div class="bank-row-head">
+          <span class="bank-kind-badge">${escapeHtml(card.kindBadge)}</span>
+          <h3>${escapeHtml(card.description)}</h3>
+        </div>
+        <p class="bank-row-line">${escapeHtml(card.location)}</p>
+        <p class="bank-row-line">${escapeHtml(card.priceOrBudget)} · ${escapeHtml(card.area)}</p>
+        <p class="bank-row-line bank-row-contact">${escapeHtml(card.contactLine)}</p>
+        <p class="bank-row-line bank-row-meta">
+          <span>${escapeHtml(card.sourceLabel)}</span>
+          <span>${escapeHtml(card.dataCompletenessLabel)}</span>
+          <span>${escapeHtml(card.contactStatusLabel)}</span>
+        </p>
+        ${followup}
+        ${matchLine}
+      </button>
+    </article>
+  `;
+}
+
 function renderList() {
   const list = $("opportunityBankList");
   const loadMoreBtn = $("bankLoadMoreBtn");
@@ -400,26 +434,7 @@ function renderList() {
 
   const totalLabel = (state.resultTotal > 0 ? String(state.resultTotal) : String(rows.length)) + " نتيجة";
 
-  const rowsHtml = rows.map((row) => {
-    const readiness = matchingReadinessLabel(
-      row.matchingReadiness || evaluateMatchingReadiness(row).matchingReadiness
-    );
-    return `
-    <article class="bank-row" data-opportunity-id="${escapeHtml(row.id)}">
-      <button type="button" class="bank-row-main bank-row-clickable" data-open-id="${escapeHtml(row.id)}">
-        <div class="bank-row-head">
-          <h3>${escapeHtml(row.kindLabel)} — ${escapeHtml(row.propertyType)}</h3>
-          <span class="bank-readiness-badge">${escapeHtml(readiness)}</span>
-        </div>
-        <dl>
-          <dt>الموقع</dt><dd>${escapeHtml(row.location)}</dd>
-          <dt>${escapeHtml(row.amountLabel)}</dt><dd>${escapeHtml(row.amountText)}</dd>
-          <dt>تاريخ الإضافة</dt><dd>${escapeHtml(row.dateAdded)}</dd>
-        </dl>
-      </button>
-    </article>
-  `;
-  }).join("");
+  const rowsHtml = rows.map((row) => bankRowHtml(row)).join("");
 
   list.innerHTML = `
     <p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>
@@ -462,67 +477,32 @@ function isOwnedOpportunityRecord(record) {
   return owner === current && (!origin || origin === current);
 }
 
-function renderAdvertiserBankCard(record) {
+function renderAdvertiserFields(record) {
   const phoneInfo = readAdvertiserPhoneFromRecord(record);
   const phone = phoneInfo.phone;
   const displayName = readAdvertiserDisplayName(record);
-  const localPhone = e164ToLocalInput(phone);
   const roleOpts = ADVERTISER_ROLES.map((r) =>
     `<option value="${r.id}" ${record.advertiserRole === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
   ).join("");
-  const contactOpts = ADVERTISER_CONTACT_STATUSES.map((r) =>
-    `<option value="${r.id}" ${record.advertiserContactStatus === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
-  const marketingOpts = MARKETING_CONSENT_STATUSES.map((r) =>
-    `<option value="${r.id}" ${record.marketingConsentStatus === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
-  const lastContact = record.lastContactAt
-    ? escapeHtml(String(record.lastContactAt))
-    : "—";
-  const actionButtons = buildAdvertiserContactActions(record).map((action) => {
-    const disabled = action.disabled ? "disabled" : "";
-    const idAttr = `bankAdvertiser${action.action}`;
-    return `<button type="button" class="bank-action" id="${idAttr}" ${disabled}>${escapeHtml(action.label)}</button>`;
-  }).join("");
   return `
-    <section class="bank-advertiser-card" aria-labelledby="bankAdvertiserTitle" id="bankAdvertiserCard">
-      <h4 id="bankAdvertiserTitle">بيانات المعلن</h4>
-      <form id="bankAdvertiserEditForm" class="bank-advertiser-edit-form" autocomplete="off">
-        <label>اسم أو وصف المعلن
-          <input type="text" name="advertiserDisplayName" maxlength="120"
-            placeholder="إضافة اسم أو وصف" value="${escapeHtml(displayName)}">
-        </label>
-        <label>رقم الجوال
-          <div class="bank-advertiser-phone-row">
-            <span class="bank-advertiser-phone-prefix" aria-hidden="true">+966</span>
-            <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="9"
-              placeholder="${phone ? "" : "5XXXXXXXX"}" value="${escapeHtml(localPhone)}"
-              aria-label="رقم جوال المعلن">
-          </div>
-          <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
-          ${phone ? "" : `<p class="advertiser-message-meta">لا يوجد رقم معلن محفوظ</p>`}
-        </label>
-        <label>صفة المعلن
-          <select name="advertiserRole">${roleOpts}</select>
-        </label>
-        <button type="submit" class="bank-advertiser-save">حفظ بيانات المعلن</button>
-      </form>
+    <div class="bank-advertiser-edit-form">
+      <label>اسم أو وصف المعلن
+        <input type="text" name="advertiserDisplayName" maxlength="120"
+          placeholder="إضافة اسم أو وصف" value="${escapeHtml(displayName)}">
+      </label>
+      <label>رقم الجوال
+        <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
+          placeholder="05XXXXXXXX" value="${escapeHtml(formatLocalPhoneDisplay(phone))}"
+          aria-label="رقم جوال المعلن">
+        <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
+        ${phone ? "" : `<p class="advertiser-message-meta">لا يوجد رقم معلن محفوظ</p>`}
+      </label>
+      <label>صفة المعلن
+        <select name="advertiserRole">${roleOpts}</select>
+      </label>
       <button type="button" class="bank-advertiser-add-phone" id="bankAdvertiserAddPhone"
         ${phone ? "hidden" : ""}>إضافة رقم المعلن</button>
-      <div class="bank-advertiser-actions">
-        ${actionButtons}
-        <button type="button" class="bank-action" id="bankAdvertiserStatusBtn">تحديث الحالة</button>
-      </div>
-      <form id="bankAdvertiserStatusForm" class="bank-advertiser-status-form" hidden>
-        <label>حالة التواصل<select name="advertiserContactStatus">${contactOpts}</select></label>
-        <label>استكمال الإجراءات<select name="marketingConsentStatus">${marketingOpts}</select></label>
-        <button type="submit" class="bank-action-primary">حفظ الحالة</button>
-      </form>
-      <dl class="bank-detail-grid" style="margin-top:8px">
-        <dt>استكمال الإجراءات</dt><dd>${escapeHtml(marketingConsentStatusLabel(record.marketingConsentStatus))}</dd>
-        <dt>آخر متابعة</dt><dd>${lastContact}</dd>
-      </dl>
-    </section>
+    </div>
   `;
 }
 
@@ -648,14 +628,14 @@ async function renderDetail(id) {
   setStatus("جارٍ تجهيز التفاصيل…");
   const source = await lazyLoadSource(record);
   const detail = bankDetailView(id, record, { includeSource: true, source });
-  const advertiserCard = renderAdvertiserBankCard(record);
+  const advertiserFields = renderAdvertiserFields(record);
   const readiness = evaluateMatchingReadiness(record);
-  const readinessLabel = matchingReadinessLabel(readiness.matchingReadiness);
+  const card = buildOpportunityCardView({ ...record, id });
+  const missingNames = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
   const mediaGallery = renderOpportunityMedia({
     ...record,
     sourceMediaPath: source?.mediaPath || ""
   });
-  const needsCompletion = readiness.matchingReadiness === MATCHING_READINESS.NEEDS_COMPLETION;
   const landProperty = isLandProperty(record.propertyType);
   state.activeId = id;
   panel.hidden = false;
@@ -667,50 +647,90 @@ async function renderDetail(id) {
     : (!owned && archived
       ? `<button type="button" class="bank-action" id="bankHideSharedBtn">إزالة من بنكي</button>`
       : "");
+  const sourceOriginal = detail.sourcePreview?.text || source?.text || record.rawText || "";
+  const sourceTypeLabel = detail.sourcePreview?.sourceType || record.sourceType || "";
   panel.innerHTML = `
     <div class="bank-detail-head">
       <h3>تفاصيل الفرصة</h3>
       <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق التفاصيل">×</button>
     </div>
-    <p class="bank-readiness-line">
-      <strong>حالة اكتمال البيانات:</strong>
-      <span class="bank-readiness-badge ${needsCompletion ? "is-incomplete" : "is-ready"}">${escapeHtml(readinessLabel)}</span>
-    </p>
-    <dl class="bank-detail-grid">
-      <dt>النوع</dt><dd>${escapeHtml(detail.opportunityKind)}</dd>
-      <dt>الغرض</dt><dd>${escapeHtml(detail.purpose)}</dd>
-      <dt>نوع العقار</dt><dd>${escapeHtml(detail.propertyType)}</dd>
-      <dt>المدينة</dt><dd>${escapeHtml(detail.city)}</dd>
-      <dt>الحي</dt><dd>${escapeHtml(detail.district)}</dd>
-      <dt>السعر / الميزانية</dt><dd>${escapeHtml(detail.priceOrBudget)}</dd>
-      <dt>المساحة</dt><dd>${detail.area == null ? "—" : escapeHtml(detail.area)}</dd>
-      ${landProperty ? "" : `<dt>الغرف</dt><dd>${detail.rooms == null ? "—" : escapeHtml(detail.rooms)}</dd>`}
-      <dt>تاريخ الإضافة</dt><dd>${escapeHtml(detail.dateAdded)}</dd>
-      <dt>حالة التعاون</dt><dd>${escapeHtml(detail.cooperationStatus)}</dd>
-      ${detail.contactName ? `<dt>الاسم</dt><dd>${escapeHtml(detail.contactName)}</dd>` : ""}
-    </dl>
-    ${mediaGallery}
-    ${advertiserCard}
-    ${detail.sourcePreview ? `
-      <div class="bank-source-preview">
-        <strong>المصدر</strong>
-        <p>${escapeHtml(detail.sourcePreview.sourceType)} ${detail.sourcePreview.fileName ? "— " + escapeHtml(detail.sourcePreview.fileName) : ""}</p>
-        ${detail.sourcePreview.url ? `<p><a href="${escapeHtml(detail.sourcePreview.url)}" target="_blank" rel="noopener">فتح الرابط</a></p>` : ""}
-        ${detail.sourcePreview.text ? `<p class="bank-source-text">${escapeHtml(detail.sourcePreview.text)}</p>` : ""}
-      </div>` : ""}
 
-    <form id="bankEditForm" class="bank-edit-form" autocomplete="off">
-      <h4>${needsCompletion ? "استكمال البيانات" : "تعديل البيانات"}</h4>
-      <div class="bank-edit-grid">
-        <label>نوع العقار<input name="propertyType" value="${escapeHtml(record.propertyType || "")}"></label>
-        <label>المدينة<input name="city" value="${escapeHtml(record.city || "")}"></label>
-        <label>الحي<input name="district" value="${escapeHtml(record.district || "")}"></label>
-        <label>السعر / الميزانية<input name="priceOrBudget" type="number" value="${record.priceOrBudget ?? record.price ?? ""}"></label>
-        <label>المساحة<input name="area" type="number" value="${record.area ?? ""}"></label>
-        ${landProperty ? "" : `<label>الغرف<input name="rooms" type="number" value="${record.rooms ?? ""}"></label>`}
-      </div>
-      <button type="submit" class="bank-action-primary">${needsCompletion ? "استكمال البيانات" : "حفظ التعديلات"}</button>
+    <section class="bank-opp-summary" aria-label="ملخص الفرصة">
+      <p class="bank-kind-badge">${escapeHtml(card.kindBadge)}</p>
+      <h4>${escapeHtml(card.description)}</h4>
+      <p>${escapeHtml(card.location)}</p>
+      <p>${escapeHtml(card.priceOrBudget)} · ${escapeHtml(card.area)}</p>
+      <p class="bank-row-contact">${escapeHtml(card.contactLine)}</p>
+      <p class="bank-status-row">
+        <span>${escapeHtml(card.dataCompletenessLabel)}</span>
+        <span>${escapeHtml(card.contactStatusLabel)}</span>
+        <span>${escapeHtml(card.matchStatusLabel)}</span>
+        <span>${escapeHtml(card.outcomeStatusLabel)}</span>
+      </p>
+      ${card.bestMatchScoreText ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>` : ""}
+    </section>
+
+    <section class="bank-missing-banner ${missingNames.length ? "is-incomplete" : "is-ready"}" aria-live="polite">
+      <strong>${escapeHtml(missingNames.length ? `البيانات الناقصة: ${missingNames.join("، ")}` : "البيانات مكتملة — جاهزة للمطابقة")}</strong>
+    </section>
+
+    <form id="bankUnifiedForm" class="bank-unified-form" autocomplete="off">
+      <details class="bank-section" open>
+        <summary>بيانات العقار / الطلب</summary>
+        <div class="bank-edit-grid">
+          <label>نوع العقار<input name="propertyType" value="${escapeHtml(record.propertyType || "")}"></label>
+          <label>المدينة<input name="city" value="${escapeHtml(record.city || "")}"></label>
+          <label>الحي<input name="district" value="${escapeHtml(record.district || "")}"></label>
+          <label>السعر / الميزانية<input name="priceOrBudget" type="number" value="${record.priceOrBudget ?? record.price ?? ""}"></label>
+          <label>المساحة<input name="area" type="number" value="${record.area ?? ""}"></label>
+          ${landProperty ? "" : `<label>الغرف<input name="rooms" type="number" value="${record.rooms ?? ""}"></label>`}
+        </div>
+      </details>
+
+      <details class="bank-section" open>
+        <summary>بيانات المعلن</summary>
+        ${advertiserFields}
+      </details>
     </form>
+
+    ${mediaGallery}
+
+    <section class="bank-section bank-contact-section" aria-label="التواصل">
+      <h4>التواصل</h4>
+      <div class="bank-advertiser-actions" id="bankContactActions"></div>
+      <div class="bank-contact-outcomes" id="bankContactOutcomes">
+        <button type="button" class="bank-action" data-contact-outcome="CONTACTED">تم التواصل</button>
+        <button type="button" class="bank-action" data-contact-outcome="NO_RESPONSE">لم يرد</button>
+        <button type="button" class="bank-action" data-contact-outcome="FOLLOW_UP">طلب متابعة</button>
+        <button type="button" class="bank-action" data-contact-outcome="REFUSED">غير مهتم</button>
+        <button type="button" class="bank-action" data-contact-outcome="AGREED">تم الاتفاق</button>
+      </div>
+    </section>
+
+    <section class="bank-section" aria-label="الإجراء القادم">
+      <h4>الإجراء القادم</h4>
+      <p id="bankNextActionLabel">${escapeHtml(card.nextActionLabel)}</p>
+      <div class="bank-followup-quick">
+        <button type="button" class="bank-action" data-followup-days="0">اليوم</button>
+        <button type="button" class="bank-action" data-followup-days="1">غدًا</button>
+        <button type="button" class="bank-action" data-followup-days="2">بعد غد</button>
+        <label>اختيار تاريخ ووقت
+          <input type="datetime-local" id="bankCustomFollowUp">
+        </label>
+        <button type="button" class="bank-action" id="bankSaveFollowUpCustom">حفظ الموعد</button>
+      </div>
+    </section>
+
+    <details class="bank-section">
+      <summary>المصدر الأصلي</summary>
+      <p class="bank-source-meta">${escapeHtml(sourceTypeLabel)} — ${escapeHtml(detail.dateAdded)}</p>
+      ${sourceOriginal ? `<p class="bank-source-text">${escapeHtml(sourceOriginal)}</p>` : "<p>لا يوجد نص أصلي محفوظ.</p>"}
+    </details>
+
+    <div class="bank-unified-save-wrap">
+      <button type="button" class="bank-action-primary" id="bankUnifiedSaveBtn">حفظ التغييرات</button>
+      <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
+    </div>
 
     <div class="bank-actions">
       <button type="button" class="bank-action" id="bankCooperateBtn">
@@ -753,6 +773,13 @@ async function renderDetail(id) {
   `;
 
   setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+  const contactActions = $("bankContactActions");
+  if (contactActions) {
+    contactActions.innerHTML = buildAdvertiserContactActions(record).map((action) => {
+      const disabled = action.disabled ? "disabled" : "";
+      return `<button type="button" class="bank-action" id="bankAdvertiser${action.action}" ${disabled}>${escapeHtml(action.label)}</button>`;
+    }).join("");
+  }
   wireDetailHandlers(id, record);
   void hydrateDetailMediaUrls();
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
@@ -851,9 +878,130 @@ function wireDetailHandlers(id, record) {
     }, { once: true });
   });
 
-  $("bankAdvertiserStatusBtn")?.addEventListener("click", () => {
-    const form = $("bankAdvertiserStatusForm");
-    if (form) form.hidden = !form.hidden;
+  async function saveUnifiedChanges() {
+    const form = $("bankUnifiedForm");
+    const statusNode = $("bankUnifiedSaveStatus");
+    const btn = $("bankUnifiedSaveBtn");
+    if (!form || btn?.disabled) return;
+    const existing = state.records.get(id) || record;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const editResult = buildEditPatch(existing, data, { actorUid: authUser()?.uid || "" });
+    if (!editResult.ok) {
+      setStatus(editResult.error || "تعذر حفظ التغييرات", "is-error");
+      if (statusNode) statusNode.textContent = editResult.error || "تعذر الحفظ";
+      return;
+    }
+    const advResult = buildAdvertiserDataPatch(existing, data);
+    if (!advResult.ok) {
+      const errorEl = document.getElementById("bankAdvertiserPhoneError");
+      if (errorEl) {
+        errorEl.textContent = advResult.error || "رقم الجوال غير صحيح";
+        errorEl.hidden = false;
+      }
+      if (statusNode) statusNode.textContent = advResult.error || "رقم الجوال غير صحيح";
+      return;
+    }
+    btn.disabled = true;
+    if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
+    const patch = {
+      ...editResult.patch,
+      ...advResult.patch,
+      updatedAt: new Date().toISOString(),
+      updatedBy: authUser()?.uid || ""
+    };
+    try {
+      await patchOpportunity(id, patch);
+      state.records.set(id, { ...existing, ...patch, id });
+      if (statusNode) statusNode.textContent = "تم حفظ التغييرات";
+      setStatus("تم حفظ التغييرات", "is-done");
+      toast("تم حفظ التغييرات");
+      await renderDetail(id);
+    } catch (error) {
+      console.warn("[iaqar] unified save", error);
+      if (statusNode) statusNode.textContent = "تعذر حفظ التغييرات";
+      setStatus("تعذر حفظ التغييرات", "is-error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $("bankUnifiedSaveBtn")?.addEventListener("click", () => void saveUnifiedChanges());
+
+  document.querySelectorAll("[data-contact-outcome]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const outcome = btn.getAttribute("data-contact-outcome");
+      const user = authUser();
+      const patch = {
+        lastContactAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.uid || ""
+      };
+      if (outcome === "CONTACTED") patch.advertiserContactStatus = "RESPONDED";
+      else if (outcome === "NO_RESPONSE") patch.advertiserContactStatus = "NO_RESPONSE";
+      else if (outcome === "FOLLOW_UP") patch.advertiserContactStatus = "CALL_LATER";
+      else if (outcome === "REFUSED") patch.advertiserContactStatus = "REFUSED";
+      else if (outcome === "AGREED") patch.marketingConsentStatus = "PRELIMINARY_YES";
+      try {
+        await patchOpportunity(id, patch);
+        state.records.set(id, { ...state.records.get(id), ...patch, id });
+        toast("تم تسجيل نتيجة التواصل");
+        await renderDetail(id);
+      } catch (error) {
+        console.warn("[iaqar] contact outcome", error);
+        toast("تعذر تسجيل نتيجة التواصل");
+      }
+    });
+  });
+
+  async function saveFollowUpDays(days) {
+    const followUp = new Date(Date.now() + Number(days || 0) * 86400000);
+    followUp.setHours(10, 0, 0, 0);
+    await saveFollowUpAt(followUp.toISOString());
+  }
+
+  async function saveFollowUpAt(iso) {
+    const user = authUser();
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Office-Id": officeId()
+        },
+        body: JSON.stringify({
+          officeId: officeId(),
+          opportunityId: id,
+          action: "set_followup",
+          nextFollowUpAt: iso,
+          nextActionAt: iso,
+          nextActionType: "follow_up"
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || "followup_failed");
+      state.records.set(id, {
+        ...state.records.get(id),
+        nextFollowUpAt: iso,
+        nextActionAt: iso
+      });
+      toast("تم حفظ موعد المتابعة");
+      await renderDetail(id);
+    } catch (error) {
+      console.warn("[iaqar] followup", error);
+      toast("تعذر حفظ موعد المتابعة");
+    }
+  }
+
+  document.querySelectorAll("[data-followup-days]").forEach((btn) => {
+    btn.addEventListener("click", () => void saveFollowUpDays(btn.getAttribute("data-followup-days")));
+  });
+  $("bankSaveFollowUpCustom")?.addEventListener("click", () => {
+    const custom = $("bankCustomFollowUp")?.value || "";
+    if (!custom) return toast("اختر موعد المتابعة");
+    void saveFollowUpAt(new Date(custom).toISOString());
   });
 
   function currentAdvertiserPhone() {
@@ -873,71 +1021,18 @@ function wireDetailHandlers(id, record) {
     const phone = currentAdvertiserPhone();
     openBankAdvertiserWhatsApp(currentAdvertiserRecord(), phone);
   });
-  $("bankAdvertisercopy")?.addEventListener("click", async () => {
-    const phone = currentAdvertiserPhone();
-    if (!phone) return;
-    try {
-      await navigator.clipboard.writeText(phone);
-      toast("تم نسخ الرقم");
-    } catch {
-      toast("تعذر نسخ الرقم");
-    }
-  });
-  $("bankAdvertiseredit")?.addEventListener("click", () => {
-    const form = document.getElementById("bankAdvertiserEditForm");
-    const phoneInput = form?.querySelector('input[name="advertiserPhoneLocal"]');
-    if (phoneInput) {
-      phoneInput.focus();
-      phoneInput.scrollIntoView({ block: "center", behavior: "smooth" });
-    }
-  });
   $("bankAdvertiserAddPhone")?.addEventListener("click", () => {
-    const form = document.getElementById("bankAdvertiserEditForm");
-    const phoneInput = form?.querySelector('input[name="advertiserPhoneLocal"]');
+    const phoneInput = document.querySelector("#bankUnifiedForm input[name=\"advertiserPhoneLocal\"]");
     if (phoneInput) {
       phoneInput.focus();
       phoneInput.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  });
-  $("bankAdvertiserEditForm")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await saveAdvertiserData(id, currentAdvertiserRecord(), event.currentTarget);
   });
 
   $("bankHideSharedBtn")?.addEventListener("click", () => void hideSharedOpportunity(id));
 
-  $("bankAdvertiserStatusForm")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = Object.fromEntries(new FormData(event.currentTarget).entries());
-    const user = authUser();
-    const existing = state.records.get(id) || record;
-    const patch = {
-      advertiserContactStatus: data.advertiserContactStatus,
-      marketingConsentStatus: data.marketingConsentStatus,
-      lastContactAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      updatedBy: user?.uid || ""
-    };
-    try {
-      await patchOpportunity(id, patch);
-      state.records.set(id, { ...existing, ...patch, id });
-      setStatus("تم تحديث حالة المعلن", "is-done");
-      await renderDetail(id);
-    } catch (error) {
-      console.warn("[iaqar] advertiser status", error);
-      setStatus("تعذر تحديث الحالة", "is-error");
-    }
-  });
-
   $("bankDetailClose")?.addEventListener("click", () => {
     window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
-  });
-
-  $("bankEditForm")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const input = Object.fromEntries(new FormData(form).entries());
-    await saveEdit(id, record, input);
   });
 
   $("bankArchiveBtn")?.addEventListener("click", () => void archiveOpportunity(id, record));

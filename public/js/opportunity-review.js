@@ -51,9 +51,9 @@ function officeContext() {
 
 function e164ToLocalInput(e164) {
   const digits = String(e164 || "").replace(/\D/g, "");
-  if (/^9665\d{8}$/.test(digits)) return digits.slice(3);
-  if (/^05\d{8}$/.test(digits)) return digits.slice(1);
-  if (/^5\d{8}$/.test(digits)) return digits;
+  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
+  if (/^05\d{8}$/.test(digits)) return digits;
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
   return "";
 }
 
@@ -136,12 +136,9 @@ function renderAdvertiserSection(defaults) {
       ${multiPick}
       <label class="review-field advertiser-phone-field">
         <span>رقم جوال المعلن</span>
-        <div class="advertiser-phone-row">
-          <span class="advertiser-phone-prefix" aria-hidden="true">+966</span>
-          <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="9"
-            placeholder="5XXXXXXXX" value="${escapeHtml(localPhone)}"
-            aria-label="رقم جوال المعلن بدون مفتاح الدولة">
-        </div>
+        <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
+          placeholder="05XXXXXXXX" value="${escapeHtml(localPhone)}"
+          aria-label="رقم جوال المعلن">
         <small class="advertiser-extracted-hint" id="advertiserPhoneExtractedHint"
           ${advertiserExtractedAuto && localPhone ? "" : "hidden"}>تم استخراجه من الإعلان</small>
       </label>

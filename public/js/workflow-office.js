@@ -19,6 +19,7 @@
   const office = () => window.IAQAR && window.IAQAR.office;
   const messagingDomain = () => window.IAQAR && window.IAQAR.messagingDomain;
   const LC = () => window.IAQAR_LIFECYCLE || {};
+  const OPP = () => window.IAQAR_OPPORTUNITY?.card || null;
 
   const MATCH_STATUS = Object.freeze({
     new: { key: "active", label: "نشطة", mark: "🟢", next: "التواصل مع الطرفين" },
@@ -113,6 +114,7 @@
     const date = toDate(value);
     if (!date) return "غير محدد";
     return date.toLocaleString("ar-SA", {
+      timeZone: "Asia/Riyadh",
       month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
     });
   }
@@ -346,8 +348,15 @@
     const lifecycleStatus = LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(item) : "NEW";
     const lifecycleLabel = (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[lifecycleStatus]) || lifecycleStatus;
     const isOwner = item.contactType === "owner" || item.recordType === "owner_offer";
-    const overdue = isOverdue(item.nextFollowUpAt) && lifecycleStatus !== "ARCHIVED"
+    const overdue = isOverdue(item.nextFollowUpAt || item.nextActionAt) && lifecycleStatus !== "ARCHIVED"
       && !["CLOSED_WON", "CLOSED_LOST"].includes(lifecycleStatus);
+    const card = OPP()?.buildOpportunityCardView
+      ? OPP().buildOpportunityCardView({ ...item, id: doc.id, opportunityId: doc.id })
+      : null;
+    const title = card?.kindBadge || (isOwner ? "عرض مالك" : "طلب عميل");
+    const subtitle = card
+      ? [card.description, card.location, card.priceOrBudget !== "غير محدد" ? card.priceOrBudget : ""].filter(Boolean).join(" — ")
+      : [item.propertyType, item.district, lifecycleLabel].filter(Boolean).join(" — ");
     return {
       id: `opp-${doc.id}`,
       recordId: doc.id,
@@ -356,12 +365,24 @@
       priority: overdue ? 0 : lifecycleStatus === "NEW" ? 1 : 3,
       isAlert: overdue || lifecycleStatus === "NEW",
       icon: isOwner ? "i-house-check" : "i-user-clock",
-      title: isOwner ? "عرض مالك" : "طلب عميل",
-      subtitle: [item.propertyType, item.district, lifecycleLabel].filter(Boolean).join(" — "),
+      title,
+      subtitle,
       propertyType: item.propertyType || "",
       district: item.district || "",
       time: relativeTime(item.updatedAt || item.createdAt || item.receivedAt),
-      detailsLines: [
+      detailsLines: card ? [
+        card.description,
+        card.location,
+        `${card.priceOrBudget} · ${card.area}`,
+        card.contactLine,
+        `المصدر: ${card.sourceLabel}`,
+        `اكتمال البيانات: ${card.dataCompletenessLabel}`,
+        `التواصل: ${card.contactStatusLabel}`,
+        `المطابقة: ${card.matchStatusLabel}`,
+        `النتيجة: ${card.outcomeStatusLabel}`,
+        card.nextActionLabel !== "غير محدد" ? `الإجراء القادم: ${card.nextActionLabel}` : "",
+        card.bestMatchScoreText ? `أفضل مطابقة: ${card.bestMatchScoreText}` : ""
+      ].filter(Boolean) : [
         `الحالة: ${lifecycleLabel}`,
         `المصدر: ${item.normalizedSource || item.source || "—"}`,
         `الاسم: ${item.contactName || "غير محدد"}`,
@@ -559,9 +580,9 @@
     const savedItem = buildSavedOpportunityWorkspaceItem(id, matchCount);
     if (!savedItem) return;
     if (duplicate) {
-      savedItem.title = "فرصة محفوظة مسبقًا";
-      savedItem.subtitle = "لم يُنشأ سجل جديد";
-      savedItem.detailsLines = ["هذه الفرصة موجودة بالفعل في بنك الفرص."];
+      savedItem.title = "فرصة موجودة";
+      savedItem.subtitle = "تم تحديث الفرصة الحالية";
+      savedItem.detailsLines = ["توجد فرصة نشطة لهذا الرقم — تم تحديث الفرصة الحالية بدل إنشاء نسخة مكررة."];
     }
     savedOpportunityWorkspaceItems = [
       savedItem,
