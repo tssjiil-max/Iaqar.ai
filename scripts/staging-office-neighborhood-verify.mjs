@@ -84,19 +84,35 @@ async function verifyDeployedSha(page) {
 async function pickNeighborhood(page, name) {
   const input = page.locator("#officeNeighborhoodSearch");
   await input.click();
-  await input.fill(name.slice(0, 3));
-  await page.waitForTimeout(400);
-  const btn = page.locator(`.arabic-suggest-list button[data-pick="${name}"]`).first();
-  if (await btn.count()) {
-    await btn.click();
+  await input.fill("");
+  const query = name.length > 4 ? name.slice(0, 4) : name.slice(0, 2);
+  await input.fill(query);
+  await page.waitForTimeout(600);
+  const exact = page.locator(`.arabic-suggest-list button[data-pick="${name}"]`).first();
+  if (await exact.count()) {
+    await exact.click();
+    await page.waitForTimeout(200);
     return true;
   }
   const fuzzy = page.locator(".arabic-suggest-list button").filter({ hasText: name }).first();
   if (await fuzzy.count()) {
     await fuzzy.click();
+    await page.waitForTimeout(200);
     return true;
   }
+  const any = page.locator(".arabic-suggest-list button").first();
+  if (await any.count()) {
+    const label = await any.getAttribute("data-pick");
+    console.log("fallback pick", label);
+    await any.click();
+    await page.waitForTimeout(200);
+    return label === name;
+  }
   return false;
+}
+
+async function editorChipCount(page) {
+  return page.locator("#officeNeighborhoodChips .office-neighborhood-editor-chip").count();
 }
 
 async function main() {
@@ -118,13 +134,16 @@ async function main() {
 
   for (const name of PICKS) {
     const ok = await pickNeighborhood(page, name);
-    console.log("picked", name, ok);
+    console.log("picked", name, ok, "editor chips", await editorChipCount(page));
     await page.waitForTimeout(300);
   }
 
+  console.log("editor chips before save", await editorChipCount(page));
   await shot(page, "office_neighborhood_settings_selector.png");
   await page.locator("#saveOfficeSettingsBtn").click();
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000);
+  const note = await page.locator("#officeSettingsNote").textContent();
+  console.log("save note", note);
 
   const afterProbe = await probeCard(page);
   console.log("after probe", JSON.stringify(afterProbe, null, 2));

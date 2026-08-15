@@ -53,7 +53,7 @@ export function wireArabicSuggestInput(input, options = [], config = {}) {
     render(input.value);
   });
 
-  list.addEventListener("mousedown", (event) => {
+  const handlePick = (event) => {
     const btn = event.target.closest("[data-pick]");
     if (!btn) return;
     event.preventDefault();
@@ -66,7 +66,10 @@ export function wireArabicSuggestInput(input, options = [], config = {}) {
     list.hidden = true;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  };
+
+  list.addEventListener("mousedown", handlePick);
+  list.addEventListener("click", handlePick);
 
   ownerDocument.addEventListener("click", (event) => {
     if (!wrap?.contains(event.target)) list.hidden = true;
