@@ -48,6 +48,7 @@ import {
   revokeBankSharingScope,
   createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
+import { buildCooperationNearbySuggestions } from "./cooperation-nearby-service.js";
 import {
   MESSAGE_CHANNELS,
   MESSAGE_SEND_STATE,
@@ -328,6 +329,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/operations/missing-data") {
         return await handleOperationsMissingData(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/nearby-suggestions") {
+        return await handleCooperationNearbySuggestions(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/request") {
@@ -2944,6 +2949,82 @@ async function handleOperationsMissingData(request, env, requestId) {
     operationId: result.operation?.id || "",
     missingFields: listMissingOpportunityFields(opportunity),
     boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleCooperationNearbySuggestions(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const oppDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const sourceOpportunity = {
+    id: opportunityId,
+    officeId,
+    ...firestoreFieldsToJs(oppDoc.fields || {})
+  };
+
+  const publicDocs = await listCollectionDocuments({
+    projectId,
+    segments: ["publicOffices"],
+    accessToken,
+    pageSize: 120
+  });
+  const publicOffices = publicDocs.map((doc) => ({
+    officeId: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+    ...firestoreFieldsToJs(doc.fields || {})
+  }));
+
+  const officeOpportunities = [];
+  for (const office of publicOffices) {
+    const targetId = String(office.officeId || "").trim().toLowerCase();
+    if (!targetId || targetId === officeId) continue;
+    const docs = await listCollectionDocuments({
+      projectId,
+      segments: ["offices", targetId, "opportunities"],
+      accessToken,
+      pageSize: 40
+    });
+    for (const doc of docs) {
+      const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      officeOpportunities.push({
+        id,
+        officeId: targetId,
+        ...firestoreFieldsToJs(doc.fields || {})
+      });
+    }
+  }
+
+  const suggestions = await buildCooperationNearbySuggestions({
+    sourceOpportunity,
+    ownOfficeId: officeId,
+    publicOffices,
+    officeOpportunities
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    suggestions,
+    boundaries: {
+      ...phase6BoundaryGuarantees(),
+      usesDeviceGps: false,
+      exposesContactBeforeAcceptance: false
+    },
     requestId
   });
 }

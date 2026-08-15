@@ -86,6 +86,15 @@ export const DISTRICTS = Object.freeze(
 );
 
 export const DISTRICT_OTHER_ID = "__other_district__";
+export const DISTRICT_UNCONFIRMED_WARNING = "لم يتم التعرف على الحي بدقة — راجعه قبل الإرسال.";
+
+const LEGACY_LABEL_MAP = Object.freeze({
+  madina: "المدينة المنورة",
+  "al madina": "المدينة المنورة",
+  "al-wabra": "الوبرة",
+  "al wabra": "الوبرة",
+  alwabra: "الوبرة"
+});
 
 export function normalizeSearchText(value) {
   return String(value || "")
@@ -133,22 +142,91 @@ export function matchOperationType(fields = {}, text = "") {
   return null;
 }
 
-export function matchPropertyType(raw = "") {
-  const hay = normalizeSearchText(raw);
-  if (!hay) return null;
+export function containsArabicPhrase(text, phrase) {
+  const hay = normalizeSearchText(text);
+  const needle = normalizeSearchText(phrase);
+  if (!hay || !needle) return false;
+  if (hay === needle) return true;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "u").test(hay);
+}
+
+export function normalizeLegacyArabicLabel(raw = "") {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  const asciiKey = text.toLowerCase().replace(/[_-]/g, " ").trim();
+  if (LEGACY_LABEL_MAP[asciiKey]) return LEGACY_LABEL_MAP[asciiKey];
+  const normalized = normalizeSearchText(text);
+  for (const [key, label] of Object.entries(LEGACY_LABEL_MAP)) {
+    if (normalizeSearchText(key) === normalized) return label;
+  }
+  return text;
+}
+
+export function conservativeMatchPropertyType(raw = "") {
+  const display = normalizeLegacyArabicLabel(raw);
+  const hay = normalizeSearchText(display);
+  if (!hay) return { match: null, confirmed: false, display: "" };
   let best = null;
   let bestLen = 0;
   for (const item of PROPERTY_TYPES) {
     if (item.id === "other") continue;
     for (const term of item.matchTerms) {
       const t = normalizeSearchText(term);
-      if (t && hay.includes(t) && t.length >= bestLen) {
+      if (!t || t.length < 2) continue;
+      if (hay === t && t.length >= bestLen) {
+        best = item;
+        bestLen = t.length;
+      } else if (t.length >= 2 && containsArabicPhrase(hay, t) && t.length >= bestLen) {
         best = item;
         bestLen = t.length;
       }
     }
   }
-  return best;
+  if (best) return { match: best, confirmed: true, display: best.label };
+  return { match: null, confirmed: false, display: display };
+}
+
+export function conservativeMatchDistrict(raw = "", cityId = "madinah") {
+  const display = normalizeLegacyArabicLabel(raw).replace(/^حي\s+/, "").trim();
+  const hay = normalizeSearchText(display);
+  if (!hay || cityId !== "madinah") {
+    return {
+      match: null,
+      confirmed: false,
+      display,
+      warning: display ? DISTRICT_UNCONFIRMED_WARNING : ""
+    };
+  }
+  const ranked = [...DISTRICTS]
+    .filter((d) => d.active)
+    .sort((a, b) => {
+      const al = Math.max(...a.aliases.map((x) => normalizeSearchText(x).length));
+      const bl = Math.max(...b.aliases.map((x) => normalizeSearchText(x).length));
+      return bl - al;
+    });
+  for (const district of ranked) {
+    for (const alias of district.aliases) {
+      const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
+      if (!a || a.length < 3) continue;
+      if (hay === a) {
+        return { match: district, confirmed: true, display: district.officialName, warning: "" };
+      }
+      if (containsArabicPhrase(hay, a) && hay.length >= a.length - 1) {
+        return { match: district, confirmed: true, display: district.officialName, warning: "" };
+      }
+    }
+  }
+  return {
+    match: null,
+    confirmed: false,
+    display,
+    warning: display ? DISTRICT_UNCONFIRMED_WARNING : ""
+  };
+}
+
+export function matchPropertyType(raw = "") {
+  return conservativeMatchPropertyType(raw).match;
 }
 
 export function matchCity(raw = "") {
@@ -165,40 +243,7 @@ export function matchCity(raw = "") {
 }
 
 export function matchDistrict(raw = "", cityId = "madinah") {
-  const hay = normalizeSearchText(raw).replace(/^حي\s+/, "");
-  if (!hay || cityId !== "madinah") return null;
-  let best = null;
-  let bestLen = 0;
-  for (const district of DISTRICTS) {
-    if (!district.active) continue;
-    for (const alias of district.aliases) {
-      const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
-      if (a && (hay === a || hay.includes(a) || a.includes(hay)) && a.length >= bestLen) {
-        best = district;
-        bestLen = a.length;
-      }
-    }
-  }
-  if (best) return best;
-  // Polluted one-line extractions labels: try the first Arabic token(s).
-  const tokens = hay.split(/\s+/).filter(Boolean);
-  for (let n = Math.min(3, tokens.length); n >= 1; n -= 1) {
-    const head = tokens.slice(0, n).join(" ");
-    for (const district of DISTRICTS) {
-      if (!district.active) continue;
-      for (const alias of district.aliases) {
-        const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
-        if (a && (head === a || a.includes(head) || head.includes(a)) && a.length >= 3) {
-          if (!best || a.length >= bestLen) {
-            best = district;
-            bestLen = a.length;
-          }
-        }
-      }
-    }
-    if (best) return best;
-  }
-  return null;
+  return conservativeMatchDistrict(raw, cityId).match;
 }
 
 /**
@@ -244,16 +289,21 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
   const text = String(sourceText || "");
   const extended = meta.extended || extractionFields.extended || {};
   const op = matchOperationType(extractionFields, text);
-  const propertyLabel = safeTrim(extractionFields.propertyType || extended.propertyType);
-  const property = propertyLabel ? matchPropertyType(propertyLabel) : null;
-  const cityLabel = safeTrim(extractionFields.city);
+  const propertyLabel = normalizeLegacyArabicLabel(
+    safeTrim(extractionFields.propertyType || extended.propertyType)
+  );
+  const propertyResult = propertyLabel ? conservativeMatchPropertyType(propertyLabel) : { match: null, confirmed: false, display: "" };
+  const property = propertyResult.match;
+  const cityLabel = normalizeLegacyArabicLabel(safeTrim(extractionFields.city));
   const city = cityLabel ? matchCity(cityLabel) : null;
-  const districtLabel = safeTrim(extractionFields.district || extended.district);
+  const districtLabel = normalizeLegacyArabicLabel(
+    safeTrim(extractionFields.district || extended.district)
+  );
   const cityIdForDistrict = city?.id || "madinah";
-  const district = districtLabel
-    ? matchDistrict(districtLabel, cityIdForDistrict)
-    : null;
-  // Unmatched extracted district → "حي آخر" so the broker can confirm/edit before save.
+  const districtResult = districtLabel
+    ? conservativeMatchDistrict(districtLabel, cityIdForDistrict)
+    : { match: null, confirmed: false, display: "", warning: "" };
+  const district = districtResult.match;
   const unmatchedDistrictManual = !district && districtLabel
     ? districtLabel.split(/\s+/).slice(0, 4).join(" ").trim()
     : "";
@@ -268,7 +318,12 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
   return {
     operationTypeId: op?.id || "",
     propertyTypeId: property?.id || (propertyLabel ? "other" : ""),
-    propertyTypeManual: property ? "" : propertyLabel,
+    propertyTypeManual: property ? "" : (propertyResult.display || propertyLabel),
+    propertyTypeDisplay: propertyResult.display || property?.label || propertyLabel,
+    propertyTypeConfirmed: propertyResult.confirmed,
+    districtDisplay: districtResult.display || district?.officialName || districtLabel,
+    districtConfirmed: districtResult.confirmed,
+    districtUnconfirmedWarning: districtResult.warning || "",
     cityId: city?.id || "",
     cityManual: city ? "" : cityLabel,
     districtId: district?.id || (unmatchedDistrictManual ? DISTRICT_OTHER_ID : ""),

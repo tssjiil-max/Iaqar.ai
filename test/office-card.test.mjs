@@ -194,7 +194,6 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
     assert.deepEqual(sections, [
       "header.card header",
       "section.card license",
-      "section.card services-bar",
       "div.app-content-shell"
     ]);
   } finally {
@@ -336,7 +335,7 @@ test("TEST 15: the empty state returns after real records are cleared", async ()
 
 // --- Approved office card content (directive §6) -----------------------------
 
-test("the office card shows logo, cover, name, broker, license, city; services bar shows specialties", async () => {
+test("the office card shows logo, cover, name, broker, license, city; services inline on card", async () => {
   const context = await shell();
   try {
     const { document } = context;
@@ -349,8 +348,9 @@ test("the office card shows logo, cover, name, broker, license, city; services b
     ]) {
       assert.ok(card.querySelector(`#${id}`), `${id} must be on the office card`);
     }
-    assert.ok(document.getElementById("officeDisplaySpecialties"), "services bar must show specialties");
-    assert.ok(document.getElementById("officeServicesBar"), "services bar section required");
+    assert.ok(card.querySelector("#officeDisplaySpecialties"), "specialties must show on the office card");
+    assert.ok(card.querySelector("#officeDisplaySpecialtiesWrap"), "specialties wrap must be on the office card");
+    assert.equal(document.getElementById("officeServicesBar"), null, "standalone services bar removed");
     assert.ok(card.querySelector("#officeSettingsBtn img"), "the logo image must render on the card");
   } finally {
     context.close();

@@ -6,9 +6,12 @@ import {
   CITIES,
   DISTRICT_OTHER_ID,
   DISTRICTS,
+  DISTRICT_UNCONFIRMED_WARNING,
   OPERATION_TYPES,
   PROPERTY_TYPES,
   buildReviewDefaults,
+  conservativeMatchDistrict,
+  conservativeMatchPropertyType,
   districtsForCity,
   filterBySearch,
   filterDistrictOptions,
@@ -192,15 +195,18 @@ function renderReviewForm(defaults) {
 
   body.innerHTML = `
     <p class="review-hint">راجع القيم المستخرجة وعدّل ما يلزم قبل الحفظ النهائي.</p>
+    ${defaults.districtUnconfirmedWarning
+      ? `<p class="review-district-warning" id="reviewDistrictWarning">${escapeHtml(defaults.districtUnconfirmedWarning)}</p>`
+      : `<p class="review-district-warning" id="reviewDistrictWarning" hidden></p>`}
     ${snapshotLines.length
       ? `<p class="review-extracted">مستخرَج: ${escapeHtml(snapshotLines.join(" — "))}</p>` : ""}
     <form id="opportunityReviewForm" class="review-form" autocomplete="off">
       ${searchField("operationTypeId", reviewLabel("transactionType", "نوع العملية", needs), OPERATION_TYPES, defaults.operationTypeId, "label")}
-      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label")}
+      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label", "", defaults.propertyTypeDisplay || defaults.propertyTypeManual)}
       ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
       ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
       ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
-      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual)}
+      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual, defaults.districtDisplay || defaults.districtManual)}
       ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
       <div id="reviewTransactionFields" style="display:contents"></div>
       <div id="reviewPropertyFields" style="display:contents"></div>
@@ -342,15 +348,9 @@ function wireAdvertiserMessageModal() {
     const digits = whatsappDigitsFromE164(phone);
     if (!digits) return;
     const url = `https://wa.me/${digits}?text=${encodeURIComponent(textarea?.value || "")}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.location.href = url;
     if (ctx?.onWhatsAppOpened) {
       void ctx.onWhatsAppOpened();
-    } else {
-      const statusSelect = document.querySelector('select[name="advertiserContactStatus"]');
-      if (statusSelect) statusSelect.value = "OPENED_WHATSAPP";
-      window.dispatchEvent(new CustomEvent("iaqar:advertiser-handoff", {
-        detail: { state: "OPENED_EXTERNAL", contactStatus: "OPENED_WHATSAPP" }
-      }));
     }
     clearAdvertiserMessageModalContext();
     closeAdvertiserMessageModal();
@@ -380,19 +380,21 @@ function districtOptions(cityId) {
   ];
 }
 
-function searchField(name, label, items, selectedId, labelKey = "label", districtManual = "") {
+function searchField(name, label, items, selectedId, labelKey = "label", districtManual = "", displayOverride = "") {
   const selected = items.find((i) => i.id === selectedId);
-  const display = selected
-    ? escapeHtml(selected[labelKey] || selected.label || "")
-    : (name === "districtId" && selectedId === DISTRICT_OTHER_ID
-      ? "حي آخر / غير موجود في القائمة"
-      : "");
+  const display = displayOverride
+    ? escapeHtml(displayOverride)
+    : selected
+      ? escapeHtml(selected[labelKey] || selected.label || "")
+      : (name === "districtId" && selectedId === DISTRICT_OTHER_ID
+        ? escapeHtml(districtManual || "حي آخر / غير موجود في القائمة")
+        : "");
   return `
     <label class="search-field" data-field="${name}">
       <span>${label}</span>
-      <input type="text" class="search-select-input" data-search-for="${name}" placeholder="ابحث أو اختر…" value="${display}">
+      <input type="text" class="search-select-input hybrid-text-input" data-search-for="${name}" placeholder="اكتب أو اختر من الاقتراحات…" value="${display}" autocomplete="off">
       <input type="hidden" name="${name}" value="${escapeHtml(selectedId || "")}">
-      <ul class="search-select-list" data-list-for="${name}" hidden></ul>
+      <ul class="search-select-list hybrid-suggestions" data-list-for="${name}" hidden></ul>
     </label>
   `;
 }
@@ -414,6 +416,20 @@ function numericField(name, label, value) {
       <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal">
     </label>
   `;
+}
+
+function updateDistrictWarning(root, field, typed, result = null) {
+  const warn = root.querySelector("#reviewDistrictWarning") || document.getElementById("reviewDistrictWarning");
+  if (!warn || field !== "districtId") return;
+  const cityId = root.querySelector('input[name="cityId"]')?.value || "madinah";
+  const check = result || conservativeMatchDistrict(typed, cityId);
+  if (check.warning) {
+    warn.hidden = false;
+    warn.textContent = check.warning;
+  } else {
+    warn.hidden = true;
+    warn.textContent = "";
+  }
 }
 
 function wireSearchFields(root) {
@@ -442,7 +458,38 @@ function wireSearchFields(root) {
       render(input.value);
       list.hidden = false;
     });
-    input.addEventListener("input", () => render(input.value));
+    input.addEventListener("input", () => {
+      if (field === "propertyTypeId" || field === "districtId") {
+        hidden.value = "";
+        updateDistrictWarning(root, field, input.value);
+      }
+      render(input.value);
+    });
+    input.addEventListener("blur", () => {
+      if (field !== "propertyTypeId" && field !== "districtId") return;
+      const typed = String(input.value || "").trim();
+      if (!typed) return;
+      const cityId = root.querySelector('input[name="cityId"]')?.value || "madinah";
+      const result = field === "propertyTypeId"
+        ? conservativeMatchPropertyType(typed)
+        : conservativeMatchDistrict(typed, cityId);
+      if (result.confirmed && result.match) {
+        hidden.value = result.match.id;
+        input.value = result.display;
+        updateDistrictWarning(root, field, typed, result);
+      } else if (field === "districtId") {
+        hidden.value = DISTRICT_OTHER_ID;
+        const manual = root.querySelector('[name="districtManual"]');
+        if (manual) manual.value = result.display || typed;
+        updateDistrictWarning(root, field, typed, result);
+        syncManualVisibility(root);
+      } else if (field === "propertyTypeId") {
+        hidden.value = "other";
+        const manual = root.querySelector('[name="propertyTypeManual"]');
+        if (manual) manual.value = result.display || typed;
+        syncManualVisibility(root);
+      }
+    });
     list.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-pick-id]");
       if (!btn) return;

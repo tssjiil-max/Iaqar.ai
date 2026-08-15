@@ -124,15 +124,40 @@
 
     /* الترويسة: الشعار يمين وعنوان متوازن */
     .header {
-      min-height:56px;
-      padding:6px 9px;
+      min-height:40px;
+      padding:4px 8px;
       display:grid;
-      grid-template-columns:39px minmax(0,1fr);
+      grid-template-columns:32px minmax(0,1fr);
       grid-template-areas:"logo title";
       align-items:center;
-      gap:6px;
+      gap:5px;
       background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
-      position:relative;
+      position:sticky;
+      top:0;
+      z-index:30;
+      transition:min-height .22s ease, padding .22s ease, box-shadow .22s ease;
+    }
+
+    .header.is-scrolled {
+      min-height:34px;
+      padding:2px 8px;
+      box-shadow:0 4px 14px rgba(0,63,52,.08);
+      border-bottom:1px solid rgba(0,92,75,.08);
+    }
+
+    .header.is-scrolled .site-logo,
+    .header.is-scrolled .site-logo img {
+      width:26px;
+      height:30px;
+    }
+
+    .header.is-scrolled .brand h1 {
+      font-size:13px;
+      line-height:1.2;
+    }
+
+    .header.is-scrolled .brand p {
+      display:none;
     }
 
     .header-back {
@@ -158,8 +183,8 @@
 
     .site-logo {
       grid-area:logo;
-      width:39px;
-      height:44px;
+      width:32px;
+      height:36px;
       padding:0;
       border:0;
       border-radius:0;
@@ -200,32 +225,32 @@
     }
 
     /* بطاقة المكتب */
-    .license { margin-top:11px; }
+    .license { margin-top:6px; }
 
-    .office-body { padding:12px 12px 11px; }
+    .office-body { padding:14px 14px 12px; }
 
     .office-name-bar {
-      margin-bottom:8px;
+      margin-bottom:6px;
     }
 
     .office-name-bar h3 {
       margin:0;
       color:var(--green);
-      font-size:17px;
+      font-size:19px;
       line-height:1.3;
       font-weight:800;
     }
 
     .office-main {
       display:grid;
-      grid-template-columns:minmax(0,1fr) 58px;
+      grid-template-columns:minmax(0,1fr) 88px;
       align-items:center;
-      gap:8px;
+      gap:10px;
     }
 
     .office-logo {
-      width:58px;
-      height:66px;
+      width:88px;
+      height:96px;
       padding:0;
       border:2px dashed #C9D6D0;
       border-radius:16px;
@@ -265,6 +290,19 @@
       color:var(--text);
       font-weight:800;
     }
+
+    .office-services-inline {
+      margin-top:10px;
+      padding-top:10px;
+      border-top:1px solid rgba(0,92,75,.08);
+      color:var(--green);
+      font-size:12px;
+      font-weight:700;
+      line-height:1.6;
+      text-align:right;
+    }
+
+    .office-services-inline[hidden] { display:none; }
 
     .office-license-line {
       display:flex;
@@ -2268,7 +2306,12 @@
     font-weight:700;
   }
 
-  .bank-advertiser-phone-error[hidden] { display:none; }
+  .advertiser-message-presets {
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:8px;
+  }
 
   .bank-advertiser-save {
     min-height:40px;
@@ -2477,39 +2520,65 @@
 
   .bank-filters {
     display:grid;
-    grid-template-columns:1fr;
     gap:8px;
     margin:10px 0 12px;
+  }
+  .bank-filter-search input {
+    width:100%;
+    box-sizing:border-box;
+    min-height:44px;
+    border:1px solid var(--line);
+    border-radius:12px;
     padding:10px 12px;
+    font:inherit;
+    background:#fff;
+  }
+  input[type="datetime-local"],
+  .bank-followup-quick input[type="datetime-local"] {
+    width:100%;
+    box-sizing:border-box;
+    min-height:44px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px 12px;
+    font:inherit;
+    background:#fff;
+    color:var(--text);
+    direction:rtl;
+  }
+  .bank-incoming-item.is-clickable {
+    cursor:pointer;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    background:#fff;
+  }
+  .bank-incoming-item.is-clickable:hover {
+    border-color:rgba(0,92,75,.35);
+    background:#f7fbf9;
+  }
+  .bank-share-detail-panel {
+    margin-top:12px;
+    padding:12px;
     border:1px solid var(--line);
     border-radius:14px;
     background:#fafcfb;
   }
-  @media (min-width:720px) {
-    .bank-filters {
-      grid-template-columns:1.4fr repeat(5, minmax(0,1fr)) auto;
-      align-items:center;
-    }
+  .bank-cooperation-nearby {
+    margin-top:12px;
+    padding:12px;
+    border:1px dashed var(--line);
+    border-radius:14px;
+    background:#f8fbf9;
   }
-  .bank-filters select,
-  .bank-filter-search input {
-    width:100%;
-    min-height:40px;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:8px 10px;
-    font:inherit;
-    background:#fff;
+  .bank-cooperation-nearby-item {
+    display:grid;
+    gap:6px;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
   }
-  .bank-filter-clear {
-    min-height:40px;
-    border:1px solid var(--line);
-    border-radius:10px;
-    background:#fff;
-    color:var(--muted);
-    font:inherit;
-    cursor:pointer;
-  }
+  .bank-cooperation-nearby-item:last-child { border-bottom:0; }
   .bank-row-clickable { width:100%; text-align:inherit; border:0; background:transparent; cursor:pointer; }
   .bank-row-head { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
   .bank-readiness-badge {
@@ -2525,11 +2594,42 @@
   .bank-readiness-line { margin:0 0 10px; font-size:13px; }
   .bank-summary-card {
     margin: 8px 0 12px;
-    padding: 14px 16px;
+    padding: 10px 12px;
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 14px;
     background: #f7fbf9;
   }
+  .bank-summary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .bank-summary-chip {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(0,92,75,.22);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .bank-summary-chip strong {
+    font-size: 15px;
+    color: var(--heading, #073f35);
+  }
+  .bank-summary-chip.is-active {
+    background: var(--green);
+    border-color: var(--green);
+    color: #fff;
+  }
+  .bank-summary-chip.is-active strong { color: #fff; }
   .bank-summary-title {
     margin: 0 0 10px;
     font-size: 16px;
@@ -2838,6 +2938,9 @@
               <svg class="license-verify-icon" aria-hidden="true"><use href="#i-check-circle"/></svg>
             </div>
             <div class="office-line">المدينة: <strong id="officeDisplayCity">المدينة المنورة</strong></div>
+            <p class="office-services-inline" id="officeDisplaySpecialtiesWrap">
+              <span id="officeDisplaySpecialties">بيع</span>
+            </p>
           </div>
 
           <button class="office-logo" id="officeSettingsBtn" type="button"
@@ -2846,12 +2949,6 @@
             <span class="visually-hidden">فتح إعدادات المكتب</span>
           </button>
         </div>
-      </div>
-    </section>
-
-    <section class="card services-bar" id="officeServicesBar" aria-label="خدمات المكتب">
-      <div class="services-bar-inner office-specialty-status">
-        <span id="officeDisplaySpecialties">بيع</span>
       </div>
     </section>
 
@@ -2944,33 +3041,11 @@
                 <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
               </div>
 
-              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث وتصفية بنك الفرص">
+              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث بنك الفرص">
                 <label class="bank-filter-search">
                   <span class="visually-hidden">بحث في بنك الفرص</span>
                   <input type="search" id="bankFilterSearch" placeholder="ابحث في بنك الفرص" autocomplete="off">
                 </label>
-                <select id="bankFilterCity" aria-label="تصفية المدينة">
-                  <option value="">كل المدن</option>
-                </select>
-                <select id="bankFilterDistrict" aria-label="تصفية الحي">
-                  <option value="">كل الأحياء</option>
-                </select>
-                <select id="bankFilterPurpose" aria-label="تصفية نوع العملية">
-                  <option value="">نوع العملية</option>
-                  <option value="SALE">بيع</option>
-                  <option value="PURCHASE">شراء</option>
-                  <option value="RENT">إيجار</option>
-                  <option value="LEASE_REQUEST">استئجار</option>
-                </select>
-                <select id="bankFilterPropertyType" aria-label="تصفية نوع العقار">
-                  <option value="">نوع العقار</option>
-                </select>
-                <select id="bankFilterStatus" aria-label="تصفية الحالة">
-                  <option value="">الحالة</option>
-                  <option value="READY_FOR_MATCHING">جاهزة للمطابقة</option>
-                  <option value="NEEDS_COMPLETION">تحتاج استكمال</option>
-                </select>
-                <button type="button" class="bank-filter-clear" id="bankFilterClearBtn">مسح الفلاتر</button>
               </div>
 
               <p class="section-status" id="opportunityBankStatus" role="status"></p>
@@ -3020,6 +3095,7 @@
       </div>
       <label class="review-field">
         <span>نص الرسالة</span>
+        <div class="advertiser-message-presets" id="advertiserMessagePresets"></div>
         <textarea id="advertiserMessageText" aria-label="نص رسالة التواصل مع المعلن"></textarea>
       </label>
       <div class="advertiser-message-actions">
@@ -3153,24 +3229,9 @@
 
       <section class="settings-section" id="officeLinkSection">
         <h3>رابط المكتب</h3>
-        <p class="section-help">رابط صفحتك العامة لمشاركته مع العملاء والملاك.</p>
-        <div class="office-link-field">
-          <input id="officeLinkInput" readonly aria-label="رابط المكتب">
-          <button class="office-link-copy" id="copyOfficeLinkBtn" type="button">نسخ</button>
-        </div>
-        <div class="link-actions">
-          <button class="link-action-btn" id="shareOfficeLinkBtn" type="button">مشاركة الرابط</button>
-          <button class="link-action-btn" id="toggleOfficeQrBtn" type="button" aria-expanded="false"
-            aria-controls="officeQrWrap">رمز QR</button>
-          <button class="link-action-btn" id="previewOfficeLinkBtn" type="button">معاينة الصفحة</button>
-          <button class="link-action-btn" id="shareOfficeCardBtn" type="button">مشاركة بطاقة المكتب</button>
-        </div>
-        <div class="office-qr-wrap" id="officeQrWrap" hidden>
-          <canvas id="officeQrCanvas" width="336" height="336" role="img"
-            aria-label="رمز QR لرابط المكتب"></canvas>
-          <p>امسح الرمز لزيارة صفحة المكتب العامة</p>
-          <button class="identity-btn" id="downloadOfficeQrBtn" type="button">تنزيل الرمز</button>
-        </div>
+        <p class="section-help">شارك بطاقة مكتبك مع الرابط كرسالة نصية قابلة للضغط.</p>
+        <button class="identity-btn" id="shareOfficeLinkCardBtn" type="button">مشاركة رابط المكتب</button>
+        <input id="officeLinkInput" type="hidden" readonly aria-hidden="true">
         <p class="section-status" id="officeLinkStatus" role="status"></p>
       </section>
 
@@ -3325,6 +3386,7 @@
   <script src="js/app-navigation.js"></script>
   <script src="js/home-tabs.js"></script>
   <script src="js/qrcode.js"></script>
+  <script type="module" src="js/header-scroll.js"></script>
   <script type="module" src="js/office-library.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>

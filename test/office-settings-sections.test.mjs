@@ -207,27 +207,17 @@ test("an oversized file is rejected before any upload is attempted", async () =>
 
 // --- 7.4 office link --------------------------------------------------------
 
-test("the office link section offers copy, share, QR and preview", async () => {
+test("the office link section offers a single share-office-link action", async () => {
   const context = await shell();
   try {
     const { document } = context;
     const section = document.getElementById("officeLinkSection");
-    for (const id of [
-      "officeLinkInput",
-      "copyOfficeLinkBtn",
-      "shareOfficeLinkBtn",
-      "toggleOfficeQrBtn",
-      "previewOfficeLinkBtn",
-      "shareOfficeCardBtn",
-      "officeQrWrap",
-      "officeQrCanvas",
-      "downloadOfficeQrBtn"
-    ]) {
-      assert.ok(section.querySelector(`#${id}`), `${id} must be in the office link section`);
-    }
-    assert.equal(document.getElementById("officeLinkInput").hasAttribute("readonly"), true);
-    assert.equal(document.getElementById("officeQrWrap").hasAttribute("hidden"), true, "the QR starts collapsed");
-    assert.equal(document.getElementById("toggleOfficeQrBtn").getAttribute("aria-expanded"), "false");
+    assert.ok(section.querySelector("#shareOfficeLinkCardBtn"), "shareOfficeLinkCardBtn required");
+    assert.ok(section.querySelector("#officeLinkInput"), "hidden officeLinkInput required");
+    assert.equal(section.querySelector("#copyOfficeLinkBtn"), null);
+    assert.equal(section.querySelector("#toggleOfficeQrBtn"), null);
+    assert.equal(section.querySelector("#previewOfficeLinkBtn"), null);
+    assert.equal(section.querySelector("#shareOfficeCardBtn"), null);
   } finally {
     context.close();
   }

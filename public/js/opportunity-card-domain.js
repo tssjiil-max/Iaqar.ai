@@ -109,14 +109,28 @@ function formatNextAction(value) {
   if (Number.isNaN(date.getTime())) return "غير محدد";
   const now = new Date();
   const overdue = date.getTime() < now.getTime();
-  const label = date.toLocaleString("ar-SA", {
-    timeZone: "Asia/Riyadh",
-    weekday: "long",
-    month: "long",
-    day: "numeric",
+  const tz = "Asia/Riyadh";
+  const today = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+  const target = new Date(date.toLocaleString("en-US", { timeZone: tz }));
+  const dayDiff = Math.round(
+    (Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
+      - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000
+  );
+  const weekday = date.toLocaleString("ar-SA", { timeZone: tz, weekday: "long" });
+  const monthDay = date.toLocaleString("ar-SA", { timeZone: tz, month: "long", day: "numeric" });
+  const time = date.toLocaleString("ar-SA", {
+    timeZone: tz,
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    hour12: true
   });
+  let prefix = "";
+  if (dayDiff === 0) prefix = "اليوم";
+  else if (dayDiff === 1) prefix = "غدًا";
+  else if (dayDiff === 2) prefix = "بعد غد";
+  const label = prefix
+    ? `${prefix} — ${weekday} ${monthDay}، ${time}`
+    : `${weekday} ${monthDay}، ${time}`;
   if (overdue) return `متابعة متأخرة — ${label}`;
   return label;
 }

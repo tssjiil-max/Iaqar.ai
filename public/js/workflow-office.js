@@ -1132,15 +1132,24 @@
   }
 
   async function openLifecycleWhatsApp(detail) {
-    const popup = window.open("", "_blank");
-    if (popup) popup.opener = null;
     const role = detail.recipientRole === "owner" ? "owner" : "client";
     const contact = await workflowContact(detail, role).catch(() => null);
     const phone = whatsappPhone((contact && contact.phone) || detail.contactPhone);
-    if (!phone) {
-      if (popup) popup.close();
-      return notify("رقم التواصل غير صحيح");
+    if (!phone) return notify("رقم التواصل غير صحيح");
+
+    const modal = document.getElementById("advertiserMessageOverlay");
+    const target = document.getElementById("advertiserMessageTarget");
+    const textEl = document.getElementById("advertiserMessageText");
+    const title = document.getElementById("advertiserMessageTitle");
+    const whatsBtn = document.getElementById("advertiserMessageWhatsApp");
+    const closeBtn = document.getElementById("advertiserMessageClose");
+    const cancelBtn = document.getElementById("advertiserMessageCancel");
+    if (!modal || !target || !textEl || !whatsBtn) {
+      const url = `https://wa.me/${phone}`;
+      window.location.href = url;
+      return;
     }
+
     const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
     const actionType = LC().whatsappActionTypeForStatus ? LC().whatsappActionTypeForStatus(lifecycleStatus) : "first_contact";
     const opportunityPayload = {
@@ -1149,27 +1158,124 @@
       kind: role === "owner" ? "owner" : "client",
       contactPhone: (contact && contact.phone) || detail.contactPhone
     };
-    const defaultMessage = LC().buildOpportunityWhatsAppMessage
+    const firstMessage = LC().buildOpportunityWhatsAppMessage
       ? LC().buildOpportunityWhatsAppMessage(opportunityPayload, actionType, {
         brokerName: brokerDisplayName(),
         officeName: officeDisplayName(),
         matchSummary: detail.matchSummary || ""
       })
       : whatsappMessage(detail, role, contact || {});
-    const editable = window.prompt("يمكنك تعديل الرسالة قبل الإرسال:", defaultMessage);
-    if (editable == null) {
-      if (popup) popup.close();
-      return;
+    const missingMessage = buildMissingDataWhatsAppMessage(opportunityPayload);
+
+    if (title) {
+      title.textContent = role === "owner" ? "واتساب المالك" : "واتساب العميل";
     }
-    const message = String(editable).trim() || defaultMessage;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    if (popup) popup.location.replace(url);
-    else window.location.href = url;
-    try {
-      await opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "opened" });
-    } catch (error) {
-      console.warn("[iaqar] whatsapp opened log", error);
+    target.textContent = `0${phone.slice(3)}`;
+    textEl.value = firstMessage;
+
+    const presetWrap = document.getElementById("advertiserMessagePresets");
+    if (presetWrap) {
+      presetWrap.innerHTML = `
+        <button type="button" class="bank-action" data-wa-preset="first">بدء التواصل</button>
+        <button type="button" class="bank-action" data-wa-preset="missing">طلب الصور والبيانات الناقصة</button>`;
+      presetWrap.querySelectorAll("[data-wa-preset]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const key = btn.getAttribute("data-wa-preset");
+          textEl.value = key === "missing" ? missingMessage : firstMessage;
+        });
+      });
     }
+
+    const onClose = () => {
+      modal.hidden = true;
+      whatsBtn.removeEventListener("click", onWhatsApp);
+      closeBtn?.removeEventListener("click", onClose);
+      cancelBtn?.removeEventListener("click", onClose);
+    };
+
+    const onWhatsApp = async () => {
+      const message = String(textEl.value || "").trim() || firstMessage;
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.location.href = url;
+      try {
+        await opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "opened" });
+      } catch (error) {
+        console.warn("[iaqar] whatsapp opened log", error);
+      }
+      notify("تم فتح واتساب");
+      showWorkflowContactOutcomes(detail);
+      onClose();
+    };
+
+    whatsBtn.addEventListener("click", onWhatsApp);
+    closeBtn?.addEventListener("click", onClose);
+    cancelBtn?.addEventListener("click", onClose);
+    modal.hidden = false;
+  }
+
+  function buildMissingDataWhatsAppMessage(opportunity = {}) {
+    const brokerName = brokerDisplayName();
+    const officeName = officeDisplayName();
+    const isOwner = opportunity.contactType === "owner" || opportunity.kind === "owner";
+    const property = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(opportunity) : "";
+    const intro = `معك ${brokerName} من ${officeName}.`;
+    if (isOwner) {
+      return [
+        "السلام عليكم،",
+        intro,
+        "",
+        `بخصوص عرضكم: ${property}`,
+        "",
+        "نرغب في استكمال صور العقار والبيانات الناقصة قبل المتابعة.",
+        "",
+        "شاكرين لكم."
+      ].join("\n");
+    }
+    return [
+      "السلام عليكم،",
+      intro,
+      "",
+      `بخصوص طلبكم: ${property}`,
+      "",
+      "نرغب في استكمال بعض البيانات أو الصور الناقصة لمساعدتكم بشكل أفضل.",
+      "",
+      "شاكرين لكم."
+    ].join("\n");
+  }
+
+  function showWorkflowContactOutcomes(detail) {
+    const overlay = document.getElementById("iaqarWorkflowOverlay");
+    const body = document.getElementById("iaqarWorkflowBody");
+    if (!overlay || !body || overlay.hidden) return;
+    let panel = body.querySelector("#iaqarContactOutcomePanel");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "iaqarContactOutcomePanel";
+      panel.className = "iaqar-workflow-note";
+      panel.innerHTML = `
+        <p><strong>بعد العودة من واتساب — ما النتيجة؟</strong></p>
+        <div class="iaqar-workflow-actions">
+          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="CONTACTED">تم التواصل</button>
+          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="NO_RESPONSE">لم يرد</button>
+          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="FOLLOW_UP">طلب متابعة</button>
+          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="REFUSED">غير مهتم</button>
+          <button type="button" class="iaqar-workflow-btn success" data-outcome="AGREED">تم الاتفاق</button>
+        </div>`;
+      body.prepend(panel);
+    }
+    panel.hidden = false;
+    panel.querySelectorAll("[data-outcome]").forEach((btn) => {
+      btn.onclick = async () => {
+        const outcome = btn.getAttribute("data-outcome");
+        try {
+          await opportunityLifecycleAction("contact_outcome", detail, { contactOutcome: outcome });
+          notify("تم تسجيل نتيجة التواصل");
+          panel.hidden = true;
+        } catch (error) {
+          notify("تعذر تسجيل نتيجة التواصل");
+        }
+      };
+    });
   }
 
   async function openWorkflowWhatsApp(detail) {

@@ -23,6 +23,7 @@ import {
   validateOfficeName,
   withOfficeImageCacheBust
 } from "./office-domain.js";
+import { buildDefaultServiceNeighborhoodIds } from "./neighborhood-adjacency-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -256,7 +257,6 @@ function apply(data) {
   writeSpecialtiesToForm(current.specialties);
   applyImageSlots();
   applyOfficeCardImages();
-  if (el.qrWrap && !el.qrWrap.hidden) renderQrCode();
 
   const map = [
     ["officeDisplayName", current.officeName],
@@ -269,8 +269,8 @@ function apply(data) {
     const node = document.getElementById(id);
     if (node) node.textContent = value;
   });
-  const specialtyRow = document.getElementById("officeServicesBar");
-  if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
+  const specialtyWrap = document.getElementById("officeDisplaySpecialtiesWrap");
+  if (specialtyWrap) specialtyWrap.hidden = !current.specialties.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +389,8 @@ async function reserveOfficeName(runtime, user, data) {
       displayImageUrl: data.displayImageUrl,
       coverUrl: data.coverUrl,
       publicSlug: data.publicSlug,
+      serviceNeighborhoodIds: buildDefaultServiceNeighborhoodIds(data.city),
+      cooperationMode: cooperationMode,
       updatedAt: serverTimestamp()
     }, { merge: true });
   });
@@ -1018,13 +1020,13 @@ async function createOfficeCardBlob() {
   ctx.fillText(current.brokerName, 940, 360);
   ctx.font = "500 22px Tajawal, Arial, sans-serif";
   ctx.fillStyle = "#6a7d77";
-  ctx.fillText("المرخص له", 940, 396);
+  ctx.fillText("وسيط عقاري — المرخص له", 940, 396);
 
-  const specialty = specialtyText(current.specialties) || "—";
+  const specialty = specialtyText(current.specialties) || "بيع • شراء • تأجير • إدارة أملاك";
   const rows = [
     ["رخصة فال", current.licenseNumber],
     ["المدينة", current.city],
-    ["التخصصات", specialty]
+    ["الخدمات", specialty.replace(/ • /g, " • ")]
   ];
   let rowY = 450;
   for (const [label, value] of rows) {
@@ -1037,16 +1039,17 @@ async function createOfficeCardBlob() {
     rowY += 52;
   }
 
-  drawQr(ctx, link, 96, 620, 220);
   ctx.textAlign = "center";
+  ctx.fillStyle = "#087064";
+  ctx.font = "800 30px Tajawal, Arial, sans-serif";
+  ctx.fillText("رابط المكتب", 540, 640);
+
   ctx.fillStyle = "#073f35";
-  ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 880);
+  ctx.font = "700 26px Tajawal, Arial, sans-serif";
+  const linkDisplay = link.replace(/^https?:\/\//, "");
+  ctx.fillText(linkDisplay, 540, 690);
 
   ctx.textAlign = "right";
-  ctx.fillStyle = "#087064";
-  ctx.font = "700 24px Tajawal, Arial, sans-serif";
-  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 940);
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
   ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
@@ -1155,6 +1158,67 @@ function extractPropertyImageUrl(text) {
   const raw = String(text || "");
   const match = raw.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
   return match ? match[0] : "";
+}
+
+async function shareOfficeLinkCard() {
+  const missing = officeMissingFields();
+  if (missing.length) {
+    setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${missing.join("، ")}`, "is-error");
+    return;
+  }
+  const originalText = el.shareLinkCard?.textContent || "مشاركة رابط المكتب";
+  if (el.shareLinkCard) {
+    el.shareLinkCard.disabled = true;
+    el.shareLinkCard.textContent = "جارٍ تجهيز البطاقة...";
+  }
+  try {
+    await ensurePublicSlug();
+    const link = officeLink();
+    const text = `${current.officeName}\nرابط المكتب:\n${link}`;
+    const blob = await createOfficeCardBlob();
+    if (!blob) throw new Error("CARD_FAILED");
+    const file = new File([blob], `رابط-${current.officeName}.png`, { type: "image/png" });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file], text })) {
+      await navigator.share({ files: [file], title: current.officeName, text });
+      setStatus(el.linkStatus, "تمت مشاركة بطاقة المكتب والرابط", "is-done");
+      return;
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: current.officeName, text });
+        setStatus(el.linkStatus, "تمت مشاركة الرابط", "is-done");
+        return;
+      } catch (shareError) {
+        if (shareError && shareError.name === "AbortError") return;
+      }
+    }
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = file.name;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+    try {
+      await navigator.clipboard.writeText(link);
+      setStatus(el.linkStatus, "تم تنزيل البطاقة ونسخ الرابط", "is-done");
+      toast("تم تنزيل البطاقة ونسخ الرابط");
+    } catch (_) {
+      setStatus(el.linkStatus, "تم تنزيل البطاقة — انسخ الرابط يدويًا من الإعدادات", "is-done");
+    }
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (String(error && error.message || "").startsWith("MISSING:")) {
+      setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${error.message.slice(8)}`, "is-error");
+    } else {
+      console.warn("[iaqar] office link card", error);
+      setStatus(el.linkStatus, "تعذر إنشاء بطاقة المكتب الآن", "is-error");
+    }
+  } finally {
+    if (el.shareLinkCard) {
+      el.shareLinkCard.disabled = false;
+      el.shareLinkCard.textContent = originalText;
+    }
+  }
 }
 
 async function shareOfficeCard() {
@@ -1340,6 +1404,11 @@ async function saveCooperationSettings(value) {
         updatedAt: serverTimestamp(),
         updatedBy: user.uid
       }, { merge: true });
+    await runtime.db.collection("publicOffices").doc(officeId()).set({
+      officeId: officeId(),
+      cooperationMode: payload.mode,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
     setStatus(el.cooperationStatus, "تم حفظ إعداد التعاون", "is-done");
   } catch (error) {
     console.warn("[iaqar] cooperation settings save", error);
@@ -1481,14 +1550,7 @@ function init() {
   el.city = document.getElementById("officeCityInput");
   el.link = document.getElementById("officeLinkInput");
   el.linkStatus = document.getElementById("officeLinkStatus");
-  el.copy = document.getElementById("copyOfficeLinkBtn");
-  el.shareLink = document.getElementById("shareOfficeLinkBtn");
-  el.toggleQr = document.getElementById("toggleOfficeQrBtn");
-  el.qrWrap = document.getElementById("officeQrWrap");
-  el.qrCanvas = document.getElementById("officeQrCanvas");
-  el.downloadQr = document.getElementById("downloadOfficeQrBtn");
-  el.previewLink = document.getElementById("previewOfficeLinkBtn");
-  el.shareCard = document.getElementById("shareOfficeCardBtn");
+  el.shareLinkCard = document.getElementById("shareOfficeLinkCardBtn");
   el.save = document.getElementById("saveOfficeSettingsBtn");
   el.logout = document.getElementById("officeLogoutBtn");
   el.note = document.getElementById("officeSettingsNote");
@@ -1547,13 +1609,8 @@ function init() {
     init.nameTimer = setTimeout(checkNameAvailability, 400);
   });
   el.form.addEventListener("submit", onSave);
-  el.copy.addEventListener("click", copyLink);
+  if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
   el.logout.addEventListener("click", onLogout);
-  if (el.shareLink) el.shareLink.addEventListener("click", shareLink);
-  if (el.toggleQr) el.toggleQr.addEventListener("click", toggleQrCode);
-  if (el.downloadQr) el.downloadQr.addEventListener("click", downloadQrCode);
-  if (el.previewLink) el.previewLink.addEventListener("click", previewPublicLink);
-  if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
 
   Array.from(el.notificationInputs || []).forEach(input => {
     input.addEventListener("change", saveNotificationPreferences);
