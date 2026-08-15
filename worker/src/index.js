@@ -107,6 +107,7 @@ import {
   isArchivedLifecycle,
   isActiveLifecycle as isOpportunityLifecycleActive
 } from "./opportunity-lifecycle.mjs";
+import { findDuplicateOpportunity, matchesDuplicateCriteria } from "./opportunity-duplicate.mjs";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -1362,6 +1363,70 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   const now = new Date();
   const parsed = structuredPublicIntakeToParsed(intake);
   const readiness = evaluatePublicIntakeReadiness(intake, parsed);
+
+  const opportunityDocs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 120
+  });
+  const duplicateHit = findDuplicateOpportunity(
+    opportunityDocs.map((doc) => ({
+      id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+      data: firestoreFieldsToJs(doc.fields || {})
+    })),
+    {
+      officeId,
+      phone: parsed.phone || intake.phone,
+      contactType: intake.kind === "owner" ? "owner" : "buyer",
+      kind: intake.kind,
+      propertyType: parsed.propertyType || intake.propertyType,
+      city: parsed.city || intake.city,
+      district: parsed.district || intake.district
+    }
+  );
+
+  if (duplicateHit?.opportunityId) {
+    const existingId = duplicateHit.opportunityId;
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken,
+      fields: compactFields({
+        status: firestoreString("processed"),
+        opportunityId: firestoreString(existingId),
+        processedRecordId: firestoreString(existingId),
+        duplicateOpportunity: firestoreBoolean(true),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId: existingId, accessToken, now,
+      payload: {
+        type: "intake_link",
+        action: "duplicate_intake_linked",
+        statusBefore: getOpportunityLifecycleStatus(duplicateHit.data),
+        statusAfter: getOpportunityLifecycleStatus(duplicateHit.data),
+        createdBy: "system_public_intake"
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "opportunities", existingId], accessToken,
+      fields: compactFields({
+        updatedAt: firestoreTimestamp(now),
+        sourceIntakeId: firestoreOptionalString(intakeId),
+        lastIntakeLinkedAt: firestoreTimestamp(now)
+      })
+    });
+    return jsonResponse({
+      ok: true,
+      duplicate: true,
+      duplicateMessage: "توجد فرصة نشطة لهذا الرقم — تم تحديث الفرصة الحالية بدل إنشاء نسخة مكررة.",
+      officeId,
+      intakeId,
+      opportunityId: existingId,
+      recordId: existingId,
+      matches: 0,
+      requestId
+    });
+  }
+
   const mediaPaths = Array.isArray(intake.mediaPaths)
     ? intake.mediaPaths.map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 6)
     : [];
@@ -1827,7 +1892,17 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
   const contactType = parsed.kind === "owner_offer" ? "owner" : "buyer";
   const existingOpportunity = await findActiveOpportunityByPhone({
-    projectId, officeId, phone: parsed.phone || senderPhone, contactType, accessToken
+    projectId,
+    officeId,
+    phone: parsed.phone || senderPhone,
+    contactType,
+    accessToken,
+    criteria: {
+      kind: parsed.kind === "owner_offer" ? "owner" : "client",
+      propertyType: parsed.propertyType,
+      city: parsed.city,
+      district: parsed.district
+    }
   });
   if (existingOpportunity) {
     await setFirestoreDocument({
@@ -2148,20 +2223,24 @@ function lifecycleFieldsForIntake(intake = {}, now = new Date()) {
   });
 }
 
-async function findActiveOpportunityByPhone({ projectId, officeId, phone, contactType, accessToken }) {
+async function findActiveOpportunityByPhone({ projectId, officeId, phone, contactType, accessToken, criteria = {} }) {
   const digits = normalizeSaudiPhoneForWhatsApp(phone);
   if (!digits) return null;
   const docs = await listCollectionDocuments({
     projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 80
   });
+  const searchCriteria = {
+    officeId,
+    phone,
+    contactType,
+    ...criteria
+  };
   for (const doc of docs) {
     const data = firestoreFieldsToJs(doc.fields || {});
     if (normalizeOfficeId(data.officeId) !== officeId) continue;
-    const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || "");
+    const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || data.advertiserPhoneNormalized || "");
     if (docPhone !== digits) continue;
-    if (contactType && data.contactType && data.contactType !== contactType) continue;
-    const status = getOpportunityLifecycleStatus(data);
-    if ([LIFECYCLE_STATUS.CLOSED_WON, LIFECYCLE_STATUS.CLOSED_LOST, LIFECYCLE_STATUS.ARCHIVED].includes(status)) continue;
+    if (!matchesDuplicateCriteria(data, searchCriteria)) continue;
     const docId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
     return { opportunityId: docId, data };
   }
@@ -2255,10 +2334,15 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     fields.lastContactAt = firestoreTimestamp(now);
     fields.lastContactMethod = firestoreString(cleanText(body.lastContactMethod || "whatsapp", 30));
   } else if (action === "set_followup") {
-    const followUp = body.nextFollowUpAt ? new Date(body.nextFollowUpAt) : defaultNextFollowUp(Number(body.followUpDays || 1) * 24);
+    const followUp = body.nextFollowUpAt || body.nextActionAt
+      ? new Date(body.nextFollowUpAt || body.nextActionAt)
+      : defaultNextFollowUp(Number(body.followUpDays || 1) * 24);
     if (Number.isNaN(followUp.getTime())) throw appError("followup_invalid", 400, "موعد المتابعة غير صحيح");
     fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
     fields.nextFollowUpAt = firestoreTimestamp(followUp);
+    fields.nextActionAt = firestoreTimestamp(followUp);
+    fields.nextActionType = firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40));
+    fields.nextActionNote = firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300));
   } else if (action === "close_won") {
     fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
     fields.closedAt = firestoreTimestamp(now);

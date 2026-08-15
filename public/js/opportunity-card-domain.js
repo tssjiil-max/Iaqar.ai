@@ -1,0 +1,167 @@
+/**
+ * Opportunity card projection — readable at a glance without opening details.
+ */
+
+import { safeText } from "./opportunity-intake-domain.js";
+import {
+  formatLocalPhoneDisplay,
+  maskPhoneForDisplay,
+  readAdvertiserDisplayName
+} from "./advertiser-phone-domain.js";
+import { projectOpportunityStatuses } from "./opportunity-status-domain.js";
+import {
+  evaluateMatchingReadiness,
+  missingFieldLabelsArabic
+} from "./opportunity-readiness-domain.js";
+
+const LC = typeof window !== "undefined" && window.IAQAR_LIFECYCLE
+  ? window.IAQAR_LIFECYCLE
+  : null;
+
+const SOURCE_LABELS = Object.freeze({
+  office_link: "رابط المكتب",
+  manual: "إدخال يدوي",
+  whatsapp: "واتساب",
+  public_site: "فرصة منصة",
+  voice: "تسجيل صوتي",
+  other: "مصدر آخر"
+});
+
+function isOwnerRecord(record = {}) {
+  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
+  return record.contactType === "owner"
+    || kind === "OWNER"
+    || kind === "OWNER_OFFER"
+    || kind === "OFFER";
+}
+
+function kindBadge(record = {}) {
+  return isOwnerRecord(record) ? "عرض مالك" : "طلب عميل";
+}
+
+function propertyDescription(record = {}) {
+  const propertyType = safeText(record.propertyType, 80);
+  const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
+  const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? "للإيجار"
+    : purpose === "SALE" || purpose === "PURCHASE" ? "للبيع"
+    : "";
+  if (propertyType && purposeWord) return `${propertyType} ${purposeWord}`;
+  if (propertyType) return propertyType;
+  if (LC?.buildOpportunitySummary) return LC.buildOpportunitySummary(record);
+  return "غير محدد";
+}
+
+function locationLine(record = {}) {
+  const city = safeText(record.city, 80);
+  const district = safeText(record.district, 80);
+  if (city && district) return `${city} — ${district}`;
+  return city || district || "غير محدد";
+}
+
+function moneyLine(record = {}) {
+  const isOwner = isOwnerRecord(record);
+  const price = Number(record.price ?? record.salePrice ?? record.amount ?? 0);
+  const budget = Number(record.budget ?? record.priceMax ?? record.priceOrBudget ?? 0);
+  const annualRent = Number(record.annualRent ?? 0);
+  if (isOwner && price > 0) return `${price.toLocaleString("ar-SA")} ريال`;
+  if (!isOwner && budget > 0) return `ميزانية ${budget.toLocaleString("ar-SA")} ريال`;
+  if (annualRent > 0) return `${annualRent.toLocaleString("ar-SA")} ريال سنويًا`;
+  if (price > 0) return `${price.toLocaleString("ar-SA")} ريال`;
+  return "غير محدد";
+}
+
+function areaLine(record = {}) {
+  const area = Number(record.area || 0);
+  const min = Number(record.areaMin || 0);
+  const max = Number(record.areaMax || 0);
+  if (area > 0) return `${area.toLocaleString("ar-SA")} م²`;
+  if (min > 0 && max > 0) return `${min.toLocaleString("ar-SA")}–${max.toLocaleString("ar-SA")} م²`;
+  if (min > 0) return `من ${min.toLocaleString("ar-SA")} م²`;
+  return "غير محدد";
+}
+
+function contactLine(record = {}) {
+  const name = readAdvertiserDisplayName(record);
+  const firstName = name.split(/\s+/)[0] || "";
+  const phone = formatLocalPhoneDisplay(
+    record.advertiserPhoneNormalized || record.contactPhone || record.phone
+  );
+  const masked = maskPhoneForDisplay(
+    record.advertiserPhoneNormalized || record.contactPhone || record.phone
+  );
+  if (firstName && masked) return `${firstName} • ${masked}`;
+  if (masked) return masked;
+  if (firstName) return firstName;
+  return "غير محدد";
+}
+
+function sourceLabel(record = {}) {
+  const raw = safeText(record.normalizedSource || record.source || record.sourceType, 40);
+  if (LC?.normalizeOpportunitySource) {
+    return SOURCE_LABELS[LC.normalizeOpportunitySource(raw)] || SOURCE_LABELS.other;
+  }
+  return SOURCE_LABELS[raw] || raw || "غير محدد";
+}
+
+function formatNextAction(value) {
+  if (!value) return "غير محدد";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "غير محدد";
+  const now = new Date();
+  const overdue = date.getTime() < now.getTime();
+  const label = date.toLocaleString("ar-SA", {
+    timeZone: "Asia/Riyadh",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  if (overdue) return `متابعة متأخرة — ${label}`;
+  return label;
+}
+
+/**
+ * @param {object} record
+ * @param {object} [context] — { matchCount, bestMatchScore, bestMatchComputed }
+ */
+export function buildOpportunityCardView(record = {}, context = {}) {
+  const statuses = projectOpportunityStatuses(record, context);
+  const readiness = evaluateMatchingReadiness(record);
+  const missingNames = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
+  const bestScore = Number(context.bestMatchScore ?? record.bestMatchScore ?? 0);
+  const scoreComputed = Boolean(context.bestMatchComputed ?? record.bestMatchComputed);
+  const nextAt = record.nextActionAt || record.nextFollowUpAt;
+
+  return {
+    opportunityId: safeText(record.id || record.opportunityId, 180),
+    kindBadge: kindBadge(record),
+    description: propertyDescription(record),
+    location: locationLine(record),
+    priceOrBudget: moneyLine(record),
+    area: areaLine(record),
+    contactLine: contactLine(record),
+    sourceLabel: sourceLabel(record),
+    dataCompletenessLabel: statuses.dataCompletenessLabel,
+    contactStatusLabel: statuses.contactStatusLabel,
+    matchStatusLabel: statuses.matchStatusLabel,
+    outcomeStatusLabel: statuses.outcomeStatusLabel,
+    nextActionLabel: formatNextAction(nextAt),
+    nextActionOverdue: Boolean(nextAt && new Date(nextAt).getTime() < Date.now()),
+    bestMatchScore: scoreComputed && bestScore > 0 ? bestScore : null,
+    bestMatchScoreText: scoreComputed && bestScore > 0 ? `${bestScore}%` : "",
+    missingFieldNames: missingNames,
+    missingFieldsBanner: missingNames.length
+      ? `البيانات الناقصة: ${missingNames.join("، ")}`
+      : "البيانات مكتملة — جاهزة للمطابقة",
+    isReadyForMatching: readiness.isReadyForMatching
+  };
+}
+
+export function opportunityCardSubtitle(card = {}) {
+  return [
+    card.description,
+    card.location,
+    card.priceOrBudget !== "غير محدد" ? card.priceOrBudget : ""
+  ].filter(Boolean).join(" — ");
+}
