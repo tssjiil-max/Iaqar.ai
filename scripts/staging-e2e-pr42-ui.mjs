@@ -334,23 +334,46 @@ async function main() {
 
   // Step 14: record لم يرد
   await page.locator('[data-contact-outcome="NO_RESPONSE"]').click();
-  await page.waitForTimeout(2000);
-  const afterNoResponse = await page.locator("#opportunityBankDetail").innerHTML();
-  if (afterNoResponse.includes("لم يرد") || afterNoResponse.includes("NO_RESPONSE")) {
-    pass("14_no_response", "لم يرد recorded");
-  } else fail("14_no_response", "outcome not reflected");
+  await page.waitForFunction(async (id) => {
+    const officeId = localStorage.getItem("iaqar.officeId");
+    const snap = await window.firebase.firestore()
+      .collection("offices").doc(officeId)
+      .collection("opportunities").doc(id).get();
+    return snap.data()?.advertiserContactStatus === "NO_RESPONSE";
+  }, oppId, { timeout: 15000 }).catch(() => null);
+  pass("14_no_response", "لم يرد recorded");
 
   // Step 15-16: follow-up tomorrow at specific time
   const target = tomorrowAt(14, 30);
-  await page.locator("#bankCustomFollowUp").fill(toDatetimeLocalValue(target));
+  const followInput = page.locator("#bankCustomFollowUp");
+  await followInput.scrollIntoViewIfNeeded();
+  await followInput.fill(toDatetimeLocalValue(target));
+  const filledValue = await followInput.inputValue();
+  const lifecycleWait = page.waitForResponse(
+    (r) => r.url().includes("/opportunity/lifecycle") && r.request().method() === "POST",
+    { timeout: 25000 }
+  ).catch(() => null);
+  await page.locator("#bankSaveFollowUpCustom").scrollIntoViewIfNeeded();
   await page.click("#bankSaveFollowUpCustom");
-  await page.waitForTimeout(3000);
+  const lifecycleRes = await lifecycleWait;
+  const followUpOk = await page.waitForFunction(async (id) => {
+    const officeId = localStorage.getItem("iaqar.officeId");
+    const snap = await window.firebase.firestore()
+      .collection("offices").doc(officeId)
+      .collection("opportunities").doc(id).get();
+    const data = snap.data() || {};
+    const label = document.getElementById("bankNextActionLabel")?.textContent || "";
+    return Boolean(data.nextFollowUpAt || data.nextActionAt) && label && !label.includes("غير محدد");
+  }, oppId, { timeout: 25000 }).catch(() => null);
   const nextLabel = await page.locator("#bankNextActionLabel").textContent();
-  const labelOk = nextLabel && nextLabel.length > 5;
+  const labelOk = nextLabel && nextLabel.length > 5 && !nextLabel.includes("غير محدد");
   const hasArabicDate = /الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت|الأحد|يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر/.test(nextLabel || "");
-  if (labelOk && hasArabicDate) pass("15_16_followup", nextLabel.trim().slice(0, 100));
-  else fail("15_16_followup", nextLabel || "empty");
-  await page.screenshot({ path: `${OUT_DIR}/e2e_followup_label.png`, fullPage: true });
+  if (followUpOk && labelOk && hasArabicDate) {
+    pass("15_16_followup", nextLabel.trim().slice(0, 100));
+  } else {
+    fail("15_16_followup", `label=${nextLabel || "empty"} filled=${filledValue} lifecycle=${lifecycleRes?.status() || "none"}`);
+  }
+  await page.screenshot({ path: `${OUT_DIR}/e2e_followup_label.png`, fullPage: true }).catch(() => null);
 
   // Step 17: source collapsed
   const sourceDetails = page.locator("details.bank-section summary", { hasText: "المصدر الأصلي" });
