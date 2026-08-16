@@ -90,7 +90,7 @@ async function main() {
     await page.screenshot({ path: path.join(OUT, "workspace_ready_mobile.png"), fullPage: false });
     const bestNext = await page.locator("#bankWorkspaceBestNext").textContent();
     console.log("bestNext", bestNext?.slice(0, 80));
-    await page.locator('[data-workspace-action="review_matches"]').first().click();
+    await page.locator('[data-workspace-action="review_matches"]').nth(0).click();
     await page.waitForTimeout(500);
     await page.screenshot({ path: path.join(OUT, "workspace_matches_section.png"), fullPage: false });
   }
