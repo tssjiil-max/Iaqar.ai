@@ -972,6 +972,11 @@ function boot() {
   if (voiceRoot) {
     mountVoiceIntakePanel(voiceRoot, {
       context: "office",
+      startLabel: "إضافة فرصة بالصوت",
+      recordingLabel: "جاري الاستماع…",
+      analyzingLabel: "جارٍ استخراج البيانات…",
+      completedLabel: "تم استخراج البيانات — راجعها قبل الحفظ",
+      failureLabel: "تعذر فهم التسجيل — حاول مرة أخرى",
       getOfficeId: () => currentOffice()?.officeId || "",
       workerBase: workerBase(),
       getAuthToken: async () => {

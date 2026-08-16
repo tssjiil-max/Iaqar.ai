@@ -739,6 +739,149 @@
     .voice-intake-status.is-error {
       color:#a1332c;
     }
+
+    /* إضافة فرصة — شريط الصوت الأخضر (scoped) */
+    #addOpportunityVoicePanel.voice-intake-panel,
+    #addOpportunityVoicePanel .voice-intake-panel {
+      margin:10px 0 12px;
+      padding:0;
+      border:0;
+      background:transparent;
+      width:100%;
+      max-width:100%;
+      overflow:hidden;
+    }
+    #addOpportunityVoicePanel .voice-intake-start {
+      width:100%;
+      max-width:100%;
+      min-height:54px;
+      height:54px;
+      padding:0 16px;
+      border:0;
+      border-radius:16px;
+      background:var(--green-dark);
+      color:#fff;
+      font-family:"Tajawal",Tajawal,sans-serif;
+      font-size:17px;
+      font-weight:700;
+      line-height:1.3;
+      text-align:center;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      box-shadow:none;
+    }
+    #addOpportunityVoicePanel .voice-intake-start:disabled {
+      opacity:.72;
+      cursor:not-allowed;
+    }
+    #addOpportunityVoicePanel .voice-intake-recording.is-active {
+      width:100%;
+      max-width:100%;
+      min-height:54px;
+      height:54px;
+      margin:0;
+      padding:0 12px;
+      border:0;
+      border-radius:16px;
+      background:var(--green-dark);
+      color:#fff;
+      font-family:"Tajawal",Tajawal,sans-serif;
+      font-size:17px;
+      font-weight:700;
+      line-height:1.3;
+      display:flex !important;
+      flex-wrap:nowrap;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+    }
+    #addOpportunityVoicePanel .voice-intake-dot {
+      color:#fff;
+      font-size:14px;
+      line-height:1;
+    }
+    #addOpportunityVoicePanel [data-voice-recording-label] {
+      flex:1;
+      text-align:center;
+      white-space:nowrap;
+    }
+    #addOpportunityVoicePanel .voice-intake-stop,
+    #addOpportunityVoicePanel .voice-intake-cancel {
+      min-height:36px;
+      min-width:48px;
+      padding:6px 10px;
+      border:1px solid rgba(255,255,255,.45);
+      border-radius:12px;
+      background:rgba(255,255,255,.14);
+      color:#fff;
+      font-family:"Tajawal",Tajawal,sans-serif;
+      font-size:12px;
+      font-weight:700;
+      cursor:pointer;
+      flex-shrink:0;
+    }
+    #addOpportunityVoicePanel .voice-intake-status {
+      margin:0;
+      min-height:0;
+      height:0;
+      overflow:hidden;
+      padding:0;
+      font-size:0;
+      color:transparent;
+    }
+    #addOpportunityVoicePanel .voice-intake-status.is-active,
+    #addOpportunityVoicePanel.is-voice-completed .voice-intake-status {
+      width:100%;
+      max-width:100%;
+      min-height:54px;
+      height:54px;
+      margin:0;
+      overflow:hidden;
+      padding:0 16px;
+      border-radius:16px;
+      background:var(--green-dark);
+      color:#fff;
+      font-family:"Tajawal",Tajawal,sans-serif;
+      font-size:17px;
+      font-weight:700;
+      line-height:54px;
+      text-align:center;
+      display:flex !important;
+      align-items:center;
+      justify-content:center;
+    }
+    #addOpportunityVoicePanel .voice-intake-status.is-error {
+      color:#fff;
+      background:var(--green-dark);
+    }
+    #addOpportunityVoicePanel .voice-intake-actions.is-active {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:8px;
+      justify-content:center;
+    }
+    #addOpportunityVoicePanel .voice-intake-retry,
+    #addOpportunityVoicePanel .voice-intake-manual {
+      min-height:40px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green-dark);
+      border-radius:12px;
+      padding:8px 12px;
+      font-family:"Tajawal",Tajawal,sans-serif;
+      font-size:12px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    #addOpportunityVoicePanel[data-voice-ui-state="analyzing"] .voice-intake-status,
+    #addOpportunityVoicePanel[data-voice-ui-state="stopping"] .voice-intake-status {
+      width:100%;
+      min-height:54px;
+      height:54px;
+    }
     .add-opportunity-missing {
       margin-top:12px;
       padding:12px;

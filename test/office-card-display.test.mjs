@@ -86,7 +86,7 @@ test("office card image min width at 390px viewport is at least 94px", () => {
 });
 
 test("service worker cache bumped for office card deploy", () => {
-  assert.ok(sw.includes("iaqar-shell-library-v1"));
+  assert.ok(sw.includes("iaqar-shell-voice-bar-v1"));
 });
 
 test("office card CSS does not change header or operations center rules", () => {
