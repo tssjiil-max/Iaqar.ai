@@ -102,11 +102,8 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
     <p class="bank-note bank-incomplete-party">جهة التواصل: ${esc(party)}</p>
     <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form" autocomplete="off">
       <div class="bank-edit-grid">${fieldBlocks}</div>
-      <label>اسم أو وصف المعلن
-        <input type="text" name="advertiserDisplayName" maxlength="120" value="${esc(record.advertiserDisplayName || record.contactName || "")}">
-      </label>
     </form>
-    <section class="bank-section bank-incomplete-contact" aria-label="التواصل">
+    <section class="bank-incomplete-contact" aria-label="التواصل">
       <div class="bank-advertiser-actions" id="bankIncompleteContactActions">${contactButtons}</div>
       ${completePhoneBtn}
       ${contactNote}

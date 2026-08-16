@@ -244,3 +244,65 @@ export function activeFollowUpFromRecord(record = {}) {
   }
   return null;
 }
+
+/** datetime-local value for quick follow-up chips (today uses +30m in Riyadh). */
+export function buildQuickFollowUpDateTimeInput(days = 0, now = new Date()) {
+  const offset = Math.max(0, Number(days) || 0);
+  const baseMs = now.getTime() + offset * 86400000;
+  const dayParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: FOLLOWUP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(baseMs));
+  const pickDay = (type) => dayParts.find((part) => part.type === type)?.value || "";
+  const datePart = `${pickDay("year")}-${pickDay("month")}-${pickDay("day")}`;
+  let hour = "10";
+  let minute = "00";
+  if (offset === 0) {
+    const futureMs = now.getTime() + 30 * 60 * 1000;
+    const timeParts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: FOLLOWUP_TIMEZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date(futureMs));
+    const pickTime = (type) => timeParts.find((part) => part.type === type)?.value || "";
+    hour = pickTime("hour");
+    minute = pickTime("minute");
+  }
+  return `${datePart}T${hour}:${minute}`;
+}
+
+export function parseFollowUpForSave(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (raw.includes("T") && !raw.endsWith("Z") && !raw.includes("+")) {
+    return parseRiyadhDateTimeInput(raw);
+  }
+  return parseFollowUpInstant(raw);
+}
+
+export function validateFollowUpSaveIds(officeId, opportunityId) {
+  const office = String(officeId || "").trim();
+  const id = String(opportunityId || "").trim();
+  if (!office || !id) return { ok: false, code: "followup_ids_missing" };
+  return { ok: true, officeId: office, opportunityId: id };
+}
+
+export function buildFollowUpLifecycleBody(officeId, opportunityId, atIso) {
+  const iso = String(atIso || "").trim();
+  return {
+    officeId: String(officeId || "").trim(),
+    opportunityId: String(opportunityId || "").trim(),
+    action: "set_followup",
+    nextFollowUpAt: iso,
+    nextActionAt: iso,
+    nextActionType: "follow_up"
+  };
+}
+
+export function followUpActivityText(at, now = new Date()) {
+  const line = formatFollowUpAppointmentLine(at, now);
+  return line ? `تم تحديد موعد متابعة: ${line}` : "تم تحديد موعد متابعة";
+}

@@ -9,7 +9,7 @@ import {
   MISSING_FIELD_LABELS
 } from "./opportunity-readiness-domain.js";
 import { contactLineMarkup } from "./opportunity-card-domain.js";
-import { activeFollowUpFromRecord } from "./opportunity-followup-domain.js";
+import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import { normalizePurpose, normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import {
   formatLocalPhoneDisplay,
@@ -352,7 +352,11 @@ export function buildWorkspaceActivity(record = {}, cooperationRequests = []) {
   }
   const followUp = activeFollowUpFromRecord(record);
   if (followUp?.at) {
-    items.push({ at: followUp.at, text: "موعد متابعة محدد" });
+    const line = formatFollowUpAppointmentLine(followUp.at);
+    items.push({
+      at: followUp.at,
+      text: line ? `تم تحديد موعد متابعة: ${line}` : "تم تحديد موعد متابعة"
+    });
   }
   for (const req of cooperationRequests) {
     const status = cooperationStatusLabel(req.status);

@@ -317,7 +317,9 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
 }
 
 export function buildAdvertiserDataPatch(existing = {}, input = {}) {
-  const displayName = safeAdvertiserDisplayName(input.advertiserDisplayName);
+  const displayName = input.advertiserDisplayName !== undefined
+    ? safeAdvertiserDisplayName(input.advertiserDisplayName)
+    : readAdvertiserDisplayName(existing);
   const phoneCheck = validateAdvertiserPhoneLocalInput(input.advertiserPhoneLocal);
   if (!phoneCheck.ok) return { ok: false, error: phoneCheck.error };
 

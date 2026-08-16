@@ -126,6 +126,8 @@ test("incomplete form disables contact actions when phone incomplete", () => {
   assert.ok(ui.includes("bankIncompleteContactActions"));
   assert.ok(ui.includes("bankCompletePhoneBtn"));
   assert.ok(ui.includes("استكمال رقم الجوال"));
+  assert.equal(ui.includes("اسم أو وصف المعلن"), false);
+  assert.equal(ui.includes("bank-section bank-incomplete-contact"), false);
 });
 
 test("merge preview applies phone for readiness after valid local input", () => {

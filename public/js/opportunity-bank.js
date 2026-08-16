@@ -70,6 +70,15 @@ import {
   missingFieldLabelsArabic
 } from "./opportunity-readiness-domain.js";
 import {
+  buildFollowUpLifecycleBody,
+  buildQuickFollowUpDateTimeInput,
+  formatFollowUpAppointmentLine,
+  followUpActivityText,
+  parseFollowUpForSave,
+  validateFollowUpSaveIds,
+  validateTodayRequiresFutureTime
+} from "./opportunity-followup-domain.js";
+import {
   buildListingShareMessage,
   telegramShareUrl,
   whatsAppShareUrl
@@ -1078,47 +1087,147 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
   document.querySelectorAll("[data-followup-days]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const days = Number(btn.getAttribute("data-followup-days") || 0);
-      const followUp = new Date(Date.now() + days * 86400000);
-      followUp.setHours(10, 0, 0, 0);
-      void saveWorkspaceFollowUp(id, followUp.toISOString());
+      const input = $("bankCustomFollowUp");
+      const value = buildQuickFollowUpDateTimeInput(days);
+      if (input) input.value = value;
+      const parsed = parseFollowUpForSave(value);
+      if (!parsed) return toast("موعد المتابعة غير صحيح");
+      const todayCheck = validateTodayRequiresFutureTime(parsed);
+      if (!todayCheck.ok) return toast(todayCheck.message);
+      void saveWorkspaceFollowUp(id, parsed.toISOString());
     });
   });
   $("bankSaveFollowUpCustom")?.addEventListener("click", () => {
     const custom = $("bankCustomFollowUp")?.value || "";
     if (!custom) return toast("اختر موعد المتابعة");
-    void saveWorkspaceFollowUp(id, new Date(custom).toISOString());
+    const parsed = parseFollowUpForSave(custom);
+    if (!parsed) return toast("موعد المتابعة غير صحيح");
+    const todayCheck = validateTodayRequiresFutureTime(parsed);
+    if (!todayCheck.ok) return toast(todayCheck.message);
+    void saveWorkspaceFollowUp(id, parsed.toISOString());
   });
 
   window.addEventListener("resize", syncWorkspaceActionLayout, { once: false });
 }
 
+let bankFollowUpSaveBusy = false;
+
+function mapFollowUpSaveError(error, payload = {}) {
+  const code = String(error?.code || payload?.error || "").trim();
+  if (code === "followup_past") return "اختر وقتًا قادمًا للمتابعة";
+  if (code === "followup_today_past") return "اختر وقتًا قادمًا اليوم";
+  if (code === "followup_invalid") return "موعد المتابعة غير صحيح";
+  if (code === "followup_ids_missing") return "تعذر حفظ موعد المتابعة — المعرف غير متوفر";
+  if (payload?.message) return payload.message;
+  if (error?.message && error.message !== "followup_failed") return error.message;
+  return "تعذر حفظ موعد المتابعة";
+}
+
+function patchWorkspaceFollowUpUi(opportunityId, followUp) {
+  if (!followUp?.at) return;
+  const label = formatFollowUpAppointmentLine(followUp.at);
+  const section = document.getElementById("bankWorkspaceFollowUpSection");
+  if (!section) return;
+  const cardText = `الموعد القادم: ${label}`;
+  let card = section.querySelector(".bank-workspace-followup-card");
+  if (card) {
+    card.textContent = cardText;
+  } else {
+    card = document.createElement("p");
+    card.className = "bank-workspace-followup-card";
+    card.textContent = cardText;
+    const heading = section.querySelector("h4");
+    if (heading) heading.after(card);
+  }
+  const activityText = followUpActivityText(followUp.at);
+  const ul = section.querySelector("ul.bank-workspace-activity");
+  if (ul) {
+    const duplicate = [...ul.querySelectorAll("li")].some((li) => li.textContent.includes(activityText));
+    if (!duplicate) {
+      const li = document.createElement("li");
+      const stamp = new Date().toLocaleString("ar-SA", { timeZone: "Asia/Riyadh" });
+      li.innerHTML = `<time>${stamp}</time> ${activityText}`;
+      ul.insertBefore(li, ul.firstChild);
+    }
+  }
+  const record = state.records.get(opportunityId);
+  if (record) {
+    state.records.set(opportunityId, {
+      ...record,
+      followUp,
+      nextFollowUpAt: followUp.at,
+      nextActionAt: followUp.at,
+      lifecycleStatus: "FOLLOW_UP"
+    });
+  }
+}
+
 async function saveWorkspaceFollowUp(id, iso) {
+  const ids = validateFollowUpSaveIds(officeId(), id);
+  if (!ids.ok) {
+    console.error("[iaqar-bank] followup_save_missing_ids", { opportunityId: id, officeId: officeId() });
+    toast(mapFollowUpSaveError({ code: ids.code }));
+    return;
+  }
+  const parsed = parseFollowUpForSave(iso);
+  if (!parsed) {
+    toast("موعد المتابعة غير صحيح");
+    return;
+  }
+  const todayCheck = validateTodayRequiresFutureTime(parsed);
+  if (!todayCheck.ok) {
+    toast(todayCheck.message);
+    return;
+  }
   const user = authUser();
-  if (!user) return;
+  if (!user?.getIdToken) {
+    console.error("[iaqar-bank] followup_save_auth_required", { opportunityId: id, officeId: ids.officeId });
+    toast("سجل دخول المكتب أولًا");
+    return;
+  }
+  if (bankFollowUpSaveBusy) return;
+  bankFollowUpSaveBusy = true;
+  const buttons = document.querySelectorAll("[data-followup-days], #bankSaveFollowUpCustom");
+  buttons.forEach((node) => { node.disabled = true; });
   try {
     const token = await user.getIdToken();
+    const atIso = parsed.toISOString();
+    const body = buildFollowUpLifecycleBody(ids.officeId, ids.opportunityId, atIso);
     const response = await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "X-Office-Id": officeId()
+        "X-Office-Id": ids.officeId
       },
-      body: JSON.stringify({
-        officeId: officeId(),
-        opportunityId: id,
-        action: "set_followup",
-        nextFollowUpAt: iso,
-        nextActionAt: iso,
-        nextActionType: "follow_up"
-      })
+      body: JSON.stringify(body)
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || "followup_failed");
+    if (!response.ok) {
+      const err = Object.assign(
+        new Error(payload.message || "followup_failed"),
+        { code: payload.error || "followup_failed" }
+      );
+      throw err;
+    }
+    const followUp = payload.followUp || {
+      at: payload.nextFollowUpAt || atIso,
+      status: "scheduled"
+    };
+    patchWorkspaceFollowUpUi(ids.opportunityId, followUp);
     toast("تم حفظ موعد المتابعة");
-    await renderDetail(id);
   } catch (error) {
-    toast("تعذر حفظ موعد المتابعة");
+    const payload = error?.payload || {};
+    console.error("[iaqar-bank] followup_save_failed", {
+      code: error?.code || payload.error,
+      message: error?.message,
+      opportunityId: id,
+      officeId: ids.officeId
+    }, error);
+    toast(mapFollowUpSaveError(error, payload));
+  } finally {
+    bankFollowUpSaveBusy = false;
+    buttons.forEach((node) => { node.disabled = false; });
   }
 }
 
