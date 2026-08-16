@@ -75,7 +75,10 @@ test("incomplete detail focuses first missing field in unified form", () => {
 test("ready and incomplete cards share one detail opener", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("openBankDetailFromList"));
-  assert.equal(/openIncomplete|openReady|عرض التفاصيل|استكمال/.test(bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || ""), false);
+  const bankRow = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
+  assert.equal(/openIncomplete|openReady|عرض التفاصيل/.test(bankRow), false);
+  assert.ok(bankRow.includes("data-open-id"));
+  assert.ok(bankRow.includes("data-complete-id"));
 });
 
 test("bank card keyboard and aria label include readiness status", () => {

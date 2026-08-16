@@ -82,7 +82,6 @@ import {
   telegramShareUrl,
   whatsAppShareUrl
 } from "./listing-share-domain.js";
-import { isLandProperty } from "./opportunity-intake-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
 import {
