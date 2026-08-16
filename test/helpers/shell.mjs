@@ -81,6 +81,14 @@ export async function loadShell(options = {}) {
   );
   window.eval(homeTabsSource);
 
+  const opsCenterSpecifier = new URL(
+    pathToFileURL(path.join(repositoryRoot, "public", "js", "operations-center-domain.js"))
+  );
+  opsCenterSpecifier.searchParams.set("shellInstance", String(moduleCounter));
+  const operationsCenterDomain = await import(opsCenterSpecifier.href);
+  window.IAQAR.operationsCenterDomain = operationsCenterDomain;
+  window.dispatchEvent(new window.CustomEvent("iaqar:operations-center-domain-ready"));
+
   for (const name of [
     "window", "document", "localStorage", "sessionStorage", "CustomEvent", "Event",
     "Image", "HTMLElement", "Node", "getComputedStyle", "File", "Blob"

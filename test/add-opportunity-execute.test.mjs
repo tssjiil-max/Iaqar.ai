@@ -38,7 +38,7 @@ test("approved modern shell keeps تنفيذ, Workspace, and no old FAL banner",
   assert.equal(html.includes("الهيئة العامة للعقار"), false);
   assert.match(html, /id="addOpportunitySubmit"[^>]*>تنفيذ<\/button>/);
   assert.equal(html.includes(">معالجة</button>"), false);
-  assert.ok(html.includes("مركز العمليات"));
+  assert.ok(html.includes("المهام اليومية"));
   assert.ok(html.includes("id=\"mainTabOperations\""));
   assert.ok(html.includes("id=\"oppTabBank\""));
   assert.ok(html.includes("office-name-bar"));

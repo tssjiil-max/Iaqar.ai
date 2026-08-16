@@ -41,8 +41,8 @@
   ],
   "shortcuts": [
     {
-      "name": "مركز العمليات",
-      "short_name": "العمليات",
+      "name": "المهام اليومية",
+      "short_name": "المهام",
       "url": "/?source=pwa&open=operations",
       "icons": [
         {

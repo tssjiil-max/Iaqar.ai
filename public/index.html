@@ -1143,6 +1143,100 @@
       line-height:1.6;
     }
 
+    .ops-category-grid {
+      display:grid;
+      grid-template-columns:1fr;
+      gap:12px;
+      margin-top:18px;
+    }
+
+    .ops-category-card {
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px 16px;
+      background:#fff;
+      text-align:right;
+      cursor:pointer;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      box-shadow:0 8px 20px rgba(0, 60, 48, 0.06);
+      transition:transform .15s ease, box-shadow .15s ease;
+    }
+
+    .ops-category-card:active { transform:scale(0.98); }
+
+    .ops-category-card-head {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .ops-category-card h3 {
+      margin:0;
+      font-size:16px;
+      color:var(--green);
+    }
+
+    .ops-category-count {
+      min-width:32px;
+      height:32px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font:800 14px Tajawal;
+      color:#fff;
+      padding:0 10px;
+    }
+
+    .ops-category-desc {
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.5;
+    }
+
+    .ops-category-open {
+      margin:0;
+      font-size:13px;
+      font-weight:700;
+      color:var(--green);
+    }
+
+    .ops-cat-red .ops-category-count { background:#d64545; }
+    .ops-cat-orange .ops-category-count { background:#e67e22; }
+    .ops-cat-green .ops-category-count { background:#2e9b5b; }
+    .ops-cat-green-dark .ops-category-count { background:#005c4b; }
+    .ops-cat-blue .ops-category-count { background:#4a7ec4; }
+    .ops-cat-gray .ops-category-count { background:#8a9490; }
+
+    .ops-category-detail-head {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-top:16px;
+      margin-bottom:8px;
+    }
+
+    .ops-category-detail-head h3 {
+      margin:0;
+      font-size:17px;
+      color:var(--green);
+    }
+
+    .ops-category-close {
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font:700 13px Tajawal;
+      cursor:pointer;
+    }
+
     .list {
       margin-top:14px;
       border:1px solid var(--line);
@@ -4145,28 +4239,34 @@
     <div class="app-content-shell" id="appContentShell">
     <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية">
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
-        aria-selected="true" aria-controls="mainPanelOperations">مركز العمليات</button>
+        aria-selected="true" aria-controls="mainPanelOperations" aria-label="المهام اليومية">المهام اليومية</button>
       <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"
         aria-selected="false" aria-controls="mainPanelOpportunities">بنك الفرص</button>
     </nav>
 
     <div class="main-tab-panels" id="mainTabPanels">
       <div class="main-tab-panel" id="mainPanelOperations" role="tabpanel" aria-labelledby="mainTabOperations">
-        <section class="card workspace" id="workspace">
+        <section class="card workspace" id="workspace" aria-label="المهام اليومية">
           <div class="section-title-bar">
-            <h2>مركز العمليات <span class="workspace-count-badge" id="total">0</span></h2>
+            <h2>المهام اليومية <span class="workspace-count-badge" id="total">0</span></h2>
           </div>
-          <p class="workspace-subtitle" id="workspaceSubtitle">الإجراءات والمطابقات التي تحتاج انتباهك الآن.</p>
+          <p class="workspace-subtitle" id="workspaceSubtitle">اختر تصنيفًا لعرض الإجراءات التي تحتاج انتباهك.</p>
 
           <div class="workspace-filters" id="opportunityViewFilters" hidden>
             <button type="button" class="workspace-filter active" data-opportunity-view="active">النشطة</button>
             <button type="button" class="workspace-filter" data-opportunity-view="archived">المنتهية</button>
           </div>
 
-          <div class="list" id="operationList"></div>
+          <div class="ops-category-grid" id="operationsCategoryGrid" aria-label="تصنيفات المهام اليومية"></div>
+          <div class="ops-category-detail-head" id="operationsCategoryDetailHead" hidden>
+            <h3 id="operationsCategoryTitle"></h3>
+            <button type="button" class="ops-category-close" id="operationsCategoryClose">إغلاق التصنيف</button>
+          </div>
+
+          <div class="list" id="operationList" hidden></div>
           <p class="empty" id="operationsEmpty">
-            لا توجد إجراءات تحتاج انتباهك حاليًا.
-            <br>ستظهر الفرص المباشرة هنا
+            لا توجد مهام تحتاج انتباهك حاليًا.
+            <br>ستظهر المهام هنا عند توفر سجلات حقيقية
           </p>
         </section>
       </div>
@@ -4821,6 +4921,7 @@
   <script type="module" src="js/opportunity-review.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
+  <script type="module" src="js/operations-center-bridge.js"></script>
   <script type="module" src="js/operations-domain-bridge.js"></script>
   <script type="module" src="js/messaging-domain-bridge.js"></script>
 
@@ -4829,29 +4930,43 @@
 
     const state = {
       opened: null,
-      pendingOpen: null
+      pendingOpen: null,
+      view: "categories",
+      activeCategory: null
     };
 
-    // مركز العمليات لا يعرض أي بيانات تجريبية: يبدأ فارغًا حتى تصل السجلات الحقيقية
-    // من workflow-office.js عبر حدث iaqar:operations-data.
+    // المهام اليومية لا تعرض بيانات تجريبية: تبدأ فارغة حتى iaqar:operations-data.
     let data = [];
 
     const operationList = document.getElementById("operationList");
     const operationsEmpty = document.getElementById("operationsEmpty");
+    const operationsCategoryGrid = document.getElementById("operationsCategoryGrid");
+    const operationsCategoryDetailHead = document.getElementById("operationsCategoryDetailHead");
+    const operationsCategoryTitle = document.getElementById("operationsCategoryTitle");
+    const operationsCategoryClose = document.getElementById("operationsCategoryClose");
     const total = document.getElementById("total");
     const toast = document.getElementById("toast");
 
-    // قائمة واحدة لكل الإجراءات المطلوبة، دون أي تبويب أو صفحة منفصلة.
-    function isSavedOpportunityFeedback(item) {
-      const type = String(item?.operationType || "").toUpperCase();
-      const title = String(item?.title || "").trim();
-      return type === "OPPORTUNITY_SAVED" || title === "فرصة محفوظة مسبقًا";
+    function opsCenterDomain() {
+      return window.IAQAR?.operationsCenterDomain || null;
     }
 
     function visibleItems() {
-      return [...data]
-        .filter(item => !isSavedOpportunityFeedback(item))
-        .sort((a, b) => a.priority - b.priority);
+      const domain = opsCenterDomain();
+      const items = domain?.filterBrokerVisibleItems
+        ? domain.filterBrokerVisibleItems(data)
+        : data.filter(item => {
+          const type = String(item?.operationType || "").toUpperCase();
+          const title = String(item?.title || "").trim();
+          return type !== "OPPORTUNITY_SAVED" && title !== "فرصة محفوظة مسبقًا";
+        });
+      return [...items].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    }
+
+    function categoryGroups() {
+      const domain = opsCenterDomain();
+      if (domain?.groupItems) return domain.groupItems(data);
+      return {};
     }
 
     function escapeHtml(value) {
@@ -4884,12 +4999,28 @@
       }));
     }
 
-    function render() {
-      const items = visibleItems();
-      total.textContent = items.length;
-      operationList.hidden = items.length === 0;
-      if (operationsEmpty) operationsEmpty.hidden = items.length > 0;
+    function renderCategoryGrid(items) {
+      const domain = opsCenterDomain();
+      const categories = domain?.OPERATIONS_CATEGORIES || [];
+      const groups = categoryGroups();
+      if (!operationsCategoryGrid) return;
+      operationsCategoryGrid.innerHTML = categories.map(cat => {
+        const count = (groups[cat.key] || []).length;
+        return `
+          <button type="button" class="ops-category-card ${escapeHtml(cat.colorClass)}"
+            data-ops-category="${escapeHtml(cat.key)}"
+            aria-label="${escapeHtml(cat.label)} — ${escapeHtml(String(count))}">
+            <div class="ops-category-card-head">
+              <h3>${escapeHtml(cat.label)}</h3>
+              <span class="ops-category-count">${escapeHtml(String(count))}</span>
+            </div>
+            <p class="ops-category-desc">${escapeHtml(cat.description)}</p>
+            <p class="ops-category-open">${escapeHtml(cat.openLabel)}</p>
+          </button>`;
+      }).join("");
+    }
 
+    function renderOperationList(items) {
       operationList.innerHTML = items.map(item => {
         const secondaryMode = item.recordType && item.recordType !== "summary" ? "secondary" : "close";
         return `
@@ -4935,6 +5066,48 @@
       }).join("");
     }
 
+    function openCategory(categoryKey) {
+      const domain = opsCenterDomain();
+      const cat = domain?.getCategoryDefinition?.(categoryKey);
+      if (!cat) return;
+      state.view = "category";
+      state.activeCategory = categoryKey;
+      state.opened = null;
+      if (operationsCategoryTitle) operationsCategoryTitle.textContent = cat.label;
+      render();
+    }
+
+    function closeCategory() {
+      state.view = "categories";
+      state.activeCategory = null;
+      state.opened = null;
+      render();
+    }
+
+    function render() {
+      const items = visibleItems();
+      total.textContent = items.length;
+
+      if (state.view === "categories") {
+        renderCategoryGrid(items);
+        if (operationsCategoryGrid) operationsCategoryGrid.hidden = false;
+        if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = true;
+        operationList.hidden = true;
+        operationList.innerHTML = "";
+        if (operationsEmpty) operationsEmpty.hidden = items.length > 0;
+        return;
+      }
+
+      const groups = categoryGroups();
+      const categoryItems = [...(groups[state.activeCategory] || [])]
+        .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+      if (operationsCategoryGrid) operationsCategoryGrid.hidden = true;
+      if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = false;
+      renderOperationList(categoryItems);
+      operationList.hidden = categoryItems.length === 0;
+      if (operationsEmpty) operationsEmpty.hidden = categoryItems.length > 0;
+    }
+
     function notify(message) {
       toast.textContent = message;
       toast.classList.add("show");
@@ -4952,6 +5125,17 @@
     }
 
     document.addEventListener("click", event => {
+      const categoryCard = event.target.closest("[data-ops-category]");
+      if (categoryCard) {
+        openCategory(categoryCard.getAttribute("data-ops-category"));
+        return;
+      }
+
+      if (event.target.closest("#operationsCategoryClose")) {
+        closeCategory();
+        return;
+      }
+
       const viewButton = event.target.closest("[data-opportunity-view]");
       if (viewButton && window.IAQAR_WORKFLOW && typeof window.IAQAR_WORKFLOW.setOpportunityView === "function") {
         window.IAQAR_WORKFLOW.setOpportunityView(viewButton.dataset.opportunityView);
@@ -4973,8 +5157,8 @@
           : operation.dataset.id;
         render();
         if (state.opened) {
-          const item = data.find(entry => entry.id === state.opened);
-          dispatchOpened(item);
+          const openedItem = data.find(entry => entry.id === state.opened);
+          dispatchOpened(openedItem);
           scrollToOperation(state.opened);
         }
         return;
@@ -5059,6 +5243,15 @@
         );
         if (state.pendingOpen && data.some(pendingMatches)) {
           const item = data.find(pendingMatches);
+          const domain = opsCenterDomain();
+          if (domain?.categoryKey) {
+            state.view = "category";
+            state.activeCategory = domain.categoryKey(item);
+            if (operationsCategoryTitle) {
+              const cat = domain.getCategoryDefinition(state.activeCategory);
+              operationsCategoryTitle.textContent = cat?.label || "";
+            }
+          }
           state.opened = item.id;
           state.pendingOpen = null;
           render();
@@ -5090,12 +5283,23 @@
         render();
         return;
       }
+      const domain = opsCenterDomain();
+      if (domain?.categoryKey) {
+        state.view = "category";
+        state.activeCategory = domain.categoryKey(item);
+        if (operationsCategoryTitle) {
+          const cat = domain.getCategoryDefinition(state.activeCategory);
+          operationsCategoryTitle.textContent = cat?.label || "";
+        }
+      }
       state.opened = item.id;
       state.pendingOpen = null;
       render();
       dispatchOpened(item);
       scrollToOperation(item.id);
     });
+
+    window.addEventListener("iaqar:operations-center-domain-ready", () => render());
 
     render();
   </script>

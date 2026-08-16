@@ -339,8 +339,8 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
   try {
     const { document, window } = shell;
     const empty = document.getElementById("operationsEmpty");
-    assert.ok(empty.textContent.includes("لا توجد إجراءات تحتاج انتباهك حاليًا"));
-    assert.ok(empty.textContent.includes("ستظهر الفرص المباشرة هنا"));
+    assert.ok(empty.textContent.includes("لا توجد مهام تحتاج انتباهك حاليًا"));
+    assert.ok(empty.textContent.includes("ستظهر المهام هنا"));
 
     const ui = projectOperationToUiItem({
       id: "op_test",
@@ -356,6 +356,7 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
+    document.querySelector("[data-ops-category=\"matched\"]").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, true);
     assert.match(document.querySelector(".operation h3").textContent, /مطابقة/);
     assert.match(document.querySelector(".operation p").textContent, /مراجعة/);
@@ -399,6 +400,7 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
+    document.querySelector("[data-ops-category=\"matched\"]").click();
     const list = document.getElementById("operationList");
     assert.ok(list.querySelectorAll(".whatsapp-action").length >= 2);
     assert.ok(list.textContent.includes("إرسال واتساب"));

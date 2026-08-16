@@ -64,7 +64,7 @@ async function main() {
       const keys = await caches.keys();
       return keys.find((k) => k.startsWith("iaqar-shell")) || keys.join(",");
     });
-    if (swCache && swCache.includes("iaqar-shell-workspace-v3")) {
+    if (swCache && swCache.includes("iaqar-shell-workspace-v4")) {
       pass("service_worker_cache_v2", swCache);
     } else {
       fail("service_worker_cache_v2", swCache || "no cache");

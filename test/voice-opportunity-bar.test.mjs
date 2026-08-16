@@ -47,5 +47,5 @@ test("voice UI uses single mount implementation without duplicate controller", (
 });
 
 test("service worker cache bumped for voice bar deploy", () => {
-  assert.ok(sw.includes("iaqar-shell-workspace-v3"));
+  assert.ok(sw.includes("iaqar-shell-workspace-v4"));
 });

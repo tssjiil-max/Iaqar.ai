@@ -129,7 +129,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-workspace-v3";
+const IAQAR_CACHE = "iaqar-shell-workspace-v4";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",
@@ -159,6 +159,8 @@ const IAQAR_SHELL = [
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
   "/js/operations-domain-bridge.js",
+  "/js/operations-center-bridge.js",
+  "/js/operations-center-domain.js",
   "/js/messaging-domain-bridge.js",
   "/js/workflow-office.js",
   "/js/display-sanitize-domain.js",
