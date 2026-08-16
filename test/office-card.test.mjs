@@ -211,6 +211,8 @@ test("TEST 2: nothing outside the app shell could act as a fixed bottom bar", as
     assert.deepEqual(bodyChildren, [
       "svg#.",
       "div#.app",
+      "div#importAdvertOverlay.settings-overlay",
+      "div#importDuplicateOverlay.settings-overlay",
       "div#opportunityReviewOverlay.settings-overlay",
       "div#advertiserMessageOverlay.settings-overlay",
       "div#stopShareOverlay.settings-overlay",

@@ -36,6 +36,8 @@ function $(id) {
 
 let activeDraft = null;
 let onApproveCallback = null;
+let onReanalyzeCallback = null;
+let activeReviewOptions = null;
 let advertiserExtractedAuto = false;
 let advertiserCandidates = [];
 let activeReviewValues = {};
@@ -82,11 +84,13 @@ function closeAdvertiserMessageModal() {
   if (modal) modal.hidden = true;
 }
 
-function openReviewOverlay(draft, onApprove) {
+function openReviewOverlay(draft, onApprove, options = {}) {
   const overlay = $("opportunityReviewOverlay");
   if (!overlay) return;
   activeDraft = draft;
   onApproveCallback = onApprove;
+  onReanalyzeCallback = options.onReanalyze || null;
+  activeReviewOptions = options;
   advertiserCandidates = extractAdvertiserPhonesFromText(draft.sourceText || "");
   advertiserExtractedAuto = advertiserCandidates.length > 0;
   const defaults = draft.reviewDefaults || buildReviewDefaults(
@@ -97,7 +101,7 @@ function openReviewOverlay(draft, onApprove) {
       needsReview: draft.needsReview || draft.fields?.needsReview
     }
   );
-  renderReviewForm(defaults);
+  renderReviewForm(defaults, options);
   overlay.hidden = false;
   document.body.style.overflow = "hidden";
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "opportunityReviewOverlay" } }));
@@ -163,9 +167,15 @@ function renderAdvertiserSection(defaults) {
   `;
 }
 
-function renderReviewForm(defaults) {
+function renderReviewForm(defaults, options = {}) {
   const body = $("opportunityReviewBody");
   if (!body) return;
+  const titleNode = $("opportunityReviewTitle");
+  const headParagraph = body.parentElement?.querySelector(".settings-head p");
+  if (titleNode) titleNode.textContent = options.title || "مراجعة الفرصة";
+  if (headParagraph) {
+    headParagraph.textContent = options.subtitle || "راجع البيانات المستخرجة قبل الحفظ النهائي.";
+  }
   const needs = defaults.needsReview || {};
   const mode = reviewTransactionMode(defaults.operationTypeId);
   activeReviewValues = {
@@ -194,6 +204,10 @@ function renderReviewForm(defaults) {
   ].filter(Boolean);
 
   body.innerHTML = `
+    ${options.importSummary
+      ? `<p class="import-review-summary">${escapeHtml(options.importSummary)}</p>` : ""}
+    ${options.sourceUrl
+      ? `<a class="import-review-source-link" href="${escapeHtml(options.sourceUrl)}" target="_blank" rel="noopener noreferrer">فتح الإعلان الأصلي</a>` : ""}
     <p class="review-hint">راجع القيم المستخرجة وعدّل ما يلزم قبل الحفظ النهائي.</p>
     ${defaults.districtUnconfirmedWarning
       ? `<p class="review-district-warning" id="reviewDistrictWarning">${escapeHtml(defaults.districtUnconfirmedWarning)}</p>`
@@ -212,7 +226,9 @@ function renderReviewForm(defaults) {
       <div id="reviewPropertyFields" style="display:contents"></div>
       ${renderAdvertiserSection(defaults)}
       <div class="review-actions">
-        <button type="submit" class="review-approve" id="opportunityReviewApprove">اعتماد وحفظ</button>
+        <button type="submit" class="review-approve" id="opportunityReviewApprove">${escapeHtml(options.approveLabel || "اعتماد وحفظ")}</button>
+        ${options.showReanalyze
+          ? `<button type="button" class="review-cancel" id="opportunityReviewReanalyze">إعادة التحليل</button>` : ""}
         <button type="button" class="review-cancel" id="opportunityReviewCancel">إلغاء</button>
       </div>
       <p class="review-status" id="opportunityReviewStatus" role="status"></p>
@@ -237,6 +253,9 @@ function renderReviewForm(defaults) {
     void submitReview();
   });
   $("opportunityReviewCancel")?.addEventListener("click", () => closeReview());
+  $("opportunityReviewReanalyze")?.addEventListener("click", () => {
+    if (typeof onReanalyzeCallback === "function") onReanalyzeCallback();
+  });
 }
 
 function wireAdvertiserSection() {
@@ -740,8 +759,8 @@ export function dismissOpportunityReviewIfOpen() {
   if (overlay && !overlay.hidden) closeReview();
 }
 
-export function openOpportunityReview(draft, onApprove) {
-  openReviewOverlay(draft, onApprove);
+export function openOpportunityReview(draft, onApprove, options = {}) {
+  openReviewOverlay(draft, onApprove, options);
 }
 
 window.IAQAR = window.IAQAR || {};

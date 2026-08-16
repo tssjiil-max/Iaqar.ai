@@ -342,7 +342,11 @@ export function cooperationStatusLabel(status = "") {
 export function buildWorkspaceActivity(record = {}, cooperationRequests = []) {
   const items = [];
   if (record.createdAt) {
-    items.push({ at: record.createdAt, text: "تمت إضافة الفرصة" });
+    if (record.importActivityText) {
+      items.push({ at: record.importedAt || record.createdAt, text: record.importActivityText });
+    } else {
+      items.push({ at: record.createdAt, text: "تمت إضافة الفرصة" });
+    }
   }
   if (record.lastContactAt) {
     items.push({ at: record.lastContactAt, text: "تم التواصل مع الجهة" });

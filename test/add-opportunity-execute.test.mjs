@@ -173,7 +173,7 @@ test("sale-land Review shows sale price only and hides rent/building fields", as
       assert.equal(context.document.querySelector(`[name="${name}"]`), null, `${name} must not render`);
     }
     assert.equal(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed]'), null);
-    assert.ok(context.document.querySelectorAll(".review-field, .search-field").length <= 11);
+    assert.ok(context.document.querySelectorAll("#opportunityReviewForm .review-field, #opportunityReviewForm .search-field").length <= 13);
     assert.equal(context.document.querySelector('[name="advertiserPhoneLocal"]').value, "0507561577");
   } finally {
     context.close();

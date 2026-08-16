@@ -121,7 +121,17 @@ function hasValidInputFromValues(text, file) {
   return String(text || "").trim().length > 0 || Boolean(file);
 }
 
-export { hasValidInputFromValues };
+export {
+  hasValidInputFromValues,
+  resolveUrlListingText,
+  persistIntake,
+  uploadSourceFile,
+  resolveMediaListingText,
+  fileChecksum,
+  workerBase,
+  authHeader,
+  fetchWithTimeout
+};
 
 function hasValidInput() {
   const input = $("addOpportunityInput");

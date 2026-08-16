@@ -935,6 +935,131 @@
       line-height:1.5;
     }
 
+    .add-opportunity-options {
+      display:grid;
+      gap:10px;
+      margin:12px 0 14px;
+    }
+
+    .add-opportunity-option {
+      appearance:none;
+      border:1px solid rgba(0,92,75,.12);
+      border-radius:16px;
+      background:#f4faf7;
+      padding:14px 16px;
+      text-align:right;
+      cursor:pointer;
+      width:100%;
+      font:inherit;
+      box-shadow:0 4px 14px rgba(0,63,52,.04);
+    }
+
+    .add-opportunity-option h3 {
+      margin:0;
+      font-size:15px;
+      font-weight:800;
+      color:#087064;
+    }
+
+    .add-opportunity-option p {
+      margin:6px 0 0;
+      font-size:12px;
+      line-height:1.7;
+      color:#50605a;
+    }
+
+    .import-advert-field {
+      display:block;
+      margin-bottom:12px;
+    }
+
+    .import-advert-field span {
+      display:block;
+      margin-bottom:6px;
+      font-size:13px;
+      font-weight:700;
+      color:#087064;
+    }
+
+    .import-advert-field input,
+    .import-advert-field textarea {
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:10px 12px;
+      font:inherit;
+      background:#fff;
+    }
+
+    .import-advert-alt-actions {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:12px;
+    }
+
+    .import-advert-alt-actions button {
+      border:1px solid #b9ddd4;
+      background:#edf7f4;
+      color:#087064;
+      border-radius:12px;
+      padding:8px 12px;
+      font-size:12px;
+      font-weight:800;
+      cursor:pointer;
+    }
+
+    .import-advert-panel[hidden] { display:none !important; }
+
+    .import-advert-status {
+      margin:10px 0 0;
+      font-size:12px;
+      color:#50605a;
+      min-height:16px;
+    }
+
+    .import-advert-status.is-error { color:#a1332c; }
+
+    .import-review-summary {
+      margin:0 0 12px;
+      padding:10px 12px;
+      border-radius:12px;
+      background:#f4faf7;
+      color:#087064;
+      font-size:13px;
+      font-weight:700;
+      line-height:1.6;
+    }
+
+    .import-review-source-link {
+      display:inline-block;
+      margin:0 0 12px;
+      color:#087064;
+      font-size:13px;
+      font-weight:800;
+      text-decoration:none;
+    }
+
+    .import-field-badge {
+      display:inline-block;
+      margin-right:6px;
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:800;
+    }
+
+    .import-field-badge.is-extracted { background:#eaf8f3; color:#087064; }
+    .import-field-badge.is-review { background:#fff6e8; color:#9a6700; }
+    .import-field-badge.is-missing { background:#fff3f2; color:#a1332c; }
+
+    .import-duplicate-actions {
+      display:grid;
+      gap:8px;
+      margin-top:16px;
+    }
+
     /* مساحة العمل */
     .workspace {
       margin-top:0;
@@ -4058,6 +4183,15 @@
               </div>
               <p class="workspace-subtitle">أضف إعلانًا أو رابطًا أو صورة، وراجع البيانات قبل الحفظ.</p>
 
+              <div class="add-opportunity-options" id="addOpportunityOptions">
+                <button type="button" class="add-opportunity-option" id="importAdvertOption"
+                  aria-label="استيراد إعلان">
+                  <h3>استيراد إعلان</h3>
+                  <p>الصق رابط إعلان من عقار أو حراج أو أي موقع، وسيتم تحليل بياناته
+                    وترتيبها لإضافتها فعليًا إلى بنك الفرص.</p>
+                </button>
+              </div>
+
               <form id="addOpportunityForm" autocomplete="off">
                 <div class="add-opportunity-row">
                   <div class="add-opportunity-input-wrap">
@@ -4122,6 +4256,67 @@
     </div>
   </div>
 
+
+  <div class="settings-overlay" id="importAdvertOverlay" hidden>
+    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="importAdvertTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="importAdvertTitle">استيراد إعلان عقاري</h2>
+          <p>حلّل الإعلان ثم راجع البيانات قبل الحفظ في بنك الفرص.</p>
+        </div>
+        <button class="settings-close" id="importAdvertClose" type="button" aria-label="إغلاق">×</button>
+      </div>
+
+      <div class="import-advert-panel" id="importAdvertUrlPanel">
+        <label class="import-advert-field">
+          <span>رابط الإعلان</span>
+          <input id="importAdvertUrlInput" type="url" inputmode="url"
+            placeholder="الصق رابط الإعلان هنا" autocomplete="off">
+        </label>
+        <button type="button" class="review-approve" id="importAdvertAnalyzeBtn">تحليل الإعلان</button>
+      </div>
+
+      <div class="import-advert-panel" id="importAdvertTextPanel" hidden>
+        <label class="import-advert-field">
+          <span>نص الإعلان</span>
+          <textarea id="importAdvertTextInput" rows="6" placeholder="الصق نص الإعلان هنا"></textarea>
+        </label>
+        <button type="button" class="review-approve" id="importAdvertTextAnalyzeBtn">تحليل الإعلان</button>
+      </div>
+
+      <div class="import-advert-panel" id="importAdvertImagePanel" hidden>
+        <p class="import-advert-status" id="importAdvertImageHint">ارفع صورة إعلان بصيغة JPG أو PNG أو WEBP.</p>
+        <input id="importAdvertImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <button type="button" class="identity-btn" id="importAdvertImageChoose">اختيار صورة الإعلان</button>
+        <button type="button" class="review-approve" id="importAdvertImageAnalyzeBtn" hidden>تحليل الإعلان</button>
+      </div>
+
+      <div class="import-advert-alt-actions" id="importAdvertAltActions">
+        <button type="button" id="importAdvertSwitchText">لصق نص الإعلان</button>
+        <button type="button" id="importAdvertSwitchImage">رفع صورة الإعلان</button>
+        <button type="button" id="importAdvertSwitchUrl" hidden>تحليل من رابط</button>
+      </div>
+
+      <p class="import-advert-status" id="importAdvertStatus" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <div class="settings-overlay" id="importDuplicateOverlay" hidden>
+    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="importDuplicateTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="importDuplicateTitle">توجد فرصة مشابهة في بنك الفرص</h2>
+          <p>يمكنك فتح الفرصة الحالية أو تحديثها أو حفظ الإعلان كفرصة جديدة.</p>
+        </div>
+        <button class="settings-close" id="importDuplicateClose" type="button" aria-label="إغلاق">×</button>
+      </div>
+      <div class="import-duplicate-actions">
+        <button type="button" class="review-approve" id="importDuplicateOpen">فتح الفرصة الموجودة</button>
+        <button type="button" class="review-cancel" id="importDuplicateUpdate">تحديث الفرصة الموجودة</button>
+        <button type="button" class="identity-btn" id="importDuplicateSaveNew">حفظ كفرصة جديدة</button>
+      </div>
+    </section>
+  </div>
 
   <div class="settings-overlay" id="opportunityReviewOverlay" hidden>
     <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="opportunityReviewTitle">
@@ -4582,6 +4777,7 @@
   <script type="module" src="js/office-library.js"></script>
   <script type="module" src="js/office-settings.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>
+  <script type="module" src="js/opportunity-import-advert-ui.js"></script>
   <script type="module" src="js/opportunity-review.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>

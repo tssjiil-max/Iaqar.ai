@@ -5206,6 +5206,56 @@ function decodeHtmlEntities(value) {
     .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)));
 }
 
+const LISTING_JSON_LD_TYPES = new Set([
+  "product",
+  "offer",
+  "residence",
+  "realestatelisting",
+  "house",
+  "apartment",
+  "singlefamilyresidence",
+  "accommodation"
+]);
+
+function collectJsonLdNodes(parsed) {
+  if (!parsed || typeof parsed !== "object") return [];
+  if (Array.isArray(parsed)) return parsed.flatMap((item) => collectJsonLdNodes(item));
+  if (Array.isArray(parsed["@graph"])) return parsed["@graph"].flatMap((item) => collectJsonLdNodes(item));
+  return [parsed];
+}
+
+function jsonLdNodeTypes(node = {}) {
+  const raw = node["@type"];
+  if (Array.isArray(raw)) return raw.map((value) => String(value || "").toLowerCase());
+  return [String(raw || "").toLowerCase()];
+}
+
+function isListingJsonLdNode(node = {}) {
+  const types = jsonLdNodeTypes(node);
+  return types.some((type) => LISTING_JSON_LD_TYPES.has(type.replace(/\s+/g, "")));
+}
+
+function extractJsonLdAddressChunks(address) {
+  const chunks = [];
+  if (!address) return chunks;
+  if (typeof address === "string") {
+    const value = cleanText(address, 12000);
+    if (value) chunks.push(value);
+    return chunks;
+  }
+  if (Array.isArray(address)) {
+    for (const item of address) chunks.push(...extractJsonLdAddressChunks(item));
+    return chunks;
+  }
+  if (typeof address === "object") {
+    for (const key of ["streetAddress", "addressLocality", "addressRegion", "postalCode"]) {
+      const value = cleanText(address[key], 12000);
+      if (value) chunks.push(value);
+    }
+  }
+  return chunks;
+}
+
 function extractJsonLdListingText(html) {
   const chunks = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -5215,12 +5265,28 @@ function extractJsonLdListingText(html) {
     if (!raw) continue;
     try {
       const parsed = JSON.parse(raw);
-      const nodes = Array.isArray(parsed) ? parsed : [parsed];
+      const nodes = collectJsonLdNodes(parsed);
       for (const node of nodes) {
         if (!node || typeof node !== "object") continue;
-        for (const key of ["description", "name", "headline"]) {
+        const listingNode = isListingJsonLdNode(node);
+        const keys = listingNode
+          ? ["description", "name", "headline", "articleBody", "numberOfRooms", "floorSize"]
+          : ["description", "name", "headline"];
+        for (const key of keys) {
           const value = cleanText(node[key], 12000);
           if (value) chunks.push(value);
+        }
+        chunks.push(...extractJsonLdAddressChunks(node.address));
+        const offers = node.offers;
+        if (offers) {
+          const offerList = Array.isArray(offers) ? offers : [offers];
+          for (const offer of offerList) {
+            if (!offer || typeof offer !== "object") continue;
+            const price = offer.price ?? offer.lowPrice ?? offer.highPrice;
+            if (price != null && String(price).trim()) chunks.push(String(price));
+            const offerDesc = cleanText(offer.description || offer.name, 12000);
+            if (offerDesc) chunks.push(offerDesc);
+          }
         }
       }
     } catch {
@@ -5228,6 +5294,27 @@ function extractJsonLdListingText(html) {
     }
   }
   return chunks.join("\n").trim();
+}
+
+function resolveListingSourceSite(url = "") {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    const labels = {
+      "haraj.com.sa": "حراج",
+      "sa.aqar.fm": "عقار",
+      "aqar.fm": "عقار",
+      "bayut.sa": "بيوت",
+      "propertyfinder.sa": "بروبرتي فايندر"
+    };
+    if (labels[host]) return labels[host];
+    if (host.includes("haraj")) return "حراج";
+    if (host.includes("aqar")) return "عقار";
+    if (host.includes("bayut")) return "بيوت";
+    if (host.includes("propertyfinder")) return "بروبرتي فايندر";
+    return "الموقع";
+  } catch {
+    return "الموقع";
+  }
 }
 
 function extractListingTextFromHtml(html) {
@@ -5544,6 +5631,7 @@ async function handlePipelineUrlResolve(request, env, requestId) {
     url: targetUrl,
     text: fetched.text,
     textLength: fetched.text.length,
+    sourceSite: resolveListingSourceSite(targetUrl),
     diagnostics: fetched.diagnostics,
     requestId
   });
@@ -5774,6 +5862,8 @@ export {
   evaluatePublicRateLimit, consumePublicRateLimit, publicRateLimitKey,
   resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS,
   extractListingTextFromHtml,
+  isPrivateOrLocalHost,
+  resolveListingSourceSite,
   normalizeOpportunitySource, getOpportunityLifecycleStatus, normalizeSaudiPhoneForWhatsApp,
   buildOpportunitySummary, buildOpportunityWhatsAppMessage, resolveSelectOption,
   extractDistrictFromVoice, parseVoiceOpportunityFields, whatsappActionTypeForStatus,
