@@ -57,7 +57,7 @@ test("past time is rejected server-side", () => {
 test("today without a future time is rejected", () => {
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("followup_today_past"));
-  const now = new Date();
+  const now = new Date("2026-08-16T12:00:00.000Z");
   const riyadhParts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Riyadh",
     year: "numeric",
