@@ -410,7 +410,8 @@ service cloud.firestore {
             isOfficeMember(resource.data.targetOfficeId)
             && resource.data.status == 'PENDING'
             && (request.resource.data.status == 'ACCEPTED'
-              || request.resource.data.status == 'REJECTED')
+              || request.resource.data.status == 'REJECTED'
+              || request.resource.data.status == 'DETAILS_REQUESTED')
           )
           || (
             isOfficeMember(resource.data.originatingOfficeId)

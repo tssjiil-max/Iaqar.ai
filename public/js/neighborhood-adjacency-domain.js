@@ -1,38 +1,58 @@
 /**
  * Documented neighborhood adjacency for Madinah — no GPS, no name-similarity guessing.
- * Each district id matches reference-catalog DISTRICTS ids (madinah-NNN).
+ * District ids match reference-catalog DISTRICTS ids (madinah-NNN).
  */
 
 import { DISTRICTS, CITIES } from "./reference-catalog.js";
+import { MADINAH_ADJACENCY_BY_NAME } from "./neighborhood-adjacency-data.js";
 
-const ADJACENCY_BY_ID = Object.freeze({
-  "madinah-016": ["madinah-015", "madinah-017", "madinah-018", "madinah-019"],
-  "madinah-015": ["madinah-016", "madinah-014", "madinah-017"],
-  "madinah-017": ["madinah-016", "madinah-015", "madinah-018"],
-  "madinah-018": ["madinah-016", "madinah-017", "madinah-019"],
-  "madinah-019": ["madinah-016", "madinah-018", "madinah-020"],
-  "madinah-003": ["madinah-004", "madinah-005", "madinah-006"],
-  "madinah-004": ["madinah-003", "madinah-005"],
-  "madinah-005": ["madinah-003", "madinah-004", "madinah-006"]
-});
-
-function districtByOfficialName(name) {
-  const needle = String(name || "").trim();
+function districtByOfficialName(name, cityLabel = "") {
+  const needle = String(name || "").replace(/\s+/g, " ").trim().replace(/^حي\s+/u, "").trim();
   if (!needle) return null;
-  return DISTRICTS.find((row) => row.officialName === needle) || null;
+  const city = CITIES.find((row) =>
+    row.label === cityLabel || (row.aliases || []).includes(cityLabel)
+  );
+  if (!city) return DISTRICTS.find((row) => row.officialName === needle) || null;
+  return DISTRICTS.find((row) => row.officialName === needle && row.cityId === city.id) || null;
 }
+
+function districtIdFromName(name, cityLabel = "") {
+  return districtByOfficialName(name, cityLabel)?.id || "";
+}
+
+function buildAdjacencyById() {
+  const map = new Map();
+  const cityLabel = "المدينة المنورة";
+  for (const [name, neighbors] of Object.entries(MADINAH_ADJACENCY_BY_NAME)) {
+    const id = districtIdFromName(name, cityLabel);
+    if (!id) continue;
+    if (!map.has(id)) map.set(id, new Set());
+    for (const neighborName of neighbors) {
+      const neighborId = districtIdFromName(neighborName, cityLabel);
+      if (!neighborId || neighborId === id) continue;
+      map.get(id).add(neighborId);
+      if (!map.has(neighborId)) map.set(neighborId, new Set());
+      map.get(neighborId).add(id);
+    }
+  }
+  const frozen = {};
+  for (const [id, set] of map.entries()) {
+    frozen[id] = [...set].sort();
+  }
+  return Object.freeze(frozen);
+}
+
+const ADJACENCY_BY_ID = buildAdjacencyById();
 
 function districtById(id) {
   return DISTRICTS.find((row) => row.id === id) || null;
 }
 
 export function resolveDistrictIdFromLabel(label = "", cityLabel = "") {
-  const district = districtByOfficialName(label);
-  if (district) return district.id;
-  const city = CITIES.find((row) =>
-    row.label === cityLabel || (row.aliases || []).includes(cityLabel)
-  );
-  if (!city || city.id !== "madinah") return "";
+  const normalized = String(label || "").replace(/\s+/g, " ").trim().replace(/^حي\s+/u, "").trim();
+  if (!normalized) return "";
+  const id = districtIdFromName(normalized, cityLabel);
+  if (id) return id;
   return "";
 }
 
@@ -52,31 +72,43 @@ export function adjacentNeighborhoodIds(neighborhoodId = "") {
 
 export function neighborhoodTier({
   opportunityDistrictId = "",
+  officePrimaryId = "",
   officeServiceIds = []
 } = {}) {
   const service = new Set(
     Array.isArray(officeServiceIds) ? officeServiceIds.map((v) => String(v)) : []
   );
+  const primary = String(officePrimaryId || "").trim();
   if (!opportunityDistrictId) {
-    return service.size ? 3 : 4;
+    return service.size || primary ? 3 : 4;
   }
-  if (service.has(opportunityDistrictId)) return 1;
+  if (primary === opportunityDistrictId || service.has(opportunityDistrictId)) return 1;
   const neighbors = adjacentNeighborhoodIds(opportunityDistrictId);
+  if (primary && neighbors.includes(primary)) return 2;
   if (neighbors.some((id) => service.has(id))) return 2;
   return 3;
 }
 
 export function neighborhoodRelationLabel({
   opportunityDistrictId = "",
+  officePrimaryId = "",
   officeServiceIds = []
 } = {}) {
-  const tier = neighborhoodTier({ opportunityDistrictId, officeServiceIds });
+  const tier = neighborhoodTier({
+    opportunityDistrictId,
+    officePrimaryId,
+    officeServiceIds
+  });
   const opp = districtById(opportunityDistrictId);
   if (tier === 1) return "نفس الحي";
   if (tier === 2) {
     const neighbor = adjacentNeighborhoodIds(opportunityDistrictId)
       .map((id) => districtById(id))
-      .find((row) => (officeServiceIds || []).includes(row?.id));
+      .find((row) => {
+        const primary = String(officePrimaryId || "");
+        const service = Array.isArray(officeServiceIds) ? officeServiceIds : [];
+        return primary === row?.id || service.includes(row?.id);
+      });
     return neighbor ? `حي مجاور — ${neighbor.officialName}` : "حي مجاور";
   }
   if (tier === 3 && opp) return `داخل نطاق المدينة — ${opp.officialName}`;
@@ -85,4 +117,12 @@ export function neighborhoodRelationLabel({
 
 export function buildDefaultServiceNeighborhoodIds(cityLabel = "") {
   return neighborhoodIdsForCity(cityLabel);
+}
+
+export function adjacencyDataForTests() {
+  return ADJACENCY_BY_ID;
+}
+
+export function districtLabelFromId(id = "") {
+  return districtById(id)?.officialName || "";
 }

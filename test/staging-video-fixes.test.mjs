@@ -79,9 +79,9 @@ test("buildAdvertiserDataPatch preserves phone when input empty", () => {
 });
 
 test("share and cooperation statuses are Arabic", () => {
-  assert.equal(shareRequestStatusLabel("PENDING"), "بانتظار الموافقة");
-  assert.equal(shareRequestStatusLabel("ACCEPTED"), "مقبولة");
-  assert.equal(shareRequestStatusLabel("REJECTED"), "مرفوضة");
+  assert.equal(shareRequestStatusLabel("PENDING"), "بانتظار رد المكتب");
+  assert.equal(shareRequestStatusLabel("ACCEPTED"), "قَبِل المكتب");
+  assert.equal(shareRequestStatusLabel("REJECTED"), "اعتذر المكتب");
   assert.equal(shareRequestStatusLabel("ENDED"), "منتهية");
 });
 

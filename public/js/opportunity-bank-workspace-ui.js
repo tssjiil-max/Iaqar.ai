@@ -26,6 +26,7 @@ import {
   defaultContactRetryInput,
   shouldShowContactOutcomePanel
 } from "./opportunity-contact-outcome-domain.js";
+import { buildSuitableOfficesShareSectionHtml } from "./suitable-offices-ui.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -310,30 +311,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
         </section>
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceShareSection" hidden>
-          <h4>إرسال لمكتب عقاري</h4>
-          <p class="bank-note iaqar-workflow-note">معاينة: ${esc(buildOpportunityBriefPreview(record))}</p>
-          <form id="bankDirectShareForm" class="bank-share-form iaqar-workflow-form" autocomplete="off">
-            <label>ابحث باسم المكتب
-              <input type="search" id="bankDetailOfficeSearch" placeholder="اسم المكتب" autocomplete="off">
-            </label>
-            <div class="bank-office-share-filters">
-              <label>المدينة (اختياري)
-                <input type="text" id="bankOfficeShareCityFilter" placeholder="المدينة" autocomplete="off">
-              </label>
-              <label>الحي (اختياري)
-                <input type="text" id="bankOfficeShareDistrictFilter" placeholder="الحي" autocomplete="off">
-              </label>
-            </div>
-            <input type="hidden" name="targetOfficeId" id="bankDetailScopeTarget">
-            <div class="bank-office-search-results" id="bankDetailScopeSearchResults" hidden></div>
-            <p class="bank-share-selected-office" id="bankDetailScopeSelectedLabel" hidden></p>
-            <label>رسالة اختيارية
-              <textarea id="bankCooperationMessage" maxlength="500" placeholder="رسالة خاصة للمكتب المستلم"></textarea>
-            </label>
-            <button type="submit" class="bank-action-primary iaqar-workflow-btn success">إرسال للمكتب</button>
-            <p class="bank-share-status section-status" id="bankShareStatus" role="status"></p>
-            <p class="bank-note iaqar-workflow-note">ملخص آمن — بدون بيانات المالك أو العميل أو أرقامهم.</p>
-          </form>
+          ${buildSuitableOfficesShareSectionHtml()}
         </section>
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspacePartySection" hidden>

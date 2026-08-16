@@ -34,6 +34,10 @@ import {
   SERVICE_NEIGHBORHOOD_MESSAGES,
   validateServiceNeighborhoodIds
 } from "./service-neighborhood-domain.js";
+import {
+  buildOfficeScopePayload,
+  resolveLegacyOfficeScope
+} from "./office-scope-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -64,6 +68,9 @@ const defaults = {
   city: "المدينة المنورة",
   specialties: [],
   serviceNeighborhoodIds: [],
+  primaryNeighborhoodId: "",
+  receiveExternalOpportunities: false,
+  cooperationAvailableNow: false,
   logoUrl: "",
   displayImageUrl: "",
   coverUrl: "",
@@ -152,6 +159,9 @@ function clean(data) {
       data.serviceNeighborhoodIds,
       safeText(data.city, defaults.city).slice(0, 60)
     ),
+    primaryNeighborhoodId: String(data.primaryNeighborhoodId || "").trim(),
+    receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+    cooperationAvailableNow: data.cooperationAvailableNow === true,
     logoUrl: safeText(data.logoUrl).slice(0, 2000),
     displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
     coverUrl: safeText(data.coverUrl).slice(0, 2000),
@@ -223,6 +233,123 @@ function renderNeighborhoodEditorChips() {
 
 function readNeighborhoodsFromForm() {
   return [...selectedServiceNeighborhoodIds];
+}
+
+function writeOfficeScopeToForm(data = {}) {
+  const scope = resolveLegacyOfficeScope(data);
+  if (el.scopeCity) el.scopeCity.value = scope.city || data.city || "";
+  if (el.primaryNeighborhoodId) el.primaryNeighborhoodId.value = scope.primaryNeighborhoodId || "";
+  if (el.primaryNeighborhoodLabel) {
+    el.primaryNeighborhoodLabel.textContent = scope.primaryNeighborhoodId
+      ? `الحي الرئيسي: ${districtLabelById(scope.primaryNeighborhoodId)}`
+      : "";
+  }
+  if (el.receiveExternalToggle) el.receiveExternalToggle.checked = scope.receiveExternalOpportunities === true;
+  if (el.cooperationAvailableToggle) {
+    el.cooperationAvailableToggle.checked = scope.cooperationAvailableNow === true;
+  }
+  writeNeighborhoodsToForm(scope.serviceNeighborhoodIds);
+}
+
+function readOfficeScopeFromForm() {
+  return {
+    city: el.scopeCity?.value || el.city?.value || current.city,
+    primaryNeighborhoodId: el.primaryNeighborhoodId?.value || "",
+    serviceNeighborhoodIds: readNeighborhoodsFromForm(),
+    receiveExternalOpportunities: Boolean(el.receiveExternalToggle?.checked),
+    cooperationAvailableNow: Boolean(el.cooperationAvailableToggle?.checked)
+  };
+}
+
+function initPrimaryNeighborhoodEditor() {
+  if (!el.primaryNeighborhoodSearch) return;
+  const refresh = () => {
+    const city = el.scopeCity?.value || el.city?.value || current.city;
+    const options = districtOptionsForCity(city);
+    delete el.primaryNeighborhoodSearch.dataset.arabicSuggestWired;
+    const staleList = el.primaryNeighborhoodSearch.parentElement?.querySelector(".arabic-suggest-list");
+    if (staleList) staleList.remove();
+    wireArabicSuggestInput(el.primaryNeighborhoodSearch, options, {
+      onPick: (label) => {
+        const id = districtIdFromOfficialName(label, city);
+        if (!id) return;
+        if (el.primaryNeighborhoodId) el.primaryNeighborhoodId.value = id;
+        if (el.primaryNeighborhoodLabel) {
+          el.primaryNeighborhoodLabel.textContent = `الحي الرئيسي: ${districtLabelById(id)}`;
+        }
+        el.primaryNeighborhoodSearch.value = "";
+        const merged = buildOfficeScopePayload({
+          city,
+          primaryNeighborhoodId: id,
+          serviceNeighborhoodIds: selectedServiceNeighborhoodIds,
+          receiveExternalOpportunities: el.receiveExternalToggle?.checked,
+          cooperationAvailableNow: el.cooperationAvailableToggle?.checked
+        });
+        if (merged.ok) writeNeighborhoodsToForm(merged.serviceNeighborhoodIds);
+      }
+    });
+  };
+  refresh();
+  if (el.city) el.city.addEventListener("change", refresh);
+  if (el.scopeCity) el.scopeCity.addEventListener("change", refresh);
+}
+
+async function saveOfficeScopeSettings() {
+  const runtime = officeRuntime();
+  const user = authUser();
+  const scopeInput = readOfficeScopeFromForm();
+  const payload = buildOfficeScopePayload({
+    city: scopeInput.city,
+    primaryNeighborhoodId: scopeInput.primaryNeighborhoodId,
+    serviceNeighborhoodIds: scopeInput.serviceNeighborhoodIds,
+    receiveExternalOpportunities: scopeInput.receiveExternalOpportunities,
+    cooperationAvailableNow: scopeInput.cooperationAvailableNow
+  });
+  if (!payload.ok) {
+    const message = payload.errors[0] || "تعذر حفظ نطاق العمل";
+    setStatus(el.scopeStatus, message, "is-error");
+    toast(message);
+    return;
+  }
+  if (!runtime?.db || !user) {
+    setStatus(el.scopeStatus, "سجل دخول المكتب لحفظ نطاق العمل", "is-error");
+    return;
+  }
+  setStatus(el.scopeStatus, "جارٍ الحفظ…");
+  try {
+    const officeRef = runtime.db.collection("offices").doc(officeId());
+    const publicRef = runtime.db.collection("publicOffices").doc(officeId());
+    const patch = {
+      primaryNeighborhoodId: payload.primaryNeighborhoodId,
+      serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
+      receiveExternalOpportunities: payload.receiveExternalOpportunities,
+      cooperationAvailableNow: payload.cooperationAvailableNow,
+      city: scopeInput.city,
+      updatedAt: serverTimestamp()
+    };
+    await officeRef.set({ officeId: officeId(), ...patch }, { merge: true });
+    await publicRef.set({
+      officeId: officeId(),
+      primaryNeighborhoodId: payload.primaryNeighborhoodId,
+      serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
+      receiveExternalOpportunities: payload.receiveExternalOpportunities,
+      cooperationAvailableNow: payload.cooperationAvailableNow,
+      city: scopeInput.city,
+      approvalStatus: current.approvalStatus || "approved",
+      accountStatus: current.accountStatus || "active",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    current = clean({
+      ...current,
+      ...patch
+    });
+    saveLocal(current);
+    writeOfficeScopeToForm(current);
+    setStatus(el.scopeStatus, "تم حفظ نطاق العمل والتعاون", "is-done");
+  } catch (error) {
+    console.warn("[iaqar] office scope save", error);
+    setStatus(el.scopeStatus, "تعذر حفظ نطاق العمل. يلزم حساب مدير مخوّل.", "is-error");
+  }
 }
 
 function writeNeighborhoodsToForm(ids = []) {
@@ -395,6 +522,7 @@ function apply(data) {
   if (el.link) el.link.value = officeLink();
   writeSpecialtiesToForm(current.specialties);
   writeNeighborhoodsToForm(current.serviceNeighborhoodIds);
+  writeOfficeScopeToForm(current);
   applyImageSlots();
   applyOfficeCardImages();
 
@@ -452,6 +580,11 @@ async function loadFirestore() {
         serviceNeighborhoodIds: Array.isArray(data.serviceNeighborhoodIds)
           ? data.serviceNeighborhoodIds
           : [],
+        primaryNeighborhoodId: data.primaryNeighborhoodId || "",
+        receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+        cooperationAvailableNow: data.cooperationAvailableNow === true,
+        approvalStatus: data.approvalStatus || "",
+        accountStatus: data.accountStatus || "",
         logoUrl: data.logoUrl,
         displayImageUrl: data.displayImageUrl,
         coverUrl: data.coverUrl,
@@ -534,6 +667,9 @@ async function reserveOfficeName(runtime, user, data) {
       coverUrl: data.coverUrl,
       publicSlug: data.publicSlug,
       serviceNeighborhoodIds: data.serviceNeighborhoodIds || [],
+      primaryNeighborhoodId: data.primaryNeighborhoodId || "",
+      receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+      cooperationAvailableNow: data.cooperationAvailableNow === true,
       cooperationMode: cooperationMode,
       updatedAt: serverTimestamp()
     }, { merge: true });
@@ -1772,6 +1908,14 @@ function init() {
   el.neighborhoodChips = document.getElementById("officeNeighborhoodChips");
   el.neighborhoodCount = document.getElementById("officeNeighborhoodCount");
   el.neighborhoodError = document.getElementById("officeNeighborhoodError");
+  el.scopeCity = document.getElementById("officeScopeCityInput");
+  el.primaryNeighborhoodSearch = document.getElementById("officePrimaryNeighborhoodSearch");
+  el.primaryNeighborhoodId = document.getElementById("officePrimaryNeighborhoodId");
+  el.primaryNeighborhoodLabel = document.getElementById("officePrimaryNeighborhoodLabel");
+  el.receiveExternalToggle = document.getElementById("officeReceiveExternalToggle");
+  el.cooperationAvailableToggle = document.getElementById("officeCooperationAvailableToggle");
+  el.saveScopeBtn = document.getElementById("saveOfficeScopeBtn");
+  el.scopeStatus = document.getElementById("officeScopeStatus");
   el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
@@ -1783,6 +1927,7 @@ function init() {
 
   initImageSlots();
   initNeighborhoodEditor();
+  initPrimaryNeighborhoodEditor();
   writeCooperationToForm(cooperationMode);
   writePreferencesToForm(notificationPreferences);
   apply(loadLocal() || defaults);
@@ -1822,6 +1967,15 @@ function init() {
     clearTimeout(init.nameTimer);
     init.nameTimer = setTimeout(checkNameAvailability, 400);
   });
+  if (el.city) {
+    el.city.addEventListener("input", () => {
+      if (el.scopeCity) el.scopeCity.value = el.city.value;
+    });
+    el.city.addEventListener("change", () => {
+      if (el.scopeCity) el.scopeCity.value = el.city.value;
+    });
+  }
+  if (el.saveScopeBtn) el.saveScopeBtn.addEventListener("click", () => void saveOfficeScopeSettings());
   el.form.addEventListener("submit", onSave);
   if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
   el.logout.addEventListener("click", onLogout);

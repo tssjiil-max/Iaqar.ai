@@ -176,10 +176,10 @@ test("firestore rules require 1-5 serviceNeighborhoodIds when field present", ()
 
 test("settings UI includes searchable neighborhood multi-select", () => {
   const html = readRepo("public", "index.html");
-  assert.ok(html.includes("أحياء تخصص المكتب"));
+  assert.ok(html.includes("الأحياء التي يخدمها"));
   assert.ok(html.includes("id=\"officeNeighborhoodSearch\""));
   assert.ok(html.includes("id=\"officeNeighborhoodChips\""));
-  assert.ok(html.includes("يمكنك العمل في جميع أحياء المدينة"));
+  assert.ok(html.includes("نطاق العمل والتعاون"));
 });
 
 test("save path stores canonical IDs not display-only", () => {

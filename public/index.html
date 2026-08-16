@@ -2593,6 +2593,16 @@
     padding:8px 0;
     border-top:1px solid var(--line);
   }
+  .bank-suitable-tiers{display:grid;gap:14px;margin-top:10px}
+  .bank-suitable-tier h5{margin:0 0 8px;font-size:15px;color:var(--green)}
+  .bank-suitable-office-list{display:grid;gap:10px}
+  .bank-suitable-office-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}
+  .bank-suitable-office-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .bank-suitable-office-badge{font-size:12px;color:var(--green);background:#e8f5ee;border-radius:999px;padding:2px 8px}
+  .bank-suitable-office-reason{color:#4b5d52;font-size:13px;margin:6px 0 10px}
+  .bank-suitable-confirm{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .bank-suitable-preview{background:#f7faf8;border-radius:12px;padding:10px 12px;margin:8px 0 12px}
+  .bank-incoming-actions{display:flex;flex-wrap:wrap;gap:8px}
   /* Shared opportunity action UI — canonical source for workflow modal + bank detail panels */
   .iaqar-workflow-overlay[hidden]{display:none!important}
   .iaqar-workflow-overlay{position:fixed;inset:0;z-index:2000;background:rgba(8,36,31,.55);display:flex;align-items:flex-end;justify-content:center;padding:12px;box-sizing:border-box;direction:rtl}
@@ -4242,7 +4252,7 @@
               <div class="bank-list" id="opportunityBankList"></div>
               <button type="button" class="bank-action" id="bankLoadMoreBtn" hidden>تحميل المزيد</button>
               <div class="bank-incoming" id="bankIncomingRequests" hidden>
-                <h3>طلبات تعاون واردة</h3>
+                <h3>فرص التعاون الواردة</h3>
                 <div id="bankIncomingList"></div>
               </div>
               <div class="bank-incoming" id="bankSharedWithUs" hidden></div>
@@ -4433,10 +4443,33 @@
             </div>
             <small class="office-field-help">اختياري — اختر ما يناسب نشاط المكتب، ويمكن تركها فارغة.</small>
           </fieldset>
+        </div>
+        <div class="office-settings-actions">
+          <button class="office-save-btn" id="saveOfficeSettingsBtn" type="submit">حفظ التعديلات</button>
+          <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
+        </div>
+        <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط حسب officeId.</p>
+      </form>
+
+      <section class="settings-section" id="officeScopeSection">
+        <h3>نطاق العمل والتعاون</h3>
+        <p class="section-help">حدد نطاق خدمة المكتب وإعدادات استقبال فرص التعاون من مكاتب أخرى.</p>
+        <div class="office-settings-grid">
+          <label class="office-field">
+            <span>المدينة</span>
+            <input id="officeScopeCityInput" maxlength="60" readonly>
+          </label>
+          <label class="office-field full">
+            <span>الحي الرئيسي</span>
+            <input id="officePrimaryNeighborhoodSearch" class="arabic-suggest-input" type="search"
+              autocomplete="off" placeholder="ابحث واختر الحي الرئيسي">
+            <input type="hidden" id="officePrimaryNeighborhoodId" value="">
+            <small class="office-field-help" id="officePrimaryNeighborhoodLabel" role="status"></small>
+          </label>
           <fieldset class="office-field full office-neighborhood-field">
-            <legend>أحياء تخصص المكتب</legend>
+            <legend>الأحياء التي يخدمها</legend>
             <small class="office-field-help">
-              اختر من حي واحد إلى 5 أحياء. يمكنك العمل في جميع أحياء المدينة، ويُستخدم التخصص لتحسين المطابقة والتعاون.
+              اختر من حي واحد إلى 5 أحياء. يُضاف الحي الرئيسي تلقائيًا إلى نطاق الخدمة.
             </small>
             <label class="office-field full">
               <span>بحث عن حي</span>
@@ -4447,13 +4480,20 @@
             <small class="office-field-help office-neighborhood-count" id="officeNeighborhoodCount" role="status"></small>
             <small class="office-field-help office-neighborhood-error" id="officeNeighborhoodError" role="alert"></small>
           </fieldset>
+          <label class="pref-row office-field full">
+            <span>استقبال فرص من مكاتب أخرى</span>
+            <span class="pref-switch"><input type="checkbox" id="officeReceiveExternalToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
+          <label class="pref-row office-field full">
+            <span>متاح للتعاون حاليًا</span>
+            <span class="pref-switch"><input type="checkbox" id="officeCooperationAvailableToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
         </div>
         <div class="office-settings-actions">
-          <button class="office-save-btn" id="saveOfficeSettingsBtn" type="submit">حفظ التعديلات</button>
-          <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
+          <button class="office-save-btn" id="saveOfficeScopeBtn" type="button">حفظ نطاق العمل</button>
         </div>
-        <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط حسب officeId.</p>
-      </form>
+        <p class="section-status" id="officeScopeStatus" role="status"></p>
+      </section>
 
       <section class="settings-section" id="officeIdentitySection">
         <h3>الهوية البصرية</h3>

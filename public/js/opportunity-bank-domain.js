@@ -40,9 +40,10 @@ export const SHARE_REQUEST_STATUS = Object.freeze({
 });
 
 export const SHARE_REQUEST_STATUS_LABELS = Object.freeze({
-  PENDING: "بانتظار الموافقة",
-  ACCEPTED: "مقبولة",
-  REJECTED: "مرفوضة",
+  PENDING: "بانتظار رد المكتب",
+  ACCEPTED: "قَبِل المكتب",
+  DETAILS_REQUESTED: "طلب تفاصيل",
+  REJECTED: "اعتذر المكتب",
   REVOKED: "منتهية",
   ENDED: "منتهية",
   CLOSED: "منتهية"

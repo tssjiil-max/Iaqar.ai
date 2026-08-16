@@ -49,6 +49,7 @@ import {
   createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
 import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
+import { buildSuitableOfficesResult } from "./suitable-offices-service.mjs";
 import {
   loadOpportunityWorkspaceBundle,
   ensureCooperationRoom
@@ -367,6 +368,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/nearby-suggestions") {
         return await handleCooperationNearbySuggestions(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/suitable-offices") {
+        return await handleCooperationSuitableOffices(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/request") {
@@ -3389,6 +3394,49 @@ async function handleOperationsMissingData(request, env, requestId) {
   });
 }
 
+async function handleCooperationSuitableOffices(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const searchQuery = cleanText(body.searchQuery || body.query || "", 80);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await buildSuitableOfficesResult({
+    projectId,
+    actorOfficeId: officeId,
+    opportunityId,
+    searchQuery,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      listCollectionDocuments,
+      firestoreFieldsToJs
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "suitable_offices_failed", result.status || 400, "تعذر جلب المكاتب المناسبة");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    requiresCompletion: Boolean(result.requiresCompletion),
+    message: result.message || "",
+    opportunityCity: result.opportunityCity || "",
+    opportunityDistrictLabels: result.opportunityDistrictLabels || [],
+    buckets: result.buckets || {},
+    total: result.total || 0,
+    tierLabels: result.tierLabels || {},
+    sharedPreview: result.sharedPreview || null,
+    boundaries: phase6BoundaryGuarantees(),
+    requestId
+  });
+}
+
 async function handleCooperationNearbySuggestions(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
@@ -3615,6 +3663,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
     targetOfficeId,
     opportunityIds,
     scopeType,
+    message: cleanText(body.message || "", 500),
     accessToken,
     deps: {
       getFirestoreDocument,

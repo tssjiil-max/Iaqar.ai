@@ -17,6 +17,7 @@ import {
   phase6BoundaryGuarantees
 } from "./cooperation-phase6-domain.js";
 import { ensureCooperationRoom } from "./opportunity-workspace-service.mjs";
+import { readTargetOfficeEligibility } from "./suitable-offices-service.mjs";
 
 function firestoreHelpersBundle(h) {
   return h;
@@ -200,7 +201,7 @@ export async function runCooperationLifecycle({
   }
 
   const decision = String(action || "").toUpperCase();
-  if (["ACCEPT", "ACCEPTED", "REJECT", "REJECTED"].includes(decision) && actorOfficeId !== target) {
+  if (["ACCEPT", "ACCEPTED", "REJECT", "REJECTED", "REQUEST_DETAILS", "DETAILS_REQUESTED"].includes(decision) && actorOfficeId !== target) {
     return { ok: false, error: "target_only", status: 403 };
   }
   if (["REVOKE", "REVOKED", "END", "ENDED"].includes(decision) && actorOfficeId !== origin) {
@@ -502,6 +503,7 @@ export async function createExplicitCooperationRequest({
   targetOfficeId,
   opportunityIds,
   scopeType = "single",
+  message = "",
   accessToken,
   deps
 }) {
@@ -534,6 +536,22 @@ export async function createExplicitCooperationRequest({
     };
   }
 
+  const targetEligibility = await readTargetOfficeEligibility({
+    projectId,
+    targetOfficeId: target,
+    accessToken,
+    deps
+  });
+  if (!targetEligibility.eligible) {
+    return {
+      ok: false,
+      error: "target_not_eligible",
+      status: 403,
+      message: "المكتب المستلم غير متاح لاستقبال الفرص حاليًا"
+    };
+  }
+
+  let primaryOpportunity = null;
   for (const oppId of ids) {
     const oppDoc = await deps.getFirestoreDocument({
       projectId,
@@ -553,6 +571,7 @@ export async function createExplicitCooperationRequest({
         message: "لا يمكن مشاركة فرص لا تتبع هذا المكتب"
       };
     }
+    if (!primaryOpportunity) primaryOpportunity = opp;
   }
 
   const opportunityKey = scopeType === "single" ? ids[0] : ids.slice().sort().join(",");
@@ -615,6 +634,29 @@ export async function createExplicitCooperationRequest({
   const now = new Date();
   const permissions = defaultCooperationRequestPermissions();
   const fh = deps.firestoreHelpers || firestoreHelpersBundle(deps);
+  const min = minimumSharedFields(primaryOpportunity || {});
+  const sharedSummary = {
+    opportunityKind: min.opportunityKind,
+    propertyType: min.propertyType,
+    purpose: min.purpose,
+    city: min.city,
+    district: min.district,
+    priceOrBudget: min.priceOrBudget,
+    area: min.area,
+    rooms: min.rooms,
+    description: String(primaryOpportunity?.publicDescription || primaryOpportunity?.description || "").slice(0, 500)
+  };
+  const originatingOfficeName = await readPublicOfficeName({
+    projectId, officeId: origin, accessToken,
+    getFirestoreDocument: deps.getFirestoreDocument,
+    firestoreFieldsToJs: deps.firestoreFieldsToJs
+  });
+  const targetOfficeName = await readPublicOfficeName({
+    projectId, officeId: target, accessToken,
+    getFirestoreDocument: deps.getFirestoreDocument,
+    firestoreFieldsToJs: deps.firestoreFieldsToJs
+  });
+  const safeMessage = String(message || "").slice(0, 500);
   await deps.setFirestoreDocument({
     projectId,
     segments: ["cooperationRequests", requestId],
@@ -622,12 +664,31 @@ export async function createExplicitCooperationRequest({
     fields: {
       id: fh.firestoreString(requestId),
       originatingOfficeId: fh.firestoreString(origin),
+      originatingOfficeName: fh.firestoreString(originatingOfficeName),
       originatingBrokerId: fh.firestoreString(originatingBrokerId),
       targetOfficeId: fh.firestoreString(target),
+      targetOfficeName: fh.firestoreString(targetOfficeName),
       targetBrokerId: fh.firestoreString(""),
       opportunityId: fh.firestoreString(scopeType === "single" ? ids[0] : ""),
       opportunityIds: { arrayValue: { values: ids.map((id) => ({ stringValue: id })) } },
       scopeType: fh.firestoreString(scopeType),
+      opportunityKind: fh.firestoreString(sharedSummary.opportunityKind),
+      propertyType: fh.firestoreString(sharedSummary.propertyType),
+      purpose: fh.firestoreString(sharedSummary.purpose),
+      city: fh.firestoreString(sharedSummary.city),
+      district: fh.firestoreString(sharedSummary.district),
+      priceOrBudget: sharedSummary.priceOrBudget == null
+        ? { nullValue: null }
+        : fh.firestoreString(String(sharedSummary.priceOrBudget)),
+      area: sharedSummary.area == null
+        ? { nullValue: null }
+        : fh.firestoreString(String(sharedSummary.area)),
+      rooms: sharedSummary.rooms == null
+        ? { nullValue: null }
+        : fh.firestoreString(String(sharedSummary.rooms)),
+      sharedDescription: fh.firestoreString(sharedSummary.description || ""),
+      shareMessage: fh.firestoreString(safeMessage),
+      sharedSummaryJson: fh.firestoreString(JSON.stringify(sharedSummary)),
       requestedAt: fh.firestoreString(now.toISOString()),
       status: fh.firestoreString("PENDING"),
       permissions: {

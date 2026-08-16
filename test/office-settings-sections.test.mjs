@@ -46,8 +46,7 @@ test("the office data form exposes exactly the five approved fields", async () =
       "brokerNameInput",
       "licenseNumberInput",
       "officeCityInput",
-      "officePhoneInput",
-      "officeNeighborhoodSearch"
+      "officePhoneInput"
     ]);
   } finally {
     context.close();
