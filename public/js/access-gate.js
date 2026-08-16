@@ -367,9 +367,14 @@
       <div class="access-options">
         <button class="access-btn" data-go="client">أنا عميل</button>
         <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
-        <button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button>
         <button class="access-btn secondary" data-go="login">دخول مكتب مسجل</button>
-      </div><div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div></section>`);
+      </div>
+      <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>
+      <div class="access-options" style="margin-top:12px">
+        <button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button>
+      </div>
+      <div class="access-note">للاستفسار عن تسجيل الوسيط:
+        <a href="https://wa.me/966552019909" target="_blank" rel="noopener noreferrer">واتساب 0552019909</a></div></section>`);
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => {
       if (button.dataset.go === "broker") brokerForm();
       else if (button.dataset.go === "login") loginForm();

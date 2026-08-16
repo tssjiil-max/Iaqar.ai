@@ -129,11 +129,14 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-workspace-v1";
+const IAQAR_CACHE = "iaqar-shell-workspace-v2";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",
-  "/js/gemini-voice-intake-domain.js"
+  "/js/gemini-voice-intake-domain.js",
+  "/js/opportunity-import-advert-ui.js",
+  "/js/opportunity-import-advert-domain.js",
+  "/js/opportunity-bank-workspace-ui.js"
 ];
 const IAQAR_NAVIGATION = ["/", "/index.html"];
 const IAQAR_SHELL = [
@@ -151,6 +154,8 @@ const IAQAR_SHELL = [
   "/js/office-settings.js",
   "/js/add-opportunity.js",
   "/js/opportunity-bank.js",
+  "/js/opportunity-import-advert-ui.js",
+  "/js/opportunity-bank-workspace-ui.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
   "/js/operations-domain-bridge.js",
