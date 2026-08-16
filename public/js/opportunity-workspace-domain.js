@@ -10,6 +10,160 @@ import {
 } from "./opportunity-readiness-domain.js";
 import { contactLineMarkup } from "./opportunity-card-domain.js";
 import { activeFollowUpFromRecord } from "./opportunity-followup-domain.js";
+import { normalizePurpose, normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
+import {
+  formatLocalPhoneDisplay,
+  validateAdvertiserPhoneLocalInput
+} from "./advertiser-phone-domain.js";
+
+function isOwnerOffer(record = {}) {
+  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
+  return record.contactType === "owner"
+    || kind === "OWNER"
+    || kind === "OWNER_OFFER"
+    || kind === "OFFER";
+}
+
+/** Arabic label for contact party — never derived from officeId. */
+export function contactPartyLabel(record = {}) {
+  const raw = String(record.contactType || record.kind || record.recordType || "").toLowerCase();
+  if (raw === "owner" || raw === "owner_offer") return "مالك";
+  if (raw === "client" || raw === "buyer" || raw === "customer") return "عميل";
+  if (raw === "broker") return "وسيط";
+  if (raw === "office") return "مكتب";
+  return isOwnerOffer(record) ? "مالك" : "عميل";
+}
+
+export function purposeOptionsForRecord(record = {}) {
+  if (isOwnerOffer(record)) {
+    return [
+      { value: "SALE", label: "بيع" },
+      { value: "RENT", label: "تأجير" }
+    ];
+  }
+  return [
+    { value: "PURCHASE", label: "شراء" },
+    { value: "LEASE_REQUEST", label: "إيجار" }
+  ];
+}
+
+function resolveStoredPurpose(record = {}) {
+  return normalizePurpose(record.purpose || record.transactionType || "");
+}
+
+function phoneInputValue(record = {}) {
+  const candidates = [
+    record.advertiserPhoneNormalized,
+    record.contactPhone,
+    record.phone,
+    record.advertiserPhoneRaw
+  ];
+  for (const value of candidates) {
+    const local = formatLocalPhoneDisplay(value);
+    if (local) return local;
+  }
+  const raw = String(record.advertiserPhoneRaw || record.phone || "").trim();
+  return raw && !/^\+?966/.test(raw) ? raw.slice(0, 16) : "";
+}
+
+/**
+ * Ordered missing-field definitions for the incomplete completion form.
+ * @returns {Array<{ key: string, label: string, type: string, value?: string, options?: Array<{value,label}> }>}
+ */
+export function buildIncompleteFormFields(record = {}, readiness = {}) {
+  const missing = readiness.matchingReadinessMissing || [];
+  const order = ["contactPhone", "purpose", "propertyType", "city", "district", "priceOrBudget", "advertiserRole", "area", "rooms"];
+  const sorted = order.filter((key) => missing.includes(key));
+  const storedPurpose = resolveStoredPurpose(record);
+  const purposeOptions = purposeOptionsForRecord(record);
+
+  return sorted.map((key) => {
+    switch (key) {
+      case "purpose":
+        return {
+          key,
+          label: "الغرض",
+          type: "purpose_select",
+          value: storedPurpose,
+          options: purposeOptions
+        };
+      case "propertyType":
+        return {
+          key,
+          label: "نوع العقار",
+          type: "propertyType",
+          value: record.propertyType || ""
+        };
+      case "city":
+        return { key, label: "المدينة", type: "text", name: "city", value: record.city || "" };
+      case "district":
+        return { key, label: "الحي", type: "district", value: record.district || "" };
+      case "priceOrBudget":
+        return {
+          key,
+          label: isOwnerOffer(record) ? "السعر" : "الميزانية",
+          type: "number",
+          name: "priceOrBudget",
+          value: record.priceOrBudget ?? record.price ?? record.budget ?? ""
+        };
+      case "advertiserRole":
+        return {
+          key,
+          label: "صفة المعلن",
+          type: "advertiserRole",
+          value: record.advertiserRole || ""
+        };
+      case "contactPhone":
+        return {
+          key,
+          label: "رقم الجوال الكامل",
+          type: "phone",
+          name: "advertiserPhoneLocal",
+          value: phoneInputValue(record)
+        };
+      case "area":
+        return { key, label: "المساحة", type: "number", name: "area", value: record.area ?? "" };
+      case "rooms":
+        return { key, label: "الغرف", type: "number", name: "rooms", value: record.rooms ?? "" };
+      default:
+        return { key, label: MISSING_FIELD_LABELS[key] || key, type: "text", name: key, value: record[key] ?? "" };
+    }
+  });
+}
+
+export function hasCompleteContactPhone(record = {}) {
+  const candidates = [
+    record.advertiserPhoneNormalized,
+    record.contactPhone,
+    record.phone
+  ];
+  for (const value of candidates) {
+    if (formatLocalPhoneDisplay(value)) return true;
+  }
+  return false;
+}
+
+export function mergeIncompleteFormPreview(existing = {}, formData = {}) {
+  const editKeys = ["purpose", "propertyType", "city", "district", "priceOrBudget", "area", "rooms", "advertiserRole"];
+  const merged = { ...existing };
+  for (const key of editKeys) {
+    if (formData[key] !== undefined && formData[key] !== "") {
+      merged[key] = formData[key];
+    }
+  }
+  if (formData.advertiserPhoneLocal) {
+    merged.advertiserPhoneLocal = formData.advertiserPhoneLocal;
+    const phoneCheck = validateAdvertiserPhoneLocalInput(formData.advertiserPhoneLocal);
+    if (phoneCheck.ok && phoneCheck.e164) {
+      const local = String(formData.advertiserPhoneLocal || "").replace(/\D/g, "");
+      merged.advertiserPhoneNormalized = phoneCheck.e164;
+      merged.contactPhone = phoneCheck.e164;
+      merged.advertiserPhoneRaw = local.startsWith("0") ? local : `0${local.replace(/^966/, "")}`;
+      merged.phone = merged.advertiserPhoneRaw;
+    }
+  }
+  return normalizeOpportunityFinancials(merged);
+}
 
 const COOPERATION_STATUS_LABELS = Object.freeze({
   PENDING: "بانتظار الموافقة",
@@ -76,7 +230,11 @@ export function buildBestNextAction({
 } = {}) {
   const readiness = evaluateMatchingReadiness(record);
   if (!readiness.isReadyForMatching) {
-    const missing = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
+    const missingKeys = readiness.matchingReadinessMissing || [];
+    if (missingKeys.includes("contactPhone")) {
+      return { label: "استكمال رقم الجوال", action: "complete_fields", count: 0 };
+    }
+    const missing = missingFieldLabelsArabic(missingKeys);
     const first = missing[0] || "البيانات الناقصة";
     const label = first.includes("جوال") ? `أكمل ${first}` : `أكمل ${first}`;
     return { label, action: "complete_fields", count: 0 };

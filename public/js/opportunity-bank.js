@@ -83,7 +83,7 @@ import {
   buildMatchComparisonHtml,
   buildCooperationRoomHtml
 } from "./opportunity-bank-workspace-ui.js";
-import { sortMatchesForWorkspace } from "./opportunity-workspace-domain.js";
+import { sortMatchesForWorkspace, mergeIncompleteFormPreview } from "./opportunity-workspace-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
 import { PROPERTY_TYPES, districtsForCity } from "./reference-catalog.js";
@@ -416,7 +416,7 @@ const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
   city: 'input[name="city"]',
   district: 'input[name="district"]',
   priceOrBudget: 'input[name="priceOrBudget"]',
-  purpose: 'input[name="propertyType"]',
+  purpose: 'select[name="purpose"]',
   contactPhone: 'input[name="advertiserPhoneLocal"]',
   advertiserRole: 'select[name="advertiserRole"]'
 });
@@ -843,6 +843,34 @@ function wireIncompleteDetailHandlers(id, record) {
   if (propertyInput) wireArabicSuggestInput(propertyInput, PROPERTY_TYPES.map((e) => e.label));
   if (districtInput) wireArabicSuggestInput(districtInput, districtsForCity("madinah").map((e) => e.officialName));
 
+  $("bankAdvertisercall")?.addEventListener("click", () => {
+    const phone = readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
+    if (!phone) return toast("أكمل رقم الجوال أولًا");
+    const local = formatLocalPhoneDisplay(phone);
+    if (!local) return toast("أكمل رقم الجوال أولًا");
+    window.location.href = `tel:${local}`;
+    void recordLifecycleCallOpened(id);
+  });
+  $("bankAdvertiserwhatsapp")?.addEventListener("click", () => {
+    const phone = readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
+    if (!phone) return toast("أكمل رقم الجوال أولًا");
+    openBankAdvertiserWhatsApp(state.records.get(id) || record, phone);
+  });
+
+  $("bankCompletePhoneBtn")?.addEventListener("click", () => {
+    const phoneField = form?.querySelector('input[name="advertiserPhoneLocal"]');
+    if (phoneField) {
+      phoneField.scrollIntoView({ behavior: "smooth", block: "center" });
+      try {
+        phoneField.focus({ preventScroll: true });
+      } catch (_) {
+        phoneField.focus();
+      }
+      return;
+    }
+    focusFirstMissingBankField(evaluateMatchingReadiness(state.records.get(id) || record));
+  });
+
   async function saveIncomplete() {
     const form = $("bankUnifiedForm");
     const statusNode = $("bankUnifiedSaveStatus");
@@ -852,12 +880,30 @@ function wireIncompleteDetailHandlers(id, record) {
     const data = Object.fromEntries(new FormData(form).entries());
     const editResult = buildEditPatch(existing, data, { actorUid: authUser()?.uid || "" });
     const advResult = buildAdvertiserDataPatch(existing, data);
+    const phoneErrorEl = document.getElementById("bankAdvertiserPhoneError");
     if (!advResult.ok) {
+      if (phoneErrorEl) {
+        phoneErrorEl.textContent = advResult.error || "رقم الجوال غير صحيح";
+        phoneErrorEl.hidden = false;
+      }
       if (statusNode) statusNode.textContent = advResult.error || "رقم الجوال غير صحيح";
       return;
     }
-    const editPatch = editResult.ok ? editResult.patch : {};
-    const mergedPreview = normalizeOpportunityFinancials({ ...existing, ...editPatch, ...advResult.patch });
+    if (phoneErrorEl) phoneErrorEl.hidden = true;
+
+    let editPatch = {};
+    if (editResult.ok) {
+      editPatch = editResult.patch;
+    } else if (editResult.error !== "no_editable_fields") {
+      const msg = editResult.error === "ownership_fields_protected"
+        ? "لا تملك صلاحية تعديل هذه الفرصة."
+        : (editResult.error || "تعذر حفظ التغييرات");
+      if (statusNode) statusNode.textContent = msg;
+      setStatus(msg, "is-error");
+      return;
+    }
+
+    const mergedPreview = mergeIncompleteFormPreview(existing, data);
     const readinessCheck = evaluateMatchingReadiness(mergedPreview);
     const patch = {
       ...editPatch,
@@ -865,12 +911,32 @@ function wireIncompleteDetailHandlers(id, record) {
       matchingReadiness: readinessCheck.matchingReadiness,
       matchingReadinessMissing: readinessCheck.matchingReadinessMissing || []
     };
+    if (advResult.patch.advertiserPhoneNormalized) {
+      patch.contactPhone = advResult.patch.advertiserPhoneNormalized;
+      patch.phone = advResult.patch.advertiserPhoneRaw || advResult.patch.advertiserPhoneNormalized;
+    }
+    if (mergedPreview.purpose) {
+      patch.purpose = mergedPreview.purpose;
+      patch.transactionType = mergedPreview.transactionType || "";
+    }
+    if (mergedPreview.priceOrBudget != null) patch.priceOrBudget = mergedPreview.priceOrBudget;
+    if (mergedPreview.salePrice != null) patch.salePrice = mergedPreview.salePrice;
+    if (mergedPreview.annualRent != null) patch.annualRent = mergedPreview.annualRent;
+    if (mergedPreview.budget != null) patch.budget = mergedPreview.budget;
+
+    const hasChanges = Object.keys(editPatch).length > 0
+      || Object.keys(advResult.patch).some((key) => String(advResult.patch[key] ?? "") !== String(existing[key] ?? ""));
+    if (!hasChanges) {
+      if (statusNode) statusNode.textContent = "لا توجد تغييرات للحفظ";
+      return;
+    }
+
     btn.disabled = true;
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
     try {
       await patchOpportunity(id, patch);
       await reloadOpportunityFromBackend(id);
-      toast("تم حفظ البيانات");
+      toast(readinessCheck.isReadyForMatching ? "الفرصة جاهزة للمطابقة" : "تم حفظ البيانات");
       await renderDetail(id);
       renderList();
     } catch (error) {

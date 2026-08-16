@@ -1,18 +1,21 @@
 /**
- * Ready Opportunity Workspace — HTML builders (no DOM).
+ * Opportunity bank workspace + needs-completion form — HTML only (no DOM).
  */
 
 import {
   buildBestNextAction,
   buildWorkspaceHeader,
   buildWorkspaceActivity,
+  buildIncompleteFormFields,
+  contactPartyLabel,
   cooperationStatusLabel,
-  missingFieldEditorRows,
+  hasCompleteContactPhone,
   workspaceSmartActions,
   sortMatchesForWorkspace
 } from "./opportunity-workspace-domain.js";
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
+import { buildAdvertiserContactActions } from "./advertiser-phone-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -20,39 +23,73 @@ function esc(text = "") {
   }[c]));
 }
 
-function workspaceActionButton(action) {
-  return `<button type="button" class="bank-workspace-action" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
+function renderFieldBlock(field) {
+  switch (field.type) {
+    case "purpose_select":
+      const opts = (field.options || []).map((opt) =>
+        `<option value="${esc(opt.value)}" ${field.value === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`
+      ).join("");
+      return `<label>${esc(field.label)}
+        <select name="purpose" required>
+          <option value="">اختر الغرض</option>
+          ${opts}
+        </select>
+      </label>`;
+    case "propertyType":
+      return `<label>${esc(field.label)}
+        <input name="propertyType" class="arabic-suggest-input" autocomplete="off" value="${esc(field.value)}">
+      </label>`;
+    case "district":
+      return `<label>${esc(field.label)}
+        <input name="district" class="arabic-suggest-input" autocomplete="off" value="${esc(field.value)}">
+      </label>`;
+    case "advertiserRole":
+      return `<label>${esc(field.label)}
+        <select name="advertiserRole">
+          <option value="">اختر</option>
+          <option value="OWNER" ${field.value === "OWNER" ? "selected" : ""}>مالك</option>
+          <option value="DELEGATE" ${field.value === "DELEGATE" ? "selected" : ""}>مفوض</option>
+          <option value="BROKER" ${field.value === "BROKER" ? "selected" : ""}>وسيط</option>
+          <option value="CLIENT" ${field.value === "CLIENT" ? "selected" : ""}>عميل</option>
+        </select>
+      </label>`;
+    case "phone":
+      return `<label>${esc(field.label)}
+        <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="14"
+          placeholder="05XXXXXXXX أو +9665XXXXXXXX" value="${esc(field.value)}"
+          aria-label="رقم الجوال الكامل">
+        <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
+      </label>`;
+    case "number":
+      return `<label>${esc(field.label)}
+        <input name="${esc(field.name)}" type="number" value="${esc(String(field.value ?? ""))}">
+      </label>`;
+    default:
+      return `<label>${esc(field.label)}
+        <input name="${esc(field.name || field.key)}" type="text" value="${esc(String(field.value ?? ""))}">
+      </label>`;
+  }
 }
 
 export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const missingNames = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
-  const rows = missingFieldEditorRows(record);
-  const fieldBlocks = rows.map((row) => {
-    const selector = row.key === "contactPhone" ? "advertiserPhoneLocal"
-      : row.key === "advertiserRole" ? "advertiserRole"
-      : row.key === "priceOrBudget" ? "priceOrBudget"
-      : row.key;
-    if (row.key === "advertiserRole") {
-      return `<label>${esc(row.label)}
-        <select name="advertiserRole">
-          <option value="">اختر</option>
-          <option value="OWNER" ${record.advertiserRole === "OWNER" ? "selected" : ""}>مالك</option>
-          <option value="DELEGATE" ${record.advertiserRole === "DELEGATE" ? "selected" : ""}>مفوض</option>
-          <option value="BROKER" ${record.advertiserRole === "BROKER" ? "selected" : ""}>وسيط</option>
-          <option value="CLIENT" ${record.advertiserRole === "CLIENT" ? "selected" : ""}>عميل</option>
-        </select>
-      </label>`;
-    }
-    if (row.key === "purpose") {
-      return `<label>${esc(row.label)}
-        <input name="propertyType" class="arabic-suggest-input" value="${esc(record.propertyType || "")}">
-      </label>`;
-    }
-    const type = row.key === "priceOrBudget" || row.key === "area" || row.key === "rooms" ? "number" : "text";
-    return `<label>${esc(row.label)}
-      <input name="${esc(selector)}" type="${type}" value="${esc(String(row.value ?? ""))}">
-    </label>`;
+  const fields = buildIncompleteFormFields(record, readiness);
+  const fieldBlocks = fields.map(renderFieldBlock).join("");
+  const party = contactPartyLabel(record);
+  const phoneReady = hasCompleteContactPhone(record);
+  const contactActions = buildAdvertiserContactActions(record);
+  const contactButtons = contactActions.map((action) => {
+    const disabled = !phoneReady || action.disabled;
+    const note = phoneReady ? "" : "أكمل رقم الجوال أولًا";
+    return `<button type="button" class="bank-action" id="bankAdvertiser${action.action}" ${disabled ? "disabled" : ""}
+      title="${esc(note)}">${esc(action.label)}</button>`;
   }).join("");
+  const contactNote = phoneReady
+    ? ""
+    : `<p class="bank-note" id="bankIncompletePhoneHint">أكمل رقم الجوال أولًا</p>`;
+  const completePhoneBtn = phoneReady
+    ? ""
+    : `<button type="button" class="bank-action-primary" id="bankCompletePhoneBtn">استكمال رقم الجوال</button>`;
 
   return `
     <div class="bank-detail-head">
@@ -62,22 +99,26 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
     <section class="bank-missing-banner is-incomplete" aria-live="polite">
       <strong>ينقص: ${esc(missingNames.join("، "))}</strong>
     </section>
+    <p class="bank-note bank-incomplete-party">جهة التواصل: ${esc(party)}</p>
     <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form" autocomplete="off">
       <div class="bank-edit-grid">${fieldBlocks}</div>
       <label>اسم أو وصف المعلن
         <input type="text" name="advertiserDisplayName" maxlength="120" value="${esc(record.advertiserDisplayName || record.contactName || "")}">
       </label>
-      ${(readiness.matchingReadinessMissing || []).includes("contactPhone")
-        ? `<label>رقم الجوال
-            <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10" placeholder="05XXXXXXXX"
-              value="${esc(record.advertiserPhoneNormalized || record.contactPhone || "")}">
-          </label>`
-        : ""}
     </form>
+    <section class="bank-section bank-incomplete-contact" aria-label="التواصل">
+      <div class="bank-advertiser-actions" id="bankIncompleteContactActions">${contactButtons}</div>
+      ${completePhoneBtn}
+      ${contactNote}
+    </section>
     <div class="bank-unified-save-wrap">
       <button type="button" class="bank-action-primary" id="bankUnifiedSaveBtn">حفظ واستكمال الفرصة</button>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
     </div>`;
+}
+
+function workspaceActionButton(action) {
+  return `<button type="button" class="bank-workspace-action" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
 }
 
 export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
