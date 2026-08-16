@@ -87,6 +87,13 @@ async function main() {
 
     await page.screenshot({ path: `${OUT}/staging_daily_tasks_categories.png`, fullPage: true });
 
+    await page.locator("[data-ops-category=\"incomplete\"]").click();
+    await page.waitForTimeout(800);
+    const incompleteCount = await page.locator(".ops-task-card").count();
+    pass("incomplete_has_tasks", String(incompleteCount));
+    await page.locator("#operationsCategoryClose").click();
+    await page.waitForTimeout(400);
+
     for (const key of CATEGORY_KEYS) {
       const btn = page.locator(`[data-ops-category="${key}"]`);
       if (!(await btn.count())) {
