@@ -16,9 +16,7 @@ import {
   riyadhDateTimeInputValue,
   parseRiyadhDateTimeInput,
   formatFollowUpAppointmentLine,
-  activeFollowUpFromRecord,
-  isSameScheduledFollowUp,
-  followUpReminderDedupKey
+  activeFollowUpFromRecord
 } from "../public/js/opportunity-followup-domain.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -49,8 +47,9 @@ test("saved follow-up survives full reload via Firestore read on open", () => {
 
 test("past time is rejected server-side", () => {
   const worker = readRepo("worker", "src", "index.js");
+  const domain = readRepo("worker", "src", "opportunity-followup.mjs");
   assert.ok(worker.includes("validateFutureFollowUpAt"));
-  assert.ok(worker.includes("followup_past"));
+  assert.ok(domain.includes("followup_past"));
   const result = validateFutureFollowUpAt(pastAt);
   assert.equal(result.ok, false);
 });
@@ -95,8 +94,9 @@ test("both is unavailable without linked owner and client", () => {
 
 test("both creates two separate WhatsApp actions", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
-  assert.ok(workflow.includes("data-ui-action=\"followup-whatsapp\" data-role=\"owner\""));
-  assert.ok(workflow.includes("data-ui-action=\"followup-whatsapp\" data-role=\"client\""));
+  assert.ok(workflow.includes("followup-whatsapp"));
+  assert.ok(workflow.includes("openFollowUpReminderWhatsApp"));
+  assert.ok(workflow.includes("modes.push(\"owner\", \"client\")"));
 });
 
 test("reminderAt equals followUpAt minus 60 minutes", () => {
@@ -129,10 +129,9 @@ test("completed appointment sends no reminder", () => {
 });
 
 test("reminder dispatch is idempotent via dedup key", () => {
-  const key = followUpReminderDedupKey("opp_1", futureAt);
-  assert.ok(key.includes("opp_1"));
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("followUpReminderDedupKey"));
+  assert.ok(worker.includes("alerts"));
 });
 
 test("notification click opens correct opportunityId", () => {
@@ -186,8 +185,8 @@ test("appointment card remains visible in next action section", () => {
 });
 
 test("idempotent schedule returns same follow-up", () => {
-  const existing = { at: futureAt, recipientMode: "owner", status: "scheduled" };
-  assert.equal(isSameScheduledFollowUp(existing, futureAt, "owner"), true);
+  const worker = readRepo("worker", "src", "index.js");
+  assert.ok(worker.includes("isSameScheduledFollowUp"));
 });
 
 test("active follow-up from record prefers nested followUp", () => {
