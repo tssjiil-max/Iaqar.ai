@@ -139,9 +139,10 @@ test("shell renders six category cards before opening a category", async () => {
   try {
     const { document } = context;
     assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
-    assert.equal(document.getElementById("operationList").hidden, true);
+    assert.equal(document.getElementById("opsViewCategories").hidden, false);
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, true);
+    assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, true);
     assert.equal(document.getElementById("operationsCategoryGrid").hidden, false);
-    assert.equal(document.getElementById("operationsTaskPanel").hidden, true);
   } finally {
     context.close();
   }
@@ -172,6 +173,9 @@ test("clicking a category shows only its records as task cards", async () => {
 
     const incompleteBtn = document.querySelector("[data-ops-category=\"incomplete\"]");
     incompleteBtn.click();
+    assert.equal(document.getElementById("opsViewCategories").hidden, true);
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, false);
+    assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, true);
     assert.equal(document.getElementById("operationsCategoryGrid").hidden, true);
     assert.equal(document.getElementById("operationsCategoryDetailHead").hidden, false);
     const titles = Array.from(document.querySelectorAll(".ops-task-body h4")).map((n) => n.textContent.trim());
@@ -179,8 +183,10 @@ test("clicking a category shows only its records as task cards", async () => {
     assert.equal(document.querySelectorAll(".ops-task-card").length, 1);
 
     document.getElementById("operationsCategoryClose").click();
+    assert.equal(document.getElementById("opsViewCategories").hidden, false);
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, true);
     assert.equal(document.getElementById("operationsCategoryGrid").hidden, false);
-    assert.equal(document.querySelectorAll(".ops-task-card").length, 0);
+    assert.equal(document.getElementById("opsViewCategories").querySelectorAll(".ops-task-card").length, 0);
   } finally {
     context.close();
   }
@@ -206,4 +212,133 @@ test("empty shell has no demo operations and shows category grid", async () => {
 test("opportunity bank exposes renderDailyTaskOpportunity", () => {
   const bankSource = readRepositoryFile("public", "js", "opportunity-bank.js");
   assert.ok(bankSource.includes("renderDailyTaskOpportunity"));
+});
+
+function dispatchOpsData(window, items) {
+  window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
+    detail: { authoritative: true, items }
+  }));
+}
+
+const incompleteOpItem = {
+  id: "op-md",
+  operationType: "MISSING_DATA",
+  recordType: "operation",
+  priority: 1,
+  icon: "i-clipboard-list",
+  title: "استكمال بيانات",
+  subtitle: "ناقص",
+  time: "الآن",
+  detailsLines: ["ناقص"],
+  actionLabel: "استكمال",
+  opportunityId: "opp_test_incomplete",
+  matchingReadinessMissing: ["purpose"]
+};
+
+const readyOpItem = {
+  id: "opp-ready-1",
+  recordType: "opportunity",
+  recordId: "opp_ready_1",
+  opportunityId: "opp_ready_1",
+  priority: 0,
+  icon: "i-clipboard-list",
+  title: "فرصة جاهزة",
+  subtitle: "جاهزة للمطابقة",
+  time: "الآن",
+  matchingReadiness: "READY_FOR_MATCHING"
+};
+
+test("daily task stage navigation hides categories when list is open", async () => {
+  const context = await loadShell({ bootSettingsModule: false });
+  try {
+    const { document, window } = context;
+    dispatchOpsData(window, [incompleteOpItem]);
+    document.querySelector("[data-ops-category=\"incomplete\"]").click();
+
+    assert.equal(document.getElementById("opsViewCategories").hidden, true);
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, false);
+    assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, true);
+    assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
+    assert.ok(document.getElementById("opsViewCategories").contains(
+      document.querySelector("[data-ops-category=\"incomplete\"]")
+    ));
+  } finally {
+    context.close();
+  }
+});
+
+test("daily task stage navigation hides list when opportunity detail opens", async () => {
+  const context = await loadShell({ bootSettingsModule: false });
+  try {
+    const { document, window } = context;
+    window.IAQAR.renderDailyTaskOpportunity = async (panelId) => {
+      const panel = document.getElementById(panelId);
+      panel.innerHTML = `
+        <div class="bank-detail-head">
+          <h3>تفاصيل الفرصة</h3>
+          <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
+        </div>
+        <section class="bank-unified-form"><p>نموذج الاستكمال</p></section>`;
+      panel.hidden = false;
+      return true;
+    };
+
+    dispatchOpsData(window, [incompleteOpItem]);
+    document.querySelector("[data-ops-category=\"incomplete\"]").click();
+    document.querySelector("[data-ops-open-task]").click();
+    await new Promise((resolve) => {
+      const raf = window.requestAnimationFrame || ((cb) => window.setTimeout(cb, 0));
+      raf(() => resolve());
+    });
+
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, true);
+    assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, false);
+    assert.equal(document.getElementById("opsViewCategories").hidden, true);
+    assert.equal(document.querySelectorAll(".ops-task-card").length, 1);
+    assert.ok(document.getElementById("opsViewCategoryList").contains(
+      document.querySelector(".ops-task-card")
+    ));
+    assert.ok(document.getElementById("operationsTaskPanel").textContent.includes("تفاصيل الفرصة"));
+
+    document.getElementById("operationsDetailBack").click();
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, false);
+    assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, true);
+    assert.equal(document.getElementById("operationsTaskPanel").innerHTML.trim(), "");
+  } finally {
+    context.close();
+  }
+});
+
+test("daily task back navigation restores categories without reload", async () => {
+  const context = await loadShell({ bootSettingsModule: false });
+  try {
+    const { document, window } = context;
+    dispatchOpsData(window, [incompleteOpItem, readyOpItem]);
+    document.querySelector("[data-ops-category=\"incomplete\"]").click();
+    document.getElementById("operationsCategoryClose").click();
+
+    assert.equal(document.getElementById("opsViewCategories").hidden, false);
+    assert.equal(document.getElementById("opsViewCategoryList").hidden, true);
+    assert.equal(document.getElementById("total").textContent, "2");
+    assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
+  } finally {
+    context.close();
+  }
+});
+
+test("shell mobile CSS keeps daily task detail panel full width up to 768px", () => {
+  assert.ok(shellSource.includes("@media (max-width: 768px)"));
+  assert.ok(shellSource.includes("#workspace .ops-task-panel"));
+  assert.ok(shellSource.includes("width:100%"));
+  assert.ok(shellSource.includes("ops-daily-stage"));
+  assert.ok(shellSource.includes("ops-stage-view"));
+});
+
+test("operations ui uses explicit view modes for stage navigation", () => {
+  const uiSource = readRepositoryFile("public", "js", "operations-center-ui.js");
+  assert.ok(uiSource.includes("categories"));
+  assert.ok(uiSource.includes("category-list"));
+  assert.ok(uiSource.includes("opportunity-detail"));
+  assert.ok(uiSource.includes("scrollIntoView"));
+  assert.ok(uiSource.includes("aria-hidden"));
 });

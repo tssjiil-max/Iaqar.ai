@@ -8,32 +8,116 @@ import {
   primaryActionLabel
 } from "./operations-center-domain.js";
 
+const VIEW_MODES = Object.freeze({
+  CATEGORIES: "categories",
+  CATEGORY_LIST: "category-list",
+  OPPORTUNITY_DETAIL: "opportunity-detail"
+});
+
 export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" ? document : null) {
   if (!rootDocument) return;
   const rootWindow = rootDocument.defaultView;
   if (!rootWindow) return;
+
   const state = {
-    view: "categories",
+    viewMode: VIEW_MODES.CATEGORIES,
     activeCategory: null,
     opened: null,
     activeTaskId: null,
-    pendingOpen: null
+    pendingOpen: null,
+    listScrollTop: 0
   };
 
   let data = [];
 
+  const workspace = rootDocument.getElementById("workspace");
   const operationList = rootDocument.getElementById("operationList");
   const operationsEmpty = rootDocument.getElementById("operationsEmpty");
   const operationsCategoryGrid = rootDocument.getElementById("operationsCategoryGrid");
   const operationsCategoryDetailHead = rootDocument.getElementById("operationsCategoryDetailHead");
   const operationsCategoryTitle = rootDocument.getElementById("operationsCategoryTitle");
   const operationsCategoryClose = rootDocument.getElementById("operationsCategoryClose");
+  const operationsDetailBack = rootDocument.getElementById("operationsDetailBack");
   const operationsTaskPanel = rootDocument.getElementById("operationsTaskPanel");
+  const opsViewCategories = rootDocument.getElementById("opsViewCategories");
+  const opsViewCategoryList = rootDocument.getElementById("opsViewCategoryList");
+  const opsViewOpportunityDetail = rootDocument.getElementById("opsViewOpportunityDetail");
   const total = rootDocument.getElementById("total");
   const toast = rootDocument.getElementById("toast");
 
   function opsCenterDomain() {
     return rootWindow.IAQAR?.operationsCenterDomain || null;
+  }
+
+  function prefersReducedMotion() {
+    try {
+      return rootWindow.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      return false;
+    }
+  }
+
+  function scrollWorkspaceTop() {
+    const behavior = prefersReducedMotion() ? "auto" : "auto";
+    if (workspace) {
+      workspace.scrollIntoView({ behavior, block: "start" });
+    }
+    const mainPanel = rootDocument.getElementById("mainPanelOperations");
+    if (mainPanel) {
+      mainPanel.scrollIntoView({ behavior, block: "start" });
+    }
+  }
+
+  function focusStageHeading() {
+    const raf = rootWindow.requestAnimationFrame || ((cb) => rootWindow.setTimeout(cb, 0));
+    raf(() => {
+      let target = null;
+      if (state.viewMode === VIEW_MODES.CATEGORY_LIST) {
+        target = operationsCategoryTitle;
+      } else if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
+        target = operationsTaskPanel?.querySelector("h3, h4");
+      } else if (state.viewMode === VIEW_MODES.CATEGORIES) {
+        target = workspace?.querySelector(".section-title-bar h2");
+      }
+      if (target && typeof target.focus === "function") {
+        if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+        target.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function afterViewChange() {
+    const raf = rootWindow.requestAnimationFrame || ((cb) => rootWindow.setTimeout(cb, 0));
+    raf(() => {
+      scrollWorkspaceTop();
+      focusStageHeading();
+    });
+  }
+
+  function setStageView(node, visible) {
+    if (!node) return;
+    node.hidden = !visible;
+    node.setAttribute("aria-hidden", visible ? "false" : "true");
+  }
+
+  function applyViewMode() {
+    setStageView(opsViewCategories, state.viewMode === VIEW_MODES.CATEGORIES);
+    setStageView(opsViewCategoryList, state.viewMode === VIEW_MODES.CATEGORY_LIST);
+    setStageView(opsViewOpportunityDetail, state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL);
+
+    if (operationsCategoryDetailHead) {
+      operationsCategoryDetailHead.hidden = state.viewMode !== VIEW_MODES.CATEGORY_LIST;
+    }
+    if (operationList) {
+      operationList.hidden = state.viewMode !== VIEW_MODES.CATEGORY_LIST;
+    }
+    if (operationsCategoryGrid) {
+      operationsCategoryGrid.hidden = state.viewMode !== VIEW_MODES.CATEGORIES;
+    }
+    if (operationsEmpty) {
+      operationsEmpty.hidden = state.viewMode !== VIEW_MODES.CATEGORIES
+        || visibleItems().length > 0;
+    }
   }
 
   function visibleItems() {
@@ -92,12 +176,15 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     notify.timer = setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
-  function hideTaskPanel() {
-    state.activeTaskId = null;
+  function clearTaskPanel() {
     if (operationsTaskPanel) {
-      operationsTaskPanel.hidden = true;
       operationsTaskPanel.innerHTML = "";
     }
+  }
+
+  function hideTaskPanel() {
+    state.activeTaskId = null;
+    clearTaskPanel();
   }
 
   function renderCategoryGrid() {
@@ -169,7 +256,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   }
 
   function renderOperationList(items) {
-    hideTaskPanel();
+    if (!operationList) return;
     operationList.innerHTML = items.map((item) => taskCardHtml(item)).join("");
   }
 
@@ -185,39 +272,59 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const domain = opsCenterDomain();
     const cat = domain?.getCategoryDefinition?.(categoryKey);
     if (!cat) return;
-    state.view = "category";
+    state.viewMode = VIEW_MODES.CATEGORY_LIST;
     state.activeCategory = categoryKey;
     state.opened = null;
     state.activeTaskId = null;
+    state.listScrollTop = 0;
     hideTaskPanel();
     render();
+    afterViewChange();
   }
 
   function closeCategory() {
-    state.view = "categories";
+    state.viewMode = VIEW_MODES.CATEGORIES;
     state.activeCategory = null;
     state.opened = null;
     state.activeTaskId = null;
+    state.listScrollTop = 0;
     hideTaskPanel();
     render();
+    afterViewChange();
+  }
+
+  function backToCategoryList() {
+    if (state.viewMode !== VIEW_MODES.OPPORTUNITY_DETAIL) return;
+    hideTaskPanel();
+    state.viewMode = VIEW_MODES.CATEGORY_LIST;
+    state.activeTaskId = null;
+    applyViewMode();
+    if (operationList && state.listScrollTop > 0) {
+      operationList.scrollTop = state.listScrollTop;
+    }
+    afterViewChange();
   }
 
   async function openDailyTaskItem(item) {
     if (!item) return;
+    if (operationList) {
+      state.listScrollTop = operationList.scrollTop;
+    }
     state.activeTaskId = item.id;
-    const domain = opsCenterDomain();
     const oppId = extractOpportunityId(item);
 
     if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
-      if (operationsTaskPanel) operationsTaskPanel.hidden = false;
+      state.viewMode = VIEW_MODES.OPPORTUNITY_DETAIL;
+      applyViewMode();
+      clearTaskPanel();
       const ok = await rootWindow.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId);
       if (!ok) {
         notify("تعذر فتح الفرصة");
-        hideTaskPanel();
+        backToCategoryList();
         return;
       }
       dispatchOpened(item);
-      operationsTaskPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      afterViewChange();
       return;
     }
 
@@ -233,32 +340,38 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const items = visibleItems();
     if (total) total.textContent = items.length;
 
-    if (state.view === "categories") {
-      renderCategoryGrid();
-      if (operationsCategoryGrid) operationsCategoryGrid.hidden = false;
-      if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = true;
-      if (operationList) {
-        operationList.hidden = true;
-        operationList.innerHTML = "";
-      }
+    if (items.length === 0 && state.viewMode !== VIEW_MODES.CATEGORIES) {
+      state.viewMode = VIEW_MODES.CATEGORIES;
+      state.activeCategory = null;
+      state.opened = null;
+      state.activeTaskId = null;
       hideTaskPanel();
-      if (operationsEmpty) operationsEmpty.hidden = items.length > 0;
+    }
+
+    if (state.viewMode === VIEW_MODES.CATEGORIES) {
+      renderCategoryGrid();
+      applyViewMode();
       return;
     }
 
     const groups = categoryGroups();
     const categoryItems = [...(groups[state.activeCategory] || [])];
-    if (operationsCategoryGrid) operationsCategoryGrid.hidden = true;
-    if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = false;
     updateCategoryHead(categoryItems.length);
-    renderOperationList(categoryItems);
-    if (operationList) operationList.hidden = categoryItems.length === 0;
-    if (operationsEmpty) operationsEmpty.hidden = categoryItems.length > 0;
+
+    if (state.viewMode === VIEW_MODES.CATEGORY_LIST) {
+      renderOperationList(categoryItems);
+      if (operationList) operationList.hidden = categoryItems.length === 0;
+    }
 
     if (state.activeTaskId && !categoryItems.some((row) => row.id === state.activeTaskId)) {
       hideTaskPanel();
       state.activeTaskId = null;
+      if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
+        state.viewMode = VIEW_MODES.CATEGORY_LIST;
+      }
     }
+
+    applyViewMode();
   }
 
   rootDocument.addEventListener("click", (event) => {
@@ -270,6 +383,11 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
     if (event.target.closest("#operationsCategoryClose")) {
       closeCategory();
+      return;
+    }
+
+    if (event.target.closest("#operationsDetailBack")) {
+      backToCategoryList();
       return;
     }
 
@@ -317,7 +435,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
         const item = data.find(pendingMatches);
         const domain = opsCenterDomain();
         if (domain?.categoryKey) {
-          state.view = "category";
+          state.viewMode = VIEW_MODES.CATEGORY_LIST;
           state.activeCategory = domain.categoryKey(item);
         }
         state.pendingOpen = null;
@@ -353,7 +471,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     }
     const domain = opsCenterDomain();
     if (domain?.categoryKey) {
-      state.view = "category";
+      state.viewMode = VIEW_MODES.CATEGORY_LIST;
       state.activeCategory = domain.categoryKey(item);
     }
     state.opened = item.id;
@@ -363,14 +481,24 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   });
 
   rootWindow.addEventListener("iaqar:daily-task-closed", () => {
-    state.activeTaskId = null;
-    hideTaskPanel();
+    if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
+      backToCategoryList();
+    } else {
+      state.activeTaskId = null;
+      clearTaskPanel();
+    }
   });
 
   rootWindow.addEventListener("iaqar:daily-task-completed", () => {
     state.activeTaskId = null;
-    hideTaskPanel();
+    clearTaskPanel();
+    if (state.activeCategory) {
+      state.viewMode = VIEW_MODES.CATEGORY_LIST;
+    } else {
+      state.viewMode = VIEW_MODES.CATEGORIES;
+    }
     render();
+    afterViewChange();
   });
 
   rootWindow.addEventListener("iaqar:operations-center-domain-ready", () => render());

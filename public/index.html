@@ -1235,20 +1235,132 @@
       padding:8px 12px;
       font:700 13px Tajawal;
       cursor:pointer;
+      flex:0 0 auto;
+    }
+
+    .ops-daily-stage {
+      width:100%;
+      max-width:100%;
+      min-width:0;
+      box-sizing:border-box;
+    }
+
+    .ops-stage-view {
+      width:100%;
+      max-width:100%;
+      min-width:0;
+      box-sizing:border-box;
+    }
+
+    .ops-stage-view[hidden] {
+      display:none !important;
+    }
+
+    .ops-detail-nav {
+      margin-bottom:10px;
+    }
+
+    .ops-detail-back {
+      width:100%;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:10px 12px;
+      font:700 13px Tajawal;
+      cursor:pointer;
+      text-align:center;
+      box-sizing:border-box;
+    }
+
+    .ops-category-list {
+      margin-top:0;
     }
 
     .ops-task-panel {
-      margin-top:14px;
+      margin-top:0;
       border:1px solid var(--line);
       border-radius:17px;
       background:#fff;
       overflow:hidden;
+      width:100%;
+      max-width:100%;
+      min-width:0;
+      box-sizing:border-box;
     }
 
     .ops-task-panel .bank-detail-head,
     .ops-task-panel .bank-workspace-section,
     .ops-task-panel .bank-unified-form {
       max-width:100%;
+      box-sizing:border-box;
+    }
+
+    @media (max-width: 768px) {
+      #workspace .ops-daily-stage,
+      #workspace .ops-stage-view,
+      #workspace .ops-task-panel {
+        width:100%;
+        max-width:100%;
+        min-width:0;
+      }
+
+      #workspace .ops-task-panel .bank-workspace-layout {
+        display:block;
+        width:100%;
+        max-width:100%;
+      }
+
+      #workspace .ops-task-panel .bank-workspace-main {
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        flex:none;
+      }
+
+      #workspace .ops-task-panel .bank-detail-head,
+      #workspace .ops-task-panel .iaqar-workflow-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        padding:12px 14px;
+        width:100%;
+        box-sizing:border-box;
+        margin-inline:0;
+      }
+
+      #workspace .ops-task-panel .bank-detail-head h3,
+      #workspace .ops-task-panel .iaqar-workflow-head h3 {
+        flex:1 1 auto;
+        min-width:0;
+        margin:0;
+        font-size:18px;
+        line-height:1.35;
+      }
+
+      #workspace .ops-task-panel .settings-close,
+      #workspace .ops-task-panel .iaqar-workflow-close {
+        flex:0 0 auto;
+        margin:0;
+      }
+
+      #workspace .ops-task-panel .bank-workspace-section,
+      #workspace .ops-task-panel .bank-unified-form,
+      #workspace .ops-task-panel .bank-edit-grid {
+        width:100%;
+        max-width:100%;
+        box-sizing:border-box;
+        margin-inline:0;
+      }
+
+      #workspace .ops-task-panel .bank-workspace-actions {
+        grid-template-columns:1fr;
+      }
+
+      #workspace .ops-category-detail-head {
+        margin-top:0;
+      }
     }
 
     .ops-task-card {
@@ -4393,18 +4505,30 @@
             <button type="button" class="workspace-filter" data-opportunity-view="archived">المنتهية</button>
           </div>
 
-          <div class="ops-category-grid" id="operationsCategoryGrid" aria-label="تصنيفات المهام اليومية"></div>
-          <div class="ops-category-detail-head" id="operationsCategoryDetailHead" hidden>
-            <h3 id="operationsCategoryTitle"></h3>
-            <button type="button" class="ops-category-close" id="operationsCategoryClose">إغلاق التصنيف</button>
-          </div>
+          <div class="ops-daily-stage" id="opsDailyStage">
+            <div class="ops-stage-view" id="opsViewCategories" data-ops-view="categories">
+              <div class="ops-category-grid" id="operationsCategoryGrid" aria-label="تصنيفات المهام اليومية"></div>
+              <p class="empty" id="operationsEmpty">
+                لا توجد مهام تحتاج انتباهك حاليًا.
+                <br>ستظهر المهام هنا عند توفر سجلات حقيقية
+              </p>
+            </div>
 
-          <div class="list" id="operationList" hidden></div>
-          <div class="ops-task-panel" id="operationsTaskPanel" hidden aria-live="polite"></div>
-          <p class="empty" id="operationsEmpty">
-            لا توجد مهام تحتاج انتباهك حاليًا.
-            <br>ستظهر المهام هنا عند توفر سجلات حقيقية
-          </p>
+            <div class="ops-stage-view" id="opsViewCategoryList" data-ops-view="category-list" hidden aria-hidden="true">
+              <div class="ops-category-detail-head" id="operationsCategoryDetailHead">
+                <h3 id="operationsCategoryTitle"></h3>
+                <button type="button" class="ops-category-close" id="operationsCategoryClose">رجوع للتصنيفات</button>
+              </div>
+              <div class="list ops-category-list" id="operationList"></div>
+            </div>
+
+            <div class="ops-stage-view" id="opsViewOpportunityDetail" data-ops-view="opportunity-detail" hidden aria-hidden="true">
+              <div class="ops-detail-nav">
+                <button type="button" class="ops-detail-back" id="operationsDetailBack">رجوع إلى فرص التصنيف</button>
+              </div>
+              <div class="ops-task-panel" id="operationsTaskPanel" aria-live="polite"></div>
+            </div>
+          </div>
         </section>
       </div>
 

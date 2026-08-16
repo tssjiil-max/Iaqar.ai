@@ -589,6 +589,14 @@ function scrollBankDetailIntoView() {
   const panel = document.getElementById(ctx.panelId);
   if (!panel || panel.hidden) return;
   window.requestAnimationFrame(() => {
+    if (ctx.dailyTask) {
+      const workspace = document.getElementById("workspace");
+      if (workspace) {
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        workspace.scrollIntoView({ behavior: reduced ? "auto" : "auto", block: "start" });
+      }
+      return;
+    }
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
