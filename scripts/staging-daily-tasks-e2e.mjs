@@ -36,6 +36,16 @@ async function isDomHidden(page, selector) {
   return page.locator(selector).evaluate((el) => el.hidden);
 }
 
+async function stageViewState(page) {
+  return page.evaluate(() => ({
+    categories: !document.getElementById("opsViewCategories")?.hidden,
+    categoryList: !document.getElementById("opsViewCategoryList")?.hidden,
+    opportunityDetail: !document.getElementById("opsViewOpportunityDetail")?.hidden,
+    gridHidden: document.getElementById("operationsCategoryGrid")?.hidden,
+    listHidden: document.getElementById("operationList")?.hidden
+  }));
+}
+
 async function login(page) {
   await page.goto(`${STAGING_URL}/?office=${encodeURIComponent(OFFICE_ID)}`, {
     waitUntil: "domcontentloaded",
@@ -72,10 +82,12 @@ async function main() {
     if (tabText?.includes("المهام اليومية")) pass("daily_tasks_tab");
     else fail("daily_tasks_tab", tabText || "");
 
-    const listHidden = await isDomHidden(page, "#operationList");
-    const taskPanelHidden = await isDomHidden(page, "#operationsTaskPanel");
-    if (listHidden && taskPanelHidden) pass("no_list_before_category");
-    else fail("no_list_before_category", `list=${listHidden} panel=${taskPanelHidden}`);
+    const initialStage = await stageViewState(page);
+    if (initialStage.categories && !initialStage.categoryList && !initialStage.opportunityDetail) {
+      pass("initial_categories_stage");
+    } else {
+      fail("initial_categories_stage", JSON.stringify(initialStage));
+    }
 
     const oldOps = await page.locator("#workspace .operation").count();
     if (oldOps === 0) pass("no_old_operation_accordion");
@@ -85,10 +97,17 @@ async function main() {
     if (cardCount === 6) pass("six_category_cards", String(cardCount));
     else fail("six_category_cards", String(cardCount));
 
-    await page.screenshot({ path: `${OUT}/staging_daily_tasks_categories.png`, fullPage: true });
+    await page.screenshot({ path: `${OUT}/screenshot_before_category.png`, fullPage: false });
 
     await page.locator("[data-ops-category=\"incomplete\"]").click();
     await page.waitForTimeout(800);
+    const afterCategory = await stageViewState(page);
+    if (!afterCategory.categories && afterCategory.categoryList && !afterCategory.opportunityDetail) {
+      pass("category_list_stage");
+    } else {
+      fail("category_list_stage", JSON.stringify(afterCategory));
+    }
+    await page.screenshot({ path: `${OUT}/screenshot_after_category.png`, fullPage: false });
     const incompleteCount = await page.locator(".ops-task-card").count();
     pass("incomplete_has_tasks", String(incompleteCount));
     await page.locator("#operationsCategoryClose").click();
@@ -106,6 +125,10 @@ async function main() {
       const closeVisible = await page.locator("#operationsCategoryClose").isVisible();
       if (gridHidden && closeVisible) pass(`category_drill_${key}`);
       else fail(`category_drill_${key}`, `gridHidden=${gridHidden} close=${closeVisible}`);
+
+      const stage = await stageViewState(page);
+      if (!stage.categories && stage.categoryList) pass(`category_stage_${key}`);
+      else fail(`category_stage_${key}`, JSON.stringify(stage));
 
       const title = await page.locator("#operationsCategoryTitle").textContent();
       if (title && title.length > 0) pass(`category_title_${key}`, title.trim());
@@ -132,9 +155,25 @@ async function main() {
             "#operationsTaskPanel #bankUnifiedForm, #operationsTaskPanel .bank-workspace-section",
             { timeout: 20000 }
           );
+          const detailStage = await stageViewState(page);
+          if (!detailStage.categoryList && detailStage.opportunityDetail) {
+            pass("opportunity_detail_stage");
+          } else {
+            fail("opportunity_detail_stage", JSON.stringify(detailStage));
+          }
           const panelVisible = await page.locator("#operationsTaskPanel").isVisible();
           pass("inline_task_panel_opens", `visible=${panelVisible}`);
-          await page.screenshot({ path: `${OUT}/staging_daily_tasks_inline_panel.png`, fullPage: true });
+          await page.screenshot({ path: `${OUT}/screenshot_after_opportunity.png`, fullPage: false });
+          await page.screenshot({ path: `${OUT}/screenshot_overflow_check.png`, fullPage: false });
+
+          await page.locator("#operationsDetailBack").click();
+          await page.waitForTimeout(500);
+          const backToList = await stageViewState(page);
+          if (backToList.categoryList && !backToList.opportunityDetail) {
+            pass("detail_back_to_list");
+          } else {
+            fail("detail_back_to_list", JSON.stringify(backToList));
+          }
         } catch (error) {
           fail("inline_task_panel_opens", String(error?.message || error));
         }
