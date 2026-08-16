@@ -4092,6 +4092,36 @@
   }
 
   .opportunity-bank-panel .bank-toolbar { margin-top:4px; }
+
+  .release-version {
+    text-align:center;
+    font-size:11px;
+    line-height:1.4;
+    color:var(--muted);
+    padding:8px 4px 0;
+  }
+
+  .release-update {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    margin-top:8px;
+    color:var(--muted);
+    font-size:12px;
+  }
+
+  .release-update[hidden],
+  .release-version[hidden] { display:none; }
+
+  .release-update button {
+    border:1px solid var(--green);
+    background:var(--green-pale);
+    color:var(--green);
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:12px;
+  }
 </style>
 
 </head>
@@ -5306,5 +5336,6 @@
   <script type="module" src="js/opportunity-domain-bridge.js"></script>
   <script src="js/notification-navigation.js"></script>
   <script src="js/workflow-office.js"></script>
+  <script type="module" src="js/release-version-ui.js"></script>
 </body>
 </html>

@@ -105,7 +105,8 @@ test("cooperation room rules isolate third office", () => {
 
 test("service worker cache bumped for workspace", () => {
   const sw = readRepo("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-workspace-v4"));
+  assert.ok(sw.includes("iaqar-shell-"));
+  assert.ok(sw.includes("/version.json"));
 });
 
 test("incomplete save button label is canonical", () => {

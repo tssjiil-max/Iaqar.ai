@@ -9,7 +9,7 @@ import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 
 const STAGING_URL =
   process.env.STAGING_URL ||
-  "https://iaqar-ai-staging.web.app";
+  "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 const WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
 const OFFICE_ID = "staging-logo-live-20260807";
 const TARGET_OFFICE = "staging-coop-target-20260807";
@@ -53,7 +53,7 @@ async function getBrokerUid() {
 }
 
 async function setupFirestore() {
-  const coverUrl = `${STAGING_URL || "https://iaqar-ai-staging.web.app"}/icons/icon-192.png`;
+  const coverUrl = `${STAGING_URL || "https://iaqar-ai-staging--staging-9c4b0k7h.web.app"}/icons/icon-192.png`;
 
   await db.collection("offices").doc(OFFICE_ID).set(
     {

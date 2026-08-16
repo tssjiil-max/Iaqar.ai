@@ -99,8 +99,10 @@ test("operations shell renders opsStatusLine on cards", () => {
 
 test("service worker cache bumped with network-first navigation", () => {
   const sw = readRepo("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-workspace-v4"));
-  assert.ok(sw.includes("IAQAR_NAVIGATION"));
+  assert.ok(sw.includes("iaqar-shell-"));
+  assert.ok(sw.includes("/version.json"));
+  assert.ok(sw.includes("isHtmlPath"));
+  assert.ok(sw.includes("no-store"));
 });
 
 test("header CSS reduced to ~72% of prior bundle height", () => {
