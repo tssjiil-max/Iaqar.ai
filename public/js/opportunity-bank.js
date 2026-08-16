@@ -189,8 +189,54 @@ const state = {
   busy: false,
   pendingQueryRefresh: false,
   resultTotal: 0,
-  scanExhausted: false
+  scanExhausted: false,
+  detailRenderContext: null
 };
+
+function detailRenderContext() {
+  return state.detailRenderContext || { panelId: "opportunityBankDetail", dailyTask: false };
+}
+
+function isDailyTaskDetail() {
+  return Boolean(detailRenderContext().dailyTask);
+}
+
+function setDetailRenderContext(options = {}) {
+  if (options.dailyTask || options.panelId === "operationsTaskPanel") {
+    state.detailRenderContext = {
+      panelId: options.panelId || "operationsTaskPanel",
+      dailyTask: true
+    };
+  } else {
+    state.detailRenderContext = { panelId: "opportunityBankDetail", dailyTask: false };
+  }
+}
+
+function clearOtherDetailPanels(activePanelId) {
+  for (const id of ["opportunityBankDetail", "operationsTaskPanel"]) {
+    if (id === activePanelId) continue;
+    const el = document.getElementById(id);
+    if (el) {
+      el.hidden = true;
+      el.innerHTML = "";
+    }
+  }
+}
+
+function closeActiveDetailPanel() {
+  const ctx = detailRenderContext();
+  const panel = document.getElementById(ctx.panelId);
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  if (ctx.dailyTask) {
+    state.detailRenderContext = null;
+    window.dispatchEvent(new CustomEvent("iaqar:daily-task-closed"));
+  } else {
+    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
+  }
+}
 
 let activeOutgoingShareKey = "";
 const outgoingShareRowsCache = [];
@@ -539,7 +585,8 @@ async function openBankDetailFromList(opportunityId) {
 }
 
 function scrollBankDetailIntoView() {
-  const panel = $("opportunityBankDetail");
+  const ctx = detailRenderContext();
+  const panel = document.getElementById(ctx.panelId);
   if (!panel || panel.hidden) return;
   window.requestAnimationFrame(() => {
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -754,8 +801,14 @@ function isBankDetailOpen() {
   return Boolean(state.activeId);
 }
 
-async function renderDetail(id) {
-  const panel = $("opportunityBankDetail");
+async function renderDetail(id, options = {}) {
+  if (options.panelId || options.dailyTask) {
+    setDetailRenderContext(options);
+  } else if (!state.detailRenderContext) {
+    setDetailRenderContext({ dailyTask: false });
+  }
+  const ctx = detailRenderContext();
+  const panel = document.getElementById(ctx.panelId);
   if (!panel) return;
   const record = state.records.get(id);
   if (!record) {
@@ -766,6 +819,7 @@ async function renderDetail(id) {
 
   setStatus("جارٍ تجهيز التفاصيل…");
   state.activeId = id;
+  clearOtherDetailPanels(ctx.panelId);
   panel.hidden = false;
 
   const archived = record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
@@ -784,13 +838,13 @@ async function renderDetail(id) {
         <p>${escapeHtml(card.location)}</p>
         <p class="bank-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>
       </section>`;
-    $("bankDetailClose")?.addEventListener("click", () => {
-      window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
-    });
+    $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
     scrollBankDetailIntoView();
-    setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-    window.IAQAR?.navigation?.updateBackButton?.();
+    if (!ctx.dailyTask) {
+      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
+      window.IAQAR?.navigation?.updateBackButton?.();
+    }
     return;
   }
 
@@ -799,9 +853,11 @@ async function renderDetail(id) {
     wireIncompleteDetailHandlers(id, record);
     window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
     scrollBankDetailIntoView();
-    setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-    window.IAQAR?.navigation?.updateBackButton?.();
+    if (!ctx.dailyTask) {
+      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
+      window.IAQAR?.navigation?.updateBackButton?.();
+    }
     return;
   }
 
@@ -813,9 +869,11 @@ async function renderDetail(id) {
   });
   wireWorkspaceHandlers(id, freshRecord, bundle);
   scrollBankDetailIntoView();
-  setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-  window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-workspace" } }));
-  window.IAQAR?.navigation?.updateBackButton?.();
+  if (!ctx.dailyTask) {
+    setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-workspace" } }));
+    window.IAQAR?.navigation?.updateBackButton?.();
+  }
 }
 
 function syncWorkspaceActionLayout() {
@@ -1036,9 +1094,7 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
 }
 
 function wireIncompleteDetailHandlers(id, record) {
-  $("bankDetailClose")?.addEventListener("click", () => {
-    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
-  });
+  $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
   wireBankFormArabicInputs(record);
   const form = $("bankUnifiedForm");
   const propertyInput = form?.querySelector('input[name="propertyType"]');
@@ -1111,6 +1167,13 @@ function wireIncompleteDetailHandlers(id, record) {
     try {
       await patchOpportunity(id, patch);
       await reloadOpportunityFromBackend(id);
+      if (isDailyTaskDetail() && readinessCheck.isReadyForMatching) {
+        toast("اكتملت الفرصة وانتقلت إلى جاهزة للمطابقة");
+        closeActiveDetailPanel();
+        window.dispatchEvent(new CustomEvent("iaqar:daily-task-completed", { detail: { opportunityId: id } }));
+        renderList();
+        return;
+      }
       toast(readinessCheck.isReadyForMatching ? "الفرصة جاهزة للمطابقة" : "تم حفظ البيانات");
       await renderDetail(id);
       renderList();
@@ -1290,9 +1353,7 @@ function wireSuitableOfficesHandlers(opportunityId, record, bundle = {}) {
 }
 
 function wireWorkspaceHandlers(id, record, bundle = {}) {
-  $("bankDetailClose")?.addEventListener("click", () => {
-    window.dispatchEvent(new CustomEvent("iaqar:nav-close-request"));
-  });
+  $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
 
   const showSection = (sectionId) => {
     const section = document.getElementById(sectionId);
@@ -3631,6 +3692,7 @@ function boot() {
   window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
     openOpportunityBank();
     if (!opportunityId) return;
+    setDetailRenderContext({ dailyTask: false });
     // Detail deep-link loads the single opportunity without dumping the full bank.
     const runtime = officeRuntime();
     if (!runtime?.db || !officeId()) return;
@@ -3645,6 +3707,37 @@ function boot() {
       }
     } catch (error) {
       console.warn("[iaqar] open opportunity detail", error);
+    }
+  };
+  window.IAQAR.renderDailyTaskOpportunity = async function renderDailyTaskOpportunity(containerId, opportunityId) {
+    const panelId = String(containerId || "operationsTaskPanel").trim();
+    const id = String(opportunityId || "").trim();
+    const panel = document.getElementById(panelId);
+    if (!panel || !id) return false;
+    const runtime = officeRuntime();
+    if (!runtime?.db || !officeId()) return false;
+    try {
+      const snap = await runtime.db.collection("offices").doc(officeId())
+        .collection("opportunities").doc(id).get();
+      if (!snap.exists) {
+        toast("لم يتم العثور على الفرصة");
+        return false;
+      }
+      const data = snap.data() || {};
+      if (data.officeId && String(data.officeId) !== officeId()) {
+        toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
+        return false;
+      }
+      const record = { id, ...data };
+      state.records.set(id, record);
+      panel.hidden = false;
+      await renderDetail(id, { panelId, dailyTask: true });
+      scrollBankDetailIntoView();
+      return true;
+    } catch (error) {
+      console.warn("[iaqar] render daily task opportunity", error);
+      toast("تعذر فتح الفرصة");
+      return false;
     }
   };
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;

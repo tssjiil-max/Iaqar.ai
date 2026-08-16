@@ -3,20 +3,15 @@
  * Pure logic: maps iaqar:operations-data items into six broker-facing buckets.
  */
 
+import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+
 export const OPERATIONS_CATEGORIES = Object.freeze([
   {
     key: "incomplete",
-    label: "غير مكتملة",
+    label: "تحتاج استكمال",
     description: "فرص تحتاج استكمال البيانات أو حقول ناقصة.",
     colorClass: "ops-cat-red",
-    openLabel: "عرض غير المكتملة"
-  },
-  {
-    key: "follow_up",
-    label: "تحتاج متابعة",
-    description: "معلنون أو عملاء بانتظار رد أو موعد متابعة.",
-    colorClass: "ops-cat-orange",
-    openLabel: "عرض المتابعة"
+    openLabel: "عرض تحتاج استكمال"
   },
   {
     key: "ready",
@@ -24,6 +19,13 @@ export const OPERATIONS_CATEGORIES = Object.freeze([
     description: "فرص مكتملة وجاهزة لتشغيل المطابقة.",
     colorClass: "ops-cat-green",
     openLabel: "عرض الجاهزة"
+  },
+  {
+    key: "follow_up",
+    label: "تحتاج متابعة",
+    description: "معلنون أو عملاء بانتظار رد أو موعد متابعة.",
+    colorClass: "ops-cat-orange",
+    openLabel: "عرض المتابعة"
   },
   {
     key: "matched",
@@ -95,6 +97,132 @@ export function getCategoryDefinition(key) {
 }
 
 /**
+ * Resolve opportunity id from an operations list item.
+ */
+export function extractOpportunityId(item) {
+  if (!item) return "";
+  const raw = String(
+    item.opportunityId
+    || item.recordId
+    || item.id
+    || ""
+  ).trim();
+  if (!raw) return "";
+  if (raw.startsWith("opp-")) return raw.slice(4);
+  if (raw.startsWith("opp_")) return raw.slice(4);
+  if (item.recordType === "opportunity" || item.recordType === "intake") {
+    return raw.replace(/^opp-/, "");
+  }
+  const oppFromOp = String(item.opportunityId || "").trim();
+  return oppFromOp.replace(/^opp-/, "");
+}
+
+/**
+ * Count missing matching-readiness fields on an item.
+ */
+export function missingFieldCount(item) {
+  if (!item) return 0;
+  if (Array.isArray(item.matchingReadinessMissing) && item.matchingReadinessMissing.length) {
+    return item.matchingReadinessMissing.length;
+  }
+  if (Array.isArray(item.missingFields) && item.missingFields.length) {
+    return item.missingFields.length;
+  }
+  const opType = upper(item.operationType);
+  if (opType === "MISSING_DATA") {
+    const text = combinedText(item);
+    const match = text.match(/الحقول الناقصة:\s*([^]+?)(?:\.|$)/);
+    if (match) {
+      const parts = match[1].split(/[،,]/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length) return parts.length;
+    }
+    return 1;
+  }
+  return 0;
+}
+
+function itemSortTimestamp(item) {
+  return String(item?.createdAt || item?.updatedAt || item?.receivedAt || "");
+}
+
+/**
+ * Incomplete bucket: one missing field first, then two, then three+, oldest first.
+ */
+export function sortIncompleteItems(items) {
+  return [...(items || [])].sort((a, b) => {
+    const countDiff = missingFieldCount(a) - missingFieldCount(b);
+    if (countDiff !== 0) return countDiff;
+    const timeDiff = itemSortTimestamp(a).localeCompare(itemSortTimestamp(b));
+    if (timeDiff !== 0) return timeDiff;
+    return (a.priority ?? 2) - (b.priority ?? 2);
+  });
+}
+
+export function sortCategoryItems(categoryKey, items) {
+  if (categoryKey === "incomplete") return sortIncompleteItems(items);
+  return [...(items || [])].sort((a, b) => {
+    const timeDiff = itemSortTimestamp(a).localeCompare(itemSortTimestamp(b));
+    if (timeDiff !== 0) return timeDiff;
+    return (a.priority ?? 2) - (b.priority ?? 2);
+  });
+}
+
+/**
+ * One broker-facing suggestion — does not auto-run.
+ */
+export function bestActionHint(item) {
+  if (!item) return "";
+  const cat = categoryKey(item);
+  if (cat === "incomplete") {
+    const labels = missingFieldLabelsArabic(item.matchingReadinessMissing || item.missingFields || []);
+    if (labels.length) return `أكمل ${labels[0]}`;
+    const count = missingFieldCount(item);
+    if (count === 1) return "أكمل الحقل الناقص";
+    if (count > 1) return `أكمل ${count} حقول ناقصة`;
+    return "استكمال الفرصة";
+  }
+  if (cat === "ready") {
+    const scoreText = String(item.bestMatchScoreText || "");
+    const matchCount = Number(item.matchCount || 0);
+    if (matchCount > 0 || scoreText) {
+      const n = matchCount > 0 ? matchCount : (scoreText.match(/\d+/)?.[0] || "");
+      if (n) return `راجع ${n} مطابقات`;
+      return "راجع المطابقات";
+    }
+    const text = combinedText(item);
+    if (containsText(text, "لا توجد مطابقات") || containsText(text, "لا مطابقات")) {
+      return "اطلب تعاونًا من مكتب متخصص";
+    }
+    return "عرض المطابقات";
+  }
+  if (cat === "follow_up") {
+    return "حدد موعد متابعة";
+  }
+  if (cat === "matched") {
+    return "تابع التواصل مع الطرفين";
+  }
+  if (cat === "responded") {
+    return "عالج الرد والخطوة التالية";
+  }
+  if (cat === "archived") {
+    return "مراجعة السجل";
+  }
+  return String(item.nextAction || item.actionLabel || "").trim();
+}
+
+export function primaryActionLabel(item) {
+  if (!item) return "بدء الإجراء";
+  const cat = categoryKey(item);
+  if (cat === "incomplete") return "استكمال الفرصة";
+  if (cat === "ready") return "فتح مساحة العمل";
+  if (cat === "follow_up") return "متابعة الفرصة";
+  if (cat === "matched") return "مراجعة المطابقة";
+  if (cat === "responded") return "معالجة الرد";
+  if (cat === "archived") return "عرض السجل";
+  return String(item.actionLabel || "بدء الإجراء").trim();
+}
+
+/**
  * Assign one category key per operations item (first-match priority).
  */
 export function categoryKey(item) {
@@ -123,6 +251,13 @@ export function categoryKey(item) {
     || upper(item.matchingReadiness) === "NEEDS_COMPLETION"
   ) {
     return "incomplete";
+  }
+
+  if (
+    upper(item.matchingReadiness) === "READY_FOR_MATCHING"
+    || containsText(text, "جاهزة للمطابقة")
+  ) {
+    return "ready";
   }
 
   if (
@@ -155,13 +290,6 @@ export function categoryKey(item) {
     return "matched";
   }
 
-  if (
-    upper(item.matchingReadiness) === "READY_FOR_MATCHING"
-    || containsText(text, "جاهزة للمطابقة")
-  ) {
-    return "ready";
-  }
-
   if (recordType === "intake") return "follow_up";
 
   return "follow_up";
@@ -175,6 +303,9 @@ export function groupItems(items) {
   for (const item of filterBrokerVisibleItems(items)) {
     const key = categoryKey(item);
     if (groups[key]) groups[key].push(item);
+  }
+  for (const cat of OPERATIONS_CATEGORIES) {
+    groups[cat.key] = sortCategoryItems(cat.key, groups[cat.key]);
   }
   return groups;
 }

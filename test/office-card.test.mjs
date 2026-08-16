@@ -271,7 +271,7 @@ test("TEST 14: deal records still surface in matched category", async () => {
     }));
 
     document.querySelector("[data-ops-category=\"matched\"]").click();
-    const rendered = Array.from(document.querySelectorAll(".operation h3")).map(node => node.textContent.trim());
+    const rendered = Array.from(document.querySelectorAll(".ops-task-body h4")).map((node) => node.textContent.trim());
     assert.deepEqual(rendered, ["مطابقة بنسبة 88%", "صفقة قيد التنفيذ"]);
     assert.equal(document.getElementById("total").textContent, "2");
     assert.equal(document.getElementById("operationsEmpty").hidden, true);
@@ -286,7 +286,7 @@ test("TEST 15: daily tasks ships empty with category grid and approved empty sta
   const context = await shell();
   try {
     const { document } = context;
-    assert.equal(document.querySelectorAll(".operation").length, 0, "no fabricated operation may render");
+    assert.equal(document.querySelectorAll(".ops-task-card").length, 0, "no fabricated task card may render");
     assert.equal(document.getElementById("operationList").innerHTML.trim(), "");
     assert.equal(document.getElementById("total").textContent, "0");
     assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);

@@ -89,6 +89,14 @@ export async function loadShell(options = {}) {
   window.IAQAR.operationsCenterDomain = operationsCenterDomain;
   window.dispatchEvent(new window.CustomEvent("iaqar:operations-center-domain-ready"));
 
+  moduleCounter += 1;
+  const opsUiSpecifier = new URL(
+    pathToFileURL(path.join(repositoryRoot, "public", "js", "operations-center-ui.js"))
+  );
+  opsUiSpecifier.searchParams.set("shellInstance", String(moduleCounter));
+  const opsUiModule = await import(opsUiSpecifier.href);
+  opsUiModule.bootDailyTasksUi?.(window.document);
+
   for (const name of [
     "window", "document", "localStorage", "sessionStorage", "CustomEvent", "Event",
     "Image", "HTMLElement", "Node", "getComputedStyle", "File", "Blob"

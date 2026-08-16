@@ -358,8 +358,8 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
     }));
     document.querySelector("[data-ops-category=\"matched\"]").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, true);
-    assert.match(document.querySelector(".operation h3").textContent, /مطابقة/);
-    assert.match(document.querySelector(".operation p").textContent, /مراجعة/);
+    assert.match(document.querySelector(".ops-task-body h4").textContent, /مطابقة/);
+    assert.match(document.querySelector(".ops-task-body p").textContent, /مراجعة/);
     assert.equal(ui.priorityLabel, "مرتفع");
 
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
@@ -402,9 +402,8 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
     }));
     document.querySelector("[data-ops-category=\"matched\"]").click();
     const list = document.getElementById("operationList");
-    assert.ok(list.querySelectorAll(".whatsapp-action").length >= 2);
-    assert.ok(list.textContent.includes("إرسال واتساب"));
-    assert.ok(list.textContent.includes("إرسال تليجرام"));
+    assert.ok(list.querySelectorAll(".ops-task-primary").length >= 1);
+    assert.ok(list.textContent.includes("مراجعة المطابقة") || list.textContent.includes("مطابقة"));
     assert.equal(list.textContent.includes("مسودة واتساب"), false);
     assert.equal(list.textContent.includes("مسودة تيليجرام"), false);
     assert.equal(list.textContent.includes("تم التسليم"), false);

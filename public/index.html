@@ -1237,6 +1237,112 @@
       cursor:pointer;
     }
 
+    .ops-task-panel {
+      margin-top:14px;
+      border:1px solid var(--line);
+      border-radius:17px;
+      background:#fff;
+      overflow:hidden;
+    }
+
+    .ops-task-panel .bank-detail-head,
+    .ops-task-panel .bank-workspace-section,
+    .ops-task-panel .bank-unified-form {
+      max-width:100%;
+    }
+
+    .ops-task-card {
+      border-bottom:1px solid #EDF2EF;
+      padding:12px;
+      background:#fff;
+    }
+
+    .ops-task-card:last-child { border-bottom:0; }
+
+    .ops-task-card-main {
+      width:100%;
+      border:0;
+      background:transparent;
+      display:grid;
+      grid-template-columns:56px minmax(0, 1fr) auto;
+      gap:10px;
+      align-items:start;
+      text-align:right;
+      cursor:pointer;
+      padding:0;
+    }
+
+    .ops-task-icon {
+      width:56px;
+      height:56px;
+      border-radius:12px;
+      background:var(--green-soft);
+      color:var(--green);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .ops-task-icon .icon { width:28px; height:28px; }
+
+    .ops-task-body h4 {
+      margin:0 0 4px;
+      font-size:15px;
+      color:var(--green);
+      line-height:1.35;
+    }
+
+    .ops-task-body p {
+      margin:0;
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .ops-task-status,
+    .ops-task-missing,
+    .ops-task-source {
+      margin-top:6px;
+      font-size:12px;
+    }
+
+    .ops-task-hint {
+      margin-top:8px;
+      font-size:12px;
+      color:var(--green);
+      font-weight:700;
+    }
+
+    .ops-task-hint span {
+      color:var(--muted);
+      font-weight:600;
+    }
+
+    .ops-task-time {
+      font-size:11px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+
+    .ops-task-actions {
+      margin-top:10px;
+      display:flex;
+      gap:8px;
+    }
+
+    .ops-task-primary {
+      flex:1;
+      border:0;
+      border-radius:12px;
+      padding:10px 14px;
+      background:var(--green);
+      color:#fff;
+      font:700 13px Tajawal;
+      cursor:pointer;
+    }
+
+    .ops-task-primary:active { transform:scale(0.98); }
+
     .list {
       margin-top:14px;
       border:1px solid var(--line);
@@ -4294,6 +4400,7 @@
           </div>
 
           <div class="list" id="operationList" hidden></div>
+          <div class="ops-task-panel" id="operationsTaskPanel" hidden aria-live="polite"></div>
           <p class="empty" id="operationsEmpty">
             لا توجد مهام تحتاج انتباهك حاليًا.
             <br>ستظهر المهام هنا عند توفر سجلات حقيقية
@@ -4955,384 +5062,7 @@
   <script type="module" src="js/operations-domain-bridge.js"></script>
   <script type="module" src="js/messaging-domain-bridge.js"></script>
 
-  <script>
-    "use strict";
-
-    const state = {
-      opened: null,
-      pendingOpen: null,
-      view: "categories",
-      activeCategory: null
-    };
-
-    // المهام اليومية لا تعرض بيانات تجريبية: تبدأ فارغة حتى iaqar:operations-data.
-    let data = [];
-
-    const operationList = document.getElementById("operationList");
-    const operationsEmpty = document.getElementById("operationsEmpty");
-    const operationsCategoryGrid = document.getElementById("operationsCategoryGrid");
-    const operationsCategoryDetailHead = document.getElementById("operationsCategoryDetailHead");
-    const operationsCategoryTitle = document.getElementById("operationsCategoryTitle");
-    const operationsCategoryClose = document.getElementById("operationsCategoryClose");
-    const total = document.getElementById("total");
-    const toast = document.getElementById("toast");
-
-    function opsCenterDomain() {
-      return window.IAQAR?.operationsCenterDomain || null;
-    }
-
-    function visibleItems() {
-      const domain = opsCenterDomain();
-      const items = domain?.filterBrokerVisibleItems
-        ? domain.filterBrokerVisibleItems(data)
-        : data.filter(item => {
-          const type = String(item?.operationType || "").toUpperCase();
-          const title = String(item?.title || "").trim();
-          return type !== "OPPORTUNITY_SAVED" && title !== "فرصة محفوظة مسبقًا";
-        });
-      return [...items].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
-    }
-
-    function categoryGroups() {
-      const domain = opsCenterDomain();
-      if (domain?.groupItems) return domain.groupItems(data);
-      return {};
-    }
-
-    function escapeHtml(value) {
-      return String(value == null ? "" : value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
-
-    function detailsHtml(item) {
-      const lines = Array.isArray(item.detailsLines) && item.detailsLines.length
-        ? item.detailsLines
-        : [item.details || "لا توجد تفاصيل إضافية."];
-      return lines.map(line => escapeHtml(line)).join("<br>");
-    }
-
-    function safeTimeHtml(value) {
-      return String(value == null ? "الآن" : value)
-        .split(/<br\s*\/?\s*>/i)
-        .map(part => escapeHtml(part))
-        .join("<br>");
-    }
-
-    function dispatchOpened(item) {
-      if (!item || !item.recordType) return;
-      window.dispatchEvent(new CustomEvent("iaqar:operation-opened", {
-        detail: { recordId: item.recordId || item.id, recordType: item.recordType }
-      }));
-    }
-
-    function renderCategoryGrid(items) {
-      const domain = opsCenterDomain();
-      const categories = domain?.OPERATIONS_CATEGORIES || [];
-      const groups = categoryGroups();
-      if (!operationsCategoryGrid) return;
-      operationsCategoryGrid.innerHTML = categories.map(cat => {
-        const count = (groups[cat.key] || []).length;
-        return `
-          <button type="button" class="ops-category-card ${escapeHtml(cat.colorClass)}"
-            data-ops-category="${escapeHtml(cat.key)}"
-            aria-label="${escapeHtml(cat.label)} — ${escapeHtml(String(count))}">
-            <div class="ops-category-card-head">
-              <h3>${escapeHtml(cat.label)}</h3>
-              <span class="ops-category-count">${escapeHtml(String(count))}</span>
-            </div>
-            <p class="ops-category-desc">${escapeHtml(cat.description)}</p>
-            <p class="ops-category-open">${escapeHtml(cat.openLabel)}</p>
-          </button>`;
-      }).join("");
-    }
-
-    function renderOperationList(items) {
-      operationList.innerHTML = items.map(item => {
-        const secondaryMode = item.recordType && item.recordType !== "summary" ? "secondary" : "close";
-        return `
-        <div class="operation-group" id="operation-${escapeHtml(item.id)}">
-          <button
-            class="operation ${state.opened === item.id ? "open" : ""}"
-            data-id="${escapeHtml(item.id)}"
-            aria-expanded="${state.opened === item.id ? "true" : "false"}"
-            aria-controls="details-${escapeHtml(item.id)}">
-            <span class="operation-icon" aria-hidden="true">
-              <svg class="icon"><use href="#${escapeHtml(item.icon)}"/></svg>
-            </span>
-            <span>
-              <h3>${escapeHtml(item.title)}</h3>
-              <p>${escapeHtml(item.subtitle)}</p>
-              ${item.opsStatusLine ? `<p class="operation-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
-            </span>
-            <span class="time">${safeTimeHtml(item.time)}</span>
-          </button>
-
-          <div
-            class="details ${state.opened === item.id ? "show" : ""}"
-            id="details-${escapeHtml(item.id)}">
-            <div class="details-inner">
-              <p>${detailsHtml(item)}</p>
-              <div class="detail-actions">
-                <button class="start" data-action="start" data-id="${escapeHtml(item.id)}">
-                  ${escapeHtml(item.actionLabel || "بدء الإجراء")}
-                </button>
-                <button class="close" data-action="${secondaryMode}" data-id="${escapeHtml(item.id)}">
-                  ${escapeHtml(item.secondaryActionLabel || "إغلاق التفاصيل")}
-                </button>
-                ${item.canDismiss ? `<button class="close" data-action="dismiss" data-id="${escapeHtml(item.id)}">${escapeHtml(item.dismissLabel || "صرف النظر")}</button>` : ""}
-                ${item.priorityLabel ? `<span class="time" aria-label="الأولوية">${escapeHtml(item.priorityLabel)}</span>` : ""}
-                ${item.whatsappOwner ? `<button class="whatsapp-action" data-action="whatsapp-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappOwnerLabel || "إرسال واتساب للمالك")}</button>` : ""}
-                ${item.whatsappClient ? `<button class="whatsapp-action" data-action="whatsapp-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.whatsappClientLabel || "إرسال واتساب للعميل")}</button>` : ""}
-                ${item.telegramOwner ? `<button class="whatsapp-action" data-action="telegram-owner" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramOwnerLabel || "إرسال تليجرام للمالك")}</button>` : ""}
-                ${item.telegramClient ? `<button class="whatsapp-action" data-action="telegram-client" data-id="${escapeHtml(item.id)}">${escapeHtml(item.telegramClientLabel || "إرسال تليجرام للعميل")}</button>` : ""}
-              </div>
-            </div>
-          </div>
-        </div>`;
-      }).join("");
-    }
-
-    function openCategory(categoryKey) {
-      const domain = opsCenterDomain();
-      const cat = domain?.getCategoryDefinition?.(categoryKey);
-      if (!cat) return;
-      state.view = "category";
-      state.activeCategory = categoryKey;
-      state.opened = null;
-      if (operationsCategoryTitle) operationsCategoryTitle.textContent = cat.label;
-      render();
-    }
-
-    function closeCategory() {
-      state.view = "categories";
-      state.activeCategory = null;
-      state.opened = null;
-      render();
-    }
-
-    function render() {
-      const items = visibleItems();
-      total.textContent = items.length;
-
-      if (state.view === "categories") {
-        renderCategoryGrid(items);
-        if (operationsCategoryGrid) operationsCategoryGrid.hidden = false;
-        if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = true;
-        operationList.hidden = true;
-        operationList.innerHTML = "";
-        if (operationsEmpty) operationsEmpty.hidden = items.length > 0;
-        return;
-      }
-
-      const groups = categoryGroups();
-      const categoryItems = [...(groups[state.activeCategory] || [])]
-        .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
-      if (operationsCategoryGrid) operationsCategoryGrid.hidden = true;
-      if (operationsCategoryDetailHead) operationsCategoryDetailHead.hidden = false;
-      renderOperationList(categoryItems);
-      operationList.hidden = categoryItems.length === 0;
-      if (operationsEmpty) operationsEmpty.hidden = categoryItems.length > 0;
-    }
-
-    function notify(message) {
-      toast.textContent = message;
-      toast.classList.add("show");
-      clearTimeout(notify.timer);
-      notify.timer = setTimeout(() => toast.classList.remove("show"), 2000);
-    }
-
-    function scrollToOperation(id) {
-      requestAnimationFrame(() => {
-        const target = document.getElementById(`operation-${id}`);
-        if (target) {
-          target.scrollIntoView({behavior:"smooth", block:"center"});
-        }
-      });
-    }
-
-    document.addEventListener("click", event => {
-      const categoryCard = event.target.closest("[data-ops-category]");
-      if (categoryCard) {
-        openCategory(categoryCard.getAttribute("data-ops-category"));
-        return;
-      }
-
-      if (event.target.closest("#operationsCategoryClose")) {
-        closeCategory();
-        return;
-      }
-
-      const viewButton = event.target.closest("[data-opportunity-view]");
-      if (viewButton && window.IAQAR_WORKFLOW && typeof window.IAQAR_WORKFLOW.setOpportunityView === "function") {
-        window.IAQAR_WORKFLOW.setOpportunityView(viewButton.dataset.opportunityView);
-        return;
-      }
-
-      const operation = event.target.closest("[data-id].operation");
-      if (operation) {
-        const item = data.find(entry => entry.id === operation.dataset.id);
-        if (item && (item.recordType === "opportunity" || item.recordType === "intake")) {
-          const oppId = String(item.recordId || item.opportunityId || "").replace(/^opp-/, "");
-          if (oppId && window.IAQAR?.openOpportunityManagement) {
-            void window.IAQAR.openOpportunityManagement(oppId);
-            return;
-          }
-        }
-        state.opened = state.opened === operation.dataset.id
-          ? null
-          : operation.dataset.id;
-        render();
-        if (state.opened) {
-          const openedItem = data.find(entry => entry.id === state.opened);
-          dispatchOpened(openedItem);
-          scrollToOperation(state.opened);
-        }
-        return;
-      }
-
-      const action = event.target.closest("[data-action]");
-      if (action) {
-        event.stopPropagation();
-
-        const item = data.find(entry => entry.id === action.dataset.id);
-
-        if (action.dataset.action === "start") {
-          if (item && item.recordType) {
-            window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
-              detail: { ...item, recordId: item.recordId || item.id, actionMode: "primary" }
-            }));
-          } else {
-            notify("تم تسجيل بدء الإجراء داخل مساحة العمل");
-          }
-        }
-
-        if (action.dataset.action === "secondary" && item) {
-          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
-            detail: { ...item, recordId: item.recordId || item.id, actionMode: "secondary" }
-          }));
-        }
-
-        if (action.dataset.action === "dismiss" && item) {
-          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
-            detail: { ...item, recordId: item.recordId || item.id, actionMode: "dismiss" }
-          }));
-        }
-
-        if ((action.dataset.action === "whatsapp-owner" || action.dataset.action === "whatsapp-client") && item) {
-          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
-            detail: {
-              ...item,
-              recordId: item.recordId || item.id,
-              actionMode: "whatsapp",
-              channel: "whatsapp",
-              recipientRole: action.dataset.action === "whatsapp-owner" ? "owner" : "client"
-            }
-          }));
-        }
-
-        if ((action.dataset.action === "telegram-owner" || action.dataset.action === "telegram-client") && item) {
-          window.dispatchEvent(new CustomEvent("iaqar:workflow-action", {
-            detail: {
-              ...item,
-              recordId: item.recordId || item.id,
-              actionMode: "telegram",
-              channel: "telegram",
-              recipientRole: action.dataset.action === "telegram-owner" ? "owner" : "client"
-            }
-          }));
-        }
-
-        if (action.dataset.action === "close") {
-          state.opened = null;
-          render();
-        }
-      }
-    });
-
-    window.addEventListener("iaqar:operations-data", event => {
-      const detail = event.detail || {};
-      const items = Array.isArray(detail.items) ? detail.items : [];
-      const filters = document.getElementById("opportunityViewFilters");
-      if (filters) {
-        const hasLifecycleItems = items.some(item => ["intake", "opportunity"].includes(item.recordType));
-        filters.hidden = !hasLifecycleItems;
-        filters.querySelectorAll("[data-opportunity-view]").forEach(button => {
-          button.classList.toggle("active", button.dataset.opportunityView === (detail.opportunityView || "active"));
-        });
-      }
-      if (detail.authoritative || items.length > 0) {
-        data = items;
-        const pendingMatches = (item) => state.pendingOpen && (
-          item.id === state.pendingOpen.id
-          || (state.pendingOpen.matchId && item.matchId === state.pendingOpen.matchId)
-          || item.matchId === state.pendingOpen.id
-        );
-        if (state.pendingOpen && data.some(pendingMatches)) {
-          const item = data.find(pendingMatches);
-          const domain = opsCenterDomain();
-          if (domain?.categoryKey) {
-            state.view = "category";
-            state.activeCategory = domain.categoryKey(item);
-            if (operationsCategoryTitle) {
-              const cat = domain.getCategoryDefinition(state.activeCategory);
-              operationsCategoryTitle.textContent = cat?.label || "";
-            }
-          }
-          state.opened = item.id;
-          state.pendingOpen = null;
-          render();
-          dispatchOpened(item);
-          scrollToOperation(state.opened);
-          return;
-        }
-        if (state.opened && !data.some(item => item.id === state.opened) && !state.pendingOpen) state.opened = null;
-        render();
-      }
-    });
-
-    window.addEventListener("iaqar:open-operation", event => {
-      const detail = event.detail || {};
-      const requested = { id: detail.id || null, matchId: detail.matchId || null };
-      state.opened = requested.id;
-      if (!requested.id && !requested.matchId) {
-        state.pendingOpen = null;
-        render();
-        return;
-      }
-      const item = data.find(entry =>
-        entry.id === requested.id
-        || (requested.matchId && entry.matchId === requested.matchId)
-        || entry.matchId === requested.id
-      );
-      if (!item) {
-        state.pendingOpen = requested;
-        render();
-        return;
-      }
-      const domain = opsCenterDomain();
-      if (domain?.categoryKey) {
-        state.view = "category";
-        state.activeCategory = domain.categoryKey(item);
-        if (operationsCategoryTitle) {
-          const cat = domain.getCategoryDefinition(state.activeCategory);
-          operationsCategoryTitle.textContent = cat?.label || "";
-        }
-      }
-      state.opened = item.id;
-      state.pendingOpen = null;
-      render();
-      dispatchOpened(item);
-      scrollToOperation(item.id);
-    });
-
-    window.addEventListener("iaqar:operations-center-domain-ready", () => render());
-
-    render();
-  </script>
+  <script type="module" src="js/operations-center-ui.js"></script>
   <script type="module" src="js/opportunity-domain-bridge.js"></script>
   <script src="js/notification-navigation.js"></script>
   <script src="js/workflow-office.js"></script>

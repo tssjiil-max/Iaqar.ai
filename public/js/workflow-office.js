@@ -392,6 +392,21 @@
       sanitizeOpsText(item.district),
       lifecycleLabel
     ]);
+    const matchingReadinessStored = String(item.matchingReadiness || "").toUpperCase();
+    const matchingReadinessMissingStored = Array.isArray(item.matchingReadinessMissing)
+      ? item.matchingReadinessMissing.map(String)
+      : [];
+    const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
+      ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
+      : null;
+    const matchingReadiness = matchingReadinessStored
+      || readinessEval?.matchingReadiness
+      || "";
+    const matchingReadinessMissing = matchingReadinessMissingStored.length
+      ? matchingReadinessMissingStored
+      : (readinessEval?.matchingReadinessMissing || []);
+    const matchCount = Number(item.matchCount || item.activeMatchCount || 0);
+
     return {
       id: `opp-${doc.id}`,
       recordId: doc.id,
@@ -407,6 +422,12 @@
         : "",
       propertyType: item.propertyType || "",
       district: item.district || "",
+      matchingReadiness,
+      matchingReadinessMissing,
+      matchCount,
+      bestMatchScoreText: card?.bestMatchScoreText || "",
+      createdAt: String(item.createdAt || item.receivedAt || ""),
+      updatedAt: String(item.updatedAt || item.createdAt || item.receivedAt || ""),
       time: relativeTime(item.updatedAt || item.createdAt || item.receivedAt),
       detailsLines: card ? [
         card.description,

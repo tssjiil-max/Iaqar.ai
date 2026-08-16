@@ -167,9 +167,9 @@ test("Operations icon never overlaps Arabic title via grid cells", () => {
   assert.ok(html.includes("-webkit-line-clamp:2"));
 });
 
-test("entire opportunity card opens management modal", () => {
-  const html = readRepo("public", "index.html");
-  assert.ok(html.includes("openOpportunityManagement(oppId)"));
+test("entire opportunity card opens inline daily task panel", () => {
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  assert.ok(ui.includes("renderDailyTaskOpportunity"));
 });
 
 test("office A cannot modify office B follow-up server-side", () => {

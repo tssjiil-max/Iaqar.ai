@@ -91,10 +91,17 @@ test("workflow opens unified opportunity detail instead of legacy overlay primar
   assert.ok(workflow.includes("تفاصيل الفرصة"));
 });
 
-test("operations shell renders opsStatusLine on cards", () => {
-  const html = readRepo("public", "index.html");
-  assert.ok(html.includes("operation-status"));
-  assert.ok(html.includes("item.opsStatusLine"));
+test("operations shell renders opsStatusLine on task cards", () => {
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  assert.ok(ui.includes("ops-task-status"));
+  assert.ok(ui.includes("item.opsStatusLine"));
+});
+
+test("entire opportunity card opens inline daily task panel", () => {
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  const bank = readRepo("public", "js", "opportunity-bank.js");
+  assert.ok(ui.includes("renderDailyTaskOpportunity"));
+  assert.ok(bank.includes("renderDailyTaskOpportunity"));
 });
 
 test("service worker cache bumped with network-first navigation", () => {
