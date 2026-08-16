@@ -124,7 +124,7 @@ export function buildBestNextAction({
     };
   }
 
-  return { label: "أكمل بيانات الفرصة", action: "complete_fields", count: 0 };
+  return { label: "عرض المطابقات", action: "review_matches", count: 0 };
 }
 
 export function buildWorkspaceHeader(record = {}) {
