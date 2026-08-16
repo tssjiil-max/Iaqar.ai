@@ -83,3 +83,38 @@ test("worker exposes phone-login-resolve endpoint", () => {
 test("access-gate staging worker fallback includes iaqar-ai-staging host", () => {
   assert.ok(accessGate.includes('host.includes("iaqar-ai-staging")'));
 });
+
+test("access-gate login uses soft office unlock without mandatory full reload", () => {
+  assert.ok(accessGate.includes("function unlockOfficeWorkspace"));
+  assert.ok(accessGate.includes("rebindOfficeContext"));
+  assert.ok(accessGate.includes("iaqar:access-granted"));
+  const loginBlock = accessGate.slice(
+    accessGate.indexOf('gate.querySelector("#loginForm").onsubmit'),
+    accessGate.indexOf("function forgotPasswordForm")
+  );
+  assert.ok(loginBlock.includes("getIdToken(false)"));
+  assert.equal(loginBlock.includes("getIdToken(true)"), false);
+});
+
+test("access-gate login submit is guarded and shows Arabic loading label", () => {
+  assert.ok(accessGate.includes("loginSubmitInFlight"));
+  assert.ok(accessGate.includes("جارٍ تسجيل الدخول…"));
+});
+
+test("access-gate exposes login performance tracing in development", () => {
+  assert.ok(accessGate.includes("LOGIN_PERF_ENABLED"));
+  assert.ok(accessGate.includes("loginPerfMark"));
+  assert.ok(accessGate.includes("[iaqar-login-perf]"));
+});
+
+test("access-gate brand header uses compact proportional sizing", () => {
+  assert.ok(accessGate.includes(".access-brand img{width:52px;height:52px"));
+  assert.ok(accessGate.includes(".access-brand h1{margin:4px 0 2px;color:#087064;font-size:17px"));
+  assert.ok(accessGate.includes("@media (max-width:320px)"));
+});
+
+test("firebase-office exposes office rebind for post-login context switch", () => {
+  const officeJs = read("public", "js", "firebase-office.js");
+  assert.ok(officeJs.includes("function rebindOfficeContext"));
+  assert.ok(officeJs.includes("iaqar:office-rebound"));
+});

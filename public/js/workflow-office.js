@@ -2724,6 +2724,8 @@
       });
     }
     window.addEventListener("iaqar:firebase-ready", startLiveData);
+    window.addEventListener("iaqar:office-rebound", () => startLiveData());
+    window.addEventListener("iaqar:access-granted", () => startLiveData());
     window.addEventListener("iaqar:opportunity-ingested", (event) => {
       const detail = event.detail || {};
       loadAnalytics();

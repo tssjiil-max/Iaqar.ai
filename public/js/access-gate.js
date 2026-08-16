@@ -55,9 +55,11 @@
     .access-gate{min-height:100svh;padding:18px 18px calc(40px + env(safe-area-inset-bottom));box-sizing:border-box;display:flex;justify-content:center;
       background:#f4f8f6;color:#173d35;font-family:Tajawal,Arial,sans-serif;direction:rtl}
     .access-shell{width:min(100%,460px)}.access-brand,.access-card{background:#fff;border:1px solid #dce8e4;
-      border-radius:24px;padding:20px;margin-bottom:12px}.access-brand{text-align:center}
-    .access-brand img{width:76px;height:76px;object-fit:contain}.access-brand h1{margin:7px 0 2px;color:#087064;font-size:24px}
-    .access-brand p,.access-card p{color:#687c76;font-size:14px;line-height:1.7;margin:0 0 14px}
+      border-radius:24px;padding:20px;margin-bottom:12px}.access-brand{text-align:center;padding:14px 16px 12px;margin-bottom:8px}
+    .access-brand img{width:52px;height:52px;object-fit:contain;display:block;margin:0 auto}
+    .access-brand h1{margin:4px 0 2px;color:#087064;font-size:17px;line-height:1.25;font-weight:800}
+    .access-brand p{color:#687c76;font-size:12px;line-height:1.55;margin:0}
+    .access-card p{color:#687c76;font-size:14px;line-height:1.7;margin:0 0 14px}
     .access-card h2{color:#087064;font-size:21px;margin:0 0 6px}.access-options{display:grid;gap:10px}
     .access-btn{min-height:56px;border:0;border-radius:16px;padding:11px 15px;background:#128c7e;color:#fff;
       font:800 17px Tajawal;cursor:pointer}.access-btn.secondary{background:#fff;color:#087064;border:1.5px solid #128c7e}
@@ -76,6 +78,12 @@
     .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
     .voice-intake-panel{margin-top:12px;padding:12px;border:1px dashed #d4e3de;border-radius:16px;background:#f5faf8}
+    @media (max-width:430px){.access-brand{padding:13px 14px 11px;margin-bottom:7px}
+      .access-brand img{width:50px;height:50px}.access-brand h1{font-size:16px;margin-top:3px}
+      .access-brand p{font-size:11.5px;line-height:1.5}}
+    @media (max-width:390px){.access-brand img{width:48px;height:48px}.access-brand h1{font-size:15px}}
+    @media (max-width:360px){.access-brand{padding:12px 12px 10px}.access-brand img{width:46px;height:46px}}
+    @media (max-width:320px){.access-brand h1{font-size:14.5px}.access-brand p{font-size:11px}}
     .voice-intake-recording,.voice-intake-actions{display:none!important}
     .voice-intake-recording.is-active{display:flex!important;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#a1332c}
     .voice-intake-actions.is-active{display:flex!important;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -121,6 +129,53 @@
   let accessVerificationInFlight = false;
   let accessGrantedForOffice = false;
   let explicitSignOutRequested = false;
+  let loginSubmitInFlight = false;
+
+  const LOGIN_PERF_ENABLED = (() => {
+    try {
+      const host = String(location.hostname || "").toLowerCase();
+      if (host === "localhost" || host === "127.0.0.1" || host.includes("staging")) return true;
+      return localStorage.getItem("iaqar.login.perf") === "1";
+    } catch (_) {
+      return false;
+    }
+  })();
+
+  function loginPerfMark(name) {
+    if (!LOGIN_PERF_ENABLED) return;
+    try { performance.mark(`iaqar-login:${name}`); } catch (_) { /* ignore */ }
+  }
+
+  function loginPerfMeasure(label, startMark, endMark) {
+    if (!LOGIN_PERF_ENABLED) return null;
+    try {
+      const measureName = `iaqar-login:${label}`;
+      performance.measure(measureName, `iaqar-login:${startMark}`, `iaqar-login:${endMark}`);
+      const entry = performance.getEntriesByName(measureName).pop();
+      if (entry) {
+        console.info(`[iaqar-login-perf] ${label}: ${entry.duration.toFixed(1)}ms`);
+        return entry.duration;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
+  function loginPerfReport() {
+    if (!LOGIN_PERF_ENABLED) return;
+    try {
+      const marks = performance.getEntriesByType("mark")
+        .filter((entry) => String(entry.name || "").startsWith("iaqar-login:"));
+      const measures = performance.getEntriesByType("measure")
+        .filter((entry) => String(entry.name || "").startsWith("iaqar-login:"));
+      console.table(measures.map((entry) => ({
+        مرحلة: entry.name.replace(/^iaqar-login:/, ""),
+        مللي_ثانية: Number(entry.duration.toFixed(1))
+      })));
+      if (!measures.length && marks.length) {
+        console.info("[iaqar-login-perf] marks", marks.map((entry) => entry.name));
+      }
+    } catch (_) { /* ignore */ }
+  }
 
   function authDiag(event, detail = {}) {
     try {
@@ -139,6 +194,30 @@
   function loginRedirect(target, source) {
     authDiag("LOGIN_REDIRECT_SOURCE", { source, target });
     location.assign(target);
+  }
+
+  function unlockOfficeWorkspace(target) {
+    const normalized = String(target || "").trim().toLowerCase();
+    if (!normalized || normalized === "platform") return false;
+    localStorage.setItem("iaqar.officeId", normalized);
+    officeId = normalized;
+    refreshRouteFlags();
+    let rebound = false;
+    if (window.IAQAR && typeof window.IAQAR.rebindOfficeContext === "function") {
+      rebound = window.IAQAR.rebindOfficeContext(normalized);
+    }
+    if (!rebound) return false;
+    const nextUrl = `${location.pathname}?office=${encodeURIComponent(normalized)}`;
+    history.replaceState({}, "", nextUrl);
+    document.body.classList.remove("access-locked");
+    if (gate.isConnected) gate.remove();
+    authGuardState = "authenticated";
+    accessGrantedForOffice = true;
+    loginPerfMark("workspace_visible");
+    window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+      detail: { officeId: normalized, source: "unlock_office_workspace" }
+    }));
+    return true;
   }
 
   function loginFailureMessage(stage, detail = {}) {
@@ -785,9 +864,29 @@
     gate.querySelector("#forgotPassword").onclick = forgotPasswordForm;
     gate.querySelector("#loginForm").onsubmit = async event => {
       event.preventDefault();
+      if (loginSubmitInFlight) return;
+      const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+      const submitLabel = submitBtn ? submitBtn.textContent : "";
+      loginSubmitInFlight = true;
+      accessVerificationInFlight = true;
+      authGuardState = "loading";
+      loginPerfMark("click");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "جارٍ تسجيل الدخول…";
+      }
       const fields = new FormData(event.currentTarget);
       const phone = normalizeSaudiPhone(fields.get("phone"));
-      if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      if (!phone) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitLabel || "تسجيل الدخول";
+        }
+        loginSubmitInFlight = false;
+        accessVerificationInFlight = false;
+        authGuardState = "unauthenticated";
+        return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      }
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
         await firebase.auth().setPersistence(
@@ -801,10 +900,13 @@
         console.warn("[iaqar] auth persistence", error);
       }
       try {
+        loginPerfMark("resolve_start");
         const resolveResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login-resolve`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone: normalizeLoginPhone(phone) })
         });
+        loginPerfMark("resolve_done");
+        loginPerfMeasure("phone_resolve", "resolve_start", "resolve_done");
         const resolvePayload = await resolveResponse.json().catch(() => ({}));
         if (!resolveResponse.ok || !resolvePayload.loginEmail || !resolvePayload.officeId) {
           authDiag("AUTH_GUARD_DECISION", {
@@ -819,7 +921,10 @@
         const password = String(fields.get("password") || "");
         let signedInUser;
         try {
+          loginPerfMark("sign_in_start");
           const credential = await firebase.auth().signInWithEmailAndPassword(resolvePayload.loginEmail, password);
+          loginPerfMark("sign_in_done");
+          loginPerfMeasure("firebase_auth", "sign_in_start", "sign_in_done");
           signedInUser = credential.user;
         } catch (error) {
           console.warn("[iaqar] email/password sign-in", error);
@@ -833,15 +938,21 @@
         });
         authDiag("AUTH_UID", { uid: signedInUser?.uid || null });
         authDiag("AUTH_EMAIL", { email: signedInUser?.email || resolvePayload.loginEmail });
+        loginPerfMark("user_load_start");
         try {
-          await signedInUser?.getIdToken(true);
+          await signedInUser?.getIdToken(false);
         } catch (error) {
-          console.warn("[iaqar] id token refresh", error);
+          console.warn("[iaqar] id token read", error);
           await authSignOut("login_id_token_failed", error && error.code);
           showStatus(loginFailureMessage("id_token", { code: error && error.code }));
           return;
         }
-        const accessGranted = await verifyAccess(resolvePayload.officeId, true);
+        loginPerfMark("user_load_done");
+        loginPerfMeasure("user_token", "user_load_start", "user_load_done");
+        const accessGranted = await verifyAccess(resolvePayload.officeId, true, {
+          skipTokenRefresh: true,
+          fromLogin: true
+        });
         if (!accessGranted) {
           authDiag("AUTH_GUARD_DECISION", {
             decision: "office_access_not_granted",
@@ -852,6 +963,17 @@
         console.warn("[iaqar] login", error);
         await authSignOut("login_unknown_error", error && error.message);
         showStatus(loginFailureMessage("unknown"));
+      } finally {
+        loginSubmitInFlight = false;
+        if (!accessGrantedForOffice && submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitLabel || "تسجيل الدخول";
+        }
+        if (!accessGrantedForOffice) {
+          accessVerificationInFlight = false;
+          if (authGuardState === "loading") authGuardState = "unauthenticated";
+        }
+        loginPerfReport();
       }
     };
   }
@@ -897,7 +1019,7 @@
     if (!gate.isConnected) document.body.appendChild(gate);
   }
 
-  async function verifyAccess(target, navigate) {
+  async function verifyAccess(target, navigate, options = {}) {
     if (!target) {
       loginForm("أدخل رمز المكتب المعتمد.");
       return false;
@@ -923,8 +1045,11 @@
     accessVerificationInFlight = true;
     authGuardState = "loading";
     authDiag("PROFILE_LOOKUP_START", { target, uid: user.uid, navigate });
+    loginPerfMark("office_load_start");
     try {
-      if (user.getIdToken) await user.getIdToken();
+      if (!options.skipTokenRefresh && user.getIdToken) {
+        await user.getIdToken(false);
+      }
       const officeRef = db().collection("offices").doc(target);
       const memberRef = officeRef.collection("members").doc(user.uid);
       const [officeSnap, memberSnap] = await Promise.all([
@@ -976,12 +1101,24 @@
       authGuardState = "authenticated";
       accessGrantedForOffice = true;
       authDiag("AUTH_GUARD_DECISION", { decision: "authenticated", target });
+      loginPerfMark("office_load_done");
+      loginPerfMeasure("office_membership", "office_load_start", "office_load_done");
       if (navigate || target !== officeId) {
-        loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_navigate");
+        loginPerfMark("navigate_start");
+        if (unlockOfficeWorkspace(target)) {
+          loginPerfMark("navigate_done");
+          loginPerfMeasure("workspace_unlock", "navigate_start", "navigate_done");
+          return true;
+        }
+        loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_navigate_fallback");
         return true;
       }
       document.body.classList.remove("access-locked");
       gate.remove();
+      loginPerfMark("workspace_visible");
+      window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+        detail: { officeId: target, source: "verify_access_inline" }
+      }));
       return true;
     } catch (error) {
       console.warn("[iaqar] access denied", error);
@@ -1010,12 +1147,21 @@
             authGuardState = "authenticated";
             accessGrantedForOffice = true;
             authDiag("AUTH_GUARD_DECISION", { decision: "authenticated_after_retry", target });
+            loginPerfMark("office_load_done");
             if (navigate || target !== officeId) {
-              loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_retry_navigate");
+              loginPerfMark("navigate_start");
+              if (unlockOfficeWorkspace(target)) {
+                loginPerfMark("navigate_done");
+                return true;
+              }
+              loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_retry_navigate_fallback");
               return true;
             }
             document.body.classList.remove("access-locked");
             gate.remove();
+            window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+              detail: { officeId: target, source: "verify_access_retry_inline" }
+            }));
             return true;
           }
         } catch (retryError) {
