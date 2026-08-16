@@ -9,13 +9,11 @@ import {
   buildIncompleteFormFields,
   contactPartyLabel,
   cooperationStatusLabel,
-  hasCompleteContactPhone,
   workspaceSmartActions,
   sortMatchesForWorkspace
 } from "./opportunity-workspace-domain.js";
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
-import { buildAdvertiserContactActions } from "./advertiser-phone-domain.js";
 import {
   CONTACT_OUTCOME_LABELS,
   CONTACT_OUTCOME_ORDER,
@@ -84,20 +82,6 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
   const party = contactPartyLabel(record);
-  const phoneReady = hasCompleteContactPhone(record);
-  const contactActions = buildAdvertiserContactActions(record);
-  const contactButtons = contactActions.map((action) => {
-    const disabled = !phoneReady || action.disabled;
-    const note = phoneReady ? "" : "أكمل رقم الجوال أولًا";
-    return `<button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankAdvertiser${action.action}" ${disabled ? "disabled" : ""}
-      title="${esc(note)}">${esc(action.label)}</button>`;
-  }).join("");
-  const contactNote = phoneReady
-    ? ""
-    : `<p class="bank-note iaqar-workflow-note" id="bankIncompletePhoneHint">أكمل رقم الجوال أولًا</p>`;
-  const completePhoneBtn = phoneReady
-    ? ""
-    : `<button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankCompletePhoneBtn">استكمال رقم الجوال</button>`;
 
   return `
     <div class="bank-detail-head iaqar-workflow-head">
@@ -111,11 +95,6 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
     <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
       <div class="bank-edit-grid">${fieldBlocks}</div>
     </form>
-    <section class="bank-incomplete-contact iaqar-workflow-step" aria-label="التواصل">
-      <div class="bank-advertiser-actions iaqar-workflow-actions" id="bankIncompleteContactActions">${contactButtons}</div>
-      ${completePhoneBtn}
-      ${contactNote}
-    </section>
     <div class="bank-unified-save-wrap">
       <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ واستكمال الفرصة</button>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>

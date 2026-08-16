@@ -120,14 +120,51 @@ test("hasCompleteContactPhone true for valid stored e164", () => {
   assert.equal(hasCompleteContactPhone({ phone: "055" }), false);
 });
 
-test("incomplete form disables contact actions when phone incomplete", () => {
+test("incomplete form has no legacy contact block after designed fields", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
-  assert.ok(ui.includes("أكمل رقم الجوال أولًا"));
-  assert.ok(ui.includes("bankIncompleteContactActions"));
-  assert.ok(ui.includes("bankCompletePhoneBtn"));
-  assert.ok(ui.includes("استكمال رقم الجوال"));
+  const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.equal(ui.includes("اسم أو وصف المعلن"), false);
-  assert.equal(ui.includes("bank-section bank-incomplete-contact"), false);
+  assert.equal(ui.includes("bank-incomplete-contact"), false);
+  assert.equal(ui.includes("bankIncompleteContactActions"), false);
+  assert.equal(ui.includes("bankCompletePhoneBtn"), false);
+  assert.equal(ui.includes("bank-advertiser-edit-form"), false);
+  assert.equal(bank.includes("renderAdvertiserFields"), false);
+  assert.equal(bank.includes("bank-advertiser-edit-form"), false);
+});
+
+test("incomplete form DOM has single designed phone field and direct save", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { buildNeedsCompletionDetailHtml } = await import("../public/js/opportunity-bank-workspace-ui.js");
+  const { evaluateMatchingReadiness } = await import("../public/js/opportunity-readiness-domain.js");
+  const record = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "دور",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1500000,
+    advertiserRole: "OWNER"
+  };
+  const html = buildNeedsCompletionDetailHtml("opp-phone", record, evaluateMatchingReadiness(record));
+  const dom = new JSDOM(`<div id="root">${html}</div>`);
+  const root = dom.window.document.getElementById("root");
+
+  assert.equal(root.textContent.includes("اسم أو وصف المعلن"), false);
+  assert.equal(root.querySelectorAll('input[name="advertiserPhoneLocal"]').length, 1);
+  assert.equal(root.querySelectorAll('input[name="advertiserDisplayName"]').length, 0);
+  assert.equal(root.querySelector(".bank-incomplete-contact"), null);
+  assert.equal(root.querySelector(".bank-advertiser-edit-form"), null);
+  assert.equal(root.querySelector("#bankIncompleteContactActions"), null);
+
+  const placeholders = [...root.querySelectorAll("input")].map((node) => node.getAttribute("placeholder") || "");
+  const shortPhonePlaceholders = placeholders.filter((p) => p === "05XXXXXXXX");
+  assert.equal(shortPhonePlaceholders.length, 0);
+  assert.equal(placeholders.filter((p) => p.includes("05XXXXXXXX")).length, 1);
+
+  const form = root.querySelector("#bankUnifiedForm");
+  const saveWrap = root.querySelector(".bank-unified-save-wrap");
+  assert.ok(form && saveWrap);
+  assert.equal(form.nextElementSibling, saveWrap);
 });
 
 test("merge preview applies phone for readiness after valid local input", () => {

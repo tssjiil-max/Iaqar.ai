@@ -32,16 +32,10 @@ import {
   requestMissingDataOperationSync
 } from "./operations-domain.js";
 import {
-  ADVERTISER_ROLES,
-  ADVERTISER_CONTACT_STATUSES,
-  MARKETING_CONSENT_STATUSES,
   buildAdvertiserDataPatch,
   buildAdvertiserWhatsAppMessage,
-  buildAdvertiserContactActions,
-  e164ToLocalInput,
   formatLocalPhoneDisplay,
   whatsappDigitsFromE164,
-  marketingConsentStatusLabel,
   readAdvertiserDisplayName,
   readAdvertiserPhoneFromRecord
 } from "./advertiser-phone-domain.js";
@@ -653,35 +647,6 @@ function isOwnedOpportunityRecord(record) {
   return owner === current && (!origin || origin === current);
 }
 
-function renderAdvertiserFields(record) {
-  const phoneInfo = readAdvertiserPhoneFromRecord(record);
-  const phone = phoneInfo.phone;
-  const displayName = readAdvertiserDisplayName(record);
-  const roleOpts = ADVERTISER_ROLES.map((r) =>
-    `<option value="${r.id}" ${record.advertiserRole === r.id ? "selected" : ""}>${escapeHtml(r.label)}</option>`
-  ).join("");
-  return `
-    <div class="bank-advertiser-edit-form">
-      <label>اسم أو وصف المعلن
-        <input type="text" name="advertiserDisplayName" maxlength="120"
-          placeholder="إضافة اسم أو وصف" value="${escapeHtml(displayName)}">
-      </label>
-      <label>رقم الجوال
-        <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
-          placeholder="05XXXXXXXX" value="${escapeHtml(formatLocalPhoneDisplay(phone))}"
-          aria-label="رقم جوال المعلن">
-        <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
-        ${phone ? "" : `<p class="advertiser-message-meta">لا يوجد رقم معلن محفوظ</p>`}
-      </label>
-      <label>صفة المعلن
-        <select name="advertiserRole">${roleOpts}</select>
-      </label>
-      <button type="button" class="bank-advertiser-add-phone" id="bankAdvertiserAddPhone"
-        ${phone ? "hidden" : ""}>إضافة رقم المعلن</button>
-    </div>
-  `;
-}
-
 function officeContextForAdvertiser() {
   return window.IAQAR?.office || {};
 }
@@ -742,39 +707,6 @@ async function recordLifecycleWhatsAppOpened(opportunityId) {
     });
   } catch (error) {
     console.warn("[iaqar] whatsapp opened log", error);
-  }
-}
-
-async function saveAdvertiserData(id, record, form) {
-  const data = Object.fromEntries(new FormData(form).entries());
-  const result = buildAdvertiserDataPatch(record, data);
-  const errorEl = document.getElementById("bankAdvertiserPhoneError");
-  if (!result.ok) {
-    if (errorEl) {
-      errorEl.textContent = result.error || "رقم الجوال غير صحيح";
-      errorEl.hidden = false;
-    }
-    setStatus(result.error || "تعذر حفظ بيانات المعلن", "is-error");
-    return false;
-  }
-  if (errorEl) errorEl.hidden = true;
-  const user = authUser();
-  const patch = {
-    ...result.patch,
-    updatedAt: new Date().toISOString(),
-    updatedBy: user?.uid || ""
-  };
-  try {
-    await patchOpportunity(id, patch);
-    state.records.set(id, { ...record, ...patch, id });
-    setStatus("تم حفظ بيانات المعلن", "is-done");
-    toast("تم حفظ بيانات المعلن");
-    await renderDetail(id);
-    return true;
-  } catch (error) {
-    console.warn("[iaqar] advertiser save", error);
-    setStatus("تعذر حفظ بيانات المعلن", "is-error");
-    return false;
   }
 }
 
@@ -863,34 +795,6 @@ function wireIncompleteDetailHandlers(id, record) {
   const districtInput = form?.querySelector('input[name="district"]');
   if (propertyInput) wireArabicSuggestInput(propertyInput, PROPERTY_TYPES.map((e) => e.label));
   if (districtInput) wireArabicSuggestInput(districtInput, districtsForCity("madinah").map((e) => e.officialName));
-
-  $("bankAdvertisercall")?.addEventListener("click", () => {
-    const phone = readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
-    if (!phone) return toast("أكمل رقم الجوال أولًا");
-    const local = formatLocalPhoneDisplay(phone);
-    if (!local) return toast("أكمل رقم الجوال أولًا");
-    window.location.href = `tel:${local}`;
-    void recordLifecycleCallOpened(id);
-  });
-  $("bankAdvertiserwhatsapp")?.addEventListener("click", () => {
-    const phone = readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
-    if (!phone) return toast("أكمل رقم الجوال أولًا");
-    openBankAdvertiserWhatsApp(state.records.get(id) || record, phone);
-  });
-
-  $("bankCompletePhoneBtn")?.addEventListener("click", () => {
-    const phoneField = form?.querySelector('input[name="advertiserPhoneLocal"]');
-    if (phoneField) {
-      phoneField.scrollIntoView({ behavior: "smooth", block: "center" });
-      try {
-        phoneField.focus({ preventScroll: true });
-      } catch (_) {
-        phoneField.focus();
-      }
-      return;
-    }
-    focusFirstMissingBankField(evaluateMatchingReadiness(state.records.get(id) || record));
-  });
 
   async function saveIncomplete() {
     const form = $("bankUnifiedForm");

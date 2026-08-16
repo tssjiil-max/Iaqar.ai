@@ -34,7 +34,7 @@ test("incomplete form has single phone field inside grid when phone missing", ()
   const html = buildNeedsCompletionDetailHtml("opp-1", record, readiness);
   assert.equal((html.match(/name="advertiserPhoneLocal"/g) || []).length, 1);
   assert.equal(html.includes("bank-advertiser-edit-form"), false);
-  assert.equal(html.includes("bank-section bank-incomplete-contact"), false);
+  assert.equal(html.includes("bank-incomplete-contact"), false);
   assert.equal(html.includes("اسم أو وصف المعلن"), false);
 });
 
