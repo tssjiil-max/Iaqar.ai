@@ -115,10 +115,52 @@ service cloud.firestore {
         allow create: if isOfficeMember(officeId)
           && request.resource.data.officeId == officeId
           && request.resource.data.fileName is string
-          && request.resource.data.fileName.size() <= 240;
+          && request.resource.data.fileName.size() <= 240
+          && (!("category" in request.resource.data)
+            || request.resource.data.category in [
+              'owner_brokerage', 'buyer_brokerage', 'tenant_brokerage',
+              'broker_cooperation', 'sub_brokerage', 'sale_contract',
+              'lease_contract', 'contract_addendum', 'fal_license',
+              'office_document', 'office_media', 'other'
+            ])
+          && (!("documentTitle" in request.resource.data)
+            || request.resource.data.documentTitle is string
+            && request.resource.data.documentTitle.size() <= 240)
+          && (!("referenceNumber" in request.resource.data)
+            || request.resource.data.referenceNumber is string
+            && request.resource.data.referenceNumber.size() <= 120)
+          && (!("opportunityId" in request.resource.data)
+            || request.resource.data.opportunityId is string
+            && request.resource.data.opportunityId.size() <= 120)
+          && (!("cooperationId" in request.resource.data)
+            || request.resource.data.cooperationId is string
+            && request.resource.data.cooperationId.size() <= 120)
+          && (!("documentStatus" in request.resource.data)
+            || request.resource.data.documentStatus in ['ACTIVE', 'EXPIRED', 'PENDING', 'CANCELLED']);
         allow update: if isOfficeMember(officeId)
           && request.resource.data.officeId == officeId
-          && resource.data.officeId == officeId;
+          && resource.data.officeId == officeId
+          && (!("category" in request.resource.data)
+            || request.resource.data.category in [
+              'owner_brokerage', 'buyer_brokerage', 'tenant_brokerage',
+              'broker_cooperation', 'sub_brokerage', 'sale_contract',
+              'lease_contract', 'contract_addendum', 'fal_license',
+              'office_document', 'office_media', 'other'
+            ])
+          && (!("documentTitle" in request.resource.data)
+            || request.resource.data.documentTitle is string
+            && request.resource.data.documentTitle.size() <= 240)
+          && (!("referenceNumber" in request.resource.data)
+            || request.resource.data.referenceNumber is string
+            && request.resource.data.referenceNumber.size() <= 120)
+          && (!("opportunityId" in request.resource.data)
+            || request.resource.data.opportunityId is string
+            && request.resource.data.opportunityId.size() <= 120)
+          && (!("cooperationId" in request.resource.data)
+            || request.resource.data.cooperationId is string
+            && request.resource.data.cooperationId.size() <= 120)
+          && (!("documentStatus" in request.resource.data)
+            || request.resource.data.documentStatus in ['ACTIVE', 'EXPIRED', 'PENDING', 'CANCELLED']);
         allow delete: if canManage(officeId)
           && resource.data.officeId == officeId;
       }

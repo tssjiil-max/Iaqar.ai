@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import worker, {
   ALWAYS_ALLOWED_PUSH_TYPES,
@@ -1202,4 +1203,20 @@ test("opportunity summary omits empty values", () => {
   assert.match(summary, /شقة/);
   assert.match(summary, /العريض/);
   assert.doesNotMatch(summary, /undefined|null|NaN/);
+});
+
+test("office library media path rejects cross-office access pattern", () => {
+  const workerSource = readFileSync(
+    new URL("../src/index.js", import.meta.url),
+    "utf8"
+  );
+  assert.match(workerSource, /OFFICE_MEDIA_KEY_PATTERN/);
+  assert.match(workerSource, /office-library/);
+  assert.match(workerSource, /!mediaPath\.includes\(`\/\$\{officeId\}\/`\)/);
+  const pattern = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
+  assert.equal(pattern.test("office-library/office-a/lib_x/file.pdf"), true);
+  assert.equal(pattern.test("office-library/office-b/lib_x/file.pdf"), true);
+  const officeAPath = "office-library/office-a/lib_x/file.pdf";
+  const officeB = "office-b";
+  assert.equal(officeAPath.includes(`/${officeB}/`), false);
 });

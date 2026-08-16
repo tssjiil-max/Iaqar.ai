@@ -1304,14 +1304,290 @@
     .office-save-btn { border:0; background:var(--green); color:#fff; }
     .office-logout-btn { border:1px solid var(--line); background:#fff; color:#8b2f2a; }
     .office-logout-btn:disabled { opacity:.45; }
-    .library-toolbar { display:flex; gap:8px; margin-bottom:10px; }
-    .library-list { display:grid; gap:8px; }
-    .library-row {
-      display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
-      border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff;
+    #officeSettings .settings-sheet.is-library-open {
+      width:min(1180px,92vw);
+      max-width:min(1180px,92vw);
+      max-height:min(94dvh,94vh);
+      padding:max(14px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
     }
-    .library-row-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-    .library-empty { color:var(--muted); font-size:13px; margin:0; }
+  #officeSettings.is-library-open .settings-sheet > :not(#officeLibraryPanel) {
+    display:none !important;
+  }
+  #officeSettings.is-library-open #officeLibraryPanel {
+    display:flex;
+    flex:1;
+    min-height:0;
+  }
+  #officeLibraryPanel[hidden] { display:none !important; }
+
+  .library-panel {
+    flex-direction:column;
+    gap:10px;
+    min-height:0;
+    overflow:hidden;
+  }
+  .library-panel-toolbar {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    flex-shrink:0;
+  }
+  .library-panel-back {
+    min-height:38px;
+    padding:0 12px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    color:var(--green);
+    font:inherit;
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  #officeLibraryPanel .library-title-bar {
+    flex-shrink:0;
+    margin:0;
+    padding:12px 14px;
+    border-radius:14px;
+    background:var(--green-pale);
+    text-align:center;
+    font-family:"Tajawal",Tajawal,sans-serif;
+  }
+  #officeLibraryPanel .library-title-bar h2 {
+    margin:0;
+    color:var(--green);
+    font-size:clamp(1.35rem,2.8vw,1.9rem);
+    font-weight:800;
+    line-height:1.35;
+    text-align:center;
+  }
+  .library-panel-body {
+    flex:1;
+    min-height:0;
+    overflow:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+  }
+  .library-toolbar { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .library-search-row {
+    display:grid;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .library-search-row input[type="search"] {
+    width:100%;
+    min-height:42px;
+    padding:9px 12px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfdfc;
+    font:inherit;
+    font-size:13px;
+    outline:none;
+  }
+  .library-filter-row {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .library-filter-row select {
+    min-height:40px;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    font:inherit;
+    font-size:11px;
+    font-weight:700;
+    color:var(--green);
+  }
+  .library-main-section { margin-bottom:10px; }
+  .library-main-section-toggle {
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    min-height:48px;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--green-pale);
+    color:var(--green);
+    font:inherit;
+    font-size:15px;
+    font-weight:800;
+    text-align:right;
+    cursor:pointer;
+  }
+  .library-main-section-label { flex:1; line-height:1.4; }
+  .library-count-badge {
+    min-width:22px;
+    height:22px;
+    padding:0 7px;
+    border-radius:999px;
+    background:var(--green-soft);
+    color:var(--green);
+    font-size:11px;
+    font-weight:800;
+    line-height:22px;
+    text-align:center;
+  }
+  .library-subfolder-grid {
+    display:grid;
+    gap:8px;
+    margin-top:8px;
+  }
+  .library-subfolder-card {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    min-height:52px;
+    padding:12px 14px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+    color:var(--green);
+    font:inherit;
+    font-size:13px;
+    font-weight:700;
+    line-height:1.45;
+    text-align:right;
+    cursor:pointer;
+  }
+  .library-subfolder-name {
+    flex:1;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+  }
+  .library-folder-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .library-folder-head h3 {
+    margin:0;
+    color:var(--green);
+    font-size:15px;
+    font-weight:800;
+    line-height:1.4;
+  }
+  .library-list,
+  #officeLibraryFolderList {
+    display:grid;
+    gap:8px;
+  }
+  .library-file-card,
+  .library-row {
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px 12px;
+    background:#fff;
+  }
+  .library-file-title { color:var(--green); font-size:14px; font-weight:800; }
+  .library-file-meta { margin:4px 0 0; color:#5C7468; font-size:12px; line-height:1.45; }
+  .library-row-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .library-empty { color:var(--muted); font-size:13px; margin:0; }
+  .library-modal {
+    position:fixed;
+    inset:0;
+    z-index:140;
+    padding:18px 12px max(18px,env(safe-area-inset-bottom));
+    background:rgba(9,31,25,.52);
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+  }
+  .library-modal[hidden] { display:none !important; }
+  .library-modal-sheet {
+    width:min(100%,480px);
+    max-height:min(90dvh,90vh);
+    overflow:auto;
+    padding:16px;
+    border-radius:20px;
+    background:#fff;
+    border:1px solid rgba(0,92,75,.12);
+    box-shadow:0 24px 60px rgba(0,0,0,.24);
+  }
+  .library-modal-sheet h3 {
+    margin:0 0 12px;
+    color:var(--green);
+    font-size:16px;
+    font-weight:800;
+    text-align:center;
+  }
+  .library-form-grid {
+    display:grid;
+    gap:9px;
+  }
+  .library-form-grid label {
+    display:block;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+  }
+  .library-form-grid input,
+  .library-form-grid select {
+    width:100%;
+    min-height:42px;
+    margin-top:4px;
+    padding:9px 11px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfdfc;
+    font:inherit;
+    font-size:12px;
+  }
+  .library-form-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:12px;
+  }
+  .library-file-pick {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .library-file-pick-name {
+    color:#5C7468;
+    font-size:12px;
+    line-height:1.4;
+  }
+  @media (max-width:767px) {
+    #officeSettings .settings-sheet.is-library-open {
+      width:96vw;
+      max-width:96vw;
+      max-height:94dvh;
+    }
+    .library-filter-row { grid-template-columns:1fr; }
+  }
+  @media (min-width:768px) {
+    #officeSettings .settings-sheet.is-library-open {
+      min-height:78vh;
+    }
+    .library-subfolder-grid {
+      grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+  }
+  @media (min-width:1024px) {
+    .library-subfolder-grid {
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+  }
     .office-settings-note {
       margin:9px 1px 0;
       color:var(--muted);
@@ -3550,15 +3826,138 @@
 
       <section class="settings-section" id="officeLibrarySection">
         <h3>المكتبة</h3>
-        <p class="section-help">ملفات خاصة بالمكتب — لا يراها مكتب آخر.</p>
-        <div class="library-toolbar">
-          <button type="button" class="identity-btn" id="officeLibraryAddBtn">إضافة ملف</button>
-          <input type="file" id="officeLibraryFileInput" hidden
-            accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx">
-        </div>
-        <div class="library-list" id="officeLibraryList" role="list"></div>
-        <p class="section-status" id="officeLibraryStatus" role="status"></p>
+        <p class="section-help">ملفات خاصة بالمكتب — عقود ووثائق منظمة حسب النوع.</p>
+        <button type="button" class="identity-btn" id="officeLibraryOpenBtn">فتح المكتبة</button>
       </section>
+
+      <div class="library-panel" id="officeLibraryPanel" hidden aria-labelledby="officeLibraryTitle">
+        <div class="library-panel-toolbar">
+          <button type="button" class="library-panel-back" id="officeLibraryBackBtn">رجوع</button>
+          <button class="settings-close" id="officeLibraryCloseBtn" type="button" aria-label="إغلاق">×</button>
+        </div>
+        <div class="library-title-bar section-title-bar" id="officeLibraryTitleBar">
+          <h2 id="officeLibraryTitle">المكتبة</h2>
+        </div>
+        <div class="library-panel-body">
+          <div class="library-toolbar">
+            <button type="button" class="identity-btn" id="officeLibraryAddBtn">إضافة ملف</button>
+          </div>
+          <div class="library-search-row" id="officeLibraryBrowse">
+            <label class="visually-hidden" for="officeLibrarySearch">ابحث في المكتبة</label>
+            <input type="search" id="officeLibrarySearch" placeholder="ابحث في المكتبة" autocomplete="off">
+            <div class="library-filter-row" aria-label="تصفية المكتبة">
+              <select id="officeLibraryFilterMain" aria-label="القسم">
+                <option value="">القسم: كل الأقسام</option>
+                <option value="brokerage">عقود الوساطة والتوثيق</option>
+                <option value="deals">عقود الصفقات</option>
+                <option value="office">ملفات المكتب</option>
+              </select>
+              <select id="officeLibraryFilterCategory" aria-label="نوع العقد">
+                <option value="">نوع العقد: كل الأنواع</option>
+              </select>
+              <select id="officeLibraryFilterStatus" aria-label="الحالة">
+                <option value="">الحالة: كل الحالات</option>
+                <option value="ACTIVE">نشط</option>
+                <option value="EXPIRED">منتهي</option>
+                <option value="PENDING">قيد المراجعة</option>
+                <option value="CANCELLED">ملغى</option>
+              </select>
+              <select id="officeLibraryFilterActive" aria-label="نشط أو منتهي">
+                <option value="">نشط / منتهي: الكل</option>
+                <option value="active">نشط</option>
+                <option value="expired">منتهي</option>
+              </select>
+            </div>
+            <div id="officeLibrarySections" class="library-sections"></div>
+          </div>
+          <div id="officeLibraryFolderView" hidden>
+            <div class="library-folder-head">
+              <button type="button" class="library-panel-back" id="officeLibraryFolderBackBtn">رجوع للمجلدات</button>
+              <h3 id="officeLibraryFolderTitle"></h3>
+            </div>
+            <div id="officeLibraryFolderList" role="list"></div>
+          </div>
+          <p class="section-status" id="officeLibraryStatus" role="status"></p>
+        </div>
+      </div>
+
+      <div class="library-modal" id="officeLibraryUploadModal" hidden>
+        <div class="library-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="officeLibraryUploadTitle">
+          <h3 id="officeLibraryUploadTitle">إضافة ملف إلى المكتبة</h3>
+          <div class="library-form-grid">
+            <div class="library-file-pick">
+              <button type="button" class="identity-btn" id="officeLibraryUploadChoose">اختيار ملف</button>
+              <span class="library-file-pick-name" id="officeLibraryUploadFileName">لم يتم اختيار ملف</span>
+            </div>
+            <input type="file" id="officeLibraryUploadFile" hidden
+              accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx">
+            <label>نوع المجلد
+              <select id="officeLibraryUploadCategory"></select>
+            </label>
+            <label>عنوان المستند
+              <input type="text" id="officeLibraryUploadDocTitle" maxlength="240" dir="auto">
+            </label>
+            <label>رقم مرجعي (اختياري)
+              <input type="text" id="officeLibraryUploadReference" maxlength="120" dir="auto">
+            </label>
+            <label>فرصة مرتبطة (اختياري)
+              <input type="text" id="officeLibraryUploadOpportunity" maxlength="120" dir="auto" placeholder="معرّف الفرصة">
+            </label>
+            <label>تعاون مرتبط (اختياري)
+              <input type="text" id="officeLibraryUploadCooperation" maxlength="120" dir="auto">
+            </label>
+            <label>تاريخ البداية (اختياري)
+              <input type="date" id="officeLibraryUploadStartDate">
+            </label>
+            <label>تاريخ الانتهاء (اختياري)
+              <input type="date" id="officeLibraryUploadExpiryDate">
+            </label>
+            <label>حالة المستند
+              <select id="officeLibraryUploadStatus"></select>
+            </label>
+          </div>
+          <div class="library-form-actions">
+            <button type="button" class="identity-btn" id="officeLibraryUploadCancel">إلغاء</button>
+            <button type="button" class="identity-btn" id="officeLibraryUploadSave">حفظ الملف</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="library-modal" id="officeLibraryEditModal" hidden>
+        <div class="library-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="officeLibraryEditModalTitle">
+          <h3 id="officeLibraryEditModalTitle">تعديل بيانات الملف</h3>
+          <div class="library-form-grid">
+            <label>نوع المجلد
+              <select id="officeLibraryEditCategory"></select>
+            </label>
+            <label>عنوان المستند
+              <input type="text" id="officeLibraryEditTitle" maxlength="240" dir="auto">
+            </label>
+            <label>رقم مرجعي (اختياري)
+              <input type="text" id="officeLibraryEditReference" maxlength="120" dir="auto">
+            </label>
+            <label>فرصة مرتبطة (اختياري)
+              <input type="text" id="officeLibraryEditOpportunity" maxlength="120" dir="auto">
+            </label>
+            <label>تعاون مرتبط (اختياري)
+              <input type="text" id="officeLibraryEditCooperation" maxlength="120" dir="auto">
+            </label>
+            <label>تاريخ البداية (اختياري)
+              <input type="date" id="officeLibraryEditStartDate">
+            </label>
+            <label>تاريخ الانتهاء (اختياري)
+              <input type="date" id="officeLibraryEditExpiryDate">
+            </label>
+            <label>حالة المستند
+              <select id="officeLibraryEditStatus"></select>
+            </label>
+          </div>
+          <div class="library-form-actions">
+            <button type="button" class="identity-btn" id="officeLibraryEditCancel">إلغاء</button>
+            <button type="button" class="identity-btn" id="officeLibraryEditSave">حفظ التعديلات</button>
+          </div>
+        </div>
+      </div>
 
       <section class="settings-section" id="cooperationSection">
         <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
