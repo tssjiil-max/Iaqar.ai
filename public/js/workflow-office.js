@@ -2537,6 +2537,12 @@
         return;
       }
       const isOwner = data.contactType === "owner" || data.recordType === "owner_offer";
+      const phoneInfo = LC().resolveOpportunityCanonicalPhone
+        ? LC().resolveOpportunityCanonicalPhone(data)
+        : { valid: false, local: "", tel: "" };
+      const contactPhone = phoneInfo.valid
+        ? phoneInfo.local
+        : (data.contactPhone || data.advertiserPhone || data.phone || "");
       await openWorkflowUi({
         ...data,
         recordId: opportunityId,
@@ -2545,7 +2551,7 @@
         kind: isOwner ? "owner" : "client",
         contactType: isOwner ? "owner" : "buyer",
         contactName: data.contactName || data.advertiserDisplayName || "",
-        contactPhone: data.contactPhone || data.advertiserPhone || data.advertiserPhoneNormalized || data.phone || ""
+        contactPhone
       });
     } catch (error) {
       console.warn("[iaqar] open opportunity management", error);
