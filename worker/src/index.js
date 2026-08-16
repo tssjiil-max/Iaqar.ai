@@ -2529,6 +2529,43 @@ async function handleOpportunityLifecycle(request, env, requestId) {
       payload: { type: "whatsapp", action: "whatsapp_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
     });
     return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else if (action === "listing_shared_whatsapp") {
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "listing_share",
+        action: "listing_shared_whatsapp",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else if (action === "listing_copied") {
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "listing_share",
+        action: "listing_copied",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else if (action === "party_action") {
+    const partyAction = cleanText(body.partyAction, 40);
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "party",
+        action: partyAction || "party_action",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, partyAction, requestId });
   } else if (action === "call_opened") {
     fields.lastCallOpenedAt = firestoreTimestamp(now);
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });

@@ -86,13 +86,24 @@ import {
   buildReadyWorkspaceHtml,
   buildMatchComparisonHtml,
   buildCooperationRoomHtml,
-  buildContactOutcomeActionHtml
+  buildContactOutcomeActionHtml,
+  buildWorkspaceMatchRowsHtml
 } from "./opportunity-bank-workspace-ui.js";
 import {
-  buildBestNextAction,
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview
 } from "./opportunity-workspace-domain.js";
+import {
+  buildPublicListingAnnouncement,
+  listingShareActivityText,
+  officeShareSentActivityText,
+  officeShareStatusLabel,
+  partyActionActivityText,
+  partyContactActions,
+  partyWhatsAppPresetMessage,
+  readyWorkspacePrimaryActions,
+  validateOfficeShareSend
+} from "./opportunity-ready-actions-domain.js";
 import {
   contactOutcomeActivityText,
   refusalReasonLabel,
@@ -190,15 +201,19 @@ async function loadPublicOfficeDirectory() {
   return publicOfficeDirectoryCache;
 }
 
-function filterPublicOffices(query, offices) {
+function filterPublicOffices(query, offices, filters = {}) {
   const current = officeId();
   const normalized = String(query || "").trim().toLowerCase();
+  const cityFilter = String(filters.city || "").trim().toLowerCase();
+  const districtFilter = String(filters.district || "").trim().toLowerCase();
   return offices
     .filter((row) => {
       const id = String(row.officeId || row.id || "").trim().toLowerCase();
       if (!id || id === current) return false;
       const mode = String(row.cooperationMode || "APPROVAL_REQUIRED").toUpperCase();
       if (mode === "DISABLED") return false;
+      if (cityFilter && !String(row.city || "").toLowerCase().includes(cityFilter)) return false;
+      if (districtFilter && !String(row.district || "").toLowerCase().includes(districtFilter)) return false;
       if (!normalized) return true;
       const name = String(row.officeName || "").toLowerCase();
       const city = String(row.city || "").toLowerCase();
@@ -209,8 +224,12 @@ function filterPublicOffices(query, offices) {
     .slice(0, 8);
 }
 
-function bindOfficeSearch({ searchInput, hiddenInput, labelNode, resultsNode }) {
+function bindOfficeSearch({ searchInput, hiddenInput, labelNode, resultsNode, cityInput, districtInput }) {
   if (!searchInput || !hiddenInput) return;
+  const readFilters = () => ({
+    city: cityInput?.value || "",
+    district: districtInput?.value || ""
+  });
   const renderResults = (rows) => {
     if (!resultsNode) return;
     if (!rows.length) {
@@ -247,12 +266,18 @@ function bindOfficeSearch({ searchInput, hiddenInput, labelNode, resultsNode }) 
     hiddenInput.value = "";
     if (labelNode) labelNode.hidden = true;
     const offices = await loadPublicOfficeDirectory();
-    renderResults(filterPublicOffices(searchInput.value, offices));
+    renderResults(filterPublicOffices(searchInput.value, offices, readFilters()));
   });
   searchInput.addEventListener("focus", async () => {
     const offices = await loadPublicOfficeDirectory();
-    renderResults(filterPublicOffices(searchInput.value, offices));
+    renderResults(filterPublicOffices(searchInput.value, offices, readFilters()));
   });
+  if (cityInput) {
+    cityInput.addEventListener("input", () => searchInput.dispatchEvent(new Event("input")));
+  }
+  if (districtInput) {
+    districtInput.addEventListener("input", () => searchInput.dispatchEvent(new Event("input")));
+  }
 }
 
 function facetSourceRecords() {
@@ -337,7 +362,8 @@ function officeProfileForShare() {
     brokerName: office.brokerName || office.displayBroker || "",
     licenseNumber: office.licenseNumber || office.falLicense || "",
     publicSlug: office.publicSlug || "",
-    officeId: office.officeId || officeId()
+    officeId: office.officeId || officeId(),
+    phone: office.phone || office.mobile || ""
   };
 }
 
@@ -767,9 +793,11 @@ async function renderDetail(id) {
 
   const bundle = await loadWorkspaceBundle(id);
   const freshRecord = state.records.get(id) || record;
-  panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, bundle);
+  panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, bundle, {
+    officeProfile: officeProfileForShare(),
+    origin: window.location.origin
+  });
   wireWorkspaceHandlers(id, freshRecord, bundle);
-  syncWorkspaceActionLayout();
   scrollBankDetailIntoView();
   setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-workspace" } }));
@@ -777,12 +805,220 @@ async function renderDetail(id) {
 }
 
 function syncWorkspaceActionLayout() {
-  const side = document.getElementById("bankWorkspaceActionsSide");
-  const mobile = document.getElementById("bankWorkspaceActionsMobile");
-  if (!side || !mobile) return;
-  const narrow = window.matchMedia("(max-width: 768px)").matches;
-  side.hidden = narrow;
-  mobile.hidden = !narrow;
+  /* side panel removed — primary actions live in main column */
+}
+
+let listingShareActivityBusy = false;
+let partyActionActivityBusy = false;
+
+function appendCoopRowToWorkspace(targetOfficeId, officeName, status = "PENDING") {
+  const list = document.getElementById("bankWorkspaceCoopList");
+  if (!list) return;
+  const emptyNote = list.querySelector("p.bank-note");
+  if (emptyNote && !list.querySelector(".bank-workspace-coop-row")) emptyNote.remove();
+  const target = String(targetOfficeId || "").trim();
+  if (list.querySelector(`[data-coop-target-id="${target}"]`)) return;
+  const row = document.createElement("div");
+  row.className = "bank-workspace-coop-row";
+  row.setAttribute("data-coop-target-id", target);
+  row.innerHTML = `<strong>${escapeHtml(officeName || target)}</strong><span>${escapeHtml(officeShareStatusLabel(status))}</span>`;
+  list.prepend(row);
+}
+
+function openPartyWhatsAppWithMessage(record, phone, message) {
+  if (!phone) {
+    toast("أكمل رقم الجوال أولًا");
+    return false;
+  }
+  const digits = whatsappDigitsFromE164(phone);
+  if (!digits) {
+    toast("رقم الجوال غير مكتمل");
+    return false;
+  }
+  const url = `https://wa.me/${digits}?text=${encodeURIComponent(String(message || ""))}`;
+  const opened = window.open(url, "_blank");
+  if (!opened) window.location.href = url;
+  return true;
+}
+
+async function recordWorkspaceLifecycleAction(opportunityId, action, extra = {}) {
+  try {
+    await postOpportunityLifecycle(opportunityId, { action, ...extra });
+  } catch (error) {
+    console.warn("[iaqar] workspace lifecycle", error);
+  }
+}
+
+async function logListingShareActivity(opportunityId, channel) {
+  if (listingShareActivityBusy) return;
+  const text = listingShareActivityText(channel);
+  if (!text) return;
+  listingShareActivityBusy = true;
+  try {
+    const action = channel === "whatsapp" ? "listing_shared_whatsapp" : "listing_copied";
+    await recordWorkspaceLifecycleAction(opportunityId, action);
+    appendWorkspaceActivityLine(text);
+  } finally {
+    listingShareActivityBusy = false;
+  }
+}
+
+async function logPartyActionActivity(opportunityId, actionId) {
+  if (partyActionActivityBusy) return;
+  const text = partyActionActivityText(actionId);
+  if (!text) return;
+  partyActionActivityBusy = true;
+  try {
+    await recordWorkspaceLifecycleAction(opportunityId, "party_action", { partyAction: actionId });
+    appendWorkspaceActivityLine(text);
+  } finally {
+    partyActionActivityBusy = false;
+  }
+}
+
+async function runWorkspaceMatchingSearch(opportunityId, bundleRef = {}) {
+  const statusNode = document.getElementById("bankMatchesStatus");
+  if (statusNode) statusNode.textContent = "جارٍ البحث عن مطابقة…";
+  await rematchOpportunity(opportunityId, { reason: "workspace_search" });
+  const freshBundle = await loadWorkspaceBundle(opportunityId);
+  Object.assign(bundleRef, freshBundle);
+  const list = document.querySelector("#bankWorkspaceMatchesSection .bank-workspace-match-list");
+  if (list) {
+    list.innerHTML = buildWorkspaceMatchRowsHtml(opportunityId, freshBundle.matches || []);
+    wireWorkspaceMatchRowHandlers(opportunityId, state.records.get(opportunityId) || {}, freshBundle);
+  }
+  const count = sortMatchesForWorkspace(freshBundle.matches || [], opportunityId).length;
+  if (statusNode) {
+    statusNode.textContent = count
+      ? `تم العثور على ${count} مطابقة مرتبة حسب نسبة التطابق.`
+      : "لا توجد مطابقات مناسبة حاليًا.";
+  }
+}
+
+function wireWorkspaceMatchRowHandlers(id, record, bundle = {}) {
+  document.querySelectorAll("[data-match-id]").forEach((btn) => {
+    if (btn.getAttribute("data-match-wired") === "1") return;
+    btn.setAttribute("data-match-wired", "1");
+    btn.addEventListener("click", async () => {
+      const matchId = btn.getAttribute("data-match-id");
+      const counterpartId = btn.getAttribute("data-counterpart-id");
+      const matches = sortMatchesForWorkspace(bundle.matches || [], id);
+      const match = matches.find((row) => row.matchId === matchId) || {};
+      let counterpart = {};
+      if (counterpartId) {
+        const runtime = officeRuntime();
+        if (runtime?.db) {
+          const snap = await runtime.db.collection("offices").doc(officeId())
+            .collection("opportunities").doc(counterpartId).get();
+          if (snap.exists) counterpart = snap.data() || {};
+        }
+      }
+      const panel = document.getElementById("bankMatchComparisonPanel");
+      if (!panel) return;
+      panel.hidden = false;
+      panel.innerHTML = `${buildMatchComparisonHtml(state.records.get(id) || record, counterpart, match)}
+        <div class="bank-workspace-actions iaqar-workflow-actions">
+          ${counterpartId ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankOpenCounterpartBtn">فتح الفرصة المطابقة</button>` : ""}
+        </div>`;
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("bankMatchComparisonClose")?.addEventListener("click", () => {
+        panel.hidden = true;
+        panel.innerHTML = "";
+      }, { once: true });
+      document.getElementById("bankOpenCounterpartBtn")?.addEventListener("click", () => {
+        if (counterpartId) void renderDetail(counterpartId);
+      }, { once: true });
+    });
+  });
+}
+
+async function executePartyContactAction(actionId, opportunityId, record, bundle = {}) {
+  const fresh = state.records.get(opportunityId) || record;
+  const phone = readAdvertiserPhoneFromRecord(fresh).phone;
+  const actionDef = partyContactActions(fresh).find((row) => row.id === actionId);
+  if (!actionDef) return;
+
+  if (actionId === "party_call") {
+    if (!phone) return toast("أكمل رقم الجوال أولًا");
+    const local = formatLocalPhoneDisplay(phone);
+    if (!local) return toast("رقم الجوال غير مكتمل");
+    window.location.href = `tel:${local}`;
+    void recordLifecycleCallOpened(opportunityId);
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionId === "party_whatsapp") {
+    openBankAdvertiserWhatsApp(fresh, phone);
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionDef.type === "whatsapp_message") {
+    const preset = partyWhatsAppPresetMessage(actionId, fresh);
+    const greeting = buildAdvertiserWhatsAppMessage({
+      brokerName: officeContextForAdvertiser().brokerName || "",
+      officeName: officeContextForAdvertiser().officeName || "",
+      licenseNumber: officeContextForAdvertiser().licenseNumber || "",
+      propertyType: fresh.propertyType || "",
+      district: fresh.district || "",
+      city: fresh.city || "",
+      officeLink: officePublicLink(),
+      advertiserDisplayName: readAdvertiserDisplayName(fresh)
+    });
+    const message = preset || greeting;
+    if (openPartyWhatsAppWithMessage(fresh, phone, message)) {
+      void recordLifecycleWhatsAppOpened(opportunityId);
+      await logPartyActionActivity(opportunityId, actionId);
+    }
+    return;
+  }
+
+  if (actionDef.type === "manage" || actionId === "party_update_property") {
+    if (window.IAQAR?.openOpportunityManagement) {
+      void window.IAQAR.openOpportunityManagement(opportunityId);
+    }
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionId === "party_schedule_viewing") {
+    const section = document.getElementById("bankWorkspaceFollowUpSection");
+    if (section) {
+      section.hidden = false;
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionId === "party_record_contact") {
+    const section = document.getElementById("bankWorkspaceContactSection");
+    if (section) {
+      section.hidden = false;
+      section.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionId === "party_send_suggested") {
+    await runWorkspaceMatchingSearch(opportunityId, bundle);
+    const section = document.getElementById("bankWorkspaceMatchesSection");
+    if (section) {
+      section.hidden = false;
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    await logPartyActionActivity(opportunityId, actionId);
+    return;
+  }
+
+  if (actionId === "party_property_found") {
+    if (window.IAQAR?.openOpportunityManagement) {
+      void window.IAQAR.openOpportunityManagement(opportunityId);
+    }
+    await logPartyActionActivity(opportunityId, actionId);
+  }
 }
 
 function wireIncompleteDetailHandlers(id, record) {
@@ -882,14 +1118,9 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
   });
 
   const showSection = (sectionId) => {
-    document.querySelectorAll(".bank-workspace-section[data-temp-open]").forEach((node) => {
-      node.hidden = true;
-      node.removeAttribute("data-temp-open");
-    });
     const section = document.getElementById(sectionId);
     if (section) {
       section.hidden = false;
-      section.setAttribute("data-temp-open", "1");
       section.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
@@ -897,78 +1128,104 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
   document.querySelectorAll("[data-workspace-action]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const action = btn.getAttribute("data-workspace-action");
-      if (action === "review_matches") return showSection("bankWorkspaceMatchesSection");
-      if (action === "suggested_offices") return showSection("bankWorkspaceOfficesSection");
-      if (action === "share_broker" || action === "request_cooperation") return showSection("bankWorkspaceShareSection");
-      if (action === "whatsapp") {
-        const phone = readAdvertiserPhoneFromRecord(state.records.get(id) || record).phone;
-        openBankAdvertiserWhatsApp(state.records.get(id) || record, phone);
+      if (action === "search_matches") {
+        showSection("bankWorkspaceMatchesSection");
+        void runWorkspaceMatchingSearch(id, bundle);
         return;
       }
-      if (action === "schedule_followup" || action === "confirm_followup") {
-        showSection("bankWorkspaceFollowUpSection");
+      if (action === "send_and_share") {
+        showSection("bankWorkspaceSendShareHub");
         return;
       }
-      if (action === "record_contact") {
-        const section = document.getElementById("bankWorkspaceContactSection");
-        if (section) {
-          section.hidden = false;
-          section.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
+      if (action === "contact_party") {
+        showSection("bankWorkspacePartySection");
         return;
       }
-      if (action === "close_opportunity") {
+      if (action === "manage_opportunity") {
         if (window.IAQAR?.openOpportunityManagement) {
           void window.IAQAR.openOpportunityManagement(id);
         }
-        return;
-      }
-      if (action === "complete_fields") {
-        void renderDetail(id);
       }
     });
   });
 
-  document.querySelectorAll("[data-match-id]").forEach((btn) => {
+  document.querySelectorAll("[data-send-share-option]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const matchId = btn.getAttribute("data-match-id");
-      const counterpartId = btn.getAttribute("data-counterpart-id");
-      const matches = sortMatchesForWorkspace(bundle.matches || [], id);
-      const match = matches.find((row) => row.matchId === matchId) || {};
-      let counterpart = {};
-      if (counterpartId) {
-        const runtime = officeRuntime();
-        if (runtime?.db) {
-          const snap = await runtime.db.collection("offices").doc(officeId())
-            .collection("opportunities").doc(counterpartId).get();
-          if (snap.exists) counterpart = snap.data() || {};
+      const option = btn.getAttribute("data-send-share-option");
+      if (option === "share_whatsapp_listing") {
+        const fresh = state.records.get(id) || record;
+        const preview = buildPublicListingAnnouncement(fresh, officeProfileForShare(), {
+          origin: window.location.origin
+        });
+        const previewNode = document.getElementById("bankListingPreviewText");
+        if (previewNode) previewNode.textContent = preview;
+        showSection("bankWorkspaceWhatsAppListing");
+        return;
+      }
+      if (option === "share_to_office") {
+        showSection("bankWorkspaceShareSection");
+        return;
+      }
+      if (option === "copy_listing_text") {
+        const fresh = state.records.get(id) || record;
+        const text = buildPublicListingAnnouncement(fresh, officeProfileForShare(), {
+          origin: window.location.origin
+        });
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("تم نسخ الإعلان");
+          const statusNode = document.getElementById("bankListingShareStatus");
+          if (statusNode) statusNode.textContent = "تم نسخ إعلان الفرصة";
+          await logListingShareActivity(id, "copy");
+        } catch (error) {
+          console.warn("[iaqar] listing copy", error);
+          toast("تعذر نسخ الإعلان");
         }
       }
-      const panel = document.getElementById("bankMatchComparisonPanel");
-      if (!panel) return;
-      panel.hidden = false;
-      panel.innerHTML = buildMatchComparisonHtml(state.records.get(id) || record, counterpart, match);
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
-      document.getElementById("bankMatchComparisonClose")?.addEventListener("click", () => {
-        panel.hidden = true;
-        panel.innerHTML = "";
-      });
     });
   });
+
+  $("bankOpenWhatsAppListingBtn")?.addEventListener("click", () => {
+    const fresh = state.records.get(id) || record;
+    const message = buildPublicListingAnnouncement(fresh, officeProfileForShare(), {
+      origin: window.location.origin
+    });
+    const url = whatsAppShareUrl(message);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = url;
+    const statusNode = document.getElementById("bankListingShareStatus");
+    if (statusNode) statusNode.textContent = "تم فتح واتساب — اختر المستلم";
+    void logListingShareActivity(id, "whatsapp");
+  });
+
+  $("bankCopyListingBtn")?.addEventListener("click", async () => {
+    const fresh = state.records.get(id) || record;
+    const text = buildPublicListingAnnouncement(fresh, officeProfileForShare(), {
+      origin: window.location.origin
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("تم نسخ الإعلان");
+      const statusNode = document.getElementById("bankListingShareStatus");
+      if (statusNode) statusNode.textContent = "تم نسخ إعلان الفرصة";
+      await logListingShareActivity(id, "copy");
+    } catch (error) {
+      toast("تعذر نسخ الإعلان");
+    }
+  });
+
+  document.querySelectorAll("[data-party-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const actionId = btn.getAttribute("data-party-action");
+      void executePartyContactAction(actionId, id, record, bundle);
+    });
+  });
+
+  wireWorkspaceMatchRowHandlers(id, record, bundle);
 
   document.querySelectorAll("[data-open-coop-room]").forEach((btn) => {
     btn.addEventListener("click", () => {
       void openCooperationRoom(id, btn.getAttribute("data-open-coop-room"));
-    });
-  });
-
-  document.querySelectorAll("[data-cooperation-request]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      void createShareRequest({
-        opportunityIds: [id],
-        targetOfficeId: btn.getAttribute("data-cooperation-request"),
-        scopeType: "single"
-      });
     });
   });
 
@@ -977,8 +1234,13 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
   $("bankDirectShareForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const targetOfficeId = String($("bankDetailScopeTarget")?.value || "").trim();
-    if (!targetOfficeId) {
-      setShareActionStatus("اختر مكتبًا من نتائج البحث", "is-error");
+    const validation = validateOfficeShareSend({
+      opportunityId: id,
+      originatingOfficeId: officeId(),
+      targetOfficeId
+    });
+    if (!validation.ok) {
+      setShareActionStatus(validation.message, "is-error");
       return;
     }
     await createShareRequest({ opportunityIds: [id], targetOfficeId, scopeType: "single" });
@@ -987,7 +1249,9 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
     searchInput: $("bankDetailOfficeSearch"),
     hiddenInput: $("bankDetailScopeTarget"),
     labelNode: $("bankDetailScopeSelectedLabel"),
-    resultsNode: $("bankDetailScopeSearchResults")
+    resultsNode: $("bankDetailScopeSearchResults"),
+    cityInput: $("bankOfficeShareCityFilter"),
+    districtInput: $("bankOfficeShareDistrictFilter")
   });
 
   document.querySelectorAll("[data-followup-days]").forEach((btn) => {
@@ -1012,8 +1276,6 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
     if (!todayCheck.ok) return toast(todayCheck.message);
     void saveWorkspaceFollowUp(id, parsed.toISOString());
   });
-
-  window.addEventListener("resize", syncWorkspaceActionLayout, { once: false });
 }
 
 let bankFollowUpSaveBusy = false;
@@ -1071,29 +1333,17 @@ function patchWorkspaceFollowUpUi(opportunityId, followUp) {
 let bankContactOutcomeSaveBusy = false;
 
 function appendWorkspaceActivityLine(text = "") {
-  const ul = document.querySelector("#bankWorkspaceFollowUpSection ul.bank-workspace-activity");
+  const section = document.getElementById("bankWorkspaceFollowUpSection");
+  const ul = section?.querySelector("ul.bank-workspace-activity")
+    || document.querySelector("#bankWorkspaceFollowUpSection ul.bank-workspace-activity");
   if (!ul || !text) return;
   const duplicate = [...ul.querySelectorAll("li")].some((li) => li.textContent.includes(text));
   if (duplicate) return;
+  if (section) section.hidden = false;
   const li = document.createElement("li");
   const stamp = new Date().toLocaleString("ar-SA", { timeZone: "Asia/Riyadh" });
   li.innerHTML = `<time>${stamp}</time> ${text}`;
   ul.insertBefore(li, ul.firstChild);
-}
-
-function patchWorkspaceBestNext(opportunityId, record, bundle = {}) {
-  const fresh = state.records.get(opportunityId) || record;
-  const bestNext = buildBestNextAction({
-    record: fresh,
-    matches: sortMatchesForWorkspace(bundle.matches || [], opportunityId),
-    suggestions: bundle.suggestions || [],
-    followUp: activeFollowUpFromRecord(fresh)
-  });
-  const btn = document.querySelector("#bankWorkspaceBestNext .bank-workspace-best-next");
-  if (btn) {
-    btn.textContent = bestNext.label;
-    btn.setAttribute("data-workspace-action", bestNext.action);
-  }
 }
 
 async function postOpportunityLifecycle(opportunityId, body = {}) {
@@ -1290,7 +1540,6 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
       note: validation.note
     });
     appendWorkspaceActivityLine(activityText);
-    patchWorkspaceBestNext(opportunityId, merged, bundle);
     const section = document.getElementById("bankWorkspaceContactSection");
     if (section) section.hidden = true;
     if (statusNode) statusNode.textContent = "";
@@ -2184,13 +2433,29 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     return;
   }
 
+  const oppId = ownedCheck.accepted[0] || "";
+  const shareValidation = validateOfficeShareSend({
+    opportunityId: oppId,
+    originatingOfficeId: officeId(),
+    targetOfficeId
+  });
+  if (!shareValidation.ok) {
+    setShareActionStatus(shareValidation.message, "is-error");
+    return;
+  }
+
   const duplicate = await hasActiveShareWithOffice(targetOfficeId, ownedCheck.accepted);
   if (duplicate) {
     setShareActionStatus("يوجد مشاركة نشطة لهذه الفرصة مع هذا المكتب", "is-error");
     return;
   }
 
-  setShareActionStatus("جارٍ إرسال طلب التعاون…");
+  const officeName = await resolveOfficeShareLabel(targetOfficeId);
+  if (!confirm(`تأكيد إرسال الفرصة إلى مكتب ${officeName}؟\n\nلن تُشارك بيانات المالك أو العميل أو أرقامهم.`)) {
+    return;
+  }
+
+  setShareActionStatus("جارٍ الإرسال…");
   try {
     const token = await user.getIdToken();
     const response = await fetch(`${workerBaseUrl()}/cooperation/request`, {
@@ -2208,11 +2473,20 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.message || "تعذر إرسال طلب التعاون");
+      const errMsg = payload.error === "same_office"
+        ? "لا يمكن الإرسال إلى المكتب نفسه"
+        : (payload.message || "تعذر إرسال الفرصة إلى المكتب");
+      throw new Error(errMsg);
     }
-    const message = payload.message || "تم إرسال طلب التعاون";
-    setShareActionStatus(message, payload.duplicate ? "is-done" : "is-done");
-    if (!payload.duplicate) toast("تم إرسال طلب التعاون");
+    const message = payload.duplicate
+      ? "يوجد مشاركة نشطة لهذه الفرصة مع هذا المكتب"
+      : "تم إرسال الفرصة إلى المكتب";
+    setShareActionStatus(message, "is-done");
+    if (!payload.duplicate) {
+      toast("تم إرسال الفرصة إلى المكتب");
+      appendWorkspaceActivityLine(officeShareSentActivityText(officeName));
+      appendCoopRowToWorkspace(targetOfficeId, officeName, "PENDING");
+    }
     const requestId = payload.cooperationRequestId || payload.requestId || "";
     if (requestId) await syncCooperationOperation(requestId);
     window.dispatchEvent(new CustomEvent("iaqar:cooperation-request-created", {
@@ -2227,8 +2501,8 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType })
   } catch (error) {
     console.warn("[iaqar] cooperation request", error);
     const message = String(error?.message || "").includes("permission")
-      ? "تعذر إرسال طلب التعاون — صلاحيات غير كافية"
-      : (error?.message || "تعذر إرسال طلب التعاون");
+      ? "تعذر إرسال الفرصة — صلاحيات غير كافية"
+      : (error?.message || "تعذر إرسال الفرصة إلى المكتب");
     setShareActionStatus(message, "is-error");
   }
 }
