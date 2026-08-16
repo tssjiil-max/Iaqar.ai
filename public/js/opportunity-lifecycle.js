@@ -35,6 +35,30 @@
     ["other", "أخرى"]
   ]);
 
+  const OPPORTUNITY_FINAL_CLOSE_REASONS = Object.freeze([
+    ["deal_done", "تمت الصفقة"],
+    ["deal_failed", "لم تتم الصفقة"],
+    ["not_interested", "غير مهتم"],
+    ["contact_failed", "تعذر التواصل"],
+    ["duplicate", "طلب مكرر"],
+    ["cancelled", "ألغى العميل أو المالك"]
+  ]);
+
+  const OPPORTUNITY_FINAL_OUTCOMES = Object.freeze([
+    ["sold", "بيع"],
+    ["rented", "إيجار"],
+    ["purchased", "شراء"],
+    ["leased", "استئجار"]
+  ]);
+
+  const CONTACT_OUTCOME_LABELS = Object.freeze({
+    NO_RESPONSE: "لم يرد",
+    INTERESTED: "مهتم",
+    REFUSED: "غير مهتم",
+    FOLLOW_UP: "طلب متابعة",
+    AGREED: "تم الاتفاق"
+  });
+
   const SOURCE_ALIASES = Object.freeze({
     office_public_link: "office_link",
     platform_public: "public_site",
@@ -98,8 +122,16 @@
     return LIFECYCLE_STATUS.NEW;
   }
 
+  function normalizeArabicDigits(value) {
+    const arabic = "٠١٢٣٤٥٦٧٨٩";
+    return String(value || "").replace(/[٠-٩]/g, (ch) => {
+      const index = arabic.indexOf(ch);
+      return index >= 0 ? String(index) : ch;
+    });
+  }
+
   function normalizeSaudiPhoneForWhatsApp(phone) {
-    let digits = String(phone || "").replace(/[\s\-()+]/g, "");
+    let digits = normalizeArabicDigits(phone).replace(/[\s\-()+]/g, "");
     if (!digits) return "";
     if (digits.startsWith("00966")) digits = digits.slice(2);
     if (digits.startsWith("+966")) digits = digits.slice(1);
@@ -108,6 +140,33 @@
     if (digits.startsWith("5") && digits.length === 9) return `966${digits}`;
     if (/^9665\d{8}$/.test(digits)) return digits;
     return "";
+  }
+
+  function resolveOpportunityCanonicalPhone(record = {}) {
+    const candidates = [
+      record.advertiserPhoneNormalized,
+      record.advertiserPhone,
+      record.ownerPhone,
+      record.contactPhone,
+      record.clientPhone,
+      record.phone,
+      record.mobile,
+      record.advertiserPhoneLocal
+    ];
+    for (const value of candidates) {
+      const whatsappDigits = normalizeSaudiPhoneForWhatsApp(value);
+      if (whatsappDigits) {
+        const local = `0${whatsappDigits.slice(3)}`;
+        return {
+          valid: true,
+          whatsappDigits,
+          local,
+          tel: local,
+          e164: `+${whatsappDigits}`
+        };
+      }
+    }
+    return { valid: false, whatsappDigits: "", local: "", tel: "", e164: "", error: "رقم الجوال غير مكتمل" };
   }
 
   function formatMoney(value) {
@@ -282,9 +341,14 @@
     LIFECYCLE_STATUS,
     LIFECYCLE_STATUS_LABELS,
     CLOSED_LOST_REASONS,
+    OPPORTUNITY_FINAL_CLOSE_REASONS,
+    OPPORTUNITY_FINAL_OUTCOMES,
+    CONTACT_OUTCOME_LABELS,
     normalizeOpportunitySource,
     getOpportunityLifecycleStatus,
     normalizeSaudiPhoneForWhatsApp,
+    normalizeArabicDigits,
+    resolveOpportunityCanonicalPhone,
     buildOpportunitySummary,
     buildOpportunityWhatsAppMessage,
     resolveSelectOption,

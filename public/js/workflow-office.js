@@ -427,7 +427,7 @@
       workflowStage: lifecycleStatus,
       nextAction: card?.nextActionLabel !== "غير محدد" ? card.nextActionLabel : "تفاصيل الفرصة",
       actionLabel: "تفاصيل الفرصة",
-      secondaryActionLabel: "إغلاق التفاصيل",
+      secondaryActionLabel: "إدارة الفرصة",
       kind: isOwner ? "owner" : "client",
       contactType: isOwner ? "owner" : "buyer",
       contactName: item.contactName || "",
@@ -1162,86 +1162,74 @@
       : "فُتح واتساب — أكّد الإرسال بنفسك");
   }
 
-  async function openLifecycleWhatsApp(detail) {
-    const role = detail.recipientRole === "owner" ? "owner" : "client";
-    const contact = await workflowContact(detail, role).catch(() => null);
-    const phone = whatsappPhone((contact && contact.phone) || detail.contactPhone);
-    if (!phone) return notify("رقم التواصل غير صحيح");
-
-    const modal = document.getElementById("advertiserMessageOverlay");
-    const target = document.getElementById("advertiserMessageTarget");
-    const textEl = document.getElementById("advertiserMessageText");
-    const title = document.getElementById("advertiserMessageTitle");
-    const whatsBtn = document.getElementById("advertiserMessageWhatsApp");
-    const closeBtn = document.getElementById("advertiserMessageClose");
-    const cancelBtn = document.getElementById("advertiserMessageCancel");
-    if (!modal || !target || !textEl || !whatsBtn) {
-      const url = `https://wa.me/${phone}`;
-      window.location.href = url;
-      return;
+  function resolveLifecyclePhone(detail) {
+    if (LC().resolveOpportunityCanonicalPhone) {
+      return LC().resolveOpportunityCanonicalPhone(detail);
     }
+    const whatsappDigits = whatsappPhone(detail.contactPhone);
+    if (!whatsappDigits) return { valid: false, error: "رقم الجوال غير مكتمل" };
+    const local = `0${whatsappDigits.slice(3)}`;
+    return { valid: true, whatsappDigits, local, tel: local };
+  }
 
+  function buildLifecycleContactMessage(detail) {
     const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
     const actionType = LC().whatsappActionTypeForStatus ? LC().whatsappActionTypeForStatus(lifecycleStatus) : "first_contact";
-    const opportunityPayload = {
+    const isOwner = detail.kind === "owner" || detail.contactType === "owner";
+    const role = isOwner ? "owner" : "client";
+    const contactName = String(detail.contactName || detail.advertiserDisplayName || "").trim();
+    const payload = {
       ...detail,
-      contactType: role === "owner" ? "owner" : "buyer",
-      kind: role === "owner" ? "owner" : "client",
-      contactPhone: (contact && contact.phone) || detail.contactPhone
+      contactType: isOwner ? "owner" : "buyer",
+      kind: isOwner ? "owner" : "client",
+      contactPhone: detail.contactPhone || detail.advertiserPhone || detail.advertiserPhoneNormalized || ""
     };
-    const firstMessage = LC().buildOpportunityWhatsAppMessage
-      ? LC().buildOpportunityWhatsAppMessage(opportunityPayload, actionType, {
+    if (contactName) payload.contactName = contactName;
+    return LC().buildOpportunityWhatsAppMessage
+      ? LC().buildOpportunityWhatsAppMessage(payload, actionType, {
         brokerName: brokerDisplayName(),
         officeName: officeDisplayName(),
         matchSummary: detail.matchSummary || ""
       })
-      : whatsappMessage(detail, role, contact || {});
-    const missingMessage = buildMissingDataWhatsAppMessage(opportunityPayload);
+      : whatsappMessage(detail, role, { name: contactName, phone: payload.contactPhone });
+  }
 
-    if (title) {
-      title.textContent = role === "owner" ? "واتساب المالك" : "واتساب العميل";
-    }
-    target.textContent = `0${phone.slice(3)}`;
-    textEl.value = firstMessage;
+  function openContactWhatsAppDirect() {
+    const detail = activeWorkflowDetail;
+    if (!detail) return;
+    const phoneInfo = resolveLifecyclePhone(detail);
+    if (!phoneInfo.valid) return notify(phoneInfo.error || "رقم الجوال غير مكتمل");
+    const message = buildLifecycleContactMessage(detail);
+    const url = `https://wa.me/${phoneInfo.whatsappDigits}?text=${encodeURIComponent(message)}`;
+    const opened = window.open(url, "_blank");
+    if (!opened) window.location.href = url;
+    lifecycleContactAttempted = true;
+    void opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" }).catch((error) => {
+      console.warn("[iaqar] whatsapp opened log", error);
+    });
+    activeWorkflowDetail = { ...detail, lastWhatsAppOpenedAt: new Date().toISOString() };
+    notify("تم فتح واتساب");
+    renderOpportunityLifecycleUi();
+  }
 
-    const presetWrap = document.getElementById("advertiserMessagePresets");
-    if (presetWrap) {
-      presetWrap.innerHTML = `
-        <button type="button" class="bank-action" data-wa-preset="first">بدء التواصل</button>
-        <button type="button" class="bank-action" data-wa-preset="missing">طلب الصور والبيانات الناقصة</button>`;
-      presetWrap.querySelectorAll("[data-wa-preset]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const key = btn.getAttribute("data-wa-preset");
-          textEl.value = key === "missing" ? missingMessage : firstMessage;
-        });
-      });
-    }
+  function openContactCallDirect() {
+    const detail = activeWorkflowDetail;
+    if (!detail) return;
+    const phoneInfo = resolveLifecyclePhone(detail);
+    if (!phoneInfo.valid) return notify(phoneInfo.error || "رقم الجوال غير مكتمل");
+    window.location.href = `tel:${phoneInfo.tel || phoneInfo.local}`;
+    lifecycleContactAttempted = true;
+    void opportunityLifecycleAction("call_opened", detail).catch((error) => {
+      console.warn("[iaqar] call opened log", error);
+    });
+    activeWorkflowDetail = { ...detail, lastCallOpenedAt: new Date().toISOString() };
+    notify("تم فتح الاتصال");
+    renderOpportunityLifecycleUi();
+  }
 
-    const onClose = () => {
-      modal.hidden = true;
-      whatsBtn.removeEventListener("click", onWhatsApp);
-      closeBtn?.removeEventListener("click", onClose);
-      cancelBtn?.removeEventListener("click", onClose);
-    };
-
-    const onWhatsApp = async () => {
-      const message = String(textEl.value || "").trim() || firstMessage;
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-      window.location.href = url;
-      try {
-        await opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "opened" });
-      } catch (error) {
-        console.warn("[iaqar] whatsapp opened log", error);
-      }
-      notify("تم فتح واتساب");
-      showWorkflowContactOutcomes(detail);
-      onClose();
-    };
-
-    whatsBtn.addEventListener("click", onWhatsApp);
-    closeBtn?.addEventListener("click", onClose);
-    cancelBtn?.addEventListener("click", onClose);
-    modal.hidden = false;
+  async function openLifecycleWhatsApp(detail) {
+    activeWorkflowDetail = { ...detail };
+    openContactWhatsAppDirect();
   }
 
   function buildMissingDataWhatsAppMessage(opportunity = {}) {
@@ -1274,41 +1262,6 @@
     ].join("\n");
   }
 
-  function showWorkflowContactOutcomes(detail) {
-    const overlay = document.getElementById("iaqarWorkflowOverlay");
-    const body = document.getElementById("iaqarWorkflowBody");
-    if (!overlay || !body || overlay.hidden) return;
-    let panel = body.querySelector("#iaqarContactOutcomePanel");
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = "iaqarContactOutcomePanel";
-      panel.className = "iaqar-workflow-note";
-      panel.innerHTML = `
-        <p><strong>بعد العودة من واتساب — ما النتيجة؟</strong></p>
-        <div class="iaqar-workflow-actions">
-          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="CONTACTED">تم التواصل</button>
-          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="NO_RESPONSE">لم يرد</button>
-          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="FOLLOW_UP">طلب متابعة</button>
-          <button type="button" class="iaqar-workflow-btn secondary" data-outcome="REFUSED">غير مهتم</button>
-          <button type="button" class="iaqar-workflow-btn success" data-outcome="AGREED">تم الاتفاق</button>
-        </div>`;
-      body.prepend(panel);
-    }
-    panel.hidden = false;
-    panel.querySelectorAll("[data-outcome]").forEach((btn) => {
-      btn.onclick = async () => {
-        const outcome = btn.getAttribute("data-outcome");
-        try {
-          await opportunityLifecycleAction("contact_outcome", detail, { contactOutcome: outcome });
-          notify("تم تسجيل نتيجة التواصل");
-          panel.hidden = true;
-        } catch (error) {
-          notify("تعذر تسجيل نتيجة التواصل");
-        }
-      };
-    });
-  }
-
   async function openWorkflowWhatsApp(detail) {
     if (["intake", "opportunity"].includes(detail.recordType)) {
       return openLifecycleWhatsApp(detail);
@@ -1322,6 +1275,7 @@
 
   let activeWorkflowDetail = null;
   let activeWorkflowContacts = { owner: null, client: null };
+  let lifecycleContactAttempted = false;
   const CLOSE_REASONS = Object.freeze([
     ["client_not_interested", "العميل غير مهتم"],
     ["owner_not_responding", "المالك غير متجاوب"],
@@ -1340,7 +1294,7 @@
       .iaqar-workflow-panel{width:min(100%,560px);max-height:92svh;overflow:auto;background:#fff;border-radius:24px 24px 18px 18px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Tajawal,Arial,sans-serif;color:#173d35}
       .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}.iaqar-workflow-head h2{margin:0;color:#087064;font-size:21px}.iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer}
       .iaqar-workflow-body{padding:16px}.iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}.iaqar-workflow-steps{display:grid;gap:10px}.iaqar-workflow-step{border:1px solid #dce8e4;border-radius:18px;padding:14px}.iaqar-workflow-step.is-done{border-color:#9fd1c5;background:#f1faf7}.iaqar-workflow-step h3{margin:0 0 5px;font-size:17px;color:#0a695d}.iaqar-workflow-step p{margin:0 0 10px;color:#657b74;font-size:13px;line-height:1.6}
-      .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.iaqar-workflow-btn{min-height:47px;border:0;border-radius:14px;padding:10px 12px;font:800 14px Tajawal;cursor:pointer;background:#128c7e;color:#fff}.iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}.iaqar-workflow-btn.success{background:#087064;color:#fff}.iaqar-workflow-btn.whatsapp{background:#25d366;color:#063c27}.iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
+      .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.iaqar-workflow-btn{min-height:52px;border:0;border-radius:14px;padding:10px 12px;font:700 15px Tajawal;cursor:pointer;background:#087064;color:#fff}.iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}.iaqar-workflow-btn.success{background:#087064;color:#fff}.iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}.iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-outcome-actions{grid-template-columns:1fr 1fr}.iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
       .iaqar-workflow-form{display:grid;gap:11px}.iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700}.iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #cedfda;border-radius:13px;padding:12px;font:500 15px Tajawal;background:#fff}.iaqar-workflow-form textarea{min-height:82px;resize:vertical}.iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}.iaqar-checks label{display:flex;align-items:center;gap:8px}.iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}.iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}.iaqar-workflow-result.success{background:#eaf8f3;color:#087064}.iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}.iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}.iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}
       @media(min-width:700px){.iaqar-workflow-overlay{align-items:center}.iaqar-workflow-panel{border-radius:24px}}@media(max-width:420px){.iaqar-workflow-actions,.iaqar-whatsapp-grid,.iaqar-workflow-form-grid{grid-template-columns:1fr}}
     </style>`);
@@ -1395,6 +1349,9 @@
   async function openWorkflowUi(detail) {
     ensureWorkflowUi();
     activeWorkflowDetail = { ...detail };
+    lifecycleContactAttempted = Boolean(
+      detail.lastWhatsAppOpenedAt || detail.lastCallOpenedAt || detail.lastContactAt
+    );
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
     if (["intake", "opportunity"].includes(detail.recordType)) {
@@ -1636,86 +1593,174 @@
     }
   }
 
+  function isLifecycleClosed(detail = {}) {
+    const status = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
+    return Boolean(detail.closedAt) || ["CLOSED_WON", "CLOSED_LOST", "ARCHIVED"].includes(status);
+  }
+
+  function contactOutcomesVisible(detail = {}) {
+    return lifecycleContactAttempted
+      || detail.lastWhatsAppOpenedAt
+      || detail.lastCallOpenedAt
+      || detail.lastContactAt;
+  }
+
+  function shouldShowFollowUpSection(detail = {}, lastOutcome = "") {
+    if (isLifecycleClosed(detail)) return false;
+    const status = detail.lifecycleStatus || "NEW";
+    return lastOutcome === "NO_RESPONSE"
+      || lastOutcome === "FOLLOW_UP"
+      || lastOutcome === "INTERESTED"
+      || status === "FOLLOW_UP"
+      || Boolean(detail.nextFollowUpAt);
+  }
+
+  function shouldShowMatchingSection(detail = {}, lastOutcome = "") {
+    if (isLifecycleClosed(detail)) return false;
+    if (lastOutcome === "REFUSED") return false;
+    if (!contactOutcomesVisible(detail)) return false;
+    const readiness = detail.matchingReadiness === "READY" || detail.isReadyForMatching === true;
+    const hasFields = Boolean(
+      detail.propertyType
+      && detail.district
+      && (detail.price || detail.priceMax || detail.priceOrBudget || detail.amount)
+    );
+    const status = detail.lifecycleStatus || "NEW";
+    const contactAllows = ["INTERESTED", "AGREED", "CONTACTED", "FOLLOW_UP", "NEGOTIATION", "MATCHED"].includes(status)
+      || lastOutcome === "INTERESTED"
+      || lastOutcome === "AGREED"
+      || lastOutcome === "FOLLOW_UP";
+    return (readiness || hasFields) && contactAllows;
+  }
+
   function renderOpportunityLifecycleUi() {
     const detail = activeWorkflowDetail;
     const body = workflowBody();
     const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
     const lifecycleLabel = (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[lifecycleStatus]) || lifecycleStatus;
     const summaryText = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(detail) : "";
-    const phone = whatsappPhone(detail.contactPhone);
-    const statusOptions = Object.entries(LC().LIFECYCLE_STATUS_LABELS || {}).map(([value, label]) => `<option value="${value}" ${value === lifecycleStatus ? "selected" : ""}>${label}</option>`).join("");
-    const canArchive = ["CLOSED_WON", "CLOSED_LOST"].includes(lifecycleStatus);
-    body.innerHTML = `${`<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}${detail.nextFollowUpAt ? `<br>المتابعة: ${escapeUi(dateTimeLabel(detail.nextFollowUpAt))}` : ""}</div>`}
-      <div class="iaqar-workflow-step"><h3>التواصل</h3><p>راجع تفاصيل الفرصة ثم تواصل عبر واتساب. لن تُسجَّل حالة "تم التواصل" إلا بعد التأكيد.</p>
+    const phoneInfo = resolveLifecyclePhone(detail);
+    const closed = isLifecycleClosed(detail);
+    const outcomesVisible = contactOutcomesVisible(detail);
+    const lastOutcome = String(detail.lastContactOutcome || detail.advertiserContactStatus || "").toUpperCase();
+    const showFollowUp = shouldShowFollowUpSection(detail, lastOutcome);
+    const showMatching = shouldShowMatchingSection(detail, lastOutcome);
+    const outcomeLabels = LC().CONTACT_OUTCOME_LABELS || {
+      NO_RESPONSE: "لم يرد",
+      INTERESTED: "مهتم",
+      REFUSED: "غير مهتم",
+      FOLLOW_UP: "طلب متابعة",
+      AGREED: "تم الاتفاق"
+    };
+    const outcomeButtons = Object.entries(outcomeLabels).map(([value, label]) =>
+      `<button type="button" class="iaqar-workflow-btn secondary" data-ui-action="contact-outcome" data-outcome="${value}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`
+    ).join("");
+
+    let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}${detail.nextFollowUpAt ? `<br>المتابعة: ${escapeUi(dateTimeLabel(detail.nextFollowUpAt))}` : ""}</div>`;
+
+    if (!closed) {
+      html += `<div class="iaqar-workflow-step"><h3>التواصل</h3><p>تواصل عبر واتساب أو اتصال ثم سجّل نتيجة التواصل.</p>
         <div class="iaqar-workflow-actions">
-          <button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-contact" ${phone ? "" : "disabled"}>واتساب</button>
-          <button class="iaqar-workflow-btn secondary" data-ui-action="confirm-contact">تأكيد تم التواصل</button>
+          <button type="button" class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-contact" ${phoneInfo.valid ? "" : "disabled"}>واتساب</button>
+          <button type="button" class="iaqar-workflow-btn call" data-ui-action="call-contact" ${phoneInfo.valid ? "" : "disabled"}>اتصال</button>
         </div>
-        ${phone ? "" : `<p class="iaqar-workflow-note">رقم التواصل غير صحيح</p>`}
-      </div>
-      <div class="iaqar-workflow-step"><h3>حالة الفرصة</h3>
-        <div class="iaqar-workflow-form"><label>تغيير الحالة<select id="iaqarLifecycleStatus">${statusOptions}</select></label>
-        <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-lifecycle-status">حفظ الحالة</button></div>
-      </div>
-      <div class="iaqar-workflow-step"><h3>المتابعة</h3>
+        ${phoneInfo.valid ? "" : `<p class="iaqar-workflow-note">${escapeUi(phoneInfo.error || "رقم الجوال غير مكتمل")}</p>`}
+      </div>`;
+      html += `<div class="iaqar-workflow-step"><h3>نتيجة التواصل</h3>
+        ${outcomesVisible
+          ? `<div class="iaqar-workflow-actions iaqar-outcome-actions">${outcomeButtons}</div>`
+          : `<p class="iaqar-workflow-note">بعد واتساب أو اتصال اختر نتيجة التواصل.</p>`}
+      </div>`;
+      if (showFollowUp) {
+        html += `<div class="iaqar-workflow-step"><h3>المتابعة</h3>
+          <div class="iaqar-workflow-actions">
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="0">اليوم</button>
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="1">غدًا</button>
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="2">بعد غد</button>
+          </div>
+          <label class="iaqar-workflow-form" style="margin-top:10px;display:grid;gap:6px">تاريخ ووقت المتابعة
+            <input id="iaqarCustomFollowUp" type="datetime-local">
+          </label>
+          <div class="iaqar-workflow-actions">
+            <button type="button" class="iaqar-workflow-btn success" data-ui-action="save-followup-custom">حفظ موعد المتابعة</button>
+          </div>
+        </div>`;
+      }
+      if (showMatching) {
+        const coopLabel = String(detail.cooperationListing || "").toUpperCase() === "OPEN"
+          ? "المطابقة والتعاون"
+          : "فتح المطابقة والتعاون";
+        html += `<div class="iaqar-workflow-step"><h3>المطابقة والتعاون</h3>
+          <p>استخدم بنك الفرص لإدارة المطابقة والتعاون دون تغيير الصلاحيات الحالية.</p>
+          <div class="iaqar-workflow-actions">
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="open-matching-bank">${escapeUi(coopLabel)}</button>
+          </div>
+        </div>`;
+      }
+      html += `<div class="iaqar-workflow-step"><h3>إنهاء الفرصة</h3>
         <div class="iaqar-workflow-actions">
-          <button class="iaqar-workflow-btn secondary" data-ui-action="open-followup">متابعة</button>
-        </div>
-      </div>
-      <div class="iaqar-workflow-step"><h3>إنهاء الفرصة</h3>
-        <div class="iaqar-workflow-actions">
-          <button class="iaqar-workflow-btn success" data-ui-action="open-lifecycle-close">إنهاء الفرصة</button>
-          ${canArchive ? `<button class="iaqar-workflow-btn secondary" data-ui-action="archive-opportunity">نقل إلى المنتهية</button>` : ""}
+          <button type="button" class="iaqar-workflow-btn success" data-ui-action="open-lifecycle-close">إنهاء الفرصة</button>
         </div>
       </div>`;
-  }
-
-  function showFollowUpForm() {
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form"><h3>متابعة</h3><div class="iaqar-workflow-actions">
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-followup" data-days="0">اليوم</button>
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-followup" data-days="1">غدًا</button>
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-followup" data-days="2">بعد يومين</button>
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-followup" data-days="3">بعد 3 أيام</button>
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-followup" data-days="7">بعد أسبوع</button>
-    </div><label>تاريخ مخصص<input id="iaqarCustomFollowUp" type="datetime-local"></label>
-    <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" type="button" data-ui-action="save-followup-custom">حفظ المتابعة</button><button class="iaqar-workflow-btn secondary" type="button" data-ui-action="back">رجوع</button></div></form>`;
+    } else {
+      html += `<div class="iaqar-workflow-result closed">الفرصة مؤرشفة / منتهية<br><small>${escapeUi(detail.closureReason || lifecycleLabel)}</small></div>`;
+    }
+    body.innerHTML = html;
   }
 
   function showLifecycleCloseForm() {
-    const reasons = (LC().CLOSED_LOST_REASONS || []).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form"><h3>إنهاء الفرصة</h3><div class="iaqar-workflow-actions">
-      <button class="iaqar-workflow-btn success" type="button" data-ui-action="close-won">تمت بنجاح</button>
-      <button class="iaqar-workflow-btn danger" type="button" data-ui-action="open-lost-reason">لم تتم</button>
-    </div><div id="iaqarLostReasonWrap" hidden><label>سبب اختياري<select id="iaqarLostReason"><option value="">بدون سبب</option>${reasons}</select></label>
-    <button class="iaqar-workflow-btn danger" type="button" data-ui-action="close-lost">تأكيد عدم الإتمام</button></div>
-    <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="back">رجوع</button></form>`;
+    const reasons = (LC().OPPORTUNITY_FINAL_CLOSE_REASONS || []).map(([value, label]) =>
+      `<option value="${value}">${label}</option>`
+    ).join("");
+    const outcomes = (LC().OPPORTUNITY_FINAL_OUTCOMES || []).map(([value, label]) =>
+      `<option value="${value}">${label}</option>`
+    ).join("");
+    workflowBody().innerHTML = `<form class="iaqar-workflow-form" id="iaqarCloseForm"><h3>إنهاء الفرصة</h3>
+      <label>السبب النهائي<select id="iaqarCloseReasonKey" required><option value="">اختر السبب</option>${reasons}</select></label>
+      <div id="iaqarFinalOutcomeWrap" hidden>
+        <label>نتيجة الصفقة<select id="iaqarFinalOutcome"><option value="">اختر النتيجة</option>${outcomes}</select></label>
+        <label>ملاحظة نهائية (اختياري)<textarea id="iaqarCloseNote" placeholder="ملاحظة اختيارية"></textarea></label>
+      </div>
+      <div class="iaqar-workflow-actions">
+        <button type="button" class="iaqar-workflow-btn success" data-ui-action="confirm-final-close">تأكيد إنهاء الفرصة</button>
+        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="back">رجوع</button>
+      </div>
+    </form>`;
+    const reasonSelect = document.getElementById("iaqarCloseReasonKey");
+    const outcomeWrap = document.getElementById("iaqarFinalOutcomeWrap");
+    reasonSelect?.addEventListener("change", () => {
+      if (outcomeWrap) outcomeWrap.hidden = reasonSelect.value !== "deal_done";
+    });
   }
 
-  async function confirmContactAction(button) {
+  async function recordContactOutcomeAction(button, outcome) {
+    if (!outcome) return;
     setUiBusy(button, true);
     try {
-      await opportunityLifecycleAction("confirm_contact", activeWorkflowDetail, { lastContactMethod: "whatsapp" });
-      activeWorkflowDetail = { ...activeWorkflowDetail, lifecycleStatus: "CONTACTED" };
-      notify("تم تأكيد التواصل");
-      renderOpportunityLifecycleUi();
+      const payload = await opportunityLifecycleAction("contact_outcome", activeWorkflowDetail, { contactOutcome: outcome });
+      activeWorkflowDetail = {
+        ...activeWorkflowDetail,
+        lastContactOutcome: outcome,
+        lifecycleStatus: payload.lifecycleStatus || activeWorkflowDetail.lifecycleStatus,
+        advertiserContactStatus: payload.advertiserContactStatus || outcome
+      };
+      notify("تم تسجيل نتيجة التواصل");
+      if (outcome === "REFUSED") {
+        showLifecycleCloseForm();
+        const reasonSelect = document.getElementById("iaqarCloseReasonKey");
+        if (reasonSelect) reasonSelect.value = "not_interested";
+      } else if (outcome === "AGREED") {
+        showLifecycleCloseForm();
+        const reasonSelect = document.getElementById("iaqarCloseReasonKey");
+        if (reasonSelect) {
+          reasonSelect.value = "deal_done";
+          reasonSelect.dispatchEvent(new Event("change"));
+        }
+      } else {
+        renderOpportunityLifecycleUi();
+      }
     } catch (error) {
-      notify(error.message || "تعذر تأكيد التواصل");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function saveLifecycleStatus(button) {
-    const next = document.getElementById("iaqarLifecycleStatus")?.value || "";
-    if (!next) return notify("اختر الحالة");
-    setUiBusy(button, true);
-    try {
-      await opportunityLifecycleAction("update_status", activeWorkflowDetail, { lifecycleStatus: next });
-      activeWorkflowDetail = { ...activeWorkflowDetail, lifecycleStatus: next };
-      notify("تم تحديث الحالة");
-      renderOpportunityLifecycleUi();
-    } catch (error) {
-      notify(error.message || "تعذر تحديث الحالة");
+      notify(error.message || "تعذر تسجيل نتيجة التواصل");
     } finally {
       setUiBusy(button, false);
     }
@@ -1729,7 +1774,9 @@
       nextFollowUpAt = new Date(custom).toISOString();
     } else {
       const days = Number(daysValue || 0);
-      nextFollowUpAt = new Date(Date.now() + days * 86400000).toISOString();
+      const followUp = new Date(Date.now() + days * 86400000);
+      followUp.setHours(10, 0, 0, 0);
+      nextFollowUpAt = followUp.toISOString();
     }
     setUiBusy(button, true);
     try {
@@ -1744,16 +1791,26 @@
     }
   }
 
-  async function closeOpportunityAction(button, won) {
-    const reasonSelect = document.getElementById("iaqarLostReason");
-    const reasonLabel = reasonSelect && reasonSelect.selectedOptions[0] ? reasonSelect.selectedOptions[0].textContent : "";
+  async function confirmCloseOpportunityFinal(button) {
+    const reasonKey = document.getElementById("iaqarCloseReasonKey")?.value || "";
+    if (!reasonKey) return notify("اختر سبب إنهاء الفرصة");
+    const finalOutcome = document.getElementById("iaqarFinalOutcome")?.value || "";
+    if (reasonKey === "deal_done" && !finalOutcome) return notify("اختر نتيجة الصفقة");
+    const closureNote = document.getElementById("iaqarCloseNote")?.value || "";
     setUiBusy(button, true);
     try {
-      await opportunityLifecycleAction(won ? "close_won" : "close_lost", activeWorkflowDetail, {
-        closureReason: won ? "تمت بنجاح" : (reasonLabel || "لم تتم")
+      await opportunityLifecycleAction("close_opportunity", activeWorkflowDetail, {
+        closureReasonKey: reasonKey,
+        finalOutcome: reasonKey === "deal_done" ? finalOutcome : "",
+        closureNote
       });
-      activeWorkflowDetail = { ...activeWorkflowDetail, lifecycleStatus: won ? "CLOSED_WON" : "CLOSED_LOST" };
-      notify(won ? "تم إنهاء الفرصة بنجاح" : "تم تسجيل عدم إتمام الفرصة");
+      activeWorkflowDetail = {
+        ...activeWorkflowDetail,
+        lifecycleStatus: "ARCHIVED",
+        closedAt: new Date().toISOString()
+      };
+      notify("تم إنهاء الفرصة وأرشفتها");
+      emitOperations();
       renderOpportunityLifecycleUi();
     } catch (error) {
       notify(error.message || "تعذر إنهاء الفرصة");
@@ -1762,18 +1819,12 @@
     }
   }
 
-  async function archiveOpportunityAction(button) {
-    setUiBusy(button, true);
-    try {
-      await opportunityLifecycleAction("archive", activeWorkflowDetail);
-      activeWorkflowDetail = { ...activeWorkflowDetail, lifecycleStatus: "ARCHIVED" };
-      notify("تم نقل الفرصة إلى المنتهية");
+  async function openMatchingBankFromWorkflow() {
+    const detail = activeWorkflowDetail;
+    const oppId = String(detail?.opportunityId || detail?.recordId || "").replace(/^opp-/, "");
+    if (oppId && window.IAQAR?.openOpportunityDetail) {
       closeWorkflowUi();
-      emitOperations();
-    } catch (error) {
-      notify(error.message || "تعذر أرشفة الفرصة");
-    } finally {
-      setUiBusy(button, false);
+      await window.IAQAR.openOpportunityDetail(oppId);
     }
   }
 
@@ -1795,24 +1846,20 @@
     if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
     if (action === "telegram-client") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
     if (action === "telegram-owner") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
-    if (action === "whatsapp-contact") return openWorkflowWhatsApp({
-      ...activeWorkflowDetail,
-      recipientRole: activeWorkflowDetail.kind === "owner" || activeWorkflowDetail.contactType === "owner" ? "owner" : "client"
-    });
-    if (action === "confirm-contact") return confirmContactAction(button);
-    if (action === "save-lifecycle-status") return saveLifecycleStatus(button);
-    if (action === "open-followup") return showFollowUpForm();
+    if (action === "whatsapp-contact") return openContactWhatsAppDirect();
+    if (action === "call-contact") return openContactCallDirect();
+    if (action === "contact-outcome") return recordContactOutcomeAction(button, button.dataset.outcome);
     if (action === "save-followup") return saveFollowUpAction(button, button.dataset.days);
     if (action === "save-followup-custom") return saveFollowUpAction(button, null);
     if (action === "open-lifecycle-close") return showLifecycleCloseForm();
-    if (action === "open-lost-reason") {
-      const wrap = document.getElementById("iaqarLostReasonWrap");
-      if (wrap) wrap.hidden = false;
-      return;
+    if (action === "confirm-final-close") return confirmCloseOpportunityFinal(button);
+    if (action === "open-matching-bank") return openMatchingBankFromWorkflow();
+    if (action === "confirm-contact") return notify("سجّل نتيجة التواصل بعد واتساب أو اتصال");
+    if (action === "save-lifecycle-status") return notify("استخدم نتيجة التواصل بدل تغيير الحالة العام");
+    if (action === "open-followup") return renderOpportunityLifecycleUi();
+    if (action === "close-won" || action === "close-lost" || action === "archive-opportunity") {
+      return showLifecycleCloseForm();
     }
-    if (action === "close-won") return closeOpportunityAction(button, true);
-    if (action === "close-lost") return closeOpportunityAction(button, false);
-    if (action === "archive-opportunity") return archiveOpportunityAction(button);
   }
 
   async function handleOperationPrimary(detail) {
@@ -1888,7 +1935,8 @@
       return;
     }
     if (detail.recordType === "opportunity") {
-      window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
+      const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
+      if (oppId) await openOpportunityManagement(oppId);
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {
@@ -2005,7 +2053,9 @@
 
     switch (target.kind) {
       case "opportunity":
-        if (target.id && window.IAQAR?.openOpportunityDetail) {
+        if (target.id && window.IAQAR?.openOpportunityManagement) {
+          void window.IAQAR.openOpportunityManagement(target.id);
+        } else if (target.id && window.IAQAR?.openOpportunityDetail) {
           void window.IAQAR.openOpportunityDetail(target.id);
         } else if (window.IAQAR?.openOpportunityBank) {
           window.IAQAR.openOpportunityBank();
@@ -2027,14 +2077,18 @@
         window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "deals" } }));
         break;
       case "match":
-        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
+        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityManagement) {
+          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""));
+        } else if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
           void window.IAQAR.openOpportunityDetail(target.id);
         } else {
           window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
         }
         break;
       case "operation":
-        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
+        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityManagement) {
+          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""));
+        } else if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
           void window.IAQAR.openOpportunityDetail(target.id);
         } else if (target.id?.startsWith("coop_")) {
           if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
@@ -2464,9 +2518,49 @@
     }
   }
 
+  async function openOpportunityManagement(opportunityId) {
+    const runtime = office();
+    if (!runtime?.db || !runtime.officeId || !opportunityId) {
+      notify("تعذر فتح إدارة الفرصة");
+      return;
+    }
+    try {
+      const snap = await runtime.db.collection("offices").doc(runtime.officeId)
+        .collection("opportunities").doc(opportunityId).get();
+      if (!snap.exists) {
+        notify("لم يتم العثور على الفرصة");
+        return;
+      }
+      const data = snap.data() || {};
+      if (normalizeOfficeId(data.officeId) && normalizeOfficeId(data.officeId) !== runtime.officeId) {
+        notify("لا يمكن فتح هذه الفرصة من هذا المكتب");
+        return;
+      }
+      const isOwner = data.contactType === "owner" || data.recordType === "owner_offer";
+      await openWorkflowUi({
+        ...data,
+        recordId: opportunityId,
+        recordType: "opportunity",
+        opportunityId,
+        kind: isOwner ? "owner" : "client",
+        contactType: isOwner ? "owner" : "buyer",
+        contactName: data.contactName || data.advertiserDisplayName || "",
+        contactPhone: data.contactPhone || data.advertiserPhone || data.advertiserPhoneNormalized || data.phone || ""
+      });
+    } catch (error) {
+      console.warn("[iaqar] open opportunity management", error);
+      notify("تعذر فتح إدارة الفرصة");
+    }
+  }
+
+  function normalizeOfficeId(value) {
+    return String(value || "").trim();
+  }
+
   window.addEventListener("beforeunload", stopLiveData);
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.pushSavedOpportunityToWorkspace = pushSavedOpportunityToWorkspace;
+  window.IAQAR.openOpportunityManagement = openOpportunityManagement;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

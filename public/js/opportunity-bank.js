@@ -39,10 +39,11 @@ import {
   buildAdvertiserWhatsAppMessage,
   buildAdvertiserContactActions,
   e164ToLocalInput,
+  formatLocalPhoneDisplay,
+  whatsappDigitsFromE164,
   marketingConsentStatusLabel,
   readAdvertiserDisplayName,
-  readAdvertiserPhoneFromRecord,
-  setAdvertiserMessageModalContext
+  readAdvertiserPhoneFromRecord
 } from "./advertiser-phone-domain.js";
 import { officeLinkFor } from "./office-domain.js";
 import {
@@ -77,7 +78,6 @@ import { isLandProperty } from "./opportunity-intake-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
-import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
 import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
 import { PROPERTY_TYPES, districtsForCity } from "./reference-catalog.js";
 
@@ -631,6 +631,11 @@ function officePublicLink() {
 
 function openBankAdvertiserWhatsApp(record, phone) {
   if (!phone) return;
+  const digits = whatsappDigitsFromE164(phone);
+  if (!digits) {
+    toast("رقم الجوال غير مكتمل");
+    return;
+  }
   const office = officeContextForAdvertiser();
   const displayName = readAdvertiserDisplayName(record);
   const message = buildAdvertiserWhatsAppMessage({
@@ -643,40 +648,35 @@ function openBankAdvertiserWhatsApp(record, phone) {
     officeLink: officePublicLink(),
     advertiserDisplayName: displayName
   });
-  const modal = document.getElementById("advertiserMessageOverlay");
-  const target = document.getElementById("advertiserMessageTarget");
-  const nameEl = document.getElementById("advertiserMessageAdvertiserName");
-  const title = document.getElementById("advertiserMessageTitle");
-  const textarea = document.getElementById("advertiserMessageText");
-  if (!modal || !textarea) return;
-  if (title) title.textContent = "رسالة التواصل مع المعلن";
-  if (target) target.textContent = formatLocalPhoneDisplay(phone);
-  if (nameEl) {
-    if (displayName) {
-      nameEl.hidden = false;
-      nameEl.textContent = `المعلن: ${displayName} — `;
-    } else {
-      nameEl.hidden = true;
-      nameEl.textContent = "";
-    }
-  }
-  textarea.value = message;
+  const url = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  const opened = window.open(url, "_blank");
+  if (!opened) window.location.href = url;
   const opportunityId = record.id || state.activeId;
-  setAdvertiserMessageModalContext({
-    phone,
-    opportunityId,
-    onWhatsAppOpened: async () => {
-      if (!opportunityId) return;
-      try {
-        await patchOpportunity(opportunityId, {
-          lastWhatsAppOpenedAt: new Date().toISOString()
-        });
-      } catch (error) {
-        console.warn("[iaqar] whatsapp opened log", error);
-      }
-    }
-  });
-  modal.hidden = false;
+  if (!opportunityId) return;
+  void recordLifecycleWhatsAppOpened(opportunityId);
+}
+
+async function recordLifecycleWhatsAppOpened(opportunityId) {
+  const user = authUser();
+  if (!user?.getIdToken) return;
+  try {
+    const token = await user.getIdToken();
+    await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Office-Id": officeId()
+      },
+      body: JSON.stringify({
+        officeId: officeId(),
+        opportunityId,
+        action: "whatsapp_opened"
+      })
+    });
+  } catch (error) {
+    console.warn("[iaqar] whatsapp opened log", error);
+  }
 }
 
 async function saveAdvertiserData(id, record, form) {
@@ -800,10 +800,10 @@ async function renderDetail(id) {
       <h4>التواصل</h4>
       <div class="bank-advertiser-actions" id="bankContactActions"></div>
       <div class="bank-contact-outcomes" id="bankContactOutcomes">
-        <button type="button" class="bank-action" data-contact-outcome="CONTACTED">تم التواصل</button>
         <button type="button" class="bank-action" data-contact-outcome="NO_RESPONSE">لم يرد</button>
-        <button type="button" class="bank-action" data-contact-outcome="FOLLOW_UP">طلب متابعة</button>
+        <button type="button" class="bank-action" data-contact-outcome="INTERESTED">مهتم</button>
         <button type="button" class="bank-action" data-contact-outcome="REFUSED">غير مهتم</button>
+        <button type="button" class="bank-action" data-contact-outcome="FOLLOW_UP">طلب متابعة</button>
         <button type="button" class="bank-action" data-contact-outcome="AGREED">تم الاتفاق</button>
       </div>
     </section>
@@ -818,7 +818,7 @@ async function renderDetail(id) {
         <label>اختيار تاريخ ووقت
           <input type="datetime-local" id="bankCustomFollowUp">
         </label>
-        <button type="button" class="bank-action" id="bankSaveFollowUpCustom">حفظ الموعد</button>
+        <button type="button" class="bank-action" id="bankSaveFollowUpCustom">حفظ موعد المتابعة</button>
       </div>
     </section>
 
@@ -1176,7 +1176,10 @@ function wireDetailHandlers(id, record) {
   $("bankAdvertisercall")?.addEventListener("click", () => {
     const phone = currentAdvertiserPhone();
     if (!phone) return;
-    window.location.href = `tel:${phone}`;
+    const local = formatLocalPhoneDisplay(phone);
+    if (!local) return toast("رقم الجوال غير مكتمل");
+    window.location.href = `tel:${local}`;
+    void recordLifecycleCallOpened(id);
   });
   $("bankAdvertiserwhatsapp")?.addEventListener("click", () => {
     const phone = currentAdvertiserPhone();
@@ -1281,6 +1284,29 @@ async function patchOpportunity(id, patch) {
     state.records.set(id, { ...payload.opportunity, id });
   }
   return payload;
+}
+
+async function recordLifecycleCallOpened(opportunityId) {
+  const user = authUser();
+  if (!user?.getIdToken) return;
+  try {
+    const token = await user.getIdToken();
+    await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Office-Id": officeId()
+      },
+      body: JSON.stringify({
+        officeId: officeId(),
+        opportunityId,
+        action: "call_opened"
+      })
+    });
+  } catch (error) {
+    console.warn("[iaqar] call opened log", error);
+  }
 }
 
 async function recordContactOutcome(id, outcome) {

@@ -129,7 +129,7 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-voice-bar-v1";
+const IAQAR_CACHE = "iaqar-shell-opp-mgmt-v1";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",

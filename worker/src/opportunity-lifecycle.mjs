@@ -32,6 +32,31 @@ const CLOSED_LOST_REASONS = Object.freeze([
   ["other", "أخرى"]
 ]);
 
+const OPPORTUNITY_FINAL_CLOSE_REASONS = Object.freeze([
+  "deal_done",
+  "deal_failed",
+  "not_interested",
+  "contact_failed",
+  "duplicate",
+  "cancelled"
+]);
+
+const OPPORTUNITY_FINAL_CLOSE_REASON_LABELS = Object.freeze({
+  deal_done: "تمت الصفقة",
+  deal_failed: "لم تتم الصفقة",
+  not_interested: "غير مهتم",
+  contact_failed: "تعذر التواصل",
+  duplicate: "طلب مكرر",
+  cancelled: "ألغى العميل أو المالك"
+});
+
+const OPPORTUNITY_FINAL_OUTCOMES = Object.freeze([
+  "sold",
+  "rented",
+  "purchased",
+  "leased"
+]);
+
 const ACTIVE_LIFECYCLE_STATUSES = new Set([
   LIFECYCLE_STATUS.NEW,
   LIFECYCLE_STATUS.CONTACT_PENDING,
@@ -107,8 +132,16 @@ function getOpportunityLifecycleStatus(opportunity = {}) {
   return LIFECYCLE_STATUS.NEW;
 }
 
+function normalizeArabicDigits(value) {
+  const arabic = "٠١٢٣٤٥٦٧٨٩";
+  return String(value || "").replace(/[٠-٩]/g, (ch) => {
+    const index = arabic.indexOf(ch);
+    return index >= 0 ? String(index) : ch;
+  });
+}
+
 function normalizeSaudiPhoneForWhatsApp(phone) {
-  let digits = String(phone || "").replace(/[\s\-()+]/g, "");
+  let digits = normalizeArabicDigits(phone).replace(/[\s\-()+]/g, "");
   if (!digits) return "";
   if (digits.startsWith("00966")) digits = digits.slice(2);
   if (digits.startsWith("+966")) digits = digits.slice(1);
@@ -292,9 +325,13 @@ export {
   LIFECYCLE_STATUS,
   LIFECYCLE_STATUS_LABELS,
   CLOSED_LOST_REASONS,
+  OPPORTUNITY_FINAL_CLOSE_REASONS,
+  OPPORTUNITY_FINAL_CLOSE_REASON_LABELS,
+  OPPORTUNITY_FINAL_OUTCOMES,
   ACTIVE_LIFECYCLE_STATUSES,
   normalizeOpportunitySource,
   getOpportunityLifecycleStatus,
+  normalizeArabicDigits,
   normalizeSaudiPhoneForWhatsApp,
   buildOpportunitySummary,
   buildOpportunityWhatsAppMessage,

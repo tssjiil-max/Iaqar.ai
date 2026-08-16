@@ -104,6 +104,9 @@ import {
 import {
   LIFECYCLE_STATUS,
   LIFECYCLE_STATUS_LABELS,
+  OPPORTUNITY_FINAL_CLOSE_REASONS,
+  OPPORTUNITY_FINAL_CLOSE_REASON_LABELS,
+  OPPORTUNITY_FINAL_OUTCOMES,
   normalizeOpportunitySource,
   getOpportunityLifecycleStatus,
   normalizeSaudiPhoneForWhatsApp,
@@ -2336,6 +2339,17 @@ async function handleOpportunityLifecycle(request, env, requestId) {
   const opportunityId = resolved.opportunityId || recordId;
   const fields = { officeId: firestoreString(officeId), updatedAt: firestoreTimestamp(now), lifecycleUpdatedAt: firestoreTimestamp(now), lifecycleUpdatedBy: firestoreString(identity.uid) };
 
+  if (statusBefore === LIFECYCLE_STATUS.ARCHIVED && ["close_opportunity", "close_won", "close_lost", "archive"].includes(action)) {
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      lifecycleStatus: statusBefore,
+      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[statusBefore] || statusBefore,
+      idempotent: true,
+      requestId
+    });
+  }
+
   if (action === "update_status") {
     const next = cleanText(body.lifecycleStatus, 40);
     if (!LIFECYCLE_STATUS_LABELS[next]) throw appError("lifecycle_status_invalid", 400, "حالة الفرصة غير صحيحة");
@@ -2379,7 +2393,15 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
-      payload: { type: "whatsapp", action: "opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
+      payload: { type: "whatsapp", action: "whatsapp_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
+    });
+    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+  } else if (action === "call_opened") {
+    fields.lastCallOpenedAt = firestoreTimestamp(now);
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: { type: "call", action: "call_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
     });
     return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
   } else if (action === "contact_outcome") {
@@ -2393,6 +2415,10 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     } else if (outcome === "NO_RESPONSE") {
       fields.advertiserContactStatus = firestoreString("NO_RESPONSE");
       contactResult = "NO_RESPONSE";
+    } else if (outcome === "INTERESTED") {
+      fields.advertiserContactStatus = firestoreString("INTERESTED");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+      contactResult = "INTERESTED";
     } else if (outcome === "FOLLOW_UP") {
       fields.advertiserContactStatus = firestoreString("CALL_LATER");
       fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
@@ -2402,16 +2428,24 @@ async function handleOpportunityLifecycle(request, env, requestId) {
       contactResult = "REFUSED";
     } else if (outcome === "AGREED") {
       fields.marketingConsentStatus = firestoreString("PRELIMINARY_YES");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.NEGOTIATION);
       contactResult = "PRELIMINARY_YES";
     } else {
       throw appError("contact_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
     }
+    const nextLifecycle = outcome === "CONTACTED" || outcome === "INTERESTED"
+      ? LIFECYCLE_STATUS.CONTACTED
+      : outcome === "FOLLOW_UP"
+        ? LIFECYCLE_STATUS.FOLLOW_UP
+        : outcome === "AGREED"
+          ? LIFECYCLE_STATUS.NEGOTIATION
+          : statusBefore;
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
         type: "contact",
-        action: "contact_outcome",
+        action: outcome === "AGREED" ? "agreement_recorded" : "contact_outcome_recorded",
         result: contactResult,
         contactOutcome: outcome,
         statusBefore,
@@ -2424,6 +2458,71 @@ async function handleOpportunityLifecycle(request, env, requestId) {
       opportunityId,
       contactOutcome: outcome,
       advertiserContactStatus: contactResult,
+      lifecycleStatus: nextLifecycle,
+      requestId
+    });
+  } else if (action === "close_opportunity") {
+    const reasonKey = cleanText(body.closureReasonKey || body.reasonKey, 40);
+    if (!OPPORTUNITY_FINAL_CLOSE_REASONS.includes(reasonKey)) {
+      throw appError("closure_reason_invalid", 400, "سبب إنهاء الفرصة غير صحيح");
+    }
+    if (resolved.data.closedAt) {
+      return jsonResponse({
+        ok: true,
+        opportunityId,
+        lifecycleStatus: statusBefore,
+        idempotent: true,
+        requestId
+      });
+    }
+    const reasonLabel = OPPORTUNITY_FINAL_CLOSE_REASON_LABELS[reasonKey] || reasonKey;
+    let finalOutcome = "";
+    if (reasonKey === "deal_done") {
+      finalOutcome = cleanText(body.finalOutcome, 30);
+      if (!OPPORTUNITY_FINAL_OUTCOMES.includes(finalOutcome)) {
+        throw appError("final_outcome_required", 400, "اختر نتيجة الصفقة النهائية");
+      }
+      fields.finalOutcome = firestoreString(finalOutcome);
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
+    } else {
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
+    }
+    const closureNote = cleanText(body.closureNote || body.note || "", 300);
+    fields.closureReason = firestoreOptionalString(closureNote || reasonLabel);
+    fields.closureReasonKey = firestoreString(reasonKey);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closedBy = firestoreString(identity.uid);
+    fields.archivedAt = firestoreTimestamp(now);
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "lifecycle",
+        action: "opportunity_closed",
+        result: reasonKey,
+        finalOutcome: finalOutcome || "",
+        statusBefore,
+        statusAfter: LIFECYCLE_STATUS.ARCHIVED,
+        createdBy: identity.uid
+      }
+    });
+    if (resolved.data.sourceRecordId && collection === "opportunities") {
+      const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
+      if (["clients", "owners"].includes(sourceCollection)) {
+        await setFirestoreDocument({
+          projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
+          fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
+        }).catch(() => {});
+      }
+    }
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      lifecycleStatus: LIFECYCLE_STATUS.ARCHIVED,
+      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.ARCHIVED],
+      closureReasonKey: reasonKey,
+      finalOutcome,
       requestId
     });
   } else {
@@ -2443,7 +2542,11 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     projectId, officeId, opportunityId, accessToken, now,
     payload: {
       type: cleanText(body.communicationType || "lifecycle", 30),
-      action: cleanText(body.communicationAction || action, 40),
+      action: cleanText(
+        body.communicationAction
+          || (action === "set_followup" ? "followup_scheduled" : action),
+        40
+      ),
       statusBefore,
       statusAfter: finalStatus,
       createdBy: identity.uid
