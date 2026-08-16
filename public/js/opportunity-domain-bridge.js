@@ -3,8 +3,10 @@
  */
 import * as status from "./opportunity-status-domain.js";
 import * as card from "./opportunity-card-domain.js";
+import * as followup from "./opportunity-followup-domain.js";
 
 window.IAQAR_OPPORTUNITY = Object.freeze({
   status,
-  card
+  card,
+  followup
 });

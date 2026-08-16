@@ -97,7 +97,7 @@ test("operations shell renders opsStatusLine on cards", () => {
 
 test("service worker cache bumped with network-first navigation", () => {
   const sw = readRepo("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-opp-mgmt-v1"));
+  assert.ok(sw.includes("iaqar-shell-followup-v1"));
   assert.ok(sw.includes("IAQAR_NAVIGATION"));
 });
 

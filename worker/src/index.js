@@ -120,6 +120,25 @@ import {
   isActiveLifecycle as isOpportunityLifecycleActive
 } from "./opportunity-lifecycle.mjs";
 import { findDuplicateOpportunity, matchesDuplicateCriteria } from "./opportunity-duplicate.mjs";
+import {
+  FOLLOWUP_STATUSES,
+  RECIPIENT_MODES,
+  RECIPIENT_MODE_LABELS,
+  validateFutureFollowUpAt,
+  validateTodayRequiresFutureTime,
+  buildCanonicalFollowUp,
+  computeReminderAt,
+  resolveRecipientContext,
+  normalizeRecipientMode,
+  deriveFollowUpStatus,
+  shouldSendFollowUpReminder,
+  followUpReminderDedupKey,
+  isSameScheduledFollowUp,
+  formatFollowUpReminderBody,
+  formatFollowUpTimeLabel,
+  parseRiyadhDateTimeInput,
+  isOwnerOpportunity
+} from "./opportunity-followup.mjs";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -539,6 +558,10 @@ export default {
         return handleOpportunityLifecycle(request, env, requestId);
       }
 
+      if (request.method === "POST" && url.pathname === "/internal/followup-reminders/process") {
+        return handleProcessFollowupReminders(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/opportunity/patch") {
         return handleOpportunityPatch(request, env, requestId);
       }
@@ -590,11 +613,12 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    // Phase 9A: staging Worker must not run follow-up cron against the shared project.
-    if (String(env.DEPLOYMENT_ENV || "").toLowerCase() === "staging") {
-      return;
+    const isStaging = String(env.DEPLOYMENT_ENV || "").toLowerCase() === "staging";
+    const scheduledTime = event && event.scheduledTime;
+    if (!isStaging) {
+      ctx.waitUntil(processOverdueFollowups(env, scheduledTime));
     }
-    ctx.waitUntil(processOverdueFollowups(env, event && event.scheduledTime));
+    ctx.waitUntil(processOpportunityFollowupReminders(env, scheduledTime));
   }
 };
 
@@ -2367,15 +2391,112 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     fields.lastContactAt = firestoreTimestamp(now);
     fields.lastContactMethod = firestoreString(cleanText(body.lastContactMethod || "whatsapp", 30));
   } else if (action === "set_followup") {
-    const followUp = body.nextFollowUpAt || body.nextActionAt
-      ? new Date(body.nextFollowUpAt || body.nextActionAt)
-      : defaultNextFollowUp(Number(body.followUpDays || 1) * 24);
-    if (Number.isNaN(followUp.getTime())) throw appError("followup_invalid", 400, "موعد المتابعة غير صحيح");
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
-    fields.nextFollowUpAt = firestoreTimestamp(followUp);
-    fields.nextActionAt = firestoreTimestamp(followUp);
-    fields.nextActionType = firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40));
-    fields.nextActionNote = firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300));
+    return scheduleOpportunityFollowUp({
+      projectId,
+      officeId,
+      opportunityId,
+      collection,
+      recordId,
+      opportunity: resolved.data,
+      body,
+      identity,
+      accessToken,
+      now,
+      statusBefore,
+      requestId
+    });
+  } else if (action === "cancel_followup") {
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "لا يوجد موعد متابعة لإلغائه");
+    const cancelled = {
+      ...existingFollowUp,
+      status: FOLLOWUP_STATUSES.cancelled,
+      updatedBy: identity.uid,
+      updatedAt: now.toISOString()
+    };
+    const farFuture = new Date("2099-01-01T00:00:00.000Z");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedBy: firestoreString(identity.uid),
+        followUp: jsToFirestoreValue(cancelled),
+        followUpReminderAt: firestoreTimestamp(farFuture)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_cancelled",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, opportunityId, followUp: cancelled, requestId });
+  } else if (action === "complete_followup") {
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "لا يوجد موعد متابعة");
+    const completed = {
+      ...existingFollowUp,
+      status: FOLLOWUP_STATUSES.completed,
+      updatedBy: identity.uid,
+      updatedAt: now.toISOString()
+    };
+    const farFuture = new Date("2099-01-01T00:00:00.000Z");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedBy: firestoreString(identity.uid),
+        followUp: jsToFirestoreValue(completed),
+        followUpReminderAt: firestoreTimestamp(farFuture)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_completed",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, opportunityId, followUp: completed, requestId });
+  } else if (action === "followup_outcome") {
+    const outcome = cleanText(body.outcome || body.followUpOutcome, 40);
+    const allowed = new Set(["confirmed", "reschedule", "no_response"]);
+    if (!allowed.has(outcome)) throw appError("followup_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_outcome_recorded",
+        result: outcome,
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, opportunityId, outcome, requestId });
+  } else if (action === "followup_confirmation_opened") {
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_confirmation_opened",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, opportunityId, requestId });
   } else if (action === "close_won") {
     fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
     fields.closedAt = firestoreTimestamp(now);
@@ -3651,6 +3772,9 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   if(safeOfficeId==="platform")params.set("office","platform"); else params.set("officeId",safeOfficeId);
   if(type==="notification_test"){
     // اختبار التفعيل يفتح المكتب فقط دون محاولة فتح سجل وهمي.
+  } else if(type==="opportunity_followup_reminder"){
+    if(safeRecordId)params.set("openOpportunity",safeRecordId);
+    params.set("focusFollowUp","1");
   } else if(type==="deal")params.set("openDeal",safeRecordId);
   else if(type==="broker_application"){
     params.set("adminApplications","1");
@@ -3714,6 +3838,7 @@ export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
   conversation: "messageNotifications",
   appointment: "appointmentNotifications",
   followup: "appointmentNotifications",
+  opportunity_followup_reminder: "appointmentNotifications",
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
   system: "systemNotifications"
@@ -3748,7 +3873,7 @@ async function readOfficeNotificationPreferences({projectId,officeId,accessToken
   }
 }
 
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null}) {
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode=""}) {
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
@@ -3775,7 +3900,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken,env});
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
@@ -3816,7 +3941,7 @@ function buildFcmTarget(registrationId,registrationType="fid") {
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId=""}) {
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode=""}) {
   const relativeLink=buildNotificationLink({officeId,type,recordId});
   const link=new URL(relativeLink,DEFAULT_APP_ORIGIN).href;
   const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
@@ -3824,7 +3949,19 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   return {message:{
     ...target,
     notification:{title:String(title||"مكاتب عقارية ذكية"),body:String(body||"لديك تنبيه جديد")},
-    data:{type:String(type),recordId:String(recordId||""),matchId:type==="match"?String(recordId||""):"",dealId:type==="deal"?String(recordId||""):"",officeId:String(officeId),url:link,deliveryId:finalDeliveryId},
+    data:{
+      type:String(type),
+      recordId:String(recordId||""),
+      matchId:type==="match"?String(recordId||""):"",
+      dealId:type==="deal"?String(recordId||""):"",
+      officeId:String(officeId),
+      url:link,
+      deliveryId:finalDeliveryId,
+      followUpAt:String(followUpAt||""),
+      recipientMode:String(recipientMode||""),
+      entityType:type==="opportunity_followup_reminder"?"opportunity":"",
+      entityId:String(recordId||"")
+    },
     webpush:{
       headers:{Urgency:type==="match"?"high":"normal"},
       notification:{icon:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,badge:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
@@ -3833,7 +3970,7 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   }};
 }
 
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null}) {
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode=""}) {
   if(registrationType==="webpush"){
     await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId});
     return { name: "webpush" };
@@ -3841,7 +3978,7 @@ async function sendFcmMessage({projectId,registrationId,registrationType="fid",t
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId}))
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode}))
   });
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){
@@ -4254,6 +4391,141 @@ async function queryDueWorkflowRecords({projectId,accessToken,collectionId,now})
     orderBy:[{field:{fieldPath:"nextFollowUpAt"},direction:"ASCENDING"}],
     limit:200
   }});
+}
+
+async function queryDueOpportunityFollowupReminders({ projectId, accessToken, now }) {
+  return runFirestoreQuery({
+    projectId,
+    accessToken,
+    structuredQuery: {
+      from: [{ collectionId: "opportunities", allDescendants: true }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "followUpReminderAt" },
+          op: "LESS_THAN_OR_EQUAL",
+          value: { timestampValue: now.toISOString() }
+        }
+      },
+      orderBy: [{ field: { fieldPath: "followUpReminderAt" }, direction: "ASCENDING" }],
+      limit: 200
+    }
+  });
+}
+
+async function processOpportunityFollowupReminders(env, scheduledTime = Date.now()) {
+  if (!hasFirebaseSecrets(env)) {
+    console.warn("[iaqar-followups] Firebase server secrets are not configured");
+    return { ok: false, reason: "firebase_not_configured" };
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date(Number(scheduledTime) || Date.now());
+  const docs = await queryDueOpportunityFollowupReminders({ projectId, accessToken, now });
+  let checked = 0;
+  let notified = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const document of docs) {
+    checked += 1;
+    const value = firestoreFieldsToJs(document.fields || {});
+    const officeId = normalizeOfficeId(value.officeId);
+    const opportunityId = decodeURIComponent(String(document.name || "").split("/").pop() || "");
+    if (!officeId || !opportunityId) continue;
+
+    const followUp = value.followUp && typeof value.followUp === "object" ? value.followUp : null;
+    if (!followUp || !shouldSendFollowUpReminder(followUp, now)) {
+      skipped += 1;
+      continue;
+    }
+
+    const dedupKey = followUpReminderDedupKey(opportunityId, followUp.at);
+    const existingAlert = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "alerts", dedupKey],
+      accessToken,
+      allowMissing: true
+    });
+    if (existingAlert) {
+      skipped += 1;
+      continue;
+    }
+
+    const title = "موعد متابعة بعد ساعة";
+    const body = formatFollowUpReminderBody(value, followUp);
+    const pushSummary = await sendOfficePush({
+      projectId,
+      officeId,
+      title,
+      body,
+      type: "opportunity_followup_reminder",
+      recordId: opportunityId,
+      accessToken,
+      env,
+      followUpAt: followUp.at,
+      recipientMode: followUp.recipientMode || ""
+    });
+
+    const dispatchAccepted = Number(pushSummary.sent || 0) > 0;
+    const activityAction = dispatchAccepted ? "followup_reminder_dispatched" : "followup_reminder_failed";
+    await addOpportunityCommunication({
+      projectId,
+      officeId,
+      opportunityId,
+      accessToken,
+      now,
+      payload: {
+        type: "followup",
+        action: activityAction,
+        result: dispatchAccepted ? "sent" : pushSummary.reason || "failed",
+        statusBefore: value.lifecycleStatus || "",
+        statusAfter: value.lifecycleStatus || "",
+        createdBy: "system"
+      }
+    });
+
+    if (dispatchAccepted) {
+      const updatedFollowUp = {
+        ...followUp,
+        status: FOLLOWUP_STATUSES.reminder_sent,
+        updatedAt: now.toISOString(),
+        updatedBy: "system"
+      };
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "opportunities", opportunityId],
+        accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          followUp: jsToFirestoreValue(updatedFollowUp),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "alerts", dedupKey],
+        accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          type: firestoreString("opportunity_followup_reminder"),
+          recordType: firestoreString("opportunity"),
+          recordId: firestoreString(opportunityId),
+          status: firestoreString("sent"),
+          title: firestoreString(title),
+          body: firestoreString(body),
+          followUpAt: firestoreTimestamp(new Date(followUp.at)),
+          createdAt: firestoreTimestamp(now),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+      notified += 1;
+    } else {
+      failed += 1;
+    }
+  }
+
+  console.info("[iaqar-opp-followups] completed", { checked, notified, skipped, failed });
+  return { ok: true, checked, notified, skipped, failed };
 }
 
 async function processOverdueFollowups(env,scheduledTime=Date.now()){
@@ -5112,6 +5384,176 @@ function constantTimeEqual(left, right) {
   for (let i = 0; i < length; i += 1) difference |= (a[i % (a.length || 1)] || 0) ^ (b[i % (b.length || 1)] || 0);
   return difference === 0;
 }
+function firestoreNull() { return { nullValue: null }; }
+
+function jsToFirestoreValue(value) {
+  if (value === null || value === undefined) return firestoreNull();
+  if (value instanceof Date) return firestoreTimestamp(value);
+  if (typeof value === "boolean") return firestoreBoolean(value);
+  if (typeof value === "number" && Number.isInteger(value)) return firestoreInteger(value);
+  if (typeof value === "number") return { doubleValue: value };
+  if (typeof value === "string") return firestoreString(value);
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map((item) => jsToFirestoreValue(item)).filter((item) => item != null) } };
+  }
+  if (typeof value === "object") {
+    const fields = {};
+    for (const [key, nested] of Object.entries(value)) {
+      const encoded = jsToFirestoreValue(nested);
+      if (encoded != null) fields[key] = encoded;
+    }
+    return { mapValue: { fields } };
+  }
+  return firestoreString(String(value));
+}
+
+function followUpFirestoreFields(followUp) {
+  return compactFields({
+    followUp: jsToFirestoreValue(followUp),
+    followUpAt: firestoreTimestamp(new Date(followUp.at)),
+    followUpReminderAt: firestoreTimestamp(new Date(followUp.reminderAt)),
+    nextFollowUpAt: firestoreTimestamp(new Date(followUp.at)),
+    nextActionAt: firestoreTimestamp(new Date(followUp.at))
+  });
+}
+
+function clearFollowUpFirestoreFields(now) {
+  const farFuture = new Date("2099-01-01T00:00:00.000Z");
+  return compactFields({
+    followUp: jsToFirestoreValue({
+      status: FOLLOWUP_STATUSES.cancelled,
+      updatedAt: now.toISOString()
+    }),
+    followUpReminderAt: firestoreTimestamp(farFuture),
+    nextFollowUpAt: firestoreNull(),
+    nextActionAt: firestoreNull()
+  });
+}
+
+async function resolveMatchForOpportunity({ projectId, officeId, opportunityId, opportunity, accessToken }) {
+  const bestMatchId = cleanText(opportunity.bestMatchId || "", 180);
+  if (bestMatchId) {
+    const matchDoc = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matches", bestMatchId],
+      accessToken,
+      allowMissing: true
+    });
+    if (matchDoc) return firestoreFieldsToJs(matchDoc.fields || {});
+  }
+  const matches = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: 80
+  });
+  for (const doc of matches) {
+    const match = firestoreFieldsToJs(doc.fields || {});
+    if (normalizeOfficeId(match.officeId) !== officeId) continue;
+    if (match.ownerOfferId && match.clientRequestId
+      && (match.opportunityId === opportunityId || match.counterpartOpportunityId === opportunityId)) {
+      return match;
+    }
+  }
+  return null;
+}
+
+async function scheduleOpportunityFollowUp({
+  projectId, officeId, opportunityId, collection, recordId, opportunity, body, identity, accessToken, now, statusBefore, requestId
+}) {
+  const rawAt = body.nextFollowUpAt || body.followUpAt || body.nextActionAt || "";
+  const parsedAt = rawAt.includes("T") && !rawAt.endsWith("Z") && !rawAt.includes("+")
+    ? parseRiyadhDateTimeInput(rawAt)
+    : new Date(rawAt);
+  const futureCheck = validateFutureFollowUpAt(parsedAt, now);
+  if (!futureCheck.ok) throw appError(futureCheck.code, 400, futureCheck.message);
+  const todayCheck = validateTodayRequiresFutureTime(parsedAt, now);
+  if (!todayCheck.ok) throw appError("followup_today_past", 400, todayCheck.message);
+
+  const match = await resolveMatchForOpportunity({
+    projectId, officeId, opportunityId, opportunity, accessToken
+  }).catch(() => null);
+
+  const recipientContext = resolveRecipientContext(opportunity, match);
+  const recipientMode = normalizeRecipientMode(body.recipientMode, recipientContext);
+  const existingFollowUp = opportunity.followUp && typeof opportunity.followUp === "object" ? opportunity.followUp : null;
+  const isReschedule = existingFollowUp
+    && ACTIVE_FOLLOWUP_STATUSES.has(String(existingFollowUp.status || ""))
+    && !isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode);
+
+  if (isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode)) {
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      lifecycleStatus: LIFECYCLE_STATUS.FOLLOW_UP,
+      followUp: existingFollowUp,
+      idempotent: true,
+      requestId
+    });
+  }
+
+  const followUp = buildCanonicalFollowUp({
+    at: parsedAt,
+    recipientMode,
+    ownerContactId: recipientContext.ownerContactId,
+    clientContactId: recipientContext.clientContactId,
+    createdBy: identity.uid,
+    existing: isReschedule ? existingFollowUp : null,
+    now
+  });
+
+  const fields = {
+    officeId: firestoreString(officeId),
+    updatedAt: firestoreTimestamp(now),
+    lifecycleUpdatedAt: firestoreTimestamp(now),
+    lifecycleUpdatedBy: firestoreString(identity.uid),
+    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.FOLLOW_UP),
+    nextActionType: firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40)),
+    nextActionNote: firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300)),
+    ...followUpFirestoreFields(followUp)
+  };
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+  const activityAction = isReschedule ? "followup_rescheduled" : "followup_scheduled";
+  await addOpportunityCommunication({
+    projectId, officeId, opportunityId, accessToken, now,
+    payload: {
+      type: "followup",
+      action: activityAction,
+      statusBefore,
+      statusAfter: LIFECYCLE_STATUS.FOLLOW_UP,
+      createdBy: identity.uid,
+      result: recipientMode
+    }
+  });
+
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    lifecycleStatus: LIFECYCLE_STATUS.FOLLOW_UP,
+    lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.FOLLOW_UP],
+    followUp,
+    nextFollowUpAt: followUp.at,
+    requestId
+  });
+}
+
+const ACTIVE_FOLLOWUP_STATUSES = new Set([
+  FOLLOWUP_STATUSES.scheduled,
+  FOLLOWUP_STATUSES.reminder_due,
+  FOLLOWUP_STATUSES.reminder_sent
+]);
+
+async function handleProcessFollowupReminders(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId || "");
+  if (officeId) await authorizeOfficeRequest(request, env, officeId, "member");
+  else if (String(env.DEPLOYMENT_ENV || "").toLowerCase() !== "staging") {
+    throw appError("office_id_required", 400, "officeId مطلوب");
+  }
+  const scheduledTime = Number(body.scheduledTime || Date.now());
+  const result = await processOpportunityFollowupReminders(env, scheduledTime);
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
 function compactFields(fields) { return Object.fromEntries(Object.entries(fields).filter(([, value]) => value != null)); }
 function firestoreString(value) { return { stringValue: String(value) }; }
 function firestoreOptionalString(value) { return value ? firestoreString(value) : null; }

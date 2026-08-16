@@ -20,6 +20,7 @@
   const messagingDomain = () => window.IAQAR && window.IAQAR.messagingDomain;
   const LC = () => window.IAQAR_LIFECYCLE || {};
   const OPP = () => window.IAQAR_OPPORTUNITY?.card || null;
+  const FD = () => window.IAQAR_OPPORTUNITY?.followup || null;
 
   function sanitizeOpsText(value) {
     const raw = String(value || "").trim();
@@ -150,6 +151,12 @@
   function isOverdue(value) {
     const date = toDate(value);
     return Boolean(date && date.getTime() < Date.now());
+  }
+
+  function isFollowUpOverdueRecord(record = {}) {
+    const follow = FD()?.activeFollowUpFromRecord?.(record);
+    if (follow) return FD().isFollowUpOverdue(follow);
+    return isOverdue(record.nextFollowUpAt || record.nextActionAt);
   }
 
   function parseArray(value) {
@@ -374,7 +381,7 @@
     const lifecycleStatus = LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(item) : "NEW";
     const lifecycleLabel = (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[lifecycleStatus]) || lifecycleStatus;
     const isOwner = item.contactType === "owner" || item.recordType === "owner_offer";
-    const overdue = isOverdue(item.nextFollowUpAt || item.nextActionAt) && lifecycleStatus !== "ARCHIVED"
+    const overdue = isFollowUpOverdueRecord(item) && lifecycleStatus !== "ARCHIVED"
       && !["CLOSED_WON", "CLOSED_LOST"].includes(lifecycleStatus);
     const card = OPP()?.buildOpportunityCardView
       ? OPP().buildOpportunityCardView({ ...item, id: doc.id, opportunityId: doc.id })
@@ -1276,6 +1283,8 @@
   let activeWorkflowDetail = null;
   let activeWorkflowContacts = { owner: null, client: null };
   let lifecycleContactAttempted = false;
+  let followUpEditMode = false;
+  let followUpRecipientContext = null;
   const CLOSE_REASONS = Object.freeze([
     ["client_not_interested", "العميل غير مهتم"],
     ["owner_not_responding", "المالك غير متجاوب"],
@@ -1633,7 +1642,117 @@
     return (readiness || hasFields) && contactAllows;
   }
 
-  function renderOpportunityLifecycleUi() {
+  async function reloadActiveOpportunityFromServer() {
+    const detail = activeWorkflowDetail;
+    if (!detail?.recordId || detail.recordType === "intake") return detail;
+    const runtime = office();
+    if (!runtime?.db || !runtime.officeId) return detail;
+    try {
+      const snap = await runtime.db.collection("offices").doc(runtime.officeId)
+        .collection("opportunities").doc(detail.recordId).get();
+      if (!snap.exists) return detail;
+      const data = snap.data() || {};
+      activeWorkflowDetail = {
+        ...detail,
+        ...data,
+        recordId: detail.recordId,
+        recordType: "opportunity",
+        opportunityId: detail.recordId
+      };
+    } catch (error) {
+      console.warn("[iaqar] reload opportunity", error);
+    }
+    return activeWorkflowDetail;
+  }
+
+  async function ensureFollowUpRecipientContext(detail = {}) {
+    if (followUpRecipientContext?.detailId === detail.recordId) return followUpRecipientContext;
+    const context = await resolveFollowUpRecipientContext(detail);
+    followUpRecipientContext = { detailId: detail.recordId, ...context };
+    return followUpRecipientContext;
+  }
+
+  async function resolveFollowUpRecipientContext(detail = {}) {
+    const base = FD()?.resolveRecipientContext?.(detail) || {
+      availableModes: [FD()?.defaultRecipientMode?.(detail) || "owner"],
+      defaultMode: FD()?.defaultRecipientMode?.(detail) || "owner",
+      hasBothParties: false,
+      ownerContactId: "",
+      clientContactId: ""
+    };
+    if (base.hasBothParties) return base;
+    const enriched = await enrichDetailForMessaging(detail);
+    if (enriched.ownerOfferId && enriched.clientRequestId) {
+      return FD()?.resolveRecipientContext?.(detail, {
+        ownerOfferId: enriched.ownerOfferId,
+        clientRequestId: enriched.clientRequestId
+      }) || base;
+    }
+    return base;
+  }
+
+  function populateFollowUpInput(detail = {}) {
+    const input = document.getElementById("iaqarCustomFollowUp");
+    if (!input) return;
+    const follow = FD()?.activeFollowUpFromRecord?.(detail);
+    const value = follow?.at || detail.nextFollowUpAt || "";
+    if (!value) {
+      input.value = "";
+      return;
+    }
+    input.value = FD()?.riyadhDateTimeInputValue?.(value) || localDateTimeValue(value);
+  }
+
+  function buildFollowUpRecipientOptionsHtml(context = {}, selected = "") {
+    const labels = FD()?.RECIPIENT_MODE_LABELS || { owner: "المالك", client: "العميل", both: "المالك والعميل" };
+    const modes = Array.isArray(context.availableModes) ? context.availableModes : [];
+    return modes.map((mode) =>
+      `<option value="${escapeUi(mode)}" ${mode === selected ? "selected" : ""}>${escapeUi(labels[mode] || mode)}</option>`
+    ).join("");
+  }
+
+  function renderFollowUpAppointmentCard(detail = {}) {
+    const follow = FD()?.activeFollowUpFromRecord?.(detail);
+    if (!follow || !follow.at) return "";
+    const labels = FD()?.RECIPIENT_MODE_LABELS || {};
+    const appointmentLine = FD()?.formatFollowUpAppointmentLine?.(follow.at) || dateTimeLabel(follow.at);
+    const recipientLabel = labels[follow.recipientMode] || labels.owner || "المالك";
+    const overdue = FD()?.isFollowUpOverdue?.(follow);
+    return `<article class="iaqar-followup-card" id="iaqarFollowUpCard">
+      <h3>الموعد القادم</h3>
+      <p class="iaqar-followup-when">${escapeUi(appointmentLine)}${overdue ? " — متأخرة" : ""}</p>
+      <p class="iaqar-followup-meta">التذكير: قبل الموعد بساعة</p>
+      <p class="iaqar-followup-meta">التواصل مع: ${escapeUi(recipientLabel)}</p>
+      <div class="iaqar-workflow-actions">
+        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">تعديل الموعد</button>
+        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="cancel-followup">إلغاء الموعد</button>
+        <button type="button" class="iaqar-workflow-btn success" data-ui-action="complete-followup">تمت المتابعة</button>
+      </div>
+    </article>`;
+  }
+
+  function renderFollowUpConfirmationActions(detail = {}, follow = {}) {
+    const modes = [];
+    const recipient = String(follow.recipientMode || "");
+    if (recipient === "both") modes.push("owner", "client");
+    else if (recipient === "owner") modes.push("owner");
+    else if (recipient === "client") modes.push("client");
+    else modes.push(FD()?.defaultRecipientMode?.(detail) || "owner");
+    const buttons = modes.map((role) =>
+      `<button type="button" class="iaqar-workflow-btn whatsapp" data-ui-action="followup-whatsapp" data-role="${role}">واتساب ${role === "owner" ? "المالك" : "العميل"}</button>`
+    ).join("");
+    return `<div class="iaqar-workflow-step" id="iaqarFollowUpConfirmSection">
+      <h3>تأكيد الموعد</h3>
+      <div class="iaqar-whatsapp-grid">${buttons}</div>
+      <div class="iaqar-workflow-actions">
+        <button type="button" class="iaqar-workflow-btn success" data-ui-action="followup-outcome" data-outcome="confirmed">تم التأكيد</button>
+        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">تغيير الموعد</button>
+        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="followup-outcome" data-outcome="no_response">لم يرد</button>
+      </div>
+    </div>`;
+  }
+
+  async function renderOpportunityLifecycleUi() {
     const detail = activeWorkflowDetail;
     const body = workflowBody();
     const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
@@ -1645,6 +1764,9 @@
     const lastOutcome = String(detail.lastContactOutcome || detail.advertiserContactStatus || "").toUpperCase();
     const showFollowUp = shouldShowFollowUpSection(detail, lastOutcome);
     const showMatching = shouldShowMatchingSection(detail, lastOutcome);
+    const activeFollowUp = FD()?.activeFollowUpFromRecord?.(detail);
+    const recipientContext = showFollowUp ? await ensureFollowUpRecipientContext(detail) : null;
+    const selectedRecipient = activeFollowUp?.recipientMode || recipientContext?.defaultMode || "owner";
     const outcomeLabels = LC().CONTACT_OUTCOME_LABELS || {
       NO_RESPONSE: "لم يرد",
       INTERESTED: "مهتم",
@@ -1656,7 +1778,7 @@
       `<button type="button" class="iaqar-workflow-btn secondary" data-ui-action="contact-outcome" data-outcome="${value}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`
     ).join("");
 
-    let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}${detail.nextFollowUpAt ? `<br>المتابعة: ${escapeUi(dateTimeLabel(detail.nextFollowUpAt))}` : ""}</div>`;
+    let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}</div>`;
 
     if (!closed) {
       html += `<div class="iaqar-workflow-step"><h3>التواصل</h3><p>تواصل عبر واتساب أو اتصال ثم سجّل نتيجة التواصل.</p>
@@ -1672,19 +1794,30 @@
           : `<p class="iaqar-workflow-note">بعد واتساب أو اتصال اختر نتيجة التواصل.</p>`}
       </div>`;
       if (showFollowUp) {
-        html += `<div class="iaqar-workflow-step"><h3>المتابعة</h3>
-          <div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="0">اليوم</button>
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="1">غدًا</button>
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="save-followup" data-days="2">بعد غد</button>
+        html += `<div class="iaqar-workflow-step" id="iaqarNextActionSection"><h3>الإجراء القادم</h3>`;
+        if (activeFollowUp && !followUpEditMode) {
+          html += renderFollowUpAppointmentCard(detail);
+          if (detail.focusFollowUpReminder || detail.showFollowUpConfirmation) {
+            html += renderFollowUpConfirmationActions(detail, activeFollowUp);
+          }
+        }
+        if (!activeFollowUp || followUpEditMode) {
+          html += `<div class="iaqar-workflow-actions">
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="0">اليوم</button>
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="1">غدًا</button>
+            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="2">بعد غد</button>
           </div>
           <label class="iaqar-workflow-form" style="margin-top:10px;display:grid;gap:6px">تاريخ ووقت المتابعة
             <input id="iaqarCustomFollowUp" type="datetime-local">
           </label>
+          <label class="iaqar-workflow-form" style="display:grid;gap:6px">التأكيد مع
+            <select id="iaqarFollowUpRecipient">${buildFollowUpRecipientOptionsHtml(recipientContext, selectedRecipient)}</select>
+          </label>
           <div class="iaqar-workflow-actions">
             <button type="button" class="iaqar-workflow-btn success" data-ui-action="save-followup-custom">حفظ موعد المتابعة</button>
-          </div>
-        </div>`;
+          </div>`;
+        }
+        html += `</div>`;
       }
       if (showMatching) {
         const coopLabel = String(detail.cooperationListing || "").toUpperCase() === "OPEN"
@@ -1706,6 +1839,11 @@
       html += `<div class="iaqar-workflow-result closed">الفرصة مؤرشفة / منتهية<br><small>${escapeUi(detail.closureReason || lifecycleLabel)}</small></div>`;
     }
     body.innerHTML = html;
+    populateFollowUpInput(detail);
+    if (detail.focusFollowUpReminder) {
+      const card = document.getElementById("iaqarFollowUpCard");
+      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }
 
   function showLifecycleCloseForm() {
@@ -1766,29 +1904,119 @@
     }
   }
 
-  async function saveFollowUpAction(button, daysValue) {
-    let nextFollowUpAt = "";
-    if (daysValue == null) {
-      const custom = document.getElementById("iaqarCustomFollowUp")?.value || "";
-      if (!custom) return notify("اختر موعد المتابعة");
-      nextFollowUpAt = new Date(custom).toISOString();
-    } else {
-      const days = Number(daysValue || 0);
-      const followUp = new Date(Date.now() + days * 86400000);
-      followUp.setHours(10, 0, 0, 0);
-      nextFollowUpAt = followUp.toISOString();
-    }
+  function pickFollowUpDay(daysValue) {
+    const days = Number(daysValue || 0);
+    const input = document.getElementById("iaqarCustomFollowUp");
+    if (!input) return;
+    const base = new Date();
+    base.setDate(base.getDate() + days);
+    const pad = (value) => String(value).padStart(2, "0");
+    const datePart = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
+    const existingTime = String(input.value || "").includes("T") ? input.value.split("T")[1] : "10:00";
+    input.value = `${datePart}T${existingTime}`;
+  }
+
+  async function saveFollowUpAction(button) {
+    const custom = document.getElementById("iaqarCustomFollowUp")?.value || "";
+    if (!custom) return notify("اختر موعد المتابعة");
+    const parsed = FD()?.parseRiyadhDateTimeInput?.(custom) || new Date(custom);
+    const recipientMode = document.getElementById("iaqarFollowUpRecipient")?.value || "";
+    const todayCheck = FD()?.validateTodayRequiresFutureTime?.(parsed);
+    if (todayCheck && !todayCheck.ok) return notify(todayCheck.message);
     setUiBusy(button, true);
     try {
-      await opportunityLifecycleAction("set_followup", activeWorkflowDetail, { nextFollowUpAt });
-      activeWorkflowDetail = { ...activeWorkflowDetail, lifecycleStatus: "FOLLOW_UP", nextFollowUpAt };
+      const payload = await opportunityLifecycleAction("set_followup", activeWorkflowDetail, {
+        nextFollowUpAt: parsed.toISOString(),
+        recipientMode
+      });
+      await reloadActiveOpportunityFromServer();
+      if (payload.followUp) activeWorkflowDetail.followUp = payload.followUp;
+      activeWorkflowDetail.nextFollowUpAt = payload.nextFollowUpAt || parsed.toISOString();
+      activeWorkflowDetail.lifecycleStatus = payload.lifecycleStatus || "FOLLOW_UP";
+      followUpEditMode = false;
       notify("تم حفظ موعد المتابعة");
-      renderOpportunityLifecycleUi();
+      await renderOpportunityLifecycleUi();
     } catch (error) {
       notify(error.message || "تعذر حفظ المتابعة");
     } finally {
       setUiBusy(button, false);
     }
+  }
+
+  async function cancelFollowUpAction(button) {
+    if (!confirm("إلغاء موعد المتابعة؟")) return;
+    setUiBusy(button, true);
+    try {
+      await opportunityLifecycleAction("cancel_followup", activeWorkflowDetail, {});
+      await reloadActiveOpportunityFromServer();
+      followUpEditMode = false;
+      notify("تم إلغاء موعد المتابعة");
+      await renderOpportunityLifecycleUi();
+    } catch (error) {
+      notify(error.message || "تعذر إلغاء الموعد");
+    } finally {
+      setUiBusy(button, false);
+    }
+  }
+
+  async function completeFollowUpAction(button) {
+    setUiBusy(button, true);
+    try {
+      await opportunityLifecycleAction("complete_followup", activeWorkflowDetail, {});
+      await reloadActiveOpportunityFromServer();
+      followUpEditMode = false;
+      notify("تم تسجيل نتيجة التواصل");
+      await renderOpportunityLifecycleUi();
+    } catch (error) {
+      notify(error.message || "تعذر إتمام المتابعة");
+    } finally {
+      setUiBusy(button, false);
+    }
+  }
+
+  async function recordFollowUpOutcome(button, outcome) {
+    if (!outcome) return;
+    setUiBusy(button, true);
+    try {
+      await opportunityLifecycleAction("followup_outcome", activeWorkflowDetail, { outcome });
+      notify("تم تسجيل نتيجة التواصل");
+      if (outcome === "confirmed") {
+        await completeFollowUpAction(button);
+        return;
+      }
+      await renderOpportunityLifecycleUi();
+    } catch (error) {
+      notify(error.message || "تعذر تسجيل النتيجة");
+    } finally {
+      setUiBusy(button, false);
+    }
+  }
+
+  async function openFollowUpReminderWhatsApp(role) {
+    const detail = await enrichDetailForMessaging(activeWorkflowDetail);
+    const enriched = {
+      ...detail,
+      recipientRole: role,
+      ownerOfferId: detail.ownerOfferId || followUpRecipientContext?.ownerContactId || "",
+      clientRequestId: detail.clientRequestId || followUpRecipientContext?.clientContactId || ""
+    };
+    const contact = await workflowContact(enriched, role);
+    if (!contact?.phone) return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير متوفر`);
+    const phone = whatsappPhone(contact.phone);
+    if (!phone) return notify("رقم الجوال غير مكتمل");
+    const property = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(detail) : "";
+    const message = [
+      "السلام عليكم، تذكير بموعد المتابعة بخصوص العقار.",
+      property ? `بخصوص: ${property}` : "",
+      "هل ما زال الموعد مناسبًا؟"
+    ].filter(Boolean).join("\n");
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const opened = window.open(url, "_blank");
+    if (!opened) window.location.href = url;
+    void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, { communicationAction: "whatsapp_opened" }).catch(() => {});
+    void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, {}).catch(() => {});
+    activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };
+    await renderOpportunityLifecycleUi();
   }
 
   async function confirmCloseOpportunityFinal(button) {
@@ -1849,8 +2077,16 @@
     if (action === "whatsapp-contact") return openContactWhatsAppDirect();
     if (action === "call-contact") return openContactCallDirect();
     if (action === "contact-outcome") return recordContactOutcomeAction(button, button.dataset.outcome);
-    if (action === "save-followup") return saveFollowUpAction(button, button.dataset.days);
-    if (action === "save-followup-custom") return saveFollowUpAction(button, null);
+    if (action === "save-followup-custom") return saveFollowUpAction(button);
+    if (action === "pick-followup-day") return pickFollowUpDay(button.dataset.days);
+    if (action === "edit-followup") {
+      followUpEditMode = true;
+      return void renderOpportunityLifecycleUi();
+    }
+    if (action === "cancel-followup") return cancelFollowUpAction(button);
+    if (action === "complete-followup") return completeFollowUpAction(button);
+    if (action === "followup-outcome") return recordFollowUpOutcome(button, button.dataset.outcome);
+    if (action === "followup-whatsapp") return openFollowUpReminderWhatsApp(button.dataset.role);
     if (action === "open-lifecycle-close") return showLifecycleCloseForm();
     if (action === "confirm-final-close") return confirmCloseOpportunityFinal(button);
     if (action === "open-matching-bank") return openMatchingBankFromWorkflow();
@@ -2054,7 +2290,7 @@
     switch (target.kind) {
       case "opportunity":
         if (target.id && window.IAQAR?.openOpportunityManagement) {
-          void window.IAQAR.openOpportunityManagement(target.id);
+          void window.IAQAR.openOpportunityManagement(target.id, { focusFollowUp: target.focusFollowUp });
         } else if (target.id && window.IAQAR?.openOpportunityDetail) {
           void window.IAQAR.openOpportunityDetail(target.id);
         } else if (window.IAQAR?.openOpportunityBank) {
@@ -2518,7 +2754,7 @@
     }
   }
 
-  async function openOpportunityManagement(opportunityId) {
+  async function openOpportunityManagement(opportunityId, options = {}) {
     const runtime = office();
     if (!runtime?.db || !runtime.officeId || !opportunityId) {
       notify("تعذر فتح إدارة الفرصة");
@@ -2551,7 +2787,9 @@
         kind: isOwner ? "owner" : "client",
         contactType: isOwner ? "owner" : "buyer",
         contactName: data.contactName || data.advertiserDisplayName || "",
-        contactPhone
+        contactPhone,
+        focusFollowUpReminder: Boolean(options.focusFollowUp),
+        showFollowUpConfirmation: Boolean(options.focusFollowUp)
       });
     } catch (error) {
       console.warn("[iaqar] open opportunity management", error);
