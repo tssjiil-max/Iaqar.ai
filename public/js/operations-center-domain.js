@@ -101,19 +101,17 @@ export function getCategoryDefinition(key) {
  */
 export function extractOpportunityId(item) {
   if (!item) return "";
-  const fromOpportunityId = String(item.opportunityId || "").trim().replace(/^(?:opp[-_])+/, "");
-  if (fromOpportunityId) return fromOpportunityId;
+  const opportunityId = String(item.opportunityId || "").trim();
+  if (opportunityId) return opportunityId;
 
   const recordType = String(item.recordType || "").toLowerCase();
   if (recordType === "opportunity" || recordType === "intake") {
-    const recordId = String(item.recordId || "").trim().replace(/^(?:opp[-_])+/, "");
+    const recordId = String(item.recordId || "").trim();
     if (recordId) return recordId;
   }
 
   const rawId = String(item.id || "").trim();
-  if (/^opp[-_]/i.test(rawId)) {
-    return rawId.replace(/^(?:opp[-_])+/, "");
-  }
+  if (rawId.startsWith("opp-")) return rawId.slice(4);
   return "";
 }
 

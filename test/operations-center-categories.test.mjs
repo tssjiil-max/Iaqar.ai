@@ -94,7 +94,13 @@ test("missingFieldCount and bestActionHint use readiness metadata", () => {
 
 test("extractOpportunityId resolves opportunity records", () => {
   assert.equal(extractOpportunityId({ recordType: "opportunity", recordId: "abc123" }), "abc123");
-  assert.equal(extractOpportunityId({ id: "opp-xyz", recordType: "opportunity" }), "xyz");
+  assert.equal(extractOpportunityId({ id: "opp-xyz", recordType: "opportunity", recordId: "xyz" }), "xyz");
+  assert.equal(extractOpportunityId({
+    id: "opp-opp_lifecycle_verify_1",
+    recordType: "opportunity",
+    recordId: "opp_lifecycle_verify_1",
+    opportunityId: "opp_lifecycle_verify_1"
+  }), "opp_lifecycle_verify_1");
   assert.equal(extractOpportunityId({ operationType: "MISSING_DATA", opportunityId: "opp99" }), "opp99");
 });
 

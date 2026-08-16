@@ -2,6 +2,11 @@
  * Daily tasks (المهام اليومية) — shell UI controller.
  */
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import {
+  bestActionHint,
+  extractOpportunityId,
+  primaryActionLabel
+} from "./operations-center-domain.js";
 
 export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" ? document : null) {
   if (!rootDocument) return;
@@ -134,8 +139,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   function taskCardHtml(item) {
     const domain = opsCenterDomain();
-    const hint = domain?.bestActionHint ? domain.bestActionHint(item) : "";
-    const primaryLabel = domain?.primaryActionLabel ? domain.primaryActionLabel(item) : "بدء الإجراء";
+    const hint = domain?.bestActionHint ? domain.bestActionHint(item) : bestActionHint(item);
+    const primaryLabel = domain?.primaryActionLabel ? domain.primaryActionLabel(item) : primaryActionLabel(item);
     const cat = domain?.categoryKey ? domain.categoryKey(item) : "";
     const incompleteMeta = cat === "incomplete" ? incompleteMetaHtml(item) : "";
 
@@ -201,7 +206,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     if (!item) return;
     state.activeTaskId = item.id;
     const domain = opsCenterDomain();
-    const oppId = domain?.extractOpportunityId ? domain.extractOpportunityId(item) : "";
+    const oppId = extractOpportunityId(item);
 
     if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
       if (operationsTaskPanel) operationsTaskPanel.hidden = false;
