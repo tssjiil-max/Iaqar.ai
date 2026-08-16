@@ -89,49 +89,49 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const contactButtons = contactActions.map((action) => {
     const disabled = !phoneReady || action.disabled;
     const note = phoneReady ? "" : "أكمل رقم الجوال أولًا";
-    return `<button type="button" class="bank-action" id="bankAdvertiser${action.action}" ${disabled ? "disabled" : ""}
+    return `<button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankAdvertiser${action.action}" ${disabled ? "disabled" : ""}
       title="${esc(note)}">${esc(action.label)}</button>`;
   }).join("");
   const contactNote = phoneReady
     ? ""
-    : `<p class="bank-note" id="bankIncompletePhoneHint">أكمل رقم الجوال أولًا</p>`;
+    : `<p class="bank-note iaqar-workflow-note" id="bankIncompletePhoneHint">أكمل رقم الجوال أولًا</p>`;
   const completePhoneBtn = phoneReady
     ? ""
-    : `<button type="button" class="bank-action-primary" id="bankCompletePhoneBtn">استكمال رقم الجوال</button>`;
+    : `<button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankCompletePhoneBtn">استكمال رقم الجوال</button>`;
 
   return `
-    <div class="bank-detail-head">
+    <div class="bank-detail-head iaqar-workflow-head">
       <h3>استكمال الفرصة</h3>
-      <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
+      <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
     <section class="bank-missing-banner is-incomplete" aria-live="polite">
       <strong>ينقص: ${esc(missingNames.join("، "))}</strong>
     </section>
-    <p class="bank-note bank-incomplete-party">جهة التواصل: ${esc(party)}</p>
-    <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form" autocomplete="off">
+    <p class="bank-note iaqar-workflow-note bank-incomplete-party">جهة التواصل: ${esc(party)}</p>
+    <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
       <div class="bank-edit-grid">${fieldBlocks}</div>
     </form>
-    <section class="bank-incomplete-contact" aria-label="التواصل">
-      <div class="bank-advertiser-actions" id="bankIncompleteContactActions">${contactButtons}</div>
+    <section class="bank-incomplete-contact iaqar-workflow-step" aria-label="التواصل">
+      <div class="bank-advertiser-actions iaqar-workflow-actions" id="bankIncompleteContactActions">${contactButtons}</div>
       ${completePhoneBtn}
       ${contactNote}
     </section>
     <div class="bank-unified-save-wrap">
-      <button type="button" class="bank-action-primary" id="bankUnifiedSaveBtn">حفظ واستكمال الفرصة</button>
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ واستكمال الفرصة</button>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
     </div>`;
 }
 
 function workspaceActionButton(action) {
-  return `<button type="button" class="bank-workspace-action" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
+  return `<button type="button" class="bank-workspace-action iaqar-workflow-btn secondary" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
 }
 
 function buildFollowUpQuickPickHtml(inputId, defaultValue = "") {
   return `
-    <div class="bank-followup-quick bank-contact-schedule-quick">
-      <button type="button" class="bank-action" data-contact-schedule-days="0">اليوم</button>
-      <button type="button" class="bank-action" data-contact-schedule-days="1">غدًا</button>
-      <button type="button" class="bank-action" data-contact-schedule-days="2">بعد غد</button>
+    <div class="bank-followup-quick bank-contact-schedule-quick iaqar-workflow-actions">
+      <button type="button" class="bank-action iaqar-workflow-btn secondary" data-contact-schedule-days="0">اليوم</button>
+      <button type="button" class="bank-action iaqar-workflow-btn secondary" data-contact-schedule-days="1">غدًا</button>
+      <button type="button" class="bank-action iaqar-workflow-btn secondary" data-contact-schedule-days="2">بعد غد</button>
       <label>تاريخ ووقت
         <input type="datetime-local" id="${esc(inputId)}" value="${esc(defaultValue)}">
       </label>
@@ -145,13 +145,13 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
   switch (key) {
     case "NO_RESPONSE":
       return `
-        <p class="bank-note">تحديد محاولة اتصال جديدة</p>
+        <p class="bank-note iaqar-workflow-note">تحديد محاولة اتصال جديدة</p>
         ${buildFollowUpQuickPickHtml("bankContactRetryAt", retryDefault)}`;
     case "INTERESTED":
       return `
-        <div class="bank-contact-outcome-actions-row">
-          <button type="button" class="bank-action" id="bankContactInterestedFollowUp">تحديد متابعة</button>
-          <button type="button" class="bank-action" id="bankContactInterestedWhatsApp">تواصل واتساب</button>
+        <div class="bank-contact-outcome-actions-row iaqar-workflow-actions">
+          <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankContactInterestedFollowUp">تحديد متابعة</button>
+          <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankContactInterestedWhatsApp">تواصل واتساب</button>
         </div>
         <label>ملاحظة قصيرة (اختياري)
           <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="ملاحظة اختيارية"></textarea>
@@ -161,23 +161,23 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
         </div>`;
     case "REFUSED":
       const reasons = REFUSAL_REASON_OPTIONS.map((row) =>
-        `<button type="button" class="bank-action bank-refusal-reason" data-refusal-reason="${esc(row.key)}">${esc(row.label)}</button>`
+        `<button type="button" class="bank-action bank-refusal-reason iaqar-workflow-btn secondary" data-refusal-reason="${esc(row.key)}">${esc(row.label)}</button>`
       ).join("");
       return `
-        <p class="bank-note">سبب عدم الاهتمام</p>
-        <div class="bank-contact-refusal-reasons">${reasons}</div>
+        <p class="bank-note iaqar-workflow-note">سبب عدم الاهتمام</p>
+        <div class="bank-contact-refusal-reasons iaqar-workflow-actions iaqar-outcome-actions">${reasons}</div>
         <label>ملاحظة (اختياري)
           <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="تفاصيل إضافية"></textarea>
         </label>
-        <button type="button" class="bank-action danger" id="bankContactRefusedArchive">إنهاء وأرشفة الفرصة</button>`;
+        <button type="button" class="bank-action danger iaqar-workflow-btn danger" id="bankContactRefusedArchive">إنهاء وأرشفة الفرصة</button>`;
     case "FOLLOW_UP":
       return `
-        <p class="bank-note">اختر موعد المتابعة</p>
+        <p class="bank-note iaqar-workflow-note">اختر موعد المتابعة</p>
         ${buildFollowUpQuickPickHtml("bankContactFollowUpAt", followDefault)}`;
     case "AGREED":
       return `
-        <button type="button" class="bank-action-primary" id="bankContactAgreedDeal">تسجيل الاتفاق والانتقال للصفقة</button>
-        <p class="bank-note">لن تُنهى الفرصة تلقائيًا — أكمل تسجيل بيانات الاتفاق.</p>`;
+        <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankContactAgreedDeal">تسجيل الاتفاق والانتقال للصفقة</button>
+        <p class="bank-note iaqar-workflow-note">لن تُنهى الفرصة تلقائيًا — أكمل تسجيل بيانات الاتفاق.</p>`;
     default:
       return "";
   }
@@ -188,14 +188,14 @@ export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
   const retryDefault = defaultContactRetryInput();
   const followDefault = defaultContactFollowUpInput();
   const outcomeButtons = CONTACT_OUTCOME_ORDER.map((key) =>
-    `<button type="button" class="bank-action bank-contact-outcome-btn" data-contact-outcome="${esc(key)}">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
+    `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
   ).join("");
   return `
-    <section class="bank-workspace-section" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
+    <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
       <h4>نتيجة التواصل</h4>
-      <div class="bank-contact-outcomes" id="bankContactOutcomes">${outcomeButtons}</div>
+      <div class="bank-contact-outcomes iaqar-workflow-actions iaqar-outcome-actions" id="bankContactOutcomes">${outcomeButtons}</div>
       <div id="bankContactOutcomeActionPanel" class="bank-contact-outcome-action-panel" hidden></div>
-      <button type="button" class="bank-action-primary" id="bankSaveContactOutcomeBtn" hidden>حفظ النتيجة والإجراء القادم</button>
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankSaveContactOutcomeBtn" hidden>حفظ النتيجة والإجراء القادم</button>
       <p class="section-status" id="bankContactOutcomeStatus" role="status"></p>
     </section>`;
 }
@@ -240,7 +240,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
       <span>${esc(row.neighborhoodLabel || row.reason || "")}</span>
       ${row.matchScore ? `<span>${esc(String(row.matchScore))}%</span>` : ""}
       <span class="bank-note">${row.hasOppositeOpportunity ? "فرصة معاكسة" : "بدون فرصة معاكسة"}</span>
-      <button type="button" class="bank-action" data-cooperation-request="${esc(row.officeId)}">مشاركة</button>
+      <button type="button" class="bank-action iaqar-workflow-btn secondary" data-cooperation-request="${esc(row.officeId)}">مشاركة</button>
     </div>`).join("");
 
   const coopRows = (bundle.cooperationRequests || []).map((row) => `
@@ -248,7 +248,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
       <strong>${esc(row.targetOfficeName || row.targetOfficeId)}</strong>
       <span>${esc(cooperationStatusLabel(row.status))}</span>
       ${String(row.status).toUpperCase() === "ACCEPTED"
-        ? `<button type="button" class="bank-action" data-open-coop-room="${esc(row.id)}">فتح غرفة التعاون</button>`
+        ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-open-coop-room="${esc(row.id)}">فتح غرفة التعاون</button>`
         : ""}
     </div>`).join("");
 
@@ -261,8 +261,9 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
   return `
     <div class="bank-workspace-layout">
       <div class="bank-workspace-main">
-        <div class="bank-detail-head">
-          <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
+        <div class="bank-detail-head iaqar-workflow-head">
+          <h3>إدارة الفرصة</h3>
+          <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
         </div>
         <header class="bank-workspace-header">
           <div class="bank-row-header">
@@ -275,33 +276,33 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
           ${header.contactMarkup ? `<p class="bank-row-contact">${header.contactMarkup}</p>` : ""}
         </header>
 
-        <section class="bank-workspace-section" id="bankWorkspaceBestNext">
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceBestNext">
           <h4>الإجراء الأفضل الآن</h4>
-          <button type="button" class="bank-workspace-best-next" data-workspace-action="${esc(bestNext.action)}">
+          <button type="button" class="bank-workspace-best-next iaqar-workflow-btn secondary" data-workspace-action="${esc(bestNext.action)}">
             ${esc(bestNext.label)}
           </button>
         </section>
 
-        <section class="bank-workspace-section bank-workspace-panel-mobile" id="bankWorkspaceActionsMobile" hidden>
+        <section class="bank-workspace-section iaqar-workflow-step bank-workspace-panel-mobile" id="bankWorkspaceActionsMobile" hidden>
           <h4>إجراءات ذكية</h4>
-          <div class="bank-workspace-actions">${actions.map(workspaceActionButton).join("")}</div>
+          <div class="bank-workspace-actions iaqar-workflow-actions">${actions.map(workspaceActionButton).join("")}</div>
         </section>
 
-        <section class="bank-workspace-section" id="bankWorkspaceMatchesSection" hidden>
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceMatchesSection" hidden>
           <h4>المطابقات</h4>
           <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>
         </section>
 
-        <section class="bank-workspace-section" id="bankWorkspaceOfficesSection" hidden>
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceOfficesSection" hidden>
           <h4>مكاتب مقترحة</h4>
           <div class="bank-workspace-office-list">
             ${suggestionRows || "<p class='bank-note'>لا توجد مكاتب متخصصة مناسبة حاليًا</p>"}
           </div>
         </section>
 
-        <section class="bank-workspace-section" id="bankWorkspaceShareSection" hidden>
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceShareSection" hidden>
           <h4>مشاركة مع وسيط</h4>
-          <form id="bankDirectShareForm" class="bank-share-form" autocomplete="off">
+          <form id="bankDirectShareForm" class="bank-share-form iaqar-workflow-form" autocomplete="off">
             <label>ابحث عن مكتب
               <input type="search" id="bankDetailOfficeSearch" placeholder="اسم المكتب أو المدينة" autocomplete="off">
             </label>
@@ -311,46 +312,46 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
             <label>رسالة اختيارية
               <textarea id="bankCooperationMessage" maxlength="500" placeholder="رسالة خاصة للمكتب المستهدف"></textarea>
             </label>
-            <button type="submit" class="bank-action-primary">إرسال طلب تعاون</button>
+            <button type="submit" class="bank-action-primary iaqar-workflow-btn success">إرسال طلب تعاون</button>
             <p class="bank-share-status section-status" id="bankShareStatus" role="status"></p>
-            <p class="bank-note">ملخص خاص — بدون بيانات تواصل قبل الموافقة.</p>
+            <p class="bank-note iaqar-workflow-note">ملخص خاص — بدون بيانات تواصل قبل الموافقة.</p>
           </form>
         </section>
 
-        <section class="bank-workspace-section" id="bankWorkspaceCoopSection">
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCoopSection">
           <h4>حالة التعاون</h4>
           ${coopRows || "<p class='bank-note'>لا توجد طلبات تعاون نشطة.</p>"}
         </section>
 
         ${contactOutcomesSection}
 
-        <section class="bank-workspace-section" id="bankWorkspaceFollowUpSection">
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceFollowUpSection">
           <h4>المتابعة والنشاط</h4>
           ${followUpLabel ? `<p class="bank-workspace-followup-card">الموعد القادم: ${esc(followUpLabel)}</p>` : ""}
-          <div class="bank-followup-quick" id="bankFollowUpQuick">
-            <button type="button" class="bank-action" data-followup-days="0">اليوم</button>
-            <button type="button" class="bank-action" data-followup-days="1">غدًا</button>
-            <button type="button" class="bank-action" data-followup-days="2">بعد غد</button>
+          <div class="bank-followup-quick iaqar-workflow-actions" id="bankFollowUpQuick">
+            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="0">اليوم</button>
+            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="1">غدًا</button>
+            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="2">بعد غد</button>
             <label>تاريخ ووقت
               <input type="datetime-local" id="bankCustomFollowUp">
             </label>
-            <button type="button" class="bank-action" id="bankSaveFollowUpCustom">حفظ موعد المتابعة</button>
+            <button type="button" class="bank-action iaqar-workflow-btn success" id="bankSaveFollowUpCustom">حفظ موعد المتابعة</button>
           </div>
           <ul class="bank-workspace-activity">${activityRows}</ul>
         </section>
 
-        <section class="bank-workspace-section" id="bankWorkspaceCloseSection" hidden>
+        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCloseSection" hidden>
           <h4>إنهاء الفرصة</h4>
-          <p class="bank-note">اختر سبب الإنهاء من الإجراءات الذكية.</p>
+          <p class="bank-note iaqar-workflow-note">اختر سبب الإنهاء من الإجراءات الذكية.</p>
         </section>
 
-        <div id="bankCooperationRoomPanel" class="bank-cooperation-room" hidden></div>
-        <div id="bankMatchComparisonPanel" class="bank-match-comparison" hidden></div>
+        <div id="bankCooperationRoomPanel" class="bank-cooperation-room iaqar-workflow-step" hidden></div>
+        <div id="bankMatchComparisonPanel" class="bank-match-comparison iaqar-workflow-step" hidden></div>
       </div>
 
-      <aside class="bank-workspace-side" id="bankWorkspaceActionsSide">
+      <aside class="bank-workspace-side iaqar-workflow-step" id="bankWorkspaceActionsSide">
         <h4>إجراءات ذكية</h4>
-        <div class="bank-workspace-actions">${actions.map(workspaceActionButton).join("")}</div>
+        <div class="bank-workspace-actions iaqar-workflow-actions">${actions.map(workspaceActionButton).join("")}</div>
       </aside>
     </div>
     ${archived ? "" : `<div id="bankCloseFormHost" hidden></div>`}`;
@@ -360,9 +361,9 @@ export function buildMatchComparisonHtml(sourceRecord, counterpart = {}, match =
   const reasons = (match.reasons || []).map((r) => `<li>${esc(r)}</li>`).join("");
   const warnings = (match.warnings || []).map((r) => `<li>${esc(r)}</li>`).join("");
   return `
-    <div class="bank-detail-head">
+    <div class="bank-detail-head iaqar-workflow-head">
       <h3>مقارنة المطابقة</h3>
-      <button type="button" class="settings-close" id="bankMatchComparisonClose" aria-label="إغلاق">×</button>
+      <button type="button" class="settings-close iaqar-workflow-close" id="bankMatchComparisonClose" aria-label="إغلاق">×</button>
     </div>
     <div class="bank-match-compare-grid">
       <article>
@@ -385,15 +386,15 @@ export function buildMatchComparisonHtml(sourceRecord, counterpart = {}, match =
 
 export function buildCooperationRoomHtml(room = {}, cooperation = {}) {
   return `
-    <div class="bank-detail-head">
+    <div class="bank-detail-head iaqar-workflow-head">
       <h3>غرفة التعاون</h3>
-      <button type="button" class="settings-close" id="bankCoopRoomClose" aria-label="إغلاق">×</button>
+      <button type="button" class="settings-close iaqar-workflow-close" id="bankCoopRoomClose" aria-label="إغلاق">×</button>
     </div>
     <p><strong>المكتب الأصلي:</strong> ${esc(cooperation.originatingOfficeName || cooperation.originatingOfficeId)}</p>
     <p><strong>المكتب المتعاون:</strong> ${esc(cooperation.targetOfficeName || cooperation.targetOfficeId)}</p>
     <p><strong>الحالة:</strong> ${esc(cooperationStatusLabel(cooperation.status))}</p>
-    <p class="bank-note">ملخص آمن: ${esc(room.summaryPropertyType || "")} — ${esc(room.summaryCity || "")} — ${esc(room.summaryDistrict || "")}</p>
-    <div class="bank-workspace-actions">
-      <button type="button" class="bank-action danger" data-workspace-action="end_cooperation">إنهاء التعاون</button>
+    <p class="bank-note iaqar-workflow-note">ملخص آمن: ${esc(room.summaryPropertyType || "")} — ${esc(room.summaryCity || "")} — ${esc(room.summaryDistrict || "")}</p>
+    <div class="bank-workspace-actions iaqar-workflow-actions">
+      <button type="button" class="bank-action danger iaqar-workflow-btn danger" data-workspace-action="end_cooperation">إنهاء التعاون</button>
     </div>`;
 }

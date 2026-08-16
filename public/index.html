@@ -1912,7 +1912,7 @@
     }
   </style>
 
-<style>
+<style id="iaqarWorkflowStyles">
   /* أدوات وصول: اسم مقروء لقارئ الشاشة دون أي أثر بصري */
   .visually-hidden {
     position:absolute !important;
@@ -2468,24 +2468,85 @@
     padding:8px 0;
     border-top:1px solid var(--line);
   }
+  /* Shared opportunity action UI — canonical source for workflow modal + bank detail panels */
+  .iaqar-workflow-overlay[hidden]{display:none!important}
+  .iaqar-workflow-overlay{position:fixed;inset:0;z-index:2000;background:rgba(8,36,31,.55);display:flex;align-items:flex-end;justify-content:center;padding:12px;box-sizing:border-box;direction:rtl}
+  .iaqar-workflow-panel{width:min(100%,560px);max-height:92svh;overflow:auto;background:#fff;border-radius:24px 24px 18px 18px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Tajawal,Arial,sans-serif;color:#173d35}
+  .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}
+  .iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}
+  .iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
+  .iaqar-workflow-body{padding:16px}
+  .iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}
+  .iaqar-workflow-steps{display:grid;gap:10px}
+  .iaqar-workflow-step{border:1px solid #dce8e4;border-radius:18px;padding:14px}
+  .iaqar-workflow-step.is-done{border-color:#9fd1c5;background:#f1faf7}
+  .iaqar-workflow-step h3,.iaqar-workflow-step h4{margin:0 0 5px;font-size:17px;color:#0a695d;font-weight:700}
+  .iaqar-workflow-step p{margin:0 0 10px;color:#657b74;font-size:13px;line-height:1.6}
+  .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
+  .iaqar-workflow-btn{min-height:52px;border:0;border-radius:14px;padding:10px 12px;font:700 15px Tajawal;cursor:pointer;background:#087064;color:#fff}
+  .iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}
+  .iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}
+  .iaqar-workflow-btn.success{background:#087064;color:#fff}
+  .iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}
+  .iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}
+  .iaqar-outcome-actions{grid-template-columns:1fr 1fr}
+  .iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
+  .iaqar-workflow-form{display:grid;gap:11px}
+  .iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
+  .iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #cedfda;border-radius:13px;padding:12px;font:500 15px Tajawal;background:#fff}
+  .iaqar-workflow-form textarea{min-height:82px;resize:vertical}
+  .iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}
+  .iaqar-checks label{display:flex;align-items:center;gap:8px}
+  .iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}
+  .iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}
+  .iaqar-workflow-result.success{background:#eaf8f3;color:#087064}
+  .iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}
+  .iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}
+  .iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}
+  .iaqar-followup-card{margin:0 0 10px;padding:12px;border:1px solid #dce8e4;border-radius:16px;background:#f4f8f6}
+  .iaqar-followup-card h3{margin:0 0 6px;font-size:15px;color:#0a695d}
+  .iaqar-followup-when{margin:0;font-weight:800;color:#087064}
+  .iaqar-followup-meta{margin:4px 0 0;font-size:12px;color:#657b74}
+  @media(min-width:700px){.iaqar-workflow-overlay{align-items:center}.iaqar-workflow-panel{border-radius:24px}}
+  @media(max-width:420px){.iaqar-workflow-actions,.iaqar-whatsapp-grid,.iaqar-workflow-form-grid{grid-template-columns:1fr}}
+
   .bank-detail {
     margin-top:12px;
-    padding:12px;
-    border:1px solid var(--line);
-    border-radius:16px;
-    background:var(--green-pale);
+    padding:16px;
+    border:1px solid #e2ece8;
+    border-radius:24px;
+    background:#fff;
+    font-family:Tajawal,Arial,sans-serif;
+    color:#173d35;
+    box-sizing:border-box;
   }
   .bank-detail-head {
     display:flex;
     justify-content:space-between;
     align-items:center;
-    gap:8px;
+    gap:12px;
+    padding:0 2px 14px;
+    margin-bottom:4px;
+    border-bottom:1px solid #e2ece8;
   }
   .bank-detail-head h3 {
     margin:0;
-    color:var(--green);
-    font-size:15px;
-    font-weight:800;
+    color:#087064;
+    font-size:21px;
+    font-weight:700;
+  }
+  .bank-detail .settings-close,
+  .bank-detail .iaqar-workflow-close {
+    width:38px;
+    height:38px;
+    border:0;
+    border-radius:12px;
+    background:#edf6f3;
+    color:#087064;
+    font-size:25px;
+    line-height:1;
+    cursor:pointer;
   }
   .bank-detail-grid {
     margin:10px 0 0;
@@ -2498,31 +2559,46 @@
   .bank-edit-form, .bank-share-form, .bank-source-preview, .bank-confirm {
     margin-top:12px;
     padding-top:10px;
-    border-top:1px solid rgba(0,92,75,.12);
+    border-top:1px solid #e2ece8;
   }
-  .bank-edit-form h4 { margin:0 0 8px; color:var(--green); font-size:13px; }
+  .bank-edit-form h4 { margin:0 0 8px; color:#0a695d; font-size:17px; font-weight:700; }
   .bank-edit-grid {
     display:grid;
-    gap:8px;
+    gap:11px;
   }
-  .bank-edit-grid label, .bank-share-form label {
+  .bank-detail .bank-edit-grid label,
+  .bank-detail .bank-share-form label,
+  .bank-detail .bank-followup-quick label {
     display:grid;
-    gap:4px;
-    color:var(--muted);
-    font-size:11px;
+    gap:5px;
+    font-size:13px;
     font-weight:700;
+    color:#173d35;
   }
-  .bank-edit-grid input, .bank-share-form input {
-    height:38px;
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:0 10px;
+  .bank-detail .bank-edit-grid input,
+  .bank-detail .bank-edit-grid select,
+  .bank-detail .bank-edit-grid textarea,
+  .bank-detail .bank-share-form input,
+  .bank-detail .bank-share-form textarea,
+  .bank-detail .bank-followup-quick input[type="datetime-local"] {
+    width:100%;
+    box-sizing:border-box;
+    border:1px solid #cedfda;
+    border-radius:13px;
+    padding:12px;
+    font:500 15px Tajawal;
     background:#fff;
+    min-height:0;
+    height:auto;
+  }
+  .bank-detail .bank-share-form textarea {
+    min-height:82px;
+    resize:vertical;
   }
   .bank-actions {
     display:flex;
     flex-wrap:wrap;
-    gap:8px;
+    gap:9px;
     margin-top:12px;
   }
   .bank-action, .bank-action-primary {
@@ -2534,6 +2610,31 @@
     font-size:12px;
     font-weight:800;
     cursor:pointer;
+  }
+  .bank-detail .bank-action:not(.iaqar-workflow-btn) {
+    min-height:52px;
+    border:1px solid #b9ddd4;
+    border-radius:14px;
+    padding:10px 12px;
+    font:700 15px Tajawal;
+    background:#edf7f4;
+    color:#087064;
+  }
+  .bank-detail .bank-action-primary:not(.iaqar-workflow-btn) {
+    border:0;
+    background:#087064;
+    color:#fff;
+    width:100%;
+    margin-top:10px;
+    min-height:52px;
+    border-radius:14px;
+    padding:10px 12px;
+    font:700 15px Tajawal;
+  }
+  .bank-detail .bank-action.danger:not(.iaqar-workflow-btn) {
+    background:#fff1f1;
+    color:#a33a3a;
+    border:1px solid #efc4c4;
   }
   .bank-action-primary {
     border:0;
@@ -2707,13 +2808,14 @@
 
   .bank-missing-banner {
     margin:10px 0;
-    padding:10px 12px;
-    border-radius:12px;
-    font-size:12px;
-    line-height:1.5;
+    padding:12px;
+    border-radius:16px;
+    font-size:14px;
+    line-height:1.6;
+    border:1px solid #dce8e4;
   }
-  .bank-missing-banner.is-incomplete { background:#fff4e5; color:#8a4b00; }
-  .bank-missing-banner.is-ready { background:#ecf8f2; color:var(--green); }
+  .bank-missing-banner.is-incomplete { background:#fff4e5; color:#8a4b00; border-color:#f0d9b8; }
+  .bank-missing-banner.is-ready { background:#f4f8f6; color:#087064; }
 
   .bank-section { margin:10px 0; padding:10px; border:1px solid var(--line); border-radius:12px; background:#fff; }
   .bank-section summary { cursor:pointer; font-weight:800; color:var(--green); }
@@ -2727,52 +2829,79 @@
     z-index:3;
   }
   .bank-unified-save-wrap .bank-action-primary { width:100%; }
-  .bank-contact-outcomes { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-  .bank-contact-outcome-btn.is-selected {
-    background:var(--green);
-    border-color:var(--green);
+  .bank-contact-outcomes {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    margin-top:10px;
+  }
+  .bank-detail .bank-contact-outcome-btn.is-selected,
+  .bank-detail .bank-refusal-reason.is-selected,
+  .bank-detail .iaqar-workflow-btn.secondary.is-selected {
+    background:#087064;
+    border-color:#087064;
     color:#fff;
   }
-  .bank-contact-outcome-btn.is-selected::after {
+  .bank-detail .bank-contact-outcome-btn.is-selected::after,
+  .bank-detail .iaqar-workflow-btn.secondary.is-selected::after {
     content:" ✓";
-    font-size:11px;
+    font-size:13px;
   }
   .bank-contact-outcome-action-panel {
     margin-top:10px;
-    padding-top:8px;
-    border-top:1px solid rgba(0,92,75,.12);
+    padding-top:10px;
+    border-top:1px solid #e2ece8;
+  }
+  .bank-contact-outcome-actions-row,
+  .bank-contact-refusal-reasons {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    margin-top:10px;
   }
   .bank-contact-outcome-action-panel label,
   .bank-contact-outcome-subpanel label {
     display:grid;
-    gap:4px;
+    gap:5px;
     margin-top:8px;
-    color:var(--muted);
-    font-size:11px;
+    font-size:13px;
     font-weight:700;
+    color:#173d35;
   }
-  .bank-contact-outcome-action-panel textarea,
-  .bank-contact-outcome-subpanel textarea {
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:8px 10px;
-    min-height:56px;
+  .bank-detail .bank-contact-outcome-action-panel textarea,
+  .bank-detail .bank-contact-outcome-subpanel textarea {
+    width:100%;
+    box-sizing:border-box;
+    border:1px solid #cedfda;
+    border-radius:13px;
+    padding:12px;
+    font:500 15px Tajawal;
+    min-height:82px;
     resize:vertical;
+    background:#fff;
   }
-  .bank-contact-outcome-actions-row,
-  .bank-contact-refusal-reasons {
-    display:flex;
-    flex-wrap:wrap;
-    gap:6px;
+  .bank-followup-quick {
+    display:grid;
+    gap:9px;
+    margin-top:10px;
+  }
+  .bank-detail .bank-followup-quick .bank-action[data-followup-days],
+  .bank-detail .bank-followup-quick .bank-action[data-contact-schedule-days] {
+    width:100%;
+  }
+  .bank-detail .section-status {
     margin-top:8px;
+    font-size:12px;
+    line-height:1.6;
+    color:#70817c;
   }
-  .bank-refusal-reason.is-selected {
-    background:var(--green);
-    border-color:var(--green);
-    color:#fff;
+  .bank-detail .section-status.is-error { color:#a33a3a; }
+  .bank-detail .section-status.is-done { color:#087064; }
+  .bank-detail .bank-note {
+    font-size:12px;
+    color:#70817c;
+    line-height:1.6;
   }
-  #bankSaveContactOutcomeBtn { margin-top:10px; width:100%; }
-  .bank-followup-quick { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
 
   .bank-workspace-layout {
     display:flex;
@@ -2796,40 +2925,40 @@
   }
   .bank-workspace-side h4,
   .bank-workspace-section h4 {
-    margin:0 0 8px;
-    color:var(--green);
-    font-size:13px;
-    font-weight:800;
+    margin:0 0 5px;
+    color:#0a695d;
+    font-size:17px;
+    font-weight:700;
   }
   .bank-workspace-section {
     margin:10px 0;
-    padding:10px;
-    border:1px solid var(--line);
-    border-radius:12px;
+    padding:14px;
+    border:1px solid #dce8e4;
+    border-radius:18px;
     background:#fff;
   }
   .bank-workspace-actions {
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:8px;
+    gap:9px;
+    margin-top:10px;
   }
   .bank-workspace-action,
   .bank-workspace-best-next {
-    min-height:48px;
-    border:1px solid rgba(0,92,75,.18);
-    border-radius:12px;
-    background:var(--green-pale);
-    color:var(--green);
-    font-size:12px;
-    font-weight:800;
+    min-height:52px;
+    border:1px solid #b9ddd4;
+    border-radius:14px;
+    background:#edf7f4;
+    color:#087064;
+    font:700 15px Tajawal;
     cursor:pointer;
-    padding:8px 10px;
+    padding:10px 12px;
     text-align:center;
   }
   .bank-workspace-best-next {
     width:100%;
-    background:#ecf8f2;
-    border-color:rgba(0,92,75,.22);
+    background:#edf7f4;
+    border-color:#b9ddd4;
   }
   .bank-workspace-match-row {
     display:flex;
@@ -2865,26 +2994,35 @@
   }
   .bank-workspace-activity li { padding:4px 0; border-top:1px solid var(--line); }
   .bank-workspace-followup-card {
-    margin:0 0 8px;
-    padding:8px 10px;
-    border-radius:10px;
-    background:#ecf8f2;
-    color:var(--green);
+    margin:0 0 10px;
+    padding:12px;
+    border-radius:16px;
+    background:#f4f8f6;
+    border:1px solid #dce8e4;
+    color:#087064;
     font-weight:800;
-    font-size:12px;
+    font-size:14px;
+    line-height:1.6;
   }
   .bank-match-comparison,
   .bank-cooperation-room {
     margin-top:10px;
-    padding:10px;
-    border:1px solid var(--line);
-    border-radius:12px;
+    padding:14px;
+    border:1px solid #dce8e4;
+    border-radius:18px;
     background:#fff;
   }
   @media (max-width: 768px) {
     .bank-workspace-layout { flex-direction:column; }
     .bank-workspace-side { position:static; width:100%; }
     .bank-workspace-actions { grid-template-columns:1fr; }
+    .bank-contact-outcomes,
+    .bank-contact-outcome-actions-row,
+    .bank-contact-refusal-reasons { grid-template-columns:1fr; }
+  }
+  @media (max-width: 420px) {
+    .bank-detail { padding:14px; border-radius:20px; }
+    .bank-detail-head h3 { font-size:19px; }
   }
 
   .review-hint {
