@@ -50,6 +50,10 @@ import {
 } from "./cooperation-phase6-service.js";
 import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
 import {
+  loadOpportunityWorkspaceBundle,
+  ensureCooperationRoom
+} from "./opportunity-workspace-service.mjs";
+import {
   sanitizeOpportunityPatch,
   mergeOpportunityFinancialPatch,
   readinessFieldsForRecord,
@@ -564,6 +568,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/opportunity/patch") {
         return handleOpportunityPatch(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity/workspace") {
+        return handleOpportunityWorkspace(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/room") {
+        return handleCooperationRoom(request, env, requestId);
       }
 
       if (request.method === "GET" && url.pathname === "/workflow/timeline") {
@@ -3416,6 +3428,130 @@ async function handleCooperationNearbySuggestions(request, env, requestId) {
       usesDeviceGps: false,
       exposesContactBeforeAcceptance: false
     },
+    requestId
+  });
+}
+
+async function handleOpportunityWorkspace(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const bundle = await loadOpportunityWorkspaceBundle({
+    projectId,
+    officeId,
+    opportunityId,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  });
+  if (!bundle.ok) {
+    throw appError(bundle.error || "workspace_load_failed", 404, "تعذر تحميل مساحة العمل");
+  }
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    opportunity: bundle.opportunity,
+    matches: bundle.matches,
+    suggestions: bundle.suggestions,
+    suggestionsEmptyReason: bundle.suggestionsEmptyReason,
+    cooperationRequests: bundle.cooperationRequests,
+    cooperationRoom: bundle.cooperationRoom,
+    followUp: bundle.followUp,
+    readiness: bundle.readiness,
+    boundaries: {
+      ...phase4BoundaryGuarantees(),
+      ...phase6BoundaryGuarantees(),
+      usesDeviceGps: false,
+      exposesContactBeforeAcceptance: false
+    },
+    requestId
+  });
+}
+
+async function handleCooperationRoom(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const coopDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!coopDoc) throw appError("cooperation_not_found", 404, "طلب التعاون غير موجود");
+  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
+  const origin = String(cooperation.originatingOfficeId || "");
+  const target = String(cooperation.targetOfficeId || "");
+  if (officeId !== origin && officeId !== target) {
+    throw appError("cooperation_forbidden", 403, "لا يمكنك فتح غرفة التعاون");
+  }
+  if (String(cooperation.status || "").toUpperCase() !== "ACCEPTED") {
+    throw appError("cooperation_not_accepted", 400, "التعاون غير مقبول بعد");
+  }
+
+  const roomDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRooms", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  const opportunityId = String(
+    cooperation.opportunityId
+      || (Array.isArray(cooperation.opportunityIds) ? cooperation.opportunityIds[0] : "")
+      || ""
+  ).trim();
+  if (!roomDoc && opportunityId) {
+    await ensureCooperationRoom({
+      projectId,
+      cooperationId,
+      originatingOfficeId: origin,
+      targetOfficeId: target,
+      opportunityId,
+      accessToken,
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    });
+  }
+  const freshRoom = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRooms", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    cooperation: {
+      id: cooperationId,
+      status: cooperation.status,
+      originatingOfficeId: origin,
+      targetOfficeId: target,
+      originatingOfficeName: cooperation.originatingOfficeName || origin,
+      targetOfficeName: cooperation.targetOfficeName || target
+    },
+    room: freshRoom ? { id: cooperationId, ...firestoreFieldsToJs(freshRoom.fields || {}) } : null,
+    boundaries: phase6BoundaryGuarantees(),
     requestId
   });
 }

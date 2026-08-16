@@ -2730,6 +2730,119 @@
   .bank-contact-outcomes { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .bank-followup-quick { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
 
+  .bank-workspace-layout {
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    align-items:flex-start;
+  }
+  .bank-workspace-main {
+    flex:1 1 65%;
+    min-width:0;
+  }
+  .bank-workspace-side {
+    flex:0 1 32%;
+    min-width:220px;
+    padding:10px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+    position:sticky;
+    top:8px;
+  }
+  .bank-workspace-side h4,
+  .bank-workspace-section h4 {
+    margin:0 0 8px;
+    color:var(--green);
+    font-size:13px;
+    font-weight:800;
+  }
+  .bank-workspace-section {
+    margin:10px 0;
+    padding:10px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+  }
+  .bank-workspace-actions {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+  }
+  .bank-workspace-action,
+  .bank-workspace-best-next {
+    min-height:48px;
+    border:1px solid rgba(0,92,75,.18);
+    border-radius:12px;
+    background:var(--green-pale);
+    color:var(--green);
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+    padding:8px 10px;
+    text-align:center;
+  }
+  .bank-workspace-best-next {
+    width:100%;
+    background:#ecf8f2;
+    border-color:rgba(0,92,75,.22);
+  }
+  .bank-workspace-match-row {
+    display:flex;
+    gap:8px;
+    align-items:flex-start;
+    width:100%;
+    text-align:right;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+    padding:8px;
+    margin-bottom:6px;
+    cursor:pointer;
+  }
+  .bank-workspace-match-score {
+    font-weight:800;
+    color:var(--green);
+    min-width:42px;
+  }
+  .bank-workspace-office-row,
+  .bank-workspace-coop-row {
+    padding:8px 0;
+    border-top:1px solid var(--line);
+    display:grid;
+    gap:4px;
+  }
+  .bank-workspace-activity {
+    margin:8px 0 0;
+    padding:0;
+    list-style:none;
+    font-size:11px;
+    color:var(--muted);
+  }
+  .bank-workspace-activity li { padding:4px 0; border-top:1px solid var(--line); }
+  .bank-workspace-followup-card {
+    margin:0 0 8px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:#ecf8f2;
+    color:var(--green);
+    font-weight:800;
+    font-size:12px;
+  }
+  .bank-match-comparison,
+  .bank-cooperation-room {
+    margin-top:10px;
+    padding:10px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+  }
+  @media (max-width: 768px) {
+    .bank-workspace-layout { flex-direction:column; }
+    .bank-workspace-side { position:static; width:100%; }
+    .bank-workspace-actions { grid-template-columns:1fr; }
+  }
+
   .review-hint {
     margin:0 0 10px;
     color:var(--muted);

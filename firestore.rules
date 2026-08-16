@@ -421,6 +421,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // غرف التعاون الخاصة — للمكتبين المشاركين فقط بعد القبول.
+    match /cooperationRooms/{roomId} {
+      allow read: if signedIn()
+        && (isOfficeMember(resource.data.originatingOfficeId)
+          || isOfficeMember(resource.data.targetOfficeId));
+      allow create, update, delete: if false;
+    }
+
     // إسقاطات مشاركة الحد الأدنى للطرف المتعاون — بدون بيانات تواصل.
     // بعد الإلغاء (revokedAt) يُمنع الوصول المستقبلي (اختبار 12).
     match /offices/{officeId}/sharedOpportunities/{sharedId} {

@@ -16,6 +16,7 @@ import {
   opportunityStatusFromShare,
   phase6BoundaryGuarantees
 } from "./cooperation-phase6-domain.js";
+import { ensureCooperationRoom } from "./opportunity-workspace-service.mjs";
 
 function firestoreHelpersBundle(h) {
   return h;
@@ -316,6 +317,20 @@ export async function runCooperationLifecycle({
       firestoreFieldsToJs,
       firestoreHelpers
     });
+    for (const opportunityId of opportunityIds) {
+      await ensureCooperationRoom({
+        projectId,
+        cooperationId,
+        originatingOfficeId: origin,
+        targetOfficeId: target,
+        opportunityId,
+        accessToken,
+        getFirestoreDocument,
+        setFirestoreDocument,
+        firestoreFieldsToJs,
+        firestoreHelpers
+      });
+    }
   }
 
   if (["REJECTED", "REVOKED", "ENDED"].includes(String(nextStatus).toUpperCase())) {

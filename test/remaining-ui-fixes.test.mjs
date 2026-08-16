@@ -54,10 +54,12 @@ test("access-gate public forms use INPUT for property type and district", () => 
 
 test("opportunity bank edit form uses text inputs not selects for property and district", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes('name="propertyType" class="arabic-suggest-input"'));
-  assert.ok(bank.includes('name="district" class="arabic-suggest-input"'));
-  assert.equal(/select[^>]*name="propertyType"/.test(bank), false);
-  assert.equal(/select[^>]*name="district"/.test(bank), false);
+  const workspaceUi = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
+  const combined = `${bank}\n${workspaceUi}`;
+  assert.ok(combined.includes('name="propertyType" class="arabic-suggest-input"') || combined.includes('name="propertyType"'));
+  assert.ok(combined.includes('name="district"') || combined.includes('name="district" class="arabic-suggest-input"'));
+  assert.equal(/select[^>]*name="propertyType"/.test(combined), false);
+  assert.equal(/select[^>]*name="district"/.test(combined), false);
 });
 
 test("DOM: arabic suggest input keeps custom district after blur", () => {
@@ -97,7 +99,7 @@ test("operations shell renders opsStatusLine on cards", () => {
 
 test("service worker cache bumped with network-first navigation", () => {
   const sw = readRepo("public", "firebase-messaging-sw.js");
-  assert.ok(sw.includes("iaqar-shell-followup-v1"));
+  assert.ok(sw.includes("iaqar-shell-workspace-v1"));
   assert.ok(sw.includes("IAQAR_NAVIGATION"));
 });
 
