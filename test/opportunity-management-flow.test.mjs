@@ -65,7 +65,9 @@ test("contact outcome labels include required persisted outcomes", () => {
   const workspaceUi = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
   const combined = `${bank}\n${workspaceUi}`;
   assert.equal(/data-contact-outcome="CONTACTED"/.test(combined), false);
-  assert.ok(combined.includes("data-contact-outcome=\"INTERESTED\""));
+  assert.ok(combined.includes("data-contact-outcome="));
+  assert.ok(combined.includes("bank-contact-outcome-btn"));
+  assert.ok(combined.includes("مهتم"));
 });
 
 test("follow-up save uses set_followup lifecycle action", () => {

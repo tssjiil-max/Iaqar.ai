@@ -16,6 +16,14 @@ import {
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import { buildAdvertiserContactActions } from "./advertiser-phone-domain.js";
+import {
+  CONTACT_OUTCOME_LABELS,
+  CONTACT_OUTCOME_ORDER,
+  REFUSAL_REASON_OPTIONS,
+  defaultContactFollowUpInput,
+  defaultContactRetryInput,
+  shouldShowContactOutcomePanel
+} from "./opportunity-contact-outcome-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -118,6 +126,80 @@ function workspaceActionButton(action) {
   return `<button type="button" class="bank-workspace-action" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
 }
 
+function buildFollowUpQuickPickHtml(inputId, defaultValue = "") {
+  return `
+    <div class="bank-followup-quick bank-contact-schedule-quick">
+      <button type="button" class="bank-action" data-contact-schedule-days="0">اليوم</button>
+      <button type="button" class="bank-action" data-contact-schedule-days="1">غدًا</button>
+      <button type="button" class="bank-action" data-contact-schedule-days="2">بعد غد</button>
+      <label>تاريخ ووقت
+        <input type="datetime-local" id="${esc(inputId)}" value="${esc(defaultValue)}">
+      </label>
+    </div>`;
+}
+
+export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
+  const key = String(outcome || "").toUpperCase();
+  const retryDefault = options.retryDefault || defaultContactRetryInput();
+  const followDefault = options.followDefault || defaultContactFollowUpInput();
+  switch (key) {
+    case "NO_RESPONSE":
+      return `
+        <p class="bank-note">تحديد محاولة اتصال جديدة</p>
+        ${buildFollowUpQuickPickHtml("bankContactRetryAt", retryDefault)}`;
+    case "INTERESTED":
+      return `
+        <div class="bank-contact-outcome-actions-row">
+          <button type="button" class="bank-action" id="bankContactInterestedFollowUp">تحديد متابعة</button>
+          <button type="button" class="bank-action" id="bankContactInterestedWhatsApp">تواصل واتساب</button>
+        </div>
+        <label>ملاحظة قصيرة (اختياري)
+          <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="ملاحظة اختيارية"></textarea>
+        </label>
+        <div id="bankContactInterestedFollowUpPanel" class="bank-contact-outcome-subpanel" hidden>
+          ${buildFollowUpQuickPickHtml("bankContactInterestedFollowUpAt", followDefault)}
+        </div>`;
+    case "REFUSED":
+      const reasons = REFUSAL_REASON_OPTIONS.map((row) =>
+        `<button type="button" class="bank-action bank-refusal-reason" data-refusal-reason="${esc(row.key)}">${esc(row.label)}</button>`
+      ).join("");
+      return `
+        <p class="bank-note">سبب عدم الاهتمام</p>
+        <div class="bank-contact-refusal-reasons">${reasons}</div>
+        <label>ملاحظة (اختياري)
+          <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="تفاصيل إضافية"></textarea>
+        </label>
+        <button type="button" class="bank-action danger" id="bankContactRefusedArchive">إنهاء وأرشفة الفرصة</button>`;
+    case "FOLLOW_UP":
+      return `
+        <p class="bank-note">اختر موعد المتابعة</p>
+        ${buildFollowUpQuickPickHtml("bankContactFollowUpAt", followDefault)}`;
+    case "AGREED":
+      return `
+        <button type="button" class="bank-action-primary" id="bankContactAgreedDeal">تسجيل الاتفاق والانتقال للصفقة</button>
+        <p class="bank-note">لن تُنهى الفرصة تلقائيًا — أكمل تسجيل بيانات الاتفاق.</p>`;
+    default:
+      return "";
+  }
+}
+
+export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
+  const show = options.show === true || shouldShowContactOutcomePanel(record);
+  const retryDefault = defaultContactRetryInput();
+  const followDefault = defaultContactFollowUpInput();
+  const outcomeButtons = CONTACT_OUTCOME_ORDER.map((key) =>
+    `<button type="button" class="bank-action bank-contact-outcome-btn" data-contact-outcome="${esc(key)}">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
+  ).join("");
+  return `
+    <section class="bank-workspace-section" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
+      <h4>نتيجة التواصل</h4>
+      <div class="bank-contact-outcomes" id="bankContactOutcomes">${outcomeButtons}</div>
+      <div id="bankContactOutcomeActionPanel" class="bank-contact-outcome-action-panel" hidden></div>
+      <button type="button" class="bank-action-primary" id="bankSaveContactOutcomeBtn" hidden>حفظ النتيجة والإجراء القادم</button>
+      <p class="section-status" id="bankContactOutcomeStatus" role="status"></p>
+    </section>`;
+}
+
 export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
   const header = buildWorkspaceHeader(record);
   const matches = sortMatchesForWorkspace(bundle.matches || [], id);
@@ -132,6 +214,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
   const activity = buildWorkspaceActivity(record, bundle.cooperationRequests || []);
   const followUp = bundle.followUp || activeFollowUpFromRecord(record);
   const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
+  const contactOutcomesSection = archived ? "" : buildContactOutcomesSectionHtml(record);
 
   const stats = [
     header.priceText ? `<div class="bank-stat"><span class="bank-stat-label">السعر</span><strong>${esc(header.priceText)}</strong></div>` : "",
@@ -239,6 +322,8 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
           ${coopRows || "<p class='bank-note'>لا توجد طلبات تعاون نشطة.</p>"}
         </section>
 
+        ${contactOutcomesSection}
+
         <section class="bank-workspace-section" id="bankWorkspaceFollowUpSection">
           <h4>المتابعة والنشاط</h4>
           ${followUpLabel ? `<p class="bank-workspace-followup-card">الموعد القادم: ${esc(followUpLabel)}</p>` : ""}
@@ -267,15 +352,6 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}) {
         <h4>إجراءات ذكية</h4>
         <div class="bank-workspace-actions">${actions.map(workspaceActionButton).join("")}</div>
       </aside>
-    </div>
-    <div id="bankContactOutcomesWrap" hidden>
-      <div class="bank-contact-outcomes" id="bankContactOutcomes">
-        <button type="button" class="bank-action" data-contact-outcome="NO_RESPONSE">لم يرد</button>
-        <button type="button" class="bank-action" data-contact-outcome="INTERESTED">مهتم</button>
-        <button type="button" class="bank-action" data-contact-outcome="REFUSED">غير مهتم</button>
-        <button type="button" class="bank-action" data-contact-outcome="FOLLOW_UP">طلب متابعة</button>
-        <button type="button" class="bank-action" data-contact-outcome="AGREED">تم الاتفاق</button>
-      </div>
     </div>
     ${archived ? "" : `<div id="bankCloseFormHost" hidden></div>`}`;
 }
