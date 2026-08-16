@@ -126,9 +126,9 @@ test("DOM bank card keyboard opens detail with correct id", () => {
   const dom = new JSDOM(`<div id="opportunityBankList"></div>`, { url: "https://example.test/" });
   const doc = dom.window.document;
   const list = doc.getElementById("opportunityBankList");
-  list.innerHTML = `<article class="bank-row bank-row-card" role="button" tabindex="0" data-open-id="opp_test_1" aria-label="test"></article>`;
+  list.innerHTML = `<article class="bank-row bank-row-card" role="button" tabindex="0" data-opportunity-id="opp_test_1" data-open-id="opp_test_1" aria-label="test"></article>`;
   const row = list.querySelector(".bank-row-card");
-  assert.equal(row.getAttribute("data-open-id"), "opp_test_1");
+  assert.equal(row.getAttribute("data-opportunity-id"), "opp_test_1");
   assert.equal(row.tagName, "ARTICLE");
   assert.equal(row.getAttribute("role"), "button");
 });

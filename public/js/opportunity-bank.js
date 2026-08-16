@@ -371,9 +371,9 @@ function bankRowHtml(row) {
       class="bank-row bank-row-card"
       role="button"
       tabindex="0"
-      data-opportunity-id="${escapeHtml(row.id)}"
-      data-open-id="${escapeHtml(row.id)}"
-      aria-label="${escapeHtml(card.ariaLabel)}">
+      data-opportunity-id="${escapeHtml(card.opportunityId || row.id)}"
+      data-open-id="${escapeHtml(card.opportunityId || row.id)}"
+      aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
       <div class="bank-row-header">
         <span class="bank-kind-badge">${escapeHtml(card.kindBadge)}</span>
         <h3 class="bank-row-title">${escapeHtml(card.title)}</h3>
@@ -404,14 +404,73 @@ function isOwnerRecord(record = {}) {
 
 let bankDetailOpenLock = "";
 
+const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
+  propertyType: 'input[name="propertyType"]',
+  city: 'input[name="city"]',
+  district: 'input[name="district"]',
+  priceOrBudget: 'input[name="priceOrBudget"]',
+  purpose: 'input[name="propertyType"]',
+  contactPhone: 'input[name="advertiserPhoneLocal"]',
+  advertiserRole: 'select[name="advertiserRole"]'
+});
+
+function resolveBankRowOpportunityId(node) {
+  if (!node) return "";
+  return String(node.getAttribute("data-opportunity-id") || "").trim();
+}
+
+function canOpenBankOpportunity(record) {
+  if (!record) return false;
+  const currentOffice = officeId();
+  const owner = String(record.officeId || currentOffice);
+  const origin = String(record.originatingOfficeId || "").trim();
+  return owner === currentOffice || origin === currentOffice;
+}
+
+function focusFirstMissingBankField(readiness = {}) {
+  const missing = Array.isArray(readiness.matchingReadinessMissing)
+    ? readiness.matchingReadinessMissing
+    : [];
+  if (!missing.length) return false;
+
+  const banner = document.querySelector(".bank-missing-banner");
+  if (banner) {
+    banner.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const form = $("bankUnifiedForm");
+  for (const key of missing) {
+    const selector = BANK_MISSING_FIELD_SELECTORS[key];
+    if (!selector) continue;
+    const field = form?.querySelector(selector) || document.querySelector(selector);
+    if (!field) continue;
+    const section = field.closest("details.bank-section");
+    if (section) section.open = true;
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    try {
+      field.focus({ preventScroll: true });
+    } catch (_) {
+      field.focus();
+    }
+    return true;
+  }
+  return false;
+}
+
 async function openBankDetailFromList(opportunityId) {
-  if (!opportunityId || bankDetailOpenLock === opportunityId) return;
-  bankDetailOpenLock = opportunityId;
+  const id = String(opportunityId || "").trim();
+  if (!id || bankDetailOpenLock === id) return;
+  const record = state.records.get(id);
+  if (!record || !canOpenBankOpportunity(record)) {
+    toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
+    return;
+  }
+  bankDetailOpenLock = id;
   try {
-    await renderDetail(opportunityId);
+    await renderDetail(id);
   } finally {
     window.setTimeout(() => {
-      if (bankDetailOpenLock === opportunityId) bankDetailOpenLock = "";
+      if (bankDetailOpenLock === id) bankDetailOpenLock = "";
     }, 400);
   }
 }
@@ -825,6 +884,9 @@ async function renderDetail(id) {
   }
   wireDetailHandlers(id, record);
   wireBankFormArabicInputs(record);
+  if (!readiness.isReadyForMatching) {
+    window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
+  }
   void hydrateDetailMediaUrls();
   void loadCooperationNearbySuggestions(id, record);
   window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
@@ -1013,6 +1075,7 @@ function wireDetailHandlers(id, record) {
       setStatus("تم حفظ التغييرات", "is-done");
       toast("تم حفظ التغييرات");
       await renderDetail(id);
+      renderList();
     } catch (error) {
       console.warn("[iaqar] unified save", error);
       const msg = mapClientPatchError(error, "تعذر حفظ التغييرات");
@@ -1978,20 +2041,22 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn")) return;
-    const row = event.target.closest(".bank-row[data-open-id]");
+    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, button, a")) return;
+    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
-    const openId = row.getAttribute("data-open-id");
+    const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
     event.preventDefault();
     void openBankDetailFromList(openId);
   });
   list.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    const row = event.target.closest(".bank-row[data-open-id]");
+    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
     event.preventDefault();
-    void openBankDetailFromList(row.getAttribute("data-open-id"));
+    const openId = resolveBankRowOpportunityId(row);
+    if (!openId) return;
+    void openBankDetailFromList(openId);
   });
 }
 
@@ -2513,6 +2578,12 @@ function boot() {
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;
   window.IAQAR.isBankDetailOpen = isBankDetailOpen;
   window.IAQAR.closeBankDetailInternal = closeBankDetailInternal;
+  window.IAQAR.bankTestHooks = Object.freeze({
+    resolveBankRowOpportunityId,
+    focusFirstMissingBankField,
+    canOpenBankOpportunity,
+    bankMissingFieldSelectors: BANK_MISSING_FIELD_SELECTORS
+  });
 }
 
 function syncFilterButtons() {
