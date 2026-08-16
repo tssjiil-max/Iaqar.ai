@@ -2126,7 +2126,11 @@
     await postOperationAction(operationId, "START");
     notify(detail.actionLabel || "تم تسجيل بدء الإجراء");
     if (detail.operationType === "MISSING_DATA") {
-      const opportunityId = String(detail.opportunityId || "").trim();
+      const opportunityId = String(detail.opportunityId || "").trim().replace(/^(?:opp[-_])+/, "");
+      if (opportunityId && window.IAQAR?.renderDailyTaskOpportunity) {
+        const opened = await window.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", opportunityId);
+        if (opened) return;
+      }
       if (opportunityId && window.IAQAR?.openOpportunityDetail) {
         void window.IAQAR.openOpportunityDetail(opportunityId);
       } else if (window.IAQAR?.openOpportunityBank) {

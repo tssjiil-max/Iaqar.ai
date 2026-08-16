@@ -32,6 +32,10 @@ function fail(name, detail = "") {
   console.error(`FAIL ${name}: ${detail}`);
 }
 
+async function isDomHidden(page, selector) {
+  return page.locator(selector).evaluate((el) => el.hidden);
+}
+
 async function login(page) {
   await page.goto(`${STAGING_URL}/?office=${encodeURIComponent(OFFICE_ID)}`, {
     waitUntil: "domcontentloaded",
@@ -55,7 +59,8 @@ async function main() {
 
   try {
     await login(page);
-    await page.waitForTimeout(2000);
+    await page.waitForSelector("[data-ops-category]", { timeout: 120000 });
+    await page.waitForTimeout(1500);
 
     const version = await page.evaluate(async () => {
       const res = await fetch("/version.json", { cache: "no-store" });
@@ -63,16 +68,14 @@ async function main() {
     });
     pass("staging_version", version?.shortSha || "");
 
-    if (await page.locator("#mainTabOperations").count()) {
-      const tabText = await page.locator("#mainTabOperations").textContent();
-      if (tabText?.includes("المهام اليومية")) pass("daily_tasks_tab");
-      else fail("daily_tasks_tab", tabText || "");
-    }
+    const tabText = await page.locator("#mainTabOperations").textContent();
+    if (tabText?.includes("المهام اليومية")) pass("daily_tasks_tab");
+    else fail("daily_tasks_tab", tabText || "");
 
-    const listHidden = await page.locator("#operationList").isHidden();
-    const taskPanelHidden = await page.locator("#operationsTaskPanel").isHidden();
+    const listHidden = await isDomHidden(page, "#operationList");
+    const taskPanelHidden = await isDomHidden(page, "#operationsTaskPanel");
     if (listHidden && taskPanelHidden) pass("no_list_before_category");
-    else fail("no_list_before_category");
+    else fail("no_list_before_category", `list=${listHidden} panel=${taskPanelHidden}`);
 
     const oldOps = await page.locator("#workspace .operation").count();
     if (oldOps === 0) pass("no_old_operation_accordion");
@@ -91,11 +94,11 @@ async function main() {
         continue;
       }
       await btn.click();
-      await page.waitForTimeout(600);
-      const gridHidden = await page.locator("#operationsCategoryGrid").isHidden();
+      await page.waitForTimeout(800);
+      const gridHidden = await isDomHidden(page, "#operationsCategoryGrid");
       const closeVisible = await page.locator("#operationsCategoryClose").isVisible();
       if (gridHidden && closeVisible) pass(`category_drill_${key}`);
-      else fail(`category_drill_${key}`);
+      else fail(`category_drill_${key}`, `gridHidden=${gridHidden} close=${closeVisible}`);
 
       const title = await page.locator("#operationsCategoryTitle").textContent();
       if (title && title.length > 0) pass(`category_title_${key}`, title.trim());
@@ -103,29 +106,33 @@ async function main() {
 
       await page.locator("#operationsCategoryClose").click();
       await page.waitForTimeout(400);
-      if (await page.locator("#operationsCategoryGrid").isVisible()) pass(`category_close_${key}`);
+      const gridBack = await page.locator("#operationsCategoryGrid").isVisible();
+      if (gridBack) pass(`category_close_${key}`);
       else fail(`category_close_${key}`);
     }
 
-    const incompleteBtn = page.locator("[data-ops-category=\"incomplete\"]");
+    const incompleteBtn = page.locator("[data-ops-category=\"ready\"]");
     if (await incompleteBtn.count()) {
       await incompleteBtn.click();
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(1000);
       const taskCards = await page.locator(".ops-task-card").count();
       if (taskCards > 0) {
-        pass("incomplete_has_tasks", String(taskCards));
-        const primary = page.locator(".ops-task-primary").first();
-        if (await primary.count()) {
-          await primary.click();
-          await page.waitForTimeout(2500);
+        pass("ready_has_tasks", String(taskCards));
+        const openBtn = page.locator("[data-ops-open-task]").first();
+        await openBtn.click();
+        try {
+          await page.waitForSelector(
+            "#operationsTaskPanel #bankUnifiedForm, #operationsTaskPanel .bank-workspace-section",
+            { timeout: 20000 }
+          );
           const panelVisible = await page.locator("#operationsTaskPanel").isVisible();
-          const hasForm = await page.locator("#operationsTaskPanel #bankUnifiedForm, #operationsTaskPanel .bank-workspace-section").count();
-          if (panelVisible && hasForm > 0) pass("inline_task_panel_opens");
-          else fail("inline_task_panel_opens", `visible=${panelVisible} forms=${hasForm}`);
+          pass("inline_task_panel_opens", `visible=${panelVisible}`);
           await page.screenshot({ path: `${OUT}/staging_daily_tasks_inline_panel.png`, fullPage: true });
+        } catch (error) {
+          fail("inline_task_panel_opens", String(error?.message || error));
         }
       } else {
-        pass("incomplete_empty_category", "no incomplete tasks");
+        fail("ready_has_tasks", "no ready tasks for inline panel test");
       }
     }
 

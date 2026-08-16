@@ -101,20 +101,20 @@ export function getCategoryDefinition(key) {
  */
 export function extractOpportunityId(item) {
   if (!item) return "";
-  const raw = String(
-    item.opportunityId
-    || item.recordId
-    || item.id
-    || ""
-  ).trim();
-  if (!raw) return "";
-  if (raw.startsWith("opp-")) return raw.slice(4);
-  if (raw.startsWith("opp_")) return raw.slice(4);
-  if (item.recordType === "opportunity" || item.recordType === "intake") {
-    return raw.replace(/^opp-/, "");
+  const fromOpportunityId = String(item.opportunityId || "").trim().replace(/^(?:opp[-_])+/, "");
+  if (fromOpportunityId) return fromOpportunityId;
+
+  const recordType = String(item.recordType || "").toLowerCase();
+  if (recordType === "opportunity" || recordType === "intake") {
+    const recordId = String(item.recordId || "").trim().replace(/^(?:opp[-_])+/, "");
+    if (recordId) return recordId;
   }
-  const oppFromOp = String(item.opportunityId || "").trim();
-  return oppFromOp.replace(/^opp-/, "");
+
+  const rawId = String(item.id || "").trim();
+  if (/^opp[-_]/i.test(rawId)) {
+    return rawId.replace(/^(?:opp[-_])+/, "");
+  }
+  return "";
 }
 
 /**
