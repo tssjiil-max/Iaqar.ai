@@ -130,6 +130,9 @@
   let accessGrantedForOffice = false;
   let explicitSignOutRequested = false;
   let loginSubmitInFlight = false;
+  let authReady = false;
+  let authStateReady = false;
+  let authStateUnsubscribe = null;
 
   const LOGIN_PERF_ENABLED = (() => {
     try {
@@ -184,6 +187,7 @@
   }
 
   async function authSignOut(source, reason = "") {
+    authDiag("SIGN_OUT_CALL", { source, reason });
     authDiag("SIGNOUT_CALL_SOURCE", { source, reason });
     explicitSignOutRequested = source === "user_logout" || source === "admin_logout";
     try { await firebase.auth().signOut(); } catch (_) {}
@@ -192,21 +196,68 @@
   }
 
   function loginRedirect(target, source) {
+    authDiag("REDIRECT_REASON", { source, target });
     authDiag("LOGIN_REDIRECT_SOURCE", { source, target });
-    location.assign(target);
+    try {
+      const next = new URL(target, location.origin);
+      if (next.origin === location.origin && next.pathname === location.pathname) {
+        history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
+        return;
+      }
+    } catch (_) { /* fall through */ }
+    location.replace(target);
   }
 
-  function unlockOfficeWorkspace(target) {
+  function waitForOfficeDb(timeoutMs = 20000) {
+    if (window.IAQAR?.office?.db) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("iaqar:firebase-ready", onReady);
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onReady = () => {
+        if (window.IAQAR?.office?.db) finish(true);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      window.addEventListener("iaqar:firebase-ready", onReady);
+      if (window.IAQAR?.office?.db) finish(true);
+    });
+  }
+
+  function showAuthLoading(message = "جارٍ التحقق من الحساب…") {
+    showAccessGate();
+    frame(`<section class="access-card"><h2>${message}</h2>
+      <p>يرجى الانتظار قليلًا قبل فتح لوحة المكتب.</p></section>`, "auth-loading");
+  }
+
+  async function unlockOfficeWorkspace(target) {
     const normalized = String(target || "").trim().toLowerCase();
     if (!normalized || normalized === "platform") return false;
+    authDiag("OFFICE_LOADING", { officeId: normalized });
+    const dbReady = await waitForOfficeDb();
+    if (!dbReady) {
+      authDiag("REDIRECT_REASON", { reason: "office_runtime_not_ready", officeId: normalized });
+      return false;
+    }
     localStorage.setItem("iaqar.officeId", normalized);
     officeId = normalized;
     refreshRouteFlags();
     let rebound = false;
     if (window.IAQAR && typeof window.IAQAR.rebindOfficeContext === "function") {
       rebound = window.IAQAR.rebindOfficeContext(normalized);
+    } else if (dbReady && String(window.IAQAR?.office?.officeId || "").trim().toLowerCase() === normalized) {
+      rebound = true;
+      authDiag("OFFICE_FOUND", { officeId: normalized, source: "existing_office_context" });
     }
-    if (!rebound) return false;
+    if (!rebound) {
+      authDiag("REDIRECT_REASON", { reason: "office_rebind_failed", officeId: normalized });
+      return false;
+    }
+    authDiag("OFFICE_FOUND", { officeId: normalized });
     const nextUrl = `${location.pathname}?office=${encodeURIComponent(normalized)}`;
     history.replaceState({}, "", nextUrl);
     document.body.classList.remove("access-locked");
@@ -844,6 +895,10 @@
     };
   }
   function loginForm(message = "") {
+    if (authGuardState === "authenticated" && accessGrantedForOffice) {
+      authDiag("REDIRECT_REASON", { reason: "skip_login_form_already_granted" });
+      return;
+    }
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>دخول المكتب</h2><p>مساحة العمل والإعدادات للحسابات المعتمدة والمصرح لها فقط.</p>
       <form class="access-form" id="loginForm">
@@ -889,10 +944,8 @@
       }
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
-        await firebase.auth().setPersistence(
-          remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
-        );
-        authDiag("AUTH_PERSISTENCE", { remember, mode: remember ? "LOCAL" : "SESSION" });
+        await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        authDiag("AUTH_PERSISTENCE", { remember, mode: "LOCAL", phase: "login_submit" });
         try {
           localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
         } catch (_) { /* ignore */ }
@@ -932,6 +985,10 @@
           showStatus(loginFailureMessage("password_sign_in", { code: error && error.code }));
           return;
         }
+        authDiag("SIGN_IN_SUCCESS", {
+          uid: signedInUser?.uid || null,
+          email: signedInUser?.email || resolvePayload.loginEmail
+        });
         authDiag("AUTH_LOGIN_SUCCESS", {
           uid: signedInUser?.uid || null,
           email: signedInUser?.email || resolvePayload.loginEmail
@@ -1093,8 +1150,11 @@
       }
       if (memberSnap.exists && memberData.active === false) {
         authDiag("AUTH_GUARD_DECISION", { decision: "member_inactive", target, uid: user.uid });
-        await authSignOut("member_inactive", "confirmed_disabled");
-        loginForm("هذا الحساب معطّل لهذا المكتب.");
+        showAccessError(
+          "الحساب معطّل",
+          "هذا الحساب معطّل لهذا المكتب. تواصل مع إدارة المكتب دون تسجيل خروج تلقائي.",
+          null
+        );
         return false;
       }
       localStorage.setItem("iaqar.officeId", target);
@@ -1105,13 +1165,18 @@
       loginPerfMeasure("office_membership", "office_load_start", "office_load_done");
       if (navigate || target !== officeId) {
         loginPerfMark("navigate_start");
-        if (unlockOfficeWorkspace(target)) {
+        if (await unlockOfficeWorkspace(target)) {
           loginPerfMark("navigate_done");
           loginPerfMeasure("workspace_unlock", "navigate_start", "navigate_done");
           return true;
         }
-        loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_navigate_fallback");
-        return true;
+        authDiag("REDIRECT_REASON", { reason: "unlock_failed_retry", target });
+        showAccessError(
+          "تعذر فتح المكتب",
+          "تعذر تجهيز مساحة المكتب الآن. حسابك ما زال مسجّلًا — أعد المحاولة.",
+          () => verifyAccess(target, navigate)
+        );
+        return false;
       }
       document.body.classList.remove("access-locked");
       gate.remove();
@@ -1150,12 +1215,17 @@
             loginPerfMark("office_load_done");
             if (navigate || target !== officeId) {
               loginPerfMark("navigate_start");
-              if (unlockOfficeWorkspace(target)) {
+              if (await unlockOfficeWorkspace(target)) {
                 loginPerfMark("navigate_done");
                 return true;
               }
-              loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_retry_navigate_fallback");
-              return true;
+              authDiag("REDIRECT_REASON", { reason: "unlock_retry_failed", target });
+              showAccessError(
+                "تعذر فتح المكتب",
+                "تعذر تجهيز مساحة المكتب الآن. حسابك ما زال مسجّلًا — أعد المحاولة.",
+                () => verifyAccess(target, navigate)
+              );
+              return false;
             }
             document.body.classList.remove("access-locked");
             gate.remove();
@@ -1368,40 +1438,22 @@
     refreshRouteFlags();
 
     try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
       const rememberFlag = localStorage.getItem("iaqar.auth.remember");
-      const remembered = rememberFlag !== "0";
-      await firebase.auth().setPersistence(
-        remembered ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
-      );
-      authDiag("AUTH_PERSISTENCE", { remember: remembered, mode: remembered ? "LOCAL" : "SESSION", phase: "bootstrap" });
+      authDiag("AUTH_PERSISTENCE", {
+        remember: rememberFlag !== "0",
+        mode: "LOCAL",
+        phase: "bootstrap"
+      });
     } catch (error) {
       console.warn("[iaqar] auth persistence", error);
     }
 
-    async function waitForAuthReady() {
-      if (typeof firebase.auth().authStateReady === "function") {
-        await firebase.auth().authStateReady();
-        return;
-      }
-      await new Promise((resolve) => {
-        const unsubscribe = firebase.auth().onAuthStateChanged(() => {
-          unsubscribe();
-          resolve();
-        });
-      });
-    }
-
-    await waitForAuthReady();
-    authInitComplete = true;
+    showAuthLoading();
 
     let initialAuthHandled = false;
 
     const routeAfterInitialAuth = async (user) => {
-      authDiag("AUTH_STATE_CHANGED", {
-        uid: user?.uid || null,
-        email: user?.email || null,
-        phase: "initial_route"
-      });
       if (isPublicOfficeLink) {
         publicOffice();
         return;
@@ -1411,6 +1463,7 @@
         return;
       }
       if (user) {
+        authDiag("USER_FOUND", { uid: user.uid, email: user.email || null });
         authDiag("AUTH_UID", { uid: user.uid });
         authDiag("AUTH_EMAIL", { email: user.email || null });
         try {
@@ -1423,11 +1476,17 @@
         return;
       }
       authGuardState = "unauthenticated";
-      authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "no_user_on_init" });
+      authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "no_user_after_auth_ready" });
       loginForm();
     };
 
-    firebase.auth().onAuthStateChanged(user => {
+    const handleAuthStateChanged = (user) => {
+      if (!authReady) {
+        authReady = true;
+        authStateReady = true;
+        authInitComplete = true;
+        authDiag("AUTH_READY", { hasUser: Boolean(user) });
+      }
       authDiag("AUTH_STATE_CHANGED", {
         uid: user?.uid || null,
         email: user?.email || null,
@@ -1438,11 +1497,18 @@
         void routeAfterInitialAuth(user);
         return;
       }
-      if (authGuardState === "loading" || accessVerificationInFlight) {
+      if (authGuardState === "loading" || accessVerificationInFlight || loginSubmitInFlight) {
         authDiag("AUTH_GUARD_DECISION", { decision: "ignore_auth_change", reason: "loading" });
         return;
       }
       if (!user) {
+        if (accessGrantedForOffice && !explicitSignOutRequested) {
+          authDiag("AUTH_GUARD_DECISION", {
+            decision: "ignore_null_user",
+            reason: "granted_without_explicit_sign_out"
+          });
+          return;
+        }
         if (!accessGrantedForOffice && !explicitSignOutRequested) {
           authDiag("AUTH_GUARD_DECISION", { decision: "ignore_null_user", reason: "not_granted_yet" });
           return;
@@ -1461,7 +1527,16 @@
         authGuardState = "loading";
         void verifyAccess(officeId, false);
       }
-    });
+    };
+
+    if (authStateUnsubscribe) authStateUnsubscribe();
+    authStateUnsubscribe = firebase.auth().onAuthStateChanged(handleAuthStateChanged);
+    window.addEventListener("pagehide", () => {
+      if (authStateUnsubscribe) {
+        authStateUnsubscribe();
+        authStateUnsubscribe = null;
+      }
+    }, { once: true });
   }
 
   bootstrapAccess();

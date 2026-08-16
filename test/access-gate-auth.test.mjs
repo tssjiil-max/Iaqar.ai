@@ -55,7 +55,7 @@ test("access-gate verifyAccess returns boolean grant result", () => {
   assert.ok(accessGate.includes("offices/${target}/members/${user.uid}"));
 });
 
-test("access-gate sets persistence before sign-in and respects remember me", () => {
+test("access-gate sets LOCAL persistence before sign-in", () => {
   const loginBlock = accessGate.slice(
     accessGate.indexOf('gate.querySelector("#loginForm").onsubmit'),
     accessGate.indexOf("function forgotPasswordForm")
@@ -64,7 +64,28 @@ test("access-gate sets persistence before sign-in and respects remember me", () 
   const signInIdx = loginBlock.indexOf("signInWithEmailAndPassword");
   assert.ok(persistenceIdx > 0 && signInIdx > persistenceIdx);
   assert.ok(loginBlock.includes("Auth.Persistence.LOCAL"));
-  assert.ok(loginBlock.includes("Auth.Persistence.SESSION"));
+});
+
+test("access-gate exposes extended auth diagnostic events", () => {
+  const extended = [
+    "AUTH_READY",
+    "SIGN_IN_SUCCESS",
+    "USER_FOUND",
+    "OFFICE_LOADING",
+    "OFFICE_FOUND",
+    "REDIRECT_REASON",
+    "SIGN_OUT_CALL"
+  ];
+  for (const event of extended) {
+    assert.ok(accessGate.includes(event), `missing diagnostic event ${event}`);
+  }
+});
+
+test("access-gate registers single auth listener with unsubscribe", () => {
+  assert.ok(accessGate.includes("authStateUnsubscribe"));
+  assert.ok(accessGate.includes("onAuthStateChanged(handleAuthStateChanged)"));
+  assert.ok(accessGate.includes("authStateUnsubscribe()"));
+  assert.ok(accessGate.includes("granted_without_explicit_sign_out"));
 });
 
 test("access-gate routes signOut through diagnostic wrapper", () => {
