@@ -1158,6 +1158,7 @@ test("opportunity lifecycle normalizes legacy sources safely", () => {
   assert.equal(normalizeOpportunitySource("office_public_link"), "office_link");
   assert.equal(normalizeOpportunitySource("whatsapp_cloud_api"), "whatsapp");
   assert.equal(normalizeOpportunitySource("manual"), "manual");
+  assert.equal(normalizeOpportunitySource("activepieces"), "other");
 });
 
 test("legacy opportunities receive safe default lifecycle status", () => {

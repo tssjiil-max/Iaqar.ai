@@ -126,6 +126,13 @@ import {
 } from "./opportunity-lifecycle.mjs";
 import { findDuplicateOpportunity, matchesDuplicateCriteria } from "./opportunity-duplicate.mjs";
 import {
+  ACTIVEPIECES_SOURCE,
+  authorizeActivepieces,
+  composeActivepiecesMessage,
+  isStagingFirebaseEnv,
+  validateActivepiecesIntakeBody
+} from "./activepieces-intake.mjs";
+import {
   FOLLOWUP_STATUSES,
   RECIPIENT_MODES,
   RECIPIENT_MODE_LABELS,
@@ -427,6 +434,21 @@ export default {
         const body = await request.json().catch(() => ({}));
         const summary = buildAnalyticsSummary({clients:Array.isArray(body.clients)?body.clients:[],owners:Array.isArray(body.owners)?body.owners:[],matches:Array.isArray(body.matches)?body.matches:[],deals:Array.isArray(body.deals)?body.deals:[]});
         return jsonResponse({ok:true,...summary,requestId});
+      }
+
+      if (url.pathname === "/activepieces/intake") {
+        if (request.method === "POST") {
+          return await handleActivepiecesIntake(request, env, requestId);
+        }
+        return jsonResponse({
+          success: false,
+          duplicate: false,
+          opportunityId: "",
+          missingFields: [],
+          error: "method_not_allowed",
+          message: "الطريقة غير مسموحة",
+          requestId
+        }, 405);
       }
 
       if (request.method === "POST" && url.pathname === "/pipeline/intake") {
@@ -1386,6 +1408,122 @@ async function handleSharedIntake(request, env, requestId) {
     ok: true, duplicate: false, documentId, officeId, kind: result.kind,
     matches: result.matches, source, requestId
   }, 201);
+}
+
+async function handleActivepiecesIntake(request, env, requestId) {
+  if (!isStagingFirebaseEnv(env)) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: [],
+      error: "not_found",
+      message: "المسار متاح في بيئة Staging فقط",
+      requestId
+    }, 404);
+  }
+
+  const auth = authorizeActivepieces(request, env);
+  if (!auth.ok) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: [],
+      error: "unauthorized",
+      message: "غير مصرح",
+      requestId
+    }, 401);
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const parsedBody = validateActivepiecesIntakeBody(body);
+  if (!parsedBody.ok) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: parsedBody.missingFields,
+      error: "invalid_body",
+      message: parsedBody.message,
+      requestId
+    }, 400);
+  }
+
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const officeId = parsedBody.officeId;
+  const messageText = composeActivepiecesMessage(parsedBody);
+  const senderPhone = parsedBody.extracted.contactPhone || "";
+  const documentId = `ap_${(await sha256Hex(`${officeId}|${parsedBody.idempotencyKey}`)).slice(0, 40)}`;
+  const now = new Date();
+  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
+  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compactFields({
+      schemaVersion: firestoreInteger(2),
+      officeId: firestoreString(officeId),
+      direction: firestoreString("inbound"),
+      source: firestoreString(ACTIVEPIECES_SOURCE),
+      channel: firestoreString("activepieces"),
+      status: firestoreString("pending_review"),
+      processingState: firestoreString("received"),
+      isProcessed: firestoreBoolean(false),
+      outboundEnabled: firestoreBoolean(false),
+      messageId: firestoreString(parsedBody.idempotencyKey),
+      messageType: firestoreString("text"),
+      messageText: firestoreString(messageText),
+      senderPhone: firestoreOptionalString(senderPhone),
+      receivedAt: firestoreTimestamp(now),
+      createdAt: firestoreTimestamp(now),
+      rawPayload: firestoreString(safeJsonStringify({
+        source: ACTIVEPIECES_SOURCE,
+        idempotencyKey: parsedBody.idempotencyKey,
+        type: parsedBody.type
+      }).slice(0, MAX_RAW_LENGTH))
+    }) })
+  });
+
+  if (response.status === 409) {
+    const existing = await getFirestoreDocument({
+      projectId, segments: ["offices", officeId, "inbox", documentId], accessToken, allowMissing: true
+    });
+    const data = existing ? firestoreFieldsToJs(existing.fields || {}) : {};
+    return jsonResponse({
+      success: true,
+      duplicate: true,
+      opportunityId: cleanText(data.opportunityId, 180),
+      missingFields: [],
+      requestId
+    });
+  }
+  if (!response.ok) throw appError("firestore_write_failed", 502, "تعذر حفظ الرسالة المشتركة");
+
+  const result = await processInboundMessage({
+    projectId,
+    officeId,
+    inboxDocumentId: documentId,
+    messageText,
+    senderName: "",
+    senderPhone,
+    receivedAt: now,
+    source: ACTIVEPIECES_SOURCE,
+    accessToken,
+    env
+  });
+  const opportunityId = result.opportunityId
+    || (result.kind === "unknown" ? "" : `opp_${documentId.replace(/^wa_/, "").slice(0, 32)}`);
+  const parsed = parseRealEstateMessage(messageText, senderPhone, "");
+  return jsonResponse({
+    success: true,
+    duplicate: Boolean(result.duplicateOpportunity),
+    opportunityId,
+    missingFields: Array.isArray(parsed.missing) ? parsed.missing : [],
+    requestId
+  }, result.duplicateOpportunity ? 200 : 201);
 }
 
 

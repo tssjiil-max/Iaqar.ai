@@ -74,7 +74,8 @@ const SOURCE_ALIASES = Object.freeze({
   whatsapp_cloud_api: "whatsapp",
   pwa_share_target: "whatsapp",
   manual_intake: "manual",
-  voice_intake: "voice"
+  voice_intake: "voice",
+  activepieces: "other"
 });
 
 const SELECT_ALIASES = Object.freeze({
