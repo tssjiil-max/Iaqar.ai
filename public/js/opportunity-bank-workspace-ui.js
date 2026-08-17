@@ -35,49 +35,22 @@ function esc(text = "") {
 }
 
 function renderFieldBlock(field) {
+  const placeholder = field.placeholder ? ` placeholder="${esc(field.placeholder)}"` : "";
   switch (field.type) {
-    case "purpose_select":
-      const opts = (field.options || []).map((opt) =>
-        `<option value="${esc(opt.value)}" ${field.value === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`
-      ).join("");
-      return `<label>${esc(field.label)}
-        <select name="purpose" required>
-          <option value="">اختر الغرض</option>
-          ${opts}
-        </select>
-      </label>`;
-    case "propertyType":
-      return `<label>${esc(field.label)}
-        <input name="propertyType" class="arabic-suggest-input" autocomplete="off" value="${esc(field.value)}">
-      </label>`;
-    case "district":
-      return `<label>${esc(field.label)}
-        <input name="district" class="arabic-suggest-input" autocomplete="off" value="${esc(field.value)}">
-      </label>`;
-    case "advertiserRole":
-      return `<label>${esc(field.label)}
-        <select name="advertiserRole">
-          <option value="">اختر</option>
-          <option value="OWNER" ${field.value === "OWNER" ? "selected" : ""}>مالك</option>
-          <option value="DELEGATE" ${field.value === "DELEGATE" ? "selected" : ""}>مفوض</option>
-          <option value="BROKER" ${field.value === "BROKER" ? "selected" : ""}>وسيط</option>
-          <option value="CLIENT" ${field.value === "CLIENT" ? "selected" : ""}>عميل</option>
-        </select>
-      </label>`;
     case "phone":
       return `<label>${esc(field.label)}
         <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="14"
           placeholder="05XXXXXXXX أو +9665XXXXXXXX" value="${esc(field.value)}"
-          aria-label="رقم الجوال الكامل">
+          aria-label="رقم الجوال الكامل" autocomplete="off">
         <small class="bank-advertiser-phone-error" id="bankAdvertiserPhoneError" hidden></small>
       </label>`;
     case "number":
       return `<label>${esc(field.label)}
-        <input name="${esc(field.name)}" type="number" value="${esc(String(field.value ?? ""))}">
+        <input name="${esc(field.name)}" type="number" value="${esc(String(field.value ?? ""))}" autocomplete="off">
       </label>`;
     default:
       return `<label>${esc(field.label)}
-        <input name="${esc(field.name || field.key)}" type="text" value="${esc(String(field.value ?? ""))}">
+        <input name="${esc(field.name || field.key)}" type="text" value="${esc(String(field.value ?? ""))}" autocomplete="off"${placeholder}>
       </label>`;
   }
 }

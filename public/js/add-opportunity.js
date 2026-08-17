@@ -26,11 +26,11 @@ import {
   requestMissingDataOperationSync
 } from "./operations-domain.js";
 import { dismissOpportunityReviewIfOpen, openOpportunityReview } from "./opportunity-review.js";
+import { buildImportSimplifiedReviewDefaults } from "./import-advert-review-domain.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
 import { mountVoiceIntakePanel } from "./gemini-voice-intake-ui.js";
 import {
-  buildReviewDefaultsFromGemini,
   buildVoiceSummaryText,
   createVoiceExtractionAdapter,
   mapGeminiToOpportunityFields
@@ -244,6 +244,36 @@ function canOpenReview(prepared) {
   if (hasContradictoryCity(fields)) return false;
   if (countCoreFields(fields) < 2) return false;
   return true;
+}
+
+function buildAddOpportunityReviewDefaults(prepared = {}, sourceText = "") {
+  const office = currentOffice();
+  return buildImportSimplifiedReviewDefaults(
+    prepared.fields || {},
+    sourceText || "",
+    {
+      extended: prepared.extraction?.extended,
+      needsReview: prepared.extraction?.needsReview
+    },
+    { city: office?.city || "" }
+  );
+}
+
+function openAddOpportunityReview(prepared, onApprove, extra = {}) {
+  openOpportunityReview({
+    fields: prepared.fields || {},
+    extended: prepared.extraction?.extended,
+    needsReview: prepared.extraction?.needsReview,
+    sourceText: extra.sourceText || intakeContext?.listingText || "",
+    prepared,
+    reviewDefaults: extra.reviewDefaults || buildAddOpportunityReviewDefaults(prepared, extra.sourceText || "")
+  }, onApprove, {
+    importSimplifiedReview: true,
+    title: extra.title || "مراجعة الفرصة",
+    subtitle: extra.subtitle || "راجع البيانات المستخرجة قبل الحفظ النهائي.",
+    approveLabel: extra.approveLabel || "اعتماد وحفظ",
+    ...extra
+  });
 }
 
 function clearIntakeForm() {
@@ -920,13 +950,7 @@ async function startExecute() {
     if (prepared.urlBlockedMessage) {
       setState("missing_information", prepared.urlBlockedMessage);
     }
-    openOpportunityReview({
-      fields: prepared.fields || {},
-      extended: prepared.extraction?.extended,
-      needsReview: prepared.extraction?.needsReview,
-      sourceText: intakeContext?.listingText || "",
-      prepared
-    }, approveFromReview);
+    openAddOpportunityReview(prepared, approveFromReview);
   } catch (error) {
     console.warn("add-opportunity execute failed", error);
     if (error?.message === "extraction_timeout") {
@@ -1005,14 +1029,18 @@ async function startVoiceIntake(structured) {
     };
 
     setState("ready");
-    openOpportunityReview({
-      fields: prepared.fields || {},
-      extended: prepared.extraction?.extended,
-      needsReview: prepared.extraction?.needsReview,
+    openAddOpportunityReview(prepared, approveFromReview, {
       sourceText: summary,
-      prepared,
-      reviewDefaults: buildReviewDefaultsFromGemini(structured, summary)
-    }, approveFromReview);
+      reviewDefaults: buildImportSimplifiedReviewDefaults(
+        { ...prepared.fields, ...mapGeminiToOpportunityFields(structured, { context: "office" }) },
+        summary,
+        {
+          extended: prepared.extraction?.extended,
+          needsReview: prepared.extraction?.needsReview || structured.needsReview
+        },
+        { city: currentOffice()?.city || "" }
+      )
+    });
   } catch (error) {
     console.warn("[iaqar] voice intake failed", error);
     setState("failed", "تعذر تحليل التسجيل. يمكنك إكمال البيانات يدويًا.");

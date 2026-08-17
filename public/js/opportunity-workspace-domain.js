@@ -47,8 +47,21 @@ export function purposeOptionsForRecord(record = {}) {
   ];
 }
 
+const PURPOSE_DISPLAY = Object.freeze({
+  SALE: "بيع",
+  PURCHASE: "شراء",
+  RENT: "إيجار",
+  LEASE_REQUEST: "طلب إيجار",
+  INVESTMENT: "استثمار"
+});
+
 function resolveStoredPurpose(record = {}) {
   return normalizePurpose(record.purpose || record.transactionType || "");
+}
+
+function purposeInputValue(record = {}, storedPurpose = "") {
+  const canonical = normalizePurpose(storedPurpose || record.purpose || record.transactionType || "");
+  return PURPOSE_DISPLAY[canonical] || canonical || "";
 }
 
 function phoneInputValue(record = {}) {
@@ -75,7 +88,7 @@ export function buildIncompleteFormFields(record = {}, readiness = {}) {
   const order = ["contactPhone", "purpose", "propertyType", "city", "district", "priceOrBudget", "advertiserRole", "area", "rooms"];
   const sorted = order.filter((key) => missing.includes(key));
   const storedPurpose = resolveStoredPurpose(record);
-  const purposeOptions = purposeOptionsForRecord(record);
+  const purposeDisplay = purposeInputValue(record, storedPurpose);
 
   return sorted.map((key) => {
     switch (key) {
@@ -83,21 +96,22 @@ export function buildIncompleteFormFields(record = {}, readiness = {}) {
         return {
           key,
           label: "الغرض",
-          type: "purpose_select",
-          value: storedPurpose,
-          options: purposeOptions
+          type: "text",
+          name: "purpose",
+          value: purposeDisplay
         };
       case "propertyType":
         return {
           key,
           label: "نوع العقار",
-          type: "propertyType",
+          type: "text",
+          name: "propertyType",
           value: record.propertyType || ""
         };
       case "city":
         return { key, label: "المدينة", type: "text", name: "city", value: record.city || "" };
       case "district":
-        return { key, label: "الحي", type: "district", value: record.district || "" };
+        return { key, label: "الحي", type: "text", name: "district", value: record.district || "" };
       case "priceOrBudget":
         return {
           key,
@@ -110,7 +124,8 @@ export function buildIncompleteFormFields(record = {}, readiness = {}) {
         return {
           key,
           label: "صفة المعلن",
-          type: "advertiserRole",
+          type: "text",
+          name: "advertiserRole",
           value: record.advertiserRole || ""
         };
       case "contactPhone":
@@ -148,7 +163,7 @@ export function mergeIncompleteFormPreview(existing = {}, formData = {}) {
   const merged = { ...existing };
   for (const key of editKeys) {
     if (formData[key] !== undefined && formData[key] !== "") {
-      merged[key] = formData[key];
+      merged[key] = key === "purpose" ? normalizePurpose(formData[key]) : formData[key];
     }
   }
   if (formData.advertiserPhoneLocal) {
