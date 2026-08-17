@@ -1455,6 +1455,114 @@
 
     .ops-task-primary:active { transform:scale(0.98); }
 
+    .ops-today-head {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:12px;
+    }
+
+    .ops-today-intro {
+      margin:0;
+      font:500 14px/1.5 Tajawal;
+      color:var(--muted);
+      flex:1 1 auto;
+    }
+
+    .ops-show-categories,
+    .ops-show-today {
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--green);
+      border-radius:12px;
+      padding:8px 12px;
+      font:700 13px Tajawal;
+      cursor:pointer;
+      flex:0 0 auto;
+      white-space:nowrap;
+    }
+
+    .ops-today-section {
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:#fff;
+      padding:12px;
+      margin-bottom:12px;
+    }
+
+    .ops-today-section-head {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:4px;
+    }
+
+    .ops-today-section-head h3 {
+      margin:0;
+      font:800 16px Tajawal;
+      color:var(--green-dark);
+    }
+
+    .ops-today-section-count {
+      min-width:28px;
+      height:28px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font:800 13px Tajawal;
+      color:#fff;
+      background:var(--green);
+      padding:0 8px;
+    }
+
+    .ops-today-red .ops-today-section-count { background:#d64545; }
+    .ops-today-orange .ops-today-section-count { background:#e67e22; }
+    .ops-today-green .ops-today-section-count { background:#2e9b5b; }
+    .ops-today-blue .ops-today-section-count { background:#4a7ec4; }
+
+    .ops-today-section-desc {
+      margin:0 0 8px;
+      font:500 13px/1.45 Tajawal;
+      color:var(--muted);
+    }
+
+    .ops-today-section-list .ops-task-card {
+      border:1px solid var(--line);
+      border-radius:14px;
+      margin-bottom:8px;
+      overflow:hidden;
+    }
+
+    .ops-today-section-list .ops-task-card:last-child { margin-bottom:0; }
+
+    .ops-today-quick {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      padding:0 12px 10px;
+    }
+
+    .ops-today-quick-btn {
+      border:1px solid #b9ddd4;
+      background:#edf7f4;
+      color:#087064;
+      border-radius:12px;
+      padding:8px 12px;
+      font:700 13px Tajawal;
+      cursor:pointer;
+      flex:1 1 calc(33% - 8px);
+      min-width:88px;
+    }
+
+    .ops-today-quick-btn:active { transform:scale(0.98); }
+
+    .ops-today-task .ops-task-actions {
+      padding:0 12px 12px;
+    }
+
     .list {
       margin-top:14px;
       border:1px solid var(--line);
@@ -4498,7 +4606,7 @@
           <div class="section-title-bar">
             <h2>المهام اليومية <span class="workspace-count-badge" id="total">0</span></h2>
           </div>
-          <p class="workspace-subtitle" id="workspaceSubtitle">اختر تصنيفًا لعرض الإجراءات التي تحتاج انتباهك.</p>
+          <p class="workspace-subtitle" id="workspaceSubtitle">ابدأ من المهام المرتبة — اتصل، تابع، أو حدّد معاينة مباشرة.</p>
 
           <div class="workspace-filters" id="opportunityViewFilters" hidden>
             <button type="button" class="workspace-filter active" data-opportunity-view="active">النشطة</button>
@@ -4506,7 +4614,23 @@
           </div>
 
           <div class="ops-daily-stage" id="opsDailyStage">
-            <div class="ops-stage-view" id="opsViewCategories" data-ops-view="categories">
+            <div class="ops-stage-view" id="opsViewTodayList" data-ops-view="today-list">
+              <div class="ops-today-head">
+                <p class="ops-today-intro" tabindex="-1">المهام مرتبة حسب الأولوية: متأخر، معاينة اليوم، جاهز للإغلاق، بانتظار رد.</p>
+                <button type="button" class="ops-show-categories" id="operationsShowCategories">جميع التصنيفات</button>
+              </div>
+              <div class="ops-today-sections" id="operationsTodayList" aria-live="polite"></div>
+              <p class="empty" id="operationsTodayEmpty" hidden>
+                لا توجد مهام عاجلة اليوم.
+                <br>راجع جميع التصنيفات أو أضف فرصًا جديدة.
+              </p>
+            </div>
+
+            <div class="ops-stage-view" id="opsViewCategories" data-ops-view="categories" hidden aria-hidden="true">
+              <div class="ops-today-head">
+                <p class="ops-today-intro">تصنيفات شاملة لكل مهام المكتب.</p>
+                <button type="button" class="ops-show-today" id="operationsShowTodayList">قائمة مهام اليوم</button>
+              </div>
               <div class="ops-category-grid" id="operationsCategoryGrid" aria-label="تصنيفات المهام اليومية"></div>
               <p class="empty" id="operationsEmpty">
                 لا توجد مهام تحتاج انتباهك حاليًا.
@@ -4524,7 +4648,7 @@
 
             <div class="ops-stage-view" id="opsViewOpportunityDetail" data-ops-view="opportunity-detail" hidden aria-hidden="true">
               <div class="ops-detail-nav">
-                <button type="button" class="ops-detail-back" id="operationsDetailBack">رجوع إلى فرص التصنيف</button>
+                <button type="button" class="ops-detail-back" id="operationsDetailBack">رجوع إلى قائمة المهام</button>
               </div>
               <div class="ops-task-panel" id="operationsTaskPanel" aria-live="polite"></div>
             </div>

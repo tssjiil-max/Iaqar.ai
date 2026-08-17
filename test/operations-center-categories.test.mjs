@@ -134,12 +134,14 @@ test("saved opportunity feedback is excluded from broker-visible counts", () => 
   assert.equal(categoryCounts(items).incomplete, 1);
 });
 
-test("shell renders six category cards before opening a category", async () => {
+test("shell renders six category cards after opening categories view", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document } = context;
+    document.getElementById("operationsShowCategories").click();
     assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
     assert.equal(document.getElementById("opsViewCategories").hidden, false);
+    assert.equal(document.getElementById("opsViewTodayList").hidden, true);
     assert.equal(document.getElementById("opsViewCategoryList").hidden, true);
     assert.equal(document.getElementById("opsViewOpportunityDetail").hidden, true);
     assert.equal(document.getElementById("operationsCategoryGrid").hidden, false);
@@ -152,6 +154,7 @@ test("clicking a category shows only its records as task cards", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document, window } = context;
+    document.getElementById("operationsShowCategories").click();
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: {
         authoritative: true,
@@ -192,13 +195,17 @@ test("clicking a category shows only its records as task cards", async () => {
   }
 });
 
-test("empty shell has no demo operations and shows category grid", async () => {
+test("empty shell shows today list empty state and category grid after toggle", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document } = context;
     assert.equal(document.querySelectorAll(".ops-task-card").length, 0);
     assert.equal(document.getElementById("operationList").innerHTML.trim(), "");
     assert.equal(document.getElementById("total").textContent, "0");
+    const todayEmpty = document.getElementById("operationsTodayEmpty");
+    assert.ok(todayEmpty);
+    assert.equal(todayEmpty.hidden, false);
+    document.getElementById("operationsShowCategories").click();
     assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
     const empty = document.getElementById("operationsEmpty");
     assert.ok(empty);
@@ -252,6 +259,7 @@ test("daily task stage navigation hides categories when list is open", async () 
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document, window } = context;
+    document.getElementById("operationsShowCategories").click();
     dispatchOpsData(window, [incompleteOpItem]);
     document.querySelector("[data-ops-category=\"incomplete\"]").click();
 
@@ -271,6 +279,7 @@ test("daily task stage navigation hides list when opportunity detail opens", asy
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document, window } = context;
+    document.getElementById("operationsShowCategories").click();
     window.IAQAR.renderDailyTaskOpportunity = async (panelId) => {
       const panel = document.getElementById(panelId);
       panel.innerHTML = `
@@ -313,6 +322,7 @@ test("daily task back navigation restores categories without reload", async () =
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document, window } = context;
+    document.getElementById("operationsShowCategories").click();
     dispatchOpsData(window, [incompleteOpItem, readyOpItem]);
     document.querySelector("[data-ops-category=\"incomplete\"]").click();
     document.getElementById("operationsCategoryClose").click();
@@ -336,6 +346,7 @@ test("shell mobile CSS keeps daily task detail panel full width up to 768px", ()
 
 test("operations ui uses explicit view modes for stage navigation", () => {
   const uiSource = readRepositoryFile("public", "js", "operations-center-ui.js");
+  assert.ok(uiSource.includes("today-list"));
   assert.ok(uiSource.includes("categories"));
   assert.ok(uiSource.includes("category-list"));
   assert.ok(uiSource.includes("opportunity-detail"));
