@@ -13,6 +13,7 @@ import {
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { bytesToBase64 } from "./gemini-voice-service.js";
 import { normalizeSpokenArabicNumbers } from "./arabic-spoken-numbers.mjs";
+import { transcribeAudioWithOpenAI } from "./openai-voice-service.mjs";
 
 export const AUDIO_TRANSCRIBE_ERROR_AR = "تعذر فهم التسجيل الصوتي. أعد التسجيل بوضوح أو أرسل التفاصيل كتابةً.";
 
@@ -128,28 +129,38 @@ export async function extractListingFromAudio({
   fetchImpl = fetch,
   requestId = ""
 } = {}) {
-  const gemini = await transcribeAudioWithGemini({ env, audioBytes, mimeType, fetchImpl, requestId });
-  let transcriptResult = gemini;
-  if (!gemini.ok) {
-    const workers = await transcribeAudioWithWorkersAi({ env, audioBytes, mimeType });
-    if (!workers.ok) {
-      const primaryError = gemini.error === "GEMINI_QUOTA_EXCEEDED"
-        ? "GEMINI_QUOTA_EXCEEDED"
-        : (gemini.error === "GEMINI_NOT_CONFIGURED" && !env?.AI)
-          ? "GEMINI_NOT_CONFIGURED"
-          : (workers.error || gemini.error || "audio_transcribe_failed");
-      return {
-        ok: false,
-        error: primaryError,
-        publicMessage: AUDIO_TRANSCRIBE_ERROR_AR,
-        geminiError: gemini.error || "",
-        workersError: workers.error || ""
-      };
+  const openai = await transcribeAudioWithOpenAI({ env, audioBytes, mimeType, fetchImpl });
+  let transcriptResult = openai.ok ? openai : null;
+
+  if (!transcriptResult?.ok) {
+    const gemini = await transcribeAudioWithGemini({ env, audioBytes, mimeType, fetchImpl, requestId });
+    transcriptResult = gemini;
+    if (!gemini.ok) {
+      const workers = await transcribeAudioWithWorkersAi({ env, audioBytes, mimeType });
+      if (!workers.ok) {
+        const primaryError = openai.error === "OPENAI_QUOTA_EXCEEDED"
+          ? "OPENAI_QUOTA_EXCEEDED"
+          : gemini.error === "GEMINI_QUOTA_EXCEEDED"
+            ? "GEMINI_QUOTA_EXCEEDED"
+            : (openai.error === "OPENAI_NOT_CONFIGURED" && gemini.error === "GEMINI_NOT_CONFIGURED" && !env?.AI)
+              ? "GEMINI_NOT_CONFIGURED"
+              : (workers.error || gemini.error || openai.error || "audio_transcribe_failed");
+        return {
+          ok: false,
+          error: primaryError,
+          publicMessage: AUDIO_TRANSCRIBE_ERROR_AR,
+          geminiError: gemini.error || "",
+          workersError: workers.error || "",
+          openaiError: openai.error || ""
+        };
+      }
+      transcriptResult = workers;
     }
-    transcriptResult = workers;
   }
 
   const mapped = parseTranscriptToBrokerFields(transcriptResult.rawText, parseRealEstateMessage);
+  const provider = transcriptResult.provider
+    || (transcriptResult.analyzerProvider === "openai_whisper" ? "openai" : "");
   return {
     ok: true,
     text: mapped.transcript,
@@ -161,10 +172,11 @@ export async function extractListingFromAudio({
         .map(([key]) => [key, transcriptResult.analyzerProvider || "audio_transcript"])
     ),
     analyzerProvider: transcriptResult.analyzerProvider || "gemini_audio_transcribe",
+    provider: provider || (transcriptResult.analyzerProvider === "gemini_audio_transcribe" ? "gemini" : "workers_ai"),
     extractionMode: transcriptResult.extractionMode || "gemini_audio_transcribe_adapter",
     confidence: Math.round((transcriptResult.confidence ?? mapped.confidence ?? 0.5) * 100),
     extractionStatus: "extracted",
-    productionAi: transcriptResult.analyzerProvider?.startsWith("gemini")
+    productionAi: Boolean(transcriptResult.productionAi)
   };
 }
 

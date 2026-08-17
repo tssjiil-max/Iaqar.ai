@@ -5849,6 +5849,7 @@ async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute
     transcript: result.transcript || "",
     brokerFields: result.brokerFields || null,
     fieldSources: result.fieldSources || {},
+    provider: result.provider || "gemini",
     extractionMode: result.extractionMode,
     productionAi: result.productionAi,
     model: result.model,

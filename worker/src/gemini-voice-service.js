@@ -183,9 +183,10 @@ export async function analyzeVoiceWithGemini({
     transcript,
     brokerFields: result.brokerFields || null,
     fieldSources: result.fieldSources || {},
+    provider: result.provider || (result.analyzerProvider === "openai_whisper" ? "openai" : "gemini"),
     extractionMode: result.extractionMode || "gemini_audio_transcribe_adapter",
     productionAi: Boolean(result.productionAi),
-    model,
+    model: result.model || model,
     latencyMs,
     confidence: result.confidence || 0
   };
