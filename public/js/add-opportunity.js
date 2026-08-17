@@ -9,7 +9,12 @@ import {
   detectSourceTypeFromText,
   normalizeUrl,
   prepareOpportunityIntake,
-  validateAttachment
+  validateAttachment,
+  mapSourceTypeToCanonicalContentType,
+  buildOpportunityRecord,
+  buildSourceRecord,
+  normalizeOpportunityFinancials,
+  computeDataCompleteness
 } from "./opportunity-intake-domain.js";
 import {
   phase4BoundaryGuarantees,
@@ -437,6 +442,80 @@ export function buildOpportunityPersistPayload({
   return payload;
 }
 
+async function runCanonicalIntakeRequest(payload) {
+  const base = workerBase();
+  if (!base) throw new Error("worker_base_missing");
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": payload.officeId
+  };
+  const response = await fetchWithTimeout(`${base.replace(/\/$/, "")}/pipeline/canonical-intake`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  }, extractionTimeoutMs);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) {
+    const err = new Error(body.error || body.message || "canonical_intake_failed");
+    err.code = body.error || "";
+    throw err;
+  }
+  return body;
+}
+
+function mapCanonicalResponseToPrepared(body, officeId, brokerId) {
+  const fields = normalizeOpportunityFinancials(body.fields || body.extractedFields || {});
+  const completeness = computeDataCompleteness(fields);
+  const fingerprint = String(body.idempotencyKey || "").replace(/^ci_/, "");
+  const sourceType = body.contentType || "text";
+  const extraction = {
+    extractionMode: "canonical_intake",
+    extractionProvider: "iaqar.canonical_intake",
+    productionAi: false,
+    extractionConfidence: Number(body.confidence || 0),
+    fields
+  };
+  const source = buildSourceRecord({
+    officeId,
+    brokerId,
+    sourceType,
+    fingerprint,
+    text: body.rawText || "",
+    url: body.sourceUrl || "",
+    mediaPath: body.mediaPath || ""
+  });
+  source.id = body.sourceId || source.id;
+  const opportunity = buildOpportunityRecord({
+    officeId,
+    brokerId,
+    sourceType,
+    sourceReference: source.id,
+    fields,
+    extraction,
+    deduplicationFingerprint: fingerprint,
+    existingId: body.opportunityId
+  });
+  opportunity.id = body.opportunityId || opportunity.id;
+  opportunity.rawText = body.rawText || "";
+  opportunity.transcript = body.transcript || "";
+  opportunity.analysisStatus = body.analysisStatus || "";
+  return {
+    ok: true,
+    state: completeness.isComplete ? "saved" : "missing_information",
+    source,
+    opportunity,
+    fields,
+    missingFields: body.missingFields || completeness.missingFields,
+    extraction,
+    createsOperation: false,
+    runsMatching: false,
+    productionAi: false,
+    canonicalImportJobId: body.importJobId,
+    deduplicationFingerprint: fingerprint
+  };
+}
+
 async function resolveUrlListingText(url, officeId) {
   const base = workerBase();
   if (!base) return { ok: false, error: "worker_base_missing" };
@@ -479,36 +558,8 @@ async function runExtractionPipeline() {
   let manualUrlMeta = null;
 
   if (isUrl) {
-    setState("analyzing");
-    const resolved = await resolveUrlListingText(normalizedInputUrl, office.officeId);
-    if (!resolved.ok) {
-      const hardFailErrors = new Set([
-        "authentication_required",
-        "office_required",
-        "forbidden"
-      ]);
-      const errorCode = String(resolved.error || "url_resolve_failed");
-      // Any fetch/parse blockage becomes manual URL continuation (AQAR/Haraj/etc.).
-      if (!hardFailErrors.has(errorCode)) {
-        listingText = "";
-        urlDiagnostics = resolved.diagnostics || null;
-        manualUrlMeta = {
-          manualUrlContinuation: true,
-          urlBlockedReason: errorCode,
-          urlBlockedMessage: errorCode === "source_blocked"
-            && /aqar\.fm|sa\.aqar/i.test(String(normalizedInputUrl || inputText || ""))
-            ? "منصة عقار تمنع الجلب التلقائي من الخادم. يمكنك إكمال البيانات يدويًا."
-            : "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا."
-        };
-      } else {
-        const err = new Error("url_extraction_failed");
-        err.diagnostics = resolved.diagnostics;
-        throw err;
-      }
-    } else {
-      listingText = resolved.text;
-      urlDiagnostics = resolved.diagnostics;
-    }
+    // Canonical intake resolves sourceUrl on the Worker; avoid duplicate client fetch.
+    listingText = "";
   }
 
   let fileChecksumValue = "";
@@ -535,6 +586,80 @@ async function runExtractionPipeline() {
 
   const useTextParser = Boolean(String(listingText || "").trim());
   setState("analyzing");
+
+  const canonicalContentType = isUrl
+    ? "sourceUrl"
+    : (sourceType ? mapSourceTypeToCanonicalContentType(sourceType) : "text");
+  if (canonicalContentType) {
+    try {
+      const canonical = await runCanonicalIntakeRequest({
+        officeId: office.officeId,
+        brokerId: user.uid,
+        contentType: canonicalContentType,
+        text: listingText || inputText,
+        sourceUrl: isUrl ? normalizedInputUrl : undefined,
+        mediaPath,
+        fileChecksum: fileChecksumValue,
+        fileName: selectedFile?.name || "",
+        mimeType: selectedFile?.type || "",
+        byteSize: selectedFile?.size || 0,
+        idempotencyKey: sourceIdentity
+      });
+      if (canonical.analysisStatus === "analysis_complete" || canonical.fields) {
+        const prepared = mapCanonicalResponseToPrepared(canonical, office.officeId, user.uid);
+        if (manualUrlMeta?.manualUrlContinuation) {
+          prepared.manualUrlContinuation = true;
+          prepared.urlBlockedMessage = manualUrlMeta.urlBlockedMessage || "";
+          prepared.urlBlockedReason = manualUrlMeta.urlBlockedReason || "";
+        }
+        intakeContext = {
+          ...(manualUrlMeta || {}),
+          inputText,
+          listingText,
+          sourceUrl: isUrl ? normalizedInputUrl : "",
+          sourceType: prepared.source?.sourceType || canonicalContentType,
+          urlDiagnostics,
+          fileChecksumValue,
+          mediaPath,
+          fileName: selectedFile?.name || "",
+          contentType: selectedFile?.type || "",
+          sourceIdentity,
+          canonicalImportJobId: canonical.importJobId
+        };
+        return prepared;
+      }
+    } catch (error) {
+      console.warn("[iaqar] canonical intake fallback", error?.message || error);
+    }
+  }
+
+  if (isUrl && !listingText) {
+    setState("analyzing");
+    const resolved = await resolveUrlListingText(normalizedInputUrl, office.officeId);
+    if (!resolved.ok) {
+      const hardFailErrors = new Set(["authentication_required", "office_required", "forbidden"]);
+      const errorCode = String(resolved.error || "url_resolve_failed");
+      if (!hardFailErrors.has(errorCode)) {
+        urlDiagnostics = resolved.diagnostics || null;
+        manualUrlMeta = {
+          manualUrlContinuation: true,
+          urlBlockedReason: errorCode,
+          urlBlockedMessage: errorCode === "source_blocked"
+            && /aqar\.fm|sa\.aqar/i.test(String(normalizedInputUrl || inputText || ""))
+            ? "منصة عقار تمنع الجلب التلقائي من الخادم. يمكنك إكمال البيانات يدويًا."
+            : "تعذر جلب الإعلان تلقائيًا. يمكنك إكمال البيانات يدويًا."
+        };
+      } else {
+        const err = new Error("url_extraction_failed");
+        err.diagnostics = resolved.diagnostics;
+        throw err;
+      }
+    } else {
+      listingText = resolved.text;
+      urlDiagnostics = resolved.diagnostics;
+    }
+  }
+
   const prepared = await prepareOpportunityIntake({
     officeId: office.officeId,
     brokerId: user.uid,

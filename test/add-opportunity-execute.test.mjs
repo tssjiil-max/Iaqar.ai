@@ -280,15 +280,30 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
   }
 });
 
-test("bare hostname/path is normalized and sent through the modern URL resolver", async () => {
+test("bare hostname/path is normalized and sent through the canonical intake pipeline", async () => {
   const calls = [];
   const fetchStub = async (url, options = {}) => {
     calls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
-    return Response.json({
-      ok: true,
-      text: "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال",
-      diagnostics: { status: 200, redirectCount: 1 }
-    });
+    if (String(url).includes("/pipeline/canonical-intake")) {
+      return Response.json({
+        ok: true,
+        analysisStatus: "analysis_complete",
+        opportunityId: "opp_test_url",
+        importJobId: "job_test_url",
+        idempotencyKey: "ci_test",
+        fields: {
+          propertyType: "أرض",
+          city: "المدينة المنورة",
+          district: "الرانوناء",
+          purpose: "SALE",
+          opportunityKind: "OFFER"
+        },
+        rawText: "أرض للبيع في المدينة المنورة حي الرانوناء",
+        missingFields: ["salePrice", "area"],
+        confidence: 72
+      });
+    }
+    return Response.json({ ok: false, error: "unexpected_url" });
   };
   const { context, module } = await loadController(fetchStub);
   try {
@@ -297,8 +312,8 @@ test("bare hostname/path is normalized and sent through the modern URL resolver"
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://staging-worker.example.test/pipeline/url-resolve");
-    assert.equal(calls[0].body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.ok(calls[0].url.includes("/pipeline/canonical-intake"));
+    assert.equal(calls[0].body.sourceUrl, "https://a.aqar.fm/r/92f89b67");
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
   } finally {
     context.close();

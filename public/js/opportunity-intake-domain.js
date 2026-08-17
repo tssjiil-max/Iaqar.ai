@@ -275,6 +275,16 @@ export function detectSourceTypeFromFile(file) {
   return "";
 }
 
+export function mapSourceTypeToCanonicalContentType(sourceType = "") {
+  const type = safeText(sourceType, 20).toLowerCase();
+  if (type === "url") return "sourceUrl";
+  if (type === "text") return "text";
+  if (type === "audio") return "audio";
+  if (type === "image" || type === "screenshot") return "image";
+  if (type === "pdf" || type === "word" || type === "excel") return "document";
+  return "";
+}
+
 export function validateAttachment(file) {
   if (!file) return { ok: false, error: "لم يتم اختيار ملف" };
   if (file.size > MAX_FILE_BYTES) {

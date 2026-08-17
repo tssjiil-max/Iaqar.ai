@@ -92,6 +92,14 @@ import {
   validateVoiceAudio
 } from "./gemini-voice-service.js";
 import {
+  startCanonicalIntake,
+  handleCanonicalIntakeCallback,
+  retryCanonicalIntake,
+  extractAudioFromMediaPath,
+  extractImageTextFromMediaPath,
+  verifyCanonicalMediaAccessToken
+} from "./canonical-intake-service.js";
+import {
   createAdminHelpers,
   handleAdminAuditLog,
   handleAdminLicenseUpdate,
@@ -338,6 +346,22 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/pipeline/public-voice-analyze") {
         return await handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute: true });
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake") {
+        return await handleCanonicalIntakeStart(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake/callback") {
+        return await handleCanonicalIntakeCallbackRoute(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake/retry") {
+        return await handleCanonicalIntakeRetryRoute(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/media/canonical-intake-access") {
+        return await handleCanonicalIntakeMediaAccess(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/matching/preview") {
@@ -5645,6 +5669,107 @@ async function runLlamaVisionExtract(env, input) {
     }
     throw error;
   }
+}
+
+async function handleCanonicalIntakeStart(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const bucket = requireMediaBucket(env);
+  const ctx = buildCanonicalIntakeCtx({
+    env, request, identity, projectId, accessToken, bucket
+  });
+  const result = await startCanonicalIntake({
+    ...body,
+    officeId,
+    brokerId: cleanText(body.brokerId || identity.uid, 120)
+  }, ctx);
+  return jsonResponse({ ...result, requestId }, result.duplicate ? 200 : 201);
+}
+
+async function handleCanonicalIntakeCallbackRoute(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const ctx = buildCanonicalIntakeCtx({
+    env, request, identity: null, projectId, accessToken, bucket: null
+  });
+  const result = await handleCanonicalIntakeCallback(body, ctx);
+  return jsonResponse({ ...result, requestId });
+}
+
+async function handleCanonicalIntakeRetryRoute(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const bucket = requireMediaBucket(env);
+  const ctx = buildCanonicalIntakeCtx({
+    env, request, identity, projectId, accessToken, bucket
+  });
+  const result = await retryCanonicalIntake(body, ctx);
+  return jsonResponse({ ...result, requestId });
+}
+
+async function handleCanonicalIntakeMediaAccess(request, env, requestId) {
+  const url = new URL(request.url);
+  const token = cleanText(url.searchParams.get("token"), 4000);
+  const sig = cleanText(url.searchParams.get("sig"), 200);
+  const secret = String(env.CANONICAL_INTAKE_MEDIA_SECRET || env.ACTIVEPIECES_CALLBACK_SECRET || "");
+  const verified = await verifyCanonicalMediaAccessToken(token, sig, secret);
+  if (!verified.ok) {
+    return jsonResponse({ ok: false, error: verified.error, requestId }, 403);
+  }
+  const { officeId, mediaPath } = verified.data;
+  const bucket = requireMediaBucket(env);
+  const object = await bucket.get(mediaPath);
+  if (!object) return jsonResponse({ ok: false, error: "media_not_found", requestId }, 404);
+  const metadata = object.customMetadata || {};
+  if (metadata.officeId && metadata.officeId !== officeId) {
+    return jsonResponse({ ok: false, error: "media_scope_mismatch", requestId }, 403);
+  }
+  const headers = new Headers();
+  if (object.httpMetadata?.contentType) headers.set("Content-Type", object.httpMetadata.contentType);
+  headers.set("Cache-Control", "private, no-store");
+  return new Response(object.body, { status: 200, headers });
+}
+
+function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToken, bucket }) {
+  return {
+    env,
+    request,
+    identity,
+    projectId,
+    accessToken,
+    requestUrl: request.url,
+    normalizeOfficeId,
+    cleanText,
+    appError,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreFieldsToJs,
+    compactFields,
+    firestoreString,
+    firestoreOptionalString,
+    firestoreInteger,
+    firestoreBoolean,
+    firestoreTimestamp,
+    parseRealEstateMessage,
+    normalizeListingFetchUrl,
+    fetchListingPage,
+    opportunityPatchToFirestoreFields,
+    LIFECYCLE_STATUS,
+    extractImageTextFromMediaPath: (mediaPath, officeId) =>
+      extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract),
+    extractAudioFromMediaPath: (mediaPath, officeId) =>
+      extractAudioFromMediaPath(mediaPath, officeId, env, bucket)
+  };
 }
 
 async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute = false } = {}) {
