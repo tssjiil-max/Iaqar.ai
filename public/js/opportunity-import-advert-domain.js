@@ -49,6 +49,8 @@ const SITE_LABELS = Object.freeze({
   "haraj.com.sa": "حراج",
   "sa.aqar.fm": "عقار",
   "aqar.fm": "عقار",
+  "a.aqar.fm": "عقار",
+  "dealapp.sa": "ديل",
   "bayut.sa": "بيوت",
   "propertyfinder.sa": "بروبرتي فايندر"
 });
@@ -102,6 +104,7 @@ export function resolveSourceSiteLabel(urlOrHost = "") {
   if (SITE_LABELS[host]) return SITE_LABELS[host];
   if (host.includes("haraj")) return "حراج";
   if (host.includes("aqar")) return "عقار";
+  if (host.includes("dealapp")) return "ديل";
   if (host.includes("bayut")) return "بيوت";
   if (host.includes("propertyfinder")) return "بروبرتي فايندر";
   return "الموقع";
@@ -186,12 +189,13 @@ export function buildImportOpportunityExtras({
   sourceUrl = "",
   sourceSite = "",
   extractionConfidence = 0,
-  importedAt = new Date()
+  importedAt = new Date(),
+  canonical = null
 } = {}) {
   const normalized = normalizeUrl(sourceUrl);
   const site = safeText(sourceSite, 80) || (normalized ? resolveSourceSiteLabel(normalized) : "");
   const timestamp = importedAt instanceof Date ? importedAt.toISOString() : String(importedAt || "");
-  return {
+  const extras = {
     sourceType: normalized ? "url" : "text",
     sourceSite: site,
     sourceUrl: normalized || safeText(sourceUrl, 2000),
@@ -199,6 +203,17 @@ export function buildImportOpportunityExtras({
     extractionConfidence: Number(extractionConfidence) || 0,
     importActivityText: site ? `تم استيراد الإعلان من ${site}` : "تم استيراد الإعلان"
   };
+  if (canonical && typeof canonical === "object") {
+    if (canonical.originalUrl) extras.originalUrl = safeText(canonical.originalUrl, 2000);
+    if (canonical.resolvedUrl) extras.resolvedUrl = safeText(canonical.resolvedUrl, 2000);
+    if (canonical.sourceSiteId) extras.sourceSiteId = safeText(canonical.sourceSiteId, 40);
+    if (canonical.externalListingId) extras.externalListingId = safeText(canonical.externalListingId, 120);
+    if (canonical.extractionStatus) extras.extractionStatus = safeText(canonical.extractionStatus, 40);
+    if (canonical.classificationStatus) extras.classificationStatus = safeText(canonical.classificationStatus, 40);
+    if (canonical.contentHash) extras.contentHash = safeText(canonical.contentHash, 128);
+    if (canonical.fieldSources) extras.fieldSources = canonical.fieldSources;
+  }
+  return extras;
 }
 
 function sameOfficeOnly(record = {}, officeId = "") {

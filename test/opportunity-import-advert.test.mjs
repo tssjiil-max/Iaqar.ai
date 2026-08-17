@@ -34,6 +34,7 @@ import { buildWorkspaceActivity } from "../public/js/opportunity-workspace-domai
 const html = readRepositoryFile("public", "index.html");
 const importUi = readRepositoryFile("public", "js", "opportunity-import-advert-ui.js");
 const importDomain = readRepositoryFile("public", "js", "opportunity-import-advert-domain.js");
+const canonicalDomain = readRepositoryFile("public", "js", "canonical-listing-intake-domain.js");
 
 const SALE_TEXT = "شقة للبيع في الرياض حي النرجس السعر 850000 المساحة 180 4 غرف";
 const RENT_TEXT = "فيلا للإيجار في جدة حي الروضة إيجار سنوي 120000 المساحة 400 5 غرف";
@@ -324,7 +325,8 @@ test("import UI wires save through opportunity bank repository path", () => {
 
 test("user-facing import UI avoids English error labels", () => {
   assert.ok(importUi.includes("الرابط غير صالح"));
-  assert.ok(importUi.includes("تعذر قراءة بيانات الرابط"));
+  assert.ok(canonicalDomain.includes("تعذر قراءة الرابط، أرفق صورة أو انسخ نص الإعلان"));
+  assert.ok(importUi.includes("جارٍ قراءة الإعلان"));
   assert.ok(importUi.includes("تعذر حفظ الفرصة"));
   assert.equal(importUi.includes("Failed to fetch"), false);
 });

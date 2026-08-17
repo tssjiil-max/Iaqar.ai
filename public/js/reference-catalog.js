@@ -119,27 +119,45 @@ export function filterBySearch(query, items, labelKey = "label") {
   });
 }
 
-export function matchOperationType(fields = {}, text = "") {
+export function matchOperationType(fields = {}, text = "", options = {}) {
   const purpose = String(fields.purpose || "").toUpperCase();
   const kind = String(fields.opportunityKind || "").toUpperCase();
+  const focus = safeText(options.focusText || "", 12000) || firstListingLine(text);
   const hay = normalizeSearchText(text);
+  const focusHay = normalizeSearchText(focus);
 
-  if (purpose === "INVESTMENT" || /استثمار/.test(text)) {
+  if (purpose === "INVESTMENT" || /استثمار/.test(focus) || /استثمار/.test(text)) {
     return OPERATION_TYPES.find((o) => o.id === "investment");
   }
-  if (purpose === "PURCHASE" || kind === "REQUEST" && /شراء|مطلوب|ابحث/.test(text)) {
+  if (purpose === "PURCHASE" || (kind === "REQUEST" && /(?:^|\s)(?:شراء|مطلوب|ابحث|أبحث)(?:\s|$)/i.test(focus))) {
     return OPERATION_TYPES.find((o) => o.id === "purchase");
   }
   if (purpose === "LEASE_REQUEST" || (purpose === "RENT" && kind === "REQUEST")) {
     return OPERATION_TYPES.find((o) => o.id === "rent");
   }
-  if (purpose === "RENT" || /ايجار|إيجار|للإيجار/.test(text)) {
-    return OPERATION_TYPES.find((o) => o.id === "rent");
-  }
-  if (purpose === "SALE" || /بيع|للبيع/.test(hay)) {
-    return OPERATION_TYPES.find((o) => o.id === "sale");
-  }
+  if (purpose === "SALE") return OPERATION_TYPES.find((o) => o.id === "sale");
+  if (purpose === "RENT") return OPERATION_TYPES.find((o) => o.id === "rent");
+
+  const focusRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(focusHay) || /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(focus);
+  const focusSale = /(?:^|\s)للبيع(?:\s|$)/i.test(focusHay) || /(?:^|\s)للبيع(?:\s|$)/i.test(focus);
+  if (focusRent && focusSale) return null;
+  if (focusRent) return OPERATION_TYPES.find((o) => o.id === "rent");
+  if (focusSale) return OPERATION_TYPES.find((o) => o.id === "sale");
+
+  const bodyRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(hay);
+  const bodySale = /(?:^|\s)للبيع(?:\s|$)/i.test(hay);
+  if (bodyRent && bodySale) return null;
+  if (bodyRent) return OPERATION_TYPES.find((o) => o.id === "rent");
+  if (bodySale) return OPERATION_TYPES.find((o) => o.id === "sale");
   return null;
+}
+
+function firstListingLine(text = "") {
+  return String(text || "").split("\n").map((line) => line.trim()).filter(Boolean)[0] || "";
+}
+
+function safeText(value, max = 12000) {
+  return String(value == null ? "" : value).replace(/\u0000/g, "").trim().slice(0, max);
 }
 
 export function containsArabicPhrase(text, phrase) {
@@ -293,7 +311,8 @@ export function reviewTransactionMode(operationId, context = {}) {
 export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta = {}) {
   const text = String(sourceText || "");
   const extended = meta.extended || extractionFields.extended || {};
-  const op = matchOperationType(extractionFields, text);
+  const focusText = meta.listingTitle || meta.focusText || firstListingLine(text);
+  const op = matchOperationType(extractionFields, text, { focusText });
   const propertyLabel = normalizeLegacyArabicLabel(
     safeTrim(extractionFields.propertyType || extended.propertyType)
   );

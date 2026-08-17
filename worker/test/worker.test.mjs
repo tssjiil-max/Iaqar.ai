@@ -285,7 +285,9 @@ test("modern URL resolver normalizes bare hosts and follows safe redirects", asy
     }), trialEnv);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(body.originalUrl, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(body.resolvedUrl, "https://sa.aqar.fm/ad/92f89b67");
+    assert.equal(body.url, "https://sa.aqar.fm/ad/92f89b67");
     assert.equal(calls[0], "https://a.aqar.fm/r/92f89b67");
     assert.equal(calls[1], "https://sa.aqar.fm/ad/92f89b67");
     assert.match(body.text, /الرانوناء/);

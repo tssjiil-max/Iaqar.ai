@@ -91,6 +91,8 @@ import {
   resolveGeminiModel,
   validateVoiceAudio
 } from "./gemini-voice-service.js";
+import { resolveCanonicalListingUrl } from "./canonical-listing-intake.mjs";
+import { normalizeListingFetchUrl as adapterNormalizeListingFetchUrl } from "./listing-site-adapters.mjs";
 import {
   startCanonicalIntake,
   handleCanonicalIntakeCallback,
@@ -5926,25 +5928,41 @@ async function handlePipelineUrlResolve(request, env, requestId) {
   const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
   if (!officeId) throw appError("office_id_required", 400, "معرّف المكتب مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
-  const targetUrl = normalizeListingFetchUrl(body.url);
-  if (!targetUrl) throw appError("invalid_url", 400, "الرابط غير صالح");
-  const fetched = await fetchListingPage(targetUrl);
-  if (!fetched.ok) {
+  const resolved = await resolveCanonicalListingUrl({
+    originalUrl: body.url,
+    isPrivateOrLocalHost
+  });
+  if (!resolved.ok) {
     return jsonResponse({
       ok: false,
-      error: fetched.error || "url_resolve_failed",
-      url: targetUrl,
-      diagnostics: fetched.diagnostics || null,
+      error: resolved.error || "url_resolve_failed",
+      url: resolved.originalUrl || adapterNormalizeListingFetchUrl(body.url, isPrivateOrLocalHost),
+      originalUrl: resolved.originalUrl || "",
+      resolvedUrl: resolved.resolvedUrl || "",
+      extractionStatus: "fallback_required",
+      diagnostics: resolved.diagnostics || null,
       requestId
     }, 422);
   }
   return jsonResponse({
     ok: true,
-    url: targetUrl,
-    text: fetched.text,
-    textLength: fetched.text.length,
-    sourceSite: resolveListingSourceSite(targetUrl),
-    diagnostics: fetched.diagnostics,
+    url: resolved.resolvedUrl,
+    originalUrl: resolved.originalUrl,
+    resolvedUrl: resolved.resolvedUrl,
+    text: resolved.text,
+    textLength: resolved.textLength,
+    sourceSite: resolved.sourceSite,
+    sourceSiteId: resolved.sourceSiteId,
+    adapterId: resolved.adapterId,
+    externalListingId: resolved.externalListingId,
+    structured: resolved.structured,
+    brokerFields: resolved.brokerFields,
+    fieldSources: resolved.fieldSources,
+    extractionStatus: resolved.extractionStatus,
+    classificationStatus: resolved.classificationStatus,
+    listingTitle: resolved.listingTitle,
+    contentHash: resolved.contentHash,
+    diagnostics: resolved.diagnostics,
     requestId
   });
 }

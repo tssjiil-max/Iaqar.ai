@@ -535,10 +535,29 @@ async function resolveUrlListingText(url, officeId) {
     return {
       ok: false,
       error: body.error || "url_resolve_failed",
-      diagnostics: body.diagnostics || null
+      diagnostics: body.diagnostics || null,
+      extractionStatus: body.extractionStatus || "fallback_required",
+      classificationStatus: body.classificationStatus || "fallback_required"
     };
   }
-  return { ok: true, text, diagnostics: body.diagnostics || null };
+  return {
+    ok: true,
+    text,
+    diagnostics: body.diagnostics || null,
+    originalUrl: body.originalUrl || url,
+    resolvedUrl: body.resolvedUrl || body.url || url,
+    sourceSite: body.sourceSite || "",
+    sourceSiteId: body.sourceSiteId || "",
+    adapterId: body.adapterId || "",
+    externalListingId: body.externalListingId || "",
+    brokerFields: body.brokerFields || null,
+    structured: body.structured || null,
+    fieldSources: body.fieldSources || {},
+    extractionStatus: body.extractionStatus || "extracted",
+    classificationStatus: body.classificationStatus || "confirmed",
+    listingTitle: body.listingTitle || "",
+    contentHash: body.contentHash || ""
+  };
 }
 
 async function runExtractionPipeline() {

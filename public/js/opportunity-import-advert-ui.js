@@ -36,6 +36,11 @@ import {
   validateImportUrl
 } from "./opportunity-import-advert-domain.js";
 import {
+  buildCanonicalSourceMetadata,
+  importStatusMessageForExtraction,
+  mergeCanonicalListingFields
+} from "./canonical-listing-intake-domain.js";
+import {
   authHeader,
   buildOpportunityPersistPayload,
   fileChecksum,
@@ -196,14 +201,34 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
       throw err;
     }
     sourceUrl = validated.normalizedUrl;
+    setImportStatus("جارٍ قراءة الإعلان");
     const resolved = await resolveUrlListingText(sourceUrl, office.officeId);
     if (!resolved.ok || !String(resolved.text || "").trim()) {
       const err = new Error(resolved.error || "url_resolve_failed");
-      err.publicMessage = "تعذر قراءة بيانات الرابط. الصق نص الإعلان أو ارفع صورته.";
+      err.publicMessage = importStatusMessageForExtraction({
+        extractionStatus: resolved.extractionStatus,
+        classificationStatus: resolved.classificationStatus,
+        error: resolved.error
+      });
       throw err;
     }
     listingText = String(resolved.text || "").trim();
     sourceSite = resolveSourceSiteLabel(sourceUrl);
+    importSession = {
+      canonical: {
+        originalUrl: resolved.originalUrl || sourceUrl,
+        resolvedUrl: resolved.resolvedUrl || sourceUrl,
+        sourceSiteId: resolved.sourceSiteId || "",
+        adapterId: resolved.adapterId || "",
+        externalListingId: resolved.externalListingId || "",
+        brokerFields: resolved.brokerFields || null,
+        fieldSources: resolved.fieldSources || {},
+        extractionStatus: resolved.extractionStatus || "extracted",
+        classificationStatus: resolved.classificationStatus || "confirmed",
+        listingTitle: resolved.listingTitle || "",
+        contentHash: resolved.contentHash || ""
+      }
+    };
   } else if (mode === "text") {
     if (!listingText) {
       const err = new Error("empty_text");
@@ -240,6 +265,14 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     listingText = String(mediaResolved.text || "").trim();
     mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
     sourceSite = "صورة الإعلان";
+    const urlInput = $("importAdvertUrlInput")?.value || importSession?.sourceUrl || "";
+    if (urlInput) {
+      const validatedUrl = validateImportUrl(urlInput);
+      if (validatedUrl.ok) {
+        sourceUrl = validatedUrl.normalizedUrl;
+        sourceSite = resolveSourceSiteLabel(sourceUrl);
+      }
+    }
   }
 
   const prepared = await prepareOpportunityIntake({
@@ -258,6 +291,28 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
   }, createExtractionAdapter());
 
   if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
+
+  const canonical = importSession?.canonical || null;
+  if (canonical?.brokerFields || canonical?.adapterId) {
+    const merged = mergeCanonicalListingFields(prepared.fields || {}, canonical);
+    prepared.fields = merged.fields;
+    prepared.extraction = {
+      ...(prepared.extraction || {}),
+      extractionMode: merged.extractionMode,
+      fieldSources: merged.fieldSources,
+      classificationStatus: merged.classificationStatus,
+      extractionStatus: merged.extractionStatus
+    };
+    if (merged.classificationStatus === "needs_review") {
+      prepared.extraction.needsReview = {
+        ...(prepared.extraction.needsReview || {}),
+        purpose: true,
+        opportunityKind: true
+      };
+    }
+    Object.assign(prepared.source, buildCanonicalSourceMetadata(canonical, listingText));
+  }
+
   if (mediaPath) prepared.source.mediaPath = mediaPath;
   if (mediaExtractionMode && prepared.extraction) {
     prepared.extraction.extractionMode = mediaExtractionMode;
@@ -265,6 +320,7 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
   }
 
   importSession = {
+    ...(importSession || {}),
     mode,
     listingText,
     sourceUrl,
@@ -284,7 +340,8 @@ function openImportReview() {
   const fields = prepared.fields || {};
   const reviewDefaults = buildReviewDefaults(fields, importSession.listingText, {
     extended: prepared.extraction?.extended,
-    needsReview: prepared.extraction?.needsReview
+    needsReview: prepared.extraction?.needsReview,
+    listingTitle: importSession.canonical?.listingTitle || ""
   });
   const summaryRecord = { ...fields, ...importReadinessPresentation(fields) };
   const importSummary = buildImportReadinessSummary(summaryRecord);
@@ -331,10 +388,15 @@ async function runImportAnalysis(mode, payload = {}) {
   for (const btn of analyzeButtons) {
     if (btn) btn.disabled = true;
   }
-  setImportStatus("جارٍ تحليل الإعلان…");
+  setImportStatus("جارٍ قراءة الإعلان");
   try {
     await analyzeImportInput({ mode, ...payload });
-    setImportStatus("");
+    const statusMsg = importSession?.canonical?.extractionStatus === "extracted"
+      ? "تم استخراج بيانات الإعلان"
+      : importSession?.canonical?.classificationStatus === "needs_review"
+        ? "توجد بيانات متعارضة وتحتاج مراجعة"
+        : "";
+    setImportStatus(statusMsg);
     openImportReview();
   } catch (error) {
     console.warn("[iaqar:import-advert] analyze failed", error);
@@ -385,7 +447,8 @@ async function finalizeImportSave({ forceNew = false, updateExistingId = "" } = 
     const importExtras = buildImportOpportunityExtras({
       sourceUrl: ctx.sourceUrl,
       sourceSite: ctx.sourceSite,
-      extractionConfidence: prepared.extraction?.extractionConfidence || prepared.opportunity?.extractionConfidence
+      extractionConfidence: prepared.extraction?.extractionConfidence || prepared.opportunity?.extractionConfidence,
+      canonical: ctx.canonical || null
     });
     prepared.opportunity = {
       ...prepared.opportunity,
@@ -538,6 +601,7 @@ async function saveImportedAdvert(brokerExtras, review, advertiser = {}) {
     reviewDistrictId: brokerExtras.reviewDistrictId || review.districtId || "",
     extractedSnapshot: brokerExtras.extractedSnapshot || null,
     advertiser,
+    canonical: importSession.canonical || null,
     approveLabel: importSaveButtonLabel({ ...brokerFields, ...advertiser }),
     resumeOpportunityId: ""
   };
