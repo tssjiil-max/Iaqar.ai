@@ -20,6 +20,12 @@ import {
 } from "../worker/src/listing-image-vision-service.mjs";
 import { resolveCanonicalListingUrl, __test as intakeTest } from "../worker/src/canonical-listing-intake.mjs";
 
+const MINIMAL_PNG = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+  (c) => c.charCodeAt(0)
+);
+const MINIMAL_JPEG = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0xFF, 0xD9]);
+
 const AQAR_URL = "https://sa.aqar.fm/r/fd2f5397";
 const AQAR_NAV_SHELL = `<!DOCTYPE html><html><head><title>عقار</title></head><body>
 دور للإيجار شقق للإيجار في الرياض فيلا للبيع</body></html>`;
@@ -121,12 +127,15 @@ test("Gemini Vision primary path returns analyzer provider", async () => {
   };
   const result = await analyzeListingImageWithGemini({
     env: { GEMINI_API_KEY: "test-key", GEMINI_MODEL: "gemini-test" },
-    imageBytes: new Uint8Array([1, 2, 3]),
+    imageBytes: MINIMAL_PNG,
     mimeType: "image/png",
-    fetchImpl: async () => ({
-      ok: true,
-      text: async () => JSON.stringify(geminiResponse)
-    })
+    fetchImpl: async (_url, init) => {
+      assert.equal(init?.headers?.["x-goog-api-key"], "test-key");
+      return {
+        ok: true,
+        text: async () => JSON.stringify(geminiResponse)
+      };
+    }
   });
   assert.equal(result.ok, true);
   assert.equal(result.analyzerProvider, ANALYZER_PROVIDERS.GEMINI_VISION);
@@ -137,7 +146,7 @@ test("Workers AI fallback when Gemini unavailable", async () => {
   const listingText = "فيلا للبيع في المدينة المنورة المساحة 291 6 غرف 7 دورات مياه";
   const result = await extractListingFromImage({
     env: { AI: {} },
-    imageBytes: new Uint8Array([9, 9, 9]),
+    imageBytes: MINIMAL_JPEG,
     mimeType: "image/jpeg",
     runLlamaVisionExtract: async () => listingText,
     parseRealEstateMessage: (text) => ({
@@ -188,8 +197,8 @@ test("R2 media path must stay office-scoped", () => {
 });
 
 test("Arabic media extract errors are specific", () => {
-  assert.match(mediaExtractPublicMessage("media_ai_failed", { geminiError: "x", workersError: "y" }), /Gemini وWorkers AI/);
-  assert.match(mediaExtractPublicMessage("empty_listing_text"), /لم نقرأ نصًا كافيًا/);
+  assert.match(mediaExtractPublicMessage("media_ai_failed", { geminiError: "x", workersError: "y" }), /تعذر قراءة الصورة/);
+  assert.match(mediaExtractPublicMessage("empty_listing_text"), /تعذر قراءة الصورة/);
 });
 
 test("review provenance mentions link image and analyzer", () => {

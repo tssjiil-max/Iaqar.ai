@@ -132,6 +132,7 @@ export {
   persistIntake,
   uploadSourceFile,
   resolveMediaListingText,
+  resolveAudioListingText,
   fileChecksum,
   workerBase,
   authHeader,
@@ -585,6 +586,52 @@ async function resolveMediaListingText(mediaPath, officeId, file = null, canonic
   return {
     ok: true,
     text,
+    brokerFields: body.brokerFields || null,
+    fieldSources: body.fieldSources || {},
+    analyzerProvider: body.analyzerProvider || "",
+    extractionMode: body.extractionMode || "",
+    extractionStatus: body.extractionStatus || "extracted",
+    confidence: Number(body.confidence || 0),
+    productionAi: Boolean(body.productionAi),
+    mediaPath: body.mediaPath || mediaPath
+  };
+}
+
+async function resolveAudioListingText(mediaPath, officeId, file = null) {
+  const base = workerBase();
+  if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetchWithTimeout(`${base}/pipeline/audio-extract`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      officeId,
+      mediaPath,
+      fileName: file?.name || "",
+      contentType: file?.type || ""
+    })
+  }, extractionTimeoutMs);
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.transcript || body.text || "").trim();
+  const hasStructured = body.brokerFields && typeof body.brokerFields === "object"
+    && Object.keys(body.brokerFields).length > 0;
+  if (!response.ok || !body.ok || (!text && !hasStructured)) {
+    return {
+      ok: false,
+      error: body.error || "audio_extract_failed",
+      publicMessage: body.publicMessage || "",
+      geminiError: body.geminiError || "",
+      workersError: body.workersError || ""
+    };
+  }
+  return {
+    ok: true,
+    text,
+    transcript: text,
     brokerFields: body.brokerFields || null,
     fieldSources: body.fieldSources || {},
     analyzerProvider: body.analyzerProvider || "",

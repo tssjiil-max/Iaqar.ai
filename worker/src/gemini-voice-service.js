@@ -1,12 +1,17 @@
 /**
  * Gemini voice analysis — server-side only. No API keys in the browser.
+ * Transcribe first, then parse via canonical text parser when available.
  */
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+import {
+  buildGeminiIntakeGenerationConfig,
+  geminiTranscriptionResponseJsonSchema
+} from "./gemini-intake-schema.mjs";
+import { extractListingFromAudio } from "./gemini-audio-intake.mjs";
 
-export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 export const VOICE_MAX_DURATION_SEC = 120;
+export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
 
 export const ALLOWED_VOICE_MIMES = Object.freeze([
   "audio/webm",
@@ -58,128 +63,11 @@ export function validateVoiceAudio({ byteSize = 0, mimeType = "", durationSec = 
 }
 
 export function voiceResponseJsonSchema() {
-  return {
-    type: "object",
-    properties: {
-      transactionType: { type: "string", nullable: true },
-      propertyType: { type: "string", nullable: true },
-      city: { type: "string", nullable: true },
-      district: { type: "string", nullable: true },
-      salePrice: { type: "number", nullable: true },
-      annualRent: { type: "number", nullable: true },
-      budget: { type: "number", nullable: true },
-      area: { type: "number", nullable: true },
-      rooms: { type: "number", nullable: true },
-      bathrooms: { type: "number", nullable: true },
-      floorNumber: { type: "number", nullable: true },
-      streetWidth: { type: "number", nullable: true },
-      direction: { type: "string", nullable: true },
-      planNumber: { type: "string", nullable: true },
-      plotNumber: { type: "string", nullable: true },
-      advertiserName: { type: "string", nullable: true },
-      advertiserPhone: { type: "string", nullable: true },
-      advertiserRole: { type: "string", nullable: true },
-      description: { type: "string", nullable: true },
-      needsReview: {
-        type: "array",
-        nullable: true,
-        items: { type: "string" }
-      }
-    }
-  };
+  return geminiTranscriptionResponseJsonSchema();
 }
 
 export function buildGeminiVoiceGenerationConfig() {
-  return {
-    temperature: 0.1,
-    responseMimeType: "application/json",
-    responseJsonSchema: voiceResponseJsonSchema()
-  };
-}
-
-function buildVoiceSystemPrompt(context = "office") {
-  const roleHint = context === "owner"
-    ? "Speaker is a property owner submitting an offer."
-    : context === "client"
-      ? "Speaker is a client submitting a purchase or rent request."
-      : "Speaker is a licensed broker adding an office opportunity.";
-  return [
-    "You extract structured real-estate listing data from Arabic speech for IAQAR.AI.",
-    roleHint,
-    "Return JSON only. Use null for any field not explicitly stated.",
-    "Never guess city, district, price, rooms, phone, or property type.",
-    "If uncertain, use null and include the field name in needsReview (array of field names).",
-    "Do not convert vague ranges like '500 or 600 thousand' into a single number without including the price field in needsReview.",
-    "Normalize Saudi prices to integer riyals when clearly stated (e.g. 580 thousand -> 580000).",
-    "transactionType values: sale, rent, purchase, lease_request, investment (Arabic equivalents allowed in output).",
-    "advertiserRole values when stated: OWNER, CLIENT, BROKER, UNKNOWN."
-  ].join("\n");
-}
-
-function classifyGeminiHttpFailure(status, bodyText = "") {
-  const sample = String(bodyText || "").toLowerCase();
-  if (status === 429 || sample.includes("resource_exhausted") || sample.includes("quota")) {
-    return "GEMINI_QUOTA_EXCEEDED";
-  }
-  if (status === 401 || status === 403) return "GEMINI_API_FAILED";
-  if (status >= 500) return "GEMINI_API_FAILED";
-  return "GEMINI_API_FAILED";
-}
-
-function sanitizeGeminiPayload(raw = {}) {
-  const out = {};
-  const keys = [
-    "transactionType", "propertyType", "city", "district",
-    "salePrice", "annualRent", "budget", "area", "rooms", "bathrooms", "floorNumber",
-    "streetWidth", "direction", "planNumber", "plotNumber",
-    "advertiserName", "advertiserPhone", "advertiserRole", "description"
-  ];
-  for (const key of keys) {
-    const value = raw[key];
-    if (value === null || value === undefined) {
-      out[key] = null;
-      continue;
-    }
-    if (["salePrice", "annualRent", "budget", "area", "rooms", "bathrooms", "floorNumber", "streetWidth"].includes(key)) {
-      const num = Number(value);
-      out[key] = Number.isFinite(num) ? num : null;
-      continue;
-    }
-    const text = String(value).trim();
-    out[key] = text || null;
-  }
-  out.needsReview = normalizeNeedsReview(raw.needsReview);
-  return out;
-}
-
-function normalizeNeedsReview(raw) {
-  if (Array.isArray(raw)) {
-    const out = {};
-    for (const item of raw) {
-      const key = String(item || "").trim();
-      if (key) out[key] = true;
-    }
-    return out;
-  }
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
-  return {};
-}
-
-function parseGeminiJsonResponse(responseJson) {
-  const text = responseJson?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    .trim();
-  if (!text) throw new Error("GEMINI_EMPTY_RESPONSE");
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("TRANSCRIPTION_EXTRACTION_FAILED");
-    parsed = JSON.parse(match[0]);
-  }
-  return sanitizeGeminiPayload(parsed);
+  return buildGeminiIntakeGenerationConfig(geminiTranscriptionResponseJsonSchema());
 }
 
 export function bytesToBase64(bytes) {
@@ -192,82 +80,115 @@ export function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function purposeToTransactionType(purpose = "") {
+  const value = String(purpose || "").toUpperCase();
+  if (value === "RENT") return "إيجار";
+  if (value === "LEASE_REQUEST") return "طلب إيجار";
+  if (value === "PURCHASE") return "شراء";
+  if (value === "INVESTMENT") return "استثمار";
+  if (value === "SALE") return "بيع";
+  return "";
+}
+
+export function brokerFieldsToVoiceStructured(brokerFields = {}, transcript = "") {
+  const fields = brokerFields || {};
+  return {
+    transactionType: purposeToTransactionType(fields.purpose),
+    propertyType: fields.propertyType || null,
+    city: fields.city || null,
+    district: fields.district || null,
+    salePrice: fields.salePrice ?? null,
+    annualRent: fields.annualRent ?? null,
+    budget: fields.budget ?? null,
+    area: fields.area ?? null,
+    rooms: fields.rooms ?? null,
+    bathrooms: fields.bathrooms ?? null,
+    floorNumber: fields.floorNumber ?? null,
+    streetWidth: fields.streetWidth ?? null,
+    direction: fields.direction || fields.facade || null,
+    planNumber: fields.planNumber || null,
+    plotNumber: fields.plotNumber || null,
+    advertiserName: fields.advertiserName || null,
+    advertiserPhone: fields.advertiserPhoneRaw || fields.advertiserPhoneNormalized || null,
+    advertiserRole: fields.advertiserRole || null,
+    description: transcript || fields.contactNotes || null,
+    needsReview: {}
+  };
+}
+
+function classifyVoiceError(error = "") {
+  const code = String(error || "");
+  if (code === "GEMINI_QUOTA_EXCEEDED") return "GEMINI_QUOTA_EXCEEDED";
+  if (code === "GEMINI_NOT_CONFIGURED") return "GEMINI_NOT_CONFIGURED";
+  if (code.startsWith("GEMINI_")) return "GEMINI_API_FAILED";
+  if (code === "TRANSCRIPTION_EMPTY" || code === "audio_transcribe_failed") {
+    return "TRANSCRIPTION_EXTRACTION_FAILED";
+  }
+  return "TRANSCRIPTION_EXTRACTION_FAILED";
+}
+
 export async function analyzeVoiceWithGemini({
   env,
   audioBytes,
   mimeType,
   context = "office",
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  parseRealEstateMessage,
+  requestId = ""
 } = {}) {
-  const apiKey = String(env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) {
-    return { ok: false, error: "GEMINI_NOT_CONFIGURED", retryable: false };
-  }
   const model = resolveGeminiModel(env);
   const started = Date.now();
-  const base64 = bytesToBase64(audioBytes instanceof Uint8Array ? audioBytes : new Uint8Array(audioBytes));
-  const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildVoiceSystemPrompt(context) }] },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: "Analyze this Arabic real-estate voice note and return structured JSON." },
-            { inline_data: { mime_type: mimeType, data: base64 } }
-          ]
-        }],
-        generationConfig: buildGeminiVoiceGenerationConfig()
-      })
-    });
-    const bodyText = await response.text();
-    if (!response.ok) {
-      const errorClass = classifyGeminiHttpFailure(response.status, bodyText);
-      voiceTelemetry.failure += 1;
-      voiceTelemetry.quota += errorClass === "GEMINI_QUOTA_EXCEEDED" ? 1 : 0;
-      voiceTelemetry.lastErrorClass = errorClass;
-      voiceTelemetry.lastLatencyMs = Date.now() - started;
-      voiceTelemetry.lastModel = model;
-      return {
-        ok: false,
-        error: errorClass,
-        retryable: errorClass !== "GEMINI_NOT_CONFIGURED",
-        model,
-        latencyMs: Date.now() - started
-      };
-    }
-    const json = JSON.parse(bodyText);
-    const structured = parseGeminiJsonResponse(json);
-    voiceTelemetry.success += 1;
-    voiceTelemetry.lastLatencyMs = Date.now() - started;
-    voiceTelemetry.lastModel = model;
-    voiceTelemetry.lastErrorClass = "";
-    return {
-      ok: true,
-      structured,
-      model,
-      extractionMode: "gemini_voice_adapter",
-      productionAi: Boolean(apiKey),
-      latencyMs: Date.now() - started
-    };
-  } catch (error) {
+  const apiKey = String(env?.GEMINI_API_KEY || "").trim();
+  if (!apiKey && !env?.AI) {
+    return { ok: false, error: "GEMINI_NOT_CONFIGURED", retryable: false, model, latencyMs: 0 };
+  }
+  const result = await extractListingFromAudio({
+    env,
+    audioBytes,
+    mimeType,
+    parseRealEstateMessage,
+    fetchImpl,
+    requestId
+  });
+  const latencyMs = Date.now() - started;
+  if (!result.ok) {
+    const errorClass = result.error === "GEMINI_QUOTA_EXCEEDED"
+      ? "GEMINI_QUOTA_EXCEEDED"
+      : result.error === "GEMINI_NOT_CONFIGURED"
+        ? "GEMINI_NOT_CONFIGURED"
+        : classifyVoiceError(result.error);
     voiceTelemetry.failure += 1;
-    voiceTelemetry.lastErrorClass = "TRANSCRIPTION_EXTRACTION_FAILED";
-    voiceTelemetry.lastLatencyMs = Date.now() - started;
+    voiceTelemetry.quota += errorClass === "GEMINI_QUOTA_EXCEEDED" ? 1 : 0;
+    voiceTelemetry.lastErrorClass = errorClass;
+    voiceTelemetry.lastLatencyMs = latencyMs;
     voiceTelemetry.lastModel = model;
     return {
       ok: false,
-      error: "TRANSCRIPTION_EXTRACTION_FAILED",
-      retryable: true,
+      error: errorClass,
+      retryable: errorClass !== "GEMINI_NOT_CONFIGURED",
       model,
-      latencyMs: Date.now() - started,
-      detail: String(error?.message || error).slice(0, 120)
+      latencyMs,
+      publicMessage: result.publicMessage || ""
     };
   }
+  const transcript = result.transcript || result.text || "";
+  const structured = brokerFieldsToVoiceStructured(result.brokerFields || {}, transcript);
+  voiceTelemetry.success += 1;
+  voiceTelemetry.lastLatencyMs = latencyMs;
+  voiceTelemetry.lastModel = model;
+  voiceTelemetry.lastErrorClass = "";
+  return {
+    ok: true,
+    structured,
+    transcript,
+    brokerFields: result.brokerFields || null,
+    fieldSources: result.fieldSources || {},
+    extractionMode: result.extractionMode || "gemini_audio_transcribe_adapter",
+    productionAi: Boolean(result.productionAi),
+    model,
+    latencyMs,
+    confidence: result.confidence || 0
+  };
 }
 
 export function voiceAnalyzeHttpErrorMessage(code = "") {
@@ -277,7 +198,7 @@ export function voiceAnalyzeHttpErrorMessage(code = "") {
     GEMINI_QUOTA_EXCEEDED: "تعذر تحليل التسجيل حاليًا. يمكنك إعادة المحاولة أو إكمال البيانات يدويًا.",
     GEMINI_API_FAILED: "تعذر تحليل التسجيل حاليًا. يمكنك إعادة المحاولة أو إكمال البيانات يدويًا.",
     GEMINI_NOT_CONFIGURED: "تعذر تحليل التسجيل حاليًا. يمكنك إكمال البيانات يدويًا.",
-    TRANSCRIPTION_EXTRACTION_FAILED: "تعذر تحليل التسجيل. يمكنك إعادة المحاولة أو إكمال البيانات يدويًا.",
+    TRANSCRIPTION_EXTRACTION_FAILED: "تعذر فهم التسجيل الصوتي. أعد التسجيل بوضوح أو أرسل التفاصيل كتابةً.",
     audio_empty: "التسجيل فارغ.",
     audio_too_large: "التسجيل كبير جدًا.",
     audio_mime_invalid: "نوع التسجيل غير مدعوم.",

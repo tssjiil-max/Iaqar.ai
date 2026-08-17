@@ -85,6 +85,7 @@ export function isBlockedListingPageText(text = "") {
 export function normalizeListingFetchUrl(raw, isPrivateOrLocalHost) {
   const text = cleanText(raw, 2000);
   if (!text) return "";
+  if (/^file:/i.test(text)) return "";
   try {
     const withProtocol = /^https?:\/\//i.test(text) ? text : `https://${text}`;
     const parsed = new URL(withProtocol);

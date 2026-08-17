@@ -51,6 +51,7 @@ import {
   fetchWithTimeout,
   persistIntake,
   resolveMediaListingText,
+  resolveAudioListingText,
   resolveUrlListingText,
   sanitizeFirestoreWrite,
   uploadSourceFile,
@@ -59,6 +60,7 @@ import {
 
 const EXTRACTION_TIMEOUT_MS = 40000;
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+const AUDIO_ACCEPT = "audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm";
 
 function $(id) {
   return document.getElementById(id);
@@ -102,15 +104,19 @@ function setImportMode(mode) {
   const urlPanel = $("importAdvertUrlPanel");
   const textPanel = $("importAdvertTextPanel");
   const imagePanel = $("importAdvertImagePanel");
+  const audioPanel = $("importAdvertAudioPanel");
   const switchUrl = $("importAdvertSwitchUrl");
   const switchText = $("importAdvertSwitchText");
   const switchImage = $("importAdvertSwitchImage");
+  const switchAudio = $("importAdvertSwitchAudio");
   if (urlPanel) urlPanel.hidden = mode !== "url";
   if (textPanel) textPanel.hidden = mode !== "text";
   if (imagePanel) imagePanel.hidden = mode !== "image";
+  if (audioPanel) audioPanel.hidden = mode !== "audio";
   if (switchUrl) switchUrl.hidden = mode === "url";
   if (switchText) switchText.hidden = mode === "text";
   if (switchImage) switchImage.hidden = mode === "image";
+  if (switchAudio) switchAudio.hidden = mode === "audio";
 }
 
 function openImportOverlay() {
@@ -129,6 +135,10 @@ function openImportOverlay() {
   if (imageInput) imageInput.value = "";
   const imageAnalyze = $("importAdvertImageAnalyzeBtn");
   if (imageAnalyze) imageAnalyze.hidden = true;
+  const audioInput = $("importAdvertAudioInput");
+  if (audioInput) audioInput.value = "";
+  const audioAnalyze = $("importAdvertAudioAnalyzeBtn");
+  if (audioAnalyze) audioAnalyze.hidden = true;
   overlay.hidden = false;
   document.body.style.overflow = "hidden";
 }
@@ -205,7 +215,7 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
       throw err;
     }
     sourceUrl = validated.normalizedUrl;
-    setImportStatus("جارٍ قراءة الإعلان");
+    setImportStatus("جاري قراءة الرابط");
     const resolved = await resolveUrlListingText(sourceUrl, office.officeId);
     sourceSite = resolveSourceSiteLabel(sourceUrl);
     const canonicalFromUrl = {
@@ -268,6 +278,7 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
       err.publicMessage = "صيغة الصورة غير مدعومة";
       throw err;
     }
+    setImportStatus("جاري تحليل الصورة");
     fileChecksumValue = await fileChecksum(file);
     const uploaded = await uploadSourceFile(office.officeId, `src_${fileChecksumValue.slice(0, 40)}`, file);
     mediaPath = uploaded.mediaPath || "";
@@ -303,6 +314,50 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
         mediaPath
       }
     };
+  } else if (mode === "audio") {
+    if (!file) {
+      const err = new Error("audio_missing");
+      err.publicMessage = "اختر تسجيلًا صوتيًا أولًا";
+      throw err;
+    }
+    const validated = validateAttachment(file);
+    if (!validated.ok || validated.sourceType !== "audio") {
+      const err = new Error("audio_invalid");
+      err.publicMessage = "صيغة التسجيل غير مدعومة";
+      throw err;
+    }
+    const mime = String(file.type || "").split(";")[0].trim().toLowerCase();
+    if (!AUDIO_ACCEPT.split(",").includes(mime)) {
+      const err = new Error("audio_type_invalid");
+      err.publicMessage = "صيغة التسجيل غير مدعومة";
+      throw err;
+    }
+    setImportStatus("جاري تفريغ الصوت");
+    fileChecksumValue = await fileChecksum(file);
+    const uploaded = await uploadSourceFile(office.officeId, `src_${fileChecksumValue.slice(0, 40)}`, file);
+    mediaPath = uploaded.mediaPath || "";
+    const audioResolved = await resolveAudioListingText(mediaPath, office.officeId, file);
+    if (!audioResolved.ok) {
+      const err = new Error(audioResolved.error || "audio_extract_failed");
+      err.publicMessage = audioResolved.publicMessage || "تعذر فهم التسجيل الصوتي. أعد التسجيل بوضوح أو أرسل التفاصيل كتابةً.";
+      throw err;
+    }
+    listingText = String(audioResolved.text || audioResolved.transcript || "").trim();
+    mediaExtractionMode = audioResolved.extractionMode || "gemini_audio_transcribe_adapter";
+    sourceSite = "تسجيل صوتي";
+    importSession = {
+      ...(importSession || {}),
+      audioAnalysis: {
+        brokerFields: audioResolved.brokerFields || null,
+        fieldSources: audioResolved.fieldSources || {},
+        analyzerProvider: audioResolved.analyzerProvider || "",
+        extractionMode: audioResolved.extractionMode || "",
+        extractionStatus: audioResolved.extractionStatus || "extracted",
+        confidence: audioResolved.confidence || 0,
+        mediaPath,
+        transcript: listingText
+      }
+    };
   }
 
   const prepared = await prepareOpportunityIntake({
@@ -311,7 +366,7 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     text: listingText,
     listingText,
     url: sourceUrl || undefined,
-    sourceType: sourceUrl ? "url" : (mode === "image" ? "image" : "text"),
+    sourceType: sourceUrl ? "url" : (mode === "image" ? "image" : mode === "audio" ? "audio" : "text"),
     fileChecksum: fileChecksumValue,
     mediaPath,
     fileName: file?.name || "",
@@ -324,10 +379,22 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
 
   const canonical = importSession?.canonical || null;
   const imageAnalysis = importSession?.imageAnalysis || null;
-  if (canonical || imageAnalysis) {
+  const audioAnalysis = importSession?.audioAnalysis || null;
+  if (canonical || imageAnalysis || audioAnalysis) {
     const merged = imageAnalysis
       ? mergeImageAnalysisWithCanonical(prepared.fields || {}, canonical || {}, imageAnalysis)
-      : mergeCanonicalListingFields(prepared.fields || {}, canonical || {});
+      : audioAnalysis?.brokerFields
+        ? {
+          fields: { ...(prepared.fields || {}), ...audioAnalysis.brokerFields },
+          fieldSources: audioAnalysis.fieldSources || {},
+          extractionMode: audioAnalysis.extractionMode || "",
+          extractionStatus: audioAnalysis.extractionStatus || "extracted",
+          classificationStatus: "confirmed",
+          analyzerProvider: audioAnalysis.analyzerProvider || "",
+          confidence: audioAnalysis.confidence || 0,
+          intake: importSession?.canonical || null
+        }
+        : mergeCanonicalListingFields(prepared.fields || {}, canonical || {});
     prepared.fields = merged.fields;
     prepared.extraction = {
       ...(prepared.extraction || {}),
@@ -413,6 +480,10 @@ function openImportReview() {
         setImportMode("text");
         const input = $("importAdvertTextInput");
         if (input) input.value = importSession.listingText || "";
+      } else if (importSession.mode === "image") {
+        setImportMode("image");
+      } else if (importSession.mode === "audio") {
+        setImportMode("audio");
       } else {
         setImportMode("image");
       }
@@ -426,12 +497,19 @@ async function runImportAnalysis(mode, payload = {}) {
   const analyzeButtons = [
     $("importAdvertAnalyzeBtn"),
     $("importAdvertTextAnalyzeBtn"),
-    $("importAdvertImageAnalyzeBtn")
+    $("importAdvertImageAnalyzeBtn"),
+    $("importAdvertAudioAnalyzeBtn")
   ];
   for (const btn of analyzeButtons) {
     if (btn) btn.disabled = true;
   }
-  setImportStatus("جارٍ قراءة الإعلان");
+  const statusByMode = {
+    url: "جاري قراءة الرابط",
+    text: "جارٍ قراءة الإعلان",
+    image: "جاري تحليل الصورة",
+    audio: "جاري تفريغ الصوت"
+  };
+  setImportStatus(statusByMode[mode] || "جارٍ قراءة الإعلان");
   try {
     const result = await analyzeImportInput({ mode, ...payload });
     if (result?.fallbackRequired) {
@@ -444,9 +522,11 @@ async function runImportAnalysis(mode, payload = {}) {
       return;
     }
     const statusMsg = importSession?.canonical?.extractionStatus === "extracted"
-      ? "تم استخراج بيانات الإعلان"
+      || importSession?.imageAnalysis?.extractionStatus === "extracted"
+      || importSession?.audioAnalysis?.extractionStatus === "extracted"
+      ? "تمت قراءة البيانات"
       : importSession?.canonical?.classificationStatus === "needs_review"
-        ? "توجد بيانات متعارضة وتحتاج مراجعة"
+        ? "نحتاج معلومات إضافية"
         : "";
     setImportStatus(statusMsg);
     openImportReview();
@@ -717,6 +797,7 @@ function bootImportAdvertUi() {
 
   $("importAdvertSwitchText")?.addEventListener("click", () => setImportMode("text"));
   $("importAdvertSwitchImage")?.addEventListener("click", () => setImportMode("image"));
+  $("importAdvertSwitchAudio")?.addEventListener("click", () => setImportMode("audio"));
   $("importAdvertSwitchUrl")?.addEventListener("click", () => setImportMode("url"));
 
   $("importAdvertAnalyzeBtn")?.addEventListener("click", () => {
@@ -746,6 +827,25 @@ function bootImportAdvertUi() {
   $("importAdvertImageAnalyzeBtn")?.addEventListener("click", () => {
     const file = importSession?.pendingImageFile;
     void runImportAnalysis("image", { file });
+  });
+
+  const audioInput = $("importAdvertAudioInput");
+  $("importAdvertAudioChoose")?.addEventListener("click", () => audioInput?.click());
+  audioInput?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    const analyzeBtn = $("importAdvertAudioAnalyzeBtn");
+    if (!file) {
+      if (analyzeBtn) analyzeBtn.hidden = true;
+      return;
+    }
+    if (analyzeBtn) analyzeBtn.hidden = false;
+    importSession = importSession || {};
+    importSession.pendingAudioFile = file;
+  });
+  $("importAdvertAudioAnalyzeBtn")?.addEventListener("click", () => {
+    const file = importSession?.pendingAudioFile;
+    void runImportAnalysis("audio", { file });
   });
 
   $("importDuplicateClose")?.addEventListener("click", () => closeDuplicateOverlay());

@@ -4,101 +4,40 @@
  */
 
 import { bytesToBase64, resolveGeminiModel } from "./gemini-voice-service.js";
-import { mapGeminiToOpportunityFields, normalizeGeminiVoicePayload } from "../../public/js/gemini-voice-intake-domain.js";
 import { safeText } from "../../public/js/opportunity-intake-domain.js";
-
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+import {
+  buildGeminiIntakeGenerationConfig,
+  geminiIntakeResponseJsonSchema,
+  mapVisionPayloadToBrokerFields,
+  sanitizeGeminiIntakeResponse
+} from "./gemini-intake-schema.mjs";
+import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
+import { prepareListingImageForAnalysis } from "./listing-image-prepare.mjs";
 
 export const ANALYZER_PROVIDERS = Object.freeze({
   GEMINI_VISION: "gemini_vision",
   WORKERS_AI_VISION: "workers_ai_vision"
 });
 
+export const IMAGE_READ_ERROR_AR = "تعذر قراءة الصورة. أرسل صورة أوضح أو لقطة شاشة كاملة للإعلان.";
+
 export function listingImageResponseJsonSchema() {
-  return {
-    type: "object",
-    properties: {
-      transactionType: { type: "string", nullable: true },
-      opportunityKind: { type: "string", nullable: true },
-      propertyType: { type: "string", nullable: true },
-      city: { type: "string", nullable: true },
-      district: { type: "string", nullable: true },
-      salePrice: { type: "number", nullable: true },
-      annualRent: { type: "number", nullable: true },
-      area: { type: "number", nullable: true },
-      rooms: { type: "number", nullable: true },
-      livingRooms: { type: "number", nullable: true },
-      bathrooms: { type: "number", nullable: true },
-      streetWidth: { type: "number", nullable: true },
-      facade: { type: "string", nullable: true },
-      propertyAge: { type: "string", nullable: true },
-      usage: { type: "string", nullable: true },
-      advertiserPhone: { type: "string", nullable: true },
-      description: { type: "string", nullable: true },
-      needsReview: {
-        type: "array",
-        nullable: true,
-        items: { type: "string" }
-      }
-    }
-  };
+  return geminiIntakeResponseJsonSchema();
 }
 
 function buildImageSystemPrompt() {
   return [
     "You extract structured real-estate listing data from Arabic property advertisement screenshots for IAQAR.AI.",
     "Read only text clearly visible in the image.",
-    "Return JSON only. Use null for any field not explicitly visible.",
-    "Never guess price, phone, district, or contact unless clearly shown.",
-    "transactionType: sale or rent when visible.",
-    "opportunityKind: OFFER for listings for sale/rent; REQUEST only if clearly a buyer/tenant request.",
-    "propertyType: use Arabic label (فيلا, شقة, أرض, etc.).",
-    "facade: cardinal direction in Arabic (غربي, شرقي, etc.) when shown.",
+    "Return JSON only matching the schema. Use null for any field not explicitly visible.",
+    "Never guess price, phone, district, city, or property type.",
+    "opportunityKind: OFFER for listings; REQUEST only if clearly a buyer/tenant request.",
+    "purpose: SALE or RENT when visible.",
+    "propertyType: Arabic label (فيلا, شقة, أرض, etc.).",
+    "facade: cardinal direction in Arabic (غرب, شرق, etc.) when shown.",
     "propertyAge: جديد or age text when shown.",
-    "usage: سكني or تجاري when shown."
+    "Include rawText with visible listing text and evidence map per field."
   ].join("\n");
-}
-
-function parseGeminiJsonResponse(responseJson) {
-  const text = responseJson?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    .trim();
-  if (!text) throw new Error("GEMINI_EMPTY_RESPONSE");
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("GEMINI_PARSE_FAILED");
-    parsed = JSON.parse(match[0]);
-  }
-  return parsed;
-}
-
-export function mapVisionStructuredToBrokerFields(structured = {}) {
-  const payload = normalizeGeminiVoicePayload(structured);
-  const brokerFields = mapGeminiToOpportunityFields(structured);
-  if (structured.opportunityKind) {
-    brokerFields.opportunityKind = safeText(structured.opportunityKind, 20).toUpperCase();
-  }
-  if (structured.livingRooms != null) {
-    brokerFields.livingRoom = Number(structured.livingRooms);
-  }
-  if (structured.streetWidth != null) {
-    brokerFields.streetWidth = Number(structured.streetWidth);
-  }
-  if (structured.facade) {
-    brokerFields.facade = safeText(structured.facade, 40);
-    brokerFields.direction = brokerFields.facade;
-  }
-  if (structured.propertyAge) {
-    brokerFields.propertyAge = safeText(structured.propertyAge, 40);
-  }
-  if (structured.usage) {
-    brokerFields.usage = safeText(structured.usage, 40);
-  }
-  return brokerFields;
 }
 
 export function buildFieldSourcesFromVision(brokerFields = {}, analyzerProvider = "") {
@@ -109,6 +48,12 @@ export function buildFieldSourcesFromVision(brokerFields = {}, analyzerProvider 
     sources[key] = provider;
   }
   return sources;
+}
+
+export function mapVisionStructuredToBrokerFields(structured = {}) {
+  const brokerFields = mapVisionPayloadToBrokerFields(structured);
+  if (structured.usage) brokerFields.usage = safeText(structured.usage, 40);
+  return brokerFields;
 }
 
 export function hasExtractableListingFields(brokerFields = {}) {
@@ -166,73 +111,57 @@ export async function analyzeListingImageWithGemini({
   env,
   imageBytes,
   mimeType,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  requestId = ""
 } = {}) {
-  const apiKey = String(env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) {
-    return { ok: false, error: "GEMINI_NOT_CONFIGURED", retryable: false };
-  }
   const model = resolveGeminiModel(env);
-  const base64 = bytesToBase64(imageBytes instanceof Uint8Array ? imageBytes : new Uint8Array(imageBytes));
-  const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const started = Date.now();
-  try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildImageSystemPrompt() }] },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: "Extract structured listing data from this Arabic real-estate advertisement image. Return JSON only." },
-            { inline_data: { mime_type: mimeType, data: base64 } }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          responseJsonSchema: listingImageResponseJsonSchema()
-        }
-      })
-    });
-    const bodyText = await response.text();
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: response.status === 429 ? "GEMINI_QUOTA_EXCEEDED" : "GEMINI_API_FAILED",
-        retryable: true,
-        model,
-        latencyMs: Date.now() - started
-      };
-    }
-    const json = JSON.parse(bodyText);
-    const structured = parseGeminiJsonResponse(json);
-    const brokerFields = mapVisionStructuredToBrokerFields(structured);
-    const rawText = buildListingTextFromBrokerFields(brokerFields)
-      || safeText(structured.description, 12000);
-    return {
-      ok: true,
-      structured,
-      brokerFields,
-      rawText,
-      model,
-      analyzerProvider: ANALYZER_PROVIDERS.GEMINI_VISION,
-      extractionMode: "gemini_vision_adapter",
-      confidence: hasExtractableListingFields(brokerFields) ? 75 : 35,
-      latencyMs: Date.now() - started,
-      productionAi: true
-    };
-  } catch (error) {
+  const prepared = await prepareListingImageForAnalysis(imageBytes, mimeType);
+  if (!prepared.ok) {
+    return { ok: false, error: prepared.error, retryable: false, model };
+  }
+  const analysisBytes = prepared.analysisBytes;
+  const analysisMime = prepared.analysisMimeType;
+  const base64 = bytesToBase64(analysisBytes);
+  const result = await callGeminiGenerateContent({
+    env,
+    model,
+    systemInstruction: buildImageSystemPrompt(),
+    userParts: [
+      { text: "Extract structured listing data from this Arabic real-estate advertisement image. Return JSON only." },
+      { inline_data: { mime_type: analysisMime, data: base64 } }
+    ],
+    generationConfig: buildGeminiIntakeGenerationConfig(listingImageResponseJsonSchema()),
+    fetchImpl,
+    requestId,
+    sourceType: "image",
+    mimeType: analysisMime,
+    fileSize: analysisBytes.length
+  });
+  if (!result.ok) {
     return {
       ok: false,
-      error: "GEMINI_VISION_FAILED",
-      retryable: true,
+      error: result.error === "GEMINI_QUOTA_EXCEEDED" ? result.error : "GEMINI_VISION_FAILED",
+      retryable: Boolean(result.retryable),
       model,
-      latencyMs: Date.now() - started,
-      detail: String(error?.message || error).slice(0, 120)
+      latencyMs: result.latencyMs
     };
   }
+  const structured = sanitizeGeminiIntakeResponse(result.parsed || {});
+  const brokerFields = mapVisionStructuredToBrokerFields(structured);
+  const rawText = safeText(structured.rawText, 12000)
+    || buildListingTextFromBrokerFields(brokerFields);
+  return {
+    ok: true,
+    structured,
+    brokerFields,
+    rawText,
+    model,
+    analyzerProvider: ANALYZER_PROVIDERS.GEMINI_VISION,
+    extractionMode: "gemini_vision_adapter",
+    confidence: hasExtractableListingFields(brokerFields) ? Math.round((structured.confidence ?? 0.75) * 100) : 35,
+    latencyMs: result.latencyMs,
+    productionAi: true
+  };
 }
 
 export async function analyzeListingImageWithWorkersAi({
@@ -308,6 +237,7 @@ export async function extractListingFromImage({
     return {
       ok: false,
       error: workers.error || gemini.error || "media_ai_failed",
+      publicMessage: IMAGE_READ_ERROR_AR,
       geminiError: gemini.error || "",
       workersError: workers.error || ""
     };
@@ -348,7 +278,9 @@ export function mediaExtractPublicMessage(error = "", detail = {}) {
     WORKERS_AI_VISION_FAILED: "تعذر تحليل الصورة عبر Workers AI. حاول صورة أوضح أو الصق نص الإعلان.",
     GEMINI_VISION_FAILED: "تعذر تحليل الصورة عبر Gemini. جارٍ المحاولة بالبديل أو أكمل يدويًا.",
     GEMINI_NOT_CONFIGURED: "Gemini غير مهيأ. سيتم استخدام Workers AI.",
-    empty_listing_text: "لم نقرأ نصًا كافيًا من الصورة. حاول صورة أوضح أو الصق نص الإعلان.",
+    empty_listing_text: IMAGE_READ_ERROR_AR,
+    invalid_image: IMAGE_READ_ERROR_AR,
+    empty_image: IMAGE_READ_ERROR_AR,
     unsupported_media: "صيغة الصورة غير مدعومة.",
     invalid_media_target: "مسار تخزين الصورة غير صالح.",
     media_type_mismatch: "نوع الملف لا يطابق الصورة المرفوعة.",
@@ -358,10 +290,10 @@ export function mediaExtractPublicMessage(error = "", detail = {}) {
     media_path_missing: "لم يُحفظ مسار الصورة. أعد رفع الصورة."
   };
   if (detail?.geminiError && detail?.workersError) {
-    return "تعذر تحليل الصورة بعد محاولة Gemini وWorkers AI. أرفق صورة أوضح أو الصق نص الإعلان.";
+    return IMAGE_READ_ERROR_AR;
   }
   if (map[code]) return map[code];
-  return "تعذر تحليل صورة الإعلان";
+  return IMAGE_READ_ERROR_AR;
 }
 
 export const __test = {

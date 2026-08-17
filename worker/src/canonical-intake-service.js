@@ -21,6 +21,8 @@ import { readinessFieldsForRecord } from "./opportunity-patch-service.js";
 import { listMissingOpportunityFields } from "./operations-service.js";
 import { mapGeminiToOpportunityFields } from "../../public/js/gemini-voice-intake-domain.js";
 import { safeText } from "../../public/js/opportunity-intake-domain.js";
+import { extractListingFromAudio } from "./gemini-audio-intake.mjs";
+import { extractListingFromImage } from "./listing-image-vision-service.mjs";
 
 const MEDIA_REF_TTL_MS = 15 * 60 * 1000;
 
@@ -358,14 +360,15 @@ export async function runInlineCanonicalAnalysis(parts, ctx, officeId) {
           continue;
         }
         const parsed = ctx.parseRealEstateMessage(vision.text || "");
+        const brokerFields = vision.brokerFields || {};
         outputs.push({
           contentType: part.contentType,
           rawText: vision.text || "",
           transcript: "",
-          extractedFields: mapParsedToUnifiedFields(parsed),
-          confidence: Math.max(Number(parsed.confidence || 0), 40),
-          extractionMode: vision.extractionMode || "workers_ai_vision_adapter",
-          productionAi: false
+          extractedFields: mapParsedToUnifiedFields(parsed, brokerFields),
+          confidence: Math.max(Number(parsed.confidence || 0), Number(vision.confidence || 0), 40),
+          extractionMode: vision.extractionMode || "gemini_vision_adapter",
+          productionAi: Boolean(vision.productionAi)
         });
         continue;
       }
@@ -378,15 +381,15 @@ export async function runInlineCanonicalAnalysis(parts, ctx, officeId) {
         }
         const transcript = safeText(audio.transcript || audio.text || "", 12000);
         const parsed = ctx.parseRealEstateMessage(transcript);
-        const structured = mapGeminiToOpportunityFields(audio.structured || {});
+        const brokerFields = audio.brokerFields || mapGeminiToOpportunityFields(audio.structured || {});
         outputs.push({
           contentType: part.contentType,
           rawText: transcript,
           transcript,
-          extractedFields: mapParsedToUnifiedFields(parsed, structured),
+          extractedFields: mapParsedToUnifiedFields(parsed, brokerFields),
           confidence: Math.max(Number(parsed.confidence || 0), Number(audio.confidence || 0)),
-          extractionMode: audio.extractionMode || "gemini_voice_adapter",
-          productionAi: false
+          extractionMode: audio.extractionMode || "gemini_audio_transcribe_adapter",
+          productionAi: Boolean(audio.productionAi)
         });
         continue;
       }
@@ -572,39 +575,48 @@ export async function retryCanonicalIntake(body, ctx) {
   });
 }
 
-export async function extractAudioFromMediaPath(mediaPath, officeId, env, bucket) {
+export async function extractAudioFromMediaPath(mediaPath, officeId, env, bucket, parseRealEstateMessage) {
   const object = await bucket.get(mediaPath);
   if (!object) return { ok: false, error: "media_not_found" };
   const metadata = object.customMetadata || {};
   if (metadata.officeId && metadata.officeId !== officeId) {
     return { ok: false, error: "media_scope_mismatch" };
   }
+  const contentType = String(object.httpMetadata?.contentType || "audio/mp4").split(";")[0].toLowerCase();
+  if (!["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/webm", "audio/x-wav"].includes(contentType)) {
+    return { ok: false, error: "unsupported_media" };
+  }
   const bytes = await object.arrayBuffer();
-  const mimeType = String(object.httpMetadata?.contentType || "audio/mp4").split(";")[0];
-  const result = await analyzeVoiceWithGemini({
+  if (!bytes.byteLength) return { ok: false, error: "audio_empty" };
+  const result = await extractListingFromAudio({
     env,
     audioBytes: bytes,
-    mimeType,
-    context: "office"
+    mimeType: contentType,
+    parseRealEstateMessage
   });
-  if (!result.ok) return { ok: false, error: result.error || "audio_ai_failed" };
-  const structured = result.structured || {};
-  const transcript = safeText(
-    structured.description || structured.summary || structured.transcript || "",
-    12000
-  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error || "audio_ai_failed",
+      publicMessage: result.publicMessage || ""
+    };
+  }
+  const transcript = safeText(result.transcript || result.text || "", 12000);
   return {
     ok: true,
     transcript,
     text: transcript,
-    structured,
-    confidence: Number(structured.confidence || 0),
-    extractionMode: result.extractionMode || "gemini_voice_adapter",
+    structured: result.brokerFields || {},
+    brokerFields: result.brokerFields || null,
+    fieldSources: result.fieldSources || {},
+    confidence: Number(result.confidence || 0),
+    extractionMode: result.extractionMode || "gemini_audio_transcribe_adapter",
+    extractionStatus: result.extractionStatus || "extracted",
     productionAi: Boolean(result.productionAi)
   };
 }
 
-export async function extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract) {
+export async function extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract, parseRealEstateMessage) {
   const object = await bucket.get(mediaPath);
   if (!object) return { ok: false, error: "media_not_found" };
   const metadata = object.customMetadata || {};
@@ -615,36 +627,35 @@ export async function extractImageTextFromMediaPath(mediaPath, officeId, env, bu
   if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
     return { ok: false, error: "unsupported_media" };
   }
-  if (!env.AI) return { ok: false, error: "media_extraction_unavailable" };
-  const bytes = await object.arrayBuffer();
-  const imageBytes = new Uint8Array(bytes);
-  let binary = "";
-  for (const byte of imageBytes) binary += String.fromCharCode(byte);
-  const dataUrl = `data:${contentType};base64,${btoa(binary)}`;
-  const visionInput = {
-    messages: [{
-      role: "user",
-      content: [
-        { type: "text", text: "اقرأ النص العربي الظاهر في الصورة حرفياً فقط." },
-        { type: "image_url", image_url: { url: dataUrl } }
-      ]
-    }],
-    max_tokens: 1024
-  };
-  try {
-    const aiResult = await runLlamaVisionExtract(env, visionInput);
-    const rawText = typeof aiResult === "string"
-      ? aiResult
-      : String(aiResult?.response || aiResult?.result?.response || aiResult?.result || "");
-    const text = safeText(rawText, 12000);
-    if (!text) return { ok: false, error: "empty_listing_text" };
-    return {
-      ok: true,
-      text,
-      extractionMode: "workers_ai_vision_adapter",
-      productionAi: false
-    };
-  } catch (error) {
-    return { ok: false, error: String(error?.message || "vision_failed") };
+  if (!env.AI && !String(env.GEMINI_API_KEY || "").trim()) {
+    return { ok: false, error: "media_extraction_unavailable" };
   }
+  const bytes = await object.arrayBuffer();
+  const vision = await extractListingFromImage({
+    env,
+    imageBytes: new Uint8Array(bytes),
+    mimeType: contentType,
+    runLlamaVisionExtract,
+    parseRealEstateMessage
+  });
+  if (!vision.ok) {
+    return {
+      ok: false,
+      error: vision.error || "media_ai_failed",
+      publicMessage: vision.publicMessage || ""
+    };
+  }
+  const text = safeText(vision.text || "", 12000);
+  if (!text && !vision.brokerFields) return { ok: false, error: "empty_listing_text" };
+  return {
+    ok: true,
+    text,
+    brokerFields: vision.brokerFields || null,
+    fieldSources: vision.fieldSources || {},
+    analyzerProvider: vision.analyzerProvider || "",
+    confidence: Number(vision.confidence || 0),
+    extractionMode: vision.extractionMode || "gemini_vision_adapter",
+    extractionStatus: vision.extractionStatus || "extracted",
+    productionAi: Boolean(vision.productionAi)
+  };
 }

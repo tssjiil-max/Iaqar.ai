@@ -180,10 +180,10 @@ export function importStatusMessageForExtraction({ extractionStatus, classificat
     return FALLBACK_URL_MESSAGE;
   }
   if (classificationStatus === "needs_review" || extractionStatus === "needs_review") {
-    return "توجد بيانات متعارضة وتحتاج مراجعة";
+    return "نحتاج معلومات إضافية";
   }
   if (extractionStatus === "extracted") {
-    return "تم استخراج بيانات الإعلان";
+    return "تمت قراءة البيانات";
   }
   return "جارٍ قراءة الإعلان";
 }

@@ -89,12 +89,17 @@ import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
   resolveGeminiModel,
-  validateVoiceAudio
+  validateVoiceAudio,
+  voiceAnalyzeHttpErrorMessage
 } from "./gemini-voice-service.js";
 import {
   extractListingFromImage,
   mediaExtractPublicMessage
 } from "./listing-image-vision-service.mjs";
+import {
+  extractListingFromAudio,
+  AUDIO_TRANSCRIBE_ERROR_AR
+} from "./gemini-audio-intake.mjs";
 import { resolveCanonicalListingUrl } from "./canonical-listing-intake.mjs";
 import { normalizeListingFetchUrl as adapterNormalizeListingFetchUrl } from "./listing-site-adapters.mjs";
 import {
@@ -344,6 +349,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/pipeline/media-extract") {
         return await handlePipelineMediaExtract(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/pipeline/audio-extract") {
+        return await handlePipelineAudioExtract(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/pipeline/voice-analyze") {
@@ -5399,6 +5408,7 @@ function isPrivateOrLocalHost(hostname) {
 function normalizeListingFetchUrl(raw) {
   const text = cleanText(raw, 2000);
   if (!text) return "";
+  if (/^file:/i.test(text)) return "";
   try {
     const withProtocol = /^https?:\/\//i.test(text) ? text : `https://${text}`;
     const parsed = new URL(withProtocol);
@@ -5772,9 +5782,9 @@ function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToke
     opportunityPatchToFirestoreFields,
     LIFECYCLE_STATUS,
     extractImageTextFromMediaPath: (mediaPath, officeId) =>
-      extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract),
+      extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract, parseRealEstateMessage),
     extractAudioFromMediaPath: (mediaPath, officeId) =>
-      extractAudioFromMediaPath(mediaPath, officeId, env, bucket)
+      extractAudioFromMediaPath(mediaPath, officeId, env, bucket, parseRealEstateMessage)
   };
 }
 
@@ -5815,7 +5825,9 @@ async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute
     env,
     audioBytes,
     mimeType: validation.mimeType,
-    context
+    context,
+    parseRealEstateMessage,
+    requestId
   });
 
   if (!result.ok) {
@@ -5823,6 +5835,7 @@ async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute
     return jsonResponse({
       ok: false,
       error: result.error,
+      publicMessage: result.publicMessage || voiceAnalyzeHttpErrorMessage(result.error),
       retryable: Boolean(result.retryable),
       model: result.model || resolveGeminiModel(env),
       telemetry: getVoiceTelemetrySnapshot(),
@@ -5833,10 +5846,14 @@ async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute
   return jsonResponse({
     ok: true,
     structured: result.structured,
+    transcript: result.transcript || "",
+    brokerFields: result.brokerFields || null,
+    fieldSources: result.fieldSources || {},
     extractionMode: result.extractionMode,
     productionAi: result.productionAi,
     model: result.model,
     latencyMs: result.latencyMs,
+    confidence: result.confidence || 0,
     telemetry: getVoiceTelemetrySnapshot(),
     requestId
   });
@@ -5961,6 +5978,92 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     externalListingId: cleanText(body.externalListingId, 120),
     fileName,
     contentType,
+    requestId
+  });
+}
+
+async function handlePipelineAudioExtract(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  const mediaPath = cleanText(body.mediaPath, 500);
+  const fileName = cleanText(body.fileName, 240);
+  const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
+  if (!officeId || !mediaPath) throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  if (!mediaPath.startsWith(`opportunity-sources/${officeId}/`)) {
+    throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  if (!env.AI && !String(env.GEMINI_API_KEY || "").trim()) {
+    return jsonResponse({
+      ok: false,
+      error: "media_extraction_unavailable",
+      publicMessage: AUDIO_TRANSCRIBE_ERROR_AR,
+      requestId
+    }, 503);
+  }
+
+  const bucket = requireMediaBucket(env);
+  const object = await bucket.get(mediaPath);
+  if (!object) {
+    return jsonResponse({ ok: false, error: "media_not_found", publicMessage: AUDIO_TRANSCRIBE_ERROR_AR, requestId }, 404);
+  }
+  const metadata = object.customMetadata || {};
+  if (metadata.officeId && metadata.officeId !== officeId) {
+    return jsonResponse({ ok: false, error: "media_scope_mismatch", publicMessage: AUDIO_TRANSCRIBE_ERROR_AR, requestId }, 403);
+  }
+  if (metadata.sourceType && metadata.sourceType !== "audio") {
+    throw appError("unsupported_media", 415, "هذا المسار مخصص لاستخراج الصوت");
+  }
+  const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
+  const contentType = storedContentType || requestedContentType;
+  const validation = validateVoiceAudio({
+    byteSize: object.size || 0,
+    mimeType: contentType
+  });
+  if (!validation.ok) {
+    return jsonResponse({
+      ok: false,
+      error: validation.error,
+      publicMessage: voiceAnalyzeHttpErrorMessage(validation.error),
+      requestId
+    }, 422);
+  }
+
+  const bytes = await object.arrayBuffer();
+  const audio = await extractListingFromAudio({
+    env,
+    audioBytes: bytes,
+    mimeType: validation.mimeType,
+    parseRealEstateMessage,
+    requestId
+  });
+  if (!audio.ok) {
+    return jsonResponse({
+      ok: false,
+      error: audio.error || "audio_transcribe_failed",
+      publicMessage: audio.publicMessage || AUDIO_TRANSCRIBE_ERROR_AR,
+      geminiError: audio.geminiError || "",
+      workersError: audio.workersError || "",
+      requestId
+    }, 422);
+  }
+
+  const transcript = cleanText(audio.transcript || audio.text, 12000);
+  return jsonResponse({
+    ok: true,
+    text: transcript,
+    transcript,
+    textLength: transcript.length,
+    brokerFields: audio.brokerFields || null,
+    fieldSources: audio.fieldSources || {},
+    analyzerProvider: audio.analyzerProvider || "",
+    extractionMode: audio.extractionMode || "gemini_audio_transcribe_adapter",
+    extractionStatus: audio.extractionStatus || "extracted",
+    confidence: Number(audio.confidence || 0),
+    productionAi: Boolean(audio.productionAi),
+    mediaPath,
+    fileName,
+    contentType: validation.mimeType,
     requestId
   });
 }
