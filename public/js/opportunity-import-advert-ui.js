@@ -12,6 +12,7 @@ import {
   buildImportReviewDefaults,
   importReviewValuesToBrokerFields
 } from "./import-field-normalization-domain.js";
+import { buildImportSimplifiedReviewDefaults, importSimplifiedReviewValuesToBrokerFields } from "./import-advert-review-domain.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
@@ -369,11 +370,11 @@ function openImportReview() {
   if (!importSession?.prepared) return;
   const prepared = importSession.prepared;
   const fields = prepared.fields || {};
-  const reviewDefaults = buildImportReviewDefaults(fields, importSession.listingText, {
+  const reviewDefaults = buildImportSimplifiedReviewDefaults(fields, importSession.listingText, {
     extended: prepared.extraction?.extended,
     needsReview: prepared.extraction?.needsReview,
     listingTitle: importSession.canonical?.listingTitle || ""
-  });
+  }, currentOffice() || {});
   const summaryRecord = { ...fields, ...importReadinessPresentation(fields) };
   const importSummary = buildImportReadinessSummary(summaryRecord);
   const provenanceSummary = buildImportProvenanceSummary({
@@ -395,11 +396,12 @@ function openImportReview() {
     prepared,
     reviewDefaults
   }, saveImportedAdvert, {
-    title: "مراجعة الإعلان المستورد",
-    subtitle: "عدّل البيانات المستخرجة ثم احفظ الإعلان في بنك الفرص.",
+    title: "فرصة",
+    subtitle: "راجع البيانات الأساسية ثم احفظ الفرصة في بنك الفرص.",
     approveLabel,
     importSummary: [importSummary, provenanceSummary, missingSummary].filter(Boolean).join(" — "),
     sourceUrl: importSession.sourceUrl || "",
+    importSimplifiedReview: true,
     importPlainLocationFields: true,
     showReanalyze: true,
     onReanalyze: () => {
@@ -623,7 +625,9 @@ async function saveImportedAdvert(brokerExtras, review, advertiser = {}) {
 
   const brokerFields = brokerExtras?.rawCity != null
     ? brokerExtras
-    : importReviewValuesToBrokerFields(review);
+    : (review?.importSimplifiedReview
+      ? importSimplifiedReviewValuesToBrokerFields(review)
+      : importReviewValuesToBrokerFields(review));
   const criteria = {
     officeId: office.officeId,
     sourceUrl: importSession.sourceUrl,

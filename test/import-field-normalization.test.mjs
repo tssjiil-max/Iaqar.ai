@@ -15,17 +15,18 @@ import {
   sanitizeImportFieldText,
   stripLeadingHayPrefix
 } from "../public/js/import-field-normalization-domain.js";
+import { buildImportSimplifiedReviewDefaults } from "../public/js/import-advert-review-domain.js";
 
 const reviewUi = readRepositoryFile("public", "js", "opportunity-review.js");
 const importUi = readRepositoryFile("public", "js", "opportunity-import-advert-ui.js");
 
-test("import review uses plain text fields instead of catalog dropdowns", () => {
-  assert.ok(reviewUi.includes("importPlainLocationFields"));
+test("import review uses simplified plain text fields without catalog dropdowns", () => {
+  assert.ok(reviewUi.includes("importSimplifiedReview"));
   assert.ok(reviewUi.includes('plainTextField("rawCityText"'));
   assert.ok(reviewUi.includes('plainTextField("rawNeighborhoodText"'));
   assert.ok(reviewUi.includes('plainTextField("rawPropertyTypeText"'));
-  assert.ok(importUi.includes("importPlainLocationFields: true"));
-  assert.ok(importUi.includes("buildImportReviewDefaults"));
+  assert.ok(importUi.includes("importSimplifiedReview: true"));
+  assert.ok(importUi.includes("buildImportSimplifiedReviewDefaults"));
 });
 
 test("strip leading حي and collapse spaces in neighborhood raw text", () => {
@@ -88,6 +89,17 @@ test("buildImportReviewDefaults pre-fills plain text from extraction", async () 
   assert.match(defaults.rawCityText, /المدينة المنورة/);
   assert.match(defaults.rawPropertyTypeText, /فيلا/);
   assert.match(defaults.rawNeighborhoodText, /الرانوناء/);
+});
+
+test("buildImportSimplifiedReviewDefaults applies office city fallback", () => {
+  const defaults = buildImportSimplifiedReviewDefaults(
+    { opportunityKind: "OFFER", purpose: "SALE", propertyType: "فيلا" },
+    "",
+    {},
+    { city: "المدينة المنورة" }
+  );
+  assert.equal(defaults.importSimplifiedReview, true);
+  assert.match(defaults.rawCityText, /المدينة المنورة/);
 });
 
 test("importReviewValuesToBrokerFields stores raw and canonical pairs", () => {

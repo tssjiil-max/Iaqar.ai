@@ -30,6 +30,17 @@ import {
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
 import { importReviewValuesToBrokerFields } from "./import-field-normalization-domain.js";
+import {
+  IMPORT_EXTRA_FIELD_DEFS,
+  IMPORT_OPPORTUNITY_KINDS,
+  IMPORT_RECORD_LABEL,
+  classifyImportPropertyType,
+  evaluateImportReviewSaveMinimum,
+  importSimplifiedReviewValuesToBrokerFields,
+  resolveImportOperationTypeId,
+  resolveImportPriceFieldLabel,
+  resolveImportPrimaryInfoFields
+} from "./import-advert-review-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -191,7 +202,244 @@ function renderAdvertiserSection(defaults) {
   `;
 }
 
+function importKindRadiosMarkup(selectedKind = "OFFER") {
+  const kind = String(selectedKind || "OFFER").toUpperCase() === "REQUEST" ? "REQUEST" : "OFFER";
+  const options = IMPORT_OPPORTUNITY_KINDS.map((item) => {
+    const checked = item.id === kind ? "checked" : "";
+    return `<label class="import-kind-option">
+      <input type="radio" name="opportunityKind" value="${item.id}" ${checked}>
+      <span>${escapeHtml(item.label)}</span>
+    </label>`;
+  }).join("");
+  return `
+    <fieldset class="review-field import-kind-field">
+      <legend>نوع الفرصة</legend>
+      <div class="import-kind-options">${options}</div>
+    </fieldset>
+  `;
+}
+
+function importExtraFieldsMarkup(extraValues = {}) {
+  const fields = IMPORT_EXTRA_FIELD_DEFS.map((field) => {
+    const value = extraValues[field.name] ?? "";
+    const display = value === "" || value == null ? "" : String(value);
+    if (field.type === "textarea") {
+      return `
+        <label class="review-field import-extra-field">
+          <span>${escapeHtml(field.label)}</span>
+          <textarea name="${field.name}" rows="3" maxlength="2000" autocomplete="off">${escapeHtml(display)}</textarea>
+        </label>
+      `;
+    }
+    const inputMode = field.type === "number" ? ' inputmode="decimal"' : "";
+    const inputType = field.type === "number" ? "number" : "text";
+    return `
+      <label class="review-field import-extra-field">
+        <span>${escapeHtml(field.label)}</span>
+        <input name="${field.name}" type="${inputType}" value="${escapeHtml(display)}" maxlength="120" autocomplete="off"${inputMode}>
+      </label>
+    `;
+  }).join("");
+  return `
+    <details class="import-extra-details">
+      <summary>تفاصيل إضافية</summary>
+      <div class="import-extra-fields">${fields}</div>
+    </details>
+  `;
+}
+
+function renderImportPriceFieldMarkup(defaults = {}) {
+  const operationTypeId = defaults.operationTypeId
+    || resolveImportOperationTypeId({
+      opportunityKind: defaults.opportunityKind,
+      purpose: defaults.purpose || defaults.extractedSnapshot?.purpose || ""
+    });
+  const mode = reviewTransactionMode(operationTypeId, {
+    purpose: defaults.purpose || defaults.extractedSnapshot?.purpose || "",
+    opportunityKind: defaults.opportunityKind || defaults.extractedSnapshot?.opportunityKind || ""
+  });
+  const label = resolveImportPriceFieldLabel(operationTypeId, defaults.opportunityKind);
+  const name = mode === "budget"
+    ? "budget"
+    : mode === "rent"
+      ? "annualRent"
+      : mode === "investment"
+        ? "investmentValue"
+        : "salePrice";
+  const value = defaults[name] ?? "";
+  const display = value === "" || value == null ? "" : String(value);
+  return `
+    <input type="hidden" name="operationTypeId" value="${escapeHtml(operationTypeId)}">
+    <label class="review-field import-price-field">
+      <span>${escapeHtml(label)}</span>
+      <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal" autocomplete="off">
+    </label>
+  `;
+}
+
+function renderImportPrimaryInfoMarkup(defaults = {}) {
+  const propertyType = defaults.rawPropertyTypeText || defaults.propertyTypeDisplay || "";
+  const primaryFields = resolveImportPrimaryInfoFields(propertyType, defaults);
+  return primaryFields.map((field) => {
+    const value = defaults[field.name] ?? "";
+    const display = value === "" || value == null ? "" : String(value);
+    const optionalHint = field.optional ? ' <small class="review-optional-hint">(اختياري)</small>' : "";
+    return `
+      <label class="review-field import-primary-field" data-primary-field="${field.name}">
+        <span>${escapeHtml(field.label)}${optionalHint}</span>
+        <input name="${field.name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal" autocomplete="off">
+      </label>
+    `;
+  }).join("");
+}
+
+function renderImportSimplifiedReviewForm(defaults, options = {}) {
+  const body = $("opportunityReviewBody");
+  if (!body) return;
+  const titleNode = $("opportunityReviewTitle");
+  const headParagraph = body.parentElement?.querySelector(".settings-head p");
+  if (titleNode) titleNode.textContent = options.title || IMPORT_RECORD_LABEL;
+  if (headParagraph) {
+    headParagraph.textContent = options.subtitle || "راجع البيانات الأساسية ثم احفظ الفرصة.";
+  }
+  const needs = defaults.needsReview || {};
+  activeReviewValues = {
+    salePrice: defaults.salePrice,
+    annualRent: defaults.annualRent,
+    monthlyRent: defaults.monthlyRent,
+    optionalMonthlyRent: defaults.optionalMonthlyRent,
+    paymentInstallments: defaults.paymentInstallments,
+    budget: defaults.budget,
+    investmentValue: defaults.investmentValue,
+    area: defaults.area,
+    rooms: defaults.rooms,
+    bathrooms: defaults.bathrooms,
+    floorNumber: defaults.floorNumber,
+    units: defaults.units,
+    floorsCount: defaults.floorsCount
+  };
+
+  const localPhone = defaults.advertiserPhoneNormalized
+    ? e164ToLocalInput(defaults.advertiserPhoneNormalized)
+    : (advertiserCandidates.length === 1
+      ? e164ToLocalInput(advertiserCandidates[0].advertiserPhoneNormalized)
+      : "");
+
+  body.innerHTML = `
+    ${options.importSummary
+      ? `<p class="import-review-summary">${escapeHtml(options.importSummary)}</p>` : ""}
+    ${options.sourceUrl
+      ? `<a class="import-review-source-link" href="${escapeHtml(options.sourceUrl)}" target="_blank" rel="noopener noreferrer">فتح الإعلان الأصلي</a>` : ""}
+    <p class="review-hint">عدّل البيانات الأساسية فقط — التفاصيل الإضافية اختيارية داخل القسم المغلق.</p>
+    <form id="opportunityReviewForm" class="review-form import-simplified-review" autocomplete="off">
+      ${importKindRadiosMarkup(defaults.opportunityKind)}
+      ${plainTextField(
+        "rawPropertyTypeText",
+        reviewLabel("propertyType", "نوع العقار", needs),
+        defaults.rawPropertyTypeText || defaults.propertyTypeDisplay || defaults.propertyTypeManual || "",
+        "مثال: فيلا، شقة، أرض، عمارة، دور، محل"
+      )}
+      ${plainTextField(
+        "rawNeighborhoodText",
+        reviewLabel("district", "الحي", needs),
+        defaults.rawNeighborhoodText || defaults.districtDisplay || defaults.districtManual || ""
+      )}
+      ${plainTextField(
+        "rawCityText",
+        reviewLabel("city", "المدينة", needs),
+        defaults.rawCityText || defaults.cityManual || defaults.extractedSnapshot?.city || ""
+      )}
+      <div id="importReviewPriceField">${renderImportPriceFieldMarkup(defaults)}</div>
+      <div id="importReviewPrimaryInfo">${renderImportPrimaryInfoMarkup(defaults)}</div>
+      <label class="review-field import-phone-field">
+        <span>رقم الجوال</span>
+        <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
+          placeholder="05XXXXXXXX" value="${escapeHtml(localPhone)}"
+          aria-label="رقم جوال المعلن أو العميل" autocomplete="off">
+        <small class="advertiser-extracted-hint" id="advertiserPhoneExtractedHint"
+          ${advertiserExtractedAuto && localPhone ? "" : "hidden"}>تم استخراجه من الإعلان</small>
+      </label>
+      ${importExtraFieldsMarkup(defaults.importExtraFields || {})}
+      <div class="review-actions">
+        <button type="submit" class="review-approve" id="opportunityReviewApprove">${escapeHtml(options.approveLabel || "حفظ الفرصة")}</button>
+        ${options.showReanalyze
+          ? `<button type="button" class="review-cancel" id="opportunityReviewReanalyze">إعادة التحليل</button>` : ""}
+        <button type="button" class="review-cancel" id="opportunityReviewCancel">إلغاء</button>
+      </div>
+      <p class="review-status" id="opportunityReviewStatus" role="status"></p>
+      <p class="review-import-missing" id="importReviewMissingHint" hidden></p>
+    </form>
+  `;
+
+  wireImportSimplifiedReviewForm(body, defaults);
+  wireAdvertiserPhoneOnly();
+  const form = $("opportunityReviewForm");
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitReview();
+  });
+  $("opportunityReviewCancel")?.addEventListener("click", () => closeReview());
+  $("opportunityReviewReanalyze")?.addEventListener("click", () => {
+    if (typeof onReanalyzeCallback === "function") onReanalyzeCallback();
+  });
+}
+
+function wireAdvertiserPhoneOnly() {
+  const phoneInput = document.querySelector('input[name="advertiserPhoneLocal"]');
+  const hint = $("advertiserPhoneExtractedHint");
+  phoneInput?.addEventListener("input", () => {
+    advertiserExtractedAuto = false;
+    if (hint) hint.hidden = true;
+  });
+}
+
+function wireImportSimplifiedReviewForm(root, defaults = {}) {
+  const refreshDynamicSections = () => {
+    const form = $("opportunityReviewForm");
+    if (!form) return;
+    const data = Object.fromEntries(new FormData(form).entries());
+    const opportunityKind = data.opportunityKind || defaults.opportunityKind || "OFFER";
+    const purpose = defaults.purpose || defaults.extractedSnapshot?.purpose || "";
+    const operationTypeId = resolveImportOperationTypeId({ opportunityKind, purpose });
+    const nextDefaults = {
+      ...defaults,
+      ...activeReviewValues,
+      ...data,
+      opportunityKind,
+      operationTypeId
+    };
+    const priceHost = root.querySelector("#importReviewPriceField");
+    if (priceHost) priceHost.innerHTML = renderImportPriceFieldMarkup(nextDefaults);
+    const primaryHost = root.querySelector("#importReviewPrimaryInfo");
+    if (primaryHost) {
+      primaryHost.innerHTML = renderImportPrimaryInfoMarkup({
+        ...nextDefaults,
+        rawPropertyTypeText: data.rawPropertyTypeText || nextDefaults.rawPropertyTypeText
+      });
+    }
+  };
+
+  root.querySelectorAll('input[name="opportunityKind"]').forEach((input) => {
+    input.addEventListener("change", refreshDynamicSections);
+  });
+  root.querySelector('[name="rawPropertyTypeText"]')?.addEventListener("input", refreshDynamicSections);
+
+  root.oninput = (event) => {
+    const name = event.target?.name;
+    if (name && Object.prototype.hasOwnProperty.call(activeReviewValues, name)) {
+      activeReviewValues[name] = event.target.value;
+      if (String(event.target.value || "").trim()) {
+        event.target.closest("label")?.querySelector("[data-review-needed]")?.remove();
+      }
+    }
+  };
+}
+
 function renderReviewForm(defaults, options = {}) {
+  if (options.importSimplifiedReview) {
+    renderImportSimplifiedReviewForm(defaults, options);
+    return;
+  }
   const body = $("opportunityReviewBody");
   if (!body) return;
   const titleNode = $("opportunityReviewTitle");
@@ -447,11 +695,12 @@ function districtOptions(cityId) {
   ];
 }
 
-function plainTextField(name, label, value) {
+function plainTextField(name, label, value, placeholder = "") {
+  const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : "";
   return `
     <label class="review-field import-plain-location-field" data-field="${name}">
       <span>${label}</span>
-      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80" autocomplete="off">
+      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80" autocomplete="off"${placeholderAttr}>
     </label>
   `;
 }
@@ -728,6 +977,61 @@ function readReviewForm() {
   if (!form) return null;
   const data = Object.fromEntries(new FormData(form).entries());
   const ctx = reviewContextFromDraft();
+  if (activeReviewOptions?.importSimplifiedReview) {
+    const opportunityKind = data.opportunityKind || "OFFER";
+    const purpose = activeDraft?.fields?.purpose
+      || activeDraft?.prepared?.opportunity?.purpose
+      || ctx.purpose
+      || "";
+    const operationTypeId = data.operationTypeId
+      || resolveImportOperationTypeId({ opportunityKind, purpose });
+    const mode = reviewTransactionMode(operationTypeId, { ...ctx, opportunityKind, purpose });
+    const land = classifyImportPropertyType(data.rawPropertyTypeText || "") === "land";
+    const extra = {};
+    for (const field of IMPORT_EXTRA_FIELD_DEFS) {
+      if (data[field.name] !== undefined) extra[field.name] = data[field.name] || "";
+    }
+    return {
+      importSimplifiedReview: true,
+      importPlainLocationFields: true,
+      opportunityKind,
+      purpose,
+      operationTypeId,
+      rawCityText: data.rawCityText || "",
+      rawNeighborhoodText: data.rawNeighborhoodText || "",
+      rawPropertyTypeText: data.rawPropertyTypeText || "",
+      salePrice: mode === "sale" ? (data.salePrice || "") : "",
+      annualRent: mode === "rent" ? (data.annualRent || "") : "",
+      monthlyRent: mode === "rent" ? (data.monthlyRent || "") : "",
+      optionalMonthlyRentAfterSixMonths: mode === "rent" ? (data.optionalMonthlyRent || "") : "",
+      paymentInstallments: mode === "rent" ? (data.paymentInstallments || "") : "",
+      budget: mode === "budget" ? (data.budget || "") : "",
+      investmentValue: mode === "investment" ? (data.investmentValue || "") : "",
+      area: data.area || "",
+      rooms: land ? "" : (data.rooms || ""),
+      bathrooms: data.bathrooms || extra.bathrooms || "",
+      floorNumber: data.floorNumber || extra.floorNumber || "",
+      units: data.units || "",
+      floorsCount: data.floorsCount || "",
+      importExtraFields: extra,
+      livingRoom: extra.livingRoom || "",
+      direction: extra.direction || "",
+      streetWidth: extra.streetWidth || "",
+      condition: extra.condition || "",
+      usageType: extra.usageType || "",
+      waterAndSewagePaidBy: extra.waterAndSewagePaidBy || "",
+      electricityMeter: extra.electricityMeter || "",
+      description: extra.description || "",
+      ownerConditions: extra.ownerConditions || "",
+      extractedSnapshot: activeDraft?.fields ? {
+        opportunityKind,
+        purpose: purpose || activeDraft.fields.purpose || "",
+        propertyType: activeDraft.fields.propertyType || "",
+        city: activeDraft.fields.city || "",
+        district: activeDraft.fields.district || ""
+      } : null
+    };
+  }
   const mode = reviewTransactionMode(data.operationTypeId || "", ctx);
   const land = activeReviewOptions?.importPlainLocationFields
     ? /أرض|ارض/.test(String(data.rawPropertyTypeText || ""))
@@ -800,8 +1104,21 @@ function setReviewStatus(message, isError = false) {
 async function submitReview() {
   const review = readReviewForm();
   if (!review) return;
-  if (!review.operationTypeId) return setReviewStatus("اختر نوع العملية", true);
-  if (activeReviewOptions?.importPlainLocationFields) {
+  if (activeReviewOptions?.importSimplifiedReview) {
+    const saveMinimum = evaluateImportReviewSaveMinimum(review);
+    const missingHint = $("importReviewMissingHint");
+    if (missingHint) {
+      if (!saveMinimum.ok) {
+        missingHint.hidden = false;
+        missingHint.textContent = `بيانات ناقصة: ${saveMinimum.missingLabelsArabic.join("، ")} — سيتم الحفظ بحالة «تحتاج استكمال».`;
+      } else {
+        missingHint.hidden = true;
+        missingHint.textContent = "";
+      }
+    }
+  } else if (!review.operationTypeId) {
+    return setReviewStatus("اختر نوع العملية", true);
+  } else if (activeReviewOptions?.importPlainLocationFields) {
     if (!String(review.rawPropertyTypeText || "").trim()) {
       return setReviewStatus("أدخل نوع العقار", true);
     }
@@ -832,9 +1149,11 @@ async function submitReview() {
   setReviewStatus("");
 
   try {
-    const brokerExtras = activeReviewOptions?.importPlainLocationFields
-      ? importReviewValuesToBrokerFields(review)
-      : reviewValuesToBrokerFields(review);
+    const brokerExtras = activeReviewOptions?.importSimplifiedReview
+      ? importSimplifiedReviewValuesToBrokerFields(review)
+      : activeReviewOptions?.importPlainLocationFields
+        ? importReviewValuesToBrokerFields(review)
+        : reviewValuesToBrokerFields(review);
     const advertiser = readAdvertiserForm();
     if (typeof onApproveCallback === "function") {
       await onApproveCallback(brokerExtras, review, advertiser);
@@ -850,7 +1169,7 @@ async function submitReview() {
   } finally {
     if (approveBtn) {
       approveBtn.disabled = false;
-      approveBtn.textContent = "اعتماد وحفظ";
+      approveBtn.textContent = activeReviewOptions?.approveLabel || "اعتماد وحفظ";
     }
   }
 }
