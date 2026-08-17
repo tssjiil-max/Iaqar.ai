@@ -478,17 +478,11 @@
     if (!container || !api) return;
     const defs = api.dynamicFieldDefs(requestKind, propertyType);
     container.innerHTML = defs.map((field) => {
-      if (field.type === "select") {
-        const options = (field.options || []).map((opt) =>
-          `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`
-        ).join("");
-        return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
-          <select name="${escapeHtml(field.name)}">${options}</select></label>`;
-      }
+      const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : "";
       return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
         <input name="${escapeHtml(field.name)}" type="${field.type || "text"}"
           ${field.inputMode ? `inputmode="${field.inputMode}"` : ""}
-          ${field.maxLength ? `maxlength="${field.maxLength}"` : ""}></label>`;
+          ${field.maxLength ? `maxlength="${field.maxLength}"` : ""}${placeholder} autocomplete="off"></label>`;
     }).join("");
   }
 
@@ -601,11 +595,6 @@
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
-    const clientApi = clientIntakeApi();
-    const propertyOptions = owner
-      ? PROPERTY_TYPES
-      : (clientApi?.INTAKE_PROPERTY_TYPES || PROPERTY_TYPES);
-    const requestKindOptions = clientApi?.REQUEST_KINDS || [];
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
@@ -613,16 +602,16 @@
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        ${owner ? "" : `<label><span>نوع الطلب (إلزامي)</span><select name="requestKind" id="requestKindSelect" required>
-          <option value="">اختر نوع الطلب</option>
-          ${requestKindOptions.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}</select></label>`}
+        ${owner ? "" : `<label class="full"><span>نوع الطلب (إلزامي)</span>
+          <input name="requestKind" id="requestKindInput" maxlength="40" required autocomplete="off"
+            placeholder="اكتب نوع الطلب (مثل: شراء أو استئجار)"></label>`}
         <label class="full"><span>نوع العقار (إلزامي)</span>
-          <input name="propertyType" id="propertyTypeInput" class="arabic-suggest-input" maxlength="40" required autocomplete="off"
+          <input name="propertyType" id="propertyTypeInput" maxlength="40" required autocomplete="off"
             placeholder="اكتب نوع العقار"></label>
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
         <label class="full"><span>الحي (إلزامي)</span>
-          <input name="district" id="districtInput" class="arabic-suggest-input" maxlength="80" required autocomplete="off"
+          <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
             placeholder="اكتب اسم الحي"></label>
         ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
@@ -637,18 +626,19 @@
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
     const propertyInput = gate.querySelector("#propertyTypeInput");
     const districtInput = gate.querySelector("#districtInput");
-    const requestKindSelect = gate.querySelector("#requestKindSelect");
+    const requestKindInput = gate.querySelector("#requestKindInput");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
-    wireArabicSuggestInput(propertyInput, propertyOptions);
-    wireArabicSuggestInput(districtInput, MADINAH_DISTRICTS);
+    const clientApi = clientIntakeApi();
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
-      const requestKind = requestKindSelect?.value || "";
+      const requestKind = clientApi?.normalizeRequestKind
+        ? clientApi.normalizeRequestKind(requestKindInput?.value || "")
+        : String(requestKindInput?.value || "").trim();
       const propertyType = String(propertyInput?.value || "").trim();
       renderDynamicClientFields(dynamicFields, requestKind, propertyType);
     };
-    if (requestKindSelect) {
-      requestKindSelect.onchange = () => refreshClientDynamic();
+    if (requestKindInput) {
+      requestKindInput.addEventListener("input", () => refreshClientDynamic());
       refreshClientDynamic();
     }
     if (propertyInput) propertyInput.addEventListener("input", () => refreshClientDynamic());
@@ -671,8 +661,10 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const city = String(fields.get("city") || "").trim();
       if (!city) return showStatus("أدخل المدينة.");
-      const requestKind = owner ? "" : String(fields.get("requestKind") || "").trim();
-      if (!owner && !requestKind) return showStatus("اختر نوع الطلب.");
+      const requestKind = owner ? "" : (clientIntakeApi()?.normalizeRequestKind
+        ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
+        : String(fields.get("requestKind") || "").trim());
+      if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");

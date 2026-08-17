@@ -18,7 +18,7 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("missing purpose shows purpose select not propertyType for client request", () => {
+test("missing purpose shows free-text purpose field for client request", () => {
   const record = {
     opportunityKind: "REQUEST",
     contactType: "buyer",
@@ -34,7 +34,7 @@ test("missing purpose shows purpose select not propertyType for client request",
   const fields = buildIncompleteFormFields(record, readiness);
   const purposeField = fields.find((f) => f.key === "purpose");
   const propertyField = fields.find((f) => f.key === "propertyType");
-  assert.equal(purposeField?.type, "purpose_select");
+  assert.equal(purposeField?.type, "text");
   assert.equal(purposeField?.label, "الغرض");
   assert.equal(propertyField, undefined);
 });
@@ -83,13 +83,12 @@ test("stays incomplete when another required field remains", () => {
   assert.ok(after.matchingReadinessMissing.length > 0);
 });
 
-test("incomplete form HTML uses purpose select name", () => {
+test("incomplete form HTML uses free-text purpose input", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(ui.includes('select name="purpose"'));
-  assert.ok(ui.includes("purpose_select"));
-  assert.equal(bank.includes("purpose: 'input[name=\"propertyType\"]'"), false);
-  assert.ok(bank.includes("purpose: 'select[name=\"purpose\"]'"));
+  assert.equal(/select[^>]*name="purpose"/.test(ui), false);
+  assert.equal(ui.includes("purpose_select"), false);
+  assert.ok(bank.includes("purpose: 'input[name=\"purpose\"]'"));
 });
 
 test("propertyType missing shows نوع العقار field only once", () => {

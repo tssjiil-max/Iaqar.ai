@@ -44,22 +44,28 @@ test("opportunity card does not surface garbage property or district tokens", ()
   assert.ok(!card.contactLine.includes("II"));
 });
 
-test("access-gate public forms use INPUT for property type and district", () => {
+test("access-gate public forms use plain text inputs without catalog selects", () => {
   const gate = readRepo("public", "js", "access-gate.js");
   assert.ok(gate.includes("id=\"propertyTypeInput\""));
   assert.ok(gate.includes("id=\"districtInput\""));
+  assert.ok(gate.includes("id=\"requestKindInput\""));
   assert.equal(gate.includes("id=\"propertyTypeSelect\""), false);
   assert.equal(gate.includes("id=\"districtSelect\""), false);
+  assert.equal(gate.includes("id=\"requestKindSelect\""), false);
+  assert.equal(gate.includes("wireArabicSuggestInput(propertyInput"), false);
+  assert.doesNotMatch(gate, /<select[^>]*name="requestKind"/);
 });
 
-test("opportunity bank edit form uses text inputs not selects for property and district", () => {
+test("opportunity bank incomplete form uses plain text inputs without selects", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const workspaceUi = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
   const combined = `${bank}\n${workspaceUi}`;
-  assert.ok(combined.includes('name="propertyType" class="arabic-suggest-input"') || combined.includes('name="propertyType"'));
-  assert.ok(combined.includes('name="district"') || combined.includes('name="district" class="arabic-suggest-input"'));
+  assert.ok(combined.includes('name="propertyType"'));
+  assert.ok(combined.includes('name="district"'));
   assert.equal(/select[^>]*name="propertyType"/.test(combined), false);
   assert.equal(/select[^>]*name="district"/.test(combined), false);
+  assert.equal(/select[^>]*name="purpose"/.test(combined), false);
+  assert.equal(bank.includes("wireArabicSuggestInput(propertyInput"), false);
 });
 
 test("DOM: arabic suggest input keeps custom district after blur", () => {

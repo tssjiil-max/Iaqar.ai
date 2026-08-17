@@ -12,6 +12,7 @@ import {
   opportunityBankRow,
   safeText
 } from "./office-domain.js";
+import { normalizePurpose } from "./opportunity-intake-domain.js";
 
 export { COOPERATION_STATUS_LABELS, cooperationStatusLabel, opportunityBankRow };
 
@@ -276,6 +277,8 @@ export function buildEditPatch(existing, input = {}, { now = new Date(), actorUi
       patch[key] = Array.isArray(input[key])
         ? input[key].map((value) => safeText(value, 80)).filter(Boolean).slice(0, 12)
         : [];
+    } else if (key === "purpose") {
+      patch[key] = normalizePurpose(input[key]);
     } else {
       patch[key] = safeText(input[key], 120);
     }

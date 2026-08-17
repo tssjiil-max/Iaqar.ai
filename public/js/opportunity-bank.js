@@ -114,8 +114,7 @@ import {
   followUpLabelFromIso
 } from "./opportunity-contact-outcome-domain.js";
 import { normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
-import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
-import { PROPERTY_TYPES, districtsForCity, buildReviewDefaults } from "./reference-catalog.js";
+import { buildImportSimplifiedReviewDefaults } from "./import-advert-review-domain.js";
 import {
   buildSuitableOfficesTiersHtml,
   buildSharedPreviewHtml,
@@ -517,9 +516,9 @@ const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
   city: 'input[name="city"]',
   district: 'input[name="district"]',
   priceOrBudget: 'input[name="priceOrBudget"]',
-  purpose: 'select[name="purpose"]',
+  purpose: 'input[name="purpose"]',
   contactPhone: 'input[name="advertiserPhoneLocal"]',
-  advertiserRole: 'select[name="advertiserRole"]'
+  advertiserRole: 'input[name="advertiserRole"]'
 });
 
 function resolveBankRowOpportunityId(node) {
@@ -1104,11 +1103,6 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
 function wireIncompleteDetailHandlers(id, record) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
   wireBankFormArabicInputs(record);
-  const form = $("bankUnifiedForm");
-  const propertyInput = form?.querySelector('input[name="propertyType"]');
-  const districtInput = form?.querySelector('input[name="district"]');
-  if (propertyInput) wireArabicSuggestInput(propertyInput, PROPERTY_TYPES.map((e) => e.label));
-  if (districtInput) wireArabicSuggestInput(districtInput, districtsForCity("madinah").map((e) => e.officialName));
 
   async function saveIncomplete() {
     const form = $("bankUnifiedForm");
@@ -1921,15 +1915,8 @@ function rowsCountLabel() {
     : `${filteredTotal} نتيجة`;
 }
 
-function wireBankFormArabicInputs(record = {}) {
-  const form = $("bankUnifiedForm");
-  if (!form) return;
-  const propertyInput = form.querySelector('input[name="propertyType"]');
-  const districtInput = form.querySelector('input[name="district"]');
-  const propertyOptions = PROPERTY_TYPES.map((entry) => entry.label);
-  const districtOptions = districtsForCity("madinah").map((entry) => entry.officialName);
-  if (propertyInput) wireArabicSuggestInput(propertyInput, propertyOptions);
-  if (districtInput) wireArabicSuggestInput(districtInput, districtOptions);
+function wireBankFormArabicInputs(_record = {}) {
+  /* plain text fields — no catalog suggestion lists */
 }
 
 function wireDetailHandlers(id, record) {
@@ -2456,10 +2443,10 @@ function bankReviewDraft(record = {}) {
   const readiness = evaluateMatchingReadiness(record);
   const needsReview = readinessMissingToNeedsReview(readiness.matchingReadinessMissing, record);
   const phoneInfo = readAdvertiserPhoneFromRecord(record);
-  const reviewDefaults = buildReviewDefaults(fields, "", {
+  const reviewDefaults = buildImportSimplifiedReviewDefaults(fields, record.rawText || "", {
     extended: fields.extended,
     needsReview
-  });
+  }, { city: record.city || "" });
   reviewDefaults.advertiserRole = record.advertiserRole || "";
   reviewDefaults.advertiserPhoneNormalized = phoneInfo.phone || "";
   reviewDefaults.advertiserContactStatus = record.advertiserContactStatus || "";
@@ -2482,7 +2469,7 @@ function openBankOpportunityReview(id, record) {
   state.bankReviewOpportunityId = id;
   const draft = bankReviewDraft(record);
   draft.prepared = { opportunity: { id, ...record } };
-  openOpportunityReview(draft, approveBankOpportunityReview);
+  openOpportunityReview(draft, approveBankOpportunityReview, { importSimplifiedReview: true });
 }
 
 async function approveBankOpportunityReview(brokerExtras, review, advertiser = {}) {

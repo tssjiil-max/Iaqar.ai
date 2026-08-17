@@ -141,35 +141,20 @@ function renderAdvertiserSection(defaults) {
     ? e164ToLocalInput(savedPhone)
     : (primary ? e164ToLocalInput(primary.advertiserPhoneNormalized) : "");
   const savedRole = String(defaults.advertiserRole || "").trim();
-  const roleOptions = ADVERTISER_ROLES.map((r) => {
-    const selected = savedRole
-      ? r.id === savedRole
-      : r.id === "UNKNOWN";
-    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
-  }).join("");
   const savedContact = String(defaults.advertiserContactStatus || "").trim();
-  const contactOptions = ADVERTISER_CONTACT_STATUSES.map((r) => {
-    const selected = savedContact
-      ? r.id === savedContact
-      : r.id === "NOT_CONTACTED";
-    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
-  }).join("");
   const savedMarketing = String(defaults.marketingConsentStatus || "").trim();
-  const marketingOptions = MARKETING_CONSENT_STATUSES.map((r) => {
-    const selected = savedMarketing
-      ? r.id === savedMarketing
-      : r.id === "NOT_STARTED";
-    return `<option value="${r.id}" ${selected ? "selected" : ""}>${escapeHtml(r.label)}</option>`;
-  }).join("");
   const multiPick = advertiserCandidates.length > 1
-    ? `<div class="advertiser-phone-multi">
-        <span>تم العثور على ${advertiserCandidates.length} أرقام — اختر للمراجعة:</span>
-        <select id="advertiserPhonePick" class="advertiser-phone-pick">
-          ${advertiserCandidates.map((c, i) =>
-            `<option value="${i}" ${i === 0 ? "selected" : ""}>${escapeHtml(c.advertiserPhoneNormalized)}</option>`
-          ).join("")}
-        </select>
-      </div>`
+    ? `<p class="advertiser-phone-multi">تم العثور على ${advertiserCandidates.length} أرقام — اكتب الرقم المناسب في الحقل.</p>`
+    : "";
+
+  const roleDisplay = savedRole
+    ? (ADVERTISER_ROLES.find((r) => r.id === savedRole)?.label || savedRole)
+    : "";
+  const contactDisplay = savedContact
+    ? (ADVERTISER_CONTACT_STATUSES.find((r) => r.id === savedContact)?.label || savedContact)
+    : "";
+  const marketingDisplay = savedMarketing
+    ? (MARKETING_CONSENT_STATUSES.find((r) => r.id === savedMarketing)?.label || savedMarketing)
     : "";
 
   return `
@@ -180,21 +165,24 @@ function renderAdvertiserSection(defaults) {
         <span>رقم جوال المعلن</span>
         <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
           placeholder="05XXXXXXXX" value="${escapeHtml(localPhone)}"
-          aria-label="رقم جوال المعلن">
+          aria-label="رقم جوال المعلن" autocomplete="off">
         <small class="advertiser-extracted-hint" id="advertiserPhoneExtractedHint"
           ${advertiserExtractedAuto && localPhone ? "" : "hidden"}>تم استخراجه من الإعلان</small>
       </label>
       <label class="review-field">
         <span>صفة المعلن</span>
-        <select name="advertiserRole">${roleOptions}</select>
+        <input name="advertiserRole" type="text" value="${escapeHtml(roleDisplay)}"
+          placeholder="اكتب صفة المعلن" maxlength="40" autocomplete="off">
       </label>
       <label class="review-field">
         <span>حالة التواصل</span>
-        <select name="advertiserContactStatus">${contactOptions}</select>
+        <input name="advertiserContactStatus" type="text" value="${escapeHtml(contactDisplay)}"
+          placeholder="اكتب حالة التواصل" maxlength="40" autocomplete="off">
       </label>
       <label class="review-field">
         <span>حالة استكمال إجراءات التسويق</span>
-        <select name="marketingConsentStatus">${marketingOptions}</select>
+        <input name="marketingConsentStatus" type="text" value="${escapeHtml(marketingDisplay)}"
+          placeholder="اكتب حالة التسويق" maxlength="40" autocomplete="off">
       </label>
       <button type="button" class="review-advertiser-prep" id="advertiserPrepMessageBtn"
         ${localPhone ? "" : "disabled"}>تجهيز رسالة الاستكمال</button>
@@ -551,7 +539,6 @@ function wireAdvertiserSection() {
   const phoneInput = document.querySelector('input[name="advertiserPhoneLocal"]');
   const hint = $("advertiserPhoneExtractedHint");
   const prepBtn = $("advertiserPrepMessageBtn");
-  const pick = $("advertiserPhonePick");
 
   const syncPrepState = () => {
     const local = (phoneInput?.value || "").replace(/\D/g, "");
@@ -565,19 +552,18 @@ function wireAdvertiserSection() {
     syncPrepState();
   });
 
-  pick?.addEventListener("change", () => {
-    const idx = Number(pick.value);
-    const candidate = advertiserCandidates[idx];
-    if (candidate && phoneInput) {
-      phoneInput.value = e164ToLocalInput(candidate.advertiserPhoneNormalized);
-      advertiserExtractedAuto = true;
-      if (hint) hint.hidden = false;
-      syncPrepState();
-    }
-  });
-
   prepBtn?.addEventListener("click", () => openAdvertiserMessageModal());
   syncPrepState();
+}
+
+function resolveAdvertiserEnumValue(value = "", catalog = []) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const byId = catalog.find((entry) => entry.id === text);
+  if (byId) return byId.id;
+  const byLabel = catalog.find((entry) => entry.label === text);
+  if (byLabel) return byLabel.id;
+  return text.slice(0, 40);
 }
 
 function readAdvertiserForm() {
@@ -598,9 +584,15 @@ function readAdvertiserForm() {
     advertiserPhoneEvidence: normalized && advertiserExtractedAuto
       ? (primary?.advertiserPhoneEvidence || "")
       : "",
-    advertiserRole: data.advertiserRole || "UNKNOWN",
-    advertiserContactStatus: data.advertiserContactStatus || "NOT_CONTACTED",
-    marketingConsentStatus: data.marketingConsentStatus || "NOT_STARTED",
+    advertiserRole: resolveAdvertiserEnumValue(data.advertiserRole, ADVERTISER_ROLES) || "UNKNOWN",
+    advertiserContactStatus: resolveAdvertiserEnumValue(
+      data.advertiserContactStatus,
+      ADVERTISER_CONTACT_STATUSES
+    ) || "NOT_CONTACTED",
+    marketingConsentStatus: resolveAdvertiserEnumValue(
+      data.marketingConsentStatus,
+      MARKETING_CONSENT_STATUSES
+    ) || "NOT_STARTED",
     lastContactAt: null,
     contactNotes: ""
   };
