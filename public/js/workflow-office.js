@@ -685,14 +685,28 @@
       || String(item?.title || "").trim() === "فرصة محفوظة مسبقًا";
   }
 
+  function activeMatchOperations() {
+    return matchItems.filter((item) => !["completed", "closed"].includes(String(item.status || "").toLowerCase()));
+  }
+
+  function activeDealOperations() {
+    return dealItems.filter((item) => !["closed", "lost"].includes(String(item.status || "").toLowerCase()));
+  }
+
   function emitOperations() {
     // Phase 5: Operations Center shows persisted Operations; hide save-success feedback only.
     pruneSavedOpportunityWorkspaceItems();
     const workspaceItems = savedOpportunityWorkspaceItems.filter(
       (item) => !isSavedOpportunityPresentationItem(item)
     );
-    const baseItems = [...operationItems, ...intakeItems, ...opportunityItems, ...workspaceItems]
-      .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    const baseItems = [
+      ...operationItems,
+      ...intakeItems,
+      ...opportunityItems,
+      ...activeMatchOperations(),
+      ...activeDealOperations(),
+      ...workspaceItems
+    ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     const items = filterOpportunityView(baseItems);
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true, opportunityView } }));
   }
@@ -2216,10 +2230,45 @@
     emitOperations();
   }
 
+  async function handleQuickCall(detail) {
+    if (["match", "deal"].includes(detail.recordType)) {
+      await openWorkflowUi(detail);
+      return;
+    }
+    const phoneInfo = resolveLifecyclePhone(detail);
+    if (!phoneInfo.valid) return notify(phoneInfo.error || "رقم الجوال غير مكتمل");
+    window.location.href = `tel:${phoneInfo.local}`;
+    void opportunityLifecycleAction("call_opened", detail, { communicationAction: "call_opened" }).catch((error) => {
+      console.warn("[iaqar] call opened log", error);
+    });
+  }
+
+  async function handleQuickFollowup(detail) {
+    if (detail.recordType === "opportunity" || detail.opportunityId) {
+      const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
+      if (oppId && window.IAQAR?.openOpportunityManagement) {
+        await window.IAQAR.openOpportunityManagement(oppId, { focusFollowUp: true });
+        return;
+      }
+    }
+    await openWorkflowUi({ ...detail, focusFollowUpReminder: true });
+  }
+
+  async function handleQuickScheduleViewing(detail) {
+    if (!["match", "deal"].includes(detail.recordType)) {
+      return handleQuickFollowup(detail);
+    }
+    await openWorkflowUi(detail);
+    showScheduleForm();
+  }
+
   async function handleAction(event) {
     const detail = event.detail || {};
     try {
-      if (detail.actionMode === "whatsapp" || detail.actionMode === "telegram") {
+      if (detail.actionMode === "call") await handleQuickCall(detail);
+      else if (detail.actionMode === "followup") await handleQuickFollowup(detail);
+      else if (detail.actionMode === "schedule_viewing") await handleQuickScheduleViewing(detail);
+      else if (detail.actionMode === "whatsapp" || detail.actionMode === "telegram") {
         // Phase 7: Match/communication Operations may create drafts; never auto-send.
         const channel = detail.actionMode === "telegram" || detail.channel === "telegram"
           ? "telegram"
