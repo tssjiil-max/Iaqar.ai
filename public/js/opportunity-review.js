@@ -700,7 +700,9 @@ function plainTextField(name, label, value, placeholder = "") {
   return `
     <label class="review-field import-plain-location-field" data-field="${name}">
       <span>${label}</span>
-      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80" autocomplete="off"${placeholderAttr}>
+      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        aria-autocomplete="none" data-lpignore="true" data-form-type="other"${placeholderAttr}>
     </label>
   `;
 }
