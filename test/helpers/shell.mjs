@@ -87,6 +87,14 @@ export async function loadShell(options = {}) {
   opsCenterSpecifier.searchParams.set("shellInstance", String(moduleCounter));
   const operationsCenterDomain = await import(opsCenterSpecifier.href);
   window.IAQAR.operationsCenterDomain = operationsCenterDomain;
+
+  moduleCounter += 1;
+  const dailyTasksSpecifier = new URL(
+    pathToFileURL(path.join(repositoryRoot, "public", "js", "daily-tasks-domain.js"))
+  );
+  dailyTasksSpecifier.searchParams.set("shellInstance", String(moduleCounter));
+  const dailyTasksDomain = await import(dailyTasksSpecifier.href);
+  window.IAQAR.dailyTasksDomain = dailyTasksDomain;
   window.dispatchEvent(new window.CustomEvent("iaqar:operations-center-domain-ready"));
 
   moduleCounter += 1;

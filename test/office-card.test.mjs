@@ -259,7 +259,8 @@ test("TEST 14: deal records still surface in matched category", async () => {
           {
             id: "deal-1", main: "deals", priority: 1, isAlert: false, icon: "i-briefcase-check",
             title: "صفقة قيد التنفيذ", subtitle: "فيلا — العزيزية", time: "الآن",
-            details: "تفاصيل", recordType: "deal", recordId: "deal-1", status: "negotiation"
+            details: "تفاصيل", recordType: "deal", recordId: "deal-1", status: "open",
+            workflowStage: "contact"
           },
           {
             id: "match-1", main: "opportunities", priority: 0, isAlert: true, icon: "i-match",
@@ -270,6 +271,7 @@ test("TEST 14: deal records still surface in matched category", async () => {
       }
     }));
 
+    document.getElementById("operationsShowCategories").click();
     document.querySelector("[data-ops-category=\"matched\"]").click();
     const rendered = Array.from(document.querySelectorAll(".ops-task-body h4")).map((node) => node.textContent.trim());
     assert.deepEqual(rendered, ["مطابقة بنسبة 88%", "صفقة قيد التنفيذ"]);
@@ -282,15 +284,22 @@ test("TEST 14: deal records still surface in matched category", async () => {
 
 // --- TEST 15 (shell half) ---------------------------------------------------
 
-test("TEST 15: daily tasks ships empty with category grid and approved empty state", async () => {
+test("TEST 15: daily tasks ships empty with today list and approved empty states", async () => {
   const context = await shell();
   try {
     const { document } = context;
     assert.equal(document.querySelectorAll(".ops-task-card").length, 0, "no fabricated task card may render");
     assert.equal(document.getElementById("operationList").innerHTML.trim(), "");
     assert.equal(document.getElementById("total").textContent, "0");
-    assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
+    assert.equal(document.getElementById("opsViewTodayList").hidden, false);
 
+    const todayEmpty = document.getElementById("operationsTodayEmpty");
+    assert.ok(todayEmpty, "a today empty state must exist");
+    assert.equal(todayEmpty.hidden, false, "the today empty state must be visible when there is nothing urgent");
+    assert.ok(todayEmpty.textContent.includes("لا توجد مهام عاجلة اليوم"));
+
+    document.getElementById("operationsShowCategories").click();
+    assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);
     const empty = document.getElementById("operationsEmpty");
     assert.ok(empty, "an empty state must exist");
     assert.equal(empty.hidden, false, "the empty state must be visible when there is nothing to do");
@@ -328,10 +337,12 @@ test("TEST 15: the empty state returns after real records are cleared", async ()
       title: "مطابقة", subtitle: "تفاصيل", time: "الآن", details: "تفاصيل",
       recordType: "match", recordId: "match-1"
     }]);
+    document.getElementById("operationsShowCategories").click();
     document.querySelector("[data-ops-category=\"matched\"]").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, true);
 
     fire([]);
+    document.getElementById("operationsShowCategories").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, false);
     assert.equal(document.getElementById("total").textContent, "0");
     assert.equal(document.querySelectorAll("[data-ops-category]").length, 6);

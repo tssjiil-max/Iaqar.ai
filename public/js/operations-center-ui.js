@@ -9,6 +9,7 @@ import {
 } from "./operations-center-domain.js";
 
 const VIEW_MODES = Object.freeze({
+  TODAY_LIST: "today-list",
   CATEGORIES: "categories",
   CATEGORY_LIST: "category-list",
   OPPORTUNITY_DETAIL: "opportunity-detail"
@@ -20,8 +21,9 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   if (!rootWindow) return;
 
   const state = {
-    viewMode: VIEW_MODES.CATEGORIES,
+    viewMode: VIEW_MODES.TODAY_LIST,
     activeCategory: null,
+    listOrigin: "today",
     opened: null,
     activeTaskId: null,
     pendingOpen: null,
@@ -42,11 +44,20 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   const opsViewCategories = rootDocument.getElementById("opsViewCategories");
   const opsViewCategoryList = rootDocument.getElementById("opsViewCategoryList");
   const opsViewOpportunityDetail = rootDocument.getElementById("opsViewOpportunityDetail");
+  const opsViewTodayList = rootDocument.getElementById("opsViewTodayList");
+  const operationsTodayList = rootDocument.getElementById("operationsTodayList");
+  const operationsTodayEmpty = rootDocument.getElementById("operationsTodayEmpty");
+  const operationsShowCategories = rootDocument.getElementById("operationsShowCategories");
+  const operationsShowTodayList = rootDocument.getElementById("operationsShowTodayList");
   const total = rootDocument.getElementById("total");
   const toast = rootDocument.getElementById("toast");
 
   function opsCenterDomain() {
     return rootWindow.IAQAR?.operationsCenterDomain || null;
+  }
+
+  function dailyTasksDomain() {
+    return rootWindow.IAQAR?.dailyTasksDomain || null;
   }
 
   function prefersReducedMotion() {
@@ -76,6 +87,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
         target = operationsCategoryTitle;
       } else if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
         target = operationsTaskPanel?.querySelector("h3, h4");
+      } else if (state.viewMode === VIEW_MODES.TODAY_LIST) {
+        target = workspace?.querySelector(".ops-today-intro");
       } else if (state.viewMode === VIEW_MODES.CATEGORIES) {
         target = workspace?.querySelector(".section-title-bar h2");
       }
@@ -101,6 +114,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   }
 
   function applyViewMode() {
+    setStageView(opsViewTodayList, state.viewMode === VIEW_MODES.TODAY_LIST);
     setStageView(opsViewCategories, state.viewMode === VIEW_MODES.CATEGORIES);
     setStageView(opsViewCategoryList, state.viewMode === VIEW_MODES.CATEGORY_LIST);
     setStageView(opsViewOpportunityDetail, state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL);
@@ -114,10 +128,23 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     if (operationsCategoryGrid) {
       operationsCategoryGrid.hidden = state.viewMode !== VIEW_MODES.CATEGORIES;
     }
+    if (operationsShowTodayList) {
+      operationsShowTodayList.hidden = state.viewMode !== VIEW_MODES.CATEGORIES;
+    }
+    const todayCount = todayTaskItems().length;
+    if (operationsTodayEmpty) {
+      operationsTodayEmpty.hidden = state.viewMode !== VIEW_MODES.TODAY_LIST || todayCount > 0;
+    }
     if (operationsEmpty) {
       operationsEmpty.hidden = state.viewMode !== VIEW_MODES.CATEGORIES
         || visibleItems().length > 0;
     }
+  }
+
+  function todayTaskItems() {
+    const domain = dailyTasksDomain();
+    if (!domain?.flattenTodayTasks) return [];
+    return domain.flattenTodayTasks(data).filter((row) => row.type === "task");
   }
 
   function visibleItems() {
@@ -166,6 +193,115 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     rootWindow.dispatchEvent(new rootWindow.CustomEvent("iaqar:workflow-action", {
       detail: { ...item, recordId: item.recordId || item.id, actionMode: "primary" }
     }));
+  }
+
+  function dispatchWorkflowQuick(item, actionMode) {
+    if (!item) return;
+    rootWindow.dispatchEvent(new rootWindow.CustomEvent("iaqar:workflow-action", {
+      detail: { ...item, recordId: item.recordId || item.id, actionMode }
+    }));
+  }
+
+  function todayQuickActionsHtml(item, bucketKey) {
+    const domain = dailyTasksDomain();
+    const actions = domain?.resolveQuickActions
+      ? domain.resolveQuickActions(item, bucketKey)
+      : [];
+    if (!actions.length) return "";
+    return `
+      <div class="ops-today-quick">
+        ${actions.map((action) => `
+          <button type="button" class="ops-today-quick-btn"
+            data-ops-quick="${escapeHtml(action.actionMode)}"
+            data-ops-task-id="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>
+        `).join("")}
+      </div>`;
+  }
+
+  function todayTaskCardHtml(item, bucketKey) {
+    const domain = dailyTasksDomain();
+    const meta = domain?.todayTaskMetaLine ? domain.todayTaskMetaLine(item, bucketKey) : "";
+    const centerDomain = opsCenterDomain();
+    const hint = centerDomain?.bestActionHint ? centerDomain.bestActionHint(item) : bestActionHint(item);
+    const primaryLabel = centerDomain?.primaryActionLabel
+      ? centerDomain.primaryActionLabel(item)
+      : primaryActionLabel(item);
+
+    return `
+      <article class="ops-task-card ops-today-task" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+        <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
+          aria-expanded="false" aria-controls="operationsTaskPanel">
+          <span class="ops-task-icon" aria-hidden="true">
+            <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
+          </span>
+          <span class="ops-task-body">
+            <h4>${escapeHtml(item.title)}</h4>
+            <p>${escapeHtml(item.subtitle)}</p>
+            ${meta ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
+            ${hint ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
+          </span>
+          <span class="ops-task-time">${safeTimeHtml(item.time)}</span>
+        </button>
+        ${todayQuickActionsHtml(item, bucketKey)}
+        <div class="ops-task-actions">
+          <button type="button" class="ops-task-primary" data-ops-primary="${escapeHtml(item.id)}">
+            ${escapeHtml(primaryLabel)}
+          </button>
+        </div>
+      </article>`;
+  }
+
+  function renderTodayTaskList() {
+    if (!operationsTodayList) return;
+    const domain = dailyTasksDomain();
+    const flat = domain?.flattenTodayTasks ? domain.flattenTodayTasks(data) : [];
+    rebuildTodaySections(flat);
+  }
+
+  function rebuildTodaySections(flat) {
+    if (!operationsTodayList) return;
+    const domain = dailyTasksDomain();
+    let html = "";
+    let open = false;
+    for (const row of flat) {
+      if (row.type === "section") {
+        if (open) html += "</div></section>";
+        const section = domain?.getTodayTaskSection?.(row.key);
+        html += `
+          <section class="ops-today-section ${escapeHtml(section?.colorClass || "")}" aria-label="${escapeHtml(row.label)}">
+            <div class="ops-today-section-head">
+              <h3>${escapeHtml(row.label)}</h3>
+              <span class="ops-today-section-count">${escapeHtml(String(row.count))}</span>
+            </div>
+            ${section?.description ? `<p class="ops-today-section-desc">${escapeHtml(section.description)}</p>` : ""}
+            <div class="ops-today-section-list">`;
+        open = true;
+        continue;
+      }
+      if (row.type === "task" && open) {
+        html += todayTaskCardHtml(row.item, row.key);
+      }
+    }
+    if (open) html += "</div></section>";
+    operationsTodayList.innerHTML = html;
+  }
+
+  function showTodayList() {
+    state.viewMode = VIEW_MODES.TODAY_LIST;
+    state.activeCategory = null;
+    state.activeTaskId = null;
+    hideTaskPanel();
+    render();
+    afterViewChange();
+  }
+
+  function showCategories() {
+    state.viewMode = VIEW_MODES.CATEGORIES;
+    state.activeCategory = null;
+    state.activeTaskId = null;
+    hideTaskPanel();
+    render();
+    afterViewChange();
   }
 
   function notify(message) {
@@ -293,13 +429,13 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     afterViewChange();
   }
 
-  function backToCategoryList() {
+  function backToTaskList() {
     if (state.viewMode !== VIEW_MODES.OPPORTUNITY_DETAIL) return;
     hideTaskPanel();
-    state.viewMode = VIEW_MODES.CATEGORY_LIST;
     state.activeTaskId = null;
+    state.viewMode = state.listOrigin === "today" ? VIEW_MODES.TODAY_LIST : VIEW_MODES.CATEGORY_LIST;
     applyViewMode();
-    if (operationList && state.listScrollTop > 0) {
+    if (operationList && state.listScrollTop > 0 && state.viewMode === VIEW_MODES.CATEGORY_LIST) {
       operationList.scrollTop = state.listScrollTop;
     }
     afterViewChange();
@@ -307,9 +443,10 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   async function openDailyTaskItem(item) {
     if (!item) return;
-    if (operationList) {
+    if (state.viewMode === VIEW_MODES.CATEGORY_LIST && operationList) {
       state.listScrollTop = operationList.scrollTop;
     }
+    state.listOrigin = state.viewMode === VIEW_MODES.TODAY_LIST ? "today" : "category";
     state.activeTaskId = item.id;
     const oppId = extractOpportunityId(item);
 
@@ -320,7 +457,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       const ok = await rootWindow.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId);
       if (!ok) {
         notify("تعذر فتح الفرصة");
-        backToCategoryList();
+        backToTaskList();
         return;
       }
       dispatchOpened(item);
@@ -338,9 +475,27 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   function render() {
     const items = visibleItems();
-    if (total) total.textContent = items.length;
+    const domain = dailyTasksDomain();
+    const todayCount = domain?.todayTaskCount ? domain.todayTaskCount(data) : todayTaskItems().length;
+    const groups = categoryGroups();
+    const categoryItems = state.activeCategory ? [...(groups[state.activeCategory] || [])] : [];
+    if (total) {
+      if (state.viewMode === VIEW_MODES.CATEGORY_LIST) {
+        total.textContent = String(categoryItems.length);
+      } else if (state.viewMode === VIEW_MODES.CATEGORIES) {
+        total.textContent = String(items.length);
+      } else {
+        total.textContent = String(todayCount);
+      }
+    }
 
-    if (items.length === 0 && state.viewMode !== VIEW_MODES.CATEGORIES) {
+    if (state.viewMode === VIEW_MODES.TODAY_LIST) {
+      renderTodayTaskList();
+      applyViewMode();
+      return;
+    }
+
+    if (items.length === 0 && state.viewMode === VIEW_MODES.CATEGORY_LIST) {
       state.viewMode = VIEW_MODES.CATEGORIES;
       state.activeCategory = null;
       state.opened = null;
@@ -354,8 +509,6 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       return;
     }
 
-    const groups = categoryGroups();
-    const categoryItems = [...(groups[state.activeCategory] || [])];
     updateCategoryHead(categoryItems.length);
 
     if (state.viewMode === VIEW_MODES.CATEGORY_LIST) {
@@ -363,7 +516,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       if (operationList) operationList.hidden = categoryItems.length === 0;
     }
 
-    if (state.activeTaskId && !categoryItems.some((row) => row.id === state.activeTaskId)) {
+    if (state.activeTaskId && !categoryItems.some((row) => row.id === state.activeTaskId)
+      && state.viewMode === VIEW_MODES.CATEGORY_LIST) {
       hideTaskPanel();
       state.activeTaskId = null;
       if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
@@ -375,6 +529,26 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   }
 
   rootDocument.addEventListener("click", (event) => {
+    if (event.target.closest("#operationsShowCategories")) {
+      showCategories();
+      return;
+    }
+
+    if (event.target.closest("#operationsShowTodayList")) {
+      showTodayList();
+      return;
+    }
+
+    const quickBtn = event.target.closest("[data-ops-quick]");
+    if (quickBtn) {
+      event.stopPropagation();
+      const taskId = quickBtn.getAttribute("data-ops-task-id");
+      const item = data.find((entry) => entry.id === taskId);
+      const actionMode = quickBtn.getAttribute("data-ops-quick");
+      dispatchWorkflowQuick(item, actionMode);
+      return;
+    }
+
     const categoryCard = event.target.closest("[data-ops-category]");
     if (categoryCard) {
       openCategory(categoryCard.getAttribute("data-ops-category"));
@@ -387,7 +561,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     }
 
     if (event.target.closest("#operationsDetailBack")) {
-      backToCategoryList();
+      backToTaskList();
       return;
     }
 
@@ -482,7 +656,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   rootWindow.addEventListener("iaqar:daily-task-closed", () => {
     if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
-      backToCategoryList();
+      backToTaskList();
     } else {
       state.activeTaskId = null;
       clearTaskPanel();
@@ -494,8 +668,10 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     clearTaskPanel();
     if (state.activeCategory) {
       state.viewMode = VIEW_MODES.CATEGORY_LIST;
+      state.listOrigin = "category";
     } else {
-      state.viewMode = VIEW_MODES.CATEGORIES;
+      state.viewMode = VIEW_MODES.TODAY_LIST;
+      state.listOrigin = "today";
     }
     render();
     afterViewChange();
