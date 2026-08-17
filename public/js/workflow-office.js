@@ -128,6 +128,168 @@
     return { key, score, ...(READINESS[key] || READINESS.low), label: item.closingReadinessLabel || READINESS[key].label };
   }
 
+  function partyReadinessInfo(item) {
+    let score = Number(item.completeness || 0);
+    const name = String(item.name || item.contactName || "").trim();
+    const phone = String(item.phone || item.contactPhone || "").replace(/\D/g, "");
+    if (!name || name.split(/\s+/).filter(Boolean).length < 2) score -= 15;
+    if (phone.length < 9) score -= 20;
+    if (!item.propertyType) score -= 15;
+    if (!item.district) score -= 10;
+    if (!String(item.details || "").trim()) score -= 5;
+    if (item.kind === "owner" || item.mediaMissing === true) {
+      if (item.mediaMissing === true) score -= 15;
+      if (!Number(item.amount)) score -= 10;
+    } else if (!Number(item.amount)) {
+      score -= 8;
+    }
+    if (item.status === "new") score -= 5;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    const key = score >= 85 ? "very_high" : score >= 70 ? "high" : score >= 50 ? "medium" : "low";
+    return { key, score, ...(READINESS[key] || READINESS.low), label: READINESS[key].label };
+  }
+
+  function isToday(value) {
+    const date = toDate(value);
+    if (!date) return false;
+    const now = new Date();
+    return date.getFullYear() === now.getFullYear()
+      && date.getMonth() === now.getMonth()
+      && date.getDate() === now.getDate();
+  }
+
+  function isWithinHours(value, hours) {
+    const date = toDate(value);
+    if (!date) return false;
+    const diff = date.getTime() - Date.now();
+    return diff >= 0 && diff <= hours * 3600000;
+  }
+
+  function buildDailyTaskCards() {
+    const candidates = [];
+    const seen = new Set();
+
+    const pushTask = task => {
+      if (!task.targetCardId || seen.has(task.targetCardId)) return;
+      seen.add(task.targetCardId);
+      candidates.push(task);
+    };
+
+    intakeItems
+      .filter(item => item.status === "new")
+      .forEach(item => {
+        pushTask({
+          score: 0,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: item.icon,
+          title: item.kind === "owner" ? "مراجعة عرض مالك جديد" : "مراجعة طلب عميل جديد",
+          subtitle: [item.subtitle, item.partyReadinessLabel].filter(Boolean).join(" — "),
+          actionLabel: "مراجعة الآن",
+          hint: "طلب جديد بانتظار مراجعتك"
+        });
+      });
+
+    matchItems
+      .filter(item => item.isAlert && !["completed", "closed"].includes(item.status))
+      .forEach(item => {
+        pushTask({
+          score: 1,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: item.icon,
+          title: "متابعة مطابقة متأخرة",
+          subtitle: item.subtitle,
+          actionLabel: "فتح المطابقة",
+          hint: item.nextAction || "متابعة عاجلة"
+        });
+      });
+
+    dealItems
+      .filter(item => item.isAlert && !["closed", "lost"].includes(item.status))
+      .forEach(item => {
+        pushTask({
+          score: 1,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: item.icon,
+          title: "متابعة صفقة متأخرة",
+          subtitle: item.subtitle,
+          actionLabel: "فتح الصفقة",
+          hint: item.nextAction || "متابعة عاجلة"
+        });
+      });
+
+    matchItems
+      .filter(item => item.viewingAt && (isToday(item.viewingAt) || isWithinHours(item.viewingAt, 3)) && !["completed", "closed"].includes(item.status))
+      .forEach(item => {
+        pushTask({
+          score: 2,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: "i-calendar",
+          title: "موعد معاينة قريب",
+          subtitle: `${item.subtitle} — ${dateTimeLabel(item.viewingAt)}`,
+          actionLabel: "تأكيد المعاينة",
+          hint: "تأكد من حضور الطرفين"
+        });
+      });
+
+    matchItems
+      .filter(item => item.closingReadinessKey === "very_high" && !["completed", "closed"].includes(item.status))
+      .forEach(item => {
+        pushTask({
+          score: 3,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: item.icon,
+          title: "فرصة جاهزة للإغلاق",
+          subtitle: item.subtitle,
+          actionLabel: "متابعة الفرصة",
+          hint: "جاهزية إغلاق عالية جدًا"
+        });
+      });
+
+    dealItems
+      .filter(item => ["negotiation", "agreement", "closing"].includes(item.workflowStage) && !["closed", "lost"].includes(item.status))
+      .forEach(item => {
+        pushTask({
+          score: 4,
+          targetCardId: item.id,
+          targetMain: item.main,
+          icon: item.icon,
+          title: "صفقة تحتاج متابعة",
+          subtitle: item.subtitle,
+          actionLabel: "فتح الصفقة",
+          hint: item.nextAction || "متابعة مرحلة الصفقة"
+        });
+      });
+
+    return candidates
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 5)
+      .map((task, index) => ({
+        id: `daily-task-${task.targetCardId}`,
+        recordId: task.targetCardId,
+        recordType: "task",
+        main: task.targetMain || "opportunities",
+        priority: -2 - index,
+        isAlert: true,
+        icon: task.icon,
+        title: task.title,
+        subtitle: task.subtitle,
+        time: "مهمة اليوم",
+        detailsLines: [
+          task.hint || "مهمة من أولويات اليوم.",
+          "اضغط الزر أدناه للانتقال مباشرة وتنفيذ الإجراء."
+        ],
+        actionLabel: task.actionLabel,
+        secondaryActionLabel: "إغلاق التفاصيل",
+        targetCardId: task.targetCardId,
+        targetMain: task.targetMain || "opportunities"
+      }));
+  }
+
   function healthInfo(item) {
     const stageBase = { contact: 66, viewing: 76, negotiation: 82, agreement: 88, closing: 95, closed: 100, lost: 10 };
     let score = Number(item.healthScore);
@@ -277,6 +439,7 @@
     const item = doc.data() || {};
     const isOwner = item.kind === "owner";
     const amountLabel = isOwner ? "السعر المطلوب" : "الميزانية";
+    const readiness = partyReadinessInfo(item);
     return {
       id: `intake-${doc.id}`,
       recordId: doc.id,
@@ -286,11 +449,12 @@
       isAlert: item.status === "new",
       icon: isOwner ? "i-house-check" : "i-user-clock",
       title: isOwner ? "عرض جديد من مالك" : "طلب جديد من عميل",
-      subtitle: [item.propertyType, item.district, item.name].filter(Boolean).join(" — "),
+      subtitle: [readiness.mark, readiness.label, item.propertyType, item.district, item.name].filter(Boolean).join(" — "),
       propertyType: item.propertyType || "",
       district: item.district || "",
       time: relativeTime(item.createdAt),
       detailsLines: [
+        `جاهزية ${isOwner ? "المالك" : "العميل"}: ${readiness.mark} ${readiness.label}`,
         `الاسم: ${item.name || "غير محدد"}`,
         `الجوال: ${item.phone || "غير محدد"}`,
         `نوع العقار: ${item.propertyType || "غير محدد"}`,
@@ -311,6 +475,9 @@
       ,whatsappOwnerLabel: isOwner && item.mediaMissing === true ? "طلب الصور عبر واتساب" : "واتساب المالك"
       ,whatsappClient: !isOwner
       ,ownerMediaMissing: isOwner && item.mediaMissing === true
+      ,partyReadinessKey: readiness.key
+      ,partyReadinessLabel: `${readiness.mark} ${readiness.label}`
+      ,partyReadinessScore: readiness.score
     };
   }
 
@@ -431,7 +598,8 @@
 
   function emitOperations() {
     const baseItems = [...intakeItems, ...matchItems, ...dealItems];
-    const items = analyticsItem ? [analyticsItem, ...baseItems] : baseItems;
+    const taskItems = buildDailyTaskCards();
+    const items = [...taskItems, ...(analyticsItem ? [analyticsItem] : []), ...baseItems];
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
   }
 
@@ -493,28 +661,34 @@
       if (!response.ok) return;
       const summary = data.morningSummary || data.counts || {};
       const best = data.bestOpportunity || null;
+      const taskItems = buildDailyTaskCards();
       analyticsItem = {
         id: "daily-priorities",
         recordId: "daily-priorities",
         recordType: "summary",
         main: "opportunities",
         priority: -1,
-        isAlert: Number(summary.dueFollowUps || 0) > 0,
+        isAlert: Number(summary.dueFollowUps || 0) > 0 || taskItems.length > 0,
         icon: "i-clipboard-list",
-        title: "أولويات اليوم",
-        subtitle: Number(summary.dueFollowUps || 0) > 0 ? `${summary.dueFollowUps} متابعات مستحقة` : "العمل مرتب حسب الأقرب للإغلاق",
+        title: "ملخص اليوم",
+        subtitle: taskItems.length > 0
+          ? `${taskItems.length} مهمة جاهزة للتنفيذ`
+          : Number(summary.dueFollowUps || 0) > 0
+            ? `${summary.dueFollowUps} متابعات مستحقة`
+            : "العمل مرتب حسب الأقرب للإغلاق",
         time: "الآن",
         detailsLines: [
+          `مهام اليوم: ${taskItems.length}`,
           `المتابعات المستحقة: ${Number(summary.dueFollowUps || 0)}`,
           `فرص جاهزيتها عالية جدًا: ${Number(summary.veryReady || 0)}`,
           `صفقات في التفاوض وما بعده: ${Number(summary.negotiationDeals || 0)}`,
           `العمولات المتوقعة: ${Number(summary.commissionExpected || 0).toLocaleString("ar-SA")} ريال`,
           best ? `أفضل فرصة: ${best.matchScore || best.score || 0}% — جاهزية الإغلاق ${best.closingReadinessLabel || "متوسطة"}` : "لا توجد فرصة مكتملة البيانات الآن"
         ],
-        actionLabel: best ? "فتح أفضل فرصة" : "مراجعة الفرص",
+        actionLabel: taskItems[0] ? "فتح أول مهمة" : best ? "فتح أفضل فرصة" : "مراجعة الفرص",
         secondaryActionLabel: "إغلاق التفاصيل",
-        targetId: best && best.matchId || "",
-        targetMain: "opportunities"
+        targetId: taskItems[0] ? taskItems[0].targetCardId : best && best.matchId || "",
+        targetMain: taskItems[0] ? taskItems[0].main : "opportunities"
       };
       emitOperations();
     } catch (error) {
@@ -1038,9 +1212,13 @@
   }
 
   async function handlePrimaryAction(detail) {
+    if (detail.recordType === "task" && detail.targetCardId) {
+      window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: detail.targetCardId, main: detail.targetMain || "opportunities" } }));
+      return;
+    }
     if (detail.recordType === "summary") {
       if (detail.targetId) window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: detail.targetId, main: detail.targetMain || "opportunities" } }));
-      else notify("لا توجد فرصة جاهزة الآن");
+      else notify("لا توجد مهمة جاهزة الآن");
       return;
     }
     if (["match", "deal"].includes(detail.recordType)) {
@@ -1051,7 +1229,7 @@
   }
 
   async function handleSecondaryAction(detail) {
-    if (detail.recordType === "summary") return;
+    if (detail.recordType === "summary" || detail.recordType === "task") return;
     if (["match", "deal"].includes(detail.recordType)) {
       await openWorkflowUi(detail);
       return;
