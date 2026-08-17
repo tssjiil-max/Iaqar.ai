@@ -232,7 +232,12 @@ export function mapOperationToBrokerFields(operationId, hintKind = "") {
   return { purpose: op.purpose, opportunityKind };
 }
 
-export function reviewTransactionMode(operationId) {
+export function reviewTransactionMode(operationId, context = {}) {
+  const purpose = String(context.purpose || "").toUpperCase();
+  const kind = String(context.opportunityKind || "").toUpperCase();
+  if (purpose === "LEASE_REQUEST" || (operationId === "rent" && kind === "REQUEST")) {
+    return "budget";
+  }
   if (operationId === "sale") return "sale";
   if (operationId === "rent") return "rent";
   if (operationId === "purchase") return "budget";
@@ -258,11 +263,15 @@ export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta
     ? districtLabel.split(/\s+/).slice(0, 4).join(" ").trim()
     : "";
 
-  const mode = reviewTransactionMode(op?.id || "");
-  const legacyValue = extractionFields.priceOrBudget ?? "";
+  const reviewContext = {
+    purpose: extractionFields.purpose || extended.purpose || "",
+    opportunityKind: extractionFields.opportunityKind || extended.opportunityKind || ""
+  };
+  const mode = reviewTransactionMode(op?.id || "", reviewContext);
+  const legacyValue = extractionFields.priceOrBudget ?? extractionFields.budget ?? extractionFields.annualRent ?? "";
   const salePrice = extended.salePrice ?? (mode === "sale" ? legacyValue : "");
   const annualRent = extended.annualRent ?? (mode === "rent" ? legacyValue : "");
-  const budget = extended.budget ?? (mode === "budget" ? legacyValue : "");
+  const budget = extended.budget ?? extractionFields.budget ?? (mode === "budget" ? legacyValue : "");
   const investmentValue = mode === "investment" ? legacyValue : "";
 
   return {
@@ -312,11 +321,15 @@ export function reviewValuesToBrokerFields(review) {
   const city = CITIES.find((c) => c.id === review.cityId);
   const district = DISTRICTS.find((d) => d.id === review.districtId);
 
+  const snapshot = review.extractedSnapshot || {};
   const broker = mapOperationToBrokerFields(
     review.operationTypeId,
-    review.extractedSnapshot?.opportunityKind
+    snapshot.opportunityKind
   );
-  const mode = reviewTransactionMode(review.operationTypeId);
+  const mode = reviewTransactionMode(review.operationTypeId, {
+    purpose: snapshot.purpose || broker.purpose || "",
+    opportunityKind: snapshot.opportunityKind || broker.opportunityKind || ""
+  });
   const isLand = review.propertyTypeId === "land" || property?.label === "أرض";
   const salePrice = mode === "sale" && review.salePrice !== "" && review.salePrice != null
     ? Number(review.salePrice)
