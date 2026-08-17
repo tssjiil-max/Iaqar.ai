@@ -325,7 +325,7 @@ test("import UI wires save through opportunity bank repository path", () => {
 
 test("user-facing import UI avoids English error labels", () => {
   assert.ok(importUi.includes("الرابط غير صالح"));
-  assert.ok(canonicalDomain.includes("تعذر قراءة الرابط، أرفق صورة أو انسخ نص الإعلان"));
+  assert.ok(canonicalDomain.includes("تعذر قراءة تفاصيل الرابط. أرفق صورة الإعلان أو الصق نصه لإكمال الاستيراد."));
   assert.ok(importUi.includes("جارٍ قراءة الإعلان"));
   assert.ok(importUi.includes("تعذر حفظ الفرصة"));
   assert.equal(importUi.includes("Failed to fetch"), false);

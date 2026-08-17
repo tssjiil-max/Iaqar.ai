@@ -10,6 +10,18 @@ export const CLASSIFICATION_STATUS = Object.freeze({
   FALLBACK_REQUIRED: "fallback_required"
 });
 
+export const FALLBACK_URL_MESSAGE = "تعذر قراءة تفاصيل الرابط. أرفق صورة الإعلان أو الصق نصه لإكمال الاستيراد.";
+
+const ANALYZER_PROVIDER_LABELS = Object.freeze({
+  gemini_vision: "Gemini Vision",
+  workers_ai_vision: "Workers AI Vision",
+  site_adapter_aqar: "رابط عقار",
+  site_adapter_haraj: "رابط حراج",
+  site_adapter_deal: "رابط ديل",
+  site_adapter_structured: "رابط الموقع",
+  deterministic_text_parser: "نص الإعلان"
+});
+
 const REQUEST_PHRASE_RE = /(?:^|\s)(?:مطلوب|أبحث\s+عن|ابحث\s+عن|أرغب\s+في\s+(?:شراء|استئجار|الشراء|الاستئجار))(?:\s|$)/i;
 
 function structuredBrokerFields(brokerFields = {}) {
@@ -70,9 +82,102 @@ export function mergeCanonicalListingFields(textFields = {}, canonical = {}) {
   };
 }
 
+export function isUrlFallbackRequired(resolved = {}) {
+  return Boolean(
+    resolved.fallbackRequired
+    || resolved.extractionStatus === CLASSIFICATION_STATUS.FALLBACK_REQUIRED
+    || resolved.classificationStatus === CLASSIFICATION_STATUS.FALLBACK_REQUIRED
+    || resolved.error === "fallback_required"
+  );
+}
+
+export function buildCanonicalIntakeRecord(urlCanonical = {}, imageAnalysis = {}, mergedFields = {}) {
+  return {
+    originalUrl: safeText(urlCanonical.originalUrl, 2000),
+    resolvedUrl: safeText(urlCanonical.resolvedUrl || urlCanonical.url, 2000),
+    sourceSiteId: safeText(urlCanonical.sourceSiteId || urlCanonical.adapterId, 40),
+    externalListingId: safeText(urlCanonical.externalListingId, 120),
+    mediaPath: safeText(imageAnalysis.mediaPath || urlCanonical.mediaPath, 500),
+    extractionStatus: safeText(
+      imageAnalysis.extractionStatus || urlCanonical.extractionStatus,
+      40
+    ),
+    classificationStatus: safeText(
+      imageAnalysis.classificationStatus || urlCanonical.classificationStatus,
+      40
+    ),
+    analyzerProvider: safeText(imageAnalysis.analyzerProvider, 40),
+    extractionMode: safeText(imageAnalysis.extractionMode || urlCanonical.extractionMode, 80),
+    contentHash: safeText(urlCanonical.contentHash, 128),
+    fieldSources: {
+      ...(urlCanonical.fieldSources || {}),
+      ...(imageAnalysis.fieldSources || {})
+    },
+    brokerFields: mergedFields
+  };
+}
+
+export function mergeImageAnalysisWithCanonical(textFields = {}, urlCanonical = {}, imageAnalysis = {}) {
+  const imageBrokerFields = imageAnalysis.brokerFields && typeof imageAnalysis.brokerFields === "object"
+    ? imageAnalysis.brokerFields
+    : {};
+  const merged = mergeCanonicalListingFields({ ...textFields, ...imageBrokerFields }, urlCanonical || {});
+  const fields = { ...merged.fields };
+  for (const [key, value] of Object.entries(imageBrokerFields)) {
+    if (value === null || value === undefined || String(value).trim() === "") continue;
+    fields[key] = value;
+  }
+  const fieldSources = {
+    ...(urlCanonical?.fieldSources || {}),
+    ...(imageAnalysis.fieldSources || merged.fieldSources || {})
+  };
+  for (const [key, value] of Object.entries(imageBrokerFields)) {
+    if (value === null || value === undefined || String(value).trim() === "") continue;
+    fieldSources[key] = imageAnalysis.analyzerProvider || imageAnalysis.extractionMode || "image_vision";
+  }
+  const extractionStatus = imageAnalysis.extractionStatus
+    || (hasCoreListingFields(merged.fields) ? "extracted" : urlCanonical?.extractionStatus);
+  return {
+    ...merged,
+    fields,
+    fieldSources,
+    extractionStatus,
+    analyzerProvider: imageAnalysis.analyzerProvider || "",
+    extractionMode: imageAnalysis.extractionMode || merged.extractionMode,
+    mediaPath: imageAnalysis.mediaPath || urlCanonical?.mediaPath || "",
+    confidence: Number(imageAnalysis.confidence || 0),
+    intake: buildCanonicalIntakeRecord(urlCanonical, imageAnalysis, fields)
+  };
+}
+
+function hasCoreListingFields(fields = {}) {
+  return Boolean(
+    fields.opportunityKind
+    && fields.purpose
+    && fields.propertyType
+    && fields.city
+  );
+}
+
+export function buildImportProvenanceSummary({ canonical = {}, extraction = {}, sourceSite = "" } = {}) {
+  const parts = [];
+  if (canonical?.originalUrl || canonical?.resolvedUrl) parts.push("رابط");
+  if (canonical?.mediaPath || extraction?.mediaPath) parts.push("صورة");
+  if (extraction?.analyzerProvider) {
+    parts.push(ANALYZER_PROVIDER_LABELS[extraction.analyzerProvider] || extraction.analyzerProvider);
+  } else if (extraction?.extractionMode?.includes("gemini")) {
+    parts.push("Gemini Vision");
+  } else if (extraction?.extractionMode?.includes("workers_ai")) {
+    parts.push("Workers AI Vision");
+  }
+  if (sourceSite && !parts.includes(sourceSite)) parts.push(sourceSite);
+  if (!parts.length) return "";
+  return `المصدر: ${parts.join(" + ")}`;
+}
+
 export function importStatusMessageForExtraction({ extractionStatus, classificationStatus, error } = {}) {
   if (error === "source_blocked" || extractionStatus === "fallback_required") {
-    return "تعذر قراءة الرابط، أرفق صورة أو انسخ نص الإعلان";
+    return FALLBACK_URL_MESSAGE;
   }
   if (classificationStatus === "needs_review" || extractionStatus === "needs_review") {
     return "توجد بيانات متعارضة وتحتاج مراجعة";

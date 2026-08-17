@@ -309,32 +309,6 @@ async function uploadSourceFile(officeId, sourceId, file) {
   return payload;
 }
 
-async function resolveMediaListingText(mediaPath, officeId, file = null) {
-  const base = workerBase();
-  if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
-  const headers = {
-    ...(await authHeader()),
-    "Content-Type": "application/json",
-    "X-Office-Id": officeId
-  };
-  const response = await fetchWithTimeout(`${base}/pipeline/media-extract`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      officeId,
-      mediaPath,
-      fileName: file?.name || "",
-      contentType: file?.type || ""
-    })
-  }, extractionTimeoutMs);
-  const body = await response.json().catch(() => ({}));
-  const text = String(body.text || "").trim();
-  if (!response.ok || !body.ok || !text) {
-    return { ok: false, error: body.error || "media_extract_failed" };
-  }
-  return { ok: true, text, extractionMode: body.extractionMode || "" };
-}
-
 async function persistIntake(result, reviewMeta = {}, options = {}) {
   const office = currentOffice();
   const db = window.firebase?.firestore?.();
@@ -530,19 +504,7 @@ async function resolveUrlListingText(url, officeId) {
     body: JSON.stringify({ url, officeId })
   });
   const body = await response.json().catch(() => ({}));
-  const text = String(body.text || "").trim();
-  if (!response.ok || !body.ok || !text) {
-    return {
-      ok: false,
-      error: body.error || "url_resolve_failed",
-      diagnostics: body.diagnostics || null,
-      extractionStatus: body.extractionStatus || "fallback_required",
-      classificationStatus: body.classificationStatus || "fallback_required"
-    };
-  }
-  return {
-    ok: true,
-    text,
+  const canonicalMeta = {
     diagnostics: body.diagnostics || null,
     originalUrl: body.originalUrl || url,
     resolvedUrl: body.resolvedUrl || body.url || url,
@@ -557,6 +519,80 @@ async function resolveUrlListingText(url, officeId) {
     classificationStatus: body.classificationStatus || "confirmed",
     listingTitle: body.listingTitle || "",
     contentHash: body.contentHash || ""
+  };
+  const fallbackRequired = canonicalMeta.extractionStatus === "fallback_required"
+    || canonicalMeta.classificationStatus === "fallback_required";
+  const text = String(body.text || "").trim();
+  if (fallbackRequired) {
+    return {
+      ok: false,
+      fallbackRequired: true,
+      error: "fallback_required",
+      text: "",
+      ...canonicalMeta
+    };
+  }
+  if (!response.ok || !body.ok || !text) {
+    return {
+      ok: false,
+      error: body.error || "url_resolve_failed",
+      fallbackRequired: Boolean(canonicalMeta.adapterId || canonicalMeta.externalListingId),
+      ...canonicalMeta
+    };
+  }
+  return {
+    ok: true,
+    text,
+    ...canonicalMeta
+  };
+}
+
+async function resolveMediaListingText(mediaPath, officeId, file = null, canonical = null) {
+  const base = workerBase();
+  if (!base || !mediaPath) return { ok: false, error: "media_path_missing" };
+  const headers = {
+    ...(await authHeader()),
+    "Content-Type": "application/json",
+    "X-Office-Id": officeId
+  };
+  const response = await fetchWithTimeout(`${base}/pipeline/media-extract`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      officeId,
+      mediaPath,
+      fileName: file?.name || "",
+      contentType: file?.type || "",
+      originalUrl: canonical?.originalUrl || "",
+      resolvedUrl: canonical?.resolvedUrl || "",
+      sourceSiteId: canonical?.sourceSiteId || canonical?.adapterId || "",
+      externalListingId: canonical?.externalListingId || ""
+    })
+  }, extractionTimeoutMs);
+  const body = await response.json().catch(() => ({}));
+  const text = String(body.text || "").trim();
+  const hasStructured = body.brokerFields && typeof body.brokerFields === "object"
+    && Object.keys(body.brokerFields).length > 0;
+  if (!response.ok || !body.ok || (!text && !hasStructured)) {
+    return {
+      ok: false,
+      error: body.error || "media_extract_failed",
+      publicMessage: body.publicMessage || "",
+      geminiError: body.geminiError || "",
+      workersError: body.workersError || ""
+    };
+  }
+  return {
+    ok: true,
+    text,
+    brokerFields: body.brokerFields || null,
+    fieldSources: body.fieldSources || {},
+    analyzerProvider: body.analyzerProvider || "",
+    extractionMode: body.extractionMode || "",
+    extractionStatus: body.extractionStatus || "extracted",
+    confidence: Number(body.confidence || 0),
+    productionAi: Boolean(body.productionAi),
+    mediaPath: body.mediaPath || mediaPath
   };
 }
 

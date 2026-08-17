@@ -91,6 +91,10 @@ import {
   resolveGeminiModel,
   validateVoiceAudio
 } from "./gemini-voice-service.js";
+import {
+  extractListingFromImage,
+  mediaExtractPublicMessage
+} from "./listing-image-vision-service.mjs";
 import { resolveCanonicalListingUrl } from "./canonical-listing-intake.mjs";
 import { normalizeListingFetchUrl as adapterNormalizeListingFetchUrl } from "./listing-site-adapters.mjs";
 import {
@@ -5849,23 +5853,45 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     throw appError("invalid_media_target", 400, "وجهة الملف غير صالحة");
   }
   await authorizeOfficeRequest(request, env, officeId, "member");
-  if (!env.AI) {
-    return jsonResponse({ ok: false, error: "media_extraction_unavailable", requestId }, 503);
+  if (!env.AI && !String(env.GEMINI_API_KEY || "").trim()) {
+    return jsonResponse({
+      ok: false,
+      error: "media_extraction_unavailable",
+      publicMessage: mediaExtractPublicMessage("media_extraction_unavailable"),
+      requestId
+    }, 503);
   }
 
   const bucket = requireMediaBucket(env);
   const object = await bucket.get(mediaPath);
-  if (!object) throw appError("media_not_found", 404, "الملف غير موجود");
+  if (!object) {
+    return jsonResponse({
+      ok: false,
+      error: "media_not_found",
+      publicMessage: mediaExtractPublicMessage("media_not_found"),
+      requestId
+    }, 404);
+  }
   const metadata = object.customMetadata || {};
   if (metadata.officeId && metadata.officeId !== officeId) {
-    throw appError("media_scope_mismatch", 403, "الملف لا يتبع هذا المكتب");
+    return jsonResponse({
+      ok: false,
+      error: "media_scope_mismatch",
+      publicMessage: mediaExtractPublicMessage("media_scope_mismatch"),
+      requestId
+    }, 403);
   }
   if (metadata.sourceType && !["image", "screenshot"].includes(metadata.sourceType)) {
     throw appError("unsupported_media", 415, "هذا المسار مخصص لاستخراج الصور");
   }
   const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
   if (requestedContentType && storedContentType && requestedContentType !== storedContentType) {
-    throw appError("media_type_mismatch", 400, "نوع الملف لا يطابق الملف المرفوع");
+    return jsonResponse({
+      ok: false,
+      error: "media_type_mismatch",
+      publicMessage: mediaExtractPublicMessage("media_type_mismatch"),
+      requestId
+    }, 400);
   }
   const contentType = storedContentType || requestedContentType;
   if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
@@ -5874,43 +5900,65 @@ async function handlePipelineMediaExtract(request, env, requestId) {
 
   const bytes = await object.arrayBuffer();
   if (bytes.byteLength > LISTING_FETCH_MAX_BYTES) {
-    return jsonResponse({ ok: false, error: "response_too_large", requestId }, 422);
+    return jsonResponse({
+      ok: false,
+      error: "response_too_large",
+      publicMessage: mediaExtractPublicMessage("response_too_large"),
+      requestId
+    }, 422);
   }
 
-  const visionPrompt = "اقرأ النص العربي الظاهر في الصورة حرفياً فقط. لا تخترع ولا تكرر. أعد النص المقروء فقط.";
-  const imageBytes = new Uint8Array(bytes);
-  const dataUrl = `data:${contentType};base64,${bytesToBase64(imageBytes)}`;
-  const visionInput = {
-    messages: [{
-      role: "user",
-      content: [
-        { type: "text", text: visionPrompt },
-        { type: "image_url", image_url: { url: dataUrl } }
-      ]
-    }],
-    max_tokens: 1024
-  };
-  let aiResult;
-  try {
-    aiResult = await runLlamaVisionExtract(env, visionInput);
-  } catch (error) {
-    console.warn("[iaqar-media-extract] vision adapter failed", error && error.message);
-    return jsonResponse({ ok: false, error: "media_ai_failed", requestId }, 422);
+  const vision = await extractListingFromImage({
+    env,
+    imageBytes: new Uint8Array(bytes),
+    mimeType: contentType,
+    runLlamaVisionExtract,
+    parseRealEstateMessage
+  });
+  if (!vision.ok) {
+    console.warn("[iaqar-media-extract] vision failed", {
+      error: vision.error,
+      geminiError: vision.geminiError,
+      workersError: vision.workersError
+    });
+    return jsonResponse({
+      ok: false,
+      error: vision.error || "media_ai_failed",
+      publicMessage: mediaExtractPublicMessage(vision.error, vision),
+      geminiError: vision.geminiError || "",
+      workersError: vision.workersError || "",
+      requestId
+    }, 422);
   }
 
-  const rawText = typeof aiResult === "string"
-    ? aiResult
-    : String(aiResult?.response || aiResult?.result?.response || aiResult?.result || "");
-  const text = cleanText(rawText, 12000);
-  if (!text) {
-    return jsonResponse({ ok: false, error: "empty_listing_text", requestId }, 422);
+  const text = cleanText(vision.text, 12000);
+  if (!text && !vision.brokerFields) {
+    return jsonResponse({
+      ok: false,
+      error: "empty_listing_text",
+      publicMessage: mediaExtractPublicMessage("empty_listing_text"),
+      requestId
+    }, 422);
   }
+
   return jsonResponse({
     ok: true,
     text,
     textLength: text.length,
-    extractionMode: "workers_ai_vision_adapter",
-    productionAi: false,
+    brokerFields: vision.brokerFields || null,
+    fieldSources: vision.fieldSources || {},
+    analyzerProvider: vision.analyzerProvider || "",
+    extractionMode: vision.extractionMode || "workers_ai_vision_adapter",
+    extractionStatus: vision.extractionStatus || "extracted",
+    confidence: Number(vision.confidence || 0),
+    productionAi: Boolean(vision.productionAi),
+    geminiAttempted: Boolean(vision.geminiAttempted),
+    geminiError: vision.geminiError || "",
+    mediaPath,
+    originalUrl: cleanText(body.originalUrl, 2000),
+    resolvedUrl: cleanText(body.resolvedUrl, 2000),
+    sourceSiteId: cleanText(body.sourceSiteId, 40),
+    externalListingId: cleanText(body.externalListingId, 120),
     fileName,
     contentType,
     requestId

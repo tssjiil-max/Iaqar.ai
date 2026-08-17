@@ -37,8 +37,11 @@ import {
 } from "./opportunity-import-advert-domain.js";
 import {
   buildCanonicalSourceMetadata,
+  buildImportProvenanceSummary,
+  FALLBACK_URL_MESSAGE,
   importStatusMessageForExtraction,
-  mergeCanonicalListingFields
+  mergeCanonicalListingFields,
+  mergeImageAnalysisWithCanonical
 } from "./canonical-listing-intake-domain.js";
 import {
   authHeader,
@@ -203,6 +206,30 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     sourceUrl = validated.normalizedUrl;
     setImportStatus("جارٍ قراءة الإعلان");
     const resolved = await resolveUrlListingText(sourceUrl, office.officeId);
+    sourceSite = resolveSourceSiteLabel(sourceUrl);
+    const canonicalFromUrl = {
+      originalUrl: resolved.originalUrl || sourceUrl,
+      resolvedUrl: resolved.resolvedUrl || sourceUrl,
+      sourceSiteId: resolved.sourceSiteId || resolved.adapterId || "",
+      adapterId: resolved.adapterId || "",
+      externalListingId: resolved.externalListingId || "",
+      brokerFields: resolved.brokerFields || null,
+      fieldSources: resolved.fieldSources || {},
+      extractionStatus: resolved.extractionStatus || "extracted",
+      classificationStatus: resolved.classificationStatus || "confirmed",
+      listingTitle: resolved.listingTitle || "",
+      contentHash: resolved.contentHash || ""
+    };
+    if (resolved.fallbackRequired || resolved.error === "fallback_required") {
+      importSession = {
+        mode: "url",
+        sourceUrl,
+        sourceSite,
+        canonical: canonicalFromUrl,
+        fallbackRequired: true
+      };
+      return { fallbackRequired: true, importSession };
+    }
     if (!resolved.ok || !String(resolved.text || "").trim()) {
       const err = new Error(resolved.error || "url_resolve_failed");
       err.publicMessage = importStatusMessageForExtraction({
@@ -213,21 +240,8 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
       throw err;
     }
     listingText = String(resolved.text || "").trim();
-    sourceSite = resolveSourceSiteLabel(sourceUrl);
     importSession = {
-      canonical: {
-        originalUrl: resolved.originalUrl || sourceUrl,
-        resolvedUrl: resolved.resolvedUrl || sourceUrl,
-        sourceSiteId: resolved.sourceSiteId || "",
-        adapterId: resolved.adapterId || "",
-        externalListingId: resolved.externalListingId || "",
-        brokerFields: resolved.brokerFields || null,
-        fieldSources: resolved.fieldSources || {},
-        extractionStatus: resolved.extractionStatus || "extracted",
-        classificationStatus: resolved.classificationStatus || "confirmed",
-        listingTitle: resolved.listingTitle || "",
-        contentHash: resolved.contentHash || ""
-      }
+      canonical: canonicalFromUrl
     };
   } else if (mode === "text") {
     if (!listingText) {
@@ -256,23 +270,38 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     fileChecksumValue = await fileChecksum(file);
     const uploaded = await uploadSourceFile(office.officeId, `src_${fileChecksumValue.slice(0, 40)}`, file);
     mediaPath = uploaded.mediaPath || "";
-    const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId, file);
-    if (!mediaResolved.ok || !String(mediaResolved.text || "").trim()) {
+    const urlCanonical = importSession?.canonical || null;
+    if (!sourceUrl) {
+      const urlInput = $("importAdvertUrlInput")?.value || importSession?.sourceUrl || "";
+      if (urlInput) {
+        const validatedUrl = validateImportUrl(urlInput);
+        if (validatedUrl.ok) {
+          sourceUrl = validatedUrl.normalizedUrl;
+          sourceSite = resolveSourceSiteLabel(sourceUrl);
+        }
+      }
+    }
+    const mediaResolved = await resolveMediaListingText(mediaPath, office.officeId, file, urlCanonical);
+    if (!mediaResolved.ok) {
       const err = new Error(mediaResolved.error || "media_extract_failed");
-      err.publicMessage = "تعذر تحليل صورة الإعلان";
+      err.publicMessage = mediaResolved.publicMessage || "تعذر تحليل صورة الإعلان";
       throw err;
     }
     listingText = String(mediaResolved.text || "").trim();
     mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
-    sourceSite = "صورة الإعلان";
-    const urlInput = $("importAdvertUrlInput")?.value || importSession?.sourceUrl || "";
-    if (urlInput) {
-      const validatedUrl = validateImportUrl(urlInput);
-      if (validatedUrl.ok) {
-        sourceUrl = validatedUrl.normalizedUrl;
-        sourceSite = resolveSourceSiteLabel(sourceUrl);
+    if (!sourceSite) sourceSite = sourceUrl ? resolveSourceSiteLabel(sourceUrl) : "صورة الإعلان";
+    importSession = {
+      ...(importSession || {}),
+      imageAnalysis: {
+        brokerFields: mediaResolved.brokerFields || null,
+        fieldSources: mediaResolved.fieldSources || {},
+        analyzerProvider: mediaResolved.analyzerProvider || "",
+        extractionMode: mediaResolved.extractionMode || "",
+        extractionStatus: mediaResolved.extractionStatus || "extracted",
+        confidence: mediaResolved.confidence || 0,
+        mediaPath
       }
-    }
+    };
   }
 
   const prepared = await prepareOpportunityIntake({
@@ -281,7 +310,7 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     text: listingText,
     listingText,
     url: sourceUrl || undefined,
-    sourceType: sourceUrl ? "url" : "text",
+    sourceType: sourceUrl ? "url" : (mode === "image" ? "image" : "text"),
     fileChecksum: fileChecksumValue,
     mediaPath,
     fileName: file?.name || "",
@@ -293,15 +322,20 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
   if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
 
   const canonical = importSession?.canonical || null;
-  if (canonical?.brokerFields || canonical?.adapterId) {
-    const merged = mergeCanonicalListingFields(prepared.fields || {}, canonical);
+  const imageAnalysis = importSession?.imageAnalysis || null;
+  if (canonical || imageAnalysis) {
+    const merged = imageAnalysis
+      ? mergeImageAnalysisWithCanonical(prepared.fields || {}, canonical || {}, imageAnalysis)
+      : mergeCanonicalListingFields(prepared.fields || {}, canonical || {});
     prepared.fields = merged.fields;
     prepared.extraction = {
       ...(prepared.extraction || {}),
       extractionMode: merged.extractionMode,
       fieldSources: merged.fieldSources,
       classificationStatus: merged.classificationStatus,
-      extractionStatus: merged.extractionStatus
+      extractionStatus: merged.extractionStatus,
+      analyzerProvider: merged.analyzerProvider || imageAnalysis?.analyzerProvider || "",
+      extractionConfidence: merged.confidence || imageAnalysis?.confidence || prepared.extraction?.extractionConfidence
     };
     if (merged.classificationStatus === "needs_review") {
       prepared.extraction.needsReview = {
@@ -310,14 +344,11 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
         opportunityKind: true
       };
     }
-    Object.assign(prepared.source, buildCanonicalSourceMetadata(canonical, listingText));
+    importSession.canonical = merged.intake || buildCanonicalSourceMetadata(canonical || {}, listingText);
+    Object.assign(prepared.source, buildCanonicalSourceMetadata(importSession.canonical, listingText));
   }
 
   if (mediaPath) prepared.source.mediaPath = mediaPath;
-  if (mediaExtractionMode && prepared.extraction) {
-    prepared.extraction.extractionMode = mediaExtractionMode;
-    prepared.extraction.productionAi = false;
-  }
 
   importSession = {
     ...(importSession || {}),
@@ -345,6 +376,15 @@ function openImportReview() {
   });
   const summaryRecord = { ...fields, ...importReadinessPresentation(fields) };
   const importSummary = buildImportReadinessSummary(summaryRecord);
+  const provenanceSummary = buildImportProvenanceSummary({
+    canonical: importSession.canonical,
+    extraction: prepared.extraction,
+    sourceSite: importSession.sourceSite
+  });
+  const missingLabels = importReadinessPresentation(fields).matchingReadinessMissing || [];
+  const missingSummary = missingLabels.length
+    ? `البيانات الناقصة: ${missingLabels.join("، ")}`
+    : "لا توجد بيانات ناقصة حرجة للمراجعة.";
   const approveLabel = importSaveButtonLabel(summaryRecord);
   closeImportOverlay();
   openOpportunityReview({
@@ -358,7 +398,7 @@ function openImportReview() {
     title: "مراجعة الإعلان المستورد",
     subtitle: "عدّل البيانات المستخرجة ثم احفظ الإعلان في بنك الفرص.",
     approveLabel,
-    importSummary,
+    importSummary: [importSummary, provenanceSummary, missingSummary].filter(Boolean).join(" — "),
     sourceUrl: importSession.sourceUrl || "",
     showReanalyze: true,
     onReanalyze: () => {
@@ -390,7 +430,16 @@ async function runImportAnalysis(mode, payload = {}) {
   }
   setImportStatus("جارٍ قراءة الإعلان");
   try {
-    await analyzeImportInput({ mode, ...payload });
+    const result = await analyzeImportInput({ mode, ...payload });
+    if (result?.fallbackRequired) {
+      setImportStatus(FALLBACK_URL_MESSAGE);
+      setImportMode("image");
+      const imageHint = $("importAdvertImageHint");
+      if (imageHint) {
+        imageHint.textContent = "أرفق صورة الإعلان لإكمال الاستيراد من نفس الرابط.";
+      }
+      return;
+    }
     const statusMsg = importSession?.canonical?.extractionStatus === "extracted"
       ? "تم استخراج بيانات الإعلان"
       : importSession?.canonical?.classificationStatus === "needs_review"
