@@ -1411,7 +1411,7 @@
         : "عمليات الصفقات مرتبة حسب المرحلة والأولوية";
 
       operationList.innerHTML = items.map(item => {
-        const secondaryMode = item.recordType && item.recordType !== "summary" ? "secondary" : "close";
+        const secondaryMode = item.recordType && !["summary", "task"].includes(item.recordType) ? "secondary" : "close";
         return `
         <div class="operation-group" id="operation-${escapeHtml(item.id)}">
           <button

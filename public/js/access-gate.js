@@ -12,7 +12,14 @@
     try { return decodeURIComponent(match[1]).trim().toLowerCase(); } catch (_) { return match[1].trim().toLowerCase(); }
   })();
   function refreshRouteFlags() {
-    isPublicOfficeLink = Boolean(officeId && officeId !== "platform" && (query.get("view") === "public" || publicSlug));
+    const wantsDashboard = query.get("dashboard") === "1";
+    const hasOfficeRef = Boolean(publicSlug || query.has("office") || query.has("officeId") || query.has("o"));
+    isPublicOfficeLink = Boolean(
+      officeId &&
+      officeId !== "platform" &&
+      !wantsDashboard &&
+      (query.get("view") === "public" || publicSlug || hasOfficeRef)
+    );
     isPlatformHome = !officeId || officeId === "platform";
   }
   const gate = document.createElement("main");
@@ -183,6 +190,8 @@
           <input name="otherPropertyType" maxlength="40"></label>
         <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
           <input name="otherDistrict" maxlength="80"></label>
+        <label class="full"><span>${owner ? "السعر المطلوب" : "الميزانية التقريبية"}</span>
+          <input name="amount" inputmode="numeric" maxlength="16" placeholder="بالريال"></label>
         <label class="full"><span>تفاصيل إضافية</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
@@ -234,6 +243,7 @@
         const district = String(fields.get("district") || "") === "__other__"
           ? String(fields.get("otherDistrict") || "").trim()
           : String(fields.get("district") || "").trim();
+        const amount = Number(String(fields.get("amount") || "").replace(/[^0-9]/g, "")) || 0;
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {
@@ -254,12 +264,15 @@
           city: "المدينة المنورة",
           propertyType,
           district,
+          amount,
           details: String(fields.get("details") || "").trim(),
           mediaPaths,
           imageCount: images.length,
           hasVideo: Boolean(video),
           mediaMissing: owner && images.length === 0,
-          completeness: owner ? (images.length ? 90 : 65) : 80,
+          completeness: owner
+            ? (images.length ? (amount ? 92 : 88) : (amount ? 72 : 65))
+            : (amount ? 88 : 80),
           source: targetOffice === "platform" ? "platform_public" : "office_public_link",
           status: "new",
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -644,9 +657,20 @@
       }
     }
     refreshRouteFlags();
-    if (isPublicOfficeLink) publicOffice();
-    else if (isPlatformHome) home();
-    else firebase.auth().onAuthStateChanged(user => user ? verifyAccess(officeId, false) : loginForm());
+    if (isPlatformHome) {
+      home();
+      return;
+    }
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        if (officeId === "platform") verifyAccess("platform", false);
+        else if (officeId) verifyAccess(officeId, false);
+        return;
+      }
+      if (isPublicOfficeLink) publicOffice();
+      else if (officeId && officeId !== "platform") loginForm();
+      else home();
+    });
   }
 
   bootstrapAccess();
