@@ -213,6 +213,13 @@ export function buildImportOpportunityExtras({
     if (canonical.contentHash) extras.contentHash = safeText(canonical.contentHash, 128);
     if (canonical.fieldSources) extras.fieldSources = canonical.fieldSources;
   }
+  if (canonical?.rawCity) extras.rawCity = safeText(canonical.rawCity, 80);
+  if (canonical?.canonicalCity) extras.canonicalCity = safeText(canonical.canonicalCity, 80);
+  if (canonical?.rawNeighborhood) extras.rawNeighborhood = safeText(canonical.rawNeighborhood, 80);
+  if (canonical?.canonicalNeighborhood) extras.canonicalNeighborhood = safeText(canonical.canonicalNeighborhood, 80);
+  if (canonical?.rawPropertyType) extras.rawPropertyType = safeText(canonical.rawPropertyType, 40);
+  if (canonical?.canonicalPropertyType) extras.canonicalPropertyType = safeText(canonical.canonicalPropertyType, 40);
+  if (canonical?.normalizationStatus) extras.normalizationStatus = safeText(canonical.normalizationStatus, 40);
   return extras;
 }
 

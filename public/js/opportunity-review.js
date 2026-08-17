@@ -29,6 +29,7 @@ import {
   normalizeAdvertiserPhoneE164,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
+import { importReviewValuesToBrokerFields } from "./import-field-normalization-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -229,6 +230,25 @@ function renderReviewForm(defaults, options = {}) {
       : ""
   ].filter(Boolean);
 
+  const importPlainLocation = Boolean(options.importPlainLocationFields);
+  const locationFieldsMarkup = importPlainLocation
+    ? `
+      ${plainTextField("rawPropertyTypeText", reviewLabel("propertyType", "نوع العقار", needs), defaults.rawPropertyTypeText || defaults.propertyTypeDisplay || defaults.propertyTypeManual || "")}
+      ${plainTextField("rawCityText", reviewLabel("city", "المدينة", needs), defaults.rawCityText || defaults.cityManual || defaults.extractedSnapshot?.city || "")}
+      ${plainTextField("rawNeighborhoodText", reviewLabel("district", "الحي", needs), defaults.rawNeighborhoodText || defaults.districtDisplay || defaults.districtManual || "")}
+      ${defaults.normalizationHint
+        ? `<p class="review-normalization-hint" id="reviewNormalizationHint">${escapeHtml(defaults.normalizationHint)}</p>`
+        : `<p class="review-normalization-hint" id="reviewNormalizationHint" hidden></p>`}
+    `
+    : `
+      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label", "", defaults.propertyTypeDisplay || defaults.propertyTypeManual)}
+      ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
+      ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
+      ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
+      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual, defaults.districtDisplay || defaults.districtManual)}
+      ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+    `;
+
   body.innerHTML = `
     ${options.importSummary
       ? `<p class="import-review-summary">${escapeHtml(options.importSummary)}</p>` : ""}
@@ -242,12 +262,7 @@ function renderReviewForm(defaults, options = {}) {
       ? `<p class="review-extracted">مستخرَج: ${escapeHtml(snapshotLines.join(" — "))}</p>` : ""}
     <form id="opportunityReviewForm" class="review-form" autocomplete="off">
       ${searchField("operationTypeId", reviewLabel("transactionType", "نوع العملية", needs), OPERATION_TYPES, defaults.operationTypeId, "label")}
-      ${searchField("propertyTypeId", reviewLabel("propertyType", "نوع العقار", needs), PROPERTY_TYPES, defaults.propertyTypeId, "label", "", defaults.propertyTypeDisplay || defaults.propertyTypeManual)}
-      ${manualField("propertyTypeManual", "اكتب نوع العقار", defaults.propertyTypeManual, defaults.propertyTypeId === "other")}
-      ${searchField("cityId", reviewLabel("city", "المدينة", needs), CITIES, defaults.cityId, "label")}
-      ${manualField("cityManual", "اكتب المدينة", defaults.cityManual, defaults.cityId === "other")}
-      ${searchField("districtId", reviewLabel("district", "الحي", needs), districtOptions(defaults.cityId), defaults.districtId, "officialName", defaults.districtManual, defaults.districtDisplay || defaults.districtManual)}
-      ${manualField("districtManual", "اكتب اسم الحي", defaults.districtManual, defaults.districtId === DISTRICT_OTHER_ID)}
+      ${locationFieldsMarkup}
       <div id="reviewTransactionFields" style="display:contents"></div>
       <div id="reviewPropertyFields" style="display:contents"></div>
       ${renderAdvertiserSection(defaults)}
@@ -261,7 +276,7 @@ function renderReviewForm(defaults, options = {}) {
     </form>
   `;
 
-  wireSearchFields(body);
+  wireSearchFields(body, { importPlainLocation });
   renderDynamicReviewFields(body, defaults);
   body.oninput = (event) => {
     const name = event.target?.name;
@@ -346,6 +361,13 @@ function readAdvertiserForm() {
 function currentReviewPropertyLabels() {
   const form = $("opportunityReviewForm");
   if (!form) return {};
+  if (activeReviewOptions?.importPlainLocationFields) {
+    return {
+      propertyType: form.querySelector('[name="rawPropertyTypeText"]')?.value || "",
+      city: form.querySelector('[name="rawCityText"]')?.value || "",
+      district: form.querySelector('[name="rawNeighborhoodText"]')?.value || ""
+    };
+  }
   const propertyTypeInput = form.querySelector('[data-search-for="propertyTypeId"]');
   const districtInput = form.querySelector('[data-search-for="districtId"]');
   const cityInput = form.querySelector('[data-search-for="cityId"]');
@@ -425,6 +447,15 @@ function districtOptions(cityId) {
   ];
 }
 
+function plainTextField(name, label, value) {
+  return `
+    <label class="review-field import-plain-location-field" data-field="${name}">
+      <span>${label}</span>
+      <input name="${name}" type="text" value="${escapeHtml(value || "")}" maxlength="80" autocomplete="off">
+    </label>
+  `;
+}
+
 function searchField(name, label, items, selectedId, labelKey = "label", districtManual = "", displayOverride = "") {
   const selected = items.find((i) => i.id === selectedId);
   const display = displayOverride
@@ -477,7 +508,8 @@ function updateDistrictWarning(root, field, typed, result = null) {
   }
 }
 
-function wireSearchFields(root) {
+function wireSearchFields(root, options = {}) {
+  if (options.importPlainLocation) return;
   root.querySelectorAll(".search-select-input").forEach((input) => {
     const field = input.dataset.searchFor;
     const list = root.querySelector(`[data-list-for="${field}"]`);
@@ -558,23 +590,38 @@ function captureDynamicReviewValues(root) {
 function renderDynamicReviewFields(root, defaults = {}) {
   captureDynamicReviewValues(root);
   const operationId = root.querySelector('input[name="operationTypeId"]')?.value || "";
-  const propertyId = root.querySelector('input[name="propertyTypeId"]')?.value || "";
   const ctx = reviewContextFromDraft();
   const mode = reviewTransactionMode(operationId, ctx);
   const needs = defaults.needsReview || activeDraft?.needsReview || activeDraft?.fields?.needsReview || {};
   const transactionFields = root.querySelector("#reviewTransactionFields");
   const propertyFields = root.querySelector("#reviewPropertyFields");
   const awaitingTransaction = mode === "unknown";
-  for (const fieldName of ["propertyTypeId", "cityId", "districtId"]) {
-    const field = root.querySelector(`[data-field="${fieldName}"]`);
-    if (field) field.style.display = awaitingTransaction ? "none" : "";
+  if (activeReviewOptions?.importPlainLocationFields) {
+    root.querySelectorAll(".import-plain-location-field, #reviewNormalizationHint").forEach((field) => {
+      field.style.display = awaitingTransaction ? "none" : "";
+    });
+  } else {
+    for (const fieldName of ["propertyTypeId", "cityId", "districtId"]) {
+      const field = root.querySelector(`[data-field="${fieldName}"]`);
+      if (field) field.style.display = awaitingTransaction ? "none" : "";
+    }
+    root.querySelectorAll(".review-manual").forEach((field) => {
+      if (awaitingTransaction) field.style.display = "none";
+      else field.style.removeProperty("display");
+    });
   }
-  root.querySelectorAll(".review-manual").forEach((field) => {
-    if (awaitingTransaction) field.style.display = "none";
-    else field.style.removeProperty("display");
-  });
   const advertiserSection = root.querySelector(".review-advertiser-card");
   if (advertiserSection) advertiserSection.style.display = awaitingTransaction ? "none" : "";
+
+  const propertyRaw = activeReviewOptions?.importPlainLocationFields
+    ? (root.querySelector('[name="rawPropertyTypeText"]')?.value || "")
+    : "";
+  const propertyId = activeReviewOptions?.importPlainLocationFields
+    ? ""
+    : (root.querySelector('input[name="propertyTypeId"]')?.value || "");
+  const isLand = activeReviewOptions?.importPlainLocationFields
+    ? /أرض|ارض/.test(propertyRaw)
+    : propertyId === "land";
 
   if (transactionFields) {
     const fields = [];
@@ -633,7 +680,7 @@ function renderDynamicReviewFields(root, defaults = {}) {
     const fields = [
       numericField("area", reviewLabel("area", "المساحة (م²)", needs), activeReviewValues.area)
     ];
-    if (propertyId && propertyId !== "land") {
+    if (!isLand) {
       fields.push(numericField(
         "rooms",
         reviewLabel("rooms", "عدد الغرف", needs),
@@ -682,8 +729,36 @@ function readReviewForm() {
   const data = Object.fromEntries(new FormData(form).entries());
   const ctx = reviewContextFromDraft();
   const mode = reviewTransactionMode(data.operationTypeId || "", ctx);
-  const land = data.propertyTypeId === "land";
-  return {
+  const land = activeReviewOptions?.importPlainLocationFields
+    ? /أرض|ارض/.test(String(data.rawPropertyTypeText || ""))
+    : data.propertyTypeId === "land";
+  const review = activeReviewOptions?.importPlainLocationFields
+    ? {
+      operationTypeId: data.operationTypeId || "",
+      importPlainLocationFields: true,
+      rawCityText: data.rawCityText || "",
+      rawNeighborhoodText: data.rawNeighborhoodText || "",
+      rawPropertyTypeText: data.rawPropertyTypeText || "",
+      salePrice: mode === "sale" ? (data.salePrice || "") : "",
+      annualRent: mode === "rent" ? (data.annualRent || "") : "",
+      monthlyRent: mode === "rent" ? (data.monthlyRent || "") : "",
+      optionalMonthlyRentAfterSixMonths: mode === "rent" ? (data.optionalMonthlyRent || "") : "",
+      paymentInstallments: mode === "rent" ? (data.paymentInstallments || "") : "",
+      budget: mode === "budget" ? (data.budget || "") : "",
+      investmentValue: mode === "investment" ? (data.investmentValue || "") : "",
+      area: data.area || "",
+      rooms: land ? "" : (data.rooms || ""),
+      bathrooms: land ? "" : (data.bathrooms || ""),
+      floorNumber: land ? "" : (data.floorNumber || ""),
+      extractedSnapshot: activeDraft?.fields ? {
+        opportunityKind: activeDraft.fields.opportunityKind || "",
+        purpose: activeDraft.fields.purpose || "",
+        propertyType: activeDraft.fields.propertyType || "",
+        city: activeDraft.fields.city || "",
+        district: activeDraft.fields.district || ""
+      } : null
+    }
+    : {
     operationTypeId: data.operationTypeId || "",
     propertyTypeId: data.propertyTypeId || "",
     propertyTypeManual: data.propertyTypeManual || "",
@@ -712,6 +787,7 @@ function readReviewForm() {
       district: activeDraft.fields.district || ""
     } : null
   };
+  return review;
 }
 
 function setReviewStatus(message, isError = false) {
@@ -725,15 +801,27 @@ async function submitReview() {
   const review = readReviewForm();
   if (!review) return;
   if (!review.operationTypeId) return setReviewStatus("اختر نوع العملية", true);
-  if (!String(review.propertyTypeDisplay || "").trim()) {
-    return setReviewStatus("أدخل نوع العقار", true);
-  }
-  if (!review.cityId) return setReviewStatus("اختر المدينة", true);
-  if (review.cityId === "other" && !review.cityManual.trim()) {
-    return setReviewStatus("اكتب المدينة", true);
-  }
-  if (!String(review.districtDisplay || "").trim()) {
-    return setReviewStatus("أدخل الحي", true);
+  if (activeReviewOptions?.importPlainLocationFields) {
+    if (!String(review.rawPropertyTypeText || "").trim()) {
+      return setReviewStatus("أدخل نوع العقار", true);
+    }
+    if (!String(review.rawCityText || "").trim()) {
+      return setReviewStatus("أدخل المدينة", true);
+    }
+    if (!String(review.rawNeighborhoodText || "").trim()) {
+      return setReviewStatus("أدخل الحي", true);
+    }
+  } else {
+    if (!String(review.propertyTypeDisplay || "").trim()) {
+      return setReviewStatus("أدخل نوع العقار", true);
+    }
+    if (!review.cityId) return setReviewStatus("اختر المدينة", true);
+    if (review.cityId === "other" && !review.cityManual.trim()) {
+      return setReviewStatus("اكتب المدينة", true);
+    }
+    if (!String(review.districtDisplay || "").trim()) {
+      return setReviewStatus("أدخل الحي", true);
+    }
   }
 
   const approveBtn = $("opportunityReviewApprove");
@@ -744,7 +832,9 @@ async function submitReview() {
   setReviewStatus("");
 
   try {
-    const brokerExtras = reviewValuesToBrokerFields(review);
+    const brokerExtras = activeReviewOptions?.importPlainLocationFields
+      ? importReviewValuesToBrokerFields(review)
+      : reviewValuesToBrokerFields(review);
     const advertiser = readAdvertiserForm();
     if (typeof onApproveCallback === "function") {
       await onApproveCallback(brokerExtras, review, advertiser);

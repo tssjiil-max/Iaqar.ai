@@ -9,9 +9,9 @@ import {
   validateAttachment
 } from "./opportunity-intake-domain.js";
 import {
-  buildReviewDefaults,
-  reviewValuesToBrokerFields
-} from "./reference-catalog.js";
+  buildImportReviewDefaults,
+  importReviewValuesToBrokerFields
+} from "./import-field-normalization-domain.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
@@ -369,7 +369,7 @@ function openImportReview() {
   if (!importSession?.prepared) return;
   const prepared = importSession.prepared;
   const fields = prepared.fields || {};
-  const reviewDefaults = buildReviewDefaults(fields, importSession.listingText, {
+  const reviewDefaults = buildImportReviewDefaults(fields, importSession.listingText, {
     extended: prepared.extraction?.extended,
     needsReview: prepared.extraction?.needsReview,
     listingTitle: importSession.canonical?.listingTitle || ""
@@ -400,6 +400,7 @@ function openImportReview() {
     approveLabel,
     importSummary: [importSummary, provenanceSummary, missingSummary].filter(Boolean).join(" — "),
     sourceUrl: importSession.sourceUrl || "",
+    importPlainLocationFields: true,
     showReanalyze: true,
     onReanalyze: () => {
       openImportOverlay();
@@ -497,7 +498,16 @@ async function finalizeImportSave({ forceNew = false, updateExistingId = "" } = 
       sourceUrl: ctx.sourceUrl,
       sourceSite: ctx.sourceSite,
       extractionConfidence: prepared.extraction?.extractionConfidence || prepared.opportunity?.extractionConfidence,
-      canonical: ctx.canonical || null
+      canonical: {
+        ...(ctx.canonical || {}),
+        rawCity: ctx.brokerFields?.rawCity || "",
+        canonicalCity: ctx.brokerFields?.canonicalCity || "",
+        rawNeighborhood: ctx.brokerFields?.rawNeighborhood || "",
+        canonicalNeighborhood: ctx.brokerFields?.canonicalNeighborhood || "",
+        rawPropertyType: ctx.brokerFields?.rawPropertyType || "",
+        canonicalPropertyType: ctx.brokerFields?.canonicalPropertyType || "",
+        normalizationStatus: ctx.brokerFields?.normalizationStatus || ""
+      }
     });
     prepared.opportunity = {
       ...prepared.opportunity,
@@ -611,7 +621,9 @@ async function saveImportedAdvert(brokerExtras, review, advertiser = {}) {
   if (!office?.officeId || !user?.uid) throw new Error("auth_required");
   if (!importSession?.prepared) throw new Error("context_missing");
 
-  const brokerFields = reviewValuesToBrokerFields(review);
+  const brokerFields = brokerExtras?.rawCity != null
+    ? brokerExtras
+    : importReviewValuesToBrokerFields(review);
   const criteria = {
     officeId: office.officeId,
     sourceUrl: importSession.sourceUrl,
