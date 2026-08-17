@@ -21,7 +21,7 @@ export const VOICE_UI_STATE = Object.freeze({
 export const VOICE_STOP_TIMEOUT_MS = 8_000;
 export const VOICE_ANALYZE_TIMEOUT_MS = 45_000;
 
-export const VOICE_UI_BUILD = "20260812-2";
+export const VOICE_UI_BUILD = "20260816-voice-bar";
 
 export function voiceUiVisibility(state = VOICE_UI_STATE.IDLE) {
   const showRecording = state === VOICE_UI_STATE.RECORDING;
@@ -325,12 +325,16 @@ export function mountVoiceIntakePanel(root, options = {}) {
   if (!root || root.dataset.voiceBound === "1") return null;
   root.dataset.voiceBound = "1";
   const {
-    startLabel = "تسجيل صوتي",
-    recordingLabel = "● جارٍ التسجيل",
-    analyzingLabel = "جارٍ تحليل التسجيل…",
+    startLabel = "إضافة فرصة بالصوت",
+    recordingLabel = "جاري الاستماع…",
+    analyzingLabel = "جارٍ استخراج البيانات…",
+    completedLabel = "تم استخراج البيانات — راجعها قبل الحفظ",
+    failureLabel = "تعذر فهم التسجيل — حاول مرة أخرى",
     onStructured = () => {},
     onManualContinue = () => {}
   } = options;
+
+  let completedTimer = null;
 
   root.innerHTML = `
     <div class="voice-intake-panel">
@@ -357,6 +361,18 @@ export function mountVoiceIntakePanel(root, options = {}) {
     if (!statusEl) return;
     statusEl.textContent = text || "";
     statusEl.classList.toggle("is-error", isError);
+    statusEl.classList.toggle("is-active", Boolean(text));
+  };
+
+  const flashCompleted = () => {
+    if (completedTimer) window.clearTimeout(completedTimer);
+    root.classList.add("is-voice-completed");
+    setStatus(completedLabel, false);
+    completedTimer = window.setTimeout(() => {
+      root.classList.remove("is-voice-completed");
+      if (controller.getState() === VOICE_UI_STATE.IDLE) setStatus("");
+      completedTimer = null;
+    }, 3000);
   };
 
   const applyVisibility = (uiState) => {
@@ -371,7 +387,9 @@ export function mountVoiceIntakePanel(root, options = {}) {
     setVoiceSectionVisible(errorActions, view.showErrorActions, "flex");
     if (view.showAnalyzingStatus) {
       setStatus(analyzingLabel, false);
-    } else if (uiState !== VOICE_UI_STATE.ERROR) {
+    } else if (uiState === VOICE_UI_STATE.ERROR) {
+      setStatus(failureLabel, true);
+    } else if (!root.classList.contains("is-voice-completed")) {
       setStatus("");
     }
   };
@@ -384,11 +402,12 @@ export function mountVoiceIntakePanel(root, options = {}) {
         applyVisibility(nextState);
       },
       onStructured(structured, meta) {
+        flashCompleted();
         onStructured(structured, meta);
       },
-      onError({ message } = {}) {
+      onError() {
         applyVisibility(controller.getState());
-        setStatus(message || voiceErrorMessageAr("GEMINI_API_FAILED"), true);
+        setStatus(failureLabel, true);
       },
       onManualContinue() {
         onManualContinue();
@@ -403,7 +422,7 @@ export function mountVoiceIntakePanel(root, options = {}) {
     const result = await controller.startRecording();
     if (!result.ok && controller.getState() === VOICE_UI_STATE.ERROR) {
       applyVisibility(VOICE_UI_STATE.ERROR);
-      setStatus(voiceErrorMessageAr(result.error), true);
+      setStatus(failureLabel, true);
     }
   });
 

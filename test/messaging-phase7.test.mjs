@@ -321,10 +321,10 @@ test("Worker message routes require auth; outbound Cloud API still blocked", asy
 
 test("Phase 7 wiring: shell loads messaging bridge; workflow persists drafts", () => {
   const shell = readRepositoryFile("public", "index.html");
+  const opsUi = readRepositoryFile("public", "js", "operations-center-ui.js");
   assert.ok(shell.includes("js/messaging-domain-bridge.js"));
-  assert.ok(shell.includes('data-action="telegram-owner"'));
-  assert.ok(shell.includes("إرسال واتساب"));
-  assert.equal(shell.includes("مسودة واتساب"), false);
+  assert.ok(shell.includes("js/operations-center-ui.js"));
+  assert.ok(opsUi.includes("iaqar:workflow-action"));
 
   const workflow = readRepositoryFile("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("persistAndOpenMessageDraft"));

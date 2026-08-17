@@ -79,7 +79,7 @@ test("topOverlayIdFromSnapshot respects overlay order", () => {
   );
 });
 
-test("header back on بنك الفرص returns to مركز العمليات", async () => {
+test("header back on بنك الفرص returns to المهام اليومية", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const domain = await import(pathToFileURL(path.join(repositoryRoot, "public", "js", "app-navigation-domain.js")).href);

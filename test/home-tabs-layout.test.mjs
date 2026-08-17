@@ -53,5 +53,6 @@ test("shell removes share cover UI and settings bank entry", () => {
   assert.equal(shellSource.includes("ترويسة عريضة للمشاركة"), false);
   assert.equal(shellSource.includes("id=\"openOpportunityBankBtn\""), false);
   assert.equal(shellSource.includes("id=\"opportunityBankSection\""), false);
-  assert.ok(shellSource.includes("رابط صفحتك العامة لمشاركته مع العملاء والملاك."));
+  assert.ok(shellSource.includes("shareOfficeLinkCardBtn"));
+  assert.equal(shellSource.includes("copyOfficeLinkBtn"), false);
 });

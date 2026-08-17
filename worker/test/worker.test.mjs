@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import worker, {
   ALWAYS_ALLOWED_PUSH_TYPES,
@@ -25,7 +26,14 @@ import worker, {
   phase7BoundaryGuarantees,
   relevantDataVersion,
   resolveLoginDirectory,
-  scoreMatch
+  scoreMatch,
+  normalizeOpportunitySource,
+  getOpportunityLifecycleStatus,
+  normalizeSaudiPhoneForWhatsApp,
+  buildOpportunitySummary,
+  buildOpportunityWhatsAppMessage,
+  resolveSelectOption,
+  parseVoiceOpportunityFields
 } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
@@ -277,7 +285,9 @@ test("modern URL resolver normalizes bare hosts and follows safe redirects", asy
     }), trialEnv);
     const body = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(body.originalUrl, "https://a.aqar.fm/r/92f89b67");
+    assert.equal(body.resolvedUrl, "https://sa.aqar.fm/ad/92f89b67");
+    assert.equal(body.url, "https://sa.aqar.fm/ad/92f89b67");
     assert.equal(calls[0], "https://a.aqar.fm/r/92f89b67");
     assert.equal(calls[1], "https://sa.aqar.fm/ad/92f89b67");
     assert.match(body.text, /الرانوناء/);
@@ -1144,4 +1154,72 @@ test("Phase 8 public intake rate limit returns 429 after the window is exhausted
   }), env);
   assert.equal(blocked.status, 429);
   assert.equal((await blocked.json()).error, "rate_limited");
+});
+
+test("opportunity lifecycle normalizes legacy sources safely", () => {
+  assert.equal(normalizeOpportunitySource("office_public_link"), "office_link");
+  assert.equal(normalizeOpportunitySource("whatsapp_cloud_api"), "whatsapp");
+  assert.equal(normalizeOpportunitySource("manual"), "manual");
+  assert.equal(normalizeOpportunitySource("activepieces"), "other");
+});
+
+test("legacy opportunities receive safe default lifecycle status", () => {
+  assert.equal(getOpportunityLifecycleStatus({}), "NEW");
+  assert.equal(getOpportunityLifecycleStatus({ workflowStage: "negotiation" }), "NEGOTIATION");
+  assert.equal(getOpportunityLifecycleStatus({ lifecycleStatus: "ARCHIVED" }), "ARCHIVED");
+});
+
+test("whatsapp phone normalization rejects invalid numbers", () => {
+  assert.equal(normalizeSaudiPhoneForWhatsApp("0501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("+966501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("00966501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("12345"), "");
+});
+
+test("buyer and owner whatsapp messages differ", () => {
+  const buyer = buildOpportunityWhatsAppMessage({ contactType: "buyer", propertyType: "شقة", district: "عروة" }, "first_contact", { brokerName: "أحمد", officeName: "مكتب" });
+  const owner = buildOpportunityWhatsAppMessage({ contactType: "owner", propertyType: "أرض سكنية", district: "الوبرة", area: 600 }, "first_contact", { brokerName: "أحمد", officeName: "مكتب" });
+  assert.match(buyer, /طلبك العقاري/);
+  assert.match(owner, /عرضكم العقاري/);
+  assert.doesNotMatch(buyer, /عرضكم/);
+});
+
+test("voice parsing maps select options without polluting district", () => {
+  const districts = ["عروة", "الوبرة", "العريض"];
+  const parsedA = parseVoiceOpportunityFields("أبغى شقة في عروة شراء", { propertyTypes: ["شقة", "فيلا", "أرض"], districts });
+  assert.equal(parsedA.propertyType, "شقة");
+  assert.equal(parsedA.district, "عروة");
+  const parsedB = parseVoiceOpportunityFields("أرض في الوبرة مساحتها 600", { propertyTypes: ["شقة", "أرض سكنية"], districts });
+  assert.equal(parsedB.district, "الوبرة");
+  assert.equal(parsedB.area, 600);
+  assert.notEqual(parsedB.district, "الوبرة مساحتها 600");
+});
+
+test("voice select resolver does not guess unavailable options", () => {
+  const resolved = resolveSelectOption("قصر", ["شقة", "فيلا", "أرض"]);
+  assert.equal(resolved.matched, false);
+  assert.equal(resolved.value, "");
+});
+
+test("opportunity summary omits empty values", () => {
+  const summary = buildOpportunitySummary({ propertyType: "شقة", district: "العريض", priceMax: 750000, transactionType: "sale" });
+  assert.match(summary, /شقة/);
+  assert.match(summary, /العريض/);
+  assert.doesNotMatch(summary, /undefined|null|NaN/);
+});
+
+test("office library media path rejects cross-office access pattern", () => {
+  const workerSource = readFileSync(
+    new URL("../src/index.js", import.meta.url),
+    "utf8"
+  );
+  assert.match(workerSource, /OFFICE_MEDIA_KEY_PATTERN/);
+  assert.match(workerSource, /office-library/);
+  assert.match(workerSource, /!mediaPath\.includes\(`\/\$\{officeId\}\/`\)/);
+  const pattern = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
+  assert.equal(pattern.test("office-library/office-a/lib_x/file.pdf"), true);
+  assert.equal(pattern.test("office-library/office-b/lib_x/file.pdf"), true);
+  const officeAPath = "office-library/office-a/lib_x/file.pdf";
+  const officeB = "office-b";
+  assert.equal(officeAPath.includes(`/${officeB}/`), false);
 });
