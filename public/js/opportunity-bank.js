@@ -111,6 +111,7 @@ import {
   contactOutcomeActivityText,
   contactOutcomeSelectionHint,
   contactOutcomeSelectedBadgeLabel,
+  CONTACT_OUTCOME_LABELS,
   refusalReasonLabel,
   validateContactOutcomeSave,
   followUpLabelFromIso
@@ -834,20 +835,8 @@ async function recordLifecycleWhatsAppOpened(opportunityId) {
   const user = authUser();
   if (!user?.getIdToken) return;
   try {
-    const token = await user.getIdToken();
-    await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "X-Office-Id": officeId()
-      },
-      body: JSON.stringify({
-        officeId: officeId(),
-        opportunityId,
-        action: "whatsapp_opened"
-      })
-    });
+    const payload = await postOpportunityLifecycle(opportunityId, { action: "whatsapp_opened" });
+    syncBankRecordFromLifecyclePayload(opportunityId, payload, "contact:whatsapp");
   } catch (error) {
     console.warn("[iaqar] whatsapp opened log", error);
   }
@@ -925,6 +914,7 @@ async function renderDetail(id, options = {}) {
     origin: window.location.origin
   });
   wireWorkspaceHandlers(id, freshRecord, bundle);
+  applyBankBrokerMarks(freshRecord);
   scrollBankDetailIntoView();
   if (!ctx.dailyTask) {
     setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
@@ -939,6 +929,54 @@ function syncWorkspaceActionLayout() {
 
 let listingShareActivityBusy = false;
 let partyActionActivityBusy = false;
+
+function bankBrokerProgress() {
+  return window.IAQAR?.brokerActionProgress || {};
+}
+
+function mergeBankRecordProgress(record = {}, actionKey = "", followPatch = null) {
+  let next = record;
+  const bap = bankBrokerProgress();
+  if (actionKey) next = bap.markBrokerActionDoneLocally?.(next, actionKey) || next;
+  if (followPatch) next = bap.markFollowUpProgressLocally?.(next, followPatch) || next;
+  return next;
+}
+
+function applyBankBrokerMarks(record = {}) {
+  const panel = document.getElementById(detailRenderContext().panelId);
+  bankBrokerProgress().applyBrokerActionMarks?.(panel, record);
+}
+
+function syncBankRecordFromLifecyclePayload(opportunityId, payload = {}, actionKey = "", followPatch = null) {
+  const existing = state.records.get(opportunityId) || {};
+  let merged = {
+    ...existing,
+    ...payload,
+    followUp: payload.followUp || existing.followUp,
+    brokerActionProgress: payload.brokerActionProgress || existing.brokerActionProgress
+  };
+  merged = mergeBankRecordProgress(merged, actionKey, followPatch);
+  state.records.set(opportunityId, merged);
+  applyBankBrokerMarks(merged);
+  return merged;
+}
+
+async function recordBrokerActionDone(opportunityId, actionKey, recordPatch = {}) {
+  if (!actionKey) return;
+  const existing = state.records.get(opportunityId) || {};
+  let merged = mergeBankRecordProgress({ ...existing, ...recordPatch }, actionKey);
+  state.records.set(opportunityId, merged);
+  applyBankBrokerMarks(merged);
+  try {
+    const payload = await postOpportunityLifecycle(opportunityId, {
+      action: "broker_action_done",
+      actionKey
+    });
+    syncBankRecordFromLifecyclePayload(opportunityId, payload, actionKey);
+  } catch (error) {
+    console.warn("[iaqar] broker action progress", error);
+  }
+}
 
 function appendCoopRowToWorkspace(targetOfficeId, officeName, status = "PENDING") {
   const list = document.getElementById("bankWorkspaceCoopList");
@@ -983,8 +1021,11 @@ async function logListingShareActivity(opportunityId, channel) {
   listingShareActivityBusy = true;
   try {
     const action = channel === "whatsapp" ? "listing_shared_whatsapp" : "listing_copied";
-    await recordWorkspaceLifecycleAction(opportunityId, action);
+    const actionKey = channel === "whatsapp" ? "hub:share_whatsapp_listing" : "hub:copy_listing_text";
+    const payload = await postOpportunityLifecycle(opportunityId, { action });
+    syncBankRecordFromLifecyclePayload(opportunityId, payload, actionKey);
     appendWorkspaceActivityLine(text);
+    applyBankBrokerMarks(state.records.get(opportunityId) || {});
   } finally {
     listingShareActivityBusy = false;
   }
@@ -996,8 +1037,12 @@ async function logPartyActionActivity(opportunityId, actionId) {
   if (!text) return;
   partyActionActivityBusy = true;
   try {
-    await recordWorkspaceLifecycleAction(opportunityId, "party_action", { partyAction: actionId });
+    const bap = bankBrokerProgress();
+    const actionKey = bap.partyActionKey?.(actionId) || (actionId === "party_whatsapp" ? "party:whatsapp" : actionId === "party_call" ? "party:call" : `party:${actionId}`);
+    const payload = await postOpportunityLifecycle(opportunityId, { action: "party_action", partyAction: actionId });
+    syncBankRecordFromLifecyclePayload(opportunityId, payload, actionKey);
     appendWorkspaceActivityLine(text);
+    applyBankBrokerMarks(state.records.get(opportunityId) || {});
   } finally {
     partyActionActivityBusy = false;
   }
@@ -1020,6 +1065,7 @@ async function runWorkspaceMatchingSearch(opportunityId, bundleRef = {}) {
       ? `تم العثور على ${count} مطابقة مرتبة حسب نسبة التطابق.`
       : "لا توجد مطابقات مناسبة حاليًا.";
   }
+  void recordBrokerActionDone(opportunityId, "workspace:search_matches");
 }
 
 function wireWorkspaceMatchRowHandlers(id, record, bundle = {}) {
@@ -1485,13 +1531,16 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
       }
       if (action === "send_and_share") {
         showSection("bankWorkspaceSendShareHub");
+        void recordBrokerActionDone(id, "workspace:send_and_share");
         return;
       }
       if (action === "contact_party") {
         showSection("bankWorkspacePartySection");
+        void recordBrokerActionDone(id, "workspace:contact_party");
         return;
       }
       if (action === "manage_opportunity") {
+        void recordBrokerActionDone(id, "workspace:manage_opportunity");
         if (window.IAQAR?.openOpportunityManagement) {
           void window.IAQAR.openOpportunityManagement(id);
         }
@@ -1761,6 +1810,7 @@ function selectContactOutcomeButton(outcome = "") {
   document.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     const active = btn.getAttribute("data-contact-outcome") === outcome;
     btn.classList.toggle("is-selected", active);
+    btn.classList.toggle("is-action-done", active);
     btn.setAttribute("aria-pressed", active ? "true" : "false");
   });
   updateContactOutcomeSelectionHint(outcome);
@@ -1853,18 +1903,22 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
     }
     const existing = state.records.get(opportunityId) || {};
     const followUp = followUpPayload?.followUp || existing.followUp;
-    const merged = {
-      ...existing,
-      lastContactOutcome: outcome,
-      lastContactAt: new Date().toISOString(),
-      advertiserContactStatus: payload.advertiserContactStatus || existing.advertiserContactStatus,
-      lifecycleStatus: payload.lifecycleStatus || existing.lifecycleStatus,
-      contactNotes: validation.note || existing.contactNotes,
-      followUp: followUpPayload?.followUp || followUp,
-      nextFollowUpAt: followUpPayload?.nextFollowUpAt || existing.nextFollowUpAt,
-      nextActionAt: followUpPayload?.nextFollowUpAt || existing.nextActionAt
-    };
-    state.records.set(opportunityId, merged);
+    const merged = syncBankRecordFromLifecyclePayload(
+      opportunityId,
+      {
+        ...payload,
+        ...(followUpPayload || {}),
+        lastContactOutcome: outcome,
+        lastContactAt: new Date().toISOString(),
+        advertiserContactStatus: payload.advertiserContactStatus || existing.advertiserContactStatus,
+        lifecycleStatus: payload.lifecycleStatus || existing.lifecycleStatus,
+        contactNotes: validation.note || existing.contactNotes,
+        followUp: followUpPayload?.followUp || followUp,
+        nextFollowUpAt: followUpPayload?.nextFollowUpAt || existing.nextFollowUpAt,
+        nextActionAt: followUpPayload?.nextFollowUpAt || existing.nextActionAt
+      },
+      bankBrokerProgress().contactOutcomeActionKey?.(outcome) || `contact:outcome:${outcome}`
+    );
     if (followUpPayload?.followUp) {
       patchWorkspaceFollowUpUi(opportunityId, followUpPayload.followUp);
     }
@@ -1921,6 +1975,10 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
 function wireContactOutcomeHandlers(id, record, bundle = {}) {
   const section = document.getElementById("bankWorkspaceContactSection");
   if (!section) return;
+  const savedOutcome = String(record.lastContactOutcome || record.advertiserContactStatus || "").toUpperCase();
+  if (savedOutcome && CONTACT_OUTCOME_LABELS[savedOutcome]) {
+    selectContactOutcomeButton(savedOutcome);
+  }
   section.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.disabled) return;
@@ -2439,20 +2497,8 @@ async function recordLifecycleCallOpened(opportunityId) {
   const user = authUser();
   if (!user?.getIdToken) return;
   try {
-    const token = await user.getIdToken();
-    await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "X-Office-Id": officeId()
-      },
-      body: JSON.stringify({
-        officeId: officeId(),
-        opportunityId,
-        action: "call_opened"
-      })
-    });
+    const payload = await postOpportunityLifecycle(opportunityId, { action: "call_opened" });
+    syncBankRecordFromLifecyclePayload(opportunityId, payload, "contact:call");
   } catch (error) {
     console.warn("[iaqar] call opened log", error);
   }
@@ -2920,6 +2966,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType, m
       toast("تم إرسال الفرصة إلى المكتب");
       appendWorkspaceActivityLine(officeShareSentActivityText(officeName));
       appendCoopRowToWorkspace(targetOfficeId, officeName, "PENDING");
+      if (oppId) void recordBrokerActionDone(oppId, "hub:share_to_office");
     }
     const requestId = payload.cooperationRequestId || payload.requestId || "";
     if (requestId) await syncCooperationOperation(requestId);

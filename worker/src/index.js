@@ -152,6 +152,17 @@ import {
   validateActivepiecesIntakeBody
 } from "./activepieces-intake.mjs";
 import {
+  mergeBrokerActionProgress,
+  normalizeBrokerActionProgress,
+  contactOutcomeActionKey,
+  followUpOutcomeActionKey,
+  followUpWhatsAppActionKey,
+  partyActionKey,
+  hubShareOptionActionKey,
+  workspacePrimaryActionKey,
+  BROKER_ACTION
+} from "../../public/js/broker-action-progress-domain.js";
+import {
   FOLLOWUP_STATUSES,
   RECIPIENT_MODES,
   RECIPIENT_MODE_LABELS,
@@ -2662,7 +2673,8 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         lifecycleUpdatedAt: firestoreTimestamp(now),
         lifecycleUpdatedBy: firestoreString(identity.uid),
         followUp: jsToFirestoreValue(completed),
-        followUpReminderAt: firestoreTimestamp(farFuture)
+        followUpReminderAt: firestoreTimestamp(farFuture),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.followUpComplete, now)
       })
     });
     await addOpportunityCommunication({
@@ -2675,11 +2687,43 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         createdBy: identity.uid
       }
     });
-    return jsonResponse({ ok: true, opportunityId, followUp: completed, requestId });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      followUp: completed,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.followUpComplete, now.toISOString()),
+      requestId
+    });
   } else if (action === "followup_outcome") {
     const outcome = cleanText(body.outcome || body.followUpOutcome, 40);
     const allowed = new Set(["confirmed", "reschedule", "no_response"]);
     if (!allowed.has(outcome)) throw appError("followup_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const updatedFollowUp = existingFollowUp
+      ? { ...existingFollowUp, confirmationOutcome: outcome, updatedAt: now.toISOString() }
+      : null;
+    const outcomeKey = followUpOutcomeActionKey(outcome);
+    const progressFields = brokerProgressFirestoreFields(resolved.data, outcomeKey, now);
+    if (updatedFollowUp) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          followUp: jsToFirestoreValue(updatedFollowUp),
+          ...progressFields
+        })
+      });
+    } else {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...progressFields
+        })
+      });
+    }
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2691,8 +2735,35 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         createdBy: identity.uid
       }
     });
-    return jsonResponse({ ok: true, opportunityId, outcome, requestId });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      outcome,
+      followUp: updatedFollowUp,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, outcomeKey, now.toISOString()),
+      requestId
+    });
   } else if (action === "followup_confirmation_opened") {
+    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const updatedFollowUp = recipientRole && existingFollowUp
+      ? mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now)
+      : existingFollowUp;
+    const whatsappKey = followUpWhatsAppActionKey(recipientRole);
+    const progressFields = whatsappKey
+      ? brokerProgressFirestoreFields(resolved.data, whatsappKey, now)
+      : {};
+    if (updatedFollowUp || whatsappKey) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...(updatedFollowUp ? { followUp: jsToFirestoreValue(updatedFollowUp) } : {}),
+          ...progressFields
+        })
+      });
+    }
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2700,10 +2771,19 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         action: "followup_confirmation_opened",
         statusBefore,
         statusAfter: statusBefore,
-        createdBy: identity.uid
+        createdBy: identity.uid,
+        result: recipientRole || ""
       }
     });
-    return jsonResponse({ ok: true, opportunityId, requestId });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      followUp: updatedFollowUp,
+      brokerActionProgress: whatsappKey
+        ? mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString())
+        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
+      requestId
+    });
   } else if (action === "close_won") {
     fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
     fields.closedAt = firestoreTimestamp(now);
@@ -2718,13 +2798,37 @@ async function handleOpportunityLifecycle(request, env, requestId) {
   } else if (action === "whatsapp_opened") {
     fields.lastWhatsAppOpenedAt = firestoreTimestamp(now);
     fields.lastWhatsAppAt = firestoreTimestamp(now);
+    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const whatsappKey = recipientRole
+      ? followUpWhatsAppActionKey(recipientRole)
+      : BROKER_ACTION.contactWhatsApp;
+    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, whatsappKey, now));
+    if (recipientRole && existingFollowUp) {
+      const updatedFollowUp = mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now);
+      fields.followUp = jsToFirestoreValue(updatedFollowUp);
+    }
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: { type: "whatsapp", action: "whatsapp_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
     });
-    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString()),
+      requestId
+    });
   } else if (action === "listing_shared_whatsapp") {
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now)
+      })
+    });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2735,8 +2839,22 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         createdBy: identity.uid
       }
     });
-    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now.toISOString()),
+      requestId
+    });
   } else if (action === "listing_copied") {
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubCopyListing, now)
+      })
+    });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2747,9 +2865,26 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         createdBy: identity.uid
       }
     });
-    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubCopyListing, now.toISOString()),
+      requestId
+    });
   } else if (action === "party_action") {
     const partyAction = cleanText(body.partyAction, 40);
+    const actionKey = partyActionKey(partyAction);
+    if (actionKey) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
+        })
+      });
+    }
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2760,18 +2895,35 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         createdBy: identity.uid
       }
     });
-    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, partyAction, requestId });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      partyAction,
+      brokerActionProgress: actionKey
+        ? mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString())
+        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
+      requestId
+    });
   } else if (action === "call_opened") {
     fields.lastCallOpenedAt = firestoreTimestamp(now);
+    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.contactCall, now));
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: { type: "call", action: "call_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
     });
-    return jsonResponse({ ok: true, lifecycleStatus: statusBefore, opportunityId, requestId });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.contactCall, now.toISOString()),
+      requestId
+    });
   } else if (action === "contact_outcome") {
     const outcome = cleanText(body.contactOutcome, 40).toUpperCase();
     fields.lastContactAt = firestoreTimestamp(now);
+    fields.lastContactOutcome = firestoreOptionalString(outcome);
     let contactResult = outcome;
     if (outcome === "CONTACTED") {
       fields.advertiserContactStatus = firestoreString("RESPONDED");
@@ -2805,7 +2957,13 @@ async function handleOpportunityLifecycle(request, env, requestId) {
         : outcome === "AGREED"
           ? LIFECYCLE_STATUS.NEGOTIATION
           : statusBefore;
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        ...fields,
+        ...brokerProgressFirestoreFields(resolved.data, contactOutcomeActionKey(outcome), now)
+      })
+    });
     await addOpportunityCommunication({
       projectId, officeId, opportunityId, accessToken, now,
       payload: {
@@ -2822,8 +2980,28 @@ async function handleOpportunityLifecycle(request, env, requestId) {
       ok: true,
       opportunityId,
       contactOutcome: outcome,
+      lastContactOutcome: outcome,
       advertiserContactStatus: contactResult,
       lifecycleStatus: nextLifecycle,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, contactOutcomeActionKey(outcome), now.toISOString()),
+      requestId
+    });
+  } else if (action === "broker_action_done") {
+    const actionKey = cleanText(body.actionKey, 80);
+    if (!actionKey) throw appError("broker_action_key_required", 400, "مفتاح الإجراء مطلوب");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
+      })
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      actionKey,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString()),
       requestId
     });
   } else if (action === "close_opportunity") {
@@ -6166,6 +6344,21 @@ function jsToFirestoreValue(value) {
   return firestoreString(String(value));
 }
 
+function brokerProgressFirestoreFields(record = {}, actionKey = "", now = new Date()) {
+  const progress = mergeBrokerActionProgress(record, actionKey, now.toISOString());
+  return { brokerActionProgress: jsToFirestoreValue(progress) };
+}
+
+function mergeFollowUpWhatsappRole(existingFollowUp = null, role = "", now = new Date()) {
+  const follow = existingFollowUp && typeof existingFollowUp === "object" ? { ...existingFollowUp } : {};
+  const roles = new Set(Array.isArray(follow.whatsappRolesOpened) ? follow.whatsappRolesOpened : []);
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized) roles.add(normalized);
+  follow.whatsappRolesOpened = [...roles];
+  follow.updatedAt = now.toISOString();
+  return follow;
+}
+
 function followUpFirestoreFields(followUp) {
   const reminderInstant = parseFollowUpInstant(followUp.reminderAt)
     || parseFollowUpInstant(followUp.reminderAt1h)
@@ -6270,7 +6463,8 @@ async function scheduleOpportunityFollowUp({
     lifecycleStatus: firestoreString(LIFECYCLE_STATUS.FOLLOW_UP),
     nextActionType: firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40)),
     nextActionNote: firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300)),
-    ...followUpFirestoreFields(followUp)
+    ...followUpFirestoreFields(followUp),
+    ...brokerProgressFirestoreFields(opportunity, BROKER_ACTION.followUpScheduled, now)
   };
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
@@ -6294,6 +6488,7 @@ async function scheduleOpportunityFollowUp({
     lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.FOLLOW_UP],
     followUp,
     nextFollowUpAt: followUp.at,
+    brokerActionProgress: mergeBrokerActionProgress(opportunity, BROKER_ACTION.followUpScheduled, now.toISOString()),
     requestId
   });
 }

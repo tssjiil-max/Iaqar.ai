@@ -35,6 +35,26 @@ function esc(text = "") {
   }[c]));
 }
 
+const WORKSPACE_ACTION_KEYS = {
+  search_matches: "workspace:search_matches",
+  send_and_share: "workspace:send_and_share",
+  contact_party: "workspace:contact_party",
+  manage_opportunity: "workspace:manage_opportunity"
+};
+
+const HUB_OPTION_KEYS = {
+  share_whatsapp_listing: "hub:share_whatsapp_listing",
+  share_to_office: "hub:share_to_office",
+  copy_listing_text: "hub:copy_listing_text"
+};
+
+function partyActionBrokerKey(actionId = "") {
+  const id = String(actionId || "").trim();
+  if (id === "party_whatsapp") return "party:whatsapp";
+  if (id === "party_call") return "party:call";
+  return id ? `party:${id}` : "";
+}
+
 function renderFieldBlock(field) {
   const placeholder = field.placeholder ? ` placeholder="${esc(field.placeholder)}"` : "";
   switch (field.type) {
@@ -81,7 +101,9 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
 }
 
 function workspaceActionButton(action) {
-  return `<button type="button" class="bank-workspace-action iaqar-workflow-btn secondary" data-workspace-action="${esc(action.id)}">${esc(action.label)}</button>`;
+  const key = WORKSPACE_ACTION_KEYS[action.id] || "";
+  const brokerAttr = key ? ` data-broker-action="${esc(key)}"` : "";
+  return `<button type="button" class="bank-workspace-action iaqar-workflow-btn secondary" data-workspace-action="${esc(action.id)}"${brokerAttr}>${esc(action.label)}</button>`;
 }
 
 function isOwnerPartyLabel(record = {}) {
@@ -158,7 +180,7 @@ export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
   const retryDefault = defaultContactRetryInput();
   const followDefault = defaultContactFollowUpInput();
   const outcomeButtons = CONTACT_OUTCOME_ORDER.map((key) =>
-    `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}" aria-pressed="false">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
+    `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}" data-broker-action="contact:outcome:${esc(key)}" aria-pressed="false">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
   ).join("");
   return `
     <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
@@ -235,13 +257,17 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
         : ""}
     </div>`).join("");
 
-  const partyActionButtons = partyActions.map((action) =>
-    `<button type="button" class="bank-workspace-party-action iaqar-workflow-btn secondary" data-party-action="${esc(action.id)}">${esc(action.label)}</button>`
-  ).join("");
+  const partyActionButtons = partyActions.map((action) => {
+    const key = partyActionBrokerKey(action.id);
+    const brokerAttr = key ? ` data-broker-action="${esc(key)}"` : "";
+    return `<button type="button" class="bank-workspace-party-action iaqar-workflow-btn secondary" data-party-action="${esc(action.id)}"${brokerAttr}>${esc(action.label)}</button>`;
+  }).join("");
 
-  const hubButtons = hubOptions.map((opt) =>
-    `<button type="button" class="bank-workspace-hub-option iaqar-workflow-btn secondary" data-send-share-option="${esc(opt.id)}">${esc(opt.label)}</button>`
-  ).join("");
+  const hubButtons = hubOptions.map((opt) => {
+    const key = HUB_OPTION_KEYS[opt.id] || "";
+    const brokerAttr = key ? ` data-broker-action="${esc(key)}"` : "";
+    return `<button type="button" class="bank-workspace-hub-option iaqar-workflow-btn secondary" data-send-share-option="${esc(opt.id)}"${brokerAttr}>${esc(opt.label)}</button>`;
+  }).join("");
 
   const activityRows = activity.map((row) =>
     `<li><time>${esc(new Date(row.at).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh" }))}</time> ${esc(row.text)}</li>`
@@ -281,8 +307,8 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           <h4>معاينة إعلان واتساب</h4>
           <pre class="bank-listing-preview" id="bankListingPreviewText">${esc(listingPreview)}</pre>
           <div class="bank-workspace-actions iaqar-workflow-actions">
-            <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankOpenWhatsAppListingBtn">فتح واتساب</button>
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankCopyListingBtn">نسخ الإعلان</button>
+            <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankOpenWhatsAppListingBtn" data-broker-action="hub:share_whatsapp_listing">فتح واتساب</button>
+            <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankCopyListingBtn" data-broker-action="hub:copy_listing_text">نسخ الإعلان</button>
           </div>
           <p class="section-status" id="bankListingShareStatus" role="status"></p>
           <p class="bank-note iaqar-workflow-note">اختر المستلم بنفسك في واتساب — لا يُدرج رقم المالك أو العميل.</p>

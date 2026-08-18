@@ -1028,6 +1028,41 @@
     }[character]));
   }
 
+  function BAP() {
+    return window.IAQAR?.brokerActionProgress || {};
+  }
+
+  function brokerDoneClass(detail = {}, actionKey = "") {
+    return BAP().brokerActionDoneClass?.(detail, actionKey) || "";
+  }
+
+  function brokerPressed(detail = {}, actionKey = "") {
+    return BAP().brokerActionAriaPressed?.(detail, actionKey) || "false";
+  }
+
+  function applyWorkflowBrokerMarks(detail = {}) {
+    BAP().applyBrokerActionMarks?.(workflowBody(), detail);
+  }
+
+  function mergeWorkflowBrokerProgress(detail = {}, actionKey = "", followPatch = null) {
+    let next = detail;
+    if (actionKey) next = BAP().markBrokerActionDoneLocally?.(next, actionKey) || next;
+    if (followPatch) next = BAP().markFollowUpProgressLocally?.(next, followPatch) || next;
+    return next;
+  }
+
+  function syncWorkflowDetailFromLifecyclePayload(payload = {}, actionKey = "", followPatch = null) {
+    let next = {
+      ...activeWorkflowDetail,
+      ...payload,
+      followUp: payload.followUp || activeWorkflowDetail.followUp,
+      brokerActionProgress: payload.brokerActionProgress || activeWorkflowDetail.brokerActionProgress
+    };
+    next = mergeWorkflowBrokerProgress(next, actionKey, followPatch);
+    activeWorkflowDetail = next;
+    return next;
+  }
+
   function appointmentValue(detail) {
     return detail.appointmentAt || detail.viewingAt || null;
   }
@@ -1324,7 +1359,10 @@
     void opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" }).catch((error) => {
       console.warn("[iaqar] whatsapp opened log", error);
     });
-    activeWorkflowDetail = { ...detail, lastWhatsAppOpenedAt: new Date().toISOString() };
+    activeWorkflowDetail = mergeWorkflowBrokerProgress(
+      detail,
+      BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
+    );
     notify("تم فتح واتساب");
     renderOpportunityLifecycleUi();
   }
@@ -1339,7 +1377,10 @@
     void opportunityLifecycleAction("call_opened", detail).catch((error) => {
       console.warn("[iaqar] call opened log", error);
     });
-    activeWorkflowDetail = { ...detail, lastCallOpenedAt: new Date().toISOString() };
+    activeWorkflowDetail = mergeWorkflowBrokerProgress(
+      detail,
+      BAP().BROKER_ACTION?.contactCall || "contact:call"
+    );
     notify("تم فتح الاتصال");
     renderOpportunityLifecycleUi();
   }
@@ -1961,27 +2002,33 @@
     else if (recipient === "owner") modes.push("owner");
     else if (recipient === "client") modes.push("client");
     else modes.push(FD()?.defaultRecipientMode?.(detail) || "owner");
-    const buttons = modes.map((role) =>
-      `<button type="button" class="iaqar-workflow-btn whatsapp" data-ui-action="followup-whatsapp" data-role="${role}">واتساب ${role === "owner" ? "المالك" : "العميل"}</button>`
-    ).join("");
+    const buttons = modes.map((role) => {
+      const actionKey = BAP().followUpWhatsAppActionKey?.(role) || `followup:whatsapp:${role}`;
+      return `<button type="button" class="iaqar-workflow-btn whatsapp${brokerDoneClass(detail, actionKey)}" data-ui-action="followup-whatsapp" data-broker-action="${escapeUi(actionKey)}" data-role="${role}" aria-pressed="${brokerPressed(detail, actionKey)}">واتساب ${role === "owner" ? "المالك" : "العميل"}</button>`;
+    }).join("");
+    const confirmedKey = BAP().followUpOutcomeActionKey?.("confirmed") || "followup:outcome:confirmed";
+    const noResponseKey = BAP().followUpOutcomeActionKey?.("no_response") || "followup:outcome:no_response";
     return `<div class="iaqar-workflow-step" id="iaqarFollowUpConfirmSection">
       <h3>تأكيد الموعد</h3>
       <p class="iaqar-workflow-note">أرسل رسالة واتساب للطرف المختار — الإرسال يدوي ولا يتم تلقائيًا.</p>
       <div class="iaqar-whatsapp-grid">${buttons}</div>
       <div class="iaqar-workflow-actions">
-        <button type="button" class="iaqar-workflow-btn success" data-ui-action="followup-outcome" data-outcome="confirmed">تم التأكيد</button>
+        <button type="button" class="iaqar-workflow-btn success${brokerDoneClass(detail, confirmedKey)}" data-ui-action="followup-outcome" data-broker-action="${confirmedKey}" data-outcome="confirmed" aria-pressed="${brokerPressed(detail, confirmedKey)}">تم التأكيد</button>
         <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">تغيير الموعد</button>
-        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="followup-outcome" data-outcome="no_response">لم يرد</button>
+        <button type="button" class="iaqar-workflow-btn secondary${brokerDoneClass(detail, noResponseKey)}" data-ui-action="followup-outcome" data-broker-action="${noResponseKey}" data-outcome="no_response" aria-pressed="${brokerPressed(detail, noResponseKey)}">لم يرد</button>
       </div>
     </div>`;
   }
 
   function selectWorkflowContactOutcome(outcome = "") {
     const key = String(outcome || "").toUpperCase();
+    const actionKey = BAP().contactOutcomeActionKey?.(key) || `contact:outcome:${key}`;
     workflowBody().querySelectorAll('[data-ui-action="contact-outcome"]').forEach((btn) => {
       const active = String(btn.dataset.outcome || "").toUpperCase() === key;
       btn.classList.toggle("is-selected", active);
+      btn.classList.toggle("is-action-done", active);
       btn.setAttribute("aria-pressed", active ? "true" : "false");
+      if (actionKey) btn.setAttribute("data-broker-action", actionKey);
     });
   }
 
@@ -2009,8 +2056,9 @@
       AGREED: "تم الاتفاق"
     };
     const outcomeButtons = Object.entries(outcomeLabels).map(([value, label]) => {
+      const actionKey = BAP().contactOutcomeActionKey?.(value) || `contact:outcome:${value}`;
       const selected = lastOutcome === value;
-      return `<button type="button" class="iaqar-workflow-btn secondary iaqar-contact-outcome-btn${selected ? " is-selected" : ""}" data-ui-action="contact-outcome" data-outcome="${value}" aria-pressed="${selected ? "true" : "false"}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`;
+      return `<button type="button" class="iaqar-workflow-btn secondary iaqar-contact-outcome-btn${selected ? " is-selected is-action-done" : ""}" data-ui-action="contact-outcome" data-broker-action="${actionKey}" data-outcome="${value}" aria-pressed="${selected ? "true" : "false"}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`;
     }).join("");
 
     let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}</div>`;
@@ -2018,8 +2066,8 @@
     if (!closed) {
       html += `<div class="iaqar-workflow-step"><h3>التواصل</h3><p>تواصل عبر واتساب أو اتصال ثم سجّل نتيجة التواصل.</p>
         <div class="iaqar-workflow-actions">
-          <button type="button" class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-contact" ${phoneInfo.valid ? "" : "disabled"}>واتساب</button>
-          <button type="button" class="iaqar-workflow-btn call" data-ui-action="call-contact" ${phoneInfo.valid ? "" : "disabled"}>اتصال</button>
+          <button type="button" class="iaqar-workflow-btn whatsapp${brokerDoneClass(detail, BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp")}" data-ui-action="whatsapp-contact" data-broker-action="${BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"}" aria-pressed="${brokerPressed(detail, BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp")}" ${phoneInfo.valid ? "" : "disabled"}>واتساب</button>
+          <button type="button" class="iaqar-workflow-btn call${brokerDoneClass(detail, BAP().BROKER_ACTION?.contactCall || "contact:call")}" data-ui-action="call-contact" data-broker-action="${BAP().BROKER_ACTION?.contactCall || "contact:call"}" aria-pressed="${brokerPressed(detail, BAP().BROKER_ACTION?.contactCall || "contact:call")}" ${phoneInfo.valid ? "" : "disabled"}>اتصال</button>
         </div>
         ${phoneInfo.valid ? "" : `<p class="iaqar-workflow-note">${escapeUi(phoneInfo.error || "رقم الجوال غير مكتمل")}</p>`}
       </div>`;
@@ -2086,6 +2134,7 @@
     }
     body.innerHTML = html;
     populateFollowUpInput(detail);
+    applyWorkflowBrokerMarks(detail);
     if (detail.focusFollowUpReminder) {
       const card = document.getElementById("iaqarFollowUpCard");
       if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2136,6 +2185,7 @@
     setUiBusy(button, true);
     try {
       const payload = await opportunityLifecycleAction("contact_outcome", activeWorkflowDetail, { contactOutcome: outcome });
+      syncWorkflowDetailFromLifecyclePayload(payload, BAP().contactOutcomeActionKey?.(outcome) || `contact:outcome:${outcome}`);
       activeWorkflowDetail = {
         ...activeWorkflowDetail,
         lastContactOutcome: outcome,
@@ -2186,6 +2236,7 @@
         recipientMode
       });
       await reloadActiveOpportunityFromServer();
+      syncWorkflowDetailFromLifecyclePayload(payload, BAP().BROKER_ACTION?.followUpScheduled || "followup:scheduled");
       if (payload.followUp) activeWorkflowDetail.followUp = payload.followUp;
       activeWorkflowDetail.nextFollowUpAt = payload.nextFollowUpAt || parsed.toISOString();
       activeWorkflowDetail.lifecycleStatus = payload.lifecycleStatus || "FOLLOW_UP";
@@ -2220,8 +2271,11 @@
   async function completeFollowUpAction(button) {
     setUiBusy(button, true);
     try {
-      await opportunityLifecycleAction("complete_followup", activeWorkflowDetail, {});
-      await reloadActiveOpportunityFromServer();
+      const payload = await opportunityLifecycleAction("complete_followup", activeWorkflowDetail, {});
+      syncWorkflowDetailFromLifecyclePayload(
+        payload,
+        BAP().BROKER_ACTION?.followUpComplete || "followup:complete"
+      );
       followUpEditMode = false;
       notify("تم تسجيل نتيجة التواصل");
       await renderOpportunityLifecycleUi();
@@ -2236,7 +2290,9 @@
     if (!outcome) return;
     setUiBusy(button, true);
     try {
-      await opportunityLifecycleAction("followup_outcome", activeWorkflowDetail, { outcome });
+      const payload = await opportunityLifecycleAction("followup_outcome", activeWorkflowDetail, { outcome });
+      const outcomeKey = BAP().followUpOutcomeActionKey?.(outcome) || `followup:outcome:${outcome}`;
+      syncWorkflowDetailFromLifecyclePayload(payload, outcomeKey, { confirmationOutcome: outcome });
       notify("تم تسجيل نتيجة التواصل");
       if (outcome === "confirmed") {
         await completeFollowUpAction(button);
@@ -2275,8 +2331,13 @@
     ].filter(Boolean).join("\n");
     openWhatsAppHandoff({ phone, text: message });
     notify("تم فتح واتساب");
-    void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, { communicationAction: "whatsapp_opened" }).catch(() => {});
-    void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, {}).catch(() => {});
+    const whatsappKey = BAP().followUpWhatsAppActionKey?.(role) || `followup:whatsapp:${role}`;
+    void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, {
+      communicationAction: "whatsapp_opened",
+      recipientRole: role
+    }).catch(() => {});
+    void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, { recipientRole: role }).catch(() => {});
+    activeWorkflowDetail = mergeWorkflowBrokerProgress(activeWorkflowDetail, whatsappKey, { whatsappRole: role });
     activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };
     void renderOpportunityLifecycleUi();
   }

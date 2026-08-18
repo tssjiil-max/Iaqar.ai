@@ -169,9 +169,11 @@ test("contact outcome buttons show checkmark when selected in management modal",
   assert.ok(workflow.includes("selectWorkflowContactOutcome"));
   assert.ok(workflow.includes("iaqar-contact-outcome-btn"));
   assert.ok(workflow.includes('aria-pressed="${selected ? "true" : "false"}"'));
-  assert.ok(workflow.includes(".iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after"));
+  assert.ok(workflow.includes("is-action-done"));
+  assert.ok(workflow.includes("data-broker-action"));
   const html = readRepo("public", "index.html");
-  assert.ok(html.includes(".iaqar-workflow-panel .iaqar-contact-outcome-btn.is-selected::after"));
+  assert.ok(html.includes(".iaqar-workflow-btn.is-action-done::before"));
+  assert.ok(html.includes("left:12px"));
 });
 
 test("matching cooperation section preserved without engine edits", () => {

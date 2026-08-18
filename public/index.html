@@ -3131,10 +3131,33 @@
     color:#fff;
     box-shadow:0 0 0 2px #fff, 0 0 0 4px #087064;
   }
-  .iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after,
-  .iaqar-workflow-panel .iaqar-contact-outcome-btn.is-selected::after {
-    content:" ✓";
-    font-size:13px;
+  .iaqar-workflow-btn.is-action-done,
+  .bank-action.is-action-done,
+  .bank-workspace-action.is-action-done,
+  .bank-workspace-party-action.is-action-done,
+  .bank-workspace-hub-option.is-action-done,
+  .bank-action-primary.is-action-done,
+  .bank-contact-outcome-btn.is-action-done,
+  .bank-refusal-reason.is-action-done {
+    position:relative;
+    padding-left:36px;
+  }
+  .iaqar-workflow-btn.is-action-done::before,
+  .bank-action.is-action-done::before,
+  .bank-workspace-action.is-action-done::before,
+  .bank-workspace-party-action.is-action-done::before,
+  .bank-workspace-hub-option.is-action-done::before,
+  .bank-action-primary.is-action-done::before,
+  .bank-contact-outcome-btn.is-action-done::before,
+  .bank-refusal-reason.is-action-done::before {
+    content:"✓";
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    font-size:14px;
+    font-weight:700;
+    line-height:1;
   }
   .iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
   .iaqar-workflow-form{display:grid;gap:11px}
@@ -3553,15 +3576,6 @@
     border-color:#087064;
     color:#fff;
     box-shadow:0 0 0 2px #fff, 0 0 0 4px #087064;
-  }
-  .bank-contact-outcome-btn.is-selected::after,
-  .bank-refusal-reason.is-selected::after,
-  .bank-contact-outcomes .iaqar-workflow-btn.secondary.is-selected::after,
-  .bank-detail .bank-contact-outcome-btn.is-selected::after,
-  .bank-detail .iaqar-workflow-btn.secondary.is-selected::after,
-  .ops-task-panel .bank-contact-outcome-btn.is-selected::after {
-    content:" ✓";
-    font-size:13px;
   }
   .bank-contact-outcome-selected-badge {
     display:inline-flex;
