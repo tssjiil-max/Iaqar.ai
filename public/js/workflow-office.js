@@ -241,7 +241,7 @@
     else if (readiness.key === "high") priority = 2;
     else if (status.key === "negotiation") priority = 1;
 
-    let actionLabel = appointmentAt ? "إنهاء الفرصة" : "تحديد المعاينة";
+    let actionLabel = appointmentAt ? "إتمام الصفقة" : "تحديد المعاينة";
     if (["completed", "closed"].includes(status.key)) actionLabel = "عرض السجل";
 
     return {
@@ -1503,7 +1503,7 @@
       <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>1. تحديد المعاينة</h3><p>${hasAppointment ? `الموعد: ${escapeUi(appointmentText(detail))}` : "اختر التاريخ والوقت ثم احفظ الموعد."}</p><button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "تغيير الموعد" : "تحديد المعاينة"}</button></article>
       ${viewingConfirmationHtml(detail)}
       ${negotiationPanelHtml(detail)}
-      <article class="iaqar-workflow-step"><h3>2. إنهاء الفرصة</h3><p>${hasAppointment ? "بعد المعاينة اختر النتيجة مباشرة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
+      <article class="iaqar-workflow-step"><h3>2. نتيجة الصفقة</h3><p>${hasAppointment ? "بعد المعاينة سجّل النتيجة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
     </div>${hasAppointment ? `<div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>` : ""}
     <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn secondary" data-ui-action="open-request">طلب الصور أو الموقع أو رابط العقار</button></div>${internalDealFields()}`;
   }
@@ -1805,6 +1805,12 @@
       || Boolean(detail.nextFollowUpAt);
   }
 
+  function shouldShowLifecycleCloseSection(detail = {}, lastOutcome = "") {
+    if (isLifecycleClosed(detail)) return false;
+    if (lastOutcome === "AGREED") return false;
+    return true;
+  }
+
   function shouldShowMatchingSection(detail = {}, lastOutcome = "") {
     if (isLifecycleClosed(detail)) return false;
     if (lastOutcome === "REFUSED") return false;
@@ -1945,6 +1951,7 @@
     const lastOutcome = String(detail.lastContactOutcome || detail.advertiserContactStatus || "").toUpperCase();
     const showFollowUp = shouldShowFollowUpSection(detail, lastOutcome);
     const showMatching = shouldShowMatchingSection(detail, lastOutcome);
+    const showLifecycleClose = shouldShowLifecycleCloseSection(detail, lastOutcome);
     const activeFollowUp = FD()?.activeFollowUpFromRecord?.(detail);
     const recipientContext = showFollowUp ? await ensureFollowUpRecipientContext(detail) : null;
     const selectedRecipient = activeFollowUp?.recipientMode || recipientContext?.defaultMode || "owner";
@@ -2001,21 +2008,32 @@
         html += `</div>`;
       }
       if (showMatching) {
-        const coopLabel = String(detail.cooperationListing || "").toUpperCase() === "OPEN"
-          ? "المطابقة والتعاون"
-          : "فتح المطابقة والتعاون";
-        html += `<div class="iaqar-workflow-step"><h3>المطابقة والتعاون</h3>
-          <p>استخدم العروض والطلبات لإدارة المطابقة والتعاون دون تغيير الصلاحيات الحالية.</p>
+        const coopLabel = lastOutcome === "AGREED"
+          ? "إتمام الصفقة من المطابقة"
+          : (String(detail.cooperationListing || "").toUpperCase() === "OPEN"
+            ? "المطابقة والتعاون"
+            : "فتح المطابقة والتعاون");
+        const matchingHint = lastOutcome === "AGREED"
+          ? "تم تسجيل الاتفاق — أكمل الصفقة من المطابقة ثم سجّل النتيجة."
+          : "استخدم العروض والطلبات لإدارة المطابقة والتعاون.";
+        html += `<div class="iaqar-workflow-step"><h3>${lastOutcome === "AGREED" ? "إتمام الصفقة" : "المطابقة والتعاون"}</h3>
+          <p>${escapeUi(matchingHint)}</p>
           <div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="open-matching-bank">${escapeUi(coopLabel)}</button>
+            <button type="button" class="iaqar-workflow-btn ${lastOutcome === "AGREED" ? "success" : "secondary"}" data-ui-action="open-matching-bank">${escapeUi(coopLabel)}</button>
           </div>
         </div>`;
       }
-      html += `<div class="iaqar-workflow-step"><h3>إنهاء الفرصة</h3>
-        <div class="iaqar-workflow-actions">
-          <button type="button" class="iaqar-workflow-btn success" data-ui-action="open-lifecycle-close">إنهاء الفرصة</button>
-        </div>
-      </div>`;
+      if (showLifecycleClose) {
+        const closeHint = lastOutcome === "REFUSED"
+          ? "تم تسجيل عدم الاهتمام — أكمل إنهاء الفرصة مع السبب."
+          : "استخدم هذا الإجراء فقط عند انتهاء متابعة الفرصة.";
+        html += `<div class="iaqar-workflow-step" id="iaqarLifecycleCloseSection"><h3>إنهاء الفرصة</h3>
+          <p class="iaqar-workflow-note">${escapeUi(closeHint)}</p>
+          <div class="iaqar-workflow-actions">
+            <button type="button" class="iaqar-workflow-btn ${lastOutcome === "REFUSED" ? "success" : "secondary"}" data-ui-action="open-lifecycle-close">إنهاء الفرصة</button>
+          </div>
+        </div>`;
+      }
     } else {
       html += `<div class="iaqar-workflow-result closed">الفرصة مؤرشفة / منتهية<br><small>${escapeUi(detail.closureReason || lifecycleLabel)}</small></div>`;
     }
@@ -2027,13 +2045,15 @@
     }
   }
 
-  function showLifecycleCloseForm() {
+  function showLifecycleCloseForm(prefill = {}) {
     const reasons = (LC().OPPORTUNITY_FINAL_CLOSE_REASONS || []).map(([value, label]) =>
       `<option value="${value}">${label}</option>`
     ).join("");
     const outcomes = (LC().OPPORTUNITY_FINAL_OUTCOMES || []).map(([value, label]) =>
       `<option value="${value}">${label}</option>`
     ).join("");
+    const prefillReason = String(prefill.reasonKey || activeWorkflowDetail?.prefillCloseReasonKey || "").trim();
+    const prefillNote = String(prefill.closureNote || activeWorkflowDetail?.prefillCloseNote || "").trim();
     workflowBody().innerHTML = `<form class="iaqar-workflow-form" id="iaqarCloseForm"><h3>إنهاء الفرصة</h3>
       <label>السبب النهائي<select id="iaqarCloseReasonKey" required><option value="">اختر السبب</option>${reasons}</select></label>
       <div id="iaqarFinalOutcomeWrap" hidden>
@@ -2050,6 +2070,14 @@
     reasonSelect?.addEventListener("change", () => {
       if (outcomeWrap) outcomeWrap.hidden = reasonSelect.value !== "deal_done";
     });
+    if (prefillReason && reasonSelect) {
+      reasonSelect.value = prefillReason;
+      reasonSelect.dispatchEvent(new Event("change"));
+    }
+    if (prefillNote) {
+      const noteInput = document.getElementById("iaqarCloseNote");
+      if (noteInput) noteInput.value = prefillNote;
+    }
   }
 
   async function recordContactOutcomeAction(button, outcome) {
@@ -2065,16 +2093,11 @@
       };
       notify("تم تسجيل نتيجة التواصل");
       if (outcome === "REFUSED") {
-        showLifecycleCloseForm();
-        const reasonSelect = document.getElementById("iaqarCloseReasonKey");
-        if (reasonSelect) reasonSelect.value = "not_interested";
+        await renderOpportunityLifecycleUi();
+        document.getElementById("iaqarLifecycleCloseSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
       } else if (outcome === "AGREED") {
-        showLifecycleCloseForm();
-        const reasonSelect = document.getElementById("iaqarCloseReasonKey");
-        if (reasonSelect) {
-          reasonSelect.value = "deal_done";
-          reasonSelect.dispatchEvent(new Event("change"));
-        }
+        await renderOpportunityLifecycleUi();
+        notify("الخطوة التالية: إتمام الصفقة من المطابقة");
       } else {
         renderOpportunityLifecycleUi();
       }
@@ -2274,9 +2297,6 @@
     if (action === "confirm-contact") return notify("سجّل نتيجة التواصل بعد واتساب أو اتصال");
     if (action === "save-lifecycle-status") return notify("استخدم نتيجة التواصل بدل تغيير الحالة العام");
     if (action === "open-followup") return renderOpportunityLifecycleUi();
-    if (action === "close-won" || action === "close-lost" || action === "archive-opportunity") {
-      return showLifecycleCloseForm();
-    }
   }
 
   async function handleOperationPrimary(detail) {
@@ -3026,8 +3046,16 @@
         contactName: data.contactName || data.advertiserDisplayName || "",
         contactPhone,
         focusFollowUpReminder: Boolean(options.focusFollowUp),
-        showFollowUpConfirmation: Boolean(options.focusFollowUp)
+        showFollowUpConfirmation: Boolean(options.focusFollowUp),
+        prefillCloseReasonKey: options.prefillCloseReason || "",
+        prefillCloseNote: options.prefillCloseNote || ""
       });
+      if (options.openLifecycleClose) {
+        showLifecycleCloseForm({
+          reasonKey: options.prefillCloseReason || "not_interested",
+          closureNote: options.prefillCloseNote || ""
+        });
+      }
     } catch (error) {
       console.warn("[iaqar] open opportunity management", error);
       notify("تعذر فتح إدارة الفرصة");

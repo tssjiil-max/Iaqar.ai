@@ -34,7 +34,43 @@ test("needs-completion shows exact Arabic missing field names", () => {
   assert.ok(rows.some((row) => row.label === "المدينة"));
 });
 
-test("best next action uses real match count", () => {
+test("best next action after agreement points to deal completion", () => {
+  const record = {
+    id: "opp_a",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1000000,
+    area: 900,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678",
+    lastContactOutcome: "AGREED"
+  };
+  const action = buildBestNextAction({ record, matches: [], suggestions: [] });
+  assert.equal(action.action, "complete_deal");
+  assert.match(action.label, /إتمام الصفقة/);
+});
+
+test("best next action after refusal points to lifecycle close", () => {
+  const record = {
+    id: "opp_a",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1000000,
+    area: 900,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678",
+    lastContactOutcome: "REFUSED"
+  };
+  const action = buildBestNextAction({ record, matches: [], suggestions: [] });
+  assert.equal(action.action, "close_opportunity");
+  assert.match(action.label, /إنهاء الفرصة/);
+});
+
+test("real match count drives review action", () => {
   const record = { id: "opp_a", purpose: "SALE", propertyType: "أرض", city: "الرياض", district: "الوبرة", price: 1000000, area: 900, advertiserRole: "OWNER", advertiserPhoneNormalized: "+966512345678" };
   const matches = [
     { matchId: "m1", score: 82, opportunityId: "opp_a", counterpartOpportunityId: "opp_b", isCurrent: true, status: "active" },

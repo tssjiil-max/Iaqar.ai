@@ -127,20 +127,18 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
         `<button type="button" class="bank-action bank-refusal-reason iaqar-workflow-btn secondary" data-refusal-reason="${esc(row.key)}">${esc(row.label)}</button>`
       ).join("");
       return `
-        <p class="bank-note iaqar-workflow-note">سبب عدم الاهتمام</p>
+        <p class="bank-note iaqar-workflow-note">سبب عدم الاهتمام — بعد الحفظ ستُكمَل إنهاء الفرصة من إدارة الفرصة.</p>
         <div class="bank-contact-refusal-reasons iaqar-workflow-actions iaqar-outcome-actions">${reasons}</div>
         <label>ملاحظة (اختياري)
-          <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="تفاصيل إضافية"></textarea>
-        </label>
-        <button type="button" class="bank-action danger iaqar-workflow-btn danger" id="bankContactRefusedArchive">إنهاء وأرشفة الفرصة</button>`;
+          <textarea id="bankContactOutcomeNote" class="iaqar-workflow-field" maxlength="200" rows="2" placeholder="تفاصيل إضافية"></textarea>
+        </label>`;
     case "FOLLOW_UP":
       return `
         <p class="bank-note iaqar-workflow-note">اختر موعد المتابعة</p>
         ${buildFollowUpQuickPickHtml("bankContactFollowUpAt", followDefault)}`;
     case "AGREED":
       return `
-        <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankContactAgreedDeal">تسجيل الاتفاق والانتقال للصفقة</button>
-        <p class="bank-note iaqar-workflow-note">لن تُنهى الفرصة تلقائيًا — أكمل تسجيل بيانات الاتفاق.</p>`;
+        <p class="bank-note iaqar-workflow-note">بعد الحفظ ستُوجّه لإتمام الصفقة من المطابقة — لن تُغلق الفرصة تلقائيًا.</p>`;
     default:
       return "";
   }

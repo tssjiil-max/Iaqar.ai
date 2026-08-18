@@ -65,7 +65,8 @@ test("contact outcome labels include required persisted outcomes", () => {
   assert.ok(workflow.includes("AGREED"));
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const workspaceUi = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
-  const combined = `${bank}\n${workspaceUi}`;
+  const domain = readRepo("public", "js", "opportunity-contact-outcome-domain.js");
+  const combined = `${bank}\n${workspaceUi}\n${domain}`;
   assert.equal(/data-contact-outcome="CONTACTED"/.test(combined), false);
   assert.ok(combined.includes("data-contact-outcome="));
   assert.ok(combined.includes("bank-contact-outcome-btn"));
@@ -132,6 +133,13 @@ test("every visible opportunity management action has handler", () => {
   for (const action of actions) {
     assert.ok(workflow.includes(`action === "${action}"`), `missing handler for ${action}`);
   }
+});
+
+test("match cards use deal completion label after viewing", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes('actionLabel = appointmentAt ? "إتمام الصفقة"'));
+  assert.ok(workflow.includes("2. نتيجة الصفقة"));
+  assert.equal(workflow.includes('main: "deals"'), false);
 });
 
 test("openOpportunityManagement opens workflow modal by opportunityId", () => {

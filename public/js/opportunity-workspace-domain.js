@@ -265,7 +265,10 @@ export function buildBestNextAction({
   const followUpDue = followUpAt > 0 && followUpAt <= now;
 
   if (lastOutcome === "AGREED") {
-    return { label: "أغلق الفرصة وسجل النتيجة", action: "close_opportunity", count: 0 };
+    return { label: "إتمام الصفقة", action: "complete_deal", count: 0 };
+  }
+  if (lastOutcome === "REFUSED") {
+    return { label: "إنهاء الفرصة", action: "close_opportunity", count: 0 };
   }
   if (followUpDue && activeFollowUp?.status === "scheduled") {
     return { label: "أكد موعد المتابعة", action: "confirm_followup", count: 0 };

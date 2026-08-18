@@ -1706,15 +1706,6 @@ function showContactOutcomeActionPanel(outcome = "") {
     if (!phone) return toast("أكمل رقم الجوال أولًا");
     openBankAdvertiserWhatsApp(state.records.get(state.activeId) || {}, phone);
   });
-  document.getElementById("bankContactAgreedDeal")?.addEventListener("click", () => {
-    const oppId = state.activeId;
-    if (oppId && window.IAQAR?.openOpportunityManagement) {
-      void window.IAQAR.openOpportunityManagement(oppId);
-    }
-  });
-  document.getElementById("bankContactRefusedArchive")?.addEventListener("click", () => {
-  void archiveRefusedOpportunity(state.activeId);
-  });
   panel.querySelectorAll(".bank-refusal-reason").forEach((btn) => {
     btn.addEventListener("click", () => {
       panel.querySelectorAll(".bank-refusal-reason").forEach((node) => node.classList.remove("is-selected"));
@@ -1722,30 +1713,6 @@ function showContactOutcomeActionPanel(outcome = "") {
     });
   });
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-async function archiveRefusedOpportunity(opportunityId) {
-  if (!opportunityId) return;
-  const selected = document.querySelector(".bank-refusal-reason.is-selected");
-  const reasonKey = selected?.getAttribute("data-refusal-reason") || "";
-  const reasonLabel = refusalReasonLabel(reasonKey);
-  const note = String(document.getElementById("bankContactOutcomeNote")?.value || "").trim();
-  const closureNote = [reasonLabel, note].filter(Boolean).join(" — ");
-  if (!confirm("تأكيد إنهاء وأرشفة الفرصة؟")) return;
-  try {
-    await postOpportunityLifecycle(opportunityId, {
-      action: "close_opportunity",
-      closureReasonKey: "not_interested",
-      closureNote: closureNote || "غير مهتم"
-    });
-    await reloadOpportunityFromBackend(opportunityId);
-    toast("تم إنهاء وأرشفة الفرصة");
-    await renderDetail(opportunityId);
-    renderList();
-  } catch (error) {
-    console.error("[iaqar-bank] refused_archive_failed", error);
-    toast(error.message || "تعذر إنهاء الفرصة");
-  }
 }
 
 async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
@@ -1808,6 +1775,15 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
     if (section) section.hidden = true;
     if (statusNode) statusNode.textContent = "";
     toast("تم حفظ نتيجة التواصل");
+    if (outcome === "REFUSED") {
+      void window.IAQAR?.openOpportunityManagement?.(opportunityId, {
+        openLifecycleClose: true,
+        prefillCloseReason: "not_interested",
+        prefillCloseNote: validation.note || ""
+      });
+    } else if (outcome === "AGREED") {
+      void window.IAQAR?.openOpportunityManagement?.(opportunityId);
+    }
   } catch (error) {
     console.error("[iaqar-bank] contact_outcome_save_failed", {
       code: error?.code,

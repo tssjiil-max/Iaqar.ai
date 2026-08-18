@@ -61,10 +61,17 @@ test("INTERESTED allows optional follow-up and note", () => {
   assert.equal(ok.note, "يريد معاينة");
 });
 
-test("AGREED does not auto-close", () => {
+test("AGREED defers deal completion to matching workflow", () => {
   const html = buildContactOutcomeActionHtml("AGREED");
-  assert.ok(html.includes("تسجيل الاتفاق والانتقال للصفقة"));
-  assert.ok(html.includes("لن تُنهى الفرصة تلقائيًا"));
+  assert.ok(html.includes("إتمام الصفقة"));
+  assert.ok(html.includes("لن تُغلق الفرصة تلقائيًا"));
+  assert.equal(html.includes("bankContactAgreedDeal"), false);
+});
+
+test("REFUSED uses single close path via management modal", () => {
+  const html = buildContactOutcomeActionHtml("REFUSED");
+  assert.equal(html.includes("bankContactRefusedArchive"), false);
+  assert.ok(html.includes("إدارة الفرصة"));
 });
 
 test("workspace section has single outcome button row and save button", () => {
