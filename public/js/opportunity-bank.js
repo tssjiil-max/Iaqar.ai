@@ -120,8 +120,13 @@ import { buildImportSimplifiedReviewDefaults } from "./import-advert-review-doma
 import {
   buildSuitableOfficesTiersHtml,
   buildSharedPreviewHtml,
-  buildIncomingCooperationItemHtml
+  buildIncomingCooperationItemHtml,
+  buildSuitableOfficeDropdownHtml
 } from "./suitable-offices-ui.js";
+import {
+  filterOfficesForDropdown,
+  flattenRankedOffices
+} from "./suitable-offices-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
 
 function $(id) {
@@ -1236,11 +1241,34 @@ function wireIncompleteDetailHandlers(id, record) {
 
 const suitableOfficesUiState = {
   buckets: {},
+  allOffices: [],
   expandedTiers: {},
   sharedPreview: null,
   selectedOffice: null,
   opportunityId: ""
 };
+
+function flattenSuitableOfficeBuckets(buckets = {}) {
+  return flattenRankedOffices({ buckets }, 0);
+}
+
+function hideSuitableOfficeDropdown() {
+  const dropdown = $("bankSuitableOfficesDropdown");
+  const input = $("bankSuitableOfficesSearch");
+  if (dropdown) dropdown.hidden = true;
+  if (input) input.setAttribute("aria-expanded", "false");
+}
+
+function renderSuitableOfficeDropdown() {
+  const dropdown = $("bankSuitableOfficesDropdown");
+  const input = $("bankSuitableOfficesSearch");
+  if (!dropdown || !input) return;
+  const query = input.value || "";
+  const matches = filterOfficesForDropdown(suitableOfficesUiState.allOffices, query, query.trim() ? 20 : 12);
+  dropdown.innerHTML = buildSuitableOfficeDropdownHtml(matches, query);
+  dropdown.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+}
 
 function setSuitableOfficesStatus(message = "", tone = "") {
   const node = $("bankSuitableOfficesStatus");
@@ -1253,6 +1281,13 @@ function setSuitableOfficesStatus(message = "", tone = "") {
 function renderSuitableOfficesTiers() {
   const host = $("bankSuitableOfficesTiers");
   if (!host) return;
+  const query = String($("bankSuitableOfficesSearch")?.value || "").trim();
+  if (query) {
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+  host.hidden = false;
   host.innerHTML = buildSuitableOfficesTiersHtml(
     suitableOfficesUiState.buckets,
     suitableOfficesUiState.expandedTiers
@@ -1271,6 +1306,8 @@ async function loadSuitableOfficesForShare(opportunityId, record) {
   suitableOfficesUiState.opportunityId = opportunityId;
   suitableOfficesUiState.selectedOffice = null;
   suitableOfficesUiState.expandedTiers = {};
+  suitableOfficesUiState.allOffices = [];
+  hideSuitableOfficeDropdown();
   const confirmPanel = $("bankSuitableOfficeConfirm");
   if (confirmPanel) confirmPanel.hidden = true;
   setSuitableOfficesStatus("جارٍ تحميل المكاتب المناسبة…");
@@ -1281,7 +1318,6 @@ async function loadSuitableOfficesForShare(opportunityId, record) {
   }
   try {
     const token = await user.getIdToken();
-    const searchQuery = $("bankSuitableOfficesSearch")?.value || "";
     const response = await fetch(`${workerBaseUrl()}/cooperation/suitable-offices`, {
       method: "POST",
       headers: {
@@ -1290,8 +1326,7 @@ async function loadSuitableOfficesForShare(opportunityId, record) {
       },
       body: JSON.stringify({
         officeId: officeId(),
-        opportunityId,
-        searchQuery
+        opportunityId
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -1301,16 +1336,20 @@ async function loadSuitableOfficesForShare(opportunityId, record) {
     if (payload.requiresCompletion) {
       setSuitableOfficesStatus(payload.message || "يلزم استكمال المدينة والحي لعرض المكاتب المناسبة", "is-error");
       suitableOfficesUiState.buckets = {};
+      suitableOfficesUiState.allOffices = [];
       renderSuitableOfficesTiers();
+      renderSuitableOfficeDropdown();
       if (window.IAQAR?.openOpportunityManagement) {
         void window.IAQAR.openOpportunityManagement(opportunityId);
       }
       return;
     }
     suitableOfficesUiState.buckets = payload.buckets || {};
+    suitableOfficesUiState.allOffices = flattenSuitableOfficeBuckets(suitableOfficesUiState.buckets);
     suitableOfficesUiState.sharedPreview = payload.sharedPreview || null;
     setSuitableOfficesStatus(payload.total ? "" : "لا توجد مكاتب متاحة للتعاون في هذه المدينة حاليًا");
     renderSuitableOfficesTiers();
+    renderSuitableOfficeDropdown();
   } catch (error) {
     console.warn("[iaqar] suitable offices", error);
     setSuitableOfficesStatus(error?.message || "تعذر جلب المكاتب — أعد المحاولة", "is-error");
@@ -1338,14 +1377,33 @@ function wireSuitableOfficesHandlers(opportunityId, record, bundle = {}) {
   section.dataset.suitableBound = opportunityId;
 
   $("bankSuitableOfficesSearch")?.addEventListener("input", () => {
-    void loadSuitableOfficesForShare(opportunityId, record);
+    renderSuitableOfficeDropdown();
+    renderSuitableOfficesTiers();
+  });
+  $("bankSuitableOfficesSearch")?.addEventListener("focus", () => {
+    renderSuitableOfficeDropdown();
+  });
+  $("bankSuitableOfficesSearch")?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideSuitableOfficeDropdown();
   });
 
   section.addEventListener("click", (event) => {
+    const dropdownPick = event.target.closest?.("[data-dropdown-office-id]");
+    if (dropdownPick) {
+      const officeIdPick = dropdownPick.getAttribute("data-dropdown-office-id") || "";
+      const office = suitableOfficesUiState.allOffices.find((row) => String(row.officeId) === officeIdPick);
+      if (office) {
+        showSuitableOfficeConfirm(office);
+        hideSuitableOfficeDropdown();
+      }
+      return;
+    }
     const pickBtn = event.target.closest?.("[data-pick-suitable-office]");
     if (pickBtn) {
       const officeIdPick = pickBtn.getAttribute("data-pick-suitable-office") || "";
-      const tierRows = Object.values(suitableOfficesUiState.buckets).flat();
+      const tierRows = suitableOfficesUiState.allOffices.length
+        ? suitableOfficesUiState.allOffices
+        : Object.values(suitableOfficesUiState.buckets).flat();
       const office = tierRows.find((row) => String(row.officeId) === officeIdPick);
       if (office) showSuitableOfficeConfirm(office);
       return;
@@ -1357,6 +1415,15 @@ function wireSuitableOfficesHandlers(opportunityId, record, bundle = {}) {
       renderSuitableOfficesTiers();
     }
   });
+
+  if (section.dataset.dropdownBound !== "1") {
+    section.dataset.dropdownBound = "1";
+    document.addEventListener("click", (event) => {
+      if ($("bankWorkspaceShareSection")?.hidden) return;
+      if (event.target.closest?.(".bank-suitable-search-wrap")) return;
+      hideSuitableOfficeDropdown();
+    });
+  }
 
   $("bankSuitableCancelPickBtn")?.addEventListener("click", () => {
     suitableOfficesUiState.selectedOffice = null;

@@ -15,7 +15,10 @@ import {
   classifyOfficeForOpportunity,
   requiresOpportunityLocationCompletion,
   isOfficeEligibleForCooperationListing,
-  SUITABLE_OFFICE_TIER
+  SUITABLE_OFFICE_TIER,
+  normalizeOfficeSearchText,
+  filterOfficesForDropdown,
+  officeMatchesSearchQuery
 } from "../public/js/suitable-offices-domain.js";
 import { minimumSharedFields } from "../worker/src/cooperation-phase6-domain.js";
 import { applyCooperationDecision } from "../worker/src/cooperation-phase6-domain.js";
@@ -226,4 +229,33 @@ test("UI tier labels are Arabic", () => {
   });
   const row = ranked.buckets[1][0] || ranked.buckets[2][0] || ranked.buckets[3][0];
   assert.ok(row.reason && !/[A-Za-z]/.test(row.reason));
+});
+
+test("office name search normalizes Arabic and matches partial names", () => {
+  assert.equal(normalizeOfficeSearchText("  سلطان  "), "سلطان");
+  assert.equal(normalizeOfficeSearchText("مكتب أحمد"), normalizeOfficeSearchText("مكتب احمد"));
+  assert.equal(
+    officeMatchesSearchQuery({ officeName: "مكتب سلطان العقاري" }, "سلطان"),
+    true
+  );
+  const matches = filterOfficesForDropdown([
+    { officeId: "a", officeName: "مكتب سلطان" },
+    { officeId: "b", officeName: "مكتب النور" }
+  ], "سلطان");
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].officeId, "a");
+});
+
+test("ranking search uses normalized office name query", () => {
+  const ranked = rankSuitableOffices({
+    opportunity: { city: MADINAH, district: "عروة" },
+    offices: [
+      office({ officeId: "sultan", officeName: "مكتب سلطان" }),
+      office({ officeId: "other", officeName: "مكتب آخر" })
+    ],
+    ownOfficeId: "office-a",
+    searchQuery: "سلطان"
+  });
+  assert.equal(ranked.total, 1);
+  assert.equal(ranked.buckets[1][0]?.officeId || ranked.buckets[2][0]?.officeId || ranked.buckets[3][0]?.officeId, "sultan");
 });

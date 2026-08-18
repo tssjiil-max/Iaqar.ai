@@ -58,7 +58,7 @@ export function buildSuitableTierSectionHtml(tier, rows = [], options = {}) {
   const visible = rows.slice(0, limit);
   const hiddenCount = rows.length - visible.length;
   const cards = visible.map((row) => buildSuitableOfficeCardHtml(row)).join("");
-  const emptyMessage = `<p class="bank-note">لا توجد مكاتب في هذا القسم حاليًا.</p>`;
+  const emptyMessage = `<p class="bank-suitable-empty">لا توجد مكاتب في هذا القسم حاليًا.</p>`;
   const expandBtn = hiddenCount > 0
     ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-expand-tier="${tier}">عرض بقية مكاتب المدينة (${hiddenCount})</button>`
     : "";
@@ -76,14 +76,40 @@ export function buildSuitableOfficesTiersHtml(buckets = {}, expandedTiers = {}) 
   ).join("");
 }
 
+export function buildSuitableOfficeDropdownItemHtml(office = {}) {
+  return `
+    <button type="button" class="bank-suitable-dropdown-item" role="option"
+      data-dropdown-office-id="${esc(office.officeId)}">
+      <strong>${esc(office.officeName || office.officeId)}</strong>
+      <span>${esc(office.primaryNeighborhoodLabel || office.city || "")}</span>
+      <small>${esc(office.tierLabel || "")}</small>
+    </button>`;
+}
+
+export function buildSuitableOfficeDropdownHtml(offices = [], query = "") {
+  const trimmed = String(query || "").trim();
+  if (!offices.length) {
+    const hint = trimmed
+      ? `لا توجد نتائج لـ «${trimmed}» — جرّب اسمًا آخر أو امسح البحث`
+      : "لا توجد مكاتب متاحة للتعاون في هذه المدينة حاليًا";
+    return `<p class="bank-suitable-dropdown-empty">${esc(hint)}</p>`;
+  }
+  return offices.map((office) => buildSuitableOfficeDropdownItemHtml(office)).join("");
+}
+
 export function buildSuitableOfficesShareSectionHtml() {
   return `
     <h4>اختر مكتبًا للتعاون</h4>
-    <p class="bank-note iaqar-workflow-note">تظهر مكاتب الحي أولًا، ثم الأحياء المجاورة، ثم بقية المدينة.</p>
+    <p class="bank-note iaqar-workflow-note">ابحث باسم المكتب من القائمة، أو اختر من الأقسام أدناه.</p>
     <p class="section-status" id="bankSuitableOfficesStatus" role="status"></p>
-    <label>بحث باسم المكتب أو الحي
-      <input type="search" id="bankSuitableOfficesSearch" placeholder="ابحث باسم المكتب أو الحي" autocomplete="off">
-    </label>
+    <div class="bank-suitable-search-wrap">
+      <label class="bank-suitable-search-label" for="bankSuitableOfficesSearch">بحث باسم المكتب</label>
+      <input type="search" id="bankSuitableOfficesSearch" class="bank-suitable-search-input"
+        placeholder="مثال: سلطان" autocomplete="off" role="combobox"
+        aria-expanded="false" aria-controls="bankSuitableOfficesDropdown"
+        aria-autocomplete="list">
+      <div id="bankSuitableOfficesDropdown" class="bank-suitable-dropdown" role="listbox" hidden></div>
+    </div>
     <p class="bank-note" id="bankSuitableOfficesCount" hidden></p>
     <div id="bankSuitableOfficesTiers" class="bank-suitable-tiers"></div>
     <div id="bankSuitableOfficeConfirm" class="bank-suitable-confirm" hidden>

@@ -190,6 +190,40 @@ function compareArabicName(a = "", b = "") {
   return String(a).localeCompare(String(b), "ar");
 }
 
+export function normalizeOfficeSearchText(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function officeMatchesSearchQuery(office = {}, query = "") {
+  const normalizedQuery = normalizeOfficeSearchText(query);
+  if (!normalizedQuery) return true;
+  const haystack = normalizeOfficeSearchText([
+    office.officeName,
+    office.officeId,
+    office.primaryNeighborhoodLabel,
+    office.city,
+    ...(office.serviceNeighborhoodLabels || [])
+  ].filter(Boolean).join(" "));
+  return haystack.includes(normalizedQuery);
+}
+
+export function filterOfficesForDropdown(offices = [], query = "", limit = 20) {
+  const rows = Array.isArray(offices) ? offices : [];
+  const normalizedQuery = normalizeOfficeSearchText(query);
+  const filtered = normalizedQuery
+    ? rows.filter((office) => officeMatchesSearchQuery(office, normalizedQuery))
+    : rows;
+  return filtered.slice(0, limit);
+}
+
 export function rankSuitableOffices({
   opportunity = {},
   offices = [],
@@ -200,7 +234,6 @@ export function rankSuitableOffices({
   const opportunityCity = String(opportunity.city || "").trim();
   const districtLabels = opportunityTargetDistrictLabels(opportunity, opportunityCity);
   const districtIds = opportunityTargetDistrictIds(opportunity, opportunityCity);
-  const query = String(searchQuery || "").trim().toLowerCase();
 
   const buckets = {
     [SUITABLE_OFFICE_TIER.SAME]: [],
@@ -216,8 +249,9 @@ export function rankSuitableOffices({
 
     const name = String(office.officeName || officeId).trim();
     const primaryLabel = primaryNeighborhoodLabelFromRecord(office);
-    const haystack = `${name} ${primaryLabel} ${office.city || ""}`.toLowerCase();
-    if (query && !haystack.includes(query)) continue;
+    if (searchQuery && !officeMatchesSearchQuery({ officeName: name, officeId, primaryNeighborhoodLabel: primaryLabel, city: office.city || "" }, searchQuery)) {
+      continue;
+    }
 
     const classified = classifyOfficeForOpportunity({
       office,
