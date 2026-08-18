@@ -101,6 +101,10 @@ export function contactOutcomeSelectionHint(outcome = "") {
   return `تم اختيار «${label}» — أكمل التفاصيل ثم اضغط حفظ`;
 }
 
+export function contactOutcomeSelectedBadgeLabel(outcome = "") {
+  return CONTACT_OUTCOME_LABELS[String(outcome || "").toUpperCase()] || "";
+}
+
 export function buildContactOutcomeSaveFooterHtml() {
   return `
     <div class="bank-unified-save-wrap bank-contact-outcome-save-wrap">

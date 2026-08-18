@@ -8,6 +8,7 @@ import {
   validateContactOutcomeSave,
   contactOutcomeActivityText,
   contactOutcomeSelectionHint,
+  contactOutcomeSelectedBadgeLabel,
   buildContactOutcomeSaveFooterHtml,
   shouldShowContactOutcomePanel,
   buildContactOutcomeActionKind,
@@ -91,6 +92,7 @@ test("workspace section has outcome buttons, hint, and inline save in panel", ()
   const html = buildContactOutcomesSectionHtml(record, { show: true });
   assert.equal((html.match(/data-contact-outcome=/g) || []).length, 5);
   assert.ok(html.includes("bankContactOutcomeSelectionHint"));
+  assert.ok(html.includes("bankContactOutcomeSelectedBadge"));
   assert.equal(html.includes("bankSaveContactOutcomeBtn"), false);
   const panel = buildContactOutcomeActionHtml("NO_RESPONSE");
   assert.ok(panel.includes("bank-contact-outcome-save-btn"));
@@ -98,10 +100,12 @@ test("workspace section has outcome buttons, hint, and inline save in panel", ()
   assert.equal(html.includes("bankContactOutcomesWrap"), false);
 });
 
-test("selection hint guides broker before save", () => {
+test("selection hint and badge guide broker before save", () => {
   const hint = contactOutcomeSelectionHint("NO_RESPONSE");
   assert.ok(hint.includes("لم يرد"));
   assert.ok(hint.includes("حفظ"));
+  assert.equal(contactOutcomeSelectedBadgeLabel("NO_RESPONSE"), "لم يرد");
+  assert.equal(contactOutcomeSelectedBadgeLabel("REFUSED"), "غير مهتم");
   assert.ok(buildContactOutcomeSaveFooterHtml().includes("bank-contact-outcome-save-btn"));
 });
 
@@ -141,11 +145,14 @@ test("bank saves via inline panel button; AGREED auto-saves on tap", () => {
   assert.ok(bank.includes("saveContactOutcomeBundle"));
   assert.ok(bank.includes("bankContactOutcomeSaveBusy"));
   assert.ok(bank.includes('outcome === "AGREED"'));
-  assert.ok(bank.includes("contactOutcomeSelectionHint"));
+  assert.ok(bank.includes("contactOutcomeSelectedBadgeLabel"));
+  assert.ok(bank.includes('aria-pressed'));
 });
 
-test("selected outcome style uses site green", () => {
+test("selected outcome style works outside bank-detail panel", () => {
   const html = readRepo("public", "index.html");
   assert.ok(html.includes(".bank-contact-outcome-btn.is-selected"));
-  assert.ok(html.includes("background:var(--green)"));
+  assert.ok(html.includes(".ops-task-panel .bank-contact-outcome-btn.is-selected"));
+  assert.ok(html.includes(".bank-contact-outcome-selected-badge"));
+  assert.ok(html.includes("background:#087064"));
 });

@@ -110,6 +110,7 @@ import {
 import {
   contactOutcomeActivityText,
   contactOutcomeSelectionHint,
+  contactOutcomeSelectedBadgeLabel,
   refusalReasonLabel,
   validateContactOutcomeSave,
   followUpLabelFromIso
@@ -1680,12 +1681,28 @@ function updateContactOutcomeSelectionHint(outcome = "") {
   hintNode.hidden = false;
 }
 
+function updateContactOutcomeSelectedBadge(outcome = "") {
+  const badgeNode = document.getElementById("bankContactOutcomeSelectedBadge");
+  const labelNode = document.getElementById("bankContactOutcomeSelectedLabel");
+  if (!badgeNode || !labelNode) return;
+  const label = contactOutcomeSelectedBadgeLabel(outcome);
+  if (!label) {
+    badgeNode.hidden = true;
+    labelNode.textContent = "";
+    return;
+  }
+  labelNode.textContent = label;
+  badgeNode.hidden = false;
+}
+
 function selectContactOutcomeButton(outcome = "") {
   document.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     const active = btn.getAttribute("data-contact-outcome") === outcome;
     btn.classList.toggle("is-selected", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
   });
   updateContactOutcomeSelectionHint(outcome);
+  updateContactOutcomeSelectedBadge(outcome);
 }
 
 function wireContactScheduleQuickPick(container, inputId) {

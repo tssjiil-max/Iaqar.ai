@@ -3499,17 +3499,51 @@
     gap:9px;
     margin-top:10px;
   }
+  .bank-contact-outcome-btn.is-selected,
+  .bank-refusal-reason.is-selected,
+  .bank-contact-outcomes .iaqar-workflow-btn.secondary.is-selected,
   .bank-detail .bank-contact-outcome-btn.is-selected,
   .bank-detail .bank-refusal-reason.is-selected,
-  .bank-detail .iaqar-workflow-btn.secondary.is-selected {
+  .bank-detail .iaqar-workflow-btn.secondary.is-selected,
+  .ops-task-panel .bank-contact-outcome-btn.is-selected,
+  .ops-task-panel .bank-refusal-reason.is-selected {
     background:#087064;
     border-color:#087064;
     color:#fff;
+    box-shadow:0 0 0 2px #fff, 0 0 0 4px #087064;
   }
+  .bank-contact-outcome-btn.is-selected::after,
+  .bank-refusal-reason.is-selected::after,
+  .bank-contact-outcomes .iaqar-workflow-btn.secondary.is-selected::after,
   .bank-detail .bank-contact-outcome-btn.is-selected::after,
-  .bank-detail .iaqar-workflow-btn.secondary.is-selected::after {
+  .bank-detail .iaqar-workflow-btn.secondary.is-selected::after,
+  .ops-task-panel .bank-contact-outcome-btn.is-selected::after {
     content:" ✓";
     font-size:13px;
+  }
+  .bank-contact-outcome-selected-badge {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    margin:8px 0 0;
+    padding:8px 12px;
+    border-radius:999px;
+    background:#087064;
+    color:#fff;
+    font-size:13px;
+    font-weight:800;
+    line-height:1.4;
+  }
+  .bank-contact-outcome-selected-icon {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:20px;
+    height:20px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.22);
+    font-size:12px;
+    font-weight:900;
   }
   .bank-contact-outcome-action-panel {
     margin-top:10px;

@@ -158,11 +158,15 @@ export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
   const retryDefault = defaultContactRetryInput();
   const followDefault = defaultContactFollowUpInput();
   const outcomeButtons = CONTACT_OUTCOME_ORDER.map((key) =>
-    `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
+    `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}" aria-pressed="false">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
   ).join("");
   return `
     <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
       <h4>نتيجة التواصل</h4>
+      <p class="bank-contact-outcome-selected-badge" id="bankContactOutcomeSelectedBadge" hidden role="status">
+        <span class="bank-contact-outcome-selected-icon" aria-hidden="true">✓</span>
+        <span id="bankContactOutcomeSelectedLabel"></span>
+      </p>
       <p class="bank-contact-outcome-hint" id="bankContactOutcomeSelectionHint" hidden role="status"></p>
       <div class="bank-contact-outcomes iaqar-workflow-actions iaqar-outcome-actions" id="bankContactOutcomes">${outcomeButtons}</div>
       <div id="bankContactOutcomeActionPanel" class="bank-contact-outcome-action-panel" hidden></div>
