@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3 uid="uid://result_screen"]
+
+[ext_resource type="Script" path="res://scripts/ui/ResultScreen.gd" id="1"]
+
+[node name="ResultScreen" type="CanvasLayer"]
+visible = false
+script = ExtResource("1")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Panel" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -220.0
+offset_right = 280.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "نجوتوا!"
+horizontal_alignment = 1
+
+[node name="Score" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "النقاط: 0"
+horizontal_alignment = 1
+
+[node name="Combo" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "أفضل كومبو: x1"
+horizontal_alignment = 1
+
+[node name="Secrets" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "الأسرار: 0 / 3"
+horizontal_alignment = 1
+
+[node name="Stars" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "⭐"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="NextButton" type="Button" parent="Panel/Buttons"]
+layout_mode = 2
+text = "المرحلة التالية"
+
+[node name="RetryButton" type="Button" parent="Panel/Buttons"]
+layout_mode = 2
+text = "إعادة"
+
+[node name="HubButton" type="Button" parent="Panel/Buttons"]
+layout_mode = 2
+text = "الحوش"
+
+[connection signal="pressed" from="Panel/Buttons/NextButton" to="." method="_on_next_pressed"]
+[connection signal="pressed" from="Panel/Buttons/RetryButton" to="." method="_on_retry_pressed"]
+[connection signal="pressed" from="Panel/Buttons/HubButton" to="." method="_on_hub_pressed"]

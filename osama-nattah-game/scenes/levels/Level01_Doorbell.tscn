@@ -1,0 +1,32 @@
+[gd_scene load_steps=6 format=3 uid="uid://level01_doorbell"]
+
+[ext_resource type="Script" path="res://scripts/levels/Level01Controller.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/core/GameCamera.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/chasers/ChaseManager.gd" id="3"]
+[ext_resource type="PackedScene" uid="uid://hud_scene" path="res://scenes/ui/HUD.tscn" id="4"]
+[ext_resource type="PackedScene" uid="uid://result_screen" path="res://scenes/ui/ResultScreen.tscn" id="5"]
+
+[node name="Level01_Doorbell" type="Node2D"]
+script = ExtResource("1")
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="Markers" type="Node2D" parent="."]
+
+[node name="PlayerSpawn" type="Marker2D" parent="Markers"]
+position = Vector2(120, -40)
+
+[node name="SheepSpawn" type="Marker2D" parent="Markers"]
+position = Vector2(60, -40)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(120, -120)
+position_smoothing_enabled = true
+script = ExtResource("2")
+
+[node name="ChaseManager" type="Node" parent="."]
+script = ExtResource("3")
+
+[node name="HUD" parent="." instance=ExtResource("4")]
+
+[node name="ResultScreen" parent="." instance=ExtResource("5")]
