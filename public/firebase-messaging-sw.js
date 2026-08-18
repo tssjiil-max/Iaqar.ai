@@ -161,6 +161,8 @@ const IAQAR_SHELL = [
   "/js/operations-domain-bridge.js",
   "/js/operations-center-bridge.js",
   "/js/operations-center-domain.js",
+  "/js/ops-card-badge-domain.js",
+  "/js/daily-tasks-domain.js",
   "/js/messaging-domain-bridge.js",
   "/js/workflow-office.js",
   "/js/display-sanitize-domain.js",

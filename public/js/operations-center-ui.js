@@ -2,6 +2,7 @@
  * Daily tasks (المهام اليومية) — shell UI controller.
  */
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import { buildOpsCardBadge } from "./ops-card-badge-domain.js";
 import {
   bestActionHint,
   extractOpportunityId,
@@ -227,6 +228,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       ? centerDomain.primaryActionLabel(item)
       : primaryActionLabel(item);
 
+    const badgeHtml = opsCardBadgeHtml(item);
+
     return `
       <article class="ops-task-card ops-today-task" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
@@ -235,7 +238,10 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
           <span class="ops-task-body">
-            <h4>${escapeHtml(item.title)}</h4>
+            <div class="ops-task-head">
+              <h4>${escapeHtml(item.title)}</h4>
+              ${badgeHtml}
+            </div>
             <p>${escapeHtml(item.subtitle)}</p>
             ${meta ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
             ${hint ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
@@ -344,7 +350,23 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     }).join("");
   }
 
+  function opsCardBadgeHtml(item) {
+    const badge = buildOpsCardBadge(item);
+    if (!badge) return "";
+    const mark = badge.mark ? `${escapeHtml(badge.mark)} ` : "";
+    const detailClass = badge.kind === "closing" ? "ops-readiness-detail is-closing" : "ops-readiness-detail";
+    return `
+      <div class="ops-task-badges">
+        <span class="ops-readiness-badge ${escapeHtml(badge.cssClass)}">${mark}${escapeHtml(badge.label)}</span>
+      </div>
+      ${badge.detailLine ? `<p class="${detailClass}">${escapeHtml(badge.detailLine)}</p>` : ""}`;
+  }
+
   function incompleteMetaHtml(item) {
+    const badge = buildOpsCardBadge(item);
+    if (badge?.kind === "matching" && badge.cssClass === "is-incomplete") {
+      return "";
+    }
     const labels = missingFieldLabelsArabic(
       item.matchingReadinessMissing || item.missingFields || []
     );
@@ -366,6 +388,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const primaryLabel = domain?.primaryActionLabel ? domain.primaryActionLabel(item) : primaryActionLabel(item);
     const cat = domain?.categoryKey ? domain.categoryKey(item) : "";
     const incompleteMeta = cat === "incomplete" ? incompleteMetaHtml(item) : "";
+    const badgeHtml = opsCardBadgeHtml(item);
 
     return `
       <article class="ops-task-card" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
@@ -375,7 +398,10 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
           <span class="ops-task-body">
-            <h4>${escapeHtml(item.title)}</h4>
+            <div class="ops-task-head">
+              <h4>${escapeHtml(item.title)}</h4>
+              ${badgeHtml}
+            </div>
             <p>${escapeHtml(item.subtitle)}</p>
             ${item.opsStatusLine ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
             ${incompleteMeta}

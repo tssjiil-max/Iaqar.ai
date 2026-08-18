@@ -327,6 +327,13 @@
     const item = doc.data() || {};
     const isOwner = item.kind === "owner";
     const amountLabel = isOwner ? "السعر المطلوب" : "الميزانية";
+    const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
+      ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
+      : null;
+    const matchingReadiness = String(item.matchingReadiness || readinessEval?.matchingReadiness || "").toUpperCase();
+    const matchingReadinessMissing = Array.isArray(item.matchingReadinessMissing) && item.matchingReadinessMissing.length
+      ? item.matchingReadinessMissing.map(String)
+      : (readinessEval?.matchingReadinessMissing || []);
     return {
       id: `intake-${doc.id}`,
       recordId: doc.id,
@@ -373,6 +380,9 @@
       ,transactionType: item.transactionType || ""
       ,amount: item.amount || 0
       ,area: item.area || 0
+      ,matchingReadiness
+      ,matchingReadinessMissing
+      ,isReadyForMatching: matchingReadiness === "READY_FOR_MATCHING" || readinessEval?.isReadyForMatching === true
     };
   }
 
@@ -424,6 +434,7 @@
       district: item.district || "",
       matchingReadiness,
       matchingReadinessMissing,
+      isReadyForMatching: matchingReadiness === "READY_FOR_MATCHING" || readinessEval?.isReadyForMatching === true,
       matchCount,
       bestMatchScoreText: card?.bestMatchScoreText || "",
       createdAt: String(item.createdAt || item.receivedAt || ""),

@@ -97,6 +97,13 @@ test("workflow opens unified opportunity detail instead of legacy overlay primar
   assert.ok(workflow.includes("تفاصيل الفرصة"));
 });
 
+test("operations shell renders readiness badges on task cards", () => {
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  assert.ok(ui.includes("ops-readiness-badge"));
+  assert.ok(ui.includes("buildOpsCardBadge"));
+  assert.ok(ui.includes("ops-task-head"));
+});
+
 test("operations shell renders opsStatusLine on task cards", () => {
   const ui = readRepo("public", "js", "operations-center-ui.js");
   assert.ok(ui.includes("ops-task-status"));
