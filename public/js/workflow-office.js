@@ -21,6 +21,18 @@
   const LC = () => window.IAQAR_LIFECYCLE || {};
   const OPP = () => window.IAQAR_OPPORTUNITY?.card || null;
   const FD = () => window.IAQAR_OPPORTUNITY?.followup || null;
+  const BUX = () => window.IAQAR?.brokerMatchUxDomain || null;
+  const BAL = () => window.IAQAR?.brokerAlertsDomain || null;
+
+  function brokerUxStatusLine(item = {}) {
+    const domain = BUX();
+    if (!domain) return "";
+    if (item.viewingAt || item.appointmentAt) {
+      const viewingLine = domain.viewingConfirmationOpsLine?.(item);
+      if (viewingLine) return viewingLine;
+    }
+    return domain.negotiationOpsLine?.(item) || "";
+  }
 
   function sanitizeOpsText(value) {
     const raw = String(value || "").trim();
@@ -266,7 +278,9 @@
       lastNote: item.lastNote || "",
       closeReason: item.closeReason || "",
       closingReadinessScore: readiness.score,
-      closingReadinessKey: readiness.key
+      closingReadinessKey: readiness.key,
+      brokerUx: item.brokerUx || {},
+      opsStatusLine: brokerUxStatusLine({ ...item, viewingAt: item.viewingAt, appointmentAt })
     };
   }
 
@@ -318,7 +332,9 @@
       whatsappClient: Boolean(item.clientRequestId),
       nextFollowUpAt: item.nextFollowUpAt || null,
       healthKey: health.key,
-      healthScore: health.score
+      healthScore: health.score,
+      brokerUx: item.brokerUx || {},
+      opsStatusLine: brokerUxStatusLine(item)
     };
   }
 
@@ -718,7 +734,8 @@
       ...activeDealOperations(),
       ...workspaceItems
     ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
-    const items = filterOpportunityView(baseItems);
+    const alerts = BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : [];
+    const items = filterOpportunityView([...alerts, ...baseItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true, opportunityView } }));
   }
 
@@ -1364,7 +1381,7 @@
       .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}.iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}.iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
       .iaqar-workflow-body{padding:16px}.iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}.iaqar-workflow-steps{display:grid;gap:10px}.iaqar-workflow-step{border:1px solid #dce8e4;border-radius:18px;padding:14px}.iaqar-workflow-step.is-done{border-color:#9fd1c5;background:#f1faf7}.iaqar-workflow-step h3,.iaqar-workflow-step h4{margin:0 0 5px;font-size:17px;color:#0a695d;font-weight:700}.iaqar-workflow-step p{margin:0 0 10px;color:#657b74;font-size:13px;line-height:1.6}
       .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.iaqar-workflow-btn{min-height:52px;border:0;border-radius:14px;padding:10px 12px;font:700 15px Tajawal;cursor:pointer;background:#087064;color:#fff}.iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}.iaqar-workflow-btn.success{background:#087064;color:#fff}.iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}.iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-outcome-actions{grid-template-columns:1fr 1fr}.iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
-      .iaqar-workflow-form{display:grid;gap:11px}.iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700}.iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #cedfda;border-radius:13px;padding:12px;font:500 15px Tajawal;background:#fff}.iaqar-workflow-form textarea{min-height:82px;resize:vertical}.iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}.iaqar-checks label{display:flex;align-items:center;gap:8px}.iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}.iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}.iaqar-workflow-result.success{background:#eaf8f3;color:#087064}.iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}.iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}.iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}
+      .iaqar-workflow-form{display:grid;gap:11px}.iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700}.iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #cedfda;border-radius:13px;padding:12px;font:500 15px Tajawal;background:#fff}.iaqar-workflow-form textarea{min-height:82px;resize:vertical}.iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}.iaqar-checks label{display:flex;align-items:center;gap:8px}.iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}.iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}.iaqar-workflow-result.success{background:#eaf8f3;color:#087064}.iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}.iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}.iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}.iaqar-viewing-alert{color:#a33a3a;font-size:13px;font-weight:700;margin:0 0 8px}
       @media(min-width:700px){.iaqar-workflow-overlay{align-items:center}.iaqar-workflow-panel{border-radius:24px}}@media(max-width:420px){.iaqar-workflow-actions,.iaqar-whatsapp-grid,.iaqar-workflow-form-grid{grid-template-columns:1fr}}
     </style>`);
     }
@@ -1477,13 +1494,15 @@
     }
 
     if (!isMatch) {
-      body.innerHTML = `${summary}<div class="iaqar-workflow-step"><h3>إنهاء الصفقة</h3><p>يمكن إتمام الصفقة مباشرة، أو إيقافها مع حفظ السبب.</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete">تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></div>
+      body.innerHTML = `${summary}${negotiationPanelHtml(detail)}<div class="iaqar-workflow-step"><h3>إنهاء الصفقة</h3><p>يمكن إتمام الصفقة مباشرة، أو إيقافها مع حفظ السبب.</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete">تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></div>
         <div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>${internalDealFields()}`;
       return;
     }
 
     body.innerHTML = `${summary}<div class="iaqar-workflow-steps">
       <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>1. تحديد المعاينة</h3><p>${hasAppointment ? `الموعد: ${escapeUi(appointmentText(detail))}` : "اختر التاريخ والوقت ثم احفظ الموعد."}</p><button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "تغيير الموعد" : "تحديد المعاينة"}</button></article>
+      ${viewingConfirmationHtml(detail)}
+      ${negotiationPanelHtml(detail)}
       <article class="iaqar-workflow-step"><h3>2. إنهاء الفرصة</h3><p>${hasAppointment ? "بعد المعاينة اختر النتيجة مباشرة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
     </div>${hasAppointment ? `<div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>` : ""}
     <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn secondary" data-ui-action="open-request">طلب الصور أو الموقع أو رابط العقار</button></div>${internalDealFields()}`;
@@ -1491,6 +1510,58 @@
 
   function internalDealFields() {
     return `<details class="iaqar-internal-details"><summary>بيانات داخلية اختيارية</summary><div class="iaqar-workflow-form" style="margin-top:10px"><label>السعر النهائي<input id="iaqarFinalPrice" inputmode="decimal" placeholder="اختياري"></label><label>العمولة<input id="iaqarCommission" inputmode="decimal" placeholder="اختياري"></label><label>ملاحظة داخلية<textarea id="iaqarInternalNote" placeholder="لا تظهر للعميل أو المالك"></textarea></label></div></details>`;
+  }
+
+  function negotiationPanelHtml(detail) {
+    const domain = BUX();
+    if (!domain?.buildNegotiationPanelView) return "";
+    const panel = domain.buildNegotiationPanelView(detail);
+    return `<article class="iaqar-workflow-step"><h3>التفاوض</h3>
+      <div class="iaqar-workflow-form-grid">
+        <label>سعر المالك<input id="iaqarOwnerPrice" inputmode="numeric" value="${escapeUi(panel.ownerPrice || "")}" placeholder="ريال"></label>
+        <label>سعر العميل<input id="iaqarClientPrice" inputmode="numeric" value="${escapeUi(panel.clientPrice || "")}" placeholder="ريال"></label>
+        <label class="full">آخر عرض<input id="iaqarLastOffer" inputmode="numeric" value="${escapeUi(panel.lastOffer || "")}" placeholder="ريال"></label>
+        <label>حالة التفاوض<select id="iaqarNegotiationStatus">
+          <option value="in_progress"${panel.negotiationStatus === "in_progress" ? " selected" : ""}>جاري</option>
+          <option value="agreed"${panel.negotiationStatus === "agreed" ? " selected" : ""}>اتفقوا</option>
+          <option value="failed"${panel.negotiationStatus === "failed" ? " selected" : ""}>فشل</option>
+        </select></label>
+        <label class="full">سبب الرفض أو ملاحظة<textarea id="iaqarNegotiationNote" placeholder="اختياري">${escapeUi(panel.negotiationNote || "")}</textarea></label>
+      </div>
+      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-negotiation">حفظ التفاوض</button>
+    </article>`;
+  }
+
+  function viewingConfirmationHtml(detail) {
+    const domain = BUX();
+    if (!domain?.buildViewingConfirmationView || !appointmentValue(detail)) return "";
+    const view = domain.buildViewingConfirmationView(detail);
+    return `<article class="iaqar-workflow-step${view.bothConfirmed ? " is-done" : ""}"><h3>تأكيد المعاينة</h3>
+      <p>${escapeUi(appointmentText(detail))}</p>
+      ${view.needsAlert ? `<p class="iaqar-viewing-alert">${escapeUi(view.alertLine)}</p>` : ""}
+      <div class="iaqar-workflow-actions">
+        <button class="iaqar-workflow-btn ${view.clientViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="client">${view.clientViewingConfirmed ? "✅" : "⏳"} عميل أكّد</button>
+        <button class="iaqar-workflow-btn ${view.ownerViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="owner">${view.ownerViewingConfirmed ? "✅" : "⏳"} مالك أكّد</button>
+      </div>
+    </article>`;
+  }
+
+  async function persistBrokerUx(recordType, recordId, patch) {
+    const runtime = office();
+    const domain = BUX();
+    if (!runtime?.refs || !runtime.officeId || !domain?.mergeBrokerUx) {
+      throw new Error("تعذر حفظ بيانات التفاوض");
+    }
+    const collection = recordType === "deal" ? runtime.refs.deals : runtime.refs.matches;
+    const snapshot = await collection.doc(recordId).get();
+    const current = snapshot.exists ? snapshot.data() : {};
+    const brokerUx = domain.mergeBrokerUx(current, patch);
+    await collection.doc(recordId).set({
+      officeId: runtime.officeId,
+      brokerUx,
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return brokerUx;
   }
 
   function showScheduleForm() {
@@ -1510,15 +1581,63 @@
   }
 
   async function persistViewingAt(detail, date, note) {
-    const runtime = office();
-    if (!runtime || !runtime.refs || !runtime.refs.matches) return;
-    await runtime.refs.matches.doc(detail.recordId).set({
-      officeId: runtime.officeId,
-      viewingAt: window.firebase.firestore.Timestamp.fromDate(date),
-      nextFollowUpAt: window.firebase.firestore.Timestamp.fromDate(date),
-      lastNote: note || "تم تحديد موعد المعاينة",
-      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    await persistBrokerUx("match", detail.recordId, {
+      clientViewingConfirmed: false,
+      ownerViewingConfirmed: false,
+      viewingConfirmedAt: null
+    }).catch(() => null);
+  }
+
+  async function saveNegotiation(button) {
+    const detail = activeWorkflowDetail;
+    const domain = BUX();
+    if (!detail || !domain?.parseBrokerUxPatch) return;
+    setUiBusy(button, true, "جارٍ الحفظ...");
+    try {
+      const patch = domain.parseBrokerUxPatch({
+        ownerPrice: document.getElementById("iaqarOwnerPrice")?.value,
+        clientPrice: document.getElementById("iaqarClientPrice")?.value,
+        lastOffer: document.getElementById("iaqarLastOffer")?.value,
+        negotiationStatus: document.getElementById("iaqarNegotiationStatus")?.value,
+        negotiationNote: document.getElementById("iaqarNegotiationNote")?.value
+      });
+      const brokerUx = await persistBrokerUx(detail.recordType, detail.recordId, patch);
+      activeWorkflowDetail = { ...detail, brokerUx };
+      notify("تم حفظ بيانات التفاوض");
+      renderWorkflowUi();
+      emitOperations();
+    } catch (error) {
+      notify(error.message || "تعذر حفظ التفاوض");
+    } finally {
+      setUiBusy(button, false);
+    }
+  }
+
+  async function confirmViewingParty(button) {
+    const detail = activeWorkflowDetail;
+    const party = button.dataset.party;
+    if (!detail || !party) return;
+    setUiBusy(button, true, "جارٍ الحفظ...");
+    try {
+      const domain = BUX();
+      const current = domain?.mergeBrokerUx ? domain.mergeBrokerUx(detail, {}) : {};
+      const nextClient = party === "client" ? !current.clientViewingConfirmed : current.clientViewingConfirmed;
+      const nextOwner = party === "owner" ? !current.ownerViewingConfirmed : current.ownerViewingConfirmed;
+      const patch = {
+        clientViewingConfirmed: nextClient,
+        ownerViewingConfirmed: nextOwner,
+        viewingConfirmedAt: nextClient && nextOwner ? new Date().toISOString() : null
+      };
+      const brokerUx = await persistBrokerUx(detail.recordType === "deal" ? "deal" : "match", detail.recordId, patch);
+      activeWorkflowDetail = { ...detail, brokerUx };
+      notify("تم تحديث تأكيد المعاينة");
+      renderWorkflowUi();
+      emitOperations();
+    } catch (error) {
+      notify(error.message || "تعذر حفظ التأكيد");
+    } finally {
+      setUiBusy(button, false);
+    }
   }
 
   async function saveViewingSchedule(button) {
@@ -2126,6 +2245,8 @@
     if (action === "open-close") return showCloseForm();
     if (action === "open-request") return showRequestForm();
     if (action === "save-schedule") return saveViewingSchedule(button);
+    if (action === "save-negotiation") return saveNegotiation(button);
+    if (action === "confirm-viewing") return confirmViewingParty(button);
     if (action === "complete") return completeFastDeal(button);
     if (action === "save-close") return saveCloseReason(button);
     if (action === "send-request") return sendOwnerRequest(button);

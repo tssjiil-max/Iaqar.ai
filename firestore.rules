@@ -20,6 +20,19 @@ service cloud.firestore {
       return isPlatformAdmin() || isOfficeOwner(officeId) ||
         (isOfficeMember(officeId) && memberDoc(officeId).data.role in ['owner','admin','manager']);
     }
+    function brokerUxKeysValid(map) {
+      return map.keys().hasOnly([
+        'ownerPrice', 'clientPrice', 'lastOffer', 'negotiationStatus', 'negotiationNote',
+        'clientViewingConfirmed', 'ownerViewingConfirmed', 'viewingConfirmedAt'
+      ]);
+    }
+    function isBrokerUxOnlyUpdate(officeId) {
+      return isOfficeMember(officeId)
+        && resource.data.officeId == officeId
+        && request.resource.data.officeId == officeId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['brokerUx', 'updatedAt'])
+        && brokerUxKeysValid(request.resource.data.brokerUx);
+    }
     // مجموعات لها قواعد صريحة أضيق، فتُستثنى من القاعدة العامة داخل المكتب.
     // المرحلة 8: إغلاق المجموعات الحساسة (clients/owners/deals/alerts/inbox/usage/contacts).
     function isRestrictedOfficeCollection(collectionName) {
@@ -239,7 +252,8 @@ service cloud.firestore {
       // المطابقات (المرحلة 4): القراءة لأعضاء المكتب فقط — الكتابة عبر Worker (Admin SDK).
       match /matches/{matchId} {
         allow read: if isOfficeMember(officeId);
-        allow create, update, delete: if false;
+        allow create, delete: if false;
+        allow update: if isBrokerUxOnlyUpdate(officeId);
         match /timeline/{eventId} {
           allow read: if isOfficeMember(officeId);
           allow create: if isOfficeMember(officeId)
@@ -299,7 +313,8 @@ service cloud.firestore {
       // تحديث السعر/العمولة/الملاحظة يتم عبر POST /workflow/action.
       match /deals/{dealId} {
         allow read: if isOfficeMember(officeId);
-        allow create, update, delete: if false;
+        allow create, delete: if false;
+        allow update: if isBrokerUxOnlyUpdate(officeId);
         match /timeline/{eventId} {
           allow read: if isOfficeMember(officeId);
           allow create: if isOfficeMember(officeId)

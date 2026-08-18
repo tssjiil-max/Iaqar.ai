@@ -123,11 +123,15 @@ test("Phase 7: messages are client read-only (no forged SENT/DELIVERED)", () => 
 });
 
 test("Phase 8: legacy catch-all collections are Worker-only or contacts-shaped", () => {
-  for (const collection of ["clients", "owners", "deals", "alerts", "inbox"]) {
+  for (const collection of ["clients", "owners", "alerts", "inbox"]) {
     const block = condensed(matchBlock(`/${collection}/{`));
     assert.match(block, /allow read: if isOfficeMember\(officeId\)/, collection);
     assert.match(block, /allow create, update, delete: if false|allow create, update, delete: if false/, collection);
   }
+  const deals = condensed(matchBlock("/deals/{dealId}"));
+  assert.match(deals, /allow read: if isOfficeMember\(officeId\)/, "deals");
+  assert.match(deals, /allow create, delete: if false/, "deals");
+  assert.match(deals, /allow update: if isBrokerUxOnlyUpdate\(officeId\)/, "deals");
   const usage = condensed(matchBlock("/usage/{usageId}"));
   assert.match(usage, /allow read, create, update, delete: if false/);
   const contacts = condensed(matchBlock("/contacts/{contactId}"));
@@ -143,10 +147,11 @@ test("TEST 4: the catch-all timeline subcollection inherits the restriction chec
   assert.match(catchAll, /match \/timeline\/\{eventId\} \{ allow read, create: if !isRestrictedOfficeCollection\(collectionName\)/);
 });
 
-test("Phase 4: matches are client read-only with a member timeline create path", () => {
+test("Phase 4: matches are client read-only with broker UX patch and member timeline", () => {
   const block = condensed(matchBlock("/matches/{matchId}"));
   assert.match(block, /allow read: if isOfficeMember\(officeId\)/);
-  assert.match(block, /allow create, update, delete: if false/);
+  assert.match(block, /allow create, delete: if false/);
+  assert.match(block, /allow update: if isBrokerUxOnlyUpdate\(officeId\)/);
   assert.match(block, /match \/timeline\/\{eventId\}/);
 });
 
