@@ -3094,10 +3094,42 @@
   .iaqar-outcome-actions{grid-template-columns:1fr 1fr}
   .iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
   .iaqar-workflow-form{display:grid;gap:11px}
-  .iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700}
-  .iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #cedfda;border-radius:13px;padding:12px;font:500 15px Tajawal;background:#fff}
+  .iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}
+  .iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px}
   .iaqar-workflow-form textarea{min-height:82px;resize:vertical}
   .iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .iaqar-workflow-form-grid label,.iaqar-workflow-step label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}
+  .iaqar-workflow-form-grid .full{grid-column:1/-1}
+  .iaqar-workflow-step input:not([type=checkbox]):not([type=radio]),
+  .iaqar-workflow-step select,
+  .iaqar-workflow-step textarea,
+  .iaqar-workflow-form-grid input,
+  .iaqar-workflow-form-grid select,
+  .iaqar-workflow-form-grid textarea,
+  .bank-contact-outcome-action-panel input:not([type=checkbox]):not([type=radio]),
+  .bank-contact-outcome-action-panel textarea,
+  .bank-contact-outcome-subpanel input:not([type=checkbox]):not([type=radio]),
+  .bank-contact-outcome-subpanel textarea{
+    width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px
+  }
+  .iaqar-workflow-form select,
+  .iaqar-workflow-step select,
+  .iaqar-workflow-form-grid select{
+    appearance:none;-webkit-appearance:none;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23087064' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat left 14px center;
+    padding-left:36px
+  }
+  .iaqar-workflow-step textarea,
+  .iaqar-workflow-form-grid textarea,
+  .bank-contact-outcome-action-panel textarea,
+  .bank-contact-outcome-subpanel textarea{min-height:82px;resize:vertical}
+  .iaqar-workflow-form input:focus,.iaqar-workflow-form select:focus,.iaqar-workflow-form textarea:focus,
+  .iaqar-workflow-step input:focus,.iaqar-workflow-step select:focus,.iaqar-workflow-step textarea:focus,
+  .iaqar-workflow-form-grid input:focus,.iaqar-workflow-form-grid select:focus,.iaqar-workflow-form-grid textarea:focus,
+  .bank-contact-outcome-action-panel input:focus,.bank-contact-outcome-action-panel textarea:focus,
+  .bank-contact-outcome-subpanel input:focus,.bank-contact-outcome-subpanel textarea:focus{
+    outline:none;border-color:#9fd1c5;box-shadow:0 0 0 3px rgba(8,112,100,.1)
+  }
   .iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}
   .iaqar-checks label{display:flex;align-items:center;gap:8px}
   .iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}
@@ -3492,16 +3524,34 @@
     color:#173d35;
   }
   .bank-detail .bank-contact-outcome-action-panel textarea,
-  .bank-detail .bank-contact-outcome-subpanel textarea {
+  .bank-detail .bank-contact-outcome-subpanel textarea,
+  .bank-contact-outcome-action-panel textarea,
+  .bank-contact-outcome-subpanel textarea {
     width:100%;
     box-sizing:border-box;
-    border:1px solid #cedfda;
-    border-radius:13px;
+    border:1px solid #d4e3de;
+    border-radius:14px;
     padding:12px;
     font:500 15px Tajawal;
     min-height:82px;
     resize:vertical;
     background:#fff;
+    color:#173d35;
+  }
+  .bank-detail .bank-contact-outcome-action-panel input[type="datetime-local"],
+  .bank-detail .bank-contact-outcome-subpanel input[type="datetime-local"],
+  .bank-contact-outcome-action-panel input[type="datetime-local"],
+  .bank-contact-outcome-subpanel input[type="datetime-local"],
+  .bank-detail .bank-followup-quick input[type="datetime-local"] {
+    width:100%;
+    box-sizing:border-box;
+    border:1px solid #d4e3de;
+    border-radius:14px;
+    padding:12px;
+    font:500 15px Tajawal;
+    background:#fff;
+    color:#173d35;
+    min-height:48px;
   }
   .bank-followup-quick {
     display:grid;

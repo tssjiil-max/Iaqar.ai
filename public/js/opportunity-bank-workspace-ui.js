@@ -96,7 +96,7 @@ function buildFollowUpQuickPickHtml(inputId, defaultValue = "") {
       <button type="button" class="bank-action iaqar-workflow-btn secondary" data-contact-schedule-days="1">غدًا</button>
       <button type="button" class="bank-action iaqar-workflow-btn secondary" data-contact-schedule-days="2">بعد غد</button>
       <label>تاريخ ووقت
-        <input type="datetime-local" id="${esc(inputId)}" value="${esc(defaultValue)}">
+        <input type="datetime-local" class="iaqar-workflow-field" id="${esc(inputId)}" value="${esc(defaultValue)}">
       </label>
     </div>`;
 }
@@ -117,7 +117,7 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
           <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankContactInterestedWhatsApp">تواصل واتساب</button>
         </div>
         <label>ملاحظة قصيرة (اختياري)
-          <textarea id="bankContactOutcomeNote" maxlength="200" rows="2" placeholder="ملاحظة اختيارية"></textarea>
+          <textarea id="bankContactOutcomeNote" class="iaqar-workflow-field" maxlength="200" rows="2" placeholder="ملاحظة اختيارية"></textarea>
         </label>
         <div id="bankContactInterestedFollowUpPanel" class="bank-contact-outcome-subpanel" hidden>
           ${buildFollowUpQuickPickHtml("bankContactInterestedFollowUpAt", followDefault)}
