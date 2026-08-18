@@ -1080,6 +1080,39 @@
     return contact;
   }
 
+  function isOwnerPartyDetail(detail = {}) {
+    const contactType = String(detail.contactType || "").toLowerCase();
+    const recordType = String(detail.recordType || "").toLowerCase();
+    const kind = String(detail.kind || "").toLowerCase();
+    const opportunityKind = String(detail.opportunityKind || "").toUpperCase();
+    const advertiserRole = String(detail.advertiserRole || "").toUpperCase();
+    if (contactType === "owner" || recordType === "owner_offer" || kind === "owner" || kind === "owner_offer") {
+      return true;
+    }
+    if (opportunityKind === "OFFER" || recordType === "owner") return true;
+    if (advertiserRole === "OWNER") return true;
+    return false;
+  }
+
+  async function resolveWorkflowPartyContact(detail, role) {
+    const roleKey = String(role || "").toLowerCase();
+    const linked = await workflowContact(detail, roleKey);
+    if (linked?.phone) return linked;
+
+    const phoneInfo = resolveLifecyclePhone(detail);
+    if (!phoneInfo.valid) return null;
+
+    const isOwnerParty = isOwnerPartyDetail(detail);
+    const matchesOwner = roleKey === "owner" && isOwnerParty;
+    const matchesClient = roleKey === "client" && !isOwnerParty;
+    if (!matchesOwner && !matchesClient) return null;
+
+    return {
+      name: detail.contactName || detail.advertiserDisplayName || "",
+      phone: phoneInfo.whatsappDigits || phoneInfo.local || detail.contactPhone || ""
+    };
+  }
+
   function resolveMessageStage(detail) {
     return detail.messageStage
       || (detail.recordType === "deal" ? detail.workflowStage : detail.status)
@@ -1162,7 +1195,7 @@
     }
     const role = detail.recipientRole === "owner" ? "owner" : "client";
     const enriched = await enrichDetailForMessaging(detail);
-    const contact = await workflowContact(enriched, role);
+    const contact = await resolveWorkflowPartyContact(enriched, role);
     const safeChannel = channel === "telegram" ? "telegram" : "whatsapp";
     if (safeChannel === "whatsapp") {
       const phone = whatsappPhone(contact && contact.phone);
@@ -2225,21 +2258,27 @@
       ownerOfferId: detail.ownerOfferId || followUpRecipientContext?.ownerContactId || "",
       clientRequestId: detail.clientRequestId || followUpRecipientContext?.clientContactId || ""
     };
-    const contact = await workflowContact(enriched, role);
+    const contact = await resolveWorkflowPartyContact(enriched, role);
     if (!contact?.phone) return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير متوفر`);
     const phone = whatsappPhone(contact.phone);
     if (!phone) return notify("رقم الجوال غير مكتمل");
     const property = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(detail) : "";
+    const follow = FD()?.activeFollowUpFromRecord?.(detail);
+    const appointmentLine = follow?.at
+      ? (FD()?.formatFollowUpAppointmentLine?.(follow.at) || dateTimeLabel(follow.at))
+      : "";
     const message = [
       "السلام عليكم، تذكير بموعد المتابعة بخصوص العقار.",
       property ? `بخصوص: ${property}` : "",
+      appointmentLine ? `الموعد: ${appointmentLine}` : "",
       "هل ما زال الموعد مناسبًا؟"
     ].filter(Boolean).join("\n");
     openWhatsAppHandoff({ phone, text: message });
+    notify("تم فتح واتساب");
     void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, { communicationAction: "whatsapp_opened" }).catch(() => {});
     void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, {}).catch(() => {});
     activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };
-    await renderOpportunityLifecycleUi();
+    void renderOpportunityLifecycleUi();
   }
 
   async function confirmCloseOpportunityFinal(button) {
