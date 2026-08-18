@@ -13,38 +13,54 @@ import {
   resolveQuickActions,
   isTaskOverdue,
   isViewingToday,
+  isViewingSoon,
+  isNewReview,
   isReadyToClose,
-  isAwaitingResponse
+  isAwaitingResponse,
+  MAX_TODAY_TASKS
 } from "../public/js/daily-tasks-domain.js";
 import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
 const shellSource = readRepositoryFile("public", "index.html");
 
-test("four today task sections exist in priority order", () => {
-  assert.equal(TODAY_TASK_SECTIONS.length, 4);
+test("five today task sections exist in priority order", () => {
+  assert.equal(TODAY_TASK_SECTIONS.length, 5);
   assert.deepEqual(TODAY_TASK_SECTIONS.map((section) => section.key), [
+    "new_review",
     "overdue",
-    "viewing_today",
+    "viewing_soon",
     "ready_to_close",
     "awaiting_response"
   ]);
 });
 
-test("todayTaskBucket classifies overdue before viewing today", () => {
+test("todayTaskBucket classifies new review and viewing soon", () => {
   const past = new Date(Date.now() - 3600000).toISOString();
-  const todayViewing = new Date().toISOString();
+  const inTwoHours = new Date(Date.now() + 2 * 3600000).toISOString();
+  assert.equal(todayTaskBucket({
+    recordType: "opportunity",
+    lifecycleStatus: "NEW"
+  }), "new_review");
   assert.equal(todayTaskBucket({
     nextFollowUpAt: past,
-    viewingAt: todayViewing,
+    viewingAt: inTwoHours,
     status: "active"
   }), "overdue");
-});
-
-test("todayTaskBucket detects viewing today and ready to close", () => {
-  const now = new Date();
-  assert.equal(isViewingToday({ viewingAt: now.toISOString(), status: "viewing" }), true);
+  assert.equal(isViewingSoon({ viewingAt: inTwoHours, status: "viewing" }), true);
   assert.equal(isReadyToClose({ closingReadinessScore: 90, status: "active" }), true);
   assert.equal(isAwaitingResponse({ status: "waiting_response" }), true);
+});
+
+test("flattenTodayTasks caps visible tasks at five", () => {
+  const items = Array.from({ length: 8 }, (_, index) => ({
+    id: `new-${index}`,
+    recordType: "opportunity",
+    lifecycleStatus: "NEW",
+    priority: 1,
+    title: `طلب ${index}`
+  }));
+  const flat = flattenTodayTasks(items);
+  assert.equal(flat.filter((row) => row.type === "task").length, 5);
 });
 
 test("groupTodayTasks and flattenTodayTasks preserve section order", () => {

@@ -3,10 +3,7 @@
  * Mirrors bank list readiness without duplicating bank-only layout fields.
  */
 
-import {
-  evaluateMatchingReadiness,
-  missingFieldLabelsArabic
-} from "./opportunity-readiness-domain.js";
+import { buildBrokerCardReadinessBadge } from "./broker-card-readiness-domain.js";
 
 export const CLOSING_READINESS_BADGES = Object.freeze({
   very_high: { label: "عالية جدًا", mark: "🟢", cssClass: "is-very-high" },
@@ -21,38 +18,11 @@ export function isClientOwnerCard(item = {}) {
   return CLIENT_OWNER_TYPES.has(String(item.recordType || "").toLowerCase());
 }
 
-function readinessFromItem(item = {}) {
-  const stored = String(item.matchingReadiness || "").toUpperCase();
-  const missingStored = Array.isArray(item.matchingReadinessMissing)
-    ? item.matchingReadinessMissing.map(String)
-    : [];
-  if (stored || missingStored.length) {
-    const isReady = stored === "READY_FOR_MATCHING"
-      || item.isReadyForMatching === true;
-    return {
-      isReadyForMatching: isReady,
-      matchingReadinessMissing: missingStored
-    };
-  }
-  return evaluateMatchingReadiness(item);
-}
-
 /**
  * Matching readiness badge for client/owner opportunity cards.
  */
 export function buildMatchingReadinessBadge(item = {}) {
-  const readiness = readinessFromItem(item);
-  const missingNames = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
-  const isReady = Boolean(readiness.isReadyForMatching);
-  return {
-    kind: "matching",
-    label: isReady ? "جاهزة للمطابقة" : "تحتاج استكمال",
-    detailLine: isReady
-      ? "جاهزة للمطابقة"
-      : (missingNames.length ? `ينقص: ${missingNames.join("، ")}` : "تحتاج استكمال"),
-    cssClass: isReady ? "is-ready" : "is-incomplete",
-    missingCount: missingNames.length
-  };
+  return buildBrokerCardReadinessBadge(item);
 }
 
 /**

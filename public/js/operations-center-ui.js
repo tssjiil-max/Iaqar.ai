@@ -364,7 +364,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   function incompleteMetaHtml(item) {
     const badge = buildOpsCardBadge(item);
-    if (badge?.kind === "matching" && badge.cssClass === "is-incomplete") {
+    if ((badge?.kind === "matching" || badge?.kind === "broker_readiness") && badge.cssClass === "is-incomplete") {
       return "";
     }
     const labels = missingFieldLabelsArabic(
@@ -493,6 +493,13 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
     if (["match", "deal", "operation", "intake"].includes(item.recordType)) {
       dispatchWorkflowPrimary(item);
+      return;
+    }
+
+    if (item.recordType === "broker_alert" && item.targetRecordId) {
+      const target = data.find((row) => (row.recordId || row.id) === item.targetRecordId)
+        || { recordType: item.targetRecordType, recordId: item.targetRecordId, id: item.targetRecordId };
+      dispatchWorkflowPrimary(target);
       return;
     }
 

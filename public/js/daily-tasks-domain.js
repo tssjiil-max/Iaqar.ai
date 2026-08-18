@@ -5,7 +5,15 @@
 
 import { filterBrokerVisibleItems, isSavedOpportunityFeedback } from "./operations-center-domain.js";
 
+export const MAX_TODAY_TASKS = 5;
+
 export const TODAY_TASK_SECTIONS = Object.freeze([
+  {
+    key: "new_review",
+    label: "طلبات جديدة",
+    description: "طلبات وعروض بانتظار مراجعة الوسيط.",
+    colorClass: "ops-today-purple"
+  },
   {
     key: "overdue",
     label: "متأخر",
@@ -13,9 +21,9 @@ export const TODAY_TASK_SECTIONS = Object.freeze([
     colorClass: "ops-today-red"
   },
   {
-    key: "viewing_today",
-    label: "معاينة اليوم",
-    description: "مواعيد معاينة مجدولة اليوم.",
+    key: "viewing_soon",
+    label: "معاينة قريبة",
+    description: "مواعيد معاينة اليوم أو خلال 3 ساعات.",
     colorClass: "ops-today-orange"
   },
   {
@@ -87,11 +95,27 @@ export function isTaskArchived(item) {
   return false;
 }
 
-export function isViewingToday(item, now = new Date()) {
+export function isViewingSoon(item, now = new Date()) {
   if (!item || isTaskArchived(item)) return false;
-  const at = item.viewingAt || item.appointmentAt;
+  const at = parseTaskInstant(item.viewingAt || item.appointmentAt);
   if (!at) return false;
-  return isSameLocalDay(at, now, TASK_TIMEZONE);
+  if (at.getTime() < now.getTime()) return false;
+  const diffMs = at.getTime() - now.getTime();
+  return isSameLocalDay(at, now, TASK_TIMEZONE) || diffMs <= 3 * 3600000;
+}
+
+/** @deprecated use isViewingSoon */
+export function isViewingToday(item, now = new Date()) {
+  return isViewingSoon(item, now);
+}
+
+export function isNewReview(item) {
+  if (!item || isTaskArchived(item)) return false;
+  const recordType = String(item.recordType || "").toLowerCase();
+  if (!["opportunity", "intake"].includes(recordType)) return false;
+  const lifecycle = upper(item.lifecycleStatus);
+  const status = upper(item.status);
+  return lifecycle === "NEW" || status === "NEW";
 }
 
 export function isReadyToClose(item) {
@@ -121,7 +145,8 @@ export function isAwaitingResponse(item) {
 export function todayTaskBucket(item) {
   if (!item || isTaskArchived(item)) return null;
   if (isTaskOverdue(item)) return "overdue";
-  if (isViewingToday(item)) return "viewing_today";
+  if (isNewReview(item)) return "new_review";
+  if (isViewingSoon(item)) return "viewing_soon";
   if (isReadyToClose(item)) return "ready_to_close";
   if (isAwaitingResponse(item)) return "awaiting_response";
   return null;
@@ -154,16 +179,31 @@ export function groupTodayTasks(items = []) {
   return groups;
 }
 
-export function flattenTodayTasks(items = []) {
+export function flattenTodayTasks(items = [], maxTasks = MAX_TODAY_TASKS) {
   const groups = groupTodayTasks(items);
   const flat = [];
+  let taskCount = 0;
   for (const section of TODAY_TASK_SECTIONS) {
     const rows = groups[section.key] || [];
     if (!rows.length) continue;
-    flat.push({ type: "section", key: section.key, label: section.label, count: rows.length });
+    const sectionRows = [];
     for (const item of rows) {
+      if (taskCount >= maxTasks) break;
+      sectionRows.push(item);
+      taskCount += 1;
+    }
+    if (!sectionRows.length) continue;
+    flat.push({
+      type: "section",
+      key: section.key,
+      label: section.label,
+      count: sectionRows.length,
+      totalInBucket: rows.length
+    });
+    for (const item of sectionRows) {
       flat.push({ type: "task", key: section.key, item });
     }
+    if (taskCount >= maxTasks) break;
   }
   return flat;
 }
@@ -205,13 +245,13 @@ export function resolveQuickActions(item, bucket = todayTaskBucket(item)) {
     actions.push({ id: "call", label: "اتصل", actionMode: "call" });
   }
 
-  if (bucket === "overdue" || bucket === "awaiting_response" || bucket === "viewing_today") {
+  if (bucket === "overdue" || bucket === "awaiting_response" || bucket === "viewing_soon" || bucket === "new_review") {
     actions.push({ id: "followup", label: "تابع", actionMode: "followup" });
   } else if (["opportunity", "intake"].includes(recordType)) {
     actions.push({ id: "followup", label: "تابع", actionMode: "followup" });
   }
 
-  if (["match", "deal"].includes(recordType) && !hasViewing && bucket !== "viewing_today") {
+  if (["match", "deal"].includes(recordType) && !hasViewing && bucket !== "viewing_soon") {
     actions.push({ id: "schedule_viewing", label: "حدد معاينة", actionMode: "schedule_viewing" });
   }
 
@@ -228,7 +268,10 @@ export function todayTaskMetaLine(item, bucket = todayTaskBucket(item)) {
   if (bucket === "overdue" && item.nextFollowUpAt) {
     return `كان المطلوب: ${formatTaskWhen(item.nextFollowUpAt)}`;
   }
-  if (bucket === "viewing_today") {
+  if (bucket === "new_review") {
+    return item.lifecycleStatusLabel || "طلب جديد بانتظار المراجعة";
+  }
+  if (bucket === "viewing_soon") {
     const at = item.viewingAt || item.appointmentAt;
     return at ? `موعد المعاينة: ${formatTaskWhen(at)}` : "";
   }

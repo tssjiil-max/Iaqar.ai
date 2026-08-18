@@ -13,25 +13,15 @@ test("isClientOwnerCard detects opportunity and intake rows", () => {
   assert.equal(isClientOwnerCard({ recordType: "match" }), false);
 });
 
-test("buildMatchingReadinessBadge shows ready state", () => {
+test("buildMatchingReadinessBadge uses broker four-level badge", () => {
   const badge = buildMatchingReadinessBadge({
-    matchingReadiness: "READY_FOR_MATCHING",
-    matchingReadinessMissing: []
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "الرانوناء"
   });
-  assert.equal(badge.label, "جاهزة للمطابقة");
-  assert.equal(badge.cssClass, "is-ready");
-  assert.equal(badge.detailLine, "جاهزة للمطابقة");
-});
-
-test("buildMatchingReadinessBadge lists missing fields", () => {
-  const badge = buildMatchingReadinessBadge({
-    matchingReadiness: "NEEDS_COMPLETION",
-    matchingReadinessMissing: ["city", "district"]
-  });
-  assert.equal(badge.label, "تحتاج استكمال");
-  assert.equal(badge.cssClass, "is-incomplete");
-  assert.ok(badge.detailLine.includes("المدينة"));
-  assert.ok(badge.detailLine.includes("الحي"));
+  assert.equal(badge.kind, "broker_readiness");
+  assert.ok(badge.mark);
+  assert.ok(badge.detailLine.includes("%"));
 });
 
 test("buildClosingReadinessBadge uses score fallback", () => {
@@ -41,8 +31,8 @@ test("buildClosingReadinessBadge uses score fallback", () => {
   assert.equal(badge.mark, "🟢");
 });
 
-test("buildOpsCardBadge picks matching vs closing badge by record type", () => {
-  assert.equal(buildOpsCardBadge({ recordType: "opportunity", matchingReadiness: "READY_FOR_MATCHING" }).kind, "matching");
+test("buildOpsCardBadge picks broker readiness vs closing badge by record type", () => {
+  assert.equal(buildOpsCardBadge({ recordType: "opportunity", matchingReadiness: "READY_FOR_MATCHING" }).kind, "broker_readiness");
   assert.equal(buildOpsCardBadge({ recordType: "match", closingReadinessScore: 72 }).kind, "closing");
   assert.equal(buildOpsCardBadge({ recordType: "deal" }), null);
 });

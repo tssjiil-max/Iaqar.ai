@@ -613,7 +613,11 @@
         <label class="full"><span>الحي (إلزامي)</span>
           <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
             placeholder="اكتب اسم الحي"></label>
-        ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
+        ${owner
+    ? `<label class="full"><span>السعر أو الإيجار السنوي (إلزامي)</span>
+          <input name="priceOrBudget" inputmode="numeric" maxlength="12" required autocomplete="off"
+            placeholder="مثال: 500000"></label>`
+    : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
@@ -665,6 +669,8 @@
         ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
         : String(fields.get("requestKind") || "").trim());
       if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
+      const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
+      if (owner && !(priceOrBudget > 0)) return showStatus("أدخل السعر أو الإيجار السنوي.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -709,6 +715,10 @@
             propertyType,
             district,
             details: String(fields.get("details") || "").trim(),
+            salePrice: priceOrBudget,
+            amount: priceOrBudget,
+            priceOrBudget,
+            purpose: "SALE",
             mediaPaths,
             imageCount: images.length,
             hasVideo: Boolean(video),
