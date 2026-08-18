@@ -120,18 +120,15 @@ func _set_state(state: State) -> void:
 
 func _update_visuals() -> void:
 	sprite.scale.x = abs(sprite.scale.x) * facing
-	var body_color := Color(0.96, 0.78, 0.55)
-	var accent := Color(0.2, 0.45, 0.75)
-	if GameManager.super_active:
-		body_color = Color(1.0, 0.95, 0.55)
-	elif current_state == State.PUNCH:
-		body_color = Color(0.95, 0.55, 0.45)
-	elif current_state == State.KICK:
-		body_color = Color(0.55, 0.75, 0.95)
-	if sprite.has_method("set_colors"):
-		sprite.set_colors(body_color, accent)
-	elif sprite.has_method("set_color"):
-		sprite.set_color(body_color)
+	var mood := "idle"
+	if GameManager.chase_state:
+		mood = "scared" if current_state in [State.RUN, State.WALK] else "run"
+	elif current_state in [State.PUNCH, State.KICK]:
+		mood = "idle"
+	if sprite.has_method("set_mood"):
+		sprite.set_mood(mood)
+	elif sprite.has_method("set_colors"):
+		sprite.set_colors(Color(0.96, 0.78, 0.55))
 
 func try_interact() -> void:
 	var areas := get_tree().get_nodes_in_group("interactable")

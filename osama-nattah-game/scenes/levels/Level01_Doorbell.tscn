@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://level01_doorbell"]
+[gd_scene load_steps=7 format=3 uid="uid://level01_doorbell"]
 
 [ext_resource type="Script" path="res://scripts/levels/Level01Controller.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/core/GameCamera.gd" id="2"]
@@ -10,6 +10,8 @@
 script = ExtResource("1")
 
 [node name="World" type="Node2D" parent="."]
+
+[node name="PrankContainer" type="Node2D" parent="."]
 
 [node name="Markers" type="Node2D" parent="."]
 

@@ -10,7 +10,8 @@ func _on_levels_pressed() -> void:
 	$Panel/LevelsPanel.visible = true
 
 func _on_hub_pressed() -> void:
-	SceneManager.go_to_hub()
+	# الحوش — قريبًا
+	$Panel/Subtitle.text = "الحوش قيد التطوير — العب المرحلة الأولى الآن"
 
 func _on_settings_pressed() -> void:
 	$Panel/SettingsPanel.visible = true

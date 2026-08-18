@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://chaser_scene"]
 
 [ext_resource type="Script" path="res://scripts/chasers/BaseChaser.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/core/ChaserSprite.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/art/HomeOwnerSprite.gd" id="2"]
 
 [sub_resource type="RectangleShape2D" id="1_body"]
 size = Vector2(36, 58)

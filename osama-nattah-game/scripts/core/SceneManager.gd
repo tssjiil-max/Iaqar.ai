@@ -1,9 +1,7 @@
 extends Node
 
 const LEVELS := {
-	"level_01": "res://scenes/levels/Level01_Doorbell.tscn",
-	"level_02": "res://scenes/levels/Level02_Light.tscn",
-	"hub": "res://scenes/hub/YardHub.tscn"
+	"level_01": "res://scenes/levels/Level01_Doorbell.tscn"
 }
 
 func go_to_menu() -> void:
@@ -21,4 +19,5 @@ func reload_current() -> void:
 	go_to_level(GameManager.current_level)
 
 func go_to_hub() -> void:
-	get_tree().change_scene_to_file(LEVELS.hub)
+	push_warning("Hub not available yet")
+	go_to_menu()

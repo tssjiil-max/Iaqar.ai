@@ -151,10 +151,16 @@ func _update_recovery(delta: float) -> void:
 
 func _update_visual() -> void:
 	sprite.scale.x = 1.0 if velocity.x >= 0 else -1.0
-	var color := Color(0.92, 0.92, 0.92)
+	var mood := "idle"
 	if current_state == State.HEADBUTT:
-		color = Color(0.95, 0.95, 0.95)
+		mood = "run"
 	elif current_state == State.RESCUE:
-		color = Color(0.75, 1.0, 0.75)
-	if sprite.has_method("set_color"):
-		sprite.set_color(color)
+		mood = "scared"
+	elif current_state in [State.DISTRACTED, State.EAT]:
+		mood = "eat"
+	elif current_state in [State.RUN, State.FOLLOW]:
+		mood = "run"
+	if sprite.has_method("set_mood"):
+		sprite.set_mood(mood)
+	elif sprite.has_method("set_color"):
+		sprite.set_color(Color(0.98, 0.98, 1.0))
