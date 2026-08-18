@@ -129,11 +129,17 @@ self.addEventListener("notificationclick", event => {
   }));
 });
 
-const IAQAR_CACHE = "iaqar-shell-phase9a-v10";
+const IAQAR_CACHE_PREFIX = "iaqar-shell-";
+const IAQAR_CACHE_FAMILY = "iaqar-";
+const IAQAR_SKIP_WAITING = "IAQAR_SKIP_WAITING";
 const IAQAR_NETWORK_ONLY = [
   "/js/runtime-config.js",
   "/js/gemini-voice-intake-ui.js",
-  "/js/gemini-voice-intake-domain.js"
+  "/js/gemini-voice-intake-domain.js",
+  "/js/opportunity-import-advert-ui.js",
+  "/js/opportunity-import-advert-domain.js",
+  "/js/release-version-ui.js",
+  "/js/release-version-domain.js"
 ];
 const IAQAR_SHELL = [
   "/",
@@ -142,7 +148,6 @@ const IAQAR_SHELL = [
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/default-office.png",
-  // runtime-config.js is network-only (staging/prod Worker routing must not stale-cache).
   "/js/notification-navigation.js",
   "/js/access-gate.js",
   "/js/firebase-office.js",
@@ -150,38 +155,146 @@ const IAQAR_SHELL = [
   "/js/office-settings.js",
   "/js/add-opportunity.js",
   "/js/opportunity-bank.js",
+  "/js/opportunity-bank-workspace-ui.js",
   "/js/qrcode.js",
   "/js/whatsapp-office.js",
   "/js/operations-domain-bridge.js",
+  "/js/operations-center-bridge.js",
+  "/js/operations-center-domain.js",
+  "/js/ops-card-badge-domain.js",
+  "/js/daily-tasks-domain.js",
   "/js/messaging-domain-bridge.js",
-  "/js/workflow-office.js"
+  "/js/workflow-office.js",
+  "/js/display-sanitize-domain.js",
+  "/js/arabic-field-suggest.js",
+  "/js/opportunity-card-domain.js",
+  "/js/header-scroll.js"
 ];
 
-self.addEventListener("install", event => {
-  event.waitUntil(caches.open(IAQAR_CACHE).then(cache => cache.addAll(IAQAR_SHELL)).catch(() => {}));
-  self.skipWaiting();
+function isHtmlPath(pathname) {
+  return pathname === "/" || pathname === "/index.html" || pathname.endsWith(".html");
+}
+
+function isVersionPath(pathname) {
+  return pathname === "/version.json";
+}
+
+function isJavaScriptPath(pathname) {
+  return pathname.endsWith(".js");
+}
+
+function isLongCacheAssetPath(pathname) {
+  if (pathname.startsWith("/icons/") || pathname.startsWith("/fonts/")) return true;
+  return /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf)$/i.test(pathname);
+}
+
+async function readRelease() {
+  try {
+    const response = await fetch("/version.json", { cache: "no-store" });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const shortSha = String(data && data.shortSha || "").trim().toLowerCase();
+    if (!/^[0-9a-f]{7,40}$/i.test(shortSha)) return null;
+    return { shortSha };
+  } catch (_) {
+    return null;
+  }
+}
+
+function cacheNameFor(shortSha) {
+  const sha = String(shortSha || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return `${IAQAR_CACHE_PREFIX}pending`;
+  return `${IAQAR_CACHE_PREFIX}${sha}`;
+}
+
+async function currentCacheName() {
+  const release = await readRelease();
+  return cacheNameFor(release && release.shortSha);
+}
+
+async function precacheRelease() {
+  const name = await currentCacheName();
+  const cache = await caches.open(name);
+  await cache.addAll(IAQAR_SHELL).catch(() => {});
+  return name;
+}
+
+async function networkFirst(request, cacheMode, cacheName) {
+  try {
+    const response = await fetch(request, cacheMode ? { cache: cacheMode } : undefined);
+    if (response && response.ok && cacheName) {
+      const copy = response.clone();
+      caches.open(cacheName).then((cache) => cache.put(request, copy)).catch(() => {});
+    }
+    return response;
+  } catch (_) {
+    const cached = await caches.match(request);
+    return cached || caches.match("/");
+  }
+}
+
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response && response.ok && cacheName) {
+    const copy = response.clone();
+    caches.open(cacheName).then((cache) => cache.put(request, copy)).catch(() => {});
+  }
+  return response;
+}
+
+self.addEventListener("install", (event) => {
+  event.waitUntil((async () => {
+    await precacheRelease();
+    if (!self.registration.active) {
+      await self.skipWaiting();
+    }
+  })());
 });
 
-self.addEventListener("activate", event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== IAQAR_CACHE).map(key => caches.delete(key)))));
-  self.clients.claim();
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    const current = await currentCacheName();
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((key) => key.startsWith(IAQAR_CACHE_FAMILY) && key !== current)
+        .map((key) => caches.delete(key))
+    );
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener("fetch", event => {
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  const type = typeof data === "string" ? data : data.type;
+  if (type === IAQAR_SKIP_WAITING) {
+    event.waitUntil(self.skipWaiting());
+  }
+});
+
+self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  // Always network for deployment routing — never serve a stale Worker base.
-  if (url.pathname.endsWith("/runtime-config.js")
-    || IAQAR_NETWORK_ONLY.includes(url.pathname)) {
-    event.respondWith(fetch(event.request, { cache: "no-store" }));
-    return;
-  }
-  event.respondWith(fetch(event.request).then(response => {
-    if (response && response.ok) {
-      const copy = response.clone();
-      caches.open(IAQAR_CACHE).then(cache => cache.put(event.request, copy)).catch(() => {});
+
+  event.respondWith((async () => {
+    const cacheName = await currentCacheName();
+    if (isVersionPath(url.pathname)
+      || url.pathname.endsWith("/runtime-config.js")
+      || IAQAR_NETWORK_ONLY.includes(url.pathname)) {
+      return fetch(event.request, { cache: "no-store" });
     }
-    return response;
-  }).catch(() => caches.match(event.request).then(cached => cached || caches.match("/"))));
+    if (isHtmlPath(url.pathname)) {
+      return networkFirst(event.request, "no-store", cacheName);
+    }
+    if (isLongCacheAssetPath(url.pathname)) {
+      return cacheFirst(event.request, cacheName);
+    }
+    if (isJavaScriptPath(url.pathname)) {
+      return networkFirst(event.request, "no-cache", cacheName);
+    }
+    return networkFirst(event.request, "no-cache", cacheName);
+  })());
 });

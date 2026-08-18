@@ -12,6 +12,7 @@ import {
   opportunityBankRow,
   safeText
 } from "./office-domain.js";
+import { normalizePurpose } from "./opportunity-intake-domain.js";
 
 export { COOPERATION_STATUS_LABELS, cooperationStatusLabel, opportunityBankRow };
 
@@ -38,6 +39,21 @@ export const SHARE_REQUEST_STATUS = Object.freeze({
   REVOKED: "REVOKED",
   ENDED: "ENDED"
 });
+
+export const SHARE_REQUEST_STATUS_LABELS = Object.freeze({
+  PENDING: "بانتظار رد المكتب",
+  ACCEPTED: "قَبِل المكتب",
+  DETAILS_REQUESTED: "طلب تفاصيل",
+  REJECTED: "اعتذر المكتب",
+  REVOKED: "منتهية",
+  ENDED: "منتهية",
+  CLOSED: "منتهية"
+});
+
+export function shareRequestStatusLabel(status) {
+  const key = String(status || "").trim().toUpperCase();
+  return SHARE_REQUEST_STATUS_LABELS[key] || cooperationStatusLabel(status);
+}
 
 /** Fields the originating office may edit in Phase 3. */
 export const EDITABLE_OPPORTUNITY_FIELDS = Object.freeze([
@@ -250,12 +266,19 @@ export function buildEditPatch(existing, input = {}, { now = new Date(), actorUi
   for (const key of EDITABLE_OPPORTUNITY_FIELDS) {
     if (input[key] === undefined) continue;
     if (["priceOrBudget", "area", "rooms", "bathrooms"].includes(key)) {
-      const num = Number(input[key]);
-      patch[key] = Number.isFinite(num) ? num : null;
+      const raw = input[key];
+      if (raw === "" || raw === null) continue;
+      const num = Number(raw);
+      if (!Number.isFinite(num)) {
+        return { ok: false, error: key === "priceOrBudget" ? "قيمة الميزانية غير صالحة." : "قيمة رقمية غير صالحة." };
+      }
+      patch[key] = num;
     } else if (key === "nearbyDistricts") {
       patch[key] = Array.isArray(input[key])
         ? input[key].map((value) => safeText(value, 80)).filter(Boolean).slice(0, 12)
         : [];
+    } else if (key === "purpose") {
+      patch[key] = normalizePurpose(input[key]);
     } else {
       patch[key] = safeText(input[key], 120);
     }
@@ -279,11 +302,117 @@ export function buildEditPatch(existing, input = {}, { now = new Date(), actorUi
   patch.version = Number(existing.version || 1) + 1;
   patch.brokerConfirmed = true;
   // Keep list helpers in sync.
-  if (patch.priceOrBudget !== undefined) patch.price = patch.priceOrBudget;
+  if (patch.priceOrBudget !== undefined) {
+    patch.price = patch.priceOrBudget;
+    const purpose = String(patch.purpose || existing.purpose || "").toUpperCase();
+    if (purpose === "PURCHASE" || purpose === "LEASE_REQUEST") {
+      patch.budget = patch.priceOrBudget;
+    } else if (purpose === "SALE") {
+      patch.salePrice = patch.priceOrBudget;
+    } else if (purpose === "RENT") {
+      patch.annualRent = patch.priceOrBudget;
+    }
+  }
   if (patch.opportunityKind === "OFFER") patch.recordType = "owner";
   if (patch.opportunityKind === "REQUEST") patch.recordType = "client";
 
   return { ok: true, patch };
+}
+
+/**
+ * Map a persisted bank record into review/extraction field shape (no DOM).
+ */
+export function recordToReviewFields(record = {}) {
+  const purpose = safeText(record.purpose, 30).toUpperCase();
+  const legacy = record.priceOrBudget ?? record.price ?? record.budget ?? record.annualRent ?? null;
+  return {
+    opportunityKind: safeText(record.opportunityKind, 20),
+    purpose: purpose || safeText(record.purpose, 30),
+    propertyType: safeText(record.propertyType, 80),
+    city: safeText(record.city, 80),
+    district: safeText(record.district, 80),
+    area: record.area ?? "",
+    rooms: record.rooms ?? "",
+    bathrooms: record.bathrooms ?? "",
+    floorNumber: record.floorNumber ?? "",
+    priceOrBudget: legacy,
+    salePrice: record.salePrice ?? "",
+    annualRent: record.annualRent ?? "",
+    budget: record.budget ?? legacy ?? "",
+    advertiserRole: safeText(record.advertiserRole, 20),
+    advertiserPhoneNormalized: safeText(record.advertiserPhoneNormalized || record.contactPhone, 20),
+    extended: {
+      purpose: purpose || safeText(record.purpose, 30),
+      opportunityKind: safeText(record.opportunityKind, 20),
+      propertyType: safeText(record.propertyType, 80),
+      city: safeText(record.city, 80),
+      district: safeText(record.district, 80),
+      salePrice: record.salePrice ?? null,
+      annualRent: record.annualRent ?? null,
+      budget: record.budget ?? null,
+      area: record.area ?? null,
+      rooms: record.rooms ?? null,
+      bathrooms: record.bathrooms ?? null,
+      floorNumber: record.floorNumber ?? null
+    }
+  };
+}
+
+/**
+ * Build a broker-review completion patch for an existing opportunity (same opportunityId).
+ */
+export function buildReviewCompletionPatch(
+  existing,
+  brokerExtras = {},
+  { now = new Date(), actorUid = "" } = {}
+) {
+  const input = {
+    opportunityKind: brokerExtras.opportunityKind,
+    purpose: brokerExtras.purpose,
+    propertyType: brokerExtras.propertyType,
+    city: brokerExtras.city,
+    district: brokerExtras.district,
+    priceOrBudget: brokerExtras.priceOrBudget,
+    area: brokerExtras.area,
+    rooms: brokerExtras.rooms,
+    bathrooms: brokerExtras.bathrooms
+  };
+  const result = buildEditPatch(existing, input, { now, actorUid });
+  if (!result.ok) return result;
+
+  const patch = { ...result.patch };
+  if (brokerExtras.salePrice != null) patch.salePrice = brokerExtras.salePrice;
+  if (brokerExtras.budget != null) patch.budget = brokerExtras.budget;
+  if (brokerExtras.annualRent != null) patch.annualRent = brokerExtras.annualRent;
+  if (brokerExtras.monthlyRent != null) patch.monthlyRent = brokerExtras.monthlyRent;
+  if (brokerExtras.paymentInstallments != null) {
+    patch.paymentInstallments = brokerExtras.paymentInstallments;
+  }
+  if (brokerExtras.optionalMonthlyRentAfterSixMonths != null) {
+    patch.optionalMonthlyRentAfterSixMonths = brokerExtras.optionalMonthlyRentAfterSixMonths;
+  }
+  if (brokerExtras.floorNumber != null) patch.floorNumber = brokerExtras.floorNumber;
+
+  return { ok: true, patch };
+}
+
+export function readinessMissingToNeedsReview(missing = [], record = {}) {
+  const needs = {};
+  const purpose = safeText(record.purpose, 30).toUpperCase();
+  for (const key of missing) {
+    if (key === "priceOrBudget") {
+      if (purpose === "SALE") needs.salePrice = true;
+      else if (purpose === "RENT") needs.annualRent = true;
+      else needs.budget = true;
+    } else if (key === "contactPhone") {
+      needs.advertiserPhone = true;
+    } else if (key === "advertiserRole") {
+      needs.advertiserRole = true;
+    } else {
+      needs[key] = true;
+    }
+  }
+  return needs;
 }
 
 export function buildArchivePatch(existing, { now = new Date(), actorUid = "" } = {}) {

@@ -4,14 +4,16 @@
 
 import { safeText } from "./opportunity-intake-domain.js";
 import { evaluateMatchingReadiness, MATCHING_READINESS } from "./opportunity-readiness-domain.js";
+import { normalizeSearchText } from "./reference-catalog.js";
 
 function normalizeSearchNeedle(value) {
-  return String(value == null ? "" : value)
+  const raw = String(value == null ? "" : value)
     .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
     .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
     .replace(/[٬,]/g, "")
     .toLowerCase()
     .trim();
+  return normalizeSearchText(raw) || raw;
 }
 
 const PURPOSE_ALIASES = Object.freeze({
@@ -42,24 +44,44 @@ export function resolveRecordMatchingReadiness(record = {}) {
 }
 
 export function matchesBankQueryFilters(record = {}, filters = {}) {
+  const summaryKey = safeText(filters.summaryKey, 40);
+  if (summaryKey) {
+    const readiness = resolveRecordMatchingReadiness(record);
+    const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
+    if (summaryKey === "archived" && !archived) return false;
+    if (summaryKey === "ready" && readiness !== MATCHING_READINESS.READY_FOR_MATCHING) return false;
+    if (summaryKey === "needs" && readiness !== MATCHING_READINESS.NEEDS_COMPLETION) return false;
+    if (summaryKey === "total" && archived) return false;
+  }
+
   const search = normalizeSearchNeedle(safeText(filters.search, 120));
   if (search) {
+    const phoneLocal = String(record.contactPhone || record.advertiserPhoneNormalized || "")
+      .replace(/\D/g, "");
+    const phone05 = phoneLocal.startsWith("966") ? `0${phoneLocal.slice(3)}` : phoneLocal;
+    const kind = String(record.opportunityKind || "").toUpperCase();
     const haystack = normalizeSearchNeedle([
+      record.id,
+      record.opportunityId,
       record.propertyType,
       record.city,
       record.district,
       record.contactName,
-      record.opportunityKind,
-      record.purpose,
       record.advertiserDisplayName,
+      record.opportunityKind,
+      kind === "REQUEST" ? "طلب عميل" : "",
+      kind === "OFFER" ? "عرض مالك" : "",
+      record.purpose,
       record.salePrice,
       record.priceOrBudget,
       record.price,
       record.budget,
       record.annualRent,
-      record.area
+      record.area,
+      phone05,
+      phoneLocal
     ].map((part) => safeText(part, 200)).join(" "));
-    if (!haystack.includes(search)) return false;
+    if (!haystack.includes(search.trim())) return false;
   }
 
   const city = safeText(filters.city, 80);
@@ -109,7 +131,8 @@ export function emptyBankFilters() {
     district: "",
     purpose: "",
     propertyType: "",
-    matchingReadiness: ""
+    matchingReadiness: "",
+    summaryKey: ""
   };
 }
 
@@ -118,6 +141,7 @@ export function hasActiveBankQuery(filters = {}) {
   const normalized = filters && typeof filters === "object" ? filters : {};
   return Boolean(
     safeText(normalized.search, 120)
+    || safeText(normalized.summaryKey, 40)
     || safeText(normalized.city, 80)
     || safeText(normalized.district, 80)
     || safeText(normalized.purpose, 40)

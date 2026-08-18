@@ -55,9 +55,11 @@
     .access-gate{min-height:100svh;padding:18px 18px calc(40px + env(safe-area-inset-bottom));box-sizing:border-box;display:flex;justify-content:center;
       background:#f4f8f6;color:#173d35;font-family:Tajawal,Arial,sans-serif;direction:rtl}
     .access-shell{width:min(100%,460px)}.access-brand,.access-card{background:#fff;border:1px solid #dce8e4;
-      border-radius:24px;padding:20px;margin-bottom:12px}.access-brand{text-align:center}
-    .access-brand img{width:76px;height:76px;object-fit:contain}.access-brand h1{margin:7px 0 2px;color:#087064;font-size:24px}
-    .access-brand p,.access-card p{color:#687c76;font-size:14px;line-height:1.7;margin:0 0 14px}
+      border-radius:24px;padding:20px;margin-bottom:12px}.access-brand{text-align:center;padding:14px 16px 12px;margin-bottom:8px}
+    .access-brand img{width:52px;height:52px;object-fit:contain;display:block;margin:0 auto}
+    .access-brand h1{margin:4px 0 2px;color:#087064;font-size:17px;line-height:1.25;font-weight:800}
+    .access-brand p{color:#687c76;font-size:12px;line-height:1.55;margin:0}
+    .access-card p{color:#687c76;font-size:14px;line-height:1.7;margin:0 0 14px}
     .access-card h2{color:#087064;font-size:21px;margin:0 0 6px}.access-options{display:grid;gap:10px}
     .access-btn{min-height:56px;border:0;border-radius:16px;padding:11px 15px;background:#128c7e;color:#fff;
       font:800 17px Tajawal;cursor:pointer}.access-btn.secondary{background:#fff;color:#087064;border:1.5px solid #128c7e}
@@ -76,6 +78,12 @@
     .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
     .voice-intake-panel{margin-top:12px;padding:12px;border:1px dashed #d4e3de;border-radius:16px;background:#f5faf8}
+    @media (max-width:430px){.access-brand{padding:13px 14px 11px;margin-bottom:7px}
+      .access-brand img{width:50px;height:50px}.access-brand h1{font-size:16px;margin-top:3px}
+      .access-brand p{font-size:11.5px;line-height:1.5}}
+    @media (max-width:390px){.access-brand img{width:48px;height:48px}.access-brand h1{font-size:15px}}
+    @media (max-width:360px){.access-brand{padding:12px 12px 10px}.access-brand img{width:46px;height:46px}}
+    @media (max-width:320px){.access-brand h1{font-size:14.5px}.access-brand p{font-size:11px}}
     .voice-intake-recording,.voice-intake-actions{display:none!important}
     .voice-intake-recording.is-active{display:flex!important;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#a1332c}
     .voice-intake-actions.is-active{display:flex!important;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -84,6 +92,12 @@
     .voice-intake-stop,.voice-intake-cancel,.voice-intake-retry,.voice-intake-manual{border:1px solid #d4e3de;background:#fff;color:#087064;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
     .voice-intake-status{margin:8px 0 0;min-height:14px;font-size:12px;color:#71817d}
     .voice-intake-status.is-error{color:#9e3434}
+    .arabic-suggest-wrap{position:relative;display:grid;gap:0}
+    .arabic-suggest-input{width:100%}
+    .arabic-suggest-list{list-style:none;margin:4px 0 0;padding:0;border:1px solid #d4e3de;border-radius:12px;background:#fff;max-height:180px;overflow:auto;z-index:5}
+    .arabic-suggest-list[hidden]{display:none!important}
+    .arabic-suggest-list button{width:100%;border:0;background:none;padding:10px 12px;text-align:right;font:500 15px Tajawal;cursor:pointer;color:#173d35}
+    .arabic-suggest-list button:hover{background:#eaf7f3}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
   </style>`);
 
@@ -115,6 +129,56 @@
   let accessVerificationInFlight = false;
   let accessGrantedForOffice = false;
   let explicitSignOutRequested = false;
+  let loginSubmitInFlight = false;
+  let authReady = false;
+  let authStateReady = false;
+  let authStateUnsubscribe = null;
+
+  const LOGIN_PERF_ENABLED = (() => {
+    try {
+      const host = String(location.hostname || "").toLowerCase();
+      if (host === "localhost" || host === "127.0.0.1" || host.includes("staging")) return true;
+      return localStorage.getItem("iaqar.login.perf") === "1";
+    } catch (_) {
+      return false;
+    }
+  })();
+
+  function loginPerfMark(name) {
+    if (!LOGIN_PERF_ENABLED) return;
+    try { performance.mark(`iaqar-login:${name}`); } catch (_) { /* ignore */ }
+  }
+
+  function loginPerfMeasure(label, startMark, endMark) {
+    if (!LOGIN_PERF_ENABLED) return null;
+    try {
+      const measureName = `iaqar-login:${label}`;
+      performance.measure(measureName, `iaqar-login:${startMark}`, `iaqar-login:${endMark}`);
+      const entry = performance.getEntriesByName(measureName).pop();
+      if (entry) {
+        console.info(`[iaqar-login-perf] ${label}: ${entry.duration.toFixed(1)}ms`);
+        return entry.duration;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
+  function loginPerfReport() {
+    if (!LOGIN_PERF_ENABLED) return;
+    try {
+      const marks = performance.getEntriesByType("mark")
+        .filter((entry) => String(entry.name || "").startsWith("iaqar-login:"));
+      const measures = performance.getEntriesByType("measure")
+        .filter((entry) => String(entry.name || "").startsWith("iaqar-login:"));
+      console.table(measures.map((entry) => ({
+        مرحلة: entry.name.replace(/^iaqar-login:/, ""),
+        مللي_ثانية: Number(entry.duration.toFixed(1))
+      })));
+      if (!measures.length && marks.length) {
+        console.info("[iaqar-login-perf] marks", marks.map((entry) => entry.name));
+      }
+    } catch (_) { /* ignore */ }
+  }
 
   function authDiag(event, detail = {}) {
     try {
@@ -123,6 +187,7 @@
   }
 
   async function authSignOut(source, reason = "") {
+    authDiag("SIGN_OUT_CALL", { source, reason });
     authDiag("SIGNOUT_CALL_SOURCE", { source, reason });
     explicitSignOutRequested = source === "user_logout" || source === "admin_logout";
     try { await firebase.auth().signOut(); } catch (_) {}
@@ -131,8 +196,79 @@
   }
 
   function loginRedirect(target, source) {
+    authDiag("REDIRECT_REASON", { source, target });
     authDiag("LOGIN_REDIRECT_SOURCE", { source, target });
-    location.assign(target);
+    try {
+      const next = new URL(target, location.origin);
+      if (next.origin === location.origin && next.pathname === location.pathname) {
+        history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
+        return;
+      }
+    } catch (_) { /* fall through */ }
+    location.replace(target);
+  }
+
+  function waitForOfficeDb(timeoutMs = 20000) {
+    if (window.IAQAR?.office?.db) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("iaqar:firebase-ready", onReady);
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onReady = () => {
+        if (window.IAQAR?.office?.db) finish(true);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      window.addEventListener("iaqar:firebase-ready", onReady);
+      if (window.IAQAR?.office?.db) finish(true);
+    });
+  }
+
+  function showAuthLoading(message = "جارٍ التحقق من الحساب…") {
+    showAccessGate();
+    frame(`<section class="access-card"><h2>${message}</h2>
+      <p>يرجى الانتظار قليلًا قبل فتح لوحة المكتب.</p></section>`, "auth-loading");
+  }
+
+  async function unlockOfficeWorkspace(target) {
+    const normalized = String(target || "").trim().toLowerCase();
+    if (!normalized || normalized === "platform") return false;
+    authDiag("OFFICE_LOADING", { officeId: normalized });
+    const dbReady = await waitForOfficeDb();
+    if (!dbReady) {
+      authDiag("REDIRECT_REASON", { reason: "office_runtime_not_ready", officeId: normalized });
+      return false;
+    }
+    localStorage.setItem("iaqar.officeId", normalized);
+    officeId = normalized;
+    refreshRouteFlags();
+    let rebound = false;
+    if (window.IAQAR && typeof window.IAQAR.rebindOfficeContext === "function") {
+      rebound = window.IAQAR.rebindOfficeContext(normalized);
+    } else if (dbReady && String(window.IAQAR?.office?.officeId || "").trim().toLowerCase() === normalized) {
+      rebound = true;
+      authDiag("OFFICE_FOUND", { officeId: normalized, source: "existing_office_context" });
+    }
+    if (!rebound) {
+      authDiag("REDIRECT_REASON", { reason: "office_rebind_failed", officeId: normalized });
+      return false;
+    }
+    authDiag("OFFICE_FOUND", { officeId: normalized });
+    const nextUrl = `${location.pathname}?office=${encodeURIComponent(normalized)}`;
+    history.replaceState({}, "", nextUrl);
+    document.body.classList.remove("access-locked");
+    if (gate.isConnected) gate.remove();
+    authGuardState = "authenticated";
+    accessGrantedForOffice = true;
+    loginPerfMark("workspace_visible");
+    window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+      detail: { officeId: normalized, source: "unlock_office_workspace" }
+    }));
+    return true;
   }
 
   function loginFailureMessage(stage, detail = {}) {
@@ -231,9 +367,14 @@
       <div class="access-options">
         <button class="access-btn" data-go="client">أنا عميل</button>
         <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
-        <button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button>
         <button class="access-btn secondary" data-go="login">دخول مكتب مسجل</button>
-      </div><div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div></section>`);
+      </div>
+      <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>
+      <div class="access-options" style="margin-top:12px">
+        <button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button>
+      </div>
+      <div class="access-note">للاستفسار عن تسجيل الوسيط:
+        <a href="https://wa.me/966552019909" target="_blank" rel="noopener noreferrer">واتساب 0552019909</a></div></section>`);
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => {
       if (button.dataset.go === "broker") brokerForm();
       else if (button.dataset.go === "login") loginForm();
@@ -337,28 +478,52 @@
     if (!container || !api) return;
     const defs = api.dynamicFieldDefs(requestKind, propertyType);
     container.innerHTML = defs.map((field) => {
-      if (field.type === "select") {
-        const options = (field.options || []).map((opt) =>
-          `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`
-        ).join("");
-        return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
-          <select name="${escapeHtml(field.name)}">${options}</select></label>`;
-      }
+      const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : "";
       return `<label class="conditional-field"><span>${escapeHtml(field.label)}</span>
         <input name="${escapeHtml(field.name)}" type="${field.type || "text"}"
           ${field.inputMode ? `inputmode="${field.inputMode}"` : ""}
-          ${field.maxLength ? `maxlength="${field.maxLength}"` : ""}></label>`;
+          ${field.maxLength ? `maxlength="${field.maxLength}"` : ""}${placeholder} autocomplete="off"></label>`;
     }).join("");
+  }
+
+  function wireArabicSuggestInput(input, options = []) {
+    if (!input || input.dataset.arabicSuggestWired === "1") return;
+    input.dataset.arabicSuggestWired = "1";
+    input.classList.add("arabic-suggest-input");
+    const wrap = input.closest("label") || input.parentElement;
+    if (wrap) wrap.classList.add("arabic-suggest-wrap");
+    const list = document.createElement("ul");
+    list.className = "arabic-suggest-list";
+    list.hidden = true;
+    input.insertAdjacentElement("afterend", list);
+    const source = (options || []).map((v) => String(v || "").trim()).filter(Boolean);
+    const render = (query = "") => {
+      const q = String(query || "").trim().toLowerCase();
+      const filtered = source.filter((entry) => !q || entry.toLowerCase().includes(q)).slice(0, 12);
+      list.innerHTML = filtered.map((entry) =>
+        `<li><button type="button" data-pick="${escapeHtml(entry)}">${escapeHtml(entry)}</button></li>`
+      ).join("");
+      list.hidden = filtered.length === 0;
+    };
+    input.addEventListener("focus", () => render(input.value));
+    input.addEventListener("input", () => render(input.value));
+    list.addEventListener("mousedown", (event) => {
+      const btn = event.target.closest("[data-pick]");
+      if (!btn) return;
+      event.preventDefault();
+      input.value = btn.getAttribute("data-pick") || "";
+      list.hidden = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    document.addEventListener("click", (event) => {
+      if (!wrap?.contains(event.target)) list.hidden = true;
+    });
   }
 
   function applyPublicVoicePrefill(form, structured, {
     owner,
-    refreshClientDynamic,
-    propertySelect,
-    districtSelect,
-    otherPropertyWrap,
-    otherDistrictWrap,
-    toggleOther
+    refreshClientDynamic
   }) {
     const api = window.IAQARGeminiVoiceIntake;
     if (!api || !form) return;
@@ -374,28 +539,15 @@
       const el = form.elements[name];
       if (!el || value == null || String(value).trim() === "") return;
       el.value = String(value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     };
     set("name", values.name);
     set("phone", values.phone);
     set("city", values.city);
     if (!owner) set("requestKind", values.requestKind);
-    const propMatch = [...propertySelect.options].find((opt) =>
-      opt.value === values.propertyType || opt.textContent === values.propertyType);
-    if (propMatch) propertySelect.value = propMatch.value;
-    else if (values.propertyType) {
-      propertySelect.value = "__other__";
-      toggleOther(propertySelect, otherPropertyWrap);
-      set("otherPropertyType", values.propertyType);
-    }
-    const distMatch = [...districtSelect.options].find((opt) =>
-      opt.value === values.district || opt.textContent === values.district);
-    if (distMatch) districtSelect.value = distMatch.value;
-    else if (values.district) {
-      districtSelect.value = "__other__";
-      toggleOther(districtSelect, otherDistrictWrap);
-      set("otherDistrict", values.district);
-    }
+    set("propertyType", values.propertyType);
+    set("district", values.district);
     if (!owner) refreshClientDynamic();
     set("budget", values.budget);
     set("annualRent", values.annualRent);
@@ -405,19 +557,14 @@
     set("streetWidth", values.streetWidth);
     set("facing", values.facing);
     set("details", values.details);
-    showStatus("تم تعبئة النموذج من التسجيل — أكمل الناقص فقط.");
+    showStatus("تم تعبئة النموذج من التسجيل — راجع الحقول قبل الإرسال.");
   }
 
   async function mountPublicVoicePanel({
     kind,
     targetOffice,
     form,
-    refreshClientDynamic,
-    propertySelect,
-    districtSelect,
-    otherPropertyWrap,
-    otherDistrictWrap,
-    toggleOther
+    refreshClientDynamic
   }) {
     const panel = gate.querySelector("#publicVoiceIntakePanel");
     if (!panel || panel.dataset.voiceBound === "1" || panel.dataset.voiceMounting === "1") return;
@@ -433,12 +580,7 @@
         onStructured(structured) {
           applyPublicVoicePrefill(form, structured, {
             owner: kind === "owner",
-            refreshClientDynamic,
-            propertySelect,
-            districtSelect,
-            otherPropertyWrap,
-            otherDistrictWrap,
-            toggleOther
+            refreshClientDynamic
           });
         }
       });
@@ -453,11 +595,6 @@
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
-    const clientApi = clientIntakeApi();
-    const propertyOptions = owner
-      ? PROPERTY_TYPES
-      : (clientApi?.INTAKE_PROPERTY_TYPES || PROPERTY_TYPES);
-    const requestKindOptions = clientApi?.REQUEST_KINDS || [];
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
@@ -465,20 +602,17 @@
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        ${owner ? "" : `<label><span>نوع الطلب (إلزامي)</span><select name="requestKind" id="requestKindSelect" required>
-          <option value="">اختر نوع الطلب</option>
-          ${requestKindOptions.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}</select></label>`}
-        <label><span>نوع العقار (إلزامي)</span><select name="propertyType" id="propertyTypeSelect" required>
-          <option value="">اختر نوع العقار</option>${optionList(propertyOptions)}${owner ? `<option value="__other__">أخرى</option>` : ""}</select></label>
+        ${owner ? "" : `<label class="full"><span>نوع الطلب (إلزامي)</span>
+          <input name="requestKind" id="requestKindInput" maxlength="40" required autocomplete="off"
+            placeholder="اكتب نوع الطلب (مثل: شراء أو استئجار)"></label>`}
+        <label class="full"><span>نوع العقار (إلزامي)</span>
+          <input name="propertyType" id="propertyTypeInput" maxlength="40" required autocomplete="off"
+            placeholder="اكتب نوع العقار"></label>
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
-        <label><span>الحي (إلزامي)</span><select name="district" id="districtSelect" required>
-          <option value="">اختر الحي</option>${optionList(MADINAH_DISTRICTS)}<option value="__other__">حي جديد / غير موجود</option>
-        </select></label>
-        <label class="conditional-field full" id="otherPropertyWrap" hidden><span>اكتب نوع العقار</span>
-          <input name="otherPropertyType" maxlength="40"></label>
-        <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
-          <input name="otherDistrict" maxlength="80"></label>
+        <label class="full"><span>الحي (إلزامي)</span>
+          <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
+            placeholder="اكتب اسم الحي"></label>
         ${owner ? "" : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
@@ -490,38 +624,24 @@
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
-    const propertySelect = gate.querySelector("#propertyTypeSelect");
-    const districtSelect = gate.querySelector("#districtSelect");
-    const requestKindSelect = gate.querySelector("#requestKindSelect");
+    const propertyInput = gate.querySelector("#propertyTypeInput");
+    const districtInput = gate.querySelector("#districtInput");
+    const requestKindInput = gate.querySelector("#requestKindInput");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
-    const otherPropertyWrap = gate.querySelector("#otherPropertyWrap");
-    const otherDistrictWrap = gate.querySelector("#otherDistrictWrap");
+    const clientApi = clientIntakeApi();
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
-      const requestKind = requestKindSelect?.value || "";
-      const propertyType = String(propertySelect?.value || "") === "__other__"
-        ? gate.querySelector('input[name="otherPropertyType"]')?.value || ""
-        : propertySelect?.value || "";
+      const requestKind = clientApi?.normalizeRequestKind
+        ? clientApi.normalizeRequestKind(requestKindInput?.value || "")
+        : String(requestKindInput?.value || "").trim();
+      const propertyType = String(propertyInput?.value || "").trim();
       renderDynamicClientFields(dynamicFields, requestKind, propertyType);
     };
-    const toggleOther = (select, wrap) => {
-      const visible = select.value === "__other__";
-      wrap.hidden = !visible;
-      const input = wrap.querySelector("input");
-      if (visible) input.required = true;
-      else {
-        input.required = false;
-        input.value = "";
-      }
-      if (visible) setTimeout(() => input.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
-      if (!owner) refreshClientDynamic();
-    };
-    propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
-    districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
-    if (requestKindSelect) {
-      requestKindSelect.onchange = () => refreshClientDynamic();
+    if (requestKindInput) {
+      requestKindInput.addEventListener("input", () => refreshClientDynamic());
       refreshClientDynamic();
     }
+    if (propertyInput) propertyInput.addEventListener("input", () => refreshClientDynamic());
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
@@ -529,12 +649,7 @@
       kind,
       targetOffice,
       form: gate.querySelector("#intakeForm"),
-      refreshClientDynamic,
-      propertySelect,
-      districtSelect,
-      otherPropertyWrap,
-      otherDistrictWrap,
-      toggleOther
+      refreshClientDynamic
     });
     gate.querySelector("#intakeForm").onsubmit = async event => {
       event.preventDefault();
@@ -546,8 +661,10 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const city = String(fields.get("city") || "").trim();
       if (!city) return showStatus("أدخل المدينة.");
-      const requestKind = owner ? "" : String(fields.get("requestKind") || "").trim();
-      if (!owner && !requestKind) return showStatus("اختر نوع الطلب.");
+      const requestKind = owner ? "" : (clientIntakeApi()?.normalizeRequestKind
+        ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
+        : String(fields.get("requestKind") || "").trim());
+      if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -558,14 +675,10 @@
       submit.textContent = owner ? "جارٍ رفع العرض..." : "جارٍ إرسال الطلب...";
       try {
         const ref = db().collection("offices").doc(targetOffice).collection("publicIntake").doc();
-        const propertyType = String(fields.get("propertyType") || "") === "__other__"
-          ? String(fields.get("otherPropertyType") || "").trim()
-          : String(fields.get("propertyType") || "").trim();
-        if (!propertyType) return showStatus("اختر نوع العقار.");
-        const district = String(fields.get("district") || "") === "__other__"
-          ? String(fields.get("otherDistrict") || "").trim()
-          : String(fields.get("district") || "").trim();
-        if (!district) return showStatus("اختر الحي.");
+        const propertyType = String(fields.get("propertyType") || "").trim();
+        if (!propertyType) return showStatus("أدخل نوع العقار.");
+        const district = String(fields.get("district") || "").trim();
+        if (!district) return showStatus("أدخل الحي.");
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {
@@ -580,6 +693,13 @@
           }
         }
         let intakePayload;
+        const lifecycleFields = {
+          lifecycleStatus: "NEW",
+          normalizedSource: targetOffice === "platform" ? "public_site" : "office_link",
+          contactType: owner ? "owner" : "buyer",
+          contactName: name,
+          contactPhone: phone
+        };
         if (owner) {
           intakePayload = {
             officeId: targetOffice, kind,
@@ -596,6 +716,7 @@
             completeness: images.length ? 90 : 65,
             source: targetOffice === "platform" ? "platform_public" : "office_public_link",
             status: "new",
+            ...lifecycleFields,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           };
         } else {
@@ -631,6 +752,7 @@
             imageCount: 0,
             hasVideo: false,
             mediaMissing: false,
+            ...lifecycleFields,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           };
           if (targetOffice === "platform") api.rememberLastCity(city);
@@ -770,6 +892,10 @@
     };
   }
   function loginForm(message = "") {
+    if (authGuardState === "authenticated" && accessGrantedForOffice) {
+      authDiag("REDIRECT_REASON", { reason: "skip_login_form_already_granted" });
+      return;
+    }
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>دخول المكتب</h2><p>مساحة العمل والإعدادات للحسابات المعتمدة والمصرح لها فقط.</p>
       <form class="access-form" id="loginForm">
@@ -780,7 +906,6 @@
         <label class="full"><button class="access-btn light" type="button" id="togglePassword">إظهار كلمة المرور</button></label>
         <label class="full"><button class="access-btn" type="submit">تسجيل الدخول</button></label>
         <label class="full"><button class="access-btn light" type="button" id="forgotPassword">نسيت كلمة المرور</button></label>
-        <label class="full"><button class="access-btn secondary" type="button" id="platformLogin">دخول إدارة المنصة</button></label>
       </form><div id="accessStatus" class="access-status ${message ? "show err" : ""}">${message}</div></section>`, "login");
     bindAccessBack(home);
     gate.querySelector("#togglePassword").onclick = event => {
@@ -789,18 +914,35 @@
       event.currentTarget.textContent = input.type === "password" ? "إظهار كلمة المرور" : "إخفاء كلمة المرور";
     };
     gate.querySelector("#forgotPassword").onclick = forgotPasswordForm;
-    gate.querySelector("#platformLogin").onclick = platformLoginForm;
     gate.querySelector("#loginForm").onsubmit = async event => {
       event.preventDefault();
+      if (loginSubmitInFlight) return;
+      const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+      const submitLabel = submitBtn ? submitBtn.textContent : "";
+      loginSubmitInFlight = true;
+      accessVerificationInFlight = true;
+      authGuardState = "loading";
+      loginPerfMark("click");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "جارٍ تسجيل الدخول…";
+      }
       const fields = new FormData(event.currentTarget);
       const phone = normalizeSaudiPhone(fields.get("phone"));
-      if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      if (!phone) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitLabel || "تسجيل الدخول";
+        }
+        loginSubmitInFlight = false;
+        accessVerificationInFlight = false;
+        authGuardState = "unauthenticated";
+        return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      }
       const remember = Boolean(gate.querySelector("#rememberLogin")?.checked);
       try {
-        await firebase.auth().setPersistence(
-          remember ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
-        );
-        authDiag("AUTH_PERSISTENCE", { remember, mode: remember ? "LOCAL" : "SESSION" });
+        await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        authDiag("AUTH_PERSISTENCE", { remember, mode: "LOCAL", phase: "login_submit" });
         try {
           localStorage.setItem("iaqar.auth.remember", remember ? "1" : "0");
         } catch (_) { /* ignore */ }
@@ -808,10 +950,13 @@
         console.warn("[iaqar] auth persistence", error);
       }
       try {
+        loginPerfMark("resolve_start");
         const resolveResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login-resolve`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone: normalizeLoginPhone(phone) })
         });
+        loginPerfMark("resolve_done");
+        loginPerfMeasure("phone_resolve", "resolve_start", "resolve_done");
         const resolvePayload = await resolveResponse.json().catch(() => ({}));
         if (!resolveResponse.ok || !resolvePayload.loginEmail || !resolvePayload.officeId) {
           authDiag("AUTH_GUARD_DECISION", {
@@ -826,7 +971,10 @@
         const password = String(fields.get("password") || "");
         let signedInUser;
         try {
+          loginPerfMark("sign_in_start");
           const credential = await firebase.auth().signInWithEmailAndPassword(resolvePayload.loginEmail, password);
+          loginPerfMark("sign_in_done");
+          loginPerfMeasure("firebase_auth", "sign_in_start", "sign_in_done");
           signedInUser = credential.user;
         } catch (error) {
           console.warn("[iaqar] email/password sign-in", error);
@@ -834,21 +982,31 @@
           showStatus(loginFailureMessage("password_sign_in", { code: error && error.code }));
           return;
         }
+        authDiag("SIGN_IN_SUCCESS", {
+          uid: signedInUser?.uid || null,
+          email: signedInUser?.email || resolvePayload.loginEmail
+        });
         authDiag("AUTH_LOGIN_SUCCESS", {
           uid: signedInUser?.uid || null,
           email: signedInUser?.email || resolvePayload.loginEmail
         });
         authDiag("AUTH_UID", { uid: signedInUser?.uid || null });
         authDiag("AUTH_EMAIL", { email: signedInUser?.email || resolvePayload.loginEmail });
+        loginPerfMark("user_load_start");
         try {
-          await signedInUser?.getIdToken(true);
+          await signedInUser?.getIdToken(false);
         } catch (error) {
-          console.warn("[iaqar] id token refresh", error);
+          console.warn("[iaqar] id token read", error);
           await authSignOut("login_id_token_failed", error && error.code);
           showStatus(loginFailureMessage("id_token", { code: error && error.code }));
           return;
         }
-        const accessGranted = await verifyAccess(resolvePayload.officeId, true);
+        loginPerfMark("user_load_done");
+        loginPerfMeasure("user_token", "user_load_start", "user_load_done");
+        const accessGranted = await verifyAccess(resolvePayload.officeId, true, {
+          skipTokenRefresh: true,
+          fromLogin: true
+        });
         if (!accessGranted) {
           authDiag("AUTH_GUARD_DECISION", {
             decision: "office_access_not_granted",
@@ -859,6 +1017,17 @@
         console.warn("[iaqar] login", error);
         await authSignOut("login_unknown_error", error && error.message);
         showStatus(loginFailureMessage("unknown"));
+      } finally {
+        loginSubmitInFlight = false;
+        if (!accessGrantedForOffice && submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitLabel || "تسجيل الدخول";
+        }
+        if (!accessGrantedForOffice) {
+          accessVerificationInFlight = false;
+          if (authGuardState === "loading") authGuardState = "unauthenticated";
+        }
+        loginPerfReport();
       }
     };
   }
@@ -904,7 +1073,7 @@
     if (!gate.isConnected) document.body.appendChild(gate);
   }
 
-  async function verifyAccess(target, navigate) {
+  async function verifyAccess(target, navigate, options = {}) {
     if (!target) {
       loginForm("أدخل رمز المكتب المعتمد.");
       return false;
@@ -930,8 +1099,11 @@
     accessVerificationInFlight = true;
     authGuardState = "loading";
     authDiag("PROFILE_LOOKUP_START", { target, uid: user.uid, navigate });
+    loginPerfMark("office_load_start");
     try {
-      if (user.getIdToken) await user.getIdToken();
+      if (!options.skipTokenRefresh && user.getIdToken) {
+        await user.getIdToken(false);
+      }
       const officeRef = db().collection("offices").doc(target);
       const memberRef = officeRef.collection("members").doc(user.uid);
       const [officeSnap, memberSnap] = await Promise.all([
@@ -975,20 +1147,40 @@
       }
       if (memberSnap.exists && memberData.active === false) {
         authDiag("AUTH_GUARD_DECISION", { decision: "member_inactive", target, uid: user.uid });
-        await authSignOut("member_inactive", "confirmed_disabled");
-        loginForm("هذا الحساب معطّل لهذا المكتب.");
+        showAccessError(
+          "الحساب معطّل",
+          "هذا الحساب معطّل لهذا المكتب. تواصل مع إدارة المكتب دون تسجيل خروج تلقائي.",
+          null
+        );
         return false;
       }
       localStorage.setItem("iaqar.officeId", target);
       authGuardState = "authenticated";
       accessGrantedForOffice = true;
       authDiag("AUTH_GUARD_DECISION", { decision: "authenticated", target });
+      loginPerfMark("office_load_done");
+      loginPerfMeasure("office_membership", "office_load_start", "office_load_done");
       if (navigate || target !== officeId) {
-        loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_navigate");
-        return true;
+        loginPerfMark("navigate_start");
+        if (await unlockOfficeWorkspace(target)) {
+          loginPerfMark("navigate_done");
+          loginPerfMeasure("workspace_unlock", "navigate_start", "navigate_done");
+          return true;
+        }
+        authDiag("REDIRECT_REASON", { reason: "unlock_failed_retry", target });
+        showAccessError(
+          "تعذر فتح المكتب",
+          "تعذر تجهيز مساحة المكتب الآن. حسابك ما زال مسجّلًا — أعد المحاولة.",
+          () => verifyAccess(target, navigate)
+        );
+        return false;
       }
       document.body.classList.remove("access-locked");
       gate.remove();
+      loginPerfMark("workspace_visible");
+      window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+        detail: { officeId: target, source: "verify_access_inline" }
+      }));
       return true;
     } catch (error) {
       console.warn("[iaqar] access denied", error);
@@ -1017,12 +1209,26 @@
             authGuardState = "authenticated";
             accessGrantedForOffice = true;
             authDiag("AUTH_GUARD_DECISION", { decision: "authenticated_after_retry", target });
+            loginPerfMark("office_load_done");
             if (navigate || target !== officeId) {
-              loginRedirect(`${location.pathname}?office=${encodeURIComponent(target)}`, "verify_access_retry_navigate");
-              return true;
+              loginPerfMark("navigate_start");
+              if (await unlockOfficeWorkspace(target)) {
+                loginPerfMark("navigate_done");
+                return true;
+              }
+              authDiag("REDIRECT_REASON", { reason: "unlock_retry_failed", target });
+              showAccessError(
+                "تعذر فتح المكتب",
+                "تعذر تجهيز مساحة المكتب الآن. حسابك ما زال مسجّلًا — أعد المحاولة.",
+                () => verifyAccess(target, navigate)
+              );
+              return false;
             }
             document.body.classList.remove("access-locked");
             gate.remove();
+            window.dispatchEvent(new CustomEvent("iaqar:access-granted", {
+              detail: { officeId: target, source: "verify_access_retry_inline" }
+            }));
             return true;
           }
         } catch (retryError) {
@@ -1229,40 +1435,22 @@
     refreshRouteFlags();
 
     try {
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
       const rememberFlag = localStorage.getItem("iaqar.auth.remember");
-      const remembered = rememberFlag !== "0";
-      await firebase.auth().setPersistence(
-        remembered ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION
-      );
-      authDiag("AUTH_PERSISTENCE", { remember: remembered, mode: remembered ? "LOCAL" : "SESSION", phase: "bootstrap" });
+      authDiag("AUTH_PERSISTENCE", {
+        remember: rememberFlag !== "0",
+        mode: "LOCAL",
+        phase: "bootstrap"
+      });
     } catch (error) {
       console.warn("[iaqar] auth persistence", error);
     }
 
-    async function waitForAuthReady() {
-      if (typeof firebase.auth().authStateReady === "function") {
-        await firebase.auth().authStateReady();
-        return;
-      }
-      await new Promise((resolve) => {
-        const unsubscribe = firebase.auth().onAuthStateChanged(() => {
-          unsubscribe();
-          resolve();
-        });
-      });
-    }
-
-    await waitForAuthReady();
-    authInitComplete = true;
+    showAuthLoading();
 
     let initialAuthHandled = false;
 
     const routeAfterInitialAuth = async (user) => {
-      authDiag("AUTH_STATE_CHANGED", {
-        uid: user?.uid || null,
-        email: user?.email || null,
-        phase: "initial_route"
-      });
       if (isPublicOfficeLink) {
         publicOffice();
         return;
@@ -1272,6 +1460,7 @@
         return;
       }
       if (user) {
+        authDiag("USER_FOUND", { uid: user.uid, email: user.email || null });
         authDiag("AUTH_UID", { uid: user.uid });
         authDiag("AUTH_EMAIL", { email: user.email || null });
         try {
@@ -1284,11 +1473,17 @@
         return;
       }
       authGuardState = "unauthenticated";
-      authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "no_user_on_init" });
+      authDiag("AUTH_GUARD_DECISION", { decision: "show_login", reason: "no_user_after_auth_ready" });
       loginForm();
     };
 
-    firebase.auth().onAuthStateChanged(user => {
+    const handleAuthStateChanged = (user) => {
+      if (!authReady) {
+        authReady = true;
+        authStateReady = true;
+        authInitComplete = true;
+        authDiag("AUTH_READY", { hasUser: Boolean(user) });
+      }
       authDiag("AUTH_STATE_CHANGED", {
         uid: user?.uid || null,
         email: user?.email || null,
@@ -1299,11 +1494,18 @@
         void routeAfterInitialAuth(user);
         return;
       }
-      if (authGuardState === "loading" || accessVerificationInFlight) {
+      if (authGuardState === "loading" || accessVerificationInFlight || loginSubmitInFlight) {
         authDiag("AUTH_GUARD_DECISION", { decision: "ignore_auth_change", reason: "loading" });
         return;
       }
       if (!user) {
+        if (accessGrantedForOffice && !explicitSignOutRequested) {
+          authDiag("AUTH_GUARD_DECISION", {
+            decision: "ignore_null_user",
+            reason: "granted_without_explicit_sign_out"
+          });
+          return;
+        }
         if (!accessGrantedForOffice && !explicitSignOutRequested) {
           authDiag("AUTH_GUARD_DECISION", { decision: "ignore_null_user", reason: "not_granted_yet" });
           return;
@@ -1322,7 +1524,16 @@
         authGuardState = "loading";
         void verifyAccess(officeId, false);
       }
-    });
+    };
+
+    if (authStateUnsubscribe) authStateUnsubscribe();
+    authStateUnsubscribe = firebase.auth().onAuthStateChanged(handleAuthStateChanged);
+    window.addEventListener("pagehide", () => {
+      if (authStateUnsubscribe) {
+        authStateUnsubscribe();
+        authStateUnsubscribe = null;
+      }
+    }, { once: true });
   }
 
   bootstrapAccess();

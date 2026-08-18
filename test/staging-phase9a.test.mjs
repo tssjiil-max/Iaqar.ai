@@ -285,6 +285,7 @@ test("Phase 9A clients fail closed to staging Worker on staging hosts", () => {
 test("Phase 9A package scripts expose deploy:staging and smoke:staging", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.scripts["deploy:staging"], "bash scripts/deploy-staging.sh");
+  assert.equal(pkg.scripts["deploy:staging:safe"], "bash scripts/deploy-staging-safe.sh");
   assert.equal(pkg.scripts["smoke:staging"], "node scripts/smoke-staging.mjs");
   assert.ok(pkg.scripts["test:phase9a"]);
 });

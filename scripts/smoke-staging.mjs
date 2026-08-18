@@ -75,6 +75,17 @@ async function main() {
       }
     });
 
+    const versionUrl = new URL("/version.json", STAGING_HOSTING).toString();
+    await mustOk(versionUrl, ({ json, response }) => {
+      if (!json || !json.fullSha || !json.shortSha) {
+        throw new Error("version.json must include shortSha and fullSha");
+      }
+      const cacheControl = String(response.headers.get("cache-control") || "").toLowerCase();
+      if (!cacheControl.includes("no-store")) {
+        throw new Error("version.json Cache-Control must include no-store");
+      }
+    });
+
     const runtimeUrl = new URL("/js/runtime-config.js", STAGING_HOSTING).toString();
     await mustOk(runtimeUrl, ({ text }) => {
       if (!text.includes("iaqar-intake-staging")) {
