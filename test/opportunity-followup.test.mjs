@@ -90,6 +90,19 @@ test("both is unavailable without linked owner and client", () => {
   const ctx = resolveRecipientContext({ contactType: "owner", recordType: "owner_offer" });
   assert.equal(ctx.hasBothParties, false);
   assert.equal(ctx.availableModes.includes("both"), false);
+  assert.equal(ctx.availableModes.includes("owner"), true);
+});
+
+test("bank offer always exposes owner in confirm-with dropdown", () => {
+  const ctx = resolveRecipientContext({ opportunityKind: "OFFER", advertiserRole: "OWNER" });
+  assert.deepEqual(ctx.availableModes, ["owner"]);
+  assert.equal(ctx.defaultMode, "owner");
+});
+
+test("bank request always exposes client in confirm-with dropdown", () => {
+  const ctx = resolveRecipientContext({ opportunityKind: "REQUEST", advertiserRole: "CLIENT" });
+  assert.deepEqual(ctx.availableModes, ["client"]);
+  assert.equal(ctx.defaultMode, "client");
 });
 
 test("both creates two separate WhatsApp actions", () => {

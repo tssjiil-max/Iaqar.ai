@@ -54,7 +54,18 @@ export function validateFutureFollowUpAt(followUpAt, now = new Date(), tolerance
 }
 
 export function isOwnerOpportunity(opportunity = {}) {
-  return opportunity.contactType === "owner" || opportunity.recordType === "owner_offer";
+  const contactType = String(opportunity.contactType || "").toLowerCase();
+  const recordType = String(opportunity.recordType || "").toLowerCase();
+  const kind = String(opportunity.kind || "").toLowerCase();
+  const opportunityKind = String(opportunity.opportunityKind || "").toUpperCase();
+  const advertiserRole = String(opportunity.advertiserRole || "").toUpperCase();
+
+  if (contactType === "owner" || recordType === "owner_offer" || kind === "owner" || kind === "owner_offer") {
+    return true;
+  }
+  if (opportunityKind === "OFFER" || recordType === "owner") return true;
+  if (advertiserRole === "OWNER") return true;
+  return false;
 }
 
 export function defaultRecipientMode(opportunity = {}) {
@@ -86,11 +97,14 @@ export function resolveRecipientContext(opportunity = {}, match = null) {
   if (clientContactId) modes.push(RECIPIENT_MODES.client);
   if (ownerContactId && clientContactId) modes.push(RECIPIENT_MODES.both);
 
+  const defaultMode = defaultRecipientMode(opportunity);
+  if (!modes.length) modes.push(defaultMode);
+
   return {
     ownerContactId,
     clientContactId,
     availableModes: modes,
-    defaultMode: defaultRecipientMode(opportunity),
+    defaultMode,
     hasBothParties: Boolean(ownerContactId && clientContactId)
   };
 }

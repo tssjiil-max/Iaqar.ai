@@ -1892,9 +1892,12 @@
 
   function buildFollowUpRecipientOptionsHtml(context = {}, selected = "") {
     const labels = FD()?.RECIPIENT_MODE_LABELS || { owner: "المالك", client: "العميل", both: "المالك والعميل" };
-    const modes = Array.isArray(context.availableModes) ? context.availableModes : [];
+    let modes = Array.isArray(context.availableModes) ? context.availableModes.filter(Boolean) : [];
+    const fallback = context.defaultMode || "owner";
+    if (!modes.length) modes = [fallback];
+    const selectedMode = modes.includes(selected) ? selected : (context.defaultMode || modes[0]);
     return modes.map((mode) =>
-      `<option value="${escapeUi(mode)}" ${mode === selected ? "selected" : ""}>${escapeUi(labels[mode] || mode)}</option>`
+      `<option value="${escapeUi(mode)}" ${mode === selectedMode ? "selected" : ""}>${escapeUi(labels[mode] || mode)}</option>`
     ).join("");
   }
 
