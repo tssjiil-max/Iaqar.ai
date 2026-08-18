@@ -28,6 +28,8 @@ java -jar "$APKTOOL" d -f -s \
 
 MANIFEST="$WORKDIR/decompiled/AndroidManifest.xml"
 sed -i "s/package=\"com.godot.game\"/package=\"$PACKAGE_NAME\"/" "$MANIFEST"
+sed -i 's/android:versionCode="1"/android:versionCode="2"/' "$MANIFEST"
+sed -i 's/android:versionName="1.0"/android:versionName="1.1"/' "$MANIFEST"
 sed -i "s/com.godot.game.fileprovider/$PACKAGE_NAME.fileprovider/g" "$MANIFEST"
 sed -i "s/com.godot.game.androidx-startup/$PACKAGE_NAME.androidx-startup/g" "$MANIFEST"
 
@@ -39,7 +41,7 @@ rm -rf "$WORKDIR/decompiled/lib/x86" "$WORKDIR/decompiled/lib/x86_64"
 
 echo "==> Injecting game assets..."
 mkdir -p "$WORKDIR/decompiled/assets"
-cp -r "$WORKDIR/assets/"* "$WORKDIR/decompiled/assets/"
+cp -a "$WORKDIR/assets/." "$WORKDIR/decompiled/assets/"
 
 echo "==> Rebuilding APK..."
 java -jar "$APKTOOL" b "$WORKDIR/decompiled" -o "$WORKDIR/unsigned.apk"
