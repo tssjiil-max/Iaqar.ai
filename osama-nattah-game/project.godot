@@ -2,7 +2,7 @@
 config_version=5
 
 [application]
-config/name="أسامة ونطّاح"
+config/name="Osama Nattah"
 config/description="لعبة مغامرات ومطاردات كوميدية في حارة حجازية خيالية"
 run/main_scene="res://scenes/main/MainMenu.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
