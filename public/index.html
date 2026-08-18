@@ -4681,7 +4681,7 @@
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
         aria-selected="true" aria-controls="mainPanelOperations" aria-label="المهام اليومية">المهام اليومية</button>
       <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"
-        aria-selected="false" aria-controls="mainPanelOpportunities">بنك الفرص</button>
+        aria-selected="false" aria-controls="mainPanelOpportunities">العروض والطلبات</button>
     </nav>
 
     <div class="main-tab-panels" id="mainTabPanels">
@@ -4743,15 +4743,15 @@
       <div class="main-tab-panel" id="mainPanelOpportunities" role="tabpanel"
         aria-labelledby="mainTabOpportunities" hidden>
         <div class="tab-panel-intro">
-          <h2 class="tab-panel-title">بنك الفرص</h2>
-          <p class="tab-panel-help">أضف فرصًا جديدة وأدر فرص مكتبك الحالية.</p>
+          <h2 class="tab-panel-title">العروض والطلبات</h2>
+          <p class="tab-panel-help">عروض الملاك وطلبات العملاء الجاهزة</p>
         </div>
 
-        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="بنك الفرص">
+        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات">
           <button type="button" class="sub-tab is-active" id="oppTabAdd" role="tab"
             aria-selected="true" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
           <button type="button" class="sub-tab" id="oppTabBank" role="tab"
-            aria-selected="false" aria-controls="oppPanelBank">البنك</button>
+            aria-selected="false" aria-controls="oppPanelBank">القائمة</button>
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
@@ -4767,7 +4767,7 @@
                   aria-label="استيراد إعلان">
                   <h3>استيراد إعلان</h3>
                   <p>الصق رابط إعلان من عقار أو حراج أو أي موقع، وسيتم تحليل بياناته
-                    وترتيبها لإضافتها فعليًا إلى بنك الفرص.</p>
+                    وترتيبها لإضافتها فعليًا إلى العروض والطلبات.</p>
                 </button>
               </div>
 
@@ -4800,19 +4800,19 @@
             <section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1"
               aria-labelledby="opportunityBankTitle">
               <div class="section-title-bar">
-                <h2 id="opportunityBankTitle">بنك الفرص</h2>
+                <h2 id="opportunityBankTitle">العروض والطلبات</h2>
               </div>
-              <p class="tab-panel-help">كل فرص مكتبك المحفوظة والنشطة في مكان واحد.</p>
+              <p class="tab-panel-help">عروض الملاك وطلبات العملاء الجاهزة</p>
 
               <div class="bank-toolbar">
                 <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
                 <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
               </div>
 
-              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث بنك الفرص">
+              <div class="bank-filters" id="bankFiltersBar" aria-label="بحث العروض والطلبات">
                 <label class="bank-filter-search">
-                  <span class="visually-hidden">بحث في بنك الفرص</span>
-                  <input type="search" id="bankFilterSearch" placeholder="ابحث في بنك الفرص" autocomplete="off">
+                  <span class="visually-hidden">بحث في العروض والطلبات</span>
+                  <input type="search" id="bankFilterSearch" placeholder="ابحث في العروض والطلبات" autocomplete="off">
                 </label>
               </div>
 
@@ -4841,7 +4841,7 @@
       <div class="settings-head">
         <div>
           <h2 id="importAdvertTitle">استيراد إعلان عقاري</h2>
-          <p>حلّل الإعلان ثم راجع البيانات قبل الحفظ في بنك الفرص.</p>
+          <p>حلّل الإعلان ثم راجع البيانات قبل الحفظ في العروض والطلبات.</p>
         </div>
         <button class="settings-close" id="importAdvertClose" type="button" aria-label="إغلاق">×</button>
       </div>
@@ -4892,7 +4892,7 @@
     <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="importDuplicateTitle">
       <div class="settings-head">
         <div>
-          <h2 id="importDuplicateTitle">توجد فرصة مشابهة في بنك الفرص</h2>
+          <h2 id="importDuplicateTitle">توجد فرصة مشابهة في العروض والطلبات</h2>
           <p>يمكنك فتح الفرصة الحالية أو تحديثها أو حفظ الإعلان كفرصة جديدة.</p>
         </div>
         <button class="settings-close" id="importDuplicateClose" type="button" aria-label="إغلاق">×</button>

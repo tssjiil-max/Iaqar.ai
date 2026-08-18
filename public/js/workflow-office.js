@@ -638,14 +638,14 @@
       isAlert: false,
       icon: "i-clipboard-list",
       title: "فرصة جديدة محفوظة",
-      subtitle: matches > 0 ? `تم العثور على ${matches} مطابقة` : "أُضيفت إلى بنك الفرص",
+      subtitle: matches > 0 ? `تم العثور على ${matches} مطابقة` : "أُضيفت إلى العروض والطلبات",
       time: "الآن",
       detailsLines: [
         matches > 0
           ? `تم حفظ الفرصة وإنشاء ${matches} مطابقة جديدة.`
-          : "تم حفظ الفرصة بنجاح — راجع التفاصيل في بنك الفرص."
+          : "تم حفظ الفرصة بنجاح — راجع التفاصيل في العروض والطلبات."
       ],
-      actionLabel: "فتح بنك الفرص",
+      actionLabel: "فتح العروض والطلبات",
       secondaryActionLabel: "إغلاق",
       canDismiss: false,
       opportunityId: id
@@ -693,7 +693,7 @@
         subtitle: "راجع رقم المعلن ورسالة الاستكمال",
         time: "الآن",
         detailsLines: ["يوجد رقم معلن — أكمل التواصل وتحديث الحالة يدويًا."],
-        actionLabel: "فتح بنك الفرص",
+        actionLabel: "فتح العروض والطلبات",
         secondaryActionLabel: "إغلاق",
         canDismiss: true,
         opportunityId: id
@@ -2005,7 +2005,7 @@
           ? "المطابقة والتعاون"
           : "فتح المطابقة والتعاون";
         html += `<div class="iaqar-workflow-step"><h3>المطابقة والتعاون</h3>
-          <p>استخدم بنك الفرص لإدارة المطابقة والتعاون دون تغيير الصلاحيات الحالية.</p>
+          <p>استخدم العروض والطلبات لإدارة المطابقة والتعاون دون تغيير الصلاحيات الحالية.</p>
           <div class="iaqar-workflow-actions">
             <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="open-matching-bank">${escapeUi(coopLabel)}</button>
           </div>

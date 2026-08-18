@@ -311,7 +311,7 @@ export function pickStrongestImportDuplicate(hits = []) {
 export function importSaveButtonLabel(record = {}) {
   const readiness = evaluateMatchingReadiness(record);
   if (readiness.isReadyForMatching) return "حفظ وإدخالها في المطابقة";
-  return "حفظ الإعلان في بنك الفرص";
+  return "حفظ الإعلان في العروض والطلبات";
 }
 
 export function importReadinessPresentation(record = {}) {

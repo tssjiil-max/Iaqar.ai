@@ -1,5 +1,5 @@
 /**
- * استيراد إعلان — واجهة المستخدم والحفظ الفعلي في بنك الفرص.
+ * استيراد إعلان — واجهة المستخدم والحفظ الفعلي في العروض والطلبات.
  */
 
 import {
@@ -464,7 +464,7 @@ function openImportReview() {
     reviewDefaults
   }, saveImportedAdvert, {
     title: "فرصة",
-    subtitle: "راجع البيانات الأساسية ثم احفظ الفرصة في بنك الفرص.",
+    subtitle: "راجع البيانات الأساسية ثم احفظ الفرصة في العروض والطلبات.",
     approveLabel,
     importSummary: [importSummary, provenanceSummary, missingSummary].filter(Boolean).join(" — "),
     sourceUrl: importSession.sourceUrl || "",
@@ -635,7 +635,7 @@ async function finalizeImportSave({ forceNew = false, updateExistingId = "" } = 
       );
     }
 
-    toast("تمت إضافة الإعلان إلى بنك الفرص");
+    toast("تمت إضافة الإعلان إلى العروض والطلبات");
     pendingSaveContext = null;
     duplicateHit = null;
     importSession = null;
@@ -691,7 +691,7 @@ async function finalizeImportSave({ forceNew = false, updateExistingId = "" } = 
     saveInProgress = false;
     if (approveBtn) {
       approveBtn.disabled = false;
-      approveBtn.textContent = pendingSaveContext?.approveLabel || "حفظ الإعلان في بنك الفرص";
+      approveBtn.textContent = pendingSaveContext?.approveLabel || "حفظ الإعلان في العروض والطلبات";
     }
   }
 }

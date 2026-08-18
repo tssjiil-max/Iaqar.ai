@@ -1125,7 +1125,7 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
       });
     }
     setState("saved", "");
-    toast("تم تحديث الفرصة في بنك الفرص");
+    toast("تم تحديث الفرصة في العروض والطلبات");
     clearIntakeForm();
 
     // Rematch/ops must not block the review approve UI (can hang on slow Worker).

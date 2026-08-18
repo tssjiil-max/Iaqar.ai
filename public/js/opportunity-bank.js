@@ -1,6 +1,6 @@
 /**
  * Phase 3 — Opportunity Bank UI controller.
- * Accessible only from Office Settings → بنك الفرص.
+ * Accessible only from Office Settings → العروض والطلبات.
  */
 
 import {
@@ -2868,7 +2868,7 @@ function confirmStopOpportunityShare(sharingScopeId, brokerName) {
   const label = String(brokerName || "الوسيط").trim();
   if (message) {
     message.textContent =
-      `هل تريد إيقاف مشاركة الفرصة مع ${label}؟ ستتوقف المشاركة مع هذا الوسيط فقط، ولن تُحذف الفرصة الأصلية من بنك الفرص.`;
+      `هل تريد إيقاف مشاركة الفرصة مع ${label}؟ ستتوقف المشاركة مع هذا الوسيط فقط، ولن تُحذف الفرصة الأصلية من العروض والطلبات.`;
   }
   modal.hidden = false;
   const close = () => {
@@ -3410,7 +3410,7 @@ async function loadBankSummary() {
   const runtime = officeRuntime();
   const user = authUser();
   if (!runtime?.db || !user || !officeId()) {
-    setStatus("سجل دخول المكتب لعرض بنك الفرص", "is-error");
+    setStatus("سجل دخول المكتب لعرض العروض والطلبات", "is-error");
     return;
   }
   await refreshBankFacetMeta(runtime);
@@ -3429,14 +3429,14 @@ async function loadBankPage({ reset = false } = {}) {
   const loadMoreBtn = $("bankLoadMoreBtn");
 
   if (!runtime?.db || !user || !officeId()) {
-    setStatus("سجل دخول المكتب لعرض بنك الفرص", "is-error");
+    setStatus("سجل دخول المكتب لعرض العروض والطلبات", "is-error");
     if (loadMoreBtn) loadMoreBtn.hidden = true;
     return;
   }
 
   if (state.busy) return;
   state.busy = true;
-  setStatus(reset ? "جارٍ تحميل بنك الفرص…" : "جارٍ تحميل المزيد…");
+  setStatus(reset ? "جارٍ تحميل العروض والطلبات…" : "جارٍ تحميل المزيد…");
 
   try {
     if (reset) {
@@ -3533,7 +3533,7 @@ async function loadBankPage({ reset = false } = {}) {
     );
   } catch (error) {
     console.warn("[iaqar] opportunity bank", error);
-    setStatus("تعذر تحميل بنك الفرص — أعد المحاولة", "is-error");
+    setStatus("تعذر تحميل العروض والطلبات — أعد المحاولة", "is-error");
     const retry = $("opportunityBankRetry");
     if (retry) retry.hidden = false;
   } finally {

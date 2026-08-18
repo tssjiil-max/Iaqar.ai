@@ -22,7 +22,7 @@ export const INTAKE_STATE_LABELS = Object.freeze({
   uploading: "جارٍ الرفع…",
   analyzing: "جارٍ التحليل…",
   missing_information: "يلزم استكمال بيانات ناقصة",
-  saved: "تم الحفظ في بنك الفرص",
+  saved: "تم الحفظ في العروض والطلبات",
   failed: "تعذّر الحفظ — يمكنك إعادة المحاولة"
 });
 

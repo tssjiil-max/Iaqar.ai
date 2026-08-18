@@ -53,7 +53,7 @@ test("resolveBackAction prioritizes overlays then bank detail then tabs", () => 
   );
 });
 
-test("shouldShowHeaderBack is true on بنك الفرص main tab", () => {
+test("shouldShowHeaderBack is true on العروض والطلبات main tab", () => {
   assert.equal(shouldShowHeaderBack({
     overlays: {},
     bankDetailOpen: false,
@@ -79,7 +79,7 @@ test("topOverlayIdFromSnapshot respects overlay order", () => {
   );
 });
 
-test("header back on بنك الفرص returns to المهام اليومية", async () => {
+test("header back on العروض والطلبات returns to المهام اليومية", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const domain = await import(pathToFileURL(path.join(repositoryRoot, "public", "js", "app-navigation-domain.js")).href);
@@ -98,7 +98,7 @@ test("header back on بنك الفرص returns to المهام اليومية", 
     document.getElementById("mainTabOpportunities").click();
     context.window.IAQAR.navigation.updateBackButton();
     const backBtn = document.getElementById("appNavBack");
-    assert.equal(backBtn.hidden, false, "back button should show on بنك الفرص");
+    assert.equal(backBtn.hidden, false, "back button should show on العروض والطلبات");
 
     backBtn.click();
     assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);

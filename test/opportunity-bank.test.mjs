@@ -139,7 +139,7 @@ test("the bank reads only the current office's own opportunities", () => {
 test("the bank shows a real empty state and a real error state, not fabricated rows", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("لا توجد فرص محفوظة بعد"), "an empty state message is required");
-  assert.ok(bank.includes("تعذر تحميل بنك الفرص"), "an error state message is required");
+  assert.ok(bank.includes("تعذر تحميل العروض والطلبات"), "an error state message is required");
   assert.equal(/const demo|sampleRows|fakeRows/.test(bank), false, "no seeded rows may exist");
 });
 

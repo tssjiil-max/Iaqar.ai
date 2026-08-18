@@ -251,7 +251,7 @@ test("the opportunity bank lives under Opportunities, not Office Settings", asyn
   }
 });
 
-test("the بنك الفرص sub-tab reveals the inline bank panel", async () => {
+test("the العروض والطلبات sub-tab reveals the inline bank panel", async () => {
   const context = await loadShell({ bootSettingsModule: true });
   try {
     const { document } = context;
@@ -260,7 +260,7 @@ test("the بنك الفرص sub-tab reveals the inline bank panel", async () => 
     document.getElementById("mainTabOpportunities").click();
     document.getElementById("oppTabBank").click();
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
-    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "بنك الفرص");
+    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "العروض والطلبات");
   } finally {
     context.close();
   }

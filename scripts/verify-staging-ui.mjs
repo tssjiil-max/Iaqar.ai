@@ -150,7 +150,7 @@ async function verifyUrl(browser, url, label) {
     const filters = document.querySelector(".bank-filters");
     const html = filters?.innerHTML || "";
     return {
-      bankSearch: html.includes("ابحث في بنك الفرص"),
+      bankSearch: html.includes("ابحث في العروض والطلبات"),
       bankFilters: Boolean(filters),
       oldBulkShare: Boolean(document.querySelector(".bank-share-scope")),
       clearFilters: html.includes("مسح الفلاتر")
@@ -163,7 +163,7 @@ async function verifyUrl(browser, url, label) {
     const overlay = document.querySelector("#officeSettingsOverlay");
     const text = overlay?.innerText || "";
     return {
-      bankInSettings: text.includes("بنك الفرص"),
+      bankInSettings: text.includes("العروض والطلبات"),
       wideCover: /ترويسة عريضة|صورة الترويسة|share-header/i.test(text)
     };
   });
