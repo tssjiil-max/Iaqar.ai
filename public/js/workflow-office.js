@@ -970,6 +970,22 @@
     return "";
   }
 
+  function openWhatsAppHandoff({ phone = "", text = "", url = "" } = {}) {
+    const handoff = window.IAQAR?.whatsappHandoff;
+    if (handoff?.openWhatsAppUrl && url) {
+      return handoff.openWhatsAppUrl(url, { phone, text });
+    }
+    if (handoff?.openWhatsApp) {
+      return handoff.openWhatsApp({ phone: phone || whatsappPhone(phone), text });
+    }
+    const digits = whatsappPhone(phone || url);
+    const fallback = digits
+      ? `https://wa.me/${digits}?text=${encodeURIComponent(String(text || ""))}`
+      : (url || `https://wa.me/?text=${encodeURIComponent(String(text || ""))}`);
+    window.location.href = fallback;
+    return { ok: true, mode: "fallback", url: fallback };
+  }
+
   function brokerDisplayName() {
     return String(document.getElementById("brokerDisplayName")?.textContent || document.getElementById("officeDisplayName")?.textContent || "الوسيط").trim();
   }
@@ -1110,13 +1126,10 @@
   }
 
   async function persistAndOpenMessageDraft(detail, channel) {
-    const popup = window.open("", "_blank");
-    if (popup) popup.opener = null;
     const runtime = office();
     const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
     const domain = messagingDomain();
     if (!runtime || !runtime.officeId || !user) {
-      if (popup) popup.close();
       return notify("سجل دخول المكتب أولًا");
     }
     const role = detail.recipientRole === "owner" ? "owner" : "client";
@@ -1126,7 +1139,6 @@
     if (safeChannel === "whatsapp") {
       const phone = whatsappPhone(contact && contact.phone);
       if (!phone) {
-        if (popup) popup.close();
         return notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
       }
     }
@@ -1161,7 +1173,6 @@
         body: bodyText
       });
       if (!created.ok) {
-        if (popup) popup.close();
         return notify(created.message || "تعذر حفظ مسودة الرسالة");
       }
       messageId = created.messageId || (created.draft && created.draft.id) || "";
@@ -1180,13 +1191,22 @@
       }
     }
 
+    if (safeChannel === "whatsapp") {
+      const phone = whatsappPhone(contact && contact.phone);
+      if (!phone && !handoffUrl) {
+        return notify("تعذر تجهيز رابط الرسالة");
+      }
+      openWhatsAppHandoff({
+        phone,
+        text: bodyText,
+        url: handoffUrl || undefined
+      });
+      notify("فُتح واتساب — أكّد الإرسال بنفسك");
+      return;
+    }
+
     if (!handoffUrl) {
-      if (safeChannel === "whatsapp") {
-        const phone = whatsappPhone(contact && contact.phone);
-        handoffUrl = phone
-          ? `https://wa.me/${phone}?text=${encodeURIComponent(bodyText)}`
-          : "";
-      } else if (domain && typeof domain.buildTelegramHandoffUrl === "function") {
+      if (domain && typeof domain.buildTelegramHandoffUrl === "function") {
         handoffUrl = domain.buildTelegramHandoffUrl({ body: bodyText }).url;
       } else {
         handoffUrl = `https://t.me/share/url?url=${encodeURIComponent("https://iaqar.ai/")}&text=${encodeURIComponent(bodyText)}`;
@@ -1194,14 +1214,10 @@
     }
 
     if (!handoffUrl) {
-      if (popup) popup.close();
       return notify("تعذر تجهيز رابط الرسالة");
     }
-    if (popup) popup.location.replace(handoffUrl);
-    else window.location.href = handoffUrl;
-    notify(safeChannel === "telegram"
-      ? "فُتح تليجرام — أكّد الإرسال بنفسك"
-      : "فُتح واتساب — أكّد الإرسال بنفسك");
+    window.location.href = handoffUrl;
+    notify("فُتح تليجرام — أكّد الإرسال بنفسك");
   }
 
   function resolveLifecyclePhone(detail) {
@@ -1242,9 +1258,7 @@
     const phoneInfo = resolveLifecyclePhone(detail);
     if (!phoneInfo.valid) return notify(phoneInfo.error || "رقم الجوال غير مكتمل");
     const message = buildLifecycleContactMessage(detail);
-    const url = `https://wa.me/${phoneInfo.whatsappDigits}?text=${encodeURIComponent(message)}`;
-    const opened = window.open(url, "_blank");
-    if (!opened) window.location.href = url;
+    openWhatsAppHandoff({ phone: phoneInfo.whatsappDigits, text: message });
     lifecycleContactAttempted = true;
     void opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" }).catch((error) => {
       console.warn("[iaqar] whatsapp opened log", error);
@@ -2047,9 +2061,7 @@
       property ? `بخصوص: ${property}` : "",
       "هل ما زال الموعد مناسبًا؟"
     ].filter(Boolean).join("\n");
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    const opened = window.open(url, "_blank");
-    if (!opened) window.location.href = url;
+    openWhatsAppHandoff({ phone, text: message });
     void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, { communicationAction: "whatsapp_opened" }).catch(() => {});
     void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, {}).catch(() => {});
     activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };

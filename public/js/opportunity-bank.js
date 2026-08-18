@@ -43,6 +43,7 @@ import {
   readAdvertiserDisplayName,
   readAdvertiserPhoneFromRecord
 } from "./advertiser-phone-domain.js";
+import { openWhatsApp } from "./whatsapp-handoff-domain.js";
 import { officeLinkFor } from "./office-domain.js";
 import {
   phase6BoundaryGuarantees,
@@ -79,8 +80,7 @@ import {
 } from "./opportunity-followup-domain.js";
 import {
   buildListingShareMessage,
-  telegramShareUrl,
-  whatsAppShareUrl
+  telegramShareUrl
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
@@ -773,9 +773,7 @@ function openBankAdvertiserWhatsApp(record, phone) {
     officeLink: officePublicLink(),
     advertiserDisplayName: displayName
   });
-  const url = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
-  const opened = window.open(url, "_blank");
-  if (!opened) window.location.href = url;
+  openWhatsApp({ phone: digits, text: message });
   const opportunityId = record.id || state.activeId;
   if (!opportunityId) return;
   void recordLifecycleWhatsAppOpened(opportunityId);
@@ -914,9 +912,7 @@ function openPartyWhatsAppWithMessage(record, phone, message) {
     toast("رقم الجوال غير مكتمل");
     return false;
   }
-  const url = `https://wa.me/${digits}?text=${encodeURIComponent(String(message || ""))}`;
-  const opened = window.open(url, "_blank");
-  if (!opened) window.location.href = url;
+  openWhatsApp({ phone: digits, text: String(message || "") });
   return true;
 }
 
@@ -1431,9 +1427,7 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
     const message = buildPublicListingAnnouncement(fresh, officeProfileForShare(), {
       origin: window.location.origin
     });
-    const url = whatsAppShareUrl(message);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) window.location.href = url;
+    openWhatsApp({ text: message });
     const statusNode = document.getElementById("bankListingShareStatus");
     if (statusNode) statusNode.textContent = "تم فتح واتساب — اختر المستلم";
     void logListingShareActivity(id, "whatsapp");
@@ -2013,7 +2007,7 @@ function wireDetailHandlers(id, record) {
       }
     }
     $("bankShareWhatsAppBtn")?.addEventListener("click", () => {
-      window.open(whatsAppShareUrl(message), "_blank", "noopener,noreferrer");
+      openWhatsApp({ text: message });
     }, { once: true });
     $("bankShareTelegramBtn")?.addEventListener("click", () => {
       window.open(telegramShareUrl(message), "_blank", "noopener,noreferrer");

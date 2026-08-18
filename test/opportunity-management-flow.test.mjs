@@ -34,9 +34,11 @@ test("invalid phone does not open WhatsApp digits", () => {
 
 test("workflow opens WhatsApp from direct click without overlay gate", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
-  assert.ok(workflow.includes("https://wa.me/${phoneInfo.whatsappDigits}?text="));
-  assert.ok(workflow.includes("window.open(url, \"_blank\")"));
+  assert.ok(workflow.includes("openWhatsAppHandoff"));
+  assert.ok(workflow.includes("openContactWhatsAppDirect"));
   assert.equal(/advertiserMessageOverlay/.test(workflow.match(/function openContactWhatsAppDirect[\s\S]*?^  }/m)?.[0] || ""), false);
+  const handoff = readRepo("public", "js", "whatsapp-handoff-domain.js");
+  assert.ok(handoff.includes("whatsapp://send?"));
 });
 
 test("whatsapp_opened action does not mark contact confirmed in worker", () => {
@@ -162,8 +164,8 @@ test("matching cooperation section preserved without engine edits", () => {
   assert.equal(/scoreMatch/.test(matching), true);
 });
 
-test("bank WhatsApp uses direct wa.me link", () => {
+test("bank WhatsApp uses unified native handoff", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("https://wa.me/${digits}?text="));
+  assert.ok(bank.includes("openWhatsApp({ phone: digits, text: message })"));
   assert.ok(bank.includes("action: \"whatsapp_opened\""));
 });

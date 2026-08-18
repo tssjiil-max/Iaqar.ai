@@ -29,6 +29,7 @@ import {
   normalizeAdvertiserPhoneE164,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
+import { openWhatsApp } from "./whatsapp-handoff-domain.js";
 import { importReviewValuesToBrokerFields } from "./import-field-normalization-domain.js";
 import {
   IMPORT_EXTRA_FIELD_DEFS,
@@ -654,8 +655,7 @@ function wireAdvertiserMessageModal() {
     const phone = ctx?.phone || advertiser.advertiserPhoneNormalized;
     const digits = whatsappDigitsFromE164(phone);
     if (!digits) return;
-    const url = `https://wa.me/${digits}?text=${encodeURIComponent(textarea?.value || "")}`;
-    window.location.href = url;
+    openWhatsApp({ phone: digits, text: textarea?.value || "" });
     if (ctx?.onWhatsAppOpened) {
       void ctx.onWhatsAppOpened();
     }

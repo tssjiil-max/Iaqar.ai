@@ -145,7 +145,7 @@ test("notification click opens correct opportunityId", () => {
 test("WhatsApp requires a broker click", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("openFollowUpReminderWhatsApp"));
-  assert.ok(workflow.includes("window.open(url, \"_blank\")"));
+  assert.ok(workflow.includes("openWhatsAppHandoff"));
 });
 
 test("WhatsApp open does not mark message sent", () => {
