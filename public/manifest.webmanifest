@@ -1,13 +1,13 @@
 {
   "name": "مكاتب عقارية ذكية — IAQAR",
-  "short_name": "IAQAR",
+  "short_name": "مكاتب عقارية",
   "description": "تشغيل المكاتب العقارية وفرز الفرص والمطابقة حتى إغلاق الصفقة.",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F1F5F2",
+  "background_color": "#003F34",
   "theme_color": "#005C4B",
   "icons": [
     {
