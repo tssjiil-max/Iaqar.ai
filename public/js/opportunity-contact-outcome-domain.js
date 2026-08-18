@@ -94,6 +94,20 @@ export function validateContactOutcomeSave(outcome = "", data = {}, now = new Da
   return { ok: false, message: "نتيجة التواصل غير صحيحة" };
 }
 
+export function contactOutcomeSelectionHint(outcome = "") {
+  const label = CONTACT_OUTCOME_LABELS[String(outcome || "").toUpperCase()] || "";
+  if (!label) return "";
+  if (outcome === "AGREED") return `تم اختيار «${label}» — جارٍ الحفظ…`;
+  return `تم اختيار «${label}» — أكمل التفاصيل ثم اضغط حفظ`;
+}
+
+export function buildContactOutcomeSaveFooterHtml() {
+  return `
+    <div class="bank-unified-save-wrap bank-contact-outcome-save-wrap">
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success bank-contact-outcome-save-btn">حفظ النتيجة والإجراء القادم</button>
+    </div>`;
+}
+
 export function contactOutcomeActivityText(outcome = "", details = {}) {
   const label = CONTACT_OUTCOME_LABELS[String(outcome || "").toUpperCase()] || "";
   if (!label) return "تم تسجيل نتيجة التواصل";

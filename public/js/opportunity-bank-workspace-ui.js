@@ -24,6 +24,7 @@ import {
   REFUSAL_REASON_OPTIONS,
   defaultContactFollowUpInput,
   defaultContactRetryInput,
+  buildContactOutcomeSaveFooterHtml,
   shouldShowContactOutcomePanel
 } from "./opportunity-contact-outcome-domain.js";
 import { buildSuitableOfficesShareSectionHtml } from "./suitable-offices-ui.js";
@@ -105,13 +106,16 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
   const key = String(outcome || "").toUpperCase();
   const retryDefault = options.retryDefault || defaultContactRetryInput();
   const followDefault = options.followDefault || defaultContactFollowUpInput();
+  const saveFooter = buildContactOutcomeSaveFooterHtml();
+  let body = "";
   switch (key) {
     case "NO_RESPONSE":
-      return `
+      body = `
         <p class="bank-note iaqar-workflow-note">تحديد محاولة اتصال جديدة</p>
         ${buildFollowUpQuickPickHtml("bankContactRetryAt", retryDefault)}`;
+      break;
     case "INTERESTED":
-      return `
+      body = `
         <div class="bank-contact-outcome-actions-row iaqar-workflow-actions">
           <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankContactInterestedFollowUp">تحديد متابعة</button>
           <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankContactInterestedWhatsApp">تواصل واتساب</button>
@@ -122,26 +126,31 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
         <div id="bankContactInterestedFollowUpPanel" class="bank-contact-outcome-subpanel" hidden>
           ${buildFollowUpQuickPickHtml("bankContactInterestedFollowUpAt", followDefault)}
         </div>`;
+      break;
     case "REFUSED":
       const reasons = REFUSAL_REASON_OPTIONS.map((row) =>
         `<button type="button" class="bank-action bank-refusal-reason iaqar-workflow-btn secondary" data-refusal-reason="${esc(row.key)}">${esc(row.label)}</button>`
       ).join("");
-      return `
+      body = `
         <p class="bank-note iaqar-workflow-note">سبب عدم الاهتمام — بعد الحفظ ستُكمَل إنهاء الفرصة من إدارة الفرصة.</p>
         <div class="bank-contact-refusal-reasons iaqar-workflow-actions iaqar-outcome-actions">${reasons}</div>
         <label>ملاحظة (اختياري)
           <textarea id="bankContactOutcomeNote" class="iaqar-workflow-field" maxlength="200" rows="2" placeholder="تفاصيل إضافية"></textarea>
         </label>`;
+      break;
     case "FOLLOW_UP":
-      return `
+      body = `
         <p class="bank-note iaqar-workflow-note">اختر موعد المتابعة</p>
         ${buildFollowUpQuickPickHtml("bankContactFollowUpAt", followDefault)}`;
+      break;
     case "AGREED":
-      return `
+      body = `
         <p class="bank-note iaqar-workflow-note">بعد الحفظ ستُوجّه لإتمام الصفقة من المطابقة — لن تُغلق الفرصة تلقائيًا.</p>`;
+      break;
     default:
       return "";
   }
+  return `${body}${saveFooter}`;
 }
 
 export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
@@ -154,9 +163,9 @@ export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
   return `
     <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
       <h4>نتيجة التواصل</h4>
+      <p class="bank-contact-outcome-hint" id="bankContactOutcomeSelectionHint" hidden role="status"></p>
       <div class="bank-contact-outcomes iaqar-workflow-actions iaqar-outcome-actions" id="bankContactOutcomes">${outcomeButtons}</div>
       <div id="bankContactOutcomeActionPanel" class="bank-contact-outcome-action-panel" hidden></div>
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankSaveContactOutcomeBtn" hidden>حفظ النتيجة والإجراء القادم</button>
       <p class="section-status" id="bankContactOutcomeStatus" role="status"></p>
     </section>`;
 }

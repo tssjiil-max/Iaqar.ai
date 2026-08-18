@@ -109,6 +109,7 @@ import {
 } from "./opportunity-ready-actions-domain.js";
 import {
   contactOutcomeActivityText,
+  contactOutcomeSelectionHint,
   refusalReasonLabel,
   validateContactOutcomeSave,
   followUpLabelFromIso
@@ -1666,11 +1667,25 @@ function readContactOutcomeFormData(outcome = "") {
   return { note };
 }
 
+function updateContactOutcomeSelectionHint(outcome = "") {
+  const hintNode = document.getElementById("bankContactOutcomeSelectionHint");
+  if (!hintNode) return;
+  const text = contactOutcomeSelectionHint(outcome);
+  if (!text) {
+    hintNode.hidden = true;
+    hintNode.textContent = "";
+    return;
+  }
+  hintNode.textContent = text;
+  hintNode.hidden = false;
+}
+
 function selectContactOutcomeButton(outcome = "") {
   document.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     const active = btn.getAttribute("data-contact-outcome") === outcome;
     btn.classList.toggle("is-selected", active);
   });
+  updateContactOutcomeSelectionHint(outcome);
 }
 
 function wireContactScheduleQuickPick(container, inputId) {
@@ -1687,11 +1702,14 @@ function wireContactScheduleQuickPick(container, inputId) {
 
 function showContactOutcomeActionPanel(outcome = "") {
   const panel = document.getElementById("bankContactOutcomeActionPanel");
-  const saveBtn = document.getElementById("bankSaveContactOutcomeBtn");
-  if (!panel || !saveBtn) return;
+  const statusNode = document.getElementById("bankContactOutcomeStatus");
+  if (!panel) return;
+  if (statusNode) {
+    statusNode.textContent = "";
+    statusNode.classList.remove("is-done", "is-error");
+  }
   panel.innerHTML = buildContactOutcomeActionHtml(outcome);
   panel.hidden = false;
-  saveBtn.hidden = false;
   panel.querySelectorAll(".bank-contact-schedule-quick").forEach((block) => {
     const input = block.querySelector("input[type=\"datetime-local\"]");
     if (input?.id) wireContactScheduleQuickPick(block, input.id);
@@ -1712,7 +1730,7 @@ function showContactOutcomeActionPanel(outcome = "") {
       btn.classList.add("is-selected");
     });
   });
-  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  panel.querySelector(".bank-contact-outcome-save-btn")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
@@ -1720,17 +1738,23 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
   const formData = readContactOutcomeFormData(outcome);
   const validation = validateContactOutcomeSave(outcome, formData);
   if (!validation.ok) {
-    if (statusNode) statusNode.textContent = validation.message || "تعذر حفظ نتيجة التواصل";
+    if (statusNode) {
+      statusNode.textContent = validation.message || "تعذر حفظ نتيجة التواصل";
+      statusNode.classList.add("is-error");
+    }
     toast(validation.message || "تعذر حفظ نتيجة التواصل");
     return;
   }
   if (bankContactOutcomeSaveBusy) return;
   bankContactOutcomeSaveBusy = true;
-  const saveBtn = document.getElementById("bankSaveContactOutcomeBtn");
+  const saveBtns = document.querySelectorAll(".bank-contact-outcome-save-btn");
   const outcomeButtons = document.querySelectorAll(".bank-contact-outcome-btn");
-  if (saveBtn) saveBtn.disabled = true;
+  saveBtns.forEach((node) => { node.disabled = true; });
   outcomeButtons.forEach((node) => { node.disabled = true; });
-  if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
+  if (statusNode) {
+    statusNode.textContent = "جارٍ الحفظ…";
+    statusNode.classList.remove("is-done", "is-error");
+  }
   try {
     const payload = await postOpportunityLifecycle(opportunityId, {
       action: "contact_outcome",
@@ -1772,17 +1796,29 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
     });
     appendWorkspaceActivityLine(activityText);
     const section = document.getElementById("bankWorkspaceContactSection");
-    if (section) section.hidden = true;
-    if (statusNode) statusNode.textContent = "";
+    if (statusNode) {
+      statusNode.textContent = `تم الحفظ — ${activityText}`;
+      statusNode.classList.add("is-done");
+    }
     toast("تم حفظ نتيجة التواصل");
     if (outcome === "REFUSED") {
+      window.setTimeout(() => {
+        if (section) section.hidden = true;
+      }, 500);
       void window.IAQAR?.openOpportunityManagement?.(opportunityId, {
         openLifecycleClose: true,
         prefillCloseReason: "not_interested",
         prefillCloseNote: validation.note || ""
       });
     } else if (outcome === "AGREED") {
+      window.setTimeout(() => {
+        if (section) section.hidden = true;
+      }, 500);
       void window.IAQAR?.openOpportunityManagement?.(opportunityId);
+    } else {
+      window.setTimeout(() => {
+        if (section) section.hidden = true;
+      }, 1200);
     }
   } catch (error) {
     console.error("[iaqar-bank] contact_outcome_save_failed", {
@@ -1791,11 +1827,14 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
       opportunityId
     }, error);
     const msg = error?.message || "تعذر تسجيل نتيجة التواصل";
-    if (statusNode) statusNode.textContent = msg;
+    if (statusNode) {
+      statusNode.textContent = msg;
+      statusNode.classList.add("is-error");
+    }
     toast(msg);
   } finally {
     bankContactOutcomeSaveBusy = false;
-    if (saveBtn) saveBtn.disabled = false;
+    saveBtns.forEach((node) => { node.disabled = false; });
     outcomeButtons.forEach((node) => { node.disabled = false; });
   }
 }
@@ -1803,16 +1842,22 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
 function wireContactOutcomeHandlers(id, record, bundle = {}) {
   const section = document.getElementById("bankWorkspaceContactSection");
   if (!section) return;
-  document.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
+  section.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.disabled) return;
       const outcome = btn.getAttribute("data-contact-outcome") || "";
       selectContactOutcomeButton(outcome);
+      if (outcome === "AGREED") {
+        void saveContactOutcomeBundle(id, outcome, bundle);
+        return;
+      }
       showContactOutcomeActionPanel(outcome);
     });
   });
-  document.getElementById("bankSaveContactOutcomeBtn")?.addEventListener("click", () => {
-    const selected = document.querySelector(".bank-contact-outcome-btn.is-selected");
+  section.addEventListener("click", (event) => {
+    const saveBtn = event.target.closest(".bank-contact-outcome-save-btn");
+    if (!saveBtn || !section.contains(saveBtn)) return;
+    const selected = section.querySelector(".bank-contact-outcome-btn.is-selected");
     const outcome = selected?.getAttribute("data-contact-outcome") || "";
     if (!outcome) return toast("اختر نتيجة التواصل");
     void saveContactOutcomeBundle(id, outcome, bundle);

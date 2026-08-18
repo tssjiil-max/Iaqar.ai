@@ -7,6 +7,8 @@ import {
   CONTACT_OUTCOME_ORDER,
   validateContactOutcomeSave,
   contactOutcomeActivityText,
+  contactOutcomeSelectionHint,
+  buildContactOutcomeSaveFooterHtml,
   shouldShowContactOutcomePanel,
   buildContactOutcomeActionKind,
   defaultContactRetryInput
@@ -74,7 +76,7 @@ test("REFUSED uses single close path via management modal", () => {
   assert.ok(html.includes("إدارة الفرصة"));
 });
 
-test("workspace section has single outcome button row and save button", () => {
+test("workspace section has outcome buttons, hint, and inline save in panel", () => {
   const record = {
     opportunityKind: "OFFER",
     purpose: "SALE",
@@ -88,9 +90,19 @@ test("workspace section has single outcome button row and save button", () => {
   };
   const html = buildContactOutcomesSectionHtml(record, { show: true });
   assert.equal((html.match(/data-contact-outcome=/g) || []).length, 5);
-  assert.ok(html.includes("bankSaveContactOutcomeBtn"));
-  assert.ok(html.includes("حفظ النتيجة والإجراء القادم"));
+  assert.ok(html.includes("bankContactOutcomeSelectionHint"));
+  assert.equal(html.includes("bankSaveContactOutcomeBtn"), false);
+  const panel = buildContactOutcomeActionHtml("NO_RESPONSE");
+  assert.ok(panel.includes("bank-contact-outcome-save-btn"));
+  assert.ok(panel.includes("حفظ النتيجة والإجراء القادم"));
   assert.equal(html.includes("bankContactOutcomesWrap"), false);
+});
+
+test("selection hint guides broker before save", () => {
+  const hint = contactOutcomeSelectionHint("NO_RESPONSE");
+  assert.ok(hint.includes("لم يرد"));
+  assert.ok(hint.includes("حفظ"));
+  assert.ok(buildContactOutcomeSaveFooterHtml().includes("bank-contact-outcome-save-btn"));
 });
 
 test("ready workspace embeds contact section not legacy wrap", () => {
@@ -123,11 +135,13 @@ test("panel visibility when contact attempted without outcome", () => {
   assert.equal(shouldShowContactOutcomePanel({ lastContactOutcome: "INTERESTED" }), false);
 });
 
-test("bank saves on explicit button not on outcome tap", () => {
+test("bank saves via inline panel button; AGREED auto-saves on tap", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("bankSaveContactOutcomeBtn"));
+  assert.ok(bank.includes("bank-contact-outcome-save-btn"));
   assert.ok(bank.includes("saveContactOutcomeBundle"));
   assert.ok(bank.includes("bankContactOutcomeSaveBusy"));
+  assert.ok(bank.includes('outcome === "AGREED"'));
+  assert.ok(bank.includes("contactOutcomeSelectionHint"));
 });
 
 test("selected outcome style uses site green", () => {
