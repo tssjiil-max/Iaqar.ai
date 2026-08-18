@@ -3,13 +3,7 @@ class_name MedinaLevel01Builder
 
 static func build(world: Node2D, doorbell_parent: Node2D) -> Dictionary:
 	var data := {}
-	var bg := Node2D.new()
-	bg.name = "Background"
-	bg.z_index = -20
-	world.add_child(bg)
-	_build_night_sky(bg)
-	_build_mountains(bg)
-	_build_distant_city(bg)
+	_build_photo_background(world)
 
 	var decor := Node2D.new()
 	decor.name = "Decor"
@@ -51,6 +45,36 @@ static func build(world: Node2D, doorbell_parent: Node2D) -> Dictionary:
 	data["chase_start_x"] = 1000.0
 	return data
 
+static func _build_photo_background(parent: Node2D) -> void:
+	var tex: Texture2D = load("res://assets/backgrounds/medina_alley_night_bg.png")
+	if tex == null:
+		_build_fallback_sky(parent)
+		return
+	var layer := Node2D.new()
+	layer.name = "PhotoBackground"
+	layer.z_index = -30
+	parent.add_child(layer)
+	var tile_w := 1920.0
+	for i in range(4):
+		var spr := Sprite2D.new()
+		spr.texture = tex
+		spr.position = Vector2(i * tile_w + tile_w * 0.5, -280)
+		spr.scale = Vector2(1.0, 1.0)
+		layer.add_child(spr)
+	# تعتيم ليلي خفيف فوق الخلفية
+	var tint := WorldArt.make_rect(Vector2(7680, 600), Color(0.05, 0.08, 0.2, 0.35), Vector2(0, -500))
+	tint.z_index = -25
+	parent.add_child(tint)
+
+static func _build_fallback_sky(parent: Node2D) -> void:
+	var bg := Node2D.new()
+	bg.name = "Background"
+	bg.z_index = -20
+	parent.add_child(bg)
+	_build_night_sky(bg)
+	_build_mountains(bg)
+	_build_distant_city(bg)
+
 static func _build_night_sky(parent: Node2D) -> void:
 	var sky_top := WorldArt.make_rect(Vector2(5400, 500), MedinaPalette.SKY_TOP, Vector2(-100, -500))
 	parent.add_child(sky_top)
@@ -61,7 +85,6 @@ static func _build_night_sky(parent: Node2D) -> void:
 	moon.color = MedinaPalette.MOON
 	moon.polygon = _circle_points(Vector2(4200, -360), 36, 24)
 	parent.add_child(moon)
-	# نجوم
 	for i in range(40):
 		var star := WorldArt.make_rect(Vector2(3, 3), MedinaPalette.STAR, Vector2(randf_range(0, 5000), randf_range(-450, -150)))
 		parent.add_child(star)

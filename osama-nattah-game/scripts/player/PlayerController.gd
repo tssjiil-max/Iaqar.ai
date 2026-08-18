@@ -127,8 +127,6 @@ func _update_visuals() -> void:
 		mood = "idle"
 	if sprite.has_method("set_mood"):
 		sprite.set_mood(mood)
-	elif sprite.has_method("set_colors"):
-		sprite.set_colors(Color(0.96, 0.78, 0.55))
 
 func try_interact() -> void:
 	var areas := get_tree().get_nodes_in_group("interactable")
