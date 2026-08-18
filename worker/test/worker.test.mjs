@@ -915,7 +915,7 @@ test("stage 2 matching records precise price and area differences", async () => 
 
 test("stage 3 notification links open the exact office record", () => {
   assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"match",recordId:"mat_123"}), "/?officeId=office-alqiq&openMatch=mat_123");
-  assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"deal",recordId:"deal_9"}), "/?officeId=office-alqiq&openDeal=deal_9");
+  assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"deal",recordId:"deal_9"}), "/?officeId=office-alqiq&openMatch=deal_9");
   assert.equal(buildNotificationLink({officeId:"platform",type:"broker_application",recordId:"broker_7"}), "/?office=platform&adminApplications=1&openBrokerApplication=broker_7");
   assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"notification_test",recordId:"test_1"}), "/?officeId=office-alqiq");
 });

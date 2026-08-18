@@ -33,7 +33,7 @@
       return { kind: "message", id: recordId, officeId };
     }
     if (type === "deal" || data.dealId) {
-      return { kind: "deal", id: safeId(data.dealId) || recordId, officeId };
+      return { kind: "match", id: safeId(data.dealId) || recordId, officeId };
     }
     if (recordId.startsWith("opp_")) {
       return { kind: "opportunity", id: recordId, officeId };
@@ -71,7 +71,7 @@
     if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
     if (openCooperation) return { kind: "cooperation", id: openCooperation, officeId };
     if (openMessage) return { kind: "message", id: openMessage, officeId };
-    if (openDeal) return { kind: "deal", id: openDeal, officeId };
+    if (openDeal) return { kind: "match", id: openDeal, officeId };
     if (openMatch) {
       if (openMatch.startsWith("opp_")) return { kind: "opportunity", id: openMatch, officeId };
       return { kind: "match", id: openMatch, officeId };
@@ -111,10 +111,9 @@
         else params.set("openNotifications", "1");
         break;
       case "deal":
-        if (target.id) params.set("openDeal", target.id);
-        break;
       case "match":
         if (target.id) params.set("openMatch", target.id);
+        else params.set("openNotifications", "1");
         break;
       case "operation":
         if (target.id) params.set("openOperation", target.id);

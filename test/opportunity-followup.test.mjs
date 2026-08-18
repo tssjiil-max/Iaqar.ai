@@ -142,6 +142,18 @@ test("notification click opens correct opportunityId", () => {
   assert.ok(worker.includes("openOpportunity"));
 });
 
+test("legacy deal notifications route to Operations Center deep link", () => {
+  const nav = readRepo("public", "js", "notification-navigation.js");
+  assert.ok(nav.includes('if (openDeal) return { kind: "match"'));
+  assert.ok(nav.includes('params.set("openMatch", target.id)'));
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("openRecordFromNotification"));
+  assert.equal(workflow.includes('main: "deals"'), false);
+  const worker = readRepo("worker", "src", "index.js");
+  assert.ok(worker.includes('type==="deal"'));
+  assert.ok(worker.includes("openMatch"));
+});
+
 test("WhatsApp requires a broker click", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("openFollowUpReminderWhatsApp"));

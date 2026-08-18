@@ -658,6 +658,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   });
 
   rootWindow.addEventListener("iaqar:open-operation", (event) => {
+    rootWindow.IAQAR?.homeTabs?.switchTo?.("operations");
     const detail = event.detail || {};
     const requested = { id: detail.id || null, matchId: detail.matchId || null };
     state.opened = requested.id;

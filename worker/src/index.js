@@ -175,6 +175,15 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const DEFAULT_PROJECT_ID = "aqar-b5d76";
 const DEFAULT_APP_ORIGIN = "https://iaqar.ai";
+const DEFAULT_STAGING_APP_ORIGIN = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
+
+function resolveAppOrigin(env = {}) {
+  const configured = cleanText(env.APP_ORIGIN, 200);
+  if (configured) return configured.replace(/\/$/, "");
+  const deployment = String(env.DEPLOYMENT_ENV || "production").toLowerCase();
+  if (deployment === "staging") return DEFAULT_STAGING_APP_ORIGIN;
+  return DEFAULT_APP_ORIGIN;
+}
 const GRAPH_VERSION = "v25.0";
 const MAX_RAW_LENGTH = 16000;
 const DAILY_FREE_WRITES = 20000;
@@ -4174,7 +4183,10 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   } else if(type==="opportunity_followup_reminder"){
     if(safeRecordId)params.set("openOpportunity",safeRecordId);
     params.set("focusFollowUp","1");
-  } else if(type==="deal")params.set("openDeal",safeRecordId);
+  } else if(type==="deal"){
+    // Route deal alerts through the same deep link as matches — opens Operations Center, not legacy UI.
+    if(safeRecordId)params.set("openMatch",safeRecordId);
+  }
   else if(type==="broker_application"){
     params.set("adminApplications","1");
     if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
@@ -4325,7 +4337,7 @@ async function sendWebPushNotification({ env, subscriptionJson, title, body, typ
   if (!configureWebPushVapid(env)) throw new Error("Web Push VAPID keys are not configured");
   const subscription = JSON.parse(String(subscriptionJson || ""));
   const relativeLink = buildNotificationLink({ officeId, type, recordId });
-  const link = new URL(relativeLink, DEFAULT_APP_ORIGIN).href;
+  const link = new URL(relativeLink, resolveAppOrigin(env)).href;
   await webpush.sendNotification(subscription, JSON.stringify({
     notification: { title: String(title || "مكاتب عقارية ذكية"), body: String(body || "لديك تنبيه جديد") },
     data: { type: String(type), recordId: String(recordId || ""), officeId: String(officeId), url: link }
@@ -4340,9 +4352,10 @@ function buildFcmTarget(registrationId,registrationType="fid") {
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode=""}) {
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode="",env=null}) {
   const relativeLink=buildNotificationLink({officeId,type,recordId});
-  const link=new URL(relativeLink,DEFAULT_APP_ORIGIN).href;
+  const appOrigin=resolveAppOrigin(env||{});
+  const link=new URL(relativeLink,appOrigin).href;
   const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const target=buildFcmTarget(registrationId,registrationType);
   return {message:{
@@ -4363,7 +4376,7 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
     },
     webpush:{
       headers:{Urgency:type==="match"?"high":"normal"},
-      notification:{icon:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,badge:`${DEFAULT_APP_ORIGIN}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
+      notification:{icon:`${appOrigin}/icons/icon-192.png`,badge:`${appOrigin}/icons/icon-192.png`,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true},
       fcm_options:{link}
     }
   }};
@@ -4377,7 +4390,7 @@ async function sendFcmMessage({projectId,registrationId,registrationType="fid",t
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode}))
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env}))
   });
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){

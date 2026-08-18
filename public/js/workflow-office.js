@@ -309,7 +309,7 @@
       id: doc.id,
       recordId: doc.id,
       recordType: "deal",
-      main: "deals",
+      main: "operations",
       priority,
       isAlert: overdue || item.attentionRequired === true || item.workflowStage === "closing",
       icon: item.status === "closed" ? "i-house-check" : "i-briefcase-check",
@@ -2486,9 +2486,46 @@
     return `/?${params.toString()}`;
   }
 
-  function openNotificationCenter() {
+  function ensureOperationsHome() {
+    window.IAQAR?.homeTabs?.switchTo?.("operations");
     const workspace = document.getElementById("workspace");
     if (workspace) workspace.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function openRecordFromNotification(recordId) {
+    const id = String(recordId || "").trim();
+    if (!id) return openNotificationCenter();
+    ensureOperationsHome();
+    const existing = operationItems.find((item) =>
+      item.id === id
+      || item.recordId === id
+      || item.matchId === id
+      || item.dealId === id
+    );
+    if (existing) {
+      window.dispatchEvent(new CustomEvent("iaqar:open-operation", {
+        detail: { id: existing.id, matchId: existing.matchId || undefined }
+      }));
+      return;
+    }
+    const runtime = office();
+    if (runtime?.refs) {
+      const matchSnap = await runtime.refs.matches.doc(id).get().catch(() => null);
+      if (matchSnap?.exists) {
+        await openWorkflowUi({ ...matchSnap.data(), recordId: id, recordType: "match" });
+        return;
+      }
+      const dealSnap = await runtime.refs.deals.doc(id).get().catch(() => null);
+      if (dealSnap?.exists) {
+        await openWorkflowUi({ ...dealSnap.data(), recordId: id, recordType: "deal", dealId: id });
+        return;
+      }
+    }
+    window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id, matchId: id } }));
+  }
+
+  function openNotificationCenter() {
+    ensureOperationsHome();
     window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
   }
 
@@ -2526,30 +2563,22 @@
         break;
       case "message":
         if (target.id) {
-          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
+          void openRecordFromNotification(target.id);
         } else openNotificationCenter();
         break;
       case "deal":
-        window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "deals" } }));
-        break;
       case "match":
-        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityManagement) {
-          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""));
-        } else if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
-          void window.IAQAR.openOpportunityDetail(target.id);
-        } else {
-          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
-        }
+        void openRecordFromNotification(target.id);
         break;
       case "operation":
         if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityManagement) {
-          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""));
+          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""), { focusFollowUp: false });
         } else if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
           void window.IAQAR.openOpportunityDetail(target.id);
         } else if (target.id?.startsWith("coop_")) {
           if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
         } else {
-          window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: target.id, main: "opportunities" } }));
+          void openRecordFromNotification(target.id);
         }
         break;
       case "admin":
@@ -2959,20 +2988,6 @@
     const deepLink = window.IAQAR?.parseNotificationSearchParams?.(params);
     if (deepLink) {
       setTimeout(() => navigateNotificationTarget(deepLink), 900);
-    } else {
-      const openMatch = params.get("openMatch");
-      const openDeal = params.get("openDeal");
-      const openOperation = params.get("openOperation");
-      if (openOperation) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openOperation, main: "opportunities" } })), 900);
-      if (openMatch) setTimeout(() => {
-        const byMatch = operationItems.find((item) =>
-          item.id === openMatch || item.matchId === openMatch || item.recordId === openMatch
-        );
-        window.dispatchEvent(new CustomEvent("iaqar:open-operation", {
-          detail: { id: byMatch?.id || openMatch, matchId: openMatch, main: "opportunities" }
-        }));
-      }, 900);
-      if (openDeal) setTimeout(() => window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: openDeal, main: "deals" } })), 900);
     }
   }
 
