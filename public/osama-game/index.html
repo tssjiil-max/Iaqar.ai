@@ -43,7 +43,7 @@ body {
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	visibility: hidden;
+	visibility: visible;
 }
 
 #status-splash {
@@ -53,7 +53,7 @@ body {
 }
 
 #status-progress, #status-notice {
-	display: none;
+	display: block;
 }
 
 #status-progress {
@@ -91,13 +91,14 @@ body {
 
 		<div id="status">
 			<img id="status-splash" src="index.png" alt="">
+			<p id="loading-text" style="color:#fff;font-family:sans-serif;margin:1rem;">جاري تحميل أسامة ونطّاح...</p>
 			<progress id="status-progress"></progress>
 			<div id="status-notice"></div>
 		</div>
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":112080,"index.wasm":43016933},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":112064,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[]};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -172,26 +173,30 @@ const engine = new Engine(GODOT_CONFIG);
 				window.location.reload();
 			});
 		} else {
-			// Display the message as usual
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			const missingMsg = 'خطأ\nالمتصفح لا يدعم تشغيل اللعبة:\n';
 			displayFailureNotice(missingMsg + missing.join('\n'));
 		}
 	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
-	}
+			setStatusMode('progress');
+			const loadingText = document.getElementById('loading-text');
+			engine.startGame({
+				'onProgress': function (current, total) {
+					if (current > 0 && total > 0) {
+						statusProgress.value = current;
+						statusProgress.max = total;
+						if (loadingText) {
+							const pct = Math.round((current / total) * 100);
+							loadingText.textContent = 'جاري التحميل... ' + pct + '%';
+						}
+					} else {
+						statusProgress.removeAttribute('value');
+						statusProgress.removeAttribute('max');
+					}
+				},
+			}).then(() => {
+				setStatusMode('hidden');
+			}, displayFailureNotice);
+		}
 }());
 		</script>
 	</body>
