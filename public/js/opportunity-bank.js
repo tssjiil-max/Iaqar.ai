@@ -573,12 +573,6 @@ async function openBankDetailFromList(opportunityId) {
     toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
     return;
   }
-  const ctx = detailRenderContext();
-  const readiness = evaluateMatchingReadiness(record);
-  if (!readiness.isReadyForMatching && !ctx.dailyTask) {
-    navigateToTasksIncomplete(id);
-    return;
-  }
   bankDetailOpenLock = id;
   try {
     await renderDetail(id);
@@ -612,8 +606,11 @@ async function loadWorkspaceBundle(opportunityId) {
   if (!user?.getIdToken) return {};
   try {
     const token = await user.getIdToken();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000);
     const response = await fetch(`${workerBaseUrl()}/opportunity/workspace`, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -621,6 +618,7 @@ async function loadWorkspaceBundle(opportunityId) {
       },
       body: JSON.stringify({ officeId: officeId(), opportunityId })
     });
+    window.clearTimeout(timeoutId);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       console.warn("[iaqar] workspace bundle", payload);
@@ -902,10 +900,6 @@ async function renderDetail(id, options = {}) {
   }
 
   if (!readiness.isReadyForMatching) {
-    if (!ctx.dailyTask) {
-      navigateToTasksIncomplete(id);
-      return;
-    }
     panel.innerHTML = buildNeedsCompletionDetailHtml(id, record, readiness);
     wireIncompleteDetailHandlers(id, record);
     window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
@@ -918,6 +912,7 @@ async function renderDetail(id, options = {}) {
     return;
   }
 
+  panel.innerHTML = `<div class="bank-detail-loading"><p>جارٍ تجهيز التفاصيل…</p></div>`;
   const bundle = await loadWorkspaceBundle(id);
   const freshRecord = state.records.get(id) || record;
   panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, bundle, {
@@ -3249,9 +3244,12 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks], button, a")) return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
-    if (!row) return;
+    if (!row) {
+      if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
+      return;
+    }
+    if (event.target.closest("button, a")) return;
     const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
     event.preventDefault();

@@ -3176,6 +3176,13 @@
     color:#173d35;
     box-sizing:border-box;
   }
+  .bank-detail-loading {
+    padding:18px 8px;
+    text-align:center;
+    color:#657b74;
+    font-size:14px;
+    font-weight:600;
+  }
   .bank-detail-head {
     display:flex;
     justify-content:space-between;
@@ -4867,14 +4874,14 @@
         </div>
 
         <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات">
-          <button type="button" class="sub-tab is-active" id="oppTabAdd" role="tab"
-            aria-selected="true" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
-          <button type="button" class="sub-tab" id="oppTabBank" role="tab"
-            aria-selected="false" aria-controls="oppPanelBank">القائمة</button>
+          <button type="button" class="sub-tab is-active" id="oppTabBank" role="tab"
+            aria-selected="true" aria-controls="oppPanelBank">القائمة</button>
+          <button type="button" class="sub-tab" id="oppTabAdd" role="tab"
+            aria-selected="false" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
-          <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd">
+          <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd" hidden>
             <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
               <div class="section-title-bar">
                 <h2 id="addOpportunityTitle">إضافة فرصة</h2>
@@ -4915,7 +4922,7 @@
             </section>
           </div>
 
-          <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank" hidden>
+          <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank">
             <section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1"
               aria-labelledby="opportunityBankTitle">
               <div class="section-title-bar">

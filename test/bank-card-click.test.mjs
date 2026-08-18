@@ -20,11 +20,21 @@ test("bank list click resolves opportunity only by data-opportunity-id", () => {
   assert.equal(/getAttribute\(\"data-open-id\"\)/.test(bank), false);
 });
 
-test("bank card click handler ignores nested buttons and links", () => {
+test("bank card click handler ignores nested buttons and links inside the row", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const bind = bank.match(/function bindListClicks[\s\S]*?^}/m)?.[0] || "";
   assert.ok(bind.includes("button, a"));
   assert.ok(bind.includes("[data-summary-key]"));
+  assert.ok(bind.includes(".bank-row-card[data-opportunity-id]"));
+});
+
+test("incomplete bank cards open inline detail instead of redirecting to tasks", () => {
+  const bank = readRepo("public", "js", "opportunity-bank.js");
+  const opener = bank.match(/async function openBankDetailFromList[\s\S]*?^}/m)?.[0] || "";
+  assert.equal(opener.includes("navigateToTasksIncomplete"), false);
+  const detail = bank.match(/async function renderDetail[\s\S]*?^  const bundle = await loadWorkspaceBundle/m)?.[0] || "";
+  assert.ok(detail.includes("buildNeedsCompletionDetailHtml"));
+  assert.equal(/if \(!ctx\.dailyTask\) \{\s*navigateToTasksIncomplete/.test(detail), false);
 });
 
 test("unified save refreshes list cards after patch", () => {
