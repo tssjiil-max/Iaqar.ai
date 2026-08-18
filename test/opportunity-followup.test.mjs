@@ -219,6 +219,14 @@ test("WhatsApp requires a broker click", () => {
   assert.ok(workflow.includes("openWhatsAppHandoff"));
 });
 
+test("follow-up WhatsApp falls back to opportunity phone when linked contact missing", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("resolveWorkflowPartyContact"));
+  assert.ok(workflow.includes("resolveLifecyclePhone(detail)"));
+  const fn = workflow.match(/async function openFollowUpReminderWhatsApp[\s\S]*?^  }/m)?.[0] || "";
+  assert.ok(fn.includes("resolveWorkflowPartyContact"));
+});
+
 test("WhatsApp open does not mark message sent", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("whatsapp_opened"));
