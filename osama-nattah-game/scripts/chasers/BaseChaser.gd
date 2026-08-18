@@ -8,7 +8,7 @@ class_name BaseChaser
 @export var quote: String = "يا ولد!"
 
 @onready var label: Label = $QuoteLabel
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: Node2D = $Sprite
 
 var target: PlayerController = null
 var active := false

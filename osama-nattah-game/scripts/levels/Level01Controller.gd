@@ -18,6 +18,7 @@ var chase_obstacles_spawned := false
 func _ready() -> void:
 	GameManager.set_state(GameManager.GameState.EXPLORE)
 	AudioManager.play_music("explore")
+	_build_sky()
 	_build_environment()
 	_spawn_characters()
 	_setup_chase()
@@ -27,6 +28,29 @@ func _ready() -> void:
 		hud.bind_level(self)
 	if result_screen:
 		result_screen.visible = false
+	_show_start_hint()
+
+func _show_start_hint() -> void:
+	var hint := Label.new()
+	hint.text = "⬅️➡️ تحرك  |  اقترب من الباب واضغط تفاعل لمقلب الجرس!"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.position = Vector2(80, -200)
+	hint.add_theme_font_size_override("font_size", 22)
+	world.add_child(hint)
+	get_tree().create_timer(5.0).timeout.connect(func(): if is_instance_valid(hint): hint.queue_free())
+
+func _build_sky() -> void:
+	var sky := WorldArt.make_rect(Vector2(5200, 900), Color(0.45, 0.72, 0.95), Vector2(-200, -520))
+	world.add_child(sky)
+	var sun := Polygon2D.new()
+	sun.color = Color(1.0, 0.92, 0.45)
+	sun.polygon = PackedVector2Array([
+		Vector2(4600, -380), Vector2(4680, -380), Vector2(4680, -300), Vector2(4600, -300)
+	])
+	world.add_child(sun)
+	for i in range(6):
+		var cloud := WorldArt.make_rect(Vector2(180 + i * 20, 50), Color(1, 1, 1, 0.85), Vector2(500 + i * 700, -320 - (i % 2) * 40))
+		world.add_child(cloud)
 
 func _build_environment() -> void:
 	_add_ground(Vector2(0, 0), 1200)
@@ -61,15 +85,9 @@ func _add_ground(origin: Vector2, width: float) -> void:
 	shape.position = Vector2(width * 0.5, 20)
 	shape.shape = rect
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(width, 40)
-	visual.position = Vector2(0, 0)
-	visual.color = Color(0.62, 0.5, 0.36)
+	var visual := WorldArt.make_rect(Vector2(width, 40), Color(0.62, 0.5, 0.36))
 	body.add_child(visual)
-	var lane := ColorRect.new()
-	lane.size = Vector2(width, 8)
-	lane.position = Vector2(0, 10)
-	lane.color = Color(0.52, 0.42, 0.3)
+	var lane := WorldArt.make_rect(Vector2(width, 8), Color(0.52, 0.42, 0.3), Vector2(0, 10))
 	body.add_child(lane)
 	world.add_child(body)
 
@@ -82,9 +100,7 @@ func _add_platform(origin: Vector2, width: float) -> void:
 	shape.position = Vector2(width * 0.5, 12)
 	shape.shape = rect
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(width, 24)
-	visual.color = Color(0.7, 0.55, 0.4)
+	var visual := WorldArt.make_rect(Vector2(width, 24), Color(0.7, 0.55, 0.4))
 	body.add_child(visual)
 	world.add_child(body)
 
@@ -100,11 +116,14 @@ func _add_collectible(pos: Vector2) -> void:
 	world.add_child(coin)
 
 func _add_house_decor(pos: Vector2) -> void:
-	var wall := ColorRect.new()
-	wall.size = Vector2(180, 140)
-	wall.position = pos + Vector2(-90, -180)
-	wall.color = Color(0.75, 0.58, 0.42)
+	var wall := WorldArt.make_rect(Vector2(180, 140), Color(0.75, 0.58, 0.42), pos + Vector2(-90, -180))
 	world.add_child(wall)
+	var roof := WorldArt.make_polygon(PackedVector2Array([
+		pos + Vector2(-100, -180), pos + Vector2(90, -180), pos + Vector2(-5, -240)
+	]), Color(0.55, 0.28, 0.18))
+	world.add_child(roof)
+	var door := WorldArt.make_rect(Vector2(40, 60), Color(0.45, 0.28, 0.15), pos + Vector2(-20, -60))
+	world.add_child(door)
 
 func _add_secret(pos: Vector2) -> void:
 	var area := Area2D.new()
@@ -117,10 +136,7 @@ func _add_secret(pos: Vector2) -> void:
 	rect.size = Vector2(48, 48)
 	shape.shape = rect
 	area.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(48, 48)
-	visual.position = Vector2(-24, -48)
-	visual.color = Color(0.95, 0.85, 0.2, 0.8)
+	var visual := WorldArt.make_rect(Vector2(48, 48), Color(0.95, 0.85, 0.2, 0.9), Vector2(-24, -48))
 	area.add_child(visual)
 	area.body_entered.connect(func(body: Node) -> void:
 		if body is PlayerController:
@@ -140,9 +156,7 @@ func _add_safe_zone(pos: Vector2) -> void:
 	rect.size = Vector2(180, 160)
 	shape.shape = rect
 	area.add_child(shape)
-	var flag := ColorRect.new()
-	flag.size = Vector2(180, 160)
-	flag.color = Color(0.2, 0.75, 0.45, 0.35)
+	var flag := WorldArt.make_rect(Vector2(180, 160), Color(0.2, 0.75, 0.45, 0.45))
 	area.add_child(flag)
 	var label := Label.new()
 	label.text = "منطقة آمنة"
@@ -194,10 +208,7 @@ func _add_static_obstacle(pos: Vector2) -> void:
 	shape.position = Vector2(0, -35)
 	shape.shape = rect
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(50, 70)
-	visual.position = Vector2(-25, -70)
-	visual.color = Color(0.55, 0.4, 0.28)
+	var visual := WorldArt.make_rect(Vector2(50, 70), Color(0.55, 0.4, 0.28), Vector2(-25, -70))
 	body.add_child(visual)
 	world.add_child(body)
 
@@ -211,10 +222,7 @@ func _add_moving_obstacle(pos: Vector2) -> void:
 	shape.position = Vector2(0, -30)
 	shape.shape = rect
 	body.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(40, 60)
-	visual.position = Vector2(-20, -60)
-	visual.color = Color(0.7, 0.45, 0.25)
+	var visual := WorldArt.make_rect(Vector2(40, 60), Color(0.7, 0.45, 0.25), Vector2(-20, -60))
 	body.add_child(visual)
 	world.add_child(body)
 
@@ -227,9 +235,7 @@ func _add_jump_obstacle(pos: Vector2) -> void:
 	rect.size = Vector2(120, 30)
 	shape.shape = rect
 	area.add_child(shape)
-	var visual := ColorRect.new()
-	visual.size = Vector2(120, 12)
-	visual.color = Color(0.8, 0.2, 0.2, 0.7)
+	var visual := WorldArt.make_rect(Vector2(120, 12), Color(0.8, 0.2, 0.2, 0.85))
 	area.add_child(visual)
 	world.add_child(area)
 

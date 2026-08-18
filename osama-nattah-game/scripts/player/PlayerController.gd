@@ -17,7 +17,7 @@ enum State {
 @export var jump_buffer := 0.14
 @export var knockback_strength := 320.0
 
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: Node2D = $Sprite
 @onready var punch_area: Area2D = $PunchArea
 @onready var kick_area: Area2D = $KickArea
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
@@ -120,14 +120,18 @@ func _set_state(state: State) -> void:
 
 func _update_visuals() -> void:
 	sprite.scale.x = abs(sprite.scale.x) * facing
+	var body_color := Color(0.96, 0.78, 0.55)
+	var accent := Color(0.2, 0.45, 0.75)
 	if GameManager.super_active:
-		sprite.color = Color(1.0, 0.95, 0.55)
+		body_color = Color(1.0, 0.95, 0.55)
 	elif current_state == State.PUNCH:
-		sprite.color = Color(0.95, 0.55, 0.45)
+		body_color = Color(0.95, 0.55, 0.45)
 	elif current_state == State.KICK:
-		sprite.color = Color(0.55, 0.75, 0.95)
-	else:
-		sprite.color = Color(0.96, 0.78, 0.55)
+		body_color = Color(0.55, 0.75, 0.95)
+	if sprite.has_method("set_colors"):
+		sprite.set_colors(body_color, accent)
+	elif sprite.has_method("set_color"):
+		sprite.set_color(body_color)
 
 func try_interact() -> void:
 	var areas := get_tree().get_nodes_in_group("interactable")

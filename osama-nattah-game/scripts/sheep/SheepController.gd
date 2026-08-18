@@ -12,7 +12,7 @@ enum State {
 @export var headbutt_cooldown := 8.0
 @export var rescue_speed := 500.0
 
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: Node2D = $Sprite
 @onready var headbutt_area: Area2D = $HeadbuttArea
 
 var player: PlayerController = null
@@ -151,9 +151,10 @@ func _update_recovery(delta: float) -> void:
 
 func _update_visual() -> void:
 	sprite.scale.x = 1.0 if velocity.x >= 0 else -1.0
+	var color := Color(0.92, 0.92, 0.92)
 	if current_state == State.HEADBUTT:
-		sprite.color = Color(0.95, 0.95, 0.95)
+		color = Color(0.95, 0.95, 0.95)
 	elif current_state == State.RESCUE:
-		sprite.color = Color(0.75, 1.0, 0.75)
-	else:
-		sprite.color = Color(0.92, 0.92, 0.92)
+		color = Color(0.75, 1.0, 0.75)
+	if sprite.has_method("set_color"):
+		sprite.set_color(color)
