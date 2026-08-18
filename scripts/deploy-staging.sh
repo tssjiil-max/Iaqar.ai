@@ -59,8 +59,12 @@ chmod 600 "$GAC_FILE"
 echo "--- Staging credential + permission preflight ---"
 node scripts/preflight-staging.mjs "$GAC_FILE"
 
-echo "--- Full Phase 9A test gate ---"
-npm run test:phase9a
+if [[ "${IAQAR_SKIP_INNER_TESTS:-}" == "1" ]]; then
+  echo "--- Full Phase 9A test gate skipped (already run by deploy:staging:safe) ---"
+else
+  echo "--- Full Phase 9A test gate ---"
+  npm run test:phase9a
+fi
 
 echo "--- Cloudflare Worker (staging env only) ---"
 (

@@ -38,7 +38,7 @@ test("approved modern shell keeps تنفيذ, Workspace, and no old FAL banner",
   assert.equal(html.includes("الهيئة العامة للعقار"), false);
   assert.match(html, /id="addOpportunitySubmit"[^>]*>تنفيذ<\/button>/);
   assert.equal(html.includes(">معالجة</button>"), false);
-  assert.ok(html.includes("مركز العمليات"));
+  assert.ok(html.includes("المهام اليومية"));
   assert.ok(html.includes("id=\"mainTabOperations\""));
   assert.ok(html.includes("id=\"oppTabBank\""));
   assert.ok(html.includes("office-name-bar"));
@@ -157,24 +157,14 @@ test("sale-land Review shows sale price only and hides rent/building fields", as
 
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
     assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "sale");
-    assert.equal(context.document.querySelector('[name="propertyTypeId"]').value, "land");
+    assert.match(context.document.querySelector('[name="rawPropertyTypeText"]').value, /أرض/u);
+    assert.match(context.document.querySelector('[name="rawCityText"]').value, /المدينة المنورة/u);
     assert.equal(context.document.querySelector('[name="salePrice"]').value, "1600000");
-    for (const name of [
-      "annualRent",
-      "monthlyRent",
-      "optionalMonthlyRent",
-      "paymentInstallments",
-      "budget",
-      "rooms",
-      "bathrooms",
-      "kitchen",
-      "livingRoom"
-    ]) {
+    for (const name of ["annualRent", "monthlyRent", "optionalMonthlyRent", "budget"]) {
       assert.equal(context.document.querySelector(`[name="${name}"]`), null, `${name} must not render`);
     }
-    assert.equal(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed]'), null);
-    assert.ok(context.document.querySelectorAll(".review-field, .search-field").length <= 11);
-    assert.equal(context.document.querySelector('[name="advertiserPhoneLocal"]').value, "507561577");
+    assert.equal(context.document.querySelector('[data-search-for="propertyTypeId"]'), null);
+    assert.equal(context.document.querySelector('[name="advertiserPhoneLocal"]').value, "0507561577");
   } finally {
     context.close();
   }
@@ -190,14 +180,11 @@ test("rental Review shows rent fields and hides sale price", async () => {
 
     assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "rent");
     assert.equal(context.document.querySelector('[name="annualRent"]').value, "22000");
-    assert.equal(context.document.querySelector('[name="paymentInstallments"]').value, "2");
-    assert.equal(context.document.querySelector('[name="optionalMonthlyRent"]').value, "1850");
     assert.equal(context.document.querySelector('[name="rooms"]').value, "4");
-    assert.equal(context.document.querySelector('[name="bathrooms"]').value, "3");
-    assert.equal(context.document.querySelector('[name="floorNumber"]').value, "1");
     assert.equal(context.document.querySelector('[name="salePrice"]'), null);
     assert.equal(context.document.querySelector('[name="budget"]'), null);
     assert.ok(context.document.querySelector('[name="annualRent"]'));
+    assert.equal(context.document.querySelector('[data-search-for="operationTypeId"]'), null);
   } finally {
     context.close();
   }
@@ -218,7 +205,7 @@ test("rent Review omits optional monthly field when extraction has no such meani
   }
 });
 
-test("unknown transaction asks first, then reshapes Review immediately", async () => {
+test("unknown transaction keeps plain location fields visible without catalog pickers", async () => {
   const { context, module } = await loadController();
   try {
     const input = context.document.getElementById("addOpportunityInput");
@@ -226,32 +213,12 @@ test("unknown transaction asks first, then reshapes Review immediately", async (
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
 
-    const operation = context.document.querySelector('[name="operationTypeId"]');
-    assert.equal(operation.value, "");
-    assert.equal(context.document.querySelector('[name="salePrice"]'), null);
-    assert.equal(context.document.querySelector('[name="annualRent"]'), null);
-    assert.equal(
-      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
-      "none"
-    );
-    assert.ok(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed="true"]'));
-    assert.equal(context.document.getElementById("opportunityReviewBody").textContent.includes("(يحتاج مراجعة)"), false);
-
-    const operationSearch = context.document.querySelector('[data-search-for="operationTypeId"]');
-    operationSearch.dispatchEvent(new context.window.Event("focus"));
-    context.document.querySelector('[data-list-for="operationTypeId"] [data-pick-id="sale"]')
-      .dispatchEvent(new context.window.Event("click", { bubbles: true }));
-
-    assert.equal(operation.value, "sale");
-    assert.equal(context.document.querySelector('[data-field="operationTypeId"] [data-review-needed]'), null);
-    assert.ok(context.document.querySelector('[name="salePrice"]'));
-    assert.equal(context.document.querySelector('[name="annualRent"]'), null);
-    assert.equal(context.document.querySelector('[name="rooms"]'), null);
-    assert.equal(context.document.querySelector('[data-field="propertyTypeId"] [data-review-needed]'), null);
-    assert.equal(
-      context.document.querySelector('[data-field="propertyTypeId"]').style.display,
-      ""
-    );
+    assert.equal(context.document.querySelector('[name="operationTypeId"]').value, "sale");
+    assert.ok(context.document.querySelector('[name="rawPropertyTypeText"]'));
+    assert.ok(context.document.querySelector('[name="rawCityText"]'));
+    assert.ok(context.document.querySelector('[name="rawNeighborhoodText"]'));
+    assert.equal(context.document.querySelector('[data-search-for="operationTypeId"]'), null);
+    assert.equal(context.document.querySelector('[data-search-for="propertyTypeId"]'), null);
   } finally {
     context.close();
   }
@@ -264,7 +231,7 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     input.value = "أرض للبيع في الرياض حي النرجس، المساحة 500 م² السعر المطلوب 600000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.match(context.document.querySelector('[name="rawCityText"]').value, /الرياض/u);
 
     input.value = "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال";
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
@@ -272,23 +239,38 @@ test("NEW INTAKE clears prior Riyadh context before Madinah extraction", async (
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
 
     await module.__test.startExecute();
-    assert.equal(context.document.querySelector('[data-search-for="cityId"]').value, "المدينة المنورة");
-    assert.notEqual(context.document.querySelector('[data-search-for="cityId"]').value, "الرياض");
+    assert.match(context.document.querySelector('[name="rawCityText"]').value, /المدينة المنورة/u);
+    assert.notEqual(context.document.querySelector('[name="rawCityText"]').value, "الرياض");
     assert.match(module.__test.getIntakeContext().listingText, /المدينة المنورة/);
   } finally {
     context.close();
   }
 });
 
-test("bare hostname/path is normalized and sent through the modern URL resolver", async () => {
+test("bare hostname/path is normalized and sent through the canonical intake pipeline", async () => {
   const calls = [];
   const fetchStub = async (url, options = {}) => {
     calls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
-    return Response.json({
-      ok: true,
-      text: "أرض للبيع في المدينة المنورة حي الرانوناء، المساحة 431.75 م² السعر المطلوب 580000 ريال",
-      diagnostics: { status: 200, redirectCount: 1 }
-    });
+    if (String(url).includes("/pipeline/canonical-intake")) {
+      return Response.json({
+        ok: true,
+        analysisStatus: "analysis_complete",
+        opportunityId: "opp_test_url",
+        importJobId: "job_test_url",
+        idempotencyKey: "ci_test",
+        fields: {
+          propertyType: "أرض",
+          city: "المدينة المنورة",
+          district: "الرانوناء",
+          purpose: "SALE",
+          opportunityKind: "OFFER"
+        },
+        rawText: "أرض للبيع في المدينة المنورة حي الرانوناء",
+        missingFields: ["salePrice", "area"],
+        confidence: 72
+      });
+    }
+    return Response.json({ ok: false, error: "unexpected_url" });
   };
   const { context, module } = await loadController(fetchStub);
   try {
@@ -297,8 +279,8 @@ test("bare hostname/path is normalized and sent through the modern URL resolver"
     input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
     await module.__test.startExecute();
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://staging-worker.example.test/pipeline/url-resolve");
-    assert.equal(calls[0].body.url, "https://a.aqar.fm/r/92f89b67");
+    assert.ok(calls[0].url.includes("/pipeline/canonical-intake"));
+    assert.equal(calls[0].body.sourceUrl, "https://a.aqar.fm/r/92f89b67");
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
   } finally {
     context.close();

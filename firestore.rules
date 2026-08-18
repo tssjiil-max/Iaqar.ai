@@ -27,7 +27,7 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes'
+        'activityEvents', 'adminNotes', 'importJobs'
       ];
     }
     function validOfficeProfile() {
@@ -39,7 +39,16 @@ service cloud.firestore {
         && request.resource.data.specialties is list
         && request.resource.data.specialties.size() >= 0
         && request.resource.data.specialties.size() <= 4
-        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management']);
+        && request.resource.data.specialties.hasOnly(['sale','purchase','rent','property_management'])
+        && validServiceNeighborhoodIdsField();
+    }
+    function validServiceNeighborhoodIdsField() {
+      return !('serviceNeighborhoodIds' in request.resource.data)
+        || (
+          request.resource.data.serviceNeighborhoodIds is list
+          && request.resource.data.serviceNeighborhoodIds.size() >= 1
+          && request.resource.data.serviceNeighborhoodIds.size() <= 5
+        );
     }
 
     match /offices/{officeId} {
@@ -106,10 +115,52 @@ service cloud.firestore {
         allow create: if isOfficeMember(officeId)
           && request.resource.data.officeId == officeId
           && request.resource.data.fileName is string
-          && request.resource.data.fileName.size() <= 240;
+          && request.resource.data.fileName.size() <= 240
+          && (!("category" in request.resource.data)
+            || request.resource.data.category in [
+              'owner_brokerage', 'buyer_brokerage', 'tenant_brokerage',
+              'broker_cooperation', 'sub_brokerage', 'sale_contract',
+              'lease_contract', 'contract_addendum', 'fal_license',
+              'office_document', 'office_media', 'other'
+            ])
+          && (!("documentTitle" in request.resource.data)
+            || request.resource.data.documentTitle is string
+            && request.resource.data.documentTitle.size() <= 240)
+          && (!("referenceNumber" in request.resource.data)
+            || request.resource.data.referenceNumber is string
+            && request.resource.data.referenceNumber.size() <= 120)
+          && (!("opportunityId" in request.resource.data)
+            || request.resource.data.opportunityId is string
+            && request.resource.data.opportunityId.size() <= 120)
+          && (!("cooperationId" in request.resource.data)
+            || request.resource.data.cooperationId is string
+            && request.resource.data.cooperationId.size() <= 120)
+          && (!("documentStatus" in request.resource.data)
+            || request.resource.data.documentStatus in ['ACTIVE', 'EXPIRED', 'PENDING', 'CANCELLED']);
         allow update: if isOfficeMember(officeId)
           && request.resource.data.officeId == officeId
-          && resource.data.officeId == officeId;
+          && resource.data.officeId == officeId
+          && (!("category" in request.resource.data)
+            || request.resource.data.category in [
+              'owner_brokerage', 'buyer_brokerage', 'tenant_brokerage',
+              'broker_cooperation', 'sub_brokerage', 'sale_contract',
+              'lease_contract', 'contract_addendum', 'fal_license',
+              'office_document', 'office_media', 'other'
+            ])
+          && (!("documentTitle" in request.resource.data)
+            || request.resource.data.documentTitle is string
+            && request.resource.data.documentTitle.size() <= 240)
+          && (!("referenceNumber" in request.resource.data)
+            || request.resource.data.referenceNumber is string
+            && request.resource.data.referenceNumber.size() <= 120)
+          && (!("opportunityId" in request.resource.data)
+            || request.resource.data.opportunityId is string
+            && request.resource.data.opportunityId.size() <= 120)
+          && (!("cooperationId" in request.resource.data)
+            || request.resource.data.cooperationId is string
+            && request.resource.data.cooperationId.size() <= 120)
+          && (!("documentStatus" in request.resource.data)
+            || request.resource.data.documentStatus in ['ACTIVE', 'EXPIRED', 'PENDING', 'CANCELLED']);
         allow delete: if canManage(officeId)
           && resource.data.officeId == officeId;
       }
@@ -135,6 +186,11 @@ service cloud.firestore {
           && request.resource.data.deduplicationFingerprint is string;
         allow update, delete: if canManage(officeId)
           && request.resource.data.officeId == officeId;
+      }
+
+      match /importJobs/{jobId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
       }
 
       // الفرصة الموحّدة (المرحلة 2/3): إنشاء/تحديث لأعضاء المكتب مع حماية الملكية.
@@ -173,6 +229,11 @@ service cloud.firestore {
           );
         // الحذف الصلب ممنوع للعملاء — الحذف الآمن يتم عبر حقول lifecycle فقط.
         allow delete: if false;
+
+        match /communications/{communicationId} {
+          allow read, create: if isOfficeMember(officeId);
+          allow update, delete: if canManage(officeId);
+        }
       }
 
       // المطابقات (المرحلة 4): القراءة لأعضاء المكتب فقط — الكتابة عبر Worker (Admin SDK).
@@ -354,7 +415,8 @@ service cloud.firestore {
             isOfficeMember(resource.data.targetOfficeId)
             && resource.data.status == 'PENDING'
             && (request.resource.data.status == 'ACCEPTED'
-              || request.resource.data.status == 'REJECTED')
+              || request.resource.data.status == 'REJECTED'
+              || request.resource.data.status == 'DETAILS_REQUESTED')
           )
           || (
             isOfficeMember(resource.data.originatingOfficeId)
@@ -363,6 +425,14 @@ service cloud.firestore {
           )
         );
       allow delete: if false;
+    }
+
+    // غرف التعاون الخاصة — للمكتبين المشاركين فقط بعد القبول.
+    match /cooperationRooms/{roomId} {
+      allow read: if signedIn()
+        && (isOfficeMember(resource.data.originatingOfficeId)
+          || isOfficeMember(resource.data.targetOfficeId));
+      allow create, update, delete: if false;
     }
 
     // إسقاطات مشاركة الحد الأدنى للطرف المتعاون — بدون بيانات تواصل.

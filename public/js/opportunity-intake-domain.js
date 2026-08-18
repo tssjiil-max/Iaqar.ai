@@ -131,6 +131,8 @@ const PURPOSE_BY_TRANSACTION = Object.freeze({
   "ايجار": "RENT",
   "طلب إيجار": "LEASE_REQUEST",
   "طلب ايجار": "LEASE_REQUEST",
+  "استئجار": "LEASE_REQUEST",
+  "تأجير": "RENT",
   "استثمار": "INVESTMENT"
 });
 
@@ -165,7 +167,9 @@ function nullableNumber(value) {
 
 export function normalizePurpose(value) {
   const text = safeText(value, 30);
-  return PURPOSE_BY_TRANSACTION[text.toUpperCase()] || PURPOSE_BY_TRANSACTION[text] || "";
+  return PURPOSE_BY_TRANSACTION[text.toUpperCase()]
+    || PURPOSE_BY_TRANSACTION[text]
+    || text;
 }
 
 export function isLandProperty(value) {
@@ -272,6 +276,16 @@ export function detectSourceTypeFromFile(file) {
     if (/screenshot|لقطة|شاشة/.test(name)) return "screenshot";
     return "image";
   }
+  return "";
+}
+
+export function mapSourceTypeToCanonicalContentType(sourceType = "") {
+  const type = safeText(sourceType, 20).toLowerCase();
+  if (type === "url") return "sourceUrl";
+  if (type === "text") return "text";
+  if (type === "audio") return "audio";
+  if (type === "image" || type === "screenshot") return "image";
+  if (type === "pdf" || type === "word" || type === "excel") return "document";
   return "";
 }
 
