@@ -3101,6 +3101,18 @@
   .iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}
   .iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}
   .iaqar-outcome-actions{grid-template-columns:1fr 1fr}
+  .iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected,
+  .iaqar-workflow-panel .iaqar-contact-outcome-btn.is-selected {
+    background:#087064;
+    border-color:#087064;
+    color:#fff;
+    box-shadow:0 0 0 2px #fff, 0 0 0 4px #087064;
+  }
+  .iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after,
+  .iaqar-workflow-panel .iaqar-contact-outcome-btn.is-selected::after {
+    content:" ✓";
+    font-size:13px;
+  }
   .iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
   .iaqar-workflow-form{display:grid;gap:11px}
   .iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}

@@ -164,6 +164,16 @@ test("modal responsive CSS keeps min touch targets without neon WhatsApp", () =>
   assert.ok(workflow.includes("@media(max-width:420px)"));
 });
 
+test("contact outcome buttons show checkmark when selected in management modal", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("selectWorkflowContactOutcome"));
+  assert.ok(workflow.includes("iaqar-contact-outcome-btn"));
+  assert.ok(workflow.includes('aria-pressed="${selected ? "true" : "false"}"'));
+  assert.ok(workflow.includes(".iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after"));
+  const html = readRepo("public", "index.html");
+  assert.ok(html.includes(".iaqar-workflow-panel .iaqar-contact-outcome-btn.is-selected::after"));
+});
+
 test("matching cooperation section preserved without engine edits", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("open-matching-bank"));
