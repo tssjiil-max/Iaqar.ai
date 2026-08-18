@@ -1,0 +1,95 @@
+[gd_scene load_steps=2 format=3 uid="uid://touch_controls"]
+
+[ext_resource type="Script" path="res://scripts/ui/TouchControls.gd" id="1"]
+
+[node name="TouchControls" type="Control"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1")
+
+[node name="LeftPanel" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -220.0
+offset_right = 340.0
+offset_bottom = -16.0
+grow_vertical = 0
+theme_override_constants/separation = 16
+
+[node name="LeftButton" type="Button" parent="LeftPanel"]
+custom_minimum_size = Vector2(140, 140)
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "⬅️"
+
+[node name="RightButton" type="Button" parent="LeftPanel"]
+custom_minimum_size = Vector2(140, 140)
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "➡️"
+
+[node name="RightPanel" type="GridContainer" parent="."]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -420.0
+offset_top = -300.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="JumpButton" type="Button" parent="RightPanel"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "قفز"
+
+[node name="PunchButton" type="Button" parent="RightPanel"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "👊"
+
+[node name="KickButton" type="Button" parent="RightPanel"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "🦶"
+
+[node name="SheepButton" type="Button" parent="RightPanel"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "🐑"
+
+[node name="InteractButton" type="Button" parent="RightPanel"]
+custom_minimum_size = Vector2(212, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "تفاعل"
+
+[connection signal="button_down" from="LeftPanel/LeftButton" to="." method="_on_left_pressed"]
+[connection signal="button_up" from="LeftPanel/LeftButton" to="." method="_on_left_released"]
+[connection signal="button_down" from="LeftPanel/RightButton" to="." method="_on_right_pressed"]
+[connection signal="button_up" from="LeftPanel/RightButton" to="." method="_on_right_released"]
+[connection signal="pressed" from="RightPanel/JumpButton" to="." method="_on_jump_pressed"]
+[connection signal="pressed" from="RightPanel/PunchButton" to="." method="_on_punch_pressed"]
+[connection signal="pressed" from="RightPanel/KickButton" to="." method="_on_kick_pressed"]
+[connection signal="pressed" from="RightPanel/SheepButton" to="." method="_on_sheep_pressed"]
+[connection signal="pressed" from="RightPanel/InteractButton" to="." method="_on_interact_pressed"]
