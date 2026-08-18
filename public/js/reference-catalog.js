@@ -86,6 +86,15 @@ export const DISTRICTS = Object.freeze(
 );
 
 export const DISTRICT_OTHER_ID = "__other_district__";
+export const DISTRICT_UNCONFIRMED_WARNING = "لم يتم التعرف على الحي بدقة — راجعه قبل الإرسال.";
+
+const LEGACY_LABEL_MAP = Object.freeze({
+  madina: "المدينة المنورة",
+  "al madina": "المدينة المنورة",
+  "al-wabra": "الوبرة",
+  "al wabra": "الوبرة",
+  alwabra: "الوبرة"
+});
 
 export function normalizeSearchText(value) {
   return String(value || "")
@@ -110,45 +119,132 @@ export function filterBySearch(query, items, labelKey = "label") {
   });
 }
 
-export function matchOperationType(fields = {}, text = "") {
+export function matchOperationType(fields = {}, text = "", options = {}) {
   const purpose = String(fields.purpose || "").toUpperCase();
   const kind = String(fields.opportunityKind || "").toUpperCase();
+  const focus = safeText(options.focusText || "", 12000) || firstListingLine(text);
   const hay = normalizeSearchText(text);
+  const focusHay = normalizeSearchText(focus);
 
-  if (purpose === "INVESTMENT" || /استثمار/.test(text)) {
+  if (purpose === "INVESTMENT" || /استثمار/.test(focus) || /استثمار/.test(text)) {
     return OPERATION_TYPES.find((o) => o.id === "investment");
   }
-  if (purpose === "PURCHASE" || kind === "REQUEST" && /شراء|مطلوب|ابحث/.test(text)) {
+  if (purpose === "PURCHASE" || (kind === "REQUEST" && /(?:^|\s)(?:شراء|مطلوب|ابحث|أبحث)(?:\s|$)/i.test(focus))) {
     return OPERATION_TYPES.find((o) => o.id === "purchase");
   }
   if (purpose === "LEASE_REQUEST" || (purpose === "RENT" && kind === "REQUEST")) {
     return OPERATION_TYPES.find((o) => o.id === "rent");
   }
-  if (purpose === "RENT" || /ايجار|إيجار|للإيجار/.test(text)) {
-    return OPERATION_TYPES.find((o) => o.id === "rent");
-  }
-  if (purpose === "SALE" || /بيع|للبيع/.test(hay)) {
-    return OPERATION_TYPES.find((o) => o.id === "sale");
-  }
+  if (purpose === "SALE") return OPERATION_TYPES.find((o) => o.id === "sale");
+  if (purpose === "RENT") return OPERATION_TYPES.find((o) => o.id === "rent");
+
+  const focusRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(focusHay) || /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(focus);
+  const focusSale = /(?:^|\s)للبيع(?:\s|$)/i.test(focusHay) || /(?:^|\s)للبيع(?:\s|$)/i.test(focus);
+  if (focusRent && focusSale) return null;
+  if (focusRent) return OPERATION_TYPES.find((o) => o.id === "rent");
+  if (focusSale) return OPERATION_TYPES.find((o) => o.id === "sale");
+
+  const bodyRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(hay);
+  const bodySale = /(?:^|\s)للبيع(?:\s|$)/i.test(hay);
+  if (bodyRent && bodySale) return null;
+  if (bodyRent) return OPERATION_TYPES.find((o) => o.id === "rent");
+  if (bodySale) return OPERATION_TYPES.find((o) => o.id === "sale");
   return null;
 }
 
-export function matchPropertyType(raw = "") {
-  const hay = normalizeSearchText(raw);
-  if (!hay) return null;
+function firstListingLine(text = "") {
+  return String(text || "").split("\n").map((line) => line.trim()).filter(Boolean)[0] || "";
+}
+
+function safeText(value, max = 12000) {
+  return String(value == null ? "" : value).replace(/\u0000/g, "").trim().slice(0, max);
+}
+
+export function containsArabicPhrase(text, phrase) {
+  const hay = normalizeSearchText(text);
+  const needle = normalizeSearchText(phrase);
+  if (!hay || !needle) return false;
+  if (hay === needle) return true;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "u").test(hay);
+}
+
+export function normalizeLegacyArabicLabel(raw = "") {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  const asciiKey = text.toLowerCase().replace(/[_-]/g, " ").trim();
+  if (LEGACY_LABEL_MAP[asciiKey]) return LEGACY_LABEL_MAP[asciiKey];
+  const normalized = normalizeSearchText(text);
+  for (const [key, label] of Object.entries(LEGACY_LABEL_MAP)) {
+    if (normalizeSearchText(key) === normalized) return label;
+  }
+  return text;
+}
+
+export function conservativeMatchPropertyType(raw = "") {
+  const display = normalizeLegacyArabicLabel(raw);
+  const hay = normalizeSearchText(display);
+  if (!hay) return { match: null, confirmed: false, display: "" };
   let best = null;
   let bestLen = 0;
   for (const item of PROPERTY_TYPES) {
     if (item.id === "other") continue;
     for (const term of item.matchTerms) {
       const t = normalizeSearchText(term);
-      if (t && hay.includes(t) && t.length >= bestLen) {
+      if (!t || t.length < 2) continue;
+      if (hay === t && t.length >= bestLen) {
+        best = item;
+        bestLen = t.length;
+      } else if (t.length >= 2 && containsArabicPhrase(hay, t) && t.length >= bestLen) {
         best = item;
         bestLen = t.length;
       }
     }
   }
-  return best;
+  if (best) return { match: best, confirmed: true, display: best.label };
+  return { match: null, confirmed: false, display: display };
+}
+
+export function conservativeMatchDistrict(raw = "", cityId = "madinah") {
+  const display = normalizeLegacyArabicLabel(raw).replace(/^حي\s+/, "").trim();
+  const hay = normalizeSearchText(display);
+  if (!hay || cityId !== "madinah") {
+    return {
+      match: null,
+      confirmed: false,
+      display,
+      warning: display ? DISTRICT_UNCONFIRMED_WARNING : ""
+    };
+  }
+  const ranked = [...DISTRICTS]
+    .filter((d) => d.active)
+    .sort((a, b) => {
+      const al = Math.max(...a.aliases.map((x) => normalizeSearchText(x).length));
+      const bl = Math.max(...b.aliases.map((x) => normalizeSearchText(x).length));
+      return bl - al;
+    });
+  for (const district of ranked) {
+    for (const alias of district.aliases) {
+      const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
+      if (!a || a.length < 3) continue;
+      if (hay === a) {
+        return { match: district, confirmed: true, display: district.officialName, warning: "" };
+      }
+      if (containsArabicPhrase(hay, a) && hay.length >= a.length - 1) {
+        return { match: district, confirmed: true, display: district.officialName, warning: "" };
+      }
+    }
+  }
+  return {
+    match: null,
+    confirmed: false,
+    display,
+    warning: display ? DISTRICT_UNCONFIRMED_WARNING : ""
+  };
+}
+
+export function matchPropertyType(raw = "") {
+  return conservativeMatchPropertyType(raw).match;
 }
 
 export function matchCity(raw = "") {
@@ -165,40 +261,7 @@ export function matchCity(raw = "") {
 }
 
 export function matchDistrict(raw = "", cityId = "madinah") {
-  const hay = normalizeSearchText(raw).replace(/^حي\s+/, "");
-  if (!hay || cityId !== "madinah") return null;
-  let best = null;
-  let bestLen = 0;
-  for (const district of DISTRICTS) {
-    if (!district.active) continue;
-    for (const alias of district.aliases) {
-      const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
-      if (a && (hay === a || hay.includes(a) || a.includes(hay)) && a.length >= bestLen) {
-        best = district;
-        bestLen = a.length;
-      }
-    }
-  }
-  if (best) return best;
-  // Polluted one-line extractions labels: try the first Arabic token(s).
-  const tokens = hay.split(/\s+/).filter(Boolean);
-  for (let n = Math.min(3, tokens.length); n >= 1; n -= 1) {
-    const head = tokens.slice(0, n).join(" ");
-    for (const district of DISTRICTS) {
-      if (!district.active) continue;
-      for (const alias of district.aliases) {
-        const a = normalizeSearchText(alias).replace(/^حي\s+/, "");
-        if (a && (head === a || a.includes(head) || head.includes(a)) && a.length >= 3) {
-          if (!best || a.length >= bestLen) {
-            best = district;
-            bestLen = a.length;
-          }
-        }
-      }
-    }
-    if (best) return best;
-  }
-  return null;
+  return conservativeMatchDistrict(raw, cityId).match;
 }
 
 /**
@@ -232,7 +295,12 @@ export function mapOperationToBrokerFields(operationId, hintKind = "") {
   return { purpose: op.purpose, opportunityKind };
 }
 
-export function reviewTransactionMode(operationId) {
+export function reviewTransactionMode(operationId, context = {}) {
+  const purpose = String(context.purpose || "").toUpperCase();
+  const kind = String(context.opportunityKind || "").toUpperCase();
+  if (purpose === "LEASE_REQUEST" || (operationId === "rent" && kind === "REQUEST")) {
+    return "budget";
+  }
   if (operationId === "sale") return "sale";
   if (operationId === "rent") return "rent";
   if (operationId === "purchase") return "budget";
@@ -243,32 +311,47 @@ export function reviewTransactionMode(operationId) {
 export function buildReviewDefaults(extractionFields = {}, sourceText = "", meta = {}) {
   const text = String(sourceText || "");
   const extended = meta.extended || extractionFields.extended || {};
-  const op = matchOperationType(extractionFields, text);
-  const propertyLabel = safeTrim(extractionFields.propertyType || extended.propertyType);
-  const property = propertyLabel ? matchPropertyType(propertyLabel) : null;
-  const cityLabel = safeTrim(extractionFields.city);
+  const focusText = meta.listingTitle || meta.focusText || firstListingLine(text);
+  const op = matchOperationType(extractionFields, text, { focusText });
+  const propertyLabel = normalizeLegacyArabicLabel(
+    safeTrim(extractionFields.propertyType || extended.propertyType)
+  );
+  const propertyResult = propertyLabel ? conservativeMatchPropertyType(propertyLabel) : { match: null, confirmed: false, display: "" };
+  const property = propertyResult.match;
+  const cityLabel = normalizeLegacyArabicLabel(safeTrim(extractionFields.city));
   const city = cityLabel ? matchCity(cityLabel) : null;
-  const districtLabel = safeTrim(extractionFields.district || extended.district);
+  const districtLabel = normalizeLegacyArabicLabel(
+    safeTrim(extractionFields.district || extended.district)
+  );
   const cityIdForDistrict = city?.id || "madinah";
-  const district = districtLabel
-    ? matchDistrict(districtLabel, cityIdForDistrict)
-    : null;
-  // Unmatched extracted district → "حي آخر" so the broker can confirm/edit before save.
+  const districtResult = districtLabel
+    ? conservativeMatchDistrict(districtLabel, cityIdForDistrict)
+    : { match: null, confirmed: false, display: "", warning: "" };
+  const district = districtResult.match;
   const unmatchedDistrictManual = !district && districtLabel
     ? districtLabel.split(/\s+/).slice(0, 4).join(" ").trim()
     : "";
 
-  const mode = reviewTransactionMode(op?.id || "");
-  const legacyValue = extractionFields.priceOrBudget ?? "";
+  const reviewContext = {
+    purpose: extractionFields.purpose || extended.purpose || "",
+    opportunityKind: extractionFields.opportunityKind || extended.opportunityKind || ""
+  };
+  const mode = reviewTransactionMode(op?.id || "", reviewContext);
+  const legacyValue = extractionFields.priceOrBudget ?? extractionFields.budget ?? extractionFields.annualRent ?? "";
   const salePrice = extended.salePrice ?? (mode === "sale" ? legacyValue : "");
   const annualRent = extended.annualRent ?? (mode === "rent" ? legacyValue : "");
-  const budget = extended.budget ?? (mode === "budget" ? legacyValue : "");
+  const budget = extended.budget ?? extractionFields.budget ?? (mode === "budget" ? legacyValue : "");
   const investmentValue = mode === "investment" ? legacyValue : "";
 
   return {
     operationTypeId: op?.id || "",
     propertyTypeId: property?.id || (propertyLabel ? "other" : ""),
-    propertyTypeManual: property ? "" : propertyLabel,
+    propertyTypeManual: property ? "" : (propertyResult.display || propertyLabel),
+    propertyTypeDisplay: propertyResult.display || property?.label || propertyLabel,
+    propertyTypeConfirmed: propertyResult.confirmed,
+    districtDisplay: districtResult.display || district?.officialName || districtLabel,
+    districtConfirmed: districtResult.confirmed,
+    districtUnconfirmedWarning: districtResult.warning || "",
     cityId: city?.id || "",
     cityManual: city ? "" : cityLabel,
     districtId: district?.id || (unmatchedDistrictManual ? DISTRICT_OTHER_ID : ""),
@@ -312,11 +395,15 @@ export function reviewValuesToBrokerFields(review) {
   const city = CITIES.find((c) => c.id === review.cityId);
   const district = DISTRICTS.find((d) => d.id === review.districtId);
 
+  const snapshot = review.extractedSnapshot || {};
   const broker = mapOperationToBrokerFields(
     review.operationTypeId,
-    review.extractedSnapshot?.opportunityKind
+    snapshot.opportunityKind
   );
-  const mode = reviewTransactionMode(review.operationTypeId);
+  const mode = reviewTransactionMode(review.operationTypeId, {
+    purpose: snapshot.purpose || broker.purpose || "",
+    opportunityKind: snapshot.opportunityKind || broker.opportunityKind || ""
+  });
   const isLand = review.propertyTypeId === "land" || property?.label === "أرض";
   const salePrice = mode === "sale" && review.salePrice !== "" && review.salePrice != null
     ? Number(review.salePrice)
@@ -350,14 +437,12 @@ export function reviewValuesToBrokerFields(review) {
           ? investmentValue
           : null;
 
-  let propertyType = property?.label || "";
-  if (review.propertyTypeId === "other") propertyType = safeTrim(review.propertyTypeManual);
+  let propertyType = safeTrim(review.propertyTypeDisplay) || safeTrim(review.propertyTypeManual);
+  if (!propertyType && property) propertyType = property.label || "";
   let cityName = city?.label || "";
   if (review.cityId === "other") cityName = safeTrim(review.cityManual);
-  let districtName = district?.officialName || "";
-  if (review.districtId === DISTRICT_OTHER_ID || !districtName) {
-    districtName = safeTrim(review.districtManual);
-  }
+  let districtName = safeTrim(review.districtDisplay) || safeTrim(review.districtManual);
+  if (!districtName && district) districtName = district.officialName || "";
 
   return {
     ...broker,

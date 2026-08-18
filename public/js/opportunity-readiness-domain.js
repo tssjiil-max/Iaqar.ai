@@ -13,8 +13,29 @@ export const MATCHING_READINESS = Object.freeze({
 
 export const MATCHING_READINESS_LABELS = Object.freeze({
   READY_FOR_MATCHING: "جاهزة للمطابقة",
-  NEEDS_COMPLETION: "تحتاج استكمال"
+  NEEDS_COMPLETION: "ناقصة"
 });
+
+export const MISSING_FIELD_LABELS = Object.freeze({
+  purpose: "الغرض",
+  propertyType: "نوع العقار",
+  city: "المدينة",
+  district: "الحي",
+  priceOrBudget: "الميزانية",
+  advertiserRole: "صفة المعلن",
+  contactPhone: "رقم الجوال",
+  area: "المساحة",
+  rooms: "الغرف",
+  salePrice: "سعر البيع",
+  annualRent: "الإيجار السنوي",
+  budget: "الميزانية"
+});
+
+export function missingFieldLabelsArabic(keys = []) {
+  return (keys || [])
+    .map((key) => MISSING_FIELD_LABELS[key] || "")
+    .filter(Boolean);
+}
 
 const VALID_OWNER_ROLES = new Set(["OWNER", "DELEGATE", "BROKER", "CLIENT"]);
 
@@ -28,7 +49,7 @@ function hasAppropriatePrice(fields = {}) {
     return Number(fields.annualRent ?? legacy) > 0;
   }
   if (purpose === "PURCHASE" || purpose === "LEASE_REQUEST") {
-    return Number(fields.budget ?? legacy) > 0;
+    return Number(fields.budget ?? fields.annualRent ?? legacy) > 0;
   }
   if (purpose === "INVESTMENT") {
     return Number(legacy) > 0;

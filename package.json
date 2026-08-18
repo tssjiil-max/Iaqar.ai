@@ -13,6 +13,7 @@
     "test:phase8": "npm test && npm run test:rules && npm run check",
     "test:phase9a": "npm test && npm run test:rules && npm run check",
     "deploy:staging": "bash scripts/deploy-staging.sh",
+    "deploy:staging:safe": "bash scripts/deploy-staging-safe.sh",
     "smoke:staging": "node scripts/smoke-staging.mjs",
     "check": "node scripts/check.mjs"
   },

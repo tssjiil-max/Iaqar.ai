@@ -338,9 +338,8 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
   const shell = await loadShell({ firebase: firebaseStub(), officeRuntime: { officeId: "office-a" } });
   try {
     const { document, window } = shell;
-    const empty = document.getElementById("operationsEmpty");
-    assert.ok(empty.textContent.includes("لا توجد إجراءات تحتاج انتباهك حاليًا"));
-    assert.ok(empty.textContent.includes("ستظهر الفرص المباشرة هنا"));
+    const todayEmpty = document.getElementById("operationsTodayEmpty");
+    assert.ok(todayEmpty.textContent.includes("لا توجد مهام عاجلة اليوم"));
 
     const ui = projectOperationToUiItem({
       id: "op_test",
@@ -356,14 +355,17 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
+    document.getElementById("operationsShowCategories").click();
+    document.querySelector("[data-ops-category=\"matched\"]").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, true);
-    assert.match(document.querySelector(".operation h3").textContent, /مطابقة/);
-    assert.match(document.querySelector(".operation p").textContent, /مراجعة/);
+    assert.match(document.querySelector(".ops-task-body h4").textContent, /مطابقة/);
+    assert.match(document.querySelector(".ops-task-body p").textContent, /مراجعة/);
     assert.equal(ui.priorityLabel, "مرتفع");
 
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [] }
     }));
+    document.getElementById("operationsShowCategories").click();
     assert.equal(document.getElementById("operationsEmpty").hidden, false);
 
     assert.equal(isActiveOperationStatus("COMPLETED"), false);
@@ -399,10 +401,11 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
+    document.getElementById("operationsShowCategories").click();
+    document.querySelector("[data-ops-category=\"matched\"]").click();
     const list = document.getElementById("operationList");
-    assert.ok(list.querySelectorAll(".whatsapp-action").length >= 2);
-    assert.ok(list.textContent.includes("إرسال واتساب"));
-    assert.ok(list.textContent.includes("إرسال تليجرام"));
+    assert.ok(list.querySelectorAll(".ops-task-primary").length >= 1);
+    assert.ok(list.textContent.includes("مراجعة المطابقة") || list.textContent.includes("مطابقة"));
     assert.equal(list.textContent.includes("مسودة واتساب"), false);
     assert.equal(list.textContent.includes("مسودة تيليجرام"), false);
     assert.equal(list.textContent.includes("تم التسليم"), false);

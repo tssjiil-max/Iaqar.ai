@@ -162,6 +162,13 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
   const canDraftMessage = type === OPERATION_TYPES.MATCH_REVIEW
     || type === OPERATION_TYPES.EXTERNAL_RESPONSE;
 
+  const matchingReadinessMissing = type === OPERATION_TYPES.MISSING_DATA && missingFields.length
+    ? missingFields
+    : [];
+  const matchingReadiness = matchingReadinessMissing.length
+    ? "NEEDS_COMPLETION"
+    : (type === OPERATION_TYPES.MISSING_DATA ? "NEEDS_COMPLETION" : "");
+
   return {
     id: String(op.id || ""),
     recordId: String(op.id || ""),
@@ -187,6 +194,11 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     opportunityId: String(op.opportunityId || ""),
     cooperationId: String(op.cooperationId || ""),
     assignedBrokerId: String(op.assignedBrokerId || ""),
+    matchingReadiness,
+    matchingReadinessMissing,
+    missingFields: matchingReadinessMissing,
+    createdAt: String(op.createdAt || ""),
+    updatedAt: String(op.updatedAt || ""),
     ...phase5BoundaryGuarantees(),
     whatsappOwner: canDraftMessage,
     whatsappClient: canDraftMessage,
