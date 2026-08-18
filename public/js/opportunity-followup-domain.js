@@ -3,6 +3,7 @@
  */
 export const FOLLOWUP_TIMEZONE = "Asia/Riyadh";
 export const FOLLOWUP_REMINDER_MINUTES = 60;
+export const FOLLOWUP_DAY_BEFORE_MINUTES = 24 * 60;
 export const FOLLOWUP_CLOCK_TOLERANCE_MS = 120000;
 
 export const FOLLOWUP_STATUSES = Object.freeze({
@@ -45,6 +46,84 @@ export function computeReminderAt(followUpAt, minutesBefore = FOLLOWUP_REMINDER_
   const at = parseFollowUpInstant(followUpAt);
   if (!at) return null;
   return new Date(at.getTime() - minutesBefore * 60 * 1000);
+}
+
+export function computeFollowUpReminderSchedule(followUpAt, now = new Date()) {
+  const at = parseFollowUpInstant(followUpAt);
+  if (!at) {
+    return {
+      reminderAt24h: null,
+      reminderAt1h: null,
+      nextReminderAt: null,
+      nextReminderKind: null
+    };
+  }
+  const reminderAt24h = computeReminderAt(at, FOLLOWUP_DAY_BEFORE_MINUTES);
+  const reminderAt1h = computeReminderAt(at, FOLLOWUP_REMINDER_MINUTES);
+  const pending = [
+    { kind: "24h", at: reminderAt24h },
+    { kind: "1h", at: reminderAt1h }
+  ].filter((row) => row.at && row.at.getTime() > now.getTime());
+  pending.sort((a, b) => a.at.getTime() - b.at.getTime());
+  const next = pending[0] || null;
+  return {
+    reminderAt24h: reminderAt24h ? reminderAt24h.toISOString() : null,
+    reminderAt1h: reminderAt1h ? reminderAt1h.toISOString() : null,
+    nextReminderAt: next ? next.at.toISOString() : null,
+    nextReminderKind: next ? next.kind : null
+  };
+}
+
+export function followUpReminderTitle(kind = "") {
+  return String(kind || "") === "24h" ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
+}
+
+export function getDueFollowUpReminder(followUp = {}, now = new Date()) {
+  const status = String(followUp.status || "").trim();
+  if (status === FOLLOWUP_STATUSES.completed || status === FOLLOWUP_STATUSES.cancelled) return null;
+  const at = parseFollowUpInstant(followUp.at);
+  if (!at || at.getTime() <= now.getTime()) return null;
+  const sent = new Set(Array.isArray(followUp.remindersSent) ? followUp.remindersSent : []);
+  const schedule = computeFollowUpReminderSchedule(followUp.at, now);
+  const candidates = [
+    { kind: "24h", at: parseFollowUpInstant(followUp.reminderAt24h || schedule.reminderAt24h) },
+    { kind: "1h", at: parseFollowUpInstant(followUp.reminderAt1h || schedule.reminderAt1h) }
+  ];
+  for (const row of candidates) {
+    if (!row.at || sent.has(row.kind)) continue;
+    if (row.at.getTime() <= now.getTime()) return row;
+  }
+  return null;
+}
+
+export function advanceFollowUpAfterReminder(followUp = {}, kind = "", now = new Date()) {
+  const sent = new Set(Array.isArray(followUp.remindersSent) ? followUp.remindersSent : []);
+  if (kind) sent.add(kind);
+  const schedule = computeFollowUpReminderSchedule(followUp.at, now);
+  const pendingKinds = ["24h", "1h"].filter((entry) => !sent.has(entry));
+  let nextReminderAt = null;
+  let nextReminderKind = null;
+  for (const entry of pendingKinds) {
+    const at = parseFollowUpInstant(
+      entry === "24h"
+        ? (followUp.reminderAt24h || schedule.reminderAt24h)
+        : (followUp.reminderAt1h || schedule.reminderAt1h)
+    );
+    if (at && at.getTime() > now.getTime()) {
+      nextReminderAt = at.toISOString();
+      nextReminderKind = entry;
+      break;
+    }
+  }
+  const allSent = pendingKinds.length === 0 || !nextReminderAt;
+  return {
+    ...followUp,
+    remindersSent: [...sent],
+    reminderAt: nextReminderAt || followUp.reminderAt || schedule.reminderAt1h || schedule.reminderAt24h,
+    nextReminderKind: nextReminderKind,
+    status: allSent ? FOLLOWUP_STATUSES.reminder_sent : FOLLOWUP_STATUSES.scheduled,
+    updatedAt: now.toISOString()
+  };
 }
 
 export function validateFutureFollowUpAt(followUpAt, now = new Date(), toleranceMs = FOLLOWUP_CLOCK_TOLERANCE_MS) {

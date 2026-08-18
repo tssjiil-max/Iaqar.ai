@@ -5,9 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FOLLOWUP_REMINDER_MINUTES,
+  FOLLOWUP_DAY_BEFORE_MINUTES,
   validateFutureFollowUpAt,
   validateTodayRequiresFutureTime,
   computeReminderAt,
+  computeFollowUpReminderSchedule,
+  getDueFollowUpReminder,
+  advanceFollowUpAfterReminder,
+  followUpReminderTitle,
   defaultRecipientMode,
   resolveRecipientContext,
   normalizeRecipientMode,
@@ -112,10 +117,51 @@ test("both creates two separate WhatsApp actions", () => {
   assert.ok(workflow.includes("modes.push(\"owner\", \"client\")"));
 });
 
+test("workflow shows dual broker reminders and whatsapp confirmation after save", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("٢٤ ساعة ثم قبل ساعة"));
+  assert.ok(workflow.includes("showFollowUpConfirmation = true"));
+  assert.ok(workflow.includes("iaqarFollowUpConfirmSection"));
+  const worker = readRepo("worker", "src", "index.js");
+  assert.ok(worker.includes("getDueFollowUpReminder"));
+  assert.ok(worker.includes("followUpReminderTitle"));
+});
+
 test("reminderAt equals followUpAt minus 60 minutes", () => {
   const reminder = computeReminderAt(futureAt);
   const diff = new Date(futureAt).getTime() - reminder.getTime();
   assert.equal(diff, FOLLOWUP_REMINDER_MINUTES * 60 * 1000);
+});
+
+test("follow-up schedule includes 24h and 1h broker reminders", () => {
+  const at = new Date(Date.now() + 30 * 3600000).toISOString();
+  const schedule = computeFollowUpReminderSchedule(at);
+  assert.ok(schedule.reminderAt24h);
+  assert.ok(schedule.reminderAt1h);
+  assert.equal(schedule.nextReminderKind, "24h");
+  const dayDiff = new Date(at).getTime() - new Date(schedule.reminderAt24h).getTime();
+  assert.equal(dayDiff, FOLLOWUP_DAY_BEFORE_MINUTES * 60 * 1000);
+});
+
+test("due reminder advances from 24h to 1h", () => {
+  const at = new Date(Date.now() + 30 * 3600000).toISOString();
+  const schedule = computeFollowUpReminderSchedule(at);
+  const followUp = {
+    at,
+    status: "scheduled",
+    reminderAt24h: schedule.reminderAt24h,
+    reminderAt1h: schedule.reminderAt1h,
+    remindersSent: []
+  };
+  const due24 = getDueFollowUpReminder(followUp, new Date(schedule.reminderAt24h));
+  assert.equal(due24?.kind, "24h");
+  const after24 = advanceFollowUpAfterReminder(followUp, "24h", new Date(schedule.reminderAt24h));
+  assert.deepEqual(after24.remindersSent, ["24h"]);
+  assert.equal(after24.status, "scheduled");
+  const due1h = getDueFollowUpReminder(after24, new Date(schedule.reminderAt1h));
+  assert.equal(due1h?.kind, "1h");
+  assert.equal(followUpReminderTitle("24h"), "موعد متابعة غدًا");
+  assert.equal(followUpReminderTitle("1h"), "موعد متابعة بعد ساعة");
 });
 
 test("reminder dispatch is office-isolated in worker", () => {

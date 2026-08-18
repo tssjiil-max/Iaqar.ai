@@ -1911,8 +1911,8 @@
     return `<article class="iaqar-followup-card" id="iaqarFollowUpCard">
       <h3>الموعد القادم</h3>
       <p class="iaqar-followup-when">${escapeUi(appointmentLine)}${overdue ? " — متأخرة" : ""}</p>
-      <p class="iaqar-followup-meta">التذكير: قبل الموعد بساعة</p>
-      <p class="iaqar-followup-meta">التواصل مع: ${escapeUi(recipientLabel)}</p>
+      <p class="iaqar-followup-meta">التذكير: قبل الموعد بـ ٢٤ ساعة ثم قبل ساعة</p>
+      <p class="iaqar-followup-meta">التواصل مع: ${escapeUi(recipientLabel)} — أرسل تأكيد الموعد عبر واتساب</p>
       <div class="iaqar-workflow-actions">
         <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">تعديل الموعد</button>
         <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="cancel-followup">إلغاء الموعد</button>
@@ -1933,6 +1933,7 @@
     ).join("");
     return `<div class="iaqar-workflow-step" id="iaqarFollowUpConfirmSection">
       <h3>تأكيد الموعد</h3>
+      <p class="iaqar-workflow-note">أرسل رسالة واتساب للطرف المختار — الإرسال يدوي ولا يتم تلقائيًا.</p>
       <div class="iaqar-whatsapp-grid">${buttons}</div>
       <div class="iaqar-workflow-actions">
         <button type="button" class="iaqar-workflow-btn success" data-ui-action="followup-outcome" data-outcome="confirmed">تم التأكيد</button>
@@ -2155,9 +2156,11 @@
       if (payload.followUp) activeWorkflowDetail.followUp = payload.followUp;
       activeWorkflowDetail.nextFollowUpAt = payload.nextFollowUpAt || parsed.toISOString();
       activeWorkflowDetail.lifecycleStatus = payload.lifecycleStatus || "FOLLOW_UP";
+      activeWorkflowDetail.showFollowUpConfirmation = true;
       followUpEditMode = false;
-      notify("تم حفظ موعد المتابعة");
+      notify("تم حفظ موعد المتابعة — أرسل تأكيدًا عبر واتساب. ستصلك تذكيرات قبل الموعد بـ ٢٤ ساعة وساعة.");
       await renderOpportunityLifecycleUi();
+      document.getElementById("iaqarFollowUpConfirmSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
     } catch (error) {
       notify(error.message || "تعذر حفظ المتابعة");
     } finally {

@@ -159,11 +159,15 @@ import {
   validateTodayRequiresFutureTime,
   buildCanonicalFollowUp,
   computeReminderAt,
+  parseFollowUpInstant,
   resolveRecipientContext,
   normalizeRecipientMode,
   deriveFollowUpStatus,
   shouldSendFollowUpReminder,
   followUpReminderDedupKey,
+  getDueFollowUpReminder,
+  advanceFollowUpAfterReminder,
+  followUpReminderTitle,
   isSameScheduledFollowUp,
   formatFollowUpReminderBody,
   formatFollowUpTimeLabel,
@@ -4846,12 +4850,13 @@ async function processOpportunityFollowupReminders(env, scheduledTime = Date.now
     if (!officeId || !opportunityId) continue;
 
     const followUp = value.followUp && typeof value.followUp === "object" ? value.followUp : null;
-    if (!followUp || !shouldSendFollowUpReminder(followUp, now)) {
+    const dueReminder = followUp ? getDueFollowUpReminder(followUp, now) : null;
+    if (!followUp || !dueReminder) {
       skipped += 1;
       continue;
     }
 
-    const dedupKey = followUpReminderDedupKey(opportunityId, followUp.at);
+    const dedupKey = followUpReminderDedupKey(opportunityId, followUp.at, dueReminder.kind);
     const existingAlert = await getFirestoreDocument({
       projectId,
       segments: ["offices", officeId, "alerts", dedupKey],
@@ -4863,7 +4868,7 @@ async function processOpportunityFollowupReminders(env, scheduledTime = Date.now
       continue;
     }
 
-    const title = "موعد متابعة بعد ساعة";
+    const title = followUpReminderTitle(dueReminder.kind);
     const body = formatFollowUpReminderBody(value, followUp);
     const pushSummary = await sendOfficePush({
       projectId,
@@ -4897,19 +4902,17 @@ async function processOpportunityFollowupReminders(env, scheduledTime = Date.now
     });
 
     if (dispatchAccepted) {
-      const updatedFollowUp = {
+      const updatedFollowUp = advanceFollowUpAfterReminder({
         ...followUp,
-        status: FOLLOWUP_STATUSES.reminder_sent,
-        updatedAt: now.toISOString(),
         updatedBy: "system"
-      };
+      }, dueReminder.kind, now);
       await setFirestoreDocument({
         projectId,
         segments: ["offices", officeId, "opportunities", opportunityId],
         accessToken,
         fields: compactFields({
           officeId: firestoreString(officeId),
-          followUp: jsToFirestoreValue(updatedFollowUp),
+          ...followUpFirestoreFields(updatedFollowUp),
           updatedAt: firestoreTimestamp(now)
         })
       });
@@ -6164,10 +6167,14 @@ function jsToFirestoreValue(value) {
 }
 
 function followUpFirestoreFields(followUp) {
+  const reminderInstant = parseFollowUpInstant(followUp.reminderAt)
+    || parseFollowUpInstant(followUp.reminderAt1h)
+    || parseFollowUpInstant(followUp.reminderAt24h);
+  const reminderAt = reminderInstant || new Date("2099-01-01T00:00:00.000Z");
   return compactFields({
     followUp: jsToFirestoreValue(followUp),
     followUpAt: firestoreTimestamp(new Date(followUp.at)),
-    followUpReminderAt: firestoreTimestamp(new Date(followUp.reminderAt)),
+    followUpReminderAt: firestoreTimestamp(reminderAt),
     nextFollowUpAt: firestoreTimestamp(new Date(followUp.at)),
     nextActionAt: firestoreTimestamp(new Date(followUp.at))
   });
