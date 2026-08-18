@@ -469,8 +469,8 @@ function bankRowHtml(row) {
   const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
     ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
     : "";
-  const completeBtn = !card.isReadyForMatching && isOwnedOpportunityRecord(record)
-    ? `<button type="button" class="bank-action bank-row-complete" data-complete-id="${escapeHtml(row.id)}">استكمال البيانات</button>`
+  const incompleteHint = !card.isReadyForMatching
+    ? `<p class="bank-row-tasks-hint">استكمال البيانات من المهام اليومية</p>`
     : "";
   return `
     <article
@@ -496,9 +496,8 @@ function bankRowHtml(row) {
           ${sourceLine}
         </div>
       </div>
-    </article>
-    ${completeBtn}
-  `;
+      ${incompleteHint}
+    </article>`;
 }
 
 function isOwnerRecord(record = {}) {
@@ -572,6 +571,12 @@ async function openBankDetailFromList(opportunityId) {
     toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
     return;
   }
+  const ctx = detailRenderContext();
+  const readiness = evaluateMatchingReadiness(record);
+  if (!readiness.isReadyForMatching && !ctx.dailyTask) {
+    navigateToTasksIncomplete(id);
+    return;
+  }
   bankDetailOpenLock = id;
   try {
     await renderDetail(id);
@@ -630,18 +635,24 @@ async function loadWorkspaceBundle(opportunityId) {
 }
 
 function renderSummaryHtml(summary = emptyBankSummary()) {
-  const activeKey = state.queryFilters.summaryKey || "";
+  const activeKey = state.queryFilters.summaryKey || "ready";
   const chip = (key, label, count) => {
     const active = activeKey === key ? " is-active" : "";
     return `<button type="button" class="bank-summary-chip${active}" data-summary-key="${key}">
       <span>${escapeHtml(label)}</span><strong>${escapeHtml(count)}</strong>
     </button>`;
   };
+  const needsCount = Number(summary.needsCompletion || 0);
+  const tasksBanner = needsCount > 0 && state.filter !== "archived"
+    ? `<div class="bank-tasks-banner">
+        <p>${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية</p>
+        <button type="button" class="bank-tasks-banner-btn" data-bank-open-tasks>اذهب للمهام</button>
+      </div>`
+    : "";
   return `
     <div class="bank-summary-card" id="bankSummaryCard">
+      ${tasksBanner}
       <div class="bank-summary-chips">
-        ${chip("total", "إجمالي الفرص", summary.total)}
-        ${chip("needs", "تحتاج استكمال", summary.needsCompletion)}
         ${chip("ready", "جاهزة للمطابقة", summary.readyForMatching)}
         ${chip("archived", "مؤرشفة", summary.archived)}
       </div>
@@ -664,7 +675,12 @@ function renderList() {
 
   let bodyHtml = "";
   if (!rows.length && !hasActiveBankQuery(state.queryFilters)) {
-    bodyHtml = `<p class="bank-query-hint">لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.</p>`;
+    const needsCount = Number(summary.needsCompletion || 0);
+    if (state.filter !== "archived" && needsCount > 0) {
+      bodyHtml = `<p class="bank-query-hint">لا توجد فرص جاهزة للمطابقة حاليًا. ${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية.</p>`;
+    } else {
+      bodyHtml = `<p class="bank-query-hint">لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.</p>`;
+    }
     if (loadMoreBtn) loadMoreBtn.hidden = true;
   } else if (!rows.length) {
     bodyHtml = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث.</p>`;
@@ -691,20 +707,50 @@ function renderList() {
 }
 
 function bindSummaryChips(root) {
+  root?.querySelector("[data-bank-open-tasks]")?.addEventListener("click", () => {
+    navigateToTasksIncomplete();
+  });
   root?.querySelectorAll("[data-summary-key]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const key = btn.getAttribute("data-summary-key") || "";
+      const key = btn.getAttribute("data-summary-key") || "ready";
       if (key === "archived") {
         state.filter = "archived";
+        state.queryFilters.summaryKey = "archived";
         syncFilterButtons();
-      } else if (key) {
+      } else {
         state.filter = "active";
+        state.queryFilters.summaryKey = "ready";
         syncFilterButtons();
       }
-      state.queryFilters.summaryKey = state.queryFilters.summaryKey === key ? "" : key;
       renderList();
+      if (hasActiveBankQuery(state.queryFilters)) scheduleBankQueryRefresh();
     });
   });
+}
+
+function navigateToTasksIncomplete(opportunityId = "") {
+  const bankRoot = $("opportunityBank");
+  const settings = $("officeSettings");
+  if (bankRoot && !bankRoot.hidden && !isInlineBankRoot()) {
+    stopListener();
+    bankRoot.hidden = true;
+    if (state.activeId) closeBankDetailInternal();
+  }
+  if (settings && !settings.hidden) {
+    settings.hidden = true;
+    document.body.style.overflow = "";
+  }
+  if (isInlineBankRoot()) {
+    window.IAQAR?.homeTabs?.switchTo("operations");
+  }
+  window.dispatchEvent(new CustomEvent("iaqar:open-operations-category", {
+    detail: {
+      categoryKey: "incomplete",
+      opportunityId: String(opportunityId || "").trim()
+    }
+  }));
+  document.getElementById("workspace")?.scrollIntoView({ behavior: "auto", block: "start" });
+  toast(opportunityId ? "افتح استكمال البيانات من المهام" : "انتقل إلى المهام اليومية");
 }
 
 async function lazyLoadSource(record) {
@@ -854,6 +900,10 @@ async function renderDetail(id, options = {}) {
   }
 
   if (!readiness.isReadyForMatching) {
+    if (!ctx.dailyTask) {
+      navigateToTasksIncomplete(id);
+      return;
+    }
     panel.innerHTML = buildNeedsCompletionDetailHtml(id, record, readiness);
     wireIncompleteDetailHandlers(id, record);
     window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
@@ -1895,7 +1945,10 @@ async function openCooperationRoom(opportunityId, cooperationId) {
 function rowsCountLabel() {
   if (!hasActiveBankQuery(state.queryFilters)) {
     const summary = state.summary || emptyBankSummary();
-    return `إجمالي ${summary.total} — جاهزة ${summary.readyForMatching} — استكمال ${summary.needsCompletion} — مؤرشفة ${summary.archived}`;
+    if (state.filter === "archived") {
+      return `${summary.archived} فرصة مؤرشفة`;
+    }
+    return `جاهزة ${summary.readyForMatching}${summary.needsCompletion ? ` — ${summary.needsCompletion} للاستكمال في المهام` : ""}`;
   }
   const loadedCount = [...state.records.values()].filter(passesListFilters).length;
   const filteredTotal = state.resultTotal || loadedCount;
@@ -3158,17 +3211,7 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    const completeNode = event.target.closest("[data-complete-id]");
-    if (completeNode) {
-      const completeId = completeNode.getAttribute("data-complete-id");
-      if (completeId) {
-        const record = state.records.get(completeId);
-        if (record) openBankOpportunityReview(completeId, record);
-      }
-      event.preventDefault();
-      return;
-    }
-    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, button, a")) return;
+    if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks], button, a")) return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
     const openId = resolveBankRowOpportunityId(row);
@@ -3642,11 +3685,13 @@ function boot() {
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
     state.filter = "active";
+    state.queryFilters.summaryKey = "ready";
     syncFilterButtons();
     scheduleBankQueryRefresh();
   });
   $("bankFilterArchived")?.addEventListener("click", () => {
     state.filter = "archived";
+    state.queryFilters.summaryKey = "archived";
     syncFilterButtons();
     scheduleBankQueryRefresh();
   });
@@ -3655,7 +3700,7 @@ function boot() {
     if (state.queryFilters.search.trim()) {
       scheduleBankQueryRefresh();
     } else {
-      state.queryFilters.summaryKey = state.queryFilters.summaryKey || "";
+      state.queryFilters.summaryKey = state.filter === "archived" ? "archived" : "ready";
       scheduleBankQueryRefresh();
     }
   });

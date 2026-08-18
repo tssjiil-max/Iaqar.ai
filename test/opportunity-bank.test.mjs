@@ -162,11 +162,14 @@ test("the bank list markup escapes every projected value", () => {
   }
 });
 
-test("bank default state shows summary chips and loads opportunities without filters", () => {
+test("bank default state shows ready-only summary and tasks banner hook", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("hasActiveBankQuery"));
   assert.ok(bank.includes("bank-summary-chip"));
-  assert.ok(bank.includes("لا توجد فرص محفوظة بعد"));
+  assert.ok(bank.includes("data-bank-open-tasks"));
+  assert.ok(bank.includes("navigateToTasksIncomplete"));
+  assert.equal(bank.includes('chip("total"'), false);
+  assert.equal(bank.includes('chip("needs"'), false);
   assert.ok(bank.includes("loadBankPage"));
   assert.equal(bank.includes("bankFilterCity"), false);
   assert.equal(bank.includes("bankFilterClearBtn"), false);

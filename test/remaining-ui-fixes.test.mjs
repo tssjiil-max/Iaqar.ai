@@ -97,6 +97,11 @@ test("workflow opens unified opportunity detail instead of legacy overlay primar
   assert.ok(workflow.includes("تفاصيل الفرصة"));
 });
 
+test("operations shell listens for bank tasks redirect event", () => {
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  assert.ok(ui.includes("iaqar:open-operations-category"));
+});
+
 test("operations shell renders readiness badges on task cards", () => {
   const ui = readRepo("public", "js", "operations-center-ui.js");
   assert.ok(ui.includes("ops-readiness-badge"));

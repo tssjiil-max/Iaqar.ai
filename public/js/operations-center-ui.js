@@ -680,6 +680,22 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     void openDailyTaskItem(item);
   });
 
+  rootWindow.addEventListener("iaqar:open-operations-category", (event) => {
+    const categoryKey = String(event?.detail?.categoryKey || "").trim();
+    const opportunityId = String(event?.detail?.opportunityId || "").trim();
+    if (!categoryKey) return;
+    showCategories();
+    openCategory(categoryKey);
+    if (opportunityId) {
+      const item = data.find((entry) => extractOpportunityId(entry) === opportunityId);
+      if (item) {
+        void openDailyTaskItem(item);
+        return;
+      }
+    }
+    afterViewChange();
+  });
+
   rootWindow.addEventListener("iaqar:daily-task-closed", () => {
     if (state.viewMode === VIEW_MODES.OPPORTUNITY_DETAIL) {
       backToTaskList();
