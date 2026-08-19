@@ -10,6 +10,14 @@ export const REQUEST_KINDS = Object.freeze([
   { id: "rent", label: "استئجار", transactionType: "rent" }
 ]);
 
+/** Map free-text request kind to canonical id for dynamic fields. */
+export function normalizeRequestKind(value = "") {
+  const text = safeText(value, 40).toLowerCase();
+  if (/rent|إيجار|ايجار|استئجار|lease|تأجير/.test(text)) return "rent";
+  if (/purchase|شراء|buy/.test(text)) return "purchase";
+  return safeText(value, 20);
+}
+
 export const INTAKE_PROPERTY_TYPES = Object.freeze([
   "شقة",
   "فيلا",
@@ -69,8 +77,8 @@ export function dynamicFieldDefs(requestKind, propertyType) {
       { name: "rooms", label: "عدد الغرف", type: "number", required: false, inputMode: "numeric" },
       { name: "bathrooms", label: "دورات المياه", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة (م²)", type: "number", required: false, inputMode: "decimal" },
-      { name: "furnished", label: "مفروشة / غير مفروشة", type: "select", required: false,
-        options: [{ value: "", label: "—" }, { value: "furnished", label: "مفروشة" }, { value: "unfurnished", label: "غير مفروشة" }] },
+      { name: "furnished", label: "مفروشة / غير مفروشة", type: "text", required: false, maxLength: 40,
+        placeholder: "مثال: مفروشة أو غير مفروشة" },
       { name: "paymentInstallments", label: "عدد الدفعات", type: "number", required: false, inputMode: "numeric" }
     );
   } else if (isRent && category === "villa_house") {
@@ -96,7 +104,7 @@ function nullableNumber(value) {
 }
 
 export function buildClientIntakeDocument(formValues = {}, meta = {}) {
-  const requestKind = safeText(formValues.requestKind, 20);
+  const requestKind = normalizeRequestKind(formValues.requestKind);
   const transactionType = requestKind === "rent" ? "rent" : "purchase";
   const propertyType = safeText(formValues.propertyType, 80);
   const city = safeText(formValues.city, 80);
@@ -104,13 +112,13 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
   const budget = nullableNumber(formValues.budget);
   const annualRent = nullableNumber(formValues.annualRent);
   const amount = transactionType === "rent" ? (annualRent ?? 0) : (budget ?? 0);
-  const furnishedRaw = safeText(formValues.furnished, 20);
-  const furnished = furnishedRaw === "furnished";
+  const furnishedRaw = safeText(formValues.furnished, 40).toLowerCase();
+  const furnished = /مفروش/.test(furnishedRaw) && !/غير\s*مفروش|غيرمفروش/.test(furnishedRaw);
   const detailsParts = [
     safeText(formValues.details, 1000),
     safeText(formValues.facing, 40) ? `الواجهة: ${safeText(formValues.facing, 40)}` : "",
     safeText(formValues.condition, 80) ? `حالة العقار: ${safeText(formValues.condition, 80)}` : "",
-    furnishedRaw === "furnished" ? "مفروشة" : furnishedRaw === "unfurnished" ? "غير مفروشة" : ""
+    furnishedRaw === "furnished" ? "مفروشة" : furnishedRaw === "unfurnished" ? "غير مفروشة" : safeText(formValues.furnished, 40)
   ].filter(Boolean);
 
   return {
@@ -184,6 +192,7 @@ if (typeof window !== "undefined") {
     REQUEST_KINDS,
     INTAKE_PROPERTY_TYPES,
     propertyCategory,
+    normalizeRequestKind,
     dynamicFieldDefs,
     buildClientIntakeDocument,
     rememberLastCity,
