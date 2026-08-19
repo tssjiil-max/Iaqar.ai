@@ -1348,7 +1348,7 @@
       : whatsappMessage(detail, role, { name: contactName, phone: payload.contactPhone });
   }
 
-  function openContactWhatsAppDirect() {
+  async function openContactWhatsAppDirect() {
     const detail = activeWorkflowDetail;
     if (!detail) return;
     const phoneInfo = resolveLifecyclePhone(detail);
@@ -1356,31 +1356,43 @@
     const message = buildLifecycleContactMessage(detail);
     openWhatsAppHandoff({ phone: phoneInfo.whatsappDigits, text: message });
     lifecycleContactAttempted = true;
-    void opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" }).catch((error) => {
+    try {
+      const payload = await opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" });
+      syncWorkflowDetailFromLifecyclePayload(
+        payload,
+        BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
+      );
+    } catch (error) {
       console.warn("[iaqar] whatsapp opened log", error);
-    });
-    activeWorkflowDetail = mergeWorkflowBrokerProgress(
-      detail,
-      BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
-    );
+      activeWorkflowDetail = mergeWorkflowBrokerProgress(
+        detail,
+        BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
+      );
+    }
     notify("تم فتح واتساب");
     renderOpportunityLifecycleUi();
   }
 
-  function openContactCallDirect() {
+  async function openContactCallDirect() {
     const detail = activeWorkflowDetail;
     if (!detail) return;
     const phoneInfo = resolveLifecyclePhone(detail);
     if (!phoneInfo.valid) return notify(phoneInfo.error || "رقم الجوال غير مكتمل");
     window.location.href = `tel:${phoneInfo.tel || phoneInfo.local}`;
     lifecycleContactAttempted = true;
-    void opportunityLifecycleAction("call_opened", detail).catch((error) => {
+    try {
+      const payload = await opportunityLifecycleAction("call_opened", detail);
+      syncWorkflowDetailFromLifecyclePayload(
+        payload,
+        BAP().BROKER_ACTION?.contactCall || "contact:call"
+      );
+    } catch (error) {
       console.warn("[iaqar] call opened log", error);
-    });
-    activeWorkflowDetail = mergeWorkflowBrokerProgress(
-      detail,
-      BAP().BROKER_ACTION?.contactCall || "contact:call"
-    );
+      activeWorkflowDetail = mergeWorkflowBrokerProgress(
+        detail,
+        BAP().BROKER_ACTION?.contactCall || "contact:call"
+      );
+    }
     notify("تم فتح الاتصال");
     renderOpportunityLifecycleUi();
   }
@@ -2332,14 +2344,19 @@
     openWhatsAppHandoff({ phone, text: message });
     notify("تم فتح واتساب");
     const whatsappKey = BAP().followUpWhatsAppActionKey?.(role) || `followup:whatsapp:${role}`;
-    void opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, {
-      communicationAction: "whatsapp_opened",
-      recipientRole: role
-    }).catch(() => {});
+    try {
+      const payload = await opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, {
+        communicationAction: "whatsapp_opened",
+        recipientRole: role
+      });
+      syncWorkflowDetailFromLifecyclePayload(payload, whatsappKey, { whatsappRole: role });
+    } catch (error) {
+      console.warn("[iaqar] followup whatsapp progress", error);
+      activeWorkflowDetail = mergeWorkflowBrokerProgress(activeWorkflowDetail, whatsappKey, { whatsappRole: role });
+    }
     void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, { recipientRole: role }).catch(() => {});
-    activeWorkflowDetail = mergeWorkflowBrokerProgress(activeWorkflowDetail, whatsappKey, { whatsappRole: role });
     activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };
-    void renderOpportunityLifecycleUi();
+    await renderOpportunityLifecycleUi();
   }
 
   async function confirmCloseOpportunityFinal(button) {

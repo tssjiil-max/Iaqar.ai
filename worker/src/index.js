@@ -158,8 +158,6 @@ import {
   followUpOutcomeActionKey,
   followUpWhatsAppActionKey,
   partyActionKey,
-  hubShareOptionActionKey,
-  workspacePrimaryActionKey,
   BROKER_ACTION
 } from "../../public/js/broker-action-progress-domain.js";
 import {
