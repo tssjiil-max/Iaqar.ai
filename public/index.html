@@ -1466,31 +1466,98 @@
       line-height:1.45;
     }
 
+    .ops-task-card.has-listing-card {
+      padding:12px;
+      border-bottom:0;
+      background:transparent;
+    }
+
+    .ops-task-card.has-listing-card + .ops-task-card.has-listing-card {
+      margin-top:0;
+    }
+
+    .ops-listing-card-wrap {
+      width:100%;
+      max-width:100%;
+    }
+
     .ops-task-body--listing {
       min-width:0;
+      width:100%;
     }
 
-    .ops-task-card.has-listing-card .ops-task-card-main {
-      grid-template-columns:minmax(0, 1fr) auto;
-      align-items:flex-start;
+    .ops-listing-card-tap {
+      width:100%;
+      cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
     }
 
-    .ops-task-card.has-listing-card .ops-task-icon {
-      display:none;
-    }
-
-    .ops-task-card.has-listing-card .ops-task-time {
-      align-self:flex-start;
-      padding-top:2px;
-      white-space:nowrap;
+    .ops-listing-card-tap:focus-visible {
+      outline:3px solid rgba(0,92,75,.22);
+      outline-offset:2px;
+      border-radius:12px;
     }
 
     .ops-task-body--listing .listing-card-inner {
       margin-top:0;
       border:1px solid #e3ece8;
-      border-radius:12px;
+      border-radius:16px;
       overflow:hidden;
       background:#fff;
+      box-shadow:0 2px 10px rgba(0,0,0,.04);
+      width:100%;
+    }
+
+    .listing-card-inner--ops .bank-row-body {
+      padding:12px 14px 14px;
+    }
+
+    .bank-row-stats--ops {
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+
+    .listing-card-actions {
+      display:grid;
+      gap:8px;
+      margin-top:10px;
+      width:100%;
+    }
+
+    .listing-card-action {
+      width:100%;
+      border-radius:12px;
+      padding:11px 14px;
+      font:700 14px Tajawal;
+      cursor:pointer;
+      line-height:1.35;
+    }
+
+    .listing-card-action--secondary {
+      border:1px solid #b9ddd4;
+      background:#edf7f4;
+      color:#087064;
+    }
+
+    .listing-card-action--primary {
+      border:0;
+      background:var(--green);
+      color:#fff;
+    }
+
+    .listing-card-action:active {
+      transform:scale(0.98);
+    }
+
+    .ops-today-section-list .ops-task-card.has-listing-card,
+    .list .ops-task-card.has-listing-card {
+      padding:0 0 12px;
+      background:transparent;
+      border-bottom:0;
+    }
+
+    .ops-today-section-list .ops-task-card.has-listing-card:last-child,
+    .list .ops-task-card.has-listing-card:last-child {
+      padding-bottom:0;
     }
 
     .ops-task-body--listing .bank-row-header {

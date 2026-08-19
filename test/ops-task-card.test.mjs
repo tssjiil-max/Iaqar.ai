@@ -5,6 +5,8 @@ import {
   buildOpsTaskFieldChecks,
   buildOpsTaskAdSummary,
   buildOpsTaskListingBodyHtml,
+  buildOpsTaskListingContentHtml,
+  buildOpsTaskListingActionsHtml,
   isOpsOpportunityTaskItem
 } from "../public/js/ops-task-card-domain.js";
 import { primaryActionLabel } from "../public/js/operations-center-domain.js";
@@ -47,8 +49,9 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", () => {
+test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks and actions", () => {
   const html = buildOpsTaskListingBodyHtml({
+    id: "opp-1",
     recordType: "opportunity",
     propertyType: "أرض",
     city: "المدينة المنورة",
@@ -58,9 +61,32 @@ test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", 
     area: 800
   });
   assert.ok(html.includes("bank-row-header"));
-  assert.ok(html.includes("bank-row-stats"));
+  assert.ok(html.includes("bank-row-stats--ops"));
   assert.ok(html.includes("listing-field-marks"));
+  assert.ok(html.includes("ينقص:"));
+  assert.ok(html.includes("listing-card-actions"));
+  assert.ok(html.includes("تابع"));
+  assert.ok(html.includes("حفظ الفرصة"));
   assert.ok(html.includes("✗") || html.includes("✓"));
+});
+
+test("buildOpsTaskListingContentHtml uses ops stats layout without action buttons", () => {
+  const html = buildOpsTaskListingContentHtml({
+    recordType: "opportunity",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "ابiار علi",
+    purpose: "SALE",
+    area: 800
+  });
+  assert.ok(html.includes("listing-card-inner--ops"));
+  assert.ok(!html.includes("listing-card-actions"));
+});
+
+test("buildOpsTaskListingActionsHtml renders follow and save buttons", () => {
+  const html = buildOpsTaskListingActionsHtml({ id: "task-9" }, { primaryLabel: "حفظ الفرصة" });
+  assert.ok(html.includes('data-ops-quick="followup"'));
+  assert.ok(html.includes('data-ops-primary="task-9"'));
 });
 
 test("isOpsOpportunityTaskItem detects opportunity rows", () => {

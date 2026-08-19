@@ -87,25 +87,38 @@ function fieldMarksHtml(checks = []) {
  * @param {object} record
  * @param {object} [options]
  * @param {string} [options.footerHtml] — extra lines (contact, follow-up, match, source)
+ * @param {string} [options.actionsHtml] — action buttons rendered inside the card body
  * @param {boolean} [options.showFieldMarks=true]
+ * @param {"bank"|"ops"} [options.layout="bank"] — ops uses budget+area stats only (no rooms)
  */
 export function buildOpportunityListingCardInnerHtml(record = {}, options = {}) {
   const normalized = normalizeListingRecord(record);
   const card = buildBankListCardView(normalized);
   const checks = buildListingFieldChecks(normalized);
-  const stats = [
-    statCell(isOwnerRecord(normalized) ? "السعر" : "الميزانية", card.priceText),
-    statCell("المساحة", card.areaText),
-    statCell("الغرف", card.roomsText)
-  ].filter(Boolean).join("");
-  const statsRow = stats ? `<div class="bank-row-stats">${stats}</div>` : "";
+  const layout = options.layout === "ops" ? "ops" : "bank";
+  const priceLabel = isOwnerRecord(normalized) ? "السعر" : "الميزانية";
+  const statEntries = layout === "ops"
+    ? [
+      statCell(priceLabel, card.priceText),
+      statCell("المساحة", card.areaText)
+    ]
+    : [
+      statCell(priceLabel, card.priceText),
+      statCell("المساحة", card.areaText),
+      statCell("الغرف", card.roomsText)
+    ];
+  const stats = statEntries.filter(Boolean).join("");
+  const statsClass = layout === "ops" ? " bank-row-stats--ops" : "";
+  const statsRow = stats ? `<div class="bank-row-stats${statsClass}">${stats}</div>` : "";
   const readinessClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
   const statusClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
   const showFieldMarks = options.showFieldMarks !== false;
   const footerHtml = options.footerHtml || "";
+  const actionsHtml = options.actionsHtml || "";
+  const innerClass = layout === "ops" ? " listing-card-inner--ops" : "";
 
   return `
-    <div class="listing-card-inner">
+    <div class="listing-card-inner${innerClass}">
       <div class="bank-row-header">
         <span class="bank-kind-badge">${esc(card.kindBadge)}</span>
         <h3 class="bank-row-title">${esc(card.title)}</h3>
@@ -114,9 +127,10 @@ export function buildOpportunityListingCardInnerHtml(record = {}, options = {}) 
       <div class="bank-row-body">
         ${card.location ? `<p class="bank-row-location">${esc(card.location)}</p>` : ""}
         ${statsRow}
-        <p class="bank-row-readiness${readinessClass}">${esc(card.readinessLine)}</p>
+        ${card.readinessLine ? `<p class="bank-row-readiness${readinessClass}">${esc(card.readinessLine)}</p>` : ""}
         ${showFieldMarks ? fieldMarksHtml(checks) : ""}
         ${footerHtml}
+        ${actionsHtml}
       </div>
     </div>`;
 }

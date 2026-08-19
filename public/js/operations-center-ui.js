@@ -10,6 +10,8 @@ import {
 } from "./operations-center-domain.js";
 import {
   buildOpsTaskListingBodyHtml,
+  buildOpsTaskListingContentHtml,
+  buildOpsTaskListingActionsHtml,
   isOpsOpportunityTaskItem
 } from "./ops-task-card-domain.js";
 
@@ -223,6 +225,22 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       </div>`;
   }
 
+  function opsListingCardHtml(item, primaryLabel) {
+    const contentHtml = buildOpsTaskListingContentHtml(item);
+    const actionsHtml = buildOpsTaskListingActionsHtml(item, { primaryLabel });
+    return `
+      <div class="ops-listing-card-wrap">
+        <div class="ops-task-body ops-task-body--listing">
+          <div class="ops-listing-card-tap" role="button" tabindex="0"
+            data-ops-open-task="${escapeHtml(item.id)}"
+            aria-expanded="false" aria-controls="operationsTaskPanel">
+            ${contentHtml}
+          </div>
+          ${actionsHtml}
+        </div>
+      </div>`;
+  }
+
   function todayTaskCardHtml(item, bucketKey) {
     const domain = dailyTasksDomain();
     const meta = domain?.todayTaskMetaLine ? domain.todayTaskMetaLine(item, bucketKey) : "";
@@ -238,19 +256,21 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
               <h4>${escapeHtml(item.title)}</h4>
               ${badgeHtml}
             </div>`;
+    const listingHtml = isListing ? opsListingCardHtml(item, primaryLabel) : "";
 
     return `
       <article class="ops-task-card ops-today-task${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+        ${isListing ? listingHtml : `
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
+          <span class="ops-task-body">
             ${headHtml}
             ${opsTaskBodyHtml(item)}
-            ${meta && !isListing ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
-            ${hint && !isListing ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
+            ${meta ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
+            ${hint ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>
           <span class="ops-task-time">${safeTimeHtml(item.time)}</span>
         </button>
@@ -259,7 +279,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
           <button type="button" class="ops-task-primary" data-ops-primary="${escapeHtml(item.id)}">
             ${escapeHtml(primaryLabel)}
           </button>
-        </div>
+        </div>`}
       </article>`;
   }
 
@@ -409,20 +429,22 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
               <h4>${escapeHtml(item.title)}</h4>
               ${badgeHtml}
             </div>`;
+    const listingHtml = isListing ? opsListingCardHtml(item, primaryLabel) : "";
 
     return `
       <article class="ops-task-card${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+        ${isListing ? listingHtml : `
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
+          <span class="ops-task-body">
             ${headHtml}
             ${opsTaskBodyHtml(item)}
-            ${item.opsStatusLine && !isListing ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
+            ${item.opsStatusLine ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
             ${incompleteMeta}
-            ${hint && !isListing ? `<p class="ops-task-hint"><span>الإجراء الأفضل الآن:</span> ${escapeHtml(hint)}</p>` : ""}
+            ${hint ? `<p class="ops-task-hint"><span>الإجراء الأفضل الآن:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>
           <span class="ops-task-time">${safeTimeHtml(item.time)}</span>
         </button>
@@ -430,7 +452,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
           <button type="button" class="ops-task-primary" data-ops-primary="${escapeHtml(item.id)}">
             ${escapeHtml(primaryLabel)}
           </button>
-        </div>
+        </div>`}
       </article>`;
   }
 

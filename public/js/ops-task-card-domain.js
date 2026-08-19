@@ -44,7 +44,37 @@ export function isOpsOpportunityTaskItem(item = {}) {
   return false;
 }
 
-export function buildOpsTaskListingBodyHtml(item = {}) {
+function escAttr(text = "") {
+  return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[character]));
+}
+
+export function buildOpsTaskListingActionsHtml(item = {}, options = {}) {
+  const taskId = escAttr(item.id || "");
+  const followLabel = escAttr(options.followLabel || "تابع");
+  const primaryLabel = escAttr(options.primaryLabel || "حفظ الفرصة");
+  return `
+    <div class="listing-card-actions">
+      <button type="button" class="listing-card-action listing-card-action--secondary"
+        data-ops-quick="followup" data-ops-task-id="${taskId}">${followLabel}</button>
+      <button type="button" class="listing-card-action listing-card-action--primary"
+        data-ops-primary="${taskId}">${primaryLabel}</button>
+    </div>`;
+}
+
+export function buildOpsTaskListingContentHtml(item = {}) {
   if (!isOpsOpportunityTaskItem(item)) return "";
-  return buildOpportunityListingCardInnerHtml(item, { showFieldMarks: true });
+  return buildOpportunityListingCardInnerHtml(item, {
+    layout: "ops",
+    showFieldMarks: true
+  });
+}
+
+export function buildOpsTaskListingBodyHtml(item = {}, options = {}) {
+  if (!isOpsOpportunityTaskItem(item)) return "";
+  const contentHtml = buildOpsTaskListingContentHtml(item);
+  if (options.includeActions === false) return contentHtml;
+  const actionsHtml = buildOpsTaskListingActionsHtml(item, options);
+  return `${contentHtml}${actionsHtml}`;
 }
