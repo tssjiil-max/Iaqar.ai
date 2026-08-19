@@ -40,7 +40,23 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(owner.html.includes("السعر"));
   assert.ok(client.html.includes("الميزانية"));
   assert.ok(!owner.html.includes("listing-field-mark"));
-  assert.ok(!client.html.includes("✗"));
+  assert.ok(owner.html.includes("opp-details-row-status is-complete"));
+  assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
+});
+
+test("data table rows show checkmarks for complete and crosses for missing fields", () => {
+  const { html } = buildOpportunityDetailsCoreHtml("opp_partial_rows", {
+    opportunityKind: "OFFER",
+    propertyType: "فيلا",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة"
+  });
+  assert.ok(html.includes("opp-details-row-status is-complete"));
+  assert.ok(html.includes("opp-details-row-status is-missing"));
+  assert.ok(html.includes("✓"));
+  assert.ok(html.includes("✕"));
+  assert.ok(!html.includes("opp-details-missing-tag"));
 });
 
 test("completion progress reflects actual readiness fields", () => {
@@ -59,7 +75,7 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.pct, 57);
   assert.ok(html.includes("opp-details-missing-dot"));
   assert.ok(!html.includes("🔴"));
-  assert.ok(html.includes("الحي: عروة"));
+  assert.ok(html.includes("– حي عروة") || html.includes("الحي: عروة"));
   assert.ok(!html.includes("حي حي"));
 });
 
