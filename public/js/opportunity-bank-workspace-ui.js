@@ -16,7 +16,7 @@ import { officeShareStatusLabel,
   buildPublicListingAnnouncement
 } from "./opportunity-ready-actions-domain.js";
 import { cooperationStatusLabel } from "./opportunity-workspace-domain.js";
-import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import { buildOpportunityDetailSummaryHtml } from "./opportunity-detail-panel-ui.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import {
   CONTACT_OUTCOME_LABELS,
@@ -77,25 +77,25 @@ function renderFieldBlock(field) {
 }
 
 export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
-  const missingNames = missingFieldLabelsArabic(readiness.matchingReadinessMissing || []);
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
-  const party = contactPartyLabel(record);
+  const summaryHtml = buildOpportunityDetailSummaryHtml(id, record, readiness);
 
   return `
     <div class="bank-detail-head iaqar-workflow-head">
-      <h3>استكمال الفرصة</h3>
+      <h3>تفاصيل الفرصة</h3>
       <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
-    <section class="bank-missing-banner is-incomplete" aria-live="polite">
-      <strong>ينقص: ${esc(missingNames.join("، "))}</strong>
+    ${summaryHtml}
+    <section class="bank-incomplete-edit" aria-label="تعديل البيانات الناقصة">
+      <h5 class="bank-incomplete-edit-title">أكمل البيانات الناقصة</h5>
+      <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
+        <div class="bank-edit-grid">${fieldBlocks}</div>
+      </form>
     </section>
-    <p class="bank-note iaqar-workflow-note bank-incomplete-party">جهة التواصل: ${esc(party)}</p>
-    <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
-      <div class="bank-edit-grid">${fieldBlocks}</div>
-    </form>
     <div class="bank-unified-save-wrap">
       <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ الفرصة</button>
+      <p class="bank-unified-save-note">بعد الحفظ سيتم التحقق من البيانات تلقائيًا.</p>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
     </div>`;
 }

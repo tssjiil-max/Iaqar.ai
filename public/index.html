@@ -3644,6 +3644,200 @@
     z-index:3;
   }
   .bank-unified-save-wrap .bank-action-primary { width:100%; }
+  .bank-unified-save-note {
+    margin:8px 0 0;
+    font-size:11px;
+    color:var(--muted);
+    text-align:center;
+  }
+  .bank-incomplete-edit {
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--line);
+  }
+  .bank-incomplete-edit-title {
+    margin:0 0 10px;
+    font-size:13px;
+    font-weight:800;
+    color:var(--green);
+  }
+  .opp-detail-summary {
+    display:grid;
+    gap:12px;
+    margin-bottom:4px;
+  }
+  .opp-detail-top {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .opp-detail-identity {
+    display:grid;
+    gap:4px;
+    min-width:0;
+  }
+  .opp-detail-kind {
+    font-size:11px;
+    font-weight:800;
+    color:var(--green);
+  }
+  .opp-detail-title {
+    margin:0;
+    font-size:15px;
+    font-weight:800;
+    color:var(--text);
+    line-height:1.35;
+  }
+  .opp-detail-id {
+    font-size:11px;
+    color:var(--muted);
+  }
+  .opp-detail-status-badge {
+    flex-shrink:0;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:800;
+    line-height:1.3;
+  }
+  .opp-detail-status-badge.is-incomplete {
+    background:#fff1f1;
+    color:#b42318;
+  }
+  .opp-detail-status-badge.is-ready {
+    background:#ecf8f2;
+    color:var(--green);
+  }
+  .opp-detail-progress-block {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:12px;
+    border:1px solid #e3ece8;
+    border-radius:12px;
+    background:#fafcfb;
+  }
+  .opp-detail-progress-ring {
+    width:64px;
+    height:64px;
+    border-radius:50%;
+    display:grid;
+    place-items:center;
+    flex-shrink:0;
+    background:
+      radial-gradient(closest-side, #fafcfb 74%, transparent 76% 100%),
+      conic-gradient(#087064 calc(var(--opp-progress, 0) * 1%), #e3ece8 0);
+  }
+  .opp-detail-progress-count {
+    font-size:11px;
+    font-weight:800;
+    color:var(--green);
+    text-align:center;
+    line-height:1.2;
+  }
+  .opp-detail-progress-copy strong {
+    display:block;
+    font-size:13px;
+    color:var(--text);
+    margin-bottom:4px;
+  }
+  .opp-detail-progress-copy p {
+    margin:0;
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.45;
+  }
+  .opp-detail-missing-list {
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    align-items:center;
+    margin-top:8px;
+    font-size:11px;
+  }
+  .opp-detail-missing-list > span:first-child {
+    color:var(--muted);
+    font-weight:700;
+  }
+  .opp-detail-missing-chip {
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:3px 8px;
+    border-radius:999px;
+    background:#fff1f1;
+    color:#b42318;
+    font-weight:700;
+  }
+  .opp-detail-listing-card {
+    border:1px solid #e3ece8;
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+  }
+  .opp-detail-data-table {
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+  }
+  .opp-detail-data-table h5 {
+    margin:0;
+    padding:10px 12px;
+    font-size:13px;
+    font-weight:800;
+    color:var(--green);
+    background:var(--green-soft);
+    border-bottom:1px solid #e3ece8;
+  }
+  .opp-detail-row {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+    padding:10px 12px;
+    border-bottom:1px solid #f0f3f2;
+    font-size:12px;
+  }
+  .opp-detail-row:last-child { border-bottom:0; }
+  .opp-detail-row-label {
+    color:var(--muted);
+    font-weight:700;
+    flex-shrink:0;
+  }
+  .opp-detail-row-value {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    justify-content:flex-end;
+    text-align:left;
+    min-width:0;
+    font-weight:700;
+    color:var(--text);
+  }
+  .opp-detail-row-value .is-empty { color:#b42318; }
+  .opp-detail-missing-tag {
+    padding:2px 7px;
+    border-radius:999px;
+    background:#fff1f1;
+    color:#b42318;
+    font-size:10px;
+    font-weight:800;
+    flex-shrink:0;
+  }
+  .opp-detail-ok-mark {
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    display:inline-grid;
+    place-items:center;
+    background:#087064;
+    color:#fff;
+    font-size:10px;
+    font-weight:800;
+    flex-shrink:0;
+  }
   .bank-contact-outcomes {
     display:grid;
     grid-template-columns:1fr 1fr;

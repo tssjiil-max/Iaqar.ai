@@ -34,7 +34,14 @@ export function buildOpsTaskAdSummary(record = {}) {
 
 export function isOpsOpportunityTaskItem(item = {}) {
   const type = String(item.recordType || "").toLowerCase();
-  return type === "opportunity" || type === "intake";
+  if (type === "opportunity" || type === "intake") return true;
+  if (type === "operation" && String(item.opportunityId || "").trim()) {
+    if (String(item.operationType || "").toUpperCase() === "MISSING_DATA") return true;
+    if (String(item.matchingReadiness || "").toUpperCase() === "NEEDS_COMPLETION") return true;
+    const missing = item.matchingReadinessMissing || item.missingFields || [];
+    return Array.isArray(missing) && missing.length > 0;
+  }
+  return false;
 }
 
 export function buildOpsTaskListingBodyHtml(item = {}) {

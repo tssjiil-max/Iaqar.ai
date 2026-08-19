@@ -208,8 +208,17 @@ export function bestActionHint(item) {
   return String(item.nextAction || item.actionLabel || "").trim();
 }
 
+function needsOpportunitySave(item = {}) {
+  const recordType = String(item.recordType || "").toLowerCase();
+  if (!["opportunity", "intake"].includes(recordType)) return false;
+  if (upper(item.matchingReadiness) === "NEEDS_COMPLETION") return true;
+  const missing = item.matchingReadinessMissing || item.missingFields || [];
+  return Array.isArray(missing) && missing.length > 0;
+}
+
 export function primaryActionLabel(item) {
   if (!item) return "بدء الإجراء";
+  if (needsOpportunitySave(item)) return "حفظ الفرصة";
   const cat = categoryKey(item);
   if (cat === "incomplete") return "حفظ الفرصة";
   if (cat === "ready") return "فتح مساحة العمل";
