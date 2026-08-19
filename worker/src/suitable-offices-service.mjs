@@ -87,9 +87,24 @@ export async function buildSuitableOfficesResult({
   const offices = [];
   for (const doc of publicDocs) {
     const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    const data = deps.firestoreFieldsToJs(doc.fields || {});
-    if (!cityMatchesCityField(data.city, city)) continue;
-    offices.push(publicOfficeFromFields(id, data));
+    const publicData = deps.firestoreFieldsToJs(doc.fields || {});
+    let merged = publicData;
+    try {
+      const officeDoc = await deps.getFirestoreDocument({
+        projectId,
+        segments: ["offices", id],
+        accessToken,
+        allowMissing: true
+      });
+      if (officeDoc?.fields) {
+        const officeData = deps.firestoreFieldsToJs(officeDoc.fields || {});
+        merged = { ...officeData, ...publicData };
+      }
+    } catch (_) {
+      /* keep public snapshot only */
+    }
+    if (!cityMatchesCityField(merged.city || publicData.city, city)) continue;
+    offices.push(publicOfficeFromFields(id, merged));
   }
 
   const ranked = rankSuitableOffices({

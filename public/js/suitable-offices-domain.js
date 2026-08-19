@@ -90,8 +90,8 @@ export function officeEligibilityFlags(office = {}) {
   const scope = resolveLegacyOfficeScope(office);
   return {
     cooperationEnabled: mode !== "DISABLED",
-    receiveExternal: scope.receiveExternalOpportunities === true,
-    availableNow: scope.cooperationAvailableNow === true,
+    receiveExternal: scope.receiveExternalOpportunities !== false,
+    availableNow: scope.cooperationAvailableNow !== false,
     approved: approval === "approved" || (!office.approvalStatus && Boolean(office.licenseNumber)),
     active: account === "active" || !office.accountStatus
   };

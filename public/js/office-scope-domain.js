@@ -19,8 +19,8 @@ export const OFFICE_SCOPE_MESSAGES = Object.freeze({
 
 export function defaultOfficeScopeFlags(existing = {}) {
   return {
-    receiveExternalOpportunities: existing.receiveExternalOpportunities === true,
-    cooperationAvailableNow: existing.cooperationAvailableNow === true
+    receiveExternalOpportunities: existing.receiveExternalOpportunities !== false,
+    cooperationAvailableNow: existing.cooperationAvailableNow !== false
   };
 }
 

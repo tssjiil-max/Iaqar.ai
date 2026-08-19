@@ -215,10 +215,32 @@ test("cooperation decision supports request details", () => {
   assert.equal(applied.patch.status, "DETAILS_REQUESTED");
 });
 
-test("office eligibility requires toggles", () => {
+test("office eligibility requires explicit opt-out toggles", () => {
   assert.equal(isOfficeEligibleForCooperationListing(office()), true);
   assert.equal(isOfficeEligibleForCooperationListing(office({ receiveExternalOpportunities: false })), false);
+  assert.equal(isOfficeEligibleForCooperationListing(office({ cooperationAvailableNow: false })), false);
   assert.equal(isOfficeEligibleForCooperationListing(office({ cooperationMode: "DISABLED" })), false);
+});
+
+test("legacy office without scope toggles is eligible by default", () => {
+  const urwah = resolveDistrictIdFromLabel("عروة", MADINAH);
+  const legacy = {
+    officeId: "legacy-office",
+    officeName: "مكتب قديم",
+    city: MADINAH,
+    cooperationMode: "APPROVAL_REQUIRED",
+    approvalStatus: "approved",
+    accountStatus: "active",
+    licenseNumber: "1234567890",
+    primaryNeighborhoodId: urwah
+  };
+  assert.equal(isOfficeEligibleForCooperationListing(legacy), true);
+  const ranked = rankSuitableOffices({
+    opportunity: { city: MADINAH, district: "عروة" },
+    offices: [legacy],
+    ownOfficeId: "office-a"
+  });
+  assert.equal(ranked.total, 1);
 });
 
 test("UI tier labels are Arabic", () => {
