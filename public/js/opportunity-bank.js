@@ -84,6 +84,7 @@ import {
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
+import { buildOpportunityListingCardInnerHtml } from "./opportunity-listing-card-ui.js";
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
@@ -448,21 +449,11 @@ function isVisibleForFilter(record) {
   return true;
 }
 
-function bankStatCell(label, value) {
-  if (!value) return "";
-  return `<div class="bank-stat"><span class="bank-stat-label">${escapeHtml(label)}</span><strong class="bank-stat-value">${escapeHtml(value)}</strong></div>`;
-}
 
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
   const card = buildBankListCardView({ ...record, id: row.id });
   const followupClass = card.nextActionOverdue ? " is-overdue" : "";
-  const stats = [
-    bankStatCell(isOwnerRecord(record) ? "السعر" : "الميزانية", card.priceText),
-    bankStatCell("المساحة", card.areaText),
-    bankStatCell("الغرف", card.roomsText)
-  ].filter(Boolean).join("");
-  const statsRow = stats ? `<div class="bank-row-stats">${stats}</div>` : "";
   const followup = card.nextActionLabel
     ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
     : "";
@@ -472,14 +463,20 @@ function bankRowHtml(row) {
   const sourceLine = card.sourceShort
     ? `<p class="bank-row-source">${escapeHtml(card.sourceShort)}</p>`
     : "";
-  const readinessClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
-  const statusClass = card.isReadyForMatching ? " is-ready" : " is-incomplete";
   const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
     ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
     : "";
+  const footerHtml = `
+    <div class="bank-row-footer">
+      ${contactHtml}
+      ${followup}
+      ${matchLine}
+      ${sourceLine}
+    </div>`;
   const incompleteHint = !card.isReadyForMatching
     ? `<p class="bank-row-tasks-hint">استكمال البيانات من المهام اليومية</p>`
     : "";
+  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id }, { footerHtml });
   return `
     <article
       class="bank-row bank-row-card"
@@ -488,22 +485,7 @@ function bankRowHtml(row) {
       data-opportunity-id="${escapeHtml(card.opportunityId || row.id)}"
       data-open-id="${escapeHtml(card.opportunityId || row.id)}"
       aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
-      <div class="bank-row-header">
-        <span class="bank-kind-badge">${escapeHtml(card.kindBadge)}</span>
-        <h3 class="bank-row-title">${escapeHtml(card.title)}</h3>
-        <span class="bank-readiness-badge${statusClass}">${escapeHtml(card.headerStatus)}</span>
-      </div>
-      <div class="bank-row-body">
-        ${card.location ? `<p class="bank-row-location">${escapeHtml(card.location)}</p>` : ""}
-        ${statsRow}
-        <p class="bank-row-readiness${readinessClass}">${escapeHtml(card.readinessLine)}</p>
-        <div class="bank-row-footer">
-          ${contactHtml}
-          ${followup}
-          ${matchLine}
-          ${sourceLine}
-        </div>
-      </div>
+      ${inner}
       ${incompleteHint}
     </article>`;
 }

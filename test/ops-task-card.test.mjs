@@ -47,16 +47,19 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders check and cross marks", () => {
+test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", () => {
   const html = buildOpsTaskListingBodyHtml({
     recordType: "opportunity",
     propertyType: "أرض",
     city: "المدينة المنورة",
     district: "ابيار علي",
-    purpose: "SALE"
+    purpose: "SALE",
+    salePrice: 500000,
+    area: 800
   });
-  assert.ok(html.includes("ops-task-ad-headline"));
-  assert.ok(html.includes("ops-task-field-check"));
+  assert.ok(html.includes("bank-row-header"));
+  assert.ok(html.includes("bank-row-stats"));
+  assert.ok(html.includes("listing-field-marks"));
   assert.ok(html.includes("✗"));
   assert.ok(html.includes("✓") || html.includes("✗"));
 });
@@ -86,6 +89,6 @@ test("listing body renders in DOM with accessible field grid", () => {
     advertiserRole: "OWNER",
     contactPhone: "+966501234567"
   });
-  assert.ok(root.querySelector(".ops-task-field-check.is-complete"));
-  assert.equal(root.querySelectorAll(".ops-task-field-check").length, 7);
+  assert.ok(root.querySelector(".listing-field-mark.is-complete"));
+  assert.equal(root.querySelectorAll(".listing-field-mark").length, 7);
 });

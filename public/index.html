@@ -1466,78 +1466,90 @@
       line-height:1.45;
     }
 
-    .ops-task-ad {
-      margin-top:8px;
-      display:grid;
-      gap:4px;
-    }
-
-    .ops-task-ad-headline {
-      margin:0;
-      font-size:15px;
-      font-weight:700;
-      color:var(--green-dark, #173d35);
-      line-height:1.35;
-    }
-
-    .ops-task-ad-location,
-    .ops-task-ad-specs {
-      margin:0;
-      font-size:13px;
-      color:var(--muted);
-      line-height:1.4;
-    }
-
-    .ops-task-field-checks {
-      margin-top:10px;
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:6px 10px;
-    }
-
-    .ops-task-field-check {
-      display:flex;
-      align-items:center;
-      gap:6px;
+    .ops-task-body--listing {
       min-width:0;
-      font-size:12px;
-      color:#36574f;
     }
 
-    .ops-task-field-mark {
-      width:18px;
-      height:18px;
-      border-radius:999px;
+    .ops-task-card.has-listing-card .ops-task-card-main {
+      align-items:flex-start;
+    }
+
+    .ops-task-body--listing .listing-card-inner {
+      margin-top:0;
+      border:1px solid #e3ece8;
+      border-radius:12px;
+      overflow:hidden;
+      background:#fff;
+    }
+
+    .ops-task-body--listing .bank-row-header {
+      padding:8px 10px;
+    }
+
+    .ops-task-body--listing .bank-row-body {
+      padding:10px 12px 11px;
+    }
+
+    .ops-task-body--listing .bank-row-title {
+      font-size:12px;
+    }
+
+    .ops-task-meta-line {
+      margin:8px 0 0;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .listing-field-marks {
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      margin-top:10px;
+    }
+
+    .listing-field-mark {
       display:inline-flex;
       align-items:center;
-      justify-content:center;
+      gap:4px;
+      padding:3px 8px;
+      border-radius:999px;
       font-size:11px;
       font-weight:700;
-      flex-shrink:0;
-      line-height:1;
+      line-height:1.3;
+      max-width:100%;
     }
 
-    .ops-task-field-check.is-complete .ops-task-field-mark {
-      background:#087064;
-      color:#fff;
+    .listing-field-mark.is-complete {
+      background:#ecf8f2;
+      color:#087064;
     }
 
-    .ops-task-field-check.is-missing .ops-task-field-mark {
+    .listing-field-mark.is-missing {
       background:#fff1f1;
-      color:#c0392b;
-      border:1px solid #efc4c4;
+      color:#b42318;
     }
 
-    .ops-task-field-label {
+    .listing-field-mark-icon {
+      font-size:10px;
+      font-weight:800;
+      flex-shrink:0;
+    }
+
+    .listing-field-mark-label {
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
     }
 
-    .ops-task-field-summary {
-      margin:8px 0 0;
-      font-size:11px;
+    .listing-field-summary {
+      margin:6px 0 0;
+      font-size:10px;
       color:var(--muted);
+      font-weight:600;
+    }
+
+    .bank-row-body .listing-field-marks {
+      margin-top:8px;
     }
 
     .ops-task-status,

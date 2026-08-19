@@ -182,9 +182,9 @@ test("shell renders opportunity today cards with ad layout and save label", asyn
     }));
 
     assert.equal(document.querySelector(".ops-today-section-head h3")?.textContent, "طلبات جديدة");
-    assert.ok(document.querySelector(".ops-task-ad-headline"));
-    assert.ok(document.querySelector(".ops-task-field-check.is-missing"));
-    assert.ok(document.querySelector(".ops-task-field-check.is-complete"));
+    assert.ok(document.querySelector(".bank-row-header"));
+    assert.ok(document.querySelector(".bank-row-stats"));
+    assert.ok(document.querySelector(".listing-field-marks"));
     assert.equal(document.querySelector(".ops-task-primary")?.textContent.trim(), "حفظ الفرصة");
   } finally {
     context.close();

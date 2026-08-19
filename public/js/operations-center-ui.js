@@ -231,23 +231,26 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const primaryLabel = centerDomain?.primaryActionLabel
       ? centerDomain.primaryActionLabel(item)
       : primaryActionLabel(item);
-
-    const badgeHtml = opsCardBadgeHtml(item);
+    const isListing = isOpsOpportunityTaskItem(item);
+    const badgeHtml = isListing ? "" : opsCardBadgeHtml(item);
+    const headHtml = isListing ? "" : `
+            <div class="ops-task-head">
+              <h4>${escapeHtml(item.title)}</h4>
+              ${badgeHtml}
+            </div>`;
 
     return `
-      <article class="ops-task-card ops-today-task" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card ops-today-task${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body">
-            <div class="ops-task-head">
-              <h4>${escapeHtml(item.title)}</h4>
-              ${badgeHtml}
-            </div>
+          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
+            ${headHtml}
             ${opsTaskBodyHtml(item)}
-            ${meta ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
+            ${meta && !isListing ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
+            ${meta && isListing ? `<p class="ops-task-meta-line">${escapeHtml(meta)}</p>` : ""}
             ${hint ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>
           <span class="ops-task-time">${safeTimeHtml(item.time)}</span>
@@ -400,22 +403,25 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const primaryLabel = domain?.primaryActionLabel ? domain.primaryActionLabel(item) : primaryActionLabel(item);
     const cat = domain?.categoryKey ? domain.categoryKey(item) : "";
     const incompleteMeta = cat === "incomplete" ? incompleteMetaHtml(item) : "";
-    const badgeHtml = opsCardBadgeHtml(item);
+    const isListing = isOpsOpportunityTaskItem(item);
+    const badgeHtml = isListing ? "" : opsCardBadgeHtml(item);
+    const headHtml = isListing ? "" : `
+            <div class="ops-task-head">
+              <h4>${escapeHtml(item.title)}</h4>
+              ${badgeHtml}
+            </div>`;
 
     return `
-      <article class="ops-task-card" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body">
-            <div class="ops-task-head">
-              <h4>${escapeHtml(item.title)}</h4>
-              ${badgeHtml}
-            </div>
+          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
+            ${headHtml}
             ${opsTaskBodyHtml(item)}
-            ${item.opsStatusLine && !isOpsOpportunityTaskItem(item) ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
+            ${item.opsStatusLine && !isListing ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
             ${incompleteMeta}
             ${hint ? `<p class="ops-task-hint"><span>الإجراء الأفضل الآن:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>

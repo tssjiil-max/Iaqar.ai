@@ -14,9 +14,11 @@ function readRepo(...parts) {
 
 test("bank list card header has badge title and status aligned", () => {
   const html = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(html.includes("bank-row-header"));
-  assert.ok(html.includes("bank-row-title"));
-  assert.ok(html.includes("bank-readiness-badge"));
+  const listing = readRepo("public", "js", "opportunity-listing-card-ui.js");
+  assert.ok(html.includes("buildOpportunityListingCardInnerHtml"));
+  assert.ok(listing.includes("bank-row-header"));
+  assert.ok(listing.includes("bank-row-title"));
+  assert.ok(listing.includes("bank-readiness-badge"));
   const shell = readRepo("public", "index.html");
   assert.ok(shell.includes(".bank-row-header"));
   assert.ok(shell.includes("align-items:center"));
