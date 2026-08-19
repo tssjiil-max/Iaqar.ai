@@ -4,7 +4,8 @@ import { readRepositoryFile } from "./helpers/shell.mjs";
 import {
   buildAgreementLibraryEntries,
   buildLibraryItem,
-  libraryRowLabel
+  libraryRowLabel,
+  resolveLibraryCategory
 } from "../public/js/office-library-domain.js";
 
 test("agreement library creates mirrored entries for both offices", () => {
@@ -38,6 +39,18 @@ test("library upload encodes Arabic file names for HTTP headers", () => {
   const source = readRepositoryFile("public", "js", "office-library.js");
   assert.ok(source.includes("encodeURIComponent(file.name"));
   assert.ok(source.includes("guessLibraryContentType"));
+  assert.ok(source.includes("pendingUploadFile"));
   const worker = readRepositoryFile("worker", "src", "index.js");
   assert.ok(worker.includes("decodeURIComponent(fileNameRaw)"));
+});
+
+test("legacy library item resolves to other category", () => {
+  const item = buildLibraryItem({
+    officeId: "office-a",
+    fileName: "old.jpg",
+    contentType: "image/jpeg",
+    mediaPath: "office-library/office-a/x/old.jpg"
+  });
+  delete item.category;
+  assert.equal(resolveLibraryCategory(item), "other");
 });

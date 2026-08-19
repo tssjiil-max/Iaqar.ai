@@ -270,6 +270,7 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   conversation: "messageNotifications",
   appointment: "appointmentNotifications",
   followup: "appointmentNotifications",
+  opportunity_followup_reminder: "appointmentNotifications",
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
   system: "systemNotifications"

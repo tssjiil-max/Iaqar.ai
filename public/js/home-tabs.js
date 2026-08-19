@@ -6,7 +6,7 @@
 
   const state = {
     main: "operations",
-    opp: "add"
+    opp: "bank"
   };
 
   function $(id) {
@@ -89,7 +89,7 @@
     tabOps.addEventListener("click", () => setMainTab("operations"));
     tabOpp.addEventListener("click", () => {
       setMainTab("opportunities");
-      setOppTab(state.opp || "add");
+      setOppTab(state.opp || "bank");
     });
     $("oppTabAdd")?.addEventListener("click", () => {
       if (state.main !== "opportunities") setMainTab("opportunities");
@@ -101,7 +101,7 @@
     });
 
     setMainTab("operations");
-    setOppTab("add", { skipBankPause: true, skipBankOpen: true });
+    setOppTab("bank", { skipBankPause: true, skipBankOpen: true });
   }
 
   document.addEventListener("DOMContentLoaded", boot);

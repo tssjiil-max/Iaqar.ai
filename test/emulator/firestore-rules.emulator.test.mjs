@@ -1150,3 +1150,75 @@ test("Phase 6 Test 11: accepted share keeps ownership on origin opportunity", as
     sourceReference: "src"
   }));
 });
+
+// ---------------------------------------------------------------------------
+// Office library isolation
+// ---------------------------------------------------------------------------
+
+function libraryItem(overrides = {}) {
+  return {
+    officeId: "office-a",
+    fileName: "عقد.pdf",
+    contentType: "application/pdf",
+    mediaPath: "office-library/office-a/lib_test/عقد.pdf",
+    kind: "manual",
+    category: "other",
+    documentStatus: "ACTIVE",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    schemaVersion: 2,
+    ...overrides
+  };
+}
+
+test("Office A member can create and read its library item", async () => {
+  const db = authed("broker-a1");
+  const ref = doc(db, "offices/office-a/library/lib_a1");
+  await assertSucceeds(setDoc(ref, libraryItem({
+    category: "lease_contract",
+    documentTitle: "عقد إيجار"
+  })));
+  const snap = await assertSucceeds(getDoc(ref));
+  assert.equal(snap.data().category, "lease_contract");
+});
+
+test("Office B cannot read Office A library items", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/library/lib_secret"), libraryItem());
+  });
+  const outsider = authed("broker-b1");
+  await assertFails(getDoc(doc(outsider, "offices/office-a/library/lib_secret")));
+});
+
+test("Office B cannot delete Office A library items", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/library/lib_delete"), libraryItem());
+  });
+  const outsider = authed("broker-b1");
+  await assertFails(deleteDoc(doc(outsider, "offices/office-a/library/lib_delete")));
+});
+
+test("changing officeId on library create is rejected", async () => {
+  const db = authed("broker-a1");
+  await assertFails(setDoc(doc(db, "offices/office-a/library/lib_bad"), libraryItem({
+    officeId: "office-b"
+  })));
+});
+
+test("invalid library category is rejected by rules", async () => {
+  const db = authed("broker-a1");
+  await assertFails(setDoc(doc(db, "offices/office-a/library/lib_bad_cat"), libraryItem({
+    category: "fake_category"
+  })));
+});
+
+test("unauthenticated users cannot read library items", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-a/library/lib_unauth"), libraryItem());
+  });
+  const db = unauthed();
+  await assertFails(getDoc(doc(db, "offices/office-a/library/lib_unauth")));
+});
