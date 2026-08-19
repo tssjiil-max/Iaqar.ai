@@ -273,12 +273,28 @@ export function applyCooperationDecision(request, decision, { now = new Date(), 
 
   if (status === "REJECT" || status === "REJECTED") {
     if (request.status === "REJECTED") return { ok: true, patch: null, idempotent: true };
-    if (request.status !== "PENDING") return { ok: false, error: "not_pending" };
+    if (request.status !== "PENDING" && request.status !== "DETAILS_REQUESTED") {
+      return { ok: false, error: "not_pending" };
+    }
     return {
       ok: true,
       patch: {
         status: "REJECTED",
         respondedAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        respondedBy: String(actorUid || "")
+      }
+    };
+  }
+
+  if (status === "REQUEST_DETAILS" || status === "DETAILS_REQUESTED") {
+    if (request.status === "DETAILS_REQUESTED") return { ok: true, patch: null, idempotent: true };
+    if (request.status !== "PENDING") return { ok: false, error: "not_pending" };
+    return {
+      ok: true,
+      patch: {
+        status: "DETAILS_REQUESTED",
+        detailsRequestedAt: now.toISOString(),
         updatedAt: now.toISOString(),
         respondedBy: String(actorUid || "")
       }

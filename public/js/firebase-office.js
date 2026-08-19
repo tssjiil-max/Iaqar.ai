@@ -81,6 +81,49 @@
     }));
   }
 
+  function buildOfficeRefs(officeId) {
+    const officeRef = runtime.db.collection(ROOT_COLLECTION).doc(officeId);
+    return Object.freeze({
+      office: officeRef,
+      owners: officeRef.collection("owners"),
+      clients: officeRef.collection("clients"),
+      opportunities: officeRef.collection("opportunities"),
+      deals: officeRef.collection("deals"),
+      matches: officeRef.collection("matches"),
+      operations: officeRef.collection("operations"),
+      notifications: officeRef.collection("notifications"),
+      alerts: officeRef.collection("alerts"),
+      devices: officeRef.collection("devices"),
+      inbox: officeRef.collection("inbox"),
+      publicIntake: officeRef.collection("publicIntake")
+    });
+  }
+
+  function rebindOfficeContext(nextOfficeId) {
+    if (!runtime.db) return false;
+    const normalized = normalizeOfficeId(nextOfficeId);
+    if (!normalized || normalized === DEFAULT_OFFICE_ID) return false;
+    runtime.officeId = normalized;
+    runtime.officeIdSource = "login";
+    runtime.paths = createOfficePaths(normalized);
+    runtime.refs = buildOfficeRefs(normalized);
+    try {
+      localStorage.setItem(STORAGE_KEY, normalized);
+    } catch (_) {
+      // الرابط وذاكرة التطبيق تظل المصدر عند تعذر التخزين المحلي.
+    }
+    document.documentElement.dataset.officeId = normalized;
+    window.dispatchEvent(new CustomEvent("iaqar:office-rebound", {
+      detail: {
+        projectId: runtime.projectId,
+        officeId: normalized,
+        paths: runtime.paths
+      }
+    }));
+    console.info("[iaqar] office context rebound", { officeId: normalized });
+    return true;
+  }
+
   const resolved = resolveOfficeId();
   const runtime = {
     projectId: PROJECT_ID,
@@ -96,6 +139,7 @@
 
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.office = runtime;
+  window.IAQAR.rebindOfficeContext = rebindOfficeContext;
 
   if (!window.firebase || typeof window.firebase.app !== "function") {
     setRuntimeStatus("sdk-missing", "لم يتم تحميل Firebase SDK");
@@ -117,23 +161,16 @@
   try {
     runtime.app = window.firebase.app();
     runtime.db = window.firebase.firestore(runtime.app);
-    runtime.db.settings({ ignoreUndefinedProperties: true });
+    try {
+      runtime.db.settings({ ignoreUndefinedProperties: true });
+    } catch (settingsError) {
+      const message = String(settingsError?.message || settingsError || "");
+      if (!message.includes("already been started")) {
+        throw settingsError;
+      }
+    }
 
-    const officeRef = runtime.db.collection(ROOT_COLLECTION).doc(runtime.officeId);
-    runtime.refs = Object.freeze({
-      office: officeRef,
-      owners: officeRef.collection("owners"),
-      clients: officeRef.collection("clients"),
-      opportunities: officeRef.collection("opportunities"),
-      deals: officeRef.collection("deals"),
-      matches: officeRef.collection("matches"),
-      operations: officeRef.collection("operations"),
-      notifications: officeRef.collection("notifications"),
-      alerts: officeRef.collection("alerts"),
-      devices: officeRef.collection("devices"),
-      inbox: officeRef.collection("inbox"),
-      publicIntake: officeRef.collection("publicIntake")
-    });
+    runtime.refs = buildOfficeRefs(runtime.officeId);
 
     setRuntimeStatus("initialized", "تم إنشاء اتصال Firestore");
 

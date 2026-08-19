@@ -23,6 +23,21 @@ import {
   validateOfficeName,
   withOfficeImageCacheBust
 } from "./office-domain.js";
+import { neighborhoodIdsForCity } from "./neighborhood-adjacency-domain.js";
+import { wireArabicSuggestInput } from "./arabic-field-suggest.js";
+import {
+  districtIdFromOfficialName,
+  districtLabelById,
+  districtOptionsForCity,
+  normalizeServiceNeighborhoodIds,
+  SERVICE_NEIGHBORHOOD_MAX,
+  SERVICE_NEIGHBORHOOD_MESSAGES,
+  validateServiceNeighborhoodIds
+} from "./service-neighborhood-domain.js";
+import {
+  buildOfficeScopePayload,
+  resolveLegacyOfficeScope
+} from "./office-scope-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -52,6 +67,10 @@ const defaults = {
   licenseNumber: "",
   city: "المدينة المنورة",
   specialties: [],
+  serviceNeighborhoodIds: [],
+  primaryNeighborhoodId: "",
+  receiveExternalOpportunities: false,
+  cooperationAvailableNow: false,
   logoUrl: "",
   displayImageUrl: "",
   coverUrl: "",
@@ -71,6 +90,7 @@ let authClaims = {};
 let notificationPreferences = defaultNotificationPreferences();
 let cooperationMode = DEFAULT_COOPERATION_MODE;
 let nameCheckToken = 0;
+let selectedServiceNeighborhoodIds = [];
 
 function officeRuntime() {
   return window.IAQAR && window.IAQAR.office ? window.IAQAR.office : null;
@@ -135,6 +155,13 @@ function clean(data) {
     licenseNumber: safeText(data.licenseNumber, defaults.licenseNumber).replace(/[^0-9]/g, "").slice(0, 20),
     city: safeText(data.city, defaults.city).slice(0, 60),
     specialties: normalizedSpecialties(data.specialties),
+    serviceNeighborhoodIds: normalizeServiceNeighborhoodIds(
+      data.serviceNeighborhoodIds,
+      safeText(data.city, defaults.city).slice(0, 60)
+    ),
+    primaryNeighborhoodId: String(data.primaryNeighborhoodId || "").trim(),
+    receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+    cooperationAvailableNow: data.cooperationAvailableNow === true,
     logoUrl: safeText(data.logoUrl).slice(0, 2000),
     displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
     coverUrl: safeText(data.coverUrl).slice(0, 2000),
@@ -168,9 +195,249 @@ function writeSpecialtiesToForm(list) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
+function renderOfficeCardNeighborhoods(ids = []) {
+  const chips = document.getElementById("officeDisplayNeighborhoods");
+  const empty = document.getElementById("officeDisplayNeighborhoodsEmpty");
+  const list = Array.isArray(ids) ? ids : [];
+  if (!chips) return;
+  chips.innerHTML = list
+    .map((id) => `<span class="office-neighborhood-chip">${districtLabelById(id)}</span>`)
+    .join("");
+  if (empty) empty.hidden = list.length > 0;
+}
+
+function setNeighborhoodEditorError(message = "") {
+  if (!el.neighborhoodError) return;
+  el.neighborhoodError.textContent = message || "";
+}
+
+function updateNeighborhoodCount() {
+  if (!el.neighborhoodCount) return;
+  const remaining = SERVICE_NEIGHBORHOOD_MAX - selectedServiceNeighborhoodIds.length;
+  el.neighborhoodCount.textContent =
+    `تم اختيار ${selectedServiceNeighborhoodIds.length} من ${SERVICE_NEIGHBORHOOD_MAX} — المتبقي ${remaining}`;
+}
+
+function renderNeighborhoodEditorChips() {
+  if (!el.neighborhoodChips) return;
+  el.neighborhoodChips.innerHTML = selectedServiceNeighborhoodIds
+    .map((id) => `
+      <span class="office-neighborhood-editor-chip" data-id="${id}">
+        <span>${districtLabelById(id)}</span>
+        <button type="button" data-remove-neighborhood="${id}" aria-label="إزالة ${districtLabelById(id)}">×</button>
+      </span>
+    `)
+    .join("");
+  updateNeighborhoodCount();
+}
+
+function readNeighborhoodsFromForm() {
+  return [...selectedServiceNeighborhoodIds];
+}
+
+function writeOfficeScopeToForm(data = {}) {
+  const scope = resolveLegacyOfficeScope(data);
+  if (el.scopeCity) el.scopeCity.value = scope.city || data.city || "";
+  if (el.primaryNeighborhoodId) el.primaryNeighborhoodId.value = scope.primaryNeighborhoodId || "";
+  if (el.primaryNeighborhoodLabel) {
+    el.primaryNeighborhoodLabel.textContent = scope.primaryNeighborhoodId
+      ? `الحي الرئيسي: ${districtLabelById(scope.primaryNeighborhoodId)}`
+      : "";
+  }
+  if (el.receiveExternalToggle) el.receiveExternalToggle.checked = scope.receiveExternalOpportunities === true;
+  if (el.cooperationAvailableToggle) {
+    el.cooperationAvailableToggle.checked = scope.cooperationAvailableNow === true;
+  }
+  writeNeighborhoodsToForm(scope.serviceNeighborhoodIds);
+}
+
+function readOfficeScopeFromForm() {
+  return {
+    city: el.scopeCity?.value || el.city?.value || current.city,
+    primaryNeighborhoodId: el.primaryNeighborhoodId?.value || "",
+    serviceNeighborhoodIds: readNeighborhoodsFromForm(),
+    receiveExternalOpportunities: Boolean(el.receiveExternalToggle?.checked),
+    cooperationAvailableNow: Boolean(el.cooperationAvailableToggle?.checked)
+  };
+}
+
+function initPrimaryNeighborhoodEditor() {
+  if (!el.primaryNeighborhoodSearch) return;
+  const refresh = () => {
+    const city = el.scopeCity?.value || el.city?.value || current.city;
+    const options = districtOptionsForCity(city);
+    delete el.primaryNeighborhoodSearch.dataset.arabicSuggestWired;
+    const staleList = el.primaryNeighborhoodSearch.parentElement?.querySelector(".arabic-suggest-list");
+    if (staleList) staleList.remove();
+    wireArabicSuggestInput(el.primaryNeighborhoodSearch, options, {
+      onPick: (label) => {
+        const id = districtIdFromOfficialName(label, city);
+        if (!id) return;
+        if (el.primaryNeighborhoodId) el.primaryNeighborhoodId.value = id;
+        if (el.primaryNeighborhoodLabel) {
+          el.primaryNeighborhoodLabel.textContent = `الحي الرئيسي: ${districtLabelById(id)}`;
+        }
+        el.primaryNeighborhoodSearch.value = "";
+        const merged = buildOfficeScopePayload({
+          city,
+          primaryNeighborhoodId: id,
+          serviceNeighborhoodIds: selectedServiceNeighborhoodIds,
+          receiveExternalOpportunities: el.receiveExternalToggle?.checked,
+          cooperationAvailableNow: el.cooperationAvailableToggle?.checked
+        });
+        if (merged.ok) writeNeighborhoodsToForm(merged.serviceNeighborhoodIds);
+      }
+    });
+  };
+  refresh();
+  if (el.city) el.city.addEventListener("change", refresh);
+  if (el.scopeCity) el.scopeCity.addEventListener("change", refresh);
+}
+
+async function saveOfficeScopeSettings() {
+  const runtime = officeRuntime();
+  const user = authUser();
+  const scopeInput = readOfficeScopeFromForm();
+  const payload = buildOfficeScopePayload({
+    city: scopeInput.city,
+    primaryNeighborhoodId: scopeInput.primaryNeighborhoodId,
+    serviceNeighborhoodIds: scopeInput.serviceNeighborhoodIds,
+    receiveExternalOpportunities: scopeInput.receiveExternalOpportunities,
+    cooperationAvailableNow: scopeInput.cooperationAvailableNow
+  });
+  if (!payload.ok) {
+    const message = payload.errors[0] || "تعذر حفظ نطاق العمل";
+    setStatus(el.scopeStatus, message, "is-error");
+    toast(message);
+    return;
+  }
+  if (!runtime?.db || !user) {
+    setStatus(el.scopeStatus, "سجل دخول المكتب لحفظ نطاق العمل", "is-error");
+    return;
+  }
+  setStatus(el.scopeStatus, "جارٍ الحفظ…");
+  try {
+    const officeRef = runtime.db.collection("offices").doc(officeId());
+    const publicRef = runtime.db.collection("publicOffices").doc(officeId());
+    const patch = {
+      primaryNeighborhoodId: payload.primaryNeighborhoodId,
+      serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
+      receiveExternalOpportunities: payload.receiveExternalOpportunities,
+      cooperationAvailableNow: payload.cooperationAvailableNow,
+      city: scopeInput.city,
+      updatedAt: serverTimestamp()
+    };
+    await officeRef.set({ officeId: officeId(), ...patch }, { merge: true });
+    await publicRef.set({
+      officeId: officeId(),
+      primaryNeighborhoodId: payload.primaryNeighborhoodId,
+      serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
+      receiveExternalOpportunities: payload.receiveExternalOpportunities,
+      cooperationAvailableNow: payload.cooperationAvailableNow,
+      city: scopeInput.city,
+      approvalStatus: current.approvalStatus || "approved",
+      accountStatus: current.accountStatus || "active",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    current = clean({
+      ...current,
+      ...patch
+    });
+    saveLocal(current);
+    writeOfficeScopeToForm(current);
+    setStatus(el.scopeStatus, "تم حفظ نطاق العمل والتعاون", "is-done");
+  } catch (error) {
+    console.warn("[iaqar] office scope save", error);
+    setStatus(el.scopeStatus, "تعذر حفظ نطاق العمل. يلزم حساب مدير مخوّل.", "is-error");
+  }
+}
+
+function writeNeighborhoodsToForm(ids = []) {
+  selectedServiceNeighborhoodIds = normalizeServiceNeighborhoodIds(ids, el.city?.value || current.city);
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+}
+
+function addNeighborhoodId(id) {
+  const city = el.city?.value || current.city;
+  if (!id) return false;
+  if (selectedServiceNeighborhoodIds.includes(id)) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.duplicate);
+    return false;
+  }
+  if (selectedServiceNeighborhoodIds.length >= SERVICE_NEIGHBORHOOD_MAX) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.max);
+    return false;
+  }
+  if (!neighborhoodIdsForCity(city).includes(id)) {
+    setNeighborhoodEditorError(SERVICE_NEIGHBORHOOD_MESSAGES.city);
+    return false;
+  }
+  selectedServiceNeighborhoodIds = normalizeServiceNeighborhoodIds(
+    [...selectedServiceNeighborhoodIds, id],
+    city
+  );
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+  return true;
+}
+
+function removeNeighborhoodId(id) {
+  selectedServiceNeighborhoodIds = selectedServiceNeighborhoodIds.filter((entry) => entry !== id);
+  renderNeighborhoodEditorChips();
+  setNeighborhoodEditorError("");
+}
+
+function refreshNeighborhoodSuggestOptions() {
+  const city = el.city?.value || current.city;
+  const options = districtOptionsForCity(city).filter(
+    (name) => !selectedServiceNeighborhoodIds.includes(districtIdFromOfficialName(name, city))
+  );
+  if (!el.neighborhoodSearch) return;
+  el.neighborhoodSearch.value = "";
+  delete el.neighborhoodSearch.dataset.arabicSuggestWired;
+  const staleList = el.neighborhoodSearch.parentElement?.querySelector(".arabic-suggest-list");
+  if (staleList) staleList.remove();
+  wireArabicSuggestInput(el.neighborhoodSearch, options, {
+    onPick: (label) => {
+      const id = districtIdFromOfficialName(label, city);
+      if (id) addNeighborhoodId(id);
+      el.neighborhoodSearch.value = "";
+      refreshNeighborhoodSuggestOptions();
+    }
+  });
+}
+
+function initNeighborhoodEditor() {
+  if (!el.neighborhoodSearch || el.neighborhoodSearch.dataset.neighborhoodEditorBound === "1") return;
+  el.neighborhoodSearch.dataset.neighborhoodEditorBound = "1";
+  refreshNeighborhoodSuggestOptions();
+  if (el.neighborhoodChips) {
+    el.neighborhoodChips.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-remove-neighborhood]");
+      if (!btn) return;
+      removeNeighborhoodId(btn.getAttribute("data-remove-neighborhood") || "");
+    });
+  }
+  if (el.city) {
+    el.city.addEventListener("change", () => {
+      writeNeighborhoodsToForm(
+        normalizeServiceNeighborhoodIds(selectedServiceNeighborhoodIds, el.city.value)
+      );
+      refreshNeighborhoodSuggestOptions();
+    });
+    el.city.addEventListener("input", () => {
+      clearTimeout(init.cityNeighborhoodTimer);
+      init.cityNeighborhoodTimer = setTimeout(() => {
+        writeNeighborhoodsToForm(
+          normalizeServiceNeighborhoodIds(selectedServiceNeighborhoodIds, el.city.value)
+        );
+        refreshNeighborhoodSuggestOptions();
+      }, 300);
+    });
+  }
+}
+
 
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
@@ -254,9 +521,10 @@ function apply(data) {
   el.city.value = current.city;
   if (el.link) el.link.value = officeLink();
   writeSpecialtiesToForm(current.specialties);
+  writeNeighborhoodsToForm(current.serviceNeighborhoodIds);
+  writeOfficeScopeToForm(current);
   applyImageSlots();
   applyOfficeCardImages();
-  if (el.qrWrap && !el.qrWrap.hidden) renderQrCode();
 
   const map = [
     ["officeDisplayName", current.officeName],
@@ -269,8 +537,9 @@ function apply(data) {
     const node = document.getElementById(id);
     if (node) node.textContent = value;
   });
-  const specialtyRow = document.getElementById("officeServicesBar");
-  if (specialtyRow) specialtyRow.hidden = !current.specialties.length;
+  const specialtyWrap = document.getElementById("officeDisplaySpecialtiesWrap");
+  if (specialtyWrap) specialtyWrap.hidden = !current.specialties.length;
+  renderOfficeCardNeighborhoods(current.serviceNeighborhoodIds);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +577,14 @@ async function loadFirestore() {
         licenseNumber: data.licenseNumber || data.falLicense,
         city: data.city,
         specialties: data.specialties,
+        serviceNeighborhoodIds: Array.isArray(data.serviceNeighborhoodIds)
+          ? data.serviceNeighborhoodIds
+          : [],
+        primaryNeighborhoodId: data.primaryNeighborhoodId || "",
+        receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+        cooperationAvailableNow: data.cooperationAvailableNow === true,
+        approvalStatus: data.approvalStatus || "",
+        accountStatus: data.accountStatus || "",
         logoUrl: data.logoUrl,
         displayImageUrl: data.displayImageUrl,
         coverUrl: data.coverUrl,
@@ -389,6 +666,11 @@ async function reserveOfficeName(runtime, user, data) {
       displayImageUrl: data.displayImageUrl,
       coverUrl: data.coverUrl,
       publicSlug: data.publicSlug,
+      serviceNeighborhoodIds: data.serviceNeighborhoodIds || [],
+      primaryNeighborhoodId: data.primaryNeighborhoodId || "",
+      receiveExternalOpportunities: data.receiveExternalOpportunities === true,
+      cooperationAvailableNow: data.cooperationAvailableNow === true,
+      cooperationMode: cooperationMode,
       updatedAt: serverTimestamp()
     }, { merge: true });
   });
@@ -415,8 +697,22 @@ async function onSave(event) {
     licenseNumber: el.license.value,
     city: el.city.value,
     specialties: readSpecialtiesFromForm(),
+    serviceNeighborhoodIds: readNeighborhoodsFromForm(),
     publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value, officeId())
   });
+
+  const neighborhoodCheck = validateServiceNeighborhoodIds(
+    data.serviceNeighborhoodIds,
+    data.city,
+    { requireMin: true }
+  );
+  if (!neighborhoodCheck.ok) {
+    setNeighborhoodEditorError(neighborhoodCheck.message);
+    toast(neighborhoodCheck.message);
+    return;
+  }
+  data.serviceNeighborhoodIds = neighborhoodCheck.ids;
+  setNeighborhoodEditorError("");
 
   if (!data.officeName || !data.brokerName || !data.licenseNumber || !data.city) {
     toast("أكمل بيانات المكتب المطلوبة");
@@ -888,14 +1184,35 @@ async function previewPublicLink() {
 // Office card image (share material)
 // ---------------------------------------------------------------------------
 
-function loadImage(src) {
+function loadImage(src, options = {}) {
+  const crossOrigin = options.crossOrigin !== false;
+  const timeoutMs = Number(options.timeoutMs || 10000);
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = reject;
+    if (crossOrigin) image.crossOrigin = "anonymous";
+    const timer = setTimeout(() => reject(new Error("IMAGE_TIMEOUT")), timeoutMs);
+    image.onload = () => {
+      clearTimeout(timer);
+      resolve(image);
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("IMAGE_ERROR"));
+    };
     image.src = src;
   });
+}
+
+async function loadImageSafe(primarySrc) {
+  const candidates = [primarySrc, "/icons/default-office.png", "/icons/icon-192.png"].filter(Boolean);
+  for (const src of candidates) {
+    for (const crossOrigin of [true, false]) {
+      try {
+        return await loadImage(src, { crossOrigin, timeoutMs: 8000 });
+      } catch (_) { /* try next */ }
+    }
+  }
+  throw new Error("IMAGE_LOAD_FAILED");
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -953,6 +1270,17 @@ function drawQr(ctx, text, x, y, size) {
   }
 }
 
+function officeShareCardRequiredFields() {
+  const fields = [
+    ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
+    ["اسم الوسيط", current.brokerName && current.brokerName !== defaults.brokerName],
+    ["رخصة فال", current.licenseNumber],
+    ["رقم الجوال", current.phone],
+    ["المدينة", current.city]
+  ];
+  return fields.filter(([, valid]) => !valid).map(([label]) => label);
+}
+
 function officeMissingFields() {
   const fields = [
     ["اسم المكتب", current.officeName && current.officeName !== defaults.officeName],
@@ -966,9 +1294,6 @@ function officeMissingFields() {
 }
 
 async function createOfficeCardBlob() {
-  const missing = officeMissingFields();
-  if (missing.length) throw new Error(`MISSING:${missing.join("، ")}`);
-
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1080;
@@ -979,7 +1304,7 @@ async function createOfficeCardBlob() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   try {
-    const platformLogo = await loadImage("/icons/icon-192.png");
+    const platformLogo = await loadImageSafe("/icons/icon-192.png");
     drawImageContain(ctx, platformLogo, 48, 28, 40, 40);
   } catch (_) {}
 
@@ -1000,10 +1325,18 @@ async function createOfficeCardBlob() {
   );
   const imageCenterX = 540;
   const imageY = 118;
+  let drewOfficeImage = false;
   if (displaySrc) {
     try {
-      const displayImg = await loadImage(displaySrc);
+      const displayImg = await loadImageSafe(displaySrc);
       drawImageCover(ctx, displayImg, imageCenterX - 74, imageY, 148, 148, 22);
+      drewOfficeImage = true;
+    } catch (_) {}
+  }
+  if (!drewOfficeImage) {
+    try {
+      const fallbackImg = await loadImageSafe("/icons/default-office.png");
+      drawImageCover(ctx, fallbackImg, imageCenterX - 74, imageY, 148, 148, 22);
     } catch (_) {}
   }
 
@@ -1018,13 +1351,13 @@ async function createOfficeCardBlob() {
   ctx.fillText(current.brokerName, 940, 360);
   ctx.font = "500 22px Tajawal, Arial, sans-serif";
   ctx.fillStyle = "#6a7d77";
-  ctx.fillText("المرخص له", 940, 396);
+  ctx.fillText("وسيط عقاري — المرخص له", 940, 396);
 
-  const specialty = specialtyText(current.specialties) || "—";
+  const specialty = specialtyText(current.specialties) || "بيع • شراء • تأجير • إدارة أملاك";
   const rows = [
     ["رخصة فال", current.licenseNumber],
     ["المدينة", current.city],
-    ["التخصصات", specialty]
+    ["الخدمات", specialty.replace(/ • /g, " • ")]
   ];
   let rowY = 450;
   for (const [label, value] of rows) {
@@ -1037,21 +1370,27 @@ async function createOfficeCardBlob() {
     rowY += 52;
   }
 
-  drawQr(ctx, link, 96, 620, 220);
   ctx.textAlign = "center";
+  ctx.fillStyle = "#087064";
+  ctx.font = "800 30px Tajawal, Arial, sans-serif";
+  ctx.fillText("رابط المكتب", 540, 640);
+
   ctx.fillStyle = "#073f35";
-  ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("امسح الرمز لزيارة المكتب", 212, 880);
+  ctx.font = "700 26px Tajawal, Arial, sans-serif";
+  const linkDisplay = link.replace(/^https?:\/\//, "");
+  ctx.fillText(linkDisplay, 540, 690);
 
   ctx.textAlign = "right";
-  ctx.fillStyle = "#087064";
-  ctx.font = "700 24px Tajawal, Arial, sans-serif";
-  ctx.fillText(link.replace(/^https?:\/\//, ""), 940, 940);
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
   ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
 
-  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("BLOB_FAILED"));
+      else resolve(blob);
+    }, "image/png", 0.95);
+  });
 }
 
 async function createOpportunityShareCardBlob({
@@ -1118,7 +1457,12 @@ async function createOpportunityShareCardBlob({
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
   ctx.fillText("فرصة عقارية من منصة مكاتب عقارية ذكية", 940, 860);
 
-  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("BLOB_FAILED"));
+      else resolve(blob);
+    }, "image/png", 0.95);
+  });
 }
 
 async function shareOpportunityCard(record, source = null) {
@@ -1155,6 +1499,71 @@ function extractPropertyImageUrl(text) {
   const raw = String(text || "");
   const match = raw.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?/i);
   return match ? match[0] : "";
+}
+
+async function shareOfficeLinkCard() {
+  const missing = officeShareCardRequiredFields();
+  if (missing.length) {
+    setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${missing.join("، ")}`, "is-error");
+    return;
+  }
+  const originalText = el.shareLinkCard?.textContent || "مشاركة رابط المكتب";
+  if (el.shareLinkCard) {
+    el.shareLinkCard.disabled = true;
+    el.shareLinkCard.textContent = "جارٍ تجهيز البطاقة...";
+  }
+  try {
+    await ensurePublicSlug();
+    const link = officeLink();
+    const text = `${current.officeName}\nرابط المكتب:\n${link}`;
+    const blob = await createOfficeCardBlob();
+    if (!blob) throw new Error("CARD_FAILED");
+    const file = new File([blob], `رابط-${current.officeName}.png`, { type: "image/png" });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file], text })) {
+      await navigator.share({ files: [file], title: current.officeName, text });
+      setStatus(el.linkStatus, "تمت مشاركة بطاقة المكتب والرابط", "is-done");
+      return;
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: current.officeName, text });
+        setStatus(el.linkStatus, "تمت مشاركة الرابط", "is-done");
+        return;
+      } catch (shareError) {
+        if (shareError && shareError.name === "AbortError") return;
+      }
+    }
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = file.name;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+    try {
+      await navigator.clipboard.writeText(link);
+      setStatus(el.linkStatus, "تم تنزيل البطاقة ونسخ الرابط", "is-done");
+      toast("تم تنزيل البطاقة ونسخ الرابط");
+    } catch (_) {
+      setStatus(el.linkStatus, "تم تنزيل البطاقة — انسخ الرابط يدويًا من الإعدادات", "is-done");
+    }
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (String(error && error.message || "").startsWith("MISSING:")) {
+      setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${error.message.slice(8)}`, "is-error");
+    } else if (error && error.message === "BLOB_FAILED") {
+      setStatus(el.linkStatus, "تعذر إنشاء صورة البطاقة — حاول مرة أخرى", "is-error");
+    } else if (error && error.message === "IMAGE_LOAD_FAILED") {
+      setStatus(el.linkStatus, "تعذر تحميل صورة المكتب — تم إنشاء بطاقة بالشعار الافتراضي", "is-error");
+    } else {
+      console.warn("[iaqar] office link card", error);
+      setStatus(el.linkStatus, "تعذر إنشاء بطاقة المكتب الآن", "is-error");
+    }
+  } finally {
+    if (el.shareLinkCard) {
+      el.shareLinkCard.disabled = false;
+      el.shareLinkCard.textContent = originalText;
+    }
+  }
 }
 
 async function shareOfficeCard() {
@@ -1340,6 +1749,11 @@ async function saveCooperationSettings(value) {
         updatedAt: serverTimestamp(),
         updatedBy: user.uid
       }, { merge: true });
+    await runtime.db.collection("publicOffices").doc(officeId()).set({
+      officeId: officeId(),
+      cooperationMode: payload.mode,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
     setStatus(el.cooperationStatus, "تم حفظ إعداد التعاون", "is-done");
   } catch (error) {
     console.warn("[iaqar] cooperation settings save", error);
@@ -1428,6 +1842,13 @@ async function onLogout() {
   }
   try {
     try { localStorage.removeItem("iaqar.auth.remember"); } catch (_) { /* ignore */ }
+    try { localStorage.removeItem("iaqar.pendingSharedMessage"); } catch (_) { /* ignore */ }
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach((key) => {
+        if (/^iaqar\.(draft|pending|cache)\./i.test(key)) localStorage.removeItem(key);
+      });
+    } catch (_) { /* ignore */ }
     try {
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);
     } catch (_) { /* ignore */ }
@@ -1474,14 +1895,7 @@ function init() {
   el.city = document.getElementById("officeCityInput");
   el.link = document.getElementById("officeLinkInput");
   el.linkStatus = document.getElementById("officeLinkStatus");
-  el.copy = document.getElementById("copyOfficeLinkBtn");
-  el.shareLink = document.getElementById("shareOfficeLinkBtn");
-  el.toggleQr = document.getElementById("toggleOfficeQrBtn");
-  el.qrWrap = document.getElementById("officeQrWrap");
-  el.qrCanvas = document.getElementById("officeQrCanvas");
-  el.downloadQr = document.getElementById("downloadOfficeQrBtn");
-  el.previewLink = document.getElementById("previewOfficeLinkBtn");
-  el.shareCard = document.getElementById("shareOfficeCardBtn");
+  el.shareLinkCard = document.getElementById("shareOfficeLinkCardBtn");
   el.save = document.getElementById("saveOfficeSettingsBtn");
   el.logout = document.getElementById("officeLogoutBtn");
   el.note = document.getElementById("officeSettingsNote");
@@ -1490,6 +1904,18 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
+  el.neighborhoodSearch = document.getElementById("officeNeighborhoodSearch");
+  el.neighborhoodChips = document.getElementById("officeNeighborhoodChips");
+  el.neighborhoodCount = document.getElementById("officeNeighborhoodCount");
+  el.neighborhoodError = document.getElementById("officeNeighborhoodError");
+  el.scopeCity = document.getElementById("officeScopeCityInput");
+  el.primaryNeighborhoodSearch = document.getElementById("officePrimaryNeighborhoodSearch");
+  el.primaryNeighborhoodId = document.getElementById("officePrimaryNeighborhoodId");
+  el.primaryNeighborhoodLabel = document.getElementById("officePrimaryNeighborhoodLabel");
+  el.receiveExternalToggle = document.getElementById("officeReceiveExternalToggle");
+  el.cooperationAvailableToggle = document.getElementById("officeCooperationAvailableToggle");
+  el.saveScopeBtn = document.getElementById("saveOfficeScopeBtn");
+  el.scopeStatus = document.getElementById("officeScopeStatus");
   el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
   el.settingsClose = document.getElementById("officeSettingsClose");
   el.cardLogo = document.querySelector("#officeSettingsBtn img");
@@ -1500,6 +1926,8 @@ function init() {
   }
 
   initImageSlots();
+  initNeighborhoodEditor();
+  initPrimaryNeighborhoodEditor();
   writeCooperationToForm(cooperationMode);
   writePreferencesToForm(notificationPreferences);
   apply(loadLocal() || defaults);
@@ -1539,14 +1967,18 @@ function init() {
     clearTimeout(init.nameTimer);
     init.nameTimer = setTimeout(checkNameAvailability, 400);
   });
+  if (el.city) {
+    el.city.addEventListener("input", () => {
+      if (el.scopeCity) el.scopeCity.value = el.city.value;
+    });
+    el.city.addEventListener("change", () => {
+      if (el.scopeCity) el.scopeCity.value = el.city.value;
+    });
+  }
+  if (el.saveScopeBtn) el.saveScopeBtn.addEventListener("click", () => void saveOfficeScopeSettings());
   el.form.addEventListener("submit", onSave);
-  el.copy.addEventListener("click", copyLink);
+  if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
   el.logout.addEventListener("click", onLogout);
-  if (el.shareLink) el.shareLink.addEventListener("click", shareLink);
-  if (el.toggleQr) el.toggleQr.addEventListener("click", toggleQrCode);
-  if (el.downloadQr) el.downloadQr.addEventListener("click", downloadQrCode);
-  if (el.previewLink) el.previewLink.addEventListener("click", previewPublicLink);
-  if (el.shareCard) el.shareCard.addEventListener("click", shareOfficeCard);
 
   Array.from(el.notificationInputs || []).forEach(input => {
     input.addEventListener("change", saveNotificationPreferences);
@@ -1576,5 +2008,8 @@ window.IAQAR = window.IAQAR || {};
 window.IAQAR.officeSettingsTestHooks = Object.freeze({
   imageVariants: OFFICE_IMAGE_VARIANTS,
   readPreferencesFromForm: () => readPreferencesFromForm(),
-  currentCooperationMode: () => cooperationMode
+  currentCooperationMode: () => cooperationMode,
+  readNeighborhoodsFromForm: () => readNeighborhoodsFromForm(),
+  validateServiceNeighborhoodIds: (ids, city, options) =>
+    validateServiceNeighborhoodIds(ids, city, options)
 });
