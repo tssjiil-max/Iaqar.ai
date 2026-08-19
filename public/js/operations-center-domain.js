@@ -176,8 +176,8 @@ export function bestActionHint(item) {
     if (labels.length) return `أكمل ${labels[0]}`;
     const count = missingFieldCount(item);
     if (count === 1) return "أكمل الحقل الناقص";
-    if (count > 1) return `أكمل ${count} حقول ناقصة`;
-    return "استكمال الفرصة";
+    if (count > 1) return `أكمل ${count} حقول ناقصة ثم احفظ الفرصة`;
+    return "أكمل البيانات ثم احفظ الفرصة";
   }
   if (cat === "ready") {
     const scoreText = String(item.bestMatchScoreText || "");
@@ -211,7 +211,7 @@ export function bestActionHint(item) {
 export function primaryActionLabel(item) {
   if (!item) return "بدء الإجراء";
   const cat = categoryKey(item);
-  if (cat === "incomplete") return "استكمال الفرصة";
+  if (cat === "incomplete") return "حفظ الفرصة";
   if (cat === "ready") return "فتح مساحة العمل";
   if (cat === "follow_up") return "متابعة الفرصة";
   if (cat === "matched") return "مراجعة المطابقة";

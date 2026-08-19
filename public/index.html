@@ -1466,6 +1466,80 @@
       line-height:1.45;
     }
 
+    .ops-task-ad {
+      margin-top:8px;
+      display:grid;
+      gap:4px;
+    }
+
+    .ops-task-ad-headline {
+      margin:0;
+      font-size:15px;
+      font-weight:700;
+      color:var(--green-dark, #173d35);
+      line-height:1.35;
+    }
+
+    .ops-task-ad-location,
+    .ops-task-ad-specs {
+      margin:0;
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.4;
+    }
+
+    .ops-task-field-checks {
+      margin-top:10px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:6px 10px;
+    }
+
+    .ops-task-field-check {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      min-width:0;
+      font-size:12px;
+      color:#36574f;
+    }
+
+    .ops-task-field-mark {
+      width:18px;
+      height:18px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+      font-weight:700;
+      flex-shrink:0;
+      line-height:1;
+    }
+
+    .ops-task-field-check.is-complete .ops-task-field-mark {
+      background:#087064;
+      color:#fff;
+    }
+
+    .ops-task-field-check.is-missing .ops-task-field-mark {
+      background:#fff1f1;
+      color:#c0392b;
+      border:1px solid #efc4c4;
+    }
+
+    .ops-task-field-label {
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .ops-task-field-summary {
+      margin:8px 0 0;
+      font-size:11px;
+      color:var(--muted);
+    }
+
     .ops-task-status,
     .ops-task-missing,
     .ops-task-source {

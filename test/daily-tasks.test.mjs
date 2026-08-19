@@ -153,6 +153,44 @@ test("show categories toggles from today list to category grid", async () => {
   }
 });
 
+test("shell renders opportunity today cards with ad layout and save label", async () => {
+  const context = await loadShell({ bootSettingsModule: false });
+  try {
+    const { document, window } = context;
+    window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
+      detail: {
+        authoritative: true,
+        items: [{
+          id: "opp-new-1",
+          recordId: "opp_new_1",
+          recordType: "opportunity",
+          lifecycleStatus: "NEW",
+          matchingReadiness: "NEEDS_COMPLETION",
+          matchingReadinessMissing: ["contactPhone", "advertiserRole"],
+          priority: 1,
+          icon: "i-house-check",
+          title: "عرض مالك",
+          propertyType: "دور",
+          purpose: "RENT",
+          city: "الرياض",
+          district: "الورود",
+          annualRent: 50000,
+          area: 120,
+          time: "الآن"
+        }]
+      }
+    }));
+
+    assert.equal(document.querySelector(".ops-today-section-head h3")?.textContent, "طلبات جديدة");
+    assert.ok(document.querySelector(".ops-task-ad-headline"));
+    assert.ok(document.querySelector(".ops-task-field-check.is-missing"));
+    assert.ok(document.querySelector(".ops-task-field-check.is-complete"));
+    assert.equal(document.querySelector(".ops-task-primary")?.textContent.trim(), "حفظ الفرصة");
+  } finally {
+    context.close();
+  }
+});
+
 test("shell includes today list markup and bridge exposes dailyTasksDomain", () => {
   assert.ok(shellSource.includes("id=\"opsViewTodayList\""));
   assert.ok(shellSource.includes("id=\"operationsTodayList\""));

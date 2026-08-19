@@ -1264,13 +1264,17 @@ function wireIncompleteDetailHandlers(id, record) {
       await patchOpportunity(id, patch);
       await reloadOpportunityFromBackend(id);
       if (isDailyTaskDetail() && readinessCheck.isReadyForMatching) {
-        toast("اكتملت الفرصة وانتقلت إلى جاهزة للمطابقة");
+        toast("تم حفظ الفرصة ونقلها للمطابقة");
+        if (statusNode) {
+          statusNode.textContent = "تم حفظ الفرصة ونقلها للمطابقة";
+          statusNode.classList.add("is-done");
+        }
         closeActiveDetailPanel();
         window.dispatchEvent(new CustomEvent("iaqar:daily-task-completed", { detail: { opportunityId: id } }));
         renderList();
         return;
       }
-      toast(readinessCheck.isReadyForMatching ? "الفرصة جاهزة للمطابقة" : "تم حفظ البيانات");
+      toast(readinessCheck.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {

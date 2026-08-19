@@ -8,6 +8,10 @@ import {
   extractOpportunityId,
   primaryActionLabel
 } from "./operations-center-domain.js";
+import {
+  buildOpsTaskListingBodyHtml,
+  isOpsOpportunityTaskItem
+} from "./ops-task-card-domain.js";
 
 const VIEW_MODES = Object.freeze({
   TODAY_LIST: "today-list",
@@ -242,7 +246,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
               <h4>${escapeHtml(item.title)}</h4>
               ${badgeHtml}
             </div>
-            <p>${escapeHtml(item.subtitle)}</p>
+            ${opsTaskBodyHtml(item)}
             ${meta ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
             ${hint ? `<p class="ops-task-hint"><span>الإجراء المقترح:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>
@@ -354,15 +358,23 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const badge = buildOpsCardBadge(item);
     if (!badge) return "";
     const mark = badge.mark ? `${escapeHtml(badge.mark)} ` : "";
-    const detailClass = badge.kind === "closing" ? "ops-readiness-detail is-closing" : "ops-readiness-detail";
+    const hideDetail = isOpsOpportunityTaskItem(item);
     return `
       <div class="ops-task-badges">
         <span class="ops-readiness-badge ${escapeHtml(badge.cssClass)}">${mark}${escapeHtml(badge.label)}</span>
       </div>
-      ${badge.detailLine ? `<p class="${detailClass}">${escapeHtml(badge.detailLine)}</p>` : ""}`;
+      ${!hideDetail && badge.detailLine ? `<p class="ops-readiness-detail">${escapeHtml(badge.detailLine)}</p>` : ""}`;
+  }
+
+  function opsTaskBodyHtml(item) {
+    if (isOpsOpportunityTaskItem(item)) {
+      return buildOpsTaskListingBodyHtml(item);
+    }
+    return `<p>${escapeHtml(item.subtitle || "")}</p>`;
   }
 
   function incompleteMetaHtml(item) {
+    if (isOpsOpportunityTaskItem(item)) return "";
     const badge = buildOpsCardBadge(item);
     if ((badge?.kind === "matching" || badge?.kind === "broker_readiness") && badge.cssClass === "is-incomplete") {
       return "";
@@ -402,8 +414,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
               <h4>${escapeHtml(item.title)}</h4>
               ${badgeHtml}
             </div>
-            <p>${escapeHtml(item.subtitle)}</p>
-            ${item.opsStatusLine ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
+            ${opsTaskBodyHtml(item)}
+            ${item.opsStatusLine && !isOpsOpportunityTaskItem(item) ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}
             ${incompleteMeta}
             ${hint ? `<p class="ops-task-hint"><span>الإجراء الأفضل الآن:</span> ${escapeHtml(hint)}</p>` : ""}
           </span>

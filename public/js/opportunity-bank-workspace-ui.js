@@ -95,7 +95,7 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
       <div class="bank-edit-grid">${fieldBlocks}</div>
     </form>
     <div class="bank-unified-save-wrap">
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ واستكمال الفرصة</button>
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ الفرصة</button>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
     </div>`;
 }

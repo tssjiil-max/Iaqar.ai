@@ -89,7 +89,7 @@ test("missingFieldCount and bestActionHint use readiness metadata", () => {
   };
   assert.equal(missingFieldCount(item), 1);
   assert.equal(bestActionHint(item), "أكمل رقم الجوال");
-  assert.equal(primaryActionLabel(item), "استكمال الفرصة");
+  assert.equal(primaryActionLabel(item), "حفظ الفرصة");
 });
 
 test("extractOpportunityId resolves opportunity records", () => {
