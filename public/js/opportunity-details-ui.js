@@ -138,8 +138,8 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const { cityText, districtText } = normalizeCityDistrict(normalized);
   const isOwner = isOwnerRecord(normalized);
   const specs = [
-    normalized.area ? `${Number(normalized.area).toLocaleString("ar-SA")} م²` : card.areaText,
-    normalized.rooms ? `${normalized.rooms} غرف` : (card.roomsText ? `${card.roomsText} غرف` : "")
+    card.areaText,
+    card.roomsText ? `${card.roomsText} غرف` : ""
   ].filter(Boolean).join(" · ");
   const phone = normalized.contactPhone || normalized.phone || normalized.advertiserPhoneNormalized || "";
   const roleRaw = normalized.advertiserRole || normalized.ownerRole || "";
@@ -211,7 +211,7 @@ export function buildCompletionProgressHtml(vm) {
 export function buildMissingFieldsAlertHtml(vm) {
   if (!vm.progress.missingLabels.length) return "";
   const chips = vm.progress.missingLabels.map((label) => `
-    <span class="opp-details-missing-chip">🔴 ${esc(label)}</span>`).join("");
+    <span class="opp-details-missing-chip"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(label)}</span>`).join("");
   return `
     <section class="opp-details-missing-alert" aria-label="الحقول الناقصة">
       <p class="opp-details-missing-title">الناقص:</p>
@@ -254,15 +254,18 @@ function locationRow(vm) {
 }
 
 export function buildOpportunityDataTableHtml(vm) {
-  const purposeOk = vm.byKey.purpose?.complete !== false && vm.byKey.propertyType?.complete !== false;
+  const propertyMissing = vm.byKey.propertyType?.complete === false;
+  const purposeMissing = vm.byKey.purpose?.complete === false;
+  const propertyPurposeMissing = propertyMissing || purposeMissing;
+  const specsMissing = !vm.specs;
   return `
     <section class="opp-details-data-table" aria-label="بيانات الفرصة">
       <h5 class="opp-details-data-title">بيانات الفرصة</h5>
       <div class="opp-details-data-rows">
-        ${dataRow("العقار والغرض", vm.propertyPurposeLine, purposeOk)}
+        ${dataRow("العقار والغرض", vm.propertyPurposeLine, propertyPurposeMissing ? false : undefined)}
         ${locationRow(vm)}
         ${dataRow(vm.priceLabel, vm.priceValue, vm.byKey.priceOrBudget?.complete)}
-        ${dataRow("المساحة والمواصفات", vm.specs, vm.specs ? true : undefined)}
+        ${dataRow("المساحة والمواصفات", vm.specs || "—", specsMissing ? false : undefined)}
         ${dataRow("المعلن وصفته", vm.advertiserRole, vm.byKey.advertiserRole?.complete)}
         ${dataRow("رقم التواصل", vm.contactPhone, vm.byKey.contactPhone?.complete)}
       </div>

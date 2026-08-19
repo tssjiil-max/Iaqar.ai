@@ -1470,38 +1470,19 @@
       min-width:0;
     }
 
-    .ops-task-body--opp-details {
-      min-width:0;
-      width:100%;
-    }
-
-    .ops-task-card.has-opp-details .ops-task-card-main {
+    .ops-task-card.has-listing-card .ops-task-card-main {
+      grid-template-columns:minmax(0, 1fr) auto;
       align-items:flex-start;
     }
 
-    .ops-task-body--opp-details .opp-details {
-      margin-top:0;
-      width:100%;
-    }
-
-    .ops-task-card.has-opp-details .ops-task-icon {
+    .ops-task-card.has-listing-card .ops-task-icon {
       display:none;
     }
 
-    .ops-task-card.has-opp-details .ops-task-time {
-      position:absolute;
-      top:10px;
-      left:10px;
-      font-size:11px;
-    }
-
-    .ops-task-card.has-opp-details .ops-task-card-main {
-      position:relative;
-      padding-top:28px;
-    }
-
-    .ops-task-card.has-listing-card .ops-task-card-main {
-      align-items:flex-start;
+    .ops-task-card.has-listing-card .ops-task-time {
+      align-self:flex-start;
+      padding-top:2px;
+      white-space:nowrap;
     }
 
     .ops-task-body--listing .listing-card-inner {
@@ -3843,13 +3824,20 @@
   .opp-details-missing-chip {
     display:inline-flex;
     align-items:center;
-    gap:4px;
-    padding:3px 8px;
+    gap:6px;
+    padding:4px 10px;
     border-radius:999px;
     background:#fff1f1;
     color:#b42318;
     font-size:11px;
     font-weight:700;
+  }
+  .opp-details-missing-dot {
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:#b42318;
+    flex-shrink:0;
   }
   .opp-details-data-table {
     border:1px solid var(--line);
@@ -3883,13 +3871,19 @@
   }
   .opp-details-row-value {
     display:flex;
-    flex-direction:column;
-    align-items:flex-end;
-    gap:4px;
+    flex-direction:row;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:6px;
+    justify-content:flex-end;
     text-align:left;
     min-width:0;
     font-weight:700;
     color:var(--text);
+  }
+  .opp-details-location-value {
+    flex-direction:column;
+    align-items:flex-end;
   }
   .opp-details-row-value .is-empty { color:#b42318; }
   .opp-details-missing-tag {
@@ -3900,9 +3894,6 @@
     font-size:10px;
     font-weight:800;
     flex-shrink:0;
-  }
-  .opp-details-location-value {
-    align-items:flex-end;
   }
   .opp-details-location-city {
     display:block;
@@ -3929,6 +3920,13 @@
   .ops-task-panel .opp-details {
     max-width:100%;
     overflow-x:hidden;
+    gap:10px;
+  }
+  .ops-task-panel .opp-details {
+    border:1px solid #e3ece8;
+    border-radius:14px;
+    padding:12px;
+    background:#fff;
   }
   .bank-contact-outcomes {
     display:grid;

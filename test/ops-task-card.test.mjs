@@ -47,7 +47,7 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders unified opportunity details", () => {
+test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", () => {
   const html = buildOpsTaskListingBodyHtml({
     recordType: "opportunity",
     propertyType: "أرض",
@@ -57,11 +57,10 @@ test("buildOpsTaskListingBodyHtml renders unified opportunity details", () => {
     salePrice: 500000,
     area: 800
   });
-  assert.ok(html.includes("opp-details"));
-  assert.ok(html.includes("opp-details-progress"));
-  assert.ok(html.includes("opp-details-data-table"));
-  assert.ok(!html.includes("bank-row-header"));
-  assert.ok(!html.includes("listing-field-marks"));
+  assert.ok(html.includes("bank-row-header"));
+  assert.ok(html.includes("bank-row-stats"));
+  assert.ok(html.includes("listing-field-marks"));
+  assert.ok(html.includes("✗") || html.includes("✓"));
 });
 
 test("isOpsOpportunityTaskItem detects opportunity rows", () => {
@@ -76,7 +75,7 @@ test("primary action for incomplete opportunities is save", () => {
   }), "حفظ الفرصة");
 });
 
-test("listing body renders unified details in DOM", () => {
+test("listing body renders in DOM with accessible field grid", () => {
   const dom = new JSDOM(`<div id="root"></div>`);
   const root = dom.window.document.getElementById("root");
   root.innerHTML = buildOpsTaskListingBodyHtml({
@@ -89,7 +88,6 @@ test("listing body renders unified details in DOM", () => {
     advertiserRole: "OWNER",
     contactPhone: "+966501234567"
   });
-  assert.ok(root.querySelector(".opp-details"));
-  assert.ok(root.querySelector(".opp-details-progress-ring"));
-  assert.equal(root.querySelector(".listing-field-marks"), null);
+  assert.ok(root.querySelector(".listing-field-mark.is-complete"));
+  assert.equal(root.querySelectorAll(".listing-field-mark").length, 7);
 });

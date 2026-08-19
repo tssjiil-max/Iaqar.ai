@@ -57,8 +57,8 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.total, 7);
   assert.equal(vm.progress.completeCount, 4);
   assert.equal(vm.progress.pct, 57);
-  assert.ok(html.includes("opp-details-missing-chip"));
-  assert.ok(html.includes("🔴"));
+  assert.ok(html.includes("opp-details-missing-dot"));
+  assert.ok(!html.includes("🔴"));
   assert.ok(html.includes("الحي: عروة"));
   assert.ok(!html.includes("حي حي"));
 });

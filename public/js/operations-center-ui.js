@@ -240,13 +240,13 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
             </div>`;
 
     return `
-      <article class="ops-task-card ops-today-task${isListing ? " has-opp-details" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card ops-today-task${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body${isListing ? " ops-task-body--opp-details" : ""}">
+          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
             ${headHtml}
             ${opsTaskBodyHtml(item)}
             ${meta && !isListing ? `<p class="ops-task-status">${escapeHtml(meta)}</p>` : ""}
@@ -411,13 +411,13 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
             </div>`;
 
     return `
-      <article class="ops-task-card${isListing ? " has-opp-details" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
           <span class="ops-task-icon" aria-hidden="true">
             <svg class="icon"><use href="#${escapeHtml(item.icon || "i-clipboard-list")}"/></svg>
           </span>
-          <span class="ops-task-body${isListing ? " ops-task-body--opp-details" : ""}">
+          <span class="ops-task-body${isListing ? " ops-task-body--listing" : ""}">
             ${headHtml}
             ${opsTaskBodyHtml(item)}
             ${item.opsStatusLine && !isListing ? `<p class="ops-task-status">${escapeHtml(item.opsStatusLine)}</p>` : ""}

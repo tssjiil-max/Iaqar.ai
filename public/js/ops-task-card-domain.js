@@ -1,15 +1,14 @@
 /**
- * Operations task card — unified opportunity details on daily task surfaces.
+ * Operations task card — bank listing layout for summary; unified details on open.
  */
 
 import {
   buildListingFieldChecks,
+  buildOpportunityListingCardInnerHtml,
   LISTING_FIELD_ORDER,
   normalizeListingRecord
 } from "./opportunity-listing-card-ui.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
-import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
-import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 
 export const OPS_TASK_FIELD_ORDER = LISTING_FIELD_ORDER;
 
@@ -45,22 +44,7 @@ export function isOpsOpportunityTaskItem(item = {}) {
   return false;
 }
 
-function resolveOpsTaskOpportunityId(item = {}) {
-  const opportunityId = String(item.opportunityId || "").trim();
-  if (opportunityId) return opportunityId;
-  const recordType = String(item.recordType || "").toLowerCase();
-  if (recordType === "opportunity" || recordType === "intake") {
-    const recordId = String(item.recordId || "").trim();
-    if (recordId) return recordId;
-  }
-  const rawId = String(item.id || "").trim();
-  if (rawId.startsWith("opp-")) return rawId.slice(4);
-  return rawId;
-}
-
 export function buildOpsTaskListingBodyHtml(item = {}) {
   if (!isOpsOpportunityTaskItem(item)) return "";
-  const id = resolveOpsTaskOpportunityId(item);
-  const readiness = evaluateMatchingReadiness(item);
-  return buildOpportunityDetailsCoreHtml(id, item, readiness).html;
+  return buildOpportunityListingCardInnerHtml(item, { showFieldMarks: true });
 }
