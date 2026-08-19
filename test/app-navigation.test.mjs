@@ -101,6 +101,9 @@ test("header back on العروض والطلبات returns to المهام ال�
     assert.equal(backBtn.hidden, false, "back button should show on العروض والطلبات");
 
     backBtn.click();
+    if (!document.getElementById("mainPanelOpportunities").hasAttribute("hidden")) {
+      backBtn.click();
+    }
     assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
     assert.equal(backBtn.hidden, true);

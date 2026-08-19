@@ -256,9 +256,8 @@ test("the العروض والطلبات sub-tab reveals the inline bank panel", 
   try {
     const { document } = context;
     assert.equal(document.getElementById("opportunityBank").dataset.inlineBank, "1");
-    assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
     document.getElementById("mainTabOpportunities").click();
-    document.getElementById("oppTabBank").click();
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "العروض والطلبات");
   } finally {
