@@ -46,5 +46,5 @@ export function isOpsOpportunityTaskItem(item = {}) {
 
 export function buildOpsTaskListingBodyHtml(item = {}) {
   if (!isOpsOpportunityTaskItem(item)) return "";
-  return buildOpportunityListingCardInnerHtml(item);
+  return buildOpportunityListingCardInnerHtml(item, { showFieldMarks: false });
 }

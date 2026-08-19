@@ -47,7 +47,7 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", () => {
+test("buildOpsTaskListingBodyHtml renders short listing without field marks", () => {
   const html = buildOpsTaskListingBodyHtml({
     recordType: "opportunity",
     propertyType: "أرض",
@@ -59,9 +59,9 @@ test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks", 
   });
   assert.ok(html.includes("bank-row-header"));
   assert.ok(html.includes("bank-row-stats"));
-  assert.ok(html.includes("listing-field-marks"));
-  assert.ok(html.includes("✗"));
-  assert.ok(html.includes("✓") || html.includes("✗"));
+  assert.ok(!html.includes("listing-field-marks"));
+  assert.ok(!html.includes("✗"));
+  assert.ok(!html.includes("✓"));
 });
 
 test("isOpsOpportunityTaskItem detects opportunity rows", () => {
@@ -76,7 +76,7 @@ test("primary action for incomplete opportunities is save", () => {
   }), "حفظ الفرصة");
 });
 
-test("listing body renders in DOM with accessible field grid", () => {
+test("listing body renders compact card without field mark grid", () => {
   const dom = new JSDOM(`<div id="root"></div>`);
   const root = dom.window.document.getElementById("root");
   root.innerHTML = buildOpsTaskListingBodyHtml({
@@ -89,6 +89,6 @@ test("listing body renders in DOM with accessible field grid", () => {
     advertiserRole: "OWNER",
     contactPhone: "+966501234567"
   });
-  assert.ok(root.querySelector(".listing-field-mark.is-complete"));
-  assert.equal(root.querySelectorAll(".listing-field-mark").length, 7);
+  assert.equal(root.querySelector(".listing-field-marks"), null);
+  assert.ok(root.querySelector(".bank-row-header"));
 });
