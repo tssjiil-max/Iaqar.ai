@@ -93,6 +93,7 @@ import {
   buildContactOutcomeActionHtml,
   buildWorkspaceMatchRowsHtml
 } from "./opportunity-bank-workspace-ui.js";
+import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
 import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview
@@ -523,16 +524,24 @@ function canOpenBankOpportunity(record) {
   return owner === currentOffice || origin === currentOffice;
 }
 
+function revealIncompleteEditForm(readiness = {}) {
+  const section = document.getElementById("bankIncompleteEditSection");
+  const saveWrap = document.getElementById("bankUnifiedSaveWrap");
+  if (section) section.hidden = false;
+  if (saveWrap) saveWrap.hidden = false;
+  window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
+}
+
 function focusFirstMissingBankField(readiness = {}) {
   const missing = Array.isArray(readiness.matchingReadinessMissing)
     ? readiness.matchingReadinessMissing
     : [];
   if (!missing.length) return false;
 
-  const banner = document.querySelector(".bank-missing-banner");
-  if (banner) {
-    banner.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  const section = document.getElementById("bankIncompleteEditSection");
+  const saveWrap = document.getElementById("bankUnifiedSaveWrap");
+  if (section) section.hidden = false;
+  if (saveWrap) saveWrap.hidden = false;
 
   const form = $("bankUnifiedForm");
   for (const key of missing) {
@@ -540,8 +549,8 @@ function focusFirstMissingBankField(readiness = {}) {
     if (!selector) continue;
     const field = form?.querySelector(selector) || document.querySelector(selector);
     if (!field) continue;
-    const section = field.closest("details.bank-section");
-    if (section) section.open = true;
+    const sectionNode = field.closest("details.bank-section");
+    if (sectionNode) sectionNode.open = true;
     field.scrollIntoView({ behavior: "smooth", block: "center" });
     try {
       field.focus({ preventScroll: true });
@@ -853,18 +862,14 @@ async function renderDetail(id, options = {}) {
   const readiness = evaluateMatchingReadiness(record);
 
   if (archived) {
-    const card = buildOpportunityCardView({ ...record, id });
+    const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
     panel.innerHTML = `
       <div class="bank-detail-head">
         <h3>تفاصيل الفرصة (مؤرشفة)</h3>
         <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
       </div>
-      <section class="bank-opp-summary">
-        <p class="bank-kind-badge">${escapeHtml(card.kindBadge)}</p>
-        <h4>${escapeHtml(card.description)}</h4>
-        <p>${escapeHtml(card.location)}</p>
-        <p class="bank-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>
-      </section>`;
+      ${detailsHtml}
+      <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
     scrollBankDetailIntoView();
     if (!ctx.dailyTask) {
@@ -878,7 +883,6 @@ async function renderDetail(id, options = {}) {
   if (!readiness.isReadyForMatching) {
     panel.innerHTML = buildNeedsCompletionDetailHtml(id, record, readiness);
     wireIncompleteDetailHandlers(id, record);
-    window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
     scrollBankDetailIntoView();
     if (!ctx.dailyTask) {
       setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
@@ -1179,6 +1183,11 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
 function wireIncompleteDetailHandlers(id, record) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
   wireBankFormArabicInputs(record);
+
+  $("oppDetailsRevealFormBtn")?.addEventListener("click", () => {
+    const fresh = state.records.get(id) || record;
+    revealIncompleteEditForm(evaluateMatchingReadiness(fresh));
+  });
 
   async function saveIncomplete() {
     const form = $("bankUnifiedForm");

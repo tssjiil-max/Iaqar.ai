@@ -3655,61 +3655,96 @@
     padding-top:12px;
     border-top:1px solid var(--line);
   }
-  .bank-incomplete-edit-title {
-    margin:0 0 10px;
-    font-size:13px;
-    font-weight:800;
-    color:var(--green);
-  }
-  .opp-detail-summary {
+  .opp-details {
     display:grid;
     gap:12px;
     margin-bottom:4px;
   }
-  .opp-detail-top {
+  .opp-details-header {
+    display:grid;
+    gap:8px;
+  }
+  .opp-details-header-top {
     display:flex;
     align-items:flex-start;
     justify-content:space-between;
     gap:10px;
   }
-  .opp-detail-identity {
+  .opp-details-header-main {
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    min-width:0;
+  }
+  .opp-details-icon {
+    width:36px;
+    height:36px;
+    border-radius:10px;
+    background:var(--green-soft);
+    display:grid;
+    place-items:center;
+    flex-shrink:0;
+  }
+  .opp-details-icon .icon {
+    width:20px;
+    height:20px;
+    color:var(--green);
+  }
+  .opp-details-header-copy {
     display:grid;
     gap:4px;
     min-width:0;
   }
-  .opp-detail-kind {
+  .opp-details-kind {
+    margin:0;
     font-size:11px;
     font-weight:800;
     color:var(--green);
   }
-  .opp-detail-title {
+  .opp-details-title {
     margin:0;
     font-size:15px;
     font-weight:800;
     color:var(--text);
     line-height:1.35;
+    word-break:break-word;
   }
-  .opp-detail-id {
+  .opp-details-id {
+    margin:0;
     font-size:11px;
     color:var(--muted);
   }
-  .opp-detail-status-badge {
+  .opp-details-status {
     flex-shrink:0;
     padding:4px 10px;
     border-radius:999px;
     font-size:11px;
     font-weight:800;
     line-height:1.3;
+    white-space:nowrap;
   }
-  .opp-detail-status-badge.is-incomplete {
+  .opp-details-status.is-incomplete {
     background:#fff1f1;
     color:#b42318;
   }
-  .opp-detail-status-badge.is-ready {
+  .opp-details-status.is-ready {
     background:#ecf8f2;
     color:var(--green);
   }
-  .opp-detail-progress-block {
+  .opp-details-status.is-matched {
+    background:#eef4ff;
+    color:#175cd3;
+  }
+  .opp-details-status.is-ended {
+    background:#f2f4f7;
+    color:#667085;
+  }
+  .opp-details-added-at {
+    margin:0;
+    font-size:11px;
+    color:var(--muted);
+  }
+  .opp-details-progress {
     display:flex;
     align-items:center;
     gap:12px;
@@ -3718,7 +3753,7 @@
     border-radius:12px;
     background:#fafcfb;
   }
-  .opp-detail-progress-ring {
+  .opp-details-progress-ring {
     width:64px;
     height:64px;
     border-radius:50%;
@@ -3729,38 +3764,53 @@
       radial-gradient(closest-side, #fafcfb 74%, transparent 76% 100%),
       conic-gradient(#087064 calc(var(--opp-progress, 0) * 1%), #e3ece8 0);
   }
-  .opp-detail-progress-count {
+  .opp-details-progress-count {
+    display:grid;
+    gap:1px;
     font-size:11px;
     font-weight:800;
     color:var(--green);
     text-align:center;
-    line-height:1.2;
+    line-height:1.15;
   }
-  .opp-detail-progress-copy strong {
+  .opp-details-progress-bottom {
+    font-size:10px;
+    font-weight:700;
+    color:var(--muted);
+  }
+  .opp-details-progress-copy strong {
     display:block;
     font-size:13px;
     color:var(--text);
     margin-bottom:4px;
   }
-  .opp-detail-progress-copy p {
+  .opp-details-progress-copy p {
     margin:0;
     font-size:12px;
     color:var(--muted);
     line-height:1.45;
   }
-  .opp-detail-missing-list {
+  .opp-details-progress-copy .opp-details-progress-hint {
+    margin-top:4px;
+  }
+  .opp-details-missing-alert {
+    padding:10px 12px;
+    border-radius:12px;
+    background:#fff7f7;
+    border:1px solid #fecdca;
+  }
+  .opp-details-missing-title {
+    margin:0 0 6px;
+    font-size:12px;
+    font-weight:800;
+    color:#b42318;
+  }
+  .opp-details-missing-list {
     display:flex;
     flex-wrap:wrap;
     gap:6px;
-    align-items:center;
-    margin-top:8px;
-    font-size:11px;
   }
-  .opp-detail-missing-list > span:first-child {
-    color:var(--muted);
-    font-weight:700;
-  }
-  .opp-detail-missing-chip {
+  .opp-details-missing-chip {
     display:inline-flex;
     align-items:center;
     gap:4px;
@@ -3768,21 +3818,16 @@
     border-radius:999px;
     background:#fff1f1;
     color:#b42318;
+    font-size:11px;
     font-weight:700;
   }
-  .opp-detail-listing-card {
-    border:1px solid #e3ece8;
-    border-radius:12px;
-    overflow:hidden;
-    background:#fff;
-  }
-  .opp-detail-data-table {
+  .opp-details-data-table {
     border:1px solid var(--line);
     border-radius:12px;
     overflow:hidden;
     background:#fff;
   }
-  .opp-detail-data-table h5 {
+  .opp-details-data-title {
     margin:0;
     padding:10px 12px;
     font-size:13px;
@@ -3791,7 +3836,7 @@
     background:var(--green-soft);
     border-bottom:1px solid #e3ece8;
   }
-  .opp-detail-row {
+  .opp-details-row {
     display:flex;
     align-items:flex-start;
     justify-content:space-between;
@@ -3800,24 +3845,24 @@
     border-bottom:1px solid #f0f3f2;
     font-size:12px;
   }
-  .opp-detail-row:last-child { border-bottom:0; }
-  .opp-detail-row-label {
+  .opp-details-row:last-child { border-bottom:0; }
+  .opp-details-row-label {
     color:var(--muted);
     font-weight:700;
     flex-shrink:0;
   }
-  .opp-detail-row-value {
+  .opp-details-row-value {
     display:flex;
-    align-items:center;
-    gap:6px;
-    justify-content:flex-end;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:4px;
     text-align:left;
     min-width:0;
     font-weight:700;
     color:var(--text);
   }
-  .opp-detail-row-value .is-empty { color:#b42318; }
-  .opp-detail-missing-tag {
+  .opp-details-row-value .is-empty { color:#b42318; }
+  .opp-details-missing-tag {
     padding:2px 7px;
     border-radius:999px;
     background:#fff1f1;
@@ -3826,17 +3871,34 @@
     font-weight:800;
     flex-shrink:0;
   }
-  .opp-detail-ok-mark {
-    width:18px;
-    height:18px;
-    border-radius:50%;
-    display:inline-grid;
-    place-items:center;
-    background:#087064;
-    color:#fff;
-    font-size:10px;
+  .opp-details-location-value {
+    align-items:flex-end;
+  }
+  .opp-details-location-city {
+    display:block;
     font-weight:800;
-    flex-shrink:0;
+    color:var(--text);
+  }
+  .opp-details-location-district {
+    display:block;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:700;
+  }
+  .opp-details-actions {
+    margin-top:4px;
+  }
+  .opp-details-actions .bank-action,
+  .opp-details-actions .iaqar-workflow-btn {
+    width:100%;
+  }
+  .opp-details-archived-note {
+    margin-top:12px;
+  }
+  .bank-detail .opp-details,
+  .ops-task-panel .opp-details {
+    max-width:100%;
+    overflow-x:hidden;
   }
   .bank-contact-outcomes {
     display:grid;

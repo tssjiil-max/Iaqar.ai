@@ -15,14 +15,17 @@ test("detail panel uses structured summary and save label", () => {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
   assert.ok(html.includes("تفاصيل الفرصة"));
-  assert.ok(html.includes("opp-detail-summary"));
-  assert.ok(html.includes("opp-detail-data-table"));
-  assert.ok(html.includes("bank-row-header"));
+  assert.ok(html.includes("opp-details"));
+  assert.ok(html.includes("opp-details-data-table"));
+  assert.ok(html.includes("oppDetailsRevealFormBtn"));
+  assert.ok(html.includes('id="bankIncompleteEditSection"'));
+  assert.ok(html.includes("bankIncompleteEditSection") && html.includes("hidden"));
   assert.ok(html.includes("حفظ الفرصة"));
   assert.ok(!html.includes("استكمال الفرصة"));
+  assert.ok(!html.includes("bank-row-header"));
 });
 
-test("detail summary shows progress and missing chips", () => {
+test("detail summary shows progress and missing chips without checklist marks", () => {
   const html = buildOpportunityDetailSummaryHtml("opp_abc", {
     opportunityKind: "OFFER",
     propertyType: "أرض",
@@ -33,7 +36,8 @@ test("detail summary shows progress and missing chips", () => {
   }, {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
-  assert.ok(html.includes("opp-detail-progress-block"));
-  assert.ok(html.includes("opp-detail-missing-chip"));
-  assert.ok(html.includes("✗"));
+  assert.ok(html.includes("opp-details-progress"));
+  assert.ok(html.includes("opp-details-missing-chip"));
+  assert.ok(!html.includes("✗"));
+  assert.ok(!html.includes("listing-field-mark"));
 });

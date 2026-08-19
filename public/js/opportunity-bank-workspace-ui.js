@@ -3,7 +3,6 @@
  */
 
 import {
-  buildWorkspaceHeader,
   buildWorkspaceActivity,
   buildIncompleteFormFields,
   contactPartyLabel,
@@ -16,7 +15,10 @@ import { officeShareStatusLabel,
   buildPublicListingAnnouncement
 } from "./opportunity-ready-actions-domain.js";
 import { cooperationStatusLabel } from "./opportunity-workspace-domain.js";
-import { buildOpportunityDetailSummaryHtml } from "./opportunity-detail-panel-ui.js";
+import {
+  buildOpportunityDetailsCoreHtml,
+  buildOpportunityDetailsRevealFormButtonHtml
+} from "./opportunity-details-ui.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import {
   CONTACT_OUTCOME_LABELS,
@@ -79,21 +81,23 @@ function renderFieldBlock(field) {
 export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
-  const summaryHtml = buildOpportunityDetailSummaryHtml(id, record, readiness);
+  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
+  const hasMissing = (readiness.matchingReadinessMissing || []).length > 0;
+  const revealBtn = hasMissing ? buildOpportunityDetailsRevealFormButtonHtml() : "";
 
   return `
     <div class="bank-detail-head iaqar-workflow-head">
       <h3>تفاصيل الفرصة</h3>
       <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
-    ${summaryHtml}
-    <section class="bank-incomplete-edit" aria-label="تعديل البيانات الناقصة">
-      <h5 class="bank-incomplete-edit-title">أكمل البيانات الناقصة</h5>
+    ${detailsHtml}
+    ${revealBtn}
+    <section class="bank-incomplete-edit" id="bankIncompleteEditSection" aria-label="تعديل البيانات الناقصة" hidden>
       <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
         <div class="bank-edit-grid">${fieldBlocks}</div>
       </form>
     </section>
-    <div class="bank-unified-save-wrap">
+    <div class="bank-unified-save-wrap" id="bankUnifiedSaveWrap" hidden>
       <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ الفرصة</button>
       <p class="bank-unified-save-note">بعد الحفظ سيتم التحقق من البيانات تلقائيًا.</p>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
@@ -227,7 +231,7 @@ function buildOpportunityBriefPreview(record = {}) {
 }
 
 export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
-  const header = buildWorkspaceHeader(record);
+  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record);
   const matches = sortMatchesForWorkspace(bundle.matches || [], id);
   const actions = readyWorkspacePrimaryActions(record);
   const partyActions = partyContactActions(record);
@@ -239,12 +243,6 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const listingPreview = buildPublicListingAnnouncement(record, options.officeProfile || {}, {
     origin: options.origin || ""
   });
-
-  const stats = [
-    header.priceText ? `<div class="bank-stat"><span class="bank-stat-label">السعر</span><strong>${esc(header.priceText)}</strong></div>` : "",
-    header.areaText ? `<div class="bank-stat"><span class="bank-stat-label">المساحة</span><strong>${esc(header.areaText)}</strong></div>` : "",
-    header.roomsText ? `<div class="bank-stat"><span class="bank-stat-label">الغرف</span><strong>${esc(header.roomsText)}</strong></div>` : ""
-  ].filter(Boolean).join("");
 
   const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
 
@@ -282,16 +280,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           <h3>تفاصيل الفرصة</h3>
           <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
         </div>
-        <header class="bank-workspace-header">
-          <div class="bank-row-header">
-            <span class="bank-kind-badge">${esc(header.kindBadge)}</span>
-            <h3 class="bank-row-title">${esc(header.title)}</h3>
-            <span class="bank-readiness-badge is-ready">${esc(header.headerStatus)}</span>
-          </div>
-          ${header.location ? `<p class="bank-row-location">${esc(header.location)}</p>` : ""}
-          ${stats ? `<div class="bank-row-stats">${stats}</div>` : ""}
-          ${header.contactMarkup ? `<p class="bank-row-contact">${header.contactMarkup}</p>` : ""}
-        </header>
+        ${detailsHtml}
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspacePrimaryActions">
           <h4>إجراءات الفرصة</h4>

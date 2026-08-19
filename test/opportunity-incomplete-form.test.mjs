@@ -164,7 +164,7 @@ test("incomplete form DOM has single designed phone field and direct save", asyn
   const saveWrap = root.querySelector(".bank-unified-save-wrap");
   assert.ok(form && saveWrap);
   assert.ok(form.closest(".bank-incomplete-edit"));
-  assert.ok(root.querySelector(".opp-detail-summary"));
+  assert.ok(root.querySelector(".opp-details"));
 });
 
 test("merge preview applies phone for readiness after valid local input", () => {
