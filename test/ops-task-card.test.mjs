@@ -49,7 +49,7 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks and actions", () => {
+test("buildOpsTaskListingBodyHtml renders compact listing with actions and no field marks", () => {
   const html = buildOpsTaskListingBodyHtml({
     id: "opp-1",
     recordType: "opportunity",
@@ -62,15 +62,13 @@ test("buildOpsTaskListingBodyHtml renders bank-style listing with field marks an
   });
   assert.ok(html.includes("bank-row-header"));
   assert.ok(html.includes("bank-row-stats--ops"));
-  assert.ok(html.includes("listing-field-marks"));
-  assert.ok(html.includes("ينقص:"));
+  assert.ok(!html.includes("listing-field-marks"));
   assert.ok(html.includes("listing-card-actions"));
   assert.ok(html.includes("تابع"));
   assert.ok(html.includes("حفظ الفرصة"));
-  assert.ok(html.includes("✗") || html.includes("✓"));
 });
 
-test("buildOpsTaskListingContentHtml uses ops stats layout without action buttons", () => {
+test("buildOpsTaskListingContentHtml uses ops stats layout without field marks or actions", () => {
   const html = buildOpsTaskListingContentHtml({
     recordType: "opportunity",
     propertyType: "أرض",
@@ -81,6 +79,7 @@ test("buildOpsTaskListingContentHtml uses ops stats layout without action button
   });
   assert.ok(html.includes("listing-card-inner--ops"));
   assert.ok(!html.includes("listing-card-actions"));
+  assert.ok(!html.includes("listing-field-marks"));
 });
 
 test("buildOpsTaskListingActionsHtml renders follow and save buttons", () => {
@@ -101,7 +100,7 @@ test("primary action for incomplete opportunities is save", () => {
   }), "حفظ الفرصة");
 });
 
-test("listing body renders in DOM with accessible field grid", () => {
+test("listing body renders compact card without field mark grid", () => {
   const dom = new JSDOM(`<div id="root"></div>`);
   const root = dom.window.document.getElementById("root");
   root.innerHTML = buildOpsTaskListingBodyHtml({
@@ -114,6 +113,6 @@ test("listing body renders in DOM with accessible field grid", () => {
     advertiserRole: "OWNER",
     contactPhone: "+966501234567"
   });
-  assert.ok(root.querySelector(".listing-field-mark.is-complete"));
-  assert.equal(root.querySelectorAll(".listing-field-mark").length, 7);
+  assert.equal(root.querySelector(".listing-field-marks"), null);
+  assert.ok(root.querySelector(".bank-row-header"));
 });

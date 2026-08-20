@@ -617,6 +617,22 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       const taskId = quickBtn.getAttribute("data-ops-task-id");
       const item = data.find((entry) => entry.id === taskId);
       const actionMode = quickBtn.getAttribute("data-ops-quick");
+      if (actionMode === "followup" && item) {
+        const oppId = extractOpportunityId(item);
+        if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
+          state.activeTaskId = item.id;
+          state.listOrigin = state.viewMode === VIEW_MODES.TODAY_LIST ? "today" : "category";
+          state.viewMode = VIEW_MODES.OPPORTUNITY_DETAIL;
+          applyViewMode();
+          clearTaskPanel();
+          void rootWindow.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId).then((ok) => {
+            if (!ok) notify("تعذر فتح الفرصة");
+            else dispatchOpened(item);
+            afterViewChange();
+          });
+          return;
+        }
+      }
       dispatchWorkflowQuick(item, actionMode);
       return;
     }

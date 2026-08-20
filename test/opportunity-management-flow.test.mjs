@@ -148,6 +148,15 @@ test("openOpportunityManagement opens workflow modal by opportunityId", () => {
   assert.ok(/openOpportunityManagement\(oppId\)/.test(workflow));
 });
 
+test("workflow lifecycle modal embeds unified opportunity details", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("buildWorkflowOpportunityDetailsHtml"));
+  assert.ok(workflow.includes("iaqar-workflow-details"));
+  assert.ok(workflow.includes("buildOpportunityDetailsCoreHtml"));
+  const bridge = readRepo("public", "js", "opportunity-domain-bridge.js");
+  assert.ok(bridge.includes("buildOpportunityDetailsCoreHtml"));
+});
+
 test("no duplicated generic save lifecycle status in modal", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.equal(workflow.includes("save-lifecycle-status"), true);

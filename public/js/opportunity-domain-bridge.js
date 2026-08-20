@@ -5,6 +5,7 @@ import * as status from "./opportunity-status-domain.js";
 import * as card from "./opportunity-card-domain.js";
 import * as followup from "./opportunity-followup-domain.js";
 import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
+import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
 import * as brokerProgress from "./broker-action-progress-domain.js";
 import {
   applyBrokerActionMarks,
@@ -16,7 +17,8 @@ window.IAQAR_OPPORTUNITY = Object.freeze({
   status,
   card,
   followup,
-  evaluateMatchingReadiness
+  evaluateMatchingReadiness,
+  buildOpportunityDetailsCoreHtml
 });
 
 window.IAQAR = window.IAQAR || {};

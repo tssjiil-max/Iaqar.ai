@@ -2062,6 +2062,21 @@
     });
   }
 
+  function buildWorkflowOpportunityDetailsHtml(detail = {}) {
+    const builder = window.IAQAR_OPPORTUNITY?.buildOpportunityDetailsCoreHtml;
+    if (!builder) return "";
+    const oppId = String(detail.recordId || detail.opportunityId || detail.id || "")
+      .replace(/^opp-/, "")
+      .trim();
+    if (!oppId) return "";
+    const record = { ...detail, id: oppId };
+    const readiness = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
+      ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness(record)
+      : undefined;
+    const built = builder(oppId, record, readiness);
+    return built?.html || "";
+  }
+
   async function renderOpportunityLifecycleUi() {
     const detail = activeWorkflowDetail;
     const body = workflowBody();
@@ -2078,6 +2093,7 @@
     const activeFollowUp = FD()?.activeFollowUpFromRecord?.(detail);
     const recipientContext = showFollowUp ? await ensureFollowUpRecipientContext(detail) : null;
     const selectedRecipient = activeFollowUp?.recipientMode || recipientContext?.defaultMode || "owner";
+    const detailsHtml = buildWorkflowOpportunityDetailsHtml(detail);
     const outcomeLabels = LC().CONTACT_OUTCOME_LABELS || {
       NO_RESPONSE: "لم يرد",
       INTERESTED: "مهتم",
@@ -2091,7 +2107,9 @@
       return `<button type="button" class="iaqar-workflow-btn secondary iaqar-contact-outcome-btn${selected ? " is-selected is-action-done" : ""}" data-ui-action="contact-outcome" data-broker-action="${actionKey}" data-outcome="${value}" aria-pressed="${selected ? "true" : "false"}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`;
     }).join("");
 
-    let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}</div>`;
+    let html = detailsHtml
+      ? `<div class="iaqar-workflow-details">${detailsHtml}</div>`
+      : `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "جهة التواصل")}</strong><br>${escapeUi(summaryText)}<br>الحالة: ${escapeUi(lifecycleLabel)}</div>`;
 
     if (!closed) {
       html += `<div class="iaqar-workflow-step"><h3>التواصل</h3><p>تواصل عبر واتساب أو اتصال ثم سجّل نتيجة التواصل.</p>
@@ -2566,9 +2584,19 @@
   async function handleQuickFollowup(detail) {
     if (detail.recordType === "opportunity" || detail.opportunityId) {
       const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
-      if (oppId && window.IAQAR?.openOpportunityManagement) {
-        await window.IAQAR.openOpportunityManagement(oppId, { focusFollowUp: true });
-        return;
+      if (oppId) {
+        if (document.getElementById("operationsTaskPanel") && window.IAQAR?.renderDailyTaskOpportunity) {
+          const ok = await window.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId);
+          if (ok) return;
+        }
+        if (window.IAQAR?.openOpportunityDetail) {
+          const opened = await window.IAQAR.openOpportunityDetail(oppId);
+          if (opened) return;
+        }
+        if (window.IAQAR?.openOpportunityManagement) {
+          await window.IAQAR.openOpportunityManagement(oppId, { focusFollowUp: true });
+          return;
+        }
       }
     }
     await openWorkflowUi({ ...detail, focusFollowUpReminder: true });
