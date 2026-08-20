@@ -21,6 +21,8 @@ test("bank list card uses unified بيانات الفرصة table", () => {
   const shell = readRepo("public", "index.html");
   assert.ok(shell.includes(".opp-details-data-title"));
   assert.ok(shell.includes("بيانات الفرصة") || shell.includes(".opp-details-row"));
+  assert.ok(shell.includes(".listing-recent-action-mark"));
+  assert.ok(html.includes("hasRecentBrokerAction"));
 });
 
 test("bank list card uses stats grid for price area rooms", () => {

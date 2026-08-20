@@ -14,6 +14,7 @@ import {
   buildOpsTaskListingActionsHtml,
   isOpsOpportunityTaskItem
 } from "./ops-task-card-domain.js";
+import { hasRecentBrokerAction } from "./broker-action-progress-domain.js";
 
 const VIEW_MODES = Object.freeze({
   TODAY_LIST: "today-list",
@@ -250,6 +251,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       ? centerDomain.primaryActionLabel(item)
       : primaryActionLabel(item);
     const isListing = isOpsOpportunityTaskItem(item);
+    const recentAction = isListing && hasRecentBrokerAction(item);
     const badgeHtml = isListing ? "" : opsCardBadgeHtml(item);
     const headHtml = isListing ? "" : `
             <div class="ops-task-head">
@@ -259,7 +261,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const listingHtml = isListing ? opsListingCardHtml(item, primaryLabel) : "";
 
     return `
-      <article class="ops-task-card ops-today-task${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card ops-today-task${isListing ? " has-listing-card" : ""}${recentAction ? " has-recent-action" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}"${recentAction ? ' data-recent-action="1"' : ""}>
         ${isListing ? listingHtml : `
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">
@@ -423,6 +425,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const cat = domain?.categoryKey ? domain.categoryKey(item) : "";
     const incompleteMeta = cat === "incomplete" ? incompleteMetaHtml(item) : "";
     const isListing = isOpsOpportunityTaskItem(item);
+    const recentAction = isListing && hasRecentBrokerAction(item);
     const badgeHtml = isListing ? "" : opsCardBadgeHtml(item);
     const headHtml = isListing ? "" : `
             <div class="ops-task-head">
@@ -432,7 +435,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     const listingHtml = isListing ? opsListingCardHtml(item, primaryLabel) : "";
 
     return `
-      <article class="ops-task-card${isListing ? " has-listing-card" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}">
+      <article class="ops-task-card${isListing ? " has-listing-card" : ""}${recentAction ? " has-recent-action" : ""}" id="ops-task-${escapeHtml(item.id)}" data-ops-task-id="${escapeHtml(item.id)}"${recentAction ? ' data-recent-action="1"' : ""}>
         ${isListing ? listingHtml : `
         <button type="button" class="ops-task-card-main" data-ops-open-task="${escapeHtml(item.id)}"
           aria-expanded="false" aria-controls="operationsTaskPanel">

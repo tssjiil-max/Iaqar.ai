@@ -11,6 +11,10 @@ import {
   buildOpportunityDataTableHtml,
   buildOpportunityDetailsViewModel
 } from "./opportunity-details-ui.js";
+import {
+  hasRecentBrokerAction,
+  recentBrokerActionMarkHtml
+} from "./broker-action-progress-domain.js";
 
 export {
   buildListingFieldChecks,
@@ -33,8 +37,11 @@ export function buildOpportunityListingCardInnerHtml(record = {}, options = {}) 
     includeRevealButton: options.includeRevealButton === true
   });
   const extra = [options.footerHtml, options.actionsHtml].filter(Boolean).join("");
+  const recent = hasRecentBrokerAction(record, options.nowMs);
+  const markHtml = recentBrokerActionMarkHtml(record, options);
   return `
-    <div class="listing-card-inner listing-card-inner--unified">
+    <div class="listing-card-inner listing-card-inner--unified${recent ? " has-recent-action" : ""}"${recent ? ' data-recent-action="1"' : ""}>
+      ${markHtml}
       ${tableHtml}
       ${extra ? `<div class="listing-card-extra">${extra}</div>` : ""}
     </div>`;

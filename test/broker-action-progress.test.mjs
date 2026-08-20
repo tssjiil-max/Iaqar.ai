@@ -11,7 +11,9 @@ import {
   hubShareOptionActionKey,
   workspacePrimaryActionKey,
   isBrokerActionDone,
-  brokerActionDoneClass
+  brokerActionDoneClass,
+  hasRecentBrokerAction,
+  latestBrokerActionAtMs
 } from "../public/js/broker-action-progress-domain.js";
 
 test("mergeBrokerActionProgress stores action keys with timestamps", () => {
@@ -76,4 +78,30 @@ test("brokerActionDoneClass marks completed actions", () => {
   };
   assert.equal(isBrokerActionDone(record, followUpOutcomeActionKey("no_response")), true);
   assert.equal(brokerActionDoneClass(record, followUpOutcomeActionKey("no_response")), " is-action-done");
+});
+
+test("hasRecentBrokerAction is true only within 12 hours of an action", () => {
+  const now = Date.parse("2026-08-20T12:00:00.000Z");
+  const recent = {
+    brokerActionProgress: {
+      [BROKER_ACTION.contactWhatsApp]: "2026-08-20T06:00:00.000Z"
+    }
+  };
+  const stale = {
+    brokerActionProgress: {
+      [BROKER_ACTION.contactWhatsApp]: "2026-08-19T11:00:00.000Z"
+    }
+  };
+  const viewedOnly = { id: "opp_1", city: "المدينة المنورة" };
+  assert.equal(hasRecentBrokerAction(recent, now), true);
+  assert.equal(hasRecentBrokerAction(stale, now), false);
+  assert.equal(hasRecentBrokerAction(viewedOnly, now), false);
+  assert.equal(latestBrokerActionAtMs(recent), Date.parse("2026-08-20T06:00:00.000Z"));
+});
+
+test("hasRecentBrokerAction uses WhatsApp/call stamps without progress map", () => {
+  const now = Date.parse("2026-08-20T12:00:00.000Z");
+  assert.equal(hasRecentBrokerAction({ lastWhatsAppOpenedAt: "2026-08-20T08:00:00.000Z" }, now), true);
+  assert.equal(hasRecentBrokerAction({ lastCallOpenedAt: "2026-08-20T01:00:00.000Z" }, now), true);
+  assert.equal(hasRecentBrokerAction({ lastCallOpenedAt: "2026-08-19T11:59:00.000Z" }, now), false);
 });
