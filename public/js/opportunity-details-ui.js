@@ -306,6 +306,37 @@ function dataRow(vm, rowKey, label, value, subtext = "") {
     </div>`;
 }
 
+function contactSaveButtonHtml(vm) {
+  const phone = String(vm.contactPhone || "").trim();
+  if (!phone) return "";
+  return `<button type="button" class="js-save-phone-contact opp-contact-save-btn"
+      data-contact-phone="${esc(phone)}"
+      aria-label="حفظ الرقم في سجل الهاتف"
+      title="حفظ الرقم في سجل الهاتف">
+      <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+    </button>`;
+}
+
+function contactRow(vm) {
+  const complete = isDetailsRowComplete(vm, "contact");
+  const display = complete
+    ? (String(vm.contactPhone ?? "").trim() || "—")
+    : "غير محدد";
+  const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
+  return `
+    <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
+      ${rowLabelHtml("contact", "رقم التواصل")}
+      <span class="opp-details-row-value opp-contact-value">
+        <span class="opp-details-row-value-stack">
+          <span class="${complete ? "opp-details-row-main" : "opp-details-row-main is-empty"}">${esc(display)}</span>
+          ${missingBadge}
+        </span>
+        ${complete ? contactSaveButtonHtml(vm) : ""}
+      </span>
+      ${rowStatusHtml(complete)}
+    </div>`;
+}
+
 function locationRow(vm) {
   const complete = isDetailsRowComplete(vm, "location");
   const city = vm.locationCity || "";
@@ -343,7 +374,7 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
         ${dataRow(vm, "price", vm.priceLabel, vm.priceValue)}
         ${dataRow(vm, "specs", "المساحة والمواصفات", vm.specs || "—")}
         ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
-        ${dataRow(vm, "contact", "رقم التواصل", vm.contactPhone)}
+        ${contactRow(vm)}
       </div>
       ${footerHtml}
     </section>`;
