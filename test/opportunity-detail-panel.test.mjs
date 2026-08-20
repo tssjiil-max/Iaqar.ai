@@ -15,7 +15,7 @@ test("detail panel uses structured summary and save label", () => {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
   assert.ok(html.includes("تفاصيل الفرصة"));
-  assert.ok(html.includes("opp-details"));
+  assert.ok(html.includes("opp-details--unified"));
   assert.ok(html.includes("opp-details-data-table"));
   assert.ok(html.includes("oppDetailsRevealFormBtn"));
   assert.ok(html.includes('id="bankIncompleteEditSection"'));
@@ -37,8 +37,9 @@ test("detail summary shows progress and missing chips without checklist marks", 
   }, {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
-  assert.ok(html.includes("opp-details-progress"));
-  assert.ok(html.includes("opp-details-missing-chip"));
+  assert.ok(html.includes("opp-details--unified"));
+  assert.ok(html.includes("opp-details-data-table"));
   assert.ok(html.includes("opp-details-row-status"));
+  assert.ok(!html.includes("opp-details-progress-ring"));
   assert.ok(!html.includes("listing-field-mark"));
 });

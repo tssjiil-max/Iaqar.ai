@@ -33,16 +33,18 @@ test("owner offer and client request share unified details layout", () => {
 
   assert.equal(owner.vm.recordKind, "owner_offer");
   assert.equal(client.vm.recordKind, "client_request");
-  assert.ok(owner.html.includes("opp-details"));
-  assert.ok(client.html.includes("opp-details"));
-  assert.ok(owner.html.includes("عرض مالك"));
-  assert.ok(client.html.includes("طلب عميل"));
+  assert.ok(owner.html.includes("opp-details--unified"));
+  assert.ok(client.html.includes("opp-details--unified"));
+  assert.ok(owner.html.includes("opp-details-data-table"));
+  assert.ok(owner.html.includes("بيانات الفرصة"));
   assert.ok(owner.html.includes("السعر"));
   assert.ok(client.html.includes("الميزانية"));
   assert.ok(!owner.html.includes("listing-field-mark"));
   assert.ok(owner.html.includes("opp-details-row-status is-complete"));
   assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
   assert.ok(owner.html.includes("opp-details-missing-tag") || owner.html.includes("ناقص"));
+  assert.ok(!owner.html.includes("opp-details-identity-card"));
+  assert.ok(!owner.html.includes("opp-details-progress-ring"));
   assert.ok(!owner.html.includes("opp-details-title"));
 });
 
@@ -85,14 +87,27 @@ test("data table rows show checkmarks for complete and crosses for missing field
   assert.ok(html.includes("ناقص"));
 });
 
-test("identity header keeps kind on right and status pill with dot", () => {
+test("incomplete opportunities embed complete-missing button inside data table footer", () => {
+  const { html } = buildOpportunityDetailsCoreHtml("opp_partial_btn", {
+    opportunityKind: "OFFER",
+    propertyType: "فيلا",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة"
+  });
+  assert.ok(html.includes("opp-details-data-footer"));
+  assert.ok(html.includes("oppDetailsRevealFormBtn"));
+  assert.ok(html.includes("أكمل البيانات الناقصة"));
+});
+
+test("identity header helpers remain available for extended layouts", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_header_1258", {
     opportunityKind: "OFFER",
     propertyType: "أرض",
     purpose: "SALE"
   });
-  assert.ok(html.includes("opp-details-status-dot"));
-  assert.ok(!html.includes("opp-details-title"));
+  assert.ok(!html.includes("opp-details-identity-card"));
+  assert.ok(!html.includes("opp-details-status-dot"));
 });
 
 test("completion progress reflects actual readiness fields", () => {
@@ -109,10 +124,11 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.total, 7);
   assert.equal(vm.progress.completeCount, 4);
   assert.equal(vm.progress.pct, 57);
-  assert.ok(html.includes("opp-details-missing-dot"));
+  assert.ok(!html.includes("opp-details-missing-dot"));
   assert.ok(!html.includes("🔴"));
   assert.ok(html.includes("الحي: عروة") || html.includes("حي عروة"));
-  assert.ok(html.includes("opp-details-progress-pct"));
+  assert.ok(!html.includes("opp-details-progress-pct"));
+  assert.ok(!html.includes("opp-details-progress-ring"));
   assert.ok(!html.includes("حي حي"));
 });
 

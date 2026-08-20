@@ -3762,10 +3762,14 @@
   }
   .opp-details {
     display:grid;
-    gap:12px;
-    margin:0 auto 4px;
+    gap:0;
+    margin:0 auto;
     max-width:100%;
     width:100%;
+  }
+  .opp-details--unified {
+    max-width:480px;
+    margin-inline:auto;
   }
   .opp-details-card {
     border:1px solid var(--opp-card-border);
@@ -3979,66 +3983,77 @@
   }
   .opp-details-data-table {
     border:1px solid var(--opp-card-border);
-    border-radius:14px;
+    border-radius:var(--opp-radius-card);
     overflow:hidden;
     background:var(--card);
     box-shadow:var(--opp-card-shadow);
   }
   .opp-details-data-title {
     margin:0;
-    padding:11px 14px;
-    font-size:13px;
+    padding:12px 14px;
+    font-size:14px;
     font-weight:800;
-    color:var(--green);
+    color:var(--green-dark);
     background:var(--green-soft);
     border-bottom:1px solid var(--opp-card-border);
     display:flex;
     align-items:center;
+    justify-content:flex-start;
     gap:8px;
+    direction:rtl;
+  }
+  .opp-details-data-title-text {
+    flex:1 1 auto;
+    min-width:0;
   }
   .opp-details-data-title-icon {
-    width:16px;
-    height:16px;
+    width:18px;
+    height:18px;
     color:var(--green);
     flex-shrink:0;
   }
   .opp-details-row {
     display:grid;
-    grid-template-columns:minmax(130px, auto) minmax(0, 1fr) 44px;
+    grid-template-columns:minmax(118px, 34%) minmax(0, 1fr) 40px;
     align-items:center;
-    gap:10px;
+    gap:8px 10px;
     direction:rtl;
-    min-height:52px;
-    padding:10px 14px;
-    border-bottom:1px solid #f0f3f2;
+    min-height:56px;
+    padding:12px 14px;
+    border-bottom:1px solid #eef2f0;
     font-size:12px;
+    background:var(--card);
   }
   .opp-details-row:last-child { border-bottom:0; }
   .opp-details-row-label {
     display:flex;
     align-items:center;
     gap:6px;
-    color:var(--muted);
+    color:#667085;
     font-weight:700;
+    font-size:12px;
     min-width:0;
+    justify-self:stretch;
   }
   .opp-details-row-icon {
     width:16px;
     height:16px;
-    color:var(--green);
+    color:#7a8f88;
     flex-shrink:0;
   }
   .opp-details-data-rows {
-    border-top:1px solid #eef2f0;
+    background:var(--card);
   }
   .opp-details-row-main {
     font-weight:700;
+    font-size:13px;
     color:var(--text);
     word-break:break-word;
-    line-height:1.4;
+    line-height:1.45;
   }
   .opp-details-row-main.is-empty {
     color:var(--opp-missing);
+    font-weight:800;
   }
   .opp-details-row-sub {
     width:100%;
@@ -4046,59 +4061,80 @@
     color:var(--muted);
     font-weight:600;
     line-height:1.35;
+    text-align:center;
   }
   .opp-details-row-status {
-    width:44px;
+    width:40px;
+    min-width:40px;
     display:flex;
     align-items:center;
     justify-content:center;
-    font-size:16px;
+    font-size:18px;
     font-weight:800;
     line-height:1;
     flex-shrink:0;
-    justify-self:start;
+    justify-self:center;
   }
   .opp-details-row-status.is-complete { color:var(--opp-success); }
   .opp-details-row-status.is-missing { color:var(--opp-missing); }
   .opp-details-row-value {
     display:flex;
-    flex-wrap:wrap;
+    flex-direction:column;
     align-items:center;
     justify-content:center;
-    gap:6px;
+    gap:4px;
     min-width:0;
     text-align:center;
+  }
+  .opp-details-row-value-stack {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+    min-width:0;
   }
   .opp-details-missing-tag {
     display:inline-flex;
     align-items:center;
-    padding:2px 8px;
+    justify-content:center;
+    padding:2px 10px;
     border-radius:999px;
     background:var(--opp-missing-bg);
     color:var(--opp-missing);
     font-size:10px;
-    font-weight:700;
-    line-height:1.3;
+    font-weight:800;
+    line-height:1.35;
     white-space:nowrap;
+    border:1px solid var(--opp-missing-border);
+  }
+  .opp-details-data-footer {
+    padding:12px 14px 14px;
+    background:var(--card);
+    border-top:1px solid #eef2f0;
   }
   .opp-details-actions {
-    margin-top:4px;
-    padding:0 2px;
+    margin-top:0;
+    padding:0;
+  }
+  .opp-details-actions--embedded {
+    margin:0;
   }
   .opp-details-actions .bank-action,
   .opp-details-actions .iaqar-workflow-btn {
     width:100%;
-    min-height:44px;
-    border-radius:12px;
+    min-height:48px;
+    border-radius:14px;
   }
   .opp-details-reveal-btn {
     display:inline-flex;
     align-items:center;
     justify-content:center;
     gap:8px;
-    background:#fff;
-    color:var(--green);
-    border:1px solid var(--green);
+    background:var(--green-soft);
+    color:var(--green-dark);
+    border:1.5px solid var(--green);
+    font-weight:800;
+    font-size:14px;
   }
   .opp-details-btn-icon {
     display:inline-flex;
@@ -4115,13 +4151,15 @@
     margin-top:12px;
   }
   .bank-detail .opp-details,
-  .ops-task-panel .opp-details {
+  .ops-task-panel .opp-details,
+  .iaqar-workflow-details .opp-details {
     max-width:480px;
     margin-inline:auto;
     overflow-x:hidden;
-    gap:12px;
+    gap:0;
   }
-  .ops-task-panel .opp-details {
+  .ops-task-panel .opp-details,
+  .iaqar-workflow-details .opp-details {
     border:0;
     border-radius:0;
     padding:0;

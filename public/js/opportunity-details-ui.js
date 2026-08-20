@@ -285,8 +285,10 @@ function valueCellHtml(display, complete, subtext = "") {
   const sub = complete && subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
   return `
     <span class="opp-details-row-value">
-      <span class="${mainClass}">${esc(display)}</span>
-      ${missingBadge}
+      <span class="opp-details-row-value-stack">
+        <span class="${mainClass}">${esc(display)}</span>
+        ${missingBadge}
+      </span>
       ${sub}
     </span>`;
 }
@@ -323,13 +325,18 @@ function locationRow(vm) {
     </div>`;
 }
 
-export function buildOpportunityDataTableHtml(vm) {
+export function buildOpportunityDataTableHtml(vm, options = {}) {
+  const includeRevealButton = options.includeRevealButton !== false;
+  const hasMissing = (vm.progress?.missingLabels || []).length > 0;
+  const footerHtml = includeRevealButton && hasMissing
+    ? `<div class="opp-details-data-footer">${buildOpportunityDetailsRevealFormButtonHtml({ embedded: true })}</div>`
+    : "";
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
-      <h5 class="opp-details-data-title">
+      <header class="opp-details-data-title">
         <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
-        بيانات الفرصة
-      </h5>
+        <span class="opp-details-data-title-text">بيانات الفرصة</span>
+      </header>
       <div class="opp-details-data-rows">
         ${dataRow(vm, "propertyPurpose", "العقار والغرض", vm.propertyPurposeLine)}
         ${locationRow(vm)}
@@ -338,6 +345,7 @@ export function buildOpportunityDataTableHtml(vm) {
         ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
         ${dataRow(vm, "contact", "رقم التواصل", vm.contactPhone)}
       </div>
+      ${footerHtml}
     </section>`;
 }
 
@@ -346,10 +354,8 @@ export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {})
   return {
     vm,
     html: `
-      <div class="opp-details" data-record-kind="${esc(vm.recordKind)}">
-        ${buildOpportunityDetailsHeaderHtml(vm)}
-        ${buildCompletionProgressHtml(vm)}
-        ${buildOpportunityDataTableHtml(vm)}
+      <div class="opp-details opp-details--unified" data-record-kind="${esc(vm.recordKind)}">
+        ${buildOpportunityDataTableHtml(vm, { includeRevealButton: true })}
       </div>`
   };
 }
@@ -363,9 +369,11 @@ export function buildOpportunityDetailProgress(readiness = {}, checks = []) {
   return buildOpportunityDetailsProgress(readiness, checks);
 }
 
-export function buildOpportunityDetailsRevealFormButtonHtml() {
+export function buildOpportunityDetailsRevealFormButtonHtml(options = {}) {
+  const embedded = Boolean(options.embedded);
+  const wrapClass = embedded ? "opp-details-actions opp-details-actions--embedded" : "opp-details-actions";
   return `
-    <div class="opp-details-actions">
+    <div class="${wrapClass}">
       <button type="button" class="bank-action iaqar-workflow-btn secondary opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
         <span class="opp-details-btn-icon" aria-hidden="true">
           <svg class="opp-details-btn-svg" viewBox="0 0 24 24" focusable="false"><path fill="currentColor" d="M3 5h18v2H3V5zm0 6h12v2H3v-2zm0 6h8v2H3v-2z"/></svg>

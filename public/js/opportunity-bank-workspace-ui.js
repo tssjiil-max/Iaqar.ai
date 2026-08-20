@@ -17,7 +17,6 @@ import { officeShareStatusLabel,
 import { cooperationStatusLabel } from "./opportunity-workspace-domain.js";
 import {
   buildOpportunityDetailsCoreHtml,
-  buildOpportunityDetailsRevealFormButtonHtml
 } from "./opportunity-details-ui.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import {
@@ -94,8 +93,6 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
   const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
-  const hasMissing = (readiness.matchingReadinessMissing || []).length > 0;
-  const revealBtn = hasMissing ? buildOpportunityDetailsRevealFormButtonHtml() : "";
 
   return `
     <div class="bank-detail-head iaqar-workflow-head">
@@ -103,7 +100,6 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
       <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
     ${detailsHtml}
-    ${revealBtn}
     <section class="bank-incomplete-edit" id="bankIncompleteEditSection" aria-label="تعديل البيانات الناقصة" hidden>
       <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
         <div class="bank-edit-grid">${fieldBlocks}</div>
