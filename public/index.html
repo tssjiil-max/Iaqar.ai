@@ -1515,16 +1515,21 @@
 
     .ops-task-body--listing .listing-card-inner {
       margin-top:0;
-      border:1px solid #e3ece8;
-      border-radius:16px;
-      overflow:hidden;
-      background:#fff;
-      box-shadow:0 2px 10px rgba(0,0,0,.04);
+      border:0;
+      border-radius:0;
+      overflow:visible;
+      background:transparent;
+      box-shadow:none;
       width:100%;
     }
 
-    .listing-card-inner--ops .bank-row-body {
-      padding:12px 14px 14px;
+    .listing-card-inner--unified .opp-details-data-table {
+      margin:0;
+    }
+
+    .listing-card-extra {
+      margin-top:10px;
+      width:100%;
     }
 
     .bank-row-stats--ops {
@@ -1575,16 +1580,8 @@
       padding-bottom:0;
     }
 
-    .ops-task-body--listing .bank-row-header {
-      padding:8px 10px;
-    }
-
-    .ops-task-body--listing .bank-row-body {
-      padding:10px 12px 11px;
-    }
-
-    .ops-task-body--listing .bank-row-title {
-      font-size:12px;
+    .ops-task-body--listing .opp-details-data-table {
+      width:100%;
     }
 
     .ops-task-meta-line {
@@ -3597,16 +3594,19 @@
   .bank-row.bank-row-card {
     display:block;
     padding:0;
+    border:0;
+    background:transparent;
+    box-shadow:none;
     cursor:pointer;
-    overflow:hidden;
+    overflow:visible;
     text-align:right;
     width:100%;
-    transition:background 0.12s ease, opacity 0.12s ease;
+    transition:opacity 0.12s ease;
     -webkit-tap-highlight-color:transparent;
   }
 
   .bank-row.bank-row-card:active {
-    background:#f4faf7;
+    background:transparent;
     opacity:0.97;
   }
 

@@ -7,7 +7,7 @@ import { buildBankListCardView } from "./bank-list-card-domain.js";
 import {
   buildListingFieldChecks,
   normalizeListingRecord
-} from "./opportunity-listing-card-ui.js";
+} from "./opportunity-listing-normalize.js";
 import {
   evaluateMatchingReadiness,
   missingFieldLabelsArabic,

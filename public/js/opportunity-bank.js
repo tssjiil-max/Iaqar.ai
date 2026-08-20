@@ -454,30 +454,7 @@ function isVisibleForFilter(record) {
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
   const card = buildBankListCardView({ ...record, id: row.id });
-  const followupClass = card.nextActionOverdue ? " is-overdue" : "";
-  const followup = card.nextActionLabel
-    ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
-    : "";
-  const matchLine = card.bestMatchScoreText
-    ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>`
-    : "";
-  const sourceLine = card.sourceShort
-    ? `<p class="bank-row-source">${escapeHtml(card.sourceShort)}</p>`
-    : "";
-  const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
-    ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
-    : "";
-  const footerHtml = `
-    <div class="bank-row-footer">
-      ${contactHtml}
-      ${followup}
-      ${matchLine}
-      ${sourceLine}
-    </div>`;
-  const incompleteHint = !card.isReadyForMatching
-    ? `<p class="bank-row-tasks-hint">استكمال البيانات من المهام اليومية</p>`
-    : "";
-  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id }, { footerHtml });
+  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id });
   return `
     <article
       class="bank-row bank-row-card"
@@ -487,7 +464,6 @@ function bankRowHtml(row) {
       data-open-id="${escapeHtml(card.opportunityId || row.id)}"
       aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
       ${inner}
-      ${incompleteHint}
     </article>`;
 }
 

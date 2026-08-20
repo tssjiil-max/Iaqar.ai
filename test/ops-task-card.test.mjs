@@ -49,7 +49,7 @@ test("buildOpsTaskAdSummary formats listing headline and specs", () => {
   assert.ok(ad.specs.includes("ريال"));
 });
 
-test("buildOpsTaskListingBodyHtml renders compact listing with actions and no field marks", () => {
+test("buildOpsTaskListingBodyHtml renders unified data table with actions", () => {
   const html = buildOpsTaskListingBodyHtml({
     id: "opp-1",
     recordType: "opportunity",
@@ -60,15 +60,16 @@ test("buildOpsTaskListingBodyHtml renders compact listing with actions and no fi
     salePrice: 500000,
     area: 800
   });
-  assert.ok(html.includes("bank-row-header"));
-  assert.ok(html.includes("bank-row-stats--ops"));
+  assert.ok(html.includes("opp-details-data-table"));
+  assert.ok(html.includes("بيانات الفرصة"));
+  assert.ok(!html.includes("bank-row-header"));
   assert.ok(!html.includes("listing-field-marks"));
   assert.ok(html.includes("listing-card-actions"));
   assert.ok(html.includes("تابع"));
   assert.ok(html.includes("حفظ الفرصة"));
 });
 
-test("buildOpsTaskListingContentHtml uses ops stats layout without field marks or actions", () => {
+test("buildOpsTaskListingContentHtml uses unified table without actions", () => {
   const html = buildOpsTaskListingContentHtml({
     recordType: "opportunity",
     propertyType: "أرض",
@@ -77,7 +78,8 @@ test("buildOpsTaskListingContentHtml uses ops stats layout without field marks o
     purpose: "SALE",
     area: 800
   });
-  assert.ok(html.includes("listing-card-inner--ops"));
+  assert.ok(html.includes("listing-card-inner--unified"));
+  assert.ok(html.includes("opp-details-data-table"));
   assert.ok(!html.includes("listing-card-actions"));
   assert.ok(!html.includes("listing-field-marks"));
 });
@@ -114,5 +116,6 @@ test("listing body renders compact card without field mark grid", () => {
     contactPhone: "+966501234567"
   });
   assert.equal(root.querySelector(".listing-field-marks"), null);
-  assert.ok(root.querySelector(".bank-row-header"));
+  assert.ok(root.querySelector(".opp-details-data-table"));
+  assert.equal(root.querySelectorAll(".opp-details-row").length, 6);
 });

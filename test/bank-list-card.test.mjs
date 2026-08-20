@@ -12,16 +12,15 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("bank list card header has badge title and status aligned", () => {
+test("bank list card uses unified بيانات الفرصة table", () => {
   const html = readRepo("public", "js", "opportunity-bank.js");
   const listing = readRepo("public", "js", "opportunity-listing-card-ui.js");
   assert.ok(html.includes("buildOpportunityListingCardInnerHtml"));
-  assert.ok(listing.includes("bank-row-header"));
-  assert.ok(listing.includes("bank-row-title"));
-  assert.ok(listing.includes("bank-readiness-badge"));
+  assert.ok(listing.includes("opp-details-data-table") || listing.includes("buildOpportunityDataTableHtml"));
+  assert.ok(listing.includes("listing-card-inner--unified"));
   const shell = readRepo("public", "index.html");
-  assert.ok(shell.includes(".bank-row-header"));
-  assert.ok(shell.includes("align-items:center"));
+  assert.ok(shell.includes(".opp-details-data-title"));
+  assert.ok(shell.includes("بيانات الفرصة") || shell.includes(".opp-details-row"));
 });
 
 test("bank list card uses stats grid for price area rooms", () => {
