@@ -17,7 +17,8 @@ import {
   buildOpportunitySpecsLine,
   isDetailsRowComplete
 } from "./opportunity-field-completion-domain.js";
-import { ADVERTISER_ROLES } from "./advertiser-phone-domain.js";
+import { ADVERTISER_ROLES, readAdvertiserDisplayName } from "./advertiser-phone-domain.js";
+import { buildPhoneContactDisplayName } from "./phone-contact-save-domain.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
@@ -169,6 +170,10 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const specs = buildOpportunitySpecsLine(normalized);
   const phone = normalized.contactPhone || normalized.phone || normalized.advertiserPhoneNormalized || "";
   const roleRaw = normalized.advertiserRole || normalized.ownerRole || "";
+  const advertiserRole = advertiserRoleLabel(roleRaw);
+  const advertiserRoleHint = advertiserRoleSubtext(roleRaw, isOwner);
+  const advertiserDisplayName = readAdvertiserDisplayName(normalized);
+  const propertyType = String(normalized.propertyType || "").trim();
   const addedAt = formatAddedAt(normalized);
 
   return {
@@ -192,9 +197,17 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     locationCity: cityText,
     locationDistrict: districtText,
     specs,
-    advertiserRole: advertiserRoleLabel(roleRaw),
-    advertiserRoleSubtext: advertiserRoleSubtext(roleRaw, isOwner),
+    advertiserRole,
+    advertiserRoleSubtext: advertiserRoleHint,
+    advertiserDisplayName,
+    propertyType,
     contactPhone: phone,
+    contactSaveDisplayName: buildPhoneContactDisplayName({
+      displayName: advertiserDisplayName,
+      roleLabel: advertiserRole,
+      propertyType,
+      district: districtText
+    }),
     propertyPurposeLine: card.title
   };
 }
@@ -309,9 +322,14 @@ function dataRow(vm, rowKey, label, value, subtext = "") {
 function contactSaveButtonHtml(vm) {
   const phone = String(vm.contactPhone || "").trim();
   if (!phone) return "";
+  const saveName = String(vm.contactSaveDisplayName || "").trim();
   return `<button type="button" class="js-save-phone-contact opp-contact-save-btn"
       data-contact-phone="${esc(phone)}"
-      aria-label="حفظ الرقم في سجل الهاتف"
+      data-contact-name="${esc(vm.advertiserDisplayName || "")}"
+      data-contact-role="${esc(vm.advertiserRole || "")}"
+      data-contact-property="${esc(vm.propertyType || "")}"
+      data-contact-district="${esc(vm.locationDistrict || "")}"
+      aria-label="حفظ الرقم في سجل الهاتف${saveName ? `: ${esc(saveName)}` : ""}"
       title="حفظ الرقم في سجل الهاتف">
       <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
     </button>`;

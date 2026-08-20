@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildPhoneContactDisplayName,
   buildPhoneContactVcard,
   phoneContactVcardFilename,
   validatePhoneContactSave
@@ -10,16 +11,43 @@ import { buildOpportunityListingCardInnerHtml } from "../public/js/opportunity-l
 import { JSDOM } from "jsdom";
 import { readRepositoryFile } from "./helpers/shell.mjs";
 
-test("VCF يحفظ الرقم فقط دون اسم عميل أو مالك أو وسيط", () => {
-  const check = validatePhoneContactSave("0511123456");
+test("اسم الحفظ مع الاسم الشخصي: أبو أحمد عميل في الوبرة", () => {
+  assert.equal(
+    buildPhoneContactDisplayName({
+      displayName: "أبو أحمد",
+      roleLabel: "عميل",
+      propertyType: "شقة",
+      district: "الوبرة"
+    }),
+    "أبو أحمد عميل في الوبرة"
+  );
+});
+
+test("اسم الحفظ بدون اسم شخصي: مالك عمارة في عروة", () => {
+  assert.equal(
+    buildPhoneContactDisplayName({
+      roleLabel: "مالك",
+      propertyType: "عمارة",
+      district: "عروة"
+    }),
+    "مالك عمارة في عروة"
+  );
+});
+
+test("VCF يحفظ الاسم الوصفي مع الرقم", () => {
+  const check = validatePhoneContactSave({
+    phoneRaw: "0511123456",
+    displayName: "أبو أحمد",
+    roleLabel: "عميل",
+    district: "الوبرة"
+  });
   assert.equal(check.ok, true);
-  assert.equal(check.phoneE164, "+966511123456");
-  const vcard = buildPhoneContactVcard("0511123456");
-  assert.match(vcard, /BEGIN:VCARD/);
+  assert.equal(check.displayName, "أبو أحمد عميل في الوبرة");
+  const vcard = buildPhoneContactVcard(check);
+  assert.match(vcard, /FN;CHARSET=UTF-8:أبو أحمد عميل في الوبرة/);
   assert.match(vcard, /\+966511123456/);
-  assert.match(vcard, /0511123456/);
-  assert.doesNotMatch(vcard, /مالك|عميل|وسيط/);
-  assert.match(phoneContactVcardFilename("0511123456"), /\.vcf$/);
+  assert.match(phoneContactVcardFilename(check), /\.vcf$/);
+  assert.match(phoneContactVcardFilename(check), /أبو أحمد/);
 });
 
 test("لا تُنشأ بطاقة إذا الرقم ناقص", () => {
@@ -27,34 +55,40 @@ test("لا تُنشأ بطاقة إذا الرقم ناقص", () => {
   assert.equal(buildPhoneContactVcard("123"), "");
 });
 
-test("أيقونة الحفظ تظهر بجانب رقم التواصل المكتمل فقط", () => {
+test("أيقونة الحفظ تمرّر الاسم والصفة والحي من بيانات الفرصة", () => {
   const ready = buildOpportunityDetailsCoreHtml("opp_phone", {
-    opportunityKind: "OFFER",
+    opportunityKind: "REQUEST",
     propertyType: "شقة",
     purpose: "RENT",
     city: "المدينة المنورة",
-    district: "عروة",
+    district: "الوبرة",
     price: 48000,
     area: 120,
     rooms: 3,
     advertiserRole: "CLIENT",
+    advertiserDisplayName: "أبو أحمد",
     advertiserPhoneNormalized: "+966511123456"
   });
   assert.ok(ready.html.includes("js-save-phone-contact"));
-  assert.ok(ready.html.includes("#i-contact-save"));
-  assert.ok(ready.html.includes("حفظ الرقم في سجل الهاتف"));
-  assert.ok(ready.html.includes("data-contact-phone=\"+966511123456\""));
-  assert.ok(ready.html.includes("رقم التواصل"));
-  assert.ok(ready.html.includes("المعلن وصفته"));
+  assert.ok(ready.html.includes("data-contact-name=\"أبو أحمد\""));
+  assert.ok(ready.html.includes("data-contact-role=\"عميل\""));
+  assert.ok(ready.html.includes("data-contact-district=\"الوبرة\""));
+  assert.ok(ready.html.includes("data-contact-property=\"شقة\""));
+  assert.equal(ready.vm.contactSaveDisplayName, "أبو أحمد عميل في الوبرة");
 
-  const missing = buildOpportunityDetailsCoreHtml("opp_nophone", {
+  const ownerOnly = buildOpportunityDetailsCoreHtml("opp_owner", {
     opportunityKind: "OFFER",
-    propertyType: "شقة",
+    propertyType: "عمارة",
     purpose: "SALE",
     city: "المدينة المنورة",
-    district: "العريض"
+    district: "عروة",
+    price: 900000,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678"
   });
-  assert.equal(missing.html.includes("js-save-phone-contact"), false);
+  assert.equal(ownerOnly.vm.contactSaveDisplayName, "مالك عمارة في عروة");
+  assert.ok(ownerOnly.html.includes("data-contact-role=\"مالك\""));
+  assert.ok(ownerOnly.html.includes("data-contact-property=\"عمارة\""));
 });
 
 test("بطاقة القائمة تحمل أيقونة الحفظ دون تغيير عدد الصفوف", () => {
