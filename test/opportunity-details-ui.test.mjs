@@ -41,8 +41,8 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(client.html.includes("الميزانية"));
   assert.ok(!owner.html.includes("listing-field-mark"));
   assert.ok(owner.html.includes("opp-details-row-status is-complete"));
-  assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
-  assert.ok(owner.html.includes("opp-details-missing-tag") || owner.html.includes("ناقص"));
+  assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("ناقصة"));
+  assert.ok(owner.html.includes("كاملة") || owner.html.includes("ناقصة"));
   assert.ok(!owner.html.includes("opp-details-title"));
 });
 
@@ -69,7 +69,7 @@ test("data table uses clear row icons for each field", () => {
   assert.equal(html.includes("#i-target"), false);
 });
 
-test("data table rows show checkmarks for complete and crosses for missing fields", () => {
+test("data table rows show dot labels for complete and missing fields", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_partial_rows", {
     opportunityKind: "OFFER",
     propertyType: "فيلا",
@@ -79,10 +79,10 @@ test("data table rows show checkmarks for complete and crosses for missing field
   });
   assert.ok(html.includes("opp-details-row-status is-complete"));
   assert.ok(html.includes("opp-details-row-status is-missing"));
-  assert.ok(html.includes("✓"));
-  assert.ok(html.includes("✕"));
-  assert.ok(html.includes("opp-details-missing-tag"));
-  assert.ok(html.includes("ناقص"));
+  assert.ok(html.includes("opp-details-row-status-dot"));
+  assert.ok(html.includes("كاملة"));
+  assert.ok(html.includes("ناقصة"));
+  assert.equal(html.includes("opp-details-missing-tag"), false);
 });
 
 test("identity header keeps kind on right and status pill with dot", () => {
@@ -95,7 +95,7 @@ test("identity header keeps kind on right and status pill with dot", () => {
   assert.ok(!html.includes("opp-details-title"));
 });
 
-test("completion progress reflects actual readiness fields", () => {
+test("completion progress section is omitted from details layout", () => {
   const { vm, html } = buildOpportunityDetailsCoreHtml("opp_partial", {
     opportunityKind: "OFFER",
     propertyType: "فيلا",
@@ -109,10 +109,9 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.total, 7);
   assert.equal(vm.progress.completeCount, 4);
   assert.equal(vm.progress.pct, 57);
-  assert.ok(html.includes("opp-details-missing-dot"));
-  assert.ok(!html.includes("🔴"));
+  assert.equal(html.includes("opp-details-completion-card"), false);
+  assert.equal(html.includes("opp-details-progress-pct"), false);
   assert.ok(html.includes("الحي: عروة") || html.includes("حي عروة"));
-  assert.ok(html.includes("opp-details-progress-pct"));
   assert.ok(!html.includes("حي حي"));
 });
 

@@ -264,10 +264,12 @@ export function buildMissingFieldsAlertHtml(vm) {
 }
 
 function rowStatusHtml(complete) {
-  const icon = complete ? "✓" : "✕";
   const cssClass = complete ? "is-complete" : "is-missing";
-  const label = complete ? "مكتمل" : "ناقص";
-  return `<span class="opp-details-row-status ${cssClass}" aria-label="${label}">${icon}</span>`;
+  const label = complete ? "كاملة" : "ناقصة";
+  return `<span class="opp-details-row-status ${cssClass}" aria-label="${label}">
+    <span class="opp-details-row-status-dot" aria-hidden="true"></span>
+    <span class="opp-details-row-status-label">${label}</span>
+  </span>`;
 }
 
 function rowLabelHtml(rowKey, label) {
@@ -281,12 +283,10 @@ function rowLabelHtml(rowKey, label) {
 
 function valueCellHtml(display, complete, subtext = "") {
   const mainClass = complete ? "opp-details-row-main" : "opp-details-row-main is-empty";
-  const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
   const sub = complete && subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
   return `
     <span class="opp-details-row-value">
       <span class="${mainClass}">${esc(display)}</span>
-      ${missingBadge}
       ${sub}
     </span>`;
 }
@@ -348,7 +348,6 @@ export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {})
     html: `
       <div class="opp-details" data-record-kind="${esc(vm.recordKind)}">
         ${buildOpportunityDetailsHeaderHtml(vm)}
-        ${buildCompletionProgressHtml(vm)}
         ${buildOpportunityDataTableHtml(vm)}
       </div>`
   };
@@ -367,10 +366,8 @@ export function buildOpportunityDetailsRevealFormButtonHtml() {
   return `
     <div class="opp-details-actions">
       <button type="button" class="bank-action iaqar-workflow-btn secondary opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
-        <span class="opp-details-btn-icon" aria-hidden="true">
-          <svg class="opp-details-btn-svg" viewBox="0 0 24 24" focusable="false"><path fill="currentColor" d="M3 5h18v2H3V5zm0 6h12v2H3v-2zm0 6h8v2H3v-2z"/></svg>
-        </span>
-        أكمل البيانات الناقصة
+        <span class="opp-details-btn-missing-dot" aria-hidden="true"></span>
+        ناقصة
       </button>
     </div>`;
 }

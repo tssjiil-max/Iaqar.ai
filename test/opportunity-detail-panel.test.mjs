@@ -26,7 +26,7 @@ test("detail panel uses structured summary and save label", () => {
   assert.ok(!html.includes("bank-row-header"));
 });
 
-test("detail summary shows progress and missing chips without checklist marks", () => {
+test("detail summary shows row status dots without progress card", () => {
   const html = buildOpportunityDetailSummaryHtml("opp_abc", {
     opportunityKind: "OFFER",
     propertyType: "أرض",
@@ -37,8 +37,8 @@ test("detail summary shows progress and missing chips without checklist marks", 
   }, {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
-  assert.ok(html.includes("opp-details-progress"));
-  assert.ok(html.includes("opp-details-missing-chip"));
+  assert.equal(html.includes("opp-details-completion-card"), false);
+  assert.ok(html.includes("opp-details-row-status-dot"));
   assert.ok(html.includes("opp-details-row-status"));
   assert.ok(!html.includes("listing-field-mark"));
 });
