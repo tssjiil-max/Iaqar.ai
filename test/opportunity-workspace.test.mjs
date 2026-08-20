@@ -147,7 +147,7 @@ test("service worker cache bumped for workspace", () => {
 
 test("incomplete save button label is canonical", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
-  assert.ok(ui.includes("حفظ الفرصة"));
+  assert.ok(ui.includes('id="bankUnifiedSaveBtn">حفظ</button>'));
 });
 
 test("desktop workspace side panel CSS exists", () => {

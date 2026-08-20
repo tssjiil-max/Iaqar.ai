@@ -20,7 +20,8 @@ test("detail panel uses structured summary and save label", () => {
   assert.ok(html.includes("oppDetailsRevealFormBtn"));
   assert.ok(html.includes('id="bankIncompleteEditSection"'));
   assert.ok(html.includes("bankIncompleteEditSection") && html.includes("hidden"));
-  assert.ok(html.includes("حفظ الفرصة"));
+  assert.ok(html.includes("حفظ"));
+  assert.ok(html.includes("فحص البيانات"));
   assert.ok(!html.includes("استكمال الفرصة"));
   assert.ok(!html.includes("bank-row-header"));
 });
@@ -38,6 +39,6 @@ test("detail summary shows progress and missing chips without checklist marks", 
   });
   assert.ok(html.includes("opp-details-progress"));
   assert.ok(html.includes("opp-details-missing-chip"));
-  assert.ok(!html.includes("✗"));
+  assert.ok(html.includes("opp-details-row-status"));
   assert.ok(!html.includes("listing-field-mark"));
 });

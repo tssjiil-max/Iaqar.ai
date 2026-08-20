@@ -98,8 +98,8 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
       </form>
     </section>
     <div class="bank-unified-save-wrap" id="bankUnifiedSaveWrap" hidden>
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ الفرصة</button>
-      <p class="bank-unified-save-note">بعد الحفظ سيتم التحقق من البيانات تلقائيًا.</p>
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ</button>
+      <p class="bank-unified-save-note">بعد الحفظ سيتم فحص البيانات تلقائيًا.</p>
       <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
     </div>`;
 }

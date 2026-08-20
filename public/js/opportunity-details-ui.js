@@ -1,5 +1,5 @@
 /**
- * Unified opportunity details UI — owner offers and client requests share one layout.
+ * Unified opportunity details UI — pixel-aligned to approved reference spec.
  * Display-only; uses existing readiness evaluation and record normalization.
  */
 
@@ -22,6 +22,15 @@ import { ADVERTISER_ROLES } from "./advertiser-phone-domain.js";
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
   CLIENT_REQUEST: "client_request"
+});
+
+const ROW_ICONS = Object.freeze({
+  propertyPurpose: "i-house-check",
+  location: "i-target",
+  price: "i-briefcase",
+  specs: "i-clipboard-list",
+  advertiser: "i-user-clock",
+  contact: "i-bell"
 });
 
 function esc(text = "") {
@@ -88,14 +97,21 @@ function formatAddedAt(record = {}) {
   const date = raw instanceof Date ? raw : new Date(raw);
   if (Number.isNaN(date.getTime())) return "";
   const tz = "Asia/Riyadh";
-  const day = date.toLocaleDateString("ar-SA", { timeZone: tz, year: "numeric", month: "short", day: "numeric" });
+  const day = date.toLocaleDateString("ar-SA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
   const time = date.toLocaleTimeString("ar-SA", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true });
-  return `${day} · ${time}`;
+  return { day, time, combined: `${day} | ${time}` };
 }
 
 function advertiserRoleLabel(value = "") {
   const id = String(value || "").trim().toUpperCase();
   return ADVERTISER_ROLES.find((row) => row.id === id)?.label || String(value || "").trim();
+}
+
+function advertiserRoleSubtext(roleRaw = "", isOwner = false) {
+  const id = String(roleRaw || "").trim().toUpperCase();
+  if (id === "OWNER" && isOwner) return "مالك مباشر";
+  if (id === "CLIENT") return "عميل مباشر";
+  return "";
 }
 
 function normalizeCityDistrict(record = {}) {
@@ -144,6 +160,7 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const specs = buildOpportunitySpecsLine(normalized);
   const phone = normalized.contactPhone || normalized.phone || normalized.advertiserPhoneNormalized || "";
   const roleRaw = normalized.advertiserRole || normalized.ownerRole || "";
+  const addedAt = formatAddedAt(normalized);
 
   return {
     id: String(id || normalized.id || ""),
@@ -153,7 +170,9 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     kindIcon: resolveKindIcon(normalized),
     title: card.title,
     status: resolveOpportunityDetailsStatus(normalized, readiness),
-    addedAtLabel: formatAddedAt(normalized),
+    addedAtLabel: addedAt.combined || "",
+    addedAtDay: addedAt.day || "",
+    addedAtTime: addedAt.time || "",
     progress,
     readiness,
     checks,
@@ -165,12 +184,16 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     locationDistrict: districtText,
     specs,
     advertiserRole: advertiserRoleLabel(roleRaw),
+    advertiserRoleSubtext: advertiserRoleSubtext(roleRaw, isOwner),
     contactPhone: phone,
     propertyPurposeLine: card.title
   };
 }
 
 export function buildOpportunityDetailsHeaderHtml(vm) {
+  const statusDot = vm.status.cssClass === "is-incomplete" || vm.status.cssClass === "is-ready"
+    ? `<span class="opp-details-status-dot" aria-hidden="true"></span>`
+    : "";
   return `
     <section class="opp-details-card opp-details-identity-card">
       <div class="opp-details-header">
@@ -182,48 +205,53 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
             <div class="opp-details-header-copy">
               <p class="opp-details-kind">${esc(vm.kindLabel)}</p>
               <p class="opp-details-id">#${esc(String(vm.id).slice(-8))}</p>
-              <h4 class="opp-details-title">${esc(vm.title)}</h4>
             </div>
           </div>
-          <span class="opp-details-status ${esc(vm.status.cssClass)}">${esc(vm.status.label)}</span>
+          <span class="opp-details-status ${esc(vm.status.cssClass)}">${statusDot}${esc(vm.status.label)}</span>
         </div>
-        ${vm.addedAtLabel ? `<p class="opp-details-added-at">تاريخ الإضافة: ${esc(vm.addedAtLabel)}</p>` : ""}
+        ${vm.addedAtLabel ? `<p class="opp-details-added-at"><span class="opp-details-added-at-icon" aria-hidden="true">📅</span> تاريخ الإضافة: ${esc(vm.addedAtLabel)}</p>` : ""}
       </div>
     </section>`;
+}
+
+function missingInlineHtml(vm) {
+  if (!vm.progress.missingLabels.length) return "";
+  const chips = vm.progress.missingLabels.map((label) => `
+    <span class="opp-details-missing-chip"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(label)}</span>`).join("");
+  return `
+    <div class="opp-details-missing-inline" aria-label="الحقول الناقصة">
+      <span class="opp-details-missing-title">الناقص:</span>
+      <div class="opp-details-missing-list">${chips}</div>
+    </div>`;
 }
 
 export function buildCompletionProgressHtml(vm) {
   const { progress, status } = vm;
   return `
     <section class="opp-details-card opp-details-completion-card" aria-label="نسبة اكتمال البيانات">
-      <div class="opp-details-progress">
-        <div class="opp-details-progress-ring" style="--opp-progress:${progress.pct}" aria-hidden="true">
-          <span class="opp-details-progress-count">
-            <span class="opp-details-progress-top">${esc(String(progress.completeCount))}</span>
-            <span class="opp-details-progress-bottom">من ${esc(String(progress.total))}</span>
-          </span>
-        </div>
+      <div class="opp-details-progress-layout">
         <div class="opp-details-progress-copy">
           <strong>نسبة اكتمال البيانات</strong>
-          <p>${esc(`${progress.pct}% مكتملة`)}</p>
           <p class="opp-details-progress-hint">${status.cssClass === "is-ready"
     ? "الفرصة جاهزة للمطابقة."
     : "استكمل البيانات الناقصة ليتم تحويل الفرصة إلى جاهزة للمطابقة."}</p>
+          ${missingInlineHtml(vm)}
+        </div>
+        <div class="opp-details-progress-side">
+          <div class="opp-details-progress-ring" style="--opp-progress:${progress.pct}" aria-hidden="true">
+            <span class="opp-details-progress-count">
+              <span class="opp-details-progress-top">${esc(String(progress.completeCount))}</span>
+              <span class="opp-details-progress-bottom">من ${esc(String(progress.total))}</span>
+            </span>
+          </div>
+          <p class="opp-details-progress-pct">${esc(`${progress.pct}%`)} مكتملة</p>
         </div>
       </div>
-      ${buildMissingFieldsAlertHtml(vm)}
     </section>`;
 }
 
 export function buildMissingFieldsAlertHtml(vm) {
-  if (!vm.progress.missingLabels.length) return "";
-  const chips = vm.progress.missingLabels.map((label) => `
-    <span class="opp-details-missing-chip"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(label)}</span>`).join("");
-  return `
-    <div class="opp-details-missing-alert" aria-label="الحقول الناقصة">
-      <p class="opp-details-missing-title">الناقص:</p>
-      <div class="opp-details-missing-list">${chips}</div>
-    </div>`;
+  return missingInlineHtml(vm);
 }
 
 function rowStatusHtml(complete) {
@@ -233,17 +261,34 @@ function rowStatusHtml(complete) {
   return `<span class="opp-details-row-status ${cssClass}" aria-label="${label}">${icon}</span>`;
 }
 
-function dataRow(vm, rowKey, label, value) {
+function rowLabelHtml(rowKey, label) {
+  const iconId = ROW_ICONS[rowKey] || "i-clipboard-list";
+  return `
+    <span class="opp-details-row-label">
+      <svg class="opp-details-row-icon" aria-hidden="true"><use href="#${esc(iconId)}"/></svg>
+      <span>${esc(label)}</span>
+    </span>`;
+}
+
+function valueCellHtml(display, complete, subtext = "") {
+  const mainClass = complete ? "opp-details-row-main" : "opp-details-row-main is-empty";
+  const sub = subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
+  return `
+    <span class="opp-details-row-value">
+      <span class="${mainClass}">${esc(display)}</span>
+      ${sub}
+    </span>`;
+}
+
+function dataRow(vm, rowKey, label, value, subtext = "") {
   const complete = isDetailsRowComplete(vm, rowKey);
   const display = complete
     ? (String(value ?? "").trim() || "—")
     : "غير محدد";
   return `
     <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
-      <span class="opp-details-row-label">${esc(label)}</span>
-      <span class="opp-details-row-value">
-        <span class="${complete ? "" : "is-empty"}">${esc(display)}</span>
-      </span>
+      ${rowLabelHtml(rowKey, label)}
+      ${valueCellHtml(display, complete, complete ? subtext : "")}
       ${rowStatusHtml(complete)}
     </div>`;
 }
@@ -252,15 +297,17 @@ function locationRow(vm) {
   const complete = isDetailsRowComplete(vm, "location");
   const city = vm.locationCity || "";
   const district = vm.locationDistrict || "";
-  const valueHtml = !complete && !city && !district
-    ? `<span class="is-empty">غير محدد</span>`
-    : `
-      ${city ? `<span class="opp-details-location-city">${esc(city)}</span>` : ""}
-      ${district ? `<span class="opp-details-location-district">${district ? `– حي ${esc(district)}` : ""}</span>` : ""}`;
+  let valueHtml;
+  if (!complete && !city && !district) {
+    valueHtml = valueCellHtml("غير محدد", false);
+  } else {
+    const main = [city, district ? `حي ${district}` : ""].filter(Boolean).join(" – ");
+    valueHtml = valueCellHtml(main || "—", complete, district ? `الحي: ${district}` : "");
+  }
   return `
     <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
-      <span class="opp-details-row-label">الموقع</span>
-      <span class="opp-details-row-value opp-details-location-value">${valueHtml}</span>
+      ${rowLabelHtml("location", "الموقع")}
+      ${valueHtml}
       ${rowStatusHtml(complete)}
     </div>`;
 }
@@ -268,13 +315,16 @@ function locationRow(vm) {
 export function buildOpportunityDataTableHtml(vm) {
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
-      <h5 class="opp-details-data-title">بيانات الفرصة</h5>
+      <h5 class="opp-details-data-title">
+        <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
+        بيانات الفرصة
+      </h5>
       <div class="opp-details-data-rows">
         ${dataRow(vm, "propertyPurpose", "العقار والغرض", vm.propertyPurposeLine)}
         ${locationRow(vm)}
         ${dataRow(vm, "price", vm.priceLabel, vm.priceValue)}
         ${dataRow(vm, "specs", "المساحة والمواصفات", vm.specs || "—")}
-        ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole)}
+        ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
         ${dataRow(vm, "contact", "رقم التواصل", vm.contactPhone)}
       </div>
     </section>`;
@@ -305,7 +355,8 @@ export function buildOpportunityDetailProgress(readiness = {}, checks = []) {
 export function buildOpportunityDetailsRevealFormButtonHtml() {
   return `
     <div class="opp-details-actions">
-      <button type="button" class="bank-action iaqar-workflow-btn secondary" id="oppDetailsRevealFormBtn">
+      <button type="button" class="bank-action iaqar-workflow-btn secondary opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
+        <span class="opp-details-btn-icon" aria-hidden="true">✎</span>
         أكمل البيانات الناقصة
       </button>
     </div>`;

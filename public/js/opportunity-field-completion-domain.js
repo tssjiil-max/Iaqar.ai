@@ -60,7 +60,7 @@ export function buildOpportunitySpecsLine(record = {}) {
   const rooms = Number(record.rooms || 0);
   if (rooms > 0) parts.push(`${rooms.toLocaleString("ar-SA")} غرف`);
 
-  return parts.join(" — ");
+  return parts.join("، ");
 }
 
 /** @returns {boolean} */
