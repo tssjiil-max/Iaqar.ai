@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   extractAdvertiserPhonesFromText,
   normalizeAdvertiserPhoneE164,
+  defaultAdvertiserRoleFromOpportunityKind,
+  mergeAdvertiserFieldsIntoOpportunity,
   buildAdvertiserCompletionMessage,
   buildAdvertiserWhatsAppMessage,
   buildAdvertiserDataPatch,
@@ -138,4 +140,29 @@ test("readAdvertiserDisplayName falls back to contactName from public intake", a
     readAdvertiserDisplayName({ advertiserDisplayName: "أحمد", contactName: "قديم" }),
     "أحمد"
   );
+});
+
+test("defaultAdvertiserRoleFromOpportunityKind maps request/offer kinds", () => {
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind("REQUEST"), "CLIENT");
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind("OFFER"), "OWNER");
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind(""), "");
+});
+
+test("mergeAdvertiserFieldsIntoOpportunity keeps 05 local phones and request role", () => {
+  const merged = mergeAdvertiserFieldsIntoOpportunity({}, {
+    advertiserPhoneNormalized: "0552019909",
+    advertiserPhoneRaw: "0552019909",
+    opportunityKind: "REQUEST"
+  });
+  assert.equal(merged.advertiserPhoneNormalized, "+966552019909");
+  assert.equal(merged.contactPhone, "+966552019909");
+  assert.equal(merged.advertiserRole, "CLIENT");
+});
+
+test("mergeAdvertiserFieldsIntoOpportunity does not wipe missing phone onto contactPhone", () => {
+  const merged = mergeAdvertiserFieldsIntoOpportunity({}, {
+    opportunityKind: "OFFER"
+  });
+  assert.equal(merged.advertiserRole, "OWNER");
+  assert.equal("contactPhone" in merged, false);
 });

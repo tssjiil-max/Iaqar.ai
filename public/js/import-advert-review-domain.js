@@ -12,6 +12,7 @@ import {
   normalizeImportLocationFields
 } from "./import-field-normalization-domain.js";
 import { evaluateMatchingReadiness, missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import { defaultAdvertiserRoleFromOpportunityKind } from "./advertiser-phone-domain.js";
 
 export const IMPORT_RECORD_LABEL = "فرصة";
 
@@ -216,7 +217,9 @@ export function importSimplifiedReviewValuesToBrokerFields(review = {}) {
   const readiness = evaluateMatchingReadiness({
     ...broker,
     advertiserPhoneNormalized: review.advertiserPhoneNormalized || "",
-    advertiserRole: review.advertiserRole || "UNKNOWN"
+    advertiserRole: review.advertiserRole
+      || defaultAdvertiserRoleFromOpportunityKind(opportunityKind)
+      || "UNKNOWN"
   });
   const saveMinimum = evaluateImportReviewSaveMinimum({
     ...review,

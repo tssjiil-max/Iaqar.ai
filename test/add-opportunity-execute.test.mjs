@@ -317,3 +317,119 @@ test("hanging extraction aborts into failed state and releases busy UI", async (
     context.close();
   }
 });
+
+test("voice-style intake identity stays current when main input is empty", async () => {
+  const { context, module } = await loadController();
+  try {
+    const summary = [
+      "طلب عميل",
+      "أرض في المدينة المنورة حي العريض",
+      "السعر 100000",
+      "المساحة 1000",
+      "جوال 0552019909"
+    ].join(" ");
+    module.__test.setIntakeContext({
+      sourceIdentity: `voice:${summary.slice(0, 120)}`,
+      inputText: summary,
+      listingText: summary,
+      sourceType: "text",
+      voiceStructured: { city: "المدينة المنورة" }
+    });
+    context.document.getElementById("addOpportunityInput").value = "";
+    assert.equal(module.__test.intakeSourceIsCurrent(), true);
+    assert.doesNotThrow(() => module.__test.assertIntakeSourceUnchanged());
+
+    module.__test.setIntakeContext({
+      sourceIdentity: module.__test.intakeIdentity(summary, null),
+      inputText: summary,
+      listingText: summary,
+      sourceType: "text",
+      voiceStructured: { city: "المدينة المنورة" }
+    });
+    assert.equal(module.__test.intakeSourceIsCurrent(), true);
+  } finally {
+    context.close();
+  }
+});
+
+test("text intake identity remains current when live input matches stored source", async () => {
+  const { context, module } = await loadController();
+  try {
+    const text = "أرض للبيع في المدينة المنورة حي العريض السعر 100000";
+    context.document.getElementById("addOpportunityInput").value = text;
+    module.__test.setIntakeContext({
+      sourceIdentity: module.__test.intakeIdentity(text, null),
+      inputText: text,
+      listingText: text,
+      sourceType: "text"
+    });
+    assert.equal(module.__test.intakeSourceIsCurrent(), true);
+  } finally {
+    context.close();
+  }
+});
+
+test("replaced source text without resetting context is rejected before save", async () => {
+  const { context, module } = await loadController();
+  try {
+    const original = "أرض للبيع في المدينة المنورة حي العريض";
+    module.__test.setIntakeContext({
+      sourceIdentity: module.__test.intakeIdentity(original, null),
+      inputText: original,
+      listingText: original,
+      sourceType: "text"
+    });
+    context.document.getElementById("addOpportunityInput").value = "نص إعلان مختلف تمامًا";
+    assert.equal(module.__test.intakeSourceIsCurrent(), false);
+    assert.throws(
+      () => module.__test.assertIntakeSourceUnchanged(),
+      (error) => error?.message === "source_changed"
+        && error?.userMessage.includes("تغير مصدر الإعلان")
+    );
+  } finally {
+    context.close();
+  }
+});
+
+test("review approve error mapper never leaks context_changed", async () => {
+  const { context } = await loadController();
+  try {
+    const reviewModule = await import("../public/js/opportunity-review.js");
+    assert.equal(
+      reviewModule.mapReviewApproveError(new Error("context_changed")),
+      "تغير مصدر الإعلان؛ أعد التحليل قبل الحفظ."
+    );
+    assert.doesNotMatch(
+      reviewModule.mapReviewApproveError(new Error("context_changed")),
+      /context_changed/
+    );
+  } finally {
+    context.close();
+  }
+});
+
+test("simplified review keeps 05XXXXXXXX phones for Medina client requests", async () => {
+  const { context, module } = await loadController();
+  try {
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = [
+      "مطلوب أرض في المدينة المنورة حي العريض",
+      "الميزانية 100000 ريال",
+      "المساحة 1000 م",
+      "جوال 0552019909"
+    ].join(" ");
+    input.dispatchEvent(new context.window.Event("input", { bubbles: true }));
+    await module.__test.startExecute();
+
+    assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, false);
+    const phoneInput = context.document.querySelector('[name="advertiserPhoneLocal"]');
+    assert.equal(phoneInput.value, "0552019909");
+    const requestRadio = context.document.querySelector('input[name="opportunityKind"][value="REQUEST"]');
+    assert.ok(requestRadio);
+    requestRadio.checked = true;
+    assert.equal(context.document.querySelector('[name="rawCityText"]').value.includes("المدينة المنورة"), true);
+    assert.equal(module.__test.intakeSourceIsCurrent(), true);
+  } finally {
+    context.close();
+  }
+});

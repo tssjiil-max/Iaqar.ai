@@ -193,6 +193,47 @@ function intakeIdentity(text, file) {
   return `${String(text || "").trim()}|${fileIdentity}`;
 }
 
+const INTAKE_SOURCE_CHANGED_MESSAGE = "تغير مصدر الإعلان؛ أعد التحليل قبل الحفظ.";
+const INTAKE_CONTEXT_MISSING_MESSAGE = "انتهت جلسة المراجعة. أعد التحليل ثم احفظ.";
+
+function liveIntakeText() {
+  return String($("addOpportunityInput")?.value || "").trim();
+}
+
+function storedIntakeText(context = intakeContext) {
+  return String(context?.inputText || context?.listingText || "").trim();
+}
+
+/**
+ * True when the broker has not replaced the extracted source.
+ * Voice sessions leave #addOpportunityInput empty on purpose, so empty live
+ * text with a stored summary must still be considered current.
+ */
+function intakeSourceIsCurrent() {
+  if (!intakeContext) return false;
+  const liveText = liveIntakeText();
+  const storedText = storedIntakeText();
+  const liveIdentity = intakeIdentity(liveText, selectedFile);
+  const storedIdentity = String(intakeContext.sourceIdentity || "");
+  const canonicalIdentity = intakeIdentity(storedText, selectedFile);
+  if (liveIdentity === storedIdentity || liveIdentity === canonicalIdentity) return true;
+  if (!liveText && storedText) return true;
+  return false;
+}
+
+function assertIntakeSourceUnchanged() {
+  if (!intakeContext) {
+    throw Object.assign(new Error("context_missing"), {
+      userMessage: INTAKE_CONTEXT_MISSING_MESSAGE
+    });
+  }
+  if (!intakeSourceIsCurrent()) {
+    throw Object.assign(new Error("source_changed"), {
+      userMessage: INTAKE_SOURCE_CHANGED_MESSAGE
+    });
+  }
+}
+
 function logExtractionTrace(event, meta = {}) {
   console.info("[iaqar:intake-extraction]", event, {
     status: meta.status ?? null,
@@ -1004,7 +1045,7 @@ async function startVoiceIntake(structured) {
     if (!canOpenReview(prepared)) throw new Error("extraction_failed");
 
     intakeContext = {
-      sourceIdentity: `voice:${summary.slice(0, 120)}`,
+      sourceIdentity: intakeIdentity(summary, selectedFile),
       inputText: summary,
       listingText: summary,
       sourceType: "text",
@@ -1059,9 +1100,7 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     const office = currentOffice();
     const user = currentUser();
     if (!office?.officeId || !user?.uid) throw new Error("auth_required");
-    if (!intakeContext) throw new Error("context_missing");
-    const currentIdentity = intakeIdentity($("addOpportunityInput")?.value || "", selectedFile);
-    if (currentIdentity !== intakeContext.sourceIdentity) throw new Error("context_changed");
+    assertIntakeSourceUnchanged();
 
     const brokerFields = {
       opportunityKind: brokerExtras.opportunityKind,
@@ -1106,7 +1145,10 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
       reviewCityId: brokerExtras.reviewCityId || "",
       reviewDistrictId: brokerExtras.reviewDistrictId || "",
       extractedSnapshot: brokerExtras.extractedSnapshot || null,
-      ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
+      ...mergeAdvertiserFieldsIntoOpportunity({}, {
+        ...advertiser,
+        opportunityKind: brokerExtras.opportunityKind
+      })
     };
 
     const saved = await persistIntake(prepared, reviewMeta, {
@@ -1271,10 +1313,15 @@ export const __test = {
   countCoreFields,
   fetchWithTimeout,
   intakeIdentity,
+  intakeSourceIsCurrent,
+  assertIntakeSourceUnchanged,
   requestOpportunityExtraction,
   resetForNewIntake,
   buildOpportunityPersistPayload,
   sanitizeFirestoreWrite,
+  setIntakeContext(value) {
+    intakeContext = value || null;
+  },
   setExtractionTimeoutMs(value) {
     extractionTimeoutMs = Number(value) > 0
       ? Math.min(Number(value), EXTRACTION_TIMEOUT_MS)

@@ -26,6 +26,7 @@ import {
   extractAdvertiserPhonesFromText,
   getAdvertiserMessageModalContext,
   clearAdvertiserMessageModalContext,
+  defaultAdvertiserRoleFromOpportunityKind,
   normalizeAdvertiserPhoneE164,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
@@ -572,11 +573,12 @@ function readAdvertiserForm() {
   if (!form) return {};
   const data = Object.fromEntries(new FormData(form).entries());
   const local = String(data.advertiserPhoneLocal || "").replace(/\D/g, "");
-  const normalized = /^5\d{8}$/.test(local) ? normalizeAdvertiserPhoneE164(local) : "";
+  const normalized = normalizeAdvertiserPhoneE164(local);
   const primary = advertiserCandidates.length === 1 ? advertiserCandidates[0] : null;
+  const localRaw = local.startsWith("0") || local.startsWith("966") ? local : (local ? `0${local}` : "");
   return {
     advertiserPhoneRaw: normalized
-      ? (primary?.advertiserPhoneRaw || `0${local}`)
+      ? (primary?.advertiserPhoneRaw || localRaw)
       : "",
     advertiserPhoneNormalized: normalized,
     advertiserPhoneSource: normalized && advertiserExtractedAuto
@@ -585,7 +587,9 @@ function readAdvertiserForm() {
     advertiserPhoneEvidence: normalized && advertiserExtractedAuto
       ? (primary?.advertiserPhoneEvidence || "")
       : "",
-    advertiserRole: resolveAdvertiserEnumValue(data.advertiserRole, ADVERTISER_ROLES) || "UNKNOWN",
+    advertiserRole: resolveAdvertiserEnumValue(data.advertiserRole, ADVERTISER_ROLES)
+      || defaultAdvertiserRoleFromOpportunityKind(data.opportunityKind)
+      || "UNKNOWN",
     advertiserContactStatus: resolveAdvertiserEnumValue(
       data.advertiserContactStatus,
       ADVERTISER_CONTACT_STATUSES
@@ -1095,6 +1099,28 @@ function setReviewStatus(message, isError = false) {
   node.classList.toggle("is-error", isError);
 }
 
+export function mapReviewApproveError(error) {
+  if (error?.userMessage) return String(error.userMessage);
+  const code = String(error?.message || error?.code || "").trim();
+  switch (code) {
+    case "context_changed":
+    case "source_changed":
+      return "تغير مصدر الإعلان؛ أعد التحليل قبل الحفظ.";
+    case "context_missing":
+      return "انتهت جلسة المراجعة. أعد التحليل ثم احفظ.";
+    case "auth_required":
+      return "يلزم تسجيل الدخول قبل الحفظ.";
+    case "save_in_progress":
+      return "الحفظ جارٍ بالفعل.";
+    case "prepare_failed":
+      return "تعذر تجهيز بيانات الفرصة. حاول مرة أخرى.";
+    default:
+      break;
+  }
+  if (code && /[^\x00-\x7F]/.test(code)) return code;
+  return "تعذر الحفظ. حاول مرة أخرى.";
+}
+
 async function submitReview() {
   const review = readReviewForm();
   if (!review) return;
@@ -1155,11 +1181,7 @@ async function submitReview() {
     closeReview();
   } catch (error) {
     console.warn("[iaqar] review approve", error);
-    const code = String(error?.message || error?.code || "");
-    const detail = code && code !== "undefined"
-      ? `تعذر الحفظ (${code}). حاول مرة أخرى.`
-      : "تعذر الحفظ. حاول مرة أخرى.";
-    setReviewStatus(detail, true);
+    setReviewStatus(mapReviewApproveError(error), true);
   } finally {
     if (approveBtn) {
       approveBtn.disabled = false;
@@ -1205,6 +1227,8 @@ export const __test = {
   buildReviewDefaults,
   reviewValuesToBrokerFields,
   readReviewForm,
+  readAdvertiserForm,
+  mapReviewApproveError,
   syncReviewConditionalVisibility,
   renderDynamicReviewFields,
   extractAdvertiserPhonesFromText

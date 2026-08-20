@@ -35,6 +35,17 @@ export const MARKETING_CONSENT_STATUSES = Object.freeze([
   { id: "NEEDS_FOLLOWUP", label: "يحتاج متابعة" }
 ]);
 
+export function defaultAdvertiserRoleFromOpportunityKind(kind = "") {
+  const value = String(kind || "").toUpperCase();
+  if (value === "REQUEST" || value === "CLIENT" || value === "CLIENT_REQUEST" || value === "BUYER") {
+    return "CLIENT";
+  }
+  if (value === "OFFER" || value === "OWNER" || value === "OWNER_OFFER") {
+    return "OWNER";
+  }
+  return "";
+}
+
 export function normalizeAdvertiserPhoneE164(value) {
   const digits = String(value || "").replace(/\D/g, "");
   if (/^009665\d{8}$/.test(digits)) return `+${digits.slice(2)}`;
@@ -340,19 +351,30 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
   const phone = normalizeAdvertiserPhoneE164(advertiser.advertiserPhoneNormalized || advertiser.phone);
   const raw = safeText(advertiser.advertiserPhoneRaw || advertiser.phoneRaw, 40);
   const displayName = safeAdvertiserDisplayName(advertiser.advertiserDisplayName);
-  return {
+  const role = safeText(
+    advertiser.advertiserRole
+      || defaultAdvertiserRoleFromOpportunityKind(advertiser.opportunityKind || base.opportunityKind)
+      || "UNKNOWN",
+    20
+  );
+  const merged = {
     ...base,
     advertiserDisplayName: displayName,
     advertiserPhoneRaw: phone ? raw : "",
     advertiserPhoneNormalized: phone,
     advertiserPhoneSource: safeText(advertiser.advertiserPhoneSource, 40),
     advertiserPhoneEvidence: safeText(advertiser.advertiserPhoneEvidence, 200),
-    advertiserRole: safeText(advertiser.advertiserRole || "UNKNOWN", 20),
+    advertiserRole: role,
     advertiserContactStatus: safeText(advertiser.advertiserContactStatus || "NOT_CONTACTED", 30),
     marketingConsentStatus: safeText(advertiser.marketingConsentStatus || "NOT_STARTED", 30),
     lastContactAt: advertiser.lastContactAt || null,
     contactNotes: safeText(advertiser.contactNotes, 500)
   };
+  if (phone) {
+    merged.contactPhone = phone;
+    merged.phone = phone;
+  }
+  return merged;
 }
 
 export function buildAdvertiserDataPatch(existing = {}, input = {}) {
