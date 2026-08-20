@@ -2882,7 +2882,7 @@ async function hideSharedOpportunity(opportunityId) {
   }
 }
 
-async function createShareRequest({ opportunityIds, targetOfficeId, scopeType, message = "" }) {
+async function createShareRequest({ opportunityIds, targetOfficeId, scopeType, message = "", peerOpportunityId = "" }) {
   const user = authUser();
   const runtime = officeRuntime();
   if (!runtime?.db || !user) {
@@ -2942,6 +2942,7 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType, m
         targetOfficeId,
         opportunityIds: ownedCheck.accepted,
         scopeType,
+        peerOpportunityId: String(peerOpportunityId || "").trim(),
         message: String(message || "").slice(0, 500)
       })
     });
@@ -3120,21 +3121,23 @@ async function loadCooperationNearbySuggestions(opportunityId, record) {
       panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4><p class="bank-note">${escapeHtml(nearbyEmptyMessage(payload.emptyReason || {}))}</p>`;
       return;
     }
-    panel.innerHTML = `<h4>مكاتب قريبة للتعاون</h4>
+    panel.innerHTML = `<h4>فرصة تعاون</h4>
       ${payload.suggestions.map((row) => `
         <div class="bank-cooperation-nearby-item">
           <strong>${escapeHtml(row.officeName || row.officeId)}</strong>
-          <span>${escapeHtml(row.neighborhoodLabel || "")} — ${escapeHtml(String(row.matchScore || 0))}%</span>
+          <span>${escapeHtml(row.neighborhoodLabel || "")} — ${escapeHtml(String(row.matchScore || 0))}٪</span>
           <span class="bank-note">${escapeHtml(row.matchReason || "")}</span>
           <button type="button" class="bank-action" data-cooperation-request="${escapeHtml(row.officeId)}"
-            data-cooperation-opp="${escapeHtml(row.opportunityId || "")}">طلب تعاون</button>
+            data-cooperation-opp="${escapeHtml(opportunityId)}"
+            data-cooperation-peer="${escapeHtml(row.opportunityId || "")}">طلب تعاون</button>
         </div>`).join("")}`;
     panel.querySelectorAll("[data-cooperation-request]").forEach((btn) => {
       btn.addEventListener("click", () => {
         void createShareRequest({
           opportunityIds: [opportunityId],
           targetOfficeId: btn.getAttribute("data-cooperation-request"),
-          scopeType: "single"
+          scopeType: "community_pair",
+          peerOpportunityId: btn.getAttribute("data-cooperation-peer") || ""
         });
       });
     });
@@ -3161,9 +3164,9 @@ function nearbyEmptyMessage(emptyReason = {}) {
     const fields = labels.length ? labels.join("، ") : "الميزانية، المساحة";
     return `أكمل بيانات الفرصة لتشغيل البحث عن المكاتب القريبة: ${fields}.`;
   }
-  if (code === "not_enabled") return "لم تُتح هذه الفرصة للتعاون بعد.";
+  if (code === "not_enabled") return "التعاون مع الوسطاء غير مفعّل لهذا المكتب.";
   if (code === "no_same_neighborhood") return "لا توجد عروض مطابقة داخل الحي.";
-  if (code === "no_adjacent") return "لا توجد عروض مطابقة في الأحياء المجاورة.";
+  if (code === "no_adjacent") return "لا توجد فرصة تعاون متوافقة حاليًا.";
   return "تعذر تحميل اقتراحات التعاون؛ حاول مرة أخرى.";
 }
 
