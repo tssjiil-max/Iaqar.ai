@@ -59,3 +59,38 @@ test("listing table DOM has six data rows", () => {
   assert.equal(rows.length, 6);
   assert.ok(dom.window.document.querySelector(".opp-details-data-title-text")?.textContent.includes("بيانات الفرصة"));
 });
+
+test("listing card shows 12-hour recent action mark only after a broker action", () => {
+  const nowMs = Date.parse("2026-08-20T12:00:00.000Z");
+  const acted = buildOpportunityListingCardInnerHtml({
+    id: "opp_acted",
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "العريض",
+    brokerActionProgress: { "contact:whatsapp": "2026-08-20T08:00:00.000Z" }
+  }, { nowMs });
+  const untouched = buildOpportunityListingCardInnerHtml({
+    id: "opp_plain",
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "العريض"
+  }, { nowMs });
+  const expired = buildOpportunityListingCardInnerHtml({
+    id: "opp_old",
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "العريض",
+    brokerActionProgress: { "contact:whatsapp": "2026-08-19T11:00:00.000Z" }
+  }, { nowMs });
+  assert.ok(acted.includes("listing-recent-action-mark"));
+  assert.ok(acted.includes("has-recent-action"));
+  assert.ok(acted.includes("تم الإجراء"));
+  assert.equal(untouched.includes("listing-recent-action-mark"), false);
+  assert.equal(expired.includes("listing-recent-action-mark"), false);
+});

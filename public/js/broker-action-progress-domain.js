@@ -151,3 +151,71 @@ export function brokerActionDoneClass(record = {}, actionKey = "") {
 export function brokerActionAriaPressed(record = {}, actionKey = "") {
   return isBrokerActionDone(record, actionKey) ? "true" : "false";
 }
+
+/** How long the listing-card “acted on this one” mark stays visible. */
+export const RECENT_BROKER_ACTION_WINDOW_MS = 12 * 60 * 60 * 1000;
+export const RECENT_BROKER_ACTION_LABEL = "تم الإجراء";
+
+export function parseActionStampMs(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? value : value * 1000;
+  }
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+  if (typeof value === "object") {
+    if (typeof value.toDate === "function") {
+      try {
+        const time = value.toDate().getTime();
+        return Number.isNaN(time) ? 0 : time;
+      } catch (_) {
+        return 0;
+      }
+    }
+    if (typeof value.seconds === "number") {
+      return (value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1e6);
+    }
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function collectBrokerActionTimestamps(record = {}) {
+  const stamps = [];
+  const progress = normalizeBrokerActionProgress(record.brokerActionProgress);
+  for (const stamp of Object.values(progress)) {
+    const ms = parseActionStampMs(stamp);
+    if (ms) stamps.push(ms);
+  }
+  for (const field of ["lastWhatsAppOpenedAt", "lastCallOpenedAt", "lastContactAt", "lastBrokerActionAt"]) {
+    const ms = parseActionStampMs(record[field]);
+    if (ms) stamps.push(ms);
+  }
+  return stamps;
+}
+
+export function latestBrokerActionAtMs(record = {}) {
+  const stamps = collectBrokerActionTimestamps(record);
+  return stamps.length ? Math.max(...stamps) : 0;
+}
+
+export function hasRecentBrokerAction(
+  record = {},
+  nowMs = Date.now(),
+  windowMs = RECENT_BROKER_ACTION_WINDOW_MS
+) {
+  const latest = latestBrokerActionAtMs(record);
+  if (!latest) return false;
+  const age = Number(nowMs) - latest;
+  return age >= 0 && age < Number(windowMs);
+}
+
+export function recentBrokerActionMarkHtml(record = {}, options = {}) {
+  if (!hasRecentBrokerAction(record, options.nowMs, options.windowMs)) return "";
+  return `<span class="listing-recent-action-mark" data-recent-action="1" title="اتخذت إجراءً على هذا العرض خلال ١٢ ساعة">
+    <span class="listing-recent-action-mark-icon" aria-hidden="true">✓</span>
+    ${RECENT_BROKER_ACTION_LABEL}
+  </span>`;
+}

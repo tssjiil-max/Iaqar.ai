@@ -85,6 +85,7 @@ import {
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankListCardView } from "./bank-list-card-domain.js";
 import { buildOpportunityListingCardInnerHtml } from "./opportunity-listing-card-ui.js";
+import { hasRecentBrokerAction } from "./broker-action-progress-domain.js";
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
@@ -454,15 +455,18 @@ function isVisibleForFilter(record) {
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
   const card = buildBankListCardView({ ...record, id: row.id });
-  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id });
+  const merged = { ...record, id: row.id };
+  const inner = buildOpportunityListingCardInnerHtml(merged);
+  const recent = hasRecentBrokerAction(merged);
   return `
     <article
-      class="bank-row bank-row-card"
+      class="bank-row bank-row-card${recent ? " has-recent-action" : ""}"
       role="button"
       tabindex="0"
       data-opportunity-id="${escapeHtml(card.opportunityId || row.id)}"
       data-open-id="${escapeHtml(card.opportunityId || row.id)}"
-      aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
+      ${recent ? 'data-recent-action="1"' : ""}
+      aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}${recent ? " — تم الإجراء" : ""}">
       ${inner}
     </article>`;
 }
