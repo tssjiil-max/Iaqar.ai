@@ -53,7 +53,22 @@ export function whatsappDigitsFromE164(e164) {
 export function e164ToLocalInput(e164) {
   const normalized = normalizeAdvertiserPhoneE164(e164);
   if (!normalized) return "";
-  return normalized.replace(/^\+966/, "");
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.startsWith("9665") && digits.length === 12) return `0${digits.slice(3)}`;
+  return "";
+}
+
+/** Display format for broker UI: 05XXXXXXXX */
+export function formatLocalPhoneDisplay(value) {
+  const e164 = normalizeAdvertiserPhoneE164(value);
+  return e164ToLocalInput(e164);
+}
+
+/** Privacy-preserving display: 055•••9909 */
+export function maskPhoneForDisplay(value) {
+  const local = formatLocalPhoneDisplay(value);
+  if (!local || local.length < 10) return local || "";
+  return `${local.slice(0, 3)}•••${local.slice(-4)}`;
 }
 
 export function safeAdvertiserDisplayName(value) {
@@ -73,9 +88,9 @@ export function readAdvertiserDisplayName(record = {}) {
 }
 
 export function validateAdvertiserPhoneLocalInput(localDigits) {
-  const local = String(localDigits || "").replace(/\D/g, "");
-  if (!local) return { ok: true, e164: "", error: "" };
-  const e164 = normalizeAdvertiserPhoneE164(local.length === 9 ? local : `0${local}`);
+  const raw = String(localDigits || "").replace(/\D/g, "");
+  if (!raw) return { ok: true, e164: "", error: "" };
+  const e164 = normalizeAdvertiserPhoneE164(raw);
   if (!e164) {
     return { ok: false, e164: "", error: "رقم الجوال غير صحيح — استخدم صيغة 05XXXXXXXX" };
   }
@@ -163,6 +178,45 @@ export function advertiserRoleLabel(id) {
   return ADVERTISER_ROLES.find((r) => r.id === id)?.label || "غير محدد";
 }
 
+const ADVERTISER_ROLE_ALIASES = Object.freeze({
+  "مالك": "OWNER",
+  "معلن": "OWNER",
+  "وسيط": "BROKER",
+  "وسيط عقاري": "BROKER",
+  "مفوض": "DELEGATE",
+  "عميل": "CLIENT",
+  "غير محدد": "UNKNOWN"
+});
+
+const VALID_ADVERTISER_ROLE_IDS = new Set(
+  ADVERTISER_ROLES.map((row) => row.id).filter((id) => id !== "UNKNOWN")
+);
+
+/**
+ * Map Arabic labels, aliases, or enum ids to a canonical advertiser role id.
+ */
+export function normalizeAdvertiserRoleInput(value = "", { fallback = "" } = {}) {
+  const text = safeText(value, 40).trim();
+  if (!text) return fallback;
+
+  const upper = text.toUpperCase();
+  if (VALID_ADVERTISER_ROLE_IDS.has(upper)) return upper;
+
+  const byLabel = ADVERTISER_ROLES.find((row) => row.label === text);
+  if (byLabel && byLabel.id !== "UNKNOWN") return byLabel.id;
+
+  const alias = ADVERTISER_ROLE_ALIASES[text];
+  if (alias && alias !== "UNKNOWN") return alias;
+
+  const compact = text.replace(/\s+/g, "");
+  if (compact.includes("وسيط")) return "BROKER";
+  if (compact === "مالك" || compact === "معلن") return "OWNER";
+  if (compact.includes("مفوض")) return "DELEGATE";
+  if (compact.includes("عميل")) return "CLIENT";
+
+  return fallback;
+}
+
 export function advertiserContactStatusLabel(id) {
   return ADVERTISER_CONTACT_STATUSES.find((r) => r.id === id)?.label || id || "—";
 }
@@ -210,9 +264,16 @@ export function buildAdvertiserWhatsAppMessage({
   const property = safeText(propertyType) || "العقار";
   const districtText = safeText(district);
   const cityText = safeText(city);
+  const districtPhrase = (() => {
+    if (!districtText) return "";
+    if (/^حي[\s\u200f\u200e]/i.test(districtText) || /^حي$/i.test(districtText.trim())) {
+      return ` في ${districtText}`;
+    }
+    return ` في حي ${districtText}`;
+  })();
   let propertyPhrase = `اطلعت على إعلانكم بخصوص ${property}`;
   if (districtText && cityText) propertyPhrase += ` في ${districtText} — ${cityText}`;
-  else if (districtText) propertyPhrase += ` في حي ${districtText}`;
+  else if (districtText) propertyPhrase += districtPhrase;
   else if (cityText) propertyPhrase += ` في ${cityText}`;
   propertyPhrase +=
     "، وأرغب في التعاون معكم لتسويق العقار وعرضه على شبكة من الوسطاء والعملاء المهتمين، بعد موافقتكم واستكمال الإجراءات اللازمة.";
@@ -252,8 +313,13 @@ export function buildAdvertiserCompletionMessage({
   let locationPhrase = "";
   const districtText = safeText(district);
   const cityText = safeText(city);
+  const districtPhrase = districtText
+    ? ((/^حي[\s\u200f\u200e]/i.test(districtText) || /^حي$/i.test(districtText.trim()))
+      ? ` في ${districtText}`
+      : ` في حي ${districtText}`)
+    : "";
   if (districtText && cityText) locationPhrase = ` في ${districtText} — ${cityText}`;
-  else if (districtText) locationPhrase = ` في حي ${districtText}`;
+  else if (districtText) locationPhrase = districtPhrase;
   else if (cityText) locationPhrase = ` في ${cityText}`;
 
   return [
@@ -290,14 +356,25 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
 }
 
 export function buildAdvertiserDataPatch(existing = {}, input = {}) {
-  const displayName = safeAdvertiserDisplayName(input.advertiserDisplayName);
+  const displayName = input.advertiserDisplayName !== undefined
+    ? safeAdvertiserDisplayName(input.advertiserDisplayName)
+    : readAdvertiserDisplayName(existing);
   const phoneCheck = validateAdvertiserPhoneLocalInput(input.advertiserPhoneLocal);
   if (!phoneCheck.ok) return { ok: false, error: phoneCheck.error };
 
   const hadPhone = Boolean(readAdvertiserPhoneFromRecord(existing).phone);
+  let advertiserRole = safeText(existing.advertiserRole || "UNKNOWN", 20);
+  if (input.advertiserRole !== undefined && String(input.advertiserRole).trim() !== "") {
+    const normalized = normalizeAdvertiserRoleInput(input.advertiserRole, { fallback: "" });
+    if (normalized) advertiserRole = normalized;
+  } else {
+    const normalizedExisting = normalizeAdvertiserRoleInput(existing.advertiserRole || "", { fallback: "" });
+    if (normalizedExisting) advertiserRole = normalizedExisting;
+  }
+
   const patch = {
     advertiserDisplayName: displayName,
-    advertiserRole: safeText(input.advertiserRole || existing.advertiserRole || "UNKNOWN", 20)
+    advertiserRole: safeText(advertiserRole, 20)
   };
 
   if (phoneCheck.e164) {
@@ -307,7 +384,7 @@ export function buildAdvertiserDataPatch(existing = {}, input = {}) {
     if (!hadPhone && !existing.advertiserPhoneSource) {
       patch.advertiserPhoneSource = "manual_entry";
     }
-  } else {
+  } else if (!hadPhone) {
     patch.advertiserPhoneNormalized = "";
     patch.advertiserPhoneRaw = "";
   }
@@ -369,8 +446,6 @@ export function buildAdvertiserContactActions(record = {}) {
   const phone = info.phone;
   return [
     { action: "call", label: "اتصال", phone, disabled: !phone },
-    { action: "copy", label: "نسخ الرقم", phone, disabled: !phone },
-    { action: "whatsapp", label: "واتساب", phone, disabled: !phone },
-    { action: "edit", label: "تعديل البيانات", phone, disabled: false }
+    { action: "whatsapp", label: "واتساب", phone, disabled: !phone }
   ];
 }

@@ -20,8 +20,11 @@
       return { kind: "url", path: targetPath, officeId };
     }
 
+    if (type === "opportunity_followup_reminder") {
+      return { kind: "opportunity", id: entityId || recordId, officeId, focusFollowUp: true };
+    }
     if (entityType === "opportunity" || entityId.startsWith("opp_")) {
-      return { kind: "opportunity", id: entityId, officeId };
+      return { kind: "opportunity", id: entityId, officeId, focusFollowUp: Boolean(data.focusFollowUp) };
     }
     if (entityType === "cooperation" || type.includes("cooperation") || recordId.startsWith("coop_")) {
       return { kind: "cooperation", id: recordId, officeId };
@@ -30,7 +33,7 @@
       return { kind: "message", id: recordId, officeId };
     }
     if (type === "deal" || data.dealId) {
-      return { kind: "deal", id: safeId(data.dealId) || recordId, officeId };
+      return { kind: "match", id: safeId(data.dealId) || recordId, officeId };
     }
     if (recordId.startsWith("opp_")) {
       return { kind: "opportunity", id: recordId, officeId };
@@ -63,10 +66,12 @@
     const openMatch = safeId(params.get("openMatch"));
     const openOperation = safeId(params.get("openOperation"));
 
-    if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId };
+    const focusFollowUp = params.get("focusFollowUp") === "1";
+
+    if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
     if (openCooperation) return { kind: "cooperation", id: openCooperation, officeId };
     if (openMessage) return { kind: "message", id: openMessage, officeId };
-    if (openDeal) return { kind: "deal", id: openDeal, officeId };
+    if (openDeal) return { kind: "match", id: openDeal, officeId };
     if (openMatch) {
       if (openMatch.startsWith("opp_")) return { kind: "opportunity", id: openMatch, officeId };
       return { kind: "match", id: openMatch, officeId };
@@ -94,7 +99,8 @@
         return target.path || "/";
       case "opportunity":
         if (target.id) params.set("openOpportunity", target.id);
-        else params.set("openNotifications", "1");
+        if (target.focusFollowUp) params.set("focusFollowUp", "1");
+        else if (!target.id) params.set("openNotifications", "1");
         break;
       case "cooperation":
         if (target.id) params.set("openCooperation", target.id);
@@ -105,10 +111,9 @@
         else params.set("openNotifications", "1");
         break;
       case "deal":
-        if (target.id) params.set("openDeal", target.id);
-        break;
       case "match":
         if (target.id) params.set("openMatch", target.id);
+        else params.set("openNotifications", "1");
         break;
       case "operation":
         if (target.id) params.set("openOperation", target.id);

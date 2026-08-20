@@ -115,9 +115,19 @@ The script:
 10. Deletes the temp GAC and normalized secret files on exit.
 11. **Refuses** bare production deploy commands; ignores `FIREBASE_TOKEN` if set.
 
+## Safe staging command
+
+Use `npm run deploy:staging:safe` on `cursor/opportunity-lifecycle-transfer-ed07` only.
+
+- Approved Hosting URL: `https://iaqar-ai-staging--staging-9c4b0k7h.web.app`
+- Generates `public/version.json` from the current Git commit
+- Deploys the staging Worker (`--env staging`) and Hosting channel `staging` only
+- Refuses main, production, a dirty tree, or a local SHA that does not match origin
+- Verifies the published `/version.json` `fullSha` against local `HEAD`
+
 ## After deploy
 
-1. Open the printed Hosting channel URL (`iaqar-ai-staging--staging-…`).
+1. Open the approved Hosting channel URL (`https://iaqar-ai-staging--staging-9c4b0k7h.web.app`).
 2. Confirm `window.IAQAR.deploymentEnvironment === "staging"`.
 3. Confirm `window.IAQAR.firebaseProjectId === "iaqar-ai-staging"`.
 4. Confirm `window.IAQAR.workerBase` ends with `iaqar-intake-staging`.
