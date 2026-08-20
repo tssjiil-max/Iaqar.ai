@@ -12,6 +12,7 @@ import {
   markBrokerActionDoneLocally,
   markFollowUpProgressLocally
 } from "./broker-action-progress-ui.js";
+import { bindPhoneContactSave } from "./phone-contact-save-ui.js";
 
 window.IAQAR_OPPORTUNITY = Object.freeze({
   status,
@@ -28,3 +29,5 @@ window.IAQAR.brokerActionProgress = Object.freeze({
   markBrokerActionDoneLocally,
   markFollowUpProgressLocally
 });
+
+bindPhoneContactSave(document);

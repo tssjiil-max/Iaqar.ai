@@ -161,6 +161,8 @@ const IAQAR_SHELL = [
   "/js/opportunity-bank.js",
   "/js/opportunity-bank-workspace-ui.js",
   "/js/opportunity-details-ui.js",
+  "/js/phone-contact-save-domain.js",
+  "/js/phone-contact-save-ui.js",
   "/js/opportunity-listing-card-ui.js",
   "/js/opportunity-listing-normalize.js",
   "/js/opportunity-field-completion-domain.js",

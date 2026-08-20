@@ -65,7 +65,7 @@ test("data table uses clear row icons for each field", () => {
   assert.ok(html.includes("#i-price-tag"));
   assert.ok(html.includes("#i-area"));
   assert.ok(html.includes("#i-user"));
-  assert.ok(html.includes("#i-phone"));
+  assert.ok(html.includes("#i-contact-save"));
   assert.equal(html.includes("#i-bell"), false);
   assert.equal(html.includes("#i-user-clock"), false);
   assert.equal(html.includes("#i-target"), false);
@@ -172,8 +172,34 @@ test("all bank detail surfaces embed the unified data table", async () => {
     assert.ok(html.includes("بيانات الفرصة"));
     assert.ok(html.includes("opp-details-row-status"));
     assert.ok(html.includes("المعلن وصفته"));
-    assert.ok(html.includes("رقم التواصل"));
+    assert.ok(html.includes("opp-contact-phone-input"));
+    assert.ok(html.includes("js-save-phone-contact"));
+    assert.ok(html.includes("#i-contact-save"));
+    assert.ok(html.includes("حفظ الرقم في الجوال"));
+    assert.ok(html.includes("opp-contact-name-input"));
   }
+});
+
+test("data table includes owner name field and save-to-phone action", () => {
+  const { html, vm } = buildOpportunityDetailsCoreHtml("opp_contact", {
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة",
+    price: 10000,
+    advertiserRole: "OWNER",
+    advertiserDisplayName: "محمد",
+    advertiserPhoneNormalized: "+966555000111"
+  });
+  assert.equal(vm.advertiserNameLabel, "اسم المالك");
+  assert.equal(vm.contactPhoneLocal, "0555000111");
+  assert.ok(html.includes("اسم المالك"));
+  assert.ok(html.includes('value="محمد"'));
+  assert.ok(html.includes("حفظ الرقم في الجوال"));
+  assert.ok(html.includes("js-save-phone-contact"));
+  assert.ok(html.includes("#i-contact-save"));
+  assert.ok(html.includes("opp-details-row--contact-identity"));
 });
 
 test("location row keeps city and district separate", () => {

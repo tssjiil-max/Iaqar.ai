@@ -1,6 +1,6 @@
 /**
  * Unified opportunity details UI — pixel-aligned to approved reference spec.
- * Display-only; uses existing readiness evaluation and record normalization.
+ * Uses existing readiness evaluation and record normalization.
  */
 
 import { buildBankListCardView } from "./bank-list-card-domain.js";
@@ -17,7 +17,16 @@ import {
   buildOpportunitySpecsLine,
   isDetailsRowComplete
 } from "./opportunity-field-completion-domain.js";
-import { ADVERTISER_ROLES } from "./advertiser-phone-domain.js";
+import {
+  ADVERTISER_ROLES,
+  formatLocalPhoneDisplay,
+  normalizeAdvertiserPhoneE164,
+  readAdvertiserDisplayName
+} from "./advertiser-phone-domain.js";
+import {
+  SAVE_PHONE_CONTACT_LABEL,
+  advertiserContactNameLabel
+} from "./phone-contact-save-domain.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
@@ -30,6 +39,7 @@ export const OPPORTUNITY_DETAILS_ROW_ICONS = Object.freeze({
   price: "i-price-tag",
   specs: "i-area",
   advertiser: "i-user",
+  contactName: "i-user",
   contact: "i-phone"
 });
 
@@ -168,7 +178,10 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const isOwner = isOwnerRecord(normalized);
   const specs = buildOpportunitySpecsLine(normalized);
   const phone = normalized.contactPhone || normalized.phone || normalized.advertiserPhoneNormalized || "";
+  const phoneE164 = normalizeAdvertiserPhoneE164(phone);
+  const phoneLocal = formatLocalPhoneDisplay(phone) || String(phone || "").trim();
   const roleRaw = normalized.advertiserRole || normalized.ownerRole || "";
+  const advertiserName = readAdvertiserDisplayName(normalized);
   const addedAt = formatAddedAt(normalized);
 
   return {
@@ -193,8 +206,13 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     locationDistrict: districtText,
     specs,
     advertiserRole: advertiserRoleLabel(roleRaw),
+    advertiserRoleRaw: String(roleRaw || "").trim().toUpperCase(),
     advertiserRoleSubtext: advertiserRoleSubtext(roleRaw, isOwner),
-    contactPhone: phone,
+    advertiserDisplayName: advertiserName,
+    advertiserNameLabel: advertiserContactNameLabel(roleRaw),
+    contactPhone: phoneLocal || phone,
+    contactPhoneLocal: phoneLocal,
+    contactPhoneE164: phoneE164,
     propertyPurposeLine: card.title
   };
 }
@@ -306,6 +324,41 @@ function dataRow(vm, rowKey, label, value, subtext = "") {
     </div>`;
 }
 
+function contactSaveIconHtml(vm) {
+  return `
+    <button type="button" class="js-save-phone-contact opp-contact-save-btn"
+      data-opportunity-id="${esc(vm.id || "")}"
+      data-contact-name="${esc(vm.advertiserDisplayName || "")}"
+      data-contact-phone="${esc(vm.contactPhoneE164 || vm.contactPhoneLocal || "")}"
+      data-contact-role="${esc(vm.advertiserRole || "")}"
+      aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}"
+      title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
+      <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+    </button>`;
+}
+
+function contactIdentityRow(vm) {
+  const name = String(vm.advertiserDisplayName || "").trim();
+  const local = String(vm.contactPhoneLocal || vm.contactPhone || "").trim();
+  const phoneComplete = isDetailsRowComplete(vm, "contact");
+  const label = vm.advertiserNameLabel || advertiserContactNameLabel(vm.advertiserRoleRaw);
+  const rowClass = phoneComplete ? "is-row-complete" : "is-row-missing";
+  return `
+    <div class="opp-details-row opp-details-row--contact-identity ${rowClass}">
+      ${rowLabelHtml("contactName", label)}
+      <span class="opp-details-row-value opp-contact-identity-fields">
+        <input class="opp-contact-field-input opp-contact-name-input" type="text" maxlength="80"
+          autocomplete="name" enterkeyhint="next" name="contactDisplayName"
+          aria-label="${esc(label)}" placeholder="اكتب الاسم" value="${esc(name)}">
+        <input class="opp-contact-field-input opp-contact-phone-input" type="tel" inputmode="numeric"
+          maxlength="14" autocomplete="tel" enterkeyhint="done" name="contactPhoneLocal" dir="ltr"
+          aria-label="رقم الجوال" placeholder="رقم الجوال" value="${esc(local)}">
+        ${phoneComplete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`}
+      </span>
+      ${contactSaveIconHtml(vm)}
+    </div>`;
+}
+
 function locationRow(vm) {
   const complete = isDetailsRowComplete(vm, "location");
   const city = vm.locationCity || "";
@@ -343,7 +396,7 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
         ${dataRow(vm, "price", vm.priceLabel, vm.priceValue)}
         ${dataRow(vm, "specs", "المساحة والمواصفات", vm.specs || "—")}
         ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
-        ${dataRow(vm, "contact", "رقم التواصل", vm.contactPhone)}
+        ${contactIdentityRow(vm)}
       </div>
       ${footerHtml}
     </section>`;

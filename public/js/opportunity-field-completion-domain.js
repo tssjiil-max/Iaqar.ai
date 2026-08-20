@@ -86,6 +86,8 @@ export function isDetailsRowComplete(vm, rowKey = "") {
       return isSpecsRowComplete(vm.rawRecord || {});
     case "advertiser":
       return vm.byKey.advertiserRole?.complete !== false;
+    case "contactName":
+      return isDisplayValueComplete(vm.advertiserDisplayName);
     case "contact":
       return vm.byKey.contactPhone?.complete !== false;
     default:

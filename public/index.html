@@ -4107,6 +4107,76 @@
     white-space:nowrap;
     border:1px solid var(--opp-missing-border);
   }
+  .opp-details-row--contact-identity {
+    grid-template-columns:minmax(96px, 30%) minmax(0, 1fr) 48px;
+  }
+  .opp-contact-identity-fields {
+    display:flex;
+    flex-direction:row;
+    flex-wrap:nowrap;
+    align-items:center;
+    justify-content:stretch;
+    gap:8px;
+    width:100%;
+    text-align:start;
+  }
+  .opp-contact-field-input {
+    width:100%;
+    max-width:100%;
+    border:0;
+    background:transparent;
+    text-align:center;
+    font:700 13px Tajawal,Arial,sans-serif;
+    color:var(--text);
+    padding:6px 4px;
+    min-height:32px;
+    border-radius:8px;
+    cursor:text;
+  }
+  .opp-contact-identity-fields .opp-contact-name-input {
+    flex:1.15 1 0;
+    min-width:0;
+    text-align:start;
+  }
+  .opp-contact-identity-fields .opp-contact-phone-input {
+    flex:0.95 1 0;
+    min-width:7.2em;
+    text-align:center;
+    direction:ltr;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0.02em;
+  }
+  .opp-contact-save-btn {
+    width:44px;
+    min-width:44px;
+    height:44px;
+    border-radius:12px;
+    border:1.5px solid var(--green);
+    background:var(--green-soft);
+    color:var(--green-dark);
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    padding:0;
+    justify-self:center;
+  }
+  .opp-contact-save-btn:active {
+    transform:scale(0.96);
+  }
+  .opp-contact-save-icon {
+    width:22px;
+    height:22px;
+    color:var(--green-dark);
+  }
+  .opp-contact-field-input::placeholder {
+    color:#98a2b3;
+    font-weight:600;
+  }
+  .opp-contact-field-input:focus {
+    outline:2px solid var(--green);
+    background:#fff;
+  }
   .opp-details-data-footer {
     padding:12px 14px 14px;
     background:var(--card);
@@ -5442,6 +5512,12 @@
       <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="7" y="3" width="10" height="18" rx="2"/>
         <path d="M11 17h2"/>
+      </symbol>
+
+      <symbol id="i-contact-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="8" r="3.2"/>
+        <path d="M3.6 19c0-3.1 2.4-5.4 5.4-5.4s5.4 2.3 5.4 5.4"/>
+        <path d="M17 7.2v6M14 10.2h6"/>
       </symbol>
 
       <symbol id="i-price-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
