@@ -113,7 +113,8 @@ interaction feedback, and no visual clutter.
   and follow-up notifications, important system notifications. Preferences are saved per
   office and, where needed, per broker. Notifications reach only the correct office or
   broker. Preserve and integrate the existing FCM implementation; do not replace it.
-- **7.6 Opportunity Bank entry** — a clear card or icon named **`بنك الفرص`** that opens
+- **7.6 Opportunity Bank entry** — a clear card or icon named **`العروض والطلبات`**
+  with the help line **«عروض الملاك وطلبات العملاء الجاهزة»** that opens
   the private Opportunity Bank for the current office. The bank must never become a
   permanent fourth home-page section.
 - **7.7 Smart cooperation** — **`السماح بالتعاون الذكي بين الوسطاء`** with three modes:

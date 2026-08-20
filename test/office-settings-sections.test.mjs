@@ -207,27 +207,17 @@ test("an oversized file is rejected before any upload is attempted", async () =>
 
 // --- 7.4 office link --------------------------------------------------------
 
-test("the office link section offers copy, share, QR and preview", async () => {
+test("the office link section offers a single share-office-link action", async () => {
   const context = await shell();
   try {
     const { document } = context;
     const section = document.getElementById("officeLinkSection");
-    for (const id of [
-      "officeLinkInput",
-      "copyOfficeLinkBtn",
-      "shareOfficeLinkBtn",
-      "toggleOfficeQrBtn",
-      "previewOfficeLinkBtn",
-      "shareOfficeCardBtn",
-      "officeQrWrap",
-      "officeQrCanvas",
-      "downloadOfficeQrBtn"
-    ]) {
-      assert.ok(section.querySelector(`#${id}`), `${id} must be in the office link section`);
-    }
-    assert.equal(document.getElementById("officeLinkInput").hasAttribute("readonly"), true);
-    assert.equal(document.getElementById("officeQrWrap").hasAttribute("hidden"), true, "the QR starts collapsed");
-    assert.equal(document.getElementById("toggleOfficeQrBtn").getAttribute("aria-expanded"), "false");
+    assert.ok(section.querySelector("#shareOfficeLinkCardBtn"), "shareOfficeLinkCardBtn required");
+    assert.ok(section.querySelector("#officeLinkInput"), "hidden officeLinkInput required");
+    assert.equal(section.querySelector("#copyOfficeLinkBtn"), null);
+    assert.equal(section.querySelector("#toggleOfficeQrBtn"), null);
+    assert.equal(section.querySelector("#previewOfficeLinkBtn"), null);
+    assert.equal(section.querySelector("#shareOfficeCardBtn"), null);
   } finally {
     context.close();
   }
@@ -261,16 +251,15 @@ test("the opportunity bank lives under Opportunities, not Office Settings", asyn
   }
 });
 
-test("the بنك الفرص sub-tab reveals the inline bank panel", async () => {
+test("the العروض والطلبات sub-tab reveals the inline bank panel", async () => {
   const context = await loadShell({ bootSettingsModule: true });
   try {
     const { document } = context;
     assert.equal(document.getElementById("opportunityBank").dataset.inlineBank, "1");
-    assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
     document.getElementById("mainTabOpportunities").click();
-    document.getElementById("oppTabBank").click();
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
-    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "بنك الفرص");
+    assert.equal(document.getElementById("opportunityBankTitle").textContent.trim(), "العروض والطلبات");
   } finally {
     context.close();
   }

@@ -59,7 +59,7 @@ const sample = {
   rawText: "secret"
 };
 
-test("بنك الفرص lives under Opportunities sub-tabs, not Settings", async () => {
+test("العروض والطلبات lives under Opportunities sub-tabs, not Settings", async () => {
   const context = await loadShell({ bootSettingsModule: true });
   try {
     const { document } = context;

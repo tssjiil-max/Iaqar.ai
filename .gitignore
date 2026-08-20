@@ -6,3 +6,4 @@ ui-debug.log*
 .DS_Store
 *.local
 .firebase/
+public/version.json

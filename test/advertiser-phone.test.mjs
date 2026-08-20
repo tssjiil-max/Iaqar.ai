@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
   extractAdvertiserPhonesFromText,
   normalizeAdvertiserPhoneE164,
+  defaultAdvertiserRoleFromOpportunityKind,
+  mergeAdvertiserFieldsIntoOpportunity,
   buildAdvertiserCompletionMessage,
   buildAdvertiserWhatsAppMessage,
   buildAdvertiserDataPatch,
   buildAdvertiserGreeting,
+  normalizeAdvertiserRoleInput,
   isRealAdvertiserNameForGreeting,
   pickPrimaryAdvertiserPhone,
   validateAdvertiserPhoneLocalInput,
@@ -107,6 +110,26 @@ test("buildAdvertiserDataPatch stores display name", () => {
   assert.equal(result.patch.advertiserPhoneNormalized, "+966551234567");
 });
 
+test("normalizeAdvertiserRoleInput maps Arabic labels to enum ids", () => {
+  assert.equal(normalizeAdvertiserRoleInput("مالك"), "OWNER");
+  assert.equal(normalizeAdvertiserRoleInput("وسيط"), "BROKER");
+  assert.equal(normalizeAdvertiserRoleInput("وسيط عقاري"), "BROKER");
+  assert.equal(normalizeAdvertiserRoleInput("مفوض"), "DELEGATE");
+  assert.equal(normalizeAdvertiserRoleInput("عميل"), "CLIENT");
+  assert.equal(normalizeAdvertiserRoleInput("OWNER"), "OWNER");
+  assert.equal(normalizeAdvertiserRoleInput("unknown text", { fallback: "" }), "");
+});
+
+test("buildAdvertiserDataPatch normalizes Arabic advertiser role", () => {
+  const owner = buildAdvertiserDataPatch({}, { advertiserRole: "مالك" });
+  assert.equal(owner.ok, true);
+  assert.equal(owner.patch.advertiserRole, "OWNER");
+
+  const broker = buildAdvertiserDataPatch({}, { advertiserRole: "وسيط" });
+  assert.equal(broker.ok, true);
+  assert.equal(broker.patch.advertiserRole, "BROKER");
+});
+
 test("readAdvertiserDisplayName falls back to contactName from public intake", async () => {
   const { readAdvertiserDisplayName } = await import("../public/js/advertiser-phone-domain.js");
   assert.equal(
@@ -117,4 +140,29 @@ test("readAdvertiserDisplayName falls back to contactName from public intake", a
     readAdvertiserDisplayName({ advertiserDisplayName: "أحمد", contactName: "قديم" }),
     "أحمد"
   );
+});
+
+test("defaultAdvertiserRoleFromOpportunityKind maps request/offer kinds", () => {
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind("REQUEST"), "CLIENT");
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind("OFFER"), "OWNER");
+  assert.equal(defaultAdvertiserRoleFromOpportunityKind(""), "");
+});
+
+test("mergeAdvertiserFieldsIntoOpportunity keeps 05 local phones and request role", () => {
+  const merged = mergeAdvertiserFieldsIntoOpportunity({}, {
+    advertiserPhoneNormalized: "0552019909",
+    advertiserPhoneRaw: "0552019909",
+    opportunityKind: "REQUEST"
+  });
+  assert.equal(merged.advertiserPhoneNormalized, "+966552019909");
+  assert.equal(merged.contactPhone, "+966552019909");
+  assert.equal(merged.advertiserRole, "CLIENT");
+});
+
+test("mergeAdvertiserFieldsIntoOpportunity does not wipe missing phone onto contactPhone", () => {
+  const merged = mergeAdvertiserFieldsIntoOpportunity({}, {
+    opportunityKind: "OFFER"
+  });
+  assert.equal(merged.advertiserRole, "OWNER");
+  assert.equal("contactPhone" in merged, false);
 });
