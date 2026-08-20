@@ -7,12 +7,14 @@ import {
   applyCommunityOutcome,
   buildCommunityPairKey,
   buildCommunityRequestId,
+  buildOfficeCommunityVcard,
   canListingEnterBrokerCommunity,
   communityBadgeLabel,
   communityNotificationCopy,
   communityWhatsAppMessage,
   containsBlockedPeerPii,
   isBrokerCommunityEnabled,
+  officeCommunityVcardFilename,
   rankBrokerCommunityMatches,
   sanitizePeerListing,
   shouldShowCommunityBadge,
@@ -157,16 +159,20 @@ test("اختبار 4: العرض الناقص لا يدخل مجتمع الوس�
   assert.equal(shouldShowCommunityBadge(matches), false);
 });
 
-test("اختبار 5: الإسقاط الآمن يخفي اسم ورقم العميل والمالك", () => {
+test("اختبار 5: الإسقاط الآمن يخفي اسم العميل والمالك والوسيط", () => {
   const safe = sanitizePeerListing(readyOffer(), office("office-a"));
   assert.equal(safe.propertyType, "أرض");
   assert.equal(safe.district, "عروة");
   assert.equal(safe.officeName, "مكتب ألف");
+  assert.equal("brokerName" in safe, false);
+  assert.equal(safe.brokerName, undefined);
   assert.equal("contactName" in safe && safe.contactName, false);
   assert.equal(safe.contactPhone, undefined);
   assert.equal(safe.phone, undefined);
   assert.equal(containsBlockedPeerPii(safe), false);
   assert.equal(containsBlockedPeerPii({ contactPhone: "0500000001" }), true);
+  assert.equal(containsBlockedPeerPii({ brokerName: "وسيط ألف" }), true);
+  assert.equal(containsBlockedPeerPii({ ownerName: "مالك سري" }), true);
   const { forOffer } = rankBothSides({
     offer: readyOffer(),
     request: readyRequest(),
@@ -175,7 +181,24 @@ test("اختبار 5: الإسقاط الآمن يخفي اسم ورقم الع�
   });
   assert.equal(forOffer[0].contactName, undefined);
   assert.equal(forOffer[0].contactPhone, undefined);
-  assert.doesNotMatch(JSON.stringify(forOffer[0]), /عميل سري|مالك سري|0500000002/);
+  assert.equal(forOffer[0].brokerName, undefined);
+  assert.doesNotMatch(JSON.stringify(forOffer[0]), /عميل سري|مالك سري|وسيط باء|0500000002/);
+});
+
+test("رقم المكتب يُحفظ في VCF دون اسم عميل أو مالك أو وسيط", () => {
+  const vcard = buildOfficeCommunityVcard({
+    officeName: "مكتب باء",
+    officePhone: "0552222222"
+  });
+  assert.match(vcard, /BEGIN:VCARD/);
+  assert.match(vcard, /\+966552222222/);
+  assert.match(vcard, /FN;CHARSET=UTF-8:مكتب باء/);
+  assert.doesNotMatch(vcard, /عميل سري|مالك سري|وسيط ألف|وسيط باء/);
+  assert.match(officeCommunityVcardFilename({
+    officeName: "مكتب باء",
+    officePhone: "0552222222"
+  }), /\.vcf$/);
+  assert.equal(buildOfficeCommunityVcard({ officeName: "مكتب باء" }), "");
 });
 
 test("اختبار 6: طلب التعاون يُنشأ بمفتاح عرض+طلب دون تكرار", async () => {
@@ -306,10 +329,20 @@ test("واجهة الإعدادات واللوحة عربية ومرتبطة ب�
   assert.ok(shell.includes("id=\"brokerCommunityEnabledToggle\""));
   assert.ok(shell.includes("id=\"brokerCommunityOverlay\""));
   assert.ok(shell.includes("js/broker-community-ui.js"));
+  const settings = shell.slice(shell.indexOf('id="officeSettings"'));
+  const scopeAt = settings.indexOf('id="officeScopeSection"');
+  const communityAt = settings.indexOf('id="cooperationSection"');
+  const libraryAt = settings.indexOf('id="officeLibrarySection"');
+  assert.ok(scopeAt >= 0 && communityAt > scopeAt, "community settings must follow office scope");
+  assert.ok(communityAt < libraryAt, "community settings must appear before the library");
+  assert.match(settings, /لا يُحفظ ولا يُشارك اسم العميل أو المالك أو الوسيط/);
+  assert.match(settings, /VCF/);
   const worker = readRepositoryFile("worker", "src", "index.js");
   assert.ok(worker.includes("/cooperation/community-matches"));
   assert.ok(worker.includes("/cooperation/agreement"));
   assert.ok(worker.includes("/cooperation/outcome"));
   const ui = readRepositoryFile("public", "js", "broker-community-ui.js");
+  assert.ok(ui.includes("js-community-vcf"));
+  assert.ok(ui.includes("buildOfficeCommunityVcard"));
   assert.doesNotMatch(ui, />Request cooperation<|>Accept</);
 });

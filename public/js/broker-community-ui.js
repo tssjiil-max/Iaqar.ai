@@ -4,11 +4,13 @@
 
 import {
   agreementStatusLabel,
+  buildOfficeCommunityVcard,
   communityBadgeLabel,
   communityStatusLabel,
   communityWhatsAppUrl,
   containsBlockedPeerPii,
   defaultCommissionSplit,
+  officeCommunityVcardFilename,
   shouldShowCommunityBadge,
   validateCommissionSplit
 } from "./broker-community-domain.js";
@@ -137,14 +139,19 @@ function matchCardHtml(match, sourceKind) {
     officePhone: match.officePhone,
     sourceKind
   });
+  const phone = String(match.officePhone || match.officeWhatsapp || "").trim();
+  const vcfReady = Boolean(phone);
   return `
     <article class="community-match-card" data-pair-key="${esc(match.pairKey || "")}">
       <strong>${esc(match.matchStrength || "مناسب")} — ${esc(String(match.matchScore || 0))}٪</strong>
       <span>الموقع: ${esc(match.district || "")} / ${esc(match.neighborhoodLabel || "")}</span>
       <span>نوع العقار: ${esc(match.propertyType || "")} — ${esc(match.kindLabel || "")}</span>
-      <span>الطرف الآخر: ${esc(match.officeName || "مكتب عقاري مشارك في مجتمع الوسطاء")}</span>
+      <span>المكتب الآخر: ${esc(match.officeName || "مكتب عقاري مشارك في مجتمع الوسطاء")}</span>
       <div class="community-actions">
-        ${wa ? `<a class="identity-btn js-community-whatsapp" href="${esc(wa)}" target="_blank" rel="noopener">تواصل مع الوسيط</a>` : `<p class="section-help">لا يتوفر رقم تواصل للمكتب.</p>`}
+        ${wa ? `<a class="identity-btn js-community-whatsapp" href="${esc(wa)}" target="_blank" rel="noopener">تواصل مع المكتب</a>` : `<p class="section-help">لا يتوفر رقم تواصل للمكتب.</p>`}
+        ${vcfReady ? `<button type="button" class="identity-btn js-community-vcf"
+          data-office-name="${esc(match.officeName || "")}"
+          data-office-phone="${esc(phone)}">حفظ رقم المكتب في الجوال (VCF)</button>` : ""}
         <button type="button" class="identity-btn js-community-request"
           data-target-office="${esc(match.officeId || "")}"
           data-peer-id="${esc(match.opportunityId || "")}">طلب تعاون</button>
@@ -254,9 +261,39 @@ async function postWorker(path, payload) {
   return data;
 }
 
+function downloadOfficeVcard({ officeName = "", officePhone = "" } = {}) {
+  const text = buildOfficeCommunityVcard({ officeName, officePhone });
+  if (!text) return false;
+  const filename = officeCommunityVcardFilename({ officeName, officePhone });
+  const blob = new Blob([text], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+  return true;
+}
+
 function bindPanelActions(opportunityId, row) {
   const { body } = overlayEls();
   if (!body) return;
+  body.querySelectorAll(".js-community-vcf").forEach((button) => {
+    button.addEventListener("click", () => {
+      const saved = downloadOfficeVcard({
+        officeName: button.getAttribute("data-office-name") || "",
+        officePhone: button.getAttribute("data-office-phone") || ""
+      });
+      setStatus(
+        saved ? "تم تجهيز بطاقة VCF لرقم المكتب دون اسم عميل أو مالك أو وسيط." : "لا يتوفر رقم مكتب للحفظ.",
+        saved ? "is-done" : "is-error"
+      );
+    });
+  });
   body.querySelectorAll(".js-community-request").forEach((button) => {
     button.addEventListener("click", async () => {
       try {

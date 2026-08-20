@@ -431,7 +431,9 @@ Access: office-member `read` only; client `create` / `update` / `delete` are `if
 ### 7.5 Broker community (`مجتمع الوسطاء`)
 
 Cross-office offer/request discovery reuses the matching engine and neighborhood
-adjacency. Client/owner PII never appears on the shared projection.
+adjacency. Client, owner, and broker **names are never stored or shared** on the
+community projection. The cooperating office phone may be saved by the other broker
+as a vCard (`.vcf`) only.
 
 | Collection | Access |
 | --- | --- |

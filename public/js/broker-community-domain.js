@@ -54,6 +54,8 @@ const PII_KEYS = Object.freeze([
   "contactName",
   "clientName",
   "ownerName",
+  "brokerName",
+  "advertiserDisplayName",
   "name",
   "senderName",
   "fullName",
@@ -216,15 +218,54 @@ export function sanitizePeerListing(record = {}, extras = {}) {
   const office = {
     officeId: String(extras.officeId || record.officeId || ""),
     officeName: String(extras.officeName || record.officeName || "مكتب عقاري مشارك في مجتمع الوسطاء"),
-    brokerName: String(extras.brokerName || ""),
-    officePhone: String(extras.officePhone || extras.whatsapp || ""),
-    officeWhatsapp: String(extras.officeWhatsapp || extras.whatsapp || extras.officePhone || "")
+    officePhone: String(extras.officePhone || extras.phone || extras.whatsapp || ""),
+    officeWhatsapp: String(extras.officeWhatsapp || extras.whatsapp || extras.officePhone || extras.phone || "")
   };
   const projection = { ...safe, ...office };
-  if (hasPiiLeak(projection)) {
-    for (const key of PII_KEYS) delete projection[key];
-  }
+  for (const key of PII_KEYS) delete projection[key];
   return projection;
+}
+
+function escapeVcard(value = "") {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n|\n|\r/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+export function normalizeOfficePhoneE164(raw = "") {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("966") && digits.length >= 12) return `+${digits}`;
+  if (digits.startsWith("0") && digits.length >= 10) return `+966${digits.slice(1)}`;
+  if (digits.length === 9) return `+966${digits}`;
+  return "";
+}
+
+export function buildOfficeCommunityVcard({ officeName = "", officePhone = "" } = {}) {
+  const phoneE164 = normalizeOfficePhoneE164(officePhone);
+  if (!phoneE164) return "";
+  const local = phoneE164.startsWith("+966") ? `0${phoneE164.slice(4)}` : phoneE164;
+  const fn = String(officeName || "").trim() || "مكتب عقاري مشارك";
+  return [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN;CHARSET=UTF-8:${escapeVcard(fn)}`,
+    `TEL;TYPE=CELL,VOICE:${phoneE164}`,
+    `TEL;TYPE=CELL:${local}`,
+    "NOTE;CHARSET=UTF-8:رقم مكتب متعاون عبر مجتمع الوسطاء — بدون اسم عميل أو مالك أو وسيط",
+    "END:VCARD"
+  ].join("\r\n");
+}
+
+export function officeCommunityVcardFilename({ officeName = "", officePhone = "" } = {}) {
+  const phone = String(officePhone || "").replace(/\D/g, "").slice(-10);
+  const namePart = String(officeName || "مكتب")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "")
+    .trim()
+    .slice(0, 40) || "مكتب";
+  return `IAQAR-${namePart}${phone ? `-${phone}` : ""}.vcf`;
 }
 
 export function communityWhatsAppMessage({ sourceKind = "" } = {}) {
@@ -591,7 +632,6 @@ export function rankBrokerCommunityMatches({
       const safe = sanitizePeerListing(candidate, {
         officeId,
         officeName: office.officeName || officeId,
-        brokerName: office.brokerName || "",
         officePhone: office.phone || office.whatsapp || "",
         officeWhatsapp: office.whatsapp || office.phone || ""
       });
