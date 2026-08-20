@@ -864,9 +864,9 @@ async function renderDetail(id, options = {}) {
   if (archived) {
     const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
     panel.innerHTML = `
-      <div class="bank-detail-head">
+      <div class="bank-detail-head iaqar-workflow-head">
         <h3>تفاصيل الفرصة (مؤرشفة)</h3>
-        <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
+        <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
       </div>
       ${detailsHtml}
       <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;

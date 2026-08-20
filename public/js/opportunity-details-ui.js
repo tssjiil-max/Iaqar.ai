@@ -39,6 +39,13 @@ function esc(text = "") {
   }[character]));
 }
 
+function formatOpportunityDisplayId(id = "") {
+  const digits = String(id || "").replace(/\D/g, "");
+  if (digits.length >= 4) return digits.slice(-4);
+  const compact = String(id || "").trim();
+  return compact.slice(-4) || compact || "—";
+}
+
 function lifecycleApi() {
   return typeof window !== "undefined" ? window.IAQAR_LIFECYCLE : null;
 }
@@ -204,7 +211,7 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
             </span>
             <div class="opp-details-header-copy">
               <p class="opp-details-kind">${esc(vm.kindLabel)}</p>
-              <p class="opp-details-id">#${esc(String(vm.id).slice(-8))}</p>
+              <p class="opp-details-id">#${esc(formatOpportunityDisplayId(vm.id))}</p>
             </div>
           </div>
           <span class="opp-details-status ${esc(vm.status.cssClass)}">${statusDot}${esc(vm.status.label)}</span>
@@ -272,10 +279,12 @@ function rowLabelHtml(rowKey, label) {
 
 function valueCellHtml(display, complete, subtext = "") {
   const mainClass = complete ? "opp-details-row-main" : "opp-details-row-main is-empty";
-  const sub = subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
+  const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
+  const sub = complete && subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
   return `
     <span class="opp-details-row-value">
       <span class="${mainClass}">${esc(display)}</span>
+      ${missingBadge}
       ${sub}
     </span>`;
 }
@@ -356,7 +365,9 @@ export function buildOpportunityDetailsRevealFormButtonHtml() {
   return `
     <div class="opp-details-actions">
       <button type="button" class="bank-action iaqar-workflow-btn secondary opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
-        <span class="opp-details-btn-icon" aria-hidden="true">✎</span>
+        <span class="opp-details-btn-icon" aria-hidden="true">
+          <svg class="opp-details-btn-svg" viewBox="0 0 24 24" focusable="false"><path fill="currentColor" d="M3 5h18v2H3V5zm0 6h12v2H3v-2zm0 6h8v2H3v-2z"/></svg>
+        </span>
         أكمل البيانات الناقصة
       </button>
     </div>`;

@@ -42,7 +42,7 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(!owner.html.includes("listing-field-mark"));
   assert.ok(owner.html.includes("opp-details-row-status is-complete"));
   assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
-  assert.ok(!owner.html.includes("opp-details-missing-tag"));
+  assert.ok(owner.html.includes("opp-details-missing-tag") || owner.html.includes("ناقص"));
   assert.ok(!owner.html.includes("opp-details-title"));
 });
 
@@ -58,7 +58,8 @@ test("data table rows show checkmarks for complete and crosses for missing field
   assert.ok(html.includes("opp-details-row-status is-missing"));
   assert.ok(html.includes("✓"));
   assert.ok(html.includes("✕"));
-  assert.ok(!html.includes("opp-details-missing-tag"));
+  assert.ok(html.includes("opp-details-missing-tag"));
+  assert.ok(html.includes("ناقص"));
 });
 
 test("identity header keeps kind on right and status pill with dot", () => {
@@ -106,6 +107,34 @@ test("matched and archived statuses map to unified badges", () => {
   const archived = resolveOpportunityDetailsStatus({ lifecycleStatus: "ARCHIVED", archivedAt: "2026-01-01" }, {});
   assert.equal(matched.label, "تمت المطابقة");
   assert.equal(archived.label, "منتهية");
+});
+
+test("all bank detail surfaces embed the unified data table", async () => {
+  const { buildNeedsCompletionDetailHtml, buildReadyWorkspaceHtml } = await import("../public/js/opportunity-bank-workspace-ui.js");
+  const record = {
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة",
+    price: 900000,
+    area: 1000,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678"
+  };
+  const incomplete = buildNeedsCompletionDetailHtml("opp_1258", record, {
+    matchingReadinessMissing: ["priceOrBudget"],
+    matchingReadiness: "NEEDS_COMPLETION",
+    isReadyForMatching: false
+  });
+  const ready = buildReadyWorkspaceHtml("opp_1258", record, {});
+  for (const html of [incomplete, ready]) {
+    assert.ok(html.includes("opp-details-data-table"));
+    assert.ok(html.includes("بيانات الفرصة"));
+    assert.ok(html.includes("opp-details-row-status"));
+    assert.ok(html.includes("المعلن وصفته"));
+    assert.ok(html.includes("رقم التواصل"));
+  }
 });
 
 test("location row keeps city and district separate", () => {
