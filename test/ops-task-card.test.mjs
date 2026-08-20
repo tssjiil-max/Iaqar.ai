@@ -117,5 +117,7 @@ test("listing body renders compact card without field mark grid", () => {
   });
   assert.equal(root.querySelector(".listing-field-marks"), null);
   assert.ok(root.querySelector(".opp-details-data-table"));
-  assert.equal(root.querySelectorAll(".opp-details-row").length, 6);
+  assert.equal(root.querySelectorAll(".opp-details-row").length, 7);
+  assert.ok(root.querySelector(".js-save-phone-contact"));
+  assert.equal(root.querySelector(".opp-contact-phone-input")?.value, "0501234567");
 });

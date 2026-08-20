@@ -44,7 +44,7 @@ test("bank row html uses shared listing card builder", () => {
   assert.ok(bankSource.includes("buildOpportunityListingCardInnerHtml"));
 });
 
-test("listing table DOM has six data rows", () => {
+test("listing table DOM has name, phone, and save-to-phone rows", () => {
   const html = buildOpportunityListingCardInnerHtml({
     opportunityKind: "OFFER",
     propertyType: "أرض",
@@ -52,10 +52,17 @@ test("listing table DOM has six data rows", () => {
     city: "المدينة المنورة",
     district: "الجمعة",
     price: 10000,
-    area: 165.13
+    area: 165.13,
+    advertiserRole: "OWNER",
+    advertiserDisplayName: "سلطان الصاعدي",
+    advertiserPhoneNormalized: "+966552019909"
   });
   const dom = new JSDOM(`<div id="root">${html}</div>`);
   const rows = dom.window.document.querySelectorAll(".opp-details-row");
-  assert.equal(rows.length, 6);
+  assert.equal(rows.length, 7);
   assert.ok(dom.window.document.querySelector(".opp-details-data-title-text")?.textContent.includes("بيانات الفرصة"));
+  assert.equal(dom.window.document.querySelector(".opp-contact-name-input")?.value, "سلطان الصاعدي");
+  assert.equal(dom.window.document.querySelector(".opp-contact-phone-input")?.value, "0552019909");
+  assert.ok(dom.window.document.querySelector(".js-save-phone-contact")?.textContent.includes("حفظ الرقم في الجوال"));
+  assert.ok(html.includes("اسم المالك"));
 });

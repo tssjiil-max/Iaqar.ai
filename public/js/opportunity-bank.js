@@ -3357,7 +3357,7 @@ function bindListClicks() {
       if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
       return;
     }
-    if (event.target.closest("button, a")) return;
+    if (event.target.closest("button, a, input, textarea, select, label, .opp-contact-save")) return;
     const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
     event.preventDefault();
@@ -3365,6 +3365,7 @@ function bindListClicks() {
   });
   list.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target.closest("input, textarea, select, button, .opp-contact-save")) return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
     event.preventDefault();
@@ -3861,6 +3862,18 @@ function boot() {
     if (sharedId) void hideSharedFromBankPanel(sharedId);
   });
   bindListClicks();
+  if (!document.__iaqarPhoneContactPersistBound) {
+    document.__iaqarPhoneContactPersistBound = true;
+    document.addEventListener("iaqar:phone-contact-save", (event) => {
+      const detail = event.detail || {};
+      const id = String(detail.opportunityId || "").trim();
+      const patch = detail.patch;
+      if (!id || !patch || typeof patch !== "object") return;
+      void patchOpportunity(id, patch).catch((error) => {
+        console.warn("[iaqar] persist saved phone contact", error);
+      });
+    });
+  }
 
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
 }

@@ -23,7 +23,7 @@ test("bank list click resolves opportunity only by data-opportunity-id", () => {
 test("bank card click handler ignores nested buttons and links inside the row", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const bind = bank.match(/function bindListClicks[\s\S]*?^}/m)?.[0] || "";
-  assert.ok(bind.includes("button, a"));
+  assert.ok(bind.includes("button, a, input, textarea, select, label, .opp-contact-save"));
   assert.ok(bind.includes("[data-summary-key]"));
   assert.ok(bind.includes(".bank-row-card[data-opportunity-id]"));
 });

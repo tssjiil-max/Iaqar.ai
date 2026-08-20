@@ -663,6 +663,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
     const openTaskBtn = event.target.closest("[data-ops-open-task]");
     if (openTaskBtn) {
+      if (event.target.closest("button, a, input, textarea, select, label, .opp-contact-save")) return;
       const item = data.find((entry) => entry.id === openTaskBtn.getAttribute("data-ops-open-task"));
       void openDailyTaskItem(item);
       return;
