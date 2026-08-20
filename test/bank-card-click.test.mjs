@@ -88,7 +88,7 @@ test("ready and incomplete cards share one detail opener without bank complete b
   assert.ok(bank.includes("navigateToTasksIncomplete"));
   const bankRow = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
   assert.equal(/data-complete-id|bank-row-complete/.test(bankRow), false);
-  assert.ok(bankRow.includes("bank-row-tasks-hint"));
+  assert.ok(bankRow.includes("buildOpportunityListingCardInnerHtml"));
   assert.ok(bankRow.includes("data-open-id"));
 });
 
