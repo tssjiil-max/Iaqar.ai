@@ -27,9 +27,30 @@ const ADVERTISER_STATUS_TO_OUTCOME = Object.freeze({
   PRELIMINARY_YES: "AGREED"
 });
 
+export function resolveSavedContactOutcome(record = {}) {
+  const rawOutcome = String(record.lastContactOutcome || "").toUpperCase();
+  return rawOutcome
+    || ADVERTISER_STATUS_TO_OUTCOME[String(record.advertiserContactStatus || "").toUpperCase()]
+    || "";
+}
+
 export function contactOutcomeActionKey(outcome = "") {
   const key = String(outcome || "").toUpperCase();
   return key ? `contact:outcome:${key}` : "";
+}
+
+const CONTACT_OUTCOME_KEY_PREFIX = "contact:outcome:";
+
+export function isContactOutcomeActionKey(actionKey = "") {
+  return String(actionKey || "").startsWith(CONTACT_OUTCOME_KEY_PREFIX);
+}
+
+function withoutContactOutcomeKeys(progress = {}) {
+  const out = {};
+  for (const [key, stamp] of Object.entries(normalizeBrokerActionProgress(progress))) {
+    if (!isContactOutcomeActionKey(key)) out[key] = stamp;
+  }
+  return out;
 }
 
 export function followUpOutcomeActionKey(outcome = "") {
@@ -71,8 +92,12 @@ export function mergeBrokerActionProgress(record = {}, actionKey = "", atIso = "
   const key = String(actionKey || "").trim();
   if (!key) return normalizeBrokerActionProgress(record.brokerActionProgress);
   const stamp = String(atIso || new Date().toISOString());
+  let base = normalizeBrokerActionProgress(record.brokerActionProgress);
+  if (isContactOutcomeActionKey(key)) {
+    base = withoutContactOutcomeKeys(base);
+  }
   return {
-    ...normalizeBrokerActionProgress(record.brokerActionProgress),
+    ...base,
     [key]: stamp
   };
 }
@@ -87,7 +112,7 @@ export function normalizeBrokerActionProgress(value = {}) {
 }
 
 export function resolveCompletedBrokerActionKeys(record = {}) {
-  const keys = new Set(Object.keys(normalizeBrokerActionProgress(record.brokerActionProgress)));
+  const keys = new Set(Object.keys(withoutContactOutcomeKeys(record.brokerActionProgress)));
 
   if (record.lastWhatsAppOpenedAt) keys.add(BROKER_ACTION.contactWhatsApp);
   if (record.lastCallOpenedAt) keys.add(BROKER_ACTION.contactCall);

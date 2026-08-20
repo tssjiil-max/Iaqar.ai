@@ -3,6 +3,40 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { applyBrokerActionMarks } from "../public/js/broker-action-progress-ui.js";
 
+test("applyBrokerActionMarks shows one contact outcome checkmark for saved result", () => {
+  const dom = new JSDOM(`
+    <div id="root">
+      <button class="bank-contact-outcome-btn" data-contact-outcome="REFUSED" data-broker-action="contact:outcome:REFUSED">غير مهتم</button>
+      <button class="bank-contact-outcome-btn" data-contact-outcome="FOLLOW_UP" data-broker-action="contact:outcome:FOLLOW_UP">طلب متابعة</button>
+    </div>
+  `);
+  const root = dom.window.document.getElementById("root");
+  applyBrokerActionMarks(root, {
+    lastContactOutcome: "REFUSED",
+    brokerActionProgress: {
+      "contact:outcome:REFUSED": "2026-08-18T12:00:00.000Z",
+      "contact:outcome:FOLLOW_UP": "2026-08-18T13:00:00.000Z"
+    }
+  });
+  const refused = root.querySelector('[data-contact-outcome="REFUSED"]');
+  const followUp = root.querySelector('[data-contact-outcome="FOLLOW_UP"]');
+  assert.equal(refused.classList.contains("is-action-done"), true);
+  assert.equal(followUp.classList.contains("is-action-done"), false);
+});
+
+test("applyBrokerActionMarks hides saved checkmark while another outcome is pending", () => {
+  const dom = new JSDOM(`
+    <div id="root">
+      <button class="bank-contact-outcome-btn is-selected" data-contact-outcome="FOLLOW_UP" data-broker-action="contact:outcome:FOLLOW_UP">طلب متابعة</button>
+      <button class="bank-contact-outcome-btn" data-contact-outcome="REFUSED" data-broker-action="contact:outcome:REFUSED">غير مهتم</button>
+    </div>
+  `);
+  const root = dom.window.document.getElementById("root");
+  applyBrokerActionMarks(root, { lastContactOutcome: "REFUSED" });
+  assert.equal(root.querySelector('[data-contact-outcome="REFUSED"]').classList.contains("is-action-done"), false);
+  assert.equal(root.querySelector('[data-contact-outcome="FOLLOW_UP"]').classList.contains("is-selected"), true);
+});
+
 test("applyBrokerActionMarks toggles is-action-done on matching buttons", () => {
   const dom = new JSDOM(`
     <div id="root">

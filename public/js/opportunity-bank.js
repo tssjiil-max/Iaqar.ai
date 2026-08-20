@@ -1801,15 +1801,36 @@ function updateContactOutcomeSelectedBadge(outcome = "") {
   badgeNode.hidden = false;
 }
 
-function selectContactOutcomeButton(outcome = "") {
-  document.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
-    const active = btn.getAttribute("data-contact-outcome") === outcome;
+function selectContactOutcomeButton(outcome = "", { toggle = true } = {}) {
+  const normalized = String(outcome || "").toUpperCase();
+  const buttons = document.querySelectorAll(".bank-contact-outcome-btn");
+  const current = document.querySelector(".bank-contact-outcome-btn.is-selected");
+  const currentOutcome = String(current?.getAttribute("data-contact-outcome") || "").toUpperCase();
+  let nextOutcome = normalized;
+  if (toggle && normalized && currentOutcome === normalized) {
+    nextOutcome = "";
+  }
+
+  buttons.forEach((btn) => {
+    const btnOutcome = String(btn.getAttribute("data-contact-outcome") || "").toUpperCase();
+    const active = Boolean(nextOutcome) && btnOutcome === nextOutcome;
     btn.classList.toggle("is-selected", active);
-    btn.classList.toggle("is-action-done", active);
+    btn.classList.remove("is-action-done");
     btn.setAttribute("aria-pressed", active ? "true" : "false");
   });
-  updateContactOutcomeSelectionHint(outcome);
-  updateContactOutcomeSelectedBadge(outcome);
+
+  const panel = document.getElementById("bankContactOutcomeActionPanel");
+  if (!nextOutcome) {
+    if (panel) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    }
+    updateContactOutcomeSelectionHint("");
+    updateContactOutcomeSelectedBadge("");
+    return;
+  }
+  updateContactOutcomeSelectionHint(nextOutcome);
+  updateContactOutcomeSelectedBadge(nextOutcome);
 }
 
 function wireContactScheduleQuickPick(container, inputId) {
@@ -1970,10 +1991,6 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
 function wireContactOutcomeHandlers(id, record, bundle = {}) {
   const section = document.getElementById("bankWorkspaceContactSection");
   if (!section) return;
-  const savedOutcome = String(record.lastContactOutcome || record.advertiserContactStatus || "").toUpperCase();
-  if (savedOutcome && CONTACT_OUTCOME_LABELS[savedOutcome]) {
-    selectContactOutcomeButton(savedOutcome);
-  }
   section.querySelectorAll(".bank-contact-outcome-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.disabled) return;

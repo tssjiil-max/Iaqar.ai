@@ -45,6 +45,29 @@ test("action key helpers map UI ids consistently", () => {
   assert.equal(workspacePrimaryActionKey("search_matches"), BROKER_ACTION.workspaceSearchMatches);
 });
 
+test("mergeBrokerActionProgress replaces prior contact outcome keys", () => {
+  const first = mergeBrokerActionProgress({}, contactOutcomeActionKey("REFUSED"), "2026-08-18T12:00:00.000Z");
+  const second = mergeBrokerActionProgress(
+    { brokerActionProgress: first },
+    contactOutcomeActionKey("FOLLOW_UP"),
+    "2026-08-18T13:00:00.000Z"
+  );
+  assert.equal(second[contactOutcomeActionKey("REFUSED")], undefined);
+  assert.equal(second[contactOutcomeActionKey("FOLLOW_UP")], "2026-08-18T13:00:00.000Z");
+});
+
+test("resolveCompletedBrokerActionKeys keeps only current contact outcome checkmark", () => {
+  const keys = resolveCompletedBrokerActionKeys({
+    brokerActionProgress: {
+      [contactOutcomeActionKey("REFUSED")]: "2026-08-18T12:00:00.000Z",
+      [contactOutcomeActionKey("FOLLOW_UP")]: "2026-08-18T13:00:00.000Z"
+    },
+    lastContactOutcome: "FOLLOW_UP"
+  });
+  assert.equal(keys.has(contactOutcomeActionKey("REFUSED")), false);
+  assert.equal(keys.has(contactOutcomeActionKey("FOLLOW_UP")), true);
+});
+
 test("brokerActionDoneClass marks completed actions", () => {
   const record = {
     brokerActionProgress: {

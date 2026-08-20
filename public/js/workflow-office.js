@@ -2040,13 +2040,23 @@
     </div>`;
   }
 
-  function selectWorkflowContactOutcome(outcome = "") {
+  function selectWorkflowContactOutcome(outcome = "", { toggle = true } = {}) {
     const key = String(outcome || "").toUpperCase();
-    const actionKey = BAP().contactOutcomeActionKey?.(key) || `contact:outcome:${key}`;
-    workflowBody().querySelectorAll('[data-ui-action="contact-outcome"]').forEach((btn) => {
-      const active = String(btn.dataset.outcome || "").toUpperCase() === key;
+    const buttons = workflowBody().querySelectorAll('[data-ui-action="contact-outcome"]');
+    const current = workflowBody().querySelector('[data-ui-action="contact-outcome"].is-selected');
+    const currentOutcome = String(current?.dataset.outcome || "").toUpperCase();
+    let nextOutcome = key;
+    if (toggle && key && currentOutcome === key) {
+      nextOutcome = "";
+    }
+    const actionKey = nextOutcome
+      ? (BAP().contactOutcomeActionKey?.(nextOutcome) || `contact:outcome:${nextOutcome}`)
+      : "";
+    buttons.forEach((btn) => {
+      const btnOutcome = String(btn.dataset.outcome || "").toUpperCase();
+      const active = Boolean(nextOutcome) && btnOutcome === nextOutcome;
       btn.classList.toggle("is-selected", active);
-      btn.classList.toggle("is-action-done", active);
+      btn.classList.remove("is-action-done");
       btn.setAttribute("aria-pressed", active ? "true" : "false");
       if (actionKey) btn.setAttribute("data-broker-action", actionKey);
     });
