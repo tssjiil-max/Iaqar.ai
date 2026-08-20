@@ -24,14 +24,16 @@ export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   CLIENT_REQUEST: "client_request"
 });
 
-const ROW_ICONS = Object.freeze({
-  propertyPurpose: "i-house-check",
-  location: "i-target",
-  price: "i-briefcase",
-  specs: "i-clipboard-list",
-  advertiser: "i-user-clock",
-  contact: "i-bell"
+export const OPPORTUNITY_DETAILS_ROW_ICONS = Object.freeze({
+  propertyPurpose: "i-home",
+  location: "i-map-pin",
+  price: "i-price-tag",
+  specs: "i-area",
+  advertiser: "i-user",
+  contact: "i-phone"
 });
+
+const ROW_ICONS = OPPORTUNITY_DETAILS_ROW_ICONS;
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({

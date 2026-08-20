@@ -46,6 +46,29 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(!owner.html.includes("opp-details-title"));
 });
 
+test("data table uses clear row icons for each field", () => {
+  const { html } = buildOpportunityDetailsCoreHtml("opp_icons", {
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة",
+    price: 10000,
+    area: 165.13,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678"
+  });
+  assert.ok(html.includes("#i-home"));
+  assert.ok(html.includes("#i-map-pin"));
+  assert.ok(html.includes("#i-price-tag"));
+  assert.ok(html.includes("#i-area"));
+  assert.ok(html.includes("#i-user"));
+  assert.ok(html.includes("#i-phone"));
+  assert.equal(html.includes("#i-bell"), false);
+  assert.equal(html.includes("#i-user-clock"), false);
+  assert.equal(html.includes("#i-target"), false);
+});
+
 test("data table rows show checkmarks for complete and crosses for missing fields", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_partial_rows", {
     opportunityKind: "OFFER",

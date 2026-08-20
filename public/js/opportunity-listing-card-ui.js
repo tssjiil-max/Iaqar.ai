@@ -73,8 +73,8 @@ function fieldMarksHtml(checks = []) {
   const completeCount = checks.filter((row) => row.complete).length;
   const chips = checks.map((row) => `
     <span class="listing-field-mark ${row.complete ? "is-complete" : "is-missing"}">
-      <span class="listing-field-mark-icon" aria-hidden="true">${row.complete ? "✓" : "✗"}</span>
       <span class="listing-field-mark-label">${esc(row.label)}</span>
+      <span class="listing-field-mark-icon" aria-hidden="true">${row.complete ? "✓" : "✕"}</span>
     </span>`).join("");
 
   return `

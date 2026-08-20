@@ -25,6 +25,19 @@ test("listing card inner html matches bank row structure", () => {
   assert.ok(html.includes("listing-field-marks"));
 });
 
+test("listing field marks place status icon after label for far-left alignment", () => {
+  const html = buildOpportunityListingCardInnerHtml({
+    opportunityKind: "REQUEST",
+    propertyType: "أرض",
+    purpose: "PURCHASE",
+    city: "المدينة المنورة",
+    district: "الجمعة",
+    budget: 10000
+  });
+  assert.match(html, /listing-field-mark-label[^<]*<\/span>\s*<span class="listing-field-mark-icon"/);
+  assert.ok(html.includes("✕") || html.includes("✓"));
+});
+
 test("bank row html uses shared listing card builder", () => {
   const bankSource = readFileSync(new URL("../public/js/opportunity-bank.js", import.meta.url), "utf8");
   assert.ok(bankSource.includes("buildOpportunityListingCardInnerHtml"));
