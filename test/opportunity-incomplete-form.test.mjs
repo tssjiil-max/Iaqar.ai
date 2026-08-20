@@ -183,3 +183,40 @@ test("merge preview applies phone for readiness after valid local input", () => 
   const after = evaluateMatchingReadiness(merged);
   assert.equal(after.isReadyForMatching, true);
 });
+
+test("advertiserRole missing shows select with Arabic labels", () => {
+  const record = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1500000,
+    advertiserPhoneNormalized: "+966512345678"
+  };
+  const readiness = evaluateMatchingReadiness(record);
+  assert.ok(readiness.matchingReadinessMissing.includes("advertiserRole"));
+  const fields = buildIncompleteFormFields(record, readiness);
+  const roleField = fields.find((f) => f.key === "advertiserRole");
+  assert.equal(roleField?.type, "select");
+  assert.ok(roleField?.options?.some((row) => row.value === "OWNER" && row.label === "مالك"));
+  assert.ok(roleField?.options?.some((row) => row.value === "BROKER" && row.label === "وسيط عقاري"));
+});
+
+test("merge preview normalizes Arabic advertiser role for readiness", () => {
+  const record = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1500000,
+    advertiserPhoneNormalized: "+966512345678"
+  };
+  const before = evaluateMatchingReadiness(record);
+  assert.ok(before.matchingReadinessMissing.includes("advertiserRole"));
+  const merged = mergeIncompleteFormPreview(record, { advertiserRole: "مالك" });
+  assert.equal(merged.advertiserRole, "OWNER");
+  const after = evaluateMatchingReadiness(merged);
+  assert.equal(after.isReadyForMatching, true);
+});

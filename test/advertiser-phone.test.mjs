@@ -7,6 +7,7 @@ import {
   buildAdvertiserWhatsAppMessage,
   buildAdvertiserDataPatch,
   buildAdvertiserGreeting,
+  normalizeAdvertiserRoleInput,
   isRealAdvertiserNameForGreeting,
   pickPrimaryAdvertiserPhone,
   validateAdvertiserPhoneLocalInput,
@@ -105,6 +106,26 @@ test("buildAdvertiserDataPatch stores display name", () => {
   assert.equal(result.ok, true);
   assert.equal(result.patch.advertiserDisplayName, "مالك شقة العوالي");
   assert.equal(result.patch.advertiserPhoneNormalized, "+966551234567");
+});
+
+test("normalizeAdvertiserRoleInput maps Arabic labels to enum ids", () => {
+  assert.equal(normalizeAdvertiserRoleInput("مالك"), "OWNER");
+  assert.equal(normalizeAdvertiserRoleInput("وسيط"), "BROKER");
+  assert.equal(normalizeAdvertiserRoleInput("وسيط عقاري"), "BROKER");
+  assert.equal(normalizeAdvertiserRoleInput("مفوض"), "DELEGATE");
+  assert.equal(normalizeAdvertiserRoleInput("عميل"), "CLIENT");
+  assert.equal(normalizeAdvertiserRoleInput("OWNER"), "OWNER");
+  assert.equal(normalizeAdvertiserRoleInput("unknown text", { fallback: "" }), "");
+});
+
+test("buildAdvertiserDataPatch normalizes Arabic advertiser role", () => {
+  const owner = buildAdvertiserDataPatch({}, { advertiserRole: "مالك" });
+  assert.equal(owner.ok, true);
+  assert.equal(owner.patch.advertiserRole, "OWNER");
+
+  const broker = buildAdvertiserDataPatch({}, { advertiserRole: "وسيط" });
+  assert.equal(broker.ok, true);
+  assert.equal(broker.patch.advertiserRole, "BROKER");
 });
 
 test("readAdvertiserDisplayName falls back to contactName from public intake", async () => {

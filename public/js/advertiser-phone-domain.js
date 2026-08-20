@@ -178,6 +178,45 @@ export function advertiserRoleLabel(id) {
   return ADVERTISER_ROLES.find((r) => r.id === id)?.label || "غير محدد";
 }
 
+const ADVERTISER_ROLE_ALIASES = Object.freeze({
+  "مالك": "OWNER",
+  "معلن": "OWNER",
+  "وسيط": "BROKER",
+  "وسيط عقاري": "BROKER",
+  "مفوض": "DELEGATE",
+  "عميل": "CLIENT",
+  "غير محدد": "UNKNOWN"
+});
+
+const VALID_ADVERTISER_ROLE_IDS = new Set(
+  ADVERTISER_ROLES.map((row) => row.id).filter((id) => id !== "UNKNOWN")
+);
+
+/**
+ * Map Arabic labels, aliases, or enum ids to a canonical advertiser role id.
+ */
+export function normalizeAdvertiserRoleInput(value = "", { fallback = "" } = {}) {
+  const text = safeText(value, 40).trim();
+  if (!text) return fallback;
+
+  const upper = text.toUpperCase();
+  if (VALID_ADVERTISER_ROLE_IDS.has(upper)) return upper;
+
+  const byLabel = ADVERTISER_ROLES.find((row) => row.label === text);
+  if (byLabel && byLabel.id !== "UNKNOWN") return byLabel.id;
+
+  const alias = ADVERTISER_ROLE_ALIASES[text];
+  if (alias && alias !== "UNKNOWN") return alias;
+
+  const compact = text.replace(/\s+/g, "");
+  if (compact.includes("وسيط")) return "BROKER";
+  if (compact === "مالك" || compact === "معلن") return "OWNER";
+  if (compact.includes("مفوض")) return "DELEGATE";
+  if (compact.includes("عميل")) return "CLIENT";
+
+  return fallback;
+}
+
 export function advertiserContactStatusLabel(id) {
   return ADVERTISER_CONTACT_STATUSES.find((r) => r.id === id)?.label || id || "—";
 }
@@ -324,9 +363,18 @@ export function buildAdvertiserDataPatch(existing = {}, input = {}) {
   if (!phoneCheck.ok) return { ok: false, error: phoneCheck.error };
 
   const hadPhone = Boolean(readAdvertiserPhoneFromRecord(existing).phone);
+  let advertiserRole = safeText(existing.advertiserRole || "UNKNOWN", 20);
+  if (input.advertiserRole !== undefined && String(input.advertiserRole).trim() !== "") {
+    const normalized = normalizeAdvertiserRoleInput(input.advertiserRole, { fallback: "" });
+    if (normalized) advertiserRole = normalized;
+  } else {
+    const normalizedExisting = normalizeAdvertiserRoleInput(existing.advertiserRole || "", { fallback: "" });
+    if (normalizedExisting) advertiserRole = normalizedExisting;
+  }
+
   const patch = {
     advertiserDisplayName: displayName,
-    advertiserRole: safeText(input.advertiserRole || existing.advertiserRole || "UNKNOWN", 20)
+    advertiserRole: safeText(advertiserRole, 20)
   };
 
   if (phoneCheck.e164) {

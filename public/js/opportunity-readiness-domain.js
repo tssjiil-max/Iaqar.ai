@@ -4,7 +4,7 @@
  */
 
 import { normalizeOpportunityFinancials, safeText } from "./opportunity-intake-domain.js";
-import { normalizeAdvertiserPhoneE164 } from "./advertiser-phone-domain.js";
+import { normalizeAdvertiserPhoneE164, normalizeAdvertiserRoleInput } from "./advertiser-phone-domain.js";
 
 export const MATCHING_READINESS = Object.freeze({
   READY_FOR_MATCHING: "READY_FOR_MATCHING",
@@ -67,8 +67,8 @@ function resolveContactPhone(record = {}) {
 }
 
 function resolveOwnerRole(record = {}) {
-  const role = safeText(record.advertiserRole || record.ownerRole || "", 20).toUpperCase();
-  if (role === "UNKNOWN" || !role) return "";
+  const role = normalizeAdvertiserRoleInput(record.advertiserRole || record.ownerRole || "", { fallback: "" });
+  if (!role || role === "UNKNOWN") return "";
   return VALID_OWNER_ROLES.has(role) ? role : "";
 }
 

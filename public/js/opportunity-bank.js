@@ -508,7 +508,7 @@ const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
   priceOrBudget: 'input[name="priceOrBudget"]',
   purpose: 'input[name="purpose"]',
   contactPhone: 'input[name="advertiserPhoneLocal"]',
-  advertiserRole: 'input[name="advertiserRole"]'
+  advertiserRole: '[name="advertiserRole"]'
 });
 
 function resolveBankRowOpportunityId(node) {

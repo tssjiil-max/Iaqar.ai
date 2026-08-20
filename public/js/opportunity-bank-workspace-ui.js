@@ -71,6 +71,18 @@ function renderFieldBlock(field) {
       return `<label>${esc(field.label)}
         <input name="${esc(field.name)}" type="number" value="${esc(String(field.value ?? ""))}" autocomplete="off">
       </label>`;
+    case "select": {
+      const options = (field.options || []).map((option) => {
+        const selected = option.value === field.value ? " selected" : "";
+        return `<option value="${esc(option.value)}"${selected}>${esc(option.label)}</option>`;
+      }).join("");
+      const placeholder = field.value
+        ? ""
+        : `<option value="" selected disabled hidden>اختر صفة المعلن</option>`;
+      return `<label>${esc(field.label)}
+        <select name="${esc(field.name || field.key)}" aria-label="${esc(field.label)}">${placeholder}${options}</select>
+      </label>`;
+    }
     default:
       return `<label>${esc(field.label)}
         <input name="${esc(field.name || field.key)}" type="text" value="${esc(String(field.value ?? ""))}" autocomplete="off"${placeholder}>
