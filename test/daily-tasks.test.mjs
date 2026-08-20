@@ -184,7 +184,7 @@ test("shell renders opportunity today cards with ad layout and save label", asyn
     assert.equal(document.querySelector(".ops-today-section-head h3")?.textContent, "طلبات جديدة");
     assert.ok(document.querySelector(".bank-row-header"));
     assert.ok(document.querySelector(".bank-row-stats--ops"));
-    assert.ok(document.querySelector(".listing-field-marks"));
+    assert.equal(document.querySelector(".listing-field-marks"), null);
     assert.ok(document.querySelector(".listing-card-actions"));
     assert.equal(document.querySelector(".listing-card-action--secondary")?.textContent.trim(), "تابع");
     assert.equal(document.querySelector(".listing-card-action--primary")?.textContent.trim(), "حفظ الفرصة");
