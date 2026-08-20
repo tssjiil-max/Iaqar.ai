@@ -508,6 +508,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
 
   async function openDailyTaskItem(item) {
     if (!item) return;
+    rootWindow.IAQAR?.homeTabs?.switchTo?.("operations");
     if (state.viewMode === VIEW_MODES.CATEGORY_LIST && operationList) {
       state.listScrollTop = operationList.scrollTop;
     }
@@ -515,10 +516,15 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     state.activeTaskId = item.id;
     const oppId = extractOpportunityId(item);
 
-    if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
+    if (oppId) {
       state.viewMode = VIEW_MODES.OPPORTUNITY_DETAIL;
       applyViewMode();
       clearTaskPanel();
+      if (!rootWindow.IAQAR?.renderDailyTaskOpportunity) {
+        notify("تعذر فتح تفاصيل الفرصة — أعد تحميل الصفحة");
+        backToTaskList();
+        return;
+      }
       const ok = await rootWindow.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId);
       if (!ok) {
         notify("تعذر فتح الفرصة");
@@ -618,20 +624,8 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       const item = data.find((entry) => entry.id === taskId);
       const actionMode = quickBtn.getAttribute("data-ops-quick");
       if (actionMode === "followup" && item) {
-        const oppId = extractOpportunityId(item);
-        if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
-          state.activeTaskId = item.id;
-          state.listOrigin = state.viewMode === VIEW_MODES.TODAY_LIST ? "today" : "category";
-          state.viewMode = VIEW_MODES.OPPORTUNITY_DETAIL;
-          applyViewMode();
-          clearTaskPanel();
-          void rootWindow.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId).then((ok) => {
-            if (!ok) notify("تعذر فتح الفرصة");
-            else dispatchOpened(item);
-            afterViewChange();
-          });
-          return;
-        }
+        void openDailyTaskItem(item);
+        return;
       }
       dispatchWorkflowQuick(item, actionMode);
       return;
@@ -750,13 +744,28 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     showCategories();
     openCategory(categoryKey);
     if (opportunityId) {
-      const item = data.find((entry) => extractOpportunityId(entry) === opportunityId);
-      if (item) {
-        void openDailyTaskItem(item);
-        return;
-      }
+      const item = data.find((entry) => extractOpportunityId(entry) === opportunityId)
+        || {
+          id: `opp-${opportunityId}`,
+          recordId: opportunityId,
+          recordType: "opportunity"
+        };
+      void openDailyTaskItem(item);
+      return;
     }
     afterViewChange();
+  });
+
+  rootWindow.addEventListener("iaqar:open-operations-opportunity", (event) => {
+    const opportunityId = String(event?.detail?.opportunityId || "").trim();
+    if (!opportunityId) return;
+    const item = data.find((entry) => extractOpportunityId(entry) === opportunityId)
+      || {
+        id: `opp-${opportunityId}`,
+        recordId: opportunityId,
+        recordType: "opportunity"
+      };
+    void openDailyTaskItem(item);
   });
 
   rootWindow.addEventListener("iaqar:daily-task-closed", () => {

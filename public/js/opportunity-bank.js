@@ -588,10 +588,16 @@ function scrollBankDetailIntoView() {
   window.requestAnimationFrame(() => {
     if (ctx.dailyTask) {
       const workspace = document.getElementById("workspace");
-      if (workspace) {
-        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        workspace.scrollIntoView({ behavior: reduced ? "auto" : "auto", block: "start" });
+      const detailView = document.getElementById("opsViewOpportunityDetail");
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const behavior = reduced ? "auto" : "smooth";
+      if (detailView) {
+        detailView.scrollIntoView({ behavior, block: "start" });
       }
+      if (workspace) {
+        workspace.scrollIntoView({ behavior: "auto", block: "start" });
+      }
+      panel.scrollIntoView({ behavior, block: "start" });
       return;
     }
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3881,61 +3887,68 @@ function boot() {
   bindListClicks();
 
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
+}
+
+async function openOpportunityDetailGlobal(opportunityId) {
+  openOpportunityBank();
+  if (!opportunityId) return false;
+  setDetailRenderContext({ dailyTask: false });
+  const runtime = officeRuntime();
+  if (!runtime?.db || !officeId()) return false;
+  try {
+    const snap = await runtime.db.collection("offices").doc(officeId())
+      .collection("opportunities").doc(opportunityId).get();
+    if (!snap.exists) return false;
+    const record = { id: opportunityId, ...(snap.data() || {}) };
+    state.records.set(opportunityId, record);
+    await renderDetail(opportunityId);
+    scrollBankDetailIntoView();
+    return true;
+  } catch (error) {
+    console.warn("[iaqar] open opportunity detail", error);
+    return false;
+  }
+}
+
+async function renderDailyTaskOpportunityGlobal(containerId, opportunityId) {
+  const panelId = String(containerId || "operationsTaskPanel").trim();
+  const id = String(opportunityId || "").trim();
+  const panel = document.getElementById(panelId);
+  if (!panel || !id) return false;
+  const runtime = officeRuntime();
+  if (!runtime?.db || !officeId()) return false;
+  try {
+    const snap = await runtime.db.collection("offices").doc(officeId())
+      .collection("opportunities").doc(id).get();
+    if (!snap.exists) {
+      toast("لم يتم العثور على الفرصة");
+      return false;
+    }
+    const data = snap.data() || {};
+    if (data.officeId && String(data.officeId) !== officeId()) {
+      toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
+      return false;
+    }
+    const record = { id, ...data };
+    state.records.set(id, record);
+    panel.hidden = false;
+    await renderDetail(id, { panelId, dailyTask: true });
+    scrollBankDetailIntoView();
+    return true;
+  } catch (error) {
+    console.warn("[iaqar] render daily task opportunity", error);
+    toast("تعذر فتح الفرصة");
+    return false;
+  }
+}
+
+function registerOpportunityBankGlobals() {
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.openOpportunityBank = openOpportunityBank;
   window.IAQAR.activateOpportunityBankInline = activateOpportunityBankInline;
   window.IAQAR.pauseOpportunityBankInline = pauseOpportunityBankInline;
-  window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
-    openOpportunityBank();
-    if (!opportunityId) return;
-    setDetailRenderContext({ dailyTask: false });
-    // Detail deep-link loads the single opportunity without dumping the full bank.
-    const runtime = officeRuntime();
-    if (!runtime?.db || !officeId()) return;
-    try {
-      const snap = await runtime.db.collection("offices").doc(officeId())
-        .collection("opportunities").doc(opportunityId).get();
-      if (snap.exists) {
-        const record = { id: opportunityId, ...(snap.data() || {}) };
-        state.records.set(opportunityId, record);
-        await renderDetail(opportunityId);
-        scrollBankDetailIntoView();
-      }
-    } catch (error) {
-      console.warn("[iaqar] open opportunity detail", error);
-    }
-  };
-  window.IAQAR.renderDailyTaskOpportunity = async function renderDailyTaskOpportunity(containerId, opportunityId) {
-    const panelId = String(containerId || "operationsTaskPanel").trim();
-    const id = String(opportunityId || "").trim();
-    const panel = document.getElementById(panelId);
-    if (!panel || !id) return false;
-    const runtime = officeRuntime();
-    if (!runtime?.db || !officeId()) return false;
-    try {
-      const snap = await runtime.db.collection("offices").doc(officeId())
-        .collection("opportunities").doc(id).get();
-      if (!snap.exists) {
-        toast("لم يتم العثور على الفرصة");
-        return false;
-      }
-      const data = snap.data() || {};
-      if (data.officeId && String(data.officeId) !== officeId()) {
-        toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
-        return false;
-      }
-      const record = { id, ...data };
-      state.records.set(id, record);
-      panel.hidden = false;
-      await renderDetail(id, { panelId, dailyTask: true });
-      scrollBankDetailIntoView();
-      return true;
-    } catch (error) {
-      console.warn("[iaqar] render daily task opportunity", error);
-      toast("تعذر فتح الفرصة");
-      return false;
-    }
-  };
+  window.IAQAR.openOpportunityDetail = openOpportunityDetailGlobal;
+  window.IAQAR.renderDailyTaskOpportunity = renderDailyTaskOpportunityGlobal;
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;
   window.IAQAR.isBankDetailOpen = isBankDetailOpen;
   window.IAQAR.closeBankDetailInternal = closeBankDetailInternal;
@@ -3946,6 +3959,8 @@ function boot() {
     bankMissingFieldSelectors: BANK_MISSING_FIELD_SELECTORS
   });
 }
+
+registerOpportunityBankGlobals();
 
 function syncFilterButtons() {
   $("bankFilterActive")?.classList.toggle("is-active", state.filter === "active");

@@ -216,9 +216,10 @@ test("empty shell shows today list empty state and category grid after toggle", 
   }
 });
 
-test("opportunity bank exposes renderDailyTaskOpportunity", () => {
+test("opportunity bank exposes renderDailyTaskOpportunity at module load", () => {
   const bankSource = readRepositoryFile("public", "js", "opportunity-bank.js");
-  assert.ok(bankSource.includes("renderDailyTaskOpportunity"));
+  assert.ok(bankSource.includes("renderDailyTaskOpportunityGlobal"));
+  assert.ok(bankSource.includes("registerOpportunityBankGlobals"));
 });
 
 function dispatchOpsData(window, items) {

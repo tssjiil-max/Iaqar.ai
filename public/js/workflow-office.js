@@ -2582,22 +2582,17 @@
   }
 
   async function handleQuickFollowup(detail) {
-    if (detail.recordType === "opportunity" || detail.opportunityId) {
-      const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
-      if (oppId) {
-        if (document.getElementById("operationsTaskPanel") && window.IAQAR?.renderDailyTaskOpportunity) {
-          const ok = await window.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", oppId);
-          if (ok) return;
-        }
-        if (window.IAQAR?.openOpportunityDetail) {
-          const opened = await window.IAQAR.openOpportunityDetail(oppId);
-          if (opened) return;
-        }
-        if (window.IAQAR?.openOpportunityManagement) {
-          await window.IAQAR.openOpportunityManagement(oppId, { focusFollowUp: true });
-          return;
-        }
-      }
+    const recordType = String(detail.recordType || "").toLowerCase();
+    const oppId = String(detail.opportunityId || "").trim()
+      || (recordType === "opportunity"
+        ? String(detail.recordId || detail.id || "").replace(/^opp-/, "").trim()
+        : "");
+    if (oppId) {
+      window.IAQAR?.homeTabs?.switchTo?.("operations");
+      window.dispatchEvent(new CustomEvent("iaqar:open-operations-opportunity", {
+        detail: { opportunityId: oppId }
+      }));
+      return;
     }
     await openWorkflowUi({ ...detail, focusFollowUpReminder: true });
   }

@@ -157,6 +157,14 @@ test("workflow lifecycle modal embeds unified opportunity details", () => {
   assert.ok(bridge.includes("buildOpportunityDetailsCoreHtml"));
 });
 
+test("followup quick action routes through operations opportunity opener", () => {
+  const workflow = readRepo("public", "js", "workflow-office.js");
+  assert.ok(workflow.includes("iaqar:open-operations-opportunity"));
+  const ui = readRepo("public", "js", "operations-center-ui.js");
+  assert.ok(ui.includes("void openDailyTaskItem(item)"));
+  assert.ok(ui.includes("iaqar:open-operations-opportunity"));
+});
+
 test("no duplicated generic save lifecycle status in modal", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.equal(workflow.includes("save-lifecycle-status"), true);
