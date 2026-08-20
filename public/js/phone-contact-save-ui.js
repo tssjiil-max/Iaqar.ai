@@ -15,8 +15,11 @@ function toast(message) {
   if (!node) return;
   node.textContent = message;
   node.classList.add("show");
-  window.clearTimeout(toast._timer);
-  toast._timer = window.setTimeout(() => node.classList.remove("show"), 2800);
+  const timeApi = typeof globalThis !== "undefined" ? globalThis : {};
+  if (typeof timeApi.clearTimeout === "function") timeApi.clearTimeout(toast._timer);
+  if (typeof timeApi.setTimeout === "function") {
+    toast._timer = timeApi.setTimeout(() => node.classList.remove("show"), 2800);
+  }
 }
 
 export function readContactSavePayloadFromButton(button) {
@@ -44,7 +47,8 @@ async function shareOrDownloadVcard(payload) {
     ? new File([blob], filename, { type: "text/vcard;charset=utf-8" })
     : null;
 
-  if (file && navigator.share && typeof navigator.canShare === "function") {
+  const nav = typeof navigator !== "undefined" ? navigator : null;
+  if (file && nav?.share && typeof nav.canShare === "function") {
     try {
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({
@@ -70,7 +74,10 @@ async function shareOrDownloadVcard(payload) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+  const later = typeof globalThis.setTimeout === "function"
+    ? globalThis.setTimeout
+    : (fn) => fn();
+  later(() => URL.revokeObjectURL(url), 2500);
   return { ok: true, method: "download" };
 }
 

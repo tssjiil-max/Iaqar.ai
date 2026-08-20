@@ -74,11 +74,9 @@ test("savePhoneContactToDevice downloads a vcf when Web Share is unavailable", a
   const dom = new JSDOM("<!doctype html><body></body>", { url: "https://example.test/" });
   const previous = {
     document: globalThis.document,
-    navigator: globalThis.navigator,
     URL: globalThis.URL
   };
   globalThis.document = dom.window.document;
-  globalThis.navigator = { share: undefined, canShare: undefined };
   const objectUrls = [];
   globalThis.URL = {
     createObjectURL(blob) {
@@ -111,7 +109,6 @@ test("savePhoneContactToDevice downloads a vcf when Web Share is unavailable", a
     assert.equal(objectUrls.length, 1);
   } finally {
     globalThis.document = previous.document;
-    globalThis.navigator = previous.navigator;
     globalThis.URL = previous.URL;
   }
 });

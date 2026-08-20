@@ -350,7 +350,7 @@ function contactPhoneRow(vm) {
         <span class="opp-details-row-value-stack">
           <input class="opp-contact-field-input opp-contact-phone-input" type="tel" inputmode="numeric"
             maxlength="14" autocomplete="tel" enterkeyhint="done" name="contactPhoneLocal"
-            aria-label="رقم التواصل" placeholder="05XXXXXXXX" value="${esc(local)}">
+            aria-label="رقم التواصل" placeholder="اكتب رقم الجوال" value="${esc(local)}">
           ${complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`}
         </span>
       </span>
