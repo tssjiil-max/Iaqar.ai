@@ -1532,6 +1532,65 @@
       width:100%;
     }
 
+    .js-broker-community-slot:empty { display:none; }
+    .broker-community-badge {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin:8px 0 0;
+      padding:4px 10px;
+      border-radius:999px;
+      background:var(--green-soft);
+      color:var(--green-dark);
+      font-size:12px;
+      font-weight:800;
+      line-height:1.4;
+      border:1px solid rgba(0,92,75,.18);
+      cursor:pointer;
+    }
+    .broker-community-badge:hover,
+    .broker-community-badge:focus-visible {
+      background:#dceee8;
+      outline:none;
+    }
+
+    .community-match-list {
+      display:grid;
+      gap:10px;
+      margin:12px 0;
+    }
+    .community-match-card {
+      padding:10px 12px;
+      border:1px solid rgba(0,92,75,.14);
+      border-radius:14px;
+      background:#f7fbf9;
+      display:grid;
+      gap:4px;
+    }
+    .community-match-card strong { color:var(--green-dark); }
+    .community-match-card span { font-size:13px; color:#35564e; }
+    .community-actions {
+      display:grid;
+      gap:8px;
+      margin-top:8px;
+    }
+    .community-split-row {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+    .community-split-row label {
+      display:grid;
+      gap:4px;
+      font-size:13px;
+    }
+    .community-split-row input {
+      width:100%;
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:8px;
+    }
+
     .bank-row-stats--ops {
       grid-template-columns:repeat(2, minmax(0, 1fr));
     }
@@ -5781,6 +5840,20 @@
     </section>
   </div>
 
+  <div class="settings-overlay" id="brokerCommunityOverlay" hidden>
+    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="brokerCommunityTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="brokerCommunityTitle">فرصة تعاون</h2>
+          <p id="brokerCommunityLead">تواصل مع الوسيط فقط، دون بيانات العميل أو المالك.</p>
+        </div>
+        <button class="settings-close" id="brokerCommunityClose" type="button" aria-label="إغلاق">×</button>
+      </div>
+      <div id="brokerCommunityBody"></div>
+      <p class="section-status" id="brokerCommunityStatus" role="status"></p>
+    </section>
+  </div>
+
   <div class="settings-overlay" id="stopShareOverlay" hidden>
     <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="stopShareTitle">
       <div class="settings-head">
@@ -6090,11 +6163,18 @@
       </div>
 
       <section class="settings-section" id="cooperationSection">
-        <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
+        <h3>مجتمع الوسطاء</h3>
         <p class="section-help">
-          ملكية الفرصة تبقى لمكتبك في كل الأحوال، وبيانات تواصل المالك أو العميل
-          لا تُكشف تلقائيًا لأي وسيط متعاون.
+          عند التفعيل يمكن للنظام اكتشاف عروض وطلبات متوافقة لدى مكاتب أخرى، دون مشاركة بيانات العملاء أو الملاك.
         </p>
+        <label class="pref-row office-field full">
+          <span>تفعيل التعاون مع الوسطاء</span>
+          <span class="pref-switch">
+            <input type="checkbox" id="brokerCommunityEnabledToggle" checked>
+            <span class="pref-switch-slider" aria-hidden="true"></span>
+          </span>
+        </label>
+        <p class="section-help">السماح بالتعاون الذكي بين الوسطاء</p>
         <div class="coop-options" id="cooperationOptions">
           <label class="coop-option">
             <input type="radio" name="cooperationMode" value="DISABLED">
@@ -6242,6 +6322,7 @@
 
   <script type="module" src="js/operations-center-ui.js"></script>
   <script type="module" src="js/opportunity-domain-bridge.js"></script>
+  <script type="module" src="js/broker-community-ui.js"></script>
   <script src="js/notification-navigation.js"></script>
   <script defer src="js/workflow-office.js"></script>
   <script type="module" src="js/release-version-ui.js"></script>

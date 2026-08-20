@@ -1708,9 +1708,16 @@ async function saveNotificationPreferences() {
 // ---------------------------------------------------------------------------
 
 function writeCooperationToForm(mode) {
+  const normalized = normalizeCooperationMode(mode);
   Array.from(el.cooperationInputs || []).forEach(input => {
-    input.checked = input.value === mode;
+    input.checked = input.value === normalized;
   });
+  if (el.communityToggle) {
+    el.communityToggle.checked = normalized !== "DISABLED";
+  }
+  if (el.cooperationOptions) {
+    el.cooperationOptions.hidden = normalized === "DISABLED";
+  }
 }
 
 async function loadCooperationSettings() {
@@ -1752,6 +1759,7 @@ async function saveCooperationSettings(value) {
     await runtime.db.collection("publicOffices").doc(officeId()).set({
       officeId: officeId(),
       cooperationMode: payload.mode,
+      brokerCommunityEnabled: payload.brokerCommunityEnabled === true,
       updatedAt: serverTimestamp()
     }, { merge: true });
     setStatus(el.cooperationStatus, "تم حفظ إعداد التعاون", "is-done");
@@ -1904,6 +1912,8 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
+  el.communityToggle = document.getElementById("brokerCommunityEnabledToggle");
+  el.cooperationOptions = document.getElementById("cooperationOptions");
   el.neighborhoodSearch = document.getElementById("officeNeighborhoodSearch");
   el.neighborhoodChips = document.getElementById("officeNeighborhoodChips");
   el.neighborhoodCount = document.getElementById("officeNeighborhoodCount");
@@ -1987,9 +1997,22 @@ function init() {
     input.addEventListener("change", () => {
       if (COOPERATION_MODE_VALUES.includes(input.value) && input.checked) {
         saveCooperationSettings(input.value);
+        writeCooperationToForm(input.value);
       }
     });
   });
+  if (el.communityToggle) {
+    el.communityToggle.addEventListener("change", () => {
+      if (el.communityToggle.checked) {
+        const next = cooperationMode === "DISABLED" ? DEFAULT_COOPERATION_MODE : cooperationMode;
+        saveCooperationSettings(next);
+        writeCooperationToForm(next);
+      } else {
+        saveCooperationSettings("DISABLED");
+        writeCooperationToForm("DISABLED");
+      }
+    });
+  }
 
   try {
     if (window.firebase && firebase.auth) firebase.auth().onAuthStateChanged(updateAuthState);
