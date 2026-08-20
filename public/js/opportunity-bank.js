@@ -3357,7 +3357,7 @@ function bindListClicks() {
       if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
       return;
     }
-    if (event.target.closest("button, a, input, textarea, select, label, .opp-contact-save")) return;
+    if (event.target.closest("button, a, input, textarea, select, label, .js-save-phone-contact, .opp-details-row--contact-identity")) return;
     const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
     event.preventDefault();
@@ -3365,7 +3365,7 @@ function bindListClicks() {
   });
   list.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    if (event.target.closest("input, textarea, select, button, .opp-contact-save")) return;
+    if (event.target.closest("input, textarea, select, button, .js-save-phone-contact")) return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
     event.preventDefault();

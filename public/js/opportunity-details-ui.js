@@ -324,51 +324,38 @@ function dataRow(vm, rowKey, label, value, subtext = "") {
     </div>`;
 }
 
-function contactNameRow(vm) {
-  const name = String(vm.advertiserDisplayName || "").trim();
-  const complete = Boolean(name);
-  const label = vm.advertiserNameLabel || advertiserContactNameLabel(vm.advertiserRoleRaw);
+function contactSaveIconHtml(vm) {
   return `
-    <div class="opp-details-row opp-details-row--contact-name ${complete ? "is-row-complete" : "is-row-optional"}">
+    <button type="button" class="js-save-phone-contact opp-contact-save-btn"
+      data-opportunity-id="${esc(vm.id || "")}"
+      data-contact-name="${esc(vm.advertiserDisplayName || "")}"
+      data-contact-phone="${esc(vm.contactPhoneE164 || vm.contactPhoneLocal || "")}"
+      data-contact-role="${esc(vm.advertiserRole || "")}"
+      aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}"
+      title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
+      <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+    </button>`;
+}
+
+function contactIdentityRow(vm) {
+  const name = String(vm.advertiserDisplayName || "").trim();
+  const local = String(vm.contactPhoneLocal || vm.contactPhone || "").trim();
+  const phoneComplete = isDetailsRowComplete(vm, "contact");
+  const label = vm.advertiserNameLabel || advertiserContactNameLabel(vm.advertiserRoleRaw);
+  const rowClass = phoneComplete ? "is-row-complete" : "is-row-missing";
+  return `
+    <div class="opp-details-row opp-details-row--contact-identity ${rowClass}">
       ${rowLabelHtml("contactName", label)}
-      <span class="opp-details-row-value">
+      <span class="opp-details-row-value opp-contact-identity-fields">
         <input class="opp-contact-field-input opp-contact-name-input" type="text" maxlength="80"
           autocomplete="name" enterkeyhint="next" name="contactDisplayName"
           aria-label="${esc(label)}" placeholder="اكتب الاسم" value="${esc(name)}">
+        <input class="opp-contact-field-input opp-contact-phone-input" type="tel" inputmode="numeric"
+          maxlength="14" autocomplete="tel" enterkeyhint="done" name="contactPhoneLocal" dir="ltr"
+          aria-label="رقم الجوال" placeholder="رقم الجوال" value="${esc(local)}">
+        ${phoneComplete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`}
       </span>
-      ${complete ? rowStatusHtml(true) : `<span class="opp-details-row-status is-optional" aria-hidden="true"></span>`}
-    </div>`;
-}
-
-function contactPhoneRow(vm) {
-  const complete = isDetailsRowComplete(vm, "contact");
-  const local = String(vm.contactPhoneLocal || vm.contactPhone || "").trim();
-  return `
-    <div class="opp-details-row opp-details-row--contact-phone ${complete ? "is-row-complete" : "is-row-missing"}">
-      ${rowLabelHtml("contact", "رقم التواصل")}
-      <span class="opp-details-row-value">
-        <span class="opp-details-row-value-stack">
-          <input class="opp-contact-field-input opp-contact-phone-input" type="tel" inputmode="numeric"
-            maxlength="14" autocomplete="tel" enterkeyhint="done" name="contactPhoneLocal"
-            aria-label="رقم التواصل" placeholder="اكتب رقم الجوال" value="${esc(local)}">
-          ${complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`}
-        </span>
-      </span>
-      ${rowStatusHtml(complete)}
-    </div>`;
-}
-
-function contactSaveRow(vm) {
-  return `
-    <div class="opp-contact-save">
-      <button type="button" class="js-save-phone-contact opp-save-phone-contact-btn"
-        data-opportunity-id="${esc(vm.id || "")}"
-        data-contact-name="${esc(vm.advertiserDisplayName || "")}"
-        data-contact-phone="${esc(vm.contactPhoneE164 || vm.contactPhoneLocal || "")}"
-        data-contact-role="${esc(vm.advertiserRole || "")}">
-        ${esc(SAVE_PHONE_CONTACT_LABEL)}
-      </button>
-      <p class="opp-contact-save-hint">يدمج الاسم مع الرقم ويحفظهما في سجل جهات الاتصال على الجوال.</p>
+      ${contactSaveIconHtml(vm)}
     </div>`;
 }
 
@@ -409,9 +396,7 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
         ${dataRow(vm, "price", vm.priceLabel, vm.priceValue)}
         ${dataRow(vm, "specs", "المساحة والمواصفات", vm.specs || "—")}
         ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
-        ${contactNameRow(vm)}
-        ${contactPhoneRow(vm)}
-        ${contactSaveRow(vm)}
+        ${contactIdentityRow(vm)}
       </div>
       ${footerHtml}
     </section>`;

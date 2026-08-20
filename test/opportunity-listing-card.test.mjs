@@ -44,7 +44,7 @@ test("bank row html uses shared listing card builder", () => {
   assert.ok(bankSource.includes("buildOpportunityListingCardInnerHtml"));
 });
 
-test("listing table DOM has name, phone, and save-to-phone rows", () => {
+test("listing table DOM has name, phone, and save-to-phone icon", () => {
   const html = buildOpportunityListingCardInnerHtml({
     opportunityKind: "OFFER",
     propertyType: "أرض",
@@ -59,10 +59,14 @@ test("listing table DOM has name, phone, and save-to-phone rows", () => {
   });
   const dom = new JSDOM(`<div id="root">${html}</div>`);
   const rows = dom.window.document.querySelectorAll(".opp-details-row");
-  assert.equal(rows.length, 7);
-  assert.ok(dom.window.document.querySelector(".opp-details-data-title-text")?.textContent.includes("بيانات الفرصة"));
-  assert.equal(dom.window.document.querySelector(".opp-contact-name-input")?.value, "سلطان الصاعدي");
-  assert.equal(dom.window.document.querySelector(".opp-contact-phone-input")?.value, "0552019909");
-  assert.ok(dom.window.document.querySelector(".js-save-phone-contact")?.textContent.includes("حفظ الرقم في الجوال"));
+  assert.equal(rows.length, 6);
+  const identity = dom.window.document.querySelector(".opp-details-row--contact-identity");
+  assert.ok(identity);
+  assert.equal(identity.querySelector(".opp-contact-name-input")?.value, "سلطان الصاعدي");
+  assert.equal(identity.querySelector(".opp-contact-phone-input")?.value, "0552019909");
+  const saveBtn = identity.querySelector(".js-save-phone-contact");
+  assert.ok(saveBtn);
+  assert.equal(saveBtn.getAttribute("aria-label"), "حفظ الرقم في الجوال");
+  assert.ok(saveBtn.querySelector("use")?.getAttribute("href")?.includes("i-contact-save"));
   assert.ok(html.includes("اسم المالك"));
 });

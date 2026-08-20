@@ -117,7 +117,10 @@ test("listing body renders compact card without field mark grid", () => {
   });
   assert.equal(root.querySelector(".listing-field-marks"), null);
   assert.ok(root.querySelector(".opp-details-data-table"));
-  assert.equal(root.querySelectorAll(".opp-details-row").length, 7);
-  assert.ok(root.querySelector(".js-save-phone-contact"));
+  assert.equal(root.querySelectorAll(".opp-details-row").length, 6);
+  const saveBtn = root.querySelector(".js-save-phone-contact");
+  assert.ok(saveBtn);
+  assert.equal(saveBtn.getAttribute("aria-label"), "حفظ الرقم في الجوال");
   assert.equal(root.querySelector(".opp-contact-phone-input")?.value, "0501234567");
+  assert.ok(root.querySelector(".opp-details-row--contact-identity"));
 });

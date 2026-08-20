@@ -68,6 +68,8 @@ test("listing table payload reads live name and phone inputs", () => {
   assert.equal(payload.phoneRaw, "0501112233");
   assert.equal(payload.roleLabel, "عميل");
   assert.ok(html.includes("اسم العميل"));
+  assert.ok(html.includes("#i-contact-save"));
+  assert.ok(html.includes("js-save-phone-contact"));
 });
 
 test("savePhoneContactToDevice downloads a vcf when Web Share is unavailable", async () => {
