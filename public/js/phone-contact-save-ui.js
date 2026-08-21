@@ -1,14 +1,18 @@
 /**
  * Save the opportunity phone number into the device address book via vCard.
- * Display name comes from opportunity data (name + role + district / property).
+ * Does not claim the OS actually stored the contact.
  */
 
 import {
   SAVE_PHONE_CONTACT_LABEL,
+  SAVE_PHONE_CONTACT_OPENED,
+  SAVE_PHONE_CONTACT_PREPARING,
   buildPhoneContactVcard,
   phoneContactVcardFilename,
   validatePhoneContactSave
 } from "./phone-contact-save-domain.js";
+
+let saveInFlight = false;
 
 function toast(message) {
   const node = document.getElementById("toast");
@@ -20,12 +24,17 @@ function toast(message) {
 }
 
 function readSavePayloadFromButton(button) {
+  const kind = String(button?.getAttribute("data-contact-kind") || "").trim().toLowerCase();
   return {
     phoneRaw: String(button?.getAttribute("data-contact-phone") || "").trim(),
     displayName: String(button?.getAttribute("data-contact-name") || "").trim(),
     roleLabel: String(button?.getAttribute("data-contact-role") || "").trim(),
     propertyType: String(button?.getAttribute("data-contact-property") || "").trim(),
-    district: String(button?.getAttribute("data-contact-district") || "").trim()
+    district: String(button?.getAttribute("data-contact-district") || "").trim(),
+    city: String(button?.getAttribute("data-contact-city") || "").trim(),
+    purpose: String(button?.getAttribute("data-contact-purpose") || "").trim(),
+    personKind: kind,
+    isOwner: kind === "owner"
   };
 }
 
@@ -67,17 +76,21 @@ async function shareOrDownloadVcard(payload) {
 }
 
 export async function savePhoneNumberToDevice(input = {}) {
+  if (saveInFlight) return { ok: false, busy: true };
   const check = validatePhoneContactSave(input);
   if (!check.ok) return check;
-  const saved = await shareOrDownloadVcard({
-    phoneRaw: check.phoneE164,
-    displayName: check.displayName,
-    roleLabel: input.roleLabel,
-    propertyType: input.propertyType,
-    district: input.district
-  });
-  if (!saved.ok) return saved;
-  return { ...check, ...saved };
+  saveInFlight = true;
+  try {
+    const saved = await shareOrDownloadVcard({
+      ...input,
+      phoneRaw: check.phoneE164,
+      displayName: check.displayName
+    });
+    if (!saved.ok) return saved;
+    return { ...check, ...saved };
+  } finally {
+    saveInFlight = false;
+  }
 }
 
 export function bindPhoneContactSave(root = document) {
@@ -88,13 +101,22 @@ export function bindPhoneContactSave(root = document) {
     if (!button) return;
     event.preventDefault();
     event.stopPropagation();
+    if (button.disabled || button.getAttribute("aria-busy") === "true" || saveInFlight) {
+      return;
+    }
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    toast(SAVE_PHONE_CONTACT_PREPARING);
     void savePhoneNumberToDevice(readSavePayloadFromButton(button)).then((result) => {
-      if (result.cancelled) return;
+      if (result.busy || result.cancelled) return;
       if (!result.ok) {
-        toast(result.error || "تعذر حفظ الرقم في سجل الهاتف");
+        toast(result.error || "تعذر تجهيز جهة الاتصال");
         return;
       }
-      toast(`تم حفظ «${result.displayName}» في سجل الهاتف`);
+      toast(SAVE_PHONE_CONTACT_OPENED);
+    }).finally(() => {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
     });
   }, true);
 }
