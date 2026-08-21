@@ -1,19 +1,6 @@
 /**
- * Suitable offices picker UI — tier sections and confirm step (Arabic only).
+ * واجهة التعاون مع المكاتب — بحث، اختيار متعدد، إرسال واحد.
  */
-
-import {
-  SUITABLE_OFFICE_TIER,
-  SUITABLE_OFFICE_TIER_LABELS
-} from "./suitable-offices-domain.js";
-
-const TIER_ORDER = [
-  SUITABLE_OFFICE_TIER.SAME,
-  SUITABLE_OFFICE_TIER.ADJACENT,
-  SUITABLE_OFFICE_TIER.CITY
-];
-
-export const SUITABLE_OFFICES_INITIAL_PER_TIER = 5;
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -21,110 +8,93 @@ function esc(text = "") {
   }[c]));
 }
 
-function specialtyLabels(specialties = []) {
-  const map = {
-    sale: "بيع",
-    purchase: "شراء",
-    rent: "تأجير",
-    property_management: "إدارة أملاك"
-  };
-  return (Array.isArray(specialties) ? specialties : [])
-    .map((key) => map[key] || "")
-    .filter(Boolean)
-    .join("، ");
-}
-
-export function buildSuitableOfficeCardHtml(office = {}) {
-  const verified = office.verified ? `<span class="bank-suitable-office-badge">موثق</span>` : "";
-  const services = office.serviceNeighborhoodSummary
-    || (office.serviceNeighborhoodLabels || []).slice(0, 3).join("، ");
+export function buildOfficeSearchResultHtml(office = {}) {
+  const verified = office.verified ? `<span class="bank-coop-result-verified">موثق</span>` : "";
+  const district = String(office.primaryNeighborhoodLabel || "").trim();
+  const city = String(office.city || "").trim();
   return `
-    <article class="bank-suitable-office-card" data-suitable-office-id="${esc(office.officeId)}">
-      <div class="bank-suitable-office-head">
-        <strong>${esc(office.officeName || office.officeId)}</strong>
-        ${verified}
-      </div>
-      <p class="bank-note">الحي الرئيسي: ${esc(office.primaryNeighborhoodLabel || "—")}</p>
-      ${services ? `<p class="bank-note">الأحياء: ${esc(services)}</p>` : ""}
-      <p class="bank-suitable-office-reason">${esc(office.reason || "")}</p>
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" data-pick-suitable-office="${esc(office.officeId)}">اختيار المكتب</button>
-    </article>`;
-}
-
-export function buildSuitableTierSectionHtml(tier, rows = [], options = {}) {
-  const label = SUITABLE_OFFICE_TIER_LABELS[tier] || "";
-  const expanded = options.expandedTiers?.[tier] === true;
-  const limit = expanded ? rows.length : SUITABLE_OFFICES_INITIAL_PER_TIER;
-  const visible = rows.slice(0, limit);
-  const hiddenCount = rows.length - visible.length;
-  const cards = visible.map((row) => buildSuitableOfficeCardHtml(row)).join("");
-  const emptyMessage = `<p class="bank-suitable-empty">لا توجد مكاتب في هذا القسم حاليًا.</p>`;
-  const expandBtn = hiddenCount > 0
-    ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-expand-tier="${tier}">عرض بقية مكاتب المدينة (${hiddenCount})</button>`
-    : "";
-  return `
-    <section class="bank-suitable-tier" data-tier="${tier}">
-      <h5>${esc(label)}</h5>
-      <div class="bank-suitable-office-list">${cards || emptyMessage}</div>
-      ${expandBtn}
-    </section>`;
-}
-
-export function buildSuitableOfficesTiersHtml(buckets = {}, expandedTiers = {}) {
-  return TIER_ORDER.map((tier) =>
-    buildSuitableTierSectionHtml(tier, buckets[tier] || [], { expandedTiers })
-  ).join("");
-}
-
-export function buildSuitableOfficeDropdownItemHtml(office = {}) {
-  return `
-    <button type="button" class="bank-suitable-dropdown-item" role="option"
-      data-dropdown-office-id="${esc(office.officeId)}">
+    <button type="button" class="bank-coop-search-result" data-pick-office-id="${esc(office.officeId)}">
       <strong>${esc(office.officeName || office.officeId)}</strong>
-      <span>${esc(office.primaryNeighborhoodLabel || office.city || "")}</span>
-      <small>${esc(office.tierLabel || "")}</small>
+      <span>${esc([district ? `حي ${district}` : "", city].filter(Boolean).join(" — "))}</span>
+      ${verified}
     </button>`;
 }
 
-export function buildSuitableOfficeDropdownHtml(offices = [], query = "") {
+export function buildOfficeSearchResultsHtml(offices = [], query = "") {
   const trimmed = String(query || "").trim();
+  if (!trimmed) return "";
   if (!offices.length) {
-    const hint = trimmed
-      ? `لا توجد نتائج لـ «${trimmed}» — جرّب اسمًا آخر أو امسح البحث`
-      : "لا توجد مكاتب متاحة للتعاون في هذه المدينة حاليًا";
-    return `<p class="bank-suitable-dropdown-empty">${esc(hint)}</p>`;
+    return `<p class="bank-coop-search-empty">لا توجد نتائج لـ «${esc(trimmed)}»</p>`;
   }
-  return offices.map((office) => buildSuitableOfficeDropdownItemHtml(office)).join("");
+  return offices.map((office) => buildOfficeSearchResultHtml(office)).join("");
 }
 
-export function buildSuitableOfficesShareSectionHtml() {
+export function buildSelectedOfficeChipsHtml(selectedOffices = []) {
+  if (!selectedOffices.length) {
+    return `<p class="bank-coop-chips-empty">لم يتم اختيار مكتب بعد.</p>`;
+  }
   return `
-    <h4>اختر مكتبًا للتعاون</h4>
-    <p class="bank-note iaqar-workflow-note">ابحث باسم المكتب من القائمة، أو اختر من الأقسام أدناه.</p>
-    <p class="section-status" id="bankSuitableOfficesStatus" role="status"></p>
-    <div class="bank-suitable-search-wrap">
-      <label class="bank-suitable-search-label" for="bankSuitableOfficesSearch">بحث باسم المكتب</label>
-      <input type="search" id="bankSuitableOfficesSearch" class="bank-suitable-search-input"
-        placeholder="مثال: سلطان" autocomplete="off" role="combobox"
-        aria-expanded="false" aria-controls="bankSuitableOfficesDropdown"
-        aria-autocomplete="list">
-      <div id="bankSuitableOfficesDropdown" class="bank-suitable-dropdown" role="listbox" hidden></div>
-    </div>
-    <p class="bank-note" id="bankSuitableOfficesCount" hidden></p>
-    <div id="bankSuitableOfficesTiers" class="bank-suitable-tiers"></div>
-    <div id="bankSuitableOfficeConfirm" class="bank-suitable-confirm" hidden>
-      <h5>تأكيد الإرسال</h5>
-      <p class="bank-note" id="bankSuitableConfirmOfficeName"></p>
-      <div class="bank-suitable-preview" id="bankSuitableSharePreview"></div>
-      <label>رسالة اختيارية
-        <textarea id="bankSuitableShareMessage" maxlength="500" placeholder="رسالة خاصة للمكتب المستلم"></textarea>
+    <div class="bank-coop-chips" id="bankCoopSelectedChipsList">
+      ${selectedOffices.map((office) => `
+        <span class="bank-coop-chip" data-selected-office-id="${esc(office.officeId)}">
+          <span class="bank-coop-chip-label">${esc(office.officeName || office.officeId)}</span>
+          <button type="button" class="bank-coop-chip-remove" data-remove-office-id="${esc(office.officeId)}" aria-label="إزالة ${esc(office.officeName || office.officeId)}">×</button>
+        </span>`).join("")}
+    </div>`;
+}
+
+export function buildOfficeCooperationPanelHtml() {
+  return `
+    <div class="bank-coop-panel" id="bankCoopPanel">
+      <div class="bank-coop-selected-wrap">
+        <p class="bank-coop-selected-title">المكاتب المختارة:</p>
+        <div id="bankCoopSelectedChips"></div>
+      </div>
+      <div class="bank-coop-search-wrap">
+        <label class="bank-coop-search-label" for="bankCoopOfficesSearch">ابحث باسم المكتب</label>
+        <input type="search" id="bankCoopOfficesSearch" class="bank-coop-search-input"
+          placeholder="ابحث باسم المكتب" autocomplete="off" inputmode="search">
+        <div id="bankCoopSearchResults" class="bank-coop-search-results" hidden></div>
+      </div>
+      <label class="bank-coop-message-label">رسالة اختيارية
+        <textarea id="bankCoopMessage" class="bank-coop-message" maxlength="500"
+          placeholder="رسالة للمكاتب المستلمة" rows="3"></textarea>
       </label>
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankSuitableSendBtn">إرسال الفرصة للمكتب</button>
-      <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankSuitableCancelPickBtn">اختيار مكتب آخر</button>
-      <p class="section-status" id="bankShareStatus" role="status"></p>
-      <p class="bank-note iaqar-workflow-note">ملخص آمن — بدون بيانات المالك أو العميل أو أرقامهم.</p>
-    </div>
-    <input type="hidden" id="bankDetailScopeTarget" value="">`;
+      <button type="button" class="bank-action-primary iaqar-workflow-btn success bank-coop-send-btn"
+        id="bankCoopSendBtn" disabled>إرسال الفرصة</button>
+      <p class="bank-coop-privacy-note">لن تتم مشاركة بيانات المالك أو العميل أو أرقام التواصل.</p>
+      <p class="section-status bank-coop-send-status" id="bankCoopSendStatus" role="status"></p>
+    </div>`;
+}
+
+/** @deprecated use buildOfficeCooperationPanelHtml */
+export function buildSuitableOfficesShareSectionHtml() {
+  return buildOfficeCooperationPanelHtml();
+}
+
+/** @deprecated tiers removed */
+export function buildSuitableOfficeCardHtml() {
+  return "";
+}
+
+/** @deprecated tiers removed */
+export function buildSuitableTierSectionHtml() {
+  return "";
+}
+
+/** @deprecated tiers removed */
+export function buildSuitableOfficesTiersHtml() {
+  return "";
+}
+
+/** @deprecated use buildOfficeSearchResultHtml */
+export function buildSuitableOfficeDropdownItemHtml(office = {}) {
+  return buildOfficeSearchResultHtml(office);
+}
+
+/** @deprecated use buildOfficeSearchResultsHtml */
+export function buildSuitableOfficeDropdownHtml(offices = [], query = "") {
+  return buildOfficeSearchResultsHtml(offices, query);
 }
 
 export function buildSharedPreviewHtml(preview = {}) {

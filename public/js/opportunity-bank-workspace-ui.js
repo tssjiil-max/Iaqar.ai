@@ -30,7 +30,8 @@ import {
   buildContactOutcomeSaveFooterHtml,
   shouldShowContactOutcomePanel
 } from "./opportunity-contact-outcome-domain.js";
-import { buildSuitableOfficesShareSectionHtml } from "./suitable-offices-ui.js";
+import { buildOfficeCooperationPanelHtml } from "./suitable-offices-ui.js";
+import { currentCooperationShareStatusLabel } from "./office-cooperation-ui-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -62,6 +63,11 @@ export function buildWorkspaceCoopRowsHtml(cooperationRequests = [], options = {
     const peerName = isOrigin
       ? (row.targetOfficeName || row.targetOfficeId || "مكتب")
       : (row.originatingOfficeName || row.originatingOfficeId || "مكتب");
+    const statusLabel = isOrigin ? currentCooperationShareStatusLabel(status) : officeShareStatusLabel(status);
+    const sentAt = row.requestedAt || row.createdAt;
+    const sentLabel = sentAt
+      ? new Date(sentAt).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh" })
+      : "";
     const actions = [];
     if (status === "ACCEPTED" && requestId) {
       actions.push(`<button type="button" class="bank-action iaqar-workflow-btn secondary" data-open-coop-room="${esc(requestId)}">فتح غرفة التعاون</button>`);
@@ -72,18 +78,15 @@ export function buildWorkspaceCoopRowsHtml(cooperationRequests = [], options = {
     return `
     <div class="bank-workspace-coop-row" data-coop-request-id="${esc(requestId)}" data-coop-target-id="${esc(row.targetOfficeId || "")}">
       <strong>${esc(peerName)}</strong>
-      <span>${esc(officeShareStatusLabel(status))}</span>
+      <span>${esc(statusLabel)}</span>
+      ${sentLabel ? `<small>${esc(sentLabel)}</small>` : ""}
       ${actions.join("")}
     </div>`;
   }).join("");
 }
 
-export function buildWorkspaceCoopEmptyHintHtml(options = {}) {
-  const showShareCta = options.showShareCta !== false;
-  const cta = showShareCta
-    ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-workspace-action="goto_office_share">مشاركة مع مكتب</button>`
-    : "";
-  return `<p class="bank-note bank-workspace-coop-empty" id="bankWorkspaceCoopHint">لا توجد مشاركات نشطة.${cta ? ` ${cta}` : ""}</p>`;
+export function buildWorkspaceCoopEmptyHintHtml() {
+  return `<p class="bank-note bank-workspace-coop-empty" id="bankWorkspaceCoopHint">لا توجد مشاركات حتى الآن.</p>`;
 }
 
 function partyActionBrokerKey(actionId = "") {
@@ -298,7 +301,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
 
   const coopRows = buildWorkspaceCoopRowsHtml(cooperationRequests, { ownOfficeId });
-  const coopEmpty = coopRows ? "" : buildWorkspaceCoopEmptyHintHtml({ showShareCta: !archived });
+  const coopEmpty = coopRows ? "" : buildWorkspaceCoopEmptyHintHtml();
 
   const partyActionButtons = partyActions.map((action) => {
     const key = partyActionBrokerKey(action.id);
@@ -354,19 +357,19 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>
         </section>
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceShareSection" hidden>
-          ${buildSuitableOfficesShareSectionHtml()}
-        </section>
-
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspacePartySection" hidden>
           <h4>${esc(isOwnerPartyLabel(record))}</h4>
           <div class="bank-workspace-party-actions iaqar-workflow-actions">${partyActionButtons}</div>
         </section>
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCoopSection">
-          <h4>مشاركات المكاتب</h4>
-          <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
-          <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
+          <h4>التعاون مع المكاتب</h4>
+          ${archived ? "" : buildOfficeCooperationPanelHtml()}
+          <div class="bank-coop-current-wrap">
+            <p class="bank-coop-current-title">المشاركات الحالية</p>
+            <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
+            <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
+          </div>
         </section>
 
         ${contactOutcomesSection}

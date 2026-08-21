@@ -43,12 +43,13 @@ test("buildWorkspaceCoopRowsHtml includes open room and cancel actions", () => {
   assert.match(html, /قَبِل المكتب|بانتظار رد المكتب/);
 });
 
-test("empty coop hint offers share CTA wired in bank handlers", () => {
+test("empty coop hint is display-only without duplicate share form", () => {
   const hint = buildWorkspaceCoopEmptyHintHtml();
-  assert.match(hint, /data-workspace-action="goto_office_share"/);
+  assert.match(hint, /لا توجد مشاركات/);
+  assert.doesNotMatch(hint, /goto_office_share/);
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("refreshWorkspaceCoopSection"));
-  assert.ok(bank.includes("goto_office_share"));
+  assert.ok(bank.includes("wireCooperationHandlers"));
   assert.ok(bank.includes("applyWorkspaceLifecycleFlow"));
 });
 
