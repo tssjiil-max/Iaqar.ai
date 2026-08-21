@@ -430,3 +430,34 @@ export function filterSuggestionsByCity(record = {}, suggestions = []) {
     return !officeCity || officeCity === city;
   });
 }
+
+const ACTIVE_COOP_STATUSES = new Set(["PENDING", "ACCEPTED", "ACTIVE", "PENDING_APPROVAL"]);
+
+function shareStatusFromCooperationState(state = "") {
+  const key = String(state || "").trim().toUpperCase();
+  if (key === "PENDING_APPROVAL") return "PENDING";
+  if (key === "ACTIVE") return "ACCEPTED";
+  return key;
+}
+
+export function mergeWorkspaceCooperationRequests(record = {}, bundleRequests = [], ownOfficeId = "") {
+  const fromBundle = Array.isArray(bundleRequests) ? bundleRequests.filter(Boolean) : [];
+  if (fromBundle.length) return fromBundle;
+  const coopId = safeId(record.activeCooperationId);
+  const state = shareStatusFromCooperationState(record.cooperationState || record.cooperationStatus);
+  if (!coopId || !ACTIVE_COOP_STATUSES.has(state)) return [];
+  return [{
+    id: coopId,
+    status: state === "ACTIVE" ? "ACCEPTED" : state,
+    originatingOfficeId: safeId(record.officeId || ownOfficeId),
+    targetOfficeId: safeId(record.cooperationTargetOfficeId),
+    targetOfficeName: safeId(record.cooperationTargetOfficeName || record.cooperationTargetOfficeId || "مكتب"),
+    originatingOfficeName: safeId(record.originatingOfficeName || ownOfficeId)
+  }];
+}
+
+export function activeWorkspaceCooperationRequests(requests = []) {
+  return (Array.isArray(requests) ? requests : []).filter((row) =>
+    ACTIVE_COOP_STATUSES.has(String(row.status || "").toUpperCase())
+  );
+}

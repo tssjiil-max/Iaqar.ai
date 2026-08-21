@@ -6,7 +6,10 @@ import {
   buildWorkspaceActivity,
   buildIncompleteFormFields,
   contactPartyLabel,
-  sortMatchesForWorkspace
+  sortMatchesForWorkspace,
+  cooperationStatusLabel,
+  activeWorkspaceCooperationRequests,
+  mergeWorkspaceCooperationRequests
 } from "./opportunity-workspace-domain.js";
 import { officeShareStatusLabel,
   readyWorkspacePrimaryActions,
@@ -14,7 +17,6 @@ import { officeShareStatusLabel,
   sendAndShareHubOptions,
   buildPublicListingAnnouncement
 } from "./opportunity-ready-actions-domain.js";
-import { cooperationStatusLabel } from "./opportunity-workspace-domain.js";
 import {
   buildOpportunityDetailsCoreHtml,
 } from "./opportunity-details-ui.js";
@@ -48,6 +50,41 @@ const HUB_OPTION_KEYS = {
   share_to_office: "hub:share_to_office",
   copy_listing_text: "hub:copy_listing_text"
 };
+
+export function buildWorkspaceCoopRowsHtml(cooperationRequests = [], options = {}) {
+  const ownOfficeId = String(options.ownOfficeId || "").trim().toLowerCase();
+  const rows = activeWorkspaceCooperationRequests(cooperationRequests);
+  if (!rows.length) return "";
+  return rows.map((row) => {
+    const requestId = String(row.id || "").trim();
+    const status = String(row.status || "").toUpperCase();
+    const isOrigin = ownOfficeId && String(row.originatingOfficeId || "").trim().toLowerCase() === ownOfficeId;
+    const peerName = isOrigin
+      ? (row.targetOfficeName || row.targetOfficeId || "مكتب")
+      : (row.originatingOfficeName || row.originatingOfficeId || "مكتب");
+    const actions = [];
+    if (status === "ACCEPTED" && requestId) {
+      actions.push(`<button type="button" class="bank-action iaqar-workflow-btn secondary" data-open-coop-room="${esc(requestId)}">فتح غرفة التعاون</button>`);
+    }
+    if (status === "PENDING" && isOrigin && requestId) {
+      actions.push(`<button type="button" class="bank-action iaqar-workflow-btn secondary" data-cancel-coop-request="${esc(requestId)}">إلغاء الطلب</button>`);
+    }
+    return `
+    <div class="bank-workspace-coop-row" data-coop-request-id="${esc(requestId)}" data-coop-target-id="${esc(row.targetOfficeId || "")}">
+      <strong>${esc(peerName)}</strong>
+      <span>${esc(officeShareStatusLabel(status))}</span>
+      ${actions.join("")}
+    </div>`;
+  }).join("");
+}
+
+export function buildWorkspaceCoopEmptyHintHtml(options = {}) {
+  const showShareCta = options.showShareCta !== false;
+  const cta = showShareCta
+    ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-workspace-action="goto_office_share">مشاركة مع مكتب</button>`
+    : "";
+  return `<p class="bank-note bank-workspace-coop-empty" id="bankWorkspaceCoopHint">لا توجد مشاركات نشطة.${cta ? ` ${cta}` : ""}</p>`;
+}
 
 function partyActionBrokerKey(actionId = "") {
   const id = String(actionId || "").trim();
@@ -244,7 +281,13 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const actions = readyWorkspacePrimaryActions(record);
   const partyActions = partyContactActions(record);
   const hubOptions = sendAndShareHubOptions();
-  const activity = buildWorkspaceActivity(record, bundle.cooperationRequests || []);
+  const ownOfficeId = String(options.ownOfficeId || record.officeId || "").trim();
+  const cooperationRequests = mergeWorkspaceCooperationRequests(
+    record,
+    bundle.cooperationRequests || [],
+    ownOfficeId
+  );
+  const activity = buildWorkspaceActivity(record, cooperationRequests);
   const followUp = bundle.followUp || activeFollowUpFromRecord(record);
   const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
   const contactOutcomesSection = archived ? "" : buildContactOutcomesSectionHtml(record);
@@ -254,14 +297,8 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
 
   const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
 
-  const coopRows = (bundle.cooperationRequests || []).map((row) => `
-    <div class="bank-workspace-coop-row" data-coop-request-id="${esc(row.id || "")}">
-      <strong>${esc(row.targetOfficeName || row.targetOfficeId)}</strong>
-      <span>${esc(officeShareStatusLabel(row.status))}</span>
-      ${String(row.status).toUpperCase() === "ACCEPTED"
-        ? `<button type="button" class="bank-action iaqar-workflow-btn secondary" data-open-coop-room="${esc(row.id)}">فتح غرفة التعاون</button>`
-        : ""}
-    </div>`).join("");
+  const coopRows = buildWorkspaceCoopRowsHtml(cooperationRequests, { ownOfficeId });
+  const coopEmpty = coopRows ? "" : buildWorkspaceCoopEmptyHintHtml({ showShareCta: !archived });
 
   const partyActionButtons = partyActions.map((action) => {
     const key = partyActionBrokerKey(action.id);
@@ -328,7 +365,8 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCoopSection">
           <h4>مشاركات المكاتب</h4>
-          <div id="bankWorkspaceCoopList">${coopRows || "<p class='bank-note'>لا توجد مشاركات نشطة.</p>"}</div>
+          <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
+          <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
         </section>
 
         ${contactOutcomesSection}
@@ -350,7 +388,10 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
 
         <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCloseSection" hidden>
           <h4>إنهاء الفرصة</h4>
-          <p class="bank-note iaqar-workflow-note">استخدم إدارة الفرصة لإنهاء وأرشفة الفرصة.</p>
+          <p class="bank-note iaqar-workflow-note">سجّل نتيجة التواصل أولًا، ثم أكمل الإغلاق والأرشفة.</p>
+          <div class="bank-workspace-actions iaqar-workflow-actions">
+            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-workspace-action="open_lifecycle_close">إنهاء وأرشفة الفرصة</button>
+          </div>
         </section>
 
         <div id="bankCooperationRoomPanel" class="bank-cooperation-room iaqar-workflow-step" hidden></div>
