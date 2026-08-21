@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
-  buildSuitableOfficeDropdownHtml,
-  buildSuitableOfficesShareSectionHtml
+  buildOfficeCooperationPanelHtml,
+  buildOfficeSearchResultsHtml
 } from "../public/js/suitable-offices-ui.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -14,29 +14,29 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("share section exposes combobox dropdown search by office name", () => {
-  const html = buildSuitableOfficesShareSectionHtml();
-  assert.ok(html.includes('id="bankSuitableOfficesSearch"'));
-  assert.ok(html.includes('id="bankSuitableOfficesDropdown"'));
-  assert.ok(html.includes("role=\"combobox\""));
-  assert.ok(html.includes("بحث باسم المكتب"));
-  assert.ok(html.includes('placeholder="مثال: سلطان"'));
+test("cooperation panel exposes unified search and send flow", () => {
+  const html = buildOfficeCooperationPanelHtml();
+  assert.ok(html.includes('id="bankCoopOfficesSearch"'));
+  assert.ok(html.includes('placeholder="ابحث باسم المكتب"'));
+  assert.ok(html.includes('id="bankCoopMessage"'));
+  assert.ok(html.includes('placeholder="رسالة للمكاتب المستلمة"'));
+  assert.ok(html.includes('id="bankCoopSelectedChips"'));
 });
 
-test("dropdown renders selectable office rows and empty query hint", () => {
-  const rows = buildSuitableOfficeDropdownHtml([
-    { officeId: "x", officeName: "مكتب سلطان", primaryNeighborhoodLabel: "عروة", tierLabel: "في الحي نفسه" }
-  ], "");
-  assert.ok(rows.includes("data-dropdown-office-id=\"x\""));
+test("search results render only when query exists", () => {
+  const rows = buildOfficeSearchResultsHtml([
+    { officeId: "x", officeName: "مكتب سلطان", primaryNeighborhoodLabel: "عروة", city: "مكة" }
+  ], "سلطان");
+  assert.ok(rows.includes("data-pick-office-id=\"x\""));
   assert.ok(rows.includes("مكتب سلطان"));
-  const empty = buildSuitableOfficeDropdownHtml([], "سلطان");
+  const empty = buildOfficeSearchResultsHtml([], "سلطان");
   assert.ok(empty.includes("لا توجد نتائج"));
-  assert.ok(empty.includes("سلطان"));
+  assert.equal(buildOfficeSearchResultsHtml([], ""), "");
 });
 
-test("shell CSS centers suitable-office empty states", () => {
+test("shell CSS includes compact cooperation styles", () => {
   const shell = readRepo("public", "index.html");
-  assert.ok(shell.includes(".bank-suitable-empty"));
+  assert.ok(shell.includes(".bank-coop-chips"));
+  assert.ok(shell.includes(".bank-coop-privacy-note"));
   assert.ok(shell.includes("text-align:center"));
-  assert.ok(shell.includes(".bank-suitable-dropdown"));
 });

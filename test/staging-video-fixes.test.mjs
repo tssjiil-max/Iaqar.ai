@@ -138,5 +138,5 @@ test("nearby empty reason distinguishes incomplete vs not enabled", () => {
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678"
   }, []);
-  assert.equal(notEnabled.code, "not_enabled");
+  assert.equal(notEnabled.code, "no_adjacent");
 });

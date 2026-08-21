@@ -50,11 +50,13 @@ test("automatic cooperation can never be configured to expose contact informatio
   assert.equal(cooperationSettingsPayload("SMART_AUTOMATIC").exposeContactAutomatically, false);
 });
 
-test("the payload carries only the two approved fields", () => {
+test("the payload carries cooperation mode, community flag, and no automatic contact exposure", () => {
   assert.deepEqual(
     Object.keys(cooperationSettingsPayload("DISABLED")).sort(),
-    ["exposeContactAutomatically", "mode"]
+    ["brokerCommunityEnabled", "exposeContactAutomatically", "mode"]
   );
+  assert.equal(cooperationSettingsPayload("DISABLED").brokerCommunityEnabled, false);
+  assert.equal(cooperationSettingsPayload("APPROVAL_REQUIRED").brokerCommunityEnabled, true);
 });
 
 test("the five approved Arabic cooperation statuses are available verbatim", () => {
@@ -74,8 +76,10 @@ test("an unknown cooperation status reads as not shared rather than inventing a 
   assert.equal(cooperationStatusLabel("ENDED"), "انتهى التعاون");
 });
 
-test("the settings sheet offers the approved heading and exactly three radio choices", () => {
+test("the settings sheet offers the community heading and exactly three radio choices", () => {
   const shell = readRepositoryFile("public", "index.html");
+  assert.ok(shell.includes("مجتمع الوسطاء"), "community heading must be present");
+  assert.ok(shell.includes("تفعيل التعاون مع الوسطاء"));
   assert.ok(shell.includes("السماح بالتعاون الذكي بين الوسطاء"), "the approved Arabic heading must be present");
   const values = [...shell.matchAll(/name="cooperationMode"\s+value="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(values, ["DISABLED", "APPROVAL_REQUIRED", "SMART_AUTOMATIC"]);
