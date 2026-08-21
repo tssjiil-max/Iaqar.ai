@@ -12,6 +12,7 @@ import {
   cooperationModeAllowsAccept,
   cooperationModeAllowsExplicitRequest,
   defaultCooperationRequestPermissions,
+  minimumSharedFields,
   normalizeCooperationMode,
   opportunityStatusFromShare,
   phase6BoundaryGuarantees

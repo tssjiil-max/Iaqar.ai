@@ -137,7 +137,6 @@ import {
   removeSelectedOffice,
   uniqueSelectedOfficeIds,
   filterOfficesForCooperationSearch,
-  cooperationSendSuccessMessage,
   assertSafeCooperationSharePayload
 } from "./office-cooperation-ui-domain.js";
 import {
@@ -1638,7 +1637,8 @@ async function loadCooperationOfficesForShare(opportunityId, record) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-Office-Id": officeId()
       },
       body: JSON.stringify({
         officeId: officeId(),
@@ -1681,48 +1681,61 @@ async function loadCooperationOfficesForShare(opportunityId, record) {
 
 async function sendCooperationToSelectedOffices(opportunityId) {
   if (cooperationUiState.sendBusy) return;
-  const selectedIds = uniqueSelectedOfficeIds(cooperationUiState.selectedOffices);
-  if (!selectedIds.length) return;
+  const own = String(officeId() || "").trim().toLowerCase();
+  const selectedIds = uniqueSelectedOfficeIds(cooperationUiState.selectedOffices)
+    .filter((id) => String(id || "").trim().toLowerCase() !== own);
+  if (!selectedIds.length) {
+    setShareActionStatus("اختر مكتبًا للإرسال", "is-error");
+    return;
+  }
 
   if (cooperationUiState.sharedPreview) {
     const safe = assertSafeCooperationSharePayload(cooperationUiState.sharedPreview);
-    if (!safe.ok) {
-      setShareActionStatus("تعذر إرسال الفرصة — بيانات غير آمنة في المعاينة", "is-error");
-      return;
-    }
+      if (!safe.ok) {
+        console.error("[iaqar] cooperation share blocked preview keys", safe.blocked);
+        setShareActionStatus("تعذر إرسال الفرصة. حاول مرة أخرى.", "is-error");
+        return;
+      }
   }
 
   const cooperationMessage = String($("bankCoopMessage")?.value || "").slice(0, 500);
   cooperationUiState.sendBusy = true;
   updateCooperationSendButton();
-  setShareActionStatus("جاري الإرسال…");
+  setShareActionStatus("جاري الإرسال...");
 
   let sentCount = 0;
   let skippedDuplicates = 0;
   let lastError = "";
-
-  for (const targetOfficeId of selectedIds) {
-    const result = await createShareRequest({
-      opportunityIds: [opportunityId],
-      targetOfficeId,
-      scopeType: "single",
-      cooperationMessage,
-      suppressUi: true
-    });
-    if (result.ok && !result.duplicate) {
-      sentCount += 1;
-    } else if (result.duplicate) {
-      skippedDuplicates += 1;
-    } else if (result.errorMessage) {
-      lastError = result.errorMessage;
+  try {
+    for (const targetOfficeId of selectedIds) {
+      const result = await createShareRequest({
+        opportunityIds: [opportunityId],
+        targetOfficeId,
+        scopeType: "single",
+        cooperationMessage,
+        suppressUi: true
+      });
+      if (result.ok && !result.duplicate) {
+        sentCount += 1;
+      } else if (result.duplicate) {
+        skippedDuplicates += 1;
+      } else {
+        lastError = result.errorMessage || lastError;
+        if (result.technicalError) {
+          console.error("[iaqar] cooperation send failed", result.technicalError);
+        }
+      }
     }
+  } catch (error) {
+    console.error("[iaqar] cooperation send failed", error);
+    lastError = error?.message || lastError;
+  } finally {
+    cooperationUiState.sendBusy = false;
+    updateCooperationSendButton();
   }
 
-  cooperationUiState.sendBusy = false;
-  updateCooperationSendButton();
-
   if (sentCount > 0) {
-    setShareActionStatus(cooperationSendSuccessMessage(sentCount), "is-done");
+    setShareActionStatus("تم إرسال الفرصة", "is-done");
     cooperationUiState.selectedOffices = [];
     const messageInput = $("bankCoopMessage");
     if (messageInput) messageInput.value = "";
@@ -1736,7 +1749,7 @@ async function sendCooperationToSelectedOffices(opportunityId) {
     return;
   }
 
-  setShareActionStatus(lastError || "تعذر إرسال الفرصة", "is-error");
+  setShareActionStatus("تعذر إرسال الفرصة. حاول مرة أخرى.", "is-error");
 }
 
 function wireCooperationHandlers(opportunityId, record, bundle = {}) {
@@ -3244,7 +3257,8 @@ async function createShareRequest({
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-Office-Id": officeId()
       },
       body: JSON.stringify({
         officeId: officeId(),
@@ -3257,10 +3271,16 @@ async function createShareRequest({
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      console.error("[iaqar] cooperation request failed", {
+        status: response.status,
+        error: payload.error,
+        message: payload.message,
+        requestId: payload.requestId
+      });
       const errMsg = payload.error === "same_office"
         ? "لا يمكن الإرسال إلى المكتب نفسه"
         : (payload.message || "تعذر إرسال الفرصة إلى المكتب");
-      throw new Error(errMsg);
+      throw Object.assign(new Error(errMsg), { payload, status: response.status });
     }
     const successMessage = payload.duplicate
       ? "يوجد مشاركة نشطة لهذه الفرصة مع هذا المكتب"
@@ -3315,12 +3335,10 @@ async function createShareRequest({
       officeName
     };
   } catch (error) {
-    console.warn("[iaqar] cooperation request", error);
-    const errorMessage = String(error?.message || "").includes("permission")
-      ? "تعذر إرسال الفرصة — صلاحيات غير كافية"
-      : (error?.message || "تعذر إرسال الفرصة إلى المكتب");
+    console.error("[iaqar] cooperation request", error);
+    const errorMessage = "تعذر إرسال الفرصة. حاول مرة أخرى.";
     if (!suppressUi) setShareActionStatus(errorMessage, "is-error");
-    return { ok: false, errorMessage };
+    return { ok: false, errorMessage, technicalError: error };
   }
 }
 

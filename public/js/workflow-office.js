@@ -1008,17 +1008,16 @@
 
   function openWhatsAppHandoff({ phone = "", text = "", url = "" } = {}) {
     const handoff = window.IAQAR?.whatsappHandoff;
-    if (handoff?.openWhatsAppUrl && url) {
-      return handoff.openWhatsAppUrl(url, { phone, text });
+    const digits = whatsappPhone(phone);
+    if (handoff?.openWhatsAppUrl && url && handoff.isSafeWhatsAppHttpUrl?.(url)) {
+      return handoff.openWhatsAppUrl(url, { phone: digits || phone, text });
     }
     if (handoff?.openWhatsApp) {
-      return handoff.openWhatsApp({ phone: phone || whatsappPhone(phone), text });
+      return handoff.openWhatsApp({ phone: digits || phone, text });
     }
-    const digits = whatsappPhone(phone || url);
-    const fallback = digits
-      ? `https://wa.me/${digits}?text=${encodeURIComponent(String(text || ""))}`
-      : (url || `https://wa.me/?text=${encodeURIComponent(String(text || ""))}`);
-    window.location.href = fallback;
+    if (!digits) return { ok: false, reason: "invalid_phone", url: "" };
+    const fallback = `https://wa.me/${digits}?text=${encodeURIComponent(String(text || ""))}`;
+    window.open(fallback, "_blank", "noopener,noreferrer");
     return { ok: true, mode: "fallback", url: fallback };
   }
 
@@ -1078,6 +1077,65 @@
   function appointmentText(detail) {
     const value = appointmentValue(detail);
     return value ? dateTimeLabel(value) : "لم يحدد بعد";
+  }
+
+  function viewingDateTimePartsUi(value) {
+    const handoff = window.IAQAR?.whatsappHandoff;
+    if (handoff?.viewingDateTimeParts) return handoff.viewingDateTimeParts(value);
+    const date = toDate(value);
+    if (!date) return { date: "", time: "" };
+    return {
+      date: date.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh", year: "numeric", month: "long", day: "numeric" }),
+      time: date.toLocaleTimeString("ar-SA", { timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit" })
+    };
+  }
+
+  function ownerRequestWhatsAppTextUi(items, note) {
+    const handoff = window.IAQAR?.whatsappHandoff;
+    if (handoff?.ownerRequestWhatsAppText) {
+      return handoff.ownerRequestWhatsAppText({ items, note });
+    }
+    const labels = [];
+    const map = { photos: "صور العقار", location: "موقع العقار", propertyLink: "رابط العقار" };
+    for (const item of items || []) {
+      if (map[item] && !labels.includes(map[item])) labels.push(map[item]);
+    }
+    if (!labels.length) return "";
+    const joined = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(" و")} و${labels[labels.length - 1]}`;
+    const extra = String(note || "").trim();
+    return `السلام عليكم، نحتاج ${joined} لاستكمال بيانات العرض.${extra ? `\n${extra}` : ""}`;
+  }
+
+  function viewingAppointmentWhatsAppTextUi(viewingAt) {
+    const handoff = window.IAQAR?.whatsappHandoff;
+    if (handoff?.viewingAppointmentWhatsAppText) {
+      return handoff.viewingAppointmentWhatsAppText(viewingAt);
+    }
+    const { date, time } = viewingDateTimePartsUi(viewingAt);
+    if (!date || !time) return "";
+    return `السلام عليكم، تم تحديد موعد معاينة العقار بتاريخ ${date} الساعة ${time}.`;
+  }
+
+  async function openPartyWhatsApp(detail, role, text) {
+    const enriched = await enrichDetailForMessaging(detail);
+    const contact = await resolveWorkflowPartyContact(enriched, role);
+    const phone = whatsappPhone(contact && contact.phone);
+    if (!phone) {
+      notify(`رقم ${role === "owner" ? "المالك" : "العميل"} غير موجود أو غير صحيح`);
+      return false;
+    }
+    openWhatsAppHandoff({ phone, text });
+    notify("فُتح واتساب — أكّد الإرسال بنفسك");
+    return true;
+  }
+
+  async function sendViewingAppointmentWhatsApp(role) {
+    const detail = activeWorkflowDetail;
+    const at = appointmentValue(detail);
+    if (!at) return notify("حدد موعد المعاينة أولًا");
+    const text = viewingAppointmentWhatsAppTextUi(at);
+    if (!text) return notify("حدد موعد المعاينة أولًا");
+    await openPartyWhatsApp(detail, role === "owner" ? "owner" : "client", text);
   }
 
   async function syncOfficeContact(role, contact, recordId = "") {
@@ -1303,7 +1361,9 @@
       openWhatsAppHandoff({
         phone,
         text: bodyText,
-        url: handoffUrl || undefined
+        url: handoffUrl && window.IAQAR?.whatsappHandoff?.isSafeWhatsAppHttpUrl?.(handoffUrl)
+          ? handoffUrl
+          : undefined
       });
       notify("فُتح واتساب — أكّد الإرسال بنفسك");
       return;
@@ -1593,12 +1653,14 @@
       return;
     }
 
+    const viewingParts = viewingDateTimePartsUi(appointmentValue(detail));
     body.innerHTML = `${summary}<div class="iaqar-workflow-steps">
-      <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>1. تحديد المعاينة</h3><p>${hasAppointment ? `الموعد: ${escapeUi(appointmentText(detail))}` : "اختر التاريخ والوقت ثم احفظ الموعد."}</p><button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "تغيير الموعد" : "تحديد المعاينة"}</button></article>
+      <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>تحديد المعاينة</h3>${hasAppointment ? `<p>التاريخ: ${escapeUi(viewingParts.date)}</p><p>الوقت: ${escapeUi(viewingParts.time)}</p>` : "<p>اختر التاريخ والوقت ثم احفظ الموعد.</p>"}<button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "تغيير الموعد" : "تحديد المعاينة"}</button></article>
+      ${hasAppointment ? `<article class="iaqar-workflow-step"><h3>إرسال الموعد</h3><div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" type="button" data-ui-action="send-viewing-client">إرسال الموعد للعميل</button><button class="iaqar-workflow-btn whatsapp" type="button" data-ui-action="send-viewing-owner">إرسال الموعد للمالك</button></div></article>` : ""}
       ${viewingConfirmationHtml(detail)}
       ${negotiationPanelHtml(detail)}
-      <article class="iaqar-workflow-step"><h3>2. نتيجة الصفقة</h3><p>${hasAppointment ? "بعد المعاينة سجّل النتيجة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
-    </div>${hasAppointment ? `<div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>` : ""}
+      <article class="iaqar-workflow-step"><h3>نتيجة الصفقة</h3><p>${hasAppointment ? "بعد المعاينة سجّل النتيجة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
+    </div>
     <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn secondary" data-ui-action="open-request">طلب الصور أو الموقع أو رابط العقار</button></div>${internalDealFields()}`;
   }
 
@@ -1631,11 +1693,10 @@
     if (!domain?.buildViewingConfirmationView || !appointmentValue(detail)) return "";
     const view = domain.buildViewingConfirmationView(detail);
     return `<article class="iaqar-workflow-step${view.bothConfirmed ? " is-done" : ""}"><h3>تأكيد المعاينة</h3>
-      <p>${escapeUi(appointmentText(detail))}</p>
       ${view.needsAlert ? `<p class="iaqar-viewing-alert">${escapeUi(view.alertLine)}</p>` : ""}
       <div class="iaqar-workflow-actions">
-        <button class="iaqar-workflow-btn ${view.clientViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="client">${view.clientViewingConfirmed ? "✅" : "⏳"} عميل أكّد</button>
-        <button class="iaqar-workflow-btn ${view.ownerViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="owner">${view.ownerViewingConfirmed ? "✅" : "⏳"} مالك أكّد</button>
+        <button class="iaqar-workflow-btn ${view.clientViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="client">${view.clientViewingConfirmed ? "✓ العميل أكد" : "عميل أكد"}</button>
+        <button class="iaqar-workflow-btn ${view.ownerViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="owner">${view.ownerViewingConfirmed ? "✓ المالك أكد" : "مالك أكد"}</button>
       </div>
     </article>`;
   }
@@ -1756,7 +1817,19 @@
         await workflowAction("add_match_followup", detail.recordId, { note: note || "تم تحديث موعد المعاينة", nextFollowUpAt: iso });
       }
       await persistViewingAt(detail, date, note);
-      activeWorkflowDetail = { ...detail, status: status === "negotiation" ? "negotiation" : "viewing", appointmentAt: iso, viewingAt: iso, nextFollowUpAt: iso };
+      activeWorkflowDetail = {
+        ...detail,
+        status: status === "negotiation" ? "negotiation" : "viewing",
+        appointmentAt: iso,
+        viewingAt: iso,
+        nextFollowUpAt: iso,
+        brokerUx: {
+          ...(detail.brokerUx || {}),
+          clientViewingConfirmed: false,
+          ownerViewingConfirmed: false,
+          viewingConfirmedAt: null
+        }
+      };
       notify("تم حفظ موعد المعاينة");
       renderWorkflowUi();
     } catch (error) {
@@ -1859,17 +1932,19 @@
     const items = Array.from(document.querySelectorAll('input[name="requestItem"]:checked')).map(input => input.value);
     const note = document.getElementById("iaqarRequestNote")?.value.trim() || "";
     if (!items.length) return notify("اختر الصور أو الموقع أو رابط العقار");
+    const message = ownerRequestWhatsAppTextUi(items, note);
+    if (!message) return notify("اختر الصور أو الموقع أو رابط العقار");
     setUiBusy(button, true, "جارٍ تجهيز الرسالة...");
     try {
-      const detail = { ...activeWorkflowDetail, recipientRole: "owner", messageMode: "request", requestedItems: items, requestNote: note };
+      const detail = { ...activeWorkflowDetail, recipientRole: "owner", requestedItems: items, requestNote: note };
       if (detail.recordType === "match") {
         await workflowAction("add_match_followup", detail.recordId, {
           note: `تم طلب: ${items.join("، ")}${note ? ` — ${note}` : ""}`,
           nextFollowUpAt: new Date(Date.now() + 24 * 3600000).toISOString()
         });
       }
-      await openWorkflowWhatsApp(detail);
-      renderWorkflowUi();
+      const opened = await openPartyWhatsApp(detail, "owner", message);
+      if (opened) renderWorkflowUi();
     } catch (error) {
       notify(error.message || "تعذر تجهيز الرسالة");
     } finally {
@@ -2447,6 +2522,8 @@
     if (action === "complete") return completeFastDeal(button);
     if (action === "save-close") return saveCloseReason(button);
     if (action === "send-request") return sendOwnerRequest(button);
+    if (action === "send-viewing-client") return sendViewingAppointmentWhatsApp("client");
+    if (action === "send-viewing-owner") return sendViewingAppointmentWhatsApp("owner");
     const messageStage = activeWorkflowDetail.status === "closed" && activeWorkflowDetail.workflowStage === "closed" ? "completed" : activeWorkflowDetail.status;
     if (action === "whatsapp-client") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
     if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });

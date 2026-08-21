@@ -128,7 +128,9 @@ test("every visible opportunity management action has handler", () => {
     "followup-whatsapp",
     "open-lifecycle-close",
     "confirm-final-close",
-    "open-matching-bank"
+    "open-matching-bank",
+    "send-viewing-client",
+    "send-viewing-owner"
   ];
   for (const action of actions) {
     assert.ok(workflow.includes(`action === "${action}"`), `missing handler for ${action}`);
@@ -138,7 +140,7 @@ test("every visible opportunity management action has handler", () => {
 test("match cards use deal completion label after viewing", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes('actionLabel = appointmentAt ? "إتمام الصفقة"'));
-  assert.ok(workflow.includes("2. نتيجة الصفقة"));
+  assert.ok(workflow.includes("نتيجة الصفقة"));
   assert.equal(workflow.includes('main: "deals"'), false);
 });
 
