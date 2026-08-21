@@ -28,7 +28,8 @@ import {
   phase3BoundaryGuarantees,
   scopeAllowsOpportunity,
   sharedOpportunityProjection,
-  validateOwnedOpportunityIds
+  validateOwnedOpportunityIds,
+  validatePermanentDelete
 } from "../public/js/opportunity-bank-domain.js";
 import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
@@ -160,6 +161,18 @@ test("archive / restore / soft-delete are idempotent and preserve audit fields",
   assert.equal(isActiveOpportunity({ ...sample, lifecycleStatus: "DELETED", deletedAt: "x" }), false);
 });
 
+test("permanent delete is allowed for owned active and archived opportunities", () => {
+  const actor = { officeId: "office-a", opportunityId: "opp_1", actorUid: "broker-a" };
+  assert.equal(validatePermanentDelete(sample, actor).allowed, true);
+  assert.equal(validatePermanentDelete({ ...sample, lifecycleStatus: "ARCHIVED", archivedAt: "x" }, actor).allowed, true);
+  assert.equal(validatePermanentDelete({ ...sample, matchingReadiness: "NEEDS_COMPLETION" }, actor).allowed, true);
+  assert.equal(validatePermanentDelete(sample, { ...actor, officeId: "office-b" }).allowed, false);
+  assert.equal(validatePermanentDelete({ ...sample, officeId: "office-b" }, actor).allowed, false);
+  assert.equal(validatePermanentDelete({ ...sample, originatingOfficeId: "office-b" }, actor).allowed, false);
+  assert.equal(validatePermanentDelete(sample, { ...actor, actorUid: "" }).allowed, false);
+  assert.equal(validatePermanentDelete({ ...sample, deletedAt: "x", lifecycleStatus: "DELETED" }, actor).allowed, false);
+});
+
 test("cooperation status transitions use approved Arabic labels", async () => {
   assert.equal(cooperationStateFromShareStatus("PENDING"), COOPERATION_STATE.PENDING_APPROVAL);
   assert.equal(cooperationStateFromShareStatus("ACCEPTED"), COOPERATION_STATE.ACTIVE);
@@ -281,8 +294,9 @@ test("delete requires an explicit confirmation step in the bank UI", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(bank.includes("permanentDeleteOverlay") || shell.includes("id=\"permanentDeleteOverlay\""));
-  assert.ok(bank.includes("سيتم حذف هذه الفرصة نهائيًا"));
+  assert.ok(bank.includes("لن تتمكن من استعادتها بعد الحذف.") || shell.includes("لن تتمكن من استعادتها بعد الحذف."));
   assert.ok(bank.includes("permanentDeleteConfirm"));
+  assert.equal(bank.includes("window.confirm"), false);
 });
 
 test("new Opportunity defaults to NOT_SHARED / لم تُشارك", () => {

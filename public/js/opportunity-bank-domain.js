@@ -476,8 +476,13 @@ export function buildSoftDeletePatch(existing, { now = new Date(), actorUid = ""
   };
 }
 
-export function validatePermanentDelete(record, { officeId = "" } = {}) {
+export function validatePermanentDelete(record, { officeId = "", opportunityId = "", actorUid = "" } = {}) {
   if (!record) return { allowed: false, reason: "الفرصة غير موجودة" };
+  const id = safeText(opportunityId || record.id, 80);
+  if (!id) return { allowed: false, reason: "معرّف الفرصة غير صالح" };
+  if (!safeText(actorUid, 120)) {
+    return { allowed: false, reason: "يلزم تسجيل الدخول لحذف الفرصة" };
+  }
   const currentOffice = safeText(officeId, 80);
   const ownerOffice = safeText(record.officeId, 80);
   const originOffice = safeText(record.originatingOfficeId, 80);
@@ -487,12 +492,8 @@ export function validatePermanentDelete(record, { officeId = "" } = {}) {
   if (originOffice && originOffice !== currentOffice) {
     return { allowed: false, reason: "هذه فرصة مشاركة من مكتب آخر" };
   }
-  if (record.activeCooperationId) {
-    return { allowed: false, reason: "لا يمكن الحذف لوجود طلب تعاون نشط" };
-  }
-  const archived = isArchivedOpportunity(record);
-  if (!archived) {
-    return { allowed: false, reason: "انقل الفرصة إلى المؤرشفة قبل الحذف النهائي" };
+  if (record.deletedAt || normalizeLifecycle(record.lifecycleStatus) === LIFECYCLE.DELETED) {
+    return { allowed: false, reason: "الفرصة محذوفة مسبقًا" };
   }
   return { allowed: true };
 }

@@ -1623,6 +1623,13 @@ async function handlePublicIntakeMatching(request, env, requestId) {
 
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  const officeDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId], accessToken, allowMissing: true
+  });
+  const officeData = officeDoc ? firestoreFieldsToJs(officeDoc.fields || {}) : {};
+  if (String(officeData.accountStatus || "").toLowerCase() === "paused") {
+    throw appError("office_paused", 403, "المكتب متوقف مؤقتًا عن استقبال الطلبات.");
+  }
   const intakeDoc = await getFirestoreDocument({
     projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, allowMissing: true
   });

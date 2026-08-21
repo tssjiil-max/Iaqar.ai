@@ -31,6 +31,7 @@ function asOffice(row = {}) {
     phone: row.phone || "",
     whatsapp: row.whatsapp || row.phone || "",
     city: row.city || "",
+    accountStatus: String(row.accountStatus || "active").trim().toLowerCase(),
     cooperationMode: normalizeCooperationMode(row.cooperationMode || "APPROVAL_REQUIRED"),
     brokerCommunityEnabled: row.brokerCommunityEnabled !== false,
     serviceNeighborhoodIds: Array.isArray(row.serviceNeighborhoodIds) ? row.serviceNeighborhoodIds : []
@@ -86,6 +87,7 @@ export async function loadPublicOfficesAndForeignOpportunities({
   for (const office of publicOffices) {
     const targetId = office.officeId;
     if (!targetId || targetId === ownId) continue;
+    if (String(office.accountStatus || "").toLowerCase() === "paused") continue;
     if (!isBrokerCommunityEnabled(office)) continue;
     const docs = await listCollectionDocuments({
       projectId,
