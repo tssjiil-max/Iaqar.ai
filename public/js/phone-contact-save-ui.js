@@ -19,8 +19,8 @@ function toast(message) {
   if (!node) return;
   node.textContent = message;
   node.classList.add("show");
-  window.clearTimeout(toast._timer);
-  toast._timer = window.setTimeout(() => node.classList.remove("show"), 2800);
+  globalThis.clearTimeout(toast._timer);
+  toast._timer = globalThis.setTimeout(() => node.classList.remove("show"), 2800);
 }
 
 function readSavePayloadFromButton(button) {
@@ -71,7 +71,7 @@ async function shareOrDownloadVcard(payload) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 2500);
   return { ok: true, method: "download" };
 }
 

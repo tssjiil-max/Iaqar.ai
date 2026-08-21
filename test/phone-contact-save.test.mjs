@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   SAVE_PHONE_CONTACT_LABEL,
+  SAVE_PHONE_CONTACT_OPENED,
   buildPhoneContactDisplayName,
   buildPhoneContactNote,
   buildPhoneContactVcard,
@@ -154,6 +155,7 @@ test("صف التواصل يعرض 05 في سطر LTR مع زر حفظ نصي", 
   assert.equal(phoneEl.textContent, "0511123456");
   assert.equal(phoneEl.getAttribute("dir"), "ltr");
   assert.ok(phoneEl.classList.contains("phone-ltr"));
+  assert.ok(ready.html.includes("is-contact-row"));
   assert.equal(saveBtn.textContent.replace(/\s+/g, " ").trim().includes(SAVE_PHONE_CONTACT_LABEL), true);
   assert.equal(saveBtn.getAttribute("data-contact-phone"), "+966511123456");
   assert.equal(saveBtn.getAttribute("data-contact-name"), "أبو أحمد");
@@ -192,6 +194,72 @@ test("صف التواصل يعرض 05 في سطر LTR مع زر حفظ نصي", 
   assert.equal(ownerOnly.vm.contactSaveDisplayName, "مالك عقار — عروة");
   assert.ok(ownerOnly.html.includes("data-contact-role=\"مالك\""));
   assert.ok(ownerOnly.html.includes("data-contact-kind=\"owner\""));
+});
+
+test("زر الحفظ ينشئ vCard واحدة بالاسم والرقم والوصف", async () => {
+  const { html } = buildOpportunityDetailsCoreHtml("opp_click", {
+    opportunityKind: "OFFER",
+    propertyType: "عمارة",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "الحرة الغربية",
+    price: 900000,
+    advertiserRole: "OWNER",
+    advertiserDisplayName: "محمد أحمد",
+    advertiserPhoneNormalized: "+966552019909"
+  });
+  const dom = new JSDOM(`<!doctype html><html><body><div id="toast"></div>${html}</body></html>`, {
+    url: "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/",
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  const blobs = [];
+  window.URL.createObjectURL = (blob) => {
+    blobs.push(blob);
+    return "blob:test-vcard";
+  };
+  window.URL.revokeObjectURL = () => {};
+  let downloads = 0;
+  const createElement = window.document.createElement.bind(window.document);
+  window.document.createElement = (tag) => {
+    const node = createElement(tag);
+    if (String(tag).toLowerCase() === "a") {
+      node.click = () => { downloads += 1; };
+    }
+    return node;
+  };
+  Object.defineProperty(globalThis, "window", { configurable: true, value: window });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: window.document });
+  Object.defineProperty(globalThis, "URL", { configurable: true, value: window.URL });
+  Object.defineProperty(globalThis, "Blob", { configurable: true, value: window.Blob });
+  if (window.File) {
+    Object.defineProperty(globalThis, "File", { configurable: true, value: window.File });
+  }
+  const ui = await import(`../public/js/phone-contact-save-ui.js?click=${Date.now()}`);
+  ui.bindPhoneContactSave(window.document);
+  const button = window.document.querySelector(".js-save-phone-contact");
+  assert.ok(button);
+  button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(downloads, 1);
+  assert.equal(blobs.length, 1);
+  const vcard = buildPhoneContactVcard({
+    phoneRaw: button.getAttribute("data-contact-phone"),
+    displayName: button.getAttribute("data-contact-name"),
+    roleLabel: button.getAttribute("data-contact-role"),
+    personKind: button.getAttribute("data-contact-kind"),
+    propertyType: button.getAttribute("data-contact-property"),
+    purpose: button.getAttribute("data-contact-purpose"),
+    district: button.getAttribute("data-contact-district"),
+    city: button.getAttribute("data-contact-city")
+  });
+  assert.match(vcard, /FN;CHARSET=UTF-8:محمد أحمد — مالك/);
+  assert.match(vcard, /TEL;TYPE=CELL,VOICE:\+966552019909/);
+  assert.match(vcard, /NOTE;CHARSET=UTF-8:مالك عقار — عرض عمارة للبيع — حي الحرة الغربية/);
+  assert.equal(vcard.includes("whatsapp"), false);
+  assert.equal(vcard.includes("officeId"), false);
+  assert.equal(window.document.getElementById("toast").textContent, SAVE_PHONE_CONTACT_OPENED);
 });
 
 test("بطاقة القائمة تحمل زر الحفظ دون تغيير عدد الصفوف", () => {

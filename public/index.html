@@ -4219,6 +4219,10 @@
     gap:4px;
     min-width:0;
   }
+  .opp-details-row.is-contact-row {
+    grid-template-columns:max-content minmax(0, 1fr) 36px;
+    gap:8px 8px;
+  }
   .opp-contact-value {
     flex-direction:row;
     flex-wrap:nowrap;
@@ -4233,10 +4237,9 @@
     color:var(--text);
     white-space:nowrap;
     word-break:keep-all;
-    overflow:hidden;
+    overflow:visible;
     line-height:1.45;
-    flex:0 1 auto;
-    min-width:0;
+    flex:0 0 auto;
   }
   .opp-contact-save-btn {
     display:inline-flex;
@@ -4253,7 +4256,6 @@
     cursor:pointer;
     flex:0 1 auto;
     min-width:0;
-    max-width:100%;
   }
   .opp-contact-save-btn:disabled {
     opacity:0.65;

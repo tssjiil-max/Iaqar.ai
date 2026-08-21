@@ -360,7 +360,7 @@ function contactRow(vm) {
     ? `<span class="opp-contact-phone phone-ltr" dir="ltr">${esc(display)}</span>`
     : `<span class="opp-details-row-main is-empty">${esc(display)}</span>`;
   return `
-    <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
+    <div class="opp-details-row is-contact-row ${complete ? "is-row-complete" : "is-row-missing"}">
       ${rowLabelHtml("contact", "رقم التواصل")}
       <span class="opp-details-row-value opp-contact-value">
         ${phoneHtml}
