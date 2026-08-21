@@ -4219,32 +4219,62 @@
     gap:4px;
     min-width:0;
   }
+  .opp-details-row.is-contact-row {
+    grid-template-columns:max-content minmax(0, 1fr) 36px;
+    gap:8px 8px;
+  }
   .opp-contact-value {
     flex-direction:row;
+    flex-wrap:nowrap;
     align-items:center;
     justify-content:center;
-    gap:8px;
+    gap:6px;
+    min-width:0;
+  }
+  .opp-contact-phone {
+    font-weight:700;
+    font-size:13px;
+    color:var(--text);
+    white-space:nowrap;
+    word-break:keep-all;
+    overflow:visible;
+    line-height:1.45;
+    flex:0 0 auto;
   }
   .opp-contact-save-btn {
-    width:36px;
-    min-width:36px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    min-height:36px;
     height:36px;
+    padding:4px 8px;
     border-radius:10px;
     border:1.5px solid var(--green);
     background:var(--green-soft);
     color:var(--green-dark);
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
     cursor:pointer;
-    padding:0;
-    flex-shrink:0;
+    flex:0 1 auto;
+    min-width:0;
+  }
+  .opp-contact-save-btn:disabled {
+    opacity:0.65;
+    cursor:wait;
   }
   .opp-contact-save-btn:active { transform:scale(0.96); }
   .opp-contact-save-icon {
-    width:20px;
-    height:20px;
+    width:16px;
+    height:16px;
     color:var(--green-dark);
+    flex-shrink:0;
+  }
+  .opp-contact-save-text {
+    font-size:11px;
+    font-weight:800;
+    line-height:1.2;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   .opp-details-missing-tag {
     display:inline-flex;

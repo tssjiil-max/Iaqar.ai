@@ -17,8 +17,12 @@ import {
   buildOpportunitySpecsLine,
   isDetailsRowComplete
 } from "./opportunity-field-completion-domain.js";
-import { ADVERTISER_ROLES, readAdvertiserDisplayName } from "./advertiser-phone-domain.js";
-import { buildPhoneContactDisplayName } from "./phone-contact-save-domain.js";
+import {
+  ADVERTISER_ROLES,
+  formatLocalPhoneDisplay,
+  readAdvertiserDisplayName
+} from "./advertiser-phone-domain.js";
+import { buildPhoneContactDisplayName, SAVE_PHONE_CONTACT_LABEL } from "./phone-contact-save-domain.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
@@ -202,10 +206,14 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     advertiserDisplayName,
     propertyType,
     contactPhone: phone,
+    contactPhoneLocal: formatLocalPhoneDisplay(phone) || "",
+    contactPersonKind: isOwner ? "owner" : "client",
+    purpose: String(normalized.purpose || "").trim(),
     contactSaveDisplayName: buildPhoneContactDisplayName({
       displayName: advertiserDisplayName,
       roleLabel: advertiserRole,
-      propertyType,
+      isOwner,
+      personKind: isOwner ? "owner" : "client",
       district: districtText
     }),
     propertyPurposeLine: card.title
@@ -327,28 +335,36 @@ function contactSaveButtonHtml(vm) {
       data-contact-phone="${esc(phone)}"
       data-contact-name="${esc(vm.advertiserDisplayName || "")}"
       data-contact-role="${esc(vm.advertiserRole || "")}"
+      data-contact-kind="${esc(vm.contactPersonKind || "")}"
       data-contact-property="${esc(vm.propertyType || "")}"
+      data-contact-purpose="${esc(vm.purpose || "")}"
       data-contact-district="${esc(vm.locationDistrict || "")}"
-      aria-label="حفظ الرقم في سجل الهاتف${saveName ? `: ${esc(saveName)}` : ""}"
-      title="حفظ الرقم في سجل الهاتف">
+      data-contact-city="${esc(vm.locationCity || "")}"
+      aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}${saveName ? `: ${esc(saveName)}` : ""}"
+      title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
       <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+      <span class="opp-contact-save-text">${esc(SAVE_PHONE_CONTACT_LABEL)}</span>
     </button>`;
 }
 
 function contactRow(vm) {
   const complete = isDetailsRowComplete(vm, "contact");
+  const local = String(vm.contactPhoneLocal || "").trim()
+    || formatLocalPhoneDisplay(vm.contactPhone)
+    || "";
   const display = complete
-    ? (String(vm.contactPhone ?? "").trim() || "—")
+    ? (local || String(vm.contactPhone ?? "").trim() || "—")
     : "غير محدد";
   const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
+  const phoneHtml = complete
+    ? `<span class="opp-contact-phone phone-ltr" dir="ltr">${esc(display)}</span>`
+    : `<span class="opp-details-row-main is-empty">${esc(display)}</span>`;
   return `
-    <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
+    <div class="opp-details-row is-contact-row ${complete ? "is-row-complete" : "is-row-missing"}">
       ${rowLabelHtml("contact", "رقم التواصل")}
       <span class="opp-details-row-value opp-contact-value">
-        <span class="opp-details-row-value-stack">
-          <span class="${complete ? "opp-details-row-main" : "opp-details-row-main is-empty"}">${esc(display)}</span>
-          ${missingBadge}
-        </span>
+        ${phoneHtml}
+        ${missingBadge}
         ${complete ? contactSaveButtonHtml(vm) : ""}
       </span>
       ${rowStatusHtml(complete)}
