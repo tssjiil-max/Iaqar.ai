@@ -1874,9 +1874,11 @@ function setAccountStatusMessage(message = "", tone = "") {
 function syncPausedBanner() {
   const banner = document.getElementById("officePausedBanner");
   const pauseBtn = document.getElementById("officePauseBtn");
+  const resumeSettingsBtn = document.getElementById("officeResumeSettingsBtn");
   const paused = isOfficePaused(current);
   if (banner) banner.hidden = !paused;
   if (pauseBtn) pauseBtn.hidden = paused;
+  if (resumeSettingsBtn) resumeSettingsBtn.hidden = !paused;
   if (paused) {
     setAccountStatusMessage("المكتب متوقف مؤقتًا", "");
   }
@@ -1974,8 +1976,11 @@ async function resumeOffice() {
   }
   if (officeResumeBusy) return;
   officeResumeBusy = true;
-  const btn = document.getElementById("officeResumeBtn");
-  if (btn) btn.disabled = true;
+  const buttons = [
+    document.getElementById("officeResumeBtn"),
+    document.getElementById("officeResumeSettingsBtn")
+  ].filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
   try {
     const oid = officeId();
     const patch = buildOfficeResumePatch();
@@ -1999,7 +2004,7 @@ async function resumeOffice() {
     toast("تعذر إعادة تفعيل المكتب. حاول مرة أخرى.");
   } finally {
     officeResumeBusy = false;
-    if (btn) btn.disabled = false;
+    buttons.forEach((btn) => { btn.disabled = false; });
   }
 }
 
@@ -2223,6 +2228,7 @@ function init() {
   document.getElementById("officePauseCancel")?.addEventListener("click", () => closeAccountDialog("officePauseOverlay"));
   document.getElementById("officePauseConfirm")?.addEventListener("click", () => void confirmPauseOffice());
   document.getElementById("officeResumeBtn")?.addEventListener("click", () => void resumeOffice());
+  document.getElementById("officeResumeSettingsBtn")?.addEventListener("click", () => void resumeOffice());
   document.getElementById("officeDeleteBtn")?.addEventListener("click", openDeleteDialog);
   document.getElementById("officeDeleteCancel")?.addEventListener("click", () => closeAccountDialog("officeDeleteOverlay"));
   document.getElementById("officeDeleteConfirm")?.addEventListener("click", confirmOfficeDelete);

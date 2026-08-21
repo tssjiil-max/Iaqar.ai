@@ -180,8 +180,10 @@ test("settings shell keeps logout, pause, and delete in account management", () 
   const accountIdx = shell.indexOf("id=\"officeAccountSection\"");
   const logoutIdx = shell.indexOf("id=\"officeLogoutBtn\"");
   const pauseIdx = shell.indexOf("id=\"officePauseBtn\"");
+  const resumeSettingsIdx = shell.indexOf("id=\"officeResumeSettingsBtn\"");
   const deleteIdx = shell.indexOf("id=\"officeDeleteBtn\"");
   assert.ok(accountIdx > 0 && logoutIdx > accountIdx && pauseIdx > logoutIdx && deleteIdx > pauseIdx);
+  assert.ok(resumeSettingsIdx > pauseIdx && resumeSettingsIdx < deleteIdx);
 });
 
 test("public intake path blocks paused offices without removing the link", () => {
