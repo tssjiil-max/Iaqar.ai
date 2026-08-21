@@ -115,6 +115,24 @@ test("VCF يحفظ الاسم والرقم الدولي وNOTE", () => {
   assert.match(phoneContactVcardFilename(check), /محمد أحمد/);
 });
 
+test("لا يُعاد تركيب الاسم إذا مُرّر الاسم الوصفي بالخطأ", () => {
+  const input = {
+    phoneRaw: "0511123456",
+    roleLabel: "عميل",
+    isOwner: false,
+    district: "عروة",
+    propertyType: "شقة",
+    purpose: "RENT"
+  };
+  const check = validatePhoneContactSave(input);
+  assert.equal(check.displayName, "عميل عقاري — عروة");
+  const once = buildPhoneContactVcard(input);
+  assert.match(once, /FN;CHARSET=UTF-8:عميل عقاري — عروة\r/);
+  const twice = buildPhoneContactVcard({ ...input, displayName: check.displayName });
+  assert.match(twice, /FN;CHARSET=UTF-8:عميل عقاري — عروة\r/);
+  assert.equal(twice.includes("عميل عقاري — عروة — عميل"), false);
+});
+
 test("الحفظ ممكن بدون اسم شخصي", () => {
   const vcard = buildPhoneContactVcard({
     phoneRaw: "0552019909",

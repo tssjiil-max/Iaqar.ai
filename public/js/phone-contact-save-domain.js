@@ -69,6 +69,15 @@ function namelessFallback(role) {
   return role === "عميل" ? "عميل عقاري" : "مالك عقار";
 }
 
+function looksLikeComposedContactName(name = "", role = "") {
+  const value = String(name || "").trim();
+  if (!value) return false;
+  if (value === "مالك عقار" || value === "عميل عقاري") return true;
+  if (value.startsWith("مالك عقار —") || value.startsWith("عميل عقاري —")) return true;
+  if (role && value.endsWith(` — ${role}`)) return true;
+  return false;
+}
+
 /**
  * Phone-book FN:
  * With name: «محمد أحمد — مالك»
@@ -84,7 +93,8 @@ export function buildPhoneContactDisplayName({
   const name = safeAdvertiserDisplayName(displayName);
   const role = resolveContactPersonRole({ isOwner, personKind, roleLabel });
   const place = cleanDistrict(district);
-  if (name) return `${name} — ${role}`;
+  if (name && !looksLikeComposedContactName(name, role)) return `${name} — ${role}`;
+  if (looksLikeComposedContactName(name, role)) return name;
   const fallback = namelessFallback(role);
   if (place) return `${fallback} — ${place}`;
   return fallback;

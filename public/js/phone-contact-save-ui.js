@@ -83,8 +83,7 @@ export async function savePhoneNumberToDevice(input = {}) {
   try {
     const saved = await shareOrDownloadVcard({
       ...input,
-      phoneRaw: check.phoneE164,
-      displayName: check.displayName
+      phoneRaw: check.phoneE164
     });
     if (!saved.ok) return saved;
     return { ...check, ...saved };
