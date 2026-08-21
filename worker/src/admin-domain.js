@@ -3,7 +3,7 @@
  */
 
 export const APPROVAL_STATUSES = Object.freeze(["pending", "approved", "rejected"]);
-export const ACCOUNT_STATUSES = Object.freeze(["active", "suspended"]);
+export const ACCOUNT_STATUSES = Object.freeze(["active", "paused", "suspended"]);
 export const LICENSE_STATUSES = Object.freeze(["valid", "expiring", "expired", "unknown"]);
 export const SUBSCRIPTION_STATUSES = Object.freeze(["trial", "active", "expiring", "expired", "none"]);
 export const ACTIVITY_LEVELS = Object.freeze({
@@ -108,7 +108,7 @@ export function officeMatchesTab(office, tab) {
     case "pending":
       return row.approvalStatus === "pending";
     case "approved":
-      return row.approvalStatus === "approved" && row.accountStatus === "active" &&
+      return row.approvalStatus === "approved" && (row.accountStatus === "active" || row.accountStatus === "paused") &&
         !["expired"].includes(row.subscriptionStatus) && row.licenseStatus !== "expired";
     case "suspended":
       return row.accountStatus === "suspended";

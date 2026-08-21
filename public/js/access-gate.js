@@ -413,6 +413,10 @@
     return `<span class="phone-ltr" dir="ltr">${escapeHtml(raw)}</span>`;
   }
 
+  function isPublicOfficePaused(data = {}) {
+    return String(data.accountStatus || "").trim().toLowerCase() === "paused";
+  }
+
   async function publicOffice() {
     frame(`<section class="access-card"><h2>خدمات المكتب</h2>
       <p>ارفع طلبك مباشرة دون تسجيل، ولا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.</p>
@@ -446,6 +450,14 @@
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>`;
+        if (isPublicOfficePaused(data)) {
+          const options = gate.querySelector(".access-options");
+          if (options) {
+            options.innerHTML = `<p class="access-note">المكتب متوقف مؤقتًا عن استقبال الطلبات.</p>
+              <button class="access-btn light" id="publicHome">المنصة العامة</button>`;
+            gate.querySelector("#publicHome").onclick = () => location.assign("/");
+          }
+        }
       }
     } catch (_) {}
   }
@@ -594,6 +606,16 @@
 
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
+    const target = String(targetOffice || "").trim().toLowerCase();
+    if (target && target !== "platform") {
+      try {
+        const snap = await db().collection("publicOffices").doc(target).get();
+        if (snap.exists && isPublicOfficePaused(snap.data() || {})) {
+          await publicOffice();
+          return;
+        }
+      } catch (_) { /* continue to form; submit still re-checks */ }
+    }
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
@@ -680,6 +702,15 @@
       submit.disabled = true;
       submit.textContent = owner ? "جارٍ رفع العرض..." : "جارٍ إرسال الطلب...";
       try {
+        if (targetOffice && targetOffice !== "platform") {
+          const publicSnap = await db().collection("publicOffices").doc(targetOffice).get();
+          if (publicSnap.exists && isPublicOfficePaused(publicSnap.data() || {})) {
+            showStatus("المكتب متوقف مؤقتًا عن استقبال الطلبات.");
+            submit.disabled = false;
+            submit.textContent = owner ? "إرسال العرض" : "إرسال الطلب";
+            return;
+          }
+        }
         const ref = db().collection("offices").doc(targetOffice).collection("publicIntake").doc();
         const propertyType = String(fields.get("propertyType") || "").trim();
         if (!propertyType) return showStatus("أدخل نوع العقار.");

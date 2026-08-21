@@ -2300,11 +2300,11 @@
 
     .office-settings-actions {
       display:grid;
-      grid-template-columns:1fr 1fr;
+      grid-template-columns:1fr;
       gap:8px;
       margin-top:12px;
     }
-    .office-save-btn,.office-logout-btn {
+    .office-save-btn,.office-logout-btn,.office-pause-btn,.office-delete-btn {
       min-height:45px;
       border-radius:14px;
       font:inherit;
@@ -2312,8 +2312,111 @@
       font-weight:800;
     }
     .office-save-btn { border:0; background:var(--green); color:#fff; }
-    .office-logout-btn { border:1px solid var(--line); background:#fff; color:#8b2f2a; }
+    .office-logout-btn { border:1px solid var(--line); background:#fff; color:var(--green); }
     .office-logout-btn:disabled { opacity:.45; }
+    .office-pause-btn {
+      border:1px solid #d7c48a;
+      background:#fff8e8;
+      color:#8a6a12;
+    }
+    .office-delete-btn {
+      border:1px solid #d7b0ad;
+      background:#fff;
+      color:#8b2f2a;
+    }
+    .office-account-actions {
+      display:grid;
+      gap:8px;
+    }
+    .office-account-danger {
+      margin-top:14px;
+      padding-top:14px;
+      border-top:1px solid #f0d7d4;
+    }
+    .office-paused-banner {
+      margin:0 0 10px;
+      padding:12px 14px;
+      border:1px solid #d7c48a;
+      border-radius:16px;
+      background:#fff8e8;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .office-paused-banner[hidden] { display:none !important; }
+    .office-paused-banner p {
+      margin:0;
+      color:#8a6a12;
+      font-size:13px;
+      font-weight:800;
+    }
+    .office-paused-banner button {
+      min-height:38px;
+      padding:0 12px;
+      border:1px solid #d7c48a;
+      border-radius:12px;
+      background:#fff;
+      color:#8a6a12;
+      font:inherit;
+      font-size:12px;
+      font-weight:800;
+    }
+    .office-reason-list {
+      display:grid;
+      gap:6px;
+      margin:10px 0;
+    }
+    .office-reason-list label {
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+      font-size:13px;
+    }
+    .bank-more { position:relative; flex:0 0 auto; }
+    .bank-more-toggle {
+      width:38px;
+      height:38px;
+      border:0;
+      border-radius:12px;
+      background:rgba(255,255,255,.14);
+      color:#fff;
+      font:inherit;
+      font-size:22px;
+      line-height:1;
+      cursor:pointer;
+    }
+    .bank-more-menu {
+      position:absolute;
+      top:calc(100% + 6px);
+      left:0;
+      min-width:148px;
+      padding:6px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+      box-shadow:0 8px 24px rgba(8,112,100,.12);
+      z-index:5;
+    }
+    .bank-more-item {
+      width:100%;
+      min-height:36px;
+      border:0;
+      border-radius:10px;
+      background:transparent;
+      color:var(--text);
+      font:inherit;
+      font-size:12px;
+      font-weight:700;
+      text-align:right;
+      cursor:pointer;
+    }
+    .bank-more-item--danger { color:#8b2f2a; }
+    .bank-coop-paused {
+      color:#8a6a12;
+      font-size:11px;
+      font-weight:700;
+    }
     #officeSettings .settings-sheet.is-library-open {
       width:min(1180px,92vw);
       max-width:min(1180px,92vw);
@@ -5638,6 +5741,10 @@
     </header>
 
     <section class="card license">
+      <div class="office-paused-banner" id="officePausedBanner" hidden>
+        <p>المكتب متوقف مؤقتًا</p>
+        <button type="button" id="officeResumeBtn">إعادة تفعيل المكتب</button>
+      </div>
       <div class="office-body">
         <div class="section-title-bar office-name-bar">
           <h3 id="officeDisplayName">مكتب عقاري</h3>
@@ -5973,8 +6080,8 @@
     <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="permanentDeleteTitle">
       <div class="settings-head">
         <div>
-          <h2 id="permanentDeleteTitle">حذف نهائي</h2>
-          <p id="permanentDeleteMessage">سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟</p>
+          <h2 id="permanentDeleteTitle">حذف الفرصة نهائيًا؟</h2>
+          <p id="permanentDeleteMessage">لن تتمكن من استعادتها بعد الحذف.</p>
         </div>
       </div>
       <div class="permanent-delete-actions">
@@ -6034,7 +6141,6 @@
         </div>
         <div class="office-settings-actions">
           <button class="office-save-btn" id="saveOfficeSettingsBtn" type="submit">حفظ التعديلات</button>
-          <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
         </div>
         <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط حسب officeId.</p>
       </form>
@@ -6349,6 +6455,20 @@
         <p class="section-status" id="pwaInstallStatus" role="status">جاهز للتثبيت عند دعم المتصفح</p>
       </section>
 
+      <section class="settings-section" id="officeAccountSection">
+        <h3>إدارة الحساب</h3>
+        <p class="section-help">تسجيل الخروج لا يحذف بيانات المكتب أو فرصه. إيقاف المكتب مؤقتًا يُخفيه من التعاون الجديد مع الإبقاء على كل البيانات.</p>
+        <div class="office-account-actions">
+          <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
+          <button class="office-pause-btn" id="officePauseBtn" type="button">إيقاف المكتب مؤقتًا</button>
+          <button class="office-pause-btn" id="officeResumeSettingsBtn" type="button" hidden>إعادة تفعيل المكتب</button>
+        </div>
+        <p class="section-status" id="officeAccountStatus" role="status"></p>
+        <div class="office-account-danger">
+          <button class="office-delete-btn" id="officeDeleteBtn" type="button">حذف المكتب والبيانات</button>
+        </div>
+      </section>
+
       <div class="integration-card">
         <div class="integration-row">
           <strong>واتساب أعمال</strong>
@@ -6388,6 +6508,95 @@
         </div>
       </div>
     </section>
+
+    <div class="settings-overlay" id="officePauseOverlay" hidden>
+      <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="officePauseTitle">
+        <div class="settings-head">
+          <div>
+            <h2 id="officePauseTitle">إيقاف المكتب مؤقتًا</h2>
+            <p>ستبقى بيانات مكتبك وفرصك محفوظة ويمكنك إعادة تفعيل المكتب في أي وقت.</p>
+          </div>
+        </div>
+        <div class="office-reason-list" id="officePauseReasonList">
+          <label><input type="radio" name="officePauseReason" value="vacation"> إجازة</label>
+          <label><input type="radio" name="officePauseReason" value="temporary_break"> توقف مؤقت عن العمل</label>
+          <label><input type="radio" name="officePauseReason" value="busy"> انشغال</label>
+          <label><input type="radio" name="officePauseReason" value="personal_reason"> ظرف شخصي</label>
+          <label><input type="radio" name="officePauseReason" value="office_reorganization"> إعادة تنظيم المكتب</label>
+          <label><input type="radio" name="officePauseReason" value="team_unavailable"> عدم توفر الفريق</label>
+          <label><input type="radio" name="officePauseReason" value="not_accepting_now"> لا أريد استقبال فرص حاليًا</label>
+          <label><input type="radio" name="officePauseReason" value="other"> سبب آخر</label>
+        </div>
+        <label id="officePauseOtherWrap" hidden>
+          <span>اكتب السبب</span>
+          <textarea id="officePauseOtherNote" maxlength="200" rows="2"></textarea>
+        </label>
+        <label>
+          <span>تاريخ العودة المتوقع</span>
+          <input type="date" id="officePauseReturnDate">
+        </label>
+        <label><input type="checkbox" id="officePauseNoReturnDate" checked> بدون تاريخ محدد</label>
+        <p class="section-status" id="officePauseDialogStatus" role="status"></p>
+        <div class="permanent-delete-actions">
+          <button type="button" class="bank-action" id="officePauseCancel">إلغاء</button>
+          <button type="button" class="office-pause-btn" id="officePauseConfirm">إيقاف المكتب مؤقتًا</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="settings-overlay" id="officeDeleteOverlay" hidden>
+      <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="officeDeleteTitle">
+        <div class="settings-head">
+          <div>
+            <h2 id="officeDeleteTitle">حذف المكتب والبيانات</h2>
+            <p id="officeDeleteLead">اختر سبب الحذف قبل المتابعة.</p>
+          </div>
+        </div>
+        <div class="office-reason-list" id="officeDeleteReasonList">
+          <label><input type="radio" name="officeDeleteReason" value="too_difficult"> صعوبة استخدام المنصة</label>
+          <label><input type="radio" name="officeDeleteReason" value="too_many_steps"> الخطوات كثيرة أو معقدة</label>
+          <label><input type="radio" name="officeDeleteReason" value="slow"> الموقع بطيء</label>
+          <label><input type="radio" name="officeDeleteReason" value="technical_issues"> أخطاء أو مشاكل تقنية</label>
+          <label><input type="radio" name="officeDeleteReason" value="poor_matching"> المطابقة غير مفيدة</label>
+          <label><input type="radio" name="officeDeleteReason" value="workflow_not_fit"> إدارة الفرص لا تناسب طريقة عملي</label>
+          <label><input type="radio" name="officeDeleteReason" value="cooperation_not_useful"> التعاون مع المكاتب غير مفيد</label>
+          <label><input type="radio" name="officeDeleteReason" value="whatsapp_issues"> مشاكل في واتساب أو التواصل</label>
+          <label><input type="radio" name="officeDeleteReason" value="low_network_value"> لا توجد فرص أو مكاتب كافية</label>
+          <label><input type="radio" name="officeDeleteReason" value="low_usage"> لا أستخدم المنصة بشكل كافٍ</label>
+          <label><input type="radio" name="officeDeleteReason" value="moved_to_competitor"> انتقلت إلى منصة أخرى</label>
+          <label><input type="radio" name="officeDeleteReason" value="pricing"> السعر أو الاشتراك غير مناسب</label>
+          <label><input type="radio" name="officeDeleteReason" value="privacy_concern"> مخاوف تتعلق بالخصوصية</label>
+          <label><input type="radio" name="officeDeleteReason" value="left_real_estate"> توقفت نهائيًا عن العمل العقاري</label>
+          <label><input type="radio" name="officeDeleteReason" value="trial_only"> أنشأت المكتب للتجربة فقط</label>
+          <label><input type="radio" name="officeDeleteReason" value="duplicate_office"> لدي مكتب آخر</label>
+          <label><input type="radio" name="officeDeleteReason" value="other"> سبب آخر</label>
+        </div>
+        <label id="officeDeleteOtherWrap" hidden>
+          <span>اكتب السبب</span>
+          <textarea id="officeDeleteOtherNote" maxlength="300" rows="3"></textarea>
+        </label>
+        <div id="officeDeletePauseSuggest" hidden>
+          <p>هل تفضل إيقاف المكتب مؤقتًا بدل حذفه؟</p>
+          <div class="permanent-delete-actions">
+            <button type="button" class="office-pause-btn" id="officeDeleteSwitchPause">إيقاف مؤقت</button>
+            <button type="button" class="bank-action" id="officeDeleteContinue">متابعة الحذف</button>
+          </div>
+        </div>
+        <div id="officeDeleteConfirmStep" hidden>
+          <h3>تأكيد حذف المكتب</h3>
+          <p>سيتم حذف المكتب وبياناته المرتبطة نهائيًا ولا يمكن التراجع بعد إتمام العملية.</p>
+          <label>
+            <span>اكتب «حذف المكتب» للمتابعة</span>
+            <input type="text" id="officeDeleteConfirmInput" maxlength="40" autocomplete="off">
+          </label>
+          <button type="button" class="office-delete-btn" id="officeDeleteConfirm" disabled>حذف المكتب نهائيًا</button>
+        </div>
+        <p class="section-status" id="officeDeleteDialogStatus" role="status"></p>
+        <div class="permanent-delete-actions">
+          <button type="button" class="bank-action" id="officeDeleteCancel">إلغاء</button>
+        </div>
+      </section>
+    </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>

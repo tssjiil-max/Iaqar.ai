@@ -61,6 +61,18 @@ const HUB_OPTION_KEYS = {
   copy_listing_text: "hub:copy_listing_text"
 };
 
+export function buildOpportunityMoreMenuHtml({ archived = false } = {}) {
+  const label = archived ? "حذف نهائي" : "حذف الفرصة";
+  const itemClass = archived ? "bank-more-item bank-more-item--danger" : "bank-more-item";
+  return `
+    <div class="bank-more" data-bank-more>
+      <button type="button" class="bank-more-toggle" id="bankMoreToggle" aria-expanded="false" aria-haspopup="true" aria-label="المزيد">⋯</button>
+      <div class="bank-more-menu" id="bankMoreMenu" hidden>
+        <button type="button" class="${itemClass}" id="bankDeleteBtn">${esc(label)}</button>
+      </div>
+    </div>`;
+}
+
 export function buildWorkspaceCoopRowsHtml(cooperationRequests = [], options = {}) {
   const ownOfficeId = String(options.ownOfficeId || "").trim().toLowerCase();
   const rows = activeWorkspaceCooperationRequests(cooperationRequests);
@@ -84,9 +96,13 @@ export function buildWorkspaceCoopRowsHtml(cooperationRequests = [], options = {
     if (status === "PENDING" && isOrigin && requestId) {
       actions.push(`<button type="button" class="bank-action iaqar-workflow-btn secondary" data-cancel-coop-request="${esc(requestId)}">إلغاء الطلب</button>`);
     }
+    const peerId = String(isOrigin ? (row.targetOfficeId || "") : (row.originatingOfficeId || "")).trim().toLowerCase();
+    const pausedMark = peerId && options.pausedPeerIds instanceof Set && options.pausedPeerIds.has(peerId)
+      ? ` <span class="bank-coop-paused">متوقف مؤقتًا</span>`
+      : "";
     return `
     <div class="bank-workspace-coop-row" data-coop-request-id="${esc(requestId)}" data-coop-target-id="${esc(row.targetOfficeId || "")}">
-      <strong>${esc(peerName)}</strong>
+      <strong>${esc(peerName)}${pausedMark}</strong>
       <span>${esc(statusLabel)}</span>
       ${sentLabel ? `<small>${esc(sentLabel)}</small>` : ""}
       ${actions.join("")}
@@ -147,6 +163,7 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   return `
     <div class="bank-detail-head iaqar-workflow-head">
       <h3>تفاصيل الفرصة</h3>
+      ${buildOpportunityMoreMenuHtml({ archived: false })}
       <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
     ${buildWorkspaceSummaryStripHtml(id, record, readiness)}
@@ -323,7 +340,10 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
 
   const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
 
-  const coopRows = buildWorkspaceCoopRowsHtml(cooperationRequests, { ownOfficeId });
+  const coopRows = buildWorkspaceCoopRowsHtml(cooperationRequests, {
+    ownOfficeId,
+    pausedPeerIds: options.pausedPeerIds
+  });
   const coopEmpty = coopRows ? "" : buildWorkspaceCoopEmptyHintHtml();
 
   const partyActionButtons = partyActions.map((action) => {
@@ -357,6 +377,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
       <div class="bank-workspace-main">
         <div class="bank-detail-head iaqar-workflow-head">
           <h3>تفاصيل الفرصة</h3>
+          ${buildOpportunityMoreMenuHtml({ archived })}
           <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
         </div>
         ${buildWorkspaceSummaryStripHtml(id, record, readiness)}

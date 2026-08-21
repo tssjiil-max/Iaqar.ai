@@ -25,6 +25,7 @@ import {
   validateOwnedOpportunityIds,
   validatePermanentDelete
 } from "./opportunity-bank-domain.js";
+import { isOfficePaused } from "./office-account-lifecycle-domain.js";
 import {
   phase4BoundaryGuarantees,
   requestOpportunityRematch
@@ -88,6 +89,7 @@ import { buildOpportunityListingCardInnerHtml } from "./opportunity-listing-card
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
+  buildOpportunityMoreMenuHtml,
   buildMatchComparisonHtml,
   buildCooperationRoomHtml,
   buildContactOutcomeActionHtml,
@@ -294,6 +296,7 @@ function filterPublicOffices(query, offices, filters = {}) {
     .filter((row) => {
       const id = String(row.officeId || row.id || "").trim().toLowerCase();
       if (!id || id === current) return false;
+      if (isOfficePaused(row)) return false;
       const mode = String(row.cooperationMode || "APPROVAL_REQUIRED").toUpperCase();
       if (mode === "DISABLED") return false;
       if (cityFilter && !String(row.city || "").toLowerCase().includes(cityFilter)) return false;
@@ -871,11 +874,13 @@ async function renderDetail(id, options = {}) {
     panel.innerHTML = `
       <div class="bank-detail-head iaqar-workflow-head">
         <h3>تفاصيل الفرصة (مؤرشفة)</h3>
+        ${buildOpportunityMoreMenuHtml({ archived: true })}
         <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
       </div>
       ${detailsHtml}
       <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
+    wireOpportunityMoreMenu(id, record);
     scrollBankDetailIntoView();
     if (!ctx.dailyTask) {
       setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
@@ -908,10 +913,14 @@ async function renderDetail(id, options = {}) {
     )
   };
   const freshRecord = state.records.get(id) || record;
+  const pausedPeerIds = await pausedPeerIdsFromRequests(
+    mergeWorkspaceCooperationRequests(freshRecord, enrichedBundle.cooperationRequests || [], officeId())
+  );
   panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, enrichedBundle, {
     officeProfile: officeProfileForShare(),
     origin: window.location.origin,
-    ownOfficeId: officeId()
+    ownOfficeId: officeId(),
+    pausedPeerIds
   });
   wireWorkspaceHandlers(id, freshRecord, enrichedBundle);
   applyBankBrokerMarks(freshRecord);
@@ -994,7 +1003,7 @@ function cooperationRequestsFromOutgoingCache(opportunityId = "") {
     }));
 }
 
-function renderWorkspaceCoopList(opportunityId, record = {}, bundle = {}) {
+function renderWorkspaceCoopList(opportunityId, record = {}, bundle = {}, options = {}) {
   const list = document.getElementById("bankWorkspaceCoopList");
   if (!list) return;
   const requests = mergeWorkspaceCooperationRequests(
@@ -1005,7 +1014,10 @@ function renderWorkspaceCoopList(opportunityId, record = {}, bundle = {}) {
     ),
     officeId()
   );
-  const rowsHtml = buildWorkspaceCoopRowsHtml(requests, { ownOfficeId: officeId() });
+  const rowsHtml = buildWorkspaceCoopRowsHtml(requests, {
+    ownOfficeId: officeId(),
+    pausedPeerIds: options.pausedPeerIds
+  });
   list.innerHTML = rowsHtml || buildWorkspaceCoopEmptyHintHtml();
   wireWorkspaceCoopRowHandlers(opportunityId, record, { ...bundle, cooperationRequests: requests });
 }
@@ -1028,7 +1040,16 @@ async function refreshWorkspaceCoopSection(opportunityId, recordPatch = {}) {
   await loadOutgoingScopes();
   const bundle = await loadWorkspaceBundle(opportunityId);
   const record = state.records.get(opportunityId) || mergedRecord;
-  renderWorkspaceCoopList(opportunityId, record, bundle);
+  const requests = mergeWorkspaceCooperationRequests(
+    record,
+    mergeUniqueCooperationRequests(
+      bundle.cooperationRequests || [],
+      cooperationRequestsFromOutgoingCache(opportunityId)
+    ),
+    officeId()
+  );
+  const pausedPeerIds = await pausedPeerIdsFromRequests(requests);
+  renderWorkspaceCoopList(opportunityId, record, bundle, { pausedPeerIds });
   applyWorkspaceLifecycleFlow(opportunityId, record, {
     ...bundle,
     cooperationRequests: mergeUniqueCooperationRequests(
@@ -1459,6 +1480,7 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
 
 function wireIncompleteDetailHandlers(id, record) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
+  wireOpportunityMoreMenu(id, record);
   wireBankFormArabicInputs(record);
   wireWorkspaceUxPresentation(id, record, {});
 
@@ -1793,6 +1815,7 @@ function wireCooperationHandlers(opportunityId, record, bundle = {}) {
 
 function wireWorkspaceHandlers(id, record, bundle = {}) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
+  wireOpportunityMoreMenu(id, record);
 
   const showSection = (sectionId) => {
     showWorkspaceSection(sectionId);
@@ -2717,7 +2740,6 @@ function wireDetailHandlers(id, record) {
 
   $("bankArchiveBtn")?.addEventListener("click", () => void archiveOpportunity(id, record));
   $("bankRestoreBtn")?.addEventListener("click", () => void restoreOpportunity(id, record));
-  $("bankDeleteBtn")?.addEventListener("click", () => confirmPermanentDelete(id, record));
   $("bankDirectShareForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const targetOfficeId = String($("bankDetailScopeTarget")?.value || "").trim();
@@ -3085,37 +3107,131 @@ async function restoreOpportunity(id, existing) {
   }
 }
 
+async function pausedPeerIdsFromRequests(requests = []) {
+  const own = String(officeId() || "").trim().toLowerCase();
+  const ids = new Set();
+  for (const row of requests) {
+    const origin = String(row.originatingOfficeId || "").trim().toLowerCase();
+    const target = String(row.targetOfficeId || "").trim().toLowerCase();
+    const peer = origin === own ? target : origin;
+    if (peer && peer !== own) ids.add(peer);
+  }
+  const paused = new Set();
+  const runtime = officeRuntime();
+  if (!runtime?.db || !ids.size) return paused;
+  await Promise.all([...ids].map(async (id) => {
+    try {
+      const snap = await runtime.db.collection("publicOffices").doc(id).get();
+      if (snap.exists && isOfficePaused(snap.data() || {})) paused.add(id);
+    } catch (_) { /* ignore */ }
+  }));
+  return paused;
+}
+
+function wireOpportunityMoreMenu(id, record) {
+  const toggle = $("bankMoreToggle");
+  const menu = $("bankMoreMenu");
+  if (toggle && menu) {
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = menu.hidden;
+      menu.hidden = !open;
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+  $("bankDeleteBtn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (menu) menu.hidden = true;
+    confirmPermanentDelete(id, record);
+  });
+}
+
+let opportunityDeleteBusy = false;
+
 async function softDeleteOpportunity(id, existing) {
   const user = authUser();
-  const result = buildSoftDeletePatch(existing, { actorUid: user?.uid || "", reason: "permanent_delete" });
-  if (result.idempotent) {
-    setStatus("الفرصة محذوفة مسبقًا", "is-done");
-    return;
+  const runtime = officeRuntime();
+  const currentOffice = officeId();
+  const validation = validatePermanentDelete(existing, {
+    officeId: currentOffice,
+    opportunityId: id,
+    actorUid: user?.uid || ""
+  });
+  if (!validation.allowed) {
+    setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
+    toast(validation.reason || "تعذر حذف الفرصة. حاول مرة أخرى.");
+    return false;
   }
-  setStatus("جارٍ الحذف النهائي…");
+  if (!runtime?.db) {
+    toast("تعذر حذف الفرصة. حاول مرة أخرى.");
+    return false;
+  }
+  if (opportunityDeleteBusy) return false;
+  opportunityDeleteBusy = true;
+  const confirmBtn = document.getElementById("permanentDeleteConfirm");
+  const previousLabel = confirmBtn?.textContent;
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "جاري الحذف...";
+  }
+  setStatus("جاري الحذف...");
   try {
-    await patchOpportunity(id, result.patch);
-    await rematchOpportunity(id, { reason: "delete" });
+    const result = buildSoftDeletePatch(existing, { actorUid: user.uid, reason: "permanent_delete" });
+    if (result.idempotent) {
+      state.records.delete(id);
+      state.activeId = null;
+      $("opportunityBankDetail").hidden = true;
+      renderList();
+      setStatus("الفرصة محذوفة مسبقًا", "is-done");
+      toast("تم حذف الفرصة.");
+      return true;
+    }
+    await runtime.db.collection("offices").doc(currentOffice)
+      .collection("opportunities").doc(id)
+      .set({
+        officeId: currentOffice,
+        ...result.patch
+      }, { merge: true });
+    try {
+      await rematchOpportunity(id, { reason: "delete" });
+    } catch (rematchError) {
+      console.warn("[iaqar] bank delete rematch", rematchError);
+    }
     state.records.delete(id);
     state.activeId = null;
     $("opportunityBankDetail").hidden = true;
     renderList();
-    setStatus("تم الحذف النهائي", "is-done");
-    toast("تم حذف الفرصة نهائيًا");
+    setStatus("تم حذف الفرصة", "is-done");
+    toast("تم حذف الفرصة.");
+    return true;
   } catch (error) {
     console.warn("[iaqar] bank delete", error);
-    setStatus("تعذر الحذف", "is-error");
+    setStatus("تعذر حذف الفرصة. حاول مرة أخرى.", "is-error");
+    toast("تعذر حذف الفرصة. حاول مرة أخرى.");
+    return false;
+  } finally {
+    opportunityDeleteBusy = false;
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = previousLabel || "حذف نهائي";
+    }
   }
 }
 
 function confirmPermanentDelete(id, record) {
-  const validation = validatePermanentDelete(record, { officeId: officeId() });
+  const user = authUser();
+  const validation = validatePermanentDelete(record, {
+    officeId: officeId(),
+    opportunityId: id,
+    actorUid: user?.uid || ""
+  });
   if (!validation.allowed) {
     setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
     toast(validation.reason || "لا يمكن حذف هذه الفرصة");
     return;
   }
   const modal = document.getElementById("permanentDeleteOverlay");
+  const title = document.getElementById("permanentDeleteTitle");
   const message = document.getElementById("permanentDeleteMessage");
   const cancelBtn = document.getElementById("permanentDeleteCancel");
   const confirmBtn = document.getElementById("permanentDeleteConfirm");
@@ -3123,9 +3239,10 @@ function confirmPermanentDelete(id, record) {
     setStatus("تعذر فتح تأكيد الحذف", "is-error");
     return;
   }
-  if (message) {
-    message.textContent = "سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟";
-  }
+  if (title) title.textContent = "حذف الفرصة نهائيًا؟";
+  if (message) message.textContent = "لن تتمكن من استعادتها بعد الحذف.";
+  confirmBtn.textContent = "حذف نهائي";
+  confirmBtn.disabled = false;
   modal.hidden = false;
   const close = () => {
     modal.hidden = true;
@@ -3134,8 +3251,11 @@ function confirmPermanentDelete(id, record) {
   };
   const onCancel = () => close();
   const onConfirm = () => {
-    close();
-    void softDeleteOpportunity(id, record);
+    if (opportunityDeleteBusy || confirmBtn.disabled) return;
+    void (async () => {
+      const ok = await softDeleteOpportunity(id, record);
+      if (ok) close();
+    })();
   };
   cancelBtn.addEventListener("click", onCancel);
   confirmBtn.addEventListener("click", onConfirm);
@@ -3241,6 +3361,15 @@ async function createShareRequest({
     if (!suppressUi) setShareActionStatus(shareValidation.message, "is-error");
     return { ok: false, errorMessage: shareValidation.message };
   }
+
+  try {
+    const targetSnap = await runtime.db.collection("publicOffices").doc(targetOfficeId).get();
+    if (targetSnap.exists && isOfficePaused(targetSnap.data() || {})) {
+      const errorMessage = "هذا المكتب متوقف مؤقتًا ولا يمكن إرسال فرصة إليه.";
+      if (!suppressUi) setShareActionStatus(errorMessage, "is-error");
+      return { ok: false, errorMessage };
+    }
+  } catch (_) { /* worker eligibility remains the authority */ }
 
   const duplicate = await hasActiveShareWithOffice(targetOfficeId, ownedCheck.accepted);
   if (duplicate) {

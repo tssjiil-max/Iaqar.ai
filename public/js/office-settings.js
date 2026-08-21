@@ -38,6 +38,15 @@ import {
   buildOfficeScopePayload,
   resolveLegacyOfficeScope
 } from "./office-scope-domain.js";
+import {
+  isOfficePaused,
+  buildOfficePausePatch,
+  buildOfficeResumePatch,
+  validateOfficeDeleteReason,
+  isOfficeDeleteConfirmPhrase,
+  officeDeleteIsFullySupported,
+  OFFICE_FULL_DELETE_UNAVAILABLE_MESSAGE
+} from "./office-account-lifecycle-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -165,7 +174,14 @@ function clean(data) {
     logoUrl: safeText(data.logoUrl).slice(0, 2000),
     displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
     coverUrl: safeText(data.coverUrl).slice(0, 2000),
-    publicSlug: normalizePublicSlug(data.publicSlug)
+    publicSlug: normalizePublicSlug(data.publicSlug),
+    accountStatus: data.accountStatus === "paused"
+      ? "paused"
+      : (data.accountStatus === "suspended" ? "suspended" : (data.accountStatus || "active")),
+    pauseReasonCode: safeText(data.pauseReasonCode).slice(0, 40),
+    pauseReasonNote: safeText(data.pauseReasonNote).slice(0, 200),
+    pausedAt: safeText(data.pausedAt).slice(0, 80),
+    pauseExpectedReturnAt: safeText(data.pauseExpectedReturnAt).slice(0, 40)
   };
 }
 
@@ -540,6 +556,7 @@ function apply(data) {
   const specialtyWrap = document.getElementById("officeDisplaySpecialtiesWrap");
   if (specialtyWrap) specialtyWrap.hidden = !current.specialties.length;
   renderOfficeCardNeighborhoods(current.serviceNeighborhoodIds);
+  syncPausedBanner();
 }
 
 // ---------------------------------------------------------------------------
@@ -585,6 +602,10 @@ async function loadFirestore() {
         cooperationAvailableNow: data.cooperationAvailableNow === true,
         approvalStatus: data.approvalStatus || "",
         accountStatus: data.accountStatus || "",
+        pauseReasonCode: data.pauseReasonCode || "",
+        pauseReasonNote: data.pauseReasonNote || "",
+        pausedAt: data.pausedAt || "",
+        pauseExpectedReturnAt: data.pauseExpectedReturnAt || "",
         logoUrl: data.logoUrl,
         displayImageUrl: data.displayImageUrl,
         coverUrl: data.coverUrl,
@@ -1842,6 +1863,220 @@ window.IAQAR.openOfficeSettings = openSettings;
 window.IAQAR.closeOfficeSettings = closeSettings;
 window.IAQAR.shareOpportunityCard = shareOpportunityCard;
 
+function setAccountStatusMessage(message = "", tone = "") {
+  const node = document.getElementById("officeAccountStatus");
+  if (!node) return;
+  node.textContent = message || "";
+  node.classList.remove("is-error", "is-done");
+  if (tone) node.classList.add(tone);
+}
+
+function syncPausedBanner() {
+  const banner = document.getElementById("officePausedBanner");
+  const pauseBtn = document.getElementById("officePauseBtn");
+  const resumeSettingsBtn = document.getElementById("officeResumeSettingsBtn");
+  const paused = isOfficePaused(current);
+  if (banner) banner.hidden = !paused;
+  if (pauseBtn) pauseBtn.hidden = paused;
+  if (resumeSettingsBtn) resumeSettingsBtn.hidden = !paused;
+  if (paused) {
+    setAccountStatusMessage("المكتب متوقف مؤقتًا", "");
+  }
+}
+
+function selectedRadioValue(name) {
+  const picked = document.querySelector(`input[name="${name}"]:checked`);
+  return picked ? picked.value : "";
+}
+
+function closeAccountDialog(id) {
+  const overlay = document.getElementById(id);
+  if (overlay) overlay.hidden = true;
+}
+
+function openPauseDialog() {
+  const overlay = document.getElementById("officePauseOverlay");
+  if (!overlay) return;
+  overlay.hidden = false;
+  const status = document.getElementById("officePauseDialogStatus");
+  if (status) status.textContent = "";
+  const otherWrap = document.getElementById("officePauseOtherWrap");
+  if (otherWrap) otherWrap.hidden = selectedRadioValue("officePauseReason") !== "other";
+}
+
+let officePauseBusy = false;
+let officeResumeBusy = false;
+let officeDeleteBusy = false;
+let officeDeleteContinueForced = false;
+
+async function confirmPauseOffice() {
+  const user = authUser();
+  const runtime = officeRuntime();
+  const confirmBtn = document.getElementById("officePauseConfirm");
+  const status = document.getElementById("officePauseDialogStatus");
+  if (!user || !runtime?.db) {
+    if (status) status.textContent = "سجل دخول المكتب أولًا.";
+    return;
+  }
+  if (officePauseBusy) return;
+  const unspecified = Boolean(document.getElementById("officePauseNoReturnDate")?.checked);
+  const built = buildOfficePausePatch({
+    reasonCode: selectedRadioValue("officePauseReason"),
+    otherNote: document.getElementById("officePauseOtherNote")?.value || "",
+    expectedReturnAt: document.getElementById("officePauseReturnDate")?.value || "",
+    unspecifiedReturn: unspecified,
+    actorUid: user.uid
+  });
+  if (!built.ok) {
+    if (status) status.textContent = built.message;
+    return;
+  }
+  officePauseBusy = true;
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "جاري الإيقاف...";
+  }
+  try {
+    const oid = officeId();
+    await runtime.db.collection("offices").doc(oid).set({
+      officeId: oid,
+      ...built.patch,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    await runtime.db.collection("publicOffices").doc(oid).set({
+      officeId: oid,
+      accountStatus: "paused",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    current = { ...current, ...built.patch, accountStatus: "paused" };
+    saveLocal(current);
+    syncPausedBanner();
+    closeAccountDialog("officePauseOverlay");
+    closeAccountDialog("officeDeleteOverlay");
+    toast("تم إيقاف المكتب مؤقتًا");
+    setAccountStatusMessage("المكتب متوقف مؤقتًا", "is-done");
+  } catch (error) {
+    console.warn("[iaqar] office pause", error);
+    if (status) status.textContent = "تعذر إيقاف المكتب. حاول مرة أخرى.";
+  } finally {
+    officePauseBusy = false;
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "إيقاف المكتب مؤقتًا";
+    }
+  }
+}
+
+async function resumeOffice() {
+  const user = authUser();
+  const runtime = officeRuntime();
+  if (!user || !runtime?.db) {
+    toast("سجل دخول المكتب أولًا");
+    return;
+  }
+  if (officeResumeBusy) return;
+  officeResumeBusy = true;
+  const buttons = [
+    document.getElementById("officeResumeBtn"),
+    document.getElementById("officeResumeSettingsBtn")
+  ].filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const oid = officeId();
+    const patch = buildOfficeResumePatch();
+    await runtime.db.collection("offices").doc(oid).set({
+      officeId: oid,
+      ...patch,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    await runtime.db.collection("publicOffices").doc(oid).set({
+      officeId: oid,
+      accountStatus: "active",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    current = { ...current, ...patch };
+    saveLocal(current);
+    syncPausedBanner();
+    toast("تم إعادة تفعيل المكتب.");
+    setAccountStatusMessage("تم إعادة تفعيل المكتب.", "is-done");
+  } catch (error) {
+    console.warn("[iaqar] office resume", error);
+    toast("تعذر إعادة تفعيل المكتب. حاول مرة أخرى.");
+  } finally {
+    officeResumeBusy = false;
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
+function syncOfficeDeleteDialog() {
+  const reasonCode = selectedRadioValue("officeDeleteReason");
+  const otherWrap = document.getElementById("officeDeleteOtherWrap");
+  if (otherWrap) otherWrap.hidden = reasonCode !== "other";
+  const validated = validateOfficeDeleteReason({
+    reasonCode,
+    otherNote: document.getElementById("officeDeleteOtherNote")?.value || ""
+  });
+  const suggest = document.getElementById("officeDeletePauseSuggest");
+  const confirmStep = document.getElementById("officeDeleteConfirmStep");
+  if (suggest) {
+    suggest.hidden = !(validated.ok && validated.suggestPause && !officeDeleteContinueForced);
+  }
+  if (confirmStep) {
+    confirmStep.hidden = !(validated.ok && (!validated.suggestPause || officeDeleteContinueForced));
+  }
+  const confirmBtn = document.getElementById("officeDeleteConfirm");
+  const phrase = document.getElementById("officeDeleteConfirmInput")?.value || "";
+  if (confirmBtn) confirmBtn.disabled = !isOfficeDeleteConfirmPhrase(phrase);
+}
+
+function openDeleteDialog() {
+  officeDeleteContinueForced = false;
+  const overlay = document.getElementById("officeDeleteOverlay");
+  if (!overlay) return;
+  overlay.hidden = false;
+  const status = document.getElementById("officeDeleteDialogStatus");
+  if (status) status.textContent = "";
+  const input = document.getElementById("officeDeleteConfirmInput");
+  if (input) input.value = "";
+  syncOfficeDeleteDialog();
+}
+
+function confirmOfficeDelete() {
+  const user = authUser();
+  const confirmBtn = document.getElementById("officeDeleteConfirm");
+  const status = document.getElementById("officeDeleteDialogStatus");
+  if (!user) {
+    if (status) status.textContent = "سجل دخول المكتب أولًا.";
+    return;
+  }
+  if (officeDeleteBusy) return;
+  const validated = validateOfficeDeleteReason({
+    reasonCode: selectedRadioValue("officeDeleteReason"),
+    otherNote: document.getElementById("officeDeleteOtherNote")?.value || ""
+  });
+  if (!validated.ok) {
+    if (status) status.textContent = validated.message;
+    return;
+  }
+  const phrase = document.getElementById("officeDeleteConfirmInput")?.value || "";
+  if (!isOfficeDeleteConfirmPhrase(phrase)) {
+    if (status) status.textContent = "اكتب عبارة التأكيد كما هي.";
+    return;
+  }
+  officeDeleteBusy = true;
+  if (confirmBtn) confirmBtn.disabled = true;
+  try {
+    if (!officeDeleteIsFullySupported()) {
+      if (status) status.textContent = OFFICE_FULL_DELETE_UNAVAILABLE_MESSAGE;
+      toast(OFFICE_FULL_DELETE_UNAVAILABLE_MESSAGE);
+      return;
+    }
+  } finally {
+    officeDeleteBusy = false;
+    if (confirmBtn) confirmBtn.disabled = !isOfficeDeleteConfirmPhrase(phrase);
+  }
+}
+
 async function onLogout() {
   const user = authUser();
   if (!user) {
@@ -1988,7 +2223,46 @@ function init() {
   if (el.saveScopeBtn) el.saveScopeBtn.addEventListener("click", () => void saveOfficeScopeSettings());
   el.form.addEventListener("submit", onSave);
   if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
-  el.logout.addEventListener("click", onLogout);
+  if (el.logout) el.logout.addEventListener("click", onLogout);
+  document.getElementById("officePauseBtn")?.addEventListener("click", openPauseDialog);
+  document.getElementById("officePauseCancel")?.addEventListener("click", () => closeAccountDialog("officePauseOverlay"));
+  document.getElementById("officePauseConfirm")?.addEventListener("click", () => void confirmPauseOffice());
+  document.getElementById("officeResumeBtn")?.addEventListener("click", () => void resumeOffice());
+  document.getElementById("officeResumeSettingsBtn")?.addEventListener("click", () => void resumeOffice());
+  document.getElementById("officeDeleteBtn")?.addEventListener("click", openDeleteDialog);
+  document.getElementById("officeDeleteCancel")?.addEventListener("click", () => closeAccountDialog("officeDeleteOverlay"));
+  document.getElementById("officeDeleteConfirm")?.addEventListener("click", confirmOfficeDelete);
+  document.getElementById("officeDeleteContinue")?.addEventListener("click", () => {
+    officeDeleteContinueForced = true;
+    syncOfficeDeleteDialog();
+  });
+  document.getElementById("officeDeleteSwitchPause")?.addEventListener("click", () => {
+    closeAccountDialog("officeDeleteOverlay");
+    openPauseDialog();
+  });
+  document.getElementById("officePauseOtherNote")?.addEventListener("input", () => {
+    const wrap = document.getElementById("officePauseOtherWrap");
+    if (wrap) wrap.hidden = selectedRadioValue("officePauseReason") !== "other";
+  });
+  document.querySelectorAll('input[name="officePauseReason"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      const wrap = document.getElementById("officePauseOtherWrap");
+      if (wrap) wrap.hidden = selectedRadioValue("officePauseReason") !== "other";
+    });
+  });
+  document.getElementById("officePauseNoReturnDate")?.addEventListener("change", (event) => {
+    const date = document.getElementById("officePauseReturnDate");
+    if (event.target.checked && date) date.value = "";
+  });
+  document.getElementById("officePauseReturnDate")?.addEventListener("input", () => {
+    const box = document.getElementById("officePauseNoReturnDate");
+    if (box && document.getElementById("officePauseReturnDate")?.value) box.checked = false;
+  });
+  document.querySelectorAll('input[name="officeDeleteReason"]').forEach((input) => {
+    input.addEventListener("change", syncOfficeDeleteDialog);
+  });
+  document.getElementById("officeDeleteOtherNote")?.addEventListener("input", syncOfficeDeleteDialog);
+  document.getElementById("officeDeleteConfirmInput")?.addEventListener("input", syncOfficeDeleteDialog);
 
   Array.from(el.notificationInputs || []).forEach(input => {
     input.addEventListener("change", saveNotificationPreferences);

@@ -620,6 +620,7 @@ export function rankBrokerCommunityMatches({
   for (const office of publicOffices) {
     const officeId = String(office.officeId || office.id || "").trim().toLowerCase();
     if (!officeId || officeId === ownId) continue;
+    if (String(office.accountStatus || "").trim().toLowerCase() === "paused") continue;
     if (!isBrokerCommunityEnabled(office)) continue;
     const officeCandidates = byOffice.get(officeId) || [];
     for (const candidate of officeCandidates) {

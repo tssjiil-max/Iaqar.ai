@@ -220,6 +220,8 @@ test("office eligibility requires explicit opt-out toggles", () => {
   assert.equal(isOfficeEligibleForCooperationListing(office({ receiveExternalOpportunities: false })), false);
   assert.equal(isOfficeEligibleForCooperationListing(office({ cooperationAvailableNow: false })), false);
   assert.equal(isOfficeEligibleForCooperationListing(office({ cooperationMode: "DISABLED" })), false);
+  assert.equal(isOfficeEligibleForCooperationListing(office({ accountStatus: "paused" })), false);
+  assert.equal(isOfficeEligibleForCooperationListing(office({ accountStatus: "suspended" })), false);
 });
 
 test("legacy office without scope toggles is eligible by default", () => {

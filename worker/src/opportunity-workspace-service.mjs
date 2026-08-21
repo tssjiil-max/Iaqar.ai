@@ -117,6 +117,7 @@ export async function loadOpportunityWorkspaceBundle({
   for (const office of publicOffices) {
     const targetId = String(office.officeId || "").trim().toLowerCase();
     if (!targetId || targetId === officeId) continue;
+    if (String(office.accountStatus || "").toLowerCase() === "paused") continue;
     if (!sameCity(office.city, opportunity.city)) continue;
     const docs = await listCollectionDocuments({
       projectId,
