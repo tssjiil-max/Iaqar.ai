@@ -11,7 +11,8 @@ import {
   activeWorkspaceCooperationRequests,
   mergeWorkspaceCooperationRequests
 } from "./opportunity-workspace-domain.js";
-import { officeShareStatusLabel,
+import {
+  officeShareStatusLabel,
   readyWorkspacePrimaryActions,
   partyContactActions,
   sendAndShareHubOptions,
@@ -19,6 +20,7 @@ import { officeShareStatusLabel,
 } from "./opportunity-ready-actions-domain.js";
 import {
   buildOpportunityDetailsCoreHtml,
+  buildOpportunityDetailsPageHeadHtml
 } from "./opportunity-details-ui.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import {
@@ -33,9 +35,6 @@ import {
 import { buildOfficeCooperationPanelHtml } from "./suitable-offices-ui.js";
 import { currentCooperationShareStatusLabel } from "./office-cooperation-ui-domain.js";
 import {
-  buildWorkspaceSummaryStripHtml,
-  buildWorkspaceNextStepHtml,
-  resolveWorkspaceNextAction,
   buildWorkspaceSectionPreviews,
   wrapWorkspaceCollapsibleSection,
   buildWorkspaceSecondaryActionsHtml
@@ -142,15 +141,9 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
   const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
-  const nextAction = resolveWorkspaceNextAction(record, {});
 
   return `
-    <div class="bank-detail-head iaqar-workflow-head">
-      <h3>تفاصيل الفرصة</h3>
-      <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
-    </div>
-    ${buildWorkspaceSummaryStripHtml(id, record, readiness)}
-    ${buildWorkspaceNextStepHtml(nextAction)}
+    ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
     ${detailsHtml}
     <section class="bank-incomplete-edit" id="bankIncompleteEditSection" aria-label="تعديل البيانات الناقصة" hidden>
       <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
@@ -297,7 +290,6 @@ function buildOpportunityBriefPreview(record = {}) {
 
 export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const readiness = evaluateMatchingReadiness(record);
-  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
   const matches = sortMatchesForWorkspace(bundle.matches || [], id);
   const actions = readyWorkspacePrimaryActions(record);
   const partyActions = partyContactActions(record);
@@ -308,6 +300,9 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
     bundle.cooperationRequests || [],
     ownOfficeId
   );
+  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness, {
+    cooperationRequests
+  });
   const activity = buildWorkspaceActivity(record, cooperationRequests);
   const followUp = bundle.followUp || activeFollowUpFromRecord(record);
   const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
@@ -315,7 +310,6 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const listingPreview = buildPublicListingAnnouncement(record, options.officeProfile || {}, {
     origin: options.origin || ""
   });
-  const nextAction = resolveWorkspaceNextAction(record, bundle);
   const previews = buildWorkspaceSectionPreviews(id, record, {
     ...bundle,
     cooperationRequests
@@ -355,12 +349,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   return `
     <div class="bank-workspace-layout">
       <div class="bank-workspace-main">
-        <div class="bank-detail-head iaqar-workflow-head">
-          <h3>تفاصيل الفرصة</h3>
-          <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
-        </div>
-        ${buildWorkspaceSummaryStripHtml(id, record, readiness)}
-        ${buildWorkspaceNextStepHtml(nextAction)}
+        ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
         ${detailsHtml}
 
         <section class="bank-workspace-section iaqar-workflow-step bank-workspace-ux-actions-wrap" id="bankWorkspacePrimaryActions">

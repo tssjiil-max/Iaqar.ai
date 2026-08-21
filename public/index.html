@@ -1344,9 +1344,10 @@
 
       #workspace .ops-task-panel .bank-detail-head,
       #workspace .ops-task-panel .iaqar-workflow-head {
-        display:flex;
+        display:grid;
+        grid-template-columns:38px minmax(0, 1fr) 38px;
         align-items:center;
-        justify-content:space-between;
+        justify-content:initial;
         gap:8px;
         padding:12px 14px;
         width:100%;
@@ -1356,11 +1357,12 @@
 
       #workspace .ops-task-panel .bank-detail-head h3,
       #workspace .ops-task-panel .iaqar-workflow-head h3 {
-        flex:1 1 auto;
+        flex:none;
         min-width:0;
         margin:0;
-        font-size:18px;
+        font-size:17px;
         line-height:1.35;
+        text-align:center;
       }
 
       #workspace .ops-task-panel .settings-close,
@@ -3888,7 +3890,7 @@
   }
   .opp-details {
     display:grid;
-    gap:0;
+    gap:10px;
     margin:0 auto;
     max-width:100%;
     width:100%;
@@ -3896,6 +3898,7 @@
   .opp-details--unified {
     max-width:480px;
     margin-inline:auto;
+    gap:10px;
   }
   .opp-details-card {
     border:1px solid var(--opp-card-border);
@@ -4004,11 +4007,13 @@
     color:var(--muted);
     display:flex;
     align-items:center;
-    gap:6px;
+    justify-content:space-between;
+    gap:8px;
+    flex-wrap:wrap;
   }
-  .opp-details-added-at-icon {
-    font-size:12px;
-    line-height:1;
+  .opp-details-added-day,
+  .opp-details-added-time {
+    white-space:nowrap;
   }
   .opp-details-progress-layout {
     display:flex;
@@ -4059,10 +4064,30 @@
     text-align:center;
     line-height:1.15;
   }
+  .opp-details-progress-top {
+    font-size:12px;
+    font-weight:800;
+    color:var(--green);
+    white-space:nowrap;
+  }
   .opp-details-progress-bottom {
     font-size:10px;
     font-weight:700;
     color:var(--muted);
+  }
+  .opp-details-completion-card.is-complete {
+    background:#f7fbf9;
+  }
+  .opp-details-completion-card.is-complete .opp-details-progress-copy strong,
+  .opp-details-completion-card.is-complete .opp-details-progress-pct,
+  .opp-details-completion-card.is-complete .opp-details-progress-count,
+  .opp-details-completion-card.is-complete .opp-details-progress-top {
+    color:var(--opp-success);
+  }
+  .opp-details-completion-card.is-complete .opp-details-missing-inline,
+  .opp-details-completion-card.is-complete .opp-details-missing-chip,
+  .opp-details-completion-card.is-complete .opp-details-missing-title {
+    display:none;
   }
   .opp-details-progress-pct {
     margin:0;
@@ -4072,7 +4097,7 @@
     text-align:center;
   }
   .opp-details-missing-inline {
-    margin-top:10px;
+    margin-top:12px;
     display:flex;
     flex-wrap:wrap;
     align-items:center;
@@ -4206,16 +4231,16 @@
   .opp-details-row-value {
     display:flex;
     flex-direction:column;
-    align-items:center;
+    align-items:flex-end;
     justify-content:center;
     gap:4px;
     min-width:0;
-    text-align:center;
+    text-align:end;
   }
   .opp-details-row-value-stack {
     display:flex;
     flex-direction:column;
-    align-items:center;
+    align-items:flex-end;
     gap:4px;
     min-width:0;
   }
@@ -4296,7 +4321,7 @@
     border-top:1px solid #eef2f0;
   }
   .opp-details-actions {
-    margin-top:0;
+    margin:0;
     padding:0;
   }
   .opp-details-actions--embedded {
@@ -4305,7 +4330,7 @@
   .opp-details-actions .bank-action,
   .opp-details-actions .iaqar-workflow-btn {
     width:100%;
-    min-height:48px;
+    min-height:46px;
     border-radius:14px;
   }
   .opp-details-reveal-btn {
@@ -4313,11 +4338,110 @@
     align-items:center;
     justify-content:center;
     gap:8px;
-    background:var(--green-soft);
-    color:var(--green-dark);
-    border:1.5px solid var(--green);
+    background:var(--green);
+    color:#fff;
+    border:0;
     font-weight:800;
     font-size:14px;
+    box-shadow:none;
+  }
+  .opp-details-reveal-btn:active {
+    transform:scale(0.99);
+    background:var(--green-dark);
+  }
+  .opp-details-report-card,
+  .opp-details-appointment-card {
+    overflow:hidden;
+  }
+  .opp-details-report-table {
+    display:grid;
+    direction:rtl;
+  }
+  .opp-details-report-head,
+  .opp-details-report-row {
+    display:grid;
+    grid-template-columns:72px minmax(0, 0.9fr) minmax(0, 1.2fr);
+    gap:8px;
+    align-items:center;
+    padding:10px 14px;
+    border-bottom:1px solid #eef2f0;
+  }
+  .opp-details-report-head {
+    background:#f7faf8;
+    font-size:11px;
+    font-weight:800;
+    color:#667085;
+  }
+  .opp-details-report-row {
+    font-size:12px;
+    background:var(--card);
+    min-height:44px;
+  }
+  .opp-details-report-row:last-child {
+    border-bottom:0;
+  }
+  .opp-details-report-time {
+    font-weight:700;
+    color:#667085;
+    white-space:nowrap;
+  }
+  .opp-details-report-action,
+  .opp-details-report-result {
+    min-width:0;
+    overflow-wrap:anywhere;
+    line-height:1.45;
+  }
+  .opp-details-report-result {
+    color:var(--opp-success);
+    font-weight:700;
+  }
+  .opp-details-report-empty {
+    margin:0;
+    padding:16px 14px;
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+  }
+  .opp-details-current-result {
+    margin:0;
+    padding:12px 14px;
+    border-top:1px solid #eef2f0;
+    background:#f7fbf9;
+    font-size:13px;
+    color:var(--green-dark);
+    line-height:1.55;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px 8px;
+    align-items:baseline;
+  }
+  .opp-details-current-result strong {
+    font-weight:800;
+    color:var(--green);
+  }
+  .opp-details-appointment-body {
+    padding:14px 16px 16px;
+    display:grid;
+    gap:8px;
+  }
+  .opp-details-appointment-when {
+    margin:0;
+    font-size:18px;
+    font-weight:800;
+    color:var(--green-dark);
+    line-height:1.35;
+  }
+  .opp-details-appointment-meta {
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    gap:6px 12px;
+    font-size:12px;
+    color:var(--muted);
+    font-weight:700;
+  }
+  .opp-details-appointment-kind {
+    color:var(--green);
   }
   .opp-details-btn-icon {
     display:inline-flex;
@@ -4339,7 +4463,7 @@
     max-width:480px;
     margin-inline:auto;
     overflow-x:hidden;
-    gap:0;
+    gap:10px;
   }
   .ops-task-panel .opp-details,
   .iaqar-workflow-details .opp-details {
@@ -4348,42 +4472,62 @@
     padding:0;
     background:transparent;
   }
-  .bank-detail .bank-detail-head.iaqar-workflow-head {
+  .bank-detail .bank-detail-head.iaqar-workflow-head,
+  .ops-task-panel .bank-detail-head.iaqar-workflow-head {
+    display:grid;
+    grid-template-columns:38px minmax(0, 1fr) 38px;
+    align-items:center;
+    gap:8px;
     background:var(--green);
     color:#fff;
-    margin:-16px -16px 12px;
-    padding:14px 16px;
     border-bottom:0;
+  }
+  .bank-detail .bank-detail-head.iaqar-workflow-head {
+    margin:-16px -16px 12px;
+    padding:12px 14px;
     border-radius:24px 24px 0 0;
   }
-  .bank-detail .bank-detail-head.iaqar-workflow-head h3 {
-    color:#fff;
-    flex:1 1 auto;
-    text-align:center;
-    font-size:18px;
-    font-weight:800;
-  }
-  .bank-detail .bank-detail-head.iaqar-workflow-head .settings-close,
-  .bank-detail .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close {
-    background:rgba(255,255,255,.14);
-    color:#fff;
-  }
   .ops-task-panel .bank-detail-head.iaqar-workflow-head {
-    background:var(--green);
-    color:#fff;
     margin:0;
-    padding:14px 16px;
-    border-bottom:0;
+    padding:12px 14px;
   }
+  .bank-detail .bank-detail-head.iaqar-workflow-head h3,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head h3 {
     color:#fff;
+    flex:none;
     text-align:center;
-    flex:1 1 auto;
+    font-size:17px;
+    font-weight:800;
+    margin:0;
+    min-width:0;
   }
+  .bank-detail .bank-detail-head.iaqar-workflow-head .settings-close,
+  .bank-detail .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head .settings-close,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close {
+    width:38px;
+    height:38px;
     background:rgba(255,255,255,.14);
     color:#fff;
+    display:grid;
+    place-items:center;
+    padding:0;
+    border:0;
+  }
+  .opp-details-back-icon {
+    width:20px;
+    height:20px;
+    color:#fff;
+    display:block;
+  }
+  .opp-details-head-balance {
+    width:38px;
+    height:38px;
+    display:block;
+  }
+  .opp-details-row.is-contact-row .opp-details-row-value {
+    align-items:center;
+    text-align:center;
   }
   .bank-contact-outcomes {
     display:grid;
@@ -4635,7 +4779,18 @@
   }
   @media (max-width: 420px) {
     .bank-detail { padding:14px; border-radius:20px; }
-    .bank-detail-head h3 { font-size:19px; }
+    .bank-detail-head h3 { font-size:17px; }
+    .opp-details-report-head,
+    .opp-details-report-row {
+      grid-template-columns:64px minmax(0, 0.85fr) minmax(0, 1.2fr);
+      gap:6px;
+      padding:8px 10px;
+    }
+    .opp-details-report-head,
+    .opp-details-report-row {
+      font-size:11px;
+    }
+    .opp-details-appointment-when { font-size:16px; }
   }
 
   .review-hint {

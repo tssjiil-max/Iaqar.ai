@@ -39,7 +39,7 @@ test("detail summary shows progress and missing chips without checklist marks", 
   });
   assert.ok(html.includes("opp-details--unified"));
   assert.ok(html.includes("opp-details-data-table"));
-  assert.ok(html.includes("opp-details-row-status"));
-  assert.ok(!html.includes("opp-details-progress-ring"));
+  assert.ok(html.includes("opp-details-progress-ring"));
+  assert.ok(html.includes("البيانات الناقصة:"));
   assert.ok(!html.includes("listing-field-mark"));
 });

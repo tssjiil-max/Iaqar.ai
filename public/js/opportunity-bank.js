@@ -95,7 +95,10 @@ import {
   buildWorkspaceCoopRowsHtml,
   buildWorkspaceCoopEmptyHintHtml
 } from "./opportunity-bank-workspace-ui.js";
-import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
+import {
+  buildOpportunityDetailsCoreHtml,
+  buildOpportunityDetailsPageHeadHtml
+} from "./opportunity-details-ui.js";
 import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview,
@@ -869,10 +872,7 @@ async function renderDetail(id, options = {}) {
   if (archived) {
     const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
     panel.innerHTML = `
-      <div class="bank-detail-head iaqar-workflow-head">
-        <h3>تفاصيل الفرصة (مؤرشفة)</h3>
-        <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
-      </div>
+      ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
       ${detailsHtml}
       <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
@@ -1125,7 +1125,7 @@ function wireWorkspaceUxPresentation(opportunityId, record, bundle = {}) {
     });
   }
 
-  document.querySelectorAll(".bank-workspace-ux-missing-chip[data-missing-field]").forEach((chip) => {
+  document.querySelectorAll(".opp-details-missing-chip[data-missing-field], .bank-workspace-ux-missing-chip[data-missing-field]").forEach((chip) => {
     if (chip.dataset.uxWired === "1") return;
     chip.dataset.uxWired = "1";
     chip.addEventListener("click", () => {
