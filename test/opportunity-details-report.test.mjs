@@ -59,15 +59,19 @@ test("next appointment hides when none is scheduled", () => {
   assert.equal(html, "");
 });
 
-test("next appointment prefers upcoming viewing and compact headline", () => {
+test("next appointment prefers upcoming viewing and weekday headline", () => {
   const now = new Date("2026-08-21T12:00:00.000Z");
   const record = {
     opportunityKind: "OFFER",
-    viewingAt: "2026-08-22T06:15:00.000Z"
+    viewingAt: "2026-08-26T05:00:00.000Z"
   };
   const appointment = resolveNextAppointment(record, now);
   assert.equal(appointment.kindLabel, "معاينة العقار");
-  assert.ok(formatAppointmentHeadline(appointment.at, now).startsWith("غدًا"));
+  const headline = formatAppointmentHeadline(appointment.at, now);
+  assert.match(headline, /الأربعاء/);
+  assert.match(headline, /٢٦/);
+  assert.match(headline, /أغسطس/);
+  assert.equal(headline.includes("غدًا"), false);
   const html = buildNextAppointmentHtml(record, { now });
   assert.ok(html.includes("معاينة العقار"));
   assert.ok(html.includes("المالك: بانتظار التأكيد"));

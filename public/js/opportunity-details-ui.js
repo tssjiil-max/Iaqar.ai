@@ -25,8 +25,7 @@ import {
 import { buildPhoneContactDisplayName, SAVE_PHONE_CONTACT_LABEL } from "./phone-contact-save-domain.js";
 import {
   buildDailyReportHtml,
-  buildNextAppointmentHtml,
-  missingDisplayLabels
+  buildNextAppointmentHtml
 } from "./opportunity-details-report-ui.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
@@ -160,11 +159,11 @@ function stripHayPrefix(value = "") {
   return text.startsWith("حي ") ? text.slice(3).trim() : text;
 }
 
-/** Display-only city + district line, e.g. المدينة والوبرة */
+/** Display-only city + district line, e.g. المدينة - الحرة الغربية */
 export function formatOpportunityLocationLine(city = "", district = "") {
   const cityText = SHORT_CITY_DISPLAY[String(city || "").trim()] || String(city || "").trim();
   const districtText = stripHayPrefix(district);
-  if (cityText && districtText) return `${cityText} و${districtText}`;
+  if (cityText && districtText) return `${cityText} - ${districtText}`;
   return cityText || districtText || "";
 }
 
@@ -180,6 +179,33 @@ export function buildOpportunityDetailsProgress(readiness = {}, checks = []) {
   return { total, completeCount, pct, missingLabels };
 }
 
+function detailsTableRowDefs(vm = {}) {
+  return [
+    { key: "propertyPurpose", label: "العقار والغرض" },
+    { key: "location", label: "الموقع" },
+    { key: "price", label: vm.priceLabel || "السعر" },
+    { key: "specs", label: "المساحة والمواصفات" },
+    { key: "advertiser", label: "المعلن وصفته" },
+    { key: "contact", label: "رقم التواصل" }
+  ];
+}
+
+/** Visual completion for the 6 details-table rows — display only, not matching readiness. */
+export function buildDetailsTableProgress(vm = {}) {
+  const rows = detailsTableRowDefs(vm);
+  const missing = rows.filter((row) => !isDetailsRowComplete(vm, row.key));
+  const total = rows.length;
+  const completeCount = total - missing.length;
+  const pct = total ? Math.round((completeCount / total) * 100) : 0;
+  return {
+    total,
+    completeCount,
+    pct,
+    missingLabels: missing.map((row) => row.label),
+    missingRows: missing
+  };
+}
+
 /**
  * Unified view-model for all detail surfaces.
  */
@@ -190,7 +216,6 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     : evaluateMatchingReadiness(normalized);
   const card = buildBankListCardView(normalized);
   const checks = buildListingFieldChecks(normalized);
-  const progress = buildOpportunityDetailsProgress(readiness, checks);
   const byKey = Object.fromEntries(checks.map((row) => [row.key, row]));
   const { cityText, districtText } = normalizeCityDistrict(normalized);
   const isOwner = isOwnerRecord(normalized);
@@ -202,8 +227,7 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const advertiserDisplayName = readAdvertiserDisplayName(normalized);
   const propertyType = String(normalized.propertyType || "").trim();
   const addedAt = formatAddedAt(normalized);
-
-  return {
+  const vm = {
     id: String(id || normalized.id || ""),
     rawRecord: normalized,
     recordKind: resolveRecordKind(normalized),
@@ -214,7 +238,6 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     addedAtLabel: addedAt.combined || "",
     addedAtDay: addedAt.day || "",
     addedAtTime: addedAt.time || "",
-    progress,
     readiness,
     checks,
     byKey,
@@ -241,6 +264,8 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     }),
     propertyPurposeLine: card.title
   };
+  vm.progress = buildDetailsTableProgress(vm);
+  return vm;
 }
 
 export function buildOpportunityDetailsPageHeadHtml(title = "تفاصيل الفرصة") {
@@ -283,14 +308,10 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
 }
 
 function missingInlineHtml(vm) {
-  const keys = vm.readiness?.matchingReadinessMissing || [];
-  if (!keys.length) return "";
-  const labels = missingDisplayLabels(vm.rawRecord, vm.readiness);
-  const chips = keys.map((key, index) => {
-    const label = labels[index] || key;
-    return `
-    <span class="opp-details-missing-chip" data-missing-field="${esc(key)}"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(label)}</span>`;
-  }).join("");
+  const missing = vm.progress?.missingRows || [];
+  if (!missing.length) return "";
+  const chips = missing.map((row) => `
+    <span class="opp-details-missing-chip" data-missing-field="${esc(row.key)}"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(row.label)}</span>`).join("");
   return `
     <div class="opp-details-missing-inline" aria-label="البيانات الناقصة">
       <span class="opp-details-missing-title">البيانات الناقصة:</span>
@@ -299,8 +320,8 @@ function missingInlineHtml(vm) {
 }
 
 export function buildCompletionProgressHtml(vm) {
-  const { progress, status } = vm;
-  const complete = !((vm.readiness?.matchingReadinessMissing || []).length) && status.cssClass !== "is-incomplete";
+  const { progress } = vm;
+  const complete = !(progress?.missingLabels || []).length;
   const completeClass = complete ? " is-complete" : " is-incomplete";
   return `
     <section class="opp-details-card opp-details-completion-card${completeClass}" aria-label="نسبة اكتمال البيانات">

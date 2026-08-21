@@ -16,7 +16,6 @@ import {
   RECIPIENT_MODE_LABELS,
   activeFollowUpFromRecord,
   defaultRecipientMode,
-  formatFollowUpAppointmentLine,
   parseFollowUpInstant
 } from "./opportunity-followup-domain.js";
 import { CONTACT_OUTCOME_LABELS } from "./opportunity-contact-outcome-domain.js";
@@ -59,21 +58,27 @@ export function formatReportTime(value) {
   });
 }
 
-export function formatAppointmentHeadline(value, now = new Date()) {
+export function formatAppointmentHeadline(value, _now = new Date()) {
   const date = parseFollowUpInstant(value);
   if (!date) return "";
+  const weekday = date.toLocaleDateString("ar-SA", {
+    timeZone: REPORT_TZ,
+    weekday: "long"
+  });
+  const day = date.toLocaleDateString("ar-SA", {
+    timeZone: REPORT_TZ,
+    day: "numeric"
+  });
+  const month = date.toLocaleDateString("ar-SA", {
+    timeZone: REPORT_TZ,
+    month: "long"
+  });
   const timePart = date.toLocaleTimeString("ar-SA", {
     timeZone: REPORT_TZ,
     hour: "numeric",
     minute: "2-digit"
   });
-  const riyadhNow = new Date(now.toLocaleString("en-US", { timeZone: REPORT_TZ }));
-  const riyadhDate = new Date(date.toLocaleString("en-US", { timeZone: REPORT_TZ }));
-  if (riyadhNow.toDateString() === riyadhDate.toDateString()) return `اليوم ${timePart}`;
-  const tomorrow = new Date(riyadhNow);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  if (tomorrow.toDateString() === riyadhDate.toDateString()) return `غدًا ${timePart}`;
-  return formatFollowUpAppointmentLine(value, now);
+  return `${weekday}، ${day} ${month}، ${timePart}`;
 }
 
 export function joinArabicList(labels = []) {

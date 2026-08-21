@@ -9,6 +9,7 @@ import {
   buildWorkspaceActivity
 } from "./opportunity-workspace-domain.js";
 import { formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
+import { missingDisplayLabels } from "./opportunity-details-report-ui.js";
 import { buildOpportunityDetailsViewModel } from "./opportunity-details-ui.js";
 
 function esc(text = "") {
@@ -35,7 +36,7 @@ export function buildWorkspaceSummaryStripHtml(id, record = {}, readiness = {}) 
   ].filter(Boolean);
 
   const missingKeys = readiness.matchingReadinessMissing || vm.readiness?.matchingReadinessMissing || [];
-  const missingLabels = vm.progress?.missingLabels || [];
+  const missingLabels = missingDisplayLabels(record, vm.readiness || readiness);
   const missingHtml = missingLabels.length
     ? `<div class="bank-workspace-ux-missing" aria-label="الحقول الناقصة">
         <span class="bank-workspace-ux-missing-label">${missingLabels.length === 1 ? "ينقص:" : `ينقص ${missingLabels.length}:`}</span>
