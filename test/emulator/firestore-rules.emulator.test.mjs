@@ -1222,3 +1222,50 @@ test("unauthenticated users cannot read library items", async () => {
   const db = unauthed();
   await assertFails(getDoc(doc(db, "offices/office-a/library/lib_unauth")));
 });
+
+test("مجتمع الوسطاء: مكتب لا يقرأ عميل أو فرصة المكتب الآخر ولا يكتب الاتفاقية", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "offices/office-b/clients/cli_secret"), {
+      officeId: "office-b",
+      name: "عميل سري",
+      phone: "0500000099"
+    });
+    await setDoc(doc(db, "offices/office-b/opportunities/opp_secret"), {
+      officeId: "office-b",
+      brokerId: "broker-b1",
+      originatingOfficeId: "office-b",
+      originatingBrokerId: "broker-b1",
+      currentOwningOfficeId: "office-b",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      deduplicationFingerprint: "fp_secret",
+      sourceType: "text",
+      sourceReference: "src",
+      lifecycleStatus: "ACTIVE",
+      contactName: "عميل سري",
+      contactPhone: "0500000099"
+    });
+    await setDoc(doc(db, "cooperationAgreements/agr_seed"), {
+      originatingOfficeId: "office-a",
+      targetOfficeId: "office-b",
+      officeAPercent: 50,
+      officeBPercent: 50,
+      status: "ACTIVE"
+    });
+  });
+
+  const outsider = authed("broker-a1");
+  await assertFails(getDoc(doc(outsider, "offices/office-b/clients/cli_secret")));
+  await assertFails(getDoc(doc(outsider, "offices/office-b/opportunities/opp_secret")));
+  await assertFails(setDoc(doc(outsider, "cooperationAgreements/agr_hack"), {
+    originatingOfficeId: "office-a",
+    targetOfficeId: "office-b",
+    officeAPercent: 90,
+    officeBPercent: 10,
+    status: "ACTIVE"
+  }));
+  await assertSucceeds(getDoc(doc(outsider, "cooperationAgreements/agr_seed")));
+  await assertFails(updateDoc(doc(outsider, "cooperationAgreements/agr_seed"), {
+    officeAPercent: 90
+  }));
+});

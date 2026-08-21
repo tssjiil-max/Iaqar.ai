@@ -30,7 +30,9 @@ function libraryCss() {
 
 function extractLibraryPanelHtml() {
   const start = html.indexOf("id=\"officeLibraryPanel\"");
-  return html.slice(html.lastIndexOf("<div", start), html.indexOf("id=\"cooperationSection\""));
+  const open = html.lastIndexOf("<div", start);
+  const end = html.indexOf("id=\"notificationPrefsSection\"");
+  return html.slice(open, end > open ? end : open + 8000);
 }
 
 test("library title is exactly المكتبة", () => {

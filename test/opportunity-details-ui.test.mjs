@@ -66,6 +66,8 @@ test("data table uses clear row icons for each field", () => {
   assert.ok(html.includes("#i-area"));
   assert.ok(html.includes("#i-user"));
   assert.ok(html.includes("#i-phone"));
+  assert.ok(html.includes("#i-contact-save"));
+  assert.ok(html.includes("js-save-phone-contact"));
   assert.equal(html.includes("#i-bell"), false);
   assert.equal(html.includes("#i-user-clock"), false);
   assert.equal(html.includes("#i-target"), false);
@@ -173,6 +175,7 @@ test("all bank detail surfaces embed the unified data table", async () => {
     assert.ok(html.includes("opp-details-row-status"));
     assert.ok(html.includes("المعلن وصفته"));
     assert.ok(html.includes("رقم التواصل"));
+    assert.ok(html.includes("js-save-phone-contact"));
   }
 });
 

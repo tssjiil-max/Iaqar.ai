@@ -19,7 +19,7 @@ test("all approved settings sections are present", async () => {
     for (const [id, heading] of [
       ["officeIdentitySection", "الهوية البصرية"],
       ["officeLinkSection", "رابط المكتب"],
-      ["cooperationSection", "السماح بالتعاون الذكي بين الوسطاء"],
+      ["cooperationSection", "مجتمع الوسطاء"],
       ["notificationPrefsSection", "الإشعارات"]
     ]) {
       const section = sheet.querySelector(`#${id}`);
@@ -27,6 +27,16 @@ test("all approved settings sections are present", async () => {
       assert.equal(section.querySelector("h3").textContent.trim(), heading);
     }
     assert.ok(sheet.querySelector("#officeProfileForm"), "the office data form must exist");
+    const scope = sheet.querySelector("#officeScopeSection");
+    const community = sheet.querySelector("#cooperationSection");
+    const library = sheet.querySelector("#officeLibrarySection");
+    assert.ok(scope && community && library);
+    const order = Array.from(sheet.querySelectorAll(".settings-section, #officeProfileForm"))
+      .map((node) => node.id);
+    assert.ok(order.indexOf("officeScopeSection") < order.indexOf("cooperationSection"));
+    assert.ok(order.indexOf("cooperationSection") < order.indexOf("officeLibrarySection"));
+    assert.match(community.textContent, /اسم العميل أو المالك أو الوسيط/);
+    assert.match(community.textContent, /VCF/);
   } finally {
     context.close();
   }

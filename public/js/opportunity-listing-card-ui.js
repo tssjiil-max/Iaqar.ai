@@ -33,9 +33,16 @@ export function buildOpportunityListingCardInnerHtml(record = {}, options = {}) 
     includeRevealButton: options.includeRevealButton === true
   });
   const extra = [options.footerHtml, options.actionsHtml].filter(Boolean).join("");
+  const opportunityId = String(normalized.id || record.id || "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[character]));
+  const opportunityKind = String(normalized.opportunityKind || record.opportunityKind || "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[character]));
   return `
-    <div class="listing-card-inner listing-card-inner--unified">
+    <div class="listing-card-inner listing-card-inner--unified" data-community-host data-opportunity-id="${opportunityId}" data-opportunity-kind="${opportunityKind}">
       ${tableHtml}
+      <div class="js-broker-community-slot" data-community-slot="${opportunityId}" hidden></div>
       ${extra ? `<div class="listing-card-extra">${extra}</div>` : ""}
     </div>`;
 }

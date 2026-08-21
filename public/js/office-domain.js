@@ -266,6 +266,10 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   cooperation: "cooperationNotifications",
   cooperation_request: "cooperationNotifications",
   cooperation_response: "cooperationNotifications",
+  community_match: "cooperationNotifications",
+  community_request: "cooperationNotifications",
+  community_agreement: "cooperationNotifications",
+  community_deal: "cooperationNotifications",
   message: "messageNotifications",
   conversation: "messageNotifications",
   appointment: "appointmentNotifications",
@@ -347,8 +351,10 @@ export function cooperationStatusLabel(value) {
  * constant rather than a setting the interface can flip.
  */
 export function cooperationSettingsPayload(mode) {
+  const normalized = normalizeCooperationMode(mode);
   return {
-    mode: normalizeCooperationMode(mode),
+    mode: normalized,
+    brokerCommunityEnabled: normalized !== "DISABLED",
     exposeContactAutomatically: false
   };
 }
