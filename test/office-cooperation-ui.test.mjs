@@ -109,5 +109,7 @@ test("bank controller removes confirm from share send path", () => {
   assert.doesNotMatch(bank, /confirm\(`تأكيد إرسال الفرصة/);
   assert.match(bank, /sendCooperationToSelectedOffices/);
   assert.match(bank, /cooperationMessage/);
+  assert.match(bank, /تعذر إرسال الفرصة\. حاول مرة أخرى/);
+  assert.match(bank, /finally/);
   assert.doesNotMatch(bank, /const message = payload\.duplicate/);
 });
