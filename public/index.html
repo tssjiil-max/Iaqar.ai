@@ -3379,6 +3379,40 @@
   .bank-coop-current-wrap{margin-top:8px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px}
   .bank-workspace-coop-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #edf2ef}
   .bank-workspace-coop-row:last-child{border-bottom:0}
+  .bank-workspace-collapsible--muted .bank-workspace-collapsible-toggle{background:#fafbfa}
+  .bank-workspace-ux-summary{background:#fff;border:1px solid #dce8e4;border-radius:16px;padding:12px 14px;margin:0 0 10px}
+  .bank-workspace-ux-summary-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}
+  .bank-workspace-ux-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#f4f8f6;border:1px solid #e2ece8;font-size:13px;color:#173d35;line-height:1.4}
+  .bank-workspace-ux-missing{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  .bank-workspace-ux-missing-label{font-size:12px;color:#a33a3a;font-weight:700}
+  .bank-workspace-ux-missing-chip{border:1px solid #efc4c4;background:#fff7f7;color:#a33a3a;border-radius:999px;padding:4px 10px;font:600 12px Tajawal;cursor:pointer}
+  .bank-workspace-ux-next{background:#f7faf8;border:1px solid #dce8e4;border-radius:16px;padding:12px 14px;margin:0 0 12px;text-align:center}
+  .bank-workspace-ux-next-label{margin:0 0 8px;font-size:13px;color:#657b74;font-weight:700}
+  .bank-workspace-ux-next-btn{width:100%;max-width:420px;margin:0 auto}
+  .bank-workspace-ux-actions-wrap{border:0;background:transparent;padding:0 0 8px}
+  .bank-workspace-ux-more-actions{border:1px dashed #d4e3de;border-radius:14px;padding:8px 10px;background:#fff}
+  .bank-workspace-ux-more-summary{cursor:pointer;font:700 14px Tajawal;color:#087064;list-style:none}
+  .bank-workspace-ux-more-summary::-webkit-details-marker{display:none}
+  .bank-workspace-ux-secondary-actions{margin-top:8px}
+  .bank-workspace-collapsible{padding:0;overflow:hidden}
+  .bank-workspace-collapsible-toggle{
+    width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border:0;background:#fff;padding:14px;font:700 15px Tajawal;color:#0a695d;cursor:pointer;text-align:start
+  }
+  .bank-workspace-collapsible-head{display:grid;gap:4px;flex:1;min-width:0}
+  .bank-workspace-collapsible-title{font-size:15px;color:#0a695d}
+  .bank-workspace-collapsible-preview{font-size:12px;font-weight:500;color:#657b74;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bank-workspace-collapsible-chevron{color:#657b74;transition:transform .2s ease;flex:0 0 auto}
+  .bank-workspace-collapsible.is-open .bank-workspace-collapsible-chevron{transform:rotate(180deg)}
+  .bank-workspace-collapsible-body{display:none;padding:0 14px 14px;border-top:1px solid #edf2ef}
+  .bank-workspace-collapsible.is-open .bank-workspace-collapsible-body{display:block}
+  .bank-workspace-collapsible.is-collapsed .bank-workspace-collapsible-body{display:none}
+  @media (max-width:640px){
+    .bank-workspace-ux-summary-grid{gap:6px}
+    .bank-workspace-ux-pill{font-size:12px;padding:5px 8px}
+    .bank-workspace-collapsible-preview{white-space:normal}
+    .iaqar-workflow-actions,.bank-workspace-actions{grid-template-columns:1fr}
+  }
   .bank-incoming-actions{display:flex;flex-wrap:wrap;gap:8px}
   /* Shared opportunity action UI — canonical source for workflow modal + bank detail panels */
   .iaqar-workflow-overlay[hidden]{display:none!important}

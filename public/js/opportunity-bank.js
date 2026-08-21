@@ -528,10 +528,14 @@ function revealIncompleteEditForm(readiness = {}) {
   window.requestAnimationFrame(() => focusFirstMissingBankField(readiness));
 }
 
-function focusFirstMissingBankField(readiness = {}) {
-  const missing = Array.isArray(readiness.matchingReadinessMissing)
+function focusFirstMissingBankField(readiness = {}, preferredKey = "") {
+  let missing = Array.isArray(readiness.matchingReadinessMissing)
     ? readiness.matchingReadinessMissing
     : [];
+  const preferred = String(preferredKey || "").trim();
+  if (preferred && missing.includes(preferred)) {
+    missing = [preferred, ...missing.filter((key) => key !== preferred)];
+  }
   if (!missing.length) return false;
 
   const section = document.getElementById("bankIncompleteEditSection");
@@ -1040,8 +1044,99 @@ function showWorkspaceSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (!section) return null;
   section.hidden = false;
+  section.classList.add("is-open");
+  section.classList.remove("is-collapsed");
+  const toggle = section.querySelector(".bank-workspace-collapsible-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", "true");
   section.scrollIntoView({ behavior: "smooth", block: "start" });
   return section;
+}
+
+function openWorkspaceCollapsible(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  section.classList.add("is-open");
+  section.classList.remove("is-collapsed");
+  const toggle = section.querySelector(".bank-workspace-collapsible-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", "true");
+}
+
+function runWorkspaceNextAction(opportunityId, record, bundle = {}, actionKey = "") {
+  const action = String(actionKey || "").trim();
+  if (!action) return;
+
+  if (action === "complete_fields") {
+    $("oppDetailsRevealFormBtn")?.click();
+    revealIncompleteEditForm(evaluateMatchingReadiness(state.records.get(opportunityId) || record));
+    return;
+  }
+  if (action === "complete_deal") {
+    if (window.IAQAR?.openOpportunityManagement) {
+      void window.IAQAR.openOpportunityManagement(opportunityId);
+    }
+    return;
+  }
+  if (action === "close_opportunity") {
+    document.querySelector('[data-workspace-action="open_lifecycle_close"]')?.click();
+    openWorkspaceCollapsible("bankWorkspaceCloseSection");
+    showWorkspaceSection("bankWorkspaceCloseSection");
+    return;
+  }
+  if (action === "confirm_followup" || action === "schedule_followup") {
+    showWorkspaceSection("bankWorkspaceFollowUpSection");
+    return;
+  }
+  if (action === "record_contact") {
+    showWorkspaceSection("bankWorkspaceContactSection");
+    return;
+  }
+  if (action === "review_matches") {
+    document.querySelector('[data-workspace-action="search_matches"]')?.click();
+    return;
+  }
+  if (action === "request_cooperation") {
+    openOfficeShareFlow(opportunityId, state.records.get(opportunityId) || record);
+    return;
+  }
+}
+
+function wireWorkspaceUxPresentation(opportunityId, record, bundle = {}) {
+  document.querySelectorAll(".bank-workspace-collapsible-toggle").forEach((toggle) => {
+    if (toggle.dataset.uxWired === "1") return;
+    toggle.dataset.uxWired = "1";
+    toggle.addEventListener("click", () => {
+      const section = toggle.closest(".bank-workspace-collapsible");
+      if (!section) return;
+      const open = section.classList.toggle("is-open");
+      section.classList.toggle("is-collapsed", !open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  });
+
+  const nextBtn = $("bankWorkspaceNextActionBtn");
+  if (nextBtn && nextBtn.dataset.uxWired !== "1") {
+    nextBtn.dataset.uxWired = "1";
+    nextBtn.addEventListener("click", () => {
+      runWorkspaceNextAction(
+        opportunityId,
+        record,
+        bundle,
+        nextBtn.getAttribute("data-next-action") || ""
+      );
+    });
+  }
+
+  document.querySelectorAll(".bank-workspace-ux-missing-chip[data-missing-field]").forEach((chip) => {
+    if (chip.dataset.uxWired === "1") return;
+    chip.dataset.uxWired = "1";
+    chip.addEventListener("click", () => {
+      const key = chip.getAttribute("data-missing-field") || "";
+      const fresh = state.records.get(opportunityId) || record;
+      const readiness = evaluateMatchingReadiness(fresh);
+      revealIncompleteEditForm(readiness);
+      focusFirstMissingBankField(readiness, key);
+    });
+  });
 }
 
 function openOfficeShareFlow(opportunityId, record) {
@@ -1366,6 +1461,7 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
 function wireIncompleteDetailHandlers(id, record) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
   wireBankFormArabicInputs(record);
+  wireWorkspaceUxPresentation(id, record, {});
 
   $("oppDetailsRevealFormBtn")?.addEventListener("click", () => {
     const fresh = state.records.get(id) || record;
@@ -1686,11 +1782,7 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
   $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
 
   const showSection = (sectionId) => {
-    const section = document.getElementById(sectionId);
-    if (section) {
-      section.hidden = false;
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    showWorkspaceSection(sectionId);
   };
 
   document.querySelectorAll("[data-workspace-action]").forEach((btn) => {
@@ -1815,6 +1907,7 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
 
   wireCooperationHandlers(id, record, bundle);
   void loadCooperationOfficesForShare(id, record);
+  wireWorkspaceUxPresentation(id, record, bundle);
 
   document.querySelectorAll("[data-followup-days]").forEach((btn) => {
     btn.addEventListener("click", () => {

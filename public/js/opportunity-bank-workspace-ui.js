@@ -32,6 +32,15 @@ import {
 } from "./opportunity-contact-outcome-domain.js";
 import { buildOfficeCooperationPanelHtml } from "./suitable-offices-ui.js";
 import { currentCooperationShareStatusLabel } from "./office-cooperation-ui-domain.js";
+import {
+  buildWorkspaceSummaryStripHtml,
+  buildWorkspaceNextStepHtml,
+  resolveWorkspaceNextAction,
+  buildWorkspaceSectionPreviews,
+  wrapWorkspaceCollapsibleSection,
+  buildWorkspaceSecondaryActionsHtml
+} from "./opportunity-workspace-ux-ui.js";
+import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({
@@ -133,12 +142,15 @@ export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
   const fields = buildIncompleteFormFields(record, readiness);
   const fieldBlocks = fields.map(renderFieldBlock).join("");
   const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
+  const nextAction = resolveWorkspaceNextAction(record, {});
 
   return `
     <div class="bank-detail-head iaqar-workflow-head">
       <h3>تفاصيل الفرصة</h3>
       <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
     </div>
+    ${buildWorkspaceSummaryStripHtml(id, record, readiness)}
+    ${buildWorkspaceNextStepHtml(nextAction)}
     ${detailsHtml}
     <section class="bank-incomplete-edit" id="bankIncompleteEditSection" aria-label="تعديل البيانات الناقصة" hidden>
       <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
@@ -227,16 +239,13 @@ export function buildContactOutcomeActionHtml(outcome = "", options = {}) {
   return `${body}${saveFooter}`;
 }
 
-export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
-  const show = options.show === true || shouldShowContactOutcomePanel(record);
+export function buildContactOutcomesInnerHtml(record = {}, options = {}) {
   const retryDefault = defaultContactRetryInput();
   const followDefault = defaultContactFollowUpInput();
   const outcomeButtons = CONTACT_OUTCOME_ORDER.map((key) =>
     `<button type="button" class="bank-action bank-contact-outcome-btn iaqar-workflow-btn secondary" data-contact-outcome="${esc(key)}" data-broker-action="contact:outcome:${esc(key)}" aria-pressed="false">${esc(CONTACT_OUTCOME_LABELS[key])}</button>`
   ).join("");
   return `
-    <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
-      <h4>نتيجة التواصل</h4>
       <p class="bank-contact-outcome-selected-badge" id="bankContactOutcomeSelectedBadge" hidden role="status">
         <span class="bank-contact-outcome-selected-icon" aria-hidden="true">✓</span>
         <span id="bankContactOutcomeSelectedLabel"></span>
@@ -244,7 +253,15 @@ export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
       <p class="bank-contact-outcome-hint" id="bankContactOutcomeSelectionHint" hidden role="status"></p>
       <div class="bank-contact-outcomes iaqar-workflow-actions iaqar-outcome-actions" id="bankContactOutcomes">${outcomeButtons}</div>
       <div id="bankContactOutcomeActionPanel" class="bank-contact-outcome-action-panel" hidden></div>
-      <p class="section-status" id="bankContactOutcomeStatus" role="status"></p>
+      <p class="section-status" id="bankContactOutcomeStatus" role="status"></p>`;
+}
+
+export function buildContactOutcomesSectionHtml(record = {}, options = {}) {
+  const show = options.show === true || shouldShowContactOutcomePanel(record);
+  return `
+    <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceContactSection" ${show ? "" : "hidden"}>
+      <h4>نتيجة التواصل</h4>
+      ${buildContactOutcomesInnerHtml(record, options)}
     </section>`;
 }
 
@@ -279,7 +296,8 @@ function buildOpportunityBriefPreview(record = {}) {
 }
 
 export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
-  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record);
+  const readiness = evaluateMatchingReadiness(record);
+  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
   const matches = sortMatchesForWorkspace(bundle.matches || [], id);
   const actions = readyWorkspacePrimaryActions(record);
   const partyActions = partyContactActions(record);
@@ -293,9 +311,14 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   const activity = buildWorkspaceActivity(record, cooperationRequests);
   const followUp = bundle.followUp || activeFollowUpFromRecord(record);
   const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
-  const contactOutcomesSection = archived ? "" : buildContactOutcomesSectionHtml(record);
+  const contactOutcomesInner = archived ? "" : buildContactOutcomesInnerHtml(record);
   const listingPreview = buildPublicListingAnnouncement(record, options.officeProfile || {}, {
     origin: options.origin || ""
+  });
+  const nextAction = resolveWorkspaceNextAction(record, bundle);
+  const previews = buildWorkspaceSectionPreviews(id, record, {
+    ...bundle,
+    cooperationRequests
   });
 
   const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
@@ -321,6 +344,14 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
 
   const followUpLabel = followUp?.at ? formatFollowUpAppointmentLine(followUp.at) : "";
 
+  const coopBody = `
+    ${archived ? "" : buildOfficeCooperationPanelHtml()}
+    <div class="bank-coop-current-wrap">
+      <p class="bank-coop-current-title">المشاركات الحالية</p>
+      <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
+      <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
+    </div>`;
+
   return `
     <div class="bank-workspace-layout">
       <div class="bank-workspace-main">
@@ -328,54 +359,83 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           <h3>تفاصيل الفرصة</h3>
           <button type="button" class="settings-close iaqar-workflow-close" id="bankDetailClose" aria-label="إغلاق">×</button>
         </div>
+        ${buildWorkspaceSummaryStripHtml(id, record, readiness)}
+        ${buildWorkspaceNextStepHtml(nextAction)}
         ${detailsHtml}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspacePrimaryActions">
-          <h4>إجراءات الفرصة</h4>
-          <div class="bank-workspace-actions iaqar-workflow-actions">${actions.map(workspaceActionButton).join("")}</div>
+        <section class="bank-workspace-section iaqar-workflow-step bank-workspace-ux-actions-wrap" id="bankWorkspacePrimaryActions">
+          ${buildWorkspaceSecondaryActionsHtml(actions)}
         </section>
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceSendShareHub" hidden>
-          <h4>إرسال ومشاركة</h4>
-          <div class="bank-workspace-hub-options iaqar-workflow-actions">${hubButtons}</div>
-        </section>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceSendShareHub",
+          title: "إرسال ومشاركة",
+          preview: "واتساب — مكتب — نسخ الإعلان",
+          hidden: true,
+          collapsed: true,
+          body: `<div class="bank-workspace-hub-options iaqar-workflow-actions">${hubButtons}</div>`
+        })}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceWhatsAppListing" hidden>
-          <h4>معاينة إعلان واتساب</h4>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceWhatsAppListing",
+          title: "معاينة إعلان واتساب",
+          preview: "مشاركة يدوية عبر واتساب",
+          hidden: true,
+          collapsed: true,
+          body: `
           <pre class="bank-listing-preview" id="bankListingPreviewText">${esc(listingPreview)}</pre>
           <div class="bank-workspace-actions iaqar-workflow-actions">
             <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankOpenWhatsAppListingBtn" data-broker-action="hub:share_whatsapp_listing">فتح واتساب</button>
             <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankCopyListingBtn" data-broker-action="hub:copy_listing_text">نسخ الإعلان</button>
           </div>
           <p class="section-status" id="bankListingShareStatus" role="status"></p>
-          <p class="bank-note iaqar-workflow-note">اختر المستلم بنفسك في واتساب — لا يُدرج رقم المالك أو العميل.</p>
-        </section>
+          <p class="bank-note iaqar-workflow-note">اختر المستلم بنفسك في واتساب — لا يُدرج رقم المالك أو العميل.</p>`
+        })}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceMatchesSection" hidden>
-          <h4>نتائج المطابقة</h4>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceMatchesSection",
+          title: "المطابقة",
+          preview: previews.matches,
+          hidden: true,
+          collapsed: true,
+          body: `
           <p class="bank-note iaqar-workflow-note" id="bankMatchesStatus" role="status"></p>
-          <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>
-        </section>
+          <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>`
+        })}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspacePartySection" hidden>
-          <h4>${esc(isOwnerPartyLabel(record))}</h4>
-          <div class="bank-workspace-party-actions iaqar-workflow-actions">${partyActionButtons}</div>
-        </section>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspacePartySection",
+          title: isOwnerPartyLabel(record),
+          preview: "اتصال — واتساب — معاينة",
+          hidden: true,
+          collapsed: true,
+          body: `<div class="bank-workspace-party-actions iaqar-workflow-actions">${partyActionButtons}</div>`
+        })}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCoopSection">
-          <h4>التعاون مع المكاتب</h4>
-          ${archived ? "" : buildOfficeCooperationPanelHtml()}
-          <div class="bank-coop-current-wrap">
-            <p class="bank-coop-current-title">المشاركات الحالية</p>
-            <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
-            <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
-          </div>
-        </section>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceCoopSection",
+          title: "التعاون مع المكاتب",
+          preview: previews.coop,
+          collapsed: false,
+          body: coopBody
+        })}
 
-        ${contactOutcomesSection}
+        ${contactOutcomesInner ? wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceContactSection",
+          title: "نتيجة التواصل",
+          preview: "تسجيل نتيجة التواصل",
+          hidden: !shouldShowContactOutcomePanel(record),
+          collapsed: true,
+          body: contactOutcomesInner
+        }) : ""}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceFollowUpSection" hidden>
-          <h4>المتابعة والنشاط</h4>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceFollowUpSection",
+          title: "المتابعة والنشاط",
+          preview: followUpLabel ? previews.followUp : previews.activity,
+          hidden: true,
+          collapsed: true,
+          body: `
           ${followUpLabel ? `<p class="bank-workspace-followup-card">الموعد القادم: ${esc(followUpLabel)}</p>` : ""}
           <div class="bank-followup-quick iaqar-workflow-actions" id="bankFollowUpQuick">
             <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="0">اليوم</button>
@@ -386,16 +446,22 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
             </label>
             <button type="button" class="bank-action iaqar-workflow-btn success" id="bankSaveFollowUpCustom">حفظ موعد المتابعة</button>
           </div>
-          <ul class="bank-workspace-activity">${activityRows}</ul>
-        </section>
+          <ul class="bank-workspace-activity">${activityRows}</ul>`
+        })}
 
-        <section class="bank-workspace-section iaqar-workflow-step" id="bankWorkspaceCloseSection" hidden>
-          <h4>إنهاء الفرصة</h4>
+        ${wrapWorkspaceCollapsibleSection({
+          id: "bankWorkspaceCloseSection",
+          title: "إنهاء الفرصة",
+          preview: previews.close,
+          hidden: true,
+          collapsed: true,
+          extraClass: "bank-workspace-collapsible--muted",
+          body: `
           <p class="bank-note iaqar-workflow-note">سجّل نتيجة التواصل أولًا، ثم أكمل الإغلاق والأرشفة.</p>
           <div class="bank-workspace-actions iaqar-workflow-actions">
             <button type="button" class="bank-action iaqar-workflow-btn secondary" data-workspace-action="open_lifecycle_close">إنهاء وأرشفة الفرصة</button>
-          </div>
-        </section>
+          </div>`
+        })}
 
         <div id="bankCooperationRoomPanel" class="bank-cooperation-room iaqar-workflow-step" hidden></div>
         <div id="bankMatchComparisonPanel" class="bank-match-comparison iaqar-workflow-step" hidden></div>
