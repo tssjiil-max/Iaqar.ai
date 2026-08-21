@@ -461,3 +461,16 @@ export function activeWorkspaceCooperationRequests(requests = []) {
     ACTIVE_COOP_STATUSES.has(String(row.status || "").toUpperCase())
   );
 }
+
+export function mergeUniqueCooperationRequests(primary = [], secondary = []) {
+  const seen = new Set();
+  const merged = [];
+  for (const row of [...primary, ...secondary]) {
+    if (!row) continue;
+    const key = String(row.id || `${row.targetOfficeId}:${row.status}`).trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged;
+}

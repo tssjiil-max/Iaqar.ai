@@ -100,7 +100,8 @@ import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview,
   mergeWorkspaceCooperationRequests,
-  activeWorkspaceCooperationRequests
+  activeWorkspaceCooperationRequests,
+  mergeUniqueCooperationRequests
 } from "./opportunity-workspace-domain.js";
 import {
   buildPublicListingAnnouncement,
@@ -880,16 +881,24 @@ async function renderDetail(id, options = {}) {
   }
 
   panel.innerHTML = `<div class="bank-detail-loading"><p>جارٍ تجهيز التفاصيل…</p></div>`;
+  await loadOutgoingScopes();
   const bundle = await loadWorkspaceBundle(id);
+  const enrichedBundle = {
+    ...bundle,
+    cooperationRequests: mergeUniqueCooperationRequests(
+      bundle.cooperationRequests || [],
+      cooperationRequestsFromOutgoingCache(id)
+    )
+  };
   const freshRecord = state.records.get(id) || record;
-  panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, bundle, {
+  panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, enrichedBundle, {
     officeProfile: officeProfileForShare(),
     origin: window.location.origin,
     ownOfficeId: officeId()
   });
-  wireWorkspaceHandlers(id, freshRecord, bundle);
+  wireWorkspaceHandlers(id, freshRecord, enrichedBundle);
   applyBankBrokerMarks(freshRecord);
-  applyWorkspaceLifecycleFlow(id, freshRecord, bundle);
+  applyWorkspaceLifecycleFlow(id, freshRecord, enrichedBundle);
   scrollBankDetailIntoView();
   if (!ctx.dailyTask) {
     setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
@@ -953,12 +962,30 @@ async function recordBrokerActionDone(opportunityId, actionKey, recordPatch = {}
   }
 }
 
+function cooperationRequestsFromOutgoingCache(opportunityId = "") {
+  const oppId = String(opportunityId || "").trim();
+  if (!oppId) return [];
+  return outgoingShareRowsCache
+    .filter((row) => Array.isArray(row.opportunityIds) && row.opportunityIds.includes(oppId))
+    .map((row) => ({
+      id: row.id,
+      status: row.status,
+      targetOfficeId: row.targetOfficeId,
+      targetOfficeName: row.officeLabel || row.targetOfficeId,
+      originatingOfficeId: officeId(),
+      shareKind: row.shareKind
+    }));
+}
+
 function renderWorkspaceCoopList(opportunityId, record = {}, bundle = {}) {
   const list = document.getElementById("bankWorkspaceCoopList");
   if (!list) return;
   const requests = mergeWorkspaceCooperationRequests(
     record,
-    bundle.cooperationRequests || [],
+    mergeUniqueCooperationRequests(
+      bundle.cooperationRequests || [],
+      cooperationRequestsFromOutgoingCache(opportunityId)
+    ),
     officeId()
   );
   const rowsHtml = buildWorkspaceCoopRowsHtml(requests, { ownOfficeId: officeId() });
@@ -981,10 +1008,17 @@ async function refreshWorkspaceCoopSection(opportunityId, recordPatch = {}) {
   if (Object.keys(recordPatch).length) {
     state.records.set(opportunityId, mergedRecord);
   }
+  await loadOutgoingScopes();
   const bundle = await loadWorkspaceBundle(opportunityId);
   const record = state.records.get(opportunityId) || mergedRecord;
   renderWorkspaceCoopList(opportunityId, record, bundle);
-  applyWorkspaceLifecycleFlow(opportunityId, record, bundle);
+  applyWorkspaceLifecycleFlow(opportunityId, record, {
+    ...bundle,
+    cooperationRequests: mergeUniqueCooperationRequests(
+      bundle.cooperationRequests || [],
+      cooperationRequestsFromOutgoingCache(opportunityId)
+    )
+  });
   return bundle;
 }
 

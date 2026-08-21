@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mergeWorkspaceCooperationRequests,
-  activeWorkspaceCooperationRequests
+  activeWorkspaceCooperationRequests,
+  mergeUniqueCooperationRequests
 } from "../public/js/opportunity-workspace-domain.js";
 import {
   buildWorkspaceCoopRowsHtml,
@@ -58,4 +59,12 @@ test("activeWorkspaceCooperationRequests keeps pending and accepted only", () =>
     { status: "ACCEPTED" }
   ]);
   assert.equal(rows.length, 2);
+});
+
+test("mergeUniqueCooperationRequests deduplicates by request id", () => {
+  const merged = mergeUniqueCooperationRequests(
+    [{ id: "coop_a", status: "PENDING" }],
+    [{ id: "coop_a", status: "PENDING" }, { id: "coop_b", status: "ACCEPTED" }]
+  );
+  assert.equal(merged.length, 2);
 });
