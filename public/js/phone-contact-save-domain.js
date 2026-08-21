@@ -58,8 +58,20 @@ export function buildPhoneContactDisplayName({
 } = {}) {
   const name = safeAdvertiserDisplayName(displayName);
   const role = cleanRole(roleLabel);
-  const property = cleanPropertyType(propertyType);
+  let property = cleanPropertyType(propertyType);
   const place = cleanDistrict(district);
+
+  // Avoid «شقة في النرجس في النرجس» when property already carries the place.
+  if (place && property) {
+    const placeRe = new RegExp(`(?:^|\\s)في\\s+${place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    if (property === place || property.endsWith(place) || placeRe.test(property)) {
+      property = property
+        .replace(placeRe, "")
+        .replace(new RegExp(`(?:^|\\s)${place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "")
+        .trim();
+      property = cleanPropertyType(property);
+    }
+  }
 
   if (name) {
     const parts = [name];

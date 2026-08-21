@@ -34,6 +34,16 @@ test("اسم الحفظ بدون اسم شخصي: مالك عمارة في عر�
   );
 });
 
+test("لا يكرر الحي إذا كان مضمّنًا في نوع العقار", () => {
+  assert.equal(
+    buildPhoneContactDisplayName({
+      propertyType: "شقة في النرجس",
+      district: "النرجس"
+    }),
+    "شقة في النرجس"
+  );
+});
+
 test("VCF يحفظ الاسم الوصفي مع الرقم", () => {
   const check = validatePhoneContactSave({
     phoneRaw: "0511123456",
