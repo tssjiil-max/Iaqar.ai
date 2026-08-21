@@ -150,6 +150,24 @@ function normalizeCityDistrict(record = {}) {
   return { cityText, districtText };
 }
 
+const SHORT_CITY_DISPLAY = Object.freeze({
+  "المدينة المنورة": "المدينة",
+  "المدينة المنوره": "المدينة"
+});
+
+function stripHayPrefix(value = "") {
+  const text = String(value || "").trim();
+  return text.startsWith("حي ") ? text.slice(3).trim() : text;
+}
+
+/** Display-only city + district line, e.g. المدينة والوبرة */
+export function formatOpportunityLocationLine(city = "", district = "") {
+  const cityText = SHORT_CITY_DISPLAY[String(city || "").trim()] || String(city || "").trim();
+  const districtText = stripHayPrefix(district);
+  if (cityText && districtText) return `${cityText} و${districtText}`;
+  return cityText || districtText || "";
+}
+
 export function normalizeOpportunityDetailsRecord(record = {}) {
   return normalizeListingRecord(record);
 }
@@ -405,8 +423,7 @@ function locationRow(vm) {
   if (!complete && !city && !district) {
     valueHtml = valueCellHtml("غير محدد", false);
   } else {
-    const main = [city, district ? `حي ${district}` : ""].filter(Boolean).join(" – ");
-    valueHtml = valueCellHtml(main || "—", complete, district ? `الحي: ${district}` : "");
+    valueHtml = valueCellHtml(formatOpportunityLocationLine(city, district) || "—", complete);
   }
   return `
     <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildOpportunityDetailsCoreHtml,
   buildOpportunityDetailsViewModel,
+  formatOpportunityLocationLine,
   resolveOpportunityDetailsStatus
 } from "../public/js/opportunity-details-ui.js";
 
@@ -140,7 +141,9 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.pct, 57);
   assert.ok(html.includes("opp-details-missing-dot"));
   assert.ok(!html.includes("🔴"));
-  assert.ok(html.includes("الحي: عروة") || html.includes("حي عروة"));
+  assert.ok(html.includes("المدينة وعروة"));
+  assert.ok(!html.includes("الحي:"));
+  assert.ok(!html.includes("حي عروة"));
   assert.ok(html.includes("opp-details-progress-pct"));
   assert.ok(html.includes("opp-details-progress-ring"));
   assert.ok(html.includes("4 من 7"));
@@ -210,6 +213,23 @@ test("location row keeps city and district separate", () => {
   });
   assert.equal(vm.locationCity, "المدينة المنورة");
   assert.equal(vm.locationDistrict, "عروة");
+});
+
+test("location display is a short city and district line", () => {
+  assert.equal(formatOpportunityLocationLine("المدينة المنورة", "الوبرة"), "المدينة والوبرة");
+  assert.equal(formatOpportunityLocationLine("المدينة المنورة", "حي عروة"), "المدينة وعروة");
+  assert.equal(formatOpportunityLocationLine("الرياض", "النرجس"), "الرياض والنرجس");
+  const { html } = buildOpportunityDetailsCoreHtml("opp_loc_line", {
+    opportunityKind: "OFFER",
+    propertyType: "أرض",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "الوبرة"
+  });
+  assert.ok(html.includes("المدينة والوبرة"));
+  assert.ok(!html.includes("المدينة المنورة –"));
+  assert.ok(!html.includes("حي الوبرة"));
+  assert.ok(!html.includes("الحي: الوبرة"));
 });
 
 test("complete opportunities hide missing chips and complete-missing button", () => {
