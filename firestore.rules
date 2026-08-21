@@ -40,7 +40,7 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes', 'importJobs'
+        'activityEvents', 'adminNotes', 'importJobs', 'cooperationHistory', 'communityMatchNotices'
       ];
     }
     function validOfficeProfile() {
@@ -280,6 +280,15 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /cooperationHistory/{historyId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      match /communityMatchNotices/{noticeId} {
+        allow read, write: if false;
+      }
+
       // مسودات الرسائل الذكية (المرحلة 7): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
       // لا يجوز للعميل تزوير SENT أو DELIVERED.
       match /messages/{messageId} {
@@ -444,6 +453,14 @@ service cloud.firestore {
 
     // غرف التعاون الخاصة — للمكتبين المشاركين فقط بعد القبول.
     match /cooperationRooms/{roomId} {
+      allow read: if signedIn()
+        && (isOfficeMember(resource.data.originatingOfficeId)
+          || isOfficeMember(resource.data.targetOfficeId));
+      allow create, update, delete: if false;
+    }
+
+    // اتفاقيات عمولة مجتمع الوسطاء — قراءة للطرفين، الكتابة عبر العامل فقط.
+    match /cooperationAgreements/{agreementId} {
       allow read: if signedIn()
         && (isOfficeMember(resource.data.originatingOfficeId)
           || isOfficeMember(resource.data.targetOfficeId));

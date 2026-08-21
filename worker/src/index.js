@@ -48,7 +48,14 @@ import {
   revokeBankSharingScope,
   createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
-import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
+import {
+  buildCommunityMatchesForMany,
+  buildCommunityMatchesForOpportunity,
+  closeCommunityCooperation,
+  createCommunityCooperationRequest,
+  runCommunityAgreementAction
+} from "./broker-community-service.js";
+import { communityNotificationCopy } from "../../public/js/broker-community-domain.js";
 import { buildSuitableOfficesResult } from "./suitable-offices-service.mjs";
 import {
   loadOpportunityWorkspaceBundle,
@@ -436,6 +443,18 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/nearby-suggestions") {
         return await handleCooperationNearbySuggestions(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/community-matches") {
+        return await handleCommunityMatches(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/agreement") {
+        return await handleCommunityAgreement(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/outcome") {
+        return await handleCommunityOutcome(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/suitable-offices") {
@@ -3813,72 +3832,219 @@ async function handleCooperationNearbySuggestions(request, env, requestId) {
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
-
-  const oppDoc = await getFirestoreDocument({
+  const result = await buildCommunityMatchesForOpportunity({
     projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
-  const sourceOpportunity = {
-    id: opportunityId,
     officeId,
-    ...firestoreFieldsToJs(oppDoc.fields || {})
-  };
-
-  const publicDocs = await listCollectionDocuments({
-    projectId,
-    segments: ["publicOffices"],
+    opportunityId,
     accessToken,
-    pageSize: 120
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
   });
-  const publicOffices = publicDocs.map((doc) => ({
-    officeId: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
-    ...firestoreFieldsToJs(doc.fields || {})
-  }));
-
-  const officeOpportunities = [];
-  for (const office of publicOffices) {
-    const targetId = String(office.officeId || "").trim().toLowerCase();
-    if (!targetId || targetId === officeId) continue;
-    const docs = await listCollectionDocuments({
-      projectId,
-      segments: ["offices", targetId, "opportunities"],
-      accessToken,
-      pageSize: 40
-    });
-    for (const doc of docs) {
-      const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-      officeOpportunities.push({
-        id,
-        officeId: targetId,
-        ...firestoreFieldsToJs(doc.fields || {})
-      });
-    }
+  if (!result.ok) {
+    throw appError(result.error || "nearby_failed", result.status || 400, "تعذر البحث عن فرص التعاون");
   }
-
-  const suggestions = await buildCooperationNearbySuggestions({
-    sourceOpportunity,
-    ownOfficeId: officeId,
-    publicOffices,
-    officeOpportunities
-  });
-  const emptyReason = suggestions.length
-    ? ""
-    : resolveNearbyEmptyReason(sourceOpportunity, suggestions);
-
   return jsonResponse({
     ok: true,
     officeId,
     opportunityId,
-    suggestions,
-    emptyReason,
+    suggestions: result.suggestions || [],
+    emptyReason: result.emptyReason || "",
     boundaries: {
       ...phase6BoundaryGuarantees(),
       usesDeviceGps: false,
       exposesContactBeforeAcceptance: false
     },
+    requestId
+  });
+}
+
+async function handleCommunityMatches(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const opportunityIds = Array.isArray(body.opportunityIds)
+    ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
+    : (body.opportunityId ? [cleanText(body.opportunityId, 180)] : []);
+  const result = await buildCommunityMatchesForMany({
+    projectId,
+    officeId,
+    opportunityIds,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  });
+  const matchesByOpportunityId = result.matchesByOpportunityId || {};
+  for (const [opportunityId, matches] of Object.entries(matchesByOpportunityId)) {
+    const top = Array.isArray(matches) ? matches[0] : null;
+    if (!top || Number(top.matchScore || 0) < 70) continue;
+    const noticeId = `cmty_${String(top.pairKey || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80)}`;
+    if (!noticeId || noticeId === "cmty_") continue;
+    const existing = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "communityMatchNotices", noticeId],
+      accessToken,
+      allowMissing: true
+    });
+    if (existing) continue;
+    const copy = communityNotificationCopy("community_match", {
+      district: top.district,
+      sourceKind: top.opportunityKind === "REQUEST" ? "OFFER" : "REQUEST"
+    });
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "communityMatchNotices", noticeId],
+      accessToken,
+      fields: {
+        officeId: firestoreString(officeId),
+        opportunityId: firestoreString(opportunityId),
+        pairKey: firestoreString(top.pairKey || ""),
+        createdAt: firestoreTimestamp(new Date())
+      }
+    }).catch(() => null);
+    await sendOfficePush({
+      projectId,
+      officeId,
+      title: copy.title,
+      body: copy.body,
+      type: "community_match",
+      recordId: opportunityId,
+      accessToken,
+      env
+    }).catch(() => null);
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    matchesByOpportunityId,
+    boundaries: {
+      ...phase6BoundaryGuarantees(),
+      exposesContactBeforeAcceptance: false,
+      createsCommission: false
+    },
+    requestId
+  });
+}
+
+async function handleCommunityAgreement(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 20).toUpperCase();
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await runCommunityAgreementAction({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    officeAPercent: body.officeAPercent,
+    officeBPercent: body.officeBPercent,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "agreement_failed", result.status || 400, result.message || "تعذر حفظ اتفاقية التعاون");
+  }
+  if (result.notify && result.agreement && result.agreement.status === "ACTIVE") {
+    const otherOffice = officeId === result.agreement.originatingOfficeId
+      ? result.agreement.targetOfficeId
+      : result.agreement.originatingOfficeId;
+    if (otherOffice) {
+      await sendOfficePush({
+        projectId,
+        officeId: otherOffice,
+        title: result.notify.title,
+        body: result.notify.body,
+        type: "community_agreement",
+        recordId: cooperationId,
+        accessToken,
+        env
+      }).catch(() => null);
+    }
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    agreementId: result.agreementId,
+    agreement: result.agreement,
+    requestId
+  });
+}
+
+async function handleCommunityOutcome(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const outcome = cleanText(body.outcome, 40).toUpperCase();
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await closeCommunityCooperation({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    outcome,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "outcome_failed", result.status || 400, result.message || "تعذر تسجيل نتيجة التعاون");
+  }
+  if (result.notify) {
+    const coopDoc = await getFirestoreDocument({
+      projectId,
+      segments: ["cooperationRequests", cooperationId],
+      accessToken,
+      allowMissing: true
+    });
+    const coop = coopDoc ? firestoreFieldsToJs(coopDoc.fields || {}) : {};
+    const other = officeId === String(coop.originatingOfficeId || "")
+      ? coop.targetOfficeId
+      : coop.originatingOfficeId;
+    if (other) {
+      await sendOfficePush({
+        projectId,
+        officeId: other,
+        title: result.notify.title,
+        body: result.notify.body,
+        type: "community_deal",
+        recordId: cooperationId,
+        accessToken,
+        env
+      }).catch(() => null);
+    }
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    outcome: result.outcome,
     requestId
   });
 }
@@ -4015,6 +4181,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
   const opportunityIds = Array.isArray(body.opportunityIds)
     ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
     : [];
+  const peerOpportunityId = cleanText(body.peerOpportunityId || "", 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!targetOfficeId) throw appError("target_office_required", 400, "معرّف المكتب المستهدف مطلوب");
   if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "معرّف الفرصة مطلوب");
@@ -4022,22 +4189,50 @@ async function handleCooperationRequestCreate(request, env, requestId) {
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
-  const result = await createExplicitCooperationRequest({
-    projectId,
-    originatingOfficeId: officeId,
-    originatingBrokerId: identity.uid || "",
-    targetOfficeId,
-    opportunityIds,
-    scopeType,
-    message: cleanText(body.message || "", 500),
-    accessToken,
-    deps: {
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      firestoreHelpers: operationsFirestoreHelpers()
+  const deps = {
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreFieldsToJs,
+    firestoreHelpers: operationsFirestoreHelpers()
+  };
+  let result;
+  if (peerOpportunityId || scopeType === "community_pair") {
+    result = await createCommunityCooperationRequest({
+      projectId,
+      originatingOfficeId: officeId,
+      originatingBrokerId: identity.uid || "",
+      targetOfficeId,
+      ownOpportunityId: opportunityIds[0],
+      peerOpportunityId: peerOpportunityId || opportunityIds[1] || "",
+      message: cleanText(body.message || "", 500),
+      accessToken,
+      deps
+    });
+    if (result.ok && !result.duplicate && result.notify) {
+      await sendOfficePush({
+        projectId,
+        officeId: targetOfficeId,
+        title: result.notify.title,
+        body: result.notify.body,
+        type: "community_request",
+        recordId: result.requestId,
+        accessToken,
+        env
+      }).catch(() => null);
     }
-  });
+  } else {
+    result = await createExplicitCooperationRequest({
+      projectId,
+      originatingOfficeId: officeId,
+      originatingBrokerId: identity.uid || "",
+      targetOfficeId,
+      opportunityIds,
+      scopeType,
+      message: cleanText(body.message || "", 500),
+      accessToken,
+      deps
+    });
+  }
   if (!result.ok) {
     throw appError(
       result.error || "cooperation_request_failed",
@@ -4050,6 +4245,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
     officeId,
     targetOfficeId,
     cooperationRequestId: result.requestId,
+    pairKey: result.pairKey || "",
     duplicate: Boolean(result.duplicate),
     message: result.message || "تم إرسال طلب التعاون",
     boundaries: result.boundaries || phase6BoundaryGuarantees(),
@@ -4379,6 +4575,10 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
     safeRecordId.startsWith("coop_")
     || type==="cooperation_request"
     || type==="cooperation_response"
+    || type==="community_match"
+    || type==="community_request"
+    || type==="community_agreement"
+    || type==="community_deal"
   ){
     if(safeRecordId)params.set("openCooperation",safeRecordId);
     else params.set("openNotifications","1");
@@ -4425,6 +4625,10 @@ export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
   cooperation: "cooperationNotifications",
   cooperation_request: "cooperationNotifications",
   cooperation_response: "cooperationNotifications",
+  community_match: "cooperationNotifications",
+  community_request: "cooperationNotifications",
+  community_agreement: "cooperationNotifications",
+  community_deal: "cooperationNotifications",
   message: "messageNotifications",
   conversation: "messageNotifications",
   appointment: "appointmentNotifications",

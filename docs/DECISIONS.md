@@ -458,6 +458,23 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 **Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
 Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
 
+## D-018 — Broker-community commission split is a recorded agreement, not a financial engine
+
+**Directive:** §8 — the system must never decide commission percentage or create
+automatic financial commitments. The broker-community feature needs both offices to
+record an agreed split (default 50/50, editable, both must accept; a later change
+requires re-approval).
+
+**Decision.** Store `cooperationAgreements` as a **bilateral record** of what the two
+offices typed and accepted. The Worker does not calculate entitlement, move money,
+invoice, or lock a legal contract. `financialCommitmentCreated` is always `false`.
+Changing an active split returns the record to `PENDING_COUNTERPARTY`. Closing a
+community cooperation as `DEAL_COMPLETED` or `ENDED_WITHOUT_DEAL` copies the last
+accepted split into each office's `cooperationHistory`.
+
+**Why.** This satisfies the product request to remember the brokers' agreement without
+contradicting §8's ban on the system deciding or executing commission.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

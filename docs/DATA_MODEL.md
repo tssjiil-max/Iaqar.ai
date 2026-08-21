@@ -428,6 +428,27 @@ Access: office-member `read` only; client `create` / `update` / `delete` are `if
   auto-accept or recommend brokers (Q-4 unresolved). Smart automatic cooperating-broker
   selection is still not implemented; `createsAutomaticCooperation` remains false.
 
+### 7.5 Broker community (`مجتمع الوسطاء`)
+
+Cross-office offer/request discovery reuses the matching engine and neighborhood
+adjacency. Client, owner, and broker **names are never stored or shared** on the
+community projection. The cooperating office phone may be saved by the other broker
+as a vCard (`.vcf`) only.
+
+| Collection | Access |
+| --- | --- |
+| `cooperationRequests/{id}` with `community: true` | Parties may read. Worker creates the pair-keyed id `coop_cmty_{hash(offerId\|requestId)}`. |
+| `cooperationAgreements/{id}` | Parties may read. Worker-only writes. Commission split is a recorded bilateral agreement, not a payment. |
+| `offices/{officeId}/cooperationHistory/{pairKey}` | Office members read. Worker-only writes. |
+| `offices/{officeId}/communityMatchNotices/{id}` | Worker-only (deduped match notifications). |
+
+`officeSettings/cooperation` now also stores `brokerCommunityEnabled` (`mode !== DISABLED`).
+The same flag is mirrored on `publicOffices/{officeId}` for Worker matching.
+
+Worker routes: `POST /cooperation/community-matches`, `POST /cooperation/agreement`,
+`POST /cooperation/outcome`. Community pair requests use `POST /cooperation/request`
+with `peerOpportunityId` / `scopeType: community_pair`.
+
 ## 10. Message drafts (`offices/{officeId}/messages/{messageId}`) — Phase 7
 
 Worker-trusted documents (`msg_{sha256…}`). Members may read; clients cannot create,
