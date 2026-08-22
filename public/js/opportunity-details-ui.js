@@ -22,11 +22,7 @@ import {
   formatLocalPhoneDisplay,
   readAdvertiserDisplayName
 } from "./advertiser-phone-domain.js";
-import { buildPhoneContactDisplayName, SAVE_PHONE_CONTACT_LABEL } from "./phone-contact-save-domain.js";
-import {
-  buildDailyReportHtml,
-  buildNextAppointmentHtml
-} from "./opportunity-details-report-ui.js";
+import { buildPhoneContactDisplayName } from "./phone-contact-save-domain.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
@@ -115,7 +111,14 @@ function formatAddedAt(record = {}) {
   const date = raw instanceof Date ? raw : new Date(raw);
   if (Number.isNaN(date.getTime())) return "";
   const tz = "Asia/Riyadh";
-  const day = date.toLocaleDateString("ar-SA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const pick = (type) => parts.find((part) => part.type === type)?.value || "";
+  const day = `${pick("year")}/${pick("month")}/${pick("day")}`;
   const time = date.toLocaleTimeString("ar-SA", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true });
   return { day, time, combined: `${day} | ${time}` };
 }
@@ -268,15 +271,19 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   return vm;
 }
 
-export function buildOpportunityDetailsPageHeadHtml(title = "تفاصيل الفرصة") {
+export function buildOpportunityDetailsPanelHeadHtml(title = "تفاصيل الفرصة") {
   return `
-    <div class="bank-detail-head iaqar-workflow-head opp-details-page-head">
-      <button type="button" class="settings-close iaqar-workflow-close opp-details-back" id="bankDetailClose" aria-label="رجوع">
-        <svg class="opp-details-back-icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+    <header class="opp-details-panel-head">
+      <h3 class="opp-details-panel-title">${esc(title)}</h3>
+      <button type="button" class="opp-details-collapse-btn" aria-expanded="true" aria-label="طي تفاصيل الفرصة">
+        <svg class="opp-details-collapse-icon" aria-hidden="true"><use href="#i-chevron-down"/></svg>
       </button>
-      <h3>${esc(title)}</h3>
-      <span class="opp-details-head-balance" aria-hidden="true"></span>
-    </div>`;
+    </header>`;
+}
+
+/** @deprecated use buildOpportunityDetailsViewHtml */
+export function buildOpportunityDetailsPageHeadHtml(title = "تفاصيل الفرصة") {
+  return buildOpportunityDetailsPanelHeadHtml(title);
 }
 
 export function buildOpportunityDetailsHeaderHtml(vm) {
@@ -286,7 +293,7 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
   const addedBits = [
     vm.addedAtDay ? `<span class="opp-details-added-day">تاريخ الإضافة ${esc(vm.addedAtDay)}</span>` : "",
     vm.addedAtTime ? `<span class="opp-details-added-time">${esc(vm.addedAtTime)}</span>` : ""
-  ].filter(Boolean).join("");
+  ].filter(Boolean).join(" ");
   return `
     <section class="opp-details-card opp-details-identity-card">
       <div class="opp-details-header">
@@ -367,13 +374,11 @@ function rowLabelHtml(rowKey, label) {
 
 function valueCellHtml(display, complete, subtext = "") {
   const mainClass = complete ? "opp-details-row-main" : "opp-details-row-main is-empty";
-  const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
   const sub = complete && subtext ? `<span class="opp-details-row-sub">${esc(subtext)}</span>` : "";
   return `
     <span class="opp-details-row-value">
       <span class="opp-details-row-value-stack">
         <span class="${mainClass}">${esc(display)}</span>
-        ${missingBadge}
       </span>
       ${sub}
     </span>`;
@@ -392,26 +397,6 @@ function dataRow(vm, rowKey, label, value, subtext = "") {
     </div>`;
 }
 
-function contactSaveButtonHtml(vm) {
-  const phone = String(vm.contactPhone || "").trim();
-  if (!phone) return "";
-  const saveName = String(vm.contactSaveDisplayName || "").trim();
-  return `<button type="button" class="js-save-phone-contact opp-contact-save-btn"
-      data-contact-phone="${esc(phone)}"
-      data-contact-name="${esc(vm.advertiserDisplayName || "")}"
-      data-contact-role="${esc(vm.advertiserRole || "")}"
-      data-contact-kind="${esc(vm.contactPersonKind || "")}"
-      data-contact-property="${esc(vm.propertyType || "")}"
-      data-contact-purpose="${esc(vm.purpose || "")}"
-      data-contact-district="${esc(vm.locationDistrict || "")}"
-      data-contact-city="${esc(vm.locationCity || "")}"
-      aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}${saveName ? `: ${esc(saveName)}` : ""}"
-      title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
-      <svg class="icon opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
-      <span class="opp-contact-save-text">${esc(SAVE_PHONE_CONTACT_LABEL)}</span>
-    </button>`;
-}
-
 function contactRow(vm) {
   const complete = isDetailsRowComplete(vm, "contact");
   const local = String(vm.contactPhoneLocal || "").trim()
@@ -420,18 +405,13 @@ function contactRow(vm) {
   const display = complete
     ? (local || String(vm.contactPhone ?? "").trim() || "—")
     : "غير محدد";
-  const missingBadge = complete ? "" : `<span class="opp-details-missing-tag">ناقص</span>`;
   const phoneHtml = complete
     ? `<span class="opp-contact-phone phone-ltr" dir="ltr">${esc(display)}</span>`
     : `<span class="opp-details-row-main is-empty">${esc(display)}</span>`;
   return `
     <div class="opp-details-row is-contact-row ${complete ? "is-row-complete" : "is-row-missing"}">
       ${rowLabelHtml("contact", "رقم التواصل")}
-      <span class="opp-details-row-value opp-contact-value">
-        ${phoneHtml}
-        ${missingBadge}
-        ${complete ? contactSaveButtonHtml(vm) : ""}
-      </span>
+      <span class="opp-details-row-value opp-contact-value">${phoneHtml}</span>
       ${rowStatusHtml(complete)}
     </div>`;
 }
@@ -454,12 +434,7 @@ function locationRow(vm) {
     </div>`;
 }
 
-export function buildOpportunityDataTableHtml(vm, options = {}) {
-  const includeRevealButton = options.includeRevealButton === true;
-  const hasMissing = (vm.readiness?.matchingReadinessMissing || []).length > 0;
-  const footerHtml = includeRevealButton && hasMissing
-    ? `<div class="opp-details-data-footer">${buildOpportunityDetailsRevealFormButtonHtml({ embedded: true })}</div>`
-    : "";
+export function buildOpportunityDataTableHtml(vm) {
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
       <header class="opp-details-data-title">
@@ -474,30 +449,34 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
         ${dataRow(vm, "advertiser", "المعلن وصفته", vm.advertiserRole, vm.advertiserRoleSubtext)}
         ${contactRow(vm)}
       </div>
-      ${footerHtml}
     </section>`;
 }
 
-export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {}, options = {}) {
+export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {}) {
   const vm = buildOpportunityDetailsViewModel(id, record, readiness);
-  const hasMissing = (vm.readiness?.matchingReadinessMissing || []).length > 0;
-  const revealHtml = hasMissing
-    ? buildOpportunityDetailsRevealFormButtonHtml()
-    : "";
   return {
     vm,
     html: `
       <div class="opp-details opp-details--unified" data-record-kind="${esc(vm.recordKind)}">
         ${buildOpportunityDetailsHeaderHtml(vm)}
         ${buildCompletionProgressHtml(vm)}
-        ${buildOpportunityDataTableHtml(vm, { includeRevealButton: false })}
-        ${revealHtml}
-        ${buildDailyReportHtml(record, {
-          readiness: vm.readiness,
-          cooperationRequests: options.cooperationRequests || [],
-          now: options.now
-        })}
-        ${buildNextAppointmentHtml(record, { now: options.now })}
+        ${buildOpportunityDataTableHtml(vm)}
+      </div>`
+  };
+}
+
+/** Full opportunity details surface — reference image only (no legacy workspace sections). */
+export function buildOpportunityDetailsViewHtml(id, record = {}, readiness = {}, options = {}) {
+  const title = String(options.title || "تفاصيل الفرصة");
+  const { vm, html } = buildOpportunityDetailsCoreHtml(id, record, readiness);
+  return {
+    vm,
+    html: `
+      <div class="opp-details-panel" data-opp-details-panel>
+        ${buildOpportunityDetailsPanelHeadHtml(title)}
+        <div class="opp-details-panel-body">
+          ${html}
+        </div>
       </div>`
   };
 }

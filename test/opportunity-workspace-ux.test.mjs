@@ -84,12 +84,13 @@ test("bank wires UX presentation without backend changes", () => {
   assert.doesNotMatch(worker, /wireWorkspaceUxPresentation/);
 });
 
-test("ready workspace html includes approved details stack without summary strip", () => {
+test("ready workspace html is the reference details panel only", () => {
   const ui = readRepositoryFile("public", "js", "opportunity-bank-workspace-ui.js");
   const ux = readRepositoryFile("public", "js", "opportunity-workspace-ux-ui.js");
-  assert.ok(ui.includes("buildOpportunityDetailsPageHeadHtml"));
+  assert.ok(ui.includes("buildOpportunityDetailsViewHtml"));
   assert.ok(ui.includes("wrapWorkspaceCollapsibleSection"));
   assert.ok(!ui.includes("buildWorkspaceSummaryStripHtml"));
   assert.ok(ui.includes("buildWorkspaceNextStepHtml"));
   assert.ok(ux.includes('id="bankWorkspaceUxSummary"'));
+  assert.equal(ui.includes("buildOpportunityDetailsPageHeadHtml"), false);
 });

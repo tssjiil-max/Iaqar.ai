@@ -25,7 +25,7 @@ test("listing card inner html uses unified بيانات الفرصة table", () 
   assert.ok(!html.includes("listing-field-marks"));
 });
 
-test("listing table marks missing fields with ناقص tag and status icon", () => {
+test("listing table marks missing fields with status icon only", () => {
   const html = buildOpportunityListingCardInnerHtml({
     opportunityKind: "REQUEST",
     propertyType: "أرض",
@@ -34,7 +34,7 @@ test("listing table marks missing fields with ناقص tag and status icon", () 
     district: "الجمعة",
     budget: 10000
   });
-  assert.ok(html.includes("opp-details-missing-tag"));
+  assert.ok(!html.includes("opp-details-missing-tag"));
   assert.ok(html.includes("✕") || html.includes("✓"));
   assert.ok(html.includes("غير محدد"));
 });

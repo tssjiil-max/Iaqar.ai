@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildOpportunityDetailsCoreHtml,
+  buildOpportunityDetailsViewHtml,
   buildOpportunityDetailsViewModel,
   formatOpportunityLocationLine,
   resolveOpportunityDetailsStatus
@@ -43,11 +44,10 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(!owner.html.includes("listing-field-mark"));
   assert.ok(owner.html.includes("opp-details-row-status is-complete"));
   assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
-  assert.ok(owner.html.includes("opp-details-missing-tag") || owner.html.includes("ناقص"));
   assert.ok(owner.html.includes("opp-details-identity-card"));
   assert.ok(owner.html.includes("opp-details-progress-ring"));
-  assert.ok(owner.html.includes("تقرير اليوم"));
-  assert.ok(owner.html.includes("النتيجة الحالية:"));
+  assert.ok(!owner.html.includes("تقرير اليوم"));
+  assert.ok(!owner.html.includes("النتيجة الحالية:"));
   assert.ok(!owner.html.includes("opp-details-title"));
 });
 
@@ -71,8 +71,8 @@ test("data table uses clear row icons for each field", () => {
   assert.ok(html.includes("#i-area"));
   assert.ok(html.includes("#i-user"));
   assert.ok(html.includes("#i-phone"));
-  assert.ok(html.includes("#i-contact-save"));
-  assert.ok(html.includes("js-save-phone-contact"));
+  assert.equal(html.includes("#i-contact-save"), false);
+  assert.equal(html.includes("js-save-phone-contact"), false);
   assert.equal(html.includes("#i-bell"), false);
   assert.equal(html.includes("#i-user-clock"), false);
   assert.equal(html.includes("#i-target"), false);
@@ -90,11 +90,10 @@ test("data table rows show checkmarks for complete and crosses for missing field
   assert.ok(html.includes("opp-details-row-status is-missing"));
   assert.ok(html.includes("✓"));
   assert.ok(html.includes("✕"));
-  assert.ok(html.includes("opp-details-missing-tag"));
-  assert.ok(html.includes("ناقص"));
+  assert.ok(!html.includes("opp-details-missing-tag"));
 });
 
-test("incomplete opportunities place complete-missing button under the data card", () => {
+test("incomplete opportunities show only the reference details surface", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_partial_btn", {
     opportunityKind: "OFFER",
     propertyType: "فيلا",
@@ -103,15 +102,11 @@ test("incomplete opportunities place complete-missing button under the data card
     district: "عروة"
   });
   assert.ok(!html.includes("opp-details-data-footer"));
-  assert.ok(html.includes("oppDetailsRevealFormBtn"));
-  assert.ok(html.includes("استكمال البيانات"));
+  assert.ok(!html.includes("oppDetailsRevealFormBtn"));
+  assert.ok(!html.includes("استكمال البيانات"));
   assert.ok(!html.includes("bankWorkspaceNextActionBtn"));
   assert.ok(!html.includes("data-next-action"));
-  const buttonIndex = html.indexOf("oppDetailsRevealFormBtn");
-  const tableIndex = html.indexOf("opp-details-data-table");
-  const reportIndex = html.indexOf("تقرير اليوم");
-  assert.ok(tableIndex > -1 && buttonIndex > tableIndex);
-  assert.ok(reportIndex > buttonIndex);
+  assert.ok(!html.includes("تقرير اليوم"));
 });
 
 test("identity header keeps kind on the right and status on the left", () => {
@@ -176,7 +171,7 @@ test("matched and archived statuses map to unified badges", () => {
   assert.equal(archived.label, "منتهية");
 });
 
-test("all bank detail surfaces embed the unified data table", async () => {
+test("all bank detail surfaces embed the unified reference panel only", async () => {
   const { buildNeedsCompletionDetailHtml, buildReadyWorkspaceHtml } = await import("../public/js/opportunity-bank-workspace-ui.js");
   const record = {
     opportunityKind: "OFFER",
@@ -196,21 +191,41 @@ test("all bank detail surfaces embed the unified data table", async () => {
   });
   const ready = buildReadyWorkspaceHtml("opp_1258", record, {});
   for (const html of [incomplete, ready]) {
+    assert.ok(html.includes("opp-details-panel"));
+    assert.ok(html.includes("opp-details-panel-head"));
+    assert.ok(html.includes("تفاصيل الفرصة"));
     assert.ok(html.includes("opp-details-data-table"));
     assert.ok(html.includes("بيانات الفرصة"));
     assert.ok(html.includes("opp-details-row-status"));
     assert.ok(html.includes("المعلن وصفته"));
     assert.ok(html.includes("رقم التواصل"));
-    assert.ok(html.includes("js-save-phone-contact"));
+    assert.ok(!html.includes("js-save-phone-contact"));
     assert.ok(html.includes("opp-details-identity-card"));
     assert.ok(html.includes("نسبة اكتمال البيانات"));
-    assert.ok(html.includes("تقرير اليوم"));
-    assert.ok(html.includes("النتيجة الحالية:"));
-    assert.ok(html.includes('aria-label="رجوع"'));
+    assert.ok(!html.includes("تقرير اليوم"));
+    assert.ok(!html.includes("النتيجة الحالية:"));
+    assert.ok(!html.includes('aria-label="رجوع"'));
     assert.ok(!html.includes("bankWorkspaceUxSummary"));
+    assert.ok(!html.includes("bankWorkspaceNextActionBtn"));
+    assert.ok(!html.includes("bankWorkspaceContactSection"));
   }
-  assert.ok(!incomplete.includes("bankWorkspaceNextActionBtn"));
-  assert.ok(ready.includes("bankWorkspaceNextActionBtn"));
+});
+
+test("view wrapper adds green panel head matching reference", () => {
+  const { html } = buildOpportunityDetailsViewHtml("opp_panel", {
+    opportunityKind: "OFFER",
+    propertyType: "عمارة",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "عروة",
+    price: 15000000,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678",
+    createdAt: "2026-08-22T00:21:00.000Z"
+  });
+  assert.ok(html.includes("opp-details-collapse-btn"));
+  assert.ok(html.includes("opp-details-panel-body"));
+  assert.ok(!html.includes("bank-workspace-layout"));
 });
 
 test("location row keeps city and district separate", () => {
@@ -279,15 +294,13 @@ test("matching-ready records still show table gaps instead of 100%", () => {
   assert.ok(html.includes("الميزانية"));
   assert.ok(html.includes("المساحة والمواصفات"));
   assert.ok(html.includes("غير محدد"));
-  assert.ok(html.includes("ناقص"));
   assert.ok(html.includes("المدينة - الحرة الغربية"));
   assert.ok(!html.includes("100% مكتملة"));
   assert.ok(!html.includes("opp-details-completion-card is-complete"));
   assert.ok(!html.includes("oppDetailsRevealFormBtn"));
 });
 
-test("daily report and next appointment use existing activity and follow-up", () => {
-  const now = new Date("2026-08-21T12:00:00.000Z");
+test("details surface excludes daily report and appointment cards", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_report", {
     opportunityKind: "OFFER",
     propertyType: "أرض",
@@ -300,15 +313,9 @@ test("daily report and next appointment use existing activity and follow-up", ()
     createdAt: "2026-08-21T07:40:00.000Z",
     lastContactAt: "2026-08-21T07:45:00.000Z",
     nextFollowUpAt: "2026-08-22T06:15:00.000Z"
-  }, {}, { now });
-  assert.ok(html.includes("تقرير اليوم"));
-  assert.ok(html.includes("مراجعة البيانات"));
-  assert.ok(html.includes("متابعة المالك"));
-  assert.ok(html.includes("النتيجة الحالية:"));
-  assert.ok(html.includes("opp-details-appointment-card"));
-  assert.ok(html.includes("الموعد القادم"));
-  assert.ok(html.includes("أغسطس"));
-  assert.ok(!html.includes("غدًا"));
-  assert.ok(html.includes("بانتظار التأكيد"));
+  });
+  assert.ok(!html.includes("تقرير اليوم"));
+  assert.ok(!html.includes("opp-details-appointment-card"));
+  assert.ok(!html.includes("الموعد القادم"));
+  assert.ok(!html.includes("النتيجة الحالية:"));
 });
-

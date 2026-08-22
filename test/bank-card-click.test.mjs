@@ -32,8 +32,8 @@ test("incomplete bank cards open inline detail instead of redirecting to tasks",
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const opener = bank.match(/async function openBankDetailFromList[\s\S]*?^}/m)?.[0] || "";
   assert.equal(opener.includes("navigateToTasksIncomplete"), false);
-  const detail = bank.match(/async function renderDetail[\s\S]*?^  const bundle = await loadWorkspaceBundle/m)?.[0] || "";
-  assert.ok(detail.includes("buildNeedsCompletionDetailHtml"));
+  const detail = bank.match(/async function renderDetail[\s\S]*?^async function /m)?.[0] || "";
+  assert.ok(detail.includes("buildOpportunityDetailsViewHtml"));
   assert.equal(/if \(!ctx\.dailyTask\) \{\s*navigateToTasksIncomplete/.test(detail), false);
 });
 

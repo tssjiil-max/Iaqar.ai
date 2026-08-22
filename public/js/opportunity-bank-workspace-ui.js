@@ -19,8 +19,7 @@ import {
   buildPublicListingAnnouncement
 } from "./opportunity-ready-actions-domain.js";
 import {
-  buildOpportunityDetailsCoreHtml,
-  buildOpportunityDetailsPageHeadHtml
+  buildOpportunityDetailsViewHtml
 } from "./opportunity-details-ui.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import {
@@ -139,23 +138,12 @@ function renderFieldBlock(field) {
 }
 
 export function buildNeedsCompletionDetailHtml(id, record, readiness = {}) {
-  const fields = buildIncompleteFormFields(record, readiness);
-  const fieldBlocks = fields.map(renderFieldBlock).join("");
-  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
+  return buildOpportunityDetailsViewHtml(id, record, readiness).html;
+}
 
-  return `
-    ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
-    ${detailsHtml}
-    <section class="bank-incomplete-edit" id="bankIncompleteEditSection" aria-label="تعديل البيانات الناقصة" hidden>
-      <form id="bankUnifiedForm" class="bank-unified-form bank-incomplete-form iaqar-workflow-form" autocomplete="off">
-        <div class="bank-edit-grid">${fieldBlocks}</div>
-      </form>
-    </section>
-    <div class="bank-unified-save-wrap" id="bankUnifiedSaveWrap" hidden>
-      <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankUnifiedSaveBtn">حفظ</button>
-      <p class="bank-unified-save-note">بعد الحفظ سيتم فحص البيانات تلقائيًا.</p>
-      <p class="section-status" id="bankUnifiedSaveStatus" role="status"></p>
-    </div>`;
+export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
+  const readiness = evaluateMatchingReadiness(record);
+  return buildOpportunityDetailsViewHtml(id, record, readiness).html;
 }
 
 function workspaceActionButton(action) {
@@ -277,209 +265,6 @@ export function buildWorkspaceMatchRowsHtml(opportunityId, matches = []) {
       </span>
     </button>`;
   }).join("") || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>";
-}
-
-function buildOpportunityBriefPreview(record = {}) {
-  const parts = [
-    record.propertyType,
-    record.district,
-    record.city,
-    record.priceOrBudget != null && record.priceOrBudget !== "" ? `${record.priceOrBudget} ريال` : ""
-  ].filter(Boolean);
-  return parts.join(" — ") || "ملخص الفرصة";
-}
-
-export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
-  const readiness = evaluateMatchingReadiness(record);
-  const matches = sortMatchesForWorkspace(bundle.matches || [], id);
-  const actions = readyWorkspacePrimaryActions(record);
-  const partyActions = partyContactActions(record);
-  const hubOptions = sendAndShareHubOptions();
-  const ownOfficeId = String(options.ownOfficeId || record.officeId || "").trim();
-  const cooperationRequests = mergeWorkspaceCooperationRequests(
-    record,
-    bundle.cooperationRequests || [],
-    ownOfficeId
-  );
-  const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness, {
-    cooperationRequests
-  });
-  const activity = buildWorkspaceActivity(record, cooperationRequests);
-  const followUp = bundle.followUp || activeFollowUpFromRecord(record);
-  const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
-  const contactOutcomesInner = archived ? "" : buildContactOutcomesInnerHtml(record);
-  const listingPreview = buildPublicListingAnnouncement(record, options.officeProfile || {}, {
-    origin: options.origin || ""
-  });
-  const previews = buildWorkspaceSectionPreviews(id, record, {
-    ...bundle,
-    cooperationRequests
-  });
-
-  const matchRows = buildWorkspaceMatchRowsHtml(id, matches);
-
-  const coopRows = buildWorkspaceCoopRowsHtml(cooperationRequests, { ownOfficeId });
-  const coopEmpty = coopRows ? "" : buildWorkspaceCoopEmptyHintHtml();
-
-  const partyActionButtons = partyActions.map((action) => {
-    const key = partyActionBrokerKey(action.id);
-    const brokerAttr = key ? ` data-broker-action="${esc(key)}"` : "";
-    return `<button type="button" class="bank-workspace-party-action iaqar-workflow-btn secondary" data-party-action="${esc(action.id)}"${brokerAttr}>${esc(action.label)}</button>`;
-  }).join("");
-
-  const hubButtons = hubOptions.map((opt) => {
-    const key = HUB_OPTION_KEYS[opt.id] || "";
-    const brokerAttr = key ? ` data-broker-action="${esc(key)}"` : "";
-    return `<button type="button" class="bank-workspace-hub-option iaqar-workflow-btn secondary" data-send-share-option="${esc(opt.id)}"${brokerAttr}>${esc(opt.label)}</button>`;
-  }).join("");
-
-  const activityRows = activity.map((row) =>
-    `<li><time>${esc(new Date(row.at).toLocaleString("ar-SA", { timeZone: "Asia/Riyadh" }))}</time> ${esc(row.text)}</li>`
-  ).join("");
-
-  const followUpLabel = followUp?.at ? formatFollowUpAppointmentLine(followUp.at) : "";
-  const nextAction = resolveWorkspaceNextAction(record, {
-    ...bundle,
-    matches,
-    followUp,
-    cooperationRequests
-  });
-  const autoMatchNote = matches.length
-    ? ""
-    : `<p class="bank-note iaqar-workflow-note" id="bankAutoMatchNote">يتم البحث تلقائيًا عن المطابقات</p>`;
-  const followUpSendHtml = followUpLabel
-    ? `<div class="bank-workspace-followup-send iaqar-workflow-actions">
-        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-send-appointment="client">إرسال الموعد للعميل</button>
-        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-send-appointment="owner">إرسال الموعد للمالك</button>
-      </div>
-      <div class="bank-workspace-followup-confirm iaqar-workflow-actions">
-        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-confirm-appointment="client">✓ العميل أكد</button>
-        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-confirm-appointment="owner">✓ المالك أكد</button>
-      </div>`
-    : "";
-
-  const coopBody = `
-    ${archived ? "" : buildOfficeCooperationPanelHtml()}
-    <div class="bank-coop-current-wrap">
-      <p class="bank-coop-current-title">المشاركات الحالية</p>
-      <p class="bank-note iaqar-workflow-note" id="bankWorkspaceCoopStatus" role="status" hidden></p>
-      <div id="bankWorkspaceCoopList">${coopRows || coopEmpty}</div>
-    </div>`;
-
-  return `
-    <div class="bank-workspace-layout">
-      <div class="bank-workspace-main">
-        ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
-        ${detailsHtml}
-
-        <section class="bank-workspace-section iaqar-workflow-step bank-workspace-ux-actions-wrap" id="bankWorkspacePrimaryActions">
-          ${buildWorkspaceNextStepHtml(nextAction)}
-          ${buildWorkspaceSecondaryActionsHtml(actions)}
-        </section>
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceSendShareHub",
-          title: "إرسال ومشاركة",
-          preview: "واتساب — مكتب — نسخ الإعلان",
-          hidden: true,
-          collapsed: true,
-          body: `<div class="bank-workspace-hub-options iaqar-workflow-actions">${hubButtons}</div>`
-        })}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceWhatsAppListing",
-          title: "معاينة إعلان واتساب",
-          preview: "مشاركة يدوية عبر واتساب",
-          hidden: true,
-          collapsed: true,
-          body: `
-          <pre class="bank-listing-preview" id="bankListingPreviewText">${esc(listingPreview)}</pre>
-          <div class="bank-workspace-actions iaqar-workflow-actions">
-            <button type="button" class="bank-action-primary iaqar-workflow-btn success" id="bankOpenWhatsAppListingBtn" data-broker-action="hub:share_whatsapp_listing">فتح واتساب</button>
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" id="bankCopyListingBtn" data-broker-action="hub:copy_listing_text">نسخ الإعلان</button>
-          </div>
-          <p class="section-status" id="bankListingShareStatus" role="status"></p>
-          <p class="bank-note iaqar-workflow-note">اختر المستلم بنفسك في واتساب — لا يُدرج رقم المالك أو العميل.</p>`
-        })}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceMatchesSection",
-          title: "المطابقة",
-          preview: previews.matches,
-          hidden: true,
-          collapsed: true,
-          body: `
-          ${autoMatchNote}
-          <p class="bank-note iaqar-workflow-note" id="bankMatchesStatus" role="status"></p>
-          <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>`
-        })}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspacePartySection",
-          title: isOwnerPartyLabel(record),
-          preview: "اتصال — واتساب — معاينة",
-          hidden: true,
-          collapsed: true,
-          body: `<div class="bank-workspace-party-actions iaqar-workflow-actions">${partyActionButtons}</div>`
-        })}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceCoopSection",
-          title: "التعاون مع المكاتب",
-          preview: previews.coop,
-          collapsed: false,
-          body: coopBody
-        })}
-
-        ${contactOutcomesInner ? wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceContactSection",
-          title: "نتيجة التواصل",
-          preview: "تسجيل نتيجة التواصل",
-          hidden: !shouldShowContactOutcomePanel(record),
-          collapsed: true,
-          body: contactOutcomesInner
-        }) : ""}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceFollowUpSection",
-          title: "المتابعة والنشاط",
-          preview: followUpLabel ? previews.followUp : previews.activity,
-          hidden: true,
-          collapsed: true,
-          body: `
-          ${followUpLabel ? `<p class="bank-workspace-followup-card">الموعد القادم: ${esc(followUpLabel)}</p>` : ""}
-          ${followUpSendHtml}
-          <div class="bank-followup-quick iaqar-workflow-actions" id="bankFollowUpQuick">
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="0">اليوم</button>
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="1">غدًا</button>
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="2">بعد غد</button>
-            <label>تاريخ ووقت
-              <input type="datetime-local" id="bankCustomFollowUp">
-            </label>
-            <button type="button" class="bank-action iaqar-workflow-btn success" id="bankSaveFollowUpCustom">حفظ موعد المتابعة</button>
-          </div>
-          <ul class="bank-workspace-activity">${activityRows}</ul>`
-        })}
-
-        ${wrapWorkspaceCollapsibleSection({
-          id: "bankWorkspaceCloseSection",
-          title: "إنهاء الفرصة",
-          preview: previews.close,
-          hidden: true,
-          collapsed: true,
-          extraClass: "bank-workspace-collapsible--muted",
-          body: `
-          <p class="bank-note iaqar-workflow-note">سجّل نتيجة التواصل أولًا، ثم أكمل الإغلاق والأرشفة.</p>
-          <div class="bank-workspace-actions iaqar-workflow-actions">
-            <button type="button" class="bank-action iaqar-workflow-btn secondary" data-workspace-action="open_lifecycle_close">إنهاء وأرشفة الفرصة</button>
-          </div>`
-        })}
-
-        <div id="bankCooperationRoomPanel" class="bank-cooperation-room iaqar-workflow-step" hidden></div>
-        <div id="bankMatchComparisonPanel" class="bank-match-comparison iaqar-workflow-step" hidden></div>
-      </div>
-    </div>
-    ${archived ? "" : `<div id="bankCloseFormHost" hidden></div>`}`;
 }
 
 export function buildMatchComparisonHtml(sourceRecord, counterpart = {}, match = {}) {

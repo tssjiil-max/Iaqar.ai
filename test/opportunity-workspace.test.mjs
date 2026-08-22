@@ -145,9 +145,10 @@ test("service worker cache bumped for workspace", () => {
   assert.ok(sw.includes("/version.json"));
 });
 
-test("incomplete save button label is canonical", () => {
+test("incomplete detail surface no longer embeds unified save form", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
-  assert.ok(ui.includes('id="bankUnifiedSaveBtn">حفظ</button>'));
+  assert.equal(ui.includes('id="bankUnifiedSaveBtn">حفظ</button>'), false);
+  assert.ok(ui.includes("buildOpportunityDetailsViewHtml"));
 });
 
 test("desktop workspace side panel CSS exists", () => {

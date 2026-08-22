@@ -96,8 +96,7 @@ import {
   buildWorkspaceCoopEmptyHintHtml
 } from "./opportunity-bank-workspace-ui.js";
 import {
-  buildOpportunityDetailsCoreHtml,
-  buildOpportunityDetailsPageHeadHtml
+  buildOpportunityDetailsViewHtml
 } from "./opportunity-details-ui.js";
 import {
   sortMatchesForWorkspace,
@@ -846,6 +845,20 @@ function isBankDetailOpen() {
   return Boolean(state.activeId);
 }
 
+function wireOpportunityDetailsPanel(root = document) {
+  const panel = root?.querySelector?.("[data-opp-details-panel]") || root;
+  if (!panel || panel.nodeType !== 1) return;
+  const btn = panel.querySelector(".opp-details-collapse-btn");
+  const body = panel.querySelector(".opp-details-panel-body");
+  if (!btn || !body) return;
+  btn.addEventListener("click", () => {
+    const expanded = btn.getAttribute("aria-expanded") !== "false";
+    btn.setAttribute("aria-expanded", expanded ? "false" : "true");
+    body.hidden = expanded;
+    panel.classList.toggle("is-collapsed", expanded);
+  });
+}
+
 async function renderDetail(id, options = {}) {
   if (options.panelId || options.dailyTask) {
     setDetailRenderContext(options);
@@ -867,56 +880,10 @@ async function renderDetail(id, options = {}) {
   clearOtherDetailPanels(ctx.panelId);
   panel.hidden = false;
 
-  const archived = record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
   const readiness = evaluateMatchingReadiness(record);
-
-  if (archived) {
-    const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
-    panel.innerHTML = `
-      ${buildOpportunityDetailsPageHeadHtml("تفاصيل الفرصة")}
-      ${detailsHtml}
-      <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
-    $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
-    scrollBankDetailIntoView();
-    if (!ctx.dailyTask) {
-      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-      window.IAQAR?.navigation?.updateBackButton?.();
-    }
-    return;
-  }
-
-  if (!readiness.isReadyForMatching) {
-    panel.innerHTML = buildNeedsCompletionDetailHtml(id, record, readiness);
-    wireIncompleteDetailHandlers(id, record);
-    scrollBankDetailIntoView();
-    if (!ctx.dailyTask) {
-      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-      window.IAQAR?.navigation?.updateBackButton?.();
-    }
-    return;
-  }
-
-  panel.innerHTML = `<div class="bank-detail-loading"><p>جارٍ تجهيز التفاصيل…</p></div>`;
-  await loadOutgoingScopes();
-  const bundle = await loadWorkspaceBundle(id);
-  const enrichedBundle = {
-    ...bundle,
-    cooperationRequests: mergeUniqueCooperationRequests(
-      bundle.cooperationRequests || [],
-      cooperationRequestsFromOutgoingCache(id)
-    )
-  };
-  const freshRecord = state.records.get(id) || record;
-  panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, enrichedBundle, {
-    officeProfile: officeProfileForShare(),
-    origin: window.location.origin,
-    ownOfficeId: officeId()
-  });
-  wireWorkspaceHandlers(id, freshRecord, enrichedBundle);
-  applyBankBrokerMarks(freshRecord);
-  applyWorkspaceLifecycleFlow(id, freshRecord, enrichedBundle);
+  panel.innerHTML = buildOpportunityDetailsViewHtml(id, record, readiness).html;
+  $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
+  wireOpportunityDetailsPanel(panel);
   scrollBankDetailIntoView();
   if (!ctx.dailyTask) {
     setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);

@@ -92,7 +92,7 @@ test("missing contact phone is a completion next action", () => {
   assert.match(action.label, /استكمال البيانات|أكمل/);
 });
 
-test("ready workspace HTML has no manual match button", () => {
+test("ready workspace HTML has no workspace chrome beyond details panel", () => {
   const html = buildReadyWorkspaceHtml("opp_cycle_owner", readyOwner, {}, {
     officeProfile: { officeName: "مكتب", phone: "0512345678" }
   });
@@ -100,8 +100,9 @@ test("ready workspace HTML has no manual match button", () => {
   assert.ok(!html.includes("تشغيل المطابقة"));
   assert.ok(!html.includes("مطابقة الآن"));
   assert.ok(!html.includes("ابدأ المطابقة"));
-  assert.ok(html.includes("يتم البحث تلقائيًا عن المطابقات"));
-  assert.ok(html.includes("data-next-action="));
+  assert.ok(!html.includes("يتم البحث تلقائيًا عن المطابقات"));
+  assert.ok(!html.includes("data-next-action="));
+  assert.ok(html.includes("opp-details-panel"));
 });
 
 test("incomplete save stays on the opportunity page and worker rematches after patch", () => {

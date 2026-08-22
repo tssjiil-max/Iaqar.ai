@@ -151,7 +151,7 @@ test("لا تُنشأ بطاقة إذا الرقم ناقص", () => {
   assert.equal(buildPhoneContactVcard("123"), "");
 });
 
-test("صف التواصل يعرض 05 في سطر LTR مع زر حفظ نصي", () => {
+test("صف التواصل يعرض 05 في سطر LTR بدون زر حفظ", () => {
   const ready = buildOpportunityDetailsCoreHtml("opp_phone", {
     opportunityKind: "REQUEST",
     propertyType: "شقة",
@@ -169,17 +169,11 @@ test("صف التواصل يعرض 05 في سطر LTR مع زر حفظ نصي", 
   const phoneEl = readyDom.window.document.querySelector(".opp-contact-phone");
   const saveBtn = readyDom.window.document.querySelector(".js-save-phone-contact");
   assert.ok(phoneEl);
-  assert.ok(saveBtn);
+  assert.equal(saveBtn, null);
   assert.equal(phoneEl.textContent, "0511123456");
   assert.equal(phoneEl.getAttribute("dir"), "ltr");
   assert.ok(phoneEl.classList.contains("phone-ltr"));
   assert.ok(ready.html.includes("is-contact-row"));
-  assert.equal(saveBtn.textContent.replace(/\s+/g, " ").trim().includes(SAVE_PHONE_CONTACT_LABEL), true);
-  assert.equal(saveBtn.getAttribute("data-contact-phone"), "+966511123456");
-  assert.equal(saveBtn.getAttribute("data-contact-name"), "أبو أحمد");
-  assert.equal(saveBtn.getAttribute("data-contact-role"), "عميل");
-  assert.equal(saveBtn.getAttribute("data-contact-kind"), "client");
-  assert.equal(saveBtn.getAttribute("data-contact-district"), "الوبرة");
   assert.equal(ready.vm.contactSaveDisplayName, "أبو أحمد — عميل");
   assert.equal(ready.vm.contactPhoneLocal, "0511123456");
   assert.equal(ready.vm.contactPhone, "+966511123456");
@@ -210,22 +204,21 @@ test("صف التواصل يعرض 05 في سطر LTR مع زر حفظ نصي", 
     advertiserPhoneNormalized: "+966512345678"
   });
   assert.equal(ownerOnly.vm.contactSaveDisplayName, "مالك عقار — عروة");
-  assert.ok(ownerOnly.html.includes("data-contact-role=\"مالك\""));
-  assert.ok(ownerOnly.html.includes("data-contact-kind=\"owner\""));
+  assert.ok(!ownerOnly.html.includes("js-save-phone-contact"));
+  assert.ok(!ownerOnly.html.includes("data-contact-role"));
 });
 
 test("زر الحفظ ينشئ vCard واحدة بالاسم والرقم والوصف", async () => {
-  const { html } = buildOpportunityDetailsCoreHtml("opp_click", {
-    opportunityKind: "OFFER",
-    propertyType: "عمارة",
-    purpose: "SALE",
-    city: "المدينة المنورة",
-    district: "الحرة الغربية",
-    price: 900000,
-    advertiserRole: "OWNER",
-    advertiserDisplayName: "محمد أحمد",
-    advertiserPhoneNormalized: "+966552019909"
-  });
+  const html = `
+    <button type="button" class="js-save-phone-contact"
+      data-contact-phone="+966552019909"
+      data-contact-name="محمد أحمد"
+      data-contact-role="مالك"
+      data-contact-kind="owner"
+      data-contact-property="عمارة"
+      data-contact-purpose="SALE"
+      data-contact-district="الحرة الغربية"
+      data-contact-city="المدينة المنورة">${SAVE_PHONE_CONTACT_LABEL}</button>`;
   const dom = new JSDOM(`<!doctype html><html><body><div id="toast"></div>${html}</body></html>`, {
     url: "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/",
     pretendToBeVisual: true
@@ -280,7 +273,7 @@ test("زر الحفظ ينشئ vCard واحدة بالاسم والرقم وال
   assert.equal(window.document.getElementById("toast").textContent, SAVE_PHONE_CONTACT_OPENED);
 });
 
-test("بطاقة القائمة تحمل زر الحفظ دون تغيير عدد الصفوف", () => {
+test("بطاقة القائمة تعرض جدول البيانات بستة صفوف دون زر حفظ", () => {
   const html = buildOpportunityListingCardInnerHtml({
     opportunityKind: "REQUEST",
     propertyType: "شقة",
@@ -294,8 +287,7 @@ test("بطاقة القائمة تحمل زر الحفظ دون تغيير عد�
     advertiserPhoneNormalized: "+966511123456"
   });
   const dom = new JSDOM(`<div id="root">${html}</div>`);
-  assert.ok(html.includes("js-save-phone-contact"));
-  assert.ok(html.includes(SAVE_PHONE_CONTACT_LABEL));
+  assert.equal(html.includes("js-save-phone-contact"), false);
   assert.equal(dom.window.document.querySelectorAll(".opp-details-row").length, 6);
 });
 

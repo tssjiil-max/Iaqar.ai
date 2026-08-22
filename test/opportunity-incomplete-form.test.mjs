@@ -131,7 +131,7 @@ test("incomplete form has no legacy contact block after designed fields", () => 
   assert.equal(bank.includes("bank-advertiser-edit-form"), false);
 });
 
-test("incomplete form DOM has single designed phone field and direct save", async () => {
+test("incomplete detail DOM shows reference panel without edit form", async () => {
   const { JSDOM } = await import("jsdom");
   const { buildNeedsCompletionDetailHtml } = await import("../public/js/opportunity-bank-workspace-ui.js");
   const { evaluateMatchingReadiness } = await import("../public/js/opportunity-readiness-domain.js");
@@ -149,21 +149,15 @@ test("incomplete form DOM has single designed phone field and direct save", asyn
   const root = dom.window.document.getElementById("root");
 
   assert.equal(root.textContent.includes("اسم أو وصف المعلن"), false);
-  assert.equal(root.querySelectorAll('input[name="advertiserPhoneLocal"]').length, 1);
+  assert.equal(root.querySelectorAll('input[name="advertiserPhoneLocal"]').length, 0);
   assert.equal(root.querySelectorAll('input[name="advertiserDisplayName"]').length, 0);
   assert.equal(root.querySelector(".bank-incomplete-contact"), null);
   assert.equal(root.querySelector(".bank-advertiser-edit-form"), null);
   assert.equal(root.querySelector("#bankIncompleteContactActions"), null);
-
-  const placeholders = [...root.querySelectorAll("input")].map((node) => node.getAttribute("placeholder") || "");
-  const shortPhonePlaceholders = placeholders.filter((p) => p === "05XXXXXXXX");
-  assert.equal(shortPhonePlaceholders.length, 0);
-  assert.equal(placeholders.filter((p) => p.includes("05XXXXXXXX")).length, 1);
-
-  const form = root.querySelector("#bankUnifiedForm");
-  const saveWrap = root.querySelector(".bank-unified-save-wrap");
-  assert.ok(form && saveWrap);
-  assert.ok(form.closest(".bank-incomplete-edit"));
+  assert.equal(root.querySelector("#bankUnifiedForm"), null);
+  assert.equal(root.querySelector(".bank-unified-save-wrap"), null);
+  assert.equal(root.querySelector(".bank-incomplete-edit"), null);
+  assert.ok(root.querySelector(".opp-details-panel"));
   assert.ok(root.querySelector(".opp-details"));
 });
 

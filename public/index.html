@@ -3896,6 +3896,64 @@
     padding-top:12px;
     border-top:1px solid var(--line);
   }
+  .opp-details-panel {
+    border:1px solid var(--opp-card-border);
+    border-radius:14px;
+    background:var(--card);
+    box-shadow:var(--opp-card-shadow);
+    overflow:hidden;
+    max-width:480px;
+    margin-inline:auto;
+    width:100%;
+  }
+  .opp-details-panel-head {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 38px;
+    align-items:center;
+    gap:8px;
+    background:#087064;
+    color:#fff;
+    padding:12px 14px;
+    direction:rtl;
+  }
+  .opp-details-panel-spacer {
+    width:38px;
+    height:38px;
+    flex-shrink:0;
+  }
+  .opp-details-panel-title {
+    margin:0;
+    text-align:right;
+    font-size:17px;
+    font-weight:800;
+    color:#fff;
+    line-height:1.3;
+  }
+  .opp-details-collapse-btn {
+    width:32px;
+    height:32px;
+    border:0;
+    border-radius:999px;
+    background:rgba(0,0,0,.18);
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    padding:0;
+    flex-shrink:0;
+  }
+  .opp-details-collapse-icon {
+    width:18px;
+    height:18px;
+    fill:currentColor;
+  }
+  .opp-details-panel-body {
+    padding:10px 12px 14px;
+  }
+  .opp-details-panel.is-collapsed .opp-details-panel-body {
+    display:none;
+  }
   .opp-details {
     display:grid;
     gap:10px;

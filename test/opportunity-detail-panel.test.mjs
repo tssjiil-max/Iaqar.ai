@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildNeedsCompletionDetailHtml } from "../public/js/opportunity-bank-workspace-ui.js";
 import { buildOpportunityDetailSummaryHtml } from "../public/js/opportunity-detail-panel-ui.js";
 
-test("detail panel uses structured summary and save label", () => {
+test("detail panel uses structured summary without legacy edit form", () => {
   const html = buildNeedsCompletionDetailHtml("opp_test_1", {
     propertyType: "أرض",
     purpose: "SALE",
@@ -15,13 +15,14 @@ test("detail panel uses structured summary and save label", () => {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
   assert.ok(html.includes("تفاصيل الفرصة"));
+  assert.ok(html.includes("opp-details-panel"));
   assert.ok(html.includes("opp-details--unified"));
   assert.ok(html.includes("opp-details-data-table"));
-  assert.ok(html.includes("oppDetailsRevealFormBtn"));
-  assert.ok(html.includes('id="bankIncompleteEditSection"'));
-  assert.ok(html.includes("bankIncompleteEditSection") && html.includes("hidden"));
-  assert.ok(html.includes("حفظ"));
-  assert.ok(html.includes("فحص البيانات"));
+  assert.ok(!html.includes("oppDetailsRevealFormBtn"));
+  assert.ok(!html.includes('id="bankIncompleteEditSection"'));
+  assert.ok(!html.includes("bankIncompleteEditSection"));
+  assert.ok(!html.includes("حفظ"));
+  assert.ok(!html.includes("فحص البيانات"));
   assert.ok(!html.includes("استكمال الفرصة"));
   assert.ok(!html.includes("bank-row-header"));
 });
