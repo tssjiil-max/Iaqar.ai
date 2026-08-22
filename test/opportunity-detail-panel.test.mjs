@@ -15,6 +15,7 @@ test("detail panel uses structured summary and save label", () => {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   });
   assert.ok(html.includes("تفاصيل الفرصة"));
+  assert.ok(html.includes("opp-details-page"));
   assert.ok(html.includes("opp-details"));
   assert.ok(html.includes("opp-details-data-table"));
   assert.ok(html.includes("oppDetailsRevealFormBtn"));
@@ -23,6 +24,7 @@ test("detail panel uses structured summary and save label", () => {
   assert.ok(html.includes("حفظ الفرصة"));
   assert.ok(!html.includes("استكمال الفرصة"));
   assert.ok(!html.includes("bank-row-header"));
+  assert.ok(!html.includes("bank-detail-head"));
 });
 
 test("detail summary shows progress and missing chips without checklist marks", () => {
@@ -38,6 +40,7 @@ test("detail summary shows progress and missing chips without checklist marks", 
   });
   assert.ok(html.includes("opp-details-progress"));
   assert.ok(html.includes("opp-details-missing-chip"));
+  assert.ok(html.includes("البيانات الناقصة"));
   assert.ok(!html.includes("✗"));
   assert.ok(!html.includes("listing-field-mark"));
 });

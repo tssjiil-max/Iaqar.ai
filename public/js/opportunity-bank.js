@@ -93,7 +93,7 @@ import {
   buildContactOutcomeActionHtml,
   buildWorkspaceMatchRowsHtml
 } from "./opportunity-bank-workspace-ui.js";
-import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
+import { buildOpportunityDetailsPageHtml } from "./opportunity-details-ui.js";
 import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview
@@ -862,14 +862,11 @@ async function renderDetail(id, options = {}) {
   const readiness = evaluateMatchingReadiness(record);
 
   if (archived) {
-    const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
-    panel.innerHTML = `
-      <div class="bank-detail-head">
-        <h3>تفاصيل الفرصة (مؤرشفة)</h3>
-        <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
-      </div>
-      ${detailsHtml}
-      <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
+    const { html: detailsHtml } = buildOpportunityDetailsPageHtml(id, record, readiness, {
+      showCompleteButton: false,
+      footerHtml: `<p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`
+    });
+    panel.innerHTML = detailsHtml;
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
     scrollBankDetailIntoView();
     if (!ctx.dailyTask) {

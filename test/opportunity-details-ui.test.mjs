@@ -2,21 +2,30 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildOpportunityDetailsCoreHtml,
+  buildOpportunityDetailsPageHtml,
   buildOpportunityDetailsViewModel,
+  formatDisplayOpportunityId,
   resolveOpportunityDetailsStatus
 } from "../public/js/opportunity-details-ui.js";
 
+const referenceRecord = {
+  opportunityKind: "OFFER",
+  propertyType: "أرض",
+  purpose: "SALE",
+  city: "المدينة المنورة",
+  district: "عروة",
+  area: 1000,
+  streetWidth: 20,
+  facing: "شمالية",
+  advertiserRole: "OWNER",
+  createdAt: "2025-06-02T07:35:00.000Z"
+};
+
 test("owner offer and client request share unified details layout", () => {
   const owner = buildOpportunityDetailsCoreHtml("opp_owner_1", {
-    opportunityKind: "OFFER",
-    propertyType: "أرض",
-    purpose: "SALE",
-    city: "المدينة المنورة",
-    district: "عروة",
-    price: 900000,
-    advertiserRole: "OWNER",
+    ...referenceRecord,
     advertiserPhoneNormalized: "+966512345678",
-    createdAt: "2026-08-16T10:00:00.000Z"
+    price: 900000
   });
   const client = buildOpportunityDetailsCoreHtml("opp_client_1", {
     opportunityKind: "REQUEST",
@@ -40,11 +49,11 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(owner.html.includes("السعر"));
   assert.ok(client.html.includes("الميزانية"));
   assert.ok(!owner.html.includes("listing-field-mark"));
-  assert.ok(owner.html.includes("opp-details-row-status is-complete"));
-  assert.ok(owner.html.includes("opp-details-row-status is-missing") || owner.html.includes("✕"));
+  assert.ok(!owner.html.includes("opp-details-row-status"));
+  assert.ok(!owner.html.includes("✕"));
 });
 
-test("data table rows show checkmarks for complete and crosses for missing fields", () => {
+test("data table shows missing values as ناقص / غير محدد without checkmarks", () => {
   const { html } = buildOpportunityDetailsCoreHtml("opp_partial_rows", {
     opportunityKind: "OFFER",
     propertyType: "فيلا",
@@ -52,10 +61,11 @@ test("data table rows show checkmarks for complete and crosses for missing field
     city: "المدينة المنورة",
     district: "عروة"
   });
-  assert.ok(html.includes("opp-details-row-status is-complete"));
-  assert.ok(html.includes("opp-details-row-status is-missing"));
-  assert.ok(html.includes("✓"));
-  assert.ok(html.includes("✕"));
+  assert.ok(html.includes("ناقص"));
+  assert.ok(html.includes("غير محدد"));
+  assert.ok(html.includes("is-row-complete"));
+  assert.ok(html.includes("is-row-missing"));
+  assert.ok(!html.includes("opp-details-row-status"));
   assert.ok(!html.includes("opp-details-missing-tag"));
 });
 
@@ -73,9 +83,11 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.total, 7);
   assert.equal(vm.progress.completeCount, 4);
   assert.equal(vm.progress.pct, 57);
-  assert.ok(html.includes("opp-details-missing-dot"));
+  assert.ok(html.includes("البيانات الناقصة"));
+  assert.ok(html.includes("السعر"));
+  assert.ok(html.includes("رقم التواصل"));
   assert.ok(!html.includes("🔴"));
-  assert.ok(html.includes("– حي عروة") || html.includes("الحي: عروة"));
+  assert.ok(html.includes("الحي: عروة"));
   assert.ok(!html.includes("حي حي"));
 });
 
@@ -104,4 +116,40 @@ test("location row keeps city and district separate", () => {
   });
   assert.equal(vm.locationCity, "المدينة المنورة");
   assert.equal(vm.locationDistrict, "عروة");
+  assert.equal(vm.locationPrimary, "المدينة المنورة - حي عروة");
+  assert.equal(vm.locationSecondary, "الحي: عروة");
+});
+
+test("phase 1 page matches reference structure and drops old chrome", () => {
+  const tomorrow = new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString();
+  const { html } = buildOpportunityDetailsPageHtml("1258", {
+    ...referenceRecord
+  }, {
+    matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
+  }, {
+    entries: [
+      { time: "10:40 ص", title: "مراجعة البيانات", result: "تم اكتشاف النواقص" },
+      { time: "10:45 ص", title: "متابعة المالك", result: "تم فتح واتساب" },
+      { time: "10:52 ص", title: "تحديد موعد", result: "غداً 9:15 ص" },
+      { time: "10:58 ص", title: "إرسال الفرصة", result: "أرسلت إلى مكتب الجماوات" }
+    ],
+    followUp: { at: tomorrow, purpose: "معاينة العقار" }
+  });
+
+  assert.ok(html.includes("opp-details-page"));
+  assert.ok(html.includes("opp-details-appbar"));
+  assert.ok(html.includes("تفاصيل الفرصة"));
+  assert.ok(html.includes("#1258"));
+  assert.ok(html.includes("عرض مالك"));
+  assert.ok(html.includes("ناقصة"));
+  assert.ok(html.includes("نسبة اكتمال البيانات"));
+  assert.ok(html.includes("بيانات الفرصة"));
+  assert.ok(html.includes("أكمل البيانات الناقصة"));
+  assert.ok(html.includes("تقرير اليوم"));
+  assert.ok(html.includes("الموعد القادم"));
+  assert.ok(html.includes("معاينة العقار"));
+  assert.ok(!html.includes("إجراءات الفرصة"));
+  assert.ok(!html.includes("bank-detail-head"));
+  assert.ok(!html.includes("class=\"opp-details-title\""));
+  assert.equal(formatDisplayOpportunityId("1258"), "1258");
 });
