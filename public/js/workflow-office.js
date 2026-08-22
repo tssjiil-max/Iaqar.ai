@@ -589,7 +589,9 @@
       }
     } catch (error) {
       console.error("[iaqar] central public intake matching", error);
-      notify("تعذر تشغيل المطابقة الآن؛ سيعاد تشغيلها تلقائيًا عند توفر الاتصال");
+      if (shouldNotifyForPublicIntake(doc.id)) {
+        notify("تعذر تشغيل المطابقة الآن؛ سيعاد تشغيلها تلقائيًا عند توفر الاتصال");
+      }
     } finally {
       intakeProcessing.delete(doc.id);
     }

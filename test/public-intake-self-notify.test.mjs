@@ -79,6 +79,11 @@ test("the public form remembers the intake before matching, and the office liste
   assert.ok(accessGate.includes("Authorization"), "the public form must send the broker session when present");
   assert.ok(workflow.includes("shouldNotifyForPublicIntake"), "the office listener must consult the self-submit gate");
   assert.ok(workflow.includes("excludeCallerPush"), "the listener must also skip the submitter's push if it runs matching");
+  const errorNotify = workflow.slice(workflow.indexOf("central public intake matching"));
+  assert.ok(
+    errorNotify.includes("if (shouldNotifyForPublicIntake(doc.id))"),
+    "a matching error must not toast the broker who just submitted the same intake"
+  );
   assert.ok(workflow.includes("showLocalMatchNotification"), "match toasts still exist for real visitor intakes");
 });
 
