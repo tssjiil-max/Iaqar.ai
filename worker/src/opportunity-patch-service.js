@@ -18,6 +18,7 @@ export const PATCHABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "rooms",
   "bathrooms",
   "contactName",
+  "contactPhone",
   "advertiserDisplayName",
   "advertiserRole",
   "advertiserPhoneNormalized",
@@ -107,6 +108,31 @@ export function readinessFieldsForRecord(record = {}) {
     matchingReadiness: readiness.matchingReadiness,
     matchingReadinessMissing: readiness.matchingReadinessMissing || []
   };
+}
+
+const MATCHING_PATCH_KEYS = Object.freeze([
+  "purpose",
+  "propertyType",
+  "city",
+  "district",
+  "priceOrBudget",
+  "price",
+  "budget",
+  "salePrice",
+  "annualRent",
+  "advertiserRole",
+  "contactPhone",
+  "advertiserPhoneNormalized"
+]);
+
+/** Existing engine only — no new scoring. Run after a readiness-ready save. */
+export function shouldAutoRematchAfterPatch(existing = {}, sanitized = {}, readinessFields = {}) {
+  if (String(readinessFields.matchingReadiness || "") !== "READY_FOR_MATCHING") return false;
+  if (String(existing.matchingReadiness || "") !== "READY_FOR_MATCHING") return true;
+  return MATCHING_PATCH_KEYS.some((key) => (
+    Object.prototype.hasOwnProperty.call(sanitized, key)
+    && String(sanitized[key] ?? "") !== String(existing[key] ?? "")
+  ));
 }
 
 export function validateCooperationListingEnable(record = {}) {

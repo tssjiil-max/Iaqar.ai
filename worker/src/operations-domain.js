@@ -58,7 +58,7 @@ const TYPE_COPY = Object.freeze({
     title: "مطابقة جديدة تحتاج مراجعتك",
     summary: "ظهرت مطابقة جاهزة للمراجعة داخل مكتبكم.",
     action: "مراجعة المطابقة",
-    push: "لديك مطابقة جديدة تحتاج مراجعتك.",
+    push: "وجدنا مطابقة جديدة",
     notificationType: NOTIFICATION_TYPES.NEW_MATCH
   },
   MISSING_DATA: {

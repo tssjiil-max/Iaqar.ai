@@ -70,8 +70,19 @@ export function computeFollowUpReminderSchedule(followUpAt, now = new Date()) {
   };
 }
 
-export function followUpReminderTitle(kind = "") {
-  return String(kind || "") === "24h" ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
+export function followUpReminderTitle(kind = "", followUp = {}) {
+  const appointmentKind = String(followUp.appointmentKind || followUp.kind || followUp.nextActionType || "").toLowerCase();
+  const isDayBefore = String(kind || "") === "24h";
+  if (appointmentKind === "viewing" || appointmentKind.includes("معاينة")) {
+    return isDayBefore ? "معاينة غدًا" : "معاينة بعد ساعة";
+  }
+  if (appointmentKind === "call" || appointmentKind.includes("اتصال")) {
+    return isDayBefore ? "موعد اتصال غدًا" : "موعد اتصال بعد ساعة";
+  }
+  if (appointmentKind === "meeting" || appointmentKind.includes("اجتماع")) {
+    return isDayBefore ? "اجتماع غدًا" : "اجتماع بعد ساعة";
+  }
+  return isDayBefore ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
 }
 
 export function getDueFollowUpReminder(followUp = {}, now = new Date()) {
@@ -270,11 +281,18 @@ export function isSameScheduledFollowUp(existing = {}, at, recipientMode) {
 }
 
 export function formatFollowUpReminderBody(opportunity = {}, followUp = {}) {
-  const property = [opportunity.propertyType, opportunity.district].filter(Boolean).join(" في ");
+  const district = String(opportunity.district || "").trim();
   const recipient = RECIPIENT_MODE_LABELS[followUp.recipientMode] || RECIPIENT_MODE_LABELS.owner;
-  const timeLabel = formatFollowUpTimeLabel(followUp.at);
-  const kind = isOwnerOpportunity(opportunity) ? "عرض" : "طلب";
-  return `متابعة ${kind} ${property || "عقار"} مع ${recipient} الساعة ${timeLabel}`;
+  const at = parseFollowUpInstant(followUp.at);
+  const timePart = at
+    ? at.toLocaleTimeString("ar-SA", { timeZone: FOLLOWUP_TIMEZONE, hour: "numeric", minute: "2-digit" })
+    : "";
+  const parts = [
+    district ? (district.startsWith("حي") ? district : `حي ${district}`) : "",
+    timePart,
+    recipient ? `مع ${recipient}` : ""
+  ].filter(Boolean);
+  return parts.join(" · ") || formatFollowUpTimeLabel(followUp.at);
 }
 
 export function formatFollowUpTimeLabel(value, now = new Date()) {
