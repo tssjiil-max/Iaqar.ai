@@ -67,12 +67,13 @@ test("collapsible wrapper keeps section id for existing handlers", () => {
 
 test("secondary actions preserve workspace action ids", () => {
   const html = buildWorkspaceSecondaryActionsHtml([
-    { id: "search_matches", label: "البحث عن مطابقة" },
-    { id: "send_and_share", label: "إرسال ومشاركة" }
+    { id: "send_and_share", label: "إرسال ومشاركة" },
+    { id: "contact_party", label: "تواصل" }
   ]);
-  assert.match(html, /data-workspace-action="search_matches"/);
   assert.match(html, /data-workspace-action="send_and_share"/);
-  assert.match(html, /إجراءات أخرى/);
+  assert.match(html, /data-workspace-action="contact_party"/);
+  assert.doesNotMatch(html, /search_matches/);
+  assert.match(html, /المزيد/);
 });
 
 test("bank wires UX presentation without backend changes", () => {
@@ -89,6 +90,6 @@ test("ready workspace html includes approved details stack without summary strip
   assert.ok(ui.includes("buildOpportunityDetailsPageHeadHtml"));
   assert.ok(ui.includes("wrapWorkspaceCollapsibleSection"));
   assert.ok(!ui.includes("buildWorkspaceSummaryStripHtml"));
-  assert.ok(!ui.includes("buildWorkspaceNextStepHtml"));
+  assert.ok(ui.includes("buildWorkspaceNextStepHtml"));
   assert.ok(ux.includes('id="bankWorkspaceUxSummary"'));
 });

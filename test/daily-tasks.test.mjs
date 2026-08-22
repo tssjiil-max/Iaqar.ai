@@ -47,6 +47,7 @@ test("todayTaskBucket classifies new review and viewing soon", () => {
     status: "active"
   }), "overdue");
   assert.equal(isViewingSoon({ viewingAt: inTwoHours, status: "viewing" }), true);
+  assert.equal(isViewingSoon({ nextFollowUpAt: inTwoHours, status: "active" }), true);
   assert.equal(isReadyToClose({ closingReadinessScore: 90, status: "active" }), true);
   assert.equal(isAwaitingResponse({ status: "waiting_response" }), true);
 });

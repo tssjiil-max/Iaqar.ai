@@ -132,6 +132,19 @@ export function projectActivityToDailyReportRow(item = {}, record = {}, readines
     const office = (match?.[1] || "مكتب").trim();
     return { time, action: "إرسال الفرصة", result: `✓ أرسلت إلى ${office}` };
   }
+  if (text.includes("تم إرسال الفرصة إلى")) {
+    const office = text.replace(/^✓?\s*تم إرسال الفرصة إلى\s*/, "").replace(/\s*—.*$/, "").trim();
+    return { time, action: "إرسال الفرصة", result: office ? `✓ أرسلت إلى ${office}` : "✓ تم إرسال الفرصة" };
+  }
+  if (text === "تم تحديث بيانات الفرصة") {
+    return { time, action: "تحديث البيانات", result: "✓ تم الحفظ" };
+  }
+  if (text.includes("واتساب")) {
+    return { time, action: "تواصل واتساب", result: `✓ ${text}` };
+  }
+  if (text.includes("أكد الموعد")) {
+    return { time, action: "تأكيد الموعد", result: text.startsWith("✓") ? text : `✓ ${text}` };
+  }
   if (text === "تم إنهاء الفرصة") {
     return { time, action: "إنهاء الفرصة", result: "✓ تم إنهاء الفرصة" };
   }
@@ -151,8 +164,17 @@ export function buildCurrentResultText(record = {}, readinessInput = {}, coopera
     ? readinessInput
     : evaluateMatchingReadiness(record);
   const missing = missingDisplayLabels(record, readiness);
+  const missingKeys = readiness.matchingReadinessMissing || [];
+  if (missingKeys.length === 1 && missingKeys[0] === "contactPhone") {
+    return "البيانات ناقصة — يلزم رقم التواصل";
+  }
   if (missing.length) {
     return `بانتظار استكمال ${joinArabicList(missing)}`;
+  }
+
+  const matchCount = Number(record.matchCount || record.activeMatchCount || 0);
+  if (matchCount > 0 || String(record.lifecycleStatus || "").toUpperCase() === "MATCHED") {
+    return "تم العثور على مطابقة — التواصل هو الخطوة التالية";
   }
 
   const pendingCoop = activeWorkspaceCooperationRequests(cooperationRequests)
@@ -171,8 +193,7 @@ export function buildCurrentResultText(record = {}, readinessInput = {}, coopera
   if (outcome === "INTERESTED") return "الجهة مهتمة وبانتظار المتابعة";
   if (outcome === "AGREED") return "تم الاتفاق وبانتظار إتمام الصفقة";
 
-  if (String(record.lifecycleStatus || "").toUpperCase() === "MATCHED") return "تمت المطابقة";
-  if (readiness.isReadyForMatching) return "جاهزة للمطابقة";
+  if (readiness.isReadyForMatching) return "يتم البحث تلقائيًا عن المطابقات";
   return "جاري متابعة الفرصة";
 }
 
@@ -213,10 +234,16 @@ export function resolveNextAppointment(record = {}, now = new Date()) {
   return candidates[0] || null;
 }
 
-function confirmationLine(appointment, record = {}) {
-  const party = RECIPIENT_MODE_LABELS[appointment.recipientMode]
-    || (isOwnerRecord(record) ? "المالك" : "العميل");
-  return appointment.confirmed ? `${party}: تم التأكيد` : `${party}: بانتظار التأكيد`;
+function confirmationLines(appointment, record = {}) {
+  const follow = record.followUp && typeof record.followUp === "object" ? record.followUp : {};
+  const ownerConfirmed = follow.ownerConfirmed === true
+    || (appointment.recipientMode === "owner" && appointment.confirmed === true);
+  const clientConfirmed = follow.clientConfirmed === true
+    || (appointment.recipientMode === "client" && appointment.confirmed === true);
+  return {
+    client: clientConfirmed ? "العميل ✓ أكد" : "العميل ⏳ بانتظار التأكيد",
+    owner: ownerConfirmed ? "المالك ✓ أكد" : "المالك ⏳ بانتظار التأكيد"
+  };
 }
 
 export function buildDailyReportHtml(record = {}, options = {}) {
@@ -270,7 +297,8 @@ export function buildNextAppointmentHtml(record = {}, options = {}) {
         <p class="opp-details-appointment-when">${esc(when)}</p>
         <div class="opp-details-appointment-meta">
           <span class="opp-details-appointment-kind">${esc(appointment.kindLabel)}</span>
-          <span class="opp-details-appointment-confirm">${esc(confirmationLine(appointment, record))}</span>
+          <span class="opp-details-appointment-confirm">${esc(confirmationLines(appointment, record).client)}</span>
+          <span class="opp-details-appointment-confirm">${esc(confirmationLines(appointment, record).owner)}</span>
         </div>
       </div>
     </section>`;

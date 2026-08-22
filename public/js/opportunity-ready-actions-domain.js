@@ -9,7 +9,6 @@ import { officeLinkFor } from "./office-domain.js";
 import { formatLocalPhoneDisplay } from "./advertiser-phone-domain.js";
 
 export const READY_PRIMARY_ACTION_IDS = Object.freeze([
-  "search_matches",
   "send_and_share",
   "contact_party",
   "manage_opportunity"
@@ -63,7 +62,6 @@ export function officeShareStatusLabel(status = "") {
 export function readyWorkspacePrimaryActions(record = {}) {
   const partyLabel = isOwnerOffer(record) ? "إجراء مع المالك" : "إجراء مع العميل";
   return [
-    { id: "search_matches", label: "البحث عن مطابقة" },
     { id: "send_and_share", label: "إرسال ومشاركة" },
     { id: "contact_party", label: partyLabel },
     { id: "manage_opportunity", label: "إدارة الفرصة" }

@@ -259,7 +259,7 @@ export function buildBestNextAction({
   if (!readiness.isReadyForMatching) {
     const missingKeys = readiness.matchingReadinessMissing || [];
     if (missingKeys.includes("contactPhone")) {
-      return { label: "استكمال رقم الجوال", action: "complete_fields", count: 0 };
+      return { label: "استكمال البيانات", action: "complete_fields", count: 0 };
     }
     const missing = missingFieldLabelsArabic(missingKeys);
     const first = missing[0] || "البيانات الناقصة";
@@ -283,7 +283,10 @@ export function buildBestNextAction({
     return { label: "إنهاء الفرصة", action: "close_opportunity", count: 0 };
   }
   if (followUpDue && activeFollowUp?.status === "scheduled") {
-    return { label: "أكد موعد المتابعة", action: "confirm_followup", count: 0 };
+    return { label: "متابعة الفرصة", action: "confirm_followup", count: 0 };
+  }
+  if (activeFollowUp?.at && activeFollowUp?.status === "scheduled") {
+    return { label: "متابعة الفرصة", action: "confirm_followup", count: 0 };
   }
   if (lastOutcome === "NO_RESPONSE") {
     return { label: "حدد موعد متابعة", action: "schedule_followup", count: 0 };
@@ -295,7 +298,7 @@ export function buildBestNextAction({
   const realMatches = sortMatchesForWorkspace(matches, record.id || record.opportunityId);
   if (realMatches.length > 0) {
     return {
-      label: `راجع ${realMatches.length} مطابقات حقيقية`,
+      label: "عرض المطابقات",
       action: "review_matches",
       count: realMatches.length
     };
@@ -312,7 +315,7 @@ export function buildBestNextAction({
     };
   }
 
-  return { label: "عرض المطابقات", action: "review_matches", count: 0 };
+  return { label: "تواصل", action: "contact_party", count: 0 };
 }
 
 export function buildWorkspaceHeader(record = {}) {
@@ -377,6 +380,12 @@ export function buildWorkspaceActivity(record = {}, cooperationRequests = []) {
     } else {
       items.push({ at: record.createdAt, text: "تمت إضافة الفرصة" });
     }
+  }
+  if (record.updatedAt && record.createdAt && String(record.updatedAt) !== String(record.createdAt)) {
+    items.push({ at: record.updatedAt, text: "تم تحديث بيانات الفرصة" });
+  }
+  if (record.lastWhatsAppOpenedAt) {
+    items.push({ at: record.lastWhatsAppOpenedAt, text: "تم فتح واتساب" });
   }
   if (record.lastContactAt) {
     items.push({ at: record.lastContactAt, text: "تم التواصل مع الجهة" });

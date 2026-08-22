@@ -43,7 +43,7 @@ import {
   readAdvertiserDisplayName,
   readAdvertiserPhoneFromRecord
 } from "./advertiser-phone-domain.js";
-import { openWhatsApp } from "./whatsapp-handoff-domain.js";
+import { openWhatsApp, viewingAppointmentWhatsAppText } from "./whatsapp-handoff-domain.js";
 import { officeLinkFor } from "./office-domain.js";
 import {
   phase6BoundaryGuarantees,
@@ -1090,7 +1090,11 @@ function runWorkspaceNextAction(opportunityId, record, bundle = {}, actionKey = 
     return;
   }
   if (action === "review_matches") {
-    document.querySelector('[data-workspace-action="search_matches"]')?.click();
+    showWorkspaceSection("bankWorkspaceMatchesSection");
+    return;
+  }
+  if (action === "contact_party") {
+    showWorkspaceSection("bankWorkspacePartySection");
     return;
   }
   if (action === "request_cooperation") {
@@ -1165,7 +1169,7 @@ function applyWorkspaceLifecycleFlow(id, record = {}, bundle = {}) {
     hint.hidden = hasActiveCoop;
   }
 
-  if (progress["workspace:search_matches"] && matches.length) {
+  if (matches.length) {
     const matchesSection = document.getElementById("bankWorkspaceMatchesSection");
     if (matchesSection) matchesSection.hidden = false;
   }
@@ -1439,12 +1443,7 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
   }
 
   if (actionId === "party_send_suggested") {
-    await runWorkspaceMatchingSearch(opportunityId, bundle);
-    const section = document.getElementById("bankWorkspaceMatchesSection");
-    if (section) {
-      section.hidden = false;
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    showWorkspaceSection("bankWorkspaceMatchesSection");
     await logPartyActionActivity(opportunityId, actionId);
     return;
   }
@@ -1532,18 +1531,14 @@ function wireIncompleteDetailHandlers(id, record) {
     try {
       await patchOpportunity(id, patch);
       await reloadOpportunityFromBackend(id);
-      if (isDailyTaskDetail() && readinessCheck.isReadyForMatching) {
-        toast("تم حفظ الفرصة ونقلها للمطابقة");
-        if (statusNode) {
-          statusNode.textContent = "تم حفظ الفرصة ونقلها للمطابقة";
-          statusNode.classList.add("is-done");
-        }
-        closeActiveDetailPanel();
-        window.dispatchEvent(new CustomEvent("iaqar:daily-task-completed", { detail: { opportunityId: id } }));
-        renderList();
-        return;
+      toast("✓ تم تحديث بيانات الفرصة");
+      if (statusNode) {
+        statusNode.textContent = readinessCheck.isReadyForMatching
+          ? "✓ تم تحديث بيانات الفرصة — جارٍ البحث عن المطابقات تلقائيًا"
+          : "✓ تم تحديث بيانات الفرصة";
+        statusNode.classList.add("is-done");
       }
-      toast(readinessCheck.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
+      appendWorkspaceActivityLine("تم تحديث بيانات الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {
@@ -1735,7 +1730,15 @@ async function sendCooperationToSelectedOffices(opportunityId) {
   }
 
   if (sentCount > 0) {
-    setShareActionStatus("تم إرسال الفرصة", "is-done");
+    const sentNames = cooperationUiState.selectedOffices
+      .filter((row) => selectedIds.includes(String(row.officeId || row.id || "")))
+      .map((row) => row.officeName || row.name || "مكتب");
+    const successText = sentNames.length === 1
+      ? `✓ تم إرسال الفرصة إلى مكتب ${sentNames[0]}`
+      : `✓ تم إرسال الفرصة إلى ${sentCount} مكاتب`;
+    setShareActionStatus(successText, "is-done");
+    toast(successText);
+    appendWorkspaceActivityLine(successText);
     cooperationUiState.selectedOffices = [];
     const messageInput = $("bankCoopMessage");
     if (messageInput) messageInput.value = "";
@@ -1749,7 +1752,9 @@ async function sendCooperationToSelectedOffices(opportunityId) {
     return;
   }
 
-  setShareActionStatus("تعذر إرسال الفرصة. حاول مرة أخرى.", "is-error");
+  const failText = lastError || "تعذر إرسال الفرصة. حاول مرة أخرى.";
+  console.error("[iaqar] cooperation send finished with error", failText);
+  setShareActionStatus(failText, "is-error");
 }
 
 function wireCooperationHandlers(opportunityId, record, bundle = {}) {
@@ -1803,7 +1808,6 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
       const action = btn.getAttribute("data-workspace-action");
       if (action === "search_matches") {
         showSection("bankWorkspaceMatchesSection");
-        void runWorkspaceMatchingSearch(id, bundle);
         return;
       }
       if (action === "send_and_share") {
@@ -1944,6 +1948,79 @@ function wireWorkspaceHandlers(id, record, bundle = {}) {
     if (!todayCheck.ok) return toast(todayCheck.message);
     void saveWorkspaceFollowUp(id, parsed.toISOString());
   });
+
+  document.querySelectorAll("[data-send-appointment]").forEach((btn) => {
+    if (btn.dataset.apptWired === "1") return;
+    btn.dataset.apptWired = "1";
+    btn.addEventListener("click", () => {
+      void sendWorkspaceAppointmentWhatsApp(id, btn.getAttribute("data-send-appointment") || "", record);
+    });
+  });
+  document.querySelectorAll("[data-confirm-appointment]").forEach((btn) => {
+    if (btn.dataset.apptWired === "1") return;
+    btn.dataset.apptWired = "1";
+    btn.addEventListener("click", () => {
+      void confirmWorkspaceAppointment(id, btn.getAttribute("data-confirm-appointment") || "");
+    });
+  });
+}
+
+function isOwnerWorkspaceRecord(record = {}) {
+  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
+  return record.contactType === "owner"
+    || kind === "OWNER"
+    || kind === "OWNER_OFFER"
+    || kind === "OFFER";
+}
+
+async function sendWorkspaceAppointmentWhatsApp(opportunityId, role, record = {}) {
+  const fresh = state.records.get(opportunityId) || record;
+  const follow = activeFollowUpFromRecord(fresh);
+  if (!follow?.at) {
+    toast("لا يوجد موعد لإرساله");
+    return;
+  }
+  const phone = readAdvertiserPhoneFromRecord(fresh).phone;
+  const ownerRecord = isOwnerWorkspaceRecord(fresh);
+  const roleMatches = (role === "owner" && ownerRecord) || (role === "client" && !ownerRecord);
+  if (!roleMatches || !phone) {
+    toast(role === "owner" ? "رقم المالك غير متوفر" : "رقم العميل غير متوفر");
+    return;
+  }
+  const text = viewingAppointmentWhatsAppText(follow.at);
+  if (!openPartyWhatsAppWithMessage(fresh, phone, text || "السلام عليكم، تم تحديد موعد بخصوص العقار.")) return;
+  try {
+    await postOpportunityLifecycle(opportunityId, {
+      action: "followup_confirmation_opened",
+      recipientRole: role
+    });
+  } catch (error) {
+    console.warn("[iaqar] appointment whatsapp log", error);
+  }
+  appendWorkspaceActivityLine(
+    role === "owner" ? "تم فتح واتساب المالك لإرسال الموعد" : "تم فتح واتساب العميل لإرسال الموعد"
+  );
+  toast("✓ تم فتح واتساب");
+}
+
+async function confirmWorkspaceAppointment(opportunityId, role) {
+  try {
+    const payload = await postOpportunityLifecycle(opportunityId, {
+      action: "followup_outcome",
+      outcome: "confirmed",
+      recipientRole: role
+    });
+    if (payload.followUp) {
+      const existing = state.records.get(opportunityId) || {};
+      state.records.set(opportunityId, { ...existing, followUp: payload.followUp });
+    }
+    appendWorkspaceActivityLine(role === "owner" ? "✓ المالك أكد الموعد" : "✓ العميل أكد الموعد");
+    toast(role === "owner" ? "✓ المالك أكد" : "✓ العميل أكد");
+    await renderDetail(opportunityId);
+  } catch (error) {
+    console.error("[iaqar] appointment confirm", error);
+    toast(error?.message || "تعذر تسجيل التأكيد");
+  }
 }
 
 let bankFollowUpSaveBusy = false;
@@ -3336,7 +3413,7 @@ async function createShareRequest({
     };
   } catch (error) {
     console.error("[iaqar] cooperation request", error);
-    const errorMessage = "تعذر إرسال الفرصة. حاول مرة أخرى.";
+    const errorMessage = error?.message || "تعذر إرسال الفرصة. حاول مرة أخرى.";
     if (!suppressUi) setShareActionStatus(errorMessage, "is-error");
     return { ok: false, errorMessage, technicalError: error };
   }

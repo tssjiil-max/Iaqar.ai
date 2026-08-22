@@ -432,6 +432,11 @@
       ? matchingReadinessMissingStored
       : (readinessEval?.matchingReadinessMissing || []);
     const matchCount = Number(item.matchCount || item.activeMatchCount || 0);
+    const followAt = (item.followUp && item.followUp.at)
+      || item.nextFollowUpAt
+      || item.viewingAt
+      || item.appointmentAt
+      || null;
 
     return {
       id: `opp-${doc.id}`,
@@ -493,7 +498,9 @@
       contactPhone: item.contactPhone || "",
       whatsappOwner: isOwner,
       whatsappClient: !isOwner,
-      nextFollowUpAt: item.nextFollowUpAt || null,
+      nextFollowUpAt: followAt,
+      viewingAt: item.viewingAt || item.appointmentAt || followAt || null,
+      appointmentAt: item.appointmentAt || item.viewingAt || followAt || null,
       normalizedSource: item.normalizedSource || item.source || "",
       opportunityId: doc.id,
       sourceRecordId: item.sourceRecordId || "",

@@ -104,7 +104,7 @@ test("incomplete opportunities place complete-missing button under the data card
   });
   assert.ok(!html.includes("opp-details-data-footer"));
   assert.ok(html.includes("oppDetailsRevealFormBtn"));
-  assert.ok(html.includes("أكمل البيانات الناقصة"));
+  assert.ok(html.includes("استكمال البيانات"));
   assert.ok(!html.includes("bankWorkspaceNextActionBtn"));
   assert.ok(!html.includes("data-next-action"));
   const buttonIndex = html.indexOf("oppDetailsRevealFormBtn");
@@ -208,8 +208,9 @@ test("all bank detail surfaces embed the unified data table", async () => {
     assert.ok(html.includes("النتيجة الحالية:"));
     assert.ok(html.includes('aria-label="رجوع"'));
     assert.ok(!html.includes("bankWorkspaceUxSummary"));
-    assert.ok(!html.includes("bankWorkspaceNextActionBtn"));
   }
+  assert.ok(!incomplete.includes("bankWorkspaceNextActionBtn"));
+  assert.ok(ready.includes("bankWorkspaceNextActionBtn"));
 });
 
 test("location row keeps city and district separate", () => {

@@ -517,7 +517,7 @@ export function buildOpportunityDetailsRevealFormButtonHtml(options = {}) {
   return `
     <div class="${wrapClass}">
       <button type="button" class="bank-action iaqar-workflow-btn opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
-        أكمل البيانات الناقصة
+        استكمال البيانات
       </button>
     </div>`;
 }

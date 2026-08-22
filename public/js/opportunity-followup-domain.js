@@ -74,8 +74,19 @@ export function computeFollowUpReminderSchedule(followUpAt, now = new Date()) {
   };
 }
 
-export function followUpReminderTitle(kind = "") {
-  return String(kind || "") === "24h" ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
+export function followUpReminderTitle(kind = "", followUp = {}) {
+  const appointmentKind = String(followUp.appointmentKind || followUp.kind || followUp.nextActionType || "").toLowerCase();
+  const isDayBefore = String(kind || "") === "24h";
+  if (appointmentKind === "viewing" || appointmentKind.includes("معاينة")) {
+    return isDayBefore ? "معاينة غدًا" : "معاينة بعد ساعة";
+  }
+  if (appointmentKind === "call" || appointmentKind.includes("اتصال")) {
+    return isDayBefore ? "موعد اتصال غدًا" : "موعد اتصال بعد ساعة";
+  }
+  if (appointmentKind === "meeting" || appointmentKind.includes("اجتماع")) {
+    return isDayBefore ? "اجتماع غدًا" : "اجتماع بعد ساعة";
+  }
+  return isDayBefore ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
 }
 
 export function getDueFollowUpReminder(followUp = {}, now = new Date()) {

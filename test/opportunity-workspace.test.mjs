@@ -79,7 +79,7 @@ test("real match count drives review action", () => {
   const action = buildBestNextAction({ record, matches, suggestions: [] });
   assert.equal(action.action, "review_matches");
   assert.equal(action.count, 2);
-  assert.match(action.label, /2 مطابقات حقيقية/);
+  assert.match(action.label, /عرض المطابقات/);
 });
 
 test("fabricated zero-score match is excluded from workspace list", () => {

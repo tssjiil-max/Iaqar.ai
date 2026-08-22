@@ -37,7 +37,9 @@ import { currentCooperationShareStatusLabel } from "./office-cooperation-ui-doma
 import {
   buildWorkspaceSectionPreviews,
   wrapWorkspaceCollapsibleSection,
-  buildWorkspaceSecondaryActionsHtml
+  buildWorkspaceSecondaryActionsHtml,
+  buildWorkspaceNextStepHtml,
+  resolveWorkspaceNextAction
 } from "./opportunity-workspace-ux-ui.js";
 import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 
@@ -48,7 +50,6 @@ function esc(text = "") {
 }
 
 const WORKSPACE_ACTION_KEYS = {
-  search_matches: "workspace:search_matches",
   send_and_share: "workspace:send_and_share",
   contact_party: "workspace:contact_party",
   manage_opportunity: "workspace:manage_opportunity"
@@ -337,6 +338,25 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
   ).join("");
 
   const followUpLabel = followUp?.at ? formatFollowUpAppointmentLine(followUp.at) : "";
+  const nextAction = resolveWorkspaceNextAction(record, {
+    ...bundle,
+    matches,
+    followUp,
+    cooperationRequests
+  });
+  const autoMatchNote = matches.length
+    ? ""
+    : `<p class="bank-note iaqar-workflow-note" id="bankAutoMatchNote">يتم البحث تلقائيًا عن المطابقات</p>`;
+  const followUpSendHtml = followUpLabel
+    ? `<div class="bank-workspace-followup-send iaqar-workflow-actions">
+        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-send-appointment="client">إرسال الموعد للعميل</button>
+        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-send-appointment="owner">إرسال الموعد للمالك</button>
+      </div>
+      <div class="bank-workspace-followup-confirm iaqar-workflow-actions">
+        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-confirm-appointment="client">✓ العميل أكد</button>
+        <button type="button" class="bank-action iaqar-workflow-btn secondary" data-confirm-appointment="owner">✓ المالك أكد</button>
+      </div>`
+    : "";
 
   const coopBody = `
     ${archived ? "" : buildOfficeCooperationPanelHtml()}
@@ -353,6 +373,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
         ${detailsHtml}
 
         <section class="bank-workspace-section iaqar-workflow-step bank-workspace-ux-actions-wrap" id="bankWorkspacePrimaryActions">
+          ${buildWorkspaceNextStepHtml(nextAction)}
           ${buildWorkspaceSecondaryActionsHtml(actions)}
         </section>
 
@@ -388,6 +409,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           hidden: true,
           collapsed: true,
           body: `
+          ${autoMatchNote}
           <p class="bank-note iaqar-workflow-note" id="bankMatchesStatus" role="status"></p>
           <div class="bank-workspace-match-list">${matchRows || "<p class='bank-note'>لا توجد مطابقات محفوظة.</p>"}</div>`
         })}
@@ -426,6 +448,7 @@ export function buildReadyWorkspaceHtml(id, record, bundle = {}, options = {}) {
           collapsed: true,
           body: `
           ${followUpLabel ? `<p class="bank-workspace-followup-card">الموعد القادم: ${esc(followUpLabel)}</p>` : ""}
+          ${followUpSendHtml}
           <div class="bank-followup-quick iaqar-workflow-actions" id="bankFollowUpQuick">
             <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="0">اليوم</button>
             <button type="button" class="bank-action iaqar-workflow-btn secondary" data-followup-days="1">غدًا</button>
