@@ -79,7 +79,7 @@ test("real match count drives review action", () => {
   const action = buildBestNextAction({ record, matches, suggestions: [] });
   assert.equal(action.action, "review_matches");
   assert.equal(action.count, 2);
-  assert.match(action.label, /2 مطابقات حقيقية/);
+  assert.match(action.label, /عرض المطابقات/);
 });
 
 test("fabricated zero-score match is excluded from workspace list", () => {
@@ -145,9 +145,10 @@ test("service worker cache bumped for workspace", () => {
   assert.ok(sw.includes("/version.json"));
 });
 
-test("incomplete save button label is canonical", () => {
+test("incomplete detail surface no longer embeds unified save form", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
-  assert.ok(ui.includes('id="bankUnifiedSaveBtn">حفظ</button>'));
+  assert.equal(ui.includes('id="bankUnifiedSaveBtn">حفظ</button>'), false);
+  assert.ok(ui.includes("buildOpportunityDetailsViewHtml"));
 });
 
 test("desktop workspace side panel CSS exists", () => {

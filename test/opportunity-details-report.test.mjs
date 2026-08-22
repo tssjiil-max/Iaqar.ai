@@ -30,6 +30,27 @@ test("current result summarizes missing fields in Arabic", () => {
   assert.equal(text, "بانتظار استكمال السعر ورقم التواصل");
 });
 
+test("current result names missing contact phone as a matching gate", () => {
+  const text = buildCurrentResultText({ opportunityKind: "OFFER" }, {
+    matchingReadiness: "NEEDS_COMPLETION",
+    matchingReadinessMissing: ["contactPhone"],
+    isReadyForMatching: false
+  });
+  assert.equal(text, "البيانات ناقصة — يلزم رقم التواصل");
+});
+
+test("current result points to contact after a real match", () => {
+  const text = buildCurrentResultText({
+    opportunityKind: "OFFER",
+    matchCount: 1
+  }, {
+    matchingReadiness: "READY_FOR_MATCHING",
+    matchingReadinessMissing: [],
+    isReadyForMatching: true
+  });
+  assert.equal(text, "تم العثور على مطابقة — التواصل هو الخطوة التالية");
+});
+
 test("daily report maps today's existing activity only", () => {
   const now = new Date("2026-08-21T12:00:00.000Z");
   const record = {
@@ -74,7 +95,8 @@ test("next appointment prefers upcoming viewing and weekday headline", () => {
   assert.equal(headline.includes("غدًا"), false);
   const html = buildNextAppointmentHtml(record, { now });
   assert.ok(html.includes("معاينة العقار"));
-  assert.ok(html.includes("المالك: بانتظار التأكيد"));
+  assert.ok(html.includes("المالك"));
+  assert.ok(html.includes("بانتظار التأكيد"));
 });
 
 test("join Arabic list uses و between items", () => {

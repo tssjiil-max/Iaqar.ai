@@ -20,7 +20,7 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("incomplete form has single phone field inside grid when phone missing", () => {
+test("incomplete detail has no embedded phone edit form", () => {
   const record = {
     opportunityKind: "OFFER",
     purpose: "SALE",
@@ -32,10 +32,11 @@ test("incomplete form has single phone field inside grid when phone missing", ()
   };
   const readiness = evaluateMatchingReadiness(record);
   const html = buildNeedsCompletionDetailHtml("opp-1", record, readiness);
-  assert.equal((html.match(/name="advertiserPhoneLocal"/g) || []).length, 1);
+  assert.equal(html.includes("name=\"advertiserPhoneLocal\""), false);
   assert.equal(html.includes("bank-advertiser-edit-form"), false);
   assert.equal(html.includes("bank-incomplete-contact"), false);
   assert.equal(html.includes("اسم أو وصف المعلن"), false);
+  assert.ok(html.includes("opp-details-panel"));
 });
 
 test("incomplete form with complete phone has no phone input", () => {

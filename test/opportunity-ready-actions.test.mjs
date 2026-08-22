@@ -51,10 +51,11 @@ const clientReady = {
   advertiserPhoneNormalized: "+966598765432"
 };
 
-test("ready workspace shows exactly four primary actions", () => {
+test("ready workspace shows three secondary hub actions without match search", () => {
   const actions = readyWorkspacePrimaryActions(ownerReady);
-  assert.equal(actions.length, 4);
+  assert.equal(actions.length, 3);
   assert.deepEqual(actions.map((row) => row.id), [...READY_PRIMARY_ACTION_IDS]);
+  assert.ok(!actions.some((row) => row.id === "search_matches"));
 });
 
 test("owner vs client party action label on primary button", () => {
@@ -121,19 +122,23 @@ test("party actions for owner include owner-specific items", () => {
   assert.ok(clientParty.some((row) => row.label === "تم العثور على العقار"));
 });
 
-test("ready workspace HTML wires four action ids and party handlers", () => {
+test("ready workspace HTML is the reference details panel only", () => {
   const html = buildReadyWorkspaceHtml("opp_owner_ready", ownerReady, {}, {
     officeProfile: { officeName: "مكتب", phone: "0512345678" }
   });
-  for (const id of READY_PRIMARY_ACTION_IDS) {
-    assert.ok(html.includes(`data-workspace-action="${id}"`));
-  }
-  assert.ok(html.includes("data-party-action="));
-  assert.ok(html.includes("data-send-share-option="));
+  assert.ok(html.includes("opp-details-panel"));
+  assert.ok(html.includes("تفاصيل الفرصة"));
+  assert.ok(html.includes("opp-details-data-table"));
+  assert.ok(!html.includes("data-workspace-action="));
+  assert.ok(!html.includes("البحث عن مطابقة"));
+  assert.ok(!html.includes('data-workspace-action="search_matches"'));
+  assert.ok(!html.includes("يتم البحث تلقائيًا عن المطابقات"));
+  assert.ok(!html.includes("data-party-action="));
+  assert.ok(!html.includes("data-send-share-option="));
+  assert.ok(!html.includes("bankWorkspaceNextActionBtn"));
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("wireWorkspaceHandlers"));
   assert.ok(bank.includes("executePartyContactAction"));
-  assert.ok(bank.includes("search_matches"));
   assert.ok(bank.includes("manage_opportunity"));
 });
 

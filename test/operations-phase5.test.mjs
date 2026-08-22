@@ -325,7 +325,7 @@ test("30. sensitive fields are excluded from push preview", async () => {
   const n = await buildInAppNotification({ officeId: "office-a", operation: op });
   assert.equal(n.sensitivePreview, false);
   assert.equal(n.body.includes("05"), false);
-  assert.equal(n.title, "لديك مطابقة جديدة تحتاج مراجعتك.");
+  assert.equal(n.title, "وجدنا مطابقة جديدة");
 });
 
 test("priority rules are deterministic", () => {

@@ -1,7 +1,22 @@
 export const FOLLOWUP_TIMEZONE = "Asia/Riyadh";
 export const FOLLOWUP_REMINDER_MINUTES = 60;
+export const FOLLOWUP_CALL_REMINDER_MINUTES = 15;
 export const FOLLOWUP_DAY_BEFORE_MINUTES = 24 * 60;
 export const FOLLOWUP_CLOCK_TOLERANCE_MS = 120000;
+
+export function resolveAppointmentKind(followUp = {}) {
+  return String(followUp.appointmentKind || followUp.kind || followUp.nextActionType || "").toLowerCase();
+}
+
+export function resolveNearReminderSpec(appointmentKind = "") {
+  const kind = String(appointmentKind || "").toLowerCase();
+  const isViewing = kind === "viewing" || kind === "schedule_viewing" || kind.includes("معاينة");
+  const isCall = kind === "call" || kind.includes("اتصال");
+  if (isCall && !isViewing) {
+    return { kind: "15m", minutes: FOLLOWUP_CALL_REMINDER_MINUTES, field: "reminderAt15m" };
+  }
+  return { kind: "1h", minutes: FOLLOWUP_REMINDER_MINUTES, field: "reminderAt1h" };
+}
 
 export const FOLLOWUP_STATUSES = Object.freeze({
   scheduled: "scheduled",
@@ -44,34 +59,55 @@ export function computeReminderAt(followUpAt, minutesBefore = FOLLOWUP_REMINDER_
   return new Date(at.getTime() - minutesBefore * 60 * 1000);
 }
 
-export function computeFollowUpReminderSchedule(followUpAt, now = new Date()) {
+export function computeFollowUpReminderSchedule(followUpAt, now = new Date(), appointmentKind = "") {
   const at = parseFollowUpInstant(followUpAt);
   if (!at) {
     return {
       reminderAt24h: null,
       reminderAt1h: null,
+      reminderAt15m: null,
+      nearReminderKind: null,
       nextReminderAt: null,
       nextReminderKind: null
     };
   }
+  const near = resolveNearReminderSpec(appointmentKind);
   const reminderAt24h = computeReminderAt(at, FOLLOWUP_DAY_BEFORE_MINUTES);
-  const reminderAt1h = computeReminderAt(at, FOLLOWUP_REMINDER_MINUTES);
+  const reminderAtNear = computeReminderAt(at, near.minutes);
   const pending = [
     { kind: "24h", at: reminderAt24h },
-    { kind: "1h", at: reminderAt1h }
+    { kind: near.kind, at: reminderAtNear }
   ].filter((row) => row.at && row.at.getTime() > now.getTime());
   pending.sort((a, b) => a.at.getTime() - b.at.getTime());
   const next = pending[0] || null;
   return {
     reminderAt24h: reminderAt24h ? reminderAt24h.toISOString() : null,
-    reminderAt1h: reminderAt1h ? reminderAt1h.toISOString() : null,
+    reminderAt1h: near.kind === "1h" && reminderAtNear ? reminderAtNear.toISOString() : null,
+    reminderAt15m: near.kind === "15m" && reminderAtNear ? reminderAtNear.toISOString() : null,
+    nearReminderKind: near.kind,
     nextReminderAt: next ? next.at.toISOString() : null,
     nextReminderKind: next ? next.kind : null
   };
 }
 
-export function followUpReminderTitle(kind = "") {
-  return String(kind || "") === "24h" ? "موعد متابعة غدًا" : "موعد متابعة بعد ساعة";
+export function followUpReminderTitle(kind = "", followUp = {}) {
+  const appointmentKind = resolveAppointmentKind(followUp);
+  const reminderKind = String(kind || "");
+  const isDayBefore = reminderKind === "24h";
+  const isCallNear = reminderKind === "15m";
+  if (appointmentKind === "viewing" || appointmentKind.includes("معاينة")) {
+    return isDayBefore ? "معاينة غدًا" : "معاينة بعد ساعة";
+  }
+  if (appointmentKind === "call" || appointmentKind.includes("اتصال")) {
+    if (isDayBefore) return "موعد اتصال غدًا";
+    return isCallNear ? "موعد اتصال بعد 15 دقيقة" : "موعد اتصال بعد ساعة";
+  }
+  if (appointmentKind === "meeting" || appointmentKind.includes("اجتماع")) {
+    return isDayBefore ? "اجتماع غدًا" : "اجتماع بعد ساعة";
+  }
+  if (isDayBefore) return "موعد متابعة غدًا";
+  if (isCallNear) return "موعد متابعة بعد 15 دقيقة";
+  return "موعد متابعة بعد ساعة";
 }
 
 export function getDueFollowUpReminder(followUp = {}, now = new Date()) {
@@ -80,10 +116,15 @@ export function getDueFollowUpReminder(followUp = {}, now = new Date()) {
   const at = parseFollowUpInstant(followUp.at);
   if (!at || at.getTime() <= now.getTime()) return null;
   const sent = new Set(Array.isArray(followUp.remindersSent) ? followUp.remindersSent : []);
-  const schedule = computeFollowUpReminderSchedule(followUp.at, now);
+  const appointmentKind = resolveAppointmentKind(followUp);
+  const near = resolveNearReminderSpec(appointmentKind);
+  const schedule = computeFollowUpReminderSchedule(followUp.at, now, appointmentKind);
   const candidates = [
     { kind: "24h", at: parseFollowUpInstant(followUp.reminderAt24h || schedule.reminderAt24h) },
-    { kind: "1h", at: parseFollowUpInstant(followUp.reminderAt1h || schedule.reminderAt1h) }
+    {
+      kind: near.kind,
+      at: parseFollowUpInstant(followUp[near.field] || schedule[near.field])
+    }
   ];
   for (const row of candidates) {
     if (!row.at || sent.has(row.kind)) continue;
@@ -95,15 +136,17 @@ export function getDueFollowUpReminder(followUp = {}, now = new Date()) {
 export function advanceFollowUpAfterReminder(followUp = {}, kind = "", now = new Date()) {
   const sent = new Set(Array.isArray(followUp.remindersSent) ? followUp.remindersSent : []);
   if (kind) sent.add(kind);
-  const schedule = computeFollowUpReminderSchedule(followUp.at, now);
-  const pendingKinds = ["24h", "1h"].filter((entry) => !sent.has(entry));
+  const appointmentKind = resolveAppointmentKind(followUp);
+  const near = resolveNearReminderSpec(appointmentKind);
+  const schedule = computeFollowUpReminderSchedule(followUp.at, now, appointmentKind);
+  const pendingKinds = ["24h", near.kind].filter((entry) => !sent.has(entry));
   let nextReminderAt = null;
   let nextReminderKind = null;
   for (const entry of pendingKinds) {
     const at = parseFollowUpInstant(
       entry === "24h"
         ? (followUp.reminderAt24h || schedule.reminderAt24h)
-        : (followUp.reminderAt1h || schedule.reminderAt1h)
+        : (followUp[near.field] || schedule[near.field])
     );
     if (at && at.getTime() > now.getTime()) {
       nextReminderAt = at.toISOString();
@@ -115,7 +158,7 @@ export function advanceFollowUpAfterReminder(followUp = {}, kind = "", now = new
   return {
     ...followUp,
     remindersSent: [...sent],
-    reminderAt: nextReminderAt || followUp.reminderAt || schedule.reminderAt1h || schedule.reminderAt24h,
+    reminderAt: nextReminderAt || followUp.reminderAt || schedule[near.field] || schedule.reminderAt24h,
     nextReminderKind: nextReminderKind,
     status: allSent ? FOLLOWUP_STATUSES.reminder_sent : FOLLOWUP_STATUSES.scheduled,
     updatedAt: now.toISOString()
@@ -217,6 +260,7 @@ export function shouldSendFollowUpReminder(followUp = {}, now = new Date()) {
 export function buildCanonicalFollowUp({
   at,
   recipientMode,
+  appointmentKind = "",
   ownerContactId = "",
   clientContactId = "",
   createdBy = "",
@@ -225,21 +269,26 @@ export function buildCanonicalFollowUp({
 }) {
   const instant = parseFollowUpInstant(at);
   if (!instant) throw new Error("followup_invalid");
-  const schedule = computeFollowUpReminderSchedule(instant, now);
+  const kind = String(appointmentKind || existing?.appointmentKind || existing?.nextActionType || "").trim();
+  const schedule = computeFollowUpReminderSchedule(instant, now, kind);
+  const near = resolveNearReminderSpec(kind);
   const createdAt = existing?.createdAt || now.toISOString();
   const createdByValue = existing?.createdBy || createdBy || "";
   return {
     at: instant.toISOString(),
     timezone: FOLLOWUP_TIMEZONE,
     recipientMode,
+    appointmentKind: kind,
+    nextActionType: kind,
     ownerContactId: ownerContactId || "",
     clientContactId: clientContactId || "",
-    reminderAt: schedule.nextReminderAt || schedule.reminderAt1h || schedule.reminderAt24h,
+    reminderAt: schedule.nextReminderAt || schedule[near.field] || schedule.reminderAt24h,
     reminderAt24h: schedule.reminderAt24h,
     reminderAt1h: schedule.reminderAt1h,
+    reminderAt15m: schedule.reminderAt15m,
     nextReminderKind: schedule.nextReminderKind,
     remindersSent: Array.isArray(existing?.remindersSent) ? existing.remindersSent : [],
-    reminderMinutesBefore: FOLLOWUP_REMINDER_MINUTES,
+    reminderMinutesBefore: near.minutes,
     status: FOLLOWUP_STATUSES.scheduled,
     createdBy: createdByValue,
     createdAt,
@@ -270,11 +319,18 @@ export function isSameScheduledFollowUp(existing = {}, at, recipientMode) {
 }
 
 export function formatFollowUpReminderBody(opportunity = {}, followUp = {}) {
-  const property = [opportunity.propertyType, opportunity.district].filter(Boolean).join(" في ");
+  const district = String(opportunity.district || "").trim();
   const recipient = RECIPIENT_MODE_LABELS[followUp.recipientMode] || RECIPIENT_MODE_LABELS.owner;
-  const timeLabel = formatFollowUpTimeLabel(followUp.at);
-  const kind = isOwnerOpportunity(opportunity) ? "عرض" : "طلب";
-  return `متابعة ${kind} ${property || "عقار"} مع ${recipient} الساعة ${timeLabel}`;
+  const at = parseFollowUpInstant(followUp.at);
+  const timePart = at
+    ? at.toLocaleTimeString("ar-SA", { timeZone: FOLLOWUP_TIMEZONE, hour: "numeric", minute: "2-digit" })
+    : "";
+  const parts = [
+    district ? (district.startsWith("حي") ? district : `حي ${district}`) : "",
+    timePart,
+    recipient ? `مع ${recipient}` : ""
+  ].filter(Boolean);
+  return parts.join(" · ") || formatFollowUpTimeLabel(followUp.at);
 }
 
 export function formatFollowUpTimeLabel(value, now = new Date()) {

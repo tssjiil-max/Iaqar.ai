@@ -432,6 +432,11 @@
       ? matchingReadinessMissingStored
       : (readinessEval?.matchingReadinessMissing || []);
     const matchCount = Number(item.matchCount || item.activeMatchCount || 0);
+    const followAt = (item.followUp && item.followUp.at)
+      || item.nextFollowUpAt
+      || item.viewingAt
+      || item.appointmentAt
+      || null;
 
     return {
       id: `opp-${doc.id}`,
@@ -493,7 +498,9 @@
       contactPhone: item.contactPhone || "",
       whatsappOwner: isOwner,
       whatsappClient: !isOwner,
-      nextFollowUpAt: item.nextFollowUpAt || null,
+      nextFollowUpAt: followAt,
+      viewingAt: item.viewingAt || item.appointmentAt || followAt || null,
+      appointmentAt: item.appointmentAt || item.viewingAt || followAt || null,
       normalizedSource: item.normalizedSource || item.source || "",
       opportunityId: doc.id,
       sourceRecordId: item.sourceRecordId || "",
@@ -525,7 +532,7 @@
   // Phase 8: client-side matcher removed — Worker matching-engine is authoritative.
 
   async function showLocalMatchNotification(matchCount, topMatch) {
-    const title = matchCount > 1 ? `تم اكتشاف ${matchCount} مطابقات جديدة` : "تم اكتشاف مطابقة جديدة";
+    const title = matchCount > 1 ? `وجدنا ${matchCount} مطابقات جديدة` : "وجدنا مطابقة جديدة";
     const body = topMatch
       ? `${topMatch.propertyType || "عقار"} — ${topMatch.district || ""} — نسبة ${topMatch.score}%`
       : "افتح مساحة العمل لمراجعة المطابقة.";

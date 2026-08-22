@@ -65,6 +65,7 @@ import {
   sanitizeOpportunityPatch,
   mergeOpportunityFinancialPatch,
   readinessFieldsForRecord,
+  shouldAutoRematchAfterPatch,
   validateCooperationListingEnable,
   mapPatchErrorMessage
 } from "./opportunity-patch-service.js";
@@ -2716,8 +2717,16 @@ async function handleOpportunityLifecycle(request, env, requestId) {
     const allowed = new Set(["confirmed", "reschedule", "no_response"]);
     if (!allowed.has(outcome)) throw appError("followup_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
     const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
     const updatedFollowUp = existingFollowUp
-      ? { ...existingFollowUp, confirmationOutcome: outcome, updatedAt: now.toISOString() }
+      ? {
+        ...existingFollowUp,
+        confirmationOutcome: outcome,
+        confirmed: outcome === "confirmed" ? true : existingFollowUp.confirmed,
+        ...(recipientRole === "client" && outcome === "confirmed" ? { clientConfirmed: true } : {}),
+        ...(recipientRole === "owner" && outcome === "confirmed" ? { ownerConfirmed: true } : {}),
+        updatedAt: now.toISOString()
+      }
       : null;
     const outcomeKey = followUpOutcomeActionKey(outcome);
     const progressFields = brokerProgressFirestoreFields(resolved.data, outcomeKey, now);
@@ -3231,10 +3240,20 @@ async function handleOpportunityPatch(request, env, requestId) {
   });
 
   const finalRecord = { ...merged, ...readinessFields, version };
+  let rematch = null;
+  if (shouldAutoRematchAfterPatch(existing, sanitized, readinessFields)) {
+    rematch = await findAndSaveMatchesForOpportunity({
+      projectId, officeId, opportunityId, accessToken, notify: true, env
+    }).catch((error) => {
+      console.warn("[iaqar] auto rematch after patch", error && error.message);
+      return null;
+    });
+  }
   return jsonResponse({
     ok: true,
     opportunityId,
     opportunity: finalRecord,
+    matchCount: Array.isArray(rematch?.matches) ? rematch.matches.length : 0,
     requestId
   });
 }
@@ -4519,13 +4538,17 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
   const now=new Date();
   const alertId=`alt_${top.matchId}`;
   // Lock-screen-safe / preference-safe copy — no district, phone, or full opportunity text.
-  const title = "لديك مطابقة جديدة تحتاج مراجعتك.";
-  const body = "لديك مطابقة جديدة تحتاج مراجعتك.";
+  const title = "وجدنا مطابقة جديدة";
+  const kind = String(parsed && parsed.kind || "").toLowerCase();
+  const body = kind === "owner_offer" || kind === "owner"
+    ? "يوجد طلب مناسب لهذا العرض."
+    : "يوجد عرض مناسب لطلب العميل.";
   const operationId = String(top.operationId || "").trim();
   await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
     officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
     title:firestoreString(title),body:firestoreString(body),
     matchId:firestoreString(top.matchId),
+    opportunityId:firestoreString(parsed && (parsed.id || parsed.opportunityId) || ""),
     operationId:firestoreString(operationId),
     score:firestoreInteger(top.score),
     opportunityScore:firestoreInteger(Number(top.opportunityScore || top.score || 0)),
@@ -5248,7 +5271,7 @@ async function processOpportunityFollowupReminders(env, scheduledTime = Date.now
       continue;
     }
 
-    const title = followUpReminderTitle(dueReminder.kind);
+    const title = followUpReminderTitle(dueReminder.kind, followUp);
     const body = formatFollowUpReminderBody(value, followUp);
     const pushSummary = await sendOfficePush({
       projectId,
@@ -6564,6 +6587,7 @@ function mergeFollowUpWhatsappRole(existingFollowUp = null, role = "", now = new
 function followUpFirestoreFields(followUp) {
   const reminderInstant = parseFollowUpInstant(followUp.reminderAt)
     || parseFollowUpInstant(followUp.reminderAt1h)
+    || parseFollowUpInstant(followUp.reminderAt15m)
     || parseFollowUpInstant(followUp.reminderAt24h);
   const reminderAt = reminderInstant || new Date("2099-01-01T00:00:00.000Z");
   return compactFields({
@@ -6632,6 +6656,10 @@ async function scheduleOpportunityFollowUp({
   const recipientContext = resolveRecipientContext(opportunity, match);
   const recipientMode = normalizeRecipientMode(body.recipientMode, recipientContext);
   const existingFollowUp = opportunity.followUp && typeof opportunity.followUp === "object" ? opportunity.followUp : null;
+  const appointmentKind = cleanText(
+    body.appointmentKind || body.nextActionType || existingFollowUp?.appointmentKind || existingFollowUp?.nextActionType || "follow_up",
+    40
+  );
   const isReschedule = existingFollowUp
     && ACTIVE_FOLLOWUP_STATUSES.has(String(existingFollowUp.status || ""))
     && !isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode);
@@ -6650,10 +6678,11 @@ async function scheduleOpportunityFollowUp({
   const followUp = buildCanonicalFollowUp({
     at: parsedAt,
     recipientMode,
+    appointmentKind,
     ownerContactId: recipientContext.ownerContactId,
     clientContactId: recipientContext.clientContactId,
     createdBy: identity.uid,
-    existing: isReschedule ? existingFollowUp : null,
+    existing: isReschedule ? { ...existingFollowUp, remindersSent: [] } : null,
     now
   });
 
@@ -6663,7 +6692,7 @@ async function scheduleOpportunityFollowUp({
     lifecycleUpdatedAt: firestoreTimestamp(now),
     lifecycleUpdatedBy: firestoreString(identity.uid),
     lifecycleStatus: firestoreString(LIFECYCLE_STATUS.FOLLOW_UP),
-    nextActionType: firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40)),
+    nextActionType: firestoreOptionalString(appointmentKind),
     nextActionNote: firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300)),
     ...followUpFirestoreFields(followUp),
     ...brokerProgressFirestoreFields(opportunity, BROKER_ACTION.followUpScheduled, now)

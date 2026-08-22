@@ -97,11 +97,14 @@ export function isTaskArchived(item) {
 
 export function isViewingSoon(item, now = new Date()) {
   if (!item || isTaskArchived(item)) return false;
-  const at = parseTaskInstant(item.viewingAt || item.appointmentAt);
+  const at = parseTaskInstant(item.viewingAt || item.appointmentAt || item.nextFollowUpAt);
   if (!at) return false;
   if (at.getTime() < now.getTime()) return false;
   const diffMs = at.getTime() - now.getTime();
-  return isSameLocalDay(at, now, TASK_TIMEZONE) || diffMs <= 3 * 3600000;
+  const tomorrow = new Date(now.getTime() + 86400000);
+  return isSameLocalDay(at, now, TASK_TIMEZONE)
+    || isSameLocalDay(at, tomorrow, TASK_TIMEZONE)
+    || diffMs <= 3 * 3600000;
 }
 
 /** @deprecated use isViewingSoon */

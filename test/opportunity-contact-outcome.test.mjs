@@ -109,7 +109,7 @@ test("selection hint and badge guide broker before save", () => {
   assert.ok(buildContactOutcomeSaveFooterHtml().includes("bank-contact-outcome-save-btn"));
 });
 
-test("ready workspace embeds contact section not legacy wrap", () => {
+test("ready workspace embeds reference details panel without contact outcome section", () => {
   const record = {
     opportunityKind: "REQUEST",
     purpose: "PURCHASE",
@@ -124,7 +124,8 @@ test("ready workspace embeds contact section not legacy wrap", () => {
   const readiness = evaluateMatchingReadiness(record);
   assert.equal(readiness.isReadyForMatching, true);
   const html = buildReadyWorkspaceHtml("opp-1", record, {});
-  assert.ok(html.includes("bankWorkspaceContactSection"));
+  assert.ok(html.includes("opp-details-panel"));
+  assert.ok(!html.includes("bankWorkspaceContactSection"));
   assert.equal(html.includes("bankContactOutcomesWrap"), false);
 });
 

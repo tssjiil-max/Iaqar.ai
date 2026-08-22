@@ -146,11 +146,10 @@ export function buildWorkspaceSecondaryActionsHtml(actions = []) {
   if (!actions.length) return "";
   return `
     <details class="bank-workspace-ux-more-actions">
-      <summary class="bank-workspace-ux-more-summary">إجراءات أخرى</summary>
+      <summary class="bank-workspace-ux-more-summary">المزيد</summary>
       <div class="bank-workspace-actions iaqar-workflow-actions bank-workspace-ux-secondary-actions">
         ${actions.map((action) => {
     const key = {
-      search_matches: "workspace:search_matches",
       send_and_share: "workspace:send_and_share",
       contact_party: "workspace:contact_party",
       manage_opportunity: "workspace:manage_opportunity"

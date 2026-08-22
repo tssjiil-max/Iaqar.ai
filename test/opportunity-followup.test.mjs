@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FOLLOWUP_REMINDER_MINUTES,
+  FOLLOWUP_CALL_REMINDER_MINUTES,
   FOLLOWUP_DAY_BEFORE_MINUTES,
   validateFutureFollowUpAt,
   validateTodayRequiresFutureTime,
@@ -13,6 +14,7 @@ import {
   getDueFollowUpReminder,
   advanceFollowUpAfterReminder,
   followUpReminderTitle,
+  resolveNearReminderSpec,
   defaultRecipientMode,
   resolveRecipientContext,
   normalizeRecipientMode,
@@ -164,6 +166,42 @@ test("due reminder advances from 24h to 1h", () => {
   assert.equal(followUpReminderTitle("1h"), "موعد متابعة بعد ساعة");
 });
 
+test("call appointments use a 15-minute near reminder", () => {
+  const at = new Date(Date.now() + 30 * 3600000).toISOString();
+  const schedule = computeFollowUpReminderSchedule(at, new Date(), "call");
+  assert.ok(schedule.reminderAt15m);
+  assert.equal(schedule.reminderAt1h, null);
+  assert.equal(schedule.nearReminderKind, "15m");
+  const nearDiff = new Date(at).getTime() - new Date(schedule.reminderAt15m).getTime();
+  assert.equal(nearDiff, FOLLOWUP_CALL_REMINDER_MINUTES * 60 * 1000);
+  const followUp = {
+    at,
+    appointmentKind: "call",
+    status: "scheduled",
+    reminderAt24h: schedule.reminderAt24h,
+    reminderAt15m: schedule.reminderAt15m,
+    remindersSent: ["24h"]
+  };
+  const dueNear = getDueFollowUpReminder(followUp, new Date(schedule.reminderAt15m));
+  assert.equal(dueNear?.kind, "15m");
+  assert.equal(
+    followUpReminderTitle("15m", { appointmentKind: "call" }),
+    "موعد اتصال بعد 15 دقيقة"
+  );
+});
+
+test("viewing appointments keep the one-hour near reminder", () => {
+  const at = new Date(Date.now() + 30 * 3600000).toISOString();
+  const schedule = computeFollowUpReminderSchedule(at, new Date(), "viewing");
+  assert.ok(schedule.reminderAt1h);
+  assert.equal(schedule.reminderAt15m, null);
+  assert.equal(resolveNearReminderSpec("viewing").kind, "1h");
+  assert.equal(
+    followUpReminderTitle("1h", { appointmentKind: "viewing" }),
+    "معاينة بعد ساعة"
+  );
+});
+
 test("reminder dispatch is office-isolated in worker", () => {
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("processOpportunityFollowupReminders"));
@@ -174,6 +212,7 @@ test("old reminder is invalidated after rescheduling", () => {
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("followup_rescheduled"));
   assert.ok(worker.includes("followUpReminderAt"));
+  assert.ok(worker.includes("remindersSent: []"));
 });
 
 test("cancelled appointment sends no reminder", () => {
