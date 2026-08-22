@@ -524,6 +524,14 @@
 
   // Phase 8: client-side matcher removed — Worker matching-engine is authoritative.
 
+  function shouldNotifyForPublicIntake(intakeId) {
+    const api = window.IAQAR && window.IAQAR.publicIntakeNotify;
+    if (api && typeof api.shouldNotify === "function") {
+      return api.shouldNotify({ intakeId });
+    }
+    return true;
+  }
+
   async function showLocalMatchNotification(matchCount, topMatch) {
     const title = matchCount > 1 ? `تم اكتشاف ${matchCount} مطابقات جديدة` : "تم اكتشاف مطابقة جديدة";
     const body = topMatch
@@ -553,13 +561,22 @@
     intakeProcessing.add(doc.id);
 
     try {
+      const headers = { "Content-Type": "application/json" };
+      const body = { officeId: runtime.officeId, intakeId: doc.id };
+      if (!shouldNotifyForPublicIntake(doc.id)) {
+        try {
+          headers.Authorization = `Bearer ${await user.getIdToken(true)}`;
+          body.excludeCallerPush = true;
+        } catch (_error) { /* matching still runs; local notice stays suppressed */ }
+      }
       const response = await fetch(`${resolveWorkerBase()}/pipeline/public-intake`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ officeId: runtime.officeId, intakeId: doc.id })
+        headers,
+        body: JSON.stringify(body)
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || "تعذر تشغيل المطابقة المركزية");
+      if (!shouldNotifyForPublicIntake(doc.id)) return;
       if (Number(payload.matches || 0) > 0 && payload.bestMatch) {
         await showLocalMatchNotification(Number(payload.matches), {
           id: payload.bestMatch.matchId,
