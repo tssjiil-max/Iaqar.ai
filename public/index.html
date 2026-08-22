@@ -3749,8 +3749,34 @@
     padding-top:12px;
     border-top:1px solid var(--line);
   }
+  html:has(.opp-details-page),
+  body:has(.opp-details-page) {
+    width:100%;
+    max-width:100%;
+    margin:0;
+    padding:0;
+    overflow-x:hidden;
+  }
+  body:has(.opp-details-page) {
+    display:block;
+  }
+  body:has(.opp-details-page) .app,
+  body:has(.opp-details-page) .app-content-shell,
+  body:has(.opp-details-page) .card.opportunity-bank-panel,
+  body:has(.opp-details-page) #workspace {
+    width:100%;
+    max-width:100%;
+    margin:0;
+    padding:0;
+  }
   .opp-details-page {
+    width:100%;
+    max-width:100%;
+    min-width:0;
     min-height:100%;
+    min-height:100dvh;
+    margin:0;
+    box-sizing:border-box;
     background:var(--opp-page-bg);
     display:flex;
     flex-direction:column;
@@ -3791,14 +3817,21 @@
   .opp-details-back .icon,
   .opp-details-menu .icon { width:20px; height:20px; color:#fff; stroke:#fff; }
   .opp-details-back .icon { transform:scaleX(-1); }
+  .opp-details-appbar,
+  .opp-details-body,
+  .opp-details,
+  .opp-details-card {
+    width:100%;
+    max-width:100%;
+    box-sizing:border-box;
+  }
   .opp-details-body {
     padding:12px 12px calc(20px + env(safe-area-inset-bottom, 0px));
   }
   .opp-details {
     display:grid;
     gap:var(--opp-spacing-card);
-    margin-bottom:4px;
-    max-width:100%;
+    margin:0 0 4px;
   }
   .opp-details-card {
     border:1px solid var(--opp-card-border);
@@ -4130,9 +4163,14 @@
   }
   .opp-details-archived-note { margin:12px 0 0; }
   .bank-detail:has(.opp-details-page),
-  .ops-task-panel:has(.opp-details-page) {
+  .ops-task-panel:has(.opp-details-page),
+  #opsViewOpportunityDetail:has(.opp-details-page) {
     position:fixed;
     inset:0;
+    left:0;
+    right:0;
+    width:100%;
+    max-width:100%;
     z-index:80;
     margin:0;
     padding:0;
@@ -4140,15 +4178,7 @@
     border-radius:0;
     background:var(--opp-page-bg);
     overflow:auto;
-    max-width:100%;
-  }
-  #opsViewOpportunityDetail:has(.opp-details-page) {
-    position:fixed;
-    inset:0;
-    z-index:80;
-    background:var(--opp-page-bg);
-    padding:0;
-    overflow:auto;
+    box-sizing:border-box;
   }
   #opsViewOpportunityDetail:has(.opp-details-page) .ops-detail-nav { display:none; }
   .bank-detail .opp-details,
