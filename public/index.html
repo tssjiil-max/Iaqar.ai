@@ -145,6 +145,10 @@
       shape-rendering:geometricPrecision;
       overflow:visible;
     }
+    .icon use {
+      fill:none;
+      stroke:currentColor;
+    }
 
     /* الترويسة: الشعار يمين وعنوان متوازن */
     .header {
@@ -1344,9 +1348,10 @@
 
       #workspace .ops-task-panel .bank-detail-head,
       #workspace .ops-task-panel .iaqar-workflow-head {
-        display:flex;
+        display:grid;
+        grid-template-columns:38px minmax(0, 1fr) 38px;
         align-items:center;
-        justify-content:space-between;
+        justify-content:initial;
         gap:8px;
         padding:12px 14px;
         width:100%;
@@ -1356,11 +1361,12 @@
 
       #workspace .ops-task-panel .bank-detail-head h3,
       #workspace .ops-task-panel .iaqar-workflow-head h3 {
-        flex:1 1 auto;
+        flex:none;
         min-width:0;
         margin:0;
-        font-size:18px;
+        font-size:17px;
         line-height:1.35;
+        text-align:center;
       }
 
       #workspace .ops-task-panel .settings-close,
@@ -3420,6 +3426,10 @@
   .iaqar-workflow-panel{width:min(100%,560px);max-height:92svh;overflow:auto;background:#fff;border-radius:24px 24px 18px 18px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Tajawal,Arial,sans-serif;color:#173d35}
   .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}
   .iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}
+  .iaqar-workflow-head--opp-details{display:grid;grid-template-columns:38px minmax(0,1fr) 38px;align-items:center;gap:8px;background:#087064;color:#fff;border-bottom:0;padding:12px 14px}
+  .iaqar-workflow-head--opp-details h2,.iaqar-workflow-head--opp-details h3{color:#fff;text-align:center;font-size:17px;font-weight:800;margin:0}
+  .iaqar-workflow-head--opp-details .iaqar-workflow-close{background:rgba(255,255,255,.14);color:#fff}
+  .iaqar-workflow-head:not(.iaqar-workflow-head--opp-details) .opp-details-head-balance{display:none}
   .iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
   .iaqar-workflow-body{padding:16px}
   .iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}
@@ -3888,7 +3898,7 @@
   }
   .opp-details {
     display:grid;
-    gap:0;
+    gap:10px;
     margin:0 auto;
     max-width:100%;
     width:100%;
@@ -3896,6 +3906,7 @@
   .opp-details--unified {
     max-width:480px;
     margin-inline:auto;
+    gap:10px;
   }
   .opp-details-card {
     border:1px solid var(--opp-card-border);
@@ -3915,10 +3926,10 @@
     gap:10px;
   }
   .opp-details-header-top {
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:12px;
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) max-content;
+    align-items:start;
+    column-gap:12px;
     direction:rtl;
   }
   .opp-details-header-main {
@@ -3926,7 +3937,6 @@
     align-items:flex-start;
     gap:10px;
     min-width:0;
-    flex:1 1 auto;
   }
   .opp-details-icon {
     width:40px;
@@ -3961,6 +3971,7 @@
     font-weight:600;
   }
   .opp-details-status {
+    justify-self:end;
     flex-shrink:0;
     display:inline-flex;
     align-items:center;
@@ -4004,11 +4015,13 @@
     color:var(--muted);
     display:flex;
     align-items:center;
-    gap:6px;
+    justify-content:space-between;
+    gap:8px;
+    flex-wrap:wrap;
   }
-  .opp-details-added-at-icon {
-    font-size:12px;
-    line-height:1;
+  .opp-details-added-day,
+  .opp-details-added-time {
+    white-space:nowrap;
   }
   .opp-details-progress-layout {
     display:flex;
@@ -4059,10 +4072,30 @@
     text-align:center;
     line-height:1.15;
   }
+  .opp-details-progress-top {
+    font-size:12px;
+    font-weight:800;
+    color:var(--green);
+    white-space:nowrap;
+  }
   .opp-details-progress-bottom {
     font-size:10px;
     font-weight:700;
     color:var(--muted);
+  }
+  .opp-details-completion-card.is-complete {
+    background:#f7fbf9;
+  }
+  .opp-details-completion-card.is-complete .opp-details-progress-copy strong,
+  .opp-details-completion-card.is-complete .opp-details-progress-pct,
+  .opp-details-completion-card.is-complete .opp-details-progress-count,
+  .opp-details-completion-card.is-complete .opp-details-progress-top {
+    color:var(--opp-success);
+  }
+  .opp-details-completion-card.is-complete .opp-details-missing-inline,
+  .opp-details-completion-card.is-complete .opp-details-missing-chip,
+  .opp-details-completion-card.is-complete .opp-details-missing-title {
+    display:none;
   }
   .opp-details-progress-pct {
     margin:0;
@@ -4072,7 +4105,7 @@
     text-align:center;
   }
   .opp-details-missing-inline {
-    margin-top:10px;
+    margin-top:12px;
     display:flex;
     flex-wrap:wrap;
     align-items:center;
@@ -4137,6 +4170,11 @@
     height:18px;
     color:var(--green);
     flex-shrink:0;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.8;
+    stroke-linecap:round;
+    stroke-linejoin:round;
   }
   .opp-details-row {
     display:grid;
@@ -4164,8 +4202,13 @@
   .opp-details-row-icon {
     width:16px;
     height:16px;
-    color:#7a8f88;
+    color:var(--green);
     flex-shrink:0;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.8;
+    stroke-linecap:round;
+    stroke-linejoin:round;
   }
   .opp-details-data-rows {
     background:var(--card);
@@ -4245,14 +4288,14 @@
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    gap:4px;
-    min-height:36px;
-    height:36px;
-    padding:4px 8px;
-    border-radius:10px;
-    border:1.5px solid var(--green);
-    background:var(--green-soft);
-    color:var(--green-dark);
+    gap:3px;
+    min-height:26px;
+    height:26px;
+    padding:2px 8px;
+    border-radius:999px;
+    border:0;
+    background:var(--green);
+    color:#fff;
     cursor:pointer;
     flex:0 1 auto;
     min-width:0;
@@ -4263,18 +4306,24 @@
   }
   .opp-contact-save-btn:active { transform:scale(0.96); }
   .opp-contact-save-icon {
-    width:16px;
-    height:16px;
-    color:var(--green-dark);
+    width:13px;
+    height:13px;
+    color:#fff;
     flex-shrink:0;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.8;
+    stroke-linecap:round;
+    stroke-linejoin:round;
   }
   .opp-contact-save-text {
-    font-size:11px;
+    font-size:10px;
     font-weight:800;
     line-height:1.2;
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
+    color:#fff;
   }
   .opp-details-missing-tag {
     display:inline-flex;
@@ -4296,7 +4345,7 @@
     border-top:1px solid #eef2f0;
   }
   .opp-details-actions {
-    margin-top:0;
+    margin:0;
     padding:0;
   }
   .opp-details-actions--embedded {
@@ -4305,7 +4354,7 @@
   .opp-details-actions .bank-action,
   .opp-details-actions .iaqar-workflow-btn {
     width:100%;
-    min-height:48px;
+    min-height:46px;
     border-radius:14px;
   }
   .opp-details-reveal-btn {
@@ -4313,11 +4362,114 @@
     align-items:center;
     justify-content:center;
     gap:8px;
-    background:var(--green-soft);
-    color:var(--green-dark);
-    border:1.5px solid var(--green);
+    background:var(--green);
+    color:#fff;
+    border:0;
     font-weight:800;
     font-size:14px;
+    box-shadow:none;
+  }
+  .opp-details-reveal-btn:active {
+    transform:scale(0.99);
+    background:var(--green-dark);
+  }
+  .opp-details-report-card,
+  .opp-details-appointment-card {
+    overflow:hidden;
+  }
+  .opp-details-report-table {
+    display:grid;
+    direction:rtl;
+  }
+  .opp-details-report-head,
+  .opp-details-report-row {
+    display:grid;
+    grid-template-columns:72px minmax(0, 0.9fr) minmax(0, 1.2fr);
+    gap:8px;
+    align-items:center;
+    padding:10px 14px;
+    border-bottom:1px solid #eef2f0;
+  }
+  .opp-details-report-head {
+    background:#f7faf8;
+    font-size:11px;
+    font-weight:800;
+    color:#667085;
+  }
+  .opp-details-report-row {
+    font-size:12px;
+    background:var(--card);
+    min-height:44px;
+  }
+  .opp-details-report-row:last-child {
+    border-bottom:0;
+  }
+  .opp-details-report-time {
+    font-weight:700;
+    color:#667085;
+    white-space:nowrap;
+  }
+  .opp-details-report-action,
+  .opp-details-report-result {
+    min-width:0;
+    overflow-wrap:anywhere;
+    line-height:1.45;
+  }
+  .opp-details-report-result {
+    color:var(--opp-success);
+    font-weight:700;
+  }
+  .opp-details-report-empty {
+    margin:0;
+    padding:16px 14px;
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+  }
+  .opp-details-current-result {
+    margin:0;
+    padding:12px 14px;
+    border-top:1px solid #eef2f0;
+    background:#f7fbf9;
+    font-size:13px;
+    color:#667085;
+    line-height:1.55;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px 8px;
+    align-items:baseline;
+  }
+  .opp-details-current-result strong {
+    font-weight:700;
+    color:#667085;
+  }
+  .opp-details-current-result span {
+    font-weight:800;
+    color:var(--green);
+  }
+  .opp-details-appointment-body {
+    padding:14px 16px 16px;
+    display:grid;
+    gap:8px;
+  }
+  .opp-details-appointment-when {
+    margin:0;
+    font-size:17px;
+    font-weight:800;
+    color:var(--green);
+    line-height:1.35;
+  }
+  .opp-details-appointment-meta {
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    gap:6px 12px;
+    font-size:12px;
+    color:var(--muted);
+    font-weight:700;
+  }
+  .opp-details-appointment-kind {
+    color:var(--green);
   }
   .opp-details-btn-icon {
     display:inline-flex;
@@ -4339,7 +4491,7 @@
     max-width:480px;
     margin-inline:auto;
     overflow-x:hidden;
-    gap:0;
+    gap:10px;
   }
   .ops-task-panel .opp-details,
   .iaqar-workflow-details .opp-details {
@@ -4348,42 +4500,62 @@
     padding:0;
     background:transparent;
   }
-  .bank-detail .bank-detail-head.iaqar-workflow-head {
+  .bank-detail .bank-detail-head.iaqar-workflow-head,
+  .ops-task-panel .bank-detail-head.iaqar-workflow-head {
+    display:grid;
+    grid-template-columns:38px minmax(0, 1fr) 38px;
+    align-items:center;
+    gap:8px;
     background:var(--green);
     color:#fff;
-    margin:-16px -16px 12px;
-    padding:14px 16px;
     border-bottom:0;
+  }
+  .bank-detail .bank-detail-head.iaqar-workflow-head {
+    margin:-16px -16px 12px;
+    padding:12px 14px;
     border-radius:24px 24px 0 0;
   }
-  .bank-detail .bank-detail-head.iaqar-workflow-head h3 {
-    color:#fff;
-    flex:1 1 auto;
-    text-align:center;
-    font-size:18px;
-    font-weight:800;
-  }
-  .bank-detail .bank-detail-head.iaqar-workflow-head .settings-close,
-  .bank-detail .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close {
-    background:rgba(255,255,255,.14);
-    color:#fff;
-  }
   .ops-task-panel .bank-detail-head.iaqar-workflow-head {
-    background:var(--green);
-    color:#fff;
     margin:0;
-    padding:14px 16px;
-    border-bottom:0;
+    padding:12px 14px;
   }
+  .bank-detail .bank-detail-head.iaqar-workflow-head h3,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head h3 {
     color:#fff;
+    flex:none;
     text-align:center;
-    flex:1 1 auto;
+    font-size:17px;
+    font-weight:800;
+    margin:0;
+    min-width:0;
   }
+  .bank-detail .bank-detail-head.iaqar-workflow-head .settings-close,
+  .bank-detail .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head .settings-close,
   .ops-task-panel .bank-detail-head.iaqar-workflow-head .iaqar-workflow-close {
+    width:38px;
+    height:38px;
     background:rgba(255,255,255,.14);
     color:#fff;
+    display:grid;
+    place-items:center;
+    padding:0;
+    border:0;
+  }
+  .opp-details-back-icon {
+    width:20px;
+    height:20px;
+    color:#fff;
+    display:block;
+  }
+  .opp-details-head-balance {
+    width:38px;
+    height:38px;
+    display:block;
+  }
+  .opp-details-row.is-contact-row .opp-details-row-value {
+    align-items:center;
+    text-align:center;
   }
   .bank-contact-outcomes {
     display:grid;
@@ -4635,7 +4807,22 @@
   }
   @media (max-width: 420px) {
     .bank-detail { padding:14px; border-radius:20px; }
-    .bank-detail-head h3 { font-size:19px; }
+    .bank-detail-head h3 { font-size:17px; }
+    .opp-details-report-head,
+    .opp-details-report-row {
+      grid-template-columns:64px minmax(0, 0.85fr) minmax(0, 1.2fr);
+      gap:6px;
+      padding:8px 10px;
+    }
+    .opp-details-report-head,
+    .opp-details-report-row {
+      font-size:11px;
+    }
+    .opp-details-appointment-when { font-size:16px; }
+    .opp-details-row { padding:10px 10px; min-height:52px; font-size:11px; }
+    .opp-details-kind { font-size:15px; }
+    .opp-details-progress-ring { width:64px; height:64px; }
+    .opp-details-identity-card, .opp-details-completion-card { padding:12px 12px; }
   }
 
   .review-hint {
@@ -5531,17 +5718,17 @@
   <svg width="0" height="0" aria-hidden="true" focusable="false"
        style="position:absolute;width:0;height:0;overflow:hidden">
     <defs>
-      <symbol id="i-bell" viewBox="0 0 24 24">
+      <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
         <path d="M10 21h4"/>
       </symbol>
 
-      <symbol id="i-check-circle" viewBox="0 0 24 24">
+      <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="9"/>
         <path d="m8.2 12.2 2.5 2.5 5.2-5.5"/>
       </symbol>
 
-      <symbol id="i-target" viewBox="0 0 24 24">
+      <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="13" r="8"/>
         <circle cx="11" cy="13" r="4"/>
         <circle cx="11" cy="13" r="1"/>
@@ -5549,14 +5736,14 @@
         <path d="M16.5 3H21v4.5"/>
       </symbol>
 
-      <symbol id="i-briefcase" viewBox="0 0 24 24">
+      <symbol id="i-briefcase" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="7" width="18" height="13" rx="2.5"/>
         <path d="M8 7V5.2A2.2 2.2 0 0 1 10.2 3h3.6A2.2 2.2 0 0 1 16 5.2V7"/>
         <path d="M3 12.2h18"/>
         <path d="M9.5 12.2v2h5v-2"/>
       </symbol>
 
-      <symbol id="i-clipboard-list" viewBox="0 0 24 24">
+      <symbol id="i-clipboard-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="5" y="4" width="14" height="17" rx="2.3"/>
         <path d="M9 4V2.5h6V4"/>
         <path d="M9 9h6"/>
@@ -5564,7 +5751,7 @@
         <path d="M9 17h4"/>
       </symbol>
 
-      <symbol id="i-match" viewBox="0 0 24 24">
+      <symbol id="i-match" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8.2" cy="8.2" r="3"/>
         <circle cx="16.3" cy="8.8" r="2.6"/>
         <path d="M2.8 19c.2-3.3 2.5-5.6 5.4-5.6 3 0 5.3 2.3 5.5 5.6"/>
@@ -5572,28 +5759,28 @@
         <path d="m16.7 4.3 1.1 1.1 2-2"/>
       </symbol>
 
-      <symbol id="i-user-clock" viewBox="0 0 24 24">
+      <symbol id="i-user-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="9" cy="7.7" r="3.3"/>
         <path d="M2.8 19.2c.2-3.7 2.7-6.2 6.2-6.2 2.2 0 4 1 5.1 2.6"/>
         <circle cx="17.5" cy="17.5" r="4"/>
         <path d="M17.5 15.4v2.3l1.5.9"/>
       </symbol>
 
-      <symbol id="i-briefcase-check" viewBox="0 0 24 24">
+      <symbol id="i-briefcase-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="7" width="18" height="13" rx="2.5"/>
         <path d="M8 7V5.2A2.2 2.2 0 0 1 10.2 3h3.6A2.2 2.2 0 0 1 16 5.2V7"/>
         <path d="M3 12h9"/>
         <path d="m14.7 15.7 1.7 1.7 3.2-3.7"/>
       </symbol>
 
-      <symbol id="i-file-signature" viewBox="0 0 24 24">
+      <symbol id="i-file-signature" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6 2.5h8l4 4V21H6z"/>
         <path d="M14 2.5V7h4"/>
         <path d="M9 11.5h5"/>
         <path d="m9 17 1.3-.2 5.8-5.8a1.4 1.4 0 0 1 2 2l-5.8 5.8-2.3.4z"/>
       </symbol>
 
-      <symbol id="i-house-check" viewBox="0 0 24 24">
+      <symbol id="i-house-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="m3 11 9-8 9 8"/>
         <path d="M5 10v10h8"/>
         <path d="M9 20v-5h5"/>

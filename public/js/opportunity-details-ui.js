@@ -23,6 +23,10 @@ import {
   readAdvertiserDisplayName
 } from "./advertiser-phone-domain.js";
 import { buildPhoneContactDisplayName, SAVE_PHONE_CONTACT_LABEL } from "./phone-contact-save-domain.js";
+import {
+  buildDailyReportHtml,
+  buildNextAppointmentHtml
+} from "./opportunity-details-report-ui.js";
 
 export const OPPORTUNITY_RECORD_KIND = Object.freeze({
   OWNER_OFFER: "owner_offer",
@@ -145,6 +149,24 @@ function normalizeCityDistrict(record = {}) {
   return { cityText, districtText };
 }
 
+const SHORT_CITY_DISPLAY = Object.freeze({
+  "المدينة المنورة": "المدينة",
+  "المدينة المنوره": "المدينة"
+});
+
+function stripHayPrefix(value = "") {
+  const text = String(value || "").trim();
+  return text.startsWith("حي ") ? text.slice(3).trim() : text;
+}
+
+/** Display-only city + district line, e.g. المدينة - الحرة الغربية */
+export function formatOpportunityLocationLine(city = "", district = "") {
+  const cityText = SHORT_CITY_DISPLAY[String(city || "").trim()] || String(city || "").trim();
+  const districtText = stripHayPrefix(district);
+  if (cityText && districtText) return `${cityText} - ${districtText}`;
+  return cityText || districtText || "";
+}
+
 export function normalizeOpportunityDetailsRecord(record = {}) {
   return normalizeListingRecord(record);
 }
@@ -157,6 +179,33 @@ export function buildOpportunityDetailsProgress(readiness = {}, checks = []) {
   return { total, completeCount, pct, missingLabels };
 }
 
+function detailsTableRowDefs(vm = {}) {
+  return [
+    { key: "propertyPurpose", label: "العقار والغرض" },
+    { key: "location", label: "الموقع" },
+    { key: "price", label: vm.priceLabel || "السعر" },
+    { key: "specs", label: "المساحة والمواصفات" },
+    { key: "advertiser", label: "المعلن وصفته" },
+    { key: "contact", label: "رقم التواصل" }
+  ];
+}
+
+/** Visual completion for the 6 details-table rows — display only, not matching readiness. */
+export function buildDetailsTableProgress(vm = {}) {
+  const rows = detailsTableRowDefs(vm);
+  const missing = rows.filter((row) => !isDetailsRowComplete(vm, row.key));
+  const total = rows.length;
+  const completeCount = total - missing.length;
+  const pct = total ? Math.round((completeCount / total) * 100) : 0;
+  return {
+    total,
+    completeCount,
+    pct,
+    missingLabels: missing.map((row) => row.label),
+    missingRows: missing
+  };
+}
+
 /**
  * Unified view-model for all detail surfaces.
  */
@@ -167,7 +216,6 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     : evaluateMatchingReadiness(normalized);
   const card = buildBankListCardView(normalized);
   const checks = buildListingFieldChecks(normalized);
-  const progress = buildOpportunityDetailsProgress(readiness, checks);
   const byKey = Object.fromEntries(checks.map((row) => [row.key, row]));
   const { cityText, districtText } = normalizeCityDistrict(normalized);
   const isOwner = isOwnerRecord(normalized);
@@ -179,8 +227,7 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
   const advertiserDisplayName = readAdvertiserDisplayName(normalized);
   const propertyType = String(normalized.propertyType || "").trim();
   const addedAt = formatAddedAt(normalized);
-
-  return {
+  const vm = {
     id: String(id || normalized.id || ""),
     rawRecord: normalized,
     recordKind: resolveRecordKind(normalized),
@@ -191,7 +238,6 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     addedAtLabel: addedAt.combined || "",
     addedAtDay: addedAt.day || "",
     addedAtTime: addedAt.time || "",
-    progress,
     readiness,
     checks,
     byKey,
@@ -218,12 +264,29 @@ export function buildOpportunityDetailsViewModel(id, record = {}, readinessInput
     }),
     propertyPurposeLine: card.title
   };
+  vm.progress = buildDetailsTableProgress(vm);
+  return vm;
+}
+
+export function buildOpportunityDetailsPageHeadHtml(title = "تفاصيل الفرصة") {
+  return `
+    <div class="bank-detail-head iaqar-workflow-head opp-details-page-head">
+      <button type="button" class="settings-close iaqar-workflow-close opp-details-back" id="bankDetailClose" aria-label="رجوع">
+        <svg class="opp-details-back-icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+      </button>
+      <h3>${esc(title)}</h3>
+      <span class="opp-details-head-balance" aria-hidden="true"></span>
+    </div>`;
 }
 
 export function buildOpportunityDetailsHeaderHtml(vm) {
   const statusDot = vm.status.cssClass === "is-incomplete" || vm.status.cssClass === "is-ready"
     ? `<span class="opp-details-status-dot" aria-hidden="true"></span>`
     : "";
+  const addedBits = [
+    vm.addedAtDay ? `<span class="opp-details-added-day">تاريخ الإضافة ${esc(vm.addedAtDay)}</span>` : "",
+    vm.addedAtTime ? `<span class="opp-details-added-time">${esc(vm.addedAtTime)}</span>` : ""
+  ].filter(Boolean).join("");
   return `
     <section class="opp-details-card opp-details-identity-card">
       <div class="opp-details-header">
@@ -239,44 +302,46 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
           </div>
           <span class="opp-details-status ${esc(vm.status.cssClass)}">${statusDot}${esc(vm.status.label)}</span>
         </div>
-        ${vm.addedAtLabel ? `<p class="opp-details-added-at"><span class="opp-details-added-at-icon" aria-hidden="true">📅</span> تاريخ الإضافة: ${esc(vm.addedAtLabel)}</p>` : ""}
+        ${addedBits ? `<p class="opp-details-added-at">${addedBits}</p>` : ""}
       </div>
     </section>`;
 }
 
 function missingInlineHtml(vm) {
-  if (!vm.progress.missingLabels.length) return "";
-  const chips = vm.progress.missingLabels.map((label) => `
-    <span class="opp-details-missing-chip"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(label)}</span>`).join("");
+  const missing = vm.progress?.missingRows || [];
+  if (!missing.length) return "";
+  const chips = missing.map((row) => `
+    <span class="opp-details-missing-chip" data-missing-field="${esc(row.key)}"><span class="opp-details-missing-dot" aria-hidden="true"></span>${esc(row.label)}</span>`).join("");
   return `
-    <div class="opp-details-missing-inline" aria-label="الحقول الناقصة">
-      <span class="opp-details-missing-title">الناقص:</span>
+    <div class="opp-details-missing-inline" aria-label="البيانات الناقصة">
+      <span class="opp-details-missing-title">البيانات الناقصة:</span>
       <div class="opp-details-missing-list">${chips}</div>
     </div>`;
 }
 
 export function buildCompletionProgressHtml(vm) {
-  const { progress, status } = vm;
+  const { progress } = vm;
+  const complete = !(progress?.missingLabels || []).length;
+  const completeClass = complete ? " is-complete" : " is-incomplete";
   return `
-    <section class="opp-details-card opp-details-completion-card" aria-label="نسبة اكتمال البيانات">
+    <section class="opp-details-card opp-details-completion-card${completeClass}" aria-label="نسبة اكتمال البيانات">
       <div class="opp-details-progress-layout">
         <div class="opp-details-progress-copy">
           <strong>نسبة اكتمال البيانات</strong>
-          <p class="opp-details-progress-hint">${status.cssClass === "is-ready"
-    ? "الفرصة جاهزة للمطابقة."
+          <p class="opp-details-progress-hint">${complete
+    ? "اكتملت بيانات الفرصة."
     : "استكمل البيانات الناقصة ليتم تحويل الفرصة إلى جاهزة للمطابقة."}</p>
-          ${missingInlineHtml(vm)}
         </div>
         <div class="opp-details-progress-side">
           <div class="opp-details-progress-ring" style="--opp-progress:${progress.pct}" aria-hidden="true">
             <span class="opp-details-progress-count">
-              <span class="opp-details-progress-top">${esc(String(progress.completeCount))}</span>
-              <span class="opp-details-progress-bottom">من ${esc(String(progress.total))}</span>
+              <span class="opp-details-progress-top">${esc(String(progress.completeCount))} من ${esc(String(progress.total))}</span>
             </span>
           </div>
           <p class="opp-details-progress-pct">${esc(`${progress.pct}%`)} مكتملة</p>
         </div>
       </div>
+      ${complete ? "" : missingInlineHtml(vm)}
     </section>`;
 }
 
@@ -295,7 +360,7 @@ function rowLabelHtml(rowKey, label) {
   const iconId = ROW_ICONS[rowKey] || "i-clipboard-list";
   return `
     <span class="opp-details-row-label">
-      <svg class="opp-details-row-icon" aria-hidden="true"><use href="#${esc(iconId)}"/></svg>
+      <svg class="icon opp-details-row-icon" aria-hidden="true"><use href="#${esc(iconId)}"/></svg>
       <span>${esc(label)}</span>
     </span>`;
 }
@@ -342,7 +407,7 @@ function contactSaveButtonHtml(vm) {
       data-contact-city="${esc(vm.locationCity || "")}"
       aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}${saveName ? `: ${esc(saveName)}` : ""}"
       title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
-      <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+      <svg class="icon opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
       <span class="opp-contact-save-text">${esc(SAVE_PHONE_CONTACT_LABEL)}</span>
     </button>`;
 }
@@ -379,8 +444,7 @@ function locationRow(vm) {
   if (!complete && !city && !district) {
     valueHtml = valueCellHtml("غير محدد", false);
   } else {
-    const main = [city, district ? `حي ${district}` : ""].filter(Boolean).join(" – ");
-    valueHtml = valueCellHtml(main || "—", complete, district ? `الحي: ${district}` : "");
+    valueHtml = valueCellHtml(formatOpportunityLocationLine(city, district) || "—", complete);
   }
   return `
     <div class="opp-details-row ${complete ? "is-row-complete" : "is-row-missing"}">
@@ -391,15 +455,15 @@ function locationRow(vm) {
 }
 
 export function buildOpportunityDataTableHtml(vm, options = {}) {
-  const includeRevealButton = options.includeRevealButton !== false;
-  const hasMissing = (vm.progress?.missingLabels || []).length > 0;
+  const includeRevealButton = options.includeRevealButton === true;
+  const hasMissing = (vm.readiness?.matchingReadinessMissing || []).length > 0;
   const footerHtml = includeRevealButton && hasMissing
     ? `<div class="opp-details-data-footer">${buildOpportunityDetailsRevealFormButtonHtml({ embedded: true })}</div>`
     : "";
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
       <header class="opp-details-data-title">
-        <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
+        <svg class="icon opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
         <span class="opp-details-data-title-text">بيانات الفرصة</span>
       </header>
       <div class="opp-details-data-rows">
@@ -414,13 +478,26 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
     </section>`;
 }
 
-export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {}) {
+export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {}, options = {}) {
   const vm = buildOpportunityDetailsViewModel(id, record, readiness);
+  const hasMissing = (vm.readiness?.matchingReadinessMissing || []).length > 0;
+  const revealHtml = hasMissing
+    ? buildOpportunityDetailsRevealFormButtonHtml()
+    : "";
   return {
     vm,
     html: `
       <div class="opp-details opp-details--unified" data-record-kind="${esc(vm.recordKind)}">
-        ${buildOpportunityDataTableHtml(vm, { includeRevealButton: true })}
+        ${buildOpportunityDetailsHeaderHtml(vm)}
+        ${buildCompletionProgressHtml(vm)}
+        ${buildOpportunityDataTableHtml(vm, { includeRevealButton: false })}
+        ${revealHtml}
+        ${buildDailyReportHtml(record, {
+          readiness: vm.readiness,
+          cooperationRequests: options.cooperationRequests || [],
+          now: options.now
+        })}
+        ${buildNextAppointmentHtml(record, { now: options.now })}
       </div>`
   };
 }
@@ -439,10 +516,7 @@ export function buildOpportunityDetailsRevealFormButtonHtml(options = {}) {
   const wrapClass = embedded ? "opp-details-actions opp-details-actions--embedded" : "opp-details-actions";
   return `
     <div class="${wrapClass}">
-      <button type="button" class="bank-action iaqar-workflow-btn secondary opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
-        <span class="opp-details-btn-icon" aria-hidden="true">
-          <svg class="opp-details-btn-svg" viewBox="0 0 24 24" focusable="false"><path fill="currentColor" d="M3 5h18v2H3V5zm0 6h12v2H3v-2zm0 6h8v2H3v-2z"/></svg>
-        </span>
+      <button type="button" class="bank-action iaqar-workflow-btn opp-details-reveal-btn" id="oppDetailsRevealFormBtn">
         أكمل البيانات الناقصة
       </button>
     </div>`;

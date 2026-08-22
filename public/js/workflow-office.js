@@ -1532,7 +1532,7 @@
       document.head.insertAdjacentHTML("beforeend", `<style id="iaqarWorkflowStyles">
       .iaqar-workflow-overlay[hidden]{display:none!important}.iaqar-workflow-overlay{position:fixed;inset:0;z-index:2000;background:rgba(8,36,31,.55);display:flex;align-items:flex-end;justify-content:center;padding:12px;box-sizing:border-box;direction:rtl}
       .iaqar-workflow-panel{width:min(100%,560px);max-height:92svh;overflow:auto;background:#fff;border-radius:24px 24px 18px 18px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Tajawal,Arial,sans-serif;color:#173d35}
-      .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}.iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}.iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
+      .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}.iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}.iaqar-workflow-head--opp-details{display:grid;grid-template-columns:38px minmax(0,1fr) 38px;align-items:center;gap:8px;background:#087064;color:#fff;border-bottom:0;padding:12px 14px}.iaqar-workflow-head--opp-details h2,.iaqar-workflow-head--opp-details h3{color:#fff;text-align:center;font-size:17px;font-weight:800;margin:0}.iaqar-workflow-head--opp-details .iaqar-workflow-close{background:rgba(255,255,255,.14);color:#fff}.iaqar-workflow-head:not(.iaqar-workflow-head--opp-details) .opp-details-head-balance{display:none}.iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
       .iaqar-workflow-body{padding:16px}.iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}.iaqar-workflow-steps{display:grid;gap:10px}.iaqar-workflow-step{border:1px solid #dce8e4;border-radius:18px;padding:14px}.iaqar-workflow-step.is-done{border-color:#9fd1c5;background:#f1faf7}.iaqar-workflow-step h3,.iaqar-workflow-step h4{margin:0 0 5px;font-size:17px;color:#0a695d;font-weight:700}.iaqar-workflow-step p{margin:0 0 10px;color:#657b74;font-size:13px;line-height:1.6}
       .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.iaqar-workflow-btn{min-height:52px;border:0;border-radius:14px;padding:10px 12px;font:700 15px Tajawal;cursor:pointer;background:#087064;color:#fff}.iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}.iaqar-workflow-btn.success{background:#087064;color:#fff}.iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}.iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-outcome-actions{grid-template-columns:1fr 1fr}.iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected{background:#087064;color:#fff;border-color:#087064;box-shadow:0 0 0 2px #fff,0 0 0 4px #087064}.iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after{content:" ✓";font-size:13px}.iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
       .iaqar-workflow-form{display:grid;gap:11px}.iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}.iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px}.iaqar-workflow-form textarea{min-height:82px;resize:vertical}.iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.iaqar-workflow-form-grid label,.iaqar-workflow-step label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}.iaqar-workflow-form-grid .full{grid-column:1/-1}.iaqar-workflow-step input:not([type=checkbox]):not([type=radio]),.iaqar-workflow-step select,.iaqar-workflow-step textarea,.iaqar-workflow-form-grid input,.iaqar-workflow-form-grid select,.iaqar-workflow-form-grid textarea{width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px}.iaqar-workflow-form select,.iaqar-workflow-step select,.iaqar-workflow-form-grid select{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23087064' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat left 14px center;padding-left:36px}.iaqar-workflow-step textarea,.iaqar-workflow-form-grid textarea{min-height:82px;resize:vertical}.iaqar-workflow-form input:focus,.iaqar-workflow-form select:focus,.iaqar-workflow-form textarea:focus,.iaqar-workflow-step input:focus,.iaqar-workflow-step select:focus,.iaqar-workflow-step textarea:focus,.iaqar-workflow-form-grid input:focus,.iaqar-workflow-form-grid select:focus,.iaqar-workflow-form-grid textarea:focus{outline:none;border-color:#9fd1c5;box-shadow:0 0 0 3px rgba(8,112,100,.1)}.iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}.iaqar-checks label{display:flex;align-items:center;gap:8px}.iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}.iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}.iaqar-workflow-result.success{background:#eaf8f3;color:#087064}.iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}.iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}.iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}.iaqar-viewing-alert{color:#a33a3a;font-size:13px;font-weight:700;margin:0 0 8px}
@@ -1542,7 +1542,7 @@
     if (document.getElementById("iaqarWorkflowOverlay")) return;
     document.body.insertAdjacentHTML("beforeend", `<div class="iaqar-workflow-overlay" id="iaqarWorkflowOverlay" hidden>
       <section class="iaqar-workflow-panel" role="dialog" aria-modal="true" aria-labelledby="iaqarWorkflowTitle">
-        <header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">إدارة الفرصة</h2><button class="iaqar-workflow-close" type="button" data-ui-action="close-overlay" aria-label="إغلاق">×</button></header>
+        <header class="iaqar-workflow-head"><button class="iaqar-workflow-close" type="button" data-ui-action="close-overlay" aria-label="إغلاق">×</button><h2 id="iaqarWorkflowTitle">تفاصيل الفرصة</h2><span class="opp-details-head-balance" aria-hidden="true"></span></header>
         <div class="iaqar-workflow-body" id="iaqarWorkflowBody"></div>
       </section></div>`);
     const overlay = document.getElementById("iaqarWorkflowOverlay");
@@ -1556,6 +1556,25 @@
       }
     });
     overlay.addEventListener("click", handleWorkflowUiClick);
+  }
+
+  function syncWorkflowOverlayHead(mode = "opportunity") {
+    const overlay = document.getElementById("iaqarWorkflowOverlay");
+    const head = overlay?.querySelector(".iaqar-workflow-head");
+    const title = document.getElementById("iaqarWorkflowTitle");
+    const close = head?.querySelector(".iaqar-workflow-close");
+    if (!head) return;
+    const isOppDetails = mode === "opportunity";
+    head.classList.toggle("iaqar-workflow-head--opp-details", isOppDetails);
+    if (title) {
+      title.textContent = isOppDetails
+        ? "تفاصيل الفرصة"
+        : (mode === "deal" ? "إدارة الصفقة" : "إدارة الفرصة");
+    }
+    if (close) {
+      close.setAttribute("aria-label", isOppDetails ? "رجوع" : "إغلاق");
+      close.textContent = isOppDetails ? "‹" : "×";
+    }
   }
 
   function workflowBody() {
@@ -1625,7 +1644,7 @@
     const detail = activeWorkflowDetail;
     if (!detail) return;
     if (["intake", "opportunity"].includes(detail.recordType)) {
-      document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الفرصة";
+      syncWorkflowOverlayHead("opportunity");
       return renderOpportunityLifecycleUi();
     }
     const body = workflowBody();
@@ -1633,7 +1652,7 @@
     const isCompleted = detail.status === "completed" || (detail.recordType === "deal" && detail.status === "closed");
     const isClosed = detail.status === "closed" || detail.status === "lost";
     const hasAppointment = Boolean(appointmentValue(detail));
-    document.getElementById("iaqarWorkflowTitle").textContent = isMatch ? "إدارة الفرصة" : "إدارة الصفقة";
+    syncWorkflowOverlayHead(isMatch ? "match" : "deal");
 
     const summary = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.propertyType || "عقار")}</strong>${detail.district ? ` — ${escapeUi(detail.district)}` : ""}<br>العميل: ${escapeUi(activeWorkflowContacts.client?.name || "غير محدد")} — المالك: ${escapeUi(activeWorkflowContacts.owner?.name || "غير محدد")}</div>`;
 
@@ -2153,6 +2172,7 @@
   }
 
   async function renderOpportunityLifecycleUi() {
+    syncWorkflowOverlayHead("opportunity");
     const detail = activeWorkflowDetail;
     const body = workflowBody();
     const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");

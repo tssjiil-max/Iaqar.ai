@@ -155,8 +155,16 @@ test("workflow lifecycle modal embeds unified opportunity details", () => {
   assert.ok(workflow.includes("buildWorkflowOpportunityDetailsHtml"));
   assert.ok(workflow.includes("iaqar-workflow-details"));
   assert.ok(workflow.includes("buildOpportunityDetailsCoreHtml"));
+  assert.ok(workflow.includes("iaqar-workflow-head--opp-details"));
+  assert.ok(workflow.includes('title.textContent = isOppDetails'));
+  assert.ok(workflow.includes('"تفاصيل الفرصة"'));
   const bridge = readRepo("public", "js", "opportunity-domain-bridge.js");
   assert.ok(bridge.includes("buildOpportunityDetailsCoreHtml"));
+  const css = readRepo("public", "index.html");
+  assert.ok(css.includes("grid-template-columns:minmax(0, 1fr) max-content"));
+  assert.ok(css.includes(".opp-details-row-icon"));
+  assert.match(css, /\.opp-details-row-icon[\s\S]*?fill:none/);
+  assert.match(css, /\.opp-details-row-icon[\s\S]*?color:var\(--green\)/);
 });
 
 test("followup quick action routes through operations opportunity opener", () => {
