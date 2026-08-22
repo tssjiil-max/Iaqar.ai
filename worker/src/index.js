@@ -6587,6 +6587,7 @@ function mergeFollowUpWhatsappRole(existingFollowUp = null, role = "", now = new
 function followUpFirestoreFields(followUp) {
   const reminderInstant = parseFollowUpInstant(followUp.reminderAt)
     || parseFollowUpInstant(followUp.reminderAt1h)
+    || parseFollowUpInstant(followUp.reminderAt15m)
     || parseFollowUpInstant(followUp.reminderAt24h);
   const reminderAt = reminderInstant || new Date("2099-01-01T00:00:00.000Z");
   return compactFields({
@@ -6655,6 +6656,10 @@ async function scheduleOpportunityFollowUp({
   const recipientContext = resolveRecipientContext(opportunity, match);
   const recipientMode = normalizeRecipientMode(body.recipientMode, recipientContext);
   const existingFollowUp = opportunity.followUp && typeof opportunity.followUp === "object" ? opportunity.followUp : null;
+  const appointmentKind = cleanText(
+    body.appointmentKind || body.nextActionType || existingFollowUp?.appointmentKind || existingFollowUp?.nextActionType || "follow_up",
+    40
+  );
   const isReschedule = existingFollowUp
     && ACTIVE_FOLLOWUP_STATUSES.has(String(existingFollowUp.status || ""))
     && !isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode);
@@ -6673,10 +6678,11 @@ async function scheduleOpportunityFollowUp({
   const followUp = buildCanonicalFollowUp({
     at: parsedAt,
     recipientMode,
+    appointmentKind,
     ownerContactId: recipientContext.ownerContactId,
     clientContactId: recipientContext.clientContactId,
     createdBy: identity.uid,
-    existing: isReschedule ? existingFollowUp : null,
+    existing: isReschedule ? { ...existingFollowUp, remindersSent: [] } : null,
     now
   });
 
@@ -6686,7 +6692,7 @@ async function scheduleOpportunityFollowUp({
     lifecycleUpdatedAt: firestoreTimestamp(now),
     lifecycleUpdatedBy: firestoreString(identity.uid),
     lifecycleStatus: firestoreString(LIFECYCLE_STATUS.FOLLOW_UP),
-    nextActionType: firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40)),
+    nextActionType: firestoreOptionalString(appointmentKind),
     nextActionNote: firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300)),
     ...followUpFirestoreFields(followUp),
     ...brokerProgressFirestoreFields(opportunity, BROKER_ACTION.followUpScheduled, now)

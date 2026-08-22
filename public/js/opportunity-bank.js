@@ -221,7 +221,8 @@ const state = {
   pendingQueryRefresh: false,
   resultTotal: 0,
   scanExhausted: false,
-  detailRenderContext: null
+  detailRenderContext: null,
+  pendingFollowUpKind: ""
 };
 
 function detailRenderContext() {
@@ -1423,6 +1424,7 @@ async function executePartyContactAction(actionId, opportunityId, record, bundle
   }
 
   if (actionId === "party_schedule_viewing") {
+    state.pendingFollowUpKind = "viewing";
     const section = document.getElementById("bankWorkspaceFollowUpSection");
     if (section) {
       section.hidden = false;
@@ -2284,7 +2286,7 @@ async function saveContactOutcomeBundle(opportunityId, outcome, bundle = {}) {
         action: "set_followup",
         nextFollowUpAt: validation.followUpAt,
         nextActionAt: validation.followUpAt,
-        nextActionType: "follow_up"
+        nextActionType: "call"
       });
     }
     if (validation.note) {
@@ -2712,6 +2714,8 @@ function wireDetailHandlers(id, record) {
   async function saveFollowUpAt(iso) {
     const user = authUser();
     if (!user) return;
+    const nextActionType = state.pendingFollowUpKind || "follow_up";
+    state.pendingFollowUpKind = "";
     try {
       const token = await user.getIdToken();
       const response = await fetch(`${workerBaseUrl()}/opportunity/lifecycle`, {
@@ -2727,7 +2731,7 @@ function wireDetailHandlers(id, record) {
           action: "set_followup",
           nextFollowUpAt: iso,
           nextActionAt: iso,
-          nextActionType: "follow_up"
+          nextActionType
         })
       });
       const payload = await response.json().catch(() => ({}));
