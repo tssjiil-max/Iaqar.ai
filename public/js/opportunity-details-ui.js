@@ -559,7 +559,7 @@ export function buildOpportunityDetailsPageHtml(id, record = {}, readiness = {},
   return {
     vm: built.vm,
     html: `
-      <div class="opp-details-page" data-record-kind="${esc(built.vm.recordKind)}">
+      <div class="opp-details-page" dir="rtl" data-record-kind="${esc(built.vm.recordKind)}">
         ${buildOpportunityDetailsAppBarHtml()}
         <div class="opp-details-body">
           ${built.html}
