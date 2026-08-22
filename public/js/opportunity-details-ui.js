@@ -186,16 +186,20 @@ function normalizeCityDistrict(record = {}) {
   return { cityText, districtText };
 }
 
+function formatCount(value) {
+  return Number(value).toLocaleString("en-US");
+}
+
 export function buildOpportunitySpecsParts(record = {}) {
   const area = Number(record.area || 0);
-  const primary = area > 0 ? `${area.toLocaleString("ar-SA")} م²` : "";
+  const primary = area > 0 ? `${formatCount(area)} م²` : "";
   const secondary = [];
   const streetWidth = Number(record.streetWidth || 0);
-  if (streetWidth > 0) secondary.push(`شارع ${streetWidth.toLocaleString("ar-SA")} م`);
+  if (streetWidth > 0) secondary.push(`شارع ${formatCount(streetWidth)} م`);
   const facing = safeText(record.facing || record.direction || "", 40);
   if (facing) secondary.push(`واجهة ${facing}`);
   const rooms = Number(record.rooms || 0);
-  if (rooms > 0) secondary.push(`${rooms.toLocaleString("ar-SA")} غرف`);
+  if (rooms > 0) secondary.push(`${formatCount(rooms)} غرف`);
   return { primary, secondary: secondary.join("، ") };
 }
 
