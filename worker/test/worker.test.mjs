@@ -33,7 +33,8 @@ import worker, {
   buildOpportunitySummary,
   buildOpportunityWhatsAppMessage,
   resolveSelectOption,
-  parseVoiceOpportunityFields
+  parseVoiceOpportunityFields,
+  selectOfficePushTargetDevices
 } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
@@ -918,6 +919,38 @@ test("stage 3 notification links open the exact office record", () => {
   assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"deal",recordId:"deal_9"}), "/?officeId=office-alqiq&openMatch=deal_9");
   assert.equal(buildNotificationLink({officeId:"platform",type:"broker_application",recordId:"broker_7"}), "/?office=platform&adminApplications=1&openBrokerApplication=broker_7");
   assert.equal(buildNotificationLink({officeId:"office-alqiq",type:"notification_test",recordId:"test_1"}), "/?officeId=office-alqiq");
+});
+
+test("office push targeting skips the broker who submitted their own office-link intake", () => {
+  const devices = [
+    { registrationId: "tok-self", userUid: "uid-broker", enabled: true },
+    { registrationId: "tok-partner", userUid: "uid-partner", enabled: true },
+    { registrationId: "tok-off", userUid: "uid-broker", enabled: false }
+  ];
+  const targets = selectOfficePushTargetDevices(devices, { excludeUserUid: "uid-broker" });
+  assert.deepEqual(targets.map(device => device.registrationId), ["tok-partner"]);
+});
+
+test("office push targeting still reaches the office when nobody is excluded", () => {
+  const devices = [
+    { registrationId: "tok-self", userUid: "uid-broker", enabled: true },
+    { registrationId: "tok-partner", userUid: "uid-partner", enabled: true }
+  ];
+  const targets = selectOfficePushTargetDevices(devices, {});
+  assert.deepEqual(targets.map(device => device.registrationId), ["tok-self", "tok-partner"]);
+});
+
+test("office push targeting still prefers the assigned broker after excluding the submitter", () => {
+  const devices = [
+    { registrationId: "tok-self", userUid: "uid-broker", enabled: true },
+    { registrationId: "tok-assignee", userUid: "uid-assignee", enabled: true },
+    { registrationId: "tok-other", userUid: "uid-other", enabled: true }
+  ];
+  const targets = selectOfficePushTargetDevices(devices, {
+    assignedBrokerId: "uid-assignee",
+    excludeUserUid: "uid-broker"
+  });
+  assert.deepEqual(targets.map(device => device.registrationId), ["tok-assignee"]);
 });
 
 test("stage 3 recognizes expired FCM tokens for automatic cleanup", () => {

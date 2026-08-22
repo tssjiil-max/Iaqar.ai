@@ -12,6 +12,7 @@ import {
   markBrokerActionDoneLocally,
   markFollowUpProgressLocally
 } from "./broker-action-progress-ui.js";
+import { createPublicIntakeNotifySession } from "./public-intake-notify-domain.js";
 
 window.IAQAR_OPPORTUNITY = Object.freeze({
   status,
@@ -28,3 +29,6 @@ window.IAQAR.brokerActionProgress = Object.freeze({
   markBrokerActionDoneLocally,
   markFollowUpProgressLocally
 });
+window.IAQAR.publicIntakeNotify = Object.freeze(createPublicIntakeNotifySession(
+  typeof sessionStorage !== "undefined" ? sessionStorage : null
+));

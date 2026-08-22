@@ -1758,7 +1758,12 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   }});
 
   if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
+    const excludeUserUid = body.excludeCallerPush === true
+      ? await peekCallerUid(request, env)
+      : "";
+    await sendOfficeMatchNotifications({
+      projectId, officeId, matches, parsed, accessToken, env, excludeUserUid
+    });
   }
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
@@ -4309,7 +4314,7 @@ async function listCollectionDocuments({projectId,segments,accessToken,pageSize=
   const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
 }
 
-async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null}) {
+async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null,excludeUserUid=""}) {
   // Notification without a real Operations Center action is a product failure.
   // Prefer a match that already has a MATCH_REVIEW operation id.
   const actionable = (Array.isArray(matches) ? matches : []).filter((row) =>
@@ -4346,6 +4351,7 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       type: "operation",
       recordId: operationId,
       assignedBrokerId: top.assignedBrokerId || "",
+      excludeUserUid,
       accessToken,
       env
     });
@@ -4464,14 +4470,39 @@ async function readOfficeNotificationPreferences({projectId,officeId,accessToken
   }
 }
 
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode=""}) {
+function selectOfficePushTargetDevices(devices, { assignedBrokerId = "", excludeUserUid = "" } = {}) {
+  const exclude = String(excludeUserUid || "").trim();
+  const brokerFilter = String(assignedBrokerId || "").trim();
+  const active = (Array.isArray(devices) ? devices : []).filter((device) => {
+    if (!device || device.enabled === false || !device.registrationId) return false;
+    if (exclude && String(device.userUid || "") === exclude) return false;
+    return true;
+  });
+  const brokerDevices = brokerFilter
+    ? active.filter((device) => String(device.userUid || "") === brokerFilter)
+    : [];
+  return brokerDevices.length ? brokerDevices : active;
+}
+
+async function peekCallerUid(request, env) {
+  try {
+    const header = String(request.headers.get("authorization") || request.headers.get("Authorization") || "");
+    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    if (!token) return "";
+    const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
+    return cleanText(claims.sub, 128);
+  } catch (_error) {
+    return "";
+  }
+}
+
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",excludeUserUid="",accessToken,env=null,followUpAt="",recipientMode=""}) {
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
   }
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
-  const brokerFilter=String(assignedBrokerId||"").trim();
-  const activeDevices=devices.map(doc=>{
+  const mappedDevices=devices.map(doc=>{
     const value=firestoreFieldsToJs(doc.fields||{});
     return {
       deviceId:decodeURIComponent(String(doc.name||"").split("/").pop()||""),
@@ -4479,16 +4510,10 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
       registrationId:value.fcmRegistrationId||value.fcmToken||"",
       registrationType:value.registrationType==="fid"?"fid":value.registrationType==="webpush"?"webpush":"token"
     };
-  }).filter(device=>{
-    if(device.enabled===false||!device.registrationId)return false;
-    // Assigned broker: prefer devices owned by that uid; if none match, fall back to office queue.
-    return true;
   });
-  const brokerDevices=brokerFilter
-    ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
-    : [];
-  const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
-  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
+  const targetDevices=selectOfficePushTargetDevices(mappedDevices,{assignedBrokerId,excludeUserUid});
+  const brokerFilter=String(assignedBrokerId||"").trim();
+  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&targetDevices.length&&targetDevices.every(device=>String(device.userUid||"")===brokerFilter))};
   for(const device of targetDevices){
     try{
       await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title,body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode});
@@ -6562,5 +6587,5 @@ export {
   normalizeOpportunitySource, getOpportunityLifecycleStatus, normalizeSaudiPhoneForWhatsApp,
   buildOpportunitySummary, buildOpportunityWhatsAppMessage, resolveSelectOption,
   extractDistrictFromVoice, parseVoiceOpportunityFields, whatsappActionTypeForStatus,
-  isArchivedLifecycle, isOpportunityLifecycleActive
+  isArchivedLifecycle, isOpportunityLifecycleActive, selectOfficePushTargetDevices
 };

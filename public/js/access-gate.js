@@ -330,11 +330,40 @@
   }
 
 
+  function publicIntakeNotifyApi() {
+    return window.IAQAR && window.IAQAR.publicIntakeNotify;
+  }
+
+  function rememberSelfSubmittedPublicIntake(intakeId) {
+    const api = publicIntakeNotifyApi();
+    if (api && typeof api.remember === "function") {
+      api.remember(intakeId);
+      return;
+    }
+    try {
+      const key = "iaqar:selfPublicIntakeIds";
+      const id = String(intakeId || "").trim();
+      if (!id) return;
+      const parsed = JSON.parse(sessionStorage.getItem(key) || "[]");
+      const stored = Array.isArray(parsed) ? parsed : [];
+      sessionStorage.setItem(key, JSON.stringify([id, ...stored.filter(item => item !== id)].slice(0, 20)));
+    } catch (_error) { /* ignore */ }
+  }
+
   async function triggerPublicIntakeMatching(targetOffice, intakeId) {
+    const headers = { "Content-Type": "application/json" };
+    const body = { officeId: targetOffice, intakeId };
+    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
+    if (user && typeof user.getIdToken === "function") {
+      try {
+        headers.Authorization = `Bearer ${await user.getIdToken(true)}`;
+        body.excludeCallerPush = true;
+      } catch (_error) { /* public form still works logged-out */ }
+    }
     const response = await fetch(`${resolveWorkerBase()}/pipeline/public-intake`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ officeId: targetOffice, intakeId })
+      headers,
+      body: JSON.stringify(body)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || "MATCHING_FAILED");
@@ -767,6 +796,7 @@
           };
           if (targetOffice === "platform") api.rememberLastCity(city);
         }
+        rememberSelfSubmittedPublicIntake(ref.id);
         await ref.set(intakePayload);
         let matchingResult = null;
         try { matchingResult = await triggerPublicIntakeMatching(targetOffice, ref.id); }
