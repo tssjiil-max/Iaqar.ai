@@ -360,7 +360,7 @@ function rowLabelHtml(rowKey, label) {
   const iconId = ROW_ICONS[rowKey] || "i-clipboard-list";
   return `
     <span class="opp-details-row-label">
-      <svg class="opp-details-row-icon" aria-hidden="true"><use href="#${esc(iconId)}"/></svg>
+      <svg class="icon opp-details-row-icon" aria-hidden="true"><use href="#${esc(iconId)}"/></svg>
       <span>${esc(label)}</span>
     </span>`;
 }
@@ -407,7 +407,7 @@ function contactSaveButtonHtml(vm) {
       data-contact-city="${esc(vm.locationCity || "")}"
       aria-label="${esc(SAVE_PHONE_CONTACT_LABEL)}${saveName ? `: ${esc(saveName)}` : ""}"
       title="${esc(SAVE_PHONE_CONTACT_LABEL)}">
-      <svg class="opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
+      <svg class="icon opp-contact-save-icon" aria-hidden="true"><use href="#i-contact-save"/></svg>
       <span class="opp-contact-save-text">${esc(SAVE_PHONE_CONTACT_LABEL)}</span>
     </button>`;
 }
@@ -463,7 +463,7 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
       <header class="opp-details-data-title">
-        <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
+        <svg class="icon opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
         <span class="opp-details-data-title-text">بيانات الفرصة</span>
       </header>
       <div class="opp-details-data-rows">

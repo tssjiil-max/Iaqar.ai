@@ -162,6 +162,9 @@ test("workflow lifecycle modal embeds unified opportunity details", () => {
   assert.ok(bridge.includes("buildOpportunityDetailsCoreHtml"));
   const css = readRepo("public", "index.html");
   assert.ok(css.includes("grid-template-columns:minmax(0, 1fr) max-content"));
+  assert.ok(css.includes(".opp-details-row-icon"));
+  assert.match(css, /\.opp-details-row-icon[\s\S]*?fill:none/);
+  assert.match(css, /\.opp-details-row-icon[\s\S]*?color:var\(--green\)/);
 });
 
 test("followup quick action routes through operations opportunity opener", () => {

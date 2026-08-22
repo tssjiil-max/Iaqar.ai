@@ -244,7 +244,7 @@ export function buildDailyReportHtml(record = {}, options = {}) {
   return `
     <section class="opp-details-card opp-details-report-card" aria-label="تقرير اليوم">
       <header class="opp-details-data-title">
-        <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
+        <svg class="icon opp-details-data-title-icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
         <span class="opp-details-data-title-text">تقرير اليوم</span>
       </header>
       ${body}
@@ -263,7 +263,7 @@ export function buildNextAppointmentHtml(record = {}, options = {}) {
   return `
     <section class="opp-details-card opp-details-appointment-card" aria-label="الموعد القادم">
       <header class="opp-details-data-title">
-        <svg class="opp-details-data-title-icon" aria-hidden="true"><use href="#i-user-clock"/></svg>
+        <svg class="icon opp-details-data-title-icon" aria-hidden="true"><use href="#i-user-clock"/></svg>
         <span class="opp-details-data-title-text">الموعد القادم</span>
       </header>
       <div class="opp-details-appointment-body">

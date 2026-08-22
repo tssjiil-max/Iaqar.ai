@@ -63,6 +63,8 @@ test("data table uses clear row icons for each field", () => {
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678"
   });
+  assert.ok(html.includes('class="icon opp-details-row-icon"'));
+  assert.ok(html.includes('class="icon opp-details-data-title-icon"'));
   assert.ok(html.includes("#i-home"));
   assert.ok(html.includes("#i-map-pin"));
   assert.ok(html.includes("#i-price-tag"));
