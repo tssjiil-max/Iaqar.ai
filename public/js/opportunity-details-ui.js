@@ -320,19 +320,20 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
 export function buildCompletionProgressHtml(vm, options = {}) {
   const { progress, status } = vm;
   const actionHtml = options.actionHtml || "";
+  const isComplete = status.cssClass === "is-ready" && progress.pct === 100;
+  const copyHtml = isComplete ? "" : `
+        <div class="opp-details-progress-copy">
+          <p class="opp-details-progress-hint">استكمل البيانات الناقصة ليتم تحويل الفرصة إلى جاهزة للمطابقة.</p>
+          ${buildMissingFieldsAlertHtml(vm)}
+        </div>`;
   return `
-    <section class="opp-details-card opp-details-completion-card" aria-label="نسبة اكتمال البيانات">
+    <section class="opp-details-card opp-details-completion-card${isComplete ? " is-complete" : ""}" aria-label="نسبة اكتمال البيانات">
       <header class="opp-details-card-head">
         ${iconUse("i-chart")}
         <h5>نسبة اكتمال البيانات</h5>
       </header>
       <div class="opp-details-progress">
-        <div class="opp-details-progress-copy">
-          <p class="opp-details-progress-hint">${status.cssClass === "is-ready"
-    ? "الفرصة جاهزة للمطابقة."
-    : "استكمل البيانات الناقصة ليتم تحويل الفرصة إلى جاهزة للمطابقة."}</p>
-          ${buildMissingFieldsAlertHtml(vm)}
-        </div>
+        ${copyHtml}
         <div class="opp-details-progress-meter">
           <div class="opp-details-progress-ring" style="--opp-progress:${progress.pct}" aria-hidden="true">
             <span class="opp-details-progress-count">
@@ -393,8 +394,7 @@ function locationRow(vm) {
     "location",
     "i-map-pin",
     "الموقع",
-    vm.locationPrimary,
-    vm.locationSecondary
+    vm.locationPrimary
   );
 }
 
@@ -549,9 +549,7 @@ function detailsCardsHtml(vm, extras = {}) {
   return `
     ${buildOpportunityDetailsHeaderHtml(vm)}
     ${buildOpportunityDataTableHtml(vm)}
-    ${buildCompletionProgressHtml(vm, { actionHtml })}
-    ${buildTodayReportHtml(vm, extras)}
-    ${buildNextAppointmentHtml(vm.rawRecord || {}, extras.followUp, extras.nextAppointment)}`;
+    ${buildCompletionProgressHtml(vm, { actionHtml })}`;
 }
 
 export function buildOpportunityDetailsCoreHtml(id, record = {}, readiness = {}, extras = {}) {

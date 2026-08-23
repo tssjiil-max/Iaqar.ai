@@ -95,8 +95,9 @@ test("completion progress reflects actual readiness fields", () => {
   assert.ok(html.includes("السعر"));
   assert.ok(html.includes("رقم التواصل"));
   assert.ok(!html.includes("🔴"));
-  assert.ok(html.includes("الحي: عروة"));
+  assert.ok(html.includes("المدينة المنورة - حي عروة"));
   assert.ok(!html.includes("حي حي"));
+  assert.ok(!html.includes("الحي: عروة"));
 });
 
 test("ready status label uses existing readiness logic", () => {
@@ -128,7 +129,7 @@ test("location row keeps city and district separate", () => {
   assert.equal(vm.locationSecondary, "الحي: عروة");
 });
 
-test("phase 1 page matches reference structure and drops old chrome", () => {
+test("unified details page has only identity, data table, and completion", () => {
   const tomorrow = new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString();
   const { html } = buildOpportunityDetailsPageHtml("1258", {
     ...referenceRecord
@@ -136,16 +137,15 @@ test("phase 1 page matches reference structure and drops old chrome", () => {
     matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
   }, {
     entries: [
-      { time: "10:40 ص", title: "مراجعة البيانات", result: "تم اكتشاف النواقص" },
-      { time: "10:45 ص", title: "متابعة المالك", result: "تم فتح واتساب" },
-      { time: "10:52 ص", title: "تحديد موعد", result: "غداً 9:15 ص" },
-      { time: "10:58 ص", title: "إرسال الفرصة", result: "أرسلت إلى مكتب الجماوات" }
+      { time: "10:40 ص", title: "مراجعة البيانات", result: "تم اكتشاف النواقص" }
     ],
     followUp: { at: tomorrow, purpose: "معاينة العقار" }
   });
 
   assert.ok(html.includes("opp-details-page"));
   assert.ok(html.includes("opp-details-appbar"));
+  assert.ok(html.includes("opp-details-menu"));
+  assert.ok(html.includes("bankDetailClose"));
   assert.ok(html.includes("تفاصيل الفرصة"));
   assert.ok(html.includes("#1258"));
   assert.ok(html.includes("عرض مالك"));
@@ -160,13 +160,43 @@ test("phase 1 page matches reference structure and drops old chrome", () => {
   const buttonIdx = html.indexOf("أكمل البيانات الناقصة");
   assert.ok(dataIdx > 0 && dataIdx < completionIdx);
   assert.ok(completionIdx < buttonIdx);
-  assert.ok(html.includes("تقرير اليوم"));
-  assert.ok(html.includes("الموعد القادم"));
-  assert.ok(html.includes("معاينة العقار"));
+  assert.ok(!html.includes("تقرير اليوم"));
+  assert.ok(!html.includes("الموعد القادم"));
+  assert.ok(!html.includes("معاينة العقار"));
   assert.ok(!html.includes("إجراءات الفرصة"));
   assert.ok(!html.includes("bank-detail-head"));
   assert.ok(!html.includes("class=\"opp-details-title\""));
   assert.equal(formatDisplayOpportunityId("1258"), "1258");
+});
+
+test("ready client request page matches the unified three-section layout", () => {
+  const { html, vm } = buildOpportunityDetailsPageHtml("8871", {
+    opportunityKind: "REQUEST",
+    contactType: "buyer",
+    propertyType: "شقة",
+    purpose: "PURCHASE",
+    city: "الرياض",
+    district: "الياسمين",
+    budget: 800000,
+    area: 180,
+    advertiserRole: "CLIENT",
+    advertiserPhoneNormalized: "+966598765432",
+    createdAt: "2026-08-16T11:00:00.000Z"
+  }, { isReadyForMatching: true });
+
+  assert.equal(vm.kindLabel, "طلب عميل");
+  assert.equal(vm.status.label, "جاهزة للمطابقة");
+  assert.equal(vm.priceLabel, "الميزانية");
+  assert.ok(html.includes("طلب عميل"));
+  assert.ok(html.includes("جاهزة للمطابقة"));
+  assert.ok(html.includes("الميزانية"));
+  assert.ok(html.includes("100% مكتملة"));
+  assert.ok(html.includes("is-complete"));
+  assert.ok(!html.includes("أكمل البيانات الناقصة"));
+  assert.ok(!html.includes("الفرصة جاهزة للمطابقة."));
+  assert.ok(!html.includes("تقرير اليوم"));
+  assert.ok(!html.includes("الموعد القادم"));
+  assert.ok(!html.includes("data-workspace-action="));
 });
 
 test("details page order is data table, then completion, then complete button", () => {
