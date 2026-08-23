@@ -84,6 +84,8 @@ test("completion progress reflects actual readiness fields", () => {
   assert.equal(vm.progress.completeCount, 4);
   assert.equal(vm.progress.pct, 57);
   assert.ok(html.includes("البيانات الناقصة"));
+  assert.ok(html.includes("opp-details-progress-top"));
+  assert.ok(html.includes("opp-details-missing-badge"));
   assert.ok(html.includes("السعر"));
   assert.ok(html.includes("رقم التواصل"));
   assert.ok(!html.includes("🔴"));
@@ -143,6 +145,8 @@ test("phase 1 page matches reference structure and drops old chrome", () => {
   assert.ok(html.includes("عرض مالك"));
   assert.ok(html.includes("ناقصة"));
   assert.ok(html.includes("نسبة اكتمال البيانات"));
+  assert.ok(html.includes("opp-details-progress-top"));
+  assert.ok(html.includes("opp-details-missing-badge"));
   assert.ok(html.includes("بيانات الفرصة"));
   assert.ok(html.includes("أكمل البيانات الناقصة"));
   assert.ok(html.includes("تقرير اليوم"));

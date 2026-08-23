@@ -310,8 +310,8 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
         </div>
         ${vm.addedAtLabel ? `
           <p class="opp-details-added-at">
-            <span class="opp-details-added-icon" aria-hidden="true">${iconUse("i-calendar")}</span>
             <span>تاريخ الإضافة: ${esc(vm.addedAtLabel)}</span>
+            <span class="opp-details-added-icon" aria-hidden="true">${iconUse("i-calendar")}</span>
           </p>` : ""}
       </div>
     </section>`;
@@ -334,7 +334,10 @@ export function buildCompletionProgressHtml(vm) {
         </div>
         <div class="opp-details-progress-meter">
           <div class="opp-details-progress-ring" style="--opp-progress:${progress.pct}" aria-hidden="true">
-            <span class="opp-details-progress-count">${esc(String(progress.completeCount))} من ${esc(String(progress.total))}</span>
+            <span class="opp-details-progress-count">
+              <span class="opp-details-progress-top">${esc(String(progress.completeCount))}</span>
+              <span class="opp-details-progress-bottom">من ${esc(String(progress.total))}</span>
+            </span>
           </div>
           <p class="opp-details-progress-pct">${esc(`${progress.pct}% مكتملة`)}</p>
         </div>
@@ -348,15 +351,17 @@ export function buildMissingFieldsAlertHtml(vm) {
     <span class="opp-details-missing-chip">${esc(label)}</span>`).join("");
   return `
     <div class="opp-details-missing-alert" aria-label="البيانات الناقصة">
-      <p class="opp-details-missing-title">البيانات الناقصة</p>
+      <p class="opp-details-missing-title">البيانات الناقصة:</p>
       <div class="opp-details-missing-list">${chips}</div>
     </div>`;
 }
 
 function missingValueHtml() {
   return `
-    <span class="opp-details-row-primary is-empty">ناقص</span>
-    <span class="opp-details-row-secondary is-empty">غير محدد</span>`;
+    <span class="opp-details-missing-pair">
+      <span class="opp-details-missing-badge">ناقص</span>
+      <span class="opp-details-row-secondary is-empty">غير محدد</span>
+    </span>`;
 }
 
 function valueStackHtml(primary, secondary, complete) {

@@ -3852,7 +3852,7 @@
     margin:0;
     font-size:13px;
     font-weight:800;
-    color:var(--text);
+    color:var(--green);
   }
   .opp-details-card-head .icon {
     width:18px;
@@ -3932,15 +3932,21 @@
   }
   .opp-details-added-icon .icon { width:14px; height:14px; color:var(--muted); }
   .opp-details-progress {
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:12px;
-    padding:12px var(--opp-spacing-inner) 0;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+    align-items:center;
+    gap:10px;
+    padding:14px var(--opp-spacing-inner) 0;
   }
   .opp-details-progress-copy {
-    flex:1;
+    grid-column:1;
     min-width:0;
+  }
+  .opp-details-progress-meter {
+    grid-column:2;
+    display:grid;
+    justify-items:center;
+    gap:6px;
   }
   .opp-details-progress-hint {
     margin:0 0 10px;
@@ -3949,32 +3955,36 @@
     color:#5F6B67;
     font-weight:600;
   }
-  .opp-details-progress-meter {
-    display:grid;
-    justify-items:center;
-    gap:6px;
-    flex-shrink:0;
-  }
   .opp-details-progress-ring {
-    width:74px;
-    height:74px;
+    width:86px;
+    height:86px;
     border-radius:50%;
     display:grid;
     place-items:center;
     background:
-      radial-gradient(closest-side, var(--card) 72%, transparent 74% 100%),
+      radial-gradient(closest-side, var(--card) 70%, transparent 72% 100%),
       conic-gradient(var(--opp-progress-fill) calc(var(--opp-progress, 0) * 1%), #E6EBE9 0);
   }
   .opp-details-progress-count {
-    font-size:12px;
-    font-weight:800;
+    display:grid;
+    justify-items:center;
     color:var(--green);
     text-align:center;
-    line-height:1.2;
+    line-height:1.1;
+  }
+  .opp-details-progress-top {
+    font-size:22px;
+    font-weight:800;
+    line-height:1;
+  }
+  .opp-details-progress-bottom {
+    font-size:11px;
+    font-weight:700;
+    color:#6B7571;
   }
   .opp-details-progress-pct {
     margin:0;
-    font-size:11px;
+    font-size:12px;
     font-weight:800;
     color:var(--green);
   }
@@ -3983,7 +3993,7 @@
     margin:0;
     font-size:12px;
     font-weight:800;
-    color:var(--text);
+    color:#C62828;
   }
   .opp-details-missing-list {
     display:flex;
@@ -4042,6 +4052,21 @@
     min-width:0;
     text-align:left;
   }
+  .opp-details-missing-pair {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .opp-details-missing-badge {
+    display:inline-flex;
+    align-items:center;
+    padding:2px 8px;
+    border-radius:999px;
+    background:#FDECEC;
+    color:#C62828;
+    font-size:11px;
+    font-weight:800;
+  }
   .opp-details-row-primary {
     font-size:13px;
     font-weight:800;
@@ -4084,7 +4109,7 @@
     display:grid;
     grid-template-columns:auto minmax(0,1fr) auto;
     align-items:center;
-    gap:8px;
+    gap:10px;
     padding:10px 0;
     border-bottom:1px solid #F0F3F2;
     font-size:12px;
