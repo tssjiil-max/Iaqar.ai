@@ -107,6 +107,24 @@
             "value": "no-store"
           }
         ]
+      },
+      {
+        "source": "/v2",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "source": "/v2/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
       }
     ],
     "rewrites": [

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "../../public/v2",
+    "sourceMap": true,
+    "declaration": false,
+    "isolatedModules": true
+  },
+  "include": ["./**/*.ts"]
+}
