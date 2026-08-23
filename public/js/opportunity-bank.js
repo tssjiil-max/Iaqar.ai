@@ -3883,16 +3883,25 @@ async function restoreOpportunityFromLocation() {
 function bindOpportunityDeepLink() {
   if (bindOpportunityDeepLink.bound) return;
   bindOpportunityDeepLink.bound = true;
+  const tryRestore = () => {
+    void restoreOpportunityFromLocation();
+  };
   window.addEventListener("hashchange", () => {
     const id = parseOpportunityIdFromLocation(window.location);
-    if (id && id !== state.activeId) {
-      void restoreOpportunityFromLocation();
-    }
+    if (id && id !== state.activeId) tryRestore();
   });
-  window.addEventListener("iaqar:office-rebound", () => {
-    void restoreOpportunityFromLocation();
-  });
-  window.setTimeout(() => void restoreOpportunityFromLocation(), 0);
+  window.addEventListener("iaqar:office-rebound", tryRestore);
+  window.addEventListener("iaqar:firebase-ready", tryRestore);
+  window.addEventListener("iaqar:firebase-status", tryRestore);
+  try {
+    window.firebase?.auth?.()?.onAuthStateChanged((user) => {
+      if (user) tryRestore();
+    });
+  } catch (_) {
+    /* auth may not be ready during first parse */
+  }
+  window.setTimeout(tryRestore, 0);
+  window.setTimeout(tryRestore, 800);
 }
 
 export function activateOpportunityBankInline() {
