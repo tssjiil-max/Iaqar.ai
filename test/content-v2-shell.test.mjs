@@ -4,7 +4,6 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isContentResetEnabled } from "../public/js/content-v2-flag.js";
 import { buildContentV2Html, currentContentView } from "../public/js/content-v2-domain.js";
-import { isOpportunityDetailsV2Enabled } from "../public/js/opportunity-details-v2-domain.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -35,12 +34,11 @@ test("content V2 surface is empty and has no V2 header or nav chrome", () => {
   assert.equal(html.includes("ابدأ المطابقة"), false);
 });
 
-test("src/v2 is content-only and OpportunityDetailsV2 is not a parallel path", () => {
+test("src/v2 is content-only and has no V2 header or navigation", () => {
   const srcV2 = path.join(root, "src", "v2");
   const names = readdirSync(srcV2, { recursive: true }).map(String);
   assert.equal(names.some((name) => /header|nav|shell\.ts|index\.html/.test(name)), false);
   assert.equal(existsSync(path.join(srcV2, "content", "mount.js")), true);
-  assert.equal(isOpportunityDetailsV2Enabled({ search: "?oppV2=1", hash: "#/opportunities-v2/x" }, { getItem: () => "1" }), false);
 });
 
 test("existing App Shell, voice slot, and matching engine stay in place", () => {

@@ -17,9 +17,11 @@ import {
 } from "../public/js/opportunity-details-v2-ui.js";
 import { buildV2FieldPatch } from "../public/js/opportunity-details-v2.js";
 
-test("OpportunityDetailsV2 parallel path is retired", () => {
-  assert.equal(isOpportunityDetailsV2Enabled({ search: "?oppV2=1", hash: "" }, { getItem: () => null }), false);
-  assert.equal(isOpportunityDetailsV2Enabled({ search: "", hash: "#/opportunities-v2/abc" }, { getItem: () => "1" }), false);
+test("feature flag reads query, hash, and storage", () => {
+  assert.equal(isOpportunityDetailsV2Enabled({ search: "?env=staging", hash: "" }, { getItem: () => null }), false);
+  assert.equal(isOpportunityDetailsV2Enabled({ search: "?oppV2=1", hash: "" }, { getItem: () => null }), true);
+  assert.equal(isOpportunityDetailsV2Enabled({ search: "", hash: "#/opportunities-v2/abc" }, { getItem: () => null }), true);
+  assert.equal(isOpportunityDetailsV2Enabled({ search: "", hash: "" }, { getItem: (key) => key === "iaqar.opportunityDetailsV2" ? "1" : null }), true);
   assert.equal(parseOpportunityV2IdFromHash("#/opportunities-v2/opp_1"), "opp_1");
 });
 

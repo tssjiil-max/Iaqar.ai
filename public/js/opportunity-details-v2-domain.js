@@ -266,9 +266,17 @@ function mapAppointment(record = {}, extras = {}) {
   };
 }
 
-export function isOpportunityDetailsV2Enabled() {
-  // Retired parallel path. Content V2 mounts under the existing App Shell only.
-  return false;
+export function isOpportunityDetailsV2Enabled(locationLike, storageLike) {
+  const loc = locationLike || (typeof window !== "undefined" ? window.location : {});
+  const params = new URLSearchParams(loc.search || "");
+  if (params.get("oppV2") === "1" || params.get("oppV2") === "true") return true;
+  if (/^#\/opportunities-v2\//.test(String(loc.hash || ""))) return true;
+  try {
+    const storage = storageLike || (typeof localStorage !== "undefined" ? localStorage : null);
+    return storage?.getItem(OPPORTUNITY_DETAILS_V2_FLAG) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function parseOpportunityV2IdFromHash(hash = "") {
