@@ -1372,10 +1372,11 @@ function wireIncompleteDetailHandlers(id, record) {
 
     btn.disabled = true;
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
+    const priorMissing = evaluateMatchingReadiness(existing).matchingReadinessMissing || [];
     try {
-      await patchOpportunity(id, patch);
-      await reloadOpportunityFromBackend(id);
-      if (isDailyTaskDetail() && readinessCheck.isReadyForMatching) {
+      const { readiness: savedReadiness } = await persistOpportunityPatch(id, patch, { context: "incomplete-save" });
+      assertPersistedMissingFieldsCleared(priorMissing, savedReadiness, patch);
+      if (isDailyTaskDetail() && savedReadiness.isReadyForMatching) {
         toast("تم حفظ الفرصة ونقلها للمطابقة");
         if (statusNode) {
           statusNode.textContent = "تم حفظ الفرصة ونقلها للمطابقة";
@@ -1386,11 +1387,12 @@ function wireIncompleteDetailHandlers(id, record) {
         renderList();
         return;
       }
-      toast(readinessCheck.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
+      toast(savedReadiness.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {
-      const msg = mapClientPatchError(error, "تعذر حفظ البيانات");
+      console.warn("[iaqar-save] incomplete-save failed", error);
+      const msg = mapClientPatchError(error, error?.message || "تعذر حفظ البيانات");
       if (statusNode) statusNode.textContent = msg;
       setStatus(msg, "is-error");
     } finally {
@@ -2381,6 +2383,7 @@ function wireDetailHandlers(id, record) {
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
     const mergedPreview = normalizeOpportunityFinancials({ ...existing, ...editPatch, ...advResult.patch });
     const readiness = evaluateMatchingReadiness(mergedPreview);
+    const priorMissing = evaluateMatchingReadiness(existing).matchingReadinessMissing || [];
     const patch = {
       ...editPatch,
       ...advResult.patch,
@@ -2388,16 +2391,16 @@ function wireDetailHandlers(id, record) {
       updatedBy: authUser()?.uid || ""
     };
     try {
-      await patchOpportunity(id, patch);
-      await reloadOpportunityFromBackend(id);
+      const { readiness: savedReadiness } = await persistOpportunityPatch(id, patch, { context: "unified-save" });
+      assertPersistedMissingFieldsCleared(priorMissing, savedReadiness, patch);
       if (statusNode) statusNode.textContent = "تم حفظ التغييرات";
       setStatus("تم حفظ التغييرات", "is-done");
       toast("تم حفظ التغييرات");
       await renderDetail(id);
       renderList();
     } catch (error) {
-      console.warn("[iaqar] unified save", error);
-      const msg = mapClientPatchError(error, "تعذر حفظ التغييرات");
+      console.warn("[iaqar-save] unified-save failed", error);
+      const msg = mapClientPatchError(error, error?.message || "تعذر حفظ التغييرات");
       if (statusNode) statusNode.textContent = msg;
       setStatus(msg, "is-error");
     } finally {
@@ -2575,6 +2578,66 @@ async function reloadOpportunityFromBackend(id) {
   const record = { id, ...(snap.data() || {}) };
   state.records.set(id, record);
   return record;
+}
+
+function logOpportunitySave(phase, payload = {}) {
+  console.info("[iaqar-save]", phase, payload);
+}
+
+async function persistOpportunityPatch(id, patch, { context = "save" } = {}) {
+  logOpportunitySave("start", { context, opportunityId: id, patch });
+  const writeResult = await patchOpportunity(id, patch);
+  logOpportunitySave("write-result", {
+    context,
+    opportunityId: id,
+    ok: Boolean(writeResult?.ok ?? true),
+    version: writeResult?.opportunity?.version ?? null
+  });
+  const reloaded = await reloadOpportunityFromBackend(id);
+  if (!reloaded) {
+    throw Object.assign(new Error("تعذر التحقق من حفظ الفرصة بعد الكتابة"), { code: "reload_failed" });
+  }
+  const readiness = evaluateMatchingReadiness(reloaded);
+  logOpportunitySave("reloaded", {
+    context,
+    opportunityId: id,
+    advertiserRole: reloaded.advertiserRole || "",
+    contactPhone: reloaded.advertiserPhoneNormalized || reloaded.contactPhone || "",
+    matchingReadiness: readiness.matchingReadiness,
+    matchingReadinessMissing: readiness.matchingReadinessMissing,
+    completionCount: 7 - (readiness.matchingReadinessMissing?.length || 0),
+    completionPercent: Math.round(((7 - (readiness.matchingReadinessMissing?.length || 0)) / 7) * 100)
+  });
+  return { writeResult, reloaded, readiness };
+}
+
+function assertPersistedMissingFieldsCleared(priorMissing = [], savedReadiness = {}, patch = {}) {
+  const patchKeys = new Set(Object.keys(patch || {}));
+  const patchTouches = (fieldKey) => {
+    if (fieldKey === "contactPhone") {
+      return patchKeys.has("advertiserPhoneNormalized")
+        || patchKeys.has("contactPhone")
+        || patchKeys.has("phone");
+    }
+    if (fieldKey === "advertiserRole") return patchKeys.has("advertiserRole");
+    if (fieldKey === "priceOrBudget") {
+      return patchKeys.has("priceOrBudget")
+        || patchKeys.has("price")
+        || patchKeys.has("budget")
+        || patchKeys.has("salePrice")
+        || patchKeys.has("annualRent");
+    }
+    return patchKeys.has(fieldKey);
+  };
+  const stillMissing = (priorMissing || []).filter((key) => {
+    return patchTouches(key) && (savedReadiness.matchingReadinessMissing || []).includes(key);
+  });
+  if (!stillMissing.length) return;
+  const labels = missingFieldLabelsArabic(stillMissing);
+  throw Object.assign(
+    new Error(labels.length ? `لم يُحفظ الحقل: ${labels.join("، ")}` : "تعذر حفظ بعض الحقول"),
+    { code: "persist_incomplete", stillMissing }
+  );
 }
 
 async function patchOpportunity(id, patch) {

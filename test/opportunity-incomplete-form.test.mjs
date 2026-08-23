@@ -183,3 +183,22 @@ test("merge preview applies phone for readiness after valid local input", () => 
   const after = evaluateMatchingReadiness(merged);
   assert.equal(after.isReadyForMatching, true);
 });
+
+test("merge preview normalizes Arabic advertiser role for readiness", () => {
+  const record = {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "الوبرة",
+    price: 1500000,
+    advertiserPhoneNormalized: "+966512345678"
+  };
+  const before = evaluateMatchingReadiness(record);
+  assert.ok(before.matchingReadinessMissing.includes("advertiserRole"));
+  const merged = mergeIncompleteFormPreview(record, { advertiserRole: "مالك" });
+  const after = evaluateMatchingReadiness(merged);
+  assert.equal(merged.advertiserRole, "OWNER");
+  assert.equal(after.isReadyForMatching, true);
+  assert.ok(!after.matchingReadinessMissing.includes("advertiserRole"));
+});
