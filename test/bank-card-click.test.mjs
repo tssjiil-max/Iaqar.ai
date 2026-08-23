@@ -23,14 +23,36 @@ test("bank list click resolves opportunity only by data-opportunity-id", () => {
 test("bank card click handler ignores nested buttons and links inside the row", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const bind = bank.match(/function bindListClicks[\s\S]*?^}/m)?.[0] || "";
-  assert.ok(bind.includes("button, a"));
+  assert.ok(bind.includes("isBankCardActionControl"));
   assert.ok(bind.includes("[data-summary-key]"));
   assert.ok(bind.includes(".bank-row-card[data-opportunity-id]"));
+  assert.equal(bind.includes('closest("button, a")'), false);
+});
+
+test("bank cards bind the Firestore row id only", () => {
+  const bank = readRepo("public", "js", "opportunity-bank.js");
+  const rowHtml = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
+  assert.ok(rowHtml.includes("data-opportunity-id=\"${escapeHtml(String(row.id || \"\").trim())}\""));
+  assert.equal(rowHtml.includes("card.opportunityId || row.id"), false);
+});
+
+test("list and deep link share one openOpportunity fetch-by-id path", () => {
+  const bank = readRepo("public", "js", "opportunity-bank.js");
+  assert.ok(bank.includes("async function openOpportunity"));
+  assert.ok(bank.includes("async function fetchOfficeOpportunityById"));
+  assert.ok(bank.includes("function openBankDetailFromList"));
+  assert.ok(bank.includes("return openOpportunity(opportunityId)"));
+  assert.ok(bank.includes("showBankDetailLoading"));
+  assert.ok(bank.includes("announceBankDetailOpened"));
+  assert.ok(bank.includes("buildOpportunityDeepLinkHash"));
+  assert.ok(bank.includes("restoreOpportunityFromLocation"));
+  assert.equal(bank.includes("navigateToTasksIncomplete(openId)"), false);
 });
 
 test("incomplete bank cards open inline detail instead of redirecting to tasks", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  const opener = bank.match(/async function openBankDetailFromList[\s\S]*?^}/m)?.[0] || "";
+  const opener = bank.match(/async function openOpportunity[\s\S]*?^function openBankDetailFromList/m)?.[0] || "";
+  assert.ok(opener.includes("fetchOfficeOpportunityById"));
   assert.equal(opener.includes("navigateToTasksIncomplete"), false);
   const detail = bank.match(/async function renderDetail[\s\S]*?^  const bundle = await loadWorkspaceBundle/m)?.[0] || "";
   assert.ok(detail.includes("buildNeedsCompletionDetailHtml"));

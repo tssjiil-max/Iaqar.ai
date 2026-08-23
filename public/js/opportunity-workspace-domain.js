@@ -12,7 +12,9 @@ import { contactLineMarkup } from "./opportunity-card-domain.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import { normalizePurpose, normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
 import {
+  ADVERTISER_ROLES,
   formatLocalPhoneDisplay,
+  resolveAdvertiserRoleValue,
   validateAdvertiserPhoneLocalInput
 } from "./advertiser-phone-domain.js";
 
@@ -120,14 +122,20 @@ export function buildIncompleteFormFields(record = {}, readiness = {}) {
           name: "priceOrBudget",
           value: record.priceOrBudget ?? record.price ?? record.budget ?? ""
         };
-      case "advertiserRole":
+      case "advertiserRole": {
+        const roleId = String(record.advertiserRole || "").trim().toUpperCase();
+        const roleDisplay = roleId && roleId !== "UNKNOWN"
+          ? (ADVERTISER_ROLES.find((entry) => entry.id === roleId)?.label || roleId)
+          : "";
         return {
           key,
           label: "صفة المعلن",
           type: "text",
           name: "advertiserRole",
-          value: record.advertiserRole || ""
+          value: roleDisplay,
+          placeholder: "مالك، عميل، مفوض، وسيط عقاري"
         };
+      }
       case "contactPhone":
         return {
           key,
@@ -163,7 +171,9 @@ export function mergeIncompleteFormPreview(existing = {}, formData = {}) {
   const merged = { ...existing };
   for (const key of editKeys) {
     if (formData[key] !== undefined && formData[key] !== "") {
-      merged[key] = key === "purpose" ? normalizePurpose(formData[key]) : formData[key];
+      if (key === "purpose") merged[key] = normalizePurpose(formData[key]);
+      else if (key === "advertiserRole") merged[key] = resolveAdvertiserRoleValue(formData[key], existing.advertiserRole);
+      else merged[key] = formData[key];
     }
   }
   if (formData.advertiserPhoneLocal) {

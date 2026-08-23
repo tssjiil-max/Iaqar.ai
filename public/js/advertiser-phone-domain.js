@@ -178,6 +178,24 @@ export function advertiserRoleLabel(id) {
   return ADVERTISER_ROLES.find((r) => r.id === id)?.label || "غير محدد";
 }
 
+/** Map broker-facing label or enum id to a persisted advertiserRole id. */
+export function resolveAdvertiserEnumValue(value = "", catalog = ADVERTISER_ROLES) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const upper = text.toUpperCase();
+  const byId = catalog.find((entry) => entry.id === upper || entry.id === text);
+  if (byId) return byId.id;
+  const byLabel = catalog.find((entry) => entry.label === text);
+  if (byLabel) return byLabel.id;
+  return "";
+}
+
+export function resolveAdvertiserRoleValue(value = "", existing = "") {
+  const resolved = resolveAdvertiserEnumValue(value, ADVERTISER_ROLES)
+    || resolveAdvertiserEnumValue(existing, ADVERTISER_ROLES);
+  return resolved || "UNKNOWN";
+}
+
 export function advertiserContactStatusLabel(id) {
   return ADVERTISER_CONTACT_STATUSES.find((r) => r.id === id)?.label || id || "—";
 }
@@ -308,7 +326,7 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
     advertiserPhoneNormalized: phone,
     advertiserPhoneSource: safeText(advertiser.advertiserPhoneSource, 40),
     advertiserPhoneEvidence: safeText(advertiser.advertiserPhoneEvidence, 200),
-    advertiserRole: safeText(advertiser.advertiserRole || "UNKNOWN", 20),
+    advertiserRole: resolveAdvertiserRoleValue(advertiser.advertiserRole),
     advertiserContactStatus: safeText(advertiser.advertiserContactStatus || "NOT_CONTACTED", 30),
     marketingConsentStatus: safeText(advertiser.marketingConsentStatus || "NOT_STARTED", 30),
     lastContactAt: advertiser.lastContactAt || null,
@@ -326,7 +344,7 @@ export function buildAdvertiserDataPatch(existing = {}, input = {}) {
   const hadPhone = Boolean(readAdvertiserPhoneFromRecord(existing).phone);
   const patch = {
     advertiserDisplayName: displayName,
-    advertiserRole: safeText(input.advertiserRole || existing.advertiserRole || "UNKNOWN", 20)
+    advertiserRole: resolveAdvertiserRoleValue(input.advertiserRole, existing.advertiserRole)
   };
 
   if (phoneCheck.e164) {

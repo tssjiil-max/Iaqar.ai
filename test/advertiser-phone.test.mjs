@@ -13,7 +13,9 @@ import {
   safeAdvertiserDisplayName,
   setAdvertiserMessageModalContext,
   getAdvertiserMessageModalContext,
-  clearAdvertiserMessageModalContext
+  clearAdvertiserMessageModalContext,
+  resolveAdvertiserEnumValue,
+  resolveAdvertiserRoleValue
 } from "../public/js/advertiser-phone-domain.js";
 
 test("extracts phone from whatsapp contact line", () => {
@@ -105,6 +107,27 @@ test("buildAdvertiserDataPatch stores display name", () => {
   assert.equal(result.ok, true);
   assert.equal(result.patch.advertiserDisplayName, "مالك شقة العوالي");
   assert.equal(result.patch.advertiserPhoneNormalized, "+966551234567");
+});
+
+test("resolveAdvertiserEnumValue maps Arabic label to enum id", () => {
+  assert.equal(resolveAdvertiserEnumValue("مالك"), "OWNER");
+  assert.equal(resolveAdvertiserEnumValue("عميل"), "CLIENT");
+  assert.equal(resolveAdvertiserEnumValue("OWNER"), "OWNER");
+  assert.equal(resolveAdvertiserEnumValue("وسيط عقاري"), "BROKER");
+});
+
+test("buildAdvertiserDataPatch normalizes Arabic advertiser role", () => {
+  const result = buildAdvertiserDataPatch({ advertiserRole: "UNKNOWN" }, {
+    advertiserRole: "مالك",
+    advertiserPhoneLocal: ""
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.patch.advertiserRole, "OWNER");
+});
+
+test("resolveAdvertiserRoleValue falls back to existing valid role", () => {
+  assert.equal(resolveAdvertiserRoleValue("", "OWNER"), "OWNER");
+  assert.equal(resolveAdvertiserRoleValue("مفوض", ""), "DELEGATE");
 });
 
 test("readAdvertiserDisplayName falls back to contactName from public intake", async () => {

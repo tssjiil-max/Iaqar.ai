@@ -121,15 +121,20 @@ test("party actions for owner include owner-specific items", () => {
   assert.ok(clientParty.some((row) => row.label === "تم العثور على العقار"));
 });
 
-test("ready workspace HTML wires four action ids and party handlers", () => {
+test("ready workspace HTML uses phase 1 details page without old action chrome", () => {
   const html = buildReadyWorkspaceHtml("opp_owner_ready", ownerReady, {}, {
     officeProfile: { officeName: "مكتب", phone: "0512345678" }
   });
-  for (const id of READY_PRIMARY_ACTION_IDS) {
-    assert.ok(html.includes(`data-workspace-action="${id}"`));
-  }
-  assert.ok(html.includes("data-party-action="));
-  assert.ok(html.includes("data-send-share-option="));
+  assert.ok(html.includes("opp-details-page"));
+  assert.ok(html.includes("بيانات الفرصة"));
+  assert.ok(html.indexOf("بيانات الفرصة") < html.indexOf("نسبة اكتمال البيانات"));
+  assert.ok(!html.includes("أكمل البيانات الناقصة"));
+  assert.ok(!html.includes("تقرير اليوم"));
+  assert.ok(!html.includes("الموعد القادم"));
+  assert.ok(!html.includes("إجراءات الفرصة"));
+  assert.ok(!html.includes("data-workspace-action="));
+  assert.ok(!html.includes("data-party-action="));
+  assert.ok(!html.includes("data-send-share-option="));
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("wireWorkspaceHandlers"));
   assert.ok(bank.includes("executePartyContactAction"));

@@ -18,6 +18,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
   <title>مكاتب عقارية ذكية | النسخة التجريبية المعتمدة</title>
 
+  <link rel="stylesheet" href="css/opportunity-details-v2.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -51,12 +52,13 @@
       --opp-missing:#b42318;
       --opp-missing-bg:#fff1f1;
       --opp-missing-border:#fecdca;
-      --opp-card-border:#e3ece8;
-      --opp-card-shadow:0 2px 10px rgba(0,0,0,.04);
-      --opp-progress-fill:#087064;
-      --opp-radius-card:16px;
-      --opp-spacing-card:12px;
+      --opp-card-border:#E4EAE7;
+      --opp-card-shadow:none;
+      --opp-progress-fill:#005C4B;
+      --opp-radius-card:14px;
+      --opp-spacing-card:10px;
       --opp-spacing-inner:14px;
+      --opp-page-bg:#F3F5F4;
     }
 
     * { box-sizing:border-box; }
@@ -3748,11 +3750,112 @@
     padding-top:12px;
     border-top:1px solid var(--line);
   }
+  html:has(.opp-details-page),
+  body:has(.opp-details-page) {
+    width:100%;
+    max-width:100%;
+    margin:0;
+    padding:0;
+    overflow-x:hidden;
+  }
+  body:has(.opp-details-page) {
+    display:block;
+  }
+  body:has(.opp-details-page) .app,
+  body:has(.opp-details-page) .app-content-shell,
+  body:has(.opp-details-page) .card.opportunity-bank-panel,
+  body:has(.opp-details-page) #workspace {
+    width:100%;
+    max-width:100%;
+    margin:0;
+    padding:0;
+  }
+  .opp-details-page {
+    position:fixed;
+    inset:0;
+    left:0;
+    right:0;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    min-height:100%;
+    min-height:100dvh;
+    margin:0;
+    box-sizing:border-box;
+    background:var(--opp-page-bg);
+    display:flex;
+    flex-direction:column;
+    z-index:90;
+    overflow:auto;
+  }
+  html:has(.opp-details-page) .main-tabs,
+  html:has(.opp-details-page) .tab-panel-intro,
+  html:has(.opp-details-page) .sub-tabs,
+  html:has(.opp-details-page) .opportunity-bank-panel > :not(#opportunityBankDetail),
+  html:has(.opp-details-page) .ops-detail-nav,
+  html:has(.opp-details-page) .ops-today-head,
+  html:has(.opp-details-page) .ops-category-detail-head {
+    display:none !important;
+  }
+  html:has(.opp-details-page) .card.opportunity-bank-panel {
+    border:0;
+    box-shadow:none;
+    background:transparent;
+    padding:0;
+    border-radius:0;
+    overflow:visible;
+  }
+  .opp-details-appbar {
+    position:sticky;
+    top:0;
+    z-index:5;
+    display:grid;
+    grid-template-columns:40px 1fr 40px;
+    align-items:center;
+    min-height:52px;
+    padding:calc(8px + env(safe-area-inset-top, 0px)) 8px 8px;
+    background:var(--green);
+    color:#fff;
+  }
+  .opp-details-appbar-title {
+    margin:0;
+    text-align:center;
+    font-size:16px;
+    font-weight:800;
+    line-height:1.3;
+    color:#fff;
+  }
+  .opp-details-back,
+  .opp-details-menu {
+    width:40px;
+    height:40px;
+    border:0;
+    background:transparent;
+    color:#fff;
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+    padding:0;
+  }
+  .opp-details-menu:disabled { opacity:.95; cursor:default; }
+  .opp-details-back .icon,
+  .opp-details-menu .icon { width:20px; height:20px; color:#fff; stroke:#fff; }
+  .opp-details-back .icon { transform:scaleX(-1); }
+  .opp-details-appbar,
+  .opp-details-body,
+  .opp-details,
+  .opp-details-card {
+    width:100%;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+  .opp-details-body {
+    padding:12px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+  }
   .opp-details {
     display:grid;
     gap:var(--opp-spacing-card);
-    margin-bottom:4px;
-    max-width:100%;
+    margin:0 0 4px;
   }
   .opp-details-card {
     border:1px solid var(--opp-card-border);
@@ -3761,18 +3864,34 @@
     box-shadow:var(--opp-card-shadow);
     overflow:hidden;
   }
-  .opp-details-identity-card {
-    padding:var(--opp-spacing-inner);
-  }
-  .opp-details-completion-card {
-    padding:var(--opp-spacing-inner);
-    display:grid;
-    gap:10px;
-  }
-  .opp-details-header {
-    display:grid;
+  .opp-details-card-head {
+    display:flex;
+    align-items:center;
     gap:8px;
+    padding:12px var(--opp-spacing-inner) 0;
+    color:var(--green);
   }
+  .opp-details-card-head h5,
+  .opp-details-data-title {
+    margin:0;
+    font-size:13px;
+    font-weight:800;
+    color:var(--green);
+  }
+  .opp-details-card-head .icon {
+    width:18px;
+    height:18px;
+    color:var(--green);
+    flex-shrink:0;
+  }
+  .opp-details-identity-card { padding:14px; }
+  .opp-details-completion-card,
+  .opp-details-data-table,
+  .opp-details-report-card,
+  .opp-details-appointment-card {
+    padding:0 0 14px;
+  }
+  .opp-details-header { display:grid; gap:10px; }
   .opp-details-header-top {
     display:flex;
     align-items:flex-start;
@@ -3781,138 +3900,132 @@
   }
   .opp-details-header-main {
     display:flex;
-    align-items:flex-start;
+    align-items:center;
     gap:10px;
     min-width:0;
   }
-  .opp-details-icon {
-    width:36px;
-    height:36px;
-    border-radius:10px;
-    background:var(--green-soft);
+  .opp-details-avatar {
+    width:42px;
+    height:42px;
+    border-radius:50%;
+    background:#EEF1F0;
+    color:#8A938F;
     display:grid;
     place-items:center;
     flex-shrink:0;
   }
-  .opp-details-icon .icon {
-    width:20px;
-    height:20px;
-    color:var(--green);
-  }
-  .opp-details-header-copy {
-    display:grid;
-    gap:4px;
-    min-width:0;
-  }
+  .opp-details-avatar .icon { width:20px; height:20px; }
+  .opp-details-header-copy { display:grid; gap:2px; min-width:0; }
   .opp-details-kind {
-    margin:0;
-    font-size:11px;
-    font-weight:800;
-    color:var(--green);
-  }
-  .opp-details-title {
     margin:0;
     font-size:15px;
     font-weight:800;
     color:var(--text);
-    line-height:1.35;
-    word-break:break-word;
   }
   .opp-details-id {
     margin:0;
-    font-size:11px;
+    font-size:12px;
     color:var(--muted);
+    font-weight:600;
   }
   .opp-details-status {
     flex-shrink:0;
-    padding:4px 10px;
+    padding:5px 10px;
     border-radius:999px;
-    font-size:11px;
+    font-size:12px;
     font-weight:800;
     line-height:1.3;
     white-space:nowrap;
   }
-  .opp-details-status.is-incomplete {
-    background:var(--opp-missing-bg);
-    color:var(--opp-missing);
+  .opp-details-status::before {
+    content:"•";
+    margin-left:5px;
   }
-  .opp-details-status.is-ready {
-    background:var(--opp-success-bg);
-    color:var(--opp-success);
-  }
-  .opp-details-status.is-matched {
-    background:#eef4ff;
-    color:#175cd3;
-  }
-  .opp-details-status.is-ended {
-    background:#f2f4f7;
-    color:#667085;
-  }
+  .opp-details-status.is-incomplete { background:#FDECEC; color:#C62828; }
+  .opp-details-status.is-ready { background:var(--opp-success-bg); color:var(--opp-success); }
+  .opp-details-status.is-matched { background:#eef4ff; color:#175cd3; }
+  .opp-details-status.is-ended { background:#f2f4f7; color:#667085; }
   .opp-details-added-at {
     margin:0;
-    font-size:11px;
-    color:var(--muted);
-  }
-  .opp-details-progress {
     display:flex;
     align-items:center;
-    gap:12px;
-    padding:0;
-    border:0;
-    border-radius:0;
-    background:transparent;
+    gap:6px;
+    font-size:12px;
+    color:var(--muted);
+    font-weight:600;
+  }
+  .opp-details-added-icon .icon { width:14px; height:14px; color:var(--muted); }
+  .opp-details-progress {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+    align-items:center;
+    gap:10px;
+    padding:14px var(--opp-spacing-inner) 0;
+  }
+  .opp-details-progress-copy {
+    grid-column:1;
+    min-width:0;
+  }
+  .opp-details-progress-meter {
+    grid-column:2;
+    display:grid;
+    justify-items:center;
+    gap:6px;
+  }
+  .opp-details-completion-card.is-complete .opp-details-progress {
+    grid-template-columns:1fr;
+    justify-items:center;
+    padding-bottom:2px;
+  }
+  .opp-details-completion-card.is-complete .opp-details-progress-meter {
+    grid-column:1;
+  }
+  .opp-details-progress-hint {
+    margin:0 0 10px;
+    font-size:12px;
+    line-height:1.65;
+    color:#5F6B67;
+    font-weight:600;
   }
   .opp-details-progress-ring {
-    width:64px;
-    height:64px;
+    width:86px;
+    height:86px;
     border-radius:50%;
     display:grid;
     place-items:center;
-    flex-shrink:0;
     background:
-      radial-gradient(closest-side, var(--card) 74%, transparent 76% 100%),
-      conic-gradient(var(--opp-progress-fill) calc(var(--opp-progress, 0) * 1%), var(--opp-card-border) 0);
+      radial-gradient(closest-side, var(--card) 70%, transparent 72% 100%),
+      conic-gradient(var(--opp-progress-fill) calc(var(--opp-progress, 0) * 1%), #E6EBE9 0);
   }
   .opp-details-progress-count {
     display:grid;
-    gap:1px;
-    font-size:11px;
-    font-weight:800;
+    justify-items:center;
     color:var(--green);
     text-align:center;
-    line-height:1.15;
+    line-height:1.1;
+  }
+  .opp-details-progress-top {
+    font-size:22px;
+    font-weight:800;
+    line-height:1;
   }
   .opp-details-progress-bottom {
-    font-size:10px;
+    font-size:11px;
     font-weight:700;
-    color:var(--muted);
+    color:#6B7571;
   }
-  .opp-details-progress-copy strong {
-    display:block;
-    font-size:13px;
-    color:var(--text);
-    margin-bottom:4px;
-  }
-  .opp-details-progress-copy p {
+  .opp-details-progress-pct {
     margin:0;
     font-size:12px;
-    color:var(--muted);
-    line-height:1.45;
+    font-weight:800;
+    color:var(--green);
   }
-  .opp-details-progress-copy .opp-details-progress-hint {
-    margin-top:4px;
-  }
-  .opp-details-missing-alert {
-    padding:10px 12px;
-    border-radius:12px;
-    background:var(--opp-missing-bg);
-    border:1px solid var(--opp-missing-border);
-  }
+  .opp-details-missing-alert { display:grid; gap:8px; }
   .opp-details-missing-title {
-    margin:0 0 6px;
+    margin:0;
     font-size:12px;
     font-weight:800;
-    color:var(--opp-missing);
+    color:#C62828;
   }
   .opp-details-missing-list {
     display:flex;
@@ -3925,92 +4038,206 @@
     gap:6px;
     padding:4px 10px;
     border-radius:999px;
-    background:var(--opp-missing-bg);
-    color:var(--opp-missing);
+    background:#FDECEC;
+    color:#C62828;
     font-size:11px;
-    font-weight:700;
-  }
-  .opp-details-missing-dot {
-    width:7px;
-    height:7px;
-    border-radius:50%;
-    background:var(--opp-missing);
-    flex-shrink:0;
-  }
-  .opp-details-data-table {
-    border:0;
-    border-radius:var(--opp-radius-card);
-    overflow:hidden;
-    background:var(--card);
-    box-shadow:var(--opp-card-shadow);
-  }
-  .opp-details-data-title {
-    margin:0;
-    padding:10px 12px;
-    font-size:13px;
     font-weight:800;
-    color:var(--green);
-    background:var(--green-soft);
-    border-bottom:1px solid #e3ece8;
   }
+  .opp-details-missing-chip::before {
+    content:"•";
+  }
+  .opp-details-data-rows { padding-top:4px; }
   .opp-details-row {
-    display:grid;
-    grid-template-columns:minmax(88px, auto) minmax(0, 1fr) 24px;
-    align-items:center;
-    gap:8px;
-    direction:rtl;
-    padding:10px var(--opp-spacing-inner);
-    border-bottom:1px solid #f0f3f2;
-    font-size:12px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    padding:11px var(--opp-spacing-inner);
+    border-bottom:1px solid #F0F3F2;
   }
   .opp-details-row:last-child { border-bottom:0; }
-  .opp-details-row-label {
-    color:var(--muted);
-    font-weight:700;
+  .opp-details-row-key {
+    display:flex;
+    align-items:center;
+    gap:8px;
     min-width:0;
   }
-  .opp-details-row-value {
-    display:block;
-    min-width:0;
-    font-weight:700;
-    color:var(--text);
-    text-align:center;
-    word-break:break-word;
-  }
-  .opp-details-location-value {
-    text-align:center;
-  }
-  .opp-details-row-value .is-empty { color:var(--opp-missing); }
-  .opp-details-row-status {
-    justify-self:start;
-    font-size:14px;
-    font-weight:800;
-    line-height:1;
+  .opp-details-row-icon {
+    width:22px;
+    height:22px;
+    color:var(--green);
+    display:grid;
+    place-items:center;
     flex-shrink:0;
   }
-  .opp-details-row-status.is-complete { color:var(--opp-success); }
-  .opp-details-row-status.is-missing { color:var(--opp-missing); }
-  .opp-details-location-city {
-    display:block;
+  .opp-details-row-icon .icon { width:18px; height:18px; }
+  .opp-details-row-label {
+    color:#6B7571;
+    font-weight:700;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .opp-details-row-value {
+    display:grid;
+    justify-items:end;
+    gap:2px;
+    min-width:0;
+    text-align:left;
+  }
+  .opp-details-missing-pair {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .opp-details-missing-badge {
+    display:inline-flex;
+    align-items:center;
+    padding:2px 8px;
+    border-radius:999px;
+    background:#FDECEC;
+    color:#C62828;
+    font-size:11px;
+    font-weight:800;
+  }
+  .opp-details-row-primary {
+    font-size:13px;
     font-weight:800;
     color:var(--text);
+    line-height:1.35;
   }
-  .opp-details-location-district {
-    display:block;
+  .opp-details-row-secondary {
     font-size:11px;
+    font-weight:600;
     color:var(--muted);
-    font-weight:700;
+    line-height:1.35;
   }
+  .opp-details-row-value .is-empty { color:#C62828; }
   .opp-details-actions {
-    margin-top:4px;
+    padding:12px var(--opp-spacing-inner) 0;
   }
-  .opp-details-actions .bank-action,
-  .opp-details-actions .iaqar-workflow-btn {
+  .opp-details-complete-btn {
     width:100%;
+    min-height:44px;
+    border:1.5px solid var(--green);
+    border-radius:12px;
+    background:#fff;
+    color:var(--green);
+    font:800 14px Tajawal,Arial,sans-serif;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    cursor:pointer;
   }
-  .opp-details-archived-note {
-    margin-top:12px;
+  .opp-details-complete-btn .icon { width:16px; height:16px; }
+  .opp-details-log {
+    list-style:none;
+    margin:10px 0 0;
+    padding:0 14px;
+    display:grid;
+    gap:0;
   }
+  .opp-details-log-row {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;
+    gap:10px;
+    padding:10px 0;
+    border-bottom:1px solid #F0F3F2;
+    font-size:12px;
+  }
+  .opp-details-log-row:last-child { border-bottom:0; }
+  .opp-details-log-time {
+    font-weight:800;
+    color:var(--text);
+    white-space:nowrap;
+  }
+  .opp-details-log-title {
+    font-weight:700;
+    color:#5F6B67;
+    min-width:0;
+  }
+  .opp-details-log-result {
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-weight:800;
+    color:var(--green);
+    white-space:nowrap;
+  }
+  .opp-details-log-check .icon { width:15px; height:15px; color:var(--green); }
+  .opp-details-result-banner {
+    margin:10px 14px 0;
+    padding:10px 12px;
+    border-radius:10px;
+    background:#EAF6F1;
+    color:#0B6B4F;
+    font-size:12px;
+    font-weight:700;
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    line-height:1.55;
+  }
+  .opp-details-info-icon {
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    background:var(--green);
+    color:#fff;
+    display:grid;
+    place-items:center;
+    flex-shrink:0;
+  }
+  .opp-details-info-icon .icon { width:11px; height:11px; color:#fff; stroke:#fff; }
+  .opp-details-appointment {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    padding:12px var(--opp-spacing-inner) 0;
+  }
+  .opp-details-appointment-when {
+    margin:0;
+    font-size:20px;
+    font-weight:800;
+    color:var(--text);
+    line-height:1.3;
+  }
+  .opp-details-appointment-copy {
+    display:grid;
+    gap:4px;
+    text-align:left;
+  }
+  .opp-details-appointment-copy strong {
+    font-size:13px;
+    color:var(--text);
+  }
+  .opp-details-appointment-copy span {
+    font-size:12px;
+    color:var(--muted);
+    font-weight:600;
+  }
+  .opp-details-archived-note { margin:12px 0 0; }
+  .bank-detail:has(.opp-details-page),
+  .ops-task-panel:has(.opp-details-page),
+  #opsViewOpportunityDetail:has(.opp-details-page) {
+    position:fixed;
+    inset:0;
+    left:0;
+    right:0;
+    width:100%;
+    max-width:100%;
+    z-index:80;
+    margin:0;
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:var(--opp-page-bg);
+    overflow:auto;
+    box-sizing:border-box;
+  }
+  #opsViewOpportunityDetail:has(.opp-details-page) .ops-detail-nav { display:none; }
   .bank-detail .opp-details,
   .ops-task-panel .opp-details {
     max-width:100%;
@@ -5251,6 +5478,57 @@
   <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M9 6l6 6-6 6"/>
   </symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="8" r="3.2"/>
+    <path d="M5.2 19c.6-3.4 3.2-5.2 6.8-5.2s6.2 1.8 6.8 5.2"/>
+  </symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2"/>
+    <path d="M8 3.5V7M16 3.5V7M3.5 10h17"/>
+  </symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 19V5"/>
+    <path d="M4 19h16"/>
+    <path d="M8 15v-3"/>
+    <path d="M12 15V8"/>
+    <path d="M16 15v-6"/>
+  </symbol>
+  <symbol id="i-house" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m3.5 11 8.5-7.5 8.5 7.5"/>
+    <path d="M6 10.5V20h12v-9.5"/>
+    <path d="M10 20v-5h4v5"/>
+  </symbol>
+  <symbol id="i-map-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21s6.5-5.2 6.5-10.2A6.5 6.5 0 0 0 5.5 10.8C5.5 15.8 12 21 12 21z"/>
+    <circle cx="12" cy="10.8" r="2.2"/>
+  </symbol>
+  <symbol id="i-money" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="6" width="19" height="12" rx="2"/>
+    <circle cx="12" cy="12" r="2.4"/>
+    <path d="M6 10.2v3.6M18 10.2v3.6"/>
+  </symbol>
+  <symbol id="i-ruler" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m20.2 10.2-6.4 6.4a2 2 0 0 1-2.8 0L4.6 10.2a2 2 0 0 1 0-2.8l6.4-6.4a2 2 0 0 1 2.8 0l6.4 6.4a2 2 0 0 1 0 2.8z"/>
+    <path d="m8.2 7.2 1.4 1.4M10.4 5 12 6.6M13.4 8.4l1.4 1.4"/>
+  </symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.2 3.8h3.1l1.2 3-2 1.2a12 12 0 0 0 5.5 5.5l1.2-2 3 1.2v3.1c0 .8-.6 1.5-1.4 1.6-7.2.9-13.2-5.1-12.3-12.3.1-.8.8-1.3 1.7-1.3z"/>
+  </symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 16.4 15.7 4.7a1.8 1.8 0 0 1 2.6 0l1 1a1.8 1.8 0 0 1 0 2.6L7.6 20H4z"/>
+    <path d="m13.6 6.8 3.6 3.6"/>
+  </symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 7h11M9 12h11M9 17h11"/>
+    <path d="M5 7h.01M5 12h.01M5 17h.01"/>
+  </symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+    <path d="M12 5h.01M12 12h.01M12 19h.01"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 11v6"/>
+    <circle cx="12" cy="8" r=".3"/>
+  </symbol>
 </svg>
 
   <div class="app">
@@ -6025,6 +6303,7 @@
   <script type="module" src="js/add-opportunity.js"></script>
   <script type="module" src="js/opportunity-import-advert-ui.js"></script>
   <script type="module" src="js/opportunity-review.js"></script>
+  <script type="module" src="js/opportunity-details-v2.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
   <script src="js/whatsapp-office.js"></script>
   <script type="module" src="js/operations-center-bridge.js"></script>

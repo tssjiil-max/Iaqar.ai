@@ -138,9 +138,15 @@
       : !resolver(snapshot);
   }
 
-  function pushOverlayState(view) {
+  function pushOverlayState(view, url) {
     if (!view) return;
-    window.history.pushState({ iaqarOverlay: view }, "", location.href);
+    let href = location.href;
+    if (typeof url === "string" && url) {
+      href = url.startsWith("#")
+        ? `${location.pathname}${location.search}${url}`
+        : url;
+    }
+    window.history.pushState({ iaqarOverlay: view }, "", href);
     historyDepth += 1;
     updateBackButton();
   }
@@ -180,7 +186,7 @@
   });
 
   window.addEventListener("iaqar:nav-open", (event) => {
-    pushOverlayState(event.detail?.view || "");
+    pushOverlayState(event.detail?.view || "", event.detail?.url || "");
   });
 
   window.addEventListener("iaqar:nav-close-request", () => {

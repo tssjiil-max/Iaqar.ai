@@ -155,3 +155,9 @@ test("shell includes canonical navigation modules", () => {
   assert.ok(html.includes("js/app-navigation-domain.js"));
   assert.ok(html.includes('id="appNavBack"'));
 });
+
+test("overlay history can carry an opportunity deep-link hash", () => {
+  const nav = readRepositoryFile("public", "js", "app-navigation.js");
+  assert.ok(nav.includes("function pushOverlayState(view, url)"));
+  assert.ok(nav.includes("event.detail?.url"));
+});

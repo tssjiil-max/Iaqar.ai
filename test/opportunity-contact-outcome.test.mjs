@@ -124,7 +124,8 @@ test("ready workspace embeds contact section not legacy wrap", () => {
   const readiness = evaluateMatchingReadiness(record);
   assert.equal(readiness.isReadyForMatching, true);
   const html = buildReadyWorkspaceHtml("opp-1", record, {});
-  assert.ok(html.includes("bankWorkspaceContactSection"));
+  assert.ok(html.includes("opp-details-page"));
+  assert.equal(html.includes("bankWorkspaceContactSection"), false);
   assert.equal(html.includes("bankContactOutcomesWrap"), false);
 });
 

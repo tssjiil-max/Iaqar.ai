@@ -93,7 +93,16 @@ import {
   buildContactOutcomeActionHtml,
   buildWorkspaceMatchRowsHtml
 } from "./opportunity-bank-workspace-ui.js";
-import { buildOpportunityDetailsCoreHtml } from "./opportunity-details-ui.js";
+import { buildOpportunityDetailsPageHtml } from "./opportunity-details-ui.js";
+import {
+  isOpportunityDetailsV2Enabled,
+  mapOpportunityDetailsV2ViewModel,
+  buildOpportunityV2DeepLinkHash
+} from "./opportunity-details-v2-domain.js";
+import {
+  mountOpportunityDetailsV2,
+  saveV2FieldWithAdapter
+} from "./opportunity-details-v2.js";
 import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview
@@ -131,6 +140,13 @@ import {
   flattenRankedOffices
 } from "./suitable-offices-domain.js";
 import { openOpportunityReview } from "./opportunity-review.js";
+import {
+  buildOpportunityDeepLinkHash,
+  isBankCardActionControl,
+  normalizeOpportunityDocumentId,
+  parseOpportunityIdFromLocation,
+  stripOpportunityDeepLinkHref
+} from "./opportunity-navigation-domain.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -199,7 +215,9 @@ const state = {
   pendingQueryRefresh: false,
   resultTotal: 0,
   scanExhausted: false,
-  detailRenderContext: null
+  detailRenderContext: null,
+  detailOverlayOpen: false,
+  detailOpenToken: 0
 };
 
 function detailRenderContext() {
@@ -483,8 +501,8 @@ function bankRowHtml(row) {
       class="bank-row bank-row-card"
       role="button"
       tabindex="0"
-      data-opportunity-id="${escapeHtml(card.opportunityId || row.id)}"
-      data-open-id="${escapeHtml(card.opportunityId || row.id)}"
+      data-opportunity-id="${escapeHtml(String(row.id || "").trim())}"
+      data-open-id="${escapeHtml(String(row.id || "").trim())}"
       aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
       ${inner}
       ${incompleteHint}
@@ -500,6 +518,7 @@ function isOwnerRecord(record = {}) {
 }
 
 let bankDetailOpenLock = "";
+let bankDetailOpenGeneration = 0;
 
 const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
   propertyType: 'input[name="propertyType"]',
@@ -513,15 +532,90 @@ const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
 
 function resolveBankRowOpportunityId(node) {
   if (!node) return "";
-  return String(node.getAttribute("data-opportunity-id") || "").trim();
+  return normalizeOpportunityDocumentId(node.getAttribute("data-opportunity-id"));
 }
 
-function canOpenBankOpportunity(record) {
+function canOpenBankOpportunity(record, options = {}) {
   if (!record) return false;
+  if (options.fromOfficePath) return true;
   const currentOffice = officeId();
-  const owner = String(record.officeId || currentOffice);
+  if (!currentOffice) return false;
+  const owner = String(record.officeId || "").trim();
   const origin = String(record.originatingOfficeId || "").trim();
+  if (!owner && !origin) return true;
   return owner === currentOffice || origin === currentOffice;
+}
+
+function nextDetailOpenToken() {
+  bankDetailOpenGeneration += 1;
+  state.detailOpenToken = bankDetailOpenGeneration;
+  return state.detailOpenToken;
+}
+
+function isCurrentDetailOpen(token, opportunityId) {
+  return state.detailOpenToken === token && state.activeId === opportunityId;
+}
+
+function stripOpportunityDeepLink() {
+  if (typeof window === "undefined" || !window.location || !window.history?.replaceState) return;
+  if (!parseOpportunityIdFromLocation(window.location)) return;
+  const clean = stripOpportunityDeepLinkHref(window.location);
+  window.history.replaceState(window.history.state, "", clean);
+}
+
+function applyOpportunityDeepLink(opportunityId) {
+  const hash = isOpportunityDetailsV2Enabled(window.location)
+    ? buildOpportunityV2DeepLinkHash(opportunityId)
+    : buildOpportunityDeepLinkHash(opportunityId);
+  if (!hash || typeof window === "undefined") return;
+  const href = `${window.location.pathname}${window.location.search}${hash}`;
+  if (window.location.hash === hash) return;
+  if (window.history?.replaceState) {
+    window.history.replaceState(window.history.state, "", href);
+  }
+}
+
+function announceBankDetailOpened(opportunityId, view) {
+  const hash = buildOpportunityDeepLinkHash(opportunityId);
+  if (!state.detailOverlayOpen && !window.history?.state?.iaqarOverlay) {
+    state.detailOverlayOpen = true;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-open", {
+      detail: { view, url: hash }
+    }));
+  } else {
+    state.detailOverlayOpen = true;
+  }
+  applyOpportunityDeepLink(opportunityId);
+  window.setTimeout(() => applyOpportunityDeepLink(opportunityId), 0);
+  window.IAQAR?.navigation?.updateBackButton?.();
+}
+
+function showBankDetailLoading(opportunityId) {
+  const ctx = detailRenderContext();
+  const panel = document.getElementById(ctx.panelId);
+  if (!panel) return;
+  state.activeId = opportunityId;
+  clearOtherDetailPanels(ctx.panelId);
+  panel.hidden = false;
+  panel.innerHTML = `<div class="bank-detail-loading"><p>جارٍ تجهيز التفاصيل…</p></div>`;
+}
+
+async function fetchOfficeOpportunityById(opportunityId) {
+  const id = normalizeOpportunityDocumentId(opportunityId);
+  const runtime = officeRuntime();
+  if (!id) return { ok: false, reason: "invalid" };
+  if (!runtime?.db || !officeId()) return { ok: false, reason: "auth" };
+  try {
+    const snap = await runtime.db.collection("offices").doc(officeId())
+      .collection("opportunities").doc(id).get();
+    if (!snap.exists) return { ok: false, reason: "missing" };
+    const record = { id, ...(snap.data() || {}) };
+    state.records.set(id, record);
+    return { ok: true, record };
+  } catch (error) {
+    console.warn("[iaqar] fetch opportunity", error);
+    return { ok: false, reason: "error" };
+  }
 }
 
 function revealIncompleteEditForm(readiness = {}) {
@@ -562,23 +656,56 @@ function focusFirstMissingBankField(readiness = {}) {
   return false;
 }
 
-async function openBankDetailFromList(opportunityId) {
-  const id = String(opportunityId || "").trim();
-  if (!id || bankDetailOpenLock === id) return;
-  const record = state.records.get(id);
-  if (!record || !canOpenBankOpportunity(record)) {
-    toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
-    return;
-  }
+async function openOpportunity(opportunityId, options = {}) {
+  const id = normalizeOpportunityDocumentId(opportunityId);
+  if (!id) return false;
+  if (bankDetailOpenLock === id) return false;
+
+  const token = nextDetailOpenToken();
   bankDetailOpenLock = id;
+  const dailyTask = Boolean(options.dailyTask || options.panelId);
   try {
-    await renderDetail(id);
-    scrollBankDetailIntoView();
+    if (dailyTask) {
+      setDetailRenderContext(options);
+    } else {
+      setDetailRenderContext({ dailyTask: false });
+      showBankDetailLoading(id);
+    }
+
+    const fetched = await fetchOfficeOpportunityById(id);
+    if (state.detailOpenToken !== token) return false;
+
+    if (!fetched.ok) {
+      if (fetched.reason === "missing") toast("لم يتم العثور على الفرصة");
+      else toast("تعذر فتح تفاصيل هذه الفرصة");
+      if (!dailyTask) closeBankDetailInternal();
+      return false;
+    }
+
+    if (!canOpenBankOpportunity(fetched.record, { fromOfficePath: true })) {
+      toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
+      if (!dailyTask) closeBankDetailInternal();
+      return false;
+    }
+
+    state.activeId = id;
+    await renderDetail(id, {
+      ...options,
+      navToken: token,
+      skipNavOpen: Boolean(options.skipNavOpen)
+    });
+    if (state.detailOpenToken !== token) return false;
+    if (!options.skipScroll) scrollBankDetailIntoView();
+    return true;
   } finally {
     window.setTimeout(() => {
       if (bankDetailOpenLock === id) bankDetailOpenLock = "";
     }, 400);
   }
+}
+
+function openBankDetailFromList(opportunityId) {
+  return openOpportunity(opportunityId);
 }
 
 function scrollBankDetailIntoView() {
@@ -765,16 +892,19 @@ async function lazyLoadSource(record) {
 }
 
 function closeBankDetailInternal() {
-  if (!state.activeId) return false;
+  const wasOpen = Boolean(state.activeId) || state.detailOverlayOpen;
+  nextDetailOpenToken();
   state.activeId = null;
+  state.detailOverlayOpen = false;
   const panel = $("opportunityBankDetail");
   if (panel) {
     panel.hidden = true;
     panel.innerHTML = "";
   }
+  stripOpportunityDeepLink();
   window.IAQAR?.navigation?.updateBackButton?.();
   window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
-  return true;
+  return wasOpen;
 }
 
 function isOwnedOpportunityRecord(record) {
@@ -837,6 +967,28 @@ function isBankDetailOpen() {
   return Boolean(state.activeId);
 }
 
+function renderOpportunityDetailsV2InPanel(panel, id, record, extras = {}) {
+  const vm = mapOpportunityDetailsV2ViewModel(id, record, extras);
+  mountOpportunityDetailsV2(panel, record, {
+    id,
+    ...extras,
+    vm,
+    onClose: () => closeActiveDetailPanel(),
+    saveField: async (editorKey, formData) => {
+      const existing = state.records.get(id) || record;
+      return saveV2FieldWithAdapter(existing, editorKey, {
+        ...formData,
+        actorUid: authUser()?.uid || ""
+      }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
+    },
+    onSaved: async () => {
+      const fresh = state.records.get(id) || record;
+      renderOpportunityDetailsV2InPanel(panel, id, fresh, extras);
+      renderList();
+    }
+  });
+}
+
 async function renderDetail(id, options = {}) {
   if (options.panelId || options.dailyTask) {
     setDetailRenderContext(options);
@@ -846,10 +998,15 @@ async function renderDetail(id, options = {}) {
   const ctx = detailRenderContext();
   const panel = document.getElementById(ctx.panelId);
   if (!panel) return;
+  const token = options.navToken ?? state.detailOpenToken;
   const record = state.records.get(id);
   if (!record) {
     panel.hidden = true;
     panel.innerHTML = "";
+    if (!ctx.dailyTask) {
+      toast("لم يتم العثور على الفرصة");
+      state.activeId = null;
+    }
     return;
   }
 
@@ -858,42 +1015,60 @@ async function renderDetail(id, options = {}) {
   clearOtherDetailPanels(ctx.panelId);
   panel.hidden = false;
 
+  if (isOpportunityDetailsV2Enabled(window.location)) {
+    if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
+    renderOpportunityDetailsV2InPanel(panel, id, record, { readiness: evaluateMatchingReadiness(record) });
+    scrollBankDetailIntoView();
+    if (!ctx.dailyTask && !options.skipNavOpen) {
+      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      announceBankDetailOpened(id, "bank-detail");
+    }
+    void loadWorkspaceBundle(id).then((bundle) => {
+      if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
+      const fresh = state.records.get(id) || record;
+      renderOpportunityDetailsV2InPanel(panel, id, fresh, {
+        readiness: evaluateMatchingReadiness(fresh),
+        activity: bundle.activity || bundle.activities,
+        cooperationRequests: bundle.cooperationRequests
+      });
+    });
+    return;
+  }
+
   const archived = record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
   const readiness = evaluateMatchingReadiness(record);
 
   if (archived) {
-    const { html: detailsHtml } = buildOpportunityDetailsCoreHtml(id, record, readiness);
-    panel.innerHTML = `
-      <div class="bank-detail-head">
-        <h3>تفاصيل الفرصة (مؤرشفة)</h3>
-        <button type="button" class="settings-close" id="bankDetailClose" aria-label="إغلاق">×</button>
-      </div>
-      ${detailsHtml}
-      <p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`;
+    const { html: detailsHtml } = buildOpportunityDetailsPageHtml(id, record, readiness, {
+      showCompleteButton: false,
+      footerHtml: `<p class="bank-note opp-details-archived-note">قراءة فقط — ${escapeHtml(record.closureReason || "مؤرشفة")}</p>`
+    });
+    if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
+    panel.innerHTML = detailsHtml;
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
     scrollBankDetailIntoView();
-    if (!ctx.dailyTask) {
+    if (!ctx.dailyTask && !options.skipNavOpen) {
       setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-      window.IAQAR?.navigation?.updateBackButton?.();
+      announceBankDetailOpened(id, "bank-detail");
     }
     return;
   }
 
   if (!readiness.isReadyForMatching) {
+    if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
     panel.innerHTML = buildNeedsCompletionDetailHtml(id, record, readiness);
     wireIncompleteDetailHandlers(id, record);
     scrollBankDetailIntoView();
-    if (!ctx.dailyTask) {
+    if (!ctx.dailyTask && !options.skipNavOpen) {
       setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-detail" } }));
-      window.IAQAR?.navigation?.updateBackButton?.();
+      announceBankDetailOpened(id, "bank-detail");
     }
     return;
   }
 
   panel.innerHTML = `<div class="bank-detail-loading"><p>جارٍ تجهيز التفاصيل…</p></div>`;
   const bundle = await loadWorkspaceBundle(id);
+  if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
   const freshRecord = state.records.get(id) || record;
   panel.innerHTML = buildReadyWorkspaceHtml(id, freshRecord, bundle, {
     officeProfile: officeProfileForShare(),
@@ -902,10 +1077,9 @@ async function renderDetail(id, options = {}) {
   wireWorkspaceHandlers(id, freshRecord, bundle);
   applyBankBrokerMarks(freshRecord);
   scrollBankDetailIntoView();
-  if (!ctx.dailyTask) {
+  if (!ctx.dailyTask && !options.skipNavOpen) {
     setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
-    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "bank-workspace" } }));
-    window.IAQAR?.navigation?.updateBackButton?.();
+    announceBankDetailOpened(id, "bank-workspace");
   }
 }
 
@@ -1251,10 +1425,11 @@ function wireIncompleteDetailHandlers(id, record) {
 
     btn.disabled = true;
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
+    const priorMissing = evaluateMatchingReadiness(existing).matchingReadinessMissing || [];
     try {
-      await patchOpportunity(id, patch);
-      await reloadOpportunityFromBackend(id);
-      if (isDailyTaskDetail() && readinessCheck.isReadyForMatching) {
+      const { readiness: savedReadiness } = await persistOpportunityPatch(id, patch, { context: "incomplete-save" });
+      assertPersistedMissingFieldsCleared(priorMissing, savedReadiness, patch);
+      if (isDailyTaskDetail() && savedReadiness.isReadyForMatching) {
         toast("تم حفظ الفرصة ونقلها للمطابقة");
         if (statusNode) {
           statusNode.textContent = "تم حفظ الفرصة ونقلها للمطابقة";
@@ -1265,11 +1440,12 @@ function wireIncompleteDetailHandlers(id, record) {
         renderList();
         return;
       }
-      toast(readinessCheck.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
+      toast(savedReadiness.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {
-      const msg = mapClientPatchError(error, "تعذر حفظ البيانات");
+      console.warn("[iaqar-save] incomplete-save failed", error);
+      const msg = mapClientPatchError(error, error?.message || "تعذر حفظ البيانات");
       if (statusNode) statusNode.textContent = msg;
       setStatus(msg, "is-error");
     } finally {
@@ -2260,6 +2436,7 @@ function wireDetailHandlers(id, record) {
     if (statusNode) statusNode.textContent = "جارٍ الحفظ…";
     const mergedPreview = normalizeOpportunityFinancials({ ...existing, ...editPatch, ...advResult.patch });
     const readiness = evaluateMatchingReadiness(mergedPreview);
+    const priorMissing = evaluateMatchingReadiness(existing).matchingReadinessMissing || [];
     const patch = {
       ...editPatch,
       ...advResult.patch,
@@ -2267,16 +2444,16 @@ function wireDetailHandlers(id, record) {
       updatedBy: authUser()?.uid || ""
     };
     try {
-      await patchOpportunity(id, patch);
-      await reloadOpportunityFromBackend(id);
+      const { readiness: savedReadiness } = await persistOpportunityPatch(id, patch, { context: "unified-save" });
+      assertPersistedMissingFieldsCleared(priorMissing, savedReadiness, patch);
       if (statusNode) statusNode.textContent = "تم حفظ التغييرات";
       setStatus("تم حفظ التغييرات", "is-done");
       toast("تم حفظ التغييرات");
       await renderDetail(id);
       renderList();
     } catch (error) {
-      console.warn("[iaqar] unified save", error);
-      const msg = mapClientPatchError(error, "تعذر حفظ التغييرات");
+      console.warn("[iaqar-save] unified-save failed", error);
+      const msg = mapClientPatchError(error, error?.message || "تعذر حفظ التغييرات");
       if (statusNode) statusNode.textContent = msg;
       setStatus(msg, "is-error");
     } finally {
@@ -2454,6 +2631,66 @@ async function reloadOpportunityFromBackend(id) {
   const record = { id, ...(snap.data() || {}) };
   state.records.set(id, record);
   return record;
+}
+
+function logOpportunitySave(phase, payload = {}) {
+  console.info("[iaqar-save]", phase, payload);
+}
+
+async function persistOpportunityPatch(id, patch, { context = "save" } = {}) {
+  logOpportunitySave("start", { context, opportunityId: id, patch });
+  const writeResult = await patchOpportunity(id, patch);
+  logOpportunitySave("write-result", {
+    context,
+    opportunityId: id,
+    ok: Boolean(writeResult?.ok ?? true),
+    version: writeResult?.opportunity?.version ?? null
+  });
+  const reloaded = await reloadOpportunityFromBackend(id);
+  if (!reloaded) {
+    throw Object.assign(new Error("تعذر التحقق من حفظ الفرصة بعد الكتابة"), { code: "reload_failed" });
+  }
+  const readiness = evaluateMatchingReadiness(reloaded);
+  logOpportunitySave("reloaded", {
+    context,
+    opportunityId: id,
+    advertiserRole: reloaded.advertiserRole || "",
+    contactPhone: reloaded.advertiserPhoneNormalized || reloaded.contactPhone || "",
+    matchingReadiness: readiness.matchingReadiness,
+    matchingReadinessMissing: readiness.matchingReadinessMissing,
+    completionCount: 7 - (readiness.matchingReadinessMissing?.length || 0),
+    completionPercent: Math.round(((7 - (readiness.matchingReadinessMissing?.length || 0)) / 7) * 100)
+  });
+  return { writeResult, reloaded, readiness };
+}
+
+function assertPersistedMissingFieldsCleared(priorMissing = [], savedReadiness = {}, patch = {}) {
+  const patchKeys = new Set(Object.keys(patch || {}));
+  const patchTouches = (fieldKey) => {
+    if (fieldKey === "contactPhone") {
+      return patchKeys.has("advertiserPhoneNormalized")
+        || patchKeys.has("contactPhone")
+        || patchKeys.has("phone");
+    }
+    if (fieldKey === "advertiserRole") return patchKeys.has("advertiserRole");
+    if (fieldKey === "priceOrBudget") {
+      return patchKeys.has("priceOrBudget")
+        || patchKeys.has("price")
+        || patchKeys.has("budget")
+        || patchKeys.has("salePrice")
+        || patchKeys.has("annualRent");
+    }
+    return patchKeys.has(fieldKey);
+  };
+  const stillMissing = (priorMissing || []).filter((key) => {
+    return patchTouches(key) && (savedReadiness.matchingReadinessMissing || []).includes(key);
+  });
+  if (!stillMissing.length) return;
+  const labels = missingFieldLabelsArabic(stillMissing);
+  throw Object.assign(
+    new Error(labels.length ? `لم يُحفظ الحقل: ${labels.join("، ")}` : "تعذر حفظ بعض الحقول"),
+    { code: "persist_incomplete", stillMissing }
+  );
 }
 
 async function patchOpportunity(id, patch) {
@@ -3358,7 +3595,10 @@ function bindListClicks() {
       if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
       return;
     }
-    if (event.target.closest("button, a")) return;
+    if (isBankCardActionControl(event.target)) {
+      event.stopPropagation();
+      return;
+    }
     const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
     event.preventDefault();
@@ -3368,6 +3608,7 @@ function bindListClicks() {
     if (event.key !== "Enter" && event.key !== " ") return;
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) return;
+    if (isBankCardActionControl(event.target)) return;
     event.preventDefault();
     const openId = resolveBankRowOpportunityId(row);
     if (!openId) return;
@@ -3723,6 +3964,54 @@ function emitBankOpened() {
   }));
 }
 
+let restoringDeepLink = false;
+
+async function restoreOpportunityFromLocation() {
+  const id = parseOpportunityIdFromLocation(window.location);
+  if (!id) return false;
+  if (state.activeId === id) return true;
+  if (restoringDeepLink) return false;
+  if (!officeRuntime()?.db || !officeId() || !authUser()) return false;
+  restoringDeepLink = true;
+  try {
+    if (isInlineBankRoot()) {
+      const tabs = window.IAQAR?.homeTabs?.getState?.() || {};
+      if (tabs.main !== "opportunities" || tabs.opp !== "bank") {
+        window.IAQAR?.homeTabs?.switchTo?.("opportunities", "bank");
+      }
+    } else {
+      openOpportunityBank();
+    }
+    return await openOpportunity(id, { fromDeepLink: true });
+  } finally {
+    restoringDeepLink = false;
+  }
+}
+
+function bindOpportunityDeepLink() {
+  if (bindOpportunityDeepLink.bound) return;
+  bindOpportunityDeepLink.bound = true;
+  const tryRestore = () => {
+    void restoreOpportunityFromLocation();
+  };
+  window.addEventListener("hashchange", () => {
+    const id = parseOpportunityIdFromLocation(window.location);
+    if (id && id !== state.activeId) tryRestore();
+  });
+  window.addEventListener("iaqar:office-rebound", tryRestore);
+  window.addEventListener("iaqar:firebase-ready", tryRestore);
+  window.addEventListener("iaqar:firebase-status", tryRestore);
+  try {
+    window.firebase?.auth?.()?.onAuthStateChanged((user) => {
+      if (user) tryRestore();
+    });
+  } catch (_) {
+    /* auth may not be ready during first parse */
+  }
+  window.setTimeout(tryRestore, 0);
+  window.setTimeout(tryRestore, 800);
+}
+
 export function activateOpportunityBankInline() {
   const retry = $("opportunityBankRetry");
   if (retry) retry.hidden = true;
@@ -3862,62 +4151,28 @@ function boot() {
     if (sharedId) void hideSharedFromBankPanel(sharedId);
   });
   bindListClicks();
+  bindOpportunityDeepLink();
 
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.openOpportunityBank = openOpportunityBank;
   window.IAQAR.activateOpportunityBankInline = activateOpportunityBankInline;
   window.IAQAR.pauseOpportunityBankInline = pauseOpportunityBankInline;
+  window.IAQAR.openOpportunity = openOpportunity;
   window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
+    const id = normalizeOpportunityDocumentId(opportunityId);
+    if (!id) return false;
     openOpportunityBank();
-    if (!opportunityId) return;
-    setDetailRenderContext({ dailyTask: false });
-    // Detail deep-link loads the single opportunity without dumping the full bank.
-    const runtime = officeRuntime();
-    if (!runtime?.db || !officeId()) return;
-    try {
-      const snap = await runtime.db.collection("offices").doc(officeId())
-        .collection("opportunities").doc(opportunityId).get();
-      if (snap.exists) {
-        const record = { id: opportunityId, ...(snap.data() || {}) };
-        state.records.set(opportunityId, record);
-        await renderDetail(opportunityId);
-        scrollBankDetailIntoView();
-      }
-    } catch (error) {
-      console.warn("[iaqar] open opportunity detail", error);
-    }
+    return openOpportunity(id);
   };
+  window.IAQAR.openOpportunityBankDetail = window.IAQAR.openOpportunityDetail;
   window.IAQAR.renderDailyTaskOpportunity = async function renderDailyTaskOpportunity(containerId, opportunityId) {
     const panelId = String(containerId || "operationsTaskPanel").trim();
-    const id = String(opportunityId || "").trim();
+    const id = normalizeOpportunityDocumentId(opportunityId);
     const panel = document.getElementById(panelId);
     if (!panel || !id) return false;
-    const runtime = officeRuntime();
-    if (!runtime?.db || !officeId()) return false;
-    try {
-      const snap = await runtime.db.collection("offices").doc(officeId())
-        .collection("opportunities").doc(id).get();
-      if (!snap.exists) {
-        toast("لم يتم العثور على الفرصة");
-        return false;
-      }
-      const data = snap.data() || {};
-      if (data.officeId && String(data.officeId) !== officeId()) {
-        toast("لا يمكن فتح هذه الفرصة من هذا المكتب");
-        return false;
-      }
-      const record = { id, ...data };
-      state.records.set(id, record);
-      panel.hidden = false;
-      await renderDetail(id, { panelId, dailyTask: true });
-      scrollBankDetailIntoView();
-      return true;
-    } catch (error) {
-      console.warn("[iaqar] render daily task opportunity", error);
-      toast("تعذر فتح الفرصة");
-      return false;
-    }
+    panel.hidden = false;
+    return openOpportunity(id, { panelId, dailyTask: true });
   };
   window.IAQAR.closeOpportunityBank = closeOpportunityBank;
   window.IAQAR.isBankDetailOpen = isBankDetailOpen;
@@ -3926,7 +4181,9 @@ function boot() {
     resolveBankRowOpportunityId,
     focusFirstMissingBankField,
     canOpenBankOpportunity,
-    bankMissingFieldSelectors: BANK_MISSING_FIELD_SELECTORS
+    bankMissingFieldSelectors: BANK_MISSING_FIELD_SELECTORS,
+    parseOpportunityIdFromLocation,
+    normalizeOpportunityDocumentId
   });
 }
 
