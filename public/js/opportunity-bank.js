@@ -147,6 +147,7 @@ import {
   parseOpportunityIdFromLocation,
   stripOpportunityDeepLinkHref
 } from "./opportunity-navigation-domain.js";
+import { isContentResetEnabled } from "./content-v2-flag.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -558,6 +559,7 @@ function isCurrentDetailOpen(token, opportunityId) {
 
 function stripOpportunityDeepLink() {
   if (typeof window === "undefined" || !window.location || !window.history?.replaceState) return;
+  if (isContentResetEnabled()) return;
   if (!parseOpportunityIdFromLocation(window.location)) return;
   const clean = stripOpportunityDeepLinkHref(window.location);
   window.history.replaceState(window.history.state, "", clean);
@@ -3967,6 +3969,7 @@ function emitBankOpened() {
 let restoringDeepLink = false;
 
 async function restoreOpportunityFromLocation() {
+  if (isContentResetEnabled()) return false;
   const id = parseOpportunityIdFromLocation(window.location);
   if (!id) return false;
   if (state.activeId === id) return true;

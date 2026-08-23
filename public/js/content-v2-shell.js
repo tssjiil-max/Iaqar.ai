@@ -43,6 +43,8 @@ function boot() {
   sync();
   window.addEventListener("hashchange", sync);
   window.addEventListener("iaqar:navigation-changed", sync);
+  window.addEventListener("iaqar:firebase-ready", sync);
+  window.addEventListener("iaqar:firebase-status", sync);
 
   window.IAQAR = window.IAQAR || {};
   window.IAQAR.contentV2 = Object.freeze({

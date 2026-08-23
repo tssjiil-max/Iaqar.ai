@@ -51,6 +51,12 @@ test("existing App Shell, voice slot, and matching engine stay in place", () => 
   assert.match(voice, /export function mountVoiceIntakePanel/);
 });
 
+test("legacy bank does not strip opportunity hash while content reset is on", () => {
+  const bank = readFileSync(path.join(root, "public", "js", "opportunity-bank.js"), "utf8");
+  assert.match(bank, /import \{ isContentResetEnabled \} from "\.\/content-v2-flag\.js"/);
+  assert.match(bank, /if \(isContentResetEnabled\(\)\) return;/);
+});
+
 test("content-v2 shell applies isolation class without removing header markup", () => {
   const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
   assert.match(index, /class="card header"/);
