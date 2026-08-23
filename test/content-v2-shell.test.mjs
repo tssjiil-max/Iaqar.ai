@@ -51,6 +51,12 @@ test("existing App Shell, voice slot, and matching engine stay in place", () => 
   assert.match(voice, /export function mountVoiceIntakePanel/);
 });
 
+test("office unlock keeps the current hash so content can read the opportunity id", () => {
+  const access = readFileSync(path.join(root, "public", "js", "access-gate.js"), "utf8");
+  assert.match(access, /location\.hash \|\| ""/);
+  assert.equal(access.includes('`${location.pathname}?office=${encodeURIComponent(normalized)}`'), false);
+});
+
 test("legacy bank does not strip opportunity hash while content reset is on", () => {
   const bank = readFileSync(path.join(root, "public", "js", "opportunity-bank.js"), "utf8");
   assert.match(bank, /import \{ isContentResetEnabled \} from "\.\/content-v2-flag\.js"/);
