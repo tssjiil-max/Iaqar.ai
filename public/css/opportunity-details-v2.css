@@ -325,10 +325,10 @@ html:has(.opp-v2-page) .card.opportunity-bank-panel {
 
 .opp-v2-row-value {
   display: grid;
-  justify-items: start;
+  justify-items: end;
   gap: 2px;
   min-width: 0;
-  text-align: start;
+  text-align: end;
 }
 
 .opp-v2-value-primary {
@@ -392,10 +392,22 @@ html:has(.opp-v2-page) .card.opportunity-bank-panel {
   height: 16px;
 }
 
+.opp-v2-report-head,
 .opp-v2-report-list {
   list-style: none;
   margin: 0;
   padding: 0 14px;
+}
+
+.opp-v2-report-head {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 8px;
+  padding-top: 2px;
+  padding-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--opp-v2-muted);
 }
 
 .opp-v2-report-row {

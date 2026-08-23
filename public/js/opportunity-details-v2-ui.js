@@ -164,6 +164,11 @@ export function buildDailyReportCardV2(vm) {
         ${iconUse("i-list")}
         <h2>تقرير اليوم</h2>
       </header>
+      <div class="opp-v2-report-head" aria-hidden="true">
+        <span>الوقت</span>
+        <span>الإجراء</span>
+        <span>النتيجة</span>
+      </div>
       <ul class="opp-v2-report-list">${rows}</ul>
       <p class="opp-v2-result-bar">
         <span class="opp-v2-info-dot" aria-hidden="true">${iconUse("i-info")}</span>
@@ -213,7 +218,7 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
     price: {
       title: vm.priceLabel || "السعر",
       hint: "أدخل الرقم فقط",
-      input: `<input class="opp-v2-editor-input" name="price" type="number" inputmode="numeric" autocomplete="off" value="${esc(seed)}" placeholder="0">`
+      input: `<input class="opp-v2-editor-input" name="price" type="number" inputmode="numeric" autocomplete="off" value="${esc(seed)}" placeholder="مثال: 850000">`
     },
     area: {
       title: "المساحة",
