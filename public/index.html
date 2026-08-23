@@ -19,6 +19,17 @@
   <title>مكاتب عقارية ذكية | النسخة التجريبية المعتمدة</title>
 
   <link rel="stylesheet" href="css/opportunity-details-v2.css">
+  <link rel="stylesheet" href="css/content-v2.css">
+  <script>
+    (function () {
+      try {
+        var params = new URLSearchParams(location.search);
+        if (params.get("legacyContent") === "1" || params.get("contentV2") === "0") return;
+        if (localStorage.getItem("iaqar.legacyContent") === "1") return;
+        document.documentElement.classList.add("is-content-v2");
+      } catch (_) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -109,6 +120,7 @@
 
     .app > .header,
     .app > .license,
+    .app > .shell-voice,
     .app > .services-bar {
       flex-shrink:0;
     }
@@ -5583,15 +5595,21 @@
       </div>
     </section>
 
+    <section class="card shell-voice" id="shellVoice" aria-label="البحث بالصوت">
+      <div id="addOpportunityVoicePanel" class="voice-intake-panel" aria-label="تسجيل صوتي"></div>
+    </section>
+
     <div class="app-content-shell" id="appContentShell">
     <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية">
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
-        aria-selected="true" aria-controls="mainPanelOperations" aria-label="المهام اليومية">المهام اليومية</button>
+        aria-selected="true" aria-controls="contentV2" aria-label="المهام اليومية">المهام اليومية</button>
       <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"
-        aria-selected="false" aria-controls="mainPanelOpportunities">العروض والطلبات</button>
+        aria-selected="false" aria-controls="contentV2">العروض والطلبات</button>
     </nav>
 
-    <div class="main-tab-panels" id="mainTabPanels">
+    <div id="contentV2" class="content-v2" hidden></div>
+
+    <div class="main-tab-panels" id="mainTabPanels" data-legacy-content>
       <div class="main-tab-panel" id="mainPanelOperations" role="tabpanel" aria-labelledby="mainTabOperations">
         <section class="card workspace" id="workspace" aria-label="المهام اليومية">
           <div class="section-title-bar">
@@ -5693,7 +5711,6 @@
                   <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
                 </div>
                 <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
-                <div id="addOpportunityVoicePanel" class="voice-intake-panel" aria-label="تسجيل صوتي"></div>
                 <input id="addOpportunityFile" type="file" hidden>
                 <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
                 <button type="button" class="add-opportunity-retry" id="addOpportunityRetry" hidden>إعادة المحاولة</button>
@@ -6296,6 +6313,7 @@
   <script type="module" src="js/app-navigation-domain.js"></script>
   <script src="js/app-navigation.js"></script>
   <script src="js/home-tabs.js"></script>
+  <script type="module" src="js/content-v2-shell.js"></script>
   <script src="js/qrcode.js"></script>
   <script type="module" src="js/header-scroll.js"></script>
   <script type="module" src="js/office-library.js"></script>

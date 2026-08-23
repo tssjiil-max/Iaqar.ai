@@ -1,0 +1,105 @@
+/* Content-area reset only. Reuses existing IAQAR brand tokens. Does not restyle Header. */
+
+html.is-content-v2 [data-legacy-content] {
+  display: none !important;
+}
+
+html.is-content-v2 .content-v2 {
+  display: block;
+}
+
+.content-v2[hidden] {
+  display: none !important;
+}
+
+.shell-voice {
+  margin-top: 11px;
+  padding: 12px;
+}
+
+.shell-voice #addOpportunityVoicePanel.voice-intake-panel {
+  margin: 0;
+}
+
+.content-v2 {
+  margin-top: 10px;
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
+.content-v2-page {
+  background: var(--card);
+  border: 1px solid rgba(0, 92, 75, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+  display: grid;
+  gap: 10px;
+  min-height: 180px;
+}
+
+.content-v2-kicker {
+  margin: 0;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.content-v2-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.content-v2-body,
+.content-v2-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+  font-weight: 600;
+}
+
+.content-v2-meta {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 800;
+}
+
+html.is-content-v2 .opp-details-page,
+html.is-content-v2 .opp-v2-page {
+  display: none !important;
+  position: static !important;
+  inset: auto !important;
+  z-index: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html.is-content-v2:has(.opp-details-page) .main-tabs,
+html.is-content-v2:has(.opp-v2-page) .main-tabs {
+  display: grid !important;
+}
+
+html.is-content-v2:has(.opp-details-page) .header,
+html.is-content-v2:has(.opp-v2-page) .header,
+html.is-content-v2:has(.opp-details-page) .license,
+html.is-content-v2:has(.opp-v2-page) .license,
+html.is-content-v2:has(.opp-details-page) .shell-voice,
+html.is-content-v2:has(.opp-v2-page) .shell-voice {
+  display: grid;
+}
+
+html.is-content-v2:has(.opp-details-page) .header,
+html.is-content-v2:has(.opp-v2-page) .header {
+  display: grid;
+}
+
+html.is-content-v2 .bank-contact-outcome-action-panel,
+html.is-content-v2 .opp-details-progress-ring,
+html.is-content-v2 [data-contact-schedule-days] {
+  display: none !important;
+}
