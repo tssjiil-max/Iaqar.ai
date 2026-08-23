@@ -95,6 +95,15 @@ import {
 } from "./opportunity-bank-workspace-ui.js";
 import { buildOpportunityDetailsPageHtml } from "./opportunity-details-ui.js";
 import {
+  isOpportunityDetailsV2Enabled,
+  mapOpportunityDetailsV2ViewModel,
+  buildOpportunityV2DeepLinkHash
+} from "./opportunity-details-v2-domain.js";
+import {
+  mountOpportunityDetailsV2,
+  saveV2FieldWithAdapter
+} from "./opportunity-details-v2.js";
+import {
   sortMatchesForWorkspace,
   mergeIncompleteFormPreview
 } from "./opportunity-workspace-domain.js";
@@ -555,7 +564,9 @@ function stripOpportunityDeepLink() {
 }
 
 function applyOpportunityDeepLink(opportunityId) {
-  const hash = buildOpportunityDeepLinkHash(opportunityId);
+  const hash = isOpportunityDetailsV2Enabled(window.location)
+    ? buildOpportunityV2DeepLinkHash(opportunityId)
+    : buildOpportunityDeepLinkHash(opportunityId);
   if (!hash || typeof window === "undefined") return;
   const href = `${window.location.pathname}${window.location.search}${hash}`;
   if (window.location.hash === hash) return;
@@ -956,6 +967,28 @@ function isBankDetailOpen() {
   return Boolean(state.activeId);
 }
 
+function renderOpportunityDetailsV2InPanel(panel, id, record, extras = {}) {
+  const vm = mapOpportunityDetailsV2ViewModel(id, record, extras);
+  mountOpportunityDetailsV2(panel, record, {
+    id,
+    ...extras,
+    vm,
+    onClose: () => closeActiveDetailPanel(),
+    saveField: async (editorKey, formData) => {
+      const existing = state.records.get(id) || record;
+      return saveV2FieldWithAdapter(existing, editorKey, {
+        ...formData,
+        actorUid: authUser()?.uid || ""
+      }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
+    },
+    onSaved: async () => {
+      const fresh = state.records.get(id) || record;
+      renderOpportunityDetailsV2InPanel(panel, id, fresh, extras);
+      renderList();
+    }
+  });
+}
+
 async function renderDetail(id, options = {}) {
   if (options.panelId || options.dailyTask) {
     setDetailRenderContext(options);
@@ -981,6 +1014,26 @@ async function renderDetail(id, options = {}) {
   state.activeId = id;
   clearOtherDetailPanels(ctx.panelId);
   panel.hidden = false;
+
+  if (isOpportunityDetailsV2Enabled(window.location)) {
+    if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
+    renderOpportunityDetailsV2InPanel(panel, id, record, { readiness: evaluateMatchingReadiness(record) });
+    scrollBankDetailIntoView();
+    if (!ctx.dailyTask && !options.skipNavOpen) {
+      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      announceBankDetailOpened(id, "bank-detail");
+    }
+    void loadWorkspaceBundle(id).then((bundle) => {
+      if (!ctx.dailyTask && !isCurrentDetailOpen(token, id)) return;
+      const fresh = state.records.get(id) || record;
+      renderOpportunityDetailsV2InPanel(panel, id, fresh, {
+        readiness: evaluateMatchingReadiness(fresh),
+        activity: bundle.activity || bundle.activities,
+        cooperationRequests: bundle.cooperationRequests
+      });
+    });
+    return;
+  }
 
   const archived = record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
   const readiness = evaluateMatchingReadiness(record);

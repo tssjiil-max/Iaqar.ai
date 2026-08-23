@@ -22,6 +22,7 @@ test("normalizeOpportunityDocumentId keeps Firestore ids and rejects path fallba
 test("deep link hash encodes the document id and parses it back", () => {
   assert.equal(buildOpportunityDeepLinkHash("ABC123"), "#/opportunities/ABC123");
   assert.equal(parseOpportunityIdFromHash("#/opportunities/ABC123"), "ABC123");
+  assert.equal(parseOpportunityIdFromHash("#/opportunities-v2/ABC123"), "ABC123");
   assert.equal(parseOpportunityIdFromHash("#/opportunities/opp%5Fready"), "opp_ready");
   assert.equal(parseOpportunityIdFromHash("#/bank"), "");
   assert.equal(parseOpportunityIdFromPathname("/opportunities/ABC123"), "ABC123");

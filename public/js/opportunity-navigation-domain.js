@@ -20,7 +20,7 @@ export function buildOpportunityDeepLinkHash(opportunityId) {
 
 export function parseOpportunityIdFromHash(hash) {
   const raw = String(hash || "");
-  const match = raw.match(/^#\/opportunities\/([^/?#]+)/);
+  const match = raw.match(/^#\/opportunities(?:-v2)?\/([^/?#]+)/);
   if (!match) return "";
   try {
     return normalizeOpportunityDocumentId(decodeURIComponent(match[1]));
