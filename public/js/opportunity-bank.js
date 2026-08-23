@@ -554,35 +554,28 @@ function stripOpportunityDeepLink() {
   window.history.replaceState(window.history.state, "", clean);
 }
 
-function prepareDeepLinkHistory(opportunityId) {
-  if (typeof window === "undefined" || !window.history?.replaceState) return;
+function applyOpportunityDeepLink(opportunityId) {
   const hash = buildOpportunityDeepLinkHash(opportunityId);
-  if (!hash) return;
-  if (window.history.state?.iaqarOverlay) return;
-  if (window.location.hash === hash) {
-    window.history.replaceState(window.history.state, "", stripOpportunityDeepLinkHref(window.location));
+  if (!hash || typeof window === "undefined") return;
+  const href = `${window.location.pathname}${window.location.search}${hash}`;
+  if (window.location.hash === hash) return;
+  if (window.history?.replaceState) {
+    window.history.replaceState(window.history.state, "", href);
   }
 }
 
 function announceBankDetailOpened(opportunityId, view) {
-  if (state.detailOverlayOpen) {
-    const hash = buildOpportunityDeepLinkHash(opportunityId);
-    if (hash && window.history?.replaceState) {
-      const href = `${window.location.pathname}${window.location.search}${hash}`;
-      if (window.location.href !== href && !window.location.href.endsWith(hash)) {
-        window.history.replaceState(window.history.state, "", href);
-      }
-    }
-    window.IAQAR?.navigation?.updateBackButton?.();
-    return;
+  const hash = buildOpportunityDeepLinkHash(opportunityId);
+  if (!state.detailOverlayOpen && !window.history?.state?.iaqarOverlay) {
+    state.detailOverlayOpen = true;
+    window.dispatchEvent(new CustomEvent("iaqar:nav-open", {
+      detail: { view, url: hash }
+    }));
+  } else {
+    state.detailOverlayOpen = true;
   }
-  state.detailOverlayOpen = true;
-  window.dispatchEvent(new CustomEvent("iaqar:nav-open", {
-    detail: {
-      view,
-      url: buildOpportunityDeepLinkHash(opportunityId)
-    }
-  }));
+  applyOpportunityDeepLink(opportunityId);
+  window.setTimeout(() => applyOpportunityDeepLink(opportunityId), 0);
   window.IAQAR?.navigation?.updateBackButton?.();
 }
 
@@ -665,7 +658,6 @@ async function openOpportunity(opportunityId, options = {}) {
       setDetailRenderContext(options);
     } else {
       setDetailRenderContext({ dailyTask: false });
-      if (options.fromDeepLink) prepareDeepLinkHistory(id);
       showBankDetailLoading(id);
     }
 
