@@ -1,0 +1,18 @@
+:root {
+  --brand-green: #0a6b4a;
+  --brand-green-soft: #e3f4ec;
+  --brand-red: #c62828;
+  --brand-red-soft: #fdecec;
+  --surface: #f4f6f5;
+  --surface-card: #ffffff;
+  --border: #d7dfda;
+  --text-primary: #132019;
+  --text-secondary: #66736d;
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --spacing-section: 16px;
+  --row-height: 52px;
+  --header-height: 56px;
+  --nav-height: 64px;
+  --font: "IBM Plex Sans Arabic", "Segoe UI", sans-serif;
+}

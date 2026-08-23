@@ -15,13 +15,17 @@
     "deploy:staging": "bash scripts/deploy-staging.sh",
     "deploy:staging:safe": "bash scripts/deploy-staging-safe.sh",
     "smoke:staging": "node scripts/smoke-staging.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "v2:typecheck": "tsc -p src/v2/tsconfig.json --noEmit",
+    "v2:build": "node scripts/build-frontend-v2.mjs",
+    "v2:test": "npm run v2:build && node --test test/frontend-v2-router.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
     "firebase": "^11.10.0",
     "firebase-admin": "^14.2.0",
     "firebase-tools": "^14.22.0",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3"
   }
 }
