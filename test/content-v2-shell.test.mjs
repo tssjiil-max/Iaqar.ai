@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isContentResetEnabled } from "../public/js/content-v2-flag.js";
 import { buildContentV2Html, currentContentView } from "../public/js/content-v2-domain.js";
+import { isOpportunityDetailsV2Enabled } from "../public/js/opportunity-details-v2-domain.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -23,14 +24,23 @@ test("content views follow existing tabs and opportunity hash", () => {
   );
 });
 
-test("placeholder HTML stays clean and has no legacy action chrome", () => {
+test("content V2 surface is empty and has no V2 header or nav chrome", () => {
   const html = buildContentV2Html({ name: "opportunity", id: "opp_1258" });
-  assert.match(html, /تفاصيل الفرصة/);
-  assert.match(html, /المعرّف: opp_1258/);
+  assert.match(html, /content-v2-surface/);
+  assert.match(html, /data-opportunity-id="opp_1258"/);
+  assert.equal(html.includes("تفاصيل الفرصة"), false);
+  assert.equal(html.includes("IAQAR V2"), false);
+  assert.equal(html.includes("v2-header"), false);
+  assert.equal(html.includes("v2-nav"), false);
   assert.equal(html.includes("ابدأ المطابقة"), false);
-  assert.equal(html.includes("progress-ring"), false);
-  assert.equal(html.includes("غدًا"), false);
-  assert.equal(html.includes("bank-row"), false);
+});
+
+test("src/v2 is content-only and OpportunityDetailsV2 is not a parallel path", () => {
+  const srcV2 = path.join(root, "src", "v2");
+  const names = readdirSync(srcV2, { recursive: true }).map(String);
+  assert.equal(names.some((name) => /header|nav|shell\.ts|index\.html/.test(name)), false);
+  assert.equal(existsSync(path.join(srcV2, "content", "mount.js")), true);
+  assert.equal(isOpportunityDetailsV2Enabled({ search: "?oppV2=1", hash: "#/opportunities-v2/x" }, { getItem: () => "1" }), false);
 });
 
 test("existing App Shell, voice slot, and matching engine stay in place", () => {
@@ -40,7 +50,7 @@ test("existing App Shell, voice slot, and matching engine stay in place", () => 
   assert.match(index, /id="addOpportunityVoicePanel"/);
   assert.match(index, /id="contentV2"/);
   assert.match(index, /data-legacy-content/);
-  assert.match(index, /js\/content-v2-shell\.js/);
+  assert.match(index, /js\/v2\/mount\.js/);
   assert.equal((index.match(/id="addOpportunityVoicePanel"/g) || []).length, 1);
 
   const matching = readFileSync(path.join(root, "public", "js", "matching-domain.js"), "utf8");

@@ -15,7 +15,8 @@
     "deploy:staging": "bash scripts/deploy-staging.sh",
     "deploy:staging:safe": "bash scripts/deploy-staging-safe.sh",
     "smoke:staging": "node scripts/smoke-staging.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "v2:content": "node scripts/copy-content-v2.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
