@@ -3770,6 +3770,10 @@
     padding:0;
   }
   .opp-details-page {
+    position:fixed;
+    inset:0;
+    left:0;
+    right:0;
     width:100%;
     max-width:100%;
     min-width:0;
@@ -3780,6 +3784,25 @@
     background:var(--opp-page-bg);
     display:flex;
     flex-direction:column;
+    z-index:90;
+    overflow:auto;
+  }
+  html:has(.opp-details-page) .main-tabs,
+  html:has(.opp-details-page) .tab-panel-intro,
+  html:has(.opp-details-page) .sub-tabs,
+  html:has(.opp-details-page) .opportunity-bank-panel > :not(#opportunityBankDetail),
+  html:has(.opp-details-page) .ops-detail-nav,
+  html:has(.opp-details-page) .ops-today-head,
+  html:has(.opp-details-page) .ops-category-detail-head {
+    display:none !important;
+  }
+  html:has(.opp-details-page) .card.opportunity-bank-panel {
+    border:0;
+    box-shadow:none;
+    background:transparent;
+    padding:0;
+    border-radius:0;
+    overflow:visible;
   }
   .opp-details-appbar {
     position:sticky;

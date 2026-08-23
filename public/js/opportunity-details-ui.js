@@ -317,8 +317,9 @@ export function buildOpportunityDetailsHeaderHtml(vm) {
     </section>`;
 }
 
-export function buildCompletionProgressHtml(vm) {
+export function buildCompletionProgressHtml(vm, options = {}) {
   const { progress, status } = vm;
+  const actionHtml = options.actionHtml || "";
   return `
     <section class="opp-details-card opp-details-completion-card" aria-label="نسبة اكتمال البيانات">
       <header class="opp-details-card-head">
@@ -342,6 +343,7 @@ export function buildCompletionProgressHtml(vm) {
           <p class="opp-details-progress-pct">${esc(`${progress.pct}% مكتملة`)}</p>
         </div>
       </div>
+      ${actionHtml}
     </section>`;
 }
 
@@ -406,9 +408,7 @@ export function buildOpportunityDetailsRevealFormButtonHtml() {
     </div>`;
 }
 
-export function buildOpportunityDataTableHtml(vm, options = {}) {
-  const showCompleteButton = options.showCompleteButton !== false
-    && (vm.progress.missingLabels || []).length > 0;
+export function buildOpportunityDataTableHtml(vm) {
   return `
     <section class="opp-details-card opp-details-data-table" aria-label="بيانات الفرصة">
       <header class="opp-details-card-head">
@@ -423,7 +423,6 @@ export function buildOpportunityDataTableHtml(vm, options = {}) {
         ${dataRow(vm, "advertiser", "i-user", "المعلن وصفته", vm.advertiserRole, vm.advertiserSecondary)}
         ${dataRow(vm, "contact", "i-phone", "رقم التواصل", vm.contactDisplay)}
       </div>
-      ${showCompleteButton ? buildOpportunityDetailsRevealFormButtonHtml() : ""}
     </section>`;
 }
 
@@ -538,12 +537,19 @@ export function buildNextAppointmentHtml(record = {}, followUp, override) {
     </section>`;
 }
 
+function shouldShowCompleteButton(vm, extras = {}) {
+  if (extras.showCompleteButton === false) return false;
+  return (vm.progress.missingLabels || []).length > 0;
+}
+
 function detailsCardsHtml(vm, extras = {}) {
-  const showCompleteButton = extras.showCompleteButton;
+  const actionHtml = shouldShowCompleteButton(vm, extras)
+    ? buildOpportunityDetailsRevealFormButtonHtml()
+    : "";
   return `
     ${buildOpportunityDetailsHeaderHtml(vm)}
-    ${buildCompletionProgressHtml(vm)}
-    ${buildOpportunityDataTableHtml(vm, { showCompleteButton })}
+    ${buildOpportunityDataTableHtml(vm)}
+    ${buildCompletionProgressHtml(vm, { actionHtml })}
     ${buildTodayReportHtml(vm, extras)}
     ${buildNextAppointmentHtml(vm.rawRecord || {}, extras.followUp, extras.nextAppointment)}`;
 }

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import {
   buildOpportunityDetailsCoreHtml,
   buildOpportunityDetailsPageHtml,
@@ -7,6 +10,9 @@ import {
   formatDisplayOpportunityId,
   resolveOpportunityDetailsStatus
 } from "../public/js/opportunity-details-ui.js";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const indexHtml = readFileSync(path.join(root, "..", "public", "index.html"), "utf8");
 
 const referenceRecord = {
   opportunityKind: "OFFER",
@@ -149,6 +155,11 @@ test("phase 1 page matches reference structure and drops old chrome", () => {
   assert.ok(html.includes("opp-details-missing-badge"));
   assert.ok(html.includes("بيانات الفرصة"));
   assert.ok(html.includes("أكمل البيانات الناقصة"));
+  const dataIdx = html.indexOf("بيانات الفرصة");
+  const completionIdx = html.indexOf("نسبة اكتمال البيانات");
+  const buttonIdx = html.indexOf("أكمل البيانات الناقصة");
+  assert.ok(dataIdx > 0 && dataIdx < completionIdx);
+  assert.ok(completionIdx < buttonIdx);
   assert.ok(html.includes("تقرير اليوم"));
   assert.ok(html.includes("الموعد القادم"));
   assert.ok(html.includes("معاينة العقار"));
@@ -156,4 +167,26 @@ test("phase 1 page matches reference structure and drops old chrome", () => {
   assert.ok(!html.includes("bank-detail-head"));
   assert.ok(!html.includes("class=\"opp-details-title\""));
   assert.equal(formatDisplayOpportunityId("1258"), "1258");
+});
+
+test("details page order is data table, then completion, then complete button", () => {
+  const { html } = buildOpportunityDetailsPageHtml("1258", referenceRecord, {
+    matchingReadinessMissing: ["priceOrBudget", "contactPhone"]
+  });
+  const dataIdx = html.indexOf('aria-label="بيانات الفرصة"');
+  const completionIdx = html.indexOf('aria-label="نسبة اكتمال البيانات"');
+  const buttonIdx = html.indexOf("oppDetailsRevealFormBtn");
+  assert.ok(dataIdx >= 0 && completionIdx >= 0 && buttonIdx >= 0);
+  assert.ok(dataIdx < completionIdx && completionIdx < buttonIdx);
+  assert.equal(html.split("opp-details-page").length - 1, 1);
+  assert.ok(!html.includes("bank-detail-head"));
+  assert.ok(!html.includes("data-workspace-action="));
+});
+
+test("opening details hides bank list chrome so the page is the only surface", () => {
+  assert.ok(indexHtml.includes("html:has(.opp-details-page) .main-tabs"));
+  assert.ok(indexHtml.includes("html:has(.opp-details-page) .sub-tabs"));
+  assert.ok(indexHtml.includes(".opportunity-bank-panel > :not(#opportunityBankDetail)"));
+  assert.ok(indexHtml.includes("html:has(.opp-details-page) .ops-detail-nav"));
+  assert.match(indexHtml, /\.opp-details-page\s*\{[^}]*position:\s*fixed/);
 });

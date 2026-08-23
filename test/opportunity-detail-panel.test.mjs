@@ -19,6 +19,8 @@ test("detail panel uses structured summary and save label", () => {
   assert.ok(html.includes("opp-details"));
   assert.ok(html.includes("opp-details-data-table"));
   assert.ok(html.includes("oppDetailsRevealFormBtn"));
+  assert.ok(html.indexOf("بيانات الفرصة") < html.indexOf("نسبة اكتمال البيانات"));
+  assert.ok(html.indexOf("نسبة اكتمال البيانات") < html.indexOf("oppDetailsRevealFormBtn"));
   assert.ok(html.includes('id="bankIncompleteEditSection"'));
   assert.ok(html.includes("bankIncompleteEditSection") && html.includes("hidden"));
   assert.ok(html.includes("حفظ الفرصة"));
