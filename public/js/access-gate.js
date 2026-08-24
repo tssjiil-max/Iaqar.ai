@@ -258,7 +258,9 @@
       return false;
     }
     authDiag("OFFICE_FOUND", { officeId: normalized });
-    const nextUrl = `${location.pathname}?office=${encodeURIComponent(normalized)}`;
+    const params = new URLSearchParams(location.search);
+    params.set("office", normalized);
+    const nextUrl = `${location.pathname}?${params.toString()}${location.hash || ""}`;
     history.replaceState({}, "", nextUrl);
     document.body.classList.remove("access-locked");
     if (gate.isConnected) gate.remove();
