@@ -1,5 +1,5 @@
 /**
- * Mounts compact daily-task execution cards into #contentV2.
+ * Mounts compact daily-task accordion cards into #contentV2.
  * Does not persist client-send, and does not copy opportunity data cards.
  */
 
@@ -13,7 +13,8 @@ import {
 const state = {
   root: null,
   tasks: [],
-  bound: false
+  bound: false,
+  openTaskId: null
 };
 
 function useDemoFixtures() {
@@ -39,6 +40,12 @@ function openExistingOfferDetails(task) {
   window.IAQAR?.contentV2?.render?.();
 }
 
+function toggleOpenTask(taskId) {
+  if (!taskId) return;
+  state.openTaskId = state.openTaskId === taskId ? null : taskId;
+  renderList();
+}
+
 function onListClick(event) {
   const root = state.root;
   if (!root) return;
@@ -53,6 +60,7 @@ function onListClick(event) {
   const secondary = event.target.closest("[data-cv2-exec-secondary]");
   if (secondary) {
     event.preventDefault();
+    event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
     if (action === "open_offer") openExistingOfferDetails(task);
     return;
@@ -60,19 +68,26 @@ function onListClick(event) {
   const primary = event.target.closest("[data-cv2-exec-primary]");
   if (primary) {
     event.preventDefault();
+    event.stopPropagation();
     // Reserved for a later CLIENT_MATCH_REVIEW session. No send in this round.
+    return;
   }
+  event.preventDefault();
+  toggleOpenTask(card.getAttribute("data-task-id"));
 }
 
 function renderList() {
   if (!state.root) return;
-  state.root.innerHTML = buildDailyTaskListHtml(currentTasks());
+  state.root.innerHTML = buildDailyTaskListHtml(currentTasks(), { openTaskId: state.openTaskId });
 }
 
 function onOperationsData(event) {
   if (useDemoFixtures()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
   state.tasks = mapOperationsItemsToDailyTasks(items);
+  if (state.openTaskId && !state.tasks.some((task) => task.id === state.openTaskId)) {
+    state.openTaskId = null;
+  }
   renderList();
 }
 
@@ -84,6 +99,7 @@ export function unmountDailyTasksContentV2() {
   }
   state.root = null;
   state.bound = false;
+  state.openTaskId = null;
 }
 
 export function mountDailyTasksContentV2(root) {

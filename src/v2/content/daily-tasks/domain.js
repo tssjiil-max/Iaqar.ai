@@ -42,9 +42,114 @@ export const DAILY_TASK_BADGE = Object.freeze({
 
 export const EXEC_ACTION = Object.freeze({
   SEND_TO_CLIENT: "send_to_client",
+  SEND_TO_OWNER: "send_to_owner",
   RESEND_TO_CLIENT: "resend_to_client",
   OPEN_OFFER: "open_offer"
 });
+
+export const SECURE_PARTY = Object.freeze({
+  CLIENT: "client",
+  OWNER: "owner"
+});
+
+export const SECURE_SESSION_KIND = Object.freeze({
+  CLIENT_MATCH_REVIEW: "CLIENT_MATCH_REVIEW",
+  OWNER_MATCH_REVIEW: "OWNER_MATCH_REVIEW"
+});
+
+/** Future client-link replies. Never rendered as broker buttons. */
+export const FUTURE_CLIENT_REPLY = Object.freeze({
+  INTERESTED: "interested",
+  NEEDS_DETAILS: "needs_details",
+  NOT_SUITABLE: "not_suitable"
+});
+
+export const FUTURE_CLIENT_REPLY_LABELS = Object.freeze({
+  interested: "مهتم",
+  needs_details: "أحتاج تفاصيل أكثر",
+  not_suitable: "غير مناسب"
+});
+
+/** Future owner-link replies. Negotiation UI is not implemented in this round. */
+export const FUTURE_OWNER_REPLY = Object.freeze({
+  PROPERTY_AVAILABLE: "property_available",
+  CONFIRM_APPOINTMENT: "confirm_appointment",
+  SUGGEST_OTHER_TIME: "suggest_other_time",
+  ACCEPT_OFFER: "accept_offer",
+  COUNTER_OFFER: "counter_offer",
+  REJECT: "reject"
+});
+
+export const FUTURE_OWNER_REPLY_LABELS = Object.freeze({
+  property_available: "العقار متاح",
+  confirm_appointment: "تأكيد الموعد",
+  suggest_other_time: "اقتراح وقت آخر",
+  accept_offer: "قبول العرض",
+  counter_offer: "عرض مقابل",
+  reject: "رفض"
+});
+
+/** Future deal states. Closing workflow is not implemented in this round. */
+export const FUTURE_DEAL_STATE = Object.freeze({
+  AGREEMENT: "agreement",
+  CLOSING: "closing",
+  DEAL_COMPLETED: "deal_completed",
+  ARCHIVED: "archived"
+});
+
+export const FUTURE_DEAL_STATE_LABELS = Object.freeze({
+  agreement: "اتفاق",
+  closing: "إتمام الصفقة",
+  deal_completed: "الصفقة مكتملة",
+  archived: "مؤرشف"
+});
+
+export const MATCH_UNSUITABLE_POLICY = Object.freeze({
+  endsThisMatchOnly: true,
+  keepOffer: true,
+  keepRequest: true,
+  archiveOffer: false,
+  archiveRequest: false,
+  showStartMatchingButton: false,
+  matchingEngine: "automatic"
+});
+
+export const ARCHIVE_POLICY = Object.freeze({
+  archivedAtField: "archivedAt",
+  retentionDaysField: "archiveRetentionDays",
+  defaultRetentionDays: 30,
+  hardDeleteEnabled: false,
+  deleteTransactionRecords: false
+});
+
+/**
+ * Later secure-link payload. Links parties through matchId only.
+ * Does not expose the other party's contact.
+ */
+export function buildSecureLinkIntent({
+  actionId,
+  matchId,
+  party,
+  contactRef = null,
+  stage = "match_found",
+  ttlHours = 72
+} = {}) {
+  const id = text(matchId);
+  const side = party === SECURE_PARTY.OWNER ? SECURE_PARTY.OWNER : SECURE_PARTY.CLIENT;
+  if (!id) return null;
+  return {
+    matchId: id,
+    party: side,
+    contactRef: contactRef || null,
+    stage: text(stage) || "match_found",
+    ttlHours: Number.isFinite(Number(ttlHours)) ? Number(ttlHours) : 72,
+    sessionKind: side === SECURE_PARTY.OWNER
+      ? SECURE_SESSION_KIND.OWNER_MATCH_REVIEW
+      : SECURE_SESSION_KIND.CLIENT_MATCH_REVIEW,
+    actionId: actionId || (side === SECURE_PARTY.OWNER ? EXEC_ACTION.SEND_TO_OWNER : EXEC_ACTION.SEND_TO_CLIENT),
+    exposeCounterpartyContact: false
+  };
+}
 
 const PRIORITY_RANK = Object.freeze({
   action_now: 0,
@@ -110,7 +215,57 @@ function detailsLabel(record = {}) {
 function openOfferAction(record = {}) {
   return {
     id: EXEC_ACTION.OPEN_OFFER,
-    label: detailsLabel(record)
+    label: detailsLabel(record),
+    variant: "text"
+  };
+}
+
+function sendToClientAction(record = {}, actionId = EXEC_ACTION.SEND_TO_CLIENT, label = "إرسال للعميل") {
+  return {
+    id: actionId,
+    label,
+    party: SECURE_PARTY.CLIENT,
+    sessionKind: SECURE_SESSION_KIND.CLIENT_MATCH_REVIEW,
+    secureIntent: buildSecureLinkIntent({
+      actionId,
+      matchId: record.matchId,
+      party: SECURE_PARTY.CLIENT,
+      contactRef: record.clientContactRef || null,
+      stage: "match_found"
+    })
+  };
+}
+
+function sendToOwnerAction(record = {}) {
+  return {
+    id: EXEC_ACTION.SEND_TO_OWNER,
+    label: "إرسال للمالك",
+    party: SECURE_PARTY.OWNER,
+    sessionKind: SECURE_SESSION_KIND.OWNER_MATCH_REVIEW,
+    secureIntent: buildSecureLinkIntent({
+      actionId: EXEC_ACTION.SEND_TO_OWNER,
+      matchId: record.matchId,
+      party: SECURE_PARTY.OWNER,
+      contactRef: record.ownerContactRef || null,
+      stage: "match_found"
+    })
+  };
+}
+
+function actionsForState(stateKey, record = {}) {
+  const secondary = [];
+  let primary = null;
+  if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
+    primary = sendToClientAction(record);
+    secondary.push(sendToOwnerAction(record));
+  }
+  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT) {
+    secondary.push(sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال"));
+  }
+  secondary.push(openOfferAction(record));
+  return {
+    primaryAction: primary,
+    secondaryActions: secondary.slice(0, 2)
   };
 }
 
@@ -142,16 +297,10 @@ export function buildDailyTaskView(record = {}) {
     [DAILY_TASK_STATE.MATCH_UNSUITABLE]: "",
     [DAILY_TASK_STATE.APPOINTMENT_TODAY]: "الخطوة التالية ستظهر هنا"
   };
-  const primaryByState = {
-    [DAILY_TASK_STATE.NEW_MATCH]: { id: EXEC_ACTION.SEND_TO_CLIENT, label: "إرسال للعميل" },
-    [DAILY_TASK_STATE.AWAITING_SEND]: { id: EXEC_ACTION.SEND_TO_CLIENT, label: "إرسال للعميل" }
-  };
-  const secondary = [openOfferAction(record)];
-  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT) {
-    secondary.unshift({ id: EXEC_ACTION.RESEND_TO_CLIENT, label: "إعادة الإرسال" });
-  }
-  const primary = primaryByState[stateKey] || null;
-  const limitedSecondary = secondary.slice(0, 2);
+  const { primaryAction, secondaryActions } = actionsForState(stateKey, record);
+  const sessionKind = primaryAction?.sessionKind
+    || secondaryActions.find((action) => action.sessionKind)?.sessionKind
+    || SECURE_SESSION_KIND.CLIENT_MATCH_REVIEW;
   return {
     id: text(record.id),
     stateKey,
@@ -162,14 +311,16 @@ export function buildDailyTaskView(record = {}) {
     moneyLine: dailyTaskMoneyLine(record),
     statusLabel: DAILY_TASK_STATUS_LABELS[stateKey] || DAILY_TASK_STATUS_LABELS.new_match,
     nextActionLine: record.nextActionLine || nextByState[stateKey] || "",
-    primaryAction: primary,
-    secondaryActions: limitedSecondary,
+    primaryAction,
+    secondaryActions,
     matchId: text(record.matchId),
     offerId: text(record.offerId || record.ownerOfferId),
     requestId: text(record.requestId || record.clientRequestId),
     opportunityId: text(record.opportunityId || record.offerId || record.requestId || record.ownerOfferId || record.clientRequestId),
-    sessionKind: "CLIENT_MATCH_REVIEW",
-    priorityGroup: dailyTaskPriorityGroup(stateKey, badgeKey)
+    sessionKind,
+    priorityGroup: dailyTaskPriorityGroup(stateKey, badgeKey),
+    endsThisMatchOnly: stateKey === DAILY_TASK_STATE.MATCH_UNSUITABLE,
+    exposeCounterpartyContact: false
   };
 }
 
