@@ -6,7 +6,6 @@
 const ACTIVE_CLASS = "cv2-tasks-office-smart";
 const HIDDEN_CLASS = "cv2-office-hidden";
 const MOBILE_MQ = "(max-width: 600px)";
-const TOP_SHOW_Y = 8;
 const DIRECTION_DELTA = 6;
 
 const bound = new WeakMap();
@@ -43,16 +42,18 @@ function measureNaturalHeight(html, card) {
   return height;
 }
 
-function hideCard(html, card) {
+function hideCard(html, card, lock) {
   if (html.classList.contains(HIDDEN_CLASS)) return;
+  if (lock) lock.rewindBudget = card.scrollHeight;
   card.style.maxHeight = `${card.scrollHeight}px`;
   void card.offsetHeight;
   html.classList.add(HIDDEN_CLASS);
   card.style.maxHeight = "0px";
 }
 
-function showCard(html, card) {
+function showCard(html, card, lock) {
   if (!html.classList.contains(HIDDEN_CLASS)) return;
+  if (lock) lock.rewindBudget = 0;
   const height = measureNaturalHeight(html, card);
   card.style.maxHeight = "0px";
   void card.offsetHeight;
@@ -73,6 +74,8 @@ export function setupOfficeSmartHide(rootDocument = document, rootWindow = windo
     : (fn) => fn();
   let lastY = currentScrollY(rootWindow, rootDocument);
   let ticking = false;
+  let lastTouchY = null;
+  const lock = { rewindBudget: 0 };
 
   const syncMaxHeight = () => {
     if (html.classList.contains(HIDDEN_CLASS)) return;
@@ -90,17 +93,30 @@ export function setupOfficeSmartHide(rootDocument = document, rootWindow = windo
         return;
       }
       const y = currentScrollY(rootWindow, rootDocument);
-      if (y <= TOP_SHOW_Y) {
-        showCard(html, card);
-        lastY = y;
+      const delta = y - lastY;
+      lastY = y;
+      if (delta < 0 && lock.rewindBudget > 0) {
+        lock.rewindBudget = Math.max(0, lock.rewindBudget + delta);
         return;
       }
-      const delta = y - lastY;
       if (Math.abs(delta) < DIRECTION_DELTA) return;
-      if (delta > 0) hideCard(html, card);
-      else showCard(html, card);
-      lastY = y;
+      if (delta > 0) hideCard(html, card, lock);
+      else showCard(html, card, lock);
     });
+  };
+
+  const onTouchStart = (event) => {
+    lastTouchY = event.touches?.[0]?.clientY ?? null;
+  };
+
+  const onTouchMove = (event) => {
+    if (!isMobile(rootWindow, mq)) return;
+    const pointY = event.touches?.[0]?.clientY;
+    if (lastTouchY == null || pointY == null) return;
+    const dy = pointY - lastTouchY;
+    lastTouchY = pointY;
+    if (dy < -10) hideCard(html, card, lock);
+    else if (dy > 10) showCard(html, card, lock);
   };
 
   const onResize = () => {
@@ -120,9 +136,11 @@ export function setupOfficeSmartHide(rootDocument = document, rootWindow = windo
   syncMaxHeight();
   rootWindow.addEventListener("scroll", onScroll, { passive: true });
   rootWindow.addEventListener("resize", onResize);
+  rootWindow.addEventListener("touchstart", onTouchStart, { passive: true });
+  rootWindow.addEventListener("touchmove", onTouchMove, { passive: true });
   card.addEventListener("transitionend", onTransitionEnd);
   mq?.addEventListener?.("change", onResize);
-  bound.set(rootDocument, { card, html, onScroll, onResize, onTransitionEnd, mq, rootWindow });
+  bound.set(rootDocument, { card, html, onScroll, onResize, onTouchStart, onTouchMove, onTransitionEnd, mq, rootWindow });
 }
 
 export function teardownOfficeSmartHide(rootDocument = document, rootWindow = window) {
@@ -133,6 +151,8 @@ export function teardownOfficeSmartHide(rootDocument = document, rootWindow = wi
   if (existing) {
     win.removeEventListener("scroll", existing.onScroll);
     win.removeEventListener("resize", existing.onResize);
+    win.removeEventListener("touchstart", existing.onTouchStart);
+    win.removeEventListener("touchmove", existing.onTouchMove);
     existing.card?.removeEventListener("transitionend", existing.onTransitionEnd);
     existing.mq?.removeEventListener?.("change", existing.onResize);
     bound.delete(rootDocument);
