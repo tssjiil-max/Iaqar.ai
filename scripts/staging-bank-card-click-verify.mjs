@@ -42,8 +42,8 @@ async function main() {
   await login(page);
   await openBankTab(page);
 
-  await page.waitForSelector(".bank-row-card[data-opportunity-id]", { timeout: 30000 });
-  const cards = page.locator(".bank-row-card[data-opportunity-id]");
+  await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
+  const cards = page.locator("[data-cv2-inbox-item][data-opportunity-id]");
   const count = await cards.count();
   console.log("bank cards", count);
 

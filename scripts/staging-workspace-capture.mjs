@@ -59,8 +59,8 @@ async function main() {
   await page.locator("#oppTabBank").click({ timeout: 10000 });
   await page.waitForTimeout(2000);
 
-  await page.waitForSelector(".bank-row-card[data-opportunity-id]", { timeout: 30000 });
-  const cards = page.locator(".bank-row-card[data-opportunity-id]");
+  await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
+  const cards = page.locator("[data-cv2-inbox-item][data-opportunity-id]");
   let readyId = "";
   let incompleteId = "";
   for (let i = 0; i < await cards.count(); i++) {

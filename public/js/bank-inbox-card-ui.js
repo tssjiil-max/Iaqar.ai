@@ -1,8 +1,20 @@
 /**
- * Compact inbox card markup for العروض والطلبات. Bank list only — not daily tasks.
+ * العروض والطلبات list item — reuses the approved opportunity data card.
+ * Daily-task details keep their own mount; this file only binds offer/request records.
  */
 
-import { buildBankInboxCardView } from "./bank-inbox-card-domain.js";
+import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
+import { mapOpportunityDetailsV2ViewModel } from "./opportunity-details-v2-domain.js";
+import { completenessLine } from "./v2/opportunity-details/view-model.js";
+import {
+  buildCompleteMissingButtonV2,
+  buildOpportunityDataCardV2
+} from "./v2/opportunity-details/data-card.js";
+import {
+  BANK_INBOX_STATUS,
+  bankInboxStatusKey,
+  bankInboxStatusLabel
+} from "./bank-inbox-card-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
@@ -10,38 +22,39 @@ function esc(text = "") {
   }[character]));
 }
 
+function extraIdFor(opportunityId) {
+  const safe = String(opportunityId || "x").replace(/[^A-Za-z0-9_-]/g, "");
+  return `cv2DataExtra-${safe || "x"}`;
+}
+
+function inboxStatusLine(record, context, vm) {
+  const key = bankInboxStatusKey(record, context);
+  const label = bankInboxStatusLabel(key);
+  if (key === BANK_INBOX_STATUS.NEEDS_COMPLETION) {
+    const missing = completenessLine(vm);
+    if (missing && missing !== label) return `${label} · ${missing}`;
+  }
+  return label;
+}
+
 export function buildBankInboxCardHtml(record = {}, context = {}) {
-  const card = buildBankInboxCardView(record, context);
-  const statusClass = card.isNeedsCompletion
-    ? " is-incomplete"
-    : card.isMatchFound
-      ? " is-match-found"
-      : " is-matching";
-  const missing = card.missingLine
-    ? `<p class="bank-inbox-missing">${esc(card.missingLine)}</p>`
-    : "";
-  const source = card.sourceLabel
-    ? `<p class="bank-inbox-source">${esc(card.sourceLabel)}</p>`
-    : "";
+  const opportunityId = String(record.id || record.opportunityId || "").trim();
+  const readiness = evaluateMatchingReadiness(record);
+  const vm = mapOpportunityDetailsV2ViewModel(opportunityId, record, { readiness });
+  const statusKey = bankInboxStatusKey(record, context);
+  const statusLabel = bankInboxStatusLabel(statusKey);
   return `
     <article
-      class="bank-row bank-row-card bank-inbox-card"
-      data-opportunity-id="${esc(card.opportunityId)}"
-      data-open-id="${esc(card.opportunityId)}"
-      data-inbox-status="${esc(card.statusKey)}"
-      aria-label="${esc(card.ariaLabel)}">
-      <div class="bank-inbox-head">
-        <h3 class="bank-inbox-kind">${esc(card.kindTitle)}</h3>
-        <span class="bank-readiness-badge${statusClass}">${esc(card.statusLabel)}</span>
-      </div>
-      <div class="bank-inbox-body">
-        ${card.propertyLocation ? `<p class="bank-inbox-property">${esc(card.propertyLocation)}</p>` : ""}
-        ${card.moneyLine ? `<p class="bank-inbox-money">${esc(card.moneyLine)}</p>` : ""}
-        ${missing}
-        ${source}
-      </div>
-      <button type="button" class="bank-inbox-details" data-bank-open-details="${esc(card.opportunityId)}">
-        عرض التفاصيل
-      </button>
+      class="cv2-details"
+      data-cv2-inbox-item
+      data-opportunity-id="${esc(opportunityId)}"
+      data-inbox-status="${esc(statusKey)}"
+      aria-label="${esc([vm.propertyPurpose || vm.type, statusLabel].filter(Boolean).join(" — "))}">
+      ${buildOpportunityDataCardV2(vm, {
+        dataCardExpanded: Boolean(context.dataCardExpanded),
+        extraId: extraIdFor(opportunityId),
+        statusLine: inboxStatusLine(record, context, vm)
+      })}
+      ${buildCompleteMissingButtonV2(vm)}
     </article>`;
 }

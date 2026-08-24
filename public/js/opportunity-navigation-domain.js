@@ -66,7 +66,7 @@ export function stripOpportunityDeepLinkHref(locationLike = {}) {
 export function isBankCardActionControl(target) {
   if (!target || typeof target.closest !== "function") return false;
   return Boolean(target.closest(
-    "button, a[href], [data-summary-key], [data-bank-open-tasks], .bank-action"
+    "button, a[href], [data-summary-key], [data-bank-open-tasks], .bank-action, [data-cv2-editor-root]"
   ));
 }
 

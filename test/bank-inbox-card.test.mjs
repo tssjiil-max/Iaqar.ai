@@ -145,10 +145,26 @@ test("recently completed item stays in the same list below incomplete items", ()
   assert.equal(sorted.some((row) => row.id === "10"), true);
 });
 
-test("compact html has عرض التفاصيل and no English UI words", () => {
+test("inbox html reuses the opportunity data card instead of a compact duplicate", () => {
   const html = buildBankInboxCardHtml(BANK_INBOX_DEMO_FIXTURES[2]);
-  assert.match(html, /عرض التفاصيل/);
+  assert.match(html, /class="cv2-card is-collapsed"/);
+  assert.match(html, /data-cv2-row="propertyPurpose"/);
+  assert.match(html, /data-cv2-row="contact"/);
   assert.match(html, /يحتاج استكمال/);
-  assert.equal(/Matched|Pending|Complete|Import|Source|Action|Status/.test(html), false);
+  assert.match(html, /أكمل البيانات الناقصة/);
+  assert.match(html, /عرض التفاصيل/);
+  assert.equal(html.includes("bank-inbox-kind"), false);
+  assert.equal(html.includes("data-bank-open-details"), false);
   assert.equal(html.includes("مكتمل"), false);
+});
+
+test("matching and match-found statuses appear on the same data card", () => {
+  const matching = buildBankInboxCardHtml(BANK_INBOX_DEMO_FIXTURES[0]);
+  const found = buildBankInboxCardHtml(BANK_INBOX_DEMO_FIXTURES[8]);
+  assert.match(matching, /قيد المطابقة/);
+  assert.match(matching, /class="cv2-card/);
+  assert.equal(matching.includes("أكمل البيانات الناقصة"), false);
+  assert.match(found, /تم العثور على مطابقة/);
+  assert.match(found, /class="cv2-card/);
+  assert.equal(found.includes("تمت المطابقة"), false);
 });

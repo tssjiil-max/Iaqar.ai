@@ -85,6 +85,9 @@ import {
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankInboxCardHtml } from "./bank-inbox-card-ui.js";
 import { sortBankInboxRecords } from "./bank-inbox-card-domain.js";
+import { firstMissingEditor } from "./v2/opportunity-details/view-model.js";
+import { buildFieldEditorV2 } from "./v2/opportunity-details/editor.js";
+import { saveDeviceContact } from "./v2/opportunity-details/save-device-contact.js";
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
@@ -142,7 +145,6 @@ import {
 import { openOpportunityReview } from "./opportunity-review.js";
 import {
   buildOpportunityDeepLinkHash,
-  isBankCardActionControl,
   normalizeOpportunityDocumentId,
   parseOpportunityIdFromLocation,
   stripOpportunityDeepLinkHref
@@ -216,6 +218,7 @@ const state = {
   pendingQueryRefresh: false,
   resultTotal: 0,
   scanExhausted: false,
+  inboxExpandedIds: new Set(),
   detailRenderContext: null,
   detailOverlayOpen: false,
   detailOpenToken: 0
@@ -475,7 +478,8 @@ function bankRowHtml(row) {
   return buildBankInboxCardHtml({ ...record, id: row.id }, {
     matchCount: record.activeMatchCount ?? record.matchCount,
     bestMatchScore: record.bestMatchScore,
-    bestMatchComputed: record.bestMatchComputed
+    bestMatchComputed: record.bestMatchComputed,
+    dataCardExpanded: state.inboxExpandedIds.has(row.id)
   });
 }
 
@@ -3523,44 +3527,151 @@ async function loadSharedWithUs() {
   }
 }
 
+function inboxOfficeName() {
+  const office = officeRuntime() || {};
+  return String(office.officeName || office.displayName || office.name || "").trim();
+}
+
+function inboxViewModel(id, record) {
+  return mapOpportunityDetailsV2ViewModel(id, record, {
+    readiness: evaluateMatchingReadiness(record)
+  });
+}
+
+function closeInboxEditor(list = $("opportunityBankList")) {
+  list?.querySelector("[data-cv2-editor-root]")?.remove();
+}
+
+function toggleInboxDataCard(toggle) {
+  const card = toggle.closest("[data-cv2-data-card]");
+  const article = toggle.closest("[data-cv2-inbox-item][data-opportunity-id]");
+  if (!card || !toggle) return;
+  const expanded = card.classList.contains("is-collapsed");
+  card.classList.toggle("is-expanded", expanded);
+  card.classList.toggle("is-collapsed", !expanded);
+  toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  const label = toggle.querySelector("[data-cv2-toggle-label]");
+  if (label) label.textContent = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  const id = resolveBankRowOpportunityId(article);
+  if (!id) return;
+  if (expanded) state.inboxExpandedIds.add(id);
+  else state.inboxExpandedIds.delete(id);
+}
+
+function showInboxEditorError(root, message) {
+  const node = root?.querySelector("#cv2EditorError");
+  if (!node) return;
+  node.hidden = false;
+  node.textContent = message;
+}
+
+async function runInboxDeviceContactSave(article, fromEditor) {
+  const id = resolveBankRowOpportunityId(article);
+  const record = state.records.get(id);
+  if (!record) return;
+  const vm = inboxViewModel(id, record);
+  const typed = fromEditor
+    ? article.querySelector('#cv2EditorForm input[name="contactNumber"]')?.value
+    : "";
+  const phone = String(typed || vm.contactNumber || "").trim();
+  const status = article.querySelector("#cv2ContactSaveStatus");
+  const result = await saveDeviceContact({
+    phone,
+    advertiserName: vm.advertiserName,
+    officeName: inboxOfficeName()
+  }, {
+    contacts: window.navigator?.contacts
+  });
+  if (fromEditor && status) {
+    status.hidden = !result.message;
+    status.textContent = result.message || "";
+    status.classList.toggle("is-ok", Boolean(result.ok));
+    status.classList.toggle("is-fail", Boolean(result.message) && !result.ok);
+    return;
+  }
+  window.alert(result.message);
+}
+
+async function submitInboxEditor(article, editorKey, formData) {
+  const id = resolveBankRowOpportunityId(article);
+  const existing = state.records.get(id);
+  const btn = article.querySelector("#cv2EditorSave");
+  if (!existing) return;
+  if (btn) btn.disabled = true;
+  try {
+    const result = await saveV2FieldWithAdapter(existing, editorKey, {
+      ...formData,
+      actorUid: authUser()?.uid || ""
+    }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
+    if (!result?.ok) {
+      showInboxEditorError(article, result?.error || "تعذر حفظ الحقل");
+      return;
+    }
+    if (result.reloaded) state.records.set(id, { ...result.reloaded, id });
+    closeInboxEditor();
+    renderList();
+  } catch (error) {
+    showInboxEditorError(article, error?.message || "تعذر حفظ الحقل");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function openInboxEditor(article, editorKey) {
+  const id = resolveBankRowOpportunityId(article);
+  const record = state.records.get(id);
+  if (!article || !editorKey || !record) return;
+  closeInboxEditor();
+  article.insertAdjacentHTML("beforeend", buildFieldEditorV2(editorKey, inboxViewModel(id, record)));
+  const form = article.querySelector("#cv2EditorForm");
+  form?.querySelector("input")?.focus();
+  article.querySelector("#cv2EditorCancel")?.addEventListener("click", () => closeInboxEditor());
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitInboxEditor(article, editorKey, Object.fromEntries(new FormData(form).entries()));
+  });
+  article.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void runInboxDeviceContactSave(article, true);
+  });
+}
+
 function bindListClicks() {
   const list = $("opportunityBankList");
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    const detailsBtn = event.target.closest("[data-bank-open-details]");
-    if (detailsBtn) {
-      const row = detailsBtn.closest(".bank-row-card[data-opportunity-id]");
-      const openId = detailsBtn.getAttribute("data-bank-open-details")
-        || (row ? resolveBankRowOpportunityId(row) : "");
-      if (!openId) return;
+    const toggle = event.target.closest("[data-cv2-toggle-details]");
+    if (toggle && list.contains(toggle)) {
       event.preventDefault();
-      void openBankDetailFromList(openId);
+      toggleInboxDataCard(toggle);
       return;
     }
-    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
-    if (!row) {
-      if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action")) return;
-      return;
-    }
-    if (isBankCardActionControl(event.target)) {
+    const contactBtn = event.target.closest("[data-cv2-save-device-contact]");
+    if (contactBtn && list.contains(contactBtn) && !event.target.closest("[data-cv2-editor-root]")) {
+      event.preventDefault();
       event.stopPropagation();
+      const article = contactBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      if (article) void runInboxDeviceContactSave(article, false);
       return;
     }
-    const openId = resolveBankRowOpportunityId(row);
-    if (!openId) return;
-    event.preventDefault();
-    void openBankDetailFromList(openId);
-  });
-  list.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
-    if (!row) return;
-    if (isBankCardActionControl(event.target)) return;
-    event.preventDefault();
-    const openId = resolveBankRowOpportunityId(row);
-    if (!openId) return;
-    void openBankDetailFromList(openId);
+    const complete = event.target.closest("[data-cv2-complete]");
+    if (complete && list.contains(complete)) {
+      event.preventDefault();
+      const article = complete.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      const id = resolveBankRowOpportunityId(article);
+      const record = state.records.get(id);
+      if (!article || !record) return;
+      openInboxEditor(article, firstMissingEditor(inboxViewModel(id, record)));
+      return;
+    }
+    const editorBtn = event.target.closest("[data-cv2-editor]");
+    if (editorBtn && list.contains(editorBtn) && !event.target.closest("[data-cv2-editor-root]")) {
+      event.preventDefault();
+      const article = editorBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "");
+    }
   });
 }
 
