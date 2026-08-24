@@ -14,13 +14,13 @@ function readRepo(...parts) {
 
 test("bank list card header has badge title and status aligned", () => {
   const html = readRepo("public", "js", "opportunity-bank.js");
-  const listing = readRepo("public", "js", "opportunity-listing-card-ui.js");
-  assert.ok(html.includes("buildOpportunityListingCardInnerHtml"));
-  assert.ok(listing.includes("bank-row-header"));
-  assert.ok(listing.includes("bank-row-title"));
-  assert.ok(listing.includes("bank-readiness-badge"));
+  const inbox = readRepo("public", "js", "bank-inbox-card-ui.js");
+  assert.ok(html.includes("buildBankInboxCardHtml"));
+  assert.ok(inbox.includes("bank-inbox-head"));
+  assert.ok(inbox.includes("bank-inbox-kind"));
+  assert.ok(inbox.includes("bank-readiness-badge"));
   const shell = readRepo("public", "index.html");
-  assert.ok(shell.includes(".bank-row-header"));
+  assert.ok(shell.includes(".bank-inbox-head"));
   assert.ok(shell.includes("align-items:center"));
 });
 
@@ -115,12 +115,12 @@ test("match score hidden unless computed", () => {
   assert.equal(shown.bestMatchScoreText, "82%");
 });
 
-test("bank row is fully clickable without inner detail button", () => {
+test("bank row opens details from عرض التفاصيل", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("role=\"button\""));
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
   assert.ok(bank.includes("bank-row-card"));
   assert.ok(bank.includes("openBankDetailFromList"));
-  assert.equal(bank.includes("bank-row-main bank-row-clickable"), false);
+  assert.ok(ui.includes("عرض التفاصيل"));
   assert.ok(bank.includes("keydown"));
 });
 
@@ -135,8 +135,8 @@ test("DOM bank card keyboard opens detail with correct id", () => {
   assert.equal(row.getAttribute("role"), "button");
 });
 
-test("bank card HTML has no detail or completion buttons", () => {
-  const bank = readRepo("public", "js", "opportunity-bank.js");
-  const fn = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
-  assert.equal(/تكملة|عرض التفاصيل|قراءة المزيد/.test(fn), false);
+test("bank card HTML uses compact details control without a complete button", () => {
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
+  assert.match(ui, /عرض التفاصيل/);
+  assert.equal(ui.includes("data-complete-id"), false);
 });

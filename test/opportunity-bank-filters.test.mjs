@@ -7,12 +7,12 @@ import {
 } from "../public/js/opportunity-bank-filters-domain.js";
 import { MATCHING_READINESS } from "../public/js/opportunity-readiness-domain.js";
 
-test("emptyBankFilters defaults to ready-only bank view", () => {
-  assert.equal(emptyBankFilters().summaryKey, "ready");
+test("emptyBankFilters defaults to all active items", () => {
+  assert.equal(emptyBankFilters().summaryKey, "total");
   assert.equal(hasActiveBankQuery(emptyBankFilters()), false);
 });
 
-test("matchesBankQueryFilters hides incomplete rows in default ready view", () => {
+test("matchesBankQueryFilters shows incomplete rows in default total view", () => {
   const filters = emptyBankFilters();
   const incomplete = { propertyType: "شقة", lifecycleStatus: "ACTIVE" };
   const ready = {
@@ -25,11 +25,11 @@ test("matchesBankQueryFilters hides incomplete rows in default ready view", () =
     contactPhone: "+966512345678",
     lifecycleStatus: "ACTIVE"
   };
-  assert.equal(matchesBankQueryFilters(incomplete, filters), false);
+  assert.equal(matchesBankQueryFilters(incomplete, filters), true);
   assert.equal(matchesBankQueryFilters(ready, filters), true);
 });
 
-test("search scans incomplete rows even when default summary is ready", () => {
+test("search scans incomplete rows in the unified bank list", () => {
   const filters = { ...emptyBankFilters(), search: "الرانوناء" };
   const incomplete = {
     propertyType: "شقة",

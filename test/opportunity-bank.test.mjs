@@ -138,7 +138,7 @@ test("the bank reads only the current office's own opportunities", () => {
 
 test("the bank shows a real empty state and a real error state, not fabricated rows", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("لا توجد فرص محفوظة بعد"), "an empty state message is required");
+  assert.ok(bank.includes("لا توجد عروض أو طلبات بعد"), "an empty state message is required");
   assert.ok(bank.includes("تعذر تحميل العروض والطلبات"), "an error state message is required");
   assert.equal(/const demo|sampleRows|fakeRows/.test(bank), false, "no seeded rows may exist");
 });
@@ -162,14 +162,12 @@ test("the bank list markup escapes every projected value", () => {
   }
 });
 
-test("bank default state shows ready-only summary and tasks banner hook", () => {
+test("bank default state shows all active items without sending brokers to daily tasks", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("hasActiveBankQuery"));
-  assert.ok(bank.includes("bank-summary-chip"));
-  assert.ok(bank.includes("data-bank-open-tasks"));
-  assert.ok(bank.includes("navigateToTasksIncomplete"));
-  assert.equal(bank.includes('chip("total"'), false);
-  assert.equal(bank.includes('chip("needs"'), false);
+  assert.equal(bank.includes("data-bank-open-tasks"), false);
+  assert.equal(bank.includes("bank-summary-chip"), false);
+  assert.ok(bank.includes("sortBankInboxRecords"));
   assert.ok(bank.includes("loadBankPage"));
   assert.equal(bank.includes("bankFilterCity"), false);
   assert.equal(bank.includes("bankFilterClearBtn"), false);

@@ -83,8 +83,8 @@ import {
   telegramShareUrl
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
-import { buildBankListCardView } from "./bank-list-card-domain.js";
-import { buildOpportunityListingCardInnerHtml } from "./opportunity-listing-card-ui.js";
+import { buildBankInboxCardHtml } from "./bank-inbox-card-ui.js";
+import { sortBankInboxRecords } from "./bank-inbox-card-domain.js";
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
@@ -472,42 +472,11 @@ function isVisibleForFilter(record) {
 
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
-  const card = buildBankListCardView({ ...record, id: row.id });
-  const followupClass = card.nextActionOverdue ? " is-overdue" : "";
-  const followup = card.nextActionLabel
-    ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
-    : "";
-  const matchLine = card.bestMatchScoreText
-    ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>`
-    : "";
-  const sourceLine = card.sourceShort
-    ? `<p class="bank-row-source">${escapeHtml(card.sourceShort)}</p>`
-    : "";
-  const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
-    ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
-    : "";
-  const footerHtml = `
-    <div class="bank-row-footer">
-      ${contactHtml}
-      ${followup}
-      ${matchLine}
-      ${sourceLine}
-    </div>`;
-  const incompleteHint = !card.isReadyForMatching
-    ? `<p class="bank-row-tasks-hint">استكمال البيانات من المهام اليومية</p>`
-    : "";
-  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id }, { footerHtml });
-  return `
-    <article
-      class="bank-row bank-row-card"
-      role="button"
-      tabindex="0"
-      data-opportunity-id="${escapeHtml(String(row.id || "").trim())}"
-      data-open-id="${escapeHtml(String(row.id || "").trim())}"
-      aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
-      ${inner}
-      ${incompleteHint}
-    </article>`;
+  return buildBankInboxCardHtml({ ...record, id: row.id }, {
+    matchCount: record.activeMatchCount ?? record.matchCount,
+    bestMatchScore: record.bestMatchScore,
+    bestMatchComputed: record.bestMatchComputed
+  });
 }
 
 function isOwnerRecord(record = {}) {
@@ -761,27 +730,14 @@ async function loadWorkspaceBundle(opportunityId) {
 }
 
 function renderSummaryHtml(summary = emptyBankSummary()) {
-  const activeKey = state.queryFilters.summaryKey || "ready";
-  const chip = (key, label, count) => {
-    const active = activeKey === key ? " is-active" : "";
-    return `<button type="button" class="bank-summary-chip${active}" data-summary-key="${key}">
-      <span>${escapeHtml(label)}</span><strong>${escapeHtml(count)}</strong>
-    </button>`;
-  };
   const needsCount = Number(summary.needsCompletion || 0);
-  const tasksBanner = needsCount > 0 && state.filter !== "archived"
-    ? `<div class="bank-tasks-banner">
-        <p>${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية</p>
-        <button type="button" class="bank-tasks-banner-btn" data-bank-open-tasks>اذهب للمهام</button>
-      </div>`
-    : "";
+  const readyCount = Number(summary.readyForMatching || 0);
+  const countLine = state.filter === "archived"
+    ? `${escapeHtml(String(summary.archived || 0))} مؤرشفة`
+    : `${escapeHtml(String(needsCount))} يحتاج استكمال — ${escapeHtml(String(readyCount))} قيد المطابقة`;
   return `
     <div class="bank-summary-card" id="bankSummaryCard">
-      ${tasksBanner}
-      <div class="bank-summary-chips">
-        ${chip("ready", "جاهزة للمطابقة", summary.readyForMatching)}
-        ${chip("archived", "مؤرشفة", summary.archived)}
-      </div>
+      <p class="bank-summary-line">${countLine}</p>
     </div>`;
 }
 
@@ -792,21 +748,19 @@ function renderList() {
 
   const summary = state.summary || emptyBankSummary();
 
-  const rows = [...state.records.entries()]
+  const records = [...state.records.entries()]
     .filter(([, record]) => passesListFilters(record))
-    .map(([id, record]) => ({
-      ...bankListItem(id, record),
-      matchingReadiness: evaluateMatchingReadiness(record).matchingReadiness
-    }));
+    .map(([id, record]) => ({ ...record, id }));
+  const rows = sortBankInboxRecords(records).map((record) => ({
+    ...bankListItem(record.id, record),
+    matchingReadiness: evaluateMatchingReadiness(record).matchingReadiness
+  }));
 
   let bodyHtml = "";
   if (!rows.length && !hasActiveBankQuery(state.queryFilters)) {
-    const needsCount = Number(summary.needsCompletion || 0);
-    if (state.filter !== "archived" && needsCount > 0) {
-      bodyHtml = `<p class="bank-query-hint">لا توجد فرص جاهزة للمطابقة حاليًا. ${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية.</p>`;
-    } else {
-      bodyHtml = `<p class="bank-query-hint">لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.</p>`;
-    }
+    bodyHtml = state.filter === "archived"
+      ? `<p class="bank-query-hint">لا توجد عناصر مؤرشفة.</p>`
+      : `<p class="bank-query-hint">لا توجد عروض أو طلبات بعد. أضفها من الحقل أعلاه.</p>`;
     if (loadMoreBtn) loadMoreBtn.hidden = true;
   } else if (!rows.length) {
     bodyHtml = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث.</p>`;
@@ -832,26 +786,8 @@ function renderList() {
   bindSummaryChips(list);
 }
 
-function bindSummaryChips(root) {
-  root?.querySelector("[data-bank-open-tasks]")?.addEventListener("click", () => {
-    navigateToTasksIncomplete();
-  });
-  root?.querySelectorAll("[data-summary-key]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.getAttribute("data-summary-key") || "ready";
-      if (key === "archived") {
-        state.filter = "archived";
-        state.queryFilters.summaryKey = "archived";
-        syncFilterButtons();
-      } else {
-        state.filter = "active";
-        state.queryFilters.summaryKey = "ready";
-        syncFilterButtons();
-      }
-      renderList();
-      if (hasActiveBankQuery(state.queryFilters)) scheduleBankQueryRefresh();
-    });
-  });
+function bindSummaryChips() {
+  return;
 }
 
 function navigateToTasksIncomplete(opportunityId = "") {
@@ -1442,7 +1378,7 @@ function wireIncompleteDetailHandlers(id, record) {
         renderList();
         return;
       }
-      toast(savedReadiness.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
+      toast(savedReadiness.isReadyForMatching ? "تم استكمال البيانات" : "تم حفظ الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {
@@ -2279,7 +2215,7 @@ function rowsCountLabel() {
     if (state.filter === "archived") {
       return `${summary.archived} فرصة مؤرشفة`;
     }
-    return `جاهزة ${summary.readyForMatching}${summary.needsCompletion ? ` — ${summary.needsCompletion} للاستكمال في المهام` : ""}`;
+    return `${summary.needsCompletion} يحتاج استكمال — ${summary.readyForMatching} قيد المطابقة`;
   }
   const loadedCount = [...state.records.values()].filter(passesListFilters).length;
   const filteredTotal = state.resultTotal || loadedCount;
@@ -3592,9 +3528,19 @@ function bindListClicks() {
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
+    const detailsBtn = event.target.closest("[data-bank-open-details]");
+    if (detailsBtn) {
+      const row = detailsBtn.closest(".bank-row-card[data-opportunity-id]");
+      const openId = detailsBtn.getAttribute("data-bank-open-details")
+        || (row ? resolveBankRowOpportunityId(row) : "");
+      if (!openId) return;
+      event.preventDefault();
+      void openBankDetailFromList(openId);
+      return;
+    }
     const row = event.target.closest(".bank-row-card[data-opportunity-id]");
     if (!row) {
-      if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
+      if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action")) return;
       return;
     }
     if (isBankCardActionControl(event.target)) {
@@ -4122,7 +4068,7 @@ function boot() {
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
     state.filter = "active";
-    state.queryFilters.summaryKey = "ready";
+    state.queryFilters.summaryKey = "total";
     syncFilterButtons();
     scheduleBankQueryRefresh();
   });
@@ -4137,7 +4083,7 @@ function boot() {
     if (state.queryFilters.search.trim()) {
       scheduleBankQueryRefresh();
     } else {
-      state.queryFilters.summaryKey = state.filter === "archived" ? "archived" : "ready";
+      state.queryFilters.summaryKey = state.filter === "archived" ? "archived" : "total";
       scheduleBankQueryRefresh();
     }
   });

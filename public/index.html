@@ -593,7 +593,7 @@
       box-sizing:border-box;
       border:1px solid #d4e3de;
       border-radius:12px;
-      padding:0 44px 0 40px;
+      padding:0 72px 0 40px;
       background:#fff;
       color:var(--text);
       font-size:14px;
@@ -618,6 +618,40 @@
       display:grid;
       place-items:center;
       cursor:pointer;
+    }
+    .add-opportunity-inline-mic {
+      position:absolute;
+      right:34px;
+      top:50%;
+      transform:translateY(-50%);
+      width:26px;
+      height:26px;
+      padding:0;
+      border:0;
+      border-radius:8px;
+      background:var(--green-pale);
+      color:var(--green);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+    }
+    .add-opportunity-inline-mic .icon {
+      width:16px;
+      height:16px;
+      fill:none;
+      stroke:currentColor;
+      stroke-width:1.7;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+    }
+    .add-opportunity-composer-voice {
+      margin-top:8px;
+    }
+    .add-opportunity-composer-voice .voice-intake-start {
+      min-height:32px;
+      height:32px;
+      border-radius:10px;
+      font-size:13px;
     }
     .add-opportunity-input-clear {
       position:absolute;
@@ -5107,7 +5141,80 @@
     white-space:nowrap;
   }
   .bank-readiness-badge.is-ready { background:#ecf8f2; color:var(--green); }
+  .bank-readiness-badge.is-matching { background:#ecf8f2; color:var(--green); }
+  .bank-readiness-badge.is-match-found { background:#d8f0e4; color:var(--green); font-weight:800; }
   .bank-readiness-badge.is-incomplete { background:#fff4e8; color:#9a5b12; }
+  .bank-inbox-card {
+    cursor:default;
+  }
+  .bank-inbox-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:8px 10px;
+    background:var(--green-soft);
+  }
+  .bank-inbox-kind {
+    margin:0;
+    font-size:13px;
+    font-weight:800;
+    color:var(--green);
+    line-height:1.3;
+  }
+  .bank-inbox-body {
+    padding:8px 10px 4px;
+    display:grid;
+    gap:2px;
+  }
+  .bank-inbox-property,
+  .bank-inbox-money,
+  .bank-inbox-missing,
+  .bank-inbox-source {
+    margin:0;
+    line-height:1.3;
+  }
+  .bank-inbox-property {
+    font-size:13px;
+    font-weight:700;
+    color:var(--text);
+  }
+  .bank-inbox-money {
+    font-size:12px;
+    color:var(--text);
+  }
+  .bank-inbox-missing {
+    font-size:12px;
+    color:#9a5b12;
+  }
+  .bank-inbox-source {
+    font-size:11px;
+    color:var(--muted);
+  }
+  .bank-inbox-details {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:36px;
+    margin:0;
+    padding:4px 10px;
+    border:0;
+    border-top:1px solid var(--line);
+    border-radius:0;
+    background:#fff;
+    color:var(--green);
+    font:inherit;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .bank-summary-line {
+    margin:0;
+    font-size:12px;
+    font-weight:700;
+    color:var(--muted);
+  }
   .bank-readiness-line { margin:0 0 10px; font-size:13px; }
   .bank-summary-card {
     margin: 8px 0 12px;
@@ -5669,10 +5776,10 @@
         aria-labelledby="mainTabOpportunities" hidden>
         <div class="tab-panel-intro">
           <h2 class="tab-panel-title">العروض والطلبات</h2>
-          <p class="tab-panel-help">عروض الملاك وطلبات العملاء الجاهزة</p>
+          <p class="tab-panel-help">كل العروض والطلبات من جميع المصادر في قائمة واحدة</p>
         </div>
 
-        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات">
+        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات" hidden>
           <button type="button" class="sub-tab is-active" id="oppTabBank" role="tab"
             aria-selected="true" aria-controls="oppPanelBank">القائمة</button>
           <button type="button" class="sub-tab" id="oppTabAdd" role="tab"
@@ -5680,36 +5787,34 @@
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
-          <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd" hidden>
+          <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd" hidden></div>
+
+          <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank">
             <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
               <div class="section-title-bar">
-                <h2 id="addOpportunityTitle">إضافة فرصة</h2>
+                <h2 id="addOpportunityTitle">إضافة عرض أو طلب</h2>
               </div>
-              <p class="workspace-subtitle">أضف إعلانًا أو رابطًا أو صورة، وراجع البيانات قبل الحفظ.</p>
-
-              <div class="add-opportunity-options" id="addOpportunityOptions">
-                <button type="button" class="add-opportunity-option" id="importAdvertOption"
-                  aria-label="استيراد إعلان">
-                  <h3>استيراد إعلان</h3>
-                  <p>الصق رابط إعلان من عقار أو حراج أو أي موقع، وسيتم تحليل بياناته
-                    وترتيبها لإضافتها فعليًا إلى العروض والطلبات.</p>
-                </button>
-              </div>
+              <p class="workspace-subtitle">الصق نصًا أو رابطًا أو محتوى واتساب، أو أرفق صورة، أو سجّل صوتًا.</p>
 
               <form id="addOpportunityForm" autocomplete="off">
                 <div class="add-opportunity-row">
                   <div class="add-opportunity-input-wrap">
                     <input id="addOpportunityInput" type="text" maxlength="4000"
-                      placeholder="الصق رابطًا أو نص الفرصة هنا" aria-label="نص أو رابط الفرصة">
+                      placeholder="الصق رابطًا أو نصًا أو محتوى واتساب" aria-label="نص أو رابط العرض أو الطلب">
                     <button type="button" class="add-opportunity-inline-clip" id="addOpportunityPaperclip"
-                      aria-label="إرفاق ملف">
+                      aria-label="إرفاق صورة أو ملف">
                       <svg class="icon"><use href="#i-paperclip"></use></svg>
+                    </button>
+                    <button type="button" class="add-opportunity-inline-mic" id="addOpportunityMic"
+                      aria-label="تسجيل صوتي">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></svg>
                     </button>
                     <button type="button" class="add-opportunity-input-clear" id="addOpportunityInputClear"
                       hidden aria-label="مسح النص أو الرابط أو المرفق">×</button>
                   </div>
-                  <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>تنفيذ</button>
+                  <button type="button" class="add-opportunity-execute" id="addOpportunitySubmit" disabled>إرسال</button>
                 </div>
+                <div id="addOpportunityComposerVoice" class="add-opportunity-composer-voice" hidden></div>
                 <p class="add-opportunity-attachment-hint" id="addOpportunityAttachmentHint" hidden></p>
                 <input id="addOpportunityFile" type="file" hidden>
                 <p class="add-opportunity-status" id="addOpportunityStatus" data-state="idle" aria-live="polite"></p>
@@ -5717,16 +5822,14 @@
               </form>
 
               <form class="add-opportunity-missing" id="addOpportunityMissing" hidden></form>
+              <button type="button" id="importAdvertOption" hidden>استيراد إعلان</button>
             </section>
-          </div>
 
-          <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank">
             <section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1"
               aria-labelledby="opportunityBankTitle">
               <div class="section-title-bar">
                 <h2 id="opportunityBankTitle">العروض والطلبات</h2>
               </div>
-              <p class="tab-panel-help">عروض الملاك وطلبات العملاء الجاهزة</p>
 
               <div class="bank-toolbar">
                 <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>

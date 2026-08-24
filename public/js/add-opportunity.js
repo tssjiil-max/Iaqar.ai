@@ -1252,6 +1252,32 @@ function boot() {
       onManualContinue: () => setState("idle")
     });
   }
+
+  const composerVoice = $("addOpportunityComposerVoice");
+  if (composerVoice && composerVoice.dataset.bound !== "1") {
+    composerVoice.dataset.bound = "1";
+    mountVoiceIntakePanel(composerVoice, {
+      context: "office",
+      startLabel: "تسجيل صوتي",
+      recordingLabel: "جاري الاستماع…",
+      analyzingLabel: "جارٍ استخراج البيانات…",
+      completedLabel: "تم استخراج البيانات — راجعها قبل الحفظ",
+      failureLabel: "تعذر فهم التسجيل — حاول مرة أخرى",
+      getOfficeId: () => currentOffice()?.officeId || "",
+      workerBase: workerBase(),
+      getAuthToken: async () => {
+        const user = currentUser();
+        return user?.getIdToken ? user.getIdToken() : "";
+      },
+      onStructured: (structured) => void startVoiceIntake(structured),
+      onManualContinue: () => setState("idle")
+    });
+  }
+  $("addOpportunityMic")?.addEventListener("click", () => {
+    const panel = $("addOpportunityComposerVoice");
+    if (panel) panel.hidden = false;
+    panel?.querySelector("[data-voice-start]")?.click();
+  });
 }
 
 if (document.readyState === "loading") {

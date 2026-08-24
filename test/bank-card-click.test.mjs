@@ -31,8 +31,10 @@ test("bank card click handler ignores nested buttons and links inside the row", 
 
 test("bank cards bind the Firestore row id only", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
   const rowHtml = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
-  assert.ok(rowHtml.includes("data-opportunity-id=\"${escapeHtml(String(row.id || \"\").trim())}\""));
+  assert.ok(rowHtml.includes("buildBankInboxCardHtml({ ...record, id: row.id }"));
+  assert.ok(ui.includes("data-opportunity-id=\"${esc(card.opportunityId)}\""));
   assert.equal(rowHtml.includes("card.opportunityId || row.id"), false);
 });
 
@@ -107,18 +109,16 @@ test("incomplete detail focuses first missing field in unified form", () => {
 test("ready and incomplete cards share one detail opener without bank complete button", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("openBankDetailFromList"));
-  assert.ok(bank.includes("navigateToTasksIncomplete"));
+  assert.ok(bank.includes("buildBankInboxCardHtml"));
   const bankRow = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
   assert.equal(/data-complete-id|bank-row-complete/.test(bankRow), false);
-  assert.ok(bankRow.includes("bank-row-tasks-hint"));
-  assert.ok(bankRow.includes("data-open-id"));
+  assert.equal(bankRow.includes("bank-row-tasks-hint"), false);
 });
 
 test("bank card keyboard and aria label include readiness status", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("role=\"button\""));
+  assert.ok(bank.includes("data-bank-open-details"));
   assert.ok(bank.includes("keydown"));
-  assert.ok(bank.includes("card.headerStatus"));
 });
 
 test("wrong office guard blocks opening foreign opportunity", () => {

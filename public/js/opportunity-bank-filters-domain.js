@@ -46,7 +46,7 @@ export function resolveRecordMatchingReadiness(record = {}) {
 export function matchesBankQueryFilters(record = {}, filters = {}) {
   const summaryKey = safeText(filters.summaryKey, 40);
   const search = normalizeSearchNeedle(safeText(filters.search, 120));
-  // Default bank view is ready-only; free-text search scans all active rows.
+  // Default bank view is all active items. Optional summaryKey "ready" still hides incomplete.
   if (summaryKey && !search) {
     const readiness = resolveRecordMatchingReadiness(record);
     const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
@@ -133,7 +133,7 @@ export function emptyBankFilters() {
     purpose: "",
     propertyType: "",
     matchingReadiness: "",
-    summaryKey: "ready"
+    summaryKey: "total"
   };
 }
 
@@ -143,7 +143,7 @@ export function hasActiveBankQuery(filters = {}) {
   const summaryKey = safeText(normalized.summaryKey, 40);
   return Boolean(
     safeText(normalized.search, 120)
-    || (summaryKey && summaryKey !== "ready")
+    || (summaryKey && summaryKey !== "ready" && summaryKey !== "total")
     || safeText(normalized.city, 80)
     || safeText(normalized.district, 80)
     || safeText(normalized.purpose, 40)
