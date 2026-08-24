@@ -39,17 +39,19 @@ test("switching tabs shows one content area at a time", async () => {
     assert.equal(document.getElementById("oppPanelAdd").hasAttribute("hidden"), true);
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("addOpportunity").hasAttribute("hidden"), false);
-    assert.equal(document.getElementById("oppTabAdd").textContent.trim(), "إغلاق الإضافة");
+    assert.equal(document.getElementById("oppTabAdd").textContent.trim(), "استيراد فرصة");
     assert.equal(document.getElementById("oppTabBank").textContent.trim(), "القائمة");
+    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), true);
 
     document.getElementById("oppTabAdd").click();
     assert.equal(document.getElementById("addOpportunity").hasAttribute("hidden"), true);
-    assert.equal(document.getElementById("oppTabAdd").textContent.trim(), "+ إضافة عرض أو طلب");
+    assert.equal(document.getElementById("oppTabAdd").textContent.trim(), "استيراد فرصة");
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
 
     document.getElementById("mainTabOperations").click();
     assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), false);
   } finally {
     context.close();
   }
@@ -61,8 +63,9 @@ test("opportunities main nav and bank sub-tabs use approved labels", () => {
   assert.ok(shellSource.includes('<h2 class="tab-panel-title">العروض والطلبات</h2>'));
   assert.ok(shellSource.includes("كل العروض والطلبات من جميع المصادر في قائمة واحدة"));
   assert.match(shellSource, /id="oppTabBank"[\s\S]*?>القائمة<\/button>/);
-  assert.match(shellSource, /id="oppTabAdd"[\s\S]*?>\+ إضافة عرض أو طلب<\/button>/);
+  assert.match(shellSource, /id="oppTabAdd"[\s\S]*?>استيراد فرصة<\/button>/);
   assert.equal(shellSource.includes(">+ إضافة فرصة</button>"), false);
+  assert.equal(shellSource.includes(">+ إضافة عرض أو طلب</button>"), false);
   assert.match(shellSource, /id="addOpportunityVoicePanel"/);
   assert.ok(shellSource.includes('class="sub-tab is-active" id="oppTabBank"'));
   assert.ok(shellSource.includes('id="oppPanelBank" role="tabpanel"'));
@@ -86,8 +89,9 @@ test("offers add composer starts closed and does not duplicate the tab label", a
     const addBtn = document.getElementById("oppTabAdd");
     assert.equal(composer.hasAttribute("hidden"), true);
     assert.equal(addBtn.getAttribute("aria-expanded"), "false");
-    assert.equal(addBtn.textContent.trim(), "+ إضافة عرض أو طلب");
+    assert.equal(addBtn.textContent.trim(), "استيراد فرصة");
     assert.equal(composer.querySelector("h2"), null);
+    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), true);
     assert.ok(document.getElementById("addOpportunityInput"));
     assert.ok(document.getElementById("addOpportunityPaperclip"));
     assert.ok(document.getElementById("addOpportunityMic"));
@@ -98,7 +102,7 @@ test("offers add composer starts closed and does not duplicate the tab label", a
   }
 });
 
-test("top voice search label stays إضافة فرصة بالصوت", () => {
+test("voice recording labels stay in the intake modules", () => {
   const addOpp = readRepositoryFile("public", "js", "add-opportunity.js");
   const voiceUi = readRepositoryFile("public", "js", "gemini-voice-intake-ui.js");
   assert.match(addOpp, /startLabel: "إضافة فرصة بالصوت"/);
