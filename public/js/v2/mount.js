@@ -14,15 +14,18 @@ function $(id) {
 
 function applyIsolation(enabled) {
   document.documentElement.classList.toggle("is-content-v2", enabled);
+}
+
+function setLegacyListVisible(visible) {
   const legacy = document.querySelector("[data-legacy-content]");
-  if (legacy) {
-    legacy.hidden = enabled;
-    legacy.setAttribute("aria-hidden", enabled ? "true" : "false");
-  }
   const host = $("contentV2");
+  if (legacy) {
+    legacy.hidden = !visible;
+    legacy.setAttribute("aria-hidden", visible ? "false" : "true");
+  }
   if (host) {
-    host.hidden = !enabled;
-    host.setAttribute("aria-hidden", enabled ? "false" : "true");
+    host.hidden = visible;
+    host.setAttribute("aria-hidden", visible ? "true" : "false");
   }
 }
 
@@ -33,6 +36,7 @@ function render(host) {
   else delete host.dataset.opportunityId;
 
   if (view.name === "opportunity" && view.id) {
+    setLegacyListVisible(false);
     host.classList.add("is-details");
     setupOfficeCardCollapse();
     void mountOpportunityDetailsContentV2(host, { opportunityId: view.id });
@@ -42,7 +46,8 @@ function render(host) {
   unmountOpportunityDetailsContentV2();
   teardownOfficeCardCollapse();
   host.classList.remove("is-details");
-  host.innerHTML = buildContentV2Html(view);
+  host.innerHTML = "";
+  setLegacyListVisible(true);
 }
 
 function boot() {

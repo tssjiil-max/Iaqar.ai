@@ -65,6 +65,15 @@ test("office unlock keeps the current hash so content can read the opportunity i
   assert.equal(access.includes('`${location.pathname}?office=${encodeURIComponent(normalized)}`'), false);
 });
 
+test("list tabs keep the existing opportunities bank visible under content v2", () => {
+  const css = readFileSync(path.join(root, "src", "v2", "content", "styles.css"), "utf8");
+  assert.match(css, /html\.is-content-v2:has\(\.content-v2\.is-details\) \[data-legacy-content\]/);
+  assert.equal(css.includes("html.is-content-v2 [data-legacy-content]"), false);
+  const mount = readFileSync(path.join(root, "src", "v2", "content", "mount.js"), "utf8");
+  assert.match(mount, /setLegacyListVisible\(true\)/);
+  assert.match(mount, /setLegacyListVisible\(false\)/);
+});
+
 test("legacy bank does not strip opportunity hash while content reset is on", () => {
   const bank = readFileSync(path.join(root, "public", "js", "opportunity-bank.js"), "utf8");
   assert.match(bank, /import \{ isContentResetEnabled \} from "\.\/content-v2-flag\.js"/);

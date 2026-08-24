@@ -1,6 +1,6 @@
 /* Content surface only. Does not restyle the existing Header or Navigation. */
 
-html.is-content-v2 [data-legacy-content] {
+html.is-content-v2:has(.content-v2.is-details) [data-legacy-content] {
   display: none !important;
 }
 
