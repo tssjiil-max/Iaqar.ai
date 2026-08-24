@@ -86,7 +86,17 @@
     const tabOpp = $("mainTabOpportunities");
     if (!tabOps || !tabOpp) return;
 
-    tabOps.addEventListener("click", () => setMainTab("operations"));
+    tabOps.addEventListener("click", () => {
+      const hash = String(window.location.hash || "");
+      if (/^#\/opportunities(?:-v2)?\//.test(hash) && window.history?.replaceState) {
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname || "/"}${window.location.search || ""}`
+        );
+      }
+      setMainTab("operations");
+    });
     tabOpp.addEventListener("click", () => {
       setMainTab("opportunities");
       setOppTab(state.opp || "bank");
