@@ -22,12 +22,10 @@ function authUser() {
 
 export async function loadOpportunityRecord(id) {
   const office = officeRuntime();
+  const db = office?.db;
   const currentOfficeId = officeId();
-  if (!currentOfficeId || !id) return null;
-  const ref = office?.refs?.opportunities?.doc(id)
-    || office?.db?.collection("offices").doc(currentOfficeId).collection("opportunities").doc(id);
-  if (!ref) return null;
-  const snap = await ref.get();
+  if (!db || !currentOfficeId || !id) return null;
+  const snap = await db.collection("offices").doc(currentOfficeId).collection("opportunities").doc(id).get();
   if (!snap.exists) return null;
   return { id, ...(snap.data() || {}) };
 }

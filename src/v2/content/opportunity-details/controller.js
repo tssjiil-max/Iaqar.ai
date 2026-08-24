@@ -120,7 +120,9 @@ function renderPage() {
 async function waitForDb(timeoutMs = 8000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (window.IAQAR?.office?.db && window.IAQAR?.office?.officeId) return true;
+    const office = window.IAQAR?.office;
+    const user = window.firebase?.auth?.()?.currentUser;
+    if (office?.db && office.officeId && office.officeId !== "platform" && user) return true;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   return Boolean(window.IAQAR?.office?.db && window.IAQAR?.office?.officeId);
@@ -141,8 +143,14 @@ async function hydrate(gen) {
   try {
     const record = await loadOpportunityRecord(state.opportunityId);
     if (state.loadGen !== gen) return;
-    state.record = record || { id: state.opportunityId };
-    state.hydrated = true;
+    if (record) {
+      state.record = record;
+      state.hydrated = true;
+      renderPage();
+      return;
+    }
+    state.record = { id: state.opportunityId };
+    state.hydrated = false;
     renderPage();
   } catch (error) {
     console.warn("[content-v2] opportunity load failed", error);
@@ -162,7 +170,7 @@ export function unmountOpportunityDetailsContentV2() {
 export async function mountOpportunityDetailsContentV2(root, { opportunityId } = {}) {
   if (!root || !opportunityId) return;
   const samePage = state.root === root && state.opportunityId === opportunityId;
-  if (samePage && state.hydrated) return;
+  if (samePage && state.hydrated && state.record && Object.keys(state.record).length > 2) return;
   if (samePage && !state.hydrated) {
     await hydrate(state.loadGen);
     return;
