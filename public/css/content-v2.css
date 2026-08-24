@@ -708,11 +708,13 @@ html.is-content-v2 [data-contact-schedule-days] {
   }
 
   .cv2-extra {
-    transition: grid-template-rows 220ms ease;
+    overflow: hidden;
+    max-height: 220px;
+    transition: max-height 220ms ease;
   }
 
   .cv2-card.is-collapsed .cv2-extra {
-    grid-template-rows: 0fr;
+    max-height: 0;
   }
 
   .cv2-details-toggle {
