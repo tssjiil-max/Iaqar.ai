@@ -21,6 +21,40 @@ html.is-content-v2 .content-v2 {
   margin: 0;
 }
 
+html.is-content-v2 .shell-voice {
+  margin-top: 8px;
+  padding: 6px 8px;
+}
+
+html.is-content-v2 #addOpportunityVoicePanel.voice-intake-panel,
+html.is-content-v2 #addOpportunityVoicePanel .voice-intake-panel {
+  margin: 0;
+}
+
+html.is-content-v2 #addOpportunityVoicePanel .voice-intake-start,
+html.is-content-v2 #addOpportunityVoicePanel .voice-intake-recording.is-active {
+  min-height: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 13px;
+  padding: 0 12px;
+}
+
+html.is-content-v2 .main-tabs {
+  margin-top: 8px;
+  gap: 6px;
+}
+
+html.is-content-v2 .main-tab {
+  min-height: 32px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+html.is-content-v2 .content-v2 {
+  margin-top: 8px;
+}
+
 .content-v2 {
   margin-top: 10px;
   flex: 1 0 auto;
