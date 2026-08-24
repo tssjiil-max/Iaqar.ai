@@ -9,8 +9,30 @@
     opp: "bank"
   };
 
+  const ADD_CLOSED_LABEL = "+ إضافة عرض أو طلب";
+  const ADD_OPEN_LABEL = "إغلاق الإضافة";
+
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function setAddComposerOpen(open) {
+    const composer = $("addOpportunity");
+    const tabAdd = $("oppTabAdd");
+    if (composer) {
+      composer.hidden = !open;
+      composer.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+    if (tabAdd) {
+      tabAdd.setAttribute("aria-expanded", open ? "true" : "false");
+      tabAdd.textContent = open ? ADD_OPEN_LABEL : ADD_CLOSED_LABEL;
+      tabAdd.classList.toggle("is-open", open);
+    }
+  }
+
+  function isAddComposerOpen() {
+    const composer = $("addOpportunity");
+    return Boolean(composer && !composer.hidden);
   }
 
   function isInlineBank() {
@@ -50,15 +72,10 @@
     state.opp = "bank";
     const addPanel = $("oppPanelAdd");
     const bankPanel = $("oppPanelBank");
-    const tabAdd = $("oppTabAdd");
     const tabBank = $("oppTabBank");
 
     if (addPanel) addPanel.hidden = true;
     if (bankPanel) bankPanel.hidden = false;
-    if (tabAdd) {
-      tabAdd.classList.toggle("is-active", false);
-      tabAdd.setAttribute("aria-selected", "false");
-    }
     if (tabBank) {
       tabBank.classList.toggle("is-active", true);
       tabBank.setAttribute("aria-selected", "true");
@@ -70,6 +87,7 @@
     if (!skipBankOpen && isInlineBank()) {
       window.IAQAR?.activateOpportunityBankInline?.();
     }
+    setAddComposerOpen(false);
     window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
   }
 
@@ -103,8 +121,9 @@
     });
     $("oppTabAdd")?.addEventListener("click", () => {
       if (state.main !== "opportunities") setMainTab("opportunities");
-      setOppTab("bank");
-      $("addOpportunityInput")?.focus();
+      const next = !isAddComposerOpen();
+      setAddComposerOpen(next);
+      if (next) $("addOpportunityInput")?.focus();
     });
     $("oppTabBank")?.addEventListener("click", () => {
       if (state.main !== "opportunities") setMainTab("opportunities");

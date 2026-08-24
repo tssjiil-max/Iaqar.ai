@@ -565,8 +565,11 @@
       padding:7px 8px 8px;
       display:flex;
       flex-direction:column;
-      flex:1 0 auto;
+      flex:0 0 auto;
       min-height:0;
+    }
+    #addOpportunity[hidden] {
+      display:none !important;
     }
     .add-opportunity .section-title-bar {
       padding:7px 10px;
@@ -5052,10 +5055,14 @@
   }
 
   .main-tab-panel > .card.workspace,
-  .sub-tab-panel > .card.add-opportunity,
   .sub-tab-panel > .card.opportunity-bank-panel {
     flex:1 0 auto;
     min-height:0;
+    width:100%;
+  }
+
+  .sub-tab-panel > .card.add-opportunity {
+    flex:0 0 auto;
     width:100%;
   }
 
@@ -5388,6 +5395,7 @@
 
   .sub-tab {
     min-height:40px;
+    height:40px;
     border:1px solid var(--line);
     border-radius:12px;
     background:#fff;
@@ -5397,6 +5405,7 @@
     font-weight:800;
     cursor:pointer;
     padding:0 8px;
+    white-space:nowrap;
   }
 
   .sub-tab.is-active,
@@ -5714,21 +5723,18 @@
           <p class="tab-panel-help">كل العروض والطلبات من جميع المصادر في قائمة واحدة</p>
         </div>
 
-        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات" hidden>
+        <nav class="sub-tabs" id="oppSubTabs" role="tablist" aria-label="العروض والطلبات">
           <button type="button" class="sub-tab is-active" id="oppTabBank" role="tab"
             aria-selected="true" aria-controls="oppPanelBank">القائمة</button>
-          <button type="button" class="sub-tab" id="oppTabAdd" role="tab"
-            aria-selected="false" aria-controls="oppPanelAdd">+ إضافة فرصة</button>
+          <button type="button" class="sub-tab" id="oppTabAdd"
+            aria-expanded="false" aria-controls="addOpportunity">+ إضافة عرض أو طلب</button>
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
           <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd" hidden></div>
 
           <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank">
-            <section class="card add-opportunity" id="addOpportunity" aria-labelledby="addOpportunityTitle">
-              <div class="section-title-bar">
-                <h2 id="addOpportunityTitle">إضافة عرض أو طلب</h2>
-              </div>
+            <section class="card add-opportunity" id="addOpportunity" hidden aria-label="صندوق إضافة عرض أو طلب">
               <p class="workspace-subtitle">الصق نصًا أو رابطًا أو محتوى واتساب، أو أرفق صورة، أو سجّل صوتًا.</p>
 
               <form id="addOpportunityForm" autocomplete="off">
