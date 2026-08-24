@@ -22,7 +22,8 @@ const state = {
   extras: {},
   root: null,
   loadGen: 0,
-  hydrated: false
+  hydrated: false,
+  dataCardExpanded: false
 };
 
 function referencePreview() {
@@ -162,11 +163,25 @@ function bindPage(root) {
       void runDeviceContactSave(false);
     });
   });
+  root.querySelector("[data-cv2-toggle-details]")?.addEventListener("click", () => {
+    state.dataCardExpanded = !state.dataCardExpanded;
+    const card = root.querySelector("[data-cv2-data-card]");
+    const btn = root.querySelector("[data-cv2-toggle-details]");
+    const label = btn?.querySelector("[data-cv2-toggle-label]");
+    if (card) {
+      card.classList.toggle("is-expanded", state.dataCardExpanded);
+      card.classList.toggle("is-collapsed", !state.dataCardExpanded);
+    }
+    if (btn) btn.setAttribute("aria-expanded", state.dataCardExpanded ? "true" : "false");
+    if (label) label.textContent = state.dataCardExpanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  });
 }
 
 function renderPage() {
   if (!state.root) return;
-  state.root.innerHTML = buildOpportunityDetailsContentV2(currentViewModel());
+  state.root.innerHTML = buildOpportunityDetailsContentV2(currentViewModel(), {
+    dataCardExpanded: state.dataCardExpanded
+  });
   bindPage(state.root);
 }
 
@@ -218,6 +233,7 @@ export function unmountOpportunityDetailsContentV2() {
   state.hydrated = false;
   if (state.root) state.root.innerHTML = "";
   state.root = null;
+  state.dataCardExpanded = false;
 }
 
 export async function mountOpportunityDetailsContentV2(root, { opportunityId } = {}) {
@@ -235,6 +251,7 @@ export async function mountOpportunityDetailsContentV2(root, { opportunityId } =
   state.record = { id: opportunityId };
   state.extras = {};
   state.hydrated = false;
+  state.dataCardExpanded = false;
   renderPage();
   await hydrate(gen);
 }

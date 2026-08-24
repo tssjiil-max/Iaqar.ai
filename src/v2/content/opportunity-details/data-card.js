@@ -35,6 +35,45 @@ function valueHtml(primary, secondary, { contactAction = false } = {}) {
   return `<span class="cv2-contact-value">${body}${contactSaveButton()}</span>`;
 }
 
+const EXTRA_ROW_KEYS = new Set(["specs", "advertiser"]);
+
+function rowMarkup(row, vm) {
+  const editor = editorForDataRow(row.key, vm.missingFields);
+  const value = rowValue(vm, row.key);
+  const missing = Boolean(editor) && isBlank(value.primary);
+  const label = row.key === "price" ? (vm.priceLabel || row.label) : row.label;
+  return `<div class="cv2-row" data-cv2-row="${escapeContentHtml(row.key)}">
+      <span class="cv2-row-key">
+        <span class="cv2-row-icon" aria-hidden="true">${iconUse(row.icon)}</span>
+        <span class="cv2-row-label">${escapeContentHtml(label)}</span>
+      </span>
+      <span class="cv2-row-split" aria-hidden="true"></span>
+      <span class="cv2-row-value">${missing ? missingHtml(editor) : valueHtml(value.primary, value.secondary, { contactAction: row.key === "contact" && !isBlank(value.primary) })}</span>
+    </div>`;
+}
+
+function rowsHtml(vm) {
+  let html = "";
+  let extra = [];
+  const flushExtra = () => {
+    if (!extra.length) return;
+    html += `<div class="cv2-extra" id="cv2DataExtra">
+      <div class="cv2-extra-inner">${extra.join("")}</div>
+    </div>`;
+    extra = [];
+  };
+  V2_DATA_ROWS.forEach((row) => {
+    const markup = rowMarkup(row, vm);
+    if (EXTRA_ROW_KEYS.has(row.key)) extra.push(markup);
+    else {
+      flushExtra();
+      html += markup;
+    }
+  });
+  flushExtra();
+  return html;
+}
+
 function rowValue(vm, key) {
   switch (key) {
     case "propertyPurpose":
@@ -59,28 +98,19 @@ function rowValue(vm, key) {
   }
 }
 
-export function buildOpportunityDataCardV2(vm = {}) {
-  const rows = V2_DATA_ROWS.map((row) => {
-    const editor = editorForDataRow(row.key, vm.missingFields);
-    const value = rowValue(vm, row.key);
-    const missing = Boolean(editor) && isBlank(value.primary);
-    const label = row.key === "price" ? (vm.priceLabel || row.label) : row.label;
-    return `<div class="cv2-row" data-cv2-row="${escapeContentHtml(row.key)}">
-      <span class="cv2-row-key">
-        <span class="cv2-row-icon" aria-hidden="true">${iconUse(row.icon)}</span>
-        <span class="cv2-row-label">${escapeContentHtml(label)}</span>
-      </span>
-      <span class="cv2-row-split" aria-hidden="true"></span>
-      <span class="cv2-row-value">${missing ? missingHtml(editor) : valueHtml(value.primary, value.secondary, { contactAction: row.key === "contact" && !isBlank(value.primary) })}</span>
-    </div>`;
-  }).join("");
-
-  return `<section class="cv2-card" aria-label="بيانات الفرصة">
+export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
+  const expanded = Boolean(ui.dataCardExpanded);
+  const toggleLabel = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  return `<section class="cv2-card ${expanded ? "is-expanded" : "is-collapsed"}" data-cv2-data-card aria-label="بيانات الفرصة">
     <header class="cv2-card-head">
       ${iconUse("i-clipboard-list")}
       <h2 class="cv2-card-title">بيانات الفرصة</h2>
     </header>
-    <div class="cv2-rows">${rows}</div>
+    <div class="cv2-rows">${rowsHtml(vm)}</div>
+    <button type="button" class="cv2-details-toggle" data-cv2-toggle-details aria-expanded="${expanded ? "true" : "false"}" aria-controls="cv2DataExtra">
+      <span data-cv2-toggle-label>${toggleLabel}</span>
+      <svg class="cv2-icon cv2-toggle-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
   </section>`;
 }
 

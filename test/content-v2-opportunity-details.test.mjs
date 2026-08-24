@@ -23,6 +23,25 @@ function referenceViewModel() {
   });
 }
 
+test("mobile data card starts collapsed and keeps all six rows in the DOM", () => {
+  const html = buildOpportunityDataCardV2(referenceViewModel());
+  assert.match(html, /class="cv2-card is-collapsed"/);
+  assert.match(html, /عرض التفاصيل/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-controls="cv2DataExtra"/);
+  assert.match(html, /id="cv2DataExtra"/);
+  const rows = [...html.matchAll(/data-cv2-row="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(rows, ["propertyPurpose", "location", "price", "specs", "advertiser", "contact"]);
+  const extra = html.slice(html.indexOf("id=\"cv2DataExtra\""), html.indexOf("data-cv2-row=\"contact\""));
+  assert.match(extra, /data-cv2-row="specs"/);
+  assert.match(extra, /data-cv2-row="advertiser"/);
+  assert.equal(extra.includes("data-cv2-row=\"contact\""), false);
+  const expanded = buildOpportunityDataCardV2(referenceViewModel(), { dataCardExpanded: true });
+  assert.match(expanded, /class="cv2-card is-expanded"/);
+  assert.match(expanded, /إخفاء التفاصيل/);
+  assert.match(expanded, /aria-expanded="true"/);
+});
+
 test("Content V2 details keep six fixed rows in source order", () => {
   assert.deepEqual(V2_DATA_ROWS.map((row) => row.key), [
     "propertyPurpose",

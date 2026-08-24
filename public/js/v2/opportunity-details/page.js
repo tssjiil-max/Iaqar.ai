@@ -3,9 +3,9 @@ import { buildCompleteMissingButtonV2, buildOpportunityDataCardV2 } from "./data
 import { buildDailyReportCardV2 } from "./daily-report.js";
 import { buildNextAppointmentCardV2 } from "./next-appointment.js";
 
-export function buildOpportunityDetailsContentV2(vm = {}) {
+export function buildOpportunityDetailsContentV2(vm = {}, ui = {}) {
   return `<div class="cv2-details" dir="rtl" data-opportunity-id="${escapeContentHtml(vm.id || "")}">
-    ${buildOpportunityDataCardV2(vm)}
+    ${buildOpportunityDataCardV2(vm, ui)}
     ${buildCompleteMissingButtonV2(vm)}
     ${buildDailyReportCardV2(vm)}
     ${buildNextAppointmentCardV2(vm)}

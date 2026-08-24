@@ -163,8 +163,35 @@ html.is-content-v2 [data-contact-schedule-days] {
   color: var(--cv2-green);
 }
 
+.cv2-extra {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.cv2-extra-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .cv2-rows {
   padding: 0;
+}
+
+.cv2-details-toggle {
+  display: none;
+}
+
+.cv2-toggle-chevron {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  transition: transform 220ms ease;
+}
+
+.cv2-card.is-expanded .cv2-toggle-chevron {
+  transform: rotate(180deg);
 }
 
 .cv2-row {
@@ -653,8 +680,12 @@ html.is-content-v2 [data-contact-schedule-days] {
 }
 
 @media (max-width: 430px) {
+  html.is-content-v2 .content-v2.is-details {
+    margin-top: 6px;
+  }
+
   .cv2-details {
-    gap: 7px;
+    gap: 8px;
     padding: 0 0 10px;
   }
 
@@ -674,6 +705,33 @@ html.is-content-v2 [data-contact-schedule-days] {
   .cv2-row-split {
     margin: 6px 0;
     height: calc(100% - 12px);
+  }
+
+  .cv2-extra {
+    transition: grid-template-rows 220ms ease;
+  }
+
+  .cv2-card.is-collapsed .cv2-extra {
+    grid-template-rows: 0fr;
+  }
+
+  .cv2-details-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 0;
+    border-top: 1px solid var(--cv2-row);
+    border-radius: 0;
+    background: #fff;
+    color: var(--cv2-green);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
   }
 
   .cv2-report-head,
