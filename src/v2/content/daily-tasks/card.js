@@ -1,5 +1,6 @@
 /**
- * Compact daily-task execution card. Not the opportunity data card.
+ * Compact daily-task accordion card. Not the opportunity data card.
+ * Actions render only while the task is open.
  */
 
 function escapeContentHtml(value = "") {
@@ -14,12 +15,18 @@ function escapeContentHtml(value = "") {
 
 function buttonHtml(action, kind) {
   if (!action?.id || !action?.label) return "";
-  const cls = kind === "primary" ? "cv2-exec-primary" : "cv2-exec-secondary";
+  const cls = kind === "primary"
+    ? "cv2-exec-primary"
+    : action.variant === "text"
+      ? "cv2-exec-secondary cv2-exec-text"
+      : "cv2-exec-secondary";
   const attr = kind === "primary" ? "data-cv2-exec-primary" : "data-cv2-exec-secondary";
-  return `<button type="button" class="${cls}" ${attr}="${escapeContentHtml(action.id)}">${escapeContentHtml(action.label)}</button>`;
+  const party = action.party ? ` data-party="${escapeContentHtml(action.party)}"` : "";
+  const session = action.sessionKind ? ` data-session-kind="${escapeContentHtml(action.sessionKind)}"` : "";
+  return `<button type="button" class="${cls}" ${attr}="${escapeContentHtml(action.id)}"${party}${session}>${escapeContentHtml(action.label)}</button>`;
 }
 
-export function buildDailyTaskCardHtml(task = {}) {
+function summaryHtml(task = {}) {
   const badge = task.badgeLabel
     ? `<span class="cv2-exec-badge${task.badgeKey === "overdue" ? " is-late" : ""}">${escapeContentHtml(task.badgeLabel)}</span>`
     : "";
@@ -29,10 +36,26 @@ export function buildDailyTaskCardHtml(task = {}) {
   const next = task.nextActionLine
     ? `<p class="cv2-exec-next">${escapeContentHtml(task.nextActionLine)}</p>`
     : "";
-  const primary = buttonHtml(task.primaryAction, "primary");
-  const secondary = (task.secondaryActions || []).map((action) => buttonHtml(action, "secondary")).join("");
+  return `<header class="cv2-exec-head">
+      <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
+      ${badge}
+    </header>
+    <p class="cv2-exec-summary">${escapeContentHtml(task.propertyLine || "")}</p>
+    ${money}
+    <p class="cv2-exec-status">${escapeContentHtml(task.statusLabel || "")}</p>
+    ${next}`;
+}
+
+export function buildDailyTaskCardHtml(task = {}, { open = false } = {}) {
+  const primary = open ? buttonHtml(task.primaryAction, "primary") : "";
+  const secondary = open
+    ? (task.secondaryActions || []).map((action) => buttonHtml(action, "secondary")).join("")
+    : "";
+  const actions = open && (primary || secondary)
+    ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
+    : "";
   return `<article
-      class="cv2-exec-card"
+      class="cv2-exec-card${open ? " is-open" : ""}"
       data-cv2-exec-task
       data-task-state="${escapeContentHtml(task.stateKey || "")}"
       data-task-id="${escapeContentHtml(task.id || "")}"
@@ -41,15 +64,10 @@ export function buildDailyTaskCardHtml(task = {}) {
       data-request-id="${escapeContentHtml(task.requestId || "")}"
       data-opportunity-id="${escapeContentHtml(task.opportunityId || "")}"
       data-session-kind="${escapeContentHtml(task.sessionKind || "CLIENT_MATCH_REVIEW")}">
-    <header class="cv2-exec-head">
-      <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
-      ${badge}
-    </header>
-    <p class="cv2-exec-summary">${escapeContentHtml(task.propertyLine || "")}</p>
-    ${money}
-    <p class="cv2-exec-status">${escapeContentHtml(task.statusLabel || "")}</p>
-    ${next}
-    <div class="cv2-exec-actions">${primary}${secondary}</div>
+    <button type="button" class="cv2-exec-toggle" aria-expanded="${open ? "true" : "false"}">
+      ${summaryHtml(task)}
+    </button>
+    ${actions}
   </article>`;
 }
 
@@ -60,9 +78,9 @@ export function buildDailyTaskEmptyHtml() {
   </section>`;
 }
 
-export function buildDailyTaskListHtml(tasks = []) {
+export function buildDailyTaskListHtml(tasks = [], { openTaskId = null } = {}) {
   if (!tasks.length) return buildDailyTaskEmptyHtml();
   return `<div class="cv2-exec-list" data-cv2-exec-list>
-    ${tasks.map((task) => buildDailyTaskCardHtml(task)).join("")}
+    ${tasks.map((task) => buildDailyTaskCardHtml(task, { open: Boolean(openTaskId) && task.id === openTaskId })).join("")}
   </div>`;
 }

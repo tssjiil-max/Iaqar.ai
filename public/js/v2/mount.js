@@ -6,6 +6,7 @@
 import { isContentResetEnabled } from "./flag.js";
 import { buildContentV2Html, currentContentView } from "./domain.js";
 import { setupOfficeCardCollapse, teardownOfficeCardCollapse } from "./office-collapse.js";
+import { setupOfficeSmartHide, teardownOfficeSmartHide } from "./daily-tasks/office-smart-hide.js";
 import { mountOpportunityDetailsContentV2, unmountOpportunityDetailsContentV2 } from "./opportunity-details/controller.js";
 import { mountDailyTasksContentV2, unmountDailyTasksContentV2 } from "./daily-tasks/controller.js";
 
@@ -38,6 +39,7 @@ function render(host) {
 
   if (view.name === "opportunity" && view.id) {
     unmountDailyTasksContentV2();
+    teardownOfficeSmartHide();
     setLegacyListVisible(false);
     host.classList.add("is-details");
     setupOfficeCardCollapse();
@@ -47,6 +49,7 @@ function render(host) {
 
   unmountOpportunityDetailsContentV2();
   teardownOfficeCardCollapse();
+  teardownOfficeSmartHide();
   host.classList.remove("is-details");
 
   if (view.name === "opportunities") {
@@ -58,6 +61,7 @@ function render(host) {
 
   if (view.name === "tasks") {
     setLegacyListVisible(false);
+    setupOfficeSmartHide();
     mountDailyTasksContentV2(host);
     return;
   }
@@ -93,6 +97,7 @@ export function mountContentV2(root, view) {
   if (!root || !view) return;
   if (view.name === "opportunity" && (view.id || view.opportunityId)) {
     unmountDailyTasksContentV2();
+    teardownOfficeSmartHide();
     root.classList.add("is-details");
     setupOfficeCardCollapse();
     void mountOpportunityDetailsContentV2(root, { opportunityId: view.id || view.opportunityId });
@@ -100,8 +105,10 @@ export function mountContentV2(root, view) {
   }
   unmountOpportunityDetailsContentV2();
   teardownOfficeCardCollapse();
+  teardownOfficeSmartHide();
   root.classList.remove("is-details");
   if (view.name === "tasks") {
+    setupOfficeSmartHide();
     mountDailyTasksContentV2(root);
     return;
   }
