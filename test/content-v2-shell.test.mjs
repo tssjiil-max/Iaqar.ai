@@ -71,6 +71,8 @@ test("daily tasks stay on content v2 while offers and requests keep the bank lis
   assert.match(css, /data-content-view="opportunities"/);
   const mount = readFileSync(path.join(root, "src", "v2", "content", "mount.js"), "utf8");
   assert.match(mount, /view\.name === "opportunities"/);
+  assert.match(mount, /view\.name === "tasks"/);
+  assert.match(mount, /mountDailyTasksContentV2/);
   assert.match(mount, /buildContentV2Html\(view\)/);
   assert.match(mount, /setLegacyListVisible\(true\)/);
   assert.match(mount, /setLegacyListVisible\(false\)/);

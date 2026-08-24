@@ -19,6 +19,13 @@ test("main tabs default to Operations with bank sub-tab ready under Opportunitie
   }
 });
 
+test("switching to daily tasks clears an opportunity hash so the compact list can show", () => {
+  const source = readRepositoryFile("public", "js", "home-tabs.js");
+  assert.match(source, /mainTabOperations/);
+  assert.match(source, /opportunities\(\?:-v2\)\?/);
+  assert.match(source, /history\?\.replaceState/);
+});
+
 test("switching tabs shows one content area at a time", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {

@@ -21,8 +21,16 @@ cpSync(path.join(src, "opportunity-details"), path.join(jsOut, "opportunity-deta
   recursive: true,
   filter: (srcPath) => !srcPath.endsWith(".css")
 });
+cpSync(path.join(src, "daily-tasks"), path.join(jsOut, "daily-tasks"), {
+  recursive: true,
+  filter: (srcPath) => !srcPath.endsWith(".css")
+});
 
 const baseCss = readFileSync(path.join(src, "styles.css"), "utf8");
 const detailsCss = readFileSync(path.join(src, "opportunity-details", "styles.css"), "utf8");
-writeFileSync(cssOut, `${baseCss}\n\n/* Opportunity details (Content V2) */\n${detailsCss}\n`);
+const dailyTasksCss = readFileSync(path.join(src, "daily-tasks", "styles.css"), "utf8");
+writeFileSync(
+  cssOut,
+  `${baseCss}\n\n/* Opportunity details (Content V2) */\n${detailsCss}\n\n/* Daily tasks execution list (Content V2) */\n${dailyTasksCss}\n`
+);
 console.log("src/v2 content copied → public/js/v2 + public/css/content-v2.css");
