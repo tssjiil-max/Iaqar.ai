@@ -289,8 +289,8 @@ export function buildDailyTaskView(record = {}) {
   const stateKey = record.stateKey || DAILY_TASK_STATE.NEW_MATCH;
   const badgeKey = record.badgeKey || (stateKey === DAILY_TASK_STATE.APPOINTMENT_TODAY ? "today" : "now");
   const nextByState = {
-    [DAILY_TASK_STATE.NEW_MATCH]: "الإجراء التالي: إرسال للعميل",
-    [DAILY_TASK_STATE.AWAITING_SEND]: "الإجراء التالي: إرسال للعميل",
+    [DAILY_TASK_STATE.NEW_MATCH]: "مراجعة المطابقة",
+    [DAILY_TASK_STATE.AWAITING_SEND]: "مراجعة المطابقة",
     [DAILY_TASK_STATE.AWAITING_CLIENT]: "",
     [DAILY_TASK_STATE.CLIENT_INTERESTED]: "الخطوة التالية ستظهر هنا",
     [DAILY_TASK_STATE.CLIENT_NEEDS_DETAILS]: "السعر · الموقع · الصور · المواصفات · سؤال آخر",
