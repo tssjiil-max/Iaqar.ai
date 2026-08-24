@@ -1,10 +1,11 @@
 /**
- * Mounts the empty content surface into #contentV2 under the existing App Shell.
+ * Mounts the content surface into #contentV2 under the existing App Shell.
  * Does not create a V2 header, V2 nav, or a separate app identity.
  */
 
 import { isContentResetEnabled } from "./flag.js";
 import { buildContentV2Html, currentContentView } from "./domain.js";
+import { mountOpportunityDetailsContentV2, unmountOpportunityDetailsContentV2 } from "./opportunity-details/controller.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -26,10 +27,19 @@ function applyIsolation(enabled) {
 
 function render(host) {
   const view = currentContentView(window.location, window.IAQAR?.homeTabs?.getState?.());
-  host.innerHTML = buildContentV2Html(view);
   host.dataset.contentView = view.name;
   if (view.id) host.dataset.opportunityId = view.id;
   else delete host.dataset.opportunityId;
+
+  if (view.name === "opportunity" && view.id) {
+    host.classList.add("is-details");
+    void mountOpportunityDetailsContentV2(host, { opportunityId: view.id });
+    return;
+  }
+
+  unmountOpportunityDetailsContentV2();
+  host.classList.remove("is-details");
+  host.innerHTML = buildContentV2Html(view);
 }
 
 function boot() {
@@ -52,6 +62,18 @@ function boot() {
     currentView: () => currentContentView(window.location, window.IAQAR?.homeTabs?.getState?.()),
     render: sync
   });
+}
+
+export function mountContentV2(root, view) {
+  if (!root || !view) return;
+  if (view.name === "opportunity" && (view.id || view.opportunityId)) {
+    root.classList.add("is-details");
+    void mountOpportunityDetailsContentV2(root, { opportunityId: view.id || view.opportunityId });
+    return;
+  }
+  unmountOpportunityDetailsContentV2();
+  root.classList.remove("is-details");
+  root.innerHTML = buildContentV2Html(view);
 }
 
 if (typeof document !== "undefined") {

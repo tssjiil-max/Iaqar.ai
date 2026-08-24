@@ -1,72 +1,3 @@
-/* Content surface only. Does not restyle the existing Header or Navigation. */
-
-html.is-content-v2 [data-legacy-content] {
-  display: none !important;
-}
-
-html.is-content-v2 .content-v2 {
-  display: block;
-}
-
-.content-v2[hidden] {
-  display: none !important;
-}
-
-.shell-voice {
-  margin-top: 11px;
-  padding: 12px;
-}
-
-.shell-voice #addOpportunityVoicePanel.voice-intake-panel {
-  margin: 0;
-}
-
-.content-v2 {
-  margin-top: 10px;
-  flex: 1 0 auto;
-  min-height: 0;
-}
-
-.content-v2-surface {
-  background: var(--card);
-  border: 1px solid rgba(0, 92, 75, 0.08);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-  min-height: 220px;
-}
-
-html.is-content-v2 .opp-details-page,
-html.is-content-v2 .opp-v2-page {
-  display: none !important;
-  position: static !important;
-  inset: auto !important;
-  z-index: 0 !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-html.is-content-v2:has(.opp-details-page) .main-tabs,
-html.is-content-v2:has(.opp-v2-page) .main-tabs {
-  display: grid !important;
-}
-
-html.is-content-v2:has(.opp-details-page) .header,
-html.is-content-v2:has(.opp-v2-page) .header,
-html.is-content-v2:has(.opp-details-page) .license,
-html.is-content-v2:has(.opp-v2-page) .license,
-html.is-content-v2:has(.opp-details-page) .shell-voice,
-html.is-content-v2:has(.opp-v2-page) .shell-voice {
-  display: grid;
-}
-
-html.is-content-v2 .bank-contact-outcome-action-panel,
-html.is-content-v2 .opp-details-progress-ring,
-html.is-content-v2 [data-contact-schedule-days] {
-  display: none !important;
-}
-
-
-/* Opportunity details (Content V2) */
 .content-v2.is-details {
   padding: 0;
 }
@@ -469,4 +400,3 @@ html.is-content-v2 [data-contact-schedule-days] {
   background: #fff;
   color: #44504c;
 }
-
