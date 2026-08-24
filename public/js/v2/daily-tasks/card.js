@@ -1,6 +1,6 @@
 /**
  * Compact daily-task accordion card. Not the opportunity data card.
- * Actions render only while the task is open.
+ * Collapsed cards show a reveal control only. State actions render while open.
  */
 
 function escapeContentHtml(value = "") {
@@ -46,6 +46,11 @@ function summaryHtml(task = {}) {
     ${next}`;
 }
 
+function revealHtml(open) {
+  const label = open ? "إخفاء البيانات" : "عرض البيانات";
+  return `<button type="button" class="cv2-exec-reveal" data-cv2-exec-reveal aria-expanded="${open ? "true" : "false"}">${label}</button>`;
+}
+
 export function buildDailyTaskCardHtml(task = {}, { open = false } = {}) {
   const primary = open ? buttonHtml(task.primaryAction, "primary") : "";
   const secondary = open
@@ -64,10 +69,11 @@ export function buildDailyTaskCardHtml(task = {}, { open = false } = {}) {
       data-request-id="${escapeContentHtml(task.requestId || "")}"
       data-opportunity-id="${escapeContentHtml(task.opportunityId || "")}"
       data-session-kind="${escapeContentHtml(task.sessionKind || "CLIENT_MATCH_REVIEW")}">
-    <button type="button" class="cv2-exec-toggle" aria-expanded="${open ? "true" : "false"}">
+    <div class="cv2-exec-summary-block">
       ${summaryHtml(task)}
-    </button>
+    </div>
     ${actions}
+    <div class="cv2-exec-reveal-row">${revealHtml(open)}</div>
   </article>`;
 }
 

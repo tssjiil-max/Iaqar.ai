@@ -76,7 +76,7 @@ test("demo fixtures cover the seven visual task states in operational order", ()
   ]);
 });
 
-test("collapsed new-match card is compact Arabic summary without action buttons", () => {
+test("collapsed new-match card is compact Arabic summary with reveal only", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task);
   const text = visibleText(html);
@@ -84,11 +84,15 @@ test("collapsed new-match card is compact Arabic summary without action buttons"
   assert.match(text, /أرض للبيع — حي عروة/);
   assert.match(text, /500,000 ر\.س/);
   assert.match(text, /تم العثور على مطابقة/);
-  assert.match(text, /الإجراء التالي: إرسال للعميل/);
+  assert.match(text, /مراجعة المطابقة/);
+  assert.match(html, /data-cv2-exec-reveal/);
+  assert.match(html, />عرض البيانات</);
+  assert.equal(html.includes("إرسال للعميل"), false);
+  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.equal(html.includes("عرض تفاصيل العرض"), false);
   assert.equal(countPrimary(html), 0);
   assert.equal(countSecondary(html), 0);
   assert.equal(html.includes("data-cv2-exec-primary="), false);
-  assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(html.includes("is-open"), false);
   assert.match(html, /aria-expanded="false"/);
   assert.equal(html.includes("بيانات الفرصة"), false);
@@ -103,6 +107,7 @@ test("open match-found card shows one primary and two secondaries only", () => {
   const text = visibleText(html);
   assert.match(html, /class="cv2-exec-card is-open"/);
   assert.match(html, /aria-expanded="true"/);
+  assert.match(html, />إخفاء البيانات</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
   assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
@@ -126,6 +131,8 @@ test("open match-found card shows one primary and two secondaries only", () => {
 test("awaiting client reply stays buttonless while collapsed and capped when open", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_awaiting_client");
   const collapsed = buildDailyTaskCardHtml(task);
+  assert.match(collapsed, />عرض البيانات</);
+  assert.equal(collapsed.includes("إعادة الإرسال"), false);
   assert.equal(countPrimary(collapsed), 0);
   assert.equal(countSecondary(collapsed), 0);
   const html = buildDailyTaskCardHtml(task, { open: true });
@@ -173,9 +180,22 @@ test("list accordion keeps a single open task", () => {
   assert.match(html, /data-task-id="task_new_match"[^>]*[\s\S]*?aria-expanded="false"/);
   const closedNewMatch = html.split('data-task-id="task_overdue"')[0];
   assert.equal(closedNewMatch.includes("data-cv2-exec-primary="), false);
+  assert.match(closedNewMatch, />عرض البيانات</);
+  assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 2);
+  assert.match(html, />إخفاء البيانات</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
+});
+
+test("every collapsed task uses عرض البيانات and never send actions", () => {
+  const html = buildDailyTaskListHtml(dailyTasksDemoFixtures());
+  assert.equal((html.match(/>عرض البيانات</g) || []).length, 7);
+  assert.equal(html.includes("إخفاء البيانات"), false);
+  assert.equal(html.includes("إرسال للعميل"), false);
+  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.equal(countPrimary(html), 0);
+  assert.equal(countSecondary(html), 0);
 });
 
 test("empty state is compact Arabic copy without a huge blank card", () => {
@@ -258,6 +278,7 @@ test("daily-task controller does not send a client message in this round", () =>
   const controller = readFileSync(path.join(root, "src", "v2", "content", "daily-tasks", "controller.js"), "utf8");
   assert.match(controller, /Reserved for a later CLIENT_MATCH_REVIEW session/);
   assert.match(controller, /openTaskId/);
+  assert.match(controller, /data-cv2-exec-reveal/);
   assert.equal(controller.includes("تم إرسال الرسالة"), false);
   assert.equal(controller.includes("token"), false);
   assert.equal(controller.includes("OTP"), false);

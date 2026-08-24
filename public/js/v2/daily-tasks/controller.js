@@ -72,6 +72,8 @@ function onListClick(event) {
     // Reserved for a later CLIENT_MATCH_REVIEW session. No send in this round.
     return;
   }
+  const reveal = event.target.closest("[data-cv2-exec-reveal]");
+  if (!reveal) return;
   event.preventDefault();
   toggleOpenTask(card.getAttribute("data-task-id"));
 }

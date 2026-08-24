@@ -14,20 +14,28 @@
   box-sizing: border-box;
 }
 
-.cv2-exec-toggle {
+.cv2-exec-summary-block {
   display: block;
-  width: 100%;
-  margin: 0;
-  padding: 0;
+}
+
+.cv2-exec-reveal-row {
+  margin-top: 6px;
+}
+
+.cv2-exec-reveal {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 4px;
   border: 0;
   background: transparent;
-  color: inherit;
+  color: var(--cv2-green, #1a5319);
   font: inherit;
-  text-align: inherit;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.cv2-exec-toggle:focus-visible {
+.cv2-exec-reveal:focus-visible {
   outline: 2px solid var(--cv2-green, #1a5319);
   outline-offset: 2px;
   border-radius: 8px;
