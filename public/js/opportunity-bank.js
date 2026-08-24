@@ -83,8 +83,11 @@ import {
   telegramShareUrl
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
-import { buildBankListCardView } from "./bank-list-card-domain.js";
-import { buildOpportunityListingCardInnerHtml } from "./opportunity-listing-card-ui.js";
+import { buildBankInboxCardHtml } from "./bank-inbox-card-ui.js";
+import { sortBankInboxRecords } from "./bank-inbox-card-domain.js";
+import { firstMissingEditor } from "./v2/opportunity-details/view-model.js";
+import { buildFieldEditorV2 } from "./v2/opportunity-details/editor.js";
+import { saveDeviceContact } from "./v2/opportunity-details/save-device-contact.js";
 import {
   buildNeedsCompletionDetailHtml,
   buildReadyWorkspaceHtml,
@@ -142,7 +145,6 @@ import {
 import { openOpportunityReview } from "./opportunity-review.js";
 import {
   buildOpportunityDeepLinkHash,
-  isBankCardActionControl,
   normalizeOpportunityDocumentId,
   parseOpportunityIdFromLocation,
   stripOpportunityDeepLinkHref
@@ -216,6 +218,7 @@ const state = {
   pendingQueryRefresh: false,
   resultTotal: 0,
   scanExhausted: false,
+  inboxExpandedIds: new Set(),
   detailRenderContext: null,
   detailOverlayOpen: false,
   detailOpenToken: 0
@@ -472,42 +475,12 @@ function isVisibleForFilter(record) {
 
 function bankRowHtml(row) {
   const record = state.records.get(row.id) || row;
-  const card = buildBankListCardView({ ...record, id: row.id });
-  const followupClass = card.nextActionOverdue ? " is-overdue" : "";
-  const followup = card.nextActionLabel
-    ? `<p class="bank-row-followup${followupClass}">${escapeHtml(card.nextActionLabel)}</p>`
-    : "";
-  const matchLine = card.bestMatchScoreText
-    ? `<p class="bank-row-match">أفضل مطابقة: ${escapeHtml(card.bestMatchScoreText)}</p>`
-    : "";
-  const sourceLine = card.sourceShort
-    ? `<p class="bank-row-source">${escapeHtml(card.sourceShort)}</p>`
-    : "";
-  const contactHtml = card.contactLineMarkup && card.contactLineMarkup !== "غير محدد"
-    ? `<p class="bank-row-contact">${card.contactLineMarkup}</p>`
-    : "";
-  const footerHtml = `
-    <div class="bank-row-footer">
-      ${contactHtml}
-      ${followup}
-      ${matchLine}
-      ${sourceLine}
-    </div>`;
-  const incompleteHint = !card.isReadyForMatching
-    ? `<p class="bank-row-tasks-hint">استكمال البيانات من المهام اليومية</p>`
-    : "";
-  const inner = buildOpportunityListingCardInnerHtml({ ...record, id: row.id }, { footerHtml });
-  return `
-    <article
-      class="bank-row bank-row-card"
-      role="button"
-      tabindex="0"
-      data-opportunity-id="${escapeHtml(String(row.id || "").trim())}"
-      data-open-id="${escapeHtml(String(row.id || "").trim())}"
-      aria-label="${escapeHtml(card.ariaLabel)} — ${escapeHtml(card.headerStatus)}">
-      ${inner}
-      ${incompleteHint}
-    </article>`;
+  return buildBankInboxCardHtml({ ...record, id: row.id }, {
+    matchCount: record.activeMatchCount ?? record.matchCount,
+    bestMatchScore: record.bestMatchScore,
+    bestMatchComputed: record.bestMatchComputed,
+    dataCardExpanded: state.inboxExpandedIds.has(row.id)
+  });
 }
 
 function isOwnerRecord(record = {}) {
@@ -761,27 +734,14 @@ async function loadWorkspaceBundle(opportunityId) {
 }
 
 function renderSummaryHtml(summary = emptyBankSummary()) {
-  const activeKey = state.queryFilters.summaryKey || "ready";
-  const chip = (key, label, count) => {
-    const active = activeKey === key ? " is-active" : "";
-    return `<button type="button" class="bank-summary-chip${active}" data-summary-key="${key}">
-      <span>${escapeHtml(label)}</span><strong>${escapeHtml(count)}</strong>
-    </button>`;
-  };
   const needsCount = Number(summary.needsCompletion || 0);
-  const tasksBanner = needsCount > 0 && state.filter !== "archived"
-    ? `<div class="bank-tasks-banner">
-        <p>${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية</p>
-        <button type="button" class="bank-tasks-banner-btn" data-bank-open-tasks>اذهب للمهام</button>
-      </div>`
-    : "";
+  const readyCount = Number(summary.readyForMatching || 0);
+  const countLine = state.filter === "archived"
+    ? `${escapeHtml(String(summary.archived || 0))} مؤرشفة`
+    : `${escapeHtml(String(needsCount))} يحتاج استكمال — ${escapeHtml(String(readyCount))} قيد المطابقة`;
   return `
     <div class="bank-summary-card" id="bankSummaryCard">
-      ${tasksBanner}
-      <div class="bank-summary-chips">
-        ${chip("ready", "جاهزة للمطابقة", summary.readyForMatching)}
-        ${chip("archived", "مؤرشفة", summary.archived)}
-      </div>
+      <p class="bank-summary-line">${countLine}</p>
     </div>`;
 }
 
@@ -792,21 +752,19 @@ function renderList() {
 
   const summary = state.summary || emptyBankSummary();
 
-  const rows = [...state.records.entries()]
+  const records = [...state.records.entries()]
     .filter(([, record]) => passesListFilters(record))
-    .map(([id, record]) => ({
-      ...bankListItem(id, record),
-      matchingReadiness: evaluateMatchingReadiness(record).matchingReadiness
-    }));
+    .map(([id, record]) => ({ ...record, id }));
+  const rows = sortBankInboxRecords(records).map((record) => ({
+    ...bankListItem(record.id, record),
+    matchingReadiness: evaluateMatchingReadiness(record).matchingReadiness
+  }));
 
   let bodyHtml = "";
   if (!rows.length && !hasActiveBankQuery(state.queryFilters)) {
-    const needsCount = Number(summary.needsCompletion || 0);
-    if (state.filter !== "archived" && needsCount > 0) {
-      bodyHtml = `<p class="bank-query-hint">لا توجد فرص جاهزة للمطابقة حاليًا. ${escapeHtml(String(needsCount))} فرصة تحتاج استكمال — أكملها من المهام اليومية.</p>`;
-    } else {
-      bodyHtml = `<p class="bank-query-hint">لا توجد فرص محفوظة بعد. تُحفظ الفرص هنا تلقائيًا عند إضافتها.</p>`;
-    }
+    bodyHtml = state.filter === "archived"
+      ? `<p class="bank-query-hint">لا توجد عناصر مؤرشفة.</p>`
+      : `<p class="bank-query-hint">لا توجد عروض أو طلبات بعد. أضفها من الحقل أعلاه.</p>`;
     if (loadMoreBtn) loadMoreBtn.hidden = true;
   } else if (!rows.length) {
     bodyHtml = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث.</p>`;
@@ -832,26 +790,8 @@ function renderList() {
   bindSummaryChips(list);
 }
 
-function bindSummaryChips(root) {
-  root?.querySelector("[data-bank-open-tasks]")?.addEventListener("click", () => {
-    navigateToTasksIncomplete();
-  });
-  root?.querySelectorAll("[data-summary-key]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.getAttribute("data-summary-key") || "ready";
-      if (key === "archived") {
-        state.filter = "archived";
-        state.queryFilters.summaryKey = "archived";
-        syncFilterButtons();
-      } else {
-        state.filter = "active";
-        state.queryFilters.summaryKey = "ready";
-        syncFilterButtons();
-      }
-      renderList();
-      if (hasActiveBankQuery(state.queryFilters)) scheduleBankQueryRefresh();
-    });
-  });
+function bindSummaryChips() {
+  return;
 }
 
 function navigateToTasksIncomplete(opportunityId = "") {
@@ -1442,7 +1382,7 @@ function wireIncompleteDetailHandlers(id, record) {
         renderList();
         return;
       }
-      toast(savedReadiness.isReadyForMatching ? "تم حفظ الفرصة ونقلها للمطابقة" : "تم حفظ الفرصة");
+      toast(savedReadiness.isReadyForMatching ? "تم استكمال البيانات" : "تم حفظ الفرصة");
       await renderDetail(id);
       renderList();
     } catch (error) {
@@ -2279,7 +2219,7 @@ function rowsCountLabel() {
     if (state.filter === "archived") {
       return `${summary.archived} فرصة مؤرشفة`;
     }
-    return `جاهزة ${summary.readyForMatching}${summary.needsCompletion ? ` — ${summary.needsCompletion} للاستكمال في المهام` : ""}`;
+    return `${summary.needsCompletion} يحتاج استكمال — ${summary.readyForMatching} قيد المطابقة`;
   }
   const loadedCount = [...state.records.values()].filter(passesListFilters).length;
   const filteredTotal = state.resultTotal || loadedCount;
@@ -3587,34 +3527,151 @@ async function loadSharedWithUs() {
   }
 }
 
+function inboxOfficeName() {
+  const office = officeRuntime() || {};
+  return String(office.officeName || office.displayName || office.name || "").trim();
+}
+
+function inboxViewModel(id, record) {
+  return mapOpportunityDetailsV2ViewModel(id, record, {
+    readiness: evaluateMatchingReadiness(record)
+  });
+}
+
+function closeInboxEditor(list = $("opportunityBankList")) {
+  list?.querySelector("[data-cv2-editor-root]")?.remove();
+}
+
+function toggleInboxDataCard(toggle) {
+  const card = toggle.closest("[data-cv2-data-card]");
+  const article = toggle.closest("[data-cv2-inbox-item][data-opportunity-id]");
+  if (!card || !toggle) return;
+  const expanded = card.classList.contains("is-collapsed");
+  card.classList.toggle("is-expanded", expanded);
+  card.classList.toggle("is-collapsed", !expanded);
+  toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  const label = toggle.querySelector("[data-cv2-toggle-label]");
+  if (label) label.textContent = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  const id = resolveBankRowOpportunityId(article);
+  if (!id) return;
+  if (expanded) state.inboxExpandedIds.add(id);
+  else state.inboxExpandedIds.delete(id);
+}
+
+function showInboxEditorError(root, message) {
+  const node = root?.querySelector("#cv2EditorError");
+  if (!node) return;
+  node.hidden = false;
+  node.textContent = message;
+}
+
+async function runInboxDeviceContactSave(article, fromEditor) {
+  const id = resolveBankRowOpportunityId(article);
+  const record = state.records.get(id);
+  if (!record) return;
+  const vm = inboxViewModel(id, record);
+  const typed = fromEditor
+    ? article.querySelector('#cv2EditorForm input[name="contactNumber"]')?.value
+    : "";
+  const phone = String(typed || vm.contactNumber || "").trim();
+  const status = article.querySelector("#cv2ContactSaveStatus");
+  const result = await saveDeviceContact({
+    phone,
+    advertiserName: vm.advertiserName,
+    officeName: inboxOfficeName()
+  }, {
+    contacts: window.navigator?.contacts
+  });
+  if (fromEditor && status) {
+    status.hidden = !result.message;
+    status.textContent = result.message || "";
+    status.classList.toggle("is-ok", Boolean(result.ok));
+    status.classList.toggle("is-fail", Boolean(result.message) && !result.ok);
+    return;
+  }
+  window.alert(result.message);
+}
+
+async function submitInboxEditor(article, editorKey, formData) {
+  const id = resolveBankRowOpportunityId(article);
+  const existing = state.records.get(id);
+  const btn = article.querySelector("#cv2EditorSave");
+  if (!existing) return;
+  if (btn) btn.disabled = true;
+  try {
+    const result = await saveV2FieldWithAdapter(existing, editorKey, {
+      ...formData,
+      actorUid: authUser()?.uid || ""
+    }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
+    if (!result?.ok) {
+      showInboxEditorError(article, result?.error || "تعذر حفظ الحقل");
+      return;
+    }
+    if (result.reloaded) state.records.set(id, { ...result.reloaded, id });
+    closeInboxEditor();
+    renderList();
+  } catch (error) {
+    showInboxEditorError(article, error?.message || "تعذر حفظ الحقل");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function openInboxEditor(article, editorKey) {
+  const id = resolveBankRowOpportunityId(article);
+  const record = state.records.get(id);
+  if (!article || !editorKey || !record) return;
+  closeInboxEditor();
+  article.insertAdjacentHTML("beforeend", buildFieldEditorV2(editorKey, inboxViewModel(id, record)));
+  const form = article.querySelector("#cv2EditorForm");
+  form?.querySelector("input")?.focus();
+  article.querySelector("#cv2EditorCancel")?.addEventListener("click", () => closeInboxEditor());
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitInboxEditor(article, editorKey, Object.fromEntries(new FormData(form).entries()));
+  });
+  article.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void runInboxDeviceContactSave(article, true);
+  });
+}
+
 function bindListClicks() {
   const list = $("opportunityBankList");
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
   list.addEventListener("click", (event) => {
-    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
-    if (!row) {
-      if (event.target.closest("[data-summary-key], #bankLoadMoreBtn, .bank-action, [data-bank-open-tasks]")) return;
+    const toggle = event.target.closest("[data-cv2-toggle-details]");
+    if (toggle && list.contains(toggle)) {
+      event.preventDefault();
+      toggleInboxDataCard(toggle);
       return;
     }
-    if (isBankCardActionControl(event.target)) {
+    const contactBtn = event.target.closest("[data-cv2-save-device-contact]");
+    if (contactBtn && list.contains(contactBtn) && !event.target.closest("[data-cv2-editor-root]")) {
+      event.preventDefault();
       event.stopPropagation();
+      const article = contactBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      if (article) void runInboxDeviceContactSave(article, false);
       return;
     }
-    const openId = resolveBankRowOpportunityId(row);
-    if (!openId) return;
-    event.preventDefault();
-    void openBankDetailFromList(openId);
-  });
-  list.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const row = event.target.closest(".bank-row-card[data-opportunity-id]");
-    if (!row) return;
-    if (isBankCardActionControl(event.target)) return;
-    event.preventDefault();
-    const openId = resolveBankRowOpportunityId(row);
-    if (!openId) return;
-    void openBankDetailFromList(openId);
+    const complete = event.target.closest("[data-cv2-complete]");
+    if (complete && list.contains(complete)) {
+      event.preventDefault();
+      const article = complete.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      const id = resolveBankRowOpportunityId(article);
+      const record = state.records.get(id);
+      if (!article || !record) return;
+      openInboxEditor(article, firstMissingEditor(inboxViewModel(id, record)));
+      return;
+    }
+    const editorBtn = event.target.closest("[data-cv2-editor]");
+    if (editorBtn && list.contains(editorBtn) && !event.target.closest("[data-cv2-editor-root]")) {
+      event.preventDefault();
+      const article = editorBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "");
+    }
   });
 }
 
@@ -4122,7 +4179,7 @@ function boot() {
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
     state.filter = "active";
-    state.queryFilters.summaryKey = "ready";
+    state.queryFilters.summaryKey = "total";
     syncFilterButtons();
     scheduleBankQueryRefresh();
   });
@@ -4137,7 +4194,7 @@ function boot() {
     if (state.queryFilters.search.trim()) {
       scheduleBankQueryRefresh();
     } else {
-      state.queryFilters.summaryKey = state.filter === "archived" ? "archived" : "ready";
+      state.queryFilters.summaryKey = state.filter === "archived" ? "archived" : "total";
       scheduleBankQueryRefresh();
     }
   });
@@ -4173,7 +4230,22 @@ function boot() {
     const panelId = String(containerId || "operationsTaskPanel").trim();
     const id = normalizeOpportunityDocumentId(opportunityId);
     const panel = document.getElementById(panelId);
-    if (!panel || !id) return false;
+    if (!id) return false;
+    if (isContentResetEnabled()) {
+      const hash = buildOpportunityDeepLinkHash(id);
+      if (hash) {
+        const href = `${window.location.pathname}${window.location.search}${hash}`;
+        if (window.history?.replaceState) {
+          window.history.replaceState(window.history.state, "", href);
+        } else {
+          window.location.hash = hash;
+        }
+      }
+      window.IAQAR?.homeTabs?.switchTo?.("operations");
+      window.IAQAR?.contentV2?.render?.();
+      return true;
+    }
+    if (!panel) return false;
     panel.hidden = false;
     return openOpportunity(id, { panelId, dailyTask: true });
   };

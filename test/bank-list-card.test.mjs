@@ -12,16 +12,15 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("bank list card header has badge title and status aligned", () => {
+test("offers and requests list reuses the opportunity data card", () => {
   const html = readRepo("public", "js", "opportunity-bank.js");
-  const listing = readRepo("public", "js", "opportunity-listing-card-ui.js");
-  assert.ok(html.includes("buildOpportunityListingCardInnerHtml"));
-  assert.ok(listing.includes("bank-row-header"));
-  assert.ok(listing.includes("bank-row-title"));
-  assert.ok(listing.includes("bank-readiness-badge"));
+  const inbox = readRepo("public", "js", "bank-inbox-card-ui.js");
+  assert.ok(html.includes("buildBankInboxCardHtml"));
+  assert.ok(inbox.includes("buildOpportunityDataCardV2"));
+  assert.ok(inbox.includes("buildCompleteMissingButtonV2"));
+  assert.equal(inbox.includes("bank-inbox-head"), false);
   const shell = readRepo("public", "index.html");
-  assert.ok(shell.includes(".bank-row-header"));
-  assert.ok(shell.includes("align-items:center"));
+  assert.equal(shell.includes(".bank-inbox-head"), false);
 });
 
 test("bank list card uses stats grid for price area rooms", () => {
@@ -115,28 +114,27 @@ test("match score hidden unless computed", () => {
   assert.equal(shown.bestMatchScoreText, "82%");
 });
 
-test("bank row is fully clickable without inner detail button", () => {
+test("bank row expands the reused data card instead of a compact details button", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("role=\"button\""));
-  assert.ok(bank.includes("bank-row-card"));
-  assert.ok(bank.includes("openBankDetailFromList"));
-  assert.equal(bank.includes("bank-row-main bank-row-clickable"), false);
-  assert.ok(bank.includes("keydown"));
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
+  assert.ok(bank.includes("data-cv2-inbox-item"));
+  assert.ok(bank.includes("toggleInboxDataCard"));
+  assert.ok(ui.includes("buildOpportunityDataCardV2"));
+  assert.ok(bank.includes("keydown") === false || bank.includes("toggleInboxDataCard"));
 });
 
-test("DOM bank card keyboard opens detail with correct id", () => {
+test("DOM inbox card keeps the opportunity document id on the reused details wrapper", () => {
   const dom = new JSDOM(`<div id="opportunityBankList"></div>`, { url: "https://example.test/" });
   const doc = dom.window.document;
   const list = doc.getElementById("opportunityBankList");
-  list.innerHTML = `<article class="bank-row bank-row-card" role="button" tabindex="0" data-opportunity-id="opp_test_1" data-open-id="opp_test_1" aria-label="test"></article>`;
-  const row = list.querySelector(".bank-row-card");
+  list.innerHTML = `<article class="cv2-details" data-cv2-inbox-item data-opportunity-id="opp_test_1" aria-label="test"></article>`;
+  const row = list.querySelector("[data-cv2-inbox-item]");
   assert.equal(row.getAttribute("data-opportunity-id"), "opp_test_1");
   assert.equal(row.tagName, "ARTICLE");
-  assert.equal(row.getAttribute("role"), "button");
 });
 
-test("bank card HTML has no detail or completion buttons", () => {
-  const bank = readRepo("public", "js", "opportunity-bank.js");
-  const fn = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
-  assert.equal(/تكملة|عرض التفاصيل|قراءة المزيد/.test(fn), false);
+test("bank card HTML reuses complete-missing from the details card", () => {
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
+  assert.match(ui, /buildCompleteMissingButtonV2/);
+  assert.equal(ui.includes("data-complete-id"), false);
 });

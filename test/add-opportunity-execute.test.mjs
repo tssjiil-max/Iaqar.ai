@@ -32,11 +32,11 @@ test("index.html uses single-row grid for add opportunity", () => {
   assert.ok(html.includes("grid-template-columns:minmax(0, 1fr) 96px"));
 });
 
-test("approved modern shell keeps تنفيذ, Workspace, and no old FAL banner", () => {
+test("approved modern shell keeps إرسال, Workspace, and no old FAL banner", () => {
   const html = readRepositoryFile("public", "index.html");
   assert.equal(html.includes("license-banner"), false);
   assert.equal(html.includes("الهيئة العامة للعقار"), false);
-  assert.match(html, /id="addOpportunitySubmit"[^>]*>تنفيذ<\/button>/);
+  assert.match(html, /id="addOpportunitySubmit"[^>]*>إرسال<\/button>/);
   assert.equal(html.includes(">معالجة</button>"), false);
   assert.ok(html.includes("المهام اليومية"));
   assert.ok(html.includes("id=\"mainTabOperations\""));
@@ -309,7 +309,7 @@ test("hanging extraction aborts into failed state and releases busy UI", async (
     assert.equal(context.document.getElementById("addOpportunityStatus").dataset.state, "failed");
     assert.match(context.document.getElementById("addOpportunityStatus").textContent, /تعذر إكمال تحليل الإعلان/);
     assert.equal(context.document.getElementById("addOpportunitySubmit").disabled, false);
-    assert.equal(context.document.getElementById("addOpportunitySubmit").textContent, "تنفيذ");
+    assert.equal(context.document.getElementById("addOpportunitySubmit").textContent, "إرسال");
     assert.equal(context.document.getElementById("opportunityReviewOverlay").hidden, true);
     assert.equal(module.__test.getIntakeContext(), null);
     assert.equal(context.document.getElementById("addOpportunityRetry").hidden, false);

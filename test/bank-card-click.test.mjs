@@ -16,23 +16,25 @@ test("bank list click resolves opportunity only by data-opportunity-id", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("resolveBankRowOpportunityId"));
   assert.ok(bank.includes("data-opportunity-id"));
-  assert.ok(bank.includes(".bank-row-card[data-opportunity-id]"));
+  assert.ok(bank.includes("[data-cv2-inbox-item][data-opportunity-id]"));
   assert.equal(/getAttribute\(\"data-open-id\"\)/.test(bank), false);
 });
 
 test("bank card click handler ignores nested buttons and links inside the row", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   const bind = bank.match(/function bindListClicks[\s\S]*?^}/m)?.[0] || "";
-  assert.ok(bind.includes("isBankCardActionControl"));
-  assert.ok(bind.includes("[data-summary-key]"));
-  assert.ok(bind.includes(".bank-row-card[data-opportunity-id]"));
+  assert.ok(bind.includes("data-cv2-toggle-details"));
+  assert.ok(bind.includes("data-cv2-complete"));
+  assert.ok(bind.includes("[data-cv2-inbox-item][data-opportunity-id]"));
   assert.equal(bind.includes('closest("button, a")'), false);
 });
 
 test("bank cards bind the Firestore row id only", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
+  const ui = readRepo("public", "js", "bank-inbox-card-ui.js");
   const rowHtml = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
-  assert.ok(rowHtml.includes("data-opportunity-id=\"${escapeHtml(String(row.id || \"\").trim())}\""));
+  assert.ok(rowHtml.includes("buildBankInboxCardHtml({ ...record, id: row.id }"));
+  assert.ok(ui.includes("data-opportunity-id=\"${esc(opportunityId)}\""));
   assert.equal(rowHtml.includes("card.opportunityId || row.id"), false);
 });
 
@@ -104,21 +106,20 @@ test("incomplete detail focuses first missing field in unified form", () => {
   }
 });
 
-test("ready and incomplete cards share one detail opener without bank complete button", () => {
+test("ready and incomplete cards share the reused data card without a bank complete button", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(bank.includes("openBankDetailFromList"));
-  assert.ok(bank.includes("navigateToTasksIncomplete"));
+  assert.ok(bank.includes("buildBankInboxCardHtml"));
   const bankRow = bank.match(/function bankRowHtml[\s\S]*?^}/m)?.[0] || "";
   assert.equal(/data-complete-id|bank-row-complete/.test(bankRow), false);
-  assert.ok(bankRow.includes("bank-row-tasks-hint"));
-  assert.ok(bankRow.includes("data-open-id"));
+  assert.equal(bankRow.includes("bank-row-tasks-hint"), false);
 });
 
-test("bank card keyboard and aria label include readiness status", () => {
+test("bank list binds expand and completion on the reused data card", () => {
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.ok(bank.includes("role=\"button\""));
-  assert.ok(bank.includes("keydown"));
-  assert.ok(bank.includes("card.headerStatus"));
+  assert.ok(bank.includes("toggleInboxDataCard"));
+  assert.ok(bank.includes("openInboxEditor"));
+  assert.ok(bank.includes("data-cv2-complete"));
 });
 
 test("wrong office guard blocks opening foreign opportunity", () => {

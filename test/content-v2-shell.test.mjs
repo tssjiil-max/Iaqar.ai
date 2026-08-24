@@ -65,10 +65,36 @@ test("office unlock keeps the current hash so content can read the opportunity i
   assert.equal(access.includes('`${location.pathname}?office=${encodeURIComponent(normalized)}`'), false);
 });
 
+test("daily tasks stay on content v2 while offers and requests keep the bank list", () => {
+  const css = readFileSync(path.join(root, "src", "v2", "content", "styles.css"), "utf8");
+  assert.match(css, /html\.is-content-v2 \[data-legacy-content\]/);
+  assert.match(css, /data-content-view="opportunities"/);
+  const mount = readFileSync(path.join(root, "src", "v2", "content", "mount.js"), "utf8");
+  assert.match(mount, /view\.name === "opportunities"/);
+  assert.match(mount, /buildContentV2Html\(view\)/);
+  assert.match(mount, /setLegacyListVisible\(true\)/);
+  assert.match(mount, /setLegacyListVisible\(false\)/);
+});
+
 test("legacy bank does not strip opportunity hash while content reset is on", () => {
   const bank = readFileSync(path.join(root, "public", "js", "opportunity-bank.js"), "utf8");
   assert.match(bank, /import \{ isContentResetEnabled \} from "\.\/content-v2-flag\.js"/);
   assert.match(bank, /if \(isContentResetEnabled\(\)\) return;/);
+});
+
+test("daily task open mounts content v2 details instead of the legacy ops panel", () => {
+  const bank = readFileSync(path.join(root, "public", "js", "opportunity-bank.js"), "utf8");
+  const fn = bank.match(/renderDailyTaskOpportunity[\s\S]*?openOpportunity\(id, \{ panelId, dailyTask: true \}\);/)?.[0] || "";
+  assert.match(fn, /isContentResetEnabled\(\)/);
+  assert.match(fn, /buildOpportunityDeepLinkHash\(id\)/);
+  assert.match(fn, /contentV2\?\.render/);
+});
+
+test("offers and requests still reuse the approved data card", () => {
+  const inbox = readFileSync(path.join(root, "public", "js", "bank-inbox-card-ui.js"), "utf8");
+  assert.match(inbox, /buildOpportunityDataCardV2/);
+  assert.match(inbox, /buildCompleteMissingButtonV2/);
+  assert.match(inbox, /data-cv2-inbox-item/);
 });
 
 test("content-v2 shell applies isolation class without removing header markup", () => {

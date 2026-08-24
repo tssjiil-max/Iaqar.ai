@@ -37,7 +37,7 @@
     }
 
     if (!isOps) {
-      setOppTab(state.opp || "add", { skipBankPause: true });
+      setOppTab("bank", { skipBankPause: true });
     } else if (isInlineBank() && window.IAQAR?.pauseOpportunityBankInline) {
       window.IAQAR.pauseOpportunityBankInline();
     }
@@ -47,28 +47,27 @@
   function setOppTab(sub, options = {}) {
     const { skipBankPause = false, skipBankOpen = false } = options;
     const prev = state.opp;
-    state.opp = sub;
-    const isAdd = sub === "add";
+    state.opp = "bank";
     const addPanel = $("oppPanelAdd");
     const bankPanel = $("oppPanelBank");
     const tabAdd = $("oppTabAdd");
     const tabBank = $("oppTabBank");
 
-    if (addPanel) addPanel.hidden = !isAdd;
-    if (bankPanel) bankPanel.hidden = isAdd;
+    if (addPanel) addPanel.hidden = true;
+    if (bankPanel) bankPanel.hidden = false;
     if (tabAdd) {
-      tabAdd.classList.toggle("is-active", isAdd);
-      tabAdd.setAttribute("aria-selected", isAdd ? "true" : "false");
+      tabAdd.classList.toggle("is-active", false);
+      tabAdd.setAttribute("aria-selected", "false");
     }
     if (tabBank) {
-      tabBank.classList.toggle("is-active", !isAdd);
-      tabBank.setAttribute("aria-selected", isAdd ? "false" : "true");
+      tabBank.classList.toggle("is-active", true);
+      tabBank.setAttribute("aria-selected", "true");
     }
 
-    if (!skipBankPause && prev === "bank" && isAdd && isInlineBank()) {
-      window.IAQAR?.pauseOpportunityBankInline?.();
-    }
-    if (!isAdd && !skipBankOpen && isInlineBank()) {
+    void sub;
+    void skipBankPause;
+    void prev;
+    if (!skipBankOpen && isInlineBank()) {
       window.IAQAR?.activateOpportunityBankInline?.();
     }
     window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
@@ -77,8 +76,9 @@
   function switchTo(main, opp) {
     setMainTab(main);
     if (main === "opportunities") {
-      setOppTab(opp || state.opp || "add");
+      setOppTab("bank");
     }
+    void opp;
   }
 
   function boot() {
@@ -93,7 +93,8 @@
     });
     $("oppTabAdd")?.addEventListener("click", () => {
       if (state.main !== "opportunities") setMainTab("opportunities");
-      setOppTab("add");
+      setOppTab("bank");
+      $("addOpportunityInput")?.focus();
     });
     $("oppTabBank")?.addEventListener("click", () => {
       if (state.main !== "opportunities") setMainTab("opportunities");

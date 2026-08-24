@@ -52,12 +52,17 @@ function rowMarkup(row, vm) {
     </div>`;
 }
 
-function rowsHtml(vm) {
+function extraNodeId(ui = {}) {
+  const raw = String(ui.extraId || "cv2DataExtra").trim() || "cv2DataExtra";
+  return raw.replace(/[^A-Za-z0-9_-]/g, "") || "cv2DataExtra";
+}
+
+function rowsHtml(vm, extraId = "cv2DataExtra") {
   let html = "";
   let extra = [];
   const flushExtra = () => {
     if (!extra.length) return;
-    html += `<div class="cv2-extra" id="cv2DataExtra">
+    html += `<div class="cv2-extra" id="${escapeContentHtml(extraId)}">
       <div class="cv2-extra-inner">${extra.join("")}</div>
     </div>`;
     extra = [];
@@ -101,16 +106,18 @@ function rowValue(vm, key) {
 export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
   const expanded = Boolean(ui.dataCardExpanded);
   const toggleLabel = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  const extraId = extraNodeId(ui);
+  const meta = String(ui.statusLine || completenessLine(vm));
   return `<section class="cv2-card ${expanded ? "is-expanded" : "is-collapsed"}" data-cv2-data-card aria-label="بيانات الفرصة">
     <header class="cv2-card-head">
       ${iconUse("i-clipboard-list")}
       <div class="cv2-card-head-text">
         <h2 class="cv2-card-title">بيانات الفرصة</h2>
-        <p class="cv2-card-meta">${escapeContentHtml(completenessLine(vm))}</p>
+        <p class="cv2-card-meta">${escapeContentHtml(meta)}</p>
       </div>
     </header>
-    <div class="cv2-rows">${rowsHtml(vm)}</div>
-    <button type="button" class="cv2-details-toggle" data-cv2-toggle-details aria-expanded="${expanded ? "true" : "false"}" aria-controls="cv2DataExtra">
+    <div class="cv2-rows">${rowsHtml(vm, extraId)}</div>
+    <button type="button" class="cv2-details-toggle" data-cv2-toggle-details aria-expanded="${expanded ? "true" : "false"}" aria-controls="${escapeContentHtml(extraId)}">
       <span data-cv2-toggle-label>${toggleLabel}</span>
       <svg class="cv2-icon cv2-toggle-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>

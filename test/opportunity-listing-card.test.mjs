@@ -25,7 +25,7 @@ test("listing card inner html matches bank row structure", () => {
   assert.ok(html.includes("listing-field-marks"));
 });
 
-test("bank row html uses shared listing card builder", () => {
-  const bankSource = readFileSync(new URL("../public/js/opportunity-bank.js", import.meta.url), "utf8");
-  assert.ok(bankSource.includes("buildOpportunityListingCardInnerHtml"));
+test("daily-task cards keep the shared listing card builder", () => {
+  const opsSource = readFileSync(new URL("../public/js/ops-task-card-domain.js", import.meta.url), "utf8");
+  assert.ok(opsSource.includes("buildOpportunityListingCardInnerHtml"));
 });

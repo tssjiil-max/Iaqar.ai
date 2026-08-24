@@ -45,6 +45,15 @@ test("mobile data card starts collapsed and keeps all six rows in the DOM", () =
   assert.match(expanded, /aria-expanded="true"/);
 });
 
+test("data card extra id can be scoped for lists without changing the default", () => {
+  const scoped = buildOpportunityDataCardV2(referenceViewModel(), { extraId: "cv2DataExtra-opp1" });
+  assert.match(scoped, /id="cv2DataExtra-opp1"/);
+  assert.match(scoped, /aria-controls="cv2DataExtra-opp1"/);
+  assert.equal(scoped.includes('id="cv2DataExtra"'), false);
+  const status = buildOpportunityDataCardV2(referenceViewModel(), { statusLine: "يحتاج استكمال" });
+  assert.match(status, /يحتاج استكمال/);
+});
+
 test("Content V2 details keep six fixed rows in source order", () => {
   assert.deepEqual(V2_DATA_ROWS.map((row) => row.key), [
     "propertyPurpose",
