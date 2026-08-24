@@ -9,6 +9,21 @@ import { buildOpportunityDetailsContentV2 } from "./page.js";
 import { buildFieldEditorV2 } from "./editor.js";
 import { loadOpportunityRecord, persistOpportunityField } from "./data.js";
 
+const EMPTY_READINESS = Object.freeze({
+  matchingReadiness: "NEEDS_COMPLETION",
+  matchingReadinessMissing: [],
+  isReadyForMatching: false
+});
+
+const state = {
+  opportunityId: "",
+  record: null,
+  extras: {},
+  root: null,
+  loadGen: 0,
+  hydrated: false
+};
+
 function referencePreview() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -26,16 +41,11 @@ function referencePreview() {
   }
 }
 
-const state = {
-  opportunityId: "",
-  record: null,
-  extras: {},
-  root: null,
-  loadGen: 0
-};
-
 function currentViewModel() {
-  return mapOpportunityDetailsV2ViewModel(state.opportunityId, state.record || {}, state.extras);
+  const extras = state.hydrated
+    ? state.extras
+    : { ...state.extras, readiness: EMPTY_READINESS };
+  return mapOpportunityDetailsV2ViewModel(state.opportunityId, state.record || {}, extras);
 }
 
 function showEditorError(message) {
@@ -54,6 +64,7 @@ function readEditorForm(form) {
 }
 
 async function submitEditor(editorKey, formData) {
+  const previous = state.record;
   const btn = state.root?.querySelector("#cv2EditorSave");
   if (btn) btn.disabled = true;
   try {
@@ -66,9 +77,11 @@ async function submitEditor(editorKey, formData) {
       return;
     }
     state.record = result.reloaded || state.record;
+    state.hydrated = true;
     closeEditor();
     renderPage();
   } catch (error) {
+    state.record = previous;
     showEditorError(error?.message || "تعذر حفظ الحقل");
   } finally {
     if (btn) btn.disabled = false;
@@ -104,33 +117,63 @@ function renderPage() {
   bindPage(state.root);
 }
 
+async function waitForDb(timeoutMs = 8000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (window.IAQAR?.office?.db && window.IAQAR?.office?.officeId) return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return Boolean(window.IAQAR?.office?.db && window.IAQAR?.office?.officeId);
+}
+
+async function hydrate(gen) {
+  const preview = referencePreview();
+  if (preview) {
+    if (state.loadGen !== gen) return;
+    state.record = preview.record;
+    state.extras = preview.extras;
+    state.hydrated = true;
+    renderPage();
+    return;
+  }
+  await waitForDb();
+  if (state.loadGen !== gen) return;
+  try {
+    const record = await loadOpportunityRecord(state.opportunityId);
+    if (state.loadGen !== gen) return;
+    state.record = record || { id: state.opportunityId };
+    state.hydrated = true;
+    renderPage();
+  } catch (error) {
+    console.warn("[content-v2] opportunity load failed", error);
+  }
+}
+
 export function unmountOpportunityDetailsContentV2() {
   state.loadGen += 1;
   state.opportunityId = "";
   state.record = null;
   state.extras = {};
+  state.hydrated = false;
   if (state.root) state.root.innerHTML = "";
   state.root = null;
 }
 
 export async function mountOpportunityDetailsContentV2(root, { opportunityId } = {}) {
-  const gen = state.loadGen + 1;
-  state.loadGen = gen;
   if (!root || !opportunityId) return;
-  state.root = root;
-  state.opportunityId = opportunityId;
-  const preview = referencePreview();
-  if (preview) {
-    state.record = preview.record;
-    state.extras = preview.extras;
-    renderPage();
+  const samePage = state.root === root && state.opportunityId === opportunityId;
+  if (samePage && state.hydrated) return;
+  if (samePage && !state.hydrated) {
+    await hydrate(state.loadGen);
     return;
   }
+  const gen = state.loadGen + 1;
+  state.loadGen = gen;
+  state.root = root;
+  state.opportunityId = opportunityId;
   state.record = { id: opportunityId };
   state.extras = {};
+  state.hydrated = false;
   renderPage();
-  const record = await loadOpportunityRecord(opportunityId);
-  if (state.loadGen !== gen) return;
-  state.record = record || { id: opportunityId };
-  renderPage();
+  await hydrate(gen);
 }
