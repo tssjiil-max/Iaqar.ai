@@ -19,12 +19,20 @@ function missingHtml(editor) {
   </${tag}>`;
 }
 
-function valueHtml(primary, secondary) {
+function contactSaveButton() {
+  return `<button type="button" class="cv2-contact-add" data-cv2-save-device-contact aria-label="حفظ في جهات الاتصال" title="حفظ في جهات الاتصال">
+    <svg class="cv2-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.5h8a2 2 0 0 1 2 2v13l-6-3.2-6 3.2v-13a2 2 0 0 1 2-2z"/><path d="M10 9h4M10 12h4"/></svg>
+  </button>`;
+}
+
+function valueHtml(primary, secondary, { contactAction = false } = {}) {
   const main = String(primary ?? "").trim();
   const sub = String(secondary ?? "").trim();
   if (!main && !sub) return `<span class="cv2-value-empty"></span>`;
-  return `<span class="cv2-value-primary">${escapeContentHtml(main)}</span>
+  const body = `<span class="cv2-value-primary">${escapeContentHtml(main)}</span>
     ${sub ? `<span class="cv2-value-secondary">${escapeContentHtml(sub)}</span>` : ""}`;
+  if (!contactAction) return body;
+  return `<span class="cv2-contact-value">${body}${contactSaveButton()}</span>`;
 }
 
 function rowValue(vm, key) {
@@ -63,7 +71,7 @@ export function buildOpportunityDataCardV2(vm = {}) {
         <span class="cv2-row-label">${escapeContentHtml(label)}</span>
       </span>
       <span class="cv2-row-split" aria-hidden="true"></span>
-      <span class="cv2-row-value">${missing ? missingHtml(editor) : valueHtml(value.primary, value.secondary)}</span>
+      <span class="cv2-row-value">${missing ? missingHtml(editor) : valueHtml(value.primary, value.secondary, { contactAction: row.key === "contact" && !isBlank(value.primary) })}</span>
     </div>`;
   }).join("");
 

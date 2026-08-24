@@ -8,6 +8,7 @@ import { firstMissingEditor } from "./view-model.js";
 import { buildOpportunityDetailsContentV2 } from "./page.js";
 import { buildFieldEditorV2 } from "./editor.js";
 import { loadOpportunityRecord, persistOpportunityField } from "./data.js";
+import { saveDeviceContact } from "./save-device-contact.js";
 
 const EMPTY_READINESS = Object.freeze({
   matchingReadiness: "NEEDS_COMPLETION",
@@ -48,11 +49,51 @@ function currentViewModel() {
   return mapOpportunityDetailsV2ViewModel(state.opportunityId, state.record || {}, extras);
 }
 
+function currentOfficeName() {
+  const office = window.IAQAR?.office || {};
+  return String(office.officeName || office.displayName || office.name || "").trim();
+}
+
 function showEditorError(message) {
   const node = state.root?.querySelector("#cv2EditorError");
   if (!node) return;
   node.hidden = false;
   node.textContent = message;
+}
+
+function showContactSaveStatus(message, ok) {
+  const node = state.root?.querySelector("#cv2ContactSaveStatus");
+  if (!node) return;
+  node.hidden = !message;
+  node.textContent = message || "";
+  node.classList.toggle("is-ok", Boolean(ok));
+  node.classList.toggle("is-fail", Boolean(message) && !ok);
+}
+
+function contactSaveInput(fromEditor) {
+  if (fromEditor) {
+    const typed = state.root?.querySelector('#cv2EditorForm input[name="contactNumber"]')?.value;
+    return String(typed || "").trim();
+  }
+  return String(currentViewModel().contactNumber || "").trim();
+}
+
+async function runDeviceContactSave(fromEditor) {
+  const phone = contactSaveInput(fromEditor);
+  const vm = currentViewModel();
+  showContactSaveStatus("", false);
+  const result = await saveDeviceContact({
+    phone,
+    advertiserName: vm.advertiserName,
+    officeName: currentOfficeName()
+  }, {
+    contacts: window.navigator?.contacts
+  });
+  if (fromEditor) {
+    showContactSaveStatus(result.message, result.ok);
+    return;
+  }
+  window.alert(result.message);
 }
 
 function closeEditor() {
@@ -99,6 +140,11 @@ function openEditor(field) {
     event.preventDefault();
     void submitEditor(field, readEditorForm(form));
   });
+  state.root.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void runDeviceContactSave(true);
+  });
 }
 
 function bindPage(root) {
@@ -108,6 +154,13 @@ function bindPage(root) {
   });
   root.querySelectorAll(".cv2-details [data-cv2-editor]").forEach((node) => {
     node.addEventListener("click", () => openEditor(node.getAttribute("data-cv2-editor") || ""));
+  });
+  root.querySelectorAll(".cv2-details [data-cv2-save-device-contact]").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void runDeviceContactSave(false);
+    });
   });
 }
 

@@ -40,6 +40,14 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
   const roleHints = editorKey === "advertiserRole"
     ? `<p class="cv2-editor-roles">${ADVERTISER_ROLES.filter((row) => row.id !== "UNKNOWN").map((row) => escapeContentHtml(row.label)).join(" · ")}</p>`
     : "";
+  const isContact = editorKey === "contactNumber";
+  const saveLabel = isContact ? "حفظ الرقم" : "حفظ";
+  const contactAction = isContact
+    ? `<button type="button" class="cv2-editor-contact-save" id="cv2EditorContactSave" data-cv2-save-device-contact>
+          <svg class="cv2-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.5h8a2 2 0 0 1 2 2v13l-6-3.2-6 3.2v-13a2 2 0 0 1 2-2z"/><path d="M10 9h4M10 12h4"/></svg>
+          <span>حفظ في جهات الاتصال</span>
+        </button>`
+    : "";
   return `<div class="cv2-editor" id="cv2Editor" data-cv2-editor-root data-cv2-editor="${escapeContentHtml(editorKey)}" role="dialog" aria-modal="true" aria-labelledby="cv2EditorTitle">
     <div class="cv2-editor-sheet">
       <h3 id="cv2EditorTitle">${escapeContentHtml(spec.title)}</h3>
@@ -48,8 +56,10 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
       <form id="cv2EditorForm" class="cv2-editor-form" autocomplete="off">
         ${spec.input}
         <p class="cv2-editor-error" id="cv2EditorError" hidden></p>
-        <div class="cv2-editor-actions">
-          <button type="submit" class="cv2-editor-save" id="cv2EditorSave">حفظ</button>
+        <p class="cv2-editor-contact-status" id="cv2ContactSaveStatus" hidden></p>
+        <div class="cv2-editor-actions${isContact ? " is-contact" : ""}">
+          <button type="submit" class="cv2-editor-save" id="cv2EditorSave">${saveLabel}</button>
+          ${contactAction}
           <button type="button" class="cv2-editor-cancel" id="cv2EditorCancel">إلغاء</button>
         </div>
       </form>
