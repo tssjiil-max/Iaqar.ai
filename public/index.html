@@ -125,6 +125,17 @@
       flex-shrink:0;
     }
 
+    #shellVoice[hidden] {
+      display:none !important;
+      margin:0 !important;
+      padding:0 !important;
+      min-height:0 !important;
+      height:0 !important;
+      overflow:hidden !important;
+      border:0 !important;
+      box-shadow:none !important;
+    }
+
     .app-content-shell {
       flex:1 0 auto;
       display:flex;
@@ -5727,14 +5738,14 @@
           <button type="button" class="sub-tab is-active" id="oppTabBank" role="tab"
             aria-selected="true" aria-controls="oppPanelBank">القائمة</button>
           <button type="button" class="sub-tab" id="oppTabAdd"
-            aria-expanded="false" aria-controls="addOpportunity">+ إضافة عرض أو طلب</button>
+            aria-expanded="false" aria-controls="addOpportunity">استيراد فرصة</button>
         </nav>
 
         <div class="sub-tab-panels" id="oppSubTabPanels">
           <div class="sub-tab-panel" id="oppPanelAdd" role="tabpanel" aria-labelledby="oppTabAdd" hidden></div>
 
           <div class="sub-tab-panel" id="oppPanelBank" role="tabpanel" aria-labelledby="oppTabBank">
-            <section class="card add-opportunity" id="addOpportunity" hidden aria-label="صندوق إضافة عرض أو طلب">
+            <section class="card add-opportunity" id="addOpportunity" hidden aria-label="استيراد فرصة">
               <p class="workspace-subtitle">الصق نصًا أو رابطًا أو محتوى واتساب، أو أرفق صورة، أو سجّل صوتًا.</p>
 
               <form id="addOpportunityForm" autocomplete="off">

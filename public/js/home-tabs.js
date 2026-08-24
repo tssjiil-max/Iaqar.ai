@@ -9,8 +9,7 @@
     opp: "bank"
   };
 
-  const ADD_CLOSED_LABEL = "+ إضافة عرض أو طلب";
-  const ADD_OPEN_LABEL = "إغلاق الإضافة";
+  const ADD_LABEL = "استيراد فرصة";
 
   function $(id) {
     return document.getElementById(id);
@@ -25,7 +24,7 @@
     }
     if (tabAdd) {
       tabAdd.setAttribute("aria-expanded", open ? "true" : "false");
-      tabAdd.textContent = open ? ADD_OPEN_LABEL : ADD_CLOSED_LABEL;
+      tabAdd.textContent = ADD_LABEL;
       tabAdd.classList.toggle("is-open", open);
     }
   }
@@ -57,6 +56,9 @@
       tabOpp.classList.toggle("is-active", !isOps);
       tabOpp.setAttribute("aria-selected", isOps ? "false" : "true");
     }
+
+    const voice = $("shellVoice");
+    if (voice) voice.hidden = !isOps;
 
     if (!isOps) {
       setOppTab("bank", { skipBankPause: true });
