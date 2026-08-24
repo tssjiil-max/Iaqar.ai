@@ -46,8 +46,15 @@ function render(host) {
   unmountOpportunityDetailsContentV2();
   teardownOfficeCardCollapse();
   host.classList.remove("is-details");
-  host.innerHTML = "";
-  setLegacyListVisible(true);
+
+  if (view.name === "opportunities") {
+    host.innerHTML = "";
+    setLegacyListVisible(true);
+    return;
+  }
+
+  host.innerHTML = buildContentV2Html(view);
+  setLegacyListVisible(false);
 }
 
 function boot() {

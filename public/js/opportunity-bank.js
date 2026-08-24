@@ -4230,7 +4230,22 @@ function boot() {
     const panelId = String(containerId || "operationsTaskPanel").trim();
     const id = normalizeOpportunityDocumentId(opportunityId);
     const panel = document.getElementById(panelId);
-    if (!panel || !id) return false;
+    if (!id) return false;
+    if (isContentResetEnabled()) {
+      const hash = buildOpportunityDeepLinkHash(id);
+      if (hash) {
+        const href = `${window.location.pathname}${window.location.search}${hash}`;
+        if (window.history?.replaceState) {
+          window.history.replaceState(window.history.state, "", href);
+        } else {
+          window.location.hash = hash;
+        }
+      }
+      window.IAQAR?.homeTabs?.switchTo?.("operations");
+      window.IAQAR?.contentV2?.render?.();
+      return true;
+    }
+    if (!panel) return false;
     panel.hidden = false;
     return openOpportunity(id, { panelId, dailyTask: true });
   };

@@ -1,7 +1,12 @@
 /* Content surface only. Does not restyle the existing Header or Navigation. */
 
-html.is-content-v2:has(.content-v2.is-details) [data-legacy-content] {
+html.is-content-v2 [data-legacy-content] {
   display: none !important;
+}
+
+html.is-content-v2:has(#contentV2[data-content-view="opportunities"]:not(.is-details)) [data-legacy-content] {
+  display: flex !important;
+  flex-direction: column;
 }
 
 html.is-content-v2 .content-v2 {
