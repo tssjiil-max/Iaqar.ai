@@ -1,5 +1,5 @@
 import { escapeContentHtml } from "../domain.js";
-import { V2_DATA_ROWS, completenessLine, editorForDataRow, nextActionLine } from "./view-model.js";
+import { V2_DATA_ROWS, completenessLine, editorForDataRow } from "./view-model.js";
 
 function iconUse(id) {
   return `<svg class="cv2-icon" aria-hidden="true"><use href="#${escapeContentHtml(id)}"/></svg>`;
@@ -14,7 +14,7 @@ function missingHtml(editor) {
   const tag = editor ? "button" : "span";
   const type = editor ? ` type="button"` : "";
   return `<${tag} class="cv2-missing-pair"${type}${editorAttr}>
-    <span class="cv2-missing-badge">ناقص</span>
+    <span class="cv2-missing-dot" aria-hidden="true"></span>
     <span class="cv2-missing-text">غير محدد</span>
   </${tag}>`;
 }
@@ -101,7 +101,7 @@ function rowValue(vm, key) {
 export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
   const expanded = Boolean(ui.dataCardExpanded);
   const toggleLabel = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
-  return `<section class="cv2-card cv2-task-card ${expanded ? "is-expanded" : "is-collapsed"}" data-cv2-data-card aria-label="بيانات الفرصة">
+  return `<section class="cv2-card ${expanded ? "is-expanded" : "is-collapsed"}" data-cv2-data-card aria-label="بيانات الفرصة">
     <header class="cv2-card-head">
       ${iconUse("i-clipboard-list")}
       <div class="cv2-card-head-text">
@@ -110,7 +110,6 @@ export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
       </div>
     </header>
     <div class="cv2-rows">${rowsHtml(vm)}</div>
-    <p class="cv2-next-action">${escapeContentHtml(nextActionLine(vm))}</p>
     <button type="button" class="cv2-details-toggle" data-cv2-toggle-details aria-expanded="${expanded ? "true" : "false"}" aria-controls="cv2DataExtra">
       <span data-cv2-toggle-label>${toggleLabel}</span>
       <svg class="cv2-icon cv2-toggle-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>

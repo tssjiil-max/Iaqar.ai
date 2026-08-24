@@ -13,12 +13,12 @@
   --cv2-text: #1c211f;
   --cv2-muted: #6b7873;
   --cv2-card-radius: 10px;
-  --cv2-row-height: 52px;
-  --cv2-row-height-secondary: 56px;
+  --cv2-row-height: 0px;
+  --cv2-row-height-secondary: 0px;
   --cv2-split: #dce5e0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   padding: 0 0 12px;
 }
 
@@ -44,8 +44,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 44px;
-  padding: 6px 12px;
+  height: 46px;
+  min-height: 46px;
+  max-height: 52px;
+  padding: 4px 10px;
   color: var(--cv2-green);
   box-sizing: border-box;
 }
@@ -125,7 +127,8 @@
   align-items: center;
   column-gap: 8px;
   min-height: var(--cv2-row-height);
-  padding: 6px 12px;
+  height: auto;
+  padding: 5px 10px;
   border-top: 1px solid rgba(0, 0, 0, 0.07);
   box-sizing: border-box;
 }
@@ -146,9 +149,9 @@
   width: 1px;
   justify-self: center;
   align-self: center;
-  height: 22px;
-  min-height: 18px;
-  max-height: 28px;
+  height: 20px;
+  min-height: 16px;
+  max-height: 26px;
   margin: 0;
   background: var(--cv2-split);
 }
@@ -199,7 +202,7 @@
 
 .cv2-value-secondary {
   margin: 2px 0 0;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
   color: var(--cv2-muted);
 }
@@ -221,19 +224,12 @@
   cursor: pointer;
 }
 
-.cv2-missing-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 16px;
-  padding: 0 5px;
-  border-radius: 4px;
-  border: 1px solid #fecdd3;
-  background: var(--cv2-red-soft);
-  color: #9f1239;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+.cv2-missing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c2414b;
+  flex-shrink: 0;
 }
 
 .cv2-missing-text {
@@ -267,7 +263,7 @@
   justify-content: center;
   gap: 6px;
   width: 100%;
-  min-height: 34px;
+  min-height: 32px;
   border: 1px solid var(--cv2-green);
   border-radius: 10px;
   background: #fff;
@@ -305,8 +301,8 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   align-items: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 6px 16px;
+  min-height: 42px;
+  padding: 5px 16px;
   border-bottom: 1px solid var(--cv2-row);
 }
 
@@ -368,12 +364,12 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  padding: 6px 16px;
+  padding: 5px 16px;
   background: var(--cv2-green-soft);
   color: var(--cv2-green-text);
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.3;
   border-radius: 0;
 }
 
@@ -635,28 +631,28 @@
   }
 
   .cv2-details {
-    gap: 8px;
+    gap: 6px;
     padding: 0 0 10px;
   }
 
   .cv2-card-head {
-    min-height: 44px;
-    padding: 6px 10px;
+    min-height: 46px;
+    padding: 4px 10px;
   }
 
   .cv2-row {
-    min-height: 52px;
-    padding: 6px 10px;
+    min-height: var(--cv2-row-height);
+    padding: 5px 10px;
     column-gap: 8px;
   }
 
   .cv2-row:has(.cv2-value-secondary) {
-    min-height: 56px;
+    min-height: var(--cv2-row-height-secondary);
   }
 
   .cv2-row-split {
-    height: 20px;
-    max-height: 26px;
+    height: 18px;
+    max-height: 24px;
   }
 
   .cv2-next-action {
@@ -680,7 +676,8 @@
     gap: 4px;
     width: 100%;
     min-height: 36px;
-    padding: 4px 10px;
+    height: 36px;
+    padding: 0 10px;
     border: 0;
     border-top: 1px solid var(--cv2-row);
     border-radius: 0;
@@ -699,12 +696,12 @@
   }
 
   .cv2-report-row {
-    min-height: 48px;
-    padding-block: 6px;
+    min-height: 42px;
+    padding-block: 5px;
   }
 
   .cv2-result-bar {
-    padding: 6px 12px;
+    padding: 5px 12px;
   }
 
   .cv2-appointment-body {
@@ -713,7 +710,7 @@
   }
 
   .cv2-complete-btn {
-    min-height: 36px;
+    min-height: 32px;
     font-size: 13px;
   }
 
