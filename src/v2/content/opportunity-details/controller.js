@@ -173,7 +173,7 @@ function bindPage(root) {
       card.classList.toggle("is-collapsed", !state.dataCardExpanded);
     }
     if (btn) btn.setAttribute("aria-expanded", state.dataCardExpanded ? "true" : "false");
-    if (label) label.textContent = state.dataCardExpanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+    if (label) label.textContent = state.dataCardExpanded ? "إخفاء التفاصيل" : "عرض كل البيانات";
   });
 }
 

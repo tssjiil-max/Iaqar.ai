@@ -5,6 +5,7 @@
 
 import { isContentResetEnabled } from "./flag.js";
 import { buildContentV2Html, currentContentView } from "./domain.js";
+import { setupOfficeCardCollapse, teardownOfficeCardCollapse } from "./office-collapse.js";
 import { mountOpportunityDetailsContentV2, unmountOpportunityDetailsContentV2 } from "./opportunity-details/controller.js";
 
 function $(id) {
@@ -33,11 +34,13 @@ function render(host) {
 
   if (view.name === "opportunity" && view.id) {
     host.classList.add("is-details");
+    setupOfficeCardCollapse();
     void mountOpportunityDetailsContentV2(host, { opportunityId: view.id });
     return;
   }
 
   unmountOpportunityDetailsContentV2();
+  teardownOfficeCardCollapse();
   host.classList.remove("is-details");
   host.innerHTML = buildContentV2Html(view);
 }
@@ -68,10 +71,12 @@ export function mountContentV2(root, view) {
   if (!root || !view) return;
   if (view.name === "opportunity" && (view.id || view.opportunityId)) {
     root.classList.add("is-details");
+    setupOfficeCardCollapse();
     void mountOpportunityDetailsContentV2(root, { opportunityId: view.id || view.opportunityId });
     return;
   }
   unmountOpportunityDetailsContentV2();
+  teardownOfficeCardCollapse();
   root.classList.remove("is-details");
   root.innerHTML = buildContentV2Html(view);
 }

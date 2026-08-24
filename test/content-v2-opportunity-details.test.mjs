@@ -8,7 +8,7 @@ import {
   V2_DATA_ROWS
 } from "../public/js/opportunity-details-v2-domain.js";
 import { buildV2FieldPatch } from "../public/js/opportunity-details-v2.js";
-import { editorForDataRow, firstMissingEditor } from "../public/js/v2/opportunity-details/view-model.js";
+import { editorForDataRow, firstMissingEditor, completenessLine } from "../public/js/v2/opportunity-details/view-model.js";
 import { buildOpportunityDataCardV2, buildCompleteMissingButtonV2 } from "../public/js/v2/opportunity-details/data-card.js";
 import { buildDailyReportCardV2 } from "../public/js/v2/opportunity-details/daily-report.js";
 import { buildNextAppointmentCardV2 } from "../public/js/v2/opportunity-details/next-appointment.js";
@@ -26,16 +26,20 @@ function referenceViewModel() {
 test("mobile data card starts collapsed and keeps all six rows in the DOM", () => {
   const html = buildOpportunityDataCardV2(referenceViewModel());
   assert.match(html, /class="cv2-card is-collapsed"/);
-  assert.match(html, /عرض التفاصيل/);
+  assert.match(html, /عرض كل البيانات/);
   assert.match(html, /aria-expanded="false"/);
   assert.match(html, /aria-controls="cv2DataExtra"/);
   assert.match(html, /id="cv2DataExtra"/);
   const rows = [...html.matchAll(/data-cv2-row="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(rows, ["propertyPurpose", "location", "price", "specs", "advertiser", "contact"]);
-  const extra = html.slice(html.indexOf("id=\"cv2DataExtra\""), html.indexOf("data-cv2-row=\"contact\""));
-  assert.match(extra, /data-cv2-row="specs"/);
+  const extraStart = html.indexOf("id=\"cv2DataExtra\"");
+  const extra = html.slice(extraStart);
+  assert.equal(extra.includes("data-cv2-row=\"propertyPurpose\""), false);
+  assert.equal(extra.includes("data-cv2-row=\"location\""), false);
+  assert.equal(extra.includes("data-cv2-row=\"price\""), false);
+  assert.equal(extra.includes("data-cv2-row=\"specs\""), false);
   assert.match(extra, /data-cv2-row="advertiser"/);
-  assert.equal(extra.includes("data-cv2-row=\"contact\""), false);
+  assert.match(extra, /data-cv2-row="contact"/);
   const expanded = buildOpportunityDataCardV2(referenceViewModel(), { dataCardExpanded: true });
   assert.match(expanded, /class="cv2-card is-expanded"/);
   assert.match(expanded, /إخفاء التفاصيل/);
@@ -56,13 +60,17 @@ test("Content V2 details keep six fixed rows in source order", () => {
   assert.deepEqual(rows, V2_DATA_ROWS.map((row) => row.key));
 });
 
-test("classified missing fields render ناقص and stay clickable", () => {
+test("classified missing fields render غير محدد once and stay clickable", () => {
   const vm = referenceViewModel();
   const html = buildOpportunityDetailsContentV2(vm);
   assert.match(html, /data-cv2-editor="price"/);
   assert.match(html, /data-cv2-editor="contactNumber"/);
   assert.match(html, /أكمل البيانات الناقصة/);
-  assert.equal((html.match(/ناقص/g) || []).length >= 2, true);
+  assert.equal((html.match(/غير محدد/g) || []).length, 2);
+  assert.equal((html.match(/ناقص/g) || []).length, 1);
+  assert.equal(html.includes("cv2-missing-badge"), false);
+  assert.match(html, /ينقص السعر ورقم التواصل/);
+  assert.equal(completenessLine(vm), "ينقص السعر ورقم التواصل");
   assert.equal(editorForDataRow("price", vm.missingFields), "price");
   assert.equal(editorForDataRow("contact", vm.missingFields), "contactNumber");
   assert.equal(firstMissingEditor(vm), "price");
@@ -148,4 +156,46 @@ test("details markup exposes missing editors without a V2 header", () => {
   assert.deepEqual(editors, ["price", "contactNumber"]);
   assert.match(html, /class="cv2-details"/);
   assert.equal(html.includes("opp-v2-header"), false);
+  assert.ok(html.indexOf("data-cv2-complete") > html.indexOf("data-cv2-toggle-details"));
+});
+
+test("completeness line uses actual missing fields, not static copy", () => {
+  assert.equal(completenessLine(referenceViewModel()), "ينقص السعر ورقم التواصل");
+  const complete = mapOpportunityDetailsV2ViewModel("ready", {
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "عروة",
+    advertiserRole: "OWNER",
+    salePrice: 1000,
+    area: 1000,
+    contactPhone: "0511123456"
+  });
+  assert.equal(completenessLine(complete), "6 من 6 بيانات مكتملة");
+  assert.equal(buildCompleteMissingButtonV2(complete), "");
+});
+
+test("office card stays in place and collapses in memory only", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { setupOfficeCardCollapse, teardownOfficeCardCollapse } = await import("../public/js/v2/office-collapse.js");
+  const dom = new JSDOM(`<!doctype html><div class="app">
+    <section class="card license"><div class="office-body"><h3>مكتب عروة</h3><button id="officeSettingsBtn" type="button">شعار</button></div></section>
+  </div>`);
+  setupOfficeCardCollapse(dom.window.document);
+  const card = dom.window.document.querySelector("section.card.license");
+  const toggle = card.querySelector(".cv2-office-toggle");
+  assert.equal(card.classList.contains("is-office-collapsed"), true);
+  assert.equal(toggle.textContent.includes("بيانات المكتب"), true);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.ok(card.querySelector("#officeSettingsBtn"));
+  toggle.click();
+  assert.equal(card.classList.contains("is-office-collapsed"), false);
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  setupOfficeCardCollapse(dom.window.document);
+  assert.equal(card.classList.contains("is-office-collapsed"), false);
+  assert.equal(card.querySelectorAll(".cv2-office-toggle").length, 1);
+  teardownOfficeCardCollapse(dom.window.document);
+  assert.equal(card.querySelector(".cv2-office-toggle"), null);
+  assert.equal(card.classList.contains("is-office-collapsed"), false);
+  assert.ok(card.querySelector("#officeSettingsBtn"));
 });

@@ -1,5 +1,5 @@
 import { escapeContentHtml } from "../domain.js";
-import { V2_DATA_ROWS, editorForDataRow } from "./view-model.js";
+import { V2_DATA_ROWS, completenessLine, editorForDataRow } from "./view-model.js";
 
 function iconUse(id) {
   return `<svg class="cv2-icon" aria-hidden="true"><use href="#${escapeContentHtml(id)}"/></svg>`;
@@ -14,7 +14,7 @@ function missingHtml(editor) {
   const tag = editor ? "button" : "span";
   const type = editor ? ` type="button"` : "";
   return `<${tag} class="cv2-missing-pair"${type}${editorAttr}>
-    <span class="cv2-missing-badge">ناقص</span>
+    <span class="cv2-missing-dot" aria-hidden="true"></span>
     <span class="cv2-missing-text">غير محدد</span>
   </${tag}>`;
 }
@@ -35,7 +35,7 @@ function valueHtml(primary, secondary, { contactAction = false } = {}) {
   return `<span class="cv2-contact-value">${body}${contactSaveButton()}</span>`;
 }
 
-const EXTRA_ROW_KEYS = new Set(["specs", "advertiser"]);
+const EXTRA_ROW_KEYS = new Set(["advertiser", "contact"]);
 
 function rowMarkup(row, vm) {
   const editor = editorForDataRow(row.key, vm.missingFields);
@@ -100,11 +100,14 @@ function rowValue(vm, key) {
 
 export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
   const expanded = Boolean(ui.dataCardExpanded);
-  const toggleLabel = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+  const toggleLabel = expanded ? "إخفاء التفاصيل" : "عرض كل البيانات";
   return `<section class="cv2-card ${expanded ? "is-expanded" : "is-collapsed"}" data-cv2-data-card aria-label="بيانات الفرصة">
     <header class="cv2-card-head">
       ${iconUse("i-clipboard-list")}
-      <h2 class="cv2-card-title">بيانات الفرصة</h2>
+      <div class="cv2-card-head-text">
+        <h2 class="cv2-card-title">بيانات الفرصة</h2>
+        <p class="cv2-card-meta">${escapeContentHtml(completenessLine(vm))}</p>
+      </div>
     </header>
     <div class="cv2-rows">${rowsHtml(vm)}</div>
     <button type="button" class="cv2-details-toggle" data-cv2-toggle-details aria-expanded="${expanded ? "true" : "false"}" aria-controls="cv2DataExtra">
