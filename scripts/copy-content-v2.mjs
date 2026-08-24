@@ -16,6 +16,7 @@ cpSync(path.join(src, "flag.js"), path.join(jsOut, "flag.js"));
 cpSync(path.join(src, "domain.js"), path.join(jsOut, "domain.js"));
 cpSync(path.join(src, "mount.js"), path.join(jsOut, "mount.js"));
 cpSync(path.join(src, "office-collapse.js"), path.join(jsOut, "office-collapse.js"));
+cpSync(path.join(src, "task-summary.js"), path.join(jsOut, "task-summary.js"));
 cpSync(path.join(src, "opportunity-details"), path.join(jsOut, "opportunity-details"), {
   recursive: true,
   filter: (srcPath) => !srcPath.endsWith(".css")

@@ -58,3 +58,12 @@ export function completenessLine(vm = {}) {
   if (missing.length <= 2) return `ينقص ${missing.join(" و")}`;
   return `${complete} من ${total} بيانات مكتملة`;
 }
+
+export function nextActionLine(vm = {}) {
+  const missing = missingRowLabels(vm);
+  if (missing.length) return `الإجراء التالي: أكمل ${missing.join(" و")}`;
+  const appointment = vm.nextAppointment || {};
+  const waiting = /بانتظار التأكيد/.test(String(appointment.confirmationStatus || ""));
+  if (waiting) return "الإجراء التالي: تأكيد موعد المعاينة";
+  return "الإجراء التالي: متابعة الفرصة";
+}
