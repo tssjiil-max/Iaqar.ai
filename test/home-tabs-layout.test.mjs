@@ -14,6 +14,7 @@ test("main tabs default to Operations with bank sub-tab ready under Opportunitie
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
     assert.ok(document.getElementById("workspace"));
     assert.equal(document.getElementById("addOpportunity").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), true);
   } finally {
     context.close();
   }
@@ -51,7 +52,7 @@ test("switching tabs shows one content area at a time", async () => {
     document.getElementById("mainTabOperations").click();
     assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
-    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), false);
+    assert.equal(document.getElementById("shellVoice").hasAttribute("hidden"), true);
   } finally {
     context.close();
   }

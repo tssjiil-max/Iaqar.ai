@@ -58,7 +58,7 @@
     }
 
     const voice = $("shellVoice");
-    if (voice) voice.hidden = !isOps;
+    if (voice) voice.hidden = true;
 
     if (!isOps) {
       setOppTab("bank", { skipBankPause: true });
