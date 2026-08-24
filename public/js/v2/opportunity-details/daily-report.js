@@ -7,11 +7,13 @@ function iconUse(id) {
 export function buildDailyReportCardV2(vm = {}) {
   const activities = Array.isArray(vm.activities) ? vm.activities : [];
   const rows = activities.map((row) => `<li class="cv2-report-row">
-    <time class="cv2-report-time">${escapeContentHtml(row.time || "-")}</time>
     <span class="cv2-report-action">${escapeContentHtml(row.title || "-")}</span>
-    <span class="cv2-report-result">
-      <span class="cv2-report-check" aria-hidden="true">${iconUse("i-check-circle")}</span>
-      <span>${escapeContentHtml(row.result || "-")}</span>
+    <span class="cv2-report-outcome">
+      <span class="cv2-report-result">
+        <span class="cv2-report-check" aria-hidden="true">${iconUse("i-check-circle")}</span>
+        <span>${escapeContentHtml(row.result || "-")}</span>
+      </span>
+      <time class="cv2-report-time">${escapeContentHtml(row.time || "-")}</time>
     </span>
   </li>`).join("");
 
@@ -21,7 +23,6 @@ export function buildDailyReportCardV2(vm = {}) {
       <h2 class="cv2-card-title">تقرير اليوم</h2>
     </header>
     <div class="cv2-report-head" aria-hidden="true">
-      <span>الوقت</span>
       <span>الإجراء</span>
       <span>النتيجة</span>
     </div>

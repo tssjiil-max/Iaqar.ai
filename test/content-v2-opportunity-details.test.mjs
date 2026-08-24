@@ -70,12 +70,12 @@ test("page contains only the approved PHASE 2 sections", () => {
   assert.match(html, /بيانات الفرصة/);
   assert.match(html, /أكمل البيانات الناقصة/);
   assert.match(html, /تقرير اليوم/);
-  assert.match(html, /الوقت/);
   assert.match(html, /الإجراء/);
   assert.match(html, /النتيجة/);
   assert.match(html, /النتيجة الحالية/);
   assert.match(html, /الموعد القادم/);
   assert.match(html, /غداً 9:15 ص/);
+  assert.match(html, /10:40 ص/);
   assert.equal(html.includes("opp-details-progress-ring"), false);
   assert.equal(html.includes("نسبة اكتمال"), false);
   assert.equal(html.includes("86%"), false);
@@ -84,6 +84,18 @@ test("page contains only the approved PHASE 2 sections", () => {
   assert.equal(html.includes("Community"), false);
   assert.equal(html.includes("opp-v2-page"), false);
   assert.equal(html.includes("تعريف الفرصة"), false);
+});
+
+test("daily report shows action and result, with time under the result", () => {
+  const html = buildDailyReportCardV2(referenceViewModel());
+  assert.match(html, /class="cv2-report-action"/);
+  assert.match(html, /class="cv2-report-outcome"/);
+  assert.match(html, /class="cv2-report-time"/);
+  assert.equal(html.includes(">الوقت<"), false);
+  const actionAt = html.indexOf("مراجعة البيانات");
+  const resultAt = html.indexOf("تم اكتشاف النواقص");
+  const timeAt = html.indexOf("10:40 ص");
+  assert.ok(actionAt > -1 && resultAt > actionAt && timeAt > resultAt);
 });
 
 test("empty appointment and report still keep their cards", () => {

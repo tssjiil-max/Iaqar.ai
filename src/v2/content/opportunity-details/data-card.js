@@ -62,6 +62,7 @@ export function buildOpportunityDataCardV2(vm = {}) {
         <span class="cv2-row-icon" aria-hidden="true">${iconUse(row.icon)}</span>
         <span class="cv2-row-label">${escapeContentHtml(label)}</span>
       </span>
+      <span class="cv2-row-split" aria-hidden="true"></span>
       <span class="cv2-row-value">${missing ? missingHtml(editor) : valueHtml(value.primary, value.secondary)}</span>
     </div>`;
   }).join("");
