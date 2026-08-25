@@ -11,10 +11,15 @@ const PLACEHOLDER_VALUES = new Set([
   "—",
   "-",
   "غير محدد",
+  "غير متوفر",
   "تحتاج مراجعة",
+  "العقار",
   "unknown",
   "null",
-  "undefined"
+  "undefined",
+  "n/a",
+  "na",
+  "property"
 ]);
 
 /**

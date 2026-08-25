@@ -1,12 +1,13 @@
 import { escapeContentHtml } from "../domain.js";
-import { V2_DATA_ROWS, completenessLine, editorForDataRow } from "./view-model.js";
+import { isDisplayValueComplete } from "../../opportunity-field-completion-domain.js";
+import { V2_DATA_ROWS, completenessLine, displayedMissingRows, editorForDisplayedRow } from "./view-model.js";
 
 function iconUse(id) {
   return `<svg class="cv2-icon" aria-hidden="true"><use href="#${escapeContentHtml(id)}"/></svg>`;
 }
 
 function isBlank(value) {
-  return !String(value ?? "").trim();
+  return !isDisplayValueComplete(value);
 }
 
 function missingHtml(editor) {
@@ -38,9 +39,9 @@ function valueHtml(primary, secondary, { contactAction = false } = {}) {
 const EXTRA_ROW_KEYS = new Set(["specs", "advertiser"]);
 
 function rowMarkup(row, vm) {
-  const editor = editorForDataRow(row.key, vm.missingFields);
   const value = rowValue(vm, row.key);
-  const missing = Boolean(editor) && isBlank(value.primary);
+  const missing = isBlank(value.primary) && isBlank(value.secondary);
+  const editor = missing ? editorForDisplayedRow(row.key, vm) : "";
   const label = row.key === "price" ? (vm.priceLabel || row.label) : row.label;
   return `<div class="cv2-row" data-cv2-row="${escapeContentHtml(row.key)}">
       <span class="cv2-row-key">
@@ -125,7 +126,7 @@ export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
 }
 
 export function buildCompleteMissingButtonV2(vm = {}) {
-  if (!vm.missingFields?.length) return "";
+  if (!displayedMissingRows(vm).length) return "";
   return `<div class="cv2-complete-wrap">
     <button type="button" class="cv2-complete-btn" data-cv2-complete>
       ${iconUse("i-pencil")}

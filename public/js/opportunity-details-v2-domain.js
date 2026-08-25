@@ -22,6 +22,8 @@ import {
   formatFollowUpAppointmentLine
 } from "./opportunity-followup-domain.js";
 import { buildWorkspaceActivity } from "./opportunity-workspace-domain.js";
+import { resolveCanonicalOpportunity } from "./canonical-opportunity-domain.js";
+import { isDisplayValueComplete } from "./opportunity-field-completion-domain.js";
 
 const TZ = "Asia/Riyadh";
 
@@ -117,12 +119,12 @@ export function formatV2DisplayNumber(id = "") {
 
 function normalizePlace(value = "") {
   const raw = String(value || "").trim();
-  if (!raw) return "";
+  if (!raw || !isDisplayValueComplete(raw) || raw === "العقار") return "";
   const alias = CITY_ALIASES[raw.toLowerCase().replace(/[_-]/g, " ").trim()];
   if (alias) return alias;
   const cleaned = sanitizeDisplayField(normalizePropertyTypeDisplay(normalizeLegacyArabicLabel(raw)));
   const text = cleaned.display || raw;
-  if (!text || text === "غير محدد" || text.includes("تحتاج مراجعة")) return "";
+  if (!text || !isDisplayValueComplete(text) || text === "العقار" || text.includes("تحتاج مراجعة")) return "";
   return text;
 }
 
@@ -296,6 +298,19 @@ export function buildOpportunityV2DeepLinkHash(opportunityId) {
 }
 
 export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
+  const canonical = resolveCanonicalOpportunity({ ...record, id: id || record.id });
+  const displayRecord = {
+    ...record,
+    purpose: canonical.purpose || record.purpose,
+    propertyType: canonical.propertyType,
+    city: canonical.city,
+    district: canonical.district,
+    salePrice: canonical.price || record.salePrice,
+    budget: canonical.budget || record.budget,
+    area: canonical.area || record.area,
+    facing: canonical.frontage || record.facing,
+    streetWidth: canonical.streetWidth || record.streetWidth
+  };
   const readiness = extras.readiness?.matchingReadiness
     ? extras.readiness
     : evaluateMatchingReadiness(record);
@@ -305,12 +320,14 @@ export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
   const clock = added ? formatClockLabel(added) : "";
   const dayBit = added && extras.now && isSameRiyadhDay(added, extras.now) ? "اليوم " : "";
   const createdAt = [hijri, `${dayBit}${clock}`.trim()].filter(Boolean).join(" | ");
-  const location = locationParts(record);
-  const specs = specsParts(record);
-  const roleRaw = record.advertiserRole || record.ownerRole || "";
+  const location = locationParts(displayRecord);
+  const specs = specsParts(displayRecord);
+  const roleRaw = canonical.advertiserRole && canonical.advertiserRole !== "UNKNOWN"
+    ? canonical.advertiserRole
+    : (record.advertiserRole || record.ownerRole || "");
   const roleLabel = advertiserRoleLabel(roleRaw);
   const advertiserName = readAdvertiserDisplayName(record);
-  const phoneRaw = record.advertiserPhoneNormalized || record.contactPhone || record.phone || "";
+  const phoneRaw = canonical.contactPhone || record.advertiserPhoneNormalized || record.contactPhone || record.phone || "";
   const contactNumber = formatLocalPhoneDisplay(phoneRaw) || "";
   const missing = (readiness.matchingReadinessMissing || []).map((key) => ({
     key,
@@ -333,10 +350,10 @@ export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
     status: status.label,
     statusId: status.id,
     createdAt,
-    propertyPurpose: propertyPurposeLine(record),
+    propertyPurpose: propertyPurposeLine(displayRecord),
     location: location.primary,
     locationSecondary: location.secondary,
-    price: moneyValue(record),
+    price: moneyValue(displayRecord),
     priceLabel: isOwner ? "السعر" : "الميزانية",
     area: specs.primary,
     specifications: specs.secondary,

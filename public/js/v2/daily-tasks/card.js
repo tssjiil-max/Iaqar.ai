@@ -36,9 +36,12 @@ function summaryHtml(task = {}) {
     : "";
   const money = task.taskKind === "cooperation"
     ? ""
-    : (task.moneyLine ? `<p class="cv2-exec-money">${escapeContentHtml(task.moneyLine)}</p>` : "");
+    : (task.moneyLine ? `<p class="cv2-exec-money">${nl(task.moneyLine)}</p>` : "");
   const property = task.propertyLine
     ? `<p class="cv2-exec-summary">${escapeContentHtml(task.propertyLine)}</p>`
+    : "";
+  const count = task.candidateCountLine
+    ? `<p class="cv2-exec-count">${escapeContentHtml(task.candidateCountLine)}</p>`
     : "";
   const partner = task.partnerLine
     ? `<p class="cv2-exec-partner">${nl(task.partnerLine)}</p>`
@@ -46,28 +49,83 @@ function summaryHtml(task = {}) {
   const proximity = task.proximityLine
     ? `<p class="cv2-exec-next">${escapeContentHtml(task.proximityLine)}</p>`
     : "";
-  const next = task.nextActionLine && task.taskKind !== "cooperation"
-    ? `<p class="cv2-exec-next">${escapeContentHtml(task.nextActionLine)}</p>`
+  const kind = String(task.kindLabel || "").trim();
+  const statusText = String(task.statusLabel || "").trim();
+  const turnText = String(task.turnLine || "").trim();
+  const nextText = String(task.nextActionLine || "").trim();
+  const happenedText = String(task.happenedLine || "").trim();
+  const turn = turnText && turnText !== kind && turnText !== statusText
+    ? `<p class="cv2-exec-turn">${escapeContentHtml(turnText)}</p>`
+    : "";
+  const next = nextText && task.taskKind !== "cooperation" && nextText !== kind && nextText !== statusText
+    ? `<p class="cv2-exec-next">${escapeContentHtml(nextText)}</p>`
+    : "";
+  const status = statusText && statusText !== kind
+    ? `<p class="cv2-exec-status">${escapeContentHtml(statusText)}</p>`
+    : "";
+  const happened = happenedText && happenedText !== kind && happenedText !== statusText
+    ? `<p class="cv2-exec-status">${escapeContentHtml(happenedText)}</p>`
     : "";
   return `<header class="cv2-exec-head">
       <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
       ${badge}
     </header>
     ${property}
+    ${count}
     ${partner}
     ${proximity}
     ${money}
-    <p class="cv2-exec-status">${escapeContentHtml(task.statusLabel || "")}</p>
+    ${happened}
+    ${status}
+    ${turn}
     ${next}`;
+}
+
+function listingFacts(listing = {}, money = "") {
+  const line = [listing.propertyType, listing.district].filter(Boolean).join(" · ");
+  const bits = [];
+  if (line) bits.push(`<p>${escapeContentHtml(line)}</p>`);
+  const amount = money || listing.money;
+  if (amount) bits.push(`<p>${escapeContentHtml(amount)}</p>`);
+  if (listing.area) bits.push(`<p>${escapeContentHtml(listing.area)}</p>`);
+  return bits.join("");
 }
 
 function listingBlock(title, listing = {}, money = "") {
   const line = [listing.propertyType, listing.district].filter(Boolean).join(" · ");
-  const budget = money ? `<p>السعر / الميزانية: ${escapeContentHtml(money)}</p>` : "";
+  const amount = money || listing.money;
+  const budget = amount ? `<p>السعر / الميزانية: ${escapeContentHtml(amount)}</p>` : "";
   return `<div class="cv2-coop-block">
     <strong>${escapeContentHtml(title)}</strong>
     <p>${escapeContentHtml(line || "—")}</p>
     ${budget}
+  </div>`;
+}
+
+function matchFactBlock(title, listing = {}) {
+  const facts = listingFacts(listing);
+  if (!facts) return "";
+  return `<div class="cv2-coop-block">
+    <strong>${escapeContentHtml(title)}</strong>
+    ${facts}
+  </div>`;
+}
+
+function matchGroupBodyHtml(task = {}) {
+  const reasons = (task.matchReasons || [])
+    .map((line) => `<li>${escapeContentHtml(line)}</li>`)
+    .join("");
+  const ranked = (task.candidates || [])
+    .map((item) => {
+      const bits = [item.propertyLine, item.moneyLine, item.areaLine].filter(Boolean).join(" · ");
+      return `<li>مرشح ${item.rank}: ${escapeContentHtml(bits || item.matchId || "")}</li>`;
+    })
+    .join("");
+  return `<div class="cv2-coop-expanded cv2-match-expanded">
+    ${matchFactBlock("طلب العميل", task.sourceListing || {})}
+    ${matchFactBlock("العرض المقترح", task.proposedListing || {})}
+    ${reasons ? `<div class="cv2-coop-block"><strong>سبب المطابقة</strong><ul>${reasons}</ul></div>` : ""}
+    ${ranked ? `<div class="cv2-coop-block"><strong>المرشحون</strong><ol>${ranked}</ol></div>` : ""}
   </div>`;
 }
 
@@ -108,7 +166,9 @@ export function buildDailyTaskCardHtml(task = {}, { open = false } = {}) {
   const actions = open && (primary || secondary)
     ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
     : "";
-  const body = open && task.taskKind === "cooperation" ? cooperationBodyHtml(task) : "";
+  const body = open && task.taskKind === "cooperation"
+    ? cooperationBodyHtml(task)
+    : (open && task.taskKind === "match_group" ? matchGroupBodyHtml(task) : "");
   return `<article
       class="cv2-exec-card${open ? " is-open" : ""}${task.taskKind === "cooperation" ? " is-coop" : ""}"
       data-cv2-exec-task

@@ -1,5 +1,6 @@
 import {
   buildPartySnapshot,
+  buildShareSnapshot,
   createOpaquePartyToken,
   isAllowedPartyAction,
   isGenericPartyValue,
@@ -11,8 +12,10 @@ import {
   PARTY_INVALID_COPY,
   PARTY_SESSION_STATUS,
   partySessionKey,
+  revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
+import { livingStageAfterPartyAction } from "../../public/js/match-group-domain.js";
 
 function publicWorkerOrigin(env = {}) {
   const explicit = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/$/, "");
@@ -87,6 +90,56 @@ async function loadCanonicalOfferListing(helpers, {
     if (owner && isPartyOfferListing(owner) && !fallback) fallback = owner;
   }
   return fallback;
+}
+
+async function stampMatchLiving(helpers, {
+  projectId,
+  officeId,
+  matchId,
+  accessToken,
+  patch = {}
+}) {
+  const id = String(matchId || "").trim();
+  if (!id) return;
+  const match = await readOfficeDoc(helpers, {
+    projectId, officeId, collection: "matches", id, accessToken
+  });
+  if (!match) return;
+  const rejected = [...new Set([]
+    .concat(Array.isArray(match.rejectedMatchIds) ? match.rejectedMatchIds : [])
+    .concat(patch.rejectedMatchIds || [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+  )];
+  const livingStage = String(patch.livingStage || match.livingStage || "MATCH_FOUND");
+  const missingInfoKey = String(patch.missingInfoKey || "");
+  const ownerContactNeeded = Boolean(patch.ownerContactNeeded);
+  const activeMatchId = String(patch.activeMatchId || id);
+  const livingUpdatedAt = new Date().toISOString();
+  await helpers.setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "matches", id],
+    accessToken,
+    fields: {
+      livingStage: helpers.firestoreString(livingStage),
+      missingInfoKey: helpers.firestoreString(missingInfoKey),
+      ownerContactNeeded: helpers.firestoreString(ownerContactNeeded ? "true" : ""),
+      rejectedMatchIds: helpers.firestoreString(JSON.stringify(rejected)),
+      activeMatchId: helpers.firestoreString(activeMatchId),
+      livingUpdatedAt: helpers.firestoreString(livingUpdatedAt)
+    }
+  });
+  const operationId = String(match.operationId || "").trim();
+  if (!operationId) return;
+  await helpers.setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "operations", operationId],
+    accessToken,
+    fields: {
+      livingStage: helpers.firestoreString(livingStage),
+      missingInfoKey: helpers.firestoreString(missingInfoKey)
+    }
+  });
 }
 
 export async function handlePartySessionMint({
@@ -172,6 +225,15 @@ export async function handlePartySessionMint({
   const sessionId = `ps_${tokenHash.slice(0, 24)}`;
   const now = new Date();
   const snapshot = buildPartySnapshot(snapshotSource);
+  const shareSnapshot = buildShareSnapshot({
+    shareId: sessionId,
+    matchId,
+    partyRole: party,
+    opportunityId: liveOffer?.id || offerId,
+    createdAt: now.toISOString(),
+    snapshotVersion: 1,
+    record: snapshotSource
+  });
   const session = {
     officeId,
     matchId,
@@ -189,7 +251,10 @@ export async function handlePartySessionMint({
     createdAt: now.toISOString(),
     replyAction: "",
     replyAt: "",
-    snapshot
+    snapshot,
+    shareSnapshot,
+    snapshotVersion: 1,
+    livingStage: party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT"
   };
   await helpers.setFirestoreDocument({
     projectId,
@@ -220,6 +285,17 @@ export async function handlePartySessionMint({
       party,
       createdAt: now.toISOString()
     }).mapValue.fields
+  });
+  await stampMatchLiving(helpers, {
+    projectId,
+    officeId,
+    matchId,
+    accessToken,
+    patch: {
+      livingStage: party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT",
+      activeMatchId: matchId,
+      ownerContactNeeded: party === "owner"
+    }
   });
   return helpers.jsonResponse({
     ok: true,
@@ -268,17 +344,8 @@ export async function loadPartyPublicView({ token, env, helpers }) {
   const logoUrl = workerHost
     ? `${workerHost}/media/public/office-covers/${encodeURIComponent(officeId)}/logo`
     : "";
-  const liveOffer = await loadCanonicalOfferListing(helpers, {
-    projectId,
-    officeId,
-    accessToken,
-    matchId: session.matchId || "",
-    session
-  });
-  const snapshot = liveOffer ? buildPartySnapshot(liveOffer) : (session.snapshot || {});
-  if (liveOffer) {
-    session.mediaPaths = listingMediaPaths(liveOffer);
-  }
+  const snapshot = session.shareSnapshot?.permitted || session.snapshot || {};
+  const revealed = session.revealedDetail || revealedDetailFromSnapshot(snapshot, session.followUpAction || "");
   return {
     session,
     officeId,
@@ -290,7 +357,9 @@ export async function loadPartyPublicView({ token, env, helpers }) {
       officeName: office.officeName || office.name || "المكتب العقاري",
       officeLogoUrl: logoUrl,
       replyAction: session.replyAction || "",
-      followUpAction: session.followUpAction || ""
+      followUpAction: session.followUpAction || "",
+      revealedDetail: revealed,
+      livingStage: session.livingStage || session.currentStage || ""
     })
   };
 }
@@ -356,21 +425,44 @@ async function replyPartySession({ token, env, request, requestId, helpers, ip }
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
   const now = new Date();
+  const snapshot = loaded.session.shareSnapshot?.permitted || loaded.session.snapshot || {};
+  const living = livingStageAfterPartyAction({
+    party: loaded.session.party,
+    action,
+    followUp: isFollowUp,
+    snapshot,
+    hasNextCandidate: false
+  });
   const fields = isFollowUp
     ? {
       followUpAction: helpers.firestoreString(action),
-      followUpAt: helpers.firestoreString(now.toISOString())
+      followUpAt: helpers.firestoreString(now.toISOString()),
+      livingStage: helpers.firestoreString(living.stage)
     }
     : {
       status: helpers.firestoreString(PARTY_SESSION_STATUS.REPLIED),
       replyAction: helpers.firestoreString(action),
-      replyAt: helpers.firestoreString(now.toISOString())
+      replyAt: helpers.firestoreString(now.toISOString()),
+      livingStage: helpers.firestoreString(living.stage)
     };
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", loaded.officeId, "partySessions", loaded.sessionId],
     accessToken,
     fields
+  });
+  await stampMatchLiving(helpers, {
+    projectId,
+    officeId: loaded.officeId,
+    matchId: loaded.session.matchId,
+    accessToken,
+    patch: {
+      livingStage: living.stage,
+      missingInfoKey: living.missingInfoKey || "",
+      ownerContactNeeded: Boolean(living.ownerContactNeeded),
+      rejectedMatchIds: living.rejectCandidate ? [loaded.session.matchId] : [],
+      activeMatchId: loaded.session.matchId
+    }
   });
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });

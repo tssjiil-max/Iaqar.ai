@@ -180,11 +180,15 @@ export function buildPartyWhatsAppMessage({
   const office = String(officeName || "المكتب العقاري").trim() || "المكتب العقاري";
   const name = String(contactName || "").trim();
   const greeting = `مرحبًا${name ? ` ${name}` : ""}، معك ${office}.`;
-  const property = String(propertyLine || "").trim() || "العقار";
+  const property = String(propertyLine || "").trim();
   const url = String(reviewUrl || "").trim();
   const body = party === "owner"
-    ? `يوجد عميل مهتم بعقار مطابق لـ ${property}. نرغب في استكمال التنسيق معك.`
-    : `وجدنا عرضًا مناسبًا لطلبك: ${property}. نرغب في استكمال التنسيق معك.`;
+    ? (property
+      ? `يوجد عميل مهتم بعقار مطابق لـ ${property}. نرغب في استكمال التنسيق معك.`
+      : "يوجد عميل مهتم بعقارك. نرغب في استكمال التنسيق معك.")
+    : (property
+      ? `وجدنا عرضًا مناسبًا لطلبك: ${property}. نرغب في استكمال التنسيق معك.`
+      : "وجدنا عرضًا مناسبًا لطلبك. نرغب في استكمال التنسيق معك.");
   const linkBlock = url ? `\n\nرابط المراجعة:\n${url}` : "";
   return `${greeting}\n\n${body}${linkBlock}\n\nمع التحية،\n${office}`;
 }

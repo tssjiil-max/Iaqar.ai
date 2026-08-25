@@ -84,8 +84,9 @@ test("owner view uses a different title and never includes client contact", () =
     snapshot: { typePurpose: "أرض للبيع", priceLabel: "500,000 ر.س", locationLabel: "حي عروة" }
   });
   assert.equal(view.title, "عميل مهتم بعقارك");
-  assert.equal(view.ownerClientStatus, "يوجد عميل مهتم بالعقار");
+  assert.equal(view.ownerClientStatus, "يوجد عميل مهتم بعقارك");
   assert.equal(view.actions.some((item) => item.label === "العقار متاح"), true);
+  assert.equal(view.actions.some((item) => item.label === "تأكيد الموعد"), false);
   assert.equal(JSON.stringify(view).includes("clientName"), false);
 });
 
@@ -442,7 +443,7 @@ test("client and owner party pages resolve the linked offer not request placehol
     assert.equal(visible.includes("maps.app.goo.gl"), false);
     assert.equal(JSON.stringify(loaded.body).includes("0500000000"), false);
   }
-  assert.match(buildPartyShellHtml(ownerView.body.view), /يوجد عميل مهتم بالعقار/);
+  assert.match(buildPartyShellHtml(ownerView.body.view), /يوجد عميل مهتم بعقارك/);
   const reload = await handlePartySessionGet({
     token: client.body.token,
     env: { DEPLOYMENT_ENV: "staging" },

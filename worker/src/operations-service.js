@@ -307,7 +307,17 @@ export async function createMatchReviewBundle({
     score: match.score,
     opportunityScore: match.opportunityScore,
     isBestOpportunity: match.isBestOpportunity,
-    reasons: match.reasons || []
+    reasons: match.reasons || [],
+    clientRequestId: match.clientRequestId || "",
+    ownerOfferId: match.ownerOfferId || "",
+    matchGroupId: match.matchGroupId || match.opportunityId || "",
+    sourceCollection: match.sourceCollection || "",
+    candidateSalePrice: match.candidateSalePrice || 0,
+    candidateArea: match.candidateArea || 0,
+    candidatePropertyType: match.candidatePropertyType || "",
+    candidateDistrict: match.candidateDistrict || "",
+    candidateCity: match.candidateCity || "",
+    candidatePurpose: match.candidatePurpose || ""
   });
 
   const opResult = await upsertOperationDocument({

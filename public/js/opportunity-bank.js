@@ -962,7 +962,7 @@ async function renderDetail(id, options = {}) {
     renderOpportunityDetailsV2InPanel(panel, id, record, { readiness: evaluateMatchingReadiness(record) });
     scrollBankDetailIntoView();
     if (!ctx.dailyTask && !options.skipNavOpen) {
-      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      setStatus("تم فتح التفاصيل");
       announceBankDetailOpened(id, "bank-detail");
     }
     void loadWorkspaceBundle(id).then((bundle) => {
@@ -990,7 +990,7 @@ async function renderDetail(id, options = {}) {
     $("bankDetailClose")?.addEventListener("click", () => closeActiveDetailPanel());
     scrollBankDetailIntoView();
     if (!ctx.dailyTask && !options.skipNavOpen) {
-      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      setStatus("تم فتح التفاصيل");
       announceBankDetailOpened(id, "bank-detail");
     }
     return;
@@ -1002,7 +1002,7 @@ async function renderDetail(id, options = {}) {
     wireIncompleteDetailHandlers(id, record);
     scrollBankDetailIntoView();
     if (!ctx.dailyTask && !options.skipNavOpen) {
-      setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+      setStatus("تم فتح التفاصيل");
       announceBankDetailOpened(id, "bank-detail");
     }
     return;
@@ -1020,7 +1020,7 @@ async function renderDetail(id, options = {}) {
   applyBankBrokerMarks(freshRecord);
   scrollBankDetailIntoView();
   if (!ctx.dailyTask && !options.skipNavOpen) {
-    setStatus(`${rowsCountLabel()} — تم فتح التفاصيل`);
+    setStatus("تم فتح التفاصيل");
     announceBankDetailOpened(id, "bank-workspace");
   }
 }
@@ -2231,6 +2231,11 @@ function rowsCountLabel() {
   return loadedCount < filteredTotal || state.hasMore
     ? `عرض ${loadedCount} من ${filteredTotal} فرصة`
     : `${filteredTotal} نتيجة`;
+}
+
+function bankStatusAfterListRender() {
+  if (!hasActiveBankQuery(state.queryFilters) && state.filter !== "archived") return "";
+  return rowsCountLabel();
 }
 
 function wireBankFormArabicInputs(_record = {}) {
@@ -3823,7 +3828,7 @@ async function loadBankSummary() {
   }
   await refreshBankFacetMeta(runtime);
   renderList();
-  setStatus(rowsCountLabel());
+  setStatus(bankStatusAfterListRender());
   await loadIncomingRequests();
 }
 
@@ -3881,7 +3886,7 @@ async function loadBankPage({ reset = false } = {}) {
       await syncOpportunityCooperationFromRequests();
       renderList();
       await loadIncomingRequests();
-      setStatus(rowsCountLabel());
+      setStatus(bankStatusAfterListRender());
       return;
     }
 
@@ -3936,7 +3941,7 @@ async function loadBankPage({ reset = false } = {}) {
     const visible = [...state.records.values()].filter(passesListFilters).length;
     setStatus(
       visible
-        ? rowsCountLabel()
+        ? bankStatusAfterListRender()
         : "لا توجد نتائج مطابقة للبحث أو الفلاتر."
     );
   } catch (error) {

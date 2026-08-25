@@ -143,7 +143,15 @@ test("empty appointment and report still keep their cards", () => {
   assert.match(report, /النتيجة الحالية/);
   assert.match(appointment, /الموعد القادم/);
   assert.match(appointment, /-</);
-  assert.equal(buildCompleteMissingButtonV2({ missingFields: [] }), "");
+  assert.equal(buildCompleteMissingButtonV2({
+    propertyPurpose: "أرض للبيع",
+    location: "المدينة المنورة",
+    price: "1,000 ريال",
+    area: "1,000 م²",
+    advertiserRole: "مالك",
+    contactNumber: "051 112 3456",
+    missingFields: []
+  }), "");
 });
 
 test("single-field editor does not open the full opportunity form", () => {
@@ -185,6 +193,7 @@ test("saving وسيط updates completeness and removes صفة المعلن from 
     city: "المدينة المنورة",
     district: "عروة",
     salePrice: 850000,
+    area: 125,
     advertiserRole: "UNKNOWN",
     advertiserPhoneNormalized: "+966511123456"
   };
