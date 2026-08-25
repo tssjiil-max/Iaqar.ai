@@ -196,6 +196,9 @@ test("shell and worker wire Phase 4 rematch without Deals page or bottom nav", (
   assert.ok(bank.includes("rematchOpportunity"));
   assert.ok(worker.includes("/matching/run"));
   assert.ok(worker.includes("MATCHING_RULE_VERSION"));
+  assert.ok(worker.includes("runCanonicalMatchingAfterOpportunityPersist"));
+  assert.ok(worker.includes("REJECTED_ACTIVE_MATCH"));
+  assert.ok(worker.includes("resolveCanonicalPairFromDocs"));
   assert.equal(/data-main=\"deals\"/.test(shell), false);
   assert.ok(shell.includes("id=\"mainTabs\""));
   assert.equal(/bottom-nav/i.test(shell), false);
