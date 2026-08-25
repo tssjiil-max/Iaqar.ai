@@ -114,6 +114,8 @@ test("resolveAdvertiserEnumValue maps Arabic label to enum id", () => {
   assert.equal(resolveAdvertiserEnumValue("عميل"), "CLIENT");
   assert.equal(resolveAdvertiserEnumValue("OWNER"), "OWNER");
   assert.equal(resolveAdvertiserEnumValue("وسيط عقاري"), "BROKER");
+  assert.equal(resolveAdvertiserEnumValue("وسيط"), "BROKER");
+  assert.equal(resolveAdvertiserEnumValue("  وسيط  "), "BROKER");
 });
 
 test("buildAdvertiserDataPatch normalizes Arabic advertiser role", () => {

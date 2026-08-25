@@ -4,7 +4,12 @@
  */
 
 import { V2_DATA_ROWS } from "./opportunity-details-v2-domain.js";
-import { ADVERTISER_ROLES } from "./advertiser-phone-domain.js";
+import {
+  ADVERTISER_ROLES,
+  advertiserRoleLabel,
+  isPersistedAdvertiserRole,
+  resolveAdvertiserEnumValue
+} from "./advertiser-phone-domain.js";
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
@@ -204,11 +209,13 @@ export function buildOpportunityMoreActionsV2() {
 }
 
 export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
+  const resolvedRole = resolveAdvertiserEnumValue(seed) || resolveAdvertiserEnumValue(vm.advertiserRole);
+  const roleValue = isPersistedAdvertiserRole(resolvedRole) ? advertiserRoleLabel(resolvedRole) : "";
   const editors = {
     advertiserRole: {
       title: "صفة المعلن",
       hint: "مالك، عميل، مفوض، وسيط عقاري",
-      input: `<input class="opp-v2-editor-input" name="advertiserRole" type="text" maxlength="40" autocomplete="off" value="${esc(seed || vm.advertiserRole || "")}" placeholder="مالك">`
+      input: `<input class="opp-v2-editor-input" name="advertiserRole" type="text" maxlength="40" autocomplete="off" value="${esc(roleValue)}" placeholder="اختر أو اكتب صفة المعلن">`
     },
     contactNumber: {
       title: "رقم التواصل",
@@ -242,7 +249,7 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
   };
   const spec = editors[editorKey] || editors.advertiserRole;
   const roleHints = editorKey === "advertiserRole"
-    ? `<p class="opp-v2-editor-roles">${ADVERTISER_ROLES.filter((row) => row.id !== "UNKNOWN").map((row) => esc(row.label)).join(" · ")}</p>`
+    ? `<div class="cv2-role-chips" role="list">${ADVERTISER_ROLES.filter((row) => row.id !== "UNKNOWN").map((row) => `<button type="button" class="cv2-role-chip${roleValue === row.label ? " is-selected" : ""}" role="listitem" data-cv2-role="${esc(row.label)}">${esc(row.label)}</button>`).join("")}</div>`
     : "";
   return `
     <div class="opp-v2-editor" id="oppV2Editor" data-v2-editor="${esc(editorKey)}" role="dialog" aria-modal="true" aria-labelledby="oppV2EditorTitle">

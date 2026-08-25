@@ -6,7 +6,7 @@ import {
 } from "../../opportunity-details-v2-domain.js";
 import { firstMissingEditor } from "./view-model.js";
 import { buildOpportunityDetailsContentV2 } from "./page.js";
-import { buildFieldEditorV2 } from "./editor.js";
+import { buildFieldEditorV2, dismissFieldEditor, wireFieldEditorSheet } from "./editor.js";
 import { loadOpportunityRecord, persistOpportunityField } from "./data.js";
 import { saveDeviceContact } from "./save-device-contact.js";
 
@@ -97,8 +97,8 @@ async function runDeviceContactSave(fromEditor) {
   window.alert(result.message);
 }
 
-function closeEditor() {
-  state.root?.querySelector("[data-cv2-editor-root]")?.remove();
+function closeEditor(options = {}) {
+  dismissFieldEditor(state.root?.querySelector("[data-cv2-editor-root]"), options);
 }
 
 function readEditorForm(form) {
@@ -120,7 +120,7 @@ async function submitEditor(editorKey, formData) {
     }
     state.record = result.reloaded || state.record;
     state.hydrated = true;
-    closeEditor();
+    closeEditor({ restoreFocus: false });
     renderPage();
   } catch (error) {
     state.record = previous;
@@ -130,18 +130,19 @@ async function submitEditor(editorKey, formData) {
   }
 }
 
-function openEditor(field) {
+function openEditor(field, opener) {
   if (!field || !state.root) return;
-  closeEditor();
+  closeEditor({ restoreFocus: false });
   state.root.insertAdjacentHTML("beforeend", buildFieldEditorV2(field, currentViewModel()));
-  const form = state.root.querySelector("#cv2EditorForm");
+  const overlay = state.root.querySelector("[data-cv2-editor-root]");
+  const form = overlay?.querySelector("#cv2EditorForm");
+  wireFieldEditorSheet(overlay, { opener });
   form?.querySelector("input")?.focus();
-  state.root.querySelector("#cv2EditorCancel")?.addEventListener("click", closeEditor);
   form?.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitEditor(field, readEditorForm(form));
   });
-  state.root.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
+  overlay?.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     void runDeviceContactSave(true);
@@ -151,10 +152,10 @@ function openEditor(field) {
 function bindPage(root) {
   root.querySelector("[data-cv2-complete]")?.addEventListener("click", () => {
     const field = firstMissingEditor(currentViewModel());
-    if (field) openEditor(field);
+    if (field) openEditor(field, root.querySelector("[data-cv2-complete]"));
   });
   root.querySelectorAll(".cv2-details [data-cv2-editor]").forEach((node) => {
-    node.addEventListener("click", () => openEditor(node.getAttribute("data-cv2-editor") || ""));
+    node.addEventListener("click", () => openEditor(node.getAttribute("data-cv2-editor") || "", node));
   });
   root.querySelectorAll(".cv2-details [data-cv2-save-device-contact]").forEach((node) => {
     node.addEventListener("click", (event) => {

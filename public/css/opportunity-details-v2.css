@@ -552,11 +552,34 @@ html:has(.opp-v2-page) .card.opportunity-bank-panel {
   color: var(--opp-v2-text);
 }
 
-.opp-v2-editor-hint,
-.opp-v2-editor-roles {
+.opp-v2-editor-hint {
   margin: 0;
   font-size: 12px;
   color: var(--opp-v2-muted);
+}
+
+.cv2-role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cv2-role-chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--opp-v2-border, #d7e2dc);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--opp-v2-text, #1c211f);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cv2-role-chip.is-selected {
+  border-color: var(--opp-v2-green, #1a5319);
+  background: #eef6f1;
+  color: var(--opp-v2-green, #1a5319);
 }
 
 .opp-v2-editor-form {

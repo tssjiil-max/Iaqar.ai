@@ -486,11 +486,35 @@
   color: var(--cv2-green, #1a5319);
 }
 
-.cv2-editor-hint,
-.cv2-editor-roles {
+.cv2-editor-hint {
   margin: 0 0 8px;
   color: var(--cv2-muted, #6b7873);
   font-size: 12px;
+}
+
+.cv2-role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.cv2-role-chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--cv2-border, #d7e2dc);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--cv2-text, #1c211f);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cv2-role-chip.is-selected {
+  border-color: var(--cv2-green, #1a5319);
+  background: #eef6f1;
+  color: var(--cv2-green, #1a5319);
 }
 
 .cv2-editor-form {
