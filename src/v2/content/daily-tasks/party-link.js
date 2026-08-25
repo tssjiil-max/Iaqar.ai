@@ -39,16 +39,6 @@ export async function ensurePartyReviewLink(task = {}, party = "client") {
         party: side,
         offerId: task.offerId || "",
         requestId: task.requestId || "",
-        opportunityId: task.opportunityId || "",
-        propertyType: task.propertyType || "",
-        purpose: task.purpose || "",
-        district: task.district || "",
-        salePrice: task.salePrice,
-        annualRent: task.annualRent,
-        area: task.area,
-        rooms: task.rooms,
-        baths: task.baths,
-        moneyLine: task.moneyLine || "",
         currentStage: "match_found"
       })
     });

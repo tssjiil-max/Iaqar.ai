@@ -60,16 +60,20 @@ test("public party view never includes owner contact, scores, or ids", () => {
   assert.equal(view.officeName, "مكتب النور");
   assert.equal(view.property.priceLabel.includes("500,000"), true);
   assert.equal(view.property.locationLabel, "حي عروة");
+  assert.equal(view.property.propertyType, "أرض");
+  assert.equal(view.property.purposeLabel, "للبيع");
   assert.equal(view.actions.map((item) => item.label).join("|"), "مهتم|أحتاج تفاصيل أكثر|غير مناسب");
   const serialized = JSON.stringify(view);
   assert.equal(serialized.includes("matchId"), false);
   assert.equal(serialized.includes("ownerName"), false);
   assert.equal(serialized.includes("0511111111"), false);
   assert.equal(view.matchId, undefined);
-  assert.throws(() => sanitizePartyPublicView({
+  const sanitized = sanitizePartyPublicView({
     party: "client",
     snapshot: { typePurpose: "أرض", priceLabel: "اتصل 0512345678" }
-  }));
+  });
+  assert.equal(JSON.stringify(sanitized).includes("0512345678"), false);
+  assert.equal(sanitized.property.priceLabel.includes("051"), false);
 });
 
 test("owner view uses a different title and never includes client contact", () => {
@@ -80,6 +84,7 @@ test("owner view uses a different title and never includes client contact", () =
     snapshot: { typePurpose: "أرض للبيع", priceLabel: "500,000 ر.س", locationLabel: "حي عروة" }
   });
   assert.equal(view.title, "عميل مهتم بعقارك");
+  assert.equal(view.ownerClientStatus, "يوجد عميل مهتم بالعقار");
   assert.equal(view.actions.some((item) => item.label === "العقار متاح"), true);
   assert.equal(JSON.stringify(view).includes("clientName"), false);
 });
@@ -94,10 +99,13 @@ test("completed reply hides actions and shows recorded copy", () => {
   assert.equal(view.replied, true);
   assert.deepEqual(view.actions, []);
   assert.equal(view.replyLabel, "مهتم");
+  assert.equal(view.followUpActions.some((item) => item.label === "أريد معاينة"), true);
   const html = buildPartyShellHtml(view);
   assert.match(html, new RegExp(PARTY_REPLY_RECORDED));
   assert.match(html, /مهتم/);
-  assert.equal(html.includes("data-party-action"), false);
+  assert.match(html, /أرض للبيع/);
+  assert.match(html, /أريد معاينة/);
+  assert.match(html, /المعلومات والصور كافية/);
   assert.equal(partyShellHasBrokerChrome(html), false);
 });
 
@@ -294,6 +302,7 @@ test("client and owner sessions stay distinct and replies persist", async () => 
   assert.equal(replied.body.view.replied, true);
   assert.equal(replied.body.view.replyLabel, "مهتم");
   assert.deepEqual(replied.body.view.actions, []);
+  assert.equal(replied.body.view.followUpActions.some((item) => item.id === "want_viewing"), true);
 
   const again = await handlePartySessionReply({
     token: client.body.token,
@@ -312,6 +321,200 @@ test("firestore rules deny client reads of party sessions and token hashes", () 
   assert.match(rules, /match \/partySessions\/\{sessionId\}/);
   assert.match(rules, /match \/partySessionTokens\/\{tokenHash\}/);
   assert.match(rules, /allow read, write: if false/);
+});
+
+const REAL_OFFER = {
+  opportunityKind: "OFFER",
+  purpose: "SALE",
+  propertyType: "أرض",
+  city: "المدينة المنورة",
+  district: "السكب",
+  salePrice: 870000,
+  area: 1175,
+  streetWidth: 10,
+  streetDirection: "جنوبي",
+  facing: "جنوبية",
+  depth: 47,
+  plotNumber: "14",
+  description: "أرض سكنية على شارعين",
+  locationUrl: "https://maps.app.goo.gl/examplelisting",
+  rooms: 0
+};
+
+const REQUEST_PLACEHOLDER = {
+  opportunityKind: "REQUEST",
+  purpose: "PURCHASE",
+  propertyType: "العقار",
+  city: "غير محدد",
+  district: "",
+  budget: 20000,
+  priceOrBudget: 20000,
+  area: 0
+};
+
+function seedMatchStore(store) {
+  store["offices/office-1"] = { fields: { officeName: "مكتب النور" } };
+  store["offices/office-1/opportunities/offer_sakb"] = {
+    fields: { ...REAL_OFFER, advertiserPhoneNormalized: "0500000000", ownerName: "خالد" }
+  };
+  store["offices/office-1/opportunities/req_sakb"] = { fields: REQUEST_PLACEHOLDER };
+  store["offices/office-1/matches/match_sakb"] = {
+    fields: {
+      ownerOfferId: "offer_sakb",
+      clientRequestId: "req_sakb",
+      opportunityId: "offer_sakb",
+      counterpartOpportunityId: "req_sakb",
+      sourceCollection: "owners",
+      counterpartCollection: "clients"
+    }
+  };
+}
+
+test("client and owner party pages resolve the linked offer not request placeholders", async () => {
+  const store = {};
+  seedMatchStore(store);
+  const helpers = mockHelpers(store);
+  const client = await handlePartySessionMint({
+    request: mintRequest({
+      officeId: "office-1",
+      matchId: "match_sakb",
+      party: "client",
+      offerId: "offer_sakb",
+      requestId: "req_sakb",
+      opportunityId: "req_sakb",
+      propertyType: "العقار",
+      salePrice: 20000
+    }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "acc-1",
+    helpers
+  });
+  const owner = await handlePartySessionMint({
+    request: mintRequest({
+      officeId: "office-1",
+      matchId: "match_sakb",
+      party: "owner",
+      offerId: "offer_sakb",
+      requestId: "req_sakb"
+    }),
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-2",
+    helpers
+  });
+  const clientView = await handlePartySessionGet({
+    token: client.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-3",
+    helpers,
+    ip: "8.8.8.8"
+  });
+  const ownerView = await handlePartySessionGet({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-4",
+    helpers,
+    ip: "8.8.8.8"
+  });
+  for (const loaded of [clientView, ownerView]) {
+    const property = loaded.body.view.property;
+    assert.equal(property.propertyType, "أرض");
+    assert.equal(property.city, "المدينة المنورة");
+    assert.equal(property.district, "السكب");
+    assert.equal(property.priceLabel.includes("870,000"), true);
+    assert.equal(property.areaLabel.includes("1,175"), true);
+    assert.equal(property.streetDirection, "جنوبي");
+    assert.equal(property.streetWidthLabel, "10 م");
+    assert.equal(property.plotNumber, "14");
+    const html = buildPartyShellHtml(loaded.body.view);
+    assert.match(html, /أرض/);
+    assert.match(html, /المدينة المنورة/);
+    assert.match(html, /السكب/);
+    assert.match(html, /870,000/);
+    assert.match(html, /1,175/);
+    assert.equal(html.includes("العقار والغرض"), false);
+    assert.equal(html.includes(">العقار<"), false);
+    assert.equal(html.includes("غير محدد"), false);
+    assert.equal(html.includes("20,000"), false);
+    assert.equal(html.includes("0500000000"), false);
+    assert.equal(html.includes("خالد"), false);
+    assert.match(html, /عرض الموقع/);
+    const visible = html.replace(/<[^>]+>/g, " ");
+    assert.equal(visible.includes("maps.app.goo.gl"), false);
+    assert.equal(JSON.stringify(loaded.body).includes("0500000000"), false);
+  }
+  assert.match(buildPartyShellHtml(ownerView.body.view), /يوجد عميل مهتم بالعقار/);
+  const reload = await handlePartySessionGet({
+    token: client.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-5",
+    helpers,
+    ip: "8.8.8.8"
+  });
+  assert.equal(reload.body.view.property.priceLabel, clientView.body.view.property.priceLabel);
+});
+
+test("needs_details keeps property data and stores the requested item", async () => {
+  const store = {};
+  seedMatchStore(store);
+  const helpers = mockHelpers(store);
+  const minted = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_sakb", party: "client", offerId: "offer_sakb" }),
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-6",
+    helpers
+  });
+  const replied = await handlePartySessionReply({
+    token: minted.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    request: { json: async () => ({ action: "needs_details" }) },
+    requestId: "acc-7",
+    helpers,
+    ip: "9.9.9.9"
+  });
+  const html = buildPartyShellHtml(replied.body.view);
+  assert.match(html, /870,000/);
+  assert.match(html, /تم تسجيل ردك/);
+  assert.match(html, /أحتاج تفاصيل أكثر/);
+  assert.match(html, /السعر/);
+  assert.match(html, /الموقع/);
+  assert.match(html, /الصور/);
+  assert.match(html, /المواصفات/);
+  assert.match(html, /سؤال آخر/);
+  const follow = await handlePartySessionReply({
+    token: minted.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    request: { json: async () => ({ action: "detail_photos" }) },
+    requestId: "acc-8",
+    helpers,
+    ip: "9.9.9.9"
+  });
+  assert.equal(follow.body.view.followUpLabel, "الصور");
+  assert.deepEqual(follow.body.view.followUpActions, []);
+  const again = await handlePartySessionGet({
+    token: minted.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    requestId: "acc-9",
+    helpers,
+    ip: "9.9.9.9"
+  });
+  assert.equal(again.body.view.property.propertyType, "أرض");
+  assert.equal(again.body.view.followUpLabel, "الصور");
+});
+
+test("generic placeholders never become runtime property values", () => {
+  const snapshot = buildPartySnapshot({
+    opportunityKind: "OFFER",
+    propertyType: "العقار",
+    city: "غير محدد",
+    budget: 20000
+  });
+  assert.equal(snapshot.propertyType, "");
+  assert.equal(snapshot.city, "");
+  assert.equal(snapshot.priceLabel, "");
+  const html = buildPartyShellHtml(sanitizePartyPublicView({ party: "client", snapshot }));
+  assert.equal(html.includes("20,000"), false);
+  assert.equal(html.includes(">العقار<"), false);
+  assert.equal(html.includes("غير محدد"), false);
 });
 
 test("matching engine files are not part of the party-link change", () => {
