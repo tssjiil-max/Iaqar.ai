@@ -8,7 +8,7 @@ import {
   SORT_GROUP_RANK,
   buildCooperationDailyTaskView,
   isArchivedCooperation
-} from "../../../../public/js/cooperation-workflow-domain.js";
+} from "../../cooperation-workflow-domain.js";
 
 export const DAILY_TASK_STATE = Object.freeze({
   NEW_MATCH: "new_match",

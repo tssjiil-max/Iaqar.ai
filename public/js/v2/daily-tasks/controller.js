@@ -13,8 +13,8 @@ import {
   COOPERATION_ACTION,
   requestCooperationWorkflow,
   workflowActionFromButton
-} from "../../../../public/js/cooperation-workflow-domain.js";
-import { requestCooperationLifecycle } from "../../../../public/js/cooperation-phase6-domain.js";
+} from "../../cooperation-workflow-domain.js";
+import { requestCooperationLifecycle } from "../../cooperation-phase6-domain.js";
 import {
   buildPartyWhatsAppMessage,
   detailsOpportunityId,

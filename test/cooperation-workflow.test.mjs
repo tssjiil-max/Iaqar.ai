@@ -314,6 +314,16 @@ test("TEST 16 Old operational page title is no longer rendered", () => {
   assert.ok(shell.includes("id=\"bankOutgoingScopes\""));
 });
 
+test("copied daily-task modules resolve cooperation domain in the browser", () => {
+  const copiedDomain = readRepositoryFile("public", "js", "v2", "daily-tasks", "domain.js");
+  const copiedController = readRepositoryFile("public", "js", "v2", "daily-tasks", "controller.js");
+  assert.equal(copiedDomain.includes("../../../../public/js/"), false);
+  assert.equal(copiedController.includes("../../../../public/js/"), false);
+  assert.match(copiedDomain, /from "\.\.\/\.\.\/cooperation-workflow-domain\.js"/);
+  assert.match(copiedController, /from "\.\.\/\.\.\/cooperation-workflow-domain\.js"/);
+  assert.match(copiedController, /from "\.\.\/\.\.\/cooperation-phase6-domain\.js"/);
+});
+
 test("living task identity never forks across stages", () => {
   let record = livingRecord();
   const stages = [
