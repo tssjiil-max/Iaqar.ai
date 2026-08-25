@@ -6,7 +6,8 @@
 import { buildDailyTaskListHtml } from "./card.js";
 import {
   dailyTasksDemoFixtures,
-  mapOperationsItemsToDailyTasks
+  mapOperationsItemsToDailyTasks,
+  consumeDailyTaskDiagnostics
 } from "./domain.js";
 import {
   COOPERATION_ACTION,
@@ -199,8 +200,80 @@ export function toggleTaskDetails(taskId) {
   return { ok: true, detailsOpen: state.detailsTaskId === taskId };
 }
 
-export function openExistingOfferDetails(task) {
-  return toggleTaskDetails(task?.id);
+function detailsHost() {
+  return document.querySelector("[data-cv2-exec-details-host]");
+}
+
+async function closeOfferDetailsSheet() {
+  const sheet = document.querySelector("[data-cv2-exec-details-sheet]");
+  if (detailsHost()) {
+    try {
+      const mod = await import("../opportunity-details/controller.js");
+      mod.unmountOpportunityDetailsContentV2();
+    } catch {
+      /* unit tests do not load opportunity-details */
+    }
+  }
+  sheet?.remove();
+  restoreScroll();
+}
+
+function ensureOfferDetailsSheet() {
+  let sheet = document.querySelector("[data-cv2-exec-details-sheet]");
+  if (sheet) return sheet.querySelector("[data-cv2-exec-details-host]");
+  document.body.insertAdjacentHTML("beforeend", `<div class="cv2-exec-details-sheet" data-cv2-exec-details-sheet data-testid="offer-details-sheet">
+    <div class="cv2-exec-details-panel">
+      <button type="button" class="cv2-exec-details-close" data-cv2-exec-close-sheet data-testid="close-offer-details">إغلاق التفاصيل</button>
+      <div data-cv2-exec-details-host></div>
+    </div>
+  </div>`);
+  document.querySelector("[data-cv2-exec-details-sheet]")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-cv2-exec-close-sheet]") || event.target.hasAttribute("data-cv2-exec-details-sheet")) {
+      event.preventDefault();
+      closeOfferDetailsSheet();
+    }
+  });
+  return detailsHost();
+}
+
+export async function openExistingOfferDetails(task) {
+  const offerId = String(task?.offerId || "").trim();
+  const taskId = String(task?.id || "").trim();
+  if (useDemoFixtures()) return toggleTaskDetails(taskId);
+  if (!offerId) {
+    console.warn("[iaqar] INVALID_TASK_DATA", {
+      taskId,
+      matchId: task?.matchId || "",
+      requestId: task?.requestId || "",
+      offerId,
+      reason: "missing_offerId"
+    });
+    return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
+  }
+  captureScroll();
+  if (taskId) state.openTaskId = taskId;
+  const [{ loadOpportunityRecord }, details] = await Promise.all([
+    import("../opportunity-details/data.js"),
+    import("../opportunity-details/controller.js")
+  ]);
+  const record = await loadOpportunityRecord(offerId);
+  if (!record) {
+    console.warn("[iaqar] INVALID_TASK_DATA", {
+      taskId,
+      matchId: task?.matchId || "",
+      requestId: task?.requestId || "",
+      offerId,
+      reason: "unresolved_offer"
+    });
+    closeOfferDetailsSheet();
+    return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
+  }
+  const host = ensureOfferDetailsSheet();
+  if (!host) {
+    return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
+  }
+  await details.mountOpportunityDetailsContentV2(host, { opportunityId: offerId });
+  return { ok: true, offerId, detailsOpen: true };
 }
 
 function captureScroll() {
@@ -251,6 +324,10 @@ async function recordOpenedExternal(task, party, phone, body) {
 
 export async function runDailyTaskPartySend(task, party, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  if (!task?.matchId || !task?.offerId || !task?.requestId || task.dataIntegrity === "INVALID_TASK_DATA") {
+    notify(PARTY_SEND_COPY.detailsFailed);
+    return { ok: false, integrity: "INVALID_TASK_DATA" };
+  }
   setExecState(button, "working");
   const side = party === "owner" ? "owner" : "client";
   try {
@@ -366,6 +443,13 @@ async function confirmDealCompletion(task, button) {
 function onListClick(event) {
   const root = state.root;
   if (!root) return;
+  const closeSheet = event.target.closest("[data-cv2-exec-close-sheet]");
+  if (closeSheet) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeOfferDetailsSheet();
+    return;
+  }
   const closeDetails = event.target.closest("[data-cv2-exec-close-details]");
   if (closeDetails) {
     event.preventDefault();
@@ -383,7 +467,18 @@ function onListClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
-    if (action === "open_offer" || action === "complete_info" || action === "open_details") {
+    if (action === "open_offer" || action === "open_details") {
+      const result = openExistingOfferDetails(task);
+      if (result && typeof result.then === "function") {
+        void result.then((done) => {
+          if (!done?.ok && done?.error) notify(done.error);
+        });
+      } else if (result && result.ok === false) {
+        notify(result.error || PARTY_SEND_COPY.detailsFailed);
+      }
+      return;
+    }
+    if (action === "complete_info") {
       toggleTaskDetails(task.id);
       return;
     }
@@ -457,15 +552,19 @@ function onOperationsData(event) {
   if (useDemoFixtures()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
   state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: currentOfficeId() });
+  const invalid = consumeDailyTaskDiagnostics();
+  if (invalid.length && typeof window !== "undefined") window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
   if (state.openTaskId && !state.tasks.some((task) => task.id === state.openTaskId)) {
     state.openTaskId = null;
     state.detailsTaskId = null;
+    closeOfferDetailsSheet();
   }
   renderList();
 }
 
 export function unmountDailyTasksContentV2() {
   window.removeEventListener("iaqar:operations-data", onOperationsData);
+  closeOfferDetailsSheet();
   if (state.root) {
     state.root.removeEventListener("click", onListClick);
     state.root.innerHTML = "";
@@ -489,7 +588,11 @@ export function mountDailyTasksContentV2(root) {
   }
   if (!useDemoFixtures()) {
     const existing = window.IAQAR?.operationsItems;
-    if (Array.isArray(existing)) state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), { officeId: currentOfficeId() });
+    if (Array.isArray(existing)) {
+      state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), { officeId: currentOfficeId() });
+      const invalid = consumeDailyTaskDiagnostics();
+      if (invalid.length) window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
+    }
   }
   renderList();
 }

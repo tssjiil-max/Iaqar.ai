@@ -52,7 +52,8 @@ const matchItem = {
   candidateCity: "المدينة المنورة",
   candidateSalePrice: 50000,
   candidateArea: 125,
-  matchReasons: ["نفس الحي", "ضمن الميزانية", "المساحة متقاربة"]
+  matchReasons: ["نفس الحي", "ضمن الميزانية", "المساحة متقاربة"],
+  createdAt: "2026-08-25T21:21:00.000+03:00"
 };
 
 const coopRecord = {

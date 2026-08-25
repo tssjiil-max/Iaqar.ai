@@ -353,6 +353,49 @@
   }
 }
 
+.cv2-exec-details-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  align-items: stretch;
+  background: rgba(16, 24, 21, 0.35);
+}
+
+.cv2-exec-details-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px;
+  overflow: auto;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(20, 40, 32, 0.16);
+}
+
+.cv2-exec-details-close {
+  align-self: flex-start;
+  min-height: 36px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--cv2-green, #1a5319);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cv2-exec-ref {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--cv2-muted, #6b7873);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 @media (max-width: 600px) {
   html.cv2-tasks-office-smart .app > .card.license,
   html.cv2-tasks-office-smart section.card.license {

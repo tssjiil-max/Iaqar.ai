@@ -17,7 +17,10 @@ import {
   dailyTasksDemoFixtures,
   mapOperationsItemToDailyTask,
   mapOperationsItemsToDailyTasks,
-  sortDailyTaskViews
+  sortDailyTaskViews,
+  consumeDailyTaskDiagnostics,
+  formatDailyTaskClock,
+  isTestFixtureRecord
 } from "../src/v2/content/daily-tasks/domain.js";
 import {
   buildDailyTaskCardHtml,
@@ -102,6 +105,8 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.match(text, /تم العثور على مطابقة/);
   assert.match(html, /data-cv2-exec-reveal/);
   assert.match(html, />عرض البيانات</);
+  assert.equal(html.includes("الآن"), false);
+  assert.match(html, /9:21 م/);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(html.includes("عرض تفاصيل العرض"), false);
@@ -285,17 +290,21 @@ test("appointment today maps from viewing date without copying listing fields", 
     operationType: "MATCH_REVIEW",
     matchId: "match_visit",
     ownerOfferId: "offer_visit",
+    requestId: "request_visit",
     propertyType: "شقة",
     purpose: "SALE",
     district: "الجرف",
     salePrice: 900000,
-    viewingAt: "2026-08-24T15:00:00.000+03:00"
+    viewingAt: "2026-08-24T15:00:00.000+03:00",
+    createdAt: "2026-08-24T09:21:00.000+03:00"
   }, now);
   assert.equal(task.stateKey, DAILY_TASK_STATE.APPOINTMENT_TODAY);
-  assert.equal(task.badgeLabel, "اليوم");
+  assert.equal(task.badgeLabel, "9:21 ص");
+  assert.equal(task.badgeLabel.includes("الآن"), false);
   const html = buildDailyTaskCardHtml(task);
   assert.equal(html.includes("بيانات الفرصة"), false);
   assert.equal(html.includes("cv2-data-extra"), false);
+  assert.equal(html.includes("الآن"), false);
 });
 
 test("offers and requests inbox still uses the approved data card", () => {
@@ -308,6 +317,8 @@ test("daily-task controller wires send and open without claiming delivery", () =
   const controller = readFileSync(path.join(root, "src", "v2", "content", "daily-tasks", "controller.js"), "utf8");
   assert.match(controller, /runDailyTaskPartySend/);
   assert.match(controller, /openExistingOfferDetails/);
+  assert.match(controller, /loadOpportunityRecord/);
+  assert.match(controller, /mountOpportunityDetailsContentV2/);
   assert.match(controller, /send_to_client/);
   assert.match(controller, /send_to_owner/);
   assert.match(controller, /open_offer/);
@@ -325,8 +336,8 @@ test("daily-task controller wires send and open without claiming delivery", () =
 test("mapOperationsItemsToDailyTasks de-duplicates by match id", () => {
   const now = new Date("2026-08-24T10:00:00.000+03:00");
   const views = mapOperationsItemsToDailyTasks([
-    { operationType: "MATCH_REVIEW", matchId: "m1", ownerOfferId: "o1", propertyType: "أرض", purpose: "SALE", district: "عروة", salePrice: 1 },
-    { recordType: "match", matchId: "m1", ownerOfferId: "o1", propertyType: "أرض", purpose: "SALE", district: "عروة", salePrice: 1 }
+    { operationType: "MATCH_REVIEW", matchId: "m1", ownerOfferId: "o1", clientRequestId: "r1", propertyType: "أرض", purpose: "SALE", district: "عروة", salePrice: 1, createdAt: "2026-08-24T09:21:00.000+03:00" },
+    { recordType: "match", matchId: "m1", ownerOfferId: "o1", clientRequestId: "r1", propertyType: "أرض", purpose: "SALE", district: "عروة", salePrice: 1, createdAt: "2026-08-24T09:21:00.000+03:00" }
   ], now);
   assert.equal(views.length, 1);
 });
@@ -553,3 +564,147 @@ test("tasks mount uses office smart hide instead of the details chevron", () => 
   assert.equal(tasksBlocks.every((block) => block.includes("setupOfficeSmartHide")), true);
   assert.equal(tasksBlocks.every((block) => block.includes("setupOfficeCardCollapse") === false), true);
 });
+
+test("clock labels never use الآن and distinguish today yesterday and older dates", () => {
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  assert.equal(formatDailyTaskClock("2026-08-25T21:21:00.000+03:00", now), "9:21 م");
+  assert.equal(formatDailyTaskClock("2026-08-25T11:05:00.000+03:00", now), "11:05 ص");
+  assert.equal(formatDailyTaskClock("2026-08-24T20:43:00.000+03:00", now), "أمس · 8:43 م");
+  assert.equal(formatDailyTaskClock("2026-08-20T20:43:00.000+03:00", now), "20 أغسطس · 8:43 م");
+  assert.equal(formatDailyTaskClock("2025-12-02T20:43:00.000+03:00", now), "2 ديسمبر 2025 · 8:43 م");
+  assert.equal(formatDailyTaskClock("2026-08-25T21:21:00.000+03:00", now).includes("الآن"), false);
+});
+
+test("QA fixtures stay out of the normal office daily-task list", () => {
+  consumeDailyTaskDiagnostics();
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const fixture = {
+    operationType: "MATCH_REVIEW",
+    matchId: "match_livee2e_abc",
+    clientRequestId: "req_1",
+    ownerOfferId: "off_1",
+    propertyType: "شقة",
+    purpose: "RENT",
+    district: "النرجس",
+    city: "الرياض",
+    budget: 50000,
+    candidatePropertyType: "شقة",
+    candidateDistrict: "النرجس",
+    isTestFixture: true,
+    testRunId: "livee2e_abc",
+    createdBy: "E2E",
+    createdAt: "2026-08-25T21:21:00.000+03:00"
+  };
+  assert.equal(isTestFixtureRecord(fixture), true);
+  const hidden = mapOperationsItemsToDailyTasks([fixture], now, { officeId: "staging-logo-live-20260807" });
+  assert.equal(hidden.length, 0);
+  const shown = mapOperationsItemsToDailyTasks([fixture], now, { officeId: "qa-e2e-dedicated" });
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].badgeLabel.includes("الآن"), false);
+});
+
+test("unresolvable match linkage is INVALID_TASK_DATA and not sendable", () => {
+  consumeDailyTaskDiagnostics();
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const views = mapOperationsItemsToDailyTasks([
+    {
+      recordType: "match",
+      matchId: "match_broken",
+      clientRequestId: "missing_request",
+      ownerOfferId: "missing_offer",
+      createdAt: "2026-08-25T21:21:00.000+03:00"
+    },
+    {
+      recordType: "opportunity",
+      recordId: "other_opp",
+      opportunityId: "other_opp",
+      propertyType: "شقة",
+      district: "العوالي"
+    }
+  ], now);
+  assert.equal(views.length, 0);
+  const diagnostics = consumeDailyTaskDiagnostics();
+  assert.equal(diagnostics[0].code, "INVALID_TASK_DATA");
+  assert.equal(diagnostics[0].matchId, "match_broken");
+  assert.ok(diagnostics[0].reasons.includes("unresolved_request"));
+  assert.ok(diagnostics[0].reasons.includes("unresolved_offer"));
+});
+
+test("one request with several matches renders a single group card", () => {
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const views = mapOperationsItemsToDailyTasks([1, 2, 3, 4].map((n) => ({
+    recordType: "match",
+    matchId: `match_g_${n}`,
+    clientRequestId: "req_group",
+    ownerOfferId: `off_group_${n}`,
+    propertyType: "شقة",
+    purpose: "RENT",
+    district: "العوالي",
+    city: "مكة",
+    budget: 50000,
+    candidatePropertyType: "شقة",
+    candidatePurpose: "RENT",
+    candidateDistrict: "العوالي",
+    candidateSalePrice: 45000,
+    createdAt: "2026-08-25T21:21:00.000+03:00"
+  })), now);
+  assert.equal(views.length, 1);
+  assert.match(views[0].candidateCountLine, /4 عروض مناسبة/);
+  const html = buildDailyTaskCardHtml(views[0]);
+  assert.match(html, /مراجعة المطابقات/);
+  assert.equal(html.includes("الآن"), false);
+});
+
+test("canonical opportunities hydrate collapsed identity and expanded facts", () => {
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const views = mapOperationsItemsToDailyTasks([
+    {
+      recordType: "match",
+      matchId: "match_real",
+      clientRequestId: "req_real",
+      ownerOfferId: "off_real",
+      createdAt: "2026-08-25T21:21:00.000+03:00"
+    },
+    {
+      recordType: "opportunity",
+      recordId: "req_real",
+      opportunityKind: "REQUEST",
+      propertyType: "شقة",
+      purpose: "LEASE_REQUEST",
+      district: "النرجس",
+      city: "الرياض",
+      budget: 50000,
+      area: 120,
+      contactPhone: "0501111842"
+    },
+    {
+      recordType: "opportunity",
+      recordId: "off_real",
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "RENT",
+      district: "النرجس",
+      city: "الرياض",
+      salePrice: 50000,
+      annualRent: 50000,
+      area: 125,
+      contactPhone: "0502221842"
+    }
+  ], now);
+  assert.equal(views.length, 1);
+  const task = views[0];
+  assert.equal(task.badgeLabel, "9:21 م");
+  assert.match(task.identityLine || task.typePurposeLine, /شقة للإيجار/);
+  assert.match(task.identityLine || task.typePurposeLine, /حي النرجس/);
+  const open = buildDailyTaskCardHtml(task, { open: true });
+  assert.match(open, /طلب العميل/);
+  assert.match(open, /العرض المطابق/);
+  assert.match(open, /نوع العقار/);
+  assert.match(open, /الغرض/);
+  assert.match(open, /الحي/);
+  assert.match(open, /المدينة/);
+  assert.match(open, /إرسال للعميل/);
+  assert.equal(/cv2-exec-badge[^>]*>الآن</.test(open), false);
+  assert.match(open, /9:21 م/);
+});
+

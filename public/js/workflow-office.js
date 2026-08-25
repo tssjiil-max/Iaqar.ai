@@ -133,6 +133,11 @@
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
+  function isoTime(value) {
+    const date = toDate(value);
+    return date ? date.toISOString() : "";
+  }
+
   function relativeTime(value) {
     const date = toDate(value) || new Date();
     const diff = Date.now() - date.getTime();
@@ -271,6 +276,33 @@
       whatsappOwner: Boolean(item.ownerOfferId),
       whatsappOwnerLabel: item.ownerMediaMissing === true ? "طلب الصور عبر واتساب" : "واتساب المالك",
       whatsappClient: Boolean(item.clientRequestId),
+      createdAt: isoTime(item.createdAt),
+      updatedAt: isoTime(item.updatedAt || item.createdAt),
+      livingStage: item.livingStage || "",
+      livingUpdatedAt: isoTime(item.livingUpdatedAt || item.updatedAt || item.createdAt),
+      livingTimeline: item.livingTimeline || item.livingTimelineJson || [],
+      purpose: item.purpose || item.candidatePurpose || "",
+      city: item.city || item.candidateCity || "",
+      salePrice: item.salePrice ?? item.candidateSalePrice ?? item.price ?? 0,
+      budget: item.budget || 0,
+      annualRent: item.annualRent || 0,
+      area: item.area ?? item.candidateArea ?? 0,
+      candidatePropertyType: item.candidatePropertyType || "",
+      candidatePurpose: item.candidatePurpose || "",
+      candidateDistrict: item.candidateDistrict || "",
+      candidateCity: item.candidateCity || "",
+      candidateSalePrice: item.candidateSalePrice || 0,
+      candidateArea: item.candidateArea || 0,
+      requestId: item.requestId || item.clientRequestId || "",
+      offerId: item.offerId || item.ownerOfferId || "",
+      clientPhone: item.clientPhone || item.clientContactPhone || "",
+      ownerPhone: item.ownerPhone || item.ownerContactPhone || "",
+      matchReasons: parseArray(item.matchReasons || item.reasonsJson),
+      isTestFixture: item.isTestFixture === true || item.qaLiveE2e === true,
+      testRunId: item.testRunId || item.qaLiveRunId || "",
+      createdBy: item.createdBy || "",
+      qaLiveE2e: item.qaLiveE2e === true,
+      sourceType: item.sourceType || "",
       ownerMediaMissing: item.ownerMediaMissing === true,
       nextFollowUpAt: item.nextFollowUpAt || null,
       appointmentAt,
@@ -499,6 +531,12 @@
       sourceRecordId: item.sourceRecordId || "",
       sourceCollection: item.sourceCollection || "",
       transactionType: item.transactionType || "",
+      opportunityKind: item.opportunityKind || item.kind || (isOwner ? "OFFER" : "REQUEST"),
+      isTestFixture: item.isTestFixture === true || item.qaLiveE2e === true,
+      testRunId: item.testRunId || item.qaLiveRunId || "",
+      createdBy: item.createdBy || "",
+      qaLiveE2e: item.qaLiveE2e === true,
+      sourceType: item.sourceType || "",
       amount: item.price || item.priceMax || 0,
       salePrice: item.salePrice ?? item.price,
       annualRent: item.annualRent,
