@@ -19,6 +19,11 @@ import {
   rankMatchCandidates as rankMatchCandidatesEngine
 } from "./matching-engine.js";
 import {
+  MATCH_INTEGRITY,
+  collectCandidateOpportunityIds,
+  resolveCanonicalPairFromDocs
+} from "./match-integrity-domain.js";
+import {
   phase5BoundaryGuarantees,
   OPERATION_TYPES,
   OPERATION_STATUS,
@@ -1796,6 +1801,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     contactName: firestoreOptionalString(parsed.senderName),
     matchingReadiness: firestoreString(readiness.matchingReadiness),
     matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
+    opportunityKind: firestoreString(parsed.kind === "owner_offer" ? "OFFER" : "REQUEST"),
     mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
@@ -1811,9 +1817,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     }});
   }
 
-  const matches = await findAndSaveMatches({
-    projectId, officeId, parsed, sourceCollection: targetCollection,
-    sourceRecordId: recordId, opportunityId, accessToken, env
+  const matches = await runCanonicalMatchingAfterOpportunityPersist({
+    projectId, officeId, opportunityId, accessToken, env
   });
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
@@ -2274,14 +2279,14 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
       ...commonFields,
       sourceCollection: firestoreString(targetCollection),
       sourceRecordId: firestoreString(recordId),
+      opportunityKind: firestoreString(parsed.kind === "owner_offer" ? "OFFER" : "REQUEST"),
       workflowStage: firestoreString("new"),
       priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2)
     }
   });
 
-  const matches = await findAndSaveMatches({
-    projectId, officeId, parsed, sourceCollection: targetCollection,
-    sourceRecordId: recordId, opportunityId, accessToken, env
+  const matches = await runCanonicalMatchingAfterOpportunityPersist({
+    projectId, officeId, opportunityId, accessToken, env
   });
 
   await setFirestoreDocument({
@@ -3361,6 +3366,116 @@ async function supersedeMatchesForPairKey({
   return superseded;
 }
 
+async function loadOpportunityDocsByIds({ projectId, officeId, ids = [], accessToken }) {
+  const docsById = {};
+  const unique = [...new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))];
+  for (const id of unique) {
+    const doc = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "opportunities", id],
+      accessToken,
+      allowMissing: true
+    });
+    if (doc) docsById[id] = { id, officeId, ...firestoreFieldsToJs(doc.fields || {}) };
+  }
+  return docsById;
+}
+
+async function resolveCanonicalMatchForPersist({
+  projectId, officeId, accessToken,
+  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+  opportunityId, counterpartOpportunityId, requestId, offerId, clientRequestId, ownerOfferId
+}) {
+  const match = {
+    officeId,
+    sourceCollection,
+    sourceRecordId,
+    counterpartCollection,
+    counterpartRecordId,
+    opportunityId,
+    counterpartOpportunityId,
+    requestId,
+    offerId,
+    clientRequestId,
+    ownerOfferId
+  };
+  const docsById = await loadOpportunityDocsByIds({
+    projectId, officeId, accessToken, ids: collectCandidateOpportunityIds(match)
+  });
+  return resolveCanonicalPairFromDocs(match, docsById);
+}
+
+async function writeRejectedMatchDiagnostic({
+  projectId, officeId, matchId, reason, details = {}, accessToken
+}) {
+  const now = new Date();
+  const diagnosticId = String(matchId || `rej_${now.getTime()}`).slice(0, 180);
+  console.warn("[iaqar-match] REJECTED_ACTIVE_MATCH", { officeId, matchId: diagnosticId, reason, ...details });
+  try {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matchDiagnostics", diagnosticId],
+      accessToken,
+      fields: {
+        officeId: firestoreString(officeId),
+        matchId: firestoreString(matchId || ""),
+        integrityStatus: firestoreString(MATCH_INTEGRITY.INVALID),
+        integrityReason: firestoreString(reason || "canonical_linkage_failed"),
+        detailsJson: firestoreString(JSON.stringify(details).slice(0, 4000)),
+        createdAt: firestoreTimestamp(now),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+  } catch (error) {
+    console.warn("[iaqar-match] diagnostic write failed", error && error.message);
+  }
+}
+
+async function confirmPersistedOpportunity({ projectId, officeId, opportunityId, accessToken }) {
+  const id = String(opportunityId || "").trim();
+  if (!id) return null;
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", id],
+    accessToken,
+    allowMissing: true
+  });
+  return doc ? { id, ...firestoreFieldsToJs(doc.fields || {}) } : null;
+}
+
+async function runCanonicalMatchingAfterOpportunityPersist({
+  projectId, officeId, opportunityId, accessToken, env = null
+}) {
+  const confirmed = await confirmPersistedOpportunity({
+    projectId, officeId, opportunityId, accessToken
+  });
+  if (!confirmed) {
+    console.warn("[iaqar-match] SKIP_MATCH_UNCONFIRMED_OPPORTUNITY", { officeId, opportunityId });
+    await writeRejectedMatchDiagnostic({
+      projectId, officeId, matchId: `unconfirmed_${opportunityId || "missing"}`.slice(0, 180),
+      reason: "opportunity_persist_unconfirmed",
+      details: { opportunityId },
+      accessToken
+    });
+    return [];
+  }
+  const result = await findAndSaveMatchesForOpportunity({
+    projectId, officeId, opportunityId, accessToken, notify: false, env
+  });
+  return (result.matches || []).filter((row) => !row.skipped);
+}
+
+function canonicalMatchFields(linkage) {
+  return {
+    requestId: firestoreString(linkage.requestId),
+    offerId: firestoreString(linkage.offerId),
+    clientRequestId: firestoreString(linkage.requestId),
+    ownerOfferId: firestoreString(linkage.offerId),
+    integrityStatus: firestoreString(MATCH_INTEGRITY.VALID),
+    integrityReason: firestoreString("")
+  };
+}
+
 async function persistScoredMatch({
   projectId, officeId, source, candidate, sourceRef, counterpartRef,
   sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
@@ -3373,12 +3488,48 @@ async function persistScoredMatch({
     officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
   });
   const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
+  const linkage = await resolveCanonicalMatchForPersist({
+    projectId, officeId, accessToken,
+    sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+    opportunityId, counterpartOpportunityId
+  });
+  if (!linkage.ok) {
+    await writeRejectedMatchDiagnostic({
+      projectId, officeId, matchId, reason: linkage.integrityReason,
+      details: {
+        sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+        opportunityId, counterpartOpportunityId
+      },
+      accessToken
+    });
+    return {
+      matchId, skipped: true, duplicate: false,
+      integrityStatus: MATCH_INTEGRITY.INVALID,
+      integrityReason: linkage.integrityReason,
+      score: scored.score, opportunityScore: scored.opportunityScore
+    };
+  }
+  const clientRequestId = linkage.requestId;
+  const ownerOfferId = linkage.offerId;
+
   const existingMatch = await getFirestoreDocument({
     projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
   });
   if (existingMatch) {
     const existing = firestoreFieldsToJs(existingMatch.fields || {});
     if (existing.isCurrent !== false && existing.status !== "superseded") {
+      if (existing.integrityStatus !== MATCH_INTEGRITY.VALID
+        || existing.clientRequestId !== clientRequestId
+        || existing.ownerOfferId !== ownerOfferId
+        || existing.requestId !== clientRequestId
+        || existing.offerId !== ownerOfferId) {
+        await setFirestoreDocument({
+          projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+            ...canonicalMatchFields(linkage),
+            updatedAt: firestoreTimestamp(new Date())
+          }
+        });
+      }
       return {
         matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
         priority: scored.priority, closingReadiness: scored.readiness, status: "active",
@@ -3388,7 +3539,9 @@ async function persistScoredMatch({
         city: source.city || candidate.city || DEFAULT_CITY,
         district: source.district || candidate.district || "",
         propertyType: source.propertyType || candidate.propertyType || "",
-        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey
+        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
+        requestId: clientRequestId, offerId: ownerOfferId, clientRequestId, ownerOfferId,
+        integrityStatus: MATCH_INTEGRITY.VALID
       };
     }
   }
@@ -3398,16 +3551,10 @@ async function persistScoredMatch({
   });
 
   const now = new Date();
-  const clientRequestId = sourceCollection === "clients"
-    ? sourceRecordId
-    : (counterpartCollection === "clients" ? counterpartRecordId : "");
-  const ownerOfferId = sourceCollection === "owners"
-    ? sourceRecordId
-    : (counterpartCollection === "owners" ? counterpartRecordId : "");
   const readiness = scored.readiness;
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-    schemaVersion: firestoreInteger(6),
+    schemaVersion: firestoreInteger(7),
     officeId: firestoreString(officeId),
     matchId: firestoreString(matchId),
     status: firestoreString("active"),
@@ -3436,8 +3583,7 @@ async function persistScoredMatch({
     sourceRecordId: firestoreString(sourceRecordId),
     counterpartCollection: firestoreString(counterpartCollection),
     counterpartRecordId: firestoreString(counterpartRecordId),
-    clientRequestId: firestoreString(clientRequestId),
-    ownerOfferId: firestoreString(ownerOfferId),
+    ...canonicalMatchFields(linkage),
     matchGroupId: firestoreString(opportunityId || sourceRecordId || clientRequestId || pairKey),
     opportunityId: firestoreString(opportunityId || ""),
     counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
@@ -3484,8 +3630,11 @@ async function persistScoredMatch({
     counterpartOpportunityId: counterpartOpportunityId || "",
     isCurrent: true,
     assignedBrokerId: assignedBrokerId || "",
+    requestId: clientRequestId,
+    offerId: ownerOfferId,
     clientRequestId,
     ownerOfferId,
+    integrityStatus: MATCH_INTEGRITY.VALID,
     matchGroupId: opportunityId || sourceRecordId || clientRequestId,
     sourceCollection,
     candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
@@ -3553,6 +3702,7 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
       notifyOperation: false,
       env
     });
+    if (persisted?.skipped) continue;
     results.push(persisted);
   }
   return results;
@@ -3645,6 +3795,7 @@ async function findAndSaveMatchesForOpportunity({
       assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || ""),
       env
     });
+    if (persisted?.skipped) continue;
     results.push(persisted);
   }
 

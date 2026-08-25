@@ -1,0 +1,161 @@
+{
+  "generatedAt": "2026-08-25T19:14:41.361Z",
+  "runId": "livee2e_matchint_mt91neuo",
+  "officeId": "qa-e2e-dedicated",
+  "persisted": {
+    "requestId": "opp_livee2e_matchint_mt91neuo_req",
+    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "requestExists": true,
+    "offerExists": true
+  },
+  "matching": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "officeId": "qa-e2e-dedicated",
+      "opportunityId": "opp_livee2e_matchint_mt91neuo_req",
+      "matchCount": 1,
+      "matches": [
+        {
+          "matchId": "mat_157ef331b7f3d8c3ee27ee2700546b51746c",
+          "duplicate": false,
+          "score": 100,
+          "opportunityScore": 100,
+          "priority": "critical",
+          "closingReadiness": {
+            "score": 46,
+            "key": "low",
+            "label": "منخفضة"
+          },
+          "status": "active",
+          "statusLabel": "نشطة",
+          "nextAction": "التواصل مع الطرفين",
+          "rank": 1,
+          "isBestOpportunity": true,
+          "reasons": [
+            "نفس المدينة",
+            "نفس الحي",
+            "نفس نوع العقار",
+            "نفس نوع العملية",
+            "فرق السعر 10٪",
+            "فرق المساحة 4٪",
+            "عدد الغرف مطابق",
+            "بيانات الطرفين مكتملة"
+          ],
+          "warnings": [],
+          "metrics": {
+            "priceDifferencePercent": 10,
+            "areaDifferencePercent": 4
+          },
+          "breakdown": {
+            "city": 5,
+            "district": 30,
+            "propertyType": 22,
+            "transactionType": 14,
+            "price": 14,
+            "area": 8,
+            "rooms": 5,
+            "readiness": 0,
+            "urgency": 0,
+            "completeness": 3
+          },
+          "city": "المدينة المنورة",
+          "district": "العزيزية",
+          "propertyType": "شقة",
+          "matchingRuleVersion": "4.0.0",
+          "dataVersion": "03a6445563c9d38bcc600d11",
+          "pairKey": "opportunities:opp_livee2e_matchint_mt91neuo_offer|opportunities:opp_livee2e_matchint_mt91neuo_req",
+          "opportunityId": "opp_livee2e_matchint_mt91neuo_req",
+          "counterpartOpportunityId": "opp_livee2e_matchint_mt91neuo_offer",
+          "isCurrent": true,
+          "assignedBrokerId": "",
+          "requestId": "opp_livee2e_matchint_mt91neuo_req",
+          "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+          "clientRequestId": "opp_livee2e_matchint_mt91neuo_req",
+          "ownerOfferId": "opp_livee2e_matchint_mt91neuo_offer",
+          "integrityStatus": "VALID",
+          "matchGroupId": "opp_livee2e_matchint_mt91neuo_req",
+          "sourceCollection": "opportunities",
+          "candidateSalePrice": 50000,
+          "candidateArea": 125,
+          "candidatePropertyType": "شقة",
+          "candidateDistrict": "العزيزية",
+          "candidateCity": "المدينة المنورة",
+          "candidatePurpose": "RENT",
+          "operationId": "op_d0dccf4046c0023f0d678783f0c08e24f7f1de6f",
+          "operationCreated": true
+        }
+      ],
+      "matchingRuleVersion": "4.0.0",
+      "threshold": 55,
+      "superseded": 0,
+      "inactive": false,
+      "boundaries": {
+        "createsOperation": true,
+        "sendsWhatsApp": false,
+        "sendsTelegram": false,
+        "runsAutomaticCooperation": false,
+        "matchingRuleVersion": "4.0.0",
+        "createsWhatsAppMessage": true,
+        "createsTelegramMessage": true,
+        "createsSmartMessageDraft": true,
+        "createsAutomaticCooperation": false,
+        "createsBrokerRecommendation": false,
+        "createsDeal": false,
+        "createsCommission": false,
+        "addsDealsPage": false,
+        "addsBottomNavigation": false
+      },
+      "createsOperation": true,
+      "operationsCreated": 1,
+      "missingData": {
+        "created": false,
+        "closed": 0,
+        "reason": "complete",
+        "boundaries": {
+          "createsWhatsAppMessage": true,
+          "sendsWhatsApp": false,
+          "createsTelegramMessage": true,
+          "sendsTelegram": false,
+          "createsSmartMessageDraft": true,
+          "createsAutomaticCooperation": false,
+          "createsBrokerRecommendation": false,
+          "createsDeal": false,
+          "createsCommission": false,
+          "addsDealsPage": false,
+          "addsBottomNavigation": false
+        }
+      },
+      "requestId": "1254ef22-6af6-4566-81b2-c5095306e6d2"
+    }
+  },
+  "qaMatch": {
+    "matchId": "mat_157ef331b7f3d8c3ee27ee2700546b51746c",
+    "requestId": "opp_livee2e_matchint_mt91neuo_req",
+    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "integrityStatus": "VALID",
+    "integrityReason": ""
+  },
+  "mapper": {
+    "visible": 1,
+    "hidden": 0,
+    "taskId": "mg_opp_livee2e_matchint_mt91neuo_req",
+    "requestId": "opp_livee2e_matchint_mt91neuo_req",
+    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "typePurpose": "شقة للإيجار · حي العزيزية",
+    "place": "المدينة المنورة",
+    "money": "50,000 ر.س",
+    "reference": "#A-0291"
+  },
+  "reload": {
+    "sameTaskId": true,
+    "sameMatchId": true,
+    "sameRequestId": true,
+    "sameOfferId": true
+  },
+  "ui": {
+    "shots": {},
+    "cardCount": 0,
+    "error": "page.evaluate: FirebaseError: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).\n    at o (https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js:1:30594)\n    at Object.e [as auth] (https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js:1:30119)\n    at eval (eval at evaluate (:291:30), <anonymous>:2:27)\n    at UtilityScript.evaluate (<anonymous>:293:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+  }
+}

@@ -321,6 +321,14 @@ function listingHasIdentity(listing = {}) {
   return Boolean(text(listing.propertyType) && (text(listing.district) || text(listing.city)));
 }
 
+function isTemporaryDailyTaskId(id = "") {
+  const value = text(id);
+  if (!value) return false;
+  if (/^opp_/i.test(value)) return false;
+  return /^(?:cli|own)_intake_|^(?:cli|own)_wa_|^intake_cycle_/i.test(value)
+    || /^(?:cli|own)_/i.test(value);
+}
+
 function matchIdsFrom(item = {}) {
   const recordType = String(item.recordType || "").toLowerCase();
   return {
@@ -333,9 +341,14 @@ function matchIdsFrom(item = {}) {
 export function diagnoseMatchLinkage(item = {}, opportunities = new Map()) {
   const ids = matchIdsFrom(item);
   const reasons = [];
+  if (upper(item.integrityStatus) === "INVALID") {
+    reasons.push(...text(item.integrityReason || "integrity_invalid").split(",").filter(Boolean));
+  }
   if (!ids.matchId) reasons.push("missing_matchId");
   if (!ids.requestId) reasons.push("missing_requestId");
   if (!ids.offerId) reasons.push("missing_offerId");
+  if (isTemporaryDailyTaskId(ids.requestId)) reasons.push("temporary_request_id");
+  if (isTemporaryDailyTaskId(ids.offerId)) reasons.push("temporary_offer_id");
   const request = item._canonicalRequest || opportunities.get(ids.requestId) || null;
   const offer = item._canonicalOffer || opportunities.get(ids.offerId) || null;
   if (opportunities.size) {

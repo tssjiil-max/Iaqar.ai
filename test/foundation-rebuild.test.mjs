@@ -153,8 +153,8 @@ test("TEST C: one request + four matches collapse to one daily task", () => {
 
 test("TEST D: expanded match group ranks candidates by current scores", () => {
   const items = [
-    { matchId: "m2", opportunityId: "req_1", clientRequestId: "req_1", opportunityScore: 70, candidateSalePrice: 400000 },
-    { matchId: "m1", opportunityId: "req_1", clientRequestId: "req_1", opportunityScore: 95, isBestOpportunity: true, candidateSalePrice: 485000, candidateArea: 125, propertyType: "شقة", district: "العوالي" }
+    { matchId: "m2", opportunityId: "req_1", clientRequestId: "req_1", ownerOfferId: "offer_2", opportunityScore: 70, candidateSalePrice: 400000, propertyType: "شقة", district: "العوالي" },
+    { matchId: "m1", opportunityId: "req_1", clientRequestId: "req_1", ownerOfferId: "offer_1", opportunityScore: 95, isBestOpportunity: true, candidateSalePrice: 485000, candidateArea: 125, propertyType: "شقة", district: "العوالي" }
   ];
   const ranked = rankMatchCandidates(items);
   assert.equal(ranked[0].matchId, "m1");
@@ -164,15 +164,15 @@ test("TEST D: expanded match group ranks candidates by current scores", () => {
   const html = buildDailyTaskCardHtml(views[0], { open: true });
   assert.match(html, /طلب العميل/);
   assert.match(html, /العرض المطابق/);
-  assert.match(html, /إرسال للعميل/);
+  assert.match(html, /مراجعة المطابقات/);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.match(html, /مرشح 1/);
 });
 
 test("TEST O/P: rejecting candidate 1 stays in the same group; exhausted group disappears", () => {
   const items = [
-    { operationType: "MATCH_REVIEW", matchId: "m1", opportunityId: "req_1", clientRequestId: "req_1", opportunityScore: 90, livingStage: "CLIENT_REJECTED", rejectedMatchIds: ["m1"] },
-    { operationType: "MATCH_REVIEW", matchId: "m2", opportunityId: "req_1", clientRequestId: "req_1", opportunityScore: 80 }
+    { operationType: "MATCH_REVIEW", matchId: "m1", opportunityId: "req_1", clientRequestId: "req_1", ownerOfferId: "offer_1", opportunityScore: 90, livingStage: "CLIENT_REJECTED", rejectedMatchIds: ["m1"], propertyType: "شقة", district: "العوالي" },
+    { operationType: "MATCH_REVIEW", matchId: "m2", opportunityId: "req_1", clientRequestId: "req_1", ownerOfferId: "offer_2", opportunityScore: 80, propertyType: "شقة", district: "العوالي" }
   ];
   const views = mapOperationsItemsToDailyTasks(items);
   assert.equal(views.length, 1);
@@ -385,6 +385,7 @@ test("TEST T: livingStage survives remapping as the same match-group task", () =
     matchId: `match_${index}`,
     opportunityId: "req_awali",
     clientRequestId: "req_awali",
+    ownerOfferId: `offer_${index}`,
     matchGroupId: "req_awali",
     sourceCollection: "clients",
     opportunityKind: "REQUEST",
@@ -410,6 +411,7 @@ test("appointment confirmed copy appears once", () => {
     matchId: "m_visit",
     opportunityId: "req_sakb",
     clientRequestId: "req_sakb",
+    ownerOfferId: "offer_sakb",
     matchGroupId: "req_sakb",
     sourceCollection: "clients",
     propertyType: "أرض",

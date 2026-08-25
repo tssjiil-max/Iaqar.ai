@@ -630,6 +630,55 @@ test("unresolvable match linkage is INVALID_TASK_DATA and not sendable", () => {
   assert.ok(diagnostics[0].reasons.includes("unresolved_offer"));
 });
 
+test("intake temporary ids and integrityStatus INVALID stay hidden", () => {
+  consumeDailyTaskDiagnostics();
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const hiddenIntake = mapOperationsItemsToDailyTasks([
+    {
+      recordType: "match",
+      matchId: "match_intake_broken",
+      clientRequestId: "cli_intake_cycle_req",
+      ownerOfferId: "own_intake_cycle_offer",
+      createdAt: "2026-08-25T21:21:00.000+03:00"
+    }
+  ], now);
+  assert.equal(hiddenIntake.length, 0);
+  const intakeDiag = consumeDailyTaskDiagnostics();
+  assert.ok(intakeDiag[0].reasons.includes("temporary_request_id"));
+  assert.ok(intakeDiag[0].reasons.includes("temporary_offer_id"));
+
+  const hiddenInvalid = mapOperationsItemsToDailyTasks([
+    {
+      recordType: "match",
+      matchId: "match_marked_invalid",
+      clientRequestId: "opp_req_ok",
+      ownerOfferId: "opp_off_ok",
+      integrityStatus: "INVALID",
+      integrityReason: "unrepairable_canonical_linkage",
+      propertyType: "شقة",
+      district: "النرجس",
+      createdAt: "2026-08-25T21:21:00.000+03:00"
+    },
+    {
+      recordType: "opportunity",
+      recordId: "opp_req_ok",
+      opportunityId: "opp_req_ok",
+      propertyType: "شقة",
+      district: "النرجس"
+    },
+    {
+      recordType: "opportunity",
+      recordId: "opp_off_ok",
+      opportunityId: "opp_off_ok",
+      propertyType: "شقة",
+      district: "النرجس"
+    }
+  ], now);
+  assert.equal(hiddenInvalid.length, 0);
+  const invalidDiag = consumeDailyTaskDiagnostics();
+  assert.ok(invalidDiag[0].reasons.includes("unrepairable_canonical_linkage"));
+});
+
 test("one request with several matches renders a single group card", () => {
   const now = new Date("2026-08-25T21:30:00.000+03:00");
   const views = mapOperationsItemsToDailyTasks([1, 2, 3, 4].map((n) => ({
