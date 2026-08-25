@@ -4,6 +4,12 @@
  * onto the card chrome.
  */
 
+import {
+  SORT_GROUP_RANK,
+  buildCooperationDailyTaskView,
+  isArchivedCooperation
+} from "../../cooperation-workflow-domain.js";
+
 export const DAILY_TASK_STATE = Object.freeze({
   NEW_MATCH: "new_match",
   AWAITING_SEND: "awaiting_send",
@@ -330,7 +336,13 @@ export function buildDailyTaskView(record = {}) {
 
 export function sortDailyTaskViews(tasks = []) {
   return [...tasks].sort((a, b) => {
-    const rank = (PRIORITY_RANK[a.priorityGroup] ?? 9) - (PRIORITY_RANK[b.priorityGroup] ?? 9);
+    const rankOf = (task) => {
+      if (task.taskKind === "cooperation" && task.sortGroup) {
+        return SORT_GROUP_RANK[task.sortGroup] ?? 9;
+      }
+      return PRIORITY_RANK[task.priorityGroup] ?? 9;
+    };
+    const rank = rankOf(a) - rankOf(b);
     if (rank !== 0) return rank;
     return String(a.id || "").localeCompare(String(b.id || ""));
   });
@@ -341,6 +353,10 @@ export function isDailyTaskExecutionSource(item = {}) {
   const recordType = String(item.recordType || "").toLowerCase();
   if (opType === "MISSING_DATA") return false;
   if (upper(item.matchingReadiness) === "NEEDS_COMPLETION") return false;
+  if (opType === "COOPERATION_MATCH" || opType === "COOPERATION_REQUEST" || opType === "COOPERATION_RESPONSE") {
+    return Boolean(item.cooperationId || item.cooperationTaskId || item.id);
+  }
+  if (item.currentStage && (item.cooperationId || item.cooperationTaskId)) return true;
   if (opType === "MATCH_REVIEW") return true;
   if (recordType === "match") return true;
   return Boolean(item.matchId && (item.ownerOfferId || item.clientRequestId || item.opportunityId));
@@ -369,8 +385,32 @@ function liveBadgeKey(item = {}, now = new Date()) {
   return "now";
 }
 
-export function mapOperationsItemToDailyTask(item = {}, now = new Date()) {
+function isCooperationSource(item = {}) {
+  const opType = upper(item.operationType);
+  if (opType === "COOPERATION_MATCH" || opType === "COOPERATION_REQUEST" || opType === "COOPERATION_RESPONSE") return true;
+  return Boolean(item.currentStage && (item.cooperationId || item.cooperationTaskId));
+}
+
+export function mapOperationsItemToDailyTask(item = {}, now = new Date(), { officeId = "" } = {}) {
   if (!isDailyTaskExecutionSource(item)) return null;
+  if (isCooperationSource(item)) {
+    const record = {
+      ...item,
+      id: item.cooperationTaskId || item.cooperationId || item.id,
+      cooperationTaskId: item.cooperationTaskId || item.cooperationId || item.id,
+      cooperationId: item.cooperationId || item.cooperationTaskId || item.id,
+      ownListing: item.ownListing || item.originListing || {
+        propertyType: item.propertyType,
+        purpose: item.purpose,
+        district: item.district,
+        city: item.city
+      },
+      partnerListing: item.partnerListing || item.counterpartListing || {}
+    };
+    if (isArchivedCooperation(record)) return null;
+    const viewerOfficeId = officeId || item.viewerOfficeId || item.officeId || "";
+    return buildCooperationDailyTaskView(record, { officeId: viewerOfficeId, now });
+  }
   return buildDailyTaskView({
     id: item.id || item.matchId || item.recordId,
     stateKey: liveStateKey(item, now),
@@ -393,13 +433,13 @@ export function mapOperationsItemToDailyTask(item = {}, now = new Date()) {
   });
 }
 
-export function mapOperationsItemsToDailyTasks(items = [], now = new Date()) {
+export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), { officeId = "" } = {}) {
   const views = [];
   const seen = new Set();
   for (const item of items) {
-    const view = mapOperationsItemToDailyTask(item, now);
+    const view = mapOperationsItemToDailyTask(item, now, { officeId });
     if (!view) continue;
-    const key = view.matchId || view.id;
+    const key = view.cooperationTaskId || view.matchId || view.id;
     if (!key || seen.has(key)) continue;
     seen.add(key);
     views.push(view);

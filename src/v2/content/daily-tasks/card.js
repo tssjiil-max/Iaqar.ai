@@ -26,28 +26,77 @@ function buttonHtml(action, kind) {
   return `<button type="button" class="${cls}" ${attr}="${escapeContentHtml(action.id)}"${party}${session}>${escapeContentHtml(action.label)}</button>`;
 }
 
+function nl(value) {
+  return escapeContentHtml(value).replace(/\n/g, "<br>");
+}
+
 function summaryHtml(task = {}) {
   const badge = task.badgeLabel
     ? `<span class="cv2-exec-badge${task.badgeKey === "overdue" ? " is-late" : ""}">${escapeContentHtml(task.badgeLabel)}</span>`
     : "";
-  const money = task.moneyLine
-    ? `<p class="cv2-exec-money">${escapeContentHtml(task.moneyLine)}</p>`
+  const money = task.taskKind === "cooperation"
+    ? ""
+    : (task.moneyLine ? `<p class="cv2-exec-money">${escapeContentHtml(task.moneyLine)}</p>` : "");
+  const property = task.propertyLine
+    ? `<p class="cv2-exec-summary">${escapeContentHtml(task.propertyLine)}</p>`
     : "";
-  const next = task.nextActionLine
+  const partner = task.partnerLine
+    ? `<p class="cv2-exec-partner">${nl(task.partnerLine)}</p>`
+    : "";
+  const proximity = task.proximityLine
+    ? `<p class="cv2-exec-next">${escapeContentHtml(task.proximityLine)}</p>`
+    : "";
+  const next = task.nextActionLine && task.taskKind !== "cooperation"
     ? `<p class="cv2-exec-next">${escapeContentHtml(task.nextActionLine)}</p>`
     : "";
   return `<header class="cv2-exec-head">
       <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
       ${badge}
     </header>
-    <p class="cv2-exec-summary">${escapeContentHtml(task.propertyLine || "")}</p>
+    ${property}
+    ${partner}
+    ${proximity}
     ${money}
     <p class="cv2-exec-status">${escapeContentHtml(task.statusLabel || "")}</p>
     ${next}`;
 }
 
-function revealHtml(open) {
-  const label = open ? "إخفاء البيانات" : "عرض البيانات";
+function listingBlock(title, listing = {}, money = "") {
+  const line = [listing.propertyType, listing.district].filter(Boolean).join(" · ");
+  const budget = money ? `<p>السعر / الميزانية: ${escapeContentHtml(money)}</p>` : "";
+  return `<div class="cv2-coop-block">
+    <strong>${escapeContentHtml(title)}</strong>
+    <p>${escapeContentHtml(line || "—")}</p>
+    ${budget}
+  </div>`;
+}
+
+function cooperationBodyHtml(task = {}) {
+  const reasons = (task.matchReasons || [])
+    .map((line) => `<li>${escapeContentHtml(line)}</li>`)
+    .join("");
+  const turn = task.yourTurnLine
+    ? `<div class="cv2-coop-turn">${task.waiting ? "" : "<strong>دورك الآن</strong>"}<p>${nl(task.yourTurnLine)}</p></div>`
+    : "";
+  return `<div class="cv2-coop-expanded">
+    ${listingBlock("طلب/عرض مكتبك", task.ownListing, task.ownMoney)}
+    ${listingBlock("فرصة المكتب الثاني", task.partnerListing, task.partnerMoney)}
+    <div class="cv2-coop-block">
+      <strong>أهم نقاط التطابق</strong>
+      <ul>${reasons}</ul>
+    </div>
+    <div class="cv2-coop-block">
+      <strong>${escapeContentHtml(task.viewerRoleLabel || "")}</strong>
+      <p>المكتب الآخر: ${escapeContentHtml(task.partnerOfficeName || "")}</p>
+    </div>
+    ${turn}
+  </div>`;
+}
+
+function revealHtml(task, open) {
+  const closed = task.revealClosedLabel || "عرض البيانات";
+  const opened = task.revealOpenLabel || "إخفاء البيانات";
+  const label = open ? opened : closed;
   return `<button type="button" class="cv2-exec-reveal" data-cv2-exec-reveal aria-expanded="${open ? "true" : "false"}">${label}</button>`;
 }
 
@@ -59,21 +108,28 @@ export function buildDailyTaskCardHtml(task = {}, { open = false } = {}) {
   const actions = open && (primary || secondary)
     ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
     : "";
+  const body = open && task.taskKind === "cooperation" ? cooperationBodyHtml(task) : "";
   return `<article
-      class="cv2-exec-card${open ? " is-open" : ""}"
+      class="cv2-exec-card${open ? " is-open" : ""}${task.taskKind === "cooperation" ? " is-coop" : ""}"
       data-cv2-exec-task
+      data-task-kind="${escapeContentHtml(task.taskKind || "")}"
       data-task-state="${escapeContentHtml(task.stateKey || "")}"
       data-task-id="${escapeContentHtml(task.id || "")}"
+      data-cooperation-id="${escapeContentHtml(task.cooperationId || "")}"
       data-match-id="${escapeContentHtml(task.matchId || "")}"
       data-offer-id="${escapeContentHtml(task.offerId || "")}"
       data-request-id="${escapeContentHtml(task.requestId || "")}"
       data-opportunity-id="${escapeContentHtml(task.opportunityId || "")}"
+      data-counterpart-id="${escapeContentHtml(task.counterpartOpportunityId || "")}"
+      data-target-office="${escapeContentHtml(task.targetOfficeId || "")}"
+      data-origin-office="${escapeContentHtml(task.originatingOfficeId || "")}"
       data-session-kind="${escapeContentHtml(task.sessionKind || "CLIENT_MATCH_REVIEW")}">
     <div class="cv2-exec-summary-block">
       ${summaryHtml(task)}
     </div>
+    ${body}
     ${actions}
-    <div class="cv2-exec-reveal-row">${revealHtml(open)}</div>
+    <div class="cv2-exec-reveal-row">${revealHtml(task, open)}</div>
   </article>`;
 }
 

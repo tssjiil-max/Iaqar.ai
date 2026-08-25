@@ -3401,7 +3401,11 @@ function renderOutgoingShareDetail(scopeKey) {
 async function loadOutgoingScopes() {
   const runtime = officeRuntime();
   const panel = $("bankOutgoingScopes");
-  if (!runtime?.db || !panel) return;
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  if (!runtime?.db) return;
   try {
     const scopeSnap = await runtime.db.collection("bankSharingScopes")
       .where("originatingOfficeId", "==", officeId())
@@ -3451,32 +3455,6 @@ async function loadOutgoingScopes() {
         });
       }
     }
-
-    if (!outgoingShareRowsCache.length) {
-      panel.hidden = true;
-      panel.innerHTML = "";
-      return;
-    }
-    panel.hidden = false;
-    panel.innerHTML = `<h3>مشاركات نشطة مع مكاتب أخرى</h3>
-      ${outgoingShareRowsCache.map((scope) => {
-        const record = state.records.get(scope.opportunityIds[0]) || {};
-        const card = buildOpportunityCardView({ ...record, id: scope.opportunityIds[0] });
-        const statusLabel = shareStatusLabel(scope);
-        return `
-        <button type="button" class="bank-incoming-item is-clickable" data-open-share="${escapeHtml(scope.shareKey)}">
-          <strong>${escapeHtml(card.description || scope.opportunityIds[0])}</strong>
-          <span>إلى ${escapeHtml(scope.officeLabel)} — ${escapeHtml(statusLabel)}</span>
-        </button>`;
-      }).join("")}`;
-    panel.querySelectorAll("[data-open-share]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        renderOutgoingShareDetail(btn.getAttribute("data-open-share") || "");
-      });
-    });
-    if (activeOutgoingShareKey) {
-      renderOutgoingShareDetail(activeOutgoingShareKey);
-    }
   } catch (error) {
     console.warn("[iaqar] outgoing scopes", error);
   }
@@ -3496,32 +3474,16 @@ function formatShareDate(value) {
 async function loadSharedWithUs() {
   const runtime = officeRuntime();
   const panel = $("bankSharedWithUs");
-  if (!runtime?.db || !panel) return;
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  if (!runtime?.db) return;
   try {
-    const snap = await runtime.db.collection("offices").doc(officeId())
+    await runtime.db.collection("offices").doc(officeId())
       .collection("sharedOpportunities")
       .limit(30)
       .get();
-    const rows = snap.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((row) => !row.revokedAt);
-    if (!rows.length) {
-      panel.hidden = true;
-      panel.innerHTML = "";
-      return;
-    }
-    panel.hidden = false;
-    panel.innerHTML = `<h3>فرص مشاركة مع مكتبكم</h3>
-      <p class="bank-note">قراءة فقط — بدون بيانات تواصل. الملكية تبقى للمكتب الأصلي.</p>
-      ${rows.map((row) => `
-        <div class="bank-incoming-item" data-shared-id="${escapeHtml(row.id)}">
-          <div>
-            <strong>${escapeHtml([row.propertyType, row.district, row.city].filter(Boolean).join(" — ") || row.id)}</strong>
-            <p>من ${escapeHtml(row.originatingOfficeId || "")} — ${escapeHtml(cooperationStatusLabel(row.cooperationStatus || "ACTIVE"))}</p>
-          </div>
-          <button type="button" class="bank-action" data-hide-shared="${escapeHtml(row.id)}">إزالة من بنكي</button>
-        </div>
-      `).join("")}`;
   } catch (error) {
     console.warn("[iaqar] shared with us", error);
   }

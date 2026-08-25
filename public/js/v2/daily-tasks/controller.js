@@ -10,6 +10,12 @@ import {
   mapOperationsItemsToDailyTasks
 } from "./domain.js";
 import {
+  COOPERATION_ACTION,
+  requestCooperationWorkflow,
+  workflowActionFromButton
+} from "../../cooperation-workflow-domain.js";
+import { requestCooperationLifecycle } from "../../cooperation-phase6-domain.js";
+import {
   buildPartyWhatsAppMessage,
   detailsOpportunityId,
   missingPartyPhoneMessage,
@@ -78,6 +84,86 @@ function officeDisplayName() {
     || "المكتب العقاري";
 }
 
+function workerBase() {
+  if (typeof window.IAQAR?.resolveWorkerBase === "function") return window.IAQAR.resolveWorkerBase();
+  return window.IAQAR?.workerBase || "";
+}
+
+function currentOfficeId() {
+  return String(window.IAQAR?.office?.officeId || "").trim();
+}
+
+async function idToken() {
+  const user = window.firebase?.auth?.()?.currentUser;
+  if (!user?.getIdToken) return "";
+  return user.getIdToken();
+}
+
+async function runCooperationTaskAction(task, actionId, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  if (actionId === "open_details") {
+    return openExistingOfferDetails(task);
+  }
+  setExecState(button, "working");
+  const token = await idToken();
+  const officeId = currentOfficeId();
+  const cooperationId = task.cooperationId || task.cooperationTaskId || task.id;
+  try {
+    let result;
+    if (actionId === "request_cooperation") {
+      const response = await fetch(`${workerBase()}/cooperation/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          officeId,
+          targetOfficeId: task.targetOfficeId,
+          opportunityIds: [task.opportunityId].filter(Boolean),
+          scopeType: "single"
+        })
+      });
+      result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        result = { ok: false, message: result.message || "تعذر إرسال طلب التعاون." };
+      } else {
+        result = { ok: true, ...result };
+      }
+    } else if (actionId === "accept_cooperation" || actionId === "reject_cooperation") {
+      result = await requestCooperationLifecycle({
+        workerBase: workerBase(),
+        idToken: token,
+        officeId,
+        cooperationId,
+        action: actionId === "accept_cooperation" ? "ACCEPT" : "REJECT"
+      });
+    } else {
+      const workflowAction = workflowActionFromButton(actionId) || COOPERATION_ACTION.REQUEST;
+      result = await requestCooperationWorkflow({
+        workerBase: workerBase(),
+        idToken: token,
+        officeId,
+        cooperationId,
+        action: workflowAction
+      });
+    }
+    if (!result?.ok) {
+      notify(result?.message || "تعذر حفظ حالة التعاون. أبقينا الحالة السابقة.");
+      setExecState(button, "error");
+      return { ok: false, error: result?.error || "persist_failed" };
+    }
+    notify(result.message || "تم حفظ حالة التعاون.");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true, result };
+  } catch {
+    notify("تعذر حفظ حالة التعاون. أبقينا الحالة السابقة.");
+    setExecState(button, "error");
+    return { ok: false, error: "persist_failed" };
+  }
+}
+
 function taskFromCard(card) {
   const id = card.getAttribute("data-task-id");
   const listed = currentTasks().find((item) => item.id === id) || {};
@@ -87,7 +173,12 @@ function taskFromCard(card) {
     opportunityId: card.getAttribute("data-opportunity-id") || listed.opportunityId,
     offerId: card.getAttribute("data-offer-id") || listed.offerId,
     requestId: card.getAttribute("data-request-id") || listed.requestId,
-    matchId: card.getAttribute("data-match-id") || listed.matchId
+    matchId: card.getAttribute("data-match-id") || listed.matchId,
+    cooperationId: card.getAttribute("data-cooperation-id") || listed.cooperationId,
+    counterpartOpportunityId: card.getAttribute("data-counterpart-id") || listed.counterpartOpportunityId,
+    targetOfficeId: card.getAttribute("data-target-office") || listed.targetOfficeId,
+    originatingOfficeId: card.getAttribute("data-origin-office") || listed.originatingOfficeId,
+    taskKind: card.getAttribute("data-task-kind") || listed.taskKind
   };
 }
 
@@ -209,6 +300,10 @@ function onListClick(event) {
       setExecState(secondary, "success");
       return;
     }
+    if (task.taskKind === "cooperation") {
+      void runCooperationTaskAction(task, action, secondary);
+      return;
+    }
     if (action === "send_to_owner") {
       void runDailyTaskPartySend(task, "owner", secondary);
       return;
@@ -223,6 +318,10 @@ function onListClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const action = primary.getAttribute("data-cv2-exec-primary");
+    if (task.taskKind === "cooperation") {
+      void runCooperationTaskAction(task, action, primary);
+      return;
+    }
     if (action === "send_to_client" || action === "resend_to_client") {
       void runDailyTaskPartySend(task, "client", primary);
     }
@@ -242,7 +341,7 @@ function renderList() {
 function onOperationsData(event) {
   if (useDemoFixtures()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
-  state.tasks = mapOperationsItemsToDailyTasks(items);
+  state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: currentOfficeId() });
   if (state.openTaskId && !state.tasks.some((task) => task.id === state.openTaskId)) {
     state.openTaskId = null;
   }
@@ -273,7 +372,7 @@ export function mountDailyTasksContentV2(root) {
   }
   if (!useDemoFixtures()) {
     const existing = window.IAQAR?.operationsItems;
-    if (Array.isArray(existing)) state.tasks = mapOperationsItemsToDailyTasks(existing);
+    if (Array.isArray(existing)) state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), { officeId: currentOfficeId() });
   }
   renderList();
 }

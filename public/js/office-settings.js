@@ -38,6 +38,7 @@ import {
   buildOfficeScopePayload,
   resolveLegacyOfficeScope
 } from "./office-scope-domain.js";
+import { cooperationSettingsExtras } from "./cooperation-workflow-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -89,6 +90,7 @@ let current = { ...defaults };
 let authClaims = {};
 let notificationPreferences = defaultNotificationPreferences();
 let cooperationMode = DEFAULT_COOPERATION_MODE;
+let cooperationExtras = cooperationSettingsExtras({});
 let nameCheckToken = 0;
 let selectedServiceNeighborhoodIds = [];
 
@@ -1711,6 +1713,43 @@ function writeCooperationToForm(mode) {
   Array.from(el.cooperationInputs || []).forEach(input => {
     input.checked = input.value === mode;
   });
+  if (el.cooperationEnabledToggle) {
+    el.cooperationEnabledToggle.checked = mode !== "DISABLED";
+  }
+}
+
+function writeCooperationExtrasToForm(extras = cooperationExtras) {
+  const next = cooperationSettingsExtras(extras);
+  cooperationExtras = next;
+  Array.from(document.querySelectorAll('input[name="cooperationProximityScope"]') || []).forEach((input) => {
+    input.checked = input.value === next.proximityScope;
+  });
+  if (el.cooperationMaxConcurrent) el.cooperationMaxConcurrent.value = String(next.maxConcurrentRequests);
+  const notify = {
+    coopNotifyNewMatch: next.notifyNewMatch,
+    coopNotifyPartnerReply: next.notifyPartnerReply,
+    coopNotifyActionRequired: next.notifyActionRequired,
+    coopNotifyDealUpdate: next.notifyDealUpdate
+  };
+  for (const [id, value] of Object.entries(notify)) {
+    const node = document.getElementById(id);
+    if (node) node.checked = value !== false;
+  }
+  const share = document.getElementById("cooperationSharePercent");
+  if (share) share.value = String(next.defaultSharePercent);
+}
+
+function readCooperationExtrasFromForm() {
+  const scope = document.querySelector('input[name="cooperationProximityScope"]:checked')?.value;
+  return cooperationSettingsExtras({
+    proximityScope: scope,
+    maxConcurrentRequests: el.cooperationMaxConcurrent?.value,
+    notifyNewMatch: document.getElementById("coopNotifyNewMatch")?.checked,
+    notifyPartnerReply: document.getElementById("coopNotifyPartnerReply")?.checked,
+    notifyActionRequired: document.getElementById("coopNotifyActionRequired")?.checked,
+    notifyDealUpdate: document.getElementById("coopNotifyDealUpdate")?.checked,
+    defaultSharePercent: document.getElementById("cooperationSharePercent")?.value
+  });
 }
 
 async function loadCooperationSettings() {
@@ -1720,8 +1759,10 @@ async function loadCooperationSettings() {
   try {
     const snap = await runtime.db.collection("offices").doc(officeId())
       .collection("officeSettings").doc("cooperation").get();
-    cooperationMode = normalizeCooperationMode(snap.exists ? snap.data().mode : DEFAULT_COOPERATION_MODE);
+    const data = snap.exists ? snap.data() : {};
+    cooperationMode = normalizeCooperationMode(data.mode);
     writeCooperationToForm(cooperationMode);
+    writeCooperationExtrasToForm(data);
     setStatus(el.cooperationStatus, "");
   } catch (error) {
     console.warn("[iaqar] cooperation settings load", error);
@@ -1732,8 +1773,13 @@ async function loadCooperationSettings() {
 async function saveCooperationSettings(value) {
   const runtime = officeRuntime();
   const user = authUser();
-  const payload = cooperationSettingsPayload(value);
+  const extras = readCooperationExtrasFromForm();
+  const payload = {
+    ...cooperationSettingsPayload(value),
+    ...extras
+  };
   cooperationMode = payload.mode;
+  cooperationExtras = extras;
 
   if (!runtime || !runtime.db || !user) {
     setStatus(el.cooperationStatus, "سجل دخول المكتب لحفظ إعداد التعاون", "is-error");
@@ -1904,6 +1950,8 @@ function init() {
   el.notificationStatus = document.getElementById("notificationPrefsStatus");
   el.cooperationInputs = document.querySelectorAll('input[name="cooperationMode"]');
   el.cooperationStatus = document.getElementById("cooperationStatus");
+  el.cooperationEnabledToggle = document.getElementById("cooperationEnabledToggle");
+  el.cooperationMaxConcurrent = document.getElementById("cooperationMaxConcurrent");
   el.neighborhoodSearch = document.getElementById("officeNeighborhoodSearch");
   el.neighborhoodChips = document.getElementById("officeNeighborhoodChips");
   el.neighborhoodCount = document.getElementById("officeNeighborhoodCount");
@@ -1929,6 +1977,7 @@ function init() {
   initNeighborhoodEditor();
   initPrimaryNeighborhoodEditor();
   writeCooperationToForm(cooperationMode);
+  writeCooperationExtrasToForm(cooperationExtras);
   writePreferencesToForm(notificationPreferences);
   apply(loadLocal() || defaults);
 
@@ -1988,6 +2037,31 @@ function init() {
       if (COOPERATION_MODE_VALUES.includes(input.value) && input.checked) {
         saveCooperationSettings(input.value);
       }
+    });
+  });
+  if (el.cooperationEnabledToggle) {
+    el.cooperationEnabledToggle.addEventListener("change", () => {
+      const enabled = el.cooperationEnabledToggle.checked;
+      const next = enabled
+        ? (cooperationMode === "DISABLED" ? DEFAULT_COOPERATION_MODE : cooperationMode)
+        : "DISABLED";
+      writeCooperationToForm(next);
+      saveCooperationSettings(next);
+    });
+  }
+  const extraNodes = [
+    ...document.querySelectorAll('input[name="cooperationProximityScope"]'),
+    document.getElementById("cooperationMaxConcurrent"),
+    document.getElementById("coopNotifyNewMatch"),
+    document.getElementById("coopNotifyPartnerReply"),
+    document.getElementById("coopNotifyActionRequired"),
+    document.getElementById("coopNotifyDealUpdate"),
+    document.getElementById("cooperationSharePercent")
+  ].filter(Boolean);
+  extraNodes.forEach((node) => {
+    node.addEventListener("change", () => {
+      const mode = document.querySelector('input[name="cooperationMode"]:checked')?.value || cooperationMode;
+      saveCooperationSettings(mode);
     });
   });
 

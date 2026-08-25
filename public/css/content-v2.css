@@ -1074,12 +1074,64 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   color: var(--cv2-text, #1c211f);
 }
 
-.cv2-exec-empty-hint {
+.cv2-exec-partner {
   margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--cv2-text, #1c211f);
+  overflow-wrap: anywhere;
+}
+
+.cv2-coop-expanded {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.cv2-coop-block,
+.cv2-coop-turn {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--cv2-border, #e4eae7);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.cv2-coop-block strong,
+.cv2-coop-turn strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cv2-green, #1a5319);
+}
+
+.cv2-coop-block p,
+.cv2-coop-turn p,
+.cv2-coop-block li {
+  margin: 3px 0 0;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
-  color: var(--cv2-muted, #6b7873);
+  overflow-wrap: anywhere;
+}
+
+.cv2-coop-block ul {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
+.cv2-exec-card.is-coop,
+.cv2-exec-actions {
+  overflow: hidden;
+}
+
+@media (max-width: 430px) {
+  .cv2-exec-primary,
+  .cv2-exec-secondary {
+    max-width: 100%;
+  }
 }
 
 @media (max-width: 600px) {
