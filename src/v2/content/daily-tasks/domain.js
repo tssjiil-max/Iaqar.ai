@@ -1,7 +1,7 @@
 /**
  * Daily-task execution view-model.
  * Derives compact cards from existing records. Does not copy listing data
- * and does not create client/owner sessions in this round.
+ * onto the card chrome.
  */
 
 export const DAILY_TASK_STATE = Object.freeze({
@@ -317,6 +317,10 @@ export function buildDailyTaskView(record = {}) {
     offerId: text(record.offerId || record.ownerOfferId),
     requestId: text(record.requestId || record.clientRequestId),
     opportunityId: text(record.opportunityId || record.offerId || record.requestId || record.ownerOfferId || record.clientRequestId),
+    clientPhone: text(record.clientPhone || record.clientContactPhone || record.buyerPhone),
+    ownerPhone: text(record.ownerPhone || record.ownerContactPhone || record.advertiserPhone),
+    clientName: text(record.clientName),
+    ownerName: text(record.ownerName),
     sessionKind,
     priorityGroup: dailyTaskPriorityGroup(stateKey, badgeKey),
     endsThisMatchOnly: stateKey === DAILY_TASK_STATE.MATCH_UNSUITABLE,
@@ -381,7 +385,11 @@ export function mapOperationsItemToDailyTask(item = {}, now = new Date()) {
     offerId: item.ownerOfferId || item.offerId,
     requestId: item.clientRequestId || item.requestId,
     opportunityId: item.opportunityId || item.ownerOfferId || item.clientRequestId,
-    opportunityKind: item.opportunityKind
+    opportunityKind: item.opportunityKind,
+    clientPhone: item.clientPhone || item.clientContactPhone || item.buyerPhone,
+    ownerPhone: item.ownerPhone || item.ownerContactPhone || item.advertiserPhone,
+    clientName: item.clientName,
+    ownerName: item.ownerName
   });
 }
 
@@ -419,7 +427,11 @@ export function dailyTasksDemoFixtures() {
       matchId: "match_new_1",
       offerId: "offer_urwah_1",
       requestId: "request_urwah_1",
-      opportunityId: "offer_urwah_1"
+      opportunityId: "offer_urwah_1",
+      clientPhone: "0511111111",
+      ownerPhone: "0522222222",
+      clientName: "عميل عروة",
+      ownerName: "مالك عروة"
     }),
     buildDailyTaskView({
       id: "task_awaiting_client",

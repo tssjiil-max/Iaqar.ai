@@ -1007,6 +1007,12 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   cursor: pointer;
 }
 
+.cv2-exec-primary:disabled,
+.cv2-exec-secondary:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .cv2-exec-primary {
   min-height: 30px;
   height: 30px;

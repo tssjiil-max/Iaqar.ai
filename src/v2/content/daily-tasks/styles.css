@@ -125,6 +125,12 @@
   cursor: pointer;
 }
 
+.cv2-exec-primary:disabled,
+.cv2-exec-secondary:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .cv2-exec-primary {
   min-height: 30px;
   height: 30px;
