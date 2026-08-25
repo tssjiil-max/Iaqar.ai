@@ -769,7 +769,8 @@ async function runJourney({ headed }) {
       } else {
         await clientPage.goto(state.clientPartyUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
         await clientPage.waitForSelector("[data-party-shell], [data-party-error]", { timeout: 60000 });
-        const hasLogin = await clientPage.locator("#loginForm, text=تسجيل دخول مكتب").count();
+        const hasLogin = (await clientPage.locator("#loginForm").count())
+          + (await clientPage.getByText("تسجيل دخول مكتب").count());
         await screenshot(clientPage, headed ? "live-headed-C-client-initial.png" : "live-C-client-initial.png");
         const replyWaiter = clientPage.waitForResponse(
           (res) => /\/party\/sessions\/.+\/reply$/.test(res.url()) && res.request().method() === "POST",
