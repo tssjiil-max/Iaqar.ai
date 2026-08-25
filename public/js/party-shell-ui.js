@@ -75,7 +75,7 @@ function locationButtonHtml(property = {}) {
 
 function actionButtons(actions = []) {
   return (actions || []).map((action) => (
-    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
+    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}" data-testid="party-${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
   )).join("");
 }
 

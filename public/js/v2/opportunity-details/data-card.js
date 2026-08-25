@@ -128,7 +128,7 @@ export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
 export function buildCompleteMissingButtonV2(vm = {}) {
   if (!displayedMissingRows(vm).length) return "";
   return `<div class="cv2-complete-wrap">
-    <button type="button" class="cv2-complete-btn" data-cv2-complete>
+    <button type="button" class="cv2-complete-btn" data-cv2-complete data-testid="complete-missing">
       ${iconUse("i-pencil")}
       <span>أكمل البيانات الناقصة</span>
     </button>
