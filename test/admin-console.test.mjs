@@ -10,6 +10,7 @@ import {
   resolveSubscriptionStatus,
   sortOffices
 } from "../worker/src/admin-domain.js";
+import { isPlatformAdminClaims, mapAdminLoginError } from "../public/js/admin-api.js";
 
 test("backfillOfficeRecord defaults legacy offices to approved active", () => {
   const row = backfillOfficeRecord({ officeId: "office-a", officeName: "مكتب أ" });
@@ -65,6 +66,24 @@ test("classifyActivityLevel prioritizes product activity over login volume", () 
     loginCount7d: 20
   }, Date.parse("2026-08-14T00:00:00.000Z"));
   assert.equal(level, "very_active");
+});
+
+test("isPlatformAdminClaims accepts boolean and string admin flags", () => {
+  assert.equal(isPlatformAdminClaims({ platformAdmin: true }), true);
+  assert.equal(isPlatformAdminClaims({ admin: true }), true);
+  assert.equal(isPlatformAdminClaims({ platformAdmin: "true" }), true);
+  assert.equal(isPlatformAdminClaims({ email: "broker@example.com" }), false);
+});
+
+test("mapAdminLoginError distinguishes wrong password from unauthorized", () => {
+  assert.equal(
+    mapAdminLoginError({ code: "auth/invalid-credential" }),
+    "البريد أو كلمة المرور غير صحيحة."
+  );
+  assert.equal(
+    mapAdminLoginError({ code: "admin_required" }),
+    "هذا الحساب ليس من إدارة المنصة."
+  );
 });
 
 test("sortOffices supports registration and activity ordering", () => {

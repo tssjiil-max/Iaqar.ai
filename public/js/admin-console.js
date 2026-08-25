@@ -1,4 +1,12 @@
-import { AdminApi, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
+import {
+  AdminApi,
+  MAIN_VIEWS,
+  OFFICE_TABS,
+  formatDate,
+  suggestOfficeId,
+  isPlatformAdminClaims,
+  mapAdminLoginError
+} from "./admin-api.js";
 
 const state = {
   view: "overview",
@@ -46,8 +54,10 @@ function escapeHtml(value) {
 
 async function ensurePlatformAdmin(user) {
   const token = await user.getIdTokenResult(true);
-  if (token.claims.platformAdmin === true || token.claims.admin === true) return true;
-  throw new Error("admin_required");
+  if (isPlatformAdminClaims(token.claims)) return true;
+  const error = new Error("admin_required");
+  error.code = "admin_required";
+  throw error;
 }
 
 function renderMainNav() {
@@ -381,7 +391,7 @@ async function boot() {
       );
       await enterConsole(credential.user);
     } catch (error) {
-      showStatus(els.status, "بيانات إدارة المنصة غير صحيحة أو الحساب غير مخوّل.");
+      showStatus(els.status, mapAdminLoginError(error));
     }
   };
   els.logoutBtn.onclick = async () => {
@@ -392,9 +402,9 @@ async function boot() {
     if (!user) return;
     try {
       await enterConsole(user);
-    } catch (_) {
+    } catch (error) {
       await firebase.auth().signOut();
-      showStatus(els.status, "هذا الحساب ليس من إدارة المنصة.");
+      showStatus(els.status, mapAdminLoginError(error));
     }
   });
 }

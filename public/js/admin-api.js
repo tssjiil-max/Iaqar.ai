@@ -1,3 +1,26 @@
+export function isPlatformAdminClaims(claims = {}) {
+  const flag = (value) => value === true || value === 1 || String(value).toLowerCase() === "true";
+  return flag(claims.platformAdmin) || flag(claims.admin);
+}
+
+export function mapAdminLoginError(error) {
+  const code = String(error?.code || error?.message || "").toLowerCase();
+  if (code.includes("admin_required")) return "هذا الحساب ليس من إدارة المنصة.";
+  if (
+    code.includes("auth/invalid-credential")
+    || code.includes("auth/wrong-password")
+    || code.includes("auth/user-not-found")
+    || code.includes("auth/invalid-email")
+    || code.includes("auth/invalid-login-credentials")
+  ) {
+    return "البريد أو كلمة المرور غير صحيحة.";
+  }
+  if (code.includes("auth/too-many-requests")) return "محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.";
+  if (code.includes("auth/network-request-failed")) return "تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة.";
+  if (code.includes("auth/user-disabled")) return "هذا الحساب موقف.";
+  return "تعذر دخول الإدارة. تحقق من البريد وكلمة المرور.";
+}
+
 export function resolveWorkerBase() {
   if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
     return window.IAQAR.resolveWorkerBase();
