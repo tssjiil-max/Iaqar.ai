@@ -24,12 +24,23 @@
     (function () {
       try {
         var params = new URLSearchParams(location.search);
+        if (params.get("cv2Party")) {
+          document.documentElement.dataset.partyMode = "1";
+          document.documentElement.classList.add("is-party-mode");
+          return;
+        }
         if (params.get("legacyContent") === "1" || params.get("contentV2") === "0") return;
         if (localStorage.getItem("iaqar.legacyContent") === "1") return;
         document.documentElement.classList.add("is-content-v2");
       } catch (_) {}
     })();
   </script>
+  <link rel="stylesheet" href="css/party-shell.css">
+  <style>
+    html.is-party-mode body > .app,
+    html.is-party-mode #contentV2,
+    html.is-party-mode .access-gate { display:none!important; }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -6365,6 +6376,7 @@
   <script src="js/voice-intake.js"></script>
   <script src="js/firebase-office.js"></script>
   <script src="js/access-gate.js"></script>
+  <script type="module" src="js/party-entry.js"></script>
   <script type="module" src="js/app-navigation-domain.js"></script>
   <script src="js/app-navigation.js"></script>
   <script src="js/home-tabs.js"></script>

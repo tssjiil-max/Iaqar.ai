@@ -6,7 +6,8 @@
 export const PUBLIC_RATE_LIMITS = Object.freeze({
   PUBLIC_INTAKE: Object.freeze({ limit: 30, windowMs: 60_000 }),
   PUBLIC_MEDIA: Object.freeze({ limit: 60, windowMs: 60_000 }),
-  PUBLIC_VOICE: Object.freeze({ limit: 20, windowMs: 60_000 })
+  PUBLIC_VOICE: Object.freeze({ limit: 20, windowMs: 60_000 }),
+  PUBLIC_PARTY: Object.freeze({ limit: 60, windowMs: 60_000 })
 });
 
 /**

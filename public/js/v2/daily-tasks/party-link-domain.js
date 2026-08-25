@@ -118,9 +118,13 @@ export function parsePartyLinkToken(token) {
   }
 }
 
+export function isOpaquePartyToken(token) {
+  return /^[a-f0-9]{32,128}$/i.test(String(token || "").trim());
+}
+
 export function buildPartyReviewUrl({ origin = "", pathname = "/", token = "" } = {}) {
   const sid = String(token || "").trim();
-  if (!sid) return "";
+  if (!isOpaquePartyToken(sid)) return "";
   const base = String(origin || "").replace(/\/$/, "") || "";
   const path = pathname && pathname.startsWith("/") ? pathname : `/${pathname || ""}`;
   const params = new URLSearchParams();

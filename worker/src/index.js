@@ -86,6 +86,11 @@ import {
   resetPublicRateLimitStoreForTests
 } from "./public-rate-limit.js";
 import {
+  handlePartySessionGet,
+  handlePartySessionMint,
+  handlePartySessionReply
+} from "./party-session-service.js";
+import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
   resolveGeminiModel,
@@ -460,6 +465,38 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/messages/handoff") {
         return await handleMessagesHandoff(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/party/sessions") {
+        return await handlePartySessionMint({
+          request,
+          env,
+          requestId,
+          helpers: partySessionHelpers()
+        });
+      }
+
+      const partyGet = url.pathname.match(/^\/party\/sessions\/([^/]+)$/);
+      if (request.method === "GET" && partyGet) {
+        return await handlePartySessionGet({
+          token: decodeURIComponent(partyGet[1] || ""),
+          env,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
+      }
+
+      const partyReply = url.pathname.match(/^\/party\/sessions\/([^/]+)\/reply$/);
+      if (request.method === "POST" && partyReply) {
+        return await handlePartySessionReply({
+          token: decodeURIComponent(partyReply[1] || ""),
+          env,
+          request,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/messages/adapters") {
@@ -5287,6 +5324,28 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
     throw appError("firestore_write_failed", 502, "تعذر حفظ ربط واتساب");
   }
   return response.json();
+}
+
+function partySessionHelpers() {
+  return {
+    authorizeOfficeRequest,
+    assertFirebaseSecrets,
+    getGoogleAccessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreFieldsToJs,
+    firestoreString,
+    jsToFirestoreValue,
+    normalizeOfficeId,
+    cleanText,
+    appError,
+    jsonResponse,
+    DEFAULT_PROJECT_ID,
+    sha256Hex,
+    consumePublicRateLimit,
+    publicRateLimitKey,
+    PUBLIC_RATE_LIMITS
+  };
 }
 
 function getAdminHelpers() {

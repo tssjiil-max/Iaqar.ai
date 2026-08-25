@@ -134,6 +134,19 @@ test("access-gate brand header uses compact proportional sizing", () => {
   assert.ok(accessGate.includes("@media (max-width:320px)"));
 });
 
+test("access-gate short-circuits cv2Party before creating the role chooser", () => {
+  const partyIdx = accessGate.indexOf('URLSearchParams(location.search).get("cv2Party")');
+  const lockIdx = accessGate.indexOf('document.body.classList.add("access-locked")');
+  const gateIdx = accessGate.indexOf('gate.id = "accessGate"');
+  const chooserIdx = accessGate.indexOf("أنا عميل");
+  assert.ok(partyIdx > 0 && partyIdx < lockIdx, "cv2Party must be inspected before access-locked");
+  assert.ok(partyIdx < gateIdx, "cv2Party must be inspected before #accessGate");
+  assert.ok(partyIdx < chooserIdx, "cv2Party must be inspected before role chooser");
+  const prelude = accessGate.slice(0, lockIdx);
+  assert.ok(prelude.includes("is-party-mode"));
+  assert.ok(prelude.includes("return;"));
+});
+
 test("firebase-office exposes office rebind for post-login context switch", () => {
   const officeJs = read("public", "js", "firebase-office.js");
   assert.ok(officeJs.includes("function rebindOfficeContext"));

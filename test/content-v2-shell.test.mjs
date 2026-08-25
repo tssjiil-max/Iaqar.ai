@@ -49,6 +49,9 @@ test("existing App Shell, voice slot, and matching engine stay in place", () => 
   assert.match(index, /id="contentV2"/);
   assert.match(index, /data-legacy-content/);
   assert.match(index, /js\/v2\/mount\.js/);
+  assert.match(index, /js\/party-entry\.js/);
+  assert.ok(index.indexOf('params.get("cv2Party")') < index.indexOf('src="js/access-gate.js"'));
+  assert.ok(index.indexOf('src="js/access-gate.js"') < index.indexOf('src="js/party-entry.js"'));
   assert.equal((index.match(/id="addOpportunityVoicePanel"/g) || []).length, 1);
 
   const matching = readFileSync(path.join(root, "public", "js", "matching-domain.js"), "utf8");

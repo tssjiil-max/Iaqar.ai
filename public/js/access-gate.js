@@ -1,6 +1,15 @@
 (() => {
   "use strict";
 
+  try {
+    const partyToken = String(new URLSearchParams(location.search).get("cv2Party") || "").trim();
+    if (partyToken) {
+      document.documentElement.dataset.partyMode = "1";
+      document.documentElement.classList.add("is-party-mode");
+      return;
+    }
+  } catch (_) { /* keep broker access-gate */ }
+
   const query = new URLSearchParams(location.search);
   let officeId = String(query.get("officeId") || query.get("office") || "")
     .trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);

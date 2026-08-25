@@ -40,7 +40,7 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes', 'importJobs'
+        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys'
       ];
     }
     function validOfficeProfile() {
@@ -247,6 +247,13 @@ service cloud.firestore {
           allow read, create: if isOfficeMember(officeId);
           allow update, delete: if canManage(officeId);
         }
+      }
+
+      match /partySessions/{sessionId} {
+        allow read, write: if false;
+      }
+      match /partySessionKeys/{keyId} {
+        allow read, write: if false;
       }
 
       // المطابقات (المرحلة 4): القراءة لأعضاء المكتب فقط — الكتابة عبر Worker (Admin SDK).
@@ -494,6 +501,9 @@ service cloud.firestore {
     }
 
     match /whatsapp_accounts/{phoneNumberId} {
+      allow read, write: if false;
+    }
+    match /partySessionTokens/{tokenHash} {
       allow read, write: if false;
     }
     match /_system/{document=**} {
