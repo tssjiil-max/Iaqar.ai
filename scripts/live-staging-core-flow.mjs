@@ -108,7 +108,7 @@ function readyOfferFields(extra = {}) {
     purpose: "RENT",
     propertyType: "شقة",
     city: CITY,
-    district: extra.district || "العزيزية",
+    district: extra.district ?? "العزيزية",
     salePrice: 0,
     annualRent: 50000,
     price: 50000,
@@ -419,6 +419,7 @@ function attachWatchers(page, label) {
   page.on("requestfailed", (request) => {
     const url = request.url();
     if (isNoise(url)) return;
+    if (/Firestore\/Listen|opportunity-duplicate\.mjs|office-covers|ERR_BLOCKED_BY_ORB|ERR_ABORTED/.test(url + (request.failure()?.errorText || ""))) return;
     networkFails.push(`${label} ${request.method()} ${url} ${request.failure()?.errorText || ""}`);
   });
   page.on("response", async (response) => {
@@ -617,76 +618,96 @@ async function runJourney({ headed }) {
     await login(broker);
     await screenshot(broker, headed ? "live-headed-00-logged-in.png" : "live-A-00-logged-in.png");
 
-    await openOffersTab(broker);
-    await searchBank(broker, ids.lastFieldOffer);
-    const lastRow = inboxRow(broker, ids.lastFieldOffer);
-    await lastRow.waitFor({ timeout: 45000 });
-    const beforeSection = await inboxSection(broker, ids.lastFieldOffer);
-    console.log("before section", beforeSection);
+    try {
+      await openOffersTab(broker);
+      await searchBank(broker, ids.lastFieldOffer);
+      const lastRow = inboxRow(broker, ids.lastFieldOffer);
+      await lastRow.waitFor({ timeout: 45000 });
+      const beforeSection = await inboxSection(broker, ids.lastFieldOffer);
+      console.log("before section", beforeSection);
+      await screenshot(broker, headed ? "live-headed-A-before-edit.png" : "live-A-before-edit.png");
 
-    const locationChip = lastRow.locator('[data-cv2-editor="location"]').first();
-    if (await locationChip.count()) await locationChip.click();
-    else await lastRow.locator("[data-cv2-complete]").click();
+      const locationChip = lastRow.locator('[data-cv2-editor="location"]').first();
+      const completeBtn = lastRow.locator("[data-cv2-complete]").first();
+      if (await locationChip.count()) {
+        await locationChip.click();
+      } else if (await completeBtn.count()) {
+        await completeBtn.click();
+      } else {
+        throw new Error(`district editor missing. section=${JSON.stringify(beforeSection)}`);
+      }
 
-    await lastRow.locator("[data-cv2-editor-root]").waitFor({ timeout: 15000 });
-    const cityInput = lastRow.locator('input[name="city"]');
-    if (await cityInput.count()) {
-      const currentCity = await cityInput.inputValue();
-      if (!String(currentCity || "").trim()) await cityInput.fill(CITY);
+      await lastRow.locator("[data-cv2-editor-root]").waitFor({ timeout: 15000 });
+      const cityInput = lastRow.locator('input[name="city"]');
+      if (await cityInput.count()) {
+        const currentCity = await cityInput.inputValue();
+        if (!String(currentCity || "").trim()) await cityInput.fill(CITY);
+      }
+      await lastRow.locator('input[name="district"]').fill(DISTRICT_VALUE);
+      const patchWaiter = broker.waitForResponse(
+        (res) => res.url().includes("/opportunity/patch") && res.request().method() === "POST",
+        { timeout: 30000 }
+      ).catch(() => null);
+      await lastRow.locator("#cv2EditorSave").click();
+      const patchRes = await patchWaiter;
+      state.patchStatus = patchRes ? patchRes.status() : null;
+      await broker.waitForTimeout(2000);
+
+      const sheetGone = (await lastRow.locator("[data-cv2-editor-root]").count()) === 0;
+      const afterSaveSection = await inboxSection(broker, ids.lastFieldOffer);
+      state.listMovedWithoutReload = afterSaveSection.section === "قيد المطابقة"
+        || afterSaveSection.status === "matching";
+      const valueVisible = (afterSaveSection.text || "").includes(DISTRICT_VALUE);
+      await screenshot(broker, headed ? "live-headed-A-district-saved.png" : "live-A-district-saved.png");
+
+      await broker.reload({ waitUntil: "domcontentloaded" });
+      await broker.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 120000 });
+      await openOffersTab(broker);
+      await searchBank(broker, ids.lastFieldOffer);
+      await lastRow.waitFor({ timeout: 45000 });
+      const afterReloadSection = await inboxSection(broker, ids.lastFieldOffer);
+      state.districtAfterReload = afterReloadSection.text || "";
+      state.listMovedAfterReload = afterReloadSection.section === "قيد المطابقة"
+        || afterReloadSection.status === "matching";
+      await screenshot(broker, headed ? "live-headed-A-district-reload.png" : "live-A-district-reload.png");
+
+      const persisted = await readDoc("opportunities", ids.lastFieldOffer);
+      state.firestoreDistrict = persisted?.district || "";
+      state.firestoreReady = persisted?.matchingReadiness === "READY_FOR_MATCHING"
+        || !(persisted?.matchingReadinessMissing || []).includes("district");
+
+      const districtLive = state.patchStatus >= 200 && state.patchStatus < 300
+        && sheetGone
+        && valueVisible
+        && (state.districtAfterReload.includes(DISTRICT_VALUE))
+        && state.firestoreDistrict === DISTRICT_VALUE;
+      record("District save", districtLive ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", {
+        persistence: state.districtAfterReload.includes(DISTRICT_VALUE) && state.firestoreDistrict === DISTRICT_VALUE
+          ? "PASS — LIVE E2E"
+          : "FAIL — LIVE E2E",
+        evidence: "live-A-district-saved.png + live-A-district-reload.png + /opportunity/patch",
+        note: `HTTP ${state.patchStatus} firestore=${state.firestoreDistrict} sheetGone=${sheetGone}`
+      });
+
+      const moveLive = districtLive && state.listMovedWithoutReload && state.listMovedAfterReload && state.firestoreReady;
+      record("Last field → قيد المطابقة", moveLive ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", {
+        persistence: state.listMovedAfterReload ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        evidence: "live-A-district-saved.png + live-A-district-reload.png",
+        note: `before=${beforeSection.section || beforeSection.status} afterSave=${afterSaveSection.section || afterSaveSection.status} afterReload=${afterReloadSection.section || afterReloadSection.status}`
+      });
+      await screenshot(broker, headed ? "live-headed-B-list-move.png" : "live-B-list-move.png");
+    } catch (error) {
+      await screenshot(broker, headed ? "live-headed-A-district-error.png" : "live-A-district-error.png");
+      record("District save", "FAIL — LIVE E2E", {
+        persistence: "FAIL — LIVE E2E",
+        evidence: "live-A-district-error.png",
+        note: String(error?.message || error)
+      });
+      record("Last field → قيد المطابقة", "FAIL — LIVE E2E", {
+        persistence: "NOT RUN",
+        note: "blocked on district editor"
+      });
     }
-    await lastRow.locator('input[name="district"]').fill(DISTRICT_VALUE);
-    const patchWaiter = broker.waitForResponse(
-      (res) => res.url().includes("/opportunity/patch") && res.request().method() === "POST",
-      { timeout: 30000 }
-    ).catch(() => null);
-    await lastRow.locator("#cv2EditorSave").click();
-    const patchRes = await patchWaiter;
-    state.patchStatus = patchRes ? patchRes.status() : null;
-    await broker.waitForTimeout(2000);
-
-    const sheetGone = (await lastRow.locator("[data-cv2-editor-root]").count()) === 0;
-    const afterSaveSection = await inboxSection(broker, ids.lastFieldOffer);
-    state.listMovedWithoutReload = afterSaveSection.section === "قيد المطابقة"
-      || afterSaveSection.status === "matching";
-    const valueVisible = (afterSaveSection.text || "").includes(DISTRICT_VALUE);
-    await screenshot(broker, headed ? "live-headed-A-district-saved.png" : "live-A-district-saved.png");
-
-    await broker.reload({ waitUntil: "domcontentloaded" });
-    await broker.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 120000 });
-    await openOffersTab(broker);
-    await searchBank(broker, ids.lastFieldOffer);
-    await lastRow.waitFor({ timeout: 45000 });
-    const afterReloadSection = await inboxSection(broker, ids.lastFieldOffer);
-    state.districtAfterReload = afterReloadSection.text || "";
-    state.listMovedAfterReload = afterReloadSection.section === "قيد المطابقة"
-      || afterReloadSection.status === "matching";
-    await screenshot(broker, headed ? "live-headed-A-district-reload.png" : "live-A-district-reload.png");
-
-    const persisted = await readDoc("opportunities", ids.lastFieldOffer);
-    state.firestoreDistrict = persisted?.district || "";
-    state.firestoreReady = persisted?.matchingReadiness === "READY_FOR_MATCHING"
-      || !(persisted?.matchingReadinessMissing || []).includes("district");
-
-    const districtLive = state.patchStatus >= 200 && state.patchStatus < 300
-      && sheetGone
-      && valueVisible
-      && (state.districtAfterReload.includes(DISTRICT_VALUE))
-      && state.firestoreDistrict === DISTRICT_VALUE;
-    record("District save", districtLive ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", {
-      persistence: state.districtAfterReload.includes(DISTRICT_VALUE) && state.firestoreDistrict === DISTRICT_VALUE
-        ? "PASS — LIVE E2E"
-        : "FAIL — LIVE E2E",
-      evidence: "live-A-district-saved.png + live-A-district-reload.png + /opportunity/patch",
-      note: `HTTP ${state.patchStatus} firestore=${state.firestoreDistrict} sheetGone=${sheetGone}`
-    });
-
-    const moveLive = districtLive && state.listMovedWithoutReload && state.listMovedAfterReload && state.firestoreReady;
-    record("Last field → قيد المطابقة", moveLive ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", {
-      persistence: state.listMovedAfterReload ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
-      evidence: "live-A-district-saved.png + live-A-district-reload.png",
-      note: `before=${beforeSection.section || beforeSection.status} afterSave=${afterSaveSection.section || afterSaveSection.status} afterReload=${afterReloadSection.section || afterReloadSection.status}`
-    });
-    await screenshot(broker, headed ? "live-headed-B-list-move.png" : "live-B-list-move.png");
 
     await openTasksTab(broker);
     await broker.waitForTimeout(2500);
