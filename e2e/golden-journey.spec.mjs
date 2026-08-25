@@ -28,6 +28,8 @@ async function openCleanParty(browser, token) {
   return { context, page };
 }
 
+test.use({ video: "on", trace: "retain-on-failure", screenshot: "only-on-failure" });
+
 test("golden journey steps 1-18: offers → match → client → owner → appointment", async ({ page, browser, request }) => {
   await resetQa(request);
 
