@@ -377,7 +377,12 @@ export function buildWorkspaceActivity(record = {}, cooperationRequests = []) {
     }
   }
   if (record.lastContactAt) {
-    items.push({ at: record.lastContactAt, text: "تم التواصل مع الجهة" });
+    const isOwner = String(record.contactType || "").toLowerCase() === "owner"
+      || String(record.opportunityKind || "").toUpperCase() === "OFFER";
+    items.push({
+      at: record.lastContactAt,
+      text: isOwner ? "تم التواصل مع المالك" : "تم التواصل مع العميل"
+    });
   }
   if (record.lastContactOutcome) {
     items.push({ at: record.lastContactAt || record.updatedAt, text: `نتيجة التواصل: ${record.lastContactOutcome}` });
@@ -397,7 +402,9 @@ export function buildWorkspaceActivity(record = {}, cooperationRequests = []) {
       text: `تعاون مع ${req.targetOfficeName || req.targetOfficeId}: ${status}`
     });
   }
-  if (record.closedAt) {
+  if (record.closedAt && (String(record.lifecycleStatus || "").toUpperCase() === "ENDED"
+    || String(record.lifecycleStatus || "").toUpperCase() === "CLOSED"
+    || String(record.lifecycleStatus || "").toUpperCase() === "ARCHIVED")) {
     items.push({ at: record.closedAt, text: "تم إنهاء الفرصة" });
   }
   return items

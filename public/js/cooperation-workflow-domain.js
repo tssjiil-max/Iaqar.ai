@@ -1,3 +1,5 @@
+import { formatCooperationReference } from "./reference-code-domain.js";
+
 /**
  * Office-collaboration workflow V1 — living task, ranking helpers, privacy.
  * Does not rewrite the matching engine. Proximity never creates a match.
@@ -57,11 +59,11 @@ export const SORT_GROUP = Object.freeze({
 });
 
 export const SORT_GROUP_RANK = Object.freeze({
-  NEEDS_ACTION: 0,
-  NEW_RESPONSE: 1,
-  TODAY_APPOINTMENT: 2,
-  WAITING_OTHER_OFFICE: 3,
-  INFORMATIONAL: 4
+  NEEDS_ACTION: 1,
+  TODAY_APPOINTMENT: 3,
+  NEW_RESPONSE: 4,
+  WAITING_OTHER_OFFICE: 5,
+  INFORMATIONAL: 6
 });
 
 export const COOPERATION_ACTION = Object.freeze({
@@ -290,9 +292,19 @@ export function viewerRoleFor(record = {}, officeId = "") {
 export function partnerOfficeNameFor(record = {}, officeId = "") {
   const id = text(officeId).toLowerCase();
   if (id === text(record.originatingOfficeId).toLowerCase()) {
-    return text(record.targetOfficeName) || "المكتب الآخر";
+    return text(record.targetOfficeName);
   }
-  return text(record.originatingOfficeName) || "المكتب الآخر";
+  return text(record.originatingOfficeName);
+}
+
+export function waitingPartnerLabel(partnerName = "") {
+  const name = text(partnerName);
+  return name ? `بانتظار رد ${name}` : "";
+}
+
+export function cooperationRequestedLabel(partnerName = "") {
+  const name = text(partnerName);
+  return name ? `تم إرسال طلب التعاون إلى ${name}` : "تم إرسال طلب التعاون";
 }
 
 export function sanitizeCooperationView(record = {}) {
@@ -423,7 +435,7 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
         emptyAction: ""
       };
     }
-    return waiting("بانتظار المكتب الآخر");
+    return waiting(waitingPartnerLabel(partnerName));
   }
 
   if (s === COOPERATION_STAGE.WAITING_PARTNER || s === COOPERATION_STAGE.REQUEST_SENT) {
@@ -435,28 +447,28 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
         emptyAction: ""
       };
     }
-    return waiting(`بانتظار رد ${partnerName}`);
+    return waiting(waitingPartnerLabel(partnerName));
   }
 
   if (s === COOPERATION_STAGE.ACCEPTED) {
     if (r === COOPERATION_ROLE.CLIENT_OFFICE) {
       return { needsAction: true, label: "متابعة العميل", waitingLabel: "", emptyAction: "" };
     }
-    return waiting("بانتظار مكتب العميل لمتابعة العميل.");
+    return waiting(partnerName ? `بانتظار ${partnerName} لمتابعة العميل.` : "");
   }
 
   if (s === COOPERATION_STAGE.CUSTOMER_ACTION) {
     if (r === COOPERATION_ROLE.CLIENT_OFFICE) {
       return { needsAction: true, label: "تحديث نتيجة العميل", waitingLabel: "", emptyAction: "" };
     }
-    return waiting("بانتظار مكتب العميل.");
+    return waiting(partnerName ? `بانتظار ${partnerName}.` : "");
   }
 
   if (s === COOPERATION_STAGE.OWNER_ACTION) {
     if (r === COOPERATION_ROLE.PROPERTY_OFFICE) {
       return { needsAction: true, label: "تأكيد توفر العقار", waitingLabel: "", emptyAction: "" };
     }
-    return waiting("بانتظار مكتب العقار لتأكيد توفر العقار.");
+    return waiting(partnerName ? `بانتظار ${partnerName} لتأكيد توفر العقار.` : "");
   }
 
   if (s === COOPERATION_STAGE.APPOINTMENT) {
@@ -476,7 +488,7 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
     if (r === COOPERATION_ROLE.CLIENT_OFFICE) {
       return { needsAction: true, label: "تحديث نتيجة العميل", waitingLabel: "", emptyAction: "" };
     }
-    return waiting(`بانتظار ${partnerName}`);
+    return waiting(waitingPartnerLabel(partnerName) || (partnerName ? `بانتظار ${partnerName}` : ""));
   }
 
   if (s === COOPERATION_STAGE.PRELIMINARY_AGREEMENT) {
@@ -703,10 +715,11 @@ export function collapsedKindLabel(stage, record = {}, officeId = "") {
   return "مطابقة تعاون جديدة";
 }
 
-export function collapsedStatusLabel(stage, turn) {
+export function collapsedStatusLabel(stage, turn, partnerName = "") {
   const s = upper(stage);
   if (s === COOPERATION_STAGE.WAITING_PARTNER || s === COOPERATION_STAGE.REQUEST_SENT) {
-    return turn.needsAction ? "تحتاج مراجعتك" : "بانتظار رد المكتب";
+    if (turn.needsAction) return "تحتاج مراجعتك";
+    return waitingPartnerLabel(partnerName) || turn.waitingLabel || "";
   }
   if (s === COOPERATION_STAGE.APPOINTMENT_CONFIRMED) return "لا يوجد إجراء مطلوب الآن.";
   if (s === COOPERATION_STAGE.COMPLETED) return "تم إغلاق التعاون بنجاح.";
@@ -772,6 +785,26 @@ export function cooperationActionsFor({ stage, role, record = {}, officeId = "" 
   return { primaryAction: null, secondaryActions: [] };
 }
 
+export function cooperationTimeline(record = {}, { officeId = "", partnerName = "", referenceCode = "" } = {}) {
+  const name = text(partnerName) || partnerOfficeNameFor(record, officeId);
+  const events = [];
+  const push = (at, type, actor, label) => {
+    if (!at || !label) return;
+    events.push({ type, actor, label, createdAt: at, referenceCode });
+  };
+  push(record.createdAt || record.matchedAt, "match_found", "BROKER", "تم العثور على مطابقة تعاون");
+  push(record.requestedAt, "requested", "BROKER", cooperationRequestedLabel(name));
+  push(record.acceptedAt, "accepted", "PARTNER_OFFICE", name ? `${name} قبل التعاون` : "تم قبول التعاون");
+  push(record.rejectedAt, "rejected", "PARTNER_OFFICE", name ? `${name} اعتبر التعاون غير مناسب` : "التعاون غير مناسب");
+  push(record.appointmentConfirmedAt, "appointment", "BROKER", "موعد مؤكد");
+  push(record.completedAt, "completed", "BROKER", "تم إتمام الصفقة");
+  const extra = Array.isArray(record.livingTimeline) ? record.livingTimeline : [];
+  for (const event of extra) {
+    if (event?.label) events.push({ ...event, referenceCode: event.referenceCode || referenceCode });
+  }
+  return events.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+
 export function matchReasonLines(record = {}) {
   const lines = [];
   if (record.proximityLabel) lines.push(record.proximityLabel);
@@ -780,7 +813,7 @@ export function matchReasonLines(record = {}) {
     const line = text(reason);
     if (line && !/score|id|token|phone/i.test(line) && !lines.includes(line)) lines.push(line);
   }
-  if (!lines.length) lines.push("توافق عقاري حقيقي ضمن قواعد المطابقة");
+  if (!lines.length && record.compatibilityLabel) lines.push(record.compatibilityLabel);
   return lines;
 }
 
@@ -818,28 +851,38 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
   const propertyLine = cooperationPropertyLine(listing.propertyType ? listing : ownListing);
   const when = appointmentWhenLabel(record, now);
 
+  const referenceCode = formatCooperationReference(id);
   let partnerLine = "";
-  if (inbound) partnerLine = `من:\n${partnerName}`;
-  else if (stage === COOPERATION_STAGE.WAITING_PARTNER || stage === COOPERATION_STAGE.REQUEST_SENT) {
-    partnerLine = partnerName;
-  } else if (stage === COOPERATION_STAGE.COMPLETED) {
-    partnerLine = `التعاون:\n${COOPERATION_ROLE_LABELS.CLIENT_OFFICE} × ${COOPERATION_ROLE_LABELS.PROPERTY_OFFICE}`;
-  } else {
-    partnerLine = `يوجد طلب/عرض مناسب لدى:\n${partnerName}`;
+  if (partnerName) {
+    if (inbound) partnerLine = `من:\n${partnerName}`;
+    else if (stage === COOPERATION_STAGE.WAITING_PARTNER || stage === COOPERATION_STAGE.REQUEST_SENT) {
+      partnerLine = waitingPartnerLabel(partnerName);
+    } else {
+      partnerLine = `المكتب المقترح:\n${partnerName}`;
+    }
   }
 
   const proximityBits = [record.proximityLabel, record.compatibilityLabel].filter(Boolean).join(" · ");
   let summaryExtra = partnerLine;
   if (stage === COOPERATION_STAGE.APPOINTMENT_CONFIRMED && when) summaryExtra = when;
-  if (inbound) {
-    summaryExtra = `يوجد طلب مطابق لأحد عروضك\n${propertyLine}\nمن:\n${partnerName}`;
+  if (inbound && partnerName) {
+    summaryExtra = propertyLine
+      ? `${propertyLine}\nمن:\n${partnerName}`
+      : `من:\n${partnerName}`;
   }
+  const yourTurnLine = turn.needsAction
+    ? (stage === COOPERATION_STAGE.MATCH_FOUND || stage === COOPERATION_STAGE.REVIEW
+      ? "راجع التعاون"
+      : turn.label)
+    : (turn.waitingLabel || turn.emptyAction);
 
   return {
     id,
     taskKind: "cooperation",
     cooperationTaskId: id,
     cooperationId: id,
+    workflowId: id,
+    referenceCode,
     stateKey: "cooperation",
     kindLabel: collapsedKindLabel(stage, record, officeId),
     badgeKey: sortGroup === SORT_GROUP.NEEDS_ACTION ? "now"
@@ -848,14 +891,21 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
     badgeLabel: sortGroup === SORT_GROUP.NEEDS_ACTION ? "الآن"
       : sortGroup === SORT_GROUP.TODAY_APPOINTMENT ? "اليوم"
         : "",
-    propertyLine: inbound ? "" : propertyLine,
+    propertyType: text(listing.propertyType || ownListing.propertyType),
+    purpose: text(listing.purpose || ownListing.purpose),
+    city: text(listing.city || ownListing.city),
+    district: text(listing.district || ownListing.district),
+    priceOrBudget: moneyLabel(listing.propertyType ? listing : ownListing),
+    propertyLine: inbound ? propertyLine : propertyLine,
     moneyLine: "",
     partnerLine: summaryExtra,
     proximityLine: inbound ? "" : proximityBits,
-    statusLabel: collapsedStatusLabel(stage, turn),
+    statusLabel: collapsedStatusLabel(stage, turn, partnerName),
     nextActionLine: turn.needsAction ? "دورك الآن" : (turn.waitingLabel || ""),
-    yourTurnLine: turn.needsAction ? turn.label : (turn.waitingLabel || turn.emptyAction),
+    yourTurnLine,
     waiting: !turn.needsAction,
+    requiresAction: Boolean(turn.needsAction),
+    requiresActionBy: turn.needsAction ? "BROKER" : (turn.waitingLabel ? "PARTNER_OFFICE" : "NONE"),
     primaryAction,
     secondaryActions,
     matchId: text(record.matchId),
@@ -876,20 +926,25 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
           : sortGroup === SORT_GROUP.WAITING_OTHER_OFFICE ? "awaiting_reply"
             : "closed",
     currentStage: stage,
+    livingStage: stage,
     viewerRole: role,
     viewerRoleLabel: COOPERATION_ROLE_LABELS[role],
     partnerOfficeName: partnerName,
+    partnerOfficeId: isOriginViewer ? text(record.targetOfficeId) : text(record.originatingOfficeId),
     ownListing,
     partnerListing,
     matchReasons: matchReasonLines(record),
     ownMoney: moneyLabel(ownListing),
     partnerMoney: moneyLabel(partnerListing),
+    timeline: cooperationTimeline(record, { officeId, partnerName, referenceCode }),
     revealClosedLabel: inbound ? "مراجعة التعاون" : "فتح التعاون",
     revealOpenLabel: "إخفاء",
     appointmentWhen: when,
     archived: isArchivedCooperation({ ...record, currentStage: stage }),
     originatingOfficeId: text(record.originatingOfficeId),
-    targetOfficeId: text(record.targetOfficeId)
+    targetOfficeId: text(record.targetOfficeId),
+    livingUpdatedAt: text(record.updatedAt || record.requestedAt || record.createdAt),
+    hasNewResponse: Boolean(record.hasNewResponse)
   };
 }
 

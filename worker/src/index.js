@@ -93,7 +93,8 @@ import {
   handlePartySessionGet,
   handlePartySessionMint,
   handlePartySessionPhoto,
-  handlePartySessionReply
+  handlePartySessionReply,
+  handleMatchLivingAction
 } from "./party-session-service.js";
 import {
   analyzeVoiceWithGemini,
@@ -478,6 +479,15 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/party/sessions") {
         return await handlePartySessionMint({
+          request,
+          env,
+          requestId,
+          helpers: partySessionHelpers()
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/match/living-action") {
+        return await handleMatchLivingAction({
           request,
           env,
           requestId,

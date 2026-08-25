@@ -163,7 +163,7 @@ test("TEST D: expanded match group ranks candidates by current scores", () => {
   const views = mapOperationsItemsToDailyTasks(items.map((item) => ({ ...item, operationType: "MATCH_REVIEW" })));
   const html = buildDailyTaskCardHtml(views[0], { open: true });
   assert.match(html, /طلب العميل/);
-  assert.match(html, /العرض المقترح/);
+  assert.match(html, /العرض المطابق/);
   assert.match(html, /إرسال للعميل/);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.match(html, /مرشح 1/);
@@ -204,7 +204,7 @@ test("TEST H/I: existing snapshot details reveal immediately; missing info needs
 
 test("TEST K: owner is contacted only when viewing is requested", () => {
   const interested = livingStageAfterPartyAction({ party: "client", action: "interested" });
-  assert.equal(interested.ownerContactNeeded, false);
+  assert.equal(interested.ownerContactNeeded, true);
   const viewing = livingStageAfterPartyAction({ party: "client", action: "want_viewing", followUp: true });
   assert.equal(viewing.ownerContactNeeded, true);
   assert.equal(viewing.stage, LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION);

@@ -15,7 +15,7 @@ import {
   revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
-import { livingStageAfterPartyAction } from "../../public/js/match-group-domain.js";
+import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel } from "../../public/js/match-group-domain.js";
 
 function publicWorkerOrigin(env = {}) {
   const explicit = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/$/, "");
@@ -116,6 +116,11 @@ async function stampMatchLiving(helpers, {
   const ownerContactNeeded = Boolean(patch.ownerContactNeeded);
   const activeMatchId = String(patch.activeMatchId || id);
   const livingUpdatedAt = new Date().toISOString();
+  const timeline = appendLivingTimeline(match.livingTimelineJson || match.livingTimeline, patch.timelineEvent, { now: new Date(livingUpdatedAt) });
+  const hasNewResponse = patch.hasNewResponse === true;
+  const nextActor = String(patch.nextActor || nextActorForLivingStage(livingStage, {
+    ownerContactNeeded: Boolean(patch.ownerContactNeeded)
+  }));
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", id],
@@ -126,7 +131,10 @@ async function stampMatchLiving(helpers, {
       ownerContactNeeded: helpers.firestoreString(ownerContactNeeded ? "true" : ""),
       rejectedMatchIds: helpers.firestoreString(JSON.stringify(rejected)),
       activeMatchId: helpers.firestoreString(activeMatchId),
-      livingUpdatedAt: helpers.firestoreString(livingUpdatedAt)
+      livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
+      livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
+      hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
+      nextActor: helpers.firestoreString(nextActor)
     }
   });
   const operationId = String(match.operationId || "").trim();
@@ -137,7 +145,11 @@ async function stampMatchLiving(helpers, {
     accessToken,
     fields: {
       livingStage: helpers.firestoreString(livingStage),
-      missingInfoKey: helpers.firestoreString(missingInfoKey)
+      missingInfoKey: helpers.firestoreString(missingInfoKey),
+      livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
+      livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
+      hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
+      nextActor: helpers.firestoreString(nextActor)
     }
   });
 }
@@ -294,7 +306,14 @@ export async function handlePartySessionMint({
     patch: {
       livingStage: party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT",
       activeMatchId: matchId,
-      ownerContactNeeded: party === "owner"
+      ownerContactNeeded: false,
+      hasNewResponse: false,
+      nextActor: party === "owner" ? "OWNER" : "CLIENT",
+      timelineEvent: {
+        type: party === "owner" ? "whatsapp_owner_opened" : "whatsapp_client_opened",
+        actor: "BROKER",
+        label: party === "owner" ? "تم فتح واتساب للمالك" : "تم فتح واتساب للعميل"
+      }
     }
   });
   return helpers.jsonResponse({
@@ -385,6 +404,33 @@ async function getPartySessionPublic({ token, env, requestId, helpers, ip }) {
   if (!loaded) {
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
   }
+  if (!loaded.session.openedAt) {
+    const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+    const accessToken = await helpers.getGoogleAccessToken(env);
+    const now = new Date().toISOString();
+    await helpers.setFirestoreDocument({
+      projectId,
+      segments: ["offices", loaded.officeId, "partySessions", loaded.sessionId],
+      accessToken,
+      fields: { openedAt: helpers.firestoreString(now) }
+    });
+    await stampMatchLiving(helpers, {
+      projectId,
+      officeId: loaded.officeId,
+      matchId: loaded.session.matchId,
+      accessToken,
+      patch: {
+        livingStage: loaded.session.livingStage || loaded.session.currentStage || "",
+        activeMatchId: loaded.session.matchId,
+        hasNewResponse: false,
+        timelineEvent: {
+          type: "party_opened",
+          actor: loaded.session.party === "owner" ? "OWNER" : "CLIENT",
+          label: partyReplyTimelineLabel(loaded.session.party, "opened")
+        }
+      }
+    });
+  }
   return helpers.jsonResponse({ ok: true, view: loaded.view, requestId });
 }
 
@@ -461,7 +507,14 @@ async function replyPartySession({ token, env, request, requestId, helpers, ip }
       missingInfoKey: living.missingInfoKey || "",
       ownerContactNeeded: Boolean(living.ownerContactNeeded),
       rejectedMatchIds: living.rejectCandidate ? [loaded.session.matchId] : [],
-      activeMatchId: loaded.session.matchId
+      activeMatchId: loaded.session.matchId,
+      hasNewResponse: true,
+      nextActor: nextActorForLivingStage(living.stage, { ownerContactNeeded: Boolean(living.ownerContactNeeded) }),
+      timelineEvent: {
+        type: `party_reply_${action}`,
+        actor: loaded.session.party === "owner" ? "OWNER" : "CLIENT",
+        label: partyReplyTimelineLabel(loaded.session.party, action)
+      }
     }
   });
   const next = await loadPartyPublicView({ token, env, helpers });
@@ -500,4 +553,44 @@ export async function handlePartySessionPhoto({ token, index, env, helpers, ip }
   headers.set("cache-control", "private, max-age=300");
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
+}
+
+export async function handleMatchLivingAction({
+  request,
+  env,
+  requestId,
+  helpers
+}) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = helpers.normalizeOfficeId(body.officeId);
+  if (!officeId) throw helpers.appError("office_id_required", 400, "تعذر تحديد المكتب");
+  await helpers.authorizeOfficeRequest(request, env, officeId, "member");
+  helpers.assertFirebaseSecrets(env);
+  const matchId = helpers.cleanText(body.matchId, 180);
+  if (!matchId) throw helpers.appError("match_id_required", 400, "تعذر تحديد المطابقة");
+  const action = String(body.action || "").toUpperCase();
+  if (action !== "CONFIRM_COMPLETION") {
+    throw helpers.appError("unknown_action", 400, "إجراء غير معروف.");
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  await stampMatchLiving(helpers, {
+    projectId,
+    officeId,
+    matchId,
+    accessToken,
+    patch: {
+      livingStage: "COMPLETED",
+      activeMatchId: matchId,
+      ownerContactNeeded: false,
+      hasNewResponse: false,
+      nextActor: "NONE",
+      timelineEvent: {
+        type: "deal_completed",
+        actor: "BROKER",
+        label: "تم إتمام الصفقة"
+      }
+    }
+  });
+  return helpers.jsonResponse({ ok: true, livingStage: "COMPLETED", requestId });
 }

@@ -24,6 +24,7 @@ import {
 import { buildWorkspaceActivity } from "./opportunity-workspace-domain.js";
 import { resolveCanonicalOpportunity } from "./canonical-opportunity-domain.js";
 import { isDisplayValueComplete } from "./opportunity-field-completion-domain.js";
+import { formatOpportunityReference } from "./reference-code-domain.js";
 
 const TZ = "Asia/Riyadh";
 
@@ -346,6 +347,7 @@ export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
   return {
     id: String(id || record.id || ""),
     displayNumber: formatV2DisplayNumber(id || record.id || ""),
+    referenceCode: formatOpportunityReference(id || record.id || ""),
     type: isOwner ? "عرض مالك" : "طلب عميل",
     status: status.label,
     statusId: status.id,
@@ -353,6 +355,12 @@ export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
     propertyPurpose: propertyPurposeLine(displayRecord),
     location: location.primary,
     locationSecondary: location.secondary,
+    city: locationParts(displayRecord).primary.includes(" - ")
+      ? normalizePlace(displayRecord.city)
+      : normalizePlace(displayRecord.city),
+    district: normalizePlace(displayRecord.district).replace(/^حي\s+/, ""),
+    cityValue: String(canonical.city || record.city || "").trim(),
+    districtValue: String(canonical.district || record.district || "").trim(),
     price: moneyValue(displayRecord),
     priceLabel: isOwner ? "السعر" : "الميزانية",
     area: specs.primary,

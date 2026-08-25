@@ -113,7 +113,7 @@ export function buildOpportunityDataCardV2(vm = {}, ui = {}) {
     <header class="cv2-card-head">
       ${iconUse("i-clipboard-list")}
       <div class="cv2-card-head-text">
-        <h2 class="cv2-card-title">بيانات الفرصة</h2>
+        <h2 class="cv2-card-title">بيانات الفرصة${vm.referenceCode ? ` <span class="cv2-exec-ref">${escapeContentHtml(vm.referenceCode)}</span>` : ""}</h2>
         <p class="cv2-card-meta">${escapeContentHtml(meta)}</p>
       </div>
     </header>

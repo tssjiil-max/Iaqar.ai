@@ -5,7 +5,6 @@
 
 import { buildDailyTaskListHtml } from "./card.js";
 import {
-  dailyTaskDetailsHash,
   dailyTasksDemoFixtures,
   mapOperationsItemsToDailyTasks
 } from "./domain.js";
@@ -16,8 +15,11 @@ import {
 } from "../../cooperation-workflow-domain.js";
 import { requestCooperationLifecycle } from "../../cooperation-phase6-domain.js";
 import {
+  buildListingShareMessage,
+  whatsAppShareUrl
+} from "../../listing-share-domain.js";
+import {
   buildPartyWhatsAppMessage,
-  detailsOpportunityId,
   missingPartyPhoneMessage,
   PARTY_SEND_COPY,
   whatsappOpenedMessage
@@ -28,7 +30,9 @@ const state = {
   root: null,
   tasks: [],
   bound: false,
-  openTaskId: null
+  openTaskId: null,
+  detailsTaskId: null,
+  scrollTop: 0
 };
 
 function useDemoFixtures() {
@@ -102,7 +106,7 @@ async function idToken() {
 async function runCooperationTaskAction(task, actionId, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   if (actionId === "open_details") {
-    return openExistingOfferDetails(task);
+    return toggleTaskDetails(task.id);
   }
   setExecState(button, "working");
   const token = await idToken();
@@ -182,18 +186,33 @@ function taskFromCard(card) {
   };
 }
 
+export function toggleTaskDetails(taskId) {
+  if (!taskId) return { ok: false, error: PARTY_SEND_COPY.detailsFailed };
+  captureScroll();
+  if (state.detailsTaskId === taskId) {
+    state.detailsTaskId = null;
+  } else {
+    state.openTaskId = taskId;
+    state.detailsTaskId = taskId;
+  }
+  renderList();
+  return { ok: true, detailsOpen: state.detailsTaskId === taskId };
+}
+
 export function openExistingOfferDetails(task) {
-  const hash = dailyTaskDetailsHash({
-    ...task,
-    opportunityId: detailsOpportunityId(task)
-  });
-  if (!hash) return { ok: false, error: PARTY_SEND_COPY.detailsFailed };
-  const href = `${window.location.pathname}${window.location.search}${hash}`;
-  if (window.history?.replaceState) window.history.replaceState(window.history.state, "", href);
-  else window.location.hash = hash;
-  window.IAQAR?.homeTabs?.switchTo?.("opportunities");
-  window.IAQAR?.contentV2?.render?.();
-  return { ok: true, hash };
+  return toggleTaskDetails(task?.id);
+}
+
+function captureScroll() {
+  const scroller = document.scrollingElement || document.documentElement;
+  state.scrollTop = Number(scroller?.scrollTop || window.scrollY || 0);
+}
+
+function restoreScroll() {
+  const scroller = document.scrollingElement || document.documentElement;
+  if (scroller && Number.isFinite(state.scrollTop)) {
+    scroller.scrollTop = state.scrollTop;
+  }
 }
 
 async function recordOpenedExternal(task, party, phone, body) {
@@ -273,13 +292,89 @@ export async function runDailyTaskPartySend(task, party, button) {
 
 function toggleOpenTask(taskId) {
   if (!taskId) return;
-  state.openTaskId = state.openTaskId === taskId ? null : taskId;
+  captureScroll();
+  if (state.openTaskId === taskId) {
+    state.openTaskId = null;
+    state.detailsTaskId = null;
+  } else {
+    state.openTaskId = taskId;
+  }
   renderList();
+}
+
+function shareTaskDetails(task) {
+  const record = {
+    opportunityKind: task.opportunityKind,
+    propertyType: task.propertyType,
+    city: task.city,
+    district: task.district,
+    priceOrBudget: String(task.priceOrBudget || task.moneyLine || "").replace(/[^\d.]/g, ""),
+    area: String(task.sourceListing?.area || task.proposedListing?.area || "").replace(/[^\d.]/g, "")
+  };
+  const office = window.IAQAR?.office || {};
+  const text = buildListingShareMessage(record, {
+    officeName: office.officeName || office.displayName || office.name || "",
+    brokerName: office.brokerName || "",
+    licenseNumber: office.licenseNumber || "",
+    publicSlug: office.publicSlug || "",
+    officeId: office.officeId || ""
+  }, { includeContactPhone: false });
+  const url = whatsAppShareUrl(text);
+  if (typeof window !== "undefined") {
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = url;
+  }
+  notify("تم فتح واتساب");
+  return { ok: true };
+}
+
+async function confirmDealCompletion(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/match/living-action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        officeId,
+        matchId: task.matchId,
+        action: "CONFIRM_COMPLETION"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || "تعذر تأكيد إتمام الصفقة.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify("تم إتمام الصفقة");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true };
+  } catch {
+    notify("تعذر تأكيد إتمام الصفقة.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
 }
 
 function onListClick(event) {
   const root = state.root;
   if (!root) return;
+  const closeDetails = event.target.closest("[data-cv2-exec-close-details]");
+  if (closeDetails) {
+    event.preventDefault();
+    event.stopPropagation();
+    captureScroll();
+    state.detailsTaskId = null;
+    renderList();
+    return;
+  }
   const card = event.target.closest("[data-cv2-exec-task]");
   if (!card || !root.contains(card)) return;
   const task = taskFromCard(card);
@@ -288,16 +383,12 @@ function onListClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
-    if (action === "open_offer" || action === "complete_info") {
-      if (secondary.dataset.cv2ExecState === "working") return;
-      setExecState(secondary, "working");
-      const opened = openExistingOfferDetails(task);
-      if (!opened.ok) {
-        notify(opened.error || PARTY_SEND_COPY.detailsFailed);
-        setExecState(secondary, "error");
-        return;
-      }
-      setExecState(secondary, "success");
+    if (action === "open_offer" || action === "complete_info" || action === "open_details") {
+      toggleTaskDetails(task.id);
+      return;
+    }
+    if (action === "share_details") {
+      shareTaskDetails(task);
       return;
     }
     if (action === "review_next_candidate") {
@@ -330,9 +421,12 @@ function onListClick(event) {
       void runDailyTaskPartySend(task, "client", primary);
       return;
     }
+    if (action === "confirm_deal") {
+      void confirmDealCompletion(task, primary);
+      return;
+    }
     if (action === "complete_info") {
-      const opened = openExistingOfferDetails(task);
-      if (!opened.ok) notify(opened.error || PARTY_SEND_COPY.detailsFailed);
+      toggleTaskDetails(task.id);
       return;
     }
     if (action === "review_next_candidate") {
@@ -352,7 +446,11 @@ function onListClick(event) {
 
 function renderList() {
   if (!state.root) return;
-  state.root.innerHTML = buildDailyTaskListHtml(currentTasks(), { openTaskId: state.openTaskId });
+  state.root.innerHTML = buildDailyTaskListHtml(currentTasks(), {
+    openTaskId: state.openTaskId,
+    detailsTaskId: state.detailsTaskId
+  });
+  restoreScroll();
 }
 
 function onOperationsData(event) {
@@ -361,6 +459,7 @@ function onOperationsData(event) {
   state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: currentOfficeId() });
   if (state.openTaskId && !state.tasks.some((task) => task.id === state.openTaskId)) {
     state.openTaskId = null;
+    state.detailsTaskId = null;
   }
   renderList();
 }
@@ -374,6 +473,7 @@ export function unmountDailyTasksContentV2() {
   state.root = null;
   state.bound = false;
   state.openTaskId = null;
+  state.detailsTaskId = null;
 }
 
 export function mountDailyTasksContentV2(root) {

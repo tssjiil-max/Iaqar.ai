@@ -775,7 +775,16 @@ function renderList() {
     const totalLabel = loadedCount < filteredTotal || state.hasMore
       ? `عرض ${escapeHtml(String(loadedCount))} من ${escapeHtml(String(filteredTotal))} فرصة`
       : `${escapeHtml(String(filteredTotal))} نتيجة`;
-    const rowsHtml = rows.map((row) => bankRowHtml(row)).join("");
+    const needsRows = rows.filter((row) => row.matchingReadiness === "NEEDS_COMPLETION"
+      || evaluateMatchingReadiness(state.records.get(row.id) || row).isReadyForMatching === false);
+    const matchingRows = rows.filter((row) => !needsRows.includes(row));
+    const section = (title, items) => {
+      if (!items.length) return "";
+      return `<p class="cv2-inbox-section">${escapeHtml(title)}</p>
+        <div class="cv2-inbox-section-rule"></div>
+        ${items.map((row) => bankRowHtml(row)).join("")}`;
+    };
+    const rowsHtml = `${section("يحتاج استكمال", needsRows)}${section("قيد المطابقة", matchingRows)}`;
     bodyHtml = `<p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>${rowsHtml}`;
     if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
   }
@@ -923,8 +932,15 @@ function renderOpportunityDetailsV2InPanel(panel, id, record, extras = {}) {
         actorUid: authUser()?.uid || ""
       }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
     },
-    onSaved: async () => {
+    onSaved: async (result) => {
+      toast("تم الحفظ");
       const fresh = state.records.get(id) || record;
+      const wasIncomplete = evaluateMatchingReadiness(record).isReadyForMatching === false;
+      const nowReady = Boolean(result?.readiness?.isReadyForMatching)
+        || evaluateMatchingReadiness(fresh).isReadyForMatching;
+      if (wasIncomplete && nowReady) {
+        toast("تم استكمال البيانات وانتقل العرض إلى قيد المطابقة");
+      }
       renderOpportunityDetailsV2InPanel(panel, id, fresh, extras);
       renderList();
     }
@@ -3571,10 +3587,17 @@ async function submitInboxEditor(article, editorKey, formData) {
       actorUid: authUser()?.uid || ""
     }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
     if (!result?.ok) {
-      showInboxEditorError(article, result?.error || "تعذر حفظ الحقل");
+      showInboxEditorError(article, result?.error || "تعذر حفظ الحقل، حاول مرة أخرى");
       return;
     }
     if (result.reloaded) state.records.set(id, { ...result.reloaded, id });
+    toast("تم الحفظ");
+    const wasIncomplete = evaluateMatchingReadiness(existing).isReadyForMatching === false;
+    const nowReady = Boolean(result.readiness?.isReadyForMatching)
+      || evaluateMatchingReadiness(result.reloaded || existing).isReadyForMatching;
+    if (wasIncomplete && nowReady) {
+      toast("تم استكمال البيانات وانتقل العرض إلى قيد المطابقة");
+    }
     closeInboxEditor($("opportunityBankList"), { restoreFocus: false });
     renderList();
   } catch (error) {

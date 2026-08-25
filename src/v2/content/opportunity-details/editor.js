@@ -51,8 +51,8 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
     location: {
       title: "الموقع",
       hint: "المدينة والحي",
-      input: `<input class="cv2-editor-input" name="city" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(seed)}" placeholder="المدينة">
-        <input class="cv2-editor-input" name="district" type="text" maxlength="80" autocomplete="off" placeholder="الحي">`
+      input: `<input class="cv2-editor-input" name="city" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.cityValue || vm.city || seed)}" placeholder="المدينة">
+        <input class="cv2-editor-input" name="district" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.districtValue || vm.district || "")}" placeholder="الحي">`
     },
     propertyPurpose: {
       title: "العقار والغرض",
