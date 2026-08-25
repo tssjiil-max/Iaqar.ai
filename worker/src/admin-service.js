@@ -31,7 +31,18 @@ async function listAllCollectionDocuments({ projectId, segments, accessToken, pa
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (response.status === 404) break;
-    if (!response.ok) throw helpers.appError("firestore_read_failed", 502, "تعذر قراءة بيانات الإدارة");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const status = String(payload?.error?.status || "");
+      if (response.status === 429 || status === "RESOURCE_EXHAUSTED") {
+        throw helpers.appError(
+          "firestore_quota_exceeded",
+          429,
+          "حصة قاعدة بيانات الاستيجينج ممتلئة مؤقتاً. أعد المحاولة بعد قليل."
+        );
+      }
+      throw helpers.appError("firestore_read_failed", 502, "تعذر قراءة بيانات الإدارة");
+    }
     const payload = await response.json();
     out.push(...(Array.isArray(payload.documents) ? payload.documents : []));
     pageToken = payload.nextPageToken || "";

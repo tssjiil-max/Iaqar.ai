@@ -2,13 +2,27 @@ import fs from "node:fs";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-const jsonPath = process.env.IAQAR_SERVICE_ACCOUNT_JSON;
+const ALLOWED_PROJECTS = new Set(["aqar-b5d76", "iaqar-ai-staging"]);
+
+function readServiceAccount() {
+  const rawJson = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (rawJson) {
+    const parsed = JSON.parse(rawJson);
+    return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+  }
+  const jsonPath = process.env.IAQAR_SERVICE_ACCOUNT_JSON;
+  if (!jsonPath) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON or IAQAR_SERVICE_ACCOUNT_JSON");
+  return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+}
+
 const email = String(process.env.IAQAR_ADMIN_EMAIL || "").trim().toLowerCase();
 const password = String(process.env.IAQAR_ADMIN_PASSWORD || "");
-if (!jsonPath || !email || password.length < 8) throw new Error("Missing setup data");
+if (!email || password.length < 8) throw new Error("Missing IAQAR_ADMIN_EMAIL / IAQAR_ADMIN_PASSWORD");
 
-const serviceAccount = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-if (serviceAccount.project_id !== "aqar-b5d76") throw new Error("Wrong Firebase project");
+const serviceAccount = readServiceAccount();
+if (!ALLOWED_PROJECTS.has(serviceAccount.project_id)) {
+  throw new Error(`Unsupported Firebase project: ${serviceAccount.project_id}`);
+}
 if (!getApps().length) initializeApp({ credential: cert(serviceAccount) });
 
 const auth = getAuth();
@@ -21,4 +35,4 @@ try {
   user = await auth.createUser({ email, password, emailVerified: true, disabled: false });
 }
 await auth.setCustomUserClaims(user.uid, { ...(user.customClaims || {}), platformAdmin: true, admin: true });
-console.log(`Platform admin ready: ${email}`);
+console.log(`Platform admin ready: ${email} (${serviceAccount.project_id})`);

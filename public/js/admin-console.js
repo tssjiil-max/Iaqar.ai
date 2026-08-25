@@ -1,4 +1,12 @@
-import { AdminApi, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
+import {
+  AdminApi,
+  MAIN_VIEWS,
+  OFFICE_TABS,
+  formatDate,
+  suggestOfficeId,
+  isPlatformAdminClaims,
+  mapAdminLoginError
+} from "./admin-api.js";
 
 const state = {
   view: "overview",
@@ -23,7 +31,11 @@ const els = {
 
 const api = new AdminApi(async () => {
   const user = firebase.auth().currentUser;
-  if (!user) throw new Error("auth_required");
+  if (!user) {
+    const error = new Error("يلزم تسجيل الدخول");
+    error.code = "auth_required";
+    throw error;
+  }
   return user.getIdToken();
 });
 
@@ -46,8 +58,10 @@ function escapeHtml(value) {
 
 async function ensurePlatformAdmin(user) {
   const token = await user.getIdTokenResult(true);
-  if (token.claims.platformAdmin === true || token.claims.admin === true) return true;
-  throw new Error("admin_required");
+  if (isPlatformAdminClaims(token.claims)) return true;
+  const error = new Error("admin_required");
+  error.code = "admin_required";
+  throw error;
 }
 
 function renderMainNav() {
@@ -381,7 +395,7 @@ async function boot() {
       );
       await enterConsole(credential.user);
     } catch (error) {
-      showStatus(els.status, "بيانات إدارة المنصة غير صحيحة أو الحساب غير مخوّل.");
+      showStatus(els.status, mapAdminLoginError(error));
     }
   };
   els.logoutBtn.onclick = async () => {
@@ -391,10 +405,20 @@ async function boot() {
   firebase.auth().onAuthStateChanged(async (user) => {
     if (!user) return;
     try {
-      await enterConsole(user);
-    } catch (_) {
+      await ensurePlatformAdmin(user);
+    } catch (error) {
       await firebase.auth().signOut();
-      showStatus(els.status, "هذا الحساب ليس من إدارة المنصة.");
+      showStatus(els.status, mapAdminLoginError(error));
+      return;
+    }
+    try {
+      await enterConsole(user);
+    } catch (error) {
+      els.loginCard.classList.add("hidden");
+      els.console.classList.remove("hidden");
+      els.adminUserLine.textContent = `مرحبًا ${user.email || "مدير المنصة"}`;
+      renderMainNav();
+      showStatus(els.consoleStatus, error.message || "تعذر تحميل بيانات الإدارة.");
     }
   });
 }
