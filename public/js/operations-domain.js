@@ -106,6 +106,21 @@ function parseMetadata(raw) {
   return {};
 }
 
+function isoFrom(value) {
+  if (!value && value !== 0) return "";
+  if (typeof value === "string") return value;
+  if (typeof value?.toDate === "function") {
+    const date = value.toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : "";
+  }
+  if (typeof value === "object" && (value.seconds != null || value._seconds != null)) {
+    const date = new Date(Number(value.seconds ?? value._seconds) * 1000);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 function missingFieldsFrom(op, metadata) {
   if (Array.isArray(op.missingFields)) return op.missingFields.map(String);
   if (typeof op.missingFieldsJson === "string") {
@@ -260,8 +275,13 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     matchingReadiness,
     matchingReadinessMissing,
     missingFields: matchingReadinessMissing,
-    createdAt: String(op.createdAt || ""),
-    updatedAt: String(op.updatedAt || ""),
+    createdAt: isoFrom(op.createdAt),
+    updatedAt: isoFrom(op.updatedAt || op.createdAt),
+    isTestFixture: op.isTestFixture === true || metadata.isTestFixture === true || op.qaLiveE2e === true || metadata.qaLiveE2e === true,
+    testRunId: String(op.testRunId || metadata.testRunId || op.qaLiveRunId || metadata.qaLiveRunId || ""),
+    createdBy: String(op.createdBy || metadata.createdBy || ""),
+    qaLiveE2e: op.qaLiveE2e === true || metadata.qaLiveE2e === true,
+    sourceType: String(op.sourceType || metadata.sourceType || ""),
     ...phase5BoundaryGuarantees(),
     whatsappOwner: canDraftMessage,
     whatsappClient: canDraftMessage,

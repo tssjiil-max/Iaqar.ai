@@ -17,7 +17,8 @@ const STAGING_URL = (process.env.STAGING_HOSTING_URL
   || "https://iaqar-ai-staging--staging-9c4b0k7h.web.app").replace(/\/+$/, "");
 const WORKER = (process.env.STAGING_WORKER_URL
   || "https://iaqar-intake-staging.iaqar-ai.workers.dev").replace(/\/+$/, "");
-const OFFICE_ID = "staging-logo-live-20260807";
+const NORMAL_OFFICE_ID = "staging-logo-live-20260807";
+const OFFICE_ID = process.env.QA_E2E_OFFICE_ID || "qa-e2e-dedicated";
 const PARTNER_OFFICE_ID = "staging-coop-target-20260807";
 const PHONE = process.env.STAGING_PHONE || "0511123456";
 const PASSWORD = process.env.STAGING_PASSWORD || "StagingLogo9";
@@ -113,6 +114,9 @@ function stamp() {
   return {
     createdAt: now,
     updatedAt: now,
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E",
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
     sourceType: "live_e2e"
@@ -175,31 +179,84 @@ async function deleteIfExists(ref) {
   try { await ref.delete(); } catch { /* ignore */ }
 }
 
-async function cleanupPreviousLiveSeeds() {
-  const collections = [
-    officeRef.collection("opportunities"),
-    officeRef.collection("matches"),
-    officeRef.collection("operations"),
-    officeRef.collection("cooperations")
-  ];
-  for (const col of collections) {
+const CLEANUP_COLLECTIONS = ["opportunities", "matches", "operations", "cooperations", "partySessions"];
+
+async function queryRunDocs(col) {
+  try {
+    return await col.where("testRunId", "==", RUN_ID).limit(100).get();
+  } catch (error) {
     try {
-      const snap = await col.where("qaLiveE2e", "==", true).limit(80).get();
-      await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
-    } catch (error) {
-      console.warn("cleanup query skipped", col.path, error.message);
+      return await col.where("qaLiveRunId", "==", RUN_ID).limit(100).get();
+    } catch (inner) {
+      throw new Error(`cleanup query failed for ${col.path}: ${inner.message || error.message}`);
     }
   }
 }
 
-async function seed() {
-  await cleanupPreviousLiveSeeds();
-
+async function ensureQaOffice() {
+  const source = db.collection("offices").doc(NORMAL_OFFICE_ID);
+  const [sourceSnap, membersSnap] = await Promise.all([
+    source.get(),
+    source.collection("members").get()
+  ]);
+  const sourceData = sourceSnap.data() || {};
   await officeRef.set({
-    officeName: "Staging Logo Live",
-    displayName: "Staging Logo Live",
+    officeName: "QA E2E Dedicated",
+    displayName: "QA E2E Dedicated",
+    isTestFixture: true,
+    createdBy: "E2E",
+    ownerUid: sourceData.ownerUid || "",
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
+  await Promise.all(membersSnap.docs.map((doc) => (
+    officeRef.collection("members").doc(doc.id).set({
+      ...doc.data(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true })
+  )));
+}
+
+async function cleanupByTestRunId({ fail = false } = {}) {
+  let deleted = 0;
+  for (const name of CLEANUP_COLLECTIONS) {
+    const col = officeRef.collection(name);
+    let snap;
+    try {
+      snap = await queryRunDocs(col);
+    } catch (error) {
+      if (fail) throw error;
+      console.warn("cleanup query skipped", col.path, error.message);
+      continue;
+    }
+    await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
+    deleted += snap.docs.length;
+  }
+  await cleanupKnownIds();
+  const leftover = [];
+  for (const name of CLEANUP_COLLECTIONS) {
+    try {
+      const snap = await queryRunDocs(officeRef.collection(name));
+      if (!snap.empty) leftover.push(`${name}:${snap.docs.map((doc) => doc.id).join(",")}`);
+    } catch (error) {
+      if (fail) throw error;
+    }
+  }
+  if (leftover.length) {
+    const message = `E2E cleanup leftover for ${RUN_ID}: ${leftover.join("; ")}`;
+    if (fail) throw new Error(message);
+    console.warn(message);
+  }
+  return deleted;
+}
+
+async function cleanupPreviousLiveSeeds() {
+  await cleanupByTestRunId({ fail: false });
+}
+
+async function seed() {
+  await ensureQaOffice();
+  await cleanupPreviousLiveSeeds();
+
   await partnerRef.set({
     officeName: "Staging Coop Target",
     displayName: "Staging Coop Target",
@@ -565,7 +622,7 @@ function unexpectedErrors() {
   return [...pageErrors, ...consoleErrors].filter((row) => !/live listener|permission-denied/i.test(row));
 }
 
-async function cleanupSeed() {
+async function cleanupKnownIds() {
   const refs = [
     officeRef.collection("opportunities").doc(ids.lastFieldOffer),
     officeRef.collection("opportunities").doc(ids.request),
@@ -578,6 +635,14 @@ async function cleanupSeed() {
     partnerRef.collection("opportunities").doc(ids.coopPartner)
   ];
   await Promise.all(refs.map(deleteIfExists));
+  try {
+    const sessions = await officeRef.collection("partySessions").where("matchId", "==", ids.match).get();
+    await Promise.all(sessions.docs.map((doc) => doc.ref.delete()));
+  } catch { /* partySessions index may be missing; queryRunDocs still covers tagged docs */ }
+}
+
+async function cleanupSeed() {
+  await cleanupByTestRunId({ fail: false });
 }
 
 async function runJourney({ headed }) {
@@ -1118,7 +1183,13 @@ async function main() {
     const result = await runJourney({ headed: HEADED });
     report = writeReport({ headed: HEADED, ...result });
   } finally {
-    try { await cleanupSeed(); } catch (error) { console.warn("cleanup", error.message); }
+    try {
+      await cleanupByTestRunId({ fail: true });
+      record("E2E cleanup", "PASS — LIVE E2E", { persistence: "PASS", note: `testRunId ${RUN_ID} removed` });
+    } catch (error) {
+      record("E2E cleanup", "FAIL — LIVE E2E", { persistence: "FAIL", note: error.message });
+      process.exitCode = 1;
+    }
     try { await app.delete(); } catch { /* ignore */ }
   }
   if (!report?.coreFlowVerified) process.exitCode = 2;

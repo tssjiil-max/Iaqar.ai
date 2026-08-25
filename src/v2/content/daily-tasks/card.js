@@ -50,22 +50,29 @@ function nl(value) {
 function clockLabel(value) {
   const at = new Date(value);
   if (!Number.isFinite(at.getTime())) return "";
-  return at.toLocaleString("ar-SA", {
+  return at.toLocaleString("en-US", {
     timeZone: "Asia/Riyadh",
     hour: "numeric",
     minute: "2-digit",
-    hour12: false
-  }).replace(/\s+/g, " ").trim();
+    hour12: true
+  })
+    .replace(/\u202f/g, " ")
+    .replace(/\s*AM/i, " ص")
+    .replace(/\s*PM/i, " م")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function purposeWord(listing = {}) {
+  const purpose = String(listing.purpose || "").toUpperCase();
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
+  if (purpose === "SALE" || purpose === "PURCHASE") return "للبيع";
+  if (purpose === "INVESTMENT") return "للاستثمار";
+  return String(listing.purpose || "").trim();
 }
 
 function typePurpose(listing = {}) {
-  const purpose = String(listing.purpose || "").toUpperCase();
-  const word = purpose === "RENT" || purpose === "LEASE_REQUEST"
-    ? "للإيجار"
-    : purpose === "SALE" || purpose === "PURCHASE"
-      ? "للبيع"
-      : "";
-  return [listing.propertyType, word].filter(Boolean).join(" ");
+  return [listing.propertyType, purposeWord(listing)].filter(Boolean).join(" ");
 }
 
 function districtOnly(listing = {}) {
@@ -73,20 +80,21 @@ function districtOnly(listing = {}) {
 }
 
 function summaryHtml(task = {}) {
-  const badge = task.badgeLabel
-    ? `<span class="cv2-exec-badge${task.badgeKey === "overdue" ? " is-late" : ""}">${escapeContentHtml(task.badgeLabel)}</span>`
+  const clock = task.clockLabel || task.badgeLabel;
+  const badge = clock
+    ? `<span class="cv2-exec-badge${task.badgeKey === "overdue" ? " is-late" : ""}">${escapeContentHtml(clock)}</span>`
     : "";
-  const reference = task.referenceCode
-    ? `<span class="cv2-exec-ref">${escapeContentHtml(task.referenceCode)}</span>`
+  const identity = task.identityLine || task.typePurposeLine
+    ? `<p class="cv2-exec-summary">${escapeContentHtml(task.identityLine || task.typePurposeLine)}</p>`
+    : (task.propertyLine ? `<p class="cv2-exec-summary">${nl(task.propertyLine)}</p>` : "");
+  const city = task.placeLine && task.placeLine !== (task.identityLine || "")
+    ? `<p class="cv2-exec-place">${escapeContentHtml(task.placeLine)}</p>`
     : "";
   const money = task.taskKind === "cooperation"
     ? ""
     : (task.moneyLine ? `<p class="cv2-exec-money">${nl(task.moneyLine)}</p>` : "");
-  const typeLine = task.typePurposeLine
-    ? `<p class="cv2-exec-summary">${escapeContentHtml(task.typePurposeLine)}</p>`
-    : (task.propertyLine ? `<p class="cv2-exec-summary">${nl(task.propertyLine)}</p>` : "");
-  const place = task.placeLine
-    ? `<p class="cv2-exec-place">${escapeContentHtml(task.placeLine)}</p>`
+  const reference = task.referenceCode
+    ? `<p class="cv2-exec-ref">${escapeContentHtml(task.referenceCode)}</p>`
     : "";
   const count = task.candidateCountLine
     ? `<p class="cv2-exec-count">${escapeContentHtml(task.candidateCountLine)}</p>`
@@ -103,23 +111,28 @@ function summaryHtml(task = {}) {
     : "";
   return `<header class="cv2-exec-head">
       <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
-      <span class="cv2-exec-head-meta">${reference}${badge}</span>
+      <span class="cv2-exec-head-meta">${badge}</span>
     </header>
-    ${typeLine}
-    ${place}
+    ${identity}
+    ${city}
     ${count}
     ${partner}
     ${proximity}
     ${money}
+    ${reference}
     ${status}`;
 }
 
 function listingFacts(listing = {}, { moneyLabel = "", money = "" } = {}) {
   const bits = [];
-  const head = typePurpose(listing);
-  if (head) bits.push(`<p>${escapeContentHtml(head)}</p>`);
+  if (listing.propertyType) {
+    bits.push(`<p>نوع العقار: ${escapeContentHtml(listing.propertyType)}</p>`);
+  }
+  const purpose = purposeWord(listing);
+  if (purpose) bits.push(`<p>الغرض: ${escapeContentHtml(purpose)}</p>`);
   const district = districtOnly(listing);
-  if (district) bits.push(`<p>${escapeContentHtml(district)}</p>`);
+  if (district) bits.push(`<p>الحي: ${escapeContentHtml(district)}</p>`);
+  if (listing.city) bits.push(`<p>المدينة: ${escapeContentHtml(listing.city)}</p>`);
   const amount = money || listing.money;
   if (amount) {
     const label = moneyLabel || (listing.kindLabel === "طلب العميل" ? "الميزانية" : "السعر");
@@ -290,6 +303,7 @@ export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = 
       data-offer-id="${escapeContentHtml(task.offerId || "")}"
       data-request-id="${escapeContentHtml(task.requestId || "")}"
       data-opportunity-id="${escapeContentHtml(task.opportunityId || "")}"
+      data-integrity="${escapeContentHtml(task.dataIntegrity || "ok")}"
       data-counterpart-id="${escapeContentHtml(task.counterpartOpportunityId || "")}"
       data-target-office="${escapeContentHtml(task.targetOfficeId || "")}"
       data-origin-office="${escapeContentHtml(task.originatingOfficeId || "")}"

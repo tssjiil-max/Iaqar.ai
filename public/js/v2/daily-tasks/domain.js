@@ -55,10 +55,21 @@ export const DAILY_TASK_STATUS_LABELS = Object.freeze({
 });
 
 export const DAILY_TASK_BADGE = Object.freeze({
-  now: "الآن",
-  today: "اليوم",
   overdue: "متأخر"
 });
+
+export const TASK_DATA_INTEGRITY = Object.freeze({
+  OK: "ok",
+  INVALID_TASK_DATA: "INVALID_TASK_DATA"
+});
+
+const RIYADH_TZ = "Asia/Riyadh";
+const MONTHS_AR = Object.freeze([
+  "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+]);
+
+const dailyTaskDiagnostics = [];
 
 export const EXEC_ACTION = Object.freeze({
   SEND_TO_CLIENT: "send_to_client",
@@ -198,6 +209,228 @@ function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+export function coerceDailyTaskDate(value) {
+  if (!value && value !== 0) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value?.toDate === "function") {
+    const date = value.toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+  if (typeof value === "object") {
+    const seconds = Number(value.seconds ?? value._seconds);
+    if (Number.isFinite(seconds)) {
+      const nanos = Number(value.nanoseconds ?? value._nanoseconds ?? 0);
+      const date = new Date(seconds * 1000 + nanos / 1e6);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function riyadhDayKey(date) {
+  return date.toLocaleDateString("en-CA", { timeZone: RIYADH_TZ });
+}
+
+function riyadhDateParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: RIYADH_TZ,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric"
+  }).formatToParts(date);
+  const read = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return { year: read("year"), month: read("month"), day: read("day") };
+}
+
+function formatClockTime(date) {
+  return date.toLocaleString("en-US", {
+    timeZone: RIYADH_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  })
+    .replace(/\u202f/g, " ")
+    .replace(/\s*AM/i, " ص")
+    .replace(/\s*PM/i, " م")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function formatDailyTaskClock(value, now = new Date()) {
+  const at = coerceDailyTaskDate(value);
+  const current = coerceDailyTaskDate(now) || new Date();
+  if (!at) return "";
+  const time = formatClockTime(at);
+  const thatDay = riyadhDayKey(at);
+  const today = riyadhDayKey(current);
+  if (thatDay === today) return time;
+  const yesterday = new Date(current.getTime() - 24 * 60 * 60 * 1000);
+  if (thatDay === riyadhDayKey(yesterday)) return `أمس · ${time}`;
+  const parts = riyadhDateParts(at);
+  const nowYear = riyadhDateParts(current).year;
+  const monthName = MONTHS_AR[parts.month - 1] || "";
+  if (parts.year === nowYear) return `${parts.day} ${monthName} · ${time}`;
+  return `${parts.day} ${monthName} ${parts.year} · ${time}`;
+}
+
+export function isDedicatedQaOffice(officeId = "") {
+  const id = String(officeId || "").trim().toLowerCase();
+  return id.startsWith("qa-") || id.startsWith("qa_e2e") || id.includes("qa-e2e");
+}
+
+export function isTestFixtureRecord(item = {}) {
+  if (item?.isTestFixture === true || item?.qaLiveE2e === true) return true;
+  if (upper(item?.createdBy) === "E2E") return true;
+  if (text(item?.testRunId) || text(item?.qaLiveRunId)) return true;
+  const blob = [
+    item?.id, item?.matchId, item?.recordId, item?.opportunityId,
+    item?.clientRequestId, item?.ownerOfferId, item?.offerId, item?.requestId,
+    item?.sourceType
+  ].map((value) => text(value)).join(" ");
+  return /livee2e_|\bqa_/i.test(blob) || /\blive_e2e\b/i.test(blob);
+}
+
+export function consumeDailyTaskDiagnostics() {
+  return dailyTaskDiagnostics.splice(0, dailyTaskDiagnostics.length);
+}
+
+function pushDailyTaskDiagnostic(entry) {
+  dailyTaskDiagnostics.push(entry);
+  if (typeof console !== "undefined" && typeof console.warn === "function") {
+    console.warn("[iaqar] INVALID_TASK_DATA", entry);
+  }
+}
+
+export function opportunityIdFromItem(item = {}) {
+  const raw = text(item.recordId || item.opportunityId || item.id);
+  return raw.replace(/^opp-/, "");
+}
+
+export function indexOpportunityItems(items = []) {
+  const map = new Map();
+  for (const item of items) {
+    if (String(item?.recordType || "").toLowerCase() !== "opportunity") continue;
+    const id = opportunityIdFromItem(item);
+    if (id) map.set(id, item);
+  }
+  return map;
+}
+
+function listingHasIdentity(listing = {}) {
+  return Boolean(text(listing.propertyType) && (text(listing.district) || text(listing.city)));
+}
+
+function matchIdsFrom(item = {}) {
+  const recordType = String(item.recordType || "").toLowerCase();
+  return {
+    matchId: text(item.matchId || (recordType === "match" ? item.recordId || item.id : "")),
+    requestId: text(item.clientRequestId || item.requestId),
+    offerId: text(item.ownerOfferId || item.offerId)
+  };
+}
+
+export function diagnoseMatchLinkage(item = {}, opportunities = new Map()) {
+  const ids = matchIdsFrom(item);
+  const reasons = [];
+  if (!ids.matchId) reasons.push("missing_matchId");
+  if (!ids.requestId) reasons.push("missing_requestId");
+  if (!ids.offerId) reasons.push("missing_offerId");
+  const request = item._canonicalRequest || opportunities.get(ids.requestId) || null;
+  const offer = item._canonicalOffer || opportunities.get(ids.offerId) || null;
+  if (opportunities.size) {
+    if (ids.requestId && !request) reasons.push("unresolved_request");
+    if (ids.offerId && !offer) reasons.push("unresolved_offer");
+  }
+  const sourceOk = listingHasIdentity({
+    propertyType: item.propertyType || request?.propertyType,
+    district: item.district || request?.district,
+    city: item.city || request?.city
+  });
+  const offerOk = listingHasIdentity({
+    propertyType: item.candidatePropertyType || item.propertyType || offer?.propertyType,
+    district: item.candidateDistrict || item.district || offer?.district,
+    city: item.candidateCity || item.city || offer?.city
+  });
+  if (!sourceOk) reasons.push("incomplete_request_listing");
+  if (!offerOk) reasons.push("incomplete_offer_listing");
+  const unique = [...new Set(reasons)];
+  return {
+    ok: unique.length === 0,
+    code: unique.length ? TASK_DATA_INTEGRITY.INVALID_TASK_DATA : TASK_DATA_INTEGRITY.OK,
+    reasons: unique,
+    matchId: ids.matchId,
+    requestId: ids.requestId,
+    offerId: ids.offerId,
+    request,
+    offer
+  };
+}
+
+function overlayListing(item, opportunity, role) {
+  if (!opportunity) return item;
+  const next = { ...item };
+  if (role === "request") {
+    next.propertyType = text(next.propertyType) || opportunity.propertyType;
+    next.purpose = text(next.purpose) || opportunity.purpose || opportunity.transactionType;
+    next.district = text(next.district) || opportunity.district;
+    next.city = text(next.city) || opportunity.city;
+    next.budget = next.budget || opportunity.budget || opportunity.priceOrBudget;
+    next.area = next.area || opportunity.area;
+    next.clientPhone = text(next.clientPhone) || opportunity.contactPhone;
+    next.clientName = text(next.clientName) || opportunity.contactName;
+    next._canonicalRequest = opportunity;
+  } else {
+    next.candidatePropertyType = text(next.candidatePropertyType) || opportunity.propertyType;
+    next.candidatePurpose = text(next.candidatePurpose) || opportunity.purpose || opportunity.transactionType;
+    next.candidateDistrict = text(next.candidateDistrict) || opportunity.district;
+    next.candidateCity = text(next.candidateCity) || opportunity.city;
+    next.candidateSalePrice = next.candidateSalePrice || opportunity.salePrice || opportunity.annualRent || opportunity.priceOrBudget;
+    next.candidateArea = next.candidateArea || opportunity.area;
+    next.salePrice = next.salePrice || opportunity.salePrice;
+    next.annualRent = next.annualRent || opportunity.annualRent;
+    next.ownerPhone = text(next.ownerPhone) || opportunity.contactPhone;
+    next.ownerName = text(next.ownerName) || opportunity.contactName;
+    next._canonicalOffer = opportunity;
+  }
+  return next;
+}
+
+export function hydrateMatchItemFromOpportunities(item = {}, opportunities = new Map()) {
+  const ids = matchIdsFrom(item);
+  let next = {
+    ...item,
+    matchId: ids.matchId || item.matchId,
+    requestId: ids.requestId,
+    offerId: ids.offerId,
+    clientRequestId: ids.requestId,
+    ownerOfferId: ids.offerId
+  };
+  next = overlayListing(next, opportunities.get(ids.requestId), "request");
+  next = overlayListing(next, opportunities.get(ids.offerId), "offer");
+  return next;
+}
+
+function uniqueMatchItems(items = []) {
+  const ranked = [...items].sort((a, b) => {
+    const score = (item) => {
+      let value = String(item.recordType || "").toLowerCase() === "match" ? 2 : 0;
+      if (item._canonicalRequest || item._canonicalOffer) value += 1;
+      return value;
+    };
+    return score(b) - score(a);
+  });
+  const seen = new Set();
+  const out = [];
+  for (const item of ranked) {
+    const id = matchIdsFrom(item).matchId || text(item.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
 function purposeWord(record = {}) {
   const purpose = upper(record.purpose || record.transactionType);
   if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
@@ -221,6 +454,12 @@ export function dailyTaskPlaceLine(record = {}) {
   const district = text(record.district).replace(/^حي\s+/, "");
   const city = text(record.city);
   return [district, city].filter(Boolean).join(" · ");
+}
+
+export function dailyTaskIdentityLine(record = {}) {
+  const head = dailyTaskTypePurposeLine(record);
+  const district = districtBit(record);
+  return [head, district].filter(Boolean).join(" · ");
 }
 
 export function dailyTaskPropertyLine(record = {}) {
@@ -303,26 +542,51 @@ function sendToOwnerAction(record = {}) {
   };
 }
 
+function canOpenOffer(record = {}) {
+  if (record.canOpenOffer === false) return false;
+  if (record.dataIntegrity === TASK_DATA_INTEGRITY.INVALID_TASK_DATA) return false;
+  return Boolean(text(record.offerId || record.ownerOfferId));
+}
+
+function canSendParty(record = {}, party = "client") {
+  if (record.dataIntegrity === TASK_DATA_INTEGRITY.INVALID_TASK_DATA) return false;
+  if (!text(record.matchId)) return false;
+  if (!text(record.offerId || record.ownerOfferId)) return false;
+  if (!text(record.requestId || record.clientRequestId || record.opportunityId)) return false;
+  if (party === "owner") {
+    if (record.canSendToOwner === false) return false;
+    if (record.canSendToOwner === true) return true;
+    return Boolean(text(record.ownerPhone || record.ownerContactPhone) || record.canSendToOwner == null);
+  }
+  if (record.canSendToClient === false) return false;
+  if (record.canSendToClient === true) return true;
+  return Boolean(text(record.clientPhone || record.clientContactPhone) || record.canSendToClient == null);
+}
+
 function actionsForState(stateKey, record = {}) {
   const secondary = [];
   let primary = null;
+  if (record.dataIntegrity === TASK_DATA_INTEGRITY.INVALID_TASK_DATA) {
+    return { primaryAction: null, secondaryActions: [] };
+  }
   const ownerNeeded = Boolean(record.ownerContactNeeded);
   const living = upper(record.livingStage);
+  const offerAction = canOpenOffer(record) ? openOfferAction(record) : null;
   if (living === LIVING_TASK_STAGE.FOLLOW_UP) {
     primary = confirmDealAction();
-    secondary.push(openOfferAction(record));
+    if (offerAction) secondary.push(offerAction);
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
   if (ownerNeeded) {
-    primary = sendToOwnerAction(record);
-    secondary.push(openOfferAction(record));
+    primary = canSendParty(record, "owner") ? sendToOwnerAction(record) : null;
+    if (offerAction) secondary.push(offerAction);
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
   if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
     || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
     || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
-    secondary.push(openOfferAction(record));
+    if (offerAction) secondary.push(offerAction);
     return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
   }
   if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
@@ -331,7 +595,12 @@ function actionsForState(stateKey, record = {}) {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة العرض التالي"
       };
-    } else {
+    } else if (Number(record.candidateCount || 0) > 1) {
+      primary = {
+        id: EXEC_ACTION.REVIEW_NEXT,
+        label: "مراجعة المطابقات"
+      };
+    } else if (canSendParty(record, "client")) {
       primary = sendToClientAction(record);
     }
   }
@@ -342,10 +611,10 @@ function actionsForState(stateKey, record = {}) {
       label: "استكمال"
     };
   }
-  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT) {
+  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT && canSendParty(record, "client")) {
     secondary.push(sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال"));
   }
-  secondary.push(openOfferAction(record));
+  if (offerAction) secondary.push(offerAction);
   return {
     primaryAction: primary,
     secondaryActions: secondary.slice(0, 2)
@@ -372,6 +641,9 @@ export function dailyTaskPriorityGroup(stateKey, badgeKey, sortGroup = "") {
 export function buildDailyTaskView(record = {}) {
   const stateKey = record.stateKey || DAILY_TASK_STATE.NEW_MATCH;
   const badgeKey = record.badgeKey || (stateKey === DAILY_TASK_STATE.APPOINTMENT_TODAY ? "today" : "now");
+  const now = coerceDailyTaskDate(record.now) || new Date();
+  const occurredAt = record.createdAt || record.updatedAt || record.livingUpdatedAt;
+  const clockLabel = text(record.clockLabel) || formatDailyTaskClock(occurredAt, now);
   const nextByState = {
     [DAILY_TASK_STATE.NEW_MATCH]: "",
     [DAILY_TASK_STATE.AWAITING_SEND]: "",
@@ -388,14 +660,24 @@ export function buildDailyTaskView(record = {}) {
   const referenceCode = text(record.referenceCode) || formatOpportunityReference(
     record.opportunityId || record.offerId || record.requestId || record.id
   );
-  const typePurposeLine = text(record.typePurposeLine) || dailyTaskTypePurposeLine(record);
+  const identityLine = text(record.identityLine) || dailyTaskIdentityLine(record);
+  const typePurposeLine = text(record.typePurposeLine) || identityLine || dailyTaskTypePurposeLine(record);
   const placeLine = text(record.placeLine) || dailyTaskPlaceLine(record);
   return {
     id: text(record.id),
     stateKey,
     kindLabel: text(record.kindLabel) || DAILY_TASK_STATE_LABELS[stateKey] || DAILY_TASK_STATE_LABELS.new_match,
     badgeKey,
-    badgeLabel: DAILY_TASK_BADGE[badgeKey] || "",
+    badgeLabel: badgeKey === "overdue" && !clockLabel ? DAILY_TASK_BADGE.overdue : clockLabel,
+    clockLabel,
+    createdAt: occurredAt || "",
+    dataIntegrity: record.dataIntegrity || TASK_DATA_INTEGRITY.OK,
+    integrityReasons: Array.isArray(record.integrityReasons) ? record.integrityReasons : [],
+    canSendToClient: record.canSendToClient,
+    canSendToOwner: record.canSendToOwner,
+    canOpenOffer: record.canOpenOffer,
+    isTestFixture: Boolean(record.isTestFixture),
+    testRunId: text(record.testRunId),
     referenceCode,
     workflowId: text(record.workflowId || record.groupKey || record.id),
     propertyType: text(record.propertyType),
@@ -457,7 +739,8 @@ export function buildDailyTaskView(record = {}) {
     livingUpdatedAt: text(record.livingUpdatedAt || record.updatedAt),
     hasNewResponse: Boolean(record.hasNewResponse),
     partnerOfficeName: text(record.partnerOfficeName),
-    partnerOfficeId: text(record.partnerOfficeId)
+    partnerOfficeId: text(record.partnerOfficeId),
+    identityLine
   };
 }
 
@@ -629,7 +912,19 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     livingTimeline: item.livingTimeline || item.livingTimelineJson || item.metadata?.livingTimeline,
     hasNewResponse: item.hasNewResponse || item.metadata?.hasNewResponse,
     nextActor: item.nextActor || item.metadata?.nextActor,
-    livingUpdatedAt: item.livingUpdatedAt || item.metadata?.livingUpdatedAt || item.updatedAt
+    livingUpdatedAt: item.livingUpdatedAt || item.metadata?.livingUpdatedAt || item.updatedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    now,
+    isTestFixture: item.isTestFixture === true || item.qaLiveE2e === true,
+    testRunId: item.testRunId || item.qaLiveRunId || "",
+    createdBy: item.createdBy || "",
+    candidatePropertyType: item.candidatePropertyType,
+    candidatePurpose: item.candidatePurpose,
+    candidateDistrict: item.candidateDistrict,
+    candidateCity: item.candidateCity,
+    candidateSalePrice: item.candidateSalePrice,
+    candidateArea: item.candidateArea
   };
 }
 
@@ -737,9 +1032,11 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     purpose: source.purpose || proposed.purpose,
     district: source.district || proposed.district,
     city: source.city || proposed.city,
-    typePurposeLine: dailyTaskTypePurposeLine(source.propertyType ? source : proposed),
-    placeLine: dailyTaskPlaceLine(source.district || source.city ? source : proposed),
-    propertyLine: [dailyTaskTypePurposeLine(source.propertyType ? source : proposed), dailyTaskPlaceLine(source.district || source.city ? source : proposed)].filter(Boolean).join("\n"),
+    typePurposeLine: dailyTaskIdentityLine(source.propertyType ? source : proposed),
+    identityLine: dailyTaskIdentityLine(source.propertyType ? source : proposed),
+    placeLine: text((source.district || source.city ? source : proposed).city),
+    propertyLine: dailyTaskIdentityLine(source.propertyType ? source : proposed),
+    now,
     salePrice: proposed.salePrice,
     budget: source.budget,
     candidateCount,
@@ -754,7 +1051,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     waiting: Boolean(copy.waiting),
     requiresAction: !copy.waiting,
     requiresActionBy: group.living.nextActor || "",
-    revealClosedLabel: copy.revealClosedLabel,
+    revealClosedLabel: candidateCount > 1 ? "مراجعة المطابقات" : copy.revealClosedLabel,
     revealOpenLabel: copy.revealOpenLabel,
     kindLabel: copy.kindLabel,
     statusLabel: copy.statusLabel,
@@ -772,7 +1069,16 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     matchId: group.living.activeMatchId || active.matchId,
     offerId: active.ownerOfferId || active.offerId,
     requestId: active.clientRequestId || active.requestId,
-    opportunityId
+    opportunityId,
+    createdAt: active.createdAt || group.living.livingUpdatedAt,
+    updatedAt: active.updatedAt || group.living.livingUpdatedAt,
+    dataIntegrity: active.dataIntegrity || TASK_DATA_INTEGRITY.OK,
+    integrityReasons: active.integrityReasons || [],
+    canSendToClient: active.canSendToClient,
+    canSendToOwner: active.canSendToOwner,
+    canOpenOffer: active.canOpenOffer !== false && Boolean(text(active.ownerOfferId || active.offerId)),
+    isTestFixture: Boolean(active.isTestFixture),
+    testRunId: text(active.testRunId)
   });
 }
 
@@ -799,12 +1105,19 @@ export function mapOperationsItemToDailyTask(item = {}, now = new Date(), { offi
   return buildDailyTaskView(matchRecordFromItem(item, now));
 }
 
-export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), { officeId = "" } = {}) {
+export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
+  officeId = "",
+  showTestFixtures = false
+} = {}) {
   const views = [];
   const seen = new Set();
+  const seenMatchIds = new Set();
+  const allowFixtures = showTestFixtures || isDedicatedQaOffice(officeId);
+  const opportunities = indexOpportunityItems(items);
   const matchItems = [];
   for (const item of items) {
     if (!isDailyTaskExecutionSource(item)) continue;
+    if (!allowFixtures && isTestFixtureRecord(item)) continue;
     if (isCooperationSource(item)) {
       const view = mapOperationsItemToDailyTask(item, now, { officeId });
       const key = view?.cooperationTaskId || view?.id;
@@ -813,13 +1126,49 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), { o
       views.push(view);
       continue;
     }
-    matchItems.push(item);
+    matchItems.push(hydrateMatchItemFromOpportunities(item, opportunities));
   }
-  for (const group of groupMatchItems(matchItems)) {
+  const unique = uniqueMatchItems(matchItems);
+  const valid = [];
+  for (const item of unique) {
+    const diagnosis = diagnoseMatchLinkage(item, opportunities);
+    if (!diagnosis.ok) {
+      pushDailyTaskDiagnostic({
+        code: TASK_DATA_INTEGRITY.INVALID_TASK_DATA,
+        taskId: text(item.id || diagnosis.matchId),
+        matchId: diagnosis.matchId,
+        requestId: diagnosis.requestId,
+        offerId: diagnosis.offerId,
+        reasons: diagnosis.reasons,
+        canonicalRequest: Boolean(diagnosis.request),
+        canonicalOffer: Boolean(diagnosis.offer),
+        isTestFixture: isTestFixtureRecord(item)
+      });
+      continue;
+    }
+    const clientPhone = text(item.clientPhone || diagnosis.request?.contactPhone);
+    const ownerPhone = text(item.ownerPhone || diagnosis.offer?.contactPhone);
+    valid.push({
+      ...item,
+      dataIntegrity: TASK_DATA_INTEGRITY.OK,
+      canSendToClient: Boolean(clientPhone) || !opportunities.size,
+      canSendToOwner: Boolean(ownerPhone) || !opportunities.size,
+      canOpenOffer: Boolean(diagnosis.offerId && (diagnosis.offer || !opportunities.size)),
+      clientPhone: clientPhone || item.clientPhone,
+      ownerPhone: ownerPhone || item.ownerPhone
+    });
+  }
+  for (const group of groupMatchItems(valid)) {
     const view = buildMatchGroupDailyTask(group, now);
     const key = view?.id || view?.groupKey;
+    const matchKey = text(view?.matchId);
     if (!view || !key || seen.has(key)) continue;
+    if (matchKey && seenMatchIds.has(matchKey) && Number(view.candidateCount || 0) <= 1) continue;
     seen.add(key);
+    if (matchKey) seenMatchIds.add(matchKey);
+    for (const candidate of view.candidates || []) {
+      if (candidate.matchId) seenMatchIds.add(candidate.matchId);
+    }
     views.push(view);
   }
   return sortDailyTaskViews(views);
@@ -866,7 +1215,8 @@ export function dailyTasksDemoFixtures() {
     buildDailyTaskView({
       id: "task_new_match",
       stateKey: DAILY_TASK_STATE.NEW_MATCH,
-      badgeKey: "now",
+      createdAt: "2026-08-25T21:21:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "أرض",
       purpose: "SALE",
@@ -885,7 +1235,8 @@ export function dailyTasksDemoFixtures() {
     buildDailyTaskView({
       id: "task_awaiting_client",
       stateKey: DAILY_TASK_STATE.AWAITING_CLIENT,
-      badgeKey: "today",
+      createdAt: "2026-08-25T11:05:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "شقة",
       purpose: "SALE",
@@ -893,12 +1244,14 @@ export function dailyTasksDemoFixtures() {
       salePrice: 850000,
       matchId: "match_wait_1",
       offerId: "offer_wait_1",
+      requestId: "request_wait_1",
       opportunityId: "offer_wait_1"
     }),
     buildDailyTaskView({
       id: "task_interested",
       stateKey: DAILY_TASK_STATE.CLIENT_INTERESTED,
-      badgeKey: "today",
+      createdAt: "2026-08-25T10:00:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "فيلا",
       purpose: "SALE",
@@ -906,12 +1259,14 @@ export function dailyTasksDemoFixtures() {
       salePrice: 1200000,
       matchId: "match_hot_1",
       offerId: "offer_hot_1",
+      requestId: "request_hot_1",
       opportunityId: "offer_hot_1"
     }),
     buildDailyTaskView({
       id: "task_needs_details",
       stateKey: DAILY_TASK_STATE.CLIENT_NEEDS_DETAILS,
-      badgeKey: "today",
+      createdAt: "2026-08-25T09:00:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "REQUEST",
       propertyType: "شقة",
       purpose: "RENT",
@@ -919,12 +1274,14 @@ export function dailyTasksDemoFixtures() {
       annualRent: 45000,
       matchId: "match_info_1",
       requestId: "request_info_1",
+      offerId: "offer_info_1",
       opportunityId: "request_info_1"
     }),
     buildDailyTaskView({
       id: "task_unsuitable",
       stateKey: DAILY_TASK_STATE.MATCH_UNSUITABLE,
-      badgeKey: "today",
+      createdAt: "2026-08-24T20:43:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "دور",
       purpose: "SALE",
@@ -932,12 +1289,15 @@ export function dailyTasksDemoFixtures() {
       salePrice: 720000,
       matchId: "match_no_1",
       offerId: "offer_no_1",
+      requestId: "request_no_1",
       opportunityId: "offer_no_1"
     }),
     buildDailyTaskView({
       id: "task_overdue",
       stateKey: DAILY_TASK_STATE.NEW_MATCH,
       badgeKey: "overdue",
+      createdAt: "2026-08-24T20:43:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "أرض",
       purpose: "SALE",
@@ -945,12 +1305,14 @@ export function dailyTasksDemoFixtures() {
       salePrice: 640000,
       matchId: "match_late_1",
       offerId: "offer_late_1",
+      requestId: "request_late_1",
       opportunityId: "offer_late_1"
     }),
     buildDailyTaskView({
       id: "task_appointment_today",
       stateKey: DAILY_TASK_STATE.APPOINTMENT_TODAY,
-      badgeKey: "today",
+      createdAt: "2026-08-25T08:00:00.000+03:00",
+      now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",
       propertyType: "أرض",
       purpose: "SALE",
@@ -959,6 +1321,7 @@ export function dailyTasksDemoFixtures() {
       salePrice: 500000,
       matchId: "match_visit_1",
       offerId: "offer_visit_1",
+      requestId: "request_visit_1",
       opportunityId: "offer_visit_1"
     })
   ]);
