@@ -116,6 +116,16 @@ export function seedWorld() {
     advertiserRole: "OWNER",
     contactPhone: ""
   });
+  const roleOnly = opportunity("qa_offer_role", OFFICES.client.id, {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    district: "السكب",
+    salePrice: 850000,
+    area: 1175,
+    advertiserRole: "UNKNOWN",
+    contactPhone: "0503331849"
+  });
   const nomatch = opportunity("qa_req_nomatch", OFFICES.client.id, {
     opportunityKind: "REQUEST",
     purpose: "SALE",
@@ -200,6 +210,7 @@ export function seedWorld() {
     [incomplete.id]: incomplete,
     [lastField.id]: lastField,
     [phoneOnly.id]: phoneOnly,
+    [roleOnly.id]: roleOnly,
     [nomatch.id]: nomatch,
     [multiReq.id]: multiReq,
     [coopReq.id]: coopReq,

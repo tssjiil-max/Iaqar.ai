@@ -16,7 +16,9 @@ test("send to client opens a WhatsApp deep-link and says تم فتح واتسا�
   await expect(page.locator("#toast")).not.toContainText("تم إرسال الرسالة");
   const opened = await page.evaluate(() => window.__QA_OPENED__);
   expect(opened).toMatch(/^https:\/\/wa\.me\/966501111842\?text=/);
-  expect(opened).toMatch(/cv2Party=[a-f0-9]{32,}/i);
+  const token = extractPartyToken(opened);
+  expect(token, "secure party token missing from WhatsApp URL").toMatch(/^[a-f0-9]{32,128}$/i);
+  expect(opened.toLowerCase()).toContain("cv2party");
 });
 
 test("client party page shows the listing and never the owner phone", async ({ page, context }) => {
@@ -25,6 +27,7 @@ test("client party page shows the listing and never the owner phone", async ({ p
   const card = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
   await card.getByTestId("match-open").click();
   await card.getByTestId("send-client").click();
+  await expect(page.locator("#toast")).toContainText("تم فتح واتساب");
   const opened = await page.evaluate(() => window.__QA_OPENED__);
   const token = extractPartyToken(opened);
   expect(token).toBeTruthy();
@@ -49,6 +52,7 @@ test("client interested updates the same broker task timeline after reload", asy
   const card = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
   await card.getByTestId("match-open").click();
   await card.getByTestId("send-client").click();
+  await expect(page.locator("#toast")).toContainText("تم فتح واتساب");
   const token = extractPartyToken(await page.evaluate(() => window.__QA_OPENED__));
   const partyPage = await context.newPage();
   await openParty(partyPage, token, ORIGIN);
@@ -80,11 +84,44 @@ test("client needs more details shows follow-up choices", async ({ page, request
   await expect(partyPage.locator(".party-revealed")).toBeVisible();
 });
 
+test("client not_suitable persists on reload", async ({ page, request, context }) => {
+  const minted = await request.post("/party/sessions", {
+    data: { officeId: "qa-office-client", matchId: "match_aziz_1842", party: "client" }
+  });
+  const { token } = await minted.json();
+  const partyPage = await context.newPage();
+  await openParty(partyPage, token, ORIGIN);
+  await partyPage.getByTestId("party-not_suitable").click();
+  await expect(partyPage.getByText("تم تسجيل ردك")).toBeVisible();
+  await partyPage.reload();
+  await expect(partyPage.getByText("غير مناسب")).toBeVisible();
+});
+
+test("owner unavailable updates the broker task", async ({ page, request, context }) => {
+  await request.post("/party/sessions", {
+    data: { officeId: "qa-office-client", matchId: "match_aziz_1842", party: "client" }
+  });
+  const minted = await request.post("/party/sessions", {
+    data: { officeId: "qa-office-client", matchId: "match_aziz_1842", party: "owner" }
+  });
+  const { token } = await minted.json();
+  const ownerPage = await context.newPage();
+  await openParty(ownerPage, token, ORIGIN);
+  await ownerPage.getByTestId("party-not_available").click();
+  await expect(ownerPage.getByText("تم تسجيل ردك")).toBeVisible();
+  await page.goto("/qa/?officeId=qa-office-client&tab=tasks");
+  await expect(page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]')).toHaveCount(0);
+  const state = await request.get("/qa/state");
+  const payload = await state.json();
+  expect(payload.state.matches.match_aziz_1842.livingStage).toBe("MATCH_EXHAUSTED");
+});
+
 test("owner party never exposes the client phone and can confirm availability", async ({ page, context }) => {
   await openHarness(page);
   const card = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
   await card.getByTestId("match-open").click();
   await card.getByTestId("send-client").click();
+  await expect(page.locator("#toast")).toContainText("تم فتح واتساب");
   const clientToken = extractPartyToken(await page.evaluate(() => window.__QA_OPENED__));
   const clientPage = await context.newPage();
   await openParty(clientPage, clientToken, ORIGIN);
@@ -94,6 +131,7 @@ test("owner party never exposes the client phone and can confirm availability", 
   const after = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
   await after.getByTestId("match-open").click();
   await after.getByTestId("send-owner").click();
+  await expect(page.locator("#toast")).toContainText("تم فتح واتساب");
   const ownerToken = extractPartyToken(await page.evaluate(() => window.__QA_OPENED__));
   const ownerPage = await context.newPage();
   await openParty(ownerPage, ownerToken, ORIGIN);

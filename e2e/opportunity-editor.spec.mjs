@@ -137,3 +137,17 @@ test("saving area persists after reload", async ({ page }) => {
   await again.getByText("عرض التفاصيل").click();
   await expect(again).toContainText("1,175");
 });
+
+test("saving advertiser role persists after reload", async ({ page }) => {
+  await openHarness(page, { tab: "offers" });
+  const row = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_role"]');
+  await row.getByText("عرض التفاصيل").click();
+  await row.locator('[data-cv2-editor="advertiserRole"]').first().click();
+  await row.getByTestId("field-advertiser-role").fill("مالك");
+  await row.getByTestId("save-field").click();
+  await page.reload();
+  await page.getByTestId("tab-offers").click();
+  const again = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_role"]');
+  await again.getByText("عرض التفاصيل").click();
+  await expect(again).toContainText("مالك");
+});

@@ -186,7 +186,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
     const partyToken = String(url.searchParams.get("cv2Party") || "").trim();
-    if (partyToken && url.pathname.startsWith("/qa")) {
+    if (partyToken && (url.pathname === "/qa" || url.pathname === "/qa/" || url.pathname === "/qa/index.html")) {
       res.writeHead(302, { Location: `/?cv2Party=${encodeURIComponent(partyToken)}` });
       res.end();
       return;

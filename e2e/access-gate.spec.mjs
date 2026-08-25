@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { attachWatchers, resetQa } from "./helpers/qa.mjs";
+import { attachWatchers, resetQa, stubRemoteWorker } from "./helpers/qa.mjs";
 
 test.beforeEach(async ({ request }) => {
   await resetQa(request);
@@ -20,16 +20,7 @@ test("Party link in a clean context skips Access Gate and broker login", async (
   const payload = await mint.json();
   expect(payload.token).toBeTruthy();
   const watchers = attachWatchers(page);
-  await page.route(/https:\/\/iaqar-[^/]+workers\.dev\/.*/, async (route) => {
-    const incoming = new URL(route.request().url());
-        await route.fulfill({
-      response: await route.fetch(`http://127.0.0.1:4191${incoming.pathname}${incoming.search}`, {
-        method: route.request().method(),
-        headers: route.request().headers(),
-        data: route.request().postData()
-      })
-    });
-  });
+  await stubRemoteWorker(page, "http://127.0.0.1:4191");
   await page.goto(`/?cv2Party=${payload.token}`);
   await expect(page.locator("[data-party-shell]")).toBeVisible();
   await expect(page.locator("#accessGate, .access-gate")).toHaveCount(0);

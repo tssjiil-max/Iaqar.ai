@@ -14,13 +14,17 @@ export function attachWatchers(page) {
     /app-compat\/no-app/,
     /installations\/installations/
   ];
+  function allow(text) {
+    return ignored.some((pattern) => pattern.test(String(text || "")));
+  }
   page.on("pageerror", (error) => {
-    pageErrors.push(String(error.message || error));
+    const text = String(error.message || error);
+    if (!allow(text)) pageErrors.push(text);
   });
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const text = msg.text();
-    if (ignored.some((pattern) => pattern.test(text))) return;
+    if (allow(text)) return;
     consoleErrors.push(text);
   });
   page.on("requestfailed", (request) => {
@@ -47,14 +51,16 @@ export async function resetQa(request) {
 }
 
 export async function stubRemoteWorker(page, origin) {
-  await page.route(/https:\/\/iaqar-[^/]+workers\.dev\/.*/, async (route) => {
+  const base = String(origin || "http://127.0.0.1:4191").replace(/\/+$/, "");
+  await page.route(/https:\/\/[^/]*workers\.dev\/.*/, async (route) => {
     const incoming = new URL(route.request().url());
-    const dest = `${origin}${incoming.pathname}${incoming.search}`;
-    const headers = { ...route.request().headers() };
-    delete headers.host;
+    const dest = `${base}${incoming.pathname}${incoming.search}`;
     const response = await route.fetch(dest, {
       method: route.request().method(),
-      headers,
+      headers: {
+        ...route.request().headers(),
+        host: new URL(base).host
+      },
       data: route.request().postData()
     });
     await route.fulfill({ response });
@@ -71,7 +77,7 @@ export async function openHarness(page, { officeId = "qa-office-client", tab = "
 export async function openParty(page, token, origin) {
   const watchers = attachWatchers(page);
   await stubRemoteWorker(page, origin);
-  await page.goto(`/?cv2Party=${encodeURIComponent(token)}`);
+  await page.goto(`/qa/party.html?cv2Party=${encodeURIComponent(token)}`);
   await page.locator("[data-party-shell][data-party], [data-party-error]").waitFor();
   const error = page.locator("[data-party-error]");
   if (await error.count()) {

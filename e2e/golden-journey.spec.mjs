@@ -29,8 +29,9 @@ test("golden journey: match → WhatsApp client → interested → owner availab
   await afterClient.getByTestId("match-open").click();
   await expect(afterClient).toContainText("العميل مهتم");
   await afterClient.getByTestId("send-owner").click();
-
+  await expect(page.locator("#toast")).toContainText("تم فتح واتساب للمالك");
   const ownerToken = extractPartyToken(await page.evaluate(() => window.__QA_OPENED__));
+  expect(ownerToken, "owner party token missing from WhatsApp URL").toBeTruthy();
   const ownerPage = await context.newPage();
   await openParty(ownerPage, ownerToken, ORIGIN);
   await ownerPage.getByTestId("party-property_available").click();
