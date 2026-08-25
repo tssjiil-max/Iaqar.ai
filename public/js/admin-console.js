@@ -7,9 +7,11 @@ import {
   isPlatformAdminClaims,
   mapAdminLoginError
 } from "./admin-api.js";
+import { buildAdminDailyTasks } from "./admin-daily-domain.js";
 
 const state = {
-  view: "overview",
+  view: "daily",
+  returnView: "daily",
   officeTab: "pending",
   search: "",
   sort: "registered_desc",
@@ -71,34 +73,73 @@ function renderMainNav() {
   els.mainNav.querySelectorAll("button").forEach((button) => {
     button.onclick = () => {
       state.view = button.dataset.view;
+      state.returnView = button.dataset.view;
       renderMainNav();
       renderView().catch((error) => showStatus(els.consoleStatus, error.message));
     };
   });
 }
 
-async function renderOverview() {
-  const payload = await api.overview();
-  const o = payload.overview || {};
-  els.viewRoot.innerHTML = `
-    <div class="card">
-      <h2>نظرة عامة</h2>
-      <div class="grid">
-        ${stat("إجمالي المكاتب", o.totalOffices)}
-        ${stat("طلبات بانتظار الاعتماد", o.pendingApprovals)}
-        ${stat("المكاتب المعتمدة", o.approvedOffices)}
-        ${stat("النشطة", o.activeAccounts)}
-        ${stat("الموقوفة", o.suspendedOffices)}
-        ${stat("اشتراكات منتهية", o.expiredSubscriptions)}
-        ${stat("تراخيص منتهية", o.expiredLicenses)}
-        ${stat("نشطة آخر 7 أيام", o.activeLast7Days)}
-        ${stat("غير نشطة آخر 30 يوم", o.inactiveLast30Days)}
-      </div>
-    </div>`;
+function renderTaskCard(task) {
+  const actions = task.kind === "application"
+    ? `<button class="btn" data-approve="${escapeHtml(task.applicationId)}" type="button">اعتماد</button>
+       <button class="btn secondary" data-reject="${escapeHtml(task.applicationId)}" type="button">رفض</button>`
+    : `<button class="btn" data-detail="${escapeHtml(task.officeId)}" type="button">عرض التفاصيل</button>`;
+  const meta = task.kind === "application"
+    ? `<div class="meta">${escapeHtml(task.brokerName)}<br>فال: ${escapeHtml(task.licenseNumber)} · الجوال: ${escapeHtml(task.phone)}</div>`
+    : "";
+  return `<article class="task-card" data-task="${escapeHtml(task.id)}">
+    <div class="task-head">
+      <span class="badge">${escapeHtml(task.urgency)}</span>
+      <h3>${escapeHtml(task.title)}</h3>
+    </div>
+    <p>${escapeHtml(task.body)}</p>
+    ${meta}
+    ${task.kind === "application" ? `<input data-office-input="${escapeHtml(task.applicationId)}" value="${escapeHtml(suggestOfficeId(task.officeName, task.applicationId))}" aria-label="رمز المكتب">` : ""}
+    <div class="task-actions">${actions}</div>
+  </article>`;
 }
 
-function stat(label, value) {
-  return `<div class="stat"><strong>${Number(value || 0)}</strong><span>${escapeHtml(label)}</span></div>`;
+async function renderDailyTasks() {
+  els.viewRoot.innerHTML = `<div id="dailyList"><p>جارٍ التحميل...</p></div>`;
+  const listNode = document.getElementById("dailyList");
+  const [pendingPayload, allPayload] = await Promise.all([
+    api.offices({ tab: "pending", limit: 100 }),
+    api.offices({ tab: "all", limit: 100 })
+  ]);
+  const applications = (pendingPayload.items || []).filter((row) => row.recordType === "application");
+  const offices = (allPayload.items || []).filter((row) => row.recordType === "office");
+  const tasks = buildAdminDailyTasks({ offices, applications });
+  listNode.innerHTML = tasks.length
+    ? tasks.map(renderTaskCard).join("")
+    : `<div class="card"><p>لا توجد مهام مطلوبة الآن.</p></div>`;
+
+  listNode.querySelectorAll("[data-approve],[data-reject]").forEach((button) => {
+    button.onclick = async () => {
+      const id = button.dataset.approve || button.dataset.reject;
+      const approve = Boolean(button.dataset.approve);
+      button.disabled = true;
+      try {
+        if (approve) {
+          const input = listNode.querySelector(`[data-office-input="${CSS.escape(id)}"]`);
+          await api.approveApplication(id, input ? input.value : "");
+        } else {
+          await api.rejectApplication(id);
+        }
+        showStatus(els.consoleStatus, approve ? "تم اعتماد المكتب." : "تم رفض الطلب.", true);
+        await renderDailyTasks();
+      } catch (error) {
+        showStatus(els.consoleStatus, error.message);
+        button.disabled = false;
+      }
+    };
+  });
+  listNode.querySelectorAll("[data-detail]").forEach((button) => {
+    button.onclick = () => {
+      state.returnView = "daily";
+      openOfficeDetail(button.dataset.detail);
+    };
+  });
 }
 
 function officeTabsHtml() {
@@ -156,7 +197,7 @@ function renderOfficeItem(item) {
 }
 
 async function renderOffices() {
-  els.viewRoot.innerHTML = `<div class="card"><h2>إدارة المكاتب</h2>${officeTabsHtml()}${officeToolbarHtml()}<div id="officeList"><p>جارٍ التحميل...</p></div></div>`;
+  els.viewRoot.innerHTML = `<div class="card"><h2>العروض والطلبات</h2><p>إدارة المكاتب المعتمدة وطلبات التسجيل.</p>${officeTabsHtml()}${officeToolbarHtml()}<div id="officeList"><p>جارٍ التحميل...</p></div></div>`;
   const listNode = document.getElementById("officeList");
   els.viewRoot.querySelectorAll("[data-tab]").forEach((button) => {
     button.onclick = () => {
@@ -201,11 +242,15 @@ async function renderOffices() {
     };
   });
   listNode.querySelectorAll("[data-detail]").forEach((button) => {
-    button.onclick = () => openOfficeDetail(button.dataset.detail);
+    button.onclick = () => {
+      state.returnView = "requests";
+      openOfficeDetail(button.dataset.detail);
+    };
   });
   listNode.querySelectorAll("[data-activity]").forEach((button) => {
     button.onclick = () => {
       state.activityOfficeId = button.dataset.activity;
+      state.returnView = "requests";
       state.view = "activity";
       renderMainNav();
       renderView();
@@ -225,7 +270,7 @@ async function openOfficeDetail(officeId) {
   const audit = Array.isArray(detail.audit) ? detail.audit : [];
   els.viewRoot.innerHTML = `
     <div class="card">
-      <button class="btn secondary" id="backToOffices" type="button">← رجوع إلى المكاتب</button>
+      <button class="btn secondary" id="backToOffices" type="button">← رجوع</button>
       <h2>${escapeHtml(office.officeName || officeId)}</h2>
       <div class="meta">
         رمز المكتب: ${escapeHtml(officeId)}<br>
@@ -266,7 +311,7 @@ async function openOfficeDetail(officeId) {
       ${audit.length ? audit.map((row) => `<div class="list-item"><div class="meta">${escapeHtml(row.action)} · ${formatDate(row.performedAt)}<br>${escapeHtml(row.reason || "")}</div></div>`).join("") : "<p>لا توجد أحداث.</p>"}
     </div>`;
   document.getElementById("backToOffices").onclick = () => {
-    state.view = "offices";
+    state.view = state.returnView || "requests";
     renderMainNav();
     renderView();
   };
@@ -347,7 +392,10 @@ async function renderBillingView() {
     </div>`).join("") || "<p>لا توجد مكاتب.</p>"}
   </div>`;
   els.viewRoot.querySelectorAll("[data-detail]").forEach((button) => {
-    button.onclick = () => openOfficeDetail(button.dataset.detail);
+    button.onclick = () => {
+      state.returnView = "requests";
+      openOfficeDetail(button.dataset.detail);
+    };
   });
 }
 
@@ -367,11 +415,12 @@ async function renderAuditView() {
 
 async function renderView() {
   showStatus(els.consoleStatus, "");
-  if (state.view === "overview") return renderOverview();
-  if (state.view === "offices") return renderOffices();
+  if (state.view === "daily") return renderDailyTasks();
+  if (state.view === "requests") return renderOffices();
   if (state.view === "activity") return renderActivityView();
   if (state.view === "billing") return renderBillingView();
   if (state.view === "audit") return renderAuditView();
+  return renderDailyTasks();
 }
 
 async function enterConsole(user) {

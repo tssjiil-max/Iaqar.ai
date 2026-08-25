@@ -3,17 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>لوحة إدارة IAQAR.AI</title>
+  <title>لوحة الإدارة - مكاتب عقارية ذكية</title>
   <link rel="icon" href="/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f4f8f6;
+      --bg: #f3f4f6;
       --card: #fff;
-      --line: #dce8e4;
-      --text: #173d35;
-      --muted: #687c76;
-      --brand: #087064;
-      --accent: #128c7e;
+      --line: #e5e7eb;
+      --text: #1f2937;
+      --muted: #4b5563;
+      --brand: #064e3b;
+      --accent: #065f46;
       --danger: #9e3434;
       --ok: #07634f;
     }
@@ -25,47 +27,77 @@
       color: var(--text);
       min-height: 100svh;
     }
-    .shell { max-width: 960px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+    .admin-header {
+      background: var(--brand);
+      color: #fff;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(6, 78, 59, 0.2);
+    }
+    .admin-header-inner {
+      max-width: 42rem;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .admin-header h1 {
+      margin: 0;
+      font-size: 18px;
+      color: #fff;
+    }
+    .env-badge {
+      font-size: 12px;
+      background: #065f46;
+      padding: 4px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .shell { max-width: 42rem; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
     .card {
       background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 20px;
+      border: 1px solid #f3f4f6;
+      border-radius: 16px;
       padding: 16px;
       margin-bottom: 12px;
-      box-shadow: 0 8px 24px rgba(8, 112, 100, 0.05);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
     h1, h2 { color: var(--brand); margin: 0 0 8px; }
     p { color: var(--muted); line-height: 1.7; margin: 0 0 12px; }
-    .nav {
+    .tab-switch {
       display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-      margin-bottom: 12px;
-    }
-    .nav button {
-      border: 1px solid var(--line);
       background: #fff;
-      color: var(--brand);
-      border-radius: 999px;
-      padding: 10px 14px;
-      font: 700 14px Tajawal;
-      white-space: nowrap;
+      border-radius: 16px;
+      padding: 4px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      margin-bottom: 24px;
+    }
+    .tab-switch button {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: #4b5563;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: 600 15px Tajawal;
       cursor: pointer;
     }
-    .nav button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tab-switch button.active {
+      background: var(--brand);
+      color: #fff;
+    }
     .btn {
       border: 0;
-      border-radius: 14px;
-      padding: 12px 14px;
-      font: 800 15px Tajawal;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: 700 14px Tajawal;
       cursor: pointer;
       background: var(--accent);
       color: #fff;
-      width: 100%;
     }
-    .btn.secondary { background: #fff; color: var(--brand); border: 1.5px solid var(--accent); }
+    .btn.secondary { background: #f3f4f6; color: #374151; }
     .btn.danger { background: #fff0f0; color: var(--danger); border: 1px solid #f0c7c7; }
+    .btn.block { width: 100%; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .stat {
       border: 1px solid var(--line);
@@ -94,15 +126,23 @@
       font: 700 13px Tajawal;
       cursor: pointer;
     }
-    .tabs button.active { background: #eaf7f3; color: var(--brand); }
-    .list-item {
-      border: 1px solid var(--line);
+    .tabs button.active { background: #ecfdf5; color: var(--brand); }
+    .list-item, .task-card {
+      border: 1px solid #f3f4f6;
       border-radius: 16px;
-      padding: 12px;
-      margin-bottom: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
       background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
-    .list-item h3 { margin: 0 0 6px; font-size: 16px; color: var(--brand); }
+    .list-item h3, .task-card h3 { margin: 0 0 6px; font-size: 16px; color: #1f2937; }
+    .task-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
     .meta { font-size: 13px; color: var(--muted); line-height: 1.6; }
     .badge {
       display: inline-block;
@@ -110,40 +150,50 @@
       border-radius: 999px;
       font-size: 12px;
       font-weight: 700;
-      background: #eaf7f3;
-      color: var(--brand);
-      margin-left: 6px;
+      background: #ecfdf5;
+      color: #065f46;
+      white-space: nowrap;
     }
+    .task-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .task-actions .btn { width: auto; }
     .status { display: none; margin-top: 10px; padding: 10px; border-radius: 12px; font-size: 14px; }
     .status.show { display: block; }
     .status.err { background: #fff0f0; color: var(--danger); }
     .status.ok { background: #e8f7f2; color: var(--ok); }
     .hidden { display: none !important; }
     .row-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .user-line { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
     @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
+  <header class="admin-header">
+    <div class="admin-header-inner">
+      <h1>لوحة إدارة المنصة (Admin)</h1>
+      <span class="env-badge">بيئة التحكم</span>
+    </div>
+  </header>
   <div class="shell" id="app">
     <div class="card" id="loginCard">
-      <h1>لوحة إدارة IAQAR.AI</h1>
-      <p>دخول مخصص لمدير المنصة فقط.</p>
+      <h2>دخول مخصص لمدير المنصة فقط</h2>
       <form id="loginForm" class="toolbar">
         <input name="email" type="email" autocomplete="username" placeholder="البريد الإلكتروني" required>
         <input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required>
-        <button class="btn" type="submit">دخول الإدارة</button>
+        <button class="btn block" type="submit">دخول الإدارة</button>
       </form>
       <div id="status" class="status"></div>
     </div>
     <div id="console" class="hidden">
-      <div class="card">
-        <h1>لوحة إدارة IAQAR.AI</h1>
-        <p id="adminUserLine">مرحبًا</p>
-        <div class="nav" id="mainNav"></div>
-        <button class="btn secondary" id="logoutBtn" type="button">تسجيل الخروج</button>
-      </div>
+      <p class="user-line" id="adminUserLine">مرحبًا</p>
+      <div class="tab-switch" id="mainNav"></div>
       <div id="viewRoot"></div>
       <div id="consoleStatus" class="status"></div>
+      <button class="btn secondary block" id="logoutBtn" type="button">تسجيل الخروج</button>
     </div>
   </div>
 

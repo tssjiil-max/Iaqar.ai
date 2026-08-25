@@ -10,7 +10,8 @@ import {
   resolveSubscriptionStatus,
   sortOffices
 } from "../worker/src/admin-domain.js";
-import { isPlatformAdminClaims, mapAdminLoginError } from "../public/js/admin-api.js";
+import { isPlatformAdminClaims, mapAdminLoginError, MAIN_VIEWS } from "../public/js/admin-api.js";
+import { buildAdminDailyTasks } from "../public/js/admin-daily-domain.js";
 
 test("backfillOfficeRecord defaults legacy offices to approved active", () => {
   const row = backfillOfficeRecord({ officeId: "office-a", officeName: "مكتب أ" });
@@ -84,6 +85,33 @@ test("mapAdminLoginError distinguishes wrong password from unauthorized", () => 
     mapAdminLoginError({ code: "admin_required" }),
     "هذا الحساب ليس من إدارة المنصة."
   );
+});
+
+test("buildAdminDailyTasks uses real pending applications and never invents matches", () => {
+  const tasks = buildAdminDailyTasks({
+    applications: [
+      { id: "broker_1", status: "pending", officeName: "مكتب النور", brokerName: "أحمد", phone: "0500000000", falLicense: "123" },
+      { id: "broker_2", status: "rejected", officeName: "مرفوض" }
+    ],
+    offices: [
+      { officeId: "office-a", officeName: "مكتب أ", accountStatus: "suspended" },
+      { officeId: "office-b", officeName: "مكتب ب", accountStatus: "active", subscriptionStatus: "expired" }
+    ]
+  });
+  assert.equal(tasks.some((row) => row.kind === "application" && row.applicationId === "broker_1"), true);
+  assert.equal(tasks.some((row) => row.kind === "application" && row.applicationId === "broker_2"), false);
+  assert.equal(tasks.some((row) => row.kind === "suspended" && row.officeId === "office-a"), true);
+  assert.equal(tasks.some((row) => row.kind === "expired" && row.officeId === "office-b"), true);
+  assert.equal(tasks.some((row) => /مطابقة|إرسال للعميل/.test(row.title + row.body)), false);
+});
+
+test("platform admin main views are the two control tabs from the owner mockup", () => {
+  assert.deepEqual(
+    MAIN_VIEWS.map((row) => row.id),
+    ["daily", "requests"]
+  );
+  assert.equal(MAIN_VIEWS[0].label, "المهام اليومية");
+  assert.equal(MAIN_VIEWS[1].label, "العروض والطلبات");
 });
 
 test("sortOffices supports registration and activity ordering", () => {
