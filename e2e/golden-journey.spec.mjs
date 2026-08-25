@@ -58,8 +58,9 @@ test("golden journey steps 1-18: offers → match → client → owner → appoi
   const pair = (matched.matches || []).find((row) => row.requestId === REQUEST_ID && row.offerId === OFFER_ID);
   expect(pair, "matching engine did not link the QA request and offer").toBeTruthy();
   expect(pair.matchId).toBe(MATCH_ID);
-  expect(pair.created || pair.matchId === MATCH_ID).toBeTruthy();
+  expect(pair.created).toBe(true);
 
+  await page.reload();
   await page.getByTestId("tab-tasks").click();
   const card = matchCard(page);
   await expect(card).toHaveCount(1);
