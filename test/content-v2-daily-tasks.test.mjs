@@ -24,6 +24,19 @@ import {
   buildDailyTaskEmptyHtml,
   buildDailyTaskListHtml
 } from "../src/v2/content/daily-tasks/card.js";
+import {
+  buildPartyReviewUrl,
+  buildPartyWhatsAppMessage,
+  encodePartyLinkToken,
+  missingPartyPhoneMessage,
+  normalizeDailyTaskPhone,
+  PARTY_SEND_COPY,
+  parsePartyLinkToken,
+  partyTokenFromLocation,
+  phoneFromTask,
+  whatsappOpenedMessage
+} from "../src/v2/content/daily-tasks/party-link-domain.js";
+import { buildPartyReviewHtml } from "../src/v2/content/daily-tasks/party-review.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const ENGLISH_UI = /\b(Match|Pending|Action|Client|Status|Task)\b/;
@@ -226,6 +239,23 @@ test("live mapping uses source ids and skips incomplete opportunities", () => {
   assert.equal(match.stateKey, DAILY_TASK_STATE.NEW_MATCH);
   assert.equal(dailyTaskDetailsHash(match), "#/opportunities/offer_live_1");
   assert.equal(match.exposeCounterpartyContact, false);
+  assert.equal(match.clientPhone, "");
+  assert.equal(match.ownerPhone, "");
+
+  const withPhones = mapOperationsItemToDailyTask({
+    operationType: "MATCH_REVIEW",
+    matchId: "match_live_2",
+    ownerOfferId: "offer_live_2",
+    clientRequestId: "request_live_2",
+    clientPhone: "0512345678",
+    ownerPhone: "0598765432",
+    propertyType: "أرض",
+    purpose: "SALE",
+    district: "عروة",
+    salePrice: 1
+  }, now);
+  assert.equal(withPhones.clientPhone, "0512345678");
+  assert.equal(withPhones.ownerPhone, "0598765432");
 
   assert.equal(mapOperationsItemToDailyTask({
     operationType: "MISSING_DATA",
@@ -274,14 +304,22 @@ test("offers and requests inbox still uses the approved data card", () => {
   assert.match(inbox, /buildCompleteMissingButtonV2/);
 });
 
-test("daily-task controller does not send a client message in this round", () => {
+test("daily-task controller wires send and open without claiming delivery", () => {
   const controller = readFileSync(path.join(root, "src", "v2", "content", "daily-tasks", "controller.js"), "utf8");
-  assert.match(controller, /Reserved for a later CLIENT_MATCH_REVIEW session/);
+  assert.match(controller, /runDailyTaskPartySend/);
+  assert.match(controller, /openExistingOfferDetails/);
+  assert.match(controller, /send_to_client/);
+  assert.match(controller, /send_to_owner/);
+  assert.match(controller, /open_offer/);
   assert.match(controller, /openTaskId/);
   assert.match(controller, /data-cv2-exec-reveal/);
+  assert.match(controller, /whatsappOpenedMessage/);
+  const partyDomain = readFileSync(path.join(root, "src", "v2", "content", "daily-tasks", "party-link-domain.js"), "utf8");
+  assert.match(partyDomain, /تم فتح واتساب للعميل/);
   assert.equal(controller.includes("تم إرسال الرسالة"), false);
-  assert.equal(controller.includes("token"), false);
+  assert.equal(partyDomain.includes("تم إرسال الرسالة"), true);
   assert.equal(controller.includes("OTP"), false);
+  assert.equal(controller.includes("Reserved for a later CLIENT_MATCH_REVIEW session"), false);
 });
 
 test("mapOperationsItemsToDailyTasks de-duplicates by match id", () => {
@@ -366,6 +404,156 @@ test("office smart hide has no chevron or hide button and collapses on scroll do
   assert.equal(html.classList.contains("cv2-tasks-office-smart"), false);
   assert.equal(html.classList.contains("cv2-office-hidden"), false);
   assert.equal(card.style.maxHeight, "");
+});
+
+test("party phones normalize and missing-number copy stays Arabic", () => {
+  assert.equal(normalizeDailyTaskPhone("0511111111"), "966511111111");
+  assert.equal(normalizeDailyTaskPhone("+966522222222"), "966522222222");
+  assert.equal(normalizeDailyTaskPhone("123"), "");
+  assert.equal(missingPartyPhoneMessage("client"), "رقم تواصل العميل غير متوفر.");
+  assert.equal(missingPartyPhoneMessage("owner"), "رقم تواصل المالك غير متوفر.");
+  assert.equal(whatsappOpenedMessage("client"), "تم فتح واتساب للعميل");
+  assert.equal(whatsappOpenedMessage("owner"), "تم فتح واتساب للمالك");
+  assert.equal(PARTY_SEND_COPY.sentClaimForbidden, "تم إرسال الرسالة");
+});
+
+test("client and owner review tokens are distinct and bind matchId plus role", () => {
+  const clientToken = encodePartyLinkToken({
+    matchId: "match_new_1",
+    party: "client",
+    offerId: "offer_urwah_1",
+    requestId: "request_urwah_1",
+    sid: "client-sid"
+  });
+  const ownerToken = encodePartyLinkToken({
+    matchId: "match_new_1",
+    party: "owner",
+    offerId: "offer_urwah_1",
+    requestId: "request_urwah_1",
+    sid: "owner-sid"
+  });
+  const client = parsePartyLinkToken(clientToken);
+  const owner = parsePartyLinkToken(ownerToken);
+  assert.equal(client.matchId, "match_new_1");
+  assert.equal(owner.matchId, "match_new_1");
+  assert.equal(client.party, "client");
+  assert.equal(owner.party, "owner");
+  assert.notEqual(clientToken, ownerToken);
+  const clientUrl = buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: clientToken });
+  const ownerUrl = buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: ownerToken });
+  assert.notEqual(clientUrl, ownerUrl);
+  assert.match(clientUrl, /cv2Party=/);
+  assert.equal(partyTokenFromLocation({ search: `?cv2Party=${clientToken}` }), clientToken);
+  const clientMessage = buildPartyWhatsAppMessage({
+    party: "client",
+    propertyLine: "أرض للبيع — حي عروة",
+    reviewUrl: clientUrl
+  });
+  const ownerMessage = buildPartyWhatsAppMessage({
+    party: "owner",
+    propertyLine: "أرض للبيع — حي عروة",
+    reviewUrl: ownerUrl
+  });
+  assert.match(clientMessage, /وجدنا عرضًا مناسبًا لطلبك/);
+  assert.match(ownerMessage, /يوجد عميل مهتم بعقار مطابق/);
+  assert.equal(clientMessage.includes(clientUrl), true);
+  assert.equal(ownerMessage.includes(ownerUrl), true);
+  assert.equal(clientMessage.includes(ownerUrl), false);
+  assert.equal(ownerMessage.includes(clientUrl), false);
+  assert.equal(parsePartyLinkToken(""), null);
+});
+
+test("demo new-match has phones for send while overdue stays phoneless", () => {
+  const byId = Object.fromEntries(dailyTasksDemoFixtures().map((task) => [task.id, task]));
+  assert.equal(phoneFromTask(byId.task_new_match, "client"), "966511111111");
+  assert.equal(phoneFromTask(byId.task_new_match, "owner"), "966522222222");
+  assert.equal(phoneFromTask(byId.task_overdue, "client"), "");
+  assert.equal(phoneFromTask(byId.task_overdue, "owner"), "");
+  const html = buildDailyTaskCardHtml(byId.task_new_match, { open: true });
+  assert.equal(html.includes("0511111111"), false);
+  assert.equal(html.includes("0522222222"), false);
+});
+
+test("party review landing is read-only Arabic and not a negotiation UI", () => {
+  const token = encodePartyLinkToken({
+    matchId: "match_new_1",
+    party: "client",
+    propertyLine: "أرض للبيع — حي عروة",
+    moneyLine: "500,000 ر.س",
+    sid: "land-1"
+  });
+  const html = buildPartyReviewHtml(parsePartyLinkToken(token));
+  assert.match(html, /مراجعة مطابقة العميل/);
+  assert.match(html, /أرض للبيع — حي عروة/);
+  assert.match(html, /match_new_1/);
+  assert.equal(html.includes("قبول العرض"), false);
+  assert.equal(html.includes("تفاوض"), false);
+  assert.match(buildPartyReviewHtml(null), /رابط المراجعة غير صالح/);
+});
+
+test("send buttons open WhatsApp with role-specific links and block missing phones", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { mountDailyTasksContentV2, unmountDailyTasksContentV2 } = await import("../src/v2/content/daily-tasks/controller.js");
+  const opened = [];
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div id="toast" hidden></div>
+    <div id="contentV2"></div>
+  </body></html>`, { url: "https://example.test/?cv2Tasks=1", pretendToBeVisual: true });
+  const { window } = dom;
+  global.window = window;
+  global.document = window.document;
+  window.IAQAR = {
+    whatsappHandoff: {
+      openWhatsApp({ phone, text }) {
+        const result = { ok: true, phone, text, url: `https://wa.me/${phone}?text=${encodeURIComponent(text)}` };
+        opened.push(result);
+        return result;
+      }
+    }
+  };
+
+  mountDailyTasksContentV2(window.document.getElementById("contentV2"));
+  const newMatchReveal = window.document.querySelector('[data-task-id="task_new_match"] [data-cv2-exec-reveal]');
+  newMatchReveal.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  window.document.querySelector('[data-cv2-exec-primary="send_to_client"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].phone, "966511111111");
+  assert.match(opened[0].text, /رابط المراجعة/);
+  assert.match(opened[0].text, /cv2Party=/);
+  const clientUrl = opened[0].text.match(/https:\/\/example\.test\/\?cv2Party=[^\s]+/)[0];
+
+  window.document.querySelector('[data-cv2-exec-secondary="send_to_owner"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(opened.length, 2);
+  assert.equal(opened[1].phone, "966522222222");
+  const ownerUrl = opened[1].text.match(/https:\/\/example\.test\/\?cv2Party=[^\s]+/)[0];
+  assert.notEqual(clientUrl, ownerUrl);
+  assert.equal(window.document.getElementById("toast").textContent, "تم فتح واتساب للمالك");
+
+  window.document.querySelector('[data-task-id="task_overdue"] [data-cv2-exec-reveal]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  window.document.querySelector('[data-task-id="task_overdue"] [data-cv2-exec-primary="send_to_client"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(opened.length, 2);
+  assert.equal(window.document.getElementById("toast").textContent, "رقم تواصل العميل غير متوفر.");
+
+  let switched = "";
+  window.IAQAR.homeTabs = { switchTo(name) { switched = name; } };
+  window.IAQAR.contentV2 = { render() {} };
+  window.document.querySelector('[data-task-id="task_new_match"] [data-cv2-exec-reveal]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  window.document.querySelector('[data-cv2-exec-secondary="open_offer"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(switched, "opportunities");
+  assert.match(window.location.hash, /#\/opportunities\/offer_urwah_1/);
+
+  unmountDailyTasksContentV2();
+  delete global.window;
+  delete global.document;
 });
 
 test("tasks mount uses office smart hide instead of the details chevron", () => {

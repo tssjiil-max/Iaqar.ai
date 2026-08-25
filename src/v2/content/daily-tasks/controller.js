@@ -1,6 +1,6 @@
 /**
  * Mounts compact daily-task accordion cards into #contentV2.
- * Does not persist client-send, and does not copy opportunity data cards.
+ * Wires send/open actions only. Does not claim WhatsApp delivery.
  */
 
 import { buildDailyTaskListHtml } from "./card.js";
@@ -9,6 +9,14 @@ import {
   dailyTasksDemoFixtures,
   mapOperationsItemsToDailyTasks
 } from "./domain.js";
+import {
+  buildPartyWhatsAppMessage,
+  detailsOpportunityId,
+  missingPartyPhoneMessage,
+  PARTY_SEND_COPY,
+  whatsappOpenedMessage
+} from "./party-link-domain.js";
+import { ensurePartyReviewLink, resolvePartyPhone } from "./party-link.js";
 
 const state = {
   root: null,
@@ -30,14 +38,146 @@ function currentTasks() {
   return state.tasks;
 }
 
-function openExistingOfferDetails(task) {
-  const hash = dailyTaskDetailsHash(task);
-  if (!hash) return;
+function notify(message) {
+  const toast = document.getElementById("toast");
+  if (toast) {
+    toast.textContent = message;
+    toast.classList.add("show");
+    toast.hidden = false;
+    clearTimeout(notify.timer);
+    notify.timer = setTimeout(() => {
+      toast.classList.remove("show");
+    }, 3200);
+    return;
+  }
+  window.alert(message);
+}
+
+function setExecState(button, next) {
+  if (!button) return;
+  button.dataset.cv2ExecState = next;
+  button.disabled = next === "working";
+  button.setAttribute("aria-busy", next === "working" ? "true" : "false");
+}
+
+function openWhatsAppHandoff({ phone, text }) {
+  const handoff = window.IAQAR?.whatsappHandoff;
+  if (handoff?.openWhatsApp) return handoff.openWhatsApp({ phone, text });
+  const digits = String(phone || "").replace(/\D/g, "");
+  const url = `https://wa.me/${digits}?text=${encodeURIComponent(String(text || ""))}`;
+  if (typeof window !== "undefined") {
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = url;
+  }
+  return { ok: true, url };
+}
+
+function officeDisplayName() {
+  const office = window.IAQAR?.office || {};
+  return String(office.officeName || office.displayName || office.name || "المكتب العقاري").trim()
+    || "المكتب العقاري";
+}
+
+function taskFromCard(card) {
+  const id = card.getAttribute("data-task-id");
+  const listed = currentTasks().find((item) => item.id === id) || {};
+  return {
+    ...listed,
+    id,
+    opportunityId: card.getAttribute("data-opportunity-id") || listed.opportunityId,
+    offerId: card.getAttribute("data-offer-id") || listed.offerId,
+    requestId: card.getAttribute("data-request-id") || listed.requestId,
+    matchId: card.getAttribute("data-match-id") || listed.matchId
+  };
+}
+
+export function openExistingOfferDetails(task) {
+  const hash = dailyTaskDetailsHash({
+    ...task,
+    opportunityId: detailsOpportunityId(task)
+  });
+  if (!hash) return { ok: false, error: PARTY_SEND_COPY.detailsFailed };
   const href = `${window.location.pathname}${window.location.search}${hash}`;
   if (window.history?.replaceState) window.history.replaceState(window.history.state, "", href);
   else window.location.hash = hash;
   window.IAQAR?.homeTabs?.switchTo?.("opportunities");
   window.IAQAR?.contentV2?.render?.();
+  return { ok: true, hash };
+}
+
+async function recordOpenedExternal(task, party, phone, body) {
+  const domain = window.IAQAR?.messagingDomain;
+  const office = window.IAQAR?.office;
+  const user = window.firebase?.auth?.()?.currentUser;
+  if (!domain?.requestCreateMessageDraft || !office?.officeId || !user?.getIdToken) return;
+  try {
+    const idToken = await user.getIdToken();
+    const created = await domain.requestCreateMessageDraft({
+      workerBase: window.IAQAR?.workerBase || office.workerBase,
+      idToken,
+      officeId: office.officeId,
+      channel: "whatsapp",
+      role: party,
+      contactPhone: phone,
+      matchId: task.matchId || "",
+      opportunityId: task.opportunityId || "",
+      body,
+      stage: "match_review"
+    });
+    const messageId = created?.messageId || created?.id;
+    if (messageId && domain.requestMessageHandoff) {
+      await domain.requestMessageHandoff({
+        workerBase: window.IAQAR?.workerBase || office.workerBase,
+        idToken,
+        officeId: office.officeId,
+        messageId,
+        outcome: "OPENED_EXTERNAL"
+      });
+    }
+  } catch {
+    /* handoff is optional; WhatsApp already opened */
+  }
+}
+
+export async function runDailyTaskPartySend(task, party, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  const side = party === "owner" ? "owner" : "client";
+  try {
+    const contact = await resolvePartyPhone(task, side);
+    if (!contact?.digits) {
+      notify(missingPartyPhoneMessage(side));
+      setExecState(button, "error");
+      return { ok: false, error: "missing_phone" };
+    }
+    const link = await ensurePartyReviewLink(task, side);
+    if (!link?.url) {
+      notify(PARTY_SEND_COPY.linkFailed);
+      setExecState(button, "error");
+      return { ok: false, error: "link_failed" };
+    }
+    const text = buildPartyWhatsAppMessage({
+      party: side,
+      officeName: officeDisplayName(),
+      contactName: contact.name || (side === "owner" ? task.ownerName : task.clientName) || "",
+      propertyLine: task.propertyLine || "",
+      reviewUrl: link.url
+    });
+    const opened = openWhatsAppHandoff({ phone: contact.digits, text });
+    if (!opened?.ok) {
+      notify(PARTY_SEND_COPY.whatsappFailed);
+      setExecState(button, "error");
+      return { ok: false, error: "whatsapp_failed" };
+    }
+    void recordOpenedExternal(task, side, contact.digits, text);
+    notify(whatsappOpenedMessage(side));
+    setExecState(button, "success");
+    return { ok: true, phone: contact.digits, url: link.url, text, opened };
+  } catch {
+    notify(PARTY_SEND_COPY.sendFailed);
+    setExecState(button, "error");
+    return { ok: false, error: "send_failed" };
+  }
 }
 
 function toggleOpenTask(taskId) {
@@ -51,25 +191,41 @@ function onListClick(event) {
   if (!root) return;
   const card = event.target.closest("[data-cv2-exec-task]");
   if (!card || !root.contains(card)) return;
-  const task = {
-    opportunityId: card.getAttribute("data-opportunity-id"),
-    offerId: card.getAttribute("data-offer-id"),
-    requestId: card.getAttribute("data-request-id"),
-    matchId: card.getAttribute("data-match-id")
-  };
+  const task = taskFromCard(card);
   const secondary = event.target.closest("[data-cv2-exec-secondary]");
   if (secondary) {
     event.preventDefault();
     event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
-    if (action === "open_offer") openExistingOfferDetails(task);
+    if (action === "open_offer") {
+      if (secondary.dataset.cv2ExecState === "working") return;
+      setExecState(secondary, "working");
+      const opened = openExistingOfferDetails(task);
+      if (!opened.ok) {
+        notify(opened.error || PARTY_SEND_COPY.detailsFailed);
+        setExecState(secondary, "error");
+        return;
+      }
+      setExecState(secondary, "success");
+      return;
+    }
+    if (action === "send_to_owner") {
+      void runDailyTaskPartySend(task, "owner", secondary);
+      return;
+    }
+    if (action === "resend_to_client") {
+      void runDailyTaskPartySend(task, "client", secondary);
+    }
     return;
   }
   const primary = event.target.closest("[data-cv2-exec-primary]");
   if (primary) {
     event.preventDefault();
     event.stopPropagation();
-    // Reserved for a later CLIENT_MATCH_REVIEW session. No send in this round.
+    const action = primary.getAttribute("data-cv2-exec-primary");
+    if (action === "send_to_client" || action === "resend_to_client") {
+      void runDailyTaskPartySend(task, "client", primary);
+    }
     return;
   }
   const reveal = event.target.closest("[data-cv2-exec-reveal]");

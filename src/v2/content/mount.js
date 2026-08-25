@@ -9,6 +9,8 @@ import { setupOfficeCardCollapse, teardownOfficeCardCollapse } from "./office-co
 import { setupOfficeSmartHide, teardownOfficeSmartHide } from "./daily-tasks/office-smart-hide.js";
 import { mountOpportunityDetailsContentV2, unmountOpportunityDetailsContentV2 } from "./opportunity-details/controller.js";
 import { mountDailyTasksContentV2, unmountDailyTasksContentV2 } from "./daily-tasks/controller.js";
+import { partyTokenFromLocation } from "./daily-tasks/party-link-domain.js";
+import { mountPartyReviewContentV2 } from "./daily-tasks/party-review.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -32,6 +34,20 @@ function setLegacyListVisible(visible) {
 }
 
 function render(host) {
+  const partyToken = partyTokenFromLocation(window.location);
+  if (partyToken) {
+    unmountDailyTasksContentV2();
+    unmountOpportunityDetailsContentV2();
+    teardownOfficeSmartHide();
+    teardownOfficeCardCollapse();
+    setLegacyListVisible(false);
+    host.dataset.contentView = "party-review";
+    delete host.dataset.opportunityId;
+    host.classList.remove("is-details");
+    mountPartyReviewContentV2(host, partyToken);
+    return;
+  }
+
   const view = currentContentView(window.location, window.IAQAR?.homeTabs?.getState?.());
   host.dataset.contentView = view.name;
   if (view.id) host.dataset.opportunityId = view.id;
