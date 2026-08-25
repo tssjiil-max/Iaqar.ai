@@ -31,7 +31,11 @@ const els = {
 
 const api = new AdminApi(async () => {
   const user = firebase.auth().currentUser;
-  if (!user) throw new Error("auth_required");
+  if (!user) {
+    const error = new Error("يلزم تسجيل الدخول");
+    error.code = "auth_required";
+    throw error;
+  }
   return user.getIdToken();
 });
 
@@ -401,10 +405,20 @@ async function boot() {
   firebase.auth().onAuthStateChanged(async (user) => {
     if (!user) return;
     try {
-      await enterConsole(user);
+      await ensurePlatformAdmin(user);
     } catch (error) {
       await firebase.auth().signOut();
       showStatus(els.status, mapAdminLoginError(error));
+      return;
+    }
+    try {
+      await enterConsole(user);
+    } catch (error) {
+      els.loginCard.classList.add("hidden");
+      els.console.classList.remove("hidden");
+      els.adminUserLine.textContent = `مرحبًا ${user.email || "مدير المنصة"}`;
+      renderMainNav();
+      showStatus(els.consoleStatus, error.message || "تعذر تحميل بيانات الإدارة.");
     }
   });
 }

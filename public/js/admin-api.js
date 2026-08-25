@@ -41,6 +41,11 @@ export class AdminApi {
 
   async request(path, options = {}) {
     const token = await this.getToken();
+    if (!token) {
+      const error = new Error("يلزم تسجيل الدخول");
+      error.code = "auth_required";
+      throw error;
+    }
     const response = await fetch(`${resolveWorkerBase()}${path}`, {
       ...options,
       headers: {
