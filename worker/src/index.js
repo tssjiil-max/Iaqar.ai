@@ -3428,7 +3428,7 @@ async function persistScoredMatch({
     counterpartRecordId: firestoreString(counterpartRecordId),
     clientRequestId: firestoreString(clientRequestId),
     ownerOfferId: firestoreString(ownerOfferId),
-    matchGroupId: firestoreString(clientRequestId || pairKey),
+    matchGroupId: firestoreString(opportunityId || sourceRecordId || clientRequestId || pairKey),
     opportunityId: firestoreString(opportunityId || ""),
     counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
     city: firestoreOptionalString(source.city || candidate.city || DEFAULT_CITY),
@@ -3473,7 +3473,17 @@ async function persistScoredMatch({
     opportunityId: opportunityId || "",
     counterpartOpportunityId: counterpartOpportunityId || "",
     isCurrent: true,
-    assignedBrokerId: assignedBrokerId || ""
+    assignedBrokerId: assignedBrokerId || "",
+    clientRequestId,
+    ownerOfferId,
+    matchGroupId: opportunityId || sourceRecordId || clientRequestId,
+    sourceCollection,
+    candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
+    candidateArea: Number(candidate.area || 0),
+    candidatePropertyType: candidate.propertyType || "",
+    candidateDistrict: candidate.district || "",
+    candidateCity: candidate.city || "",
+    candidatePurpose: candidate.purpose || candidate.transactionType || ""
   };
 
   // Phase 5: actionable Match → exactly one MATCH_REVIEW Operation (+ in-app Notification).

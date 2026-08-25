@@ -15,6 +15,7 @@ const readyBase = {
   propertyType: "أرض",
   city: "المدينة المنورة",
   district: "عروة",
+  area: 1000,
   advertiserRole: "OWNER",
   advertiserPhoneNormalized: "+966501234567"
 };

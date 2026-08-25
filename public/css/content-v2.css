@@ -1017,6 +1017,24 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   color: var(--cv2-muted, #6b7873);
 }
 
+.cv2-exec-count,
+.cv2-exec-turn {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--cv2-text, #1c211f);
+}
+
+.cv2-exec-turn {
+  color: var(--cv2-green, #1a5319);
+}
+
+.cv2-match-expanded ol {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
 .cv2-exec-actions {
   display: flex;
   align-items: center;

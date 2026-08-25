@@ -88,6 +88,12 @@ export function buildPartyShellHtml(view = {}) {
   const ownerStatus = view.ownerClientStatus
     ? `<p class="party-client-status">${escapeHtml(view.ownerClientStatus)}</p>`
     : "";
+  const prompt = view.promptLine
+    ? `<p class="party-prompt">${escapeHtml(view.promptLine)}</p>`
+    : "";
+  const revealed = view.revealedDetail?.value
+    ? `<div class="party-revealed"><p>${escapeHtml(view.revealedDetail.label || "")}</p><strong>${escapeHtml(view.revealedDetail.value)}</strong></div>`
+    : "";
   const primaryActions = actionButtons(view.actions);
   const followUp = actionButtons(view.followUpActions);
   let replyBlock = "";
@@ -96,10 +102,12 @@ export function buildPartyShellHtml(view = {}) {
       <p class="party-recorded">${PARTY_REPLY_RECORDED}</p>
       <p class="party-reply">${escapeHtml(view.replyLabel || "")}</p>
       ${view.followUpLabel ? `<p class="party-followup-choice">${escapeHtml(view.followUpLabel)}</p>` : ""}
+      ${revealed}
+      ${view.replyLabel === "أحتاج تفاصيل أكثر" && followUp ? `<p class="party-prompt">ما التفاصيل التي تحتاجها؟</p>` : ""}
       ${followUp ? `<div class="party-actions party-followup">${followUp}</div>` : ""}
     </div>`;
   } else if (primaryActions) {
-    replyBlock = `<div class="party-actions">${primaryActions}</div>`;
+    replyBlock = `<div class="party-reply-card-inner">${prompt}<div class="party-actions">${primaryActions}</div></div>`;
   }
   return `<main class="party-shell" data-party-shell data-party="${escapeHtml(view.party || "client")}">
     <header class="party-brand">

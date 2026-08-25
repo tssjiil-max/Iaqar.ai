@@ -81,9 +81,9 @@ test("demo fixtures cover the seven visual task states in operational order", ()
   assert.deepEqual(fixtures.map((task) => task.id), [
     "task_new_match",
     "task_overdue",
-    "task_appointment_today",
     "task_interested",
     "task_needs_details",
+    "task_appointment_today",
     "task_awaiting_client",
     "task_unsuitable"
   ]);
@@ -97,9 +97,8 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.match(text, /أرض للبيع — حي عروة/);
   assert.match(text, /500,000 ر\.س/);
   assert.match(text, /تم العثور على مطابقة/);
-  assert.match(text, /مراجعة المطابقة/);
   assert.match(html, /data-cv2-exec-reveal/);
-  assert.match(html, />عرض البيانات</);
+  assert.match(html, />مراجعة المطابقات</);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(html.includes("عرض تفاصيل العرض"), false);
@@ -114,7 +113,7 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("open match-found card shows one primary and two secondaries only", () => {
+test("open match-found card shows send-to-client and offer details, not send-to-owner", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
@@ -123,15 +122,13 @@ test("open match-found card shows one primary and two secondaries only", () => {
   assert.match(html, />إخفاء البيانات</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
-  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
-  assert.match(html, />إرسال للمالك</);
+  assert.equal(html.includes("إرسال للمالك"), false);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض تفاصيل العرض</);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 2);
+  assert.equal(countSecondary(html), 1);
   assert.equal(task.primaryAction.party, SECURE_PARTY.CLIENT);
-  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.SEND_TO_OWNER);
-  assert.equal(task.secondaryActions[0].party, SECURE_PARTY.OWNER);
+  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.OPEN_OFFER);
   const chrome = forbiddenBrokerChrome(html);
   assert.equal(chrome.hasAppointment, false);
   assert.equal(chrome.hasNegotiate, false);
@@ -165,15 +162,15 @@ test("client interested drops send-to-client as primary and keeps future replies
   assert.equal(byId.task_interested.primaryAction, null);
   const interested = buildDailyTaskCardHtml(byId.task_interested, { open: true });
   const interestedText = visibleText(interested);
-  assert.match(interestedText, /✓ العميل مهتم/);
-  assert.match(interestedText, /الخطوة التالية ستظهر هنا/);
+  assert.match(interestedText, /✓ العميل مهتم|العميل مهتم/);
+  assert.equal(interestedText.includes("الخطوة التالية ستظهر هنا"), false);
   assert.equal(interested.includes("إرسال للعميل"), false);
   assert.equal(interested.includes("إتمام صفقة"), false);
   assert.equal(interested.includes(FUTURE_CLIENT_REPLY_LABELS.interested) && /<button[^>]*>مهتم</.test(interested), false);
 
   const needs = visibleText(buildDailyTaskCardHtml(byId.task_needs_details, { open: true }));
   assert.match(needs, /العميل يحتاج تفاصيل أكثر/);
-  assert.match(needs, /السعر · الموقع · الصور · المواصفات · سؤال آخر/);
+  assert.equal(needs.includes("الخطوة التالية ستظهر هنا"), false);
   assert.match(needs, /عرض تفاصيل الطلب/);
 
   const no = visibleText(buildDailyTaskCardHtml(byId.task_unsuitable, { open: true }));
@@ -193,17 +190,18 @@ test("list accordion keeps a single open task", () => {
   assert.match(html, /data-task-id="task_new_match"[^>]*[\s\S]*?aria-expanded="false"/);
   const closedNewMatch = html.split('data-task-id="task_overdue"')[0];
   assert.equal(closedNewMatch.includes("data-cv2-exec-primary="), false);
-  assert.match(closedNewMatch, />عرض البيانات</);
+  assert.match(closedNewMatch, />مراجعة المطابقات</);
   assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 2);
+  assert.equal(countSecondary(html), 1);
   assert.match(html, />إخفاء البيانات</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });
 
-test("every collapsed task uses عرض البيانات and never send actions", () => {
+test("collapsed match tasks use مراجعة المطابقات and never send actions", () => {
   const html = buildDailyTaskListHtml(dailyTasksDemoFixtures());
-  assert.equal((html.match(/>عرض البيانات</g) || []).length, 7);
+  assert.equal((html.match(/>مراجعة المطابقات</g) || []).length, 2);
+  assert.equal((html.match(/>عرض البيانات</g) || []).length, 5);
   assert.equal(html.includes("إخفاء البيانات"), false);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
@@ -516,22 +514,16 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
   assert.match(opened[0].text, /رابط المراجعة/);
   assert.match(opened[0].text, /cv2Party=/);
   const clientUrl = opened[0].text.match(/https:\/\/example\.test\/\?cv2Party=[^\s]+/)[0];
-
-  window.document.querySelector('[data-cv2-exec-secondary="send_to_owner"]')
-    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(opened.length, 2);
-  assert.equal(opened[1].phone, "966522222222");
-  const ownerUrl = opened[1].text.match(/https:\/\/example\.test\/\?cv2Party=[^\s]+/)[0];
-  assert.notEqual(clientUrl, ownerUrl);
-  assert.equal(window.document.getElementById("toast").textContent, "تم فتح واتساب للمالك");
+  assert.match(clientUrl, /cv2Party=/);
+  assert.equal(window.document.getElementById("toast").textContent, "تم فتح واتساب للعميل");
+  assert.equal(opened[0].text.includes("العقار") && /وجدنا عرضًا مناسبًا لطلبك: العقار/.test(opened[0].text), false);
 
   window.document.querySelector('[data-task-id="task_overdue"] [data-cv2-exec-reveal]')
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   window.document.querySelector('[data-task-id="task_overdue"] [data-cv2-exec-primary="send_to_client"]')
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(opened.length, 2);
+  assert.equal(opened.length, 1);
   assert.equal(window.document.getElementById("toast").textContent, "رقم تواصل العميل غير متوفر.");
 
   let switched = "";

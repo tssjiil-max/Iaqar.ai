@@ -38,7 +38,7 @@ export const OWNER_PARTY_ACTIONS = Object.freeze([
   Object.freeze({ id: "not_available", label: "غير متاح حالياً" })
 ]);
 
-export const OWNER_CLIENT_STATUS_LINE = "يوجد عميل مهتم بالعقار";
+export const OWNER_CLIENT_STATUS_LINE = "يوجد عميل مهتم بعقارك";
 
 const SECRET_KEYS = Object.freeze([
   "phone", "contactPhone", "advertiserPhone", "advertiserPhoneNormalized",
@@ -77,8 +77,17 @@ function defaultRandomBytes(size) {
   throw new Error("random_unavailable");
 }
 
-export function partyActionsForRole(party) {
-  return party === "owner" ? OWNER_PARTY_ACTIONS : CLIENT_PARTY_ACTIONS;
+export function partyActionsForRole(party, { livingStage = "" } = {}) {
+  if (party !== "owner") return CLIENT_PARTY_ACTIONS;
+  const stage = String(livingStage || "").toUpperCase();
+  if (
+    stage === "APPOINTMENT_COORDINATION"
+    || stage === "VIEWING_DECISION"
+    || stage === "APPOINTMENT_CONFIRMED"
+  ) {
+    return OWNER_PARTY_ACTIONS;
+  }
+  return OWNER_PARTY_ACTIONS.filter((item) => item.id !== "confirm_appointment");
 }
 
 export function allPartyActionCatalog(party) {
@@ -96,7 +105,8 @@ export function partyActionLabel(party, actionId) {
 }
 
 export function isPrimaryPartyAction(party, actionId) {
-  return partyActionsForRole(party).some((item) => item.id === actionId);
+  const catalog = party === "owner" ? OWNER_PARTY_ACTIONS : CLIENT_PARTY_ACTIONS;
+  return catalog.some((item) => item.id === actionId);
 }
 
 export function isFollowUpPartyAction(party, actionId, replyAction = "") {
@@ -368,6 +378,54 @@ function propertyFromSnapshot(snapshot = {}) {
   };
 }
 
+export function buildShareSnapshot({
+  shareId = "",
+  matchId = "",
+  partyRole = "client",
+  opportunityId = "",
+  createdAt = "",
+  snapshotVersion = 1,
+  record = {}
+} = {}) {
+  return {
+    shareId: text(shareId),
+    matchId: text(matchId),
+    partyRole: partyRole === "owner" ? "owner" : "client",
+    opportunityId: text(opportunityId),
+    createdAt: text(createdAt) || new Date().toISOString(),
+    snapshotVersion: Number(snapshotVersion) || 1,
+    permitted: buildPartySnapshot(record)
+  };
+}
+
+export function revealedDetailFromSnapshot(snapshot = {}, actionId = "") {
+  const id = text(actionId);
+  if (id === "detail_price" && text(snapshot.priceLabel)) {
+    return { label: "السعر", value: text(snapshot.priceLabel) };
+  }
+  if (id === "detail_location") {
+    if (snapshot.locationUrl) {
+      return { label: "الموقع", value: "الموقع متاح عبر الزر أدناه", locationUrl: snapshot.locationUrl };
+    }
+    if (text(snapshot.locationLabel)) {
+      return { label: "الموقع", value: text(snapshot.locationLabel) };
+    }
+  }
+  if (id === "detail_photos") {
+    const count = Number(snapshot.photoCount || (snapshot.photos || []).length || 0);
+    if (count > 0 || (snapshot.photos || []).length) {
+      return { label: "الصور", value: "الصور ظاهرة أعلى الصفحة" };
+    }
+  }
+  if (id === "detail_specs") {
+    const bits = [snapshot.areaLabel, snapshot.specs, snapshot.streetWidthLabel, snapshot.facade, snapshot.plotNumber]
+      .map((value) => text(value))
+      .filter(Boolean);
+    if (bits.length) return { label: "المواصفات", value: bits.join(" · ") };
+  }
+  return null;
+}
+
 export function sanitizePartyPublicView({
   party = "client",
   status = PARTY_SESSION_STATUS.ACTIVE,
@@ -375,23 +433,30 @@ export function sanitizePartyPublicView({
   officeName = "",
   officeLogoUrl = "",
   replyAction = "",
-  followUpAction = ""
+  followUpAction = "",
+  revealedDetail = null,
+  livingStage = ""
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
   const replied = status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction);
   const followUpLabel = followUpAction ? partyActionLabel(side, followUpAction) : "";
+  const revealed = revealedDetail && text(revealedDetail.value)
+    ? { label: text(revealedDetail.label), value: text(revealedDetail.value) }
+    : null;
   const view = {
     party: side,
     title: partyViewTitle(side),
+    promptLine: side === "client" && !replied ? "ما رأيك بالعقار؟" : (side === "owner" && !replied ? "هل العقار ما زال متاحًا؟" : ""),
     officeName: text(officeName) || "المكتب العقاري",
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot),
-    actions: replied ? [] : partyActionsForRole(side).map((item) => ({ ...item })),
+    actions: replied ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
     followUpActions: replied ? partyFollowUpActions(side, replyAction, followUpAction) : [],
     replied,
     replyLabel: replied ? partyActionLabel(side, replyAction) : "",
-    followUpLabel
+    followUpLabel,
+    revealedDetail: revealed
   };
   const serialized = JSON.stringify(view);
   for (const key of SECRET_KEYS) {

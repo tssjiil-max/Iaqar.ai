@@ -288,7 +288,7 @@ function onListClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
-    if (action === "open_offer") {
+    if (action === "open_offer" || action === "complete_info") {
       if (secondary.dataset.cv2ExecState === "working") return;
       setExecState(secondary, "working");
       const opened = openExistingOfferDetails(task);
@@ -298,6 +298,10 @@ function onListClick(event) {
         return;
       }
       setExecState(secondary, "success");
+      return;
+    }
+    if (action === "review_next_candidate") {
+      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
       return;
     }
     if (task.taskKind === "cooperation") {
@@ -324,6 +328,19 @@ function onListClick(event) {
     }
     if (action === "send_to_client" || action === "resend_to_client") {
       void runDailyTaskPartySend(task, "client", primary);
+      return;
+    }
+    if (action === "complete_info") {
+      const opened = openExistingOfferDetails(task);
+      if (!opened.ok) notify(opened.error || PARTY_SEND_COPY.detailsFailed);
+      return;
+    }
+    if (action === "review_next_candidate") {
+      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      return;
+    }
+    if (action === "send_to_owner") {
+      void runDailyTaskPartySend(task, "owner", primary);
     }
     return;
   }

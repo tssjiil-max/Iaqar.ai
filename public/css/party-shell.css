@@ -19,6 +19,8 @@ html.is-party-mode .toast {
   font-family: Tajawal, Arial, sans-serif;
   direction: rtl;
   color: #173d35;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .party-brand {
@@ -102,6 +104,33 @@ html.is-party-mode .toast {
   text-decoration: none;
 }
 
+.party-prompt {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #173d35;
+}
+
+.party-revealed {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #eaf5f1;
+}
+
+.party-revealed p {
+  margin: 0;
+  color: #687c76;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.party-revealed strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+}
+
 .party-reply-card {
   margin-top: 12px;
 }
@@ -128,6 +157,7 @@ html.is-party-mode .toast {
   gap: 12px;
   margin: 0 0 8px;
   font-size: 14px;
+  min-width: 0;
 }
 
 .party-row span {

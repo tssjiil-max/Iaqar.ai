@@ -10,6 +10,7 @@ import {
   v2ReferenceAppointment,
   v2ReferenceFixture
 } from "../../opportunity-details-v2-domain.js";
+import { isDisplayValueComplete } from "../../../../public/js/opportunity-field-completion-domain.js";
 
 export {
   V2_DATA_ROWS,
@@ -28,39 +29,78 @@ const ROW_EDITOR_KEYS = Object.freeze({
   contact: ["contact", "contactPhone", "contactNumber"]
 });
 
+export const DISPLAY_ROW_EDITORS = Object.freeze({
+  propertyPurpose: "propertyPurpose",
+  location: "location",
+  price: "price",
+  specs: "area",
+  advertiser: "advertiserRole",
+  contact: "contactNumber"
+});
+
 export function editorForDataRow(rowKey, missingFields = []) {
   const keys = ROW_EDITOR_KEYS[rowKey] || [];
   const hit = (missingFields || []).find((field) => keys.includes(field.key) || keys.includes(field.editor));
   return hit?.editor || "";
 }
 
-export function firstMissingEditor(vm = {}) {
-  return vm.missingFields?.[0]?.editor || "";
+function rowDisplayValues(vm = {}, rowKey = "") {
+  switch (rowKey) {
+    case "propertyPurpose":
+      return [vm.propertyPurpose];
+    case "location":
+      return [vm.location, vm.locationSecondary];
+    case "price":
+      return [vm.price];
+    case "specs":
+      return [vm.area, vm.specifications];
+    case "advertiser":
+      return [vm.advertiserName, vm.advertiserRole, vm.advertiserSecondary];
+    case "contact":
+      return [vm.contactNumber];
+    default:
+      return [];
+  }
 }
 
-function missingRowLabels(vm = {}) {
-  const labels = [];
-  const seen = new Set();
+export function isDisplayedRowComplete(vm = {}, rowKey = "") {
+  return rowDisplayValues(vm, rowKey).some((value) => isDisplayValueComplete(value));
+}
+
+export function displayedMissingRows(vm = {}) {
+  return V2_DATA_ROWS.filter((row) => !isDisplayedRowComplete(vm, row.key));
+}
+
+export function displayedMissingRowLabels(vm = {}) {
+  return displayedMissingRows(vm).map((row) => (
+    row.key === "price" ? (vm.priceLabel || row.label) : row.label
+  ));
+}
+
+export function editorForDisplayedRow(rowKey, vm = {}) {
+  if (isDisplayedRowComplete(vm, rowKey)) return "";
+  return editorForDataRow(rowKey, vm.missingFields) || DISPLAY_ROW_EDITORS[rowKey] || "";
+}
+
+export function firstMissingEditor(vm = {}) {
   for (const row of V2_DATA_ROWS) {
-    if (!editorForDataRow(row.key, vm.missingFields || [])) continue;
-    if (seen.has(row.key)) continue;
-    seen.add(row.key);
-    labels.push(row.key === "price" ? (vm.priceLabel || row.label) : row.label);
+    const editor = editorForDisplayedRow(row.key, vm);
+    if (editor) return editor;
   }
-  return labels;
+  return "";
 }
 
 export function completenessLine(vm = {}) {
   const total = V2_DATA_ROWS.length;
-  const missing = missingRowLabels(vm);
+  const missing = displayedMissingRowLabels(vm);
   const complete = Math.max(0, total - missing.length);
-  if (!missing.length) return `${total} من ${total} بيانات مكتملة`;
+  if (!missing.length) return `${complete} من ${total} بيانات مكتملة`;
   if (missing.length <= 2) return `ينقص ${missing.join(" و")}`;
   return `${complete} من ${total} بيانات مكتملة`;
 }
 
 export function nextActionLine(vm = {}) {
-  const missing = missingRowLabels(vm);
+  const missing = displayedMissingRowLabels(vm);
   if (missing.length) return `الإجراء التالي: أكمل ${missing.join(" و")}`;
   const appointment = vm.nextAppointment || {};
   const waiting = /بانتظار التأكيد/.test(String(appointment.confirmationStatus || ""));

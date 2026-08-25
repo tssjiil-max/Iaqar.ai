@@ -66,6 +66,15 @@ function resolveContactPhone(record = {}) {
   );
 }
 
+function isFilledText(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (text === "غير محدد" || text === "غير متوفر" || text === "العقار" || text === "تحتاج مراجعة") return false;
+  if (lower === "unknown" || lower === "null" || lower === "undefined" || lower === "n/a" || lower === "property") return false;
+  return true;
+}
+
 function resolveOwnerRole(record = {}) {
   const role = safeText(record.advertiserRole || record.ownerRole || "", 20).toUpperCase();
   if (role === "UNKNOWN" || !role) return "";
@@ -83,9 +92,9 @@ export function evaluateMatchingReadiness(record = {}) {
   if (!purpose || !["SALE", "PURCHASE", "RENT", "LEASE_REQUEST"].includes(purpose)) {
     missing.push("purpose");
   }
-  if (!safeText(fields.propertyType || record.propertyType, 40)) missing.push("propertyType");
-  if (!safeText(fields.city || record.city, 80)) missing.push("city");
-  if (!safeText(fields.district || record.district, 80)) missing.push("district");
+  if (!isFilledText(fields.propertyType || record.propertyType)) missing.push("propertyType");
+  if (!isFilledText(fields.city || record.city)) missing.push("city");
+  if (!isFilledText(fields.district || record.district)) missing.push("district");
   if (!hasAppropriatePrice(fields)) missing.push("priceOrBudget");
   if (!resolveOwnerRole(record)) missing.push("advertiserRole");
   if (!resolveContactPhone(record)) missing.push("contactPhone");

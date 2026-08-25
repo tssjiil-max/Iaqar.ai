@@ -223,6 +223,17 @@ export async function buildMatchReviewOperation({
   opportunityScore = 0,
   isBestOpportunity = false,
   reasons = [],
+  clientRequestId = "",
+  ownerOfferId = "",
+  matchGroupId = "",
+  sourceCollection = "",
+  candidateSalePrice = 0,
+  candidateArea = 0,
+  candidatePropertyType = "",
+  candidateDistrict = "",
+  candidateCity = "",
+  candidatePurpose = "",
+  livingStage = "MATCH_FOUND",
   now = new Date()
 }) {
   const type = OPERATION_TYPES.MATCH_REVIEW;
@@ -267,7 +278,18 @@ export async function buildMatchReviewOperation({
       isBestOpportunity: Boolean(isBestOpportunity),
       counterpartOpportunityId: String(counterpartOpportunityId || ""),
       dataVersion: String(dataVersion || ""),
-      reasonPreview: reasonText
+      reasonPreview: reasonText,
+      clientRequestId: String(clientRequestId || ""),
+      ownerOfferId: String(ownerOfferId || ""),
+      matchGroupId: String(matchGroupId || opportunityId || ""),
+      sourceCollection: String(sourceCollection || ""),
+      candidateSalePrice: Number(candidateSalePrice || 0),
+      candidateArea: Number(candidateArea || 0),
+      candidatePropertyType: String(candidatePropertyType || ""),
+      candidateDistrict: String(candidateDistrict || ""),
+      candidateCity: String(candidateCity || ""),
+      candidatePurpose: String(candidatePurpose || ""),
+      livingStage: String(livingStage || "MATCH_FOUND")
     }
   };
 }
