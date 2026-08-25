@@ -36,6 +36,7 @@ function firstMissingEditor(vm) {
 
 const ADVERTISER_ROLE_VALIDATION = "اختر: مالك، عميل، مفوض، أو وسيط عقاري.";
 const ADVERTISER_ROLE_SAVE_FAILED = "تعذر حفظ صفة المعلن، حاول مرة أخرى.";
+const SAVE_FAILED = "تعذر حفظ الحقل، حاول مرة أخرى";
 
 export function buildV2FieldPatch(existing, editorKey, formData = {}) {
   if (editorKey === "advertiserRole") {
@@ -61,10 +62,15 @@ export function buildV2FieldPatch(existing, editorKey, formData = {}) {
     return buildEditPatch(existing, { area: formData.area }, { actorUid: formData.actorUid || "" });
   }
   if (editorKey === "location") {
-    return buildEditPatch(existing, {
-      city: formData.city,
-      district: formData.district
-    }, { actorUid: formData.actorUid || "" });
+    const city = String(formData.city || "").trim();
+    const district = String(formData.district || "").trim();
+    const input = {};
+    if (city) input.city = city;
+    if (district) input.district = district;
+    if (!Object.keys(input).length) {
+      return { ok: false, error: "أدخل المدينة أو الحي قبل الحفظ." };
+    }
+    return buildEditPatch(existing, input, { actorUid: formData.actorUid || "" });
   }
   if (editorKey === "propertyPurpose") {
     return buildEditPatch(existing, {
@@ -126,13 +132,19 @@ export function wireOpportunityDetailsV2(container, options = {}) {
     try {
       const result = await save(editorKey, formData);
       if (!result?.ok) {
-        showEditorError(root, result?.error || "تعذر حفظ الحقل");
+        showEditorError(root, result?.error || SAVE_FAILED);
         return;
+      }
+      const toast = document.getElementById("toast");
+      if (toast) {
+        toast.textContent = "تم الحفظ";
+        toast.classList.add("show");
+        toast.hidden = false;
       }
       closeEditor(root, { restoreFocus: false });
       if (typeof options.onSaved === "function") await options.onSaved(result);
     } catch (error) {
-      showEditorError(root, error?.message || "تعذر حفظ الحقل");
+      showEditorError(root, error?.message || SAVE_FAILED);
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -176,7 +188,7 @@ export async function saveV2FieldWithAdapter(existing, editorKey, formData, pers
   if (editorStillOpen) {
     return {
       ok: false,
-      error: editorKey === "advertiserRole" ? ADVERTISER_ROLE_SAVE_FAILED : "لم يُحفظ الحقل",
+      error: editorKey === "advertiserRole" ? ADVERTISER_ROLE_SAVE_FAILED : SAVE_FAILED,
       readiness,
       reloaded
     };

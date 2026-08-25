@@ -204,6 +204,21 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     opportunityScore: Number(metadata.opportunityScore || 0),
     isBestOpportunity: Boolean(metadata.isBestOpportunity),
     livingStage: String(op.livingStage || metadata.livingStage || ""),
+    livingTimeline: (() => {
+      const raw = op.livingTimeline || op.livingTimelineJson || metadata.livingTimeline || metadata.livingTimelineJson;
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === "string" && raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    })(),
+    livingUpdatedAt: String(op.livingUpdatedAt || metadata.livingUpdatedAt || op.updatedAt || ""),
+    nextActor: String(op.nextActor || metadata.nextActor || ""),
     rejectedMatchIds: metadata.rejectedMatchIds || [],
     missingInfoKey: String(metadata.missingInfoKey || ""),
     ownerContactNeeded: Boolean(metadata.ownerContactNeeded),
@@ -239,7 +254,7 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     appointmentAt: op.appointmentAt || metadata.appointmentAt || "",
     viewingAt: metadata.viewingAt || "",
     completionConfirmations: metadata.completionConfirmations || {},
-    hasNewResponse: Boolean(metadata.hasNewResponse),
+    hasNewResponse: Boolean(metadata.hasNewResponse) || String(op.hasNewResponse || "").toLowerCase() === "true",
     partnerOfficeName: String(op.partnerOfficeName || ""),
     assignedBrokerId: String(op.assignedBrokerId || ""),
     matchingReadiness,

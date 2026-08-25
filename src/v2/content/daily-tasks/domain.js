@@ -19,8 +19,10 @@ import {
   livingCopy,
   livingTaskId,
   matchGroupKey,
+  parseLivingTimeline,
   sortGroupForLivingStage
 } from "../../../../public/js/match-group-domain.js";
+import { formatOpportunityReference } from "../../../../public/js/reference-code-domain.js";
 
 export const DAILY_TASK_STATE = Object.freeze({
   NEW_MATCH: "new_match",
@@ -64,7 +66,9 @@ export const EXEC_ACTION = Object.freeze({
   RESEND_TO_CLIENT: "resend_to_client",
   OPEN_OFFER: "open_offer",
   COMPLETE_INFO: "complete_info",
-  REVIEW_NEXT: "review_next_candidate"
+  REVIEW_NEXT: "review_next_candidate",
+  SHARE_DETAILS: "share_details",
+  CONFIRM_DEAL: "confirm_deal"
 });
 
 export const SECURE_PARTY = Object.freeze({
@@ -179,10 +183,11 @@ const PRIORITY_RANK = Object.freeze({
   new_reply: 2,
   TODAY_APPOINTMENT: 3,
   appointment_today: 3,
-  WAITING_EXTERNAL_PARTY: 4,
-  awaiting_reply: 4,
-  PASSIVE_STATUS: 5,
-  closed: 5
+  NEW_COOPERATION_RESPONSE: 4,
+  WAITING_EXTERNAL_PARTY: 5,
+  awaiting_reply: 5,
+  PASSIVE_STATUS: 6,
+  closed: 6
 });
 
 function upper(value) {
@@ -206,12 +211,22 @@ function districtBit(record = {}) {
   return district ? `حي ${district}` : "";
 }
 
-export function dailyTaskPropertyLine(record = {}) {
+export function dailyTaskTypePurposeLine(record = {}) {
   const propertyType = text(record.propertyType);
   const purpose = purposeWord(record);
-  const place = districtBit(record);
-  const head = [propertyType, purpose].filter(Boolean).join(" ");
-  if (head && place) return `${head} — ${place}`;
+  return [propertyType, purpose].filter(Boolean).join(" ");
+}
+
+export function dailyTaskPlaceLine(record = {}) {
+  const district = text(record.district).replace(/^حي\s+/, "");
+  const city = text(record.city);
+  return [district, city].filter(Boolean).join(" · ");
+}
+
+export function dailyTaskPropertyLine(record = {}) {
+  const head = dailyTaskTypePurposeLine(record);
+  const place = dailyTaskPlaceLine(record);
+  if (head && place) return `${head}\n${place}`;
   return head || place || text(record.summaryLine) || "";
 }
 
@@ -229,12 +244,23 @@ export function dailyTaskMoneyLine(record = {}) {
   return text(record.moneyLine);
 }
 
-function detailsLabel(record = {}) {
-  const kind = upper(record.opportunityKind || record.kind || "");
-  if (kind === "REQUEST" || kind === "CLIENT" || record.contactType === "client") {
-    return "عرض تفاصيل الطلب";
-  }
-  return "عرض تفاصيل العرض";
+function detailsLabel() {
+  return "عرض التفاصيل الكاملة";
+}
+
+function shareDetailsAction() {
+  return {
+    id: EXEC_ACTION.SHARE_DETAILS,
+    label: "مشاركة التفاصيل",
+    variant: "text"
+  };
+}
+
+function confirmDealAction() {
+  return {
+    id: EXEC_ACTION.CONFIRM_DEAL,
+    label: "تأكيد إتمام الصفقة"
+  };
 }
 
 function openOfferAction(record = {}) {
@@ -282,10 +308,24 @@ function actionsForState(stateKey, record = {}) {
   let primary = null;
   const ownerNeeded = Boolean(record.ownerContactNeeded);
   const living = upper(record.livingStage);
-  if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION || (ownerNeeded && stateKey === DAILY_TASK_STATE.CLIENT_INTERESTED)) {
+  const readyToClose = living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
+    || living === LIVING_TASK_STAGE.FOLLOW_UP
+    || stateKey === DAILY_TASK_STATE.APPOINTMENT_TODAY;
+  if (readyToClose && living !== LIVING_TASK_STAGE.MATCH_FOUND) {
+    if (living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED || living === LIVING_TASK_STAGE.FOLLOW_UP) {
+      primary = confirmDealAction();
+      secondary.push(openOfferAction(record));
+      return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    }
+  }
+  if (ownerNeeded && living !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
     primary = sendToOwnerAction(record);
     secondary.push(openOfferAction(record));
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+  }
+  if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
+    secondary.push(openOfferAction(record));
+    return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
   }
   if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
     if (record.hasRejectedCandidate && record.hasNextCandidate) {
@@ -347,17 +387,38 @@ export function buildDailyTaskView(record = {}) {
   const sessionKind = primaryAction?.sessionKind
     || secondaryActions.find((action) => action.sessionKind)?.sessionKind
     || SECURE_SESSION_KIND.CLIENT_MATCH_REVIEW;
+  const referenceCode = text(record.referenceCode) || formatOpportunityReference(
+    record.opportunityId || record.offerId || record.requestId || record.id
+  );
+  const typePurposeLine = text(record.typePurposeLine) || dailyTaskTypePurposeLine(record);
+  const placeLine = text(record.placeLine) || dailyTaskPlaceLine(record);
   return {
     id: text(record.id),
     stateKey,
     kindLabel: text(record.kindLabel) || DAILY_TASK_STATE_LABELS[stateKey] || DAILY_TASK_STATE_LABELS.new_match,
     badgeKey,
     badgeLabel: DAILY_TASK_BADGE[badgeKey] || "",
-    propertyLine: text(record.propertyLine) || dailyTaskPropertyLine(record),
+    referenceCode,
+    workflowId: text(record.workflowId || record.groupKey || record.id),
+    propertyType: text(record.propertyType),
+    purpose: text(record.purpose),
+    city: text(record.city),
+    district: text(record.district),
+    priceOrBudget: text(record.moneyLine) || dailyTaskMoneyLine(record),
+    typePurposeLine,
+    placeLine,
+    propertyLine: text(record.propertyLine) || [typePurposeLine, placeLine].filter(Boolean).join("\n"),
     moneyLine: text(record.moneyLine) || dailyTaskMoneyLine(record),
     statusLabel: record.statusLabel != null
       ? text(record.statusLabel)
       : (DAILY_TASK_STATUS_LABELS[stateKey] || DAILY_TASK_STATUS_LABELS.new_match),
+    currentStatus: record.statusLabel != null
+      ? text(record.statusLabel)
+      : (DAILY_TASK_STATUS_LABELS[stateKey] || DAILY_TASK_STATUS_LABELS.new_match),
+    requiresAction: record.requiresAction != null
+      ? Boolean(record.requiresAction)
+      : Boolean(primaryAction),
+    requiresActionBy: text(record.requiresActionBy || record.nextActor || ""),
     nextActionLine: record.nextActionLine != null
       ? text(record.nextActionLine)
       : (nextByState[stateKey] || ""),
@@ -375,7 +436,7 @@ export function buildDailyTaskView(record = {}) {
     priorityGroup: dailyTaskPriorityGroup(stateKey, badgeKey, record.sortGroup),
     endsThisMatchOnly: stateKey === DAILY_TASK_STATE.MATCH_UNSUITABLE,
     exposeCounterpartyContact: false,
-    taskKind: record.taskKind || "",
+    taskKind: record.taskKind || "match_group",
     candidateCount: Number(record.candidateCount || 0),
     candidateCountLine: text(record.candidateCountLine),
     candidates: Array.isArray(record.candidates) ? record.candidates : [],
@@ -389,9 +450,16 @@ export function buildDailyTaskView(record = {}) {
     hasRejectedCandidate: Boolean(record.hasRejectedCandidate),
     happenedLine: text(record.happenedLine),
     turnLine: text(record.turnLine),
-    revealClosedLabel: text(record.revealClosedLabel) || (stateKey === DAILY_TASK_STATE.NEW_MATCH ? "مراجعة المطابقات" : "عرض البيانات"),
+    yourTurnLine: text(record.yourTurnLine),
+    waiting: Boolean(record.waiting),
+    timeline: parseLivingTimeline(record.timeline || record.livingTimeline),
+    revealClosedLabel: text(record.revealClosedLabel) || "عرض البيانات",
     revealOpenLabel: text(record.revealOpenLabel) || "إخفاء البيانات",
-    groupKey: text(record.groupKey)
+    groupKey: text(record.groupKey),
+    livingUpdatedAt: text(record.livingUpdatedAt || record.updatedAt),
+    hasNewResponse: Boolean(record.hasNewResponse),
+    partnerOfficeName: text(record.partnerOfficeName),
+    partnerOfficeId: text(record.partnerOfficeId)
   };
 }
 
@@ -405,6 +473,11 @@ export function sortDailyTaskViews(tasks = []) {
     };
     const rank = rankOf(a) - rankOf(b);
     if (rank !== 0) return rank;
+    const newA = Number(Boolean(a.hasNewResponse));
+    const newB = Number(Boolean(b.hasNewResponse));
+    if (newA !== newB) return newB - newA;
+    const time = String(b.livingUpdatedAt || "").localeCompare(String(a.livingUpdatedAt || ""));
+    if (time !== 0) return time;
     return String(a.id || "").localeCompare(String(b.id || ""));
   });
 }
@@ -469,9 +542,15 @@ function formatAppointmentLine(value) {
 }
 
 function listingLine(record = {}) {
-  const propertyType = text(record.propertyType || record.candidatePropertyType);
-  const district = text(record.district || record.candidateDistrict).replace(/^حي\s+/, "");
-  return [propertyType, district ? `حي ${district}` : ""].filter(Boolean).join(" · ");
+  const typePurpose = dailyTaskTypePurposeLine({
+    propertyType: record.propertyType || record.candidatePropertyType,
+    purpose: record.purpose || record.candidatePurpose
+  });
+  const place = dailyTaskPlaceLine({
+    district: record.district || record.candidateDistrict,
+    city: record.city || record.candidateCity
+  });
+  return [typePurpose, place].filter(Boolean).join(" · ");
 }
 
 function areaLine(record = {}) {
@@ -486,6 +565,24 @@ function moneyFromCandidate(record = {}) {
     annualRent: record.annualRent,
     purpose: record.candidatePurpose || record.purpose
   });
+}
+
+function derivedMatchReasons(source = {}, proposed = {}, existing = []) {
+  const lines = existing.map((row) => text(row)).filter(Boolean);
+  const add = (line) => {
+    if (line && !lines.includes(line) && !lines.some((row) => row.includes(line))) lines.push(line);
+  };
+  const srcDistrict = text(source.district).replace(/^حي\s+/, "");
+  const prDistrict = text(proposed.district).replace(/^حي\s+/, "");
+  if (srcDistrict && prDistrict && srcDistrict === prDistrict) add("نفس الحي");
+  const srcMoney = Number(String(source.money || "").replace(/[^\d.]/g, ""));
+  const prMoney = Number(String(proposed.money || "").replace(/[^\d.]/g, ""));
+  if (srcMoney > 0 && prMoney > 0 && prMoney <= srcMoney) add("ضمن الميزانية");
+  else if (srcMoney > 0 && prMoney > 0 && Math.abs(prMoney - srcMoney) / srcMoney <= 0.12) add("السعر مناسب");
+  const srcArea = Number(String(source.area || "").replace(/[^\d.]/g, ""));
+  const prArea = Number(String(proposed.area || "").replace(/[^\d.]/g, ""));
+  if (srcArea > 0 && prArea > 0 && Math.abs(prArea - srcArea) / srcArea <= 0.15) add("المساحة متقاربة");
+  return lines.slice(0, 4);
 }
 
 function reasonsFrom(item = {}) {
@@ -530,12 +627,20 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     isBestOpportunity: item.isBestOpportunity || item.metadata?.isBestOpportunity,
     matchReasons: reasonsFrom(item),
     viewingAt: item.viewingAt,
-    appointmentAt: item.appointmentAt
+    appointmentAt: item.appointmentAt,
+    livingTimeline: item.livingTimeline || item.livingTimelineJson || item.metadata?.livingTimeline,
+    hasNewResponse: item.hasNewResponse || item.metadata?.hasNewResponse,
+    nextActor: item.nextActor || item.metadata?.nextActor,
+    livingUpdatedAt: item.livingUpdatedAt || item.metadata?.livingUpdatedAt || item.updatedAt
   };
 }
 
 export function buildMatchGroupDailyTask(group, now = new Date()) {
-  if (!group?.living || group.living.stage === LIVING_TASK_STAGE.MATCH_EXHAUSTED) return null;
+  if (!group?.living) return null;
+  if (group.living.stage === LIVING_TASK_STAGE.MATCH_EXHAUSTED
+    || group.living.stage === LIVING_TASK_STAGE.COMPLETED) {
+    return null;
+  }
   const remaining = group.living.remaining.length ? group.living.remaining : group.members;
   if (!remaining.length) return null;
   const active = remaining[0];
@@ -568,7 +673,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   const copy = livingCopy(group.living.stage, {
     missingInfoKey: group.living.missingInfoKey,
     hasNextCandidate: group.living.rejectedMatchIds.length > 0 && remaining.length > 0,
-    appointmentLine: formatAppointmentLine(active.viewingAt || active.appointmentAt)
+    appointmentLine: formatAppointmentLine(active.viewingAt || active.appointmentAt),
+    ownerContactNeeded: group.living.ownerContactNeeded
   });
   const candidates = remaining.map((item, index) => ({
     matchId: text(item.matchId || item.recordId || item.id),
@@ -591,14 +697,40 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     : (appointmentToday ? "today" : "now");
   const sortGroup = sortGroupForLivingStage(group.living.stage, {
     overdue: badgeKey === "overdue",
-    appointmentToday
+    appointmentToday,
+    ownerContactNeeded: group.living.ownerContactNeeded,
+    hasNewResponse: group.living.hasNewResponse
   });
   const missingInfo = group.living.stage === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO;
+  const opportunityId = sourceIsRequest
+    ? (active.clientRequestId || active.requestId || active.opportunityId)
+    : (active.ownerOfferId || active.offerId || active.opportunityId);
+  const referenceCode = formatOpportunityReference(opportunityId);
+  const sourceListing = {
+    propertyType: source.propertyType,
+    district: source.district,
+    city: source.city,
+    money: source.money,
+    area: areaLine(source),
+    purpose: source.purpose,
+    kindLabel: sourceIsRequest ? "طلب العميل" : "عرض المالك"
+  };
+  const proposedListing = {
+    propertyType: proposed.propertyType,
+    district: proposed.district,
+    city: proposed.city,
+    money: proposed.money,
+    area: areaLine(proposed),
+    purpose: proposed.purpose,
+    kindLabel: sourceIsRequest ? "العرض المطابق" : "الطلب المطابق"
+  };
   return buildDailyTaskView({
     ...matchRecordFromItem(active, now),
     id: group.taskId || livingTaskId(group.groupKey),
     taskKind: "match_group",
     groupKey: group.groupKey,
+    workflowId: group.taskId || livingTaskId(group.groupKey),
+    referenceCode,
     stateKey,
     badgeKey,
     sortGroup,
@@ -606,7 +738,10 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     propertyType: source.propertyType || proposed.propertyType,
     purpose: source.purpose || proposed.purpose,
     district: source.district || proposed.district,
-    propertyLine: listingLine(source.propertyType ? source : proposed) || listingLine(active),
+    city: source.city || proposed.city,
+    typePurposeLine: dailyTaskTypePurposeLine(source.propertyType ? source : proposed),
+    placeLine: dailyTaskPlaceLine(source.district || source.city ? source : proposed),
+    propertyLine: [dailyTaskTypePurposeLine(source.propertyType ? source : proposed), dailyTaskPlaceLine(source.district || source.city ? source : proposed)].filter(Boolean).join("\n"),
     salePrice: proposed.salePrice,
     budget: source.budget,
     candidateCount,
@@ -617,37 +752,29 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     nextActionLine: copy.nextActionLine,
     happenedLine: copy.happenedLine,
     turnLine: copy.turnLine,
+    yourTurnLine: copy.yourTurnLine,
+    waiting: Boolean(copy.waiting),
+    requiresAction: !copy.waiting,
+    requiresActionBy: group.living.nextActor || "",
     revealClosedLabel: copy.revealClosedLabel,
+    revealOpenLabel: copy.revealOpenLabel,
     kindLabel: copy.kindLabel,
     statusLabel: copy.statusLabel,
     candidates,
-    sourceListing: {
-      propertyType: source.propertyType,
-      district: source.district,
-      city: source.city,
-      money: source.money,
-      area: areaLine(source),
-      purpose: source.purpose
-    },
-    proposedListing: {
-      propertyType: proposed.propertyType,
-      district: proposed.district,
-      city: proposed.city,
-      money: proposed.money,
-      area: areaLine(proposed),
-      purpose: proposed.purpose
-    },
-    matchReasons: best.reasons || reasonsFrom(active),
+    sourceListing,
+    proposedListing,
+    matchReasons: derivedMatchReasons(sourceListing, proposedListing, best.reasons || reasonsFrom(active)),
+    timeline: group.living.timeline || [],
     missingInfoKey: missingInfo ? group.living.missingInfoKey : "",
     ownerContactNeeded: group.living.ownerContactNeeded,
     hasNextCandidate: remaining.length > 1 || (group.living.rejectedMatchIds.length > 0 && remaining.length > 0),
     hasRejectedCandidate: group.living.rejectedMatchIds.length > 0,
+    hasNewResponse: group.living.hasNewResponse,
+    livingUpdatedAt: group.living.livingUpdatedAt,
     matchId: group.living.activeMatchId || active.matchId,
     offerId: active.ownerOfferId || active.offerId,
     requestId: active.clientRequestId || active.requestId,
-    opportunityId: sourceIsRequest
-      ? (active.clientRequestId || active.requestId || active.opportunityId)
-      : (active.ownerOfferId || active.offerId || active.opportunityId)
+    opportunityId
   });
 }
 
@@ -716,6 +843,20 @@ function isCooperationSource(item = {}) {
   return Boolean(item.currentStage && (item.cooperationId || item.cooperationTaskId));
 }
 
+export function buildTaskHeaderViewModel(task = {}) {
+  return {
+    referenceCode: String(task.referenceCode || "").trim(),
+    taskType: String(task.kindLabel || "").trim(),
+    propertyType: String(task.propertyType || "").trim(),
+    purpose: String(task.purpose || "").trim(),
+    city: String(task.city || "").trim(),
+    district: String(task.district || "").trim(),
+    priceOrBudget: String(task.priceOrBudget || task.moneyLine || "").trim(),
+    currentStatus: String(task.currentStatus || task.statusLabel || "").trim(),
+    requiresAction: Boolean(task.requiresAction)
+  };
+}
+
 export function dailyTaskDetailsHash(task) {
   const id = String(task?.opportunityId || task?.offerId || task?.requestId || "").trim();
   if (!id || id.includes("/") || id.includes("\\") || id.includes("..") || id.length > 128) return "";
@@ -732,11 +873,12 @@ export function dailyTasksDemoFixtures() {
       propertyType: "أرض",
       purpose: "SALE",
       district: "عروة",
+      city: "المدينة المنورة",
       salePrice: 500000,
       matchId: "match_new_1",
-      offerId: "offer_urwah_1",
-      requestId: "request_urwah_1",
-      opportunityId: "offer_urwah_1",
+      offerId: "offer_urwah_1842",
+      requestId: "request_urwah_1842",
+      opportunityId: "offer_urwah_1842",
       clientPhone: "0511111111",
       ownerPhone: "0522222222",
       clientName: "عميل عروة",
@@ -815,6 +957,7 @@ export function dailyTasksDemoFixtures() {
       propertyType: "أرض",
       purpose: "SALE",
       district: "عروة",
+      city: "المدينة المنورة",
       salePrice: 500000,
       matchId: "match_visit_1",
       offerId: "offer_visit_1",

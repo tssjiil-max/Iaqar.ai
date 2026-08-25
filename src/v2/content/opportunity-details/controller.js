@@ -115,11 +115,17 @@ async function submitEditor(editorKey, formData) {
       actorUid: window.firebase?.auth?.()?.currentUser?.uid || ""
     });
     if (!result?.ok) {
-      showEditorError(result?.error || "تعذر حفظ الحقل");
+      showEditorError(result?.error || "تعذر حفظ الحقل، حاول مرة أخرى");
       return;
     }
     state.record = result.reloaded || state.record;
     state.hydrated = true;
+    const toast = document.getElementById("toast");
+    if (toast) {
+      toast.textContent = "تم الحفظ";
+      toast.classList.add("show");
+      toast.hidden = false;
+    }
     closeEditor({ restoreFocus: false });
     renderPage();
   } catch (error) {

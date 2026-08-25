@@ -94,11 +94,14 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   const html = buildDailyTaskCardHtml(task);
   const text = visibleText(html);
   assert.match(text, /مطابقة جديدة/);
-  assert.match(text, /أرض للبيع — حي عروة/);
+  assert.match(text, /أرض للبيع/);
+  assert.match(text, /عروة/);
+  assert.match(text, /المدينة المنورة/);
+  assert.match(text, /#A-1842/);
   assert.match(text, /500,000 ر\.س/);
   assert.match(text, /تم العثور على مطابقة/);
   assert.match(html, /data-cv2-exec-reveal/);
-  assert.match(html, />مراجعة المطابقات</);
+  assert.match(html, />عرض البيانات</);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(html.includes("عرض تفاصيل العرض"), false);
@@ -124,7 +127,7 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.match(html, />إرسال للعميل</);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
-  assert.match(html, />عرض تفاصيل العرض</);
+  assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 1);
   assert.equal(task.primaryAction.party, SECURE_PARTY.CLIENT);
@@ -150,7 +153,7 @@ test("awaiting client reply stays buttonless while collapsed and capped when ope
   assert.match(text, /بانتظار رد العميل/);
   assert.equal(html.includes("data-cv2-exec-primary="), false);
   assert.match(html, />إعادة الإرسال</);
-  assert.match(html, />عرض تفاصيل العرض</);
+  assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(countPrimary(html), 0);
   assert.equal(countSecondary(html), 2);
@@ -171,7 +174,7 @@ test("client interested drops send-to-client as primary and keeps future replies
   const needs = visibleText(buildDailyTaskCardHtml(byId.task_needs_details, { open: true }));
   assert.match(needs, /العميل يحتاج تفاصيل أكثر/);
   assert.equal(needs.includes("الخطوة التالية ستظهر هنا"), false);
-  assert.match(needs, /عرض تفاصيل الطلب/);
+  assert.match(needs, /عرض التفاصيل الكاملة/);
 
   const no = visibleText(buildDailyTaskCardHtml(byId.task_unsuitable, { open: true }));
   assert.match(no, /المطابقة غير مناسبة/);
@@ -190,7 +193,7 @@ test("list accordion keeps a single open task", () => {
   assert.match(html, /data-task-id="task_new_match"[^>]*[\s\S]*?aria-expanded="false"/);
   const closedNewMatch = html.split('data-task-id="task_overdue"')[0];
   assert.equal(closedNewMatch.includes("data-cv2-exec-primary="), false);
-  assert.match(closedNewMatch, />مراجعة المطابقات</);
+  assert.match(closedNewMatch, />عرض البيانات</);
   assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 1);
@@ -198,10 +201,9 @@ test("list accordion keeps a single open task", () => {
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });
 
-test("collapsed match tasks use مراجعة المطابقات and never send actions", () => {
+test("collapsed match tasks use عرض البيانات and never send actions", () => {
   const html = buildDailyTaskListHtml(dailyTasksDemoFixtures());
-  assert.equal((html.match(/>مراجعة المطابقات</g) || []).length, 2);
-  assert.equal((html.match(/>عرض البيانات</g) || []).length, 5);
+  assert.equal((html.match(/>عرض البيانات</g) || []).length, 7);
   assert.equal(html.includes("إخفاء البيانات"), false);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
@@ -533,8 +535,9 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   window.document.querySelector('[data-cv2-exec-secondary="open_offer"]')
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(switched, "opportunities");
-  assert.match(window.location.hash, /#\/opportunities\/offer_urwah_1/);
+  assert.equal(switched, "");
+  assert.equal(window.document.querySelector("[data-cv2-exec-full-details]") != null, true);
+  assert.match(window.document.body.innerHTML, /التفاصيل الكاملة/);
 
   unmountDailyTasksContentV2();
   delete global.window;

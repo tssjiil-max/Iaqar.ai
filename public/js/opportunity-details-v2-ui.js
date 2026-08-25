@@ -236,8 +236,8 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
       title: "الموقع",
       hint: "المدينة والحي",
       input: `
-        <input class="opp-v2-editor-input" name="city" type="text" maxlength="80" autocomplete="off" value="${esc(seed)}" placeholder="المدينة">
-        <input class="opp-v2-editor-input" name="district" type="text" maxlength="80" autocomplete="off" placeholder="الحي">`
+        <input class="opp-v2-editor-input" name="city" type="text" maxlength="80" autocomplete="off" value="${esc(vm.cityValue || vm.city || seed)}" placeholder="المدينة">
+        <input class="opp-v2-editor-input" name="district" type="text" maxlength="80" autocomplete="off" value="${esc(vm.districtValue || vm.district || "")}" placeholder="الحي">`
     },
     propertyPurpose: {
       title: "العقار والغرض",

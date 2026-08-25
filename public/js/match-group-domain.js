@@ -28,6 +28,7 @@ export const TASK_SORT_GROUP = Object.freeze({
   NEEDS_BROKER_ACTION: "NEEDS_BROKER_ACTION",
   NEW_EXTERNAL_RESPONSE: "NEW_EXTERNAL_RESPONSE",
   TODAY_APPOINTMENT: "TODAY_APPOINTMENT",
+  NEW_COOPERATION_RESPONSE: "NEW_COOPERATION_RESPONSE",
   WAITING_EXTERNAL_PARTY: "WAITING_EXTERNAL_PARTY",
   PASSIVE_STATUS: "PASSIVE_STATUS"
 });
@@ -36,14 +37,141 @@ export const TASK_SORT_GROUP_RANK = Object.freeze({
   NEEDS_BROKER_ACTION: 1,
   NEW_EXTERNAL_RESPONSE: 2,
   TODAY_APPOINTMENT: 3,
-  WAITING_EXTERNAL_PARTY: 4,
-  PASSIVE_STATUS: 5
+  NEW_COOPERATION_RESPONSE: 4,
+  WAITING_EXTERNAL_PARTY: 5,
+  PASSIVE_STATUS: 6
+});
+
+export const TASK_ACTOR = Object.freeze({
+  BROKER: "BROKER",
+  CLIENT: "CLIENT",
+  OWNER: "OWNER",
+  PARTNER_OFFICE: "PARTNER_OFFICE",
+  NONE: "NONE"
 });
 
 export const LIVING_TASK_ID_PREFIX = "mg_";
 
 function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function parseLivingTimeline(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map(normalizeTimelineEvent).filter(Boolean);
+  }
+  const source = text(raw);
+  if (!source) return [];
+  try {
+    const parsed = JSON.parse(source);
+    return Array.isArray(parsed) ? parsed.map(normalizeTimelineEvent).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeTimelineEvent(event = {}) {
+  const label = text(event.label || event.note);
+  if (!label) return null;
+  return {
+    type: text(event.type || event.eventType || "event"),
+    actor: upper(event.actor || event.createdBy || "") || TASK_ACTOR.BROKER,
+    label,
+    createdAt: text(event.createdAt || event.at || "")
+  };
+}
+
+export function mergeTimelines(groups = []) {
+  const seen = new Set();
+  const out = [];
+  for (const group of groups) {
+    for (const event of parseLivingTimeline(group)) {
+      const key = `${event.createdAt}|${event.type}|${event.label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(event);
+    }
+  }
+  return out.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).slice(-40);
+}
+
+export function appendLivingTimeline(existing, event, { now = new Date() } = {}) {
+  const next = normalizeTimelineEvent({
+    ...event,
+    createdAt: text(event?.createdAt) || now.toISOString()
+  });
+  if (!next) return parseLivingTimeline(existing);
+  return mergeTimelines([existing, [next]]);
+}
+
+export function nextActorForLivingStage(stage, { ownerContactNeeded = false } = {}) {
+  const key = upper(stage);
+  if (ownerContactNeeded && key !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
+    return TASK_ACTOR.BROKER;
+  }
+  if (
+    key === LIVING_TASK_STAGE.MATCH_FOUND
+    || key === LIVING_TASK_STAGE.BROKER_REVIEW
+    || key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO
+    || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
+    || key === LIVING_TASK_STAGE.VIEWING_DECISION
+    || key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
+    || key === LIVING_TASK_STAGE.FOLLOW_UP
+    || key === LIVING_TASK_STAGE.CLIENT_INTERESTED
+  ) {
+    return TASK_ACTOR.BROKER;
+  }
+  if (key === LIVING_TASK_STAGE.CLIENT_SENT || key === LIVING_TASK_STAGE.WAITING_CLIENT) {
+    return TASK_ACTOR.CLIENT;
+  }
+  if (key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) return TASK_ACTOR.OWNER;
+  if (key === LIVING_TASK_STAGE.COMPLETED || key === LIVING_TASK_STAGE.MATCH_EXHAUSTED) {
+    return TASK_ACTOR.NONE;
+  }
+  return TASK_ACTOR.BROKER;
+}
+
+export function partyReplyTimelineLabel(party, action) {
+  const side = text(party).toLowerCase();
+  const id = text(action);
+  if (side === "owner") {
+    if (id === "property_available") return "المالك أكد أن العقار متاح";
+    if (id === "not_available") return "المالك أبلغ أن العقار غير متاح";
+    if (id === "confirm_appointment") return "المالك أكد موعد المعاينة";
+    if (id === "opened") return "فتح المالك الرابط";
+    return "المالك رد على المعاينة";
+  }
+  if (id === "interested") return "العميل مهتم بالعقار";
+  if (id === "needs_details") return "العميل طلب تفاصيل أكثر";
+  if (id === "not_suitable") return "العميل اعتبر المطابقة غير مناسبة";
+  if (id === "want_viewing") return "العميل طلب معاينة";
+  if (id === "info_sufficient") return "العميل أكد أن التفاصيل كافية";
+  if (id === "opened") return "فتح العميل الرابط";
+  if (id.startsWith("detail_")) return "العميل طلب تفاصيل أكثر";
+  return "العميل رد على المعاينة";
+}
+
+export function livingStatusLabel(stage) {
+  const key = upper(stage);
+  if (key === LIVING_TASK_STAGE.WAITING_CLIENT || key === LIVING_TASK_STAGE.CLIENT_SENT) {
+    return "بانتظار العميل";
+  }
+  if (key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) return "بانتظار المالك";
+  if (key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION || key === LIVING_TASK_STAGE.VIEWING_DECISION) {
+    return "موعد تحت التنسيق";
+  }
+  if (key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) return "موعد مؤكد";
+  if (key === LIVING_TASK_STAGE.FOLLOW_UP) return "قيد المتابعة";
+  if (key === LIVING_TASK_STAGE.COMPLETED) return "الصفقة مكتملة";
+  if (key === LIVING_TASK_STAGE.CLIENT_REJECTED || key === LIVING_TASK_STAGE.MATCH_EXHAUSTED) {
+    return "المطابقة غير مناسبة";
+  }
+  if (key === LIVING_TASK_STAGE.CLIENT_INTERESTED) return "قيد المتابعة";
+  if (key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE) return "قيد المتابعة";
+  if (key === LIVING_TASK_STAGE.MATCH_FOUND || key === LIVING_TASK_STAGE.BROKER_REVIEW) {
+    return "تم العثور على مطابقة";
+  }
+  return "";
 }
 
 function upper(value) {
@@ -117,6 +245,9 @@ function livingFromItem(item = {}) {
     activeMatchId: text(item.activeMatchId || meta.activeMatchId),
     missingInfoKey: text(item.missingInfoKey || meta.missingInfoKey),
     ownerContactNeeded: Boolean(item.ownerContactNeeded || meta.ownerContactNeeded),
+    hasNewResponse: Boolean(item.hasNewResponse || meta.hasNewResponse),
+    nextActor: upper(item.nextActor || meta.nextActor || ""),
+    timeline: parseLivingTimeline(item.livingTimeline || item.livingTimelineJson || meta.livingTimeline || meta.livingTimelineJson),
     updatedAt: text(item.livingUpdatedAt || meta.livingUpdatedAt || item.updatedAt || item.replyAt || "")
   };
 }
@@ -158,9 +289,15 @@ export function mergeMatchGroupLivingState(members = []) {
     remaining,
     missingInfoKey: latest?.missingInfoKey || "",
     ownerContactNeeded: Boolean(latest?.ownerContactNeeded)
-      || stage === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
-      || stage === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
-      || stage === LIVING_TASK_STAGE.VIEWING_DECISION,
+      && stage !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+      && stage !== LIVING_TASK_STAGE.WAITING_CLIENT
+      && stage !== LIVING_TASK_STAGE.CLIENT_SENT,
+    hasNewResponse: Boolean(latest?.hasNewResponse),
+    nextActor: latest?.nextActor || nextActorForLivingStage(stage, {
+      ownerContactNeeded: Boolean(latest?.ownerContactNeeded)
+    }),
+    timeline: mergeTimelines(members.map((item) => livingFromItem(item).timeline)),
+    livingUpdatedAt: latest?.updatedAt || "",
     hasNextCandidate: remaining.length > 1
   };
 }
@@ -192,12 +329,20 @@ export function groupMatchItems(items = []) {
   });
 }
 
-export function sortGroupForLivingStage(stage, { overdue = false, appointmentToday = false } = {}) {
+export function sortGroupForLivingStage(stage, {
+  overdue = false,
+  appointmentToday = false,
+  ownerContactNeeded = false,
+  hasNewResponse = false
+} = {}) {
   if (appointmentToday || stage === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) {
     return TASK_SORT_GROUP.TODAY_APPOINTMENT;
   }
   if (overdue) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   const key = upper(stage);
+  if (ownerContactNeeded && key === LIVING_TASK_STAGE.CLIENT_INTERESTED) {
+    return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
+  }
   if (
     key === LIVING_TASK_STAGE.MATCH_FOUND
     || key === LIVING_TASK_STAGE.BROKER_REVIEW
@@ -205,10 +350,11 @@ export function sortGroupForLivingStage(stage, { overdue = false, appointmentTod
     || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || key === LIVING_TASK_STAGE.VIEWING_DECISION
     || key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
+    || key === LIVING_TASK_STAGE.FOLLOW_UP
   ) {
     return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   }
-  if (key === LIVING_TASK_STAGE.CLIENT_INTERESTED || key === LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS) {
+  if (hasNewResponse || key === LIVING_TASK_STAGE.CLIENT_INTERESTED || key === LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS) {
     return TASK_SORT_GROUP.NEW_EXTERNAL_RESPONSE;
   }
   if (
@@ -224,9 +370,11 @@ export function sortGroupForLivingStage(stage, { overdue = false, appointmentTod
 export function livingCopy(stage, {
   missingInfoKey = "",
   hasNextCandidate = false,
-  appointmentLine = ""
+  appointmentLine = "",
+  ownerContactNeeded = false
 } = {}) {
   const key = upper(stage);
+  const reveal = { revealClosedLabel: "عرض البيانات", revealOpenLabel: "إخفاء البيانات" };
   if (key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO) {
     const label = missingInfoLabel(missingInfoKey);
     return {
@@ -234,78 +382,142 @@ export function livingCopy(stage, {
       statusLabel: label ? `${label} غير متوفر` : "معلومة غير متوفرة",
       happenedLine: "العميل يحتاج معلومة",
       turnLine: "دورك الآن",
+      yourTurnLine: "استكمال المعلومة",
       nextActionLine: "استكمال المعلومة",
-      revealClosedLabel: "عرض البيانات"
+      waiting: false,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.WAITING_CLIENT || key === LIVING_TASK_STAGE.CLIENT_SENT) {
     return {
       kindLabel: "بانتظار رد العميل",
-      statusLabel: "",
-      happenedLine: "",
+      statusLabel: "بانتظار العميل",
+      happenedLine: "تم فتح واتساب للعميل",
       turnLine: "",
-      nextActionLine: "",
-      revealClosedLabel: "عرض البيانات"
+      yourTurnLine: "بانتظار رد العميل",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.CLIENT_INTERESTED) {
+    if (ownerContactNeeded) {
+      return {
+        kindLabel: "العميل مهتم",
+        statusLabel: "قيد المتابعة",
+        happenedLine: "العميل مهتم بالعقار",
+        turnLine: "دورك الآن",
+        yourTurnLine: "تأكيد توفر العقار",
+        nextActionLine: "تأكيد توفر العقار",
+        waiting: false,
+        ...reveal
+      };
+    }
     return {
       kindLabel: "العميل مهتم",
-      statusLabel: "",
-      happenedLine: "✓ العميل مهتم",
-      turnLine: "",
-      nextActionLine: "",
-      revealClosedLabel: "عرض البيانات"
+      statusLabel: "قيد المتابعة",
+      happenedLine: "العميل مهتم بالعقار",
+      turnLine: "دورك الآن",
+      yourTurnLine: "متابعة المعاينة",
+      nextActionLine: "متابعة المعاينة",
+      waiting: false,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS) {
     return {
       kindLabel: "العميل يحتاج تفاصيل",
-      statusLabel: "العميل يحتاج تفاصيل أكثر",
-      happenedLine: "",
-      turnLine: "",
-      nextActionLine: "",
-      revealClosedLabel: "عرض البيانات"
+      statusLabel: "قيد المتابعة",
+      happenedLine: "العميل طلب تفاصيل أكثر",
+      turnLine: "دورك الآن",
+      yourTurnLine: "مشاركة التفاصيل مع العميل",
+      nextActionLine: "مشاركة التفاصيل",
+      waiting: false,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
     return {
       kindLabel: "بانتظار تأكيد المالك",
-      statusLabel: "",
-      happenedLine: "العميل مهتم",
+      statusLabel: "بانتظار المالك",
+      happenedLine: "تم طلب تأكيد توفر العقار من المالك",
       turnLine: "",
-      nextActionLine: "",
-      revealClosedLabel: "عرض البيانات"
+      yourTurnLine: "بانتظار رد المالك",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE) {
     return {
       kindLabel: "العقار متاح",
-      statusLabel: "",
-      happenedLine: "المالك أكد التوفر",
+      statusLabel: "قيد المتابعة",
+      happenedLine: "المالك أكد أن العقار متاح",
       turnLine: "دورك الآن",
-      nextActionLine: "متابعة المعاينة",
-      revealClosedLabel: "عرض البيانات"
+      yourTurnLine: "تنسيق موعد المعاينة",
+      nextActionLine: "تنسيق موعد المعاينة",
+      waiting: false,
+      ...reveal
+    };
+  }
+  if (key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION || key === LIVING_TASK_STAGE.VIEWING_DECISION) {
+    return {
+      kindLabel: "موعد تحت التنسيق",
+      statusLabel: "موعد تحت التنسيق",
+      happenedLine: "",
+      turnLine: "دورك الآن",
+      yourTurnLine: "تنسيق موعد المعاينة",
+      nextActionLine: "تنسيق موعد المعاينة",
+      waiting: false,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) {
     return {
       kindLabel: appointmentLine ? `الموعد مؤكد — ${appointmentLine}` : "الموعد مؤكد",
       statusLabel: "",
+      happenedLine: appointmentLine ? `موعد مؤكد — ${appointmentLine}` : "موعد مؤكد",
+      turnLine: "دورك الآن",
+      yourTurnLine: "الصفقة جاهزة للإغلاق",
+      nextActionLine: "تأكيد إتمام الصفقة",
+      waiting: false,
+      ...reveal
+    };
+  }
+  if (key === LIVING_TASK_STAGE.FOLLOW_UP) {
+    return {
+      kindLabel: "الصفقة جاهزة للإغلاق",
+      statusLabel: "قيد المتابعة",
       happenedLine: "",
+      turnLine: "دورك الآن",
+      yourTurnLine: "الصفقة جاهزة للإغلاق",
+      nextActionLine: "تأكيد إتمام الصفقة",
+      waiting: false,
+      ...reveal
+    };
+  }
+  if (key === LIVING_TASK_STAGE.COMPLETED) {
+    return {
+      kindLabel: "الصفقة مكتملة",
+      statusLabel: "الصفقة مكتملة",
+      happenedLine: "تم إتمام الصفقة",
       turnLine: "",
+      yourTurnLine: "",
       nextActionLine: "",
-      revealClosedLabel: "عرض البيانات"
+      waiting: true,
+      ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.MATCH_FOUND && hasNextCandidate) {
     return {
       kindLabel: "مطابقة جديدة",
-      statusLabel: "المطابقة الأولى غير مناسبة",
+      statusLabel: "المطابقة غير مناسبة",
       happenedLine: "المطابقة الأولى غير مناسبة",
       turnLine: "دورك الآن",
+      yourTurnLine: "يوجد عرض آخر مناسب",
       nextActionLine: "يوجد عرض آخر مناسب",
-      revealClosedLabel: "مراجعة العرض التالي"
+      waiting: false,
+      ...reveal
     };
   }
   return {
@@ -313,8 +525,10 @@ export function livingCopy(stage, {
     statusLabel: "تم العثور على مطابقة",
     happenedLine: "تم العثور على مطابقة",
     turnLine: "دورك الآن",
-    nextActionLine: "",
-    revealClosedLabel: "مراجعة المطابقات"
+    yourTurnLine: "إرسال العرض للعميل",
+    nextActionLine: "إرسال العرض للعميل",
+    waiting: false,
+    ...reveal
   };
 }
 
@@ -368,7 +582,7 @@ export function livingStageAfterPartyAction({
     return { stage: LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION };
   }
   if (id === "interested") {
-    return { stage: LIVING_TASK_STAGE.CLIENT_INTERESTED, ownerContactNeeded: false };
+    return { stage: LIVING_TASK_STAGE.CLIENT_INTERESTED, ownerContactNeeded: true };
   }
   if (id === "not_suitable") {
     return {
