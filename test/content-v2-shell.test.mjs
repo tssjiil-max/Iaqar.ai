@@ -41,6 +41,26 @@ test("src/v2 is content-only and has no V2 header or navigation", () => {
   assert.equal(existsSync(path.join(srcV2, "content", "mount.js")), true);
 });
 
+test("worker Firestore GET falls back to a masked PATCH when GetDocument quota is exhausted", () => {
+  const worker = readFileSync(path.join(root, "worker", "src", "index.js"), "utf8");
+  assert.match(worker, /async function echoFirestoreDocument/);
+  assert.match(worker, /response.status === 429/);
+  assert.match(worker, /iaqarReadEcho/);
+  assert.match(worker, /currentDocument.exists/);
+});
+
+test("index.html skips Access Gate scripts when cv2Party is present", () => {
+  const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const headDetect = index.indexOf('URLSearchParams(location.search).get("cv2Party")');
+  const skipLog = index.indexOf('ACCESS_GATE_SKIPPED');
+  const writeGate = index.indexOf('document.write(\'<script src="js/access-gate.js">');
+  const partyReturn = index.indexOf('if (document.documentElement.dataset.partyMode === "1")');
+  assert.ok(headDetect > 0 && headDetect < skipLog, "cv2Party must be read before ACCESS_GATE_SKIPPED");
+  assert.ok(partyReturn > 0 && partyReturn < writeGate, "party mode must return before writing access-gate.js");
+  assert.match(index, /PARTY_PARAM_FOUND/);
+  assert.match(index, /PARTY_BOOTSTRAP_STARTED/);
+});
+
 test("existing App Shell, voice slot, and matching engine stay in place", () => {
   const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
   assert.match(index, /مكاتب عقارية ذكية/);

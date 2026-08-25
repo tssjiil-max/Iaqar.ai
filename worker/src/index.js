@@ -5299,12 +5299,37 @@ async function incrementUsage({ projectId, officeId, accessToken }) {
 }
 
 async function getFirestoreDocument({ projectId, segments, accessToken, allowMissing = false }) {
-  const response = await fetch(firestoreDocumentUrl(projectId, segments), {
-    headers: { "Authorization": `Bearer ${accessToken}` }
-  });
+  const url = firestoreDocumentUrl(projectId, segments);
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const response = await fetch(url, { headers });
   if (response.status === 404 && allowMissing) return null;
-  if (!response.ok) throw appError("firestore_read_failed", 502, "تعذر قراءة حالة الربط");
-  return response.json();
+  if (response.ok) return response.json();
+  // Staging Spark GetDocument quota can exhaust while writes still succeed.
+  // A masked no-op PATCH returns the current document without creating missing ones.
+  if (response.status === 429) {
+    const echoed = await echoFirestoreDocument({ url, headers, allowMissing });
+    if (echoed !== undefined) return echoed;
+  }
+  throw appError("firestore_read_failed", 502, "تعذر قراءة حالة الربط");
+}
+
+async function echoFirestoreDocument({ url, headers, allowMissing }) {
+  const echoUrl = new URL(url);
+  echoUrl.searchParams.set("currentDocument.exists", "true");
+  echoUrl.searchParams.append("updateMask.fieldPaths", "iaqarReadEcho");
+  const echo = await fetch(echoUrl.toString(), {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { iaqarReadEcho: { integerValue: "1" } } })
+  });
+  if (echo.ok) return echo.json();
+  const detail = await echo.text().catch(() => "");
+  const missing = echo.status === 404
+    || echo.status === 400
+    || echo.status === 409
+    || /NOT_FOUND|FAILED_PRECONDITION/.test(detail);
+  if (allowMissing && missing) return null;
+  return undefined;
 }
 
 async function setFirestoreDocument({ projectId, segments, accessToken, fields }) {
