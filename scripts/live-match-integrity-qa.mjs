@@ -224,7 +224,8 @@ async function mapperCheck() {
 }
 
 async function cleanup() {
-  for (const name of ["opportunities", "matches", "operations", "matchDiagnostics"]) {
+  if (process.argv.includes("--keep") || process.env.KEEP_FIXTURES === "1") return;
+  for (const name of ["opportunities", "matches", "operations"]) {
     const snap = await office.collection(name).where("testRunId", "==", RUN_ID).limit(50).get();
     await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
   }
@@ -269,17 +270,33 @@ async function captureUi({ customToken, matchId }) {
   const origin = `http://127.0.0.1:${port}`;
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await page.route("**/__/firebase/**", async (route) => {
-    const incoming = new URL(route.request().url());
-    const dest = `${STAGING_URL}${incoming.pathname}${incoming.search}`;
-    const response = await route.fetch(dest);
-    await route.fulfill({ response });
+  const stagingFirebase = {
+    apiKey: "AIzaSyDoP_FMh_ibKRotJmE7F4WBeEUfLJeAX4k",
+    authDomain: "iaqar-ai-staging.firebaseapp.com",
+    projectId: "iaqar-ai-staging",
+    storageBucket: "iaqar-ai-staging.firebasestorage.app",
+    messagingSenderId: "1010507631812",
+    appId: "1:1010507631812:web:65cf5a5934dd8e75c2cd91"
+  };
+  await page.route("**/__/firebase/init.js", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/javascript",
+      body: `if (typeof firebase !== "undefined" && firebase.initializeApp && (!firebase.apps || !firebase.apps.length)) { firebase.initializeApp(${JSON.stringify(stagingFirebase)}); }`
+    });
   });
-  await page.goto(`${origin}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}`, {
+  await page.route("**/__/firebase/init.json", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(stagingFirebase)
+    });
+  });
+  await page.goto(`${origin}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}&contentV2=1`, {
     waitUntil: "domcontentloaded",
     timeout: 90000
   });
-  await page.waitForFunction(() => window.firebase && window.firebase.auth, { timeout: 30000 });
+  await page.waitForFunction(() => window.firebase?.apps?.length > 0, { timeout: 30000 });
   await page.evaluate(async ({ customToken, officeId }) => {
     await window.firebase.auth().signInWithCustomToken(customToken);
     localStorage.setItem("iaqar.officeId", officeId);

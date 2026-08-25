@@ -1,0 +1,98 @@
+{
+  "generatedAt": "2026-08-25T19:26:33.730Z",
+  "reusedExisting": true,
+  "ids": {
+    "runId": "livee2e_matchint_mt91xfw6",
+    "requestId": "opp_livee2e_matchint_mt91xfw6_req",
+    "offerId": "opp_livee2e_matchint_mt91xfw6_offer",
+    "matchId": "mat_8e199315a900f885774987f242535b638e9f",
+    "matchData": {
+      "id": "mat_8e199315a900f885774987f242535b638e9f",
+      "canonicalPairKey": "opportunities:opp_livee2e_matchint_mt91xfw6_offer|opportunities:opp_livee2e_matchint_mt91xfw6_req",
+      "closingReadinessLabel": "منخفضة",
+      "warningsJson": "[]",
+      "integrityStatus": "VALID",
+      "nextAction": "التواصل مع الطرفين",
+      "sourceRecordId": "opp_livee2e_matchint_mt91xfw6_req",
+      "score": 100,
+      "createdAt": {
+        "_seconds": 1787685743,
+        "_nanoseconds": 131000000
+      },
+      "opportunityId": "opp_livee2e_matchint_mt91xfw6_req",
+      "officeId": "qa-e2e-dedicated",
+      "closingReadinessKey": "low",
+      "workflowStage": "contact",
+      "rank": 1,
+      "updatedAt": {
+        "_seconds": 1787685743,
+        "_nanoseconds": 131000000
+      },
+      "counterpartOpportunityId": "opp_livee2e_matchint_mt91xfw6_offer",
+      "contactName": "عميل QA livee2e_matchint_mt91xfw6",
+      "priceDifferencePercent": 10,
+      "priority": "critical",
+      "lastMatchedAt": {
+        "_seconds": 1787685743,
+        "_nanoseconds": 131000000
+      },
+      "matchingRuleVersion": "4.0.0",
+      "nextFollowUpAt": {
+        "_seconds": 1787772143,
+        "_nanoseconds": 131000000
+      },
+      "district": "العزيزية",
+      "offerId": "opp_livee2e_matchint_mt91xfw6_offer",
+      "followUpCount": 0,
+      "status": "active",
+      "isBestOpportunity": true,
+      "city": "المدينة المنورة",
+      "pairRuleKey": "pair_6402af380b942997ddab9d95f0c0d1ef2f2cf0a5",
+      "opportunityScore": 100,
+      "matchGroupId": "opp_livee2e_matchint_mt91xfw6_req",
+      "sourceCollection": "opportunities",
+      "reasonsJson": "[\"نفس المدينة\",\"نفس الحي\",\"نفس نوع العقار\",\"نفس نوع العملية\",\"فرق السعر 10٪\",\"فرق المساحة 4٪\",\"عدد الغرف مطابق\",\"بيانات الطرفين مكتملة\"]",
+      "breakdownJson": "{\"city\":5,\"district\":30,\"propertyType\":22,\"transactionType\":14,\"price\":14,\"area\":8,\"rooms\":5,\"readiness\":0,\"urgency\":0,\"completeness\":3}",
+      "counterpartRecordId": "opp_livee2e_matchint_mt91xfw6_offer",
+      "areaDifferencePercent": 4,
+      "requestId": "opp_livee2e_matchint_mt91xfw6_req",
+      "propertyType": "شقة",
+      "matchId": "mat_8e199315a900f885774987f242535b638e9f",
+      "counterpartCollection": "opportunities",
+      "schemaVersion": 7,
+      "dataVersion": "03a6445563c9d38bcc600d11",
+      "clientRequestId": "opp_livee2e_matchint_mt91xfw6_req",
+      "statusLabel": "نشطة",
+      "transactionType": "rent",
+      "isCurrent": true,
+      "ownerOfferId": "opp_livee2e_matchint_mt91xfw6_offer",
+      "rejectionChecksJson": "[]",
+      "attentionRequired": true,
+      "closingReadinessScore": 46,
+      "contactPhone": "0501111842",
+      "integrityReason": "",
+      "createdBy": "E2E",
+      "isTestFixture": true,
+      "testRunId": "livee2e_matchint_mt91xfw6"
+    }
+  },
+  "matching": null,
+  "ui": {
+    "cardCount": 1,
+    "matchId": "mat_8e199315a900f885774987f242535b638e9f",
+    "requestId": "opp_livee2e_matchint_mt91xfw6_req",
+    "offerId": "opp_livee2e_matchint_mt91xfw6_offer",
+    "reference": "#A-2916",
+    "sheetOfferId": "opp_livee2e_matchint_mt91xfw6_offer",
+    "cardText": "مطابقة جديدة\n\n10:22 م\n\nشقة للإيجار · حي العزيزية\n\nالمدينة المنورة\n\nعرض مناسب واحد\n\n50,000 ر.س سنويًا\n\n#A-2916\n\nتم العثور على مطابقة\n\nطلب العميل\n\nنوع العقار: شقة\n\nالغرض: للإيجار\n\nالحي: العزيزية\n\nالمدينة: المدينة المنورة\n\nالميزانية: 50,000 ر.س سنويًا\n\nالمساحة: 120 م²\n\nالعرض المطابق\n\nنوع العقار: شقة\n\nالغرض: للإيجار\n\nالحي: العزيزية\n\nالمدينة: المدينة المنورة\n\nالسعر: 50,000 ر.س سنويًا\n\nالمساحة: 125 م²\n\nسبب المطابقة\n✓ نفس المدينة\n✓ نفس الحي\n✓ نفس نوع العقار\n✓ نفس نوع العملية\nدورك الآن\n\nإرسال العرض للعميل\n\nإرسال للعميل\nعرض التفاصيل الكاملة\nإخفاء البيانات",
+    "sheetText": "إغلاق التفاصيل\nبيانات الفرصة\n#A-2916\n\n6 من 6 بيانات مكتملة\n\nالعقار والغرض\nشقة للإيجار\nالموقع\nالمدينة المنورة - حي العزيزية\nالحي: العزيزية\nالسعر\n50,000 ريال\nالمساحة والمواصفات\n125 م²\n3 غرف\nالمعلن وصفته\nمالك QA livee2e_matchint_mt91xfw6\nمالك مباشر\nرقم التواصل\n0502221842\nعرض التفاصيل\nتقرير اليوم\nالإجراء\nالنتيجة\nمراجعة البيانات\nتمت إضافة الفرصة\n١٠:٢٢ م\n\nالنتيجة الحالية: جاهزة للمطابقة\n\nالموعد القادم\n-\n-\n-",
+    "accessLocked": false,
+    "notes": [],
+    "shots": {
+      "task": "/opt/cursor/artifacts/match_integrity_qa_task.png",
+      "data": "/opt/cursor/artifacts/match_integrity_qa_view_data.png",
+      "offer": "/opt/cursor/artifacts/match_integrity_qa_offer_details.png"
+    },
+    "origin": "http://127.0.0.1:38991"
+  }
+}
