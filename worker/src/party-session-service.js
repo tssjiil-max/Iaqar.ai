@@ -2,7 +2,12 @@ import {
   buildPartySnapshot,
   createOpaquePartyToken,
   isAllowedPartyAction,
+  isGenericPartyValue,
   isOpaquePartyToken,
+  isPartyOfferListing,
+  isPrimaryPartyAction,
+  linkedOfferIdsFromMatch,
+  listingMediaPaths,
   PARTY_INVALID_COPY,
   PARTY_SESSION_STATUS,
   partySessionKey,
@@ -26,8 +31,62 @@ function js(doc, helpers) {
   return helpers.firestoreFieldsToJs(fields(doc) || {});
 }
 
+const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
+
 export async function hashPartyToken(token, sha256Hex) {
   return sha256Hex(String(token || "").trim());
+}
+
+async function readOfficeDoc(helpers, { projectId, officeId, collection, id, accessToken }) {
+  if (!id) return null;
+  const doc = await helpers.getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, collection, id],
+    accessToken,
+    allowMissing: true
+  });
+  return doc ? { id, ...js(doc, helpers) } : null;
+}
+
+function listingIsUsable(record) {
+  if (!record || !isPartyOfferListing(record)) return false;
+  return !isGenericPartyValue(record.propertyType)
+    || Number(record.salePrice || record.price || record.area || 0) > 0;
+}
+
+async function loadCanonicalOfferListing(helpers, {
+  projectId,
+  officeId,
+  accessToken,
+  matchId = "",
+  session = {},
+  body = {}
+}) {
+  const match = matchId
+    ? await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "matches", id: matchId, accessToken
+    })
+    : null;
+  const sessionLike = {
+    offerId: session.offerId || body.offerId || body.ownerOfferId || "",
+    ownerOfferId: body.ownerOfferId || session.ownerOfferId || "",
+    opportunityId: session.opportunityId || body.opportunityId || ""
+  };
+  const ids = linkedOfferIdsFromMatch(match || {}, sessionLike);
+  let fallback = null;
+  for (const id of ids) {
+    const opportunity = await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "opportunities", id, accessToken
+    });
+    if (listingIsUsable(opportunity)) return opportunity;
+    if (opportunity && isPartyOfferListing(opportunity) && !fallback) fallback = opportunity;
+    const owner = await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "owners", id, accessToken
+    });
+    if (listingIsUsable(owner)) return owner;
+    if (owner && isPartyOfferListing(owner) && !fallback) fallback = owner;
+  }
+  return fallback;
 }
 
 export async function handlePartySessionMint({
@@ -74,27 +133,33 @@ export async function handlePartySessionMint({
 
   const offerId = helpers.cleanText(body.offerId || body.ownerOfferId, 180);
   const requestRecordId = helpers.cleanText(body.requestId || body.clientRequestId, 180);
-  const opportunityId = helpers.cleanText(body.opportunityId || (party === "owner" ? offerId : requestRecordId), 180);
-  let snapshotSource = {
+  const liveOffer = await loadCanonicalOfferListing(helpers, {
+    projectId,
+    officeId,
+    accessToken,
+    matchId,
+    body: { offerId, ownerOfferId: offerId, opportunityId: helpers.cleanText(body.opportunityId, 180) }
+  });
+  const bodyHints = {
     propertyType: helpers.cleanText(body.propertyType, 40),
     purpose: helpers.cleanText(body.purpose, 40),
     salePrice: body.salePrice,
     annualRent: body.annualRent,
+    city: helpers.cleanText(body.city, 80),
     district: helpers.cleanText(body.district, 80),
     area: body.area,
     rooms: body.rooms,
     baths: body.baths,
-    moneyLine: helpers.cleanText(body.moneyLine || body.priceLabel, 80)
+    bathrooms: body.bathrooms,
+    streetWidth: body.streetWidth,
+    streetDirection: helpers.cleanText(body.streetDirection, 40),
+    facing: helpers.cleanText(body.facing || body.direction, 40),
+    depth: body.depth,
+    plotNumber: helpers.cleanText(body.plotNumber, 40),
+    description: helpers.cleanText(body.description, 600),
+    locationUrl: helpers.cleanText(body.locationUrl, 500)
   };
-  if (opportunityId) {
-    const opportunity = await helpers.getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "opportunities", opportunityId],
-      accessToken,
-      allowMissing: true
-    });
-    if (opportunity) snapshotSource = { ...js(opportunity, helpers), ...snapshotSource };
-  }
+  const snapshotSource = liveOffer || (listingIsUsable(bodyHints) ? bodyHints : {});
   const officeDoc = await helpers.getFirestoreDocument({
     projectId,
     segments: ["offices", officeId],
@@ -114,7 +179,8 @@ export async function handlePartySessionMint({
     recipientRef: party === "owner" ? offerId : requestRecordId,
     offerId,
     requestId: requestRecordId,
-    opportunityId,
+    opportunityId: liveOffer?.id || offerId,
+    mediaPaths: listingMediaPaths(snapshotSource),
     currentStage: helpers.cleanText(body.currentStage || "match_found", 40) || "match_found",
     status: PARTY_SESSION_STATUS.ACTIVE,
     token,
@@ -202,6 +268,17 @@ export async function loadPartyPublicView({ token, env, helpers }) {
   const logoUrl = workerHost
     ? `${workerHost}/media/public/office-covers/${encodeURIComponent(officeId)}/logo`
     : "";
+  const liveOffer = await loadCanonicalOfferListing(helpers, {
+    projectId,
+    officeId,
+    accessToken,
+    matchId: session.matchId || "",
+    session
+  });
+  const snapshot = liveOffer ? buildPartySnapshot(liveOffer) : (session.snapshot || {});
+  if (liveOffer) {
+    session.mediaPaths = listingMediaPaths(liveOffer);
+  }
   return {
     session,
     officeId,
@@ -209,10 +286,11 @@ export async function loadPartyPublicView({ token, env, helpers }) {
     view: sanitizePartyPublicView({
       party: session.party,
       status: session.status,
-      snapshot: session.snapshot || {},
+      snapshot,
       officeName: office.officeName || office.name || "المكتب العقاري",
       officeLogoUrl: logoUrl,
-      replyAction: session.replyAction || ""
+      replyAction: session.replyAction || "",
+      followUpAction: session.followUpAction || ""
     })
   };
 }
@@ -264,25 +342,70 @@ async function replyPartySession({ token, env, request, requestId, helpers, ip }
   if (!loaded) {
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
   }
-  if (!isAllowedPartyAction(loaded.session.party, action)) {
+  if (!isAllowedPartyAction(loaded.session.party, action, loaded.session.replyAction || "")) {
     throw helpers.appError("invalid_party_action", 400, "هذا الرد غير متاح.");
   }
-  if (loaded.session.status === PARTY_SESSION_STATUS.REPLIED && loaded.session.replyAction) {
+  const alreadyPrimary = loaded.session.status === PARTY_SESSION_STATUS.REPLIED && loaded.session.replyAction;
+  const isFollowUp = alreadyPrimary && !isPrimaryPartyAction(loaded.session.party, action);
+  if (alreadyPrimary && !isFollowUp) {
+    return helpers.jsonResponse({ ok: true, view: loaded.view, requestId });
+  }
+  if (alreadyPrimary && loaded.session.followUpAction) {
     return helpers.jsonResponse({ ok: true, view: loaded.view, requestId });
   }
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
   const now = new Date();
+  const fields = isFollowUp
+    ? {
+      followUpAction: helpers.firestoreString(action),
+      followUpAt: helpers.firestoreString(now.toISOString())
+    }
+    : {
+      status: helpers.firestoreString(PARTY_SESSION_STATUS.REPLIED),
+      replyAction: helpers.firestoreString(action),
+      replyAt: helpers.firestoreString(now.toISOString())
+    };
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", loaded.officeId, "partySessions", loaded.sessionId],
     accessToken,
-    fields: {
-      status: helpers.firestoreString(PARTY_SESSION_STATUS.REPLIED),
-      replyAction: helpers.firestoreString(action),
-      replyAt: helpers.firestoreString(now.toISOString())
-    }
+    fields
   });
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
+}
+
+export async function handlePartySessionPhoto({ token, index, env, helpers, ip }) {
+  const limited = helpers.consumePublicRateLimit(
+    helpers.publicRateLimitKey({ route: "party-photo", ip }),
+    helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY
+  );
+  if (!limited.ok) {
+    throw helpers.appError("rate_limited", 429, "محاولات كثيرة. حاول بعد قليل.");
+  }
+  const loaded = await loadPartyPublicView({ token, env, helpers });
+  if (!loaded) {
+    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY }, 404);
+  }
+  const paths = listingMediaPaths({
+    mediaPaths: loaded.session.mediaPaths || loaded.session.snapshot?.mediaPaths || []
+  });
+  const mediaPath = paths[Number(index)];
+  if (!mediaPath || !OFFICE_MEDIA_KEY_PATTERN.test(mediaPath) || !mediaPath.includes(`/${loaded.officeId}/`)) {
+    return helpers.jsonResponse({ ok: false, error: "media_not_found" }, 404);
+  }
+  const bucket = env.IAQAR_MEDIA;
+  if (!bucket?.get) {
+    return helpers.jsonResponse({ ok: false, error: "media_not_found" }, 404);
+  }
+  const object = await bucket.get(mediaPath);
+  if (!object) {
+    return helpers.jsonResponse({ ok: false, error: "media_not_found" }, 404);
+  }
+  const headers = new Headers();
+  if (object.writeHttpMetadata) object.writeHttpMetadata(headers);
+  headers.set("cache-control", "private, max-age=300");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
 }

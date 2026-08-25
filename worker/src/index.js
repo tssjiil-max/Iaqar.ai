@@ -92,6 +92,7 @@ import {
 import {
   handlePartySessionGet,
   handlePartySessionMint,
+  handlePartySessionPhoto,
   handlePartySessionReply
 } from "./party-session-service.js";
 import {
@@ -490,6 +491,17 @@ export default {
           token: decodeURIComponent(partyGet[1] || ""),
           env,
           requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
+      }
+
+      const partyPhoto = url.pathname.match(/^\/party\/sessions\/([^/]+)\/photos\/(\d+)$/);
+      if (request.method === "GET" && partyPhoto) {
+        return await handlePartySessionPhoto({
+          token: decodeURIComponent(partyPhoto[1] || ""),
+          index: Number(partyPhoto[2] || 0),
+          env,
           helpers: partySessionHelpers(),
           ip: request.headers.get("CF-Connecting-IP") || "unknown"
         });

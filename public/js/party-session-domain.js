@@ -19,20 +19,37 @@ export const CLIENT_PARTY_ACTIONS = Object.freeze([
   Object.freeze({ id: "not_suitable", label: "غير مناسب" })
 ]);
 
+export const CLIENT_DETAIL_ACTIONS = Object.freeze([
+  Object.freeze({ id: "detail_price", label: "السعر" }),
+  Object.freeze({ id: "detail_location", label: "الموقع" }),
+  Object.freeze({ id: "detail_photos", label: "الصور" }),
+  Object.freeze({ id: "detail_specs", label: "المواصفات" }),
+  Object.freeze({ id: "detail_other", label: "سؤال آخر" })
+]);
+
+export const CLIENT_INTERESTED_FOLLOWUP_ACTIONS = Object.freeze([
+  Object.freeze({ id: "want_viewing", label: "أريد معاينة" }),
+  Object.freeze({ id: "info_sufficient", label: "المعلومات والصور كافية" })
+]);
+
 export const OWNER_PARTY_ACTIONS = Object.freeze([
   Object.freeze({ id: "property_available", label: "العقار متاح" }),
   Object.freeze({ id: "confirm_appointment", label: "تأكيد الموعد" }),
   Object.freeze({ id: "not_available", label: "غير متاح حالياً" })
 ]);
 
+export const OWNER_CLIENT_STATUS_LINE = "يوجد عميل مهتم بالعقار";
+
 const SECRET_KEYS = Object.freeze([
   "phone", "contactPhone", "advertiserPhone", "advertiserPhoneNormalized",
-  "ownerPhone", "clientPhone", "buyerPhone", "whatsapp",
-  "ownerName", "clientName", "contactName", "advertiserDisplayName",
+  "ownerPhone", "clientPhone", "buyerPhone", "whatsapp", "email", "ownerEmail",
+  "clientEmail", "ownerName", "clientName", "contactName", "advertiserDisplayName",
   "score", "matchScore", "opportunityScore", "closingReadinessScore",
   "matchId", "offerId", "requestId", "opportunityId", "sessionId",
   "token", "tokenHash", "officeId", "recipientRef", "brokerNote", "lastNote"
 ]);
+
+const GENERIC_DISPLAY = /^(العقار|غير محدد|غير متوفر|property|n\/?a|unknown|-)$/i;
 
 export function readPartyTokenFromSearch(search = "") {
   try {
@@ -64,13 +81,47 @@ export function partyActionsForRole(party) {
   return party === "owner" ? OWNER_PARTY_ACTIONS : CLIENT_PARTY_ACTIONS;
 }
 
+export function allPartyActionCatalog(party) {
+  if (party === "owner") return OWNER_PARTY_ACTIONS;
+  return [
+    ...CLIENT_PARTY_ACTIONS,
+    ...CLIENT_DETAIL_ACTIONS,
+    ...CLIENT_INTERESTED_FOLLOWUP_ACTIONS
+  ];
+}
+
 export function partyActionLabel(party, actionId) {
-  const hit = partyActionsForRole(party).find((item) => item.id === actionId);
+  const hit = allPartyActionCatalog(party).find((item) => item.id === actionId);
   return hit?.label || "";
 }
 
-export function isAllowedPartyAction(party, actionId) {
+export function isPrimaryPartyAction(party, actionId) {
   return partyActionsForRole(party).some((item) => item.id === actionId);
+}
+
+export function isFollowUpPartyAction(party, actionId, replyAction = "") {
+  if (party === "owner") return false;
+  if (replyAction === "needs_details") {
+    return CLIENT_DETAIL_ACTIONS.some((item) => item.id === actionId);
+  }
+  if (replyAction === "interested") {
+    return CLIENT_INTERESTED_FOLLOWUP_ACTIONS.some((item) => item.id === actionId);
+  }
+  return false;
+}
+
+export function isAllowedPartyAction(party, actionId, replyAction = "") {
+  return isPrimaryPartyAction(party, actionId)
+    || isFollowUpPartyAction(party, actionId, replyAction);
+}
+
+export function partyFollowUpActions(party, replyAction = "", followUpAction = "") {
+  if (party !== "client" || followUpAction) return [];
+  if (replyAction === "needs_details") return CLIENT_DETAIL_ACTIONS.map((item) => ({ ...item }));
+  if (replyAction === "interested") {
+    return CLIENT_INTERESTED_FOLLOWUP_ACTIONS.map((item) => ({ ...item }));
+  }
+  return [];
 }
 
 export function partyViewTitle(party) {
@@ -91,40 +142,106 @@ function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+export function isGenericPartyValue(value) {
+  const raw = text(value);
+  if (!raw) return true;
+  return GENERIC_DISPLAY.test(raw);
+}
+
+function displayText(value, max = 120) {
+  const raw = stripSecretFragments(text(value)).slice(0, max);
+  return isGenericPartyValue(raw) ? "" : raw;
+}
+
+function stripSecretFragments(value) {
+  return text(value)
+    .replace(/(\+?966|0)5\d{8}/g, "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function purposeWord(record = {}) {
-  const purpose = text(record.purpose || record.transactionType).toUpperCase();
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
-  if (purpose === "SALE" || purpose === "PURCHASE") return "للبيع";
-  if (purpose === "INVESTMENT") return "للاستثمار";
+  const purpose = text(record.purpose || record.transactionType || record.purposeLabel).toUpperCase();
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST" || purpose === "للإيجار") return "للإيجار";
+  if (purpose === "SALE" || purpose === "PURCHASE" || purpose === "للبيع") return "للبيع";
+  if (purpose === "INVESTMENT" || purpose === "للاستثمار") return "للاستثمار";
   return "";
 }
 
+export function isPartyOfferListing(record = {}) {
+  const kind = text(record.opportunityKind || record.kind || record.recordType).toUpperCase();
+  const contact = text(record.contactType).toLowerCase();
+  if (kind === "REQUEST" || kind === "CLIENT" || kind === "CLIENT_REQUEST") return false;
+  if (contact === "client") return false;
+  if (kind === "OFFER" || kind === "OWNER" || kind === "OWNER_OFFER") return true;
+  if (contact === "owner") return true;
+  if (Number(record.salePrice || record.price || 0) > 0) return true;
+  return kind === "" && Number(record.budget || 0) <= 0;
+}
+
+export function linkedOfferIdsFromMatch(match = {}, session = {}) {
+  const ids = [];
+  const push = (value) => {
+    const id = text(value);
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+  const source = text(match.sourceCollection).toLowerCase();
+  const counterpart = text(match.counterpartCollection).toLowerCase();
+  push(session.offerId);
+  push(session.ownerOfferId);
+  push(match.ownerOfferId);
+  push(match.offerId);
+  if (source === "owners") {
+    push(match.opportunityId);
+    push(match.sourceRecordId);
+    push(match.counterpartOpportunityId);
+  } else if (source === "clients" || counterpart === "owners") {
+    push(match.counterpartOpportunityId);
+    push(match.counterpartRecordId);
+    push(match.ownerOfferId);
+  } else {
+    push(match.counterpartOpportunityId);
+    push(match.opportunityId);
+    push(match.sourceRecordId);
+    push(match.counterpartRecordId);
+  }
+  push(session.opportunityId);
+  return ids;
+}
+
 export function partyPropertyHeadline(record = {}) {
-  const propertyType = text(record.propertyType);
+  const propertyType = displayText(record.propertyType, 80);
   const purpose = purposeWord(record);
-  const head = [propertyType, purpose].filter(Boolean).join(" ");
-  return head || "العقار";
+  return [propertyType, purpose].filter(Boolean).join(" ");
 }
 
 export function partyPriceLabel(record = {}) {
-  const sale = Number(record.salePrice ?? record.price ?? record.budget ?? 0);
+  if (!isPartyOfferListing(record) && record.salePrice == null && record.price == null && record.annualRent == null) {
+    return "";
+  }
+  const sale = Number(record.salePrice ?? record.price ?? 0);
   const rent = Number(record.annualRent ?? 0);
   const format = (value) => `${value.toLocaleString("en-US")} ر.س`;
   if (rent > 0 && purposeWord(record) === "للإيجار") return `${format(rent)} سنويًا`;
   if (sale > 0) return format(sale);
   if (rent > 0) return `${format(rent)} سنويًا`;
-  return text(record.moneyLine || record.priceLabel);
+  const labeled = displayText(record.priceLabel || record.moneyLine, 80);
+  if (labeled && !isGenericPartyValue(labeled)) return labeled;
+  return "";
 }
 
 export function partyLocationLabel(record = {}) {
-  const district = text(record.district).replace(/^حي\s+/, "");
-  return district ? `حي ${district}` : "";
+  const city = displayText(record.city, 80);
+  const district = displayText(record.district, 80).replace(/^حي\s+/, "");
+  const districtLabel = district ? `حي ${district}` : "";
+  return [city, districtLabel].filter(Boolean).join(" - ");
 }
 
 export function partyAreaLabel(record = {}) {
   const area = Number(record.area || 0);
   if (area > 0) return `${area.toLocaleString("en-US")} م²`;
-  return "";
+  return displayText(record.areaLabel, 40);
 }
 
 export function partySpecsLabel(record = {}) {
@@ -133,7 +250,49 @@ export function partySpecsLabel(record = {}) {
   const bits = [];
   if (rooms > 0) bits.push(`${rooms} غرف`);
   if (baths > 0) bits.push(`${baths} دورات مياه`);
+  const extra = displayText(record.specs, 80);
+  if (extra && !bits.includes(extra)) bits.push(extra);
   return bits.join(" · ");
+}
+
+function numberLabel(value, suffix) {
+  const amount = Number(value || 0);
+  if (!(amount > 0)) return "";
+  return `${amount.toLocaleString("en-US")}${suffix}`;
+}
+
+export function safePartyLocationUrl(value) {
+  const url = text(value);
+  if (!/^https:\/\//i.test(url)) return "";
+  if (url.length > 500) return "";
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const allowed = host === "maps.app.goo.gl"
+      || host.endsWith("google.com")
+      || host.endsWith("goo.gl")
+      || host.endsWith("google.ae")
+      || host.endsWith("google.com.sa");
+    return allowed ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+export function listingMediaPaths(record = {}, limit = 6) {
+  const raw = []
+    .concat(record.mediaPaths || [])
+    .concat(record.photoPaths || [])
+    .concat(record.sourceMediaPath ? [record.sourceMediaPath] : []);
+  const paths = [];
+  for (const value of raw) {
+    const path = text(value);
+    if (!path || /^https?:\/\//i.test(path)) continue;
+    if (paths.includes(path)) continue;
+    paths.push(path);
+    if (paths.length >= limit) break;
+  }
+  return paths;
 }
 
 export function publicPhotoUrls(record = {}, limit = 6) {
@@ -153,15 +312,59 @@ export function publicPhotoUrls(record = {}, limit = 6) {
 }
 
 export function buildPartySnapshot(record = {}) {
+  const propertyType = displayText(record.propertyType, 80);
+  const purposeLabel = purposeWord(record);
+  const city = displayText(record.city, 80);
+  const district = displayText(record.district, 80).replace(/^حي\s+/, "");
+  const mediaPaths = listingMediaPaths(record);
   return {
-    propertyType: text(record.propertyType),
+    propertyType,
     purpose: text(record.purpose || record.transactionType),
+    purposeLabel,
     typePurpose: partyPropertyHeadline(record),
+    city,
+    district,
     priceLabel: partyPriceLabel(record),
     locationLabel: partyLocationLabel(record),
     areaLabel: partyAreaLabel(record),
     specs: partySpecsLabel(record),
-    photos: publicPhotoUrls(record)
+    streetDirection: displayText(record.streetDirection, 40),
+    streetWidthLabel: numberLabel(record.streetWidth, " م"),
+    facade: displayText(record.facing || record.direction || record.facade, 40),
+    depthLabel: numberLabel(record.depth, " م"),
+    plotNumber: displayText(record.plotNumber, 40),
+    description: displayText(record.description || record.details, 600),
+    locationUrl: safePartyLocationUrl(record.locationUrl || record.mapUrl),
+    photos: publicPhotoUrls(record),
+    mediaPaths,
+    photoCount: mediaPaths.length
+  };
+}
+
+function propertyFromSnapshot(snapshot = {}) {
+  const built = buildPartySnapshot(snapshot);
+  const propertyType = displayText(snapshot.propertyType, 80) || built.propertyType;
+  const purposeLabel = purposeWord(snapshot) || built.purposeLabel;
+  const typePurpose = displayText(snapshot.typePurpose, 80) || [propertyType, purposeLabel].filter(Boolean).join(" ");
+  return {
+    photos: publicPhotoUrls(snapshot),
+    photoCount: Number(snapshot.photoCount || listingMediaPaths(snapshot).length || 0),
+    propertyType,
+    purposeLabel,
+    typePurpose,
+    city: displayText(snapshot.city, 80) || built.city,
+    district: displayText(snapshot.district, 80).replace(/^حي\s+/, "") || built.district,
+    priceLabel: displayText(snapshot.priceLabel, 80) || built.priceLabel,
+    locationLabel: displayText(snapshot.locationLabel, 80) || built.locationLabel,
+    areaLabel: displayText(snapshot.areaLabel, 40) || built.areaLabel,
+    specs: displayText(snapshot.specs, 80) || built.specs,
+    streetDirection: displayText(snapshot.streetDirection, 40) || built.streetDirection,
+    streetWidthLabel: displayText(snapshot.streetWidthLabel, 40) || built.streetWidthLabel,
+    facade: displayText(snapshot.facade, 40) || built.facade,
+    depthLabel: displayText(snapshot.depthLabel, 40) || built.depthLabel,
+    plotNumber: displayText(snapshot.plotNumber, 40) || built.plotNumber,
+    description: displayText(snapshot.description, 600) || built.description,
+    locationUrl: safePartyLocationUrl(snapshot.locationUrl) || built.locationUrl
   };
 }
 
@@ -171,26 +374,24 @@ export function sanitizePartyPublicView({
   snapshot = {},
   officeName = "",
   officeLogoUrl = "",
-  replyAction = ""
+  replyAction = "",
+  followUpAction = ""
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
   const replied = status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction);
+  const followUpLabel = followUpAction ? partyActionLabel(side, followUpAction) : "";
   const view = {
     party: side,
     title: partyViewTitle(side),
     officeName: text(officeName) || "المكتب العقاري",
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
-    property: {
-      photos: publicPhotoUrls(snapshot),
-      typePurpose: text(snapshot.typePurpose) || partyPropertyHeadline(snapshot),
-      priceLabel: text(snapshot.priceLabel) || partyPriceLabel(snapshot),
-      locationLabel: text(snapshot.locationLabel) || partyLocationLabel(snapshot),
-      areaLabel: text(snapshot.areaLabel) || partyAreaLabel(snapshot),
-      specs: text(snapshot.specs) || partySpecsLabel(snapshot)
-    },
+    ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
+    property: propertyFromSnapshot(snapshot),
     actions: replied ? [] : partyActionsForRole(side).map((item) => ({ ...item })),
+    followUpActions: replied ? partyFollowUpActions(side, replyAction, followUpAction) : [],
     replied,
-    replyLabel: replied ? partyActionLabel(side, replyAction) : ""
+    replyLabel: replied ? partyActionLabel(side, replyAction) : "",
+    followUpLabel
   };
   const serialized = JSON.stringify(view);
   for (const key of SECRET_KEYS) {

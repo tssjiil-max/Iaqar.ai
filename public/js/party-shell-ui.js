@@ -8,7 +8,7 @@ import {
 } from "./party-session-domain.js";
 
 function escapeHtml(value = "") {
-  return String(value).replace(/[&<>"']/g, (character) => ({
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -31,38 +31,90 @@ export function buildPartyLoadingHtml() {
   </main>`;
 }
 
-export function buildPartyShellHtml(view = {}) {
-  const photos = (view.property?.photos || [])
-    .map((url) => `<img class="party-photo" src="${escapeHtml(url)}" alt="">`)
-    .join("");
-  const gallery = photos ? `<div class="party-photos">${photos}</div>` : "";
+function propertyRows(property = {}) {
   const rows = [
-    ["العقار والغرض", view.property?.typePurpose],
-    ["السعر", view.property?.priceLabel],
-    ["الموقع", view.property?.locationLabel],
-    ["المساحة", view.property?.areaLabel],
-    ["المواصفات", view.property?.specs]
-  ].filter(([, value]) => value);
-  const details = rows.map(([label, value]) => `<p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`).join("");
+    ["نوع العقار", property.propertyType],
+    ["الغرض", property.purposeLabel],
+    ["المدينة", property.city],
+    ["الحي", property.district ? `حي ${String(property.district).replace(/^حي\s+/, "")}` : ""],
+    ["السعر", property.priceLabel],
+    ["المساحة", property.areaLabel],
+    ["المواصفات", property.specs],
+    ["اتجاه الشارع", property.streetDirection],
+    ["عرض الشارع", property.streetWidthLabel],
+    ["الواجهة", property.facade],
+    ["العمق", property.depthLabel],
+    ["رقم القطعة", property.plotNumber],
+    ["الوصف", property.description]
+  ];
+  if (!property.propertyType && !property.purposeLabel && property.typePurpose) {
+    rows.unshift(["نوع العقار", property.typePurpose]);
+  }
+  return rows
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`)
+    .join("");
+}
+
+function galleryHtml(property = {}) {
+  const photos = Array.isArray(property.photos) ? property.photos.filter(Boolean) : [];
+  if (!photos.length) {
+    return `<p class="party-no-photos">لا توجد صور مرفقة</p>`;
+  }
+  const images = photos.map((url, index) => (
+    `<img class="party-photo${index === 0 ? " is-hero" : ""}" src="${escapeHtml(url)}" alt="">`
+  )).join("");
+  return `<div class="party-photos">${images}</div>`;
+}
+
+function locationButtonHtml(property = {}) {
+  const url = String(property.locationUrl || "").trim();
+  if (!url) return "";
+  return `<p class="party-location-wrap"><a class="party-location" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">عرض الموقع</a></p>`;
+}
+
+function actionButtons(actions = []) {
+  return (actions || []).map((action) => (
+    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
+  )).join("");
+}
+
+export function buildPartyShellHtml(view = {}) {
+  const property = view.property || {};
+  const details = propertyRows(property);
   const logo = view.officeLogoUrl
     ? `<img class="party-logo" src="${escapeHtml(view.officeLogoUrl)}" alt="" onerror="this.remove()">`
     : "";
-  const actions = (view.actions || []).map((action) => (
-    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
-  )).join("");
-  const reply = view.replied
-    ? `<p class="party-recorded">${PARTY_REPLY_RECORDED}</p><p class="party-reply">${escapeHtml(view.replyLabel || "")}</p>`
-    : (actions ? `<div class="party-actions">${actions}</div>` : "");
+  const ownerStatus = view.ownerClientStatus
+    ? `<p class="party-client-status">${escapeHtml(view.ownerClientStatus)}</p>`
+    : "";
+  const primaryActions = actionButtons(view.actions);
+  const followUp = actionButtons(view.followUpActions);
+  let replyBlock = "";
+  if (view.replied) {
+    replyBlock = `<div class="party-reply-block">
+      <p class="party-recorded">${PARTY_REPLY_RECORDED}</p>
+      <p class="party-reply">${escapeHtml(view.replyLabel || "")}</p>
+      ${view.followUpLabel ? `<p class="party-followup-choice">${escapeHtml(view.followUpLabel)}</p>` : ""}
+      ${followUp ? `<div class="party-actions party-followup">${followUp}</div>` : ""}
+    </div>`;
+  } else if (primaryActions) {
+    replyBlock = `<div class="party-actions">${primaryActions}</div>`;
+  }
   return `<main class="party-shell" data-party-shell data-party="${escapeHtml(view.party || "client")}">
     <header class="party-brand">
       ${logo}
       <p class="party-office">${escapeHtml(view.officeName || "المكتب العقاري")}</p>
     </header>
-    <section class="party-card">
+    <section class="party-card party-property-card">
       <h1>${escapeHtml(view.title || "")}</h1>
-      ${gallery}
+      ${ownerStatus}
+      ${galleryHtml(property)}
       ${details}
-      ${reply}
+      ${locationButtonHtml(property)}
+    </section>
+    <section class="party-card party-reply-card">
+      ${replyBlock}
       <p class="party-status" id="partyStatus" hidden></p>
     </section>
   </main>`;

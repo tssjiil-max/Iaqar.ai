@@ -61,6 +61,32 @@ function partyDiag(event, extra) {
   }
 }
 
+function attachPhotos(view, token) {
+  const property = view?.property && typeof view.property === "object" ? { ...view.property } : {};
+  const httpsPhotos = Array.isArray(property.photos)
+    ? property.photos.filter((url) => /^https:\/\//i.test(String(url || "")))
+    : [];
+  const count = Number(property.photoCount || 0);
+  const fromSession = [];
+  for (let index = 0; index < count; index += 1) {
+    fromSession.push(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/photos/${index}`);
+  }
+  return {
+    ...view,
+    property: {
+      ...property,
+      photos: [...httpsPhotos, ...fromSession]
+    }
+  };
+}
+
+function renderView(view, token) {
+  const next = attachPhotos(view, token);
+  const root = mount(buildPartyShellHtml(next));
+  bindActions(root, token);
+  return root;
+}
+
 function showStatus(message, isError) {
   const node = document.getElementById("partyStatus");
   if (!node) return;
@@ -94,7 +120,7 @@ async function submitReply(token, action, button) {
     if (!response.ok || !payload.ok || !payload.view) {
       throw new Error(payload.message || "تعذر تسجيل الرد.");
     }
-    mount(buildPartyShellHtml(payload.view));
+    renderView(payload.view, token);
   } catch (error) {
     button.disabled = false;
     showStatus(error.message || "تعذر تسجيل الرد.", true);
@@ -125,8 +151,7 @@ export async function bootPartyEntry(locationLike = window.location) {
   try {
     const view = await loadSession(token);
     partyDiag("PARTY_SESSION_RESOLVED", { party: view.party || "" });
-    mount(buildPartyShellHtml(view));
-    bindActions(document.getElementById("partyRoot") || root, token);
+    renderView(view, token);
     partyDiag("PARTY_VIEW_RENDERED", { party: view.party || "" });
   } catch {
     mount(buildPartyErrorHtml(PARTY_INVALID_COPY));
