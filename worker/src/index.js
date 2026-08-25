@@ -86,6 +86,11 @@ import {
   resetPublicRateLimitStoreForTests
 } from "./public-rate-limit.js";
 import {
+  handlePartySessionGet,
+  handlePartySessionMint,
+  handlePartySessionReply
+} from "./party-session-service.js";
+import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
   resolveGeminiModel,
@@ -460,6 +465,38 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/messages/handoff") {
         return await handleMessagesHandoff(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/party/sessions") {
+        return await handlePartySessionMint({
+          request,
+          env,
+          requestId,
+          helpers: partySessionHelpers()
+        });
+      }
+
+      const partyGet = url.pathname.match(/^\/party\/sessions\/([^/]+)$/);
+      if (request.method === "GET" && partyGet) {
+        return await handlePartySessionGet({
+          token: decodeURIComponent(partyGet[1] || ""),
+          env,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
+      }
+
+      const partyReply = url.pathname.match(/^\/party\/sessions\/([^/]+)\/reply$/);
+      if (request.method === "POST" && partyReply) {
+        return await handlePartySessionReply({
+          token: decodeURIComponent(partyReply[1] || ""),
+          env,
+          request,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/messages/adapters") {
@@ -5262,12 +5299,37 @@ async function incrementUsage({ projectId, officeId, accessToken }) {
 }
 
 async function getFirestoreDocument({ projectId, segments, accessToken, allowMissing = false }) {
-  const response = await fetch(firestoreDocumentUrl(projectId, segments), {
-    headers: { "Authorization": `Bearer ${accessToken}` }
-  });
+  const url = firestoreDocumentUrl(projectId, segments);
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const response = await fetch(url, { headers });
   if (response.status === 404 && allowMissing) return null;
-  if (!response.ok) throw appError("firestore_read_failed", 502, "تعذر قراءة حالة الربط");
-  return response.json();
+  if (response.ok) return response.json();
+  // Staging Spark GetDocument quota can exhaust while writes still succeed.
+  // A masked no-op PATCH returns the current document without creating missing ones.
+  if (response.status === 429) {
+    const echoed = await echoFirestoreDocument({ url, headers, allowMissing });
+    if (echoed !== undefined) return echoed;
+  }
+  throw appError("firestore_read_failed", 502, "تعذر قراءة حالة الربط");
+}
+
+async function echoFirestoreDocument({ url, headers, allowMissing }) {
+  const echoUrl = new URL(url);
+  echoUrl.searchParams.set("currentDocument.exists", "true");
+  echoUrl.searchParams.append("updateMask.fieldPaths", "iaqarReadEcho");
+  const echo = await fetch(echoUrl.toString(), {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { iaqarReadEcho: { integerValue: "1" } } })
+  });
+  if (echo.ok) return echo.json();
+  const detail = await echo.text().catch(() => "");
+  const missing = echo.status === 404
+    || echo.status === 400
+    || echo.status === 409
+    || /NOT_FOUND|FAILED_PRECONDITION/.test(detail);
+  if (allowMissing && missing) return null;
+  return undefined;
 }
 
 async function setFirestoreDocument({ projectId, segments, accessToken, fields }) {
@@ -5287,6 +5349,28 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
     throw appError("firestore_write_failed", 502, "تعذر حفظ ربط واتساب");
   }
   return response.json();
+}
+
+function partySessionHelpers() {
+  return {
+    authorizeOfficeRequest,
+    assertFirebaseSecrets,
+    getGoogleAccessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreFieldsToJs,
+    firestoreString,
+    jsToFirestoreValue,
+    normalizeOfficeId,
+    cleanText,
+    appError,
+    jsonResponse,
+    DEFAULT_PROJECT_ID,
+    sha256Hex,
+    consumePublicRateLimit,
+    publicRateLimitKey,
+    PUBLIC_RATE_LIMITS
+  };
 }
 
 function getAdminHelpers() {

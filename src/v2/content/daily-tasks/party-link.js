@@ -1,19 +1,8 @@
 /**
- * Creates or reuses a client/owner review link for one match.
- * Tokens are distinct per (officeId, matchId, party). No dummy URLs.
+ * Mints or reuses a Worker party session. URL JSON is never authority.
  */
 
-import {
-  buildPartyReviewUrl,
-  encodePartyLinkToken,
-  existingPartyToken,
-  PARTY_LINK_STORAGE_KEY,
-  parsePartyLinkToken,
-  partyLinkStorageKey,
-  phoneFromTask,
-  readPartyLinkStore,
-  rememberPartyLink
-} from "./party-link-domain.js";
+import { buildPartyReviewUrl, isOpaquePartyToken, phoneFromTask } from "./party-link-domain.js";
 
 function officeRuntime() {
   return window.IAQAR?.office || null;
@@ -23,128 +12,59 @@ function currentOfficeId() {
   return String(officeRuntime()?.officeId || "").trim();
 }
 
-function readLocalStore() {
-  try {
-    return readPartyLinkStore(window.localStorage?.getItem(PARTY_LINK_STORAGE_KEY));
-  } catch {
-    return readPartyLinkStore(null);
+function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
   }
-}
-
-function writeLocalStore(store) {
-  try {
-    window.localStorage?.setItem(PARTY_LINK_STORAGE_KEY, JSON.stringify(store));
-  } catch {
-    /* private mode */
-  }
-}
-
-function payloadFromTask(task, party) {
-  return {
-    officeId: currentOfficeId(),
-    matchId: String(task.matchId || task.id || "").trim(),
-    party: party === "owner" ? "owner" : "client",
-    offerId: String(task.offerId || "").trim(),
-    requestId: String(task.requestId || "").trim(),
-    opportunityId: String(task.opportunityId || "").trim(),
-    propertyLine: String(task.propertyLine || "").trim(),
-    moneyLine: String(task.moneyLine || "").trim()
-  };
-}
-
-function linkFromToken(token) {
-  const record = parsePartyLinkToken(token);
-  if (!record) return null;
-  const url = buildPartyReviewUrl({
-    origin: window.location.origin,
-    pathname: window.location.pathname || "/",
-    token
-  });
-  if (!url) return null;
-  return { token, url, record, persisted: "local" };
-}
-
-async function readFirestoreToken(task, party) {
-  const office = officeRuntime();
-  const matchId = String(task.matchId || "").trim();
-  const officeId = currentOfficeId();
-  if (!office?.refs?.office || !matchId || !officeId) return "";
-  try {
-    const snap = await office.refs.office.collection("partyLinks").doc(`${matchId}__${party}`).get();
-    if (!snap.exists) return "";
-    const data = snap.data() || {};
-    const token = String(data.token || "").trim();
-    return parsePartyLinkToken(token) ? token : "";
-  } catch {
-    return "";
-  }
-}
-
-async function writeFirestoreToken(task, party, token, record) {
-  const office = officeRuntime();
-  const matchId = String(task.matchId || "").trim();
-  const officeId = currentOfficeId();
-  if (!office?.refs?.office || !matchId || !officeId) return false;
-  try {
-    await office.refs.office.collection("partyLinks").doc(`${matchId}__${party}`).set({
-      officeId,
-      matchId,
-      party,
-      sessionKind: record.sessionKind,
-      token,
-      offerId: record.offerId || "",
-      requestId: record.requestId || "",
-      opportunityId: record.opportunityId || "",
-      propertyLine: record.propertyLine || "",
-      moneyLine: record.moneyLine || "",
-      createdAt: Date.now()
-    }, { merge: true });
-    return true;
-  } catch {
-    return false;
-  }
+  return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
 }
 
 export async function ensurePartyReviewLink(task = {}, party = "client") {
   const side = party === "owner" ? "owner" : "client";
-  const payload = payloadFromTask(task, side);
-  if (!payload.matchId) return null;
-  const key = partyLinkStorageKey({
-    officeId: payload.officeId,
-    matchId: payload.matchId,
-    party: side
-  });
-  const local = readLocalStore();
-  const localToken = existingPartyToken(local, key);
-  if (localToken) return linkFromToken(localToken);
-
-  const remoteToken = await readFirestoreToken(task, side);
-  if (remoteToken) {
-    writeLocalStore(rememberPartyLink(local, {
-      key,
-      token: remoteToken,
-      record: parsePartyLinkToken(remoteToken)
-    }));
-    const link = linkFromToken(remoteToken);
-    if (link) link.persisted = "match";
-    return link;
+  const officeId = currentOfficeId();
+  const matchId = String(task.matchId || task.id || "").trim();
+  const user = window.firebase?.auth?.()?.currentUser;
+  if (!officeId || !matchId || !user?.getIdToken || !workerBase()) return null;
+  try {
+    const idToken = await user.getIdToken();
+    const response = await fetch(`${workerBase()}/party/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        officeId,
+        matchId,
+        party: side,
+        offerId: task.offerId || "",
+        requestId: task.requestId || "",
+        opportunityId: task.opportunityId || "",
+        propertyType: task.propertyType || "",
+        purpose: task.purpose || "",
+        district: task.district || "",
+        salePrice: task.salePrice,
+        annualRent: task.annualRent,
+        area: task.area,
+        rooms: task.rooms,
+        baths: task.baths,
+        moneyLine: task.moneyLine || "",
+        currentStage: "match_found"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const token = String(payload.token || "").trim();
+    if (!response.ok || !payload.ok || !isOpaquePartyToken(token)) return null;
+    const url = buildPartyReviewUrl({
+      origin: window.location.origin,
+      pathname: window.location.pathname || "/",
+      token
+    });
+    if (!url) return null;
+    return { token, url, persisted: payload.reused ? "session" : "worker" };
+  } catch {
+    return null;
   }
-
-  const token = encodePartyLinkToken(payload);
-  const record = parsePartyLinkToken(token);
-  if (!token || !record) return null;
-  writeLocalStore(rememberPartyLink(local, { key, token, record }));
-  const persisted = await writeFirestoreToken(task, side, token, record);
-  const link = linkFromToken(token);
-  if (link) link.persisted = persisted ? "match" : "local";
-  return link;
-}
-
-export function resolveStoredPartyLink(token) {
-  const parsed = parsePartyLinkToken(token);
-  if (parsed) return parsed;
-  const stored = readLocalStore().byToken?.[String(token || "").trim()];
-  return stored && stored.matchId ? stored : null;
 }
 
 function contactDigits(record = {}) {
@@ -196,15 +116,11 @@ export async function resolvePartyPhone(task = {}, party = "client") {
 
   const ids = await enrichMatchIds(task);
   const recordId = side === "owner" ? ids.offerId : ids.requestId;
-  const contactCol = side === "owner" ? "owners" : "clients";
-  const contact = await loadOfficeDoc(contactCol, recordId);
+  const contact = await loadOfficeDoc(side === "owner" ? "owners" : "clients", recordId);
   if (contact) {
     const digits = contactDigits(contact);
-    if (digits) {
-      return { digits, name: String(contact.contactName || contact.name || "").trim() };
-    }
+    if (digits) return { digits, name: String(contact.contactName || contact.name || "").trim() };
   }
-
   const opportunity = await loadOfficeDoc("opportunities", recordId || String(task.opportunityId || "").trim());
   if (opportunity) {
     const digits = contactDigits(opportunity);
@@ -215,6 +131,5 @@ export async function resolvePartyPhone(task = {}, party = "client") {
       };
     }
   }
-
   return null;
 }

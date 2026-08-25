@@ -1,6 +1,26 @@
 (() => {
   "use strict";
 
+  try {
+    if (document.documentElement.dataset.partyMode === "1") {
+      if (typeof window.__IAQAR_PARTY_DIAG__ === "function") {
+        window.__IAQAR_PARTY_DIAG__("ACCESS_GATE_SKIPPED", { source: "access-gate-return" });
+      }
+      document.documentElement.dataset.partyMode = "1";
+      document.documentElement.classList.add("is-party-mode");
+      return;
+    }
+    const partyToken = String(new URLSearchParams(location.search).get("cv2Party") || window.__IAQAR_PARTY_TOKEN__ || "").trim();
+    if (partyToken) {
+      document.documentElement.dataset.partyMode = "1";
+      document.documentElement.classList.add("is-party-mode");
+      if (typeof window.__IAQAR_PARTY_DIAG__ === "function") {
+        window.__IAQAR_PARTY_DIAG__("ACCESS_GATE_SKIPPED", { source: "access-gate-return" });
+      }
+      return;
+    }
+  } catch (_) { /* keep broker access-gate */ }
+
   const query = new URLSearchParams(location.search);
   let officeId = String(query.get("officeId") || query.get("office") || "")
     .trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);
@@ -103,6 +123,9 @@
 
   gate.className = "access-gate";
   gate.id = "accessGate";
+  if (typeof window.__IAQAR_PARTY_DIAG__ === "function") {
+    window.__IAQAR_PARTY_DIAG__("ACCESS_GATE_RENDERED");
+  }
   document.body.classList.add("access-locked");
   document.body.appendChild(gate);
 
@@ -200,10 +223,13 @@
     authDiag("LOGIN_REDIRECT_SOURCE", { source, target });
     try {
       const next = new URL(target, location.origin);
+      const partyToken = String(window.__IAQAR_PARTY_TOKEN__ || new URLSearchParams(location.search).get("cv2Party") || "").trim();
+      if (partyToken && !next.searchParams.get("cv2Party")) next.searchParams.set("cv2Party", partyToken);
       if (next.origin === location.origin && next.pathname === location.pathname) {
         history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
         return;
       }
+      target = next.href;
     } catch (_) { /* fall through */ }
     location.replace(target);
   }

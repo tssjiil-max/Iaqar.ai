@@ -2,6 +2,38 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function () {
+      function partyToken() {
+        try {
+          return String(new URLSearchParams(location.search).get("cv2Party") || "").trim();
+        } catch (_) {
+          return "";
+        }
+      }
+      function isStagingHost() {
+        try {
+          var host = String(location.hostname || "").toLowerCase();
+          return host.indexOf("iaqar-ai-staging") !== -1 || host.indexOf("--staging") !== -1 || host.indexOf("staging.") === 0;
+        } catch (_) {
+          return false;
+        }
+      }
+      function partyDiag(event, extra) {
+        window.__IAQAR_PARTY_TRACE__ = (window.__IAQAR_PARTY_TRACE__ || []).concat(event);
+        if (!isStagingHost()) return;
+        try { console.info("[iaqar-party]", event, extra || {}); } catch (_) {}
+      }
+      window.__IAQAR_PARTY_DIAG__ = partyDiag;
+      var token = partyToken();
+      if (!token) return;
+      window.__IAQAR_PARTY_TOKEN__ = token;
+      document.documentElement.dataset.partyMode = "1";
+      document.documentElement.classList.add("is-party-mode");
+      try { sessionStorage.setItem("iaqar.partyToken", token); } catch (_) {}
+      partyDiag("PARTY_PARAM_FOUND", { search: String(location.search || "") });
+    })();
+  </script>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#005C4B">
@@ -23,6 +55,7 @@
   <script>
     (function () {
       try {
+        if (document.documentElement.dataset.partyMode === "1") return;
         var params = new URLSearchParams(location.search);
         if (params.get("legacyContent") === "1" || params.get("contentV2") === "0") return;
         if (localStorage.getItem("iaqar.legacyContent") === "1") return;
@@ -30,6 +63,12 @@
       } catch (_) {}
     })();
   </script>
+  <link rel="stylesheet" href="css/party-shell.css">
+  <style>
+    html.is-party-mode body > .app,
+    html.is-party-mode #contentV2,
+    html.is-party-mode .access-gate { display:none!important; }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -5466,6 +5505,11 @@
 
 </head>
 <body>
+  <script>
+    if (document.documentElement.dataset.partyMode === "1" && typeof window.__IAQAR_PARTY_DIAG__ === "function") {
+      window.__IAQAR_PARTY_DIAG__("PARTY_BOOTSTRAP_STARTED");
+    }
+  </script>
   <!-- iaqar.ai Workspace — Approved Trial Release v1 — 2026-07-27 -->
   <!-- رموز SVG متجهة مضمّنة: مقاس 24×24 وسماكة موحدة -->
   <svg width="0" height="0" aria-hidden="true" focusable="false"
@@ -6352,24 +6396,36 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <!-- ربط Firebase دون أي تغيير مرئي في الواجهة -->
-  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-messaging-compat.js"></script>
-  <script src="/__/firebase/init.js"></script>
-  <script src="js/runtime-config.js"></script>
+  <script>
+    (function () {
+      if (document.documentElement.dataset.partyMode === "1") {
+        if (typeof window.__IAQAR_PARTY_DIAG__ === "function") window.__IAQAR_PARTY_DIAG__("ACCESS_GATE_SKIPPED");
+        return;
+      }
+      document.write('<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore-compat.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-messaging-compat.js"><\/script>');
+      document.write('<script src="/__/firebase/init.js"><\/script>');
+      document.write('<script src="js/runtime-config.js"><\/script>');
+      document.write('<script src="js/opportunity-lifecycle.js"><\/script>');
+      document.write('<script src="js/voice-intake.js"><\/script>');
+      document.write('<script src="js/firebase-office.js"><\/script>');
+      document.write('<script src="js/access-gate.js"><\/script>');
+      document.write('<script src="js/app-navigation.js"><\/script>');
+      document.write('<script src="js/home-tabs.js"><\/script>');
+      document.write('<script src="js/qrcode.js"><\/script>');
+      document.write('<script src="js/whatsapp-office.js"><\/script>');
+      document.write('<script src="js/notification-navigation.js"><\/script>');
+      document.write('<script defer src="js/workflow-office.js"><\/script>');
+    })();
+  </script>
   <script type="module" src="js/fcm-fid.js"></script>
   <script type="module" src="js/gemini-voice-intake-domain.js"></script>
   <script type="module" src="js/public-client-intake-domain.js"></script>
-  <script src="js/opportunity-lifecycle.js"></script>
-  <script src="js/voice-intake.js"></script>
-  <script src="js/firebase-office.js"></script>
-  <script src="js/access-gate.js"></script>
+  <script type="module" src="js/party-entry.js"></script>
   <script type="module" src="js/app-navigation-domain.js"></script>
-  <script src="js/app-navigation.js"></script>
-  <script src="js/home-tabs.js"></script>
   <script type="module" src="js/v2/mount.js"></script>
-  <script src="js/qrcode.js"></script>
   <script type="module" src="js/header-scroll.js"></script>
   <script type="module" src="js/office-library.js"></script>
   <script type="module" src="js/office-settings.js"></script>
@@ -6378,15 +6434,12 @@
   <script type="module" src="js/opportunity-review.js"></script>
   <script type="module" src="js/opportunity-details-v2.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
-  <script src="js/whatsapp-office.js"></script>
   <script type="module" src="js/operations-center-bridge.js"></script>
   <script type="module" src="js/operations-domain-bridge.js"></script>
   <script type="module" src="js/messaging-domain-bridge.js"></script>
 
   <script type="module" src="js/operations-center-ui.js"></script>
   <script type="module" src="js/opportunity-domain-bridge.js"></script>
-  <script src="js/notification-navigation.js"></script>
-  <script defer src="js/workflow-office.js"></script>
   <script type="module" src="js/release-version-ui.js"></script>
 </body>
 </html>

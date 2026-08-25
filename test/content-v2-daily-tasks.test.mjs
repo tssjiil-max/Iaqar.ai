@@ -34,9 +34,9 @@ import {
   parsePartyLinkToken,
   partyTokenFromLocation,
   phoneFromTask,
-  whatsappOpenedMessage
+  whatsappOpenedMessage,
+  isOpaquePartyToken
 } from "../src/v2/content/daily-tasks/party-link-domain.js";
-import { buildPartyReviewHtml } from "../src/v2/content/daily-tasks/party-review.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const ENGLISH_UI = /\b(Match|Pending|Action|Client|Status|Task)\b/;
@@ -417,32 +417,16 @@ test("party phones normalize and missing-number copy stays Arabic", () => {
   assert.equal(PARTY_SEND_COPY.sentClaimForbidden, "تم إرسال الرسالة");
 });
 
-test("client and owner review tokens are distinct and bind matchId plus role", () => {
-  const clientToken = encodePartyLinkToken({
-    matchId: "match_new_1",
-    party: "client",
-    offerId: "offer_urwah_1",
-    requestId: "request_urwah_1",
-    sid: "client-sid"
-  });
-  const ownerToken = encodePartyLinkToken({
-    matchId: "match_new_1",
-    party: "owner",
-    offerId: "offer_urwah_1",
-    requestId: "request_urwah_1",
-    sid: "owner-sid"
-  });
-  const client = parsePartyLinkToken(clientToken);
-  const owner = parsePartyLinkToken(ownerToken);
-  assert.equal(client.matchId, "match_new_1");
-  assert.equal(owner.matchId, "match_new_1");
-  assert.equal(client.party, "client");
-  assert.equal(owner.party, "owner");
-  assert.notEqual(clientToken, ownerToken);
+test("client and owner review URLs require opaque tokens and stay distinct", () => {
+  const clientToken = "a".repeat(64);
+  const ownerToken = "b".repeat(64);
+  assert.equal(isOpaquePartyToken(clientToken), true);
+  assert.equal(isOpaquePartyToken(encodePartyLinkToken({ matchId: "match_new_1", party: "client" })), false);
   const clientUrl = buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: clientToken });
   const ownerUrl = buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: ownerToken });
   assert.notEqual(clientUrl, ownerUrl);
   assert.match(clientUrl, /cv2Party=/);
+  assert.equal(buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: "eyJub3QiOiJhdXRoIn0" }), "");
   assert.equal(partyTokenFromLocation({ search: `?cv2Party=${clientToken}` }), clientToken);
   const clientMessage = buildPartyWhatsAppMessage({
     party: "client",
@@ -458,8 +442,6 @@ test("client and owner review tokens are distinct and bind matchId plus role", (
   assert.match(ownerMessage, /يوجد عميل مهتم بعقار مطابق/);
   assert.equal(clientMessage.includes(clientUrl), true);
   assert.equal(ownerMessage.includes(ownerUrl), true);
-  assert.equal(clientMessage.includes(ownerUrl), false);
-  assert.equal(ownerMessage.includes(clientUrl), false);
   assert.equal(parsePartyLinkToken(""), null);
 });
 
@@ -474,21 +456,14 @@ test("demo new-match has phones for send while overdue stays phoneless", () => {
   assert.equal(html.includes("0522222222"), false);
 });
 
-test("party review landing is read-only Arabic and not a negotiation UI", () => {
-  const token = encodePartyLinkToken({
+test("embedded cv2Party JSON is not a review URL", () => {
+  const embedded = encodePartyLinkToken({
     matchId: "match_new_1",
     party: "client",
-    propertyLine: "أرض للبيع — حي عروة",
-    moneyLine: "500,000 ر.س",
     sid: "land-1"
   });
-  const html = buildPartyReviewHtml(parsePartyLinkToken(token));
-  assert.match(html, /مراجعة مطابقة العميل/);
-  assert.match(html, /أرض للبيع — حي عروة/);
-  assert.match(html, /match_new_1/);
-  assert.equal(html.includes("قبول العرض"), false);
-  assert.equal(html.includes("تفاوض"), false);
-  assert.match(buildPartyReviewHtml(null), /رابط المراجعة غير صالح/);
+  assert.equal(isOpaquePartyToken(embedded), false);
+  assert.equal(buildPartyReviewUrl({ origin: "https://example.test", pathname: "/", token: embedded }), "");
 });
 
 test("send buttons open WhatsApp with role-specific links and block missing phones", async () => {
@@ -502,7 +477,11 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
   const { window } = dom;
   global.window = window;
   global.document = window.document;
+  const minted = { client: "c".repeat(64), owner: "d".repeat(64) };
   window.IAQAR = {
+    office: { officeId: "office-test", workerBase: "https://worker.test" },
+    workerBase: "https://worker.test",
+    resolveWorkerBase: () => "https://worker.test",
     whatsappHandoff: {
       openWhatsApp({ phone, text }) {
         const result = { ok: true, phone, text, url: `https://wa.me/${phone}?text=${encodeURIComponent(text)}` };
@@ -511,6 +490,20 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
       }
     }
   };
+  window.firebase = {
+    auth() {
+      return { currentUser: { getIdToken: async () => "id-token" } };
+    }
+  };
+  window.fetch = async (url, options = {}) => {
+    const body = JSON.parse(options.body || "{}");
+    const token = body.party === "owner" ? minted.owner : minted.client;
+    return {
+      ok: true,
+      json: async () => ({ ok: true, token, reused: false })
+    };
+  };
+  global.fetch = window.fetch;
 
   mountDailyTasksContentV2(window.document.getElementById("contentV2"));
   const newMatchReveal = window.document.querySelector('[data-task-id="task_new_match"] [data-cv2-exec-reveal]');

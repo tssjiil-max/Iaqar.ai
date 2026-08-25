@@ -1,0 +1,143 @@
+html.is-party-mode,
+html.is-party-mode body {
+  background: #f4f8f6;
+  margin: 0;
+  min-height: 100%;
+}
+
+html.is-party-mode body > .app,
+html.is-party-mode #contentV2,
+html.is-party-mode .access-gate,
+html.is-party-mode .toast {
+  display: none !important;
+}
+
+.party-shell {
+  min-height: 100svh;
+  box-sizing: border-box;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  font-family: Tajawal, Arial, sans-serif;
+  direction: rtl;
+  color: #173d35;
+}
+
+.party-brand {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.party-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 6px;
+}
+
+.party-office {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #087064;
+}
+
+.party-card {
+  background: #fff;
+  border: 1px solid #dce8e4;
+  border-radius: 20px;
+  padding: 16px;
+}
+
+.party-card h1 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  color: #087064;
+}
+
+.party-photos {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.party-photo {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #eaf5f1;
+}
+
+.party-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.party-row span {
+  color: #687c76;
+  font-weight: 600;
+}
+
+.party-row strong {
+  font-weight: 800;
+  text-align: left;
+}
+
+.party-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.party-action {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  background: #128c7e;
+  color: #fff;
+  font: 800 16px Tajawal, Arial, sans-serif;
+  cursor: pointer;
+}
+
+.party-action:nth-child(2),
+.party-action:nth-child(3) {
+  background: #fff;
+  color: #087064;
+  border: 1.5px solid #128c7e;
+}
+
+.party-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.party-recorded,
+.party-reply {
+  margin: 12px 0 0;
+  font-weight: 800;
+  color: #087064;
+}
+
+.party-muted,
+.party-error {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.party-error {
+  color: #9e3434;
+  font-weight: 700;
+}
+
+.party-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #687c76;
+}
+
+.party-status.is-error {
+  color: #9e3434;
+}
