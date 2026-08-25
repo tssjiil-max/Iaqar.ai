@@ -458,6 +458,26 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 **Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
 Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
 
+## D-019 — Platform admin shell uses two control tabs; no broker send actions
+
+**Phase:** admin console
+**Directive:** owner mockup for `/admin` with tabs `المهام اليومية` and `العروض والطلبات`;
+§1.4 do not delete working office-management code; §1.5 no fake demo cards; §3 no
+unrequested broker widgets; Q-3 outbound send is unresolved.
+
+**Decision.** Restyle `public/admin` to the owner’s two-tab control shell (emerald
+header, pill tabs, task cards) **without Tailwind**. `المهام اليومية` lists real
+platform-admin work: pending office applications, suspended offices, and
+expiring/expired subscription or license rows. `العروض والطلبات` keeps the existing
+office register (approve / reject / detail / activity). Broker actions from the mockup
+(`إرسال للعميل`, `إرسال للمالك`) and the static “شقة حي النرجس” card are **not**
+implemented — those belong to an office Operations Center and would expose other
+offices’ contacts.
+
+**Why.** The mockup is the approved admin *layout*. The previous office-management
+capability stays reachable. Empty state when there are no tasks; API errors stay
+visible. No production path depends on fake matches.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

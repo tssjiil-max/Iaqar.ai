@@ -132,11 +132,8 @@ export const OFFICE_TABS = [
 ];
 
 export const MAIN_VIEWS = [
-  { id: "overview", label: "نظرة عامة" },
-  { id: "offices", label: "إدارة المكاتب" },
-  { id: "activity", label: "نشاط المكاتب" },
-  { id: "billing", label: "الاشتراكات والتراخيص" },
-  { id: "audit", label: "السجل الإداري" }
+  { id: "daily", label: "المهام اليومية" },
+  { id: "requests", label: "العروض والطلبات" }
 ];
 
 export function formatDate(value) {
