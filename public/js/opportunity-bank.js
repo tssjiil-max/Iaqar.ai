@@ -86,7 +86,7 @@ import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-
 import { buildBankInboxCardHtml } from "./bank-inbox-card-ui.js";
 import { sortBankInboxRecords } from "./bank-inbox-card-domain.js";
 import { firstMissingEditor } from "./v2/opportunity-details/view-model.js";
-import { buildFieldEditorV2 } from "./v2/opportunity-details/editor.js";
+import { buildFieldEditorV2, dismissFieldEditor, wireFieldEditorSheet } from "./v2/opportunity-details/editor.js";
 import { saveDeviceContact } from "./v2/opportunity-details/save-device-contact.js";
 import {
   buildNeedsCompletionDetailHtml,
@@ -3538,8 +3538,8 @@ function inboxViewModel(id, record) {
   });
 }
 
-function closeInboxEditor(list = $("opportunityBankList")) {
-  list?.querySelector("[data-cv2-editor-root]")?.remove();
+function closeInboxEditor(list = $("opportunityBankList"), options = {}) {
+  dismissFieldEditor(list?.querySelector("[data-cv2-editor-root]"), options);
 }
 
 function toggleInboxDataCard(toggle) {
@@ -3608,7 +3608,7 @@ async function submitInboxEditor(article, editorKey, formData) {
       return;
     }
     if (result.reloaded) state.records.set(id, { ...result.reloaded, id });
-    closeInboxEditor();
+    closeInboxEditor($("opportunityBankList"), { restoreFocus: false });
     renderList();
   } catch (error) {
     showInboxEditorError(article, error?.message || "تعذر حفظ الحقل");
@@ -3617,20 +3617,21 @@ async function submitInboxEditor(article, editorKey, formData) {
   }
 }
 
-function openInboxEditor(article, editorKey) {
+function openInboxEditor(article, editorKey, opener) {
   const id = resolveBankRowOpportunityId(article);
   const record = state.records.get(id);
   if (!article || !editorKey || !record) return;
-  closeInboxEditor();
+  closeInboxEditor($("opportunityBankList"), { restoreFocus: false });
   article.insertAdjacentHTML("beforeend", buildFieldEditorV2(editorKey, inboxViewModel(id, record)));
-  const form = article.querySelector("#cv2EditorForm");
+  const overlay = article.querySelector("[data-cv2-editor-root]");
+  const form = overlay?.querySelector("#cv2EditorForm");
+  wireFieldEditorSheet(overlay, { opener });
   form?.querySelector("input")?.focus();
-  article.querySelector("#cv2EditorCancel")?.addEventListener("click", () => closeInboxEditor());
   form?.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitInboxEditor(article, editorKey, Object.fromEntries(new FormData(form).entries()));
   });
-  article.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
+  overlay?.querySelector("#cv2EditorContactSave")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     void runInboxDeviceContactSave(article, true);
@@ -3663,14 +3664,14 @@ function bindListClicks() {
       const id = resolveBankRowOpportunityId(article);
       const record = state.records.get(id);
       if (!article || !record) return;
-      openInboxEditor(article, firstMissingEditor(inboxViewModel(id, record)));
+      openInboxEditor(article, firstMissingEditor(inboxViewModel(id, record)), complete);
       return;
     }
     const editorBtn = event.target.closest("[data-cv2-editor]");
     if (editorBtn && list.contains(editorBtn) && !event.target.closest("[data-cv2-editor-root]")) {
       event.preventDefault();
       const article = editorBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
-      if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "");
+      if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "", editorBtn);
     }
   });
 }

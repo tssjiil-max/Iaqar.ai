@@ -178,14 +178,47 @@ export function advertiserRoleLabel(id) {
   return ADVERTISER_ROLES.find((r) => r.id === id)?.label || "غير محدد";
 }
 
+const DIRECTION_MARKS_RE = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const ROLE_ALIASES = Object.freeze({
+  وسيط: "BROKER",
+  الوسيط: "BROKER",
+  "وسيط عقاري": "BROKER",
+  "وسيط عقارى": "BROKER",
+  "وسيطا عقاري": "BROKER",
+  "وسيطا عقاريا": "BROKER",
+  "وسيطًا عقاريًا": "BROKER",
+  broker: "BROKER",
+  مالك: "OWNER",
+  المالك: "OWNER",
+  owner: "OWNER",
+  عميل: "CLIENT",
+  العميل: "CLIENT",
+  client: "CLIENT",
+  مفوض: "DELEGATE",
+  المفوض: "DELEGATE",
+  delegate: "DELEGATE"
+});
+
+export function normalizeAdvertiserRoleInput(value = "") {
+  return String(value || "").replace(DIRECTION_MARKS_RE, "").replace(/\s+/g, " ").trim();
+}
+
+export function isPersistedAdvertiserRole(id = "") {
+  const role = String(id || "").trim().toUpperCase();
+  return role !== "" && role !== "UNKNOWN" && ADVERTISER_ROLES.some((row) => row.id === role);
+}
+
 /** Map broker-facing label or enum id to a persisted advertiserRole id. */
 export function resolveAdvertiserEnumValue(value = "", catalog = ADVERTISER_ROLES) {
-  const text = String(value || "").trim();
+  const text = normalizeAdvertiserRoleInput(value);
   if (!text) return "";
+  const stripped = text.replace(/[ًٌٍَُِْ]/g, "");
   const upper = text.toUpperCase();
+  const alias = ROLE_ALIASES[text] || ROLE_ALIASES[stripped] || ROLE_ALIASES[upper.toLowerCase()];
+  if (alias && catalog.some((entry) => entry.id === alias)) return alias;
   const byId = catalog.find((entry) => entry.id === upper || entry.id === text);
   if (byId) return byId.id;
-  const byLabel = catalog.find((entry) => entry.label === text);
+  const byLabel = catalog.find((entry) => entry.label === text || entry.label === stripped);
   if (byLabel) return byLabel.id;
   return "";
 }

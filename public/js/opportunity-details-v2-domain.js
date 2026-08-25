@@ -179,6 +179,7 @@ function specsParts(record = {}) {
 
 function advertiserRoleLabel(value = "") {
   const id = String(value || "").trim().toUpperCase();
+  if (!id || id === "UNKNOWN") return "";
   return ADVERTISER_ROLES.find((row) => row.id === id)?.label || "";
 }
 

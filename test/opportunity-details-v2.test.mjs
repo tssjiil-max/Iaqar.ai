@@ -76,8 +76,16 @@ test("empty values still render the six rows", () => {
 test("missing field editor opens a single-field sheet", () => {
   const html = buildFieldEditorV2("advertiserRole", { advertiserRole: "" });
   assert.match(html, /صفة المعلن/);
+  assert.match(html, /placeholder="اختر أو اكتب صفة المعلن"/);
+  assert.equal(html.includes('value="غير محدد"'), false);
   assert.equal(html.includes("bankUnifiedForm"), false);
   assert.equal(html.includes("priceOrBudget"), false);
+});
+
+test("Arabic role editor patch normalizes وسيط to BROKER", () => {
+  const result = buildV2FieldPatch({ advertiserRole: "UNKNOWN" }, "advertiserRole", { advertiserRole: "وسيط" });
+  assert.equal(result.ok, true);
+  assert.equal(result.patch.advertiserRole, "BROKER");
 });
 
 test("Arabic role editor patch normalizes to OWNER", () => {

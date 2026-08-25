@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
 import {
   mapOpportunityDetailsV2ViewModel,
   v2ReferenceActivities,
@@ -13,7 +14,7 @@ import { buildOpportunityDataCardV2, buildCompleteMissingButtonV2 } from "../pub
 import { buildDailyReportCardV2 } from "../public/js/v2/opportunity-details/daily-report.js";
 import { buildNextAppointmentCardV2 } from "../public/js/v2/opportunity-details/next-appointment.js";
 import { buildOpportunityDetailsContentV2 } from "../public/js/v2/opportunity-details/page.js";
-import { buildFieldEditorV2 } from "../public/js/v2/opportunity-details/editor.js";
+import { buildFieldEditorV2, wireFieldEditorSheet } from "../public/js/v2/opportunity-details/editor.js";
 
 function referenceViewModel() {
   return mapOpportunityDetailsV2ViewModel("opp_v2_ref_1258", v2ReferenceFixture(), {
@@ -157,6 +158,47 @@ test("Arabic role editor patch still normalizes to OWNER", () => {
   const result = buildV2FieldPatch({ advertiserRole: "UNKNOWN" }, "advertiserRole", { advertiserRole: "مالك" });
   assert.equal(result.ok, true);
   assert.equal(result.patch.advertiserRole, "OWNER");
+});
+
+test("advertiser role editor stays empty and maps وسيط before save", () => {
+  const html = buildFieldEditorV2("advertiserRole", { advertiserRole: "غير محدد" });
+  assert.match(html, /placeholder="اختر أو اكتب صفة المعلن"/);
+  assert.match(html, /name="advertiserRole"[^>]*value=""/);
+  assert.equal(html.includes('value="غير محدد"'), false);
+  assert.equal(html.includes('value="وسيط غير محدد"'), false);
+  assert.match(html, /data-cv2-role="مالك"/);
+  assert.match(html, /data-cv2-role="وسيط عقاري"/);
+  const broker = buildV2FieldPatch({ advertiserRole: "UNKNOWN" }, "advertiserRole", { advertiserRole: "وسيط" });
+  assert.equal(broker.ok, true);
+  assert.equal(broker.patch.advertiserRole, "BROKER");
+  const empty = buildV2FieldPatch({ advertiserRole: "UNKNOWN" }, "advertiserRole", { advertiserRole: "" });
+  assert.equal(empty.ok, false);
+  assert.equal(empty.error, "اختر: مالك، عميل، مفوض، أو وسيط عقاري.");
+  const fake = buildV2FieldPatch({ advertiserRole: "UNKNOWN" }, "advertiserRole", { advertiserRole: "غير محدد" });
+  assert.equal(fake.ok, false);
+});
+
+test("field editor backdrop click dismisses without saving", () => {
+  const dom = new JSDOM(`<!doctype html><html><body></body></html>`, { url: "https://example.test/" });
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  globalThis.history = dom.window.history;
+  globalThis.location = dom.window.location;
+  globalThis.Event = dom.window.Event;
+  const host = dom.window.document.body;
+  host.innerHTML = buildFieldEditorV2("price", { priceLabel: "السعر" });
+  const overlay = host.querySelector("[data-cv2-editor-root]");
+  const sheet = overlay.querySelector(".cv2-editor-sheet");
+  wireFieldEditorSheet(overlay);
+  sheet.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(Boolean(host.querySelector("[data-cv2-editor-root]")), true);
+  overlay.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(host.querySelector("[data-cv2-editor-root]"), null);
+  delete globalThis.document;
+  delete globalThis.window;
+  delete globalThis.history;
+  delete globalThis.location;
+  delete globalThis.Event;
 });
 
 test("details markup exposes missing editors without a V2 header", () => {

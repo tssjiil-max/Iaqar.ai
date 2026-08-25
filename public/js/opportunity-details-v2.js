@@ -18,10 +18,13 @@ import {
 import { buildEditPatch } from "./opportunity-bank-domain.js";
 import {
   buildAdvertiserDataPatch,
-  formatLocalPhoneDisplay
+  formatLocalPhoneDisplay,
+  isPersistedAdvertiserRole,
+  resolveAdvertiserEnumValue
 } from "./advertiser-phone-domain.js";
 import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 import { normalizePurpose } from "./opportunity-intake-domain.js";
+import { dismissFieldEditor, wireFieldEditorSheet } from "./v2/opportunity-details/editor.js";
 
 function editorKeyFromTarget(target) {
   return String(target?.getAttribute?.("data-v2-editor") || "").trim();
@@ -31,10 +34,17 @@ function firstMissingEditor(vm) {
   return vm.missingFields?.[0]?.editor || "";
 }
 
+const ADVERTISER_ROLE_VALIDATION = "اختر: مالك، عميل، مفوض، أو وسيط عقاري.";
+const ADVERTISER_ROLE_SAVE_FAILED = "تعذر حفظ صفة المعلن، حاول مرة أخرى.";
+
 export function buildV2FieldPatch(existing, editorKey, formData = {}) {
   if (editorKey === "advertiserRole") {
+    const resolved = resolveAdvertiserEnumValue(formData.advertiserRole);
+    if (!isPersistedAdvertiserRole(resolved)) {
+      return { ok: false, error: ADVERTISER_ROLE_VALIDATION };
+    }
     return buildAdvertiserDataPatch(existing, {
-      advertiserRole: formData.advertiserRole,
+      advertiserRole: resolved,
       advertiserPhoneLocal: formatLocalPhoneDisplay(existing.advertiserPhoneNormalized || existing.contactPhone || "")
     });
   }
@@ -65,8 +75,8 @@ export function buildV2FieldPatch(existing, editorKey, formData = {}) {
   return { ok: false, error: "unknown_editor" };
 }
 
-function closeEditor(root) {
-  root.querySelector("#oppV2Editor")?.remove();
+function closeEditor(root, options = {}) {
+  dismissFieldEditor(root.querySelector("#oppV2Editor") || root.querySelector("[data-cv2-editor-root]"), options);
 }
 
 function readEditorForm(form) {
@@ -91,14 +101,14 @@ export function wireOpportunityDetailsV2(container, options = {}) {
   const root = container?.querySelector(".opp-v2-page") || container;
   if (!root) return;
 
-  const openEditor = (editorKey) => {
+  const openEditor = (editorKey, opener) => {
     if (!editorKey) return;
-    closeEditor(root);
+    closeEditor(root, { restoreFocus: false });
     root.insertAdjacentHTML("beforeend", buildFieldEditorV2(editorKey, options.vm || {}));
-    const form = root.querySelector("#oppV2EditorForm");
-    const first = form?.querySelector("input");
-    first?.focus();
-    root.querySelector("#oppV2EditorCancel")?.addEventListener("click", () => closeEditor(root));
+    const overlay = root.querySelector("#oppV2Editor");
+    const form = overlay?.querySelector("#oppV2EditorForm");
+    wireFieldEditorSheet(overlay, { opener });
+    form?.querySelector("input")?.focus();
     form?.addEventListener("submit", (event) => {
       event.preventDefault();
       void submitEditor(editorKey, readEditorForm(form));
@@ -119,7 +129,7 @@ export function wireOpportunityDetailsV2(container, options = {}) {
         showEditorError(root, result?.error || "تعذر حفظ الحقل");
         return;
       }
-      closeEditor(root);
+      closeEditor(root, { restoreFocus: false });
       if (typeof options.onSaved === "function") await options.onSaved(result);
     } catch (error) {
       showEditorError(root, error?.message || "تعذر حفظ الحقل");
@@ -136,10 +146,10 @@ export function wireOpportunityDetailsV2(container, options = {}) {
     if (menu) menu.hidden = !menu.hidden;
   });
   root.querySelector("#oppV2CompleteBtn")?.addEventListener("click", () => {
-    openEditor(firstMissingEditor(options.vm || {}));
+    openEditor(firstMissingEditor(options.vm || {}), root.querySelector("#oppV2CompleteBtn"));
   });
   root.querySelectorAll("[data-v2-editor]").forEach((chip) => {
-    chip.addEventListener("click", () => openEditor(editorKeyFromTarget(chip)));
+    chip.addEventListener("click", () => openEditor(editorKeyFromTarget(chip), chip));
   });
 }
 
@@ -164,7 +174,12 @@ export async function saveV2FieldWithAdapter(existing, editorKey, formData, pers
     propertyPurpose: stillMissing.includes("purpose") || stillMissing.includes("propertyType")
   }[editorKey];
   if (editorStillOpen) {
-    return { ok: false, error: "لم يُحفظ الحقل", readiness, reloaded };
+    return {
+      ok: false,
+      error: editorKey === "advertiserRole" ? ADVERTISER_ROLE_SAVE_FAILED : "لم يُحفظ الحقل",
+      readiness,
+      reloaded
+    };
   }
   return { ok: true, reloaded, readiness };
 }

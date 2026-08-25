@@ -1,12 +1,37 @@
-import { ADVERTISER_ROLES } from "../../advertiser-phone-domain.js";
+import {
+  ADVERTISER_ROLES,
+  advertiserRoleLabel,
+  isPersistedAdvertiserRole,
+  resolveAdvertiserEnumValue
+} from "../../advertiser-phone-domain.js";
 import { escapeContentHtml } from "../domain.js";
 
+const EDITOR_SESSION = "__iaqarEditorSession";
+const CANONICAL_ROLES = ADVERTISER_ROLES.filter((row) => row.id !== "UNKNOWN");
+const ROLE_PLACEHOLDER = "اختر أو اكتب صفة المعلن";
+
+function editorAdvertiserRoleValue(vm = {}, seed = "") {
+  const resolved = resolveAdvertiserEnumValue(seed) || resolveAdvertiserEnumValue(vm.advertiserRole);
+  if (!isPersistedAdvertiserRole(resolved)) return "";
+  return advertiserRoleLabel(resolved);
+}
+
+function roleChipsHtml(selectedLabel = "") {
+  return `<div class="cv2-role-chips" role="list">
+    ${CANONICAL_ROLES.map((row) => {
+      const selected = selectedLabel === row.label ? " is-selected" : "";
+      return `<button type="button" class="cv2-role-chip${selected}" role="listitem" data-cv2-role="${escapeContentHtml(row.label)}">${escapeContentHtml(row.label)}</button>`;
+    }).join("")}
+  </div>`;
+}
+
 export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
+  const roleValue = editorAdvertiserRoleValue(vm, seed);
   const editors = {
     advertiserRole: {
       title: "صفة المعلن",
       hint: "مالك، عميل، مفوض، وسيط عقاري",
-      input: `<input class="cv2-editor-input" name="advertiserRole" type="text" maxlength="40" autocomplete="off" value="${escapeContentHtml(seed || vm.advertiserRole || "")}" placeholder="مالك">`
+      input: `<input class="cv2-editor-input" name="advertiserRole" type="text" maxlength="40" autocomplete="off" value="${escapeContentHtml(roleValue)}" placeholder="${escapeContentHtml(ROLE_PLACEHOLDER)}">`
     },
     contactNumber: {
       title: "رقم التواصل",
@@ -37,9 +62,7 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
     }
   };
   const spec = editors[editorKey] || editors.advertiserRole;
-  const roleHints = editorKey === "advertiserRole"
-    ? `<p class="cv2-editor-roles">${ADVERTISER_ROLES.filter((row) => row.id !== "UNKNOWN").map((row) => escapeContentHtml(row.label)).join(" · ")}</p>`
-    : "";
+  const roleHints = editorKey === "advertiserRole" ? roleChipsHtml(roleValue) : "";
   const isContact = editorKey === "contactNumber";
   const saveLabel = isContact ? "حفظ الرقم" : "حفظ";
   const contactAction = isContact
@@ -65,4 +88,98 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
       </form>
     </div>
   </div>`;
+}
+
+export function wireFieldEditorSheet(overlay, options = {}) {
+  if (!overlay) return () => {};
+  const sheet = overlay.querySelector(".cv2-editor-sheet") || overlay.querySelector(".opp-v2-editor-sheet");
+  const opener = options.opener;
+  let closed = false;
+  let ignorePop = false;
+  let historyPushed = false;
+
+  const cleanup = () => {
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("popstate", onPop);
+  };
+
+  const close = ({ restoreFocus = true, popHistory = true } = {}) => {
+    if (closed) return;
+    closed = true;
+    cleanup();
+    const active = overlay.querySelector("input, textarea, select");
+    if (active && typeof active.blur === "function") active.blur();
+    overlay.remove();
+    if (historyPushed && popHistory) {
+      ignorePop = true;
+      historyPushed = false;
+      try { history.back(); } catch (_) { /* ignore */ }
+    }
+    if (restoreFocus && opener && typeof opener.focus === "function" && document.contains(opener)) {
+      try { opener.focus({ preventScroll: true }); } catch (_) { opener.focus(); }
+    }
+  };
+
+  const onKey = (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  };
+
+  const onPop = () => {
+    if (ignorePop) {
+      ignorePop = false;
+      return;
+    }
+    historyPushed = false;
+    close({ popHistory: false });
+  };
+
+  overlay.addEventListener("click", (event) => {
+    if (!sheet || !sheet.contains(event.target)) close();
+  });
+  sheet?.addEventListener("click", (event) => event.stopPropagation());
+  overlay.querySelector("#cv2EditorCancel")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  });
+  overlay.querySelector("#oppV2EditorCancel")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  });
+  overlay.querySelectorAll("[data-cv2-role]").forEach((chip) => {
+    chip.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const input = overlay.querySelector('input[name="advertiserRole"]');
+      const label = chip.getAttribute("data-cv2-role") || "";
+      if (!input) return;
+      input.value = label;
+      overlay.querySelectorAll("[data-cv2-role]").forEach((node) => {
+        node.classList.toggle("is-selected", node === chip);
+      });
+    });
+  });
+
+  document.addEventListener("keydown", onKey, true);
+  try {
+    history.pushState({ iaqarFieldEditor: 1 }, "", location.href);
+    historyPushed = true;
+    window.addEventListener("popstate", onPop);
+  } catch (_) { /* ignore */ }
+
+  overlay[EDITOR_SESSION] = { close };
+  return close;
+}
+
+export function dismissFieldEditor(overlay, options = {}) {
+  const session = overlay?.[EDITOR_SESSION];
+  if (session && typeof session.close === "function") {
+    session.close(options);
+    return;
+  }
+  overlay?.remove();
 }
