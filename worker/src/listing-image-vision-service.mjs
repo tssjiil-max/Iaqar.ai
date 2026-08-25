@@ -13,6 +13,7 @@ import {
 } from "./gemini-intake-schema.mjs";
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { prepareListingImageForAnalysis } from "./listing-image-prepare.mjs";
+import { mergeVisionWithScreenshotSemantics } from "../../public/js/screenshot-semantic-extract.js";
 
 export const ANALYZER_PROVIDERS = Object.freeze({
   GEMINI_VISION: "gemini_vision",
@@ -25,18 +26,20 @@ export function listingImageResponseJsonSchema() {
   return geminiIntakeResponseJsonSchema();
 }
 
-function buildImageSystemPrompt() {
+export function buildImageSystemPrompt() {
   return [
-    "You extract structured real-estate listing data from Arabic property advertisement screenshots for IAQAR.AI.",
-    "Read only text clearly visible in the image.",
-    "Return JSON only matching the schema. Use null for any field not explicitly visible.",
-    "Never guess price, phone, district, city, or property type.",
+    "You transcribe Arabic real-estate advertisement images for IAQAR.AI.",
+    "Step 1: Copy ALL visible text into rawText. Include phones, prices, areas, maps URLs, headers, footers, captions, and overlay text.",
+    "Do not assume a fixed layout. Phone/price/type/location may appear anywhere.",
+    "Do not use coordinates, header/footer position, or left/right placement as the reason for a field.",
+    "Step 2: Optional structured fields only when the same value is present in rawText. Use null when not visible.",
+    "Never guess price, phone, district, city, area, or property type.",
     "opportunityKind: OFFER for listings; REQUEST only if clearly a buyer/tenant request.",
-    "purpose: SALE or RENT when visible.",
-    "propertyType: Arabic label (فيلا, شقة, أرض, etc.).",
-    "facade: cardinal direction in Arabic (غرب, شرق, etc.) when shown.",
+    "purpose: SALE or RENT when visible in the text itself.",
+    "propertyType: Arabic label (فيلا, شقة, أرض, etc.) wherever it appears.",
+    "facade: cardinal direction in Arabic when shown as a facing word, not a width in meters.",
     "propertyAge: جديد or age text when shown.",
-    "Include rawText with visible listing text and evidence map per field."
+    "Include evidence snippets copied from rawText."
   ].join("\n");
 }
 
@@ -127,7 +130,7 @@ export async function analyzeListingImageWithGemini({
     model,
     systemInstruction: buildImageSystemPrompt(),
     userParts: [
-      { text: "Extract structured listing data from this Arabic real-estate advertisement image. Return JSON only." },
+      { text: "Transcribe every visible Arabic/English listing text first into rawText, then fill schema fields only from that text. Ignore layout position. Return JSON only." },
       { inline_data: { mime_type: analysisMime, data: base64 } }
     ],
     generationConfig: buildGeminiIntakeGenerationConfig(listingImageResponseJsonSchema()),
@@ -203,6 +206,31 @@ export async function analyzeListingImageWithWorkersAi({
   }
 }
 
+function finalizeImageExtraction(rawText, visionBrokerFields, meta = {}) {
+  const corpus = safeText(rawText, 12000);
+  const merged = mergeVisionWithScreenshotSemantics(corpus, visionBrokerFields || {});
+  const brokerFields = merged.brokerFields || {};
+  const hasFields = hasExtractableListingFields(brokerFields)
+    || Boolean(brokerFields.advertiserPhoneNormalized)
+    || Boolean(brokerFields.salePrice)
+    || Boolean(brokerFields.area);
+  return {
+    ok: true,
+    text: corpus,
+    brokerFields,
+    screenshotExtraction: merged.screenshotExtraction || null,
+    fieldSources: buildFieldSourcesFromVision(brokerFields, meta.analyzerProvider || ""),
+    analyzerProvider: meta.analyzerProvider || "",
+    extractionMode: meta.extractionMode || "",
+    confidence: hasFields ? Math.max(Number(meta.confidence || 0), 55) : 25,
+    extractionStatus: hasFields ? "extracted" : "needs_review",
+    productionAi: Boolean(meta.productionAi),
+    model: meta.model || "",
+    geminiAttempted: meta.geminiAttempted,
+    geminiError: meta.geminiError || ""
+  };
+}
+
 export async function extractListingFromImage({
   env,
   imageBytes,
@@ -212,19 +240,17 @@ export async function extractListingFromImage({
   fetchImpl = fetch
 } = {}) {
   const gemini = await analyzeListingImageWithGemini({ env, imageBytes, mimeType, fetchImpl });
-  if (gemini.ok && hasExtractableListingFields(gemini.brokerFields)) {
-    return {
-      ok: true,
-      text: gemini.rawText || "",
-      brokerFields: gemini.brokerFields,
-      fieldSources: buildFieldSourcesFromVision(gemini.brokerFields, ANALYZER_PROVIDERS.GEMINI_VISION),
+  const geminiText = gemini.ok
+    ? (gemini.rawText || buildListingTextFromBrokerFields(gemini.brokerFields || {}))
+    : "";
+  if (gemini.ok && (hasExtractableListingFields(gemini.brokerFields) || geminiText)) {
+    return finalizeImageExtraction(geminiText, gemini.brokerFields, {
       analyzerProvider: ANALYZER_PROVIDERS.GEMINI_VISION,
-      extractionMode: gemini.extractionMode,
+      extractionMode: "gemini_vision_semantic",
       confidence: gemini.confidence,
-      extractionStatus: "extracted",
       productionAi: gemini.productionAi,
       model: gemini.model
-    };
+    });
   }
 
   const workers = await analyzeListingImageWithWorkersAi({
@@ -246,25 +272,19 @@ export async function extractListingFromImage({
   const parsed = typeof parseRealEstateMessage === "function"
     ? parseRealEstateMessage(workers.text || "", "", "")
     : null;
-  const brokerFields = parsed ? mapParsedLegacyToBrokerFields(parsed) : {};
-  const hasFields = hasExtractableListingFields(brokerFields);
-  if (!workers.text && !hasFields) {
+  const legacyBroker = parsed ? mapParsedLegacyToBrokerFields(parsed) : {};
+  if (!workers.text && !hasExtractableListingFields(legacyBroker)) {
     return { ok: false, error: "empty_listing_text", geminiError: gemini.error || "" };
   }
 
-  return {
-    ok: true,
-    text: workers.text,
-    brokerFields,
-    fieldSources: buildFieldSourcesFromVision(brokerFields, ANALYZER_PROVIDERS.WORKERS_AI_VISION),
+  return finalizeImageExtraction(workers.text || "", legacyBroker, {
     analyzerProvider: ANALYZER_PROVIDERS.WORKERS_AI_VISION,
-    extractionMode: workers.extractionMode,
-    confidence: hasFields ? Math.max(Number(parsed?.confidence || 0), 45) : 25,
-    extractionStatus: hasFields ? "extracted" : "needs_review",
+    extractionMode: "workers_ai_vision_semantic",
+    confidence: Number(parsed?.confidence || 0),
     productionAi: false,
     geminiAttempted: Boolean(gemini.error !== "GEMINI_NOT_CONFIGURED"),
     geminiError: gemini.error || ""
-  };
+  });
 }
 
 export function mediaExtractPublicMessage(error = "", detail = {}) {
@@ -301,5 +321,7 @@ export const __test = {
   hasExtractableListingFields,
   buildListingTextFromBrokerFields,
   buildFieldSourcesFromVision,
-  mediaExtractPublicMessage
+  mediaExtractPublicMessage,
+  buildImageSystemPrompt,
+  finalizeImageExtraction
 };
