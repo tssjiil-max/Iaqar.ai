@@ -109,9 +109,10 @@ const ids = {
 };
 
 function stamp() {
+  const now = new Date(Date.now() + 60_000).toISOString();
   return {
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: now,
+    updatedAt: now,
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
     sourceType: "live_e2e"
@@ -247,8 +248,8 @@ async function seed() {
     status: "active",
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now()
+    createdAt: Timestamp.fromMillis(Date.now() + 180000),
+    updatedAt: Timestamp.fromMillis(Date.now() + 180000)
   });
 
   await officeRef.collection("operations").doc(ids.matchOp).set({
@@ -274,8 +275,8 @@ async function seed() {
     livingTimelineJson: "[]",
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: new Date(Date.now() + 180_000).toISOString(),
+    updatedAt: new Date(Date.now() + 180_000).toISOString(),
     metadata: {
       clientRequestId: ids.request,
       ownerOfferId: ids.offer,
@@ -339,8 +340,8 @@ async function seed() {
     matchingReadiness: "READY_FOR_MATCHING",
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now()
+    createdAt: new Date(Date.now() + 180_000).toISOString(),
+    updatedAt: new Date(Date.now() + 180_000).toISOString()
   });
 
   await officeRef.collection("cooperations").doc(ids.coop).set({
@@ -365,8 +366,8 @@ async function seed() {
     matchReasons: ["السعر مناسب", "المواصفات متقاربة"],
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now()
+    createdAt: new Date(Date.now() + 180_000).toISOString(),
+    updatedAt: new Date(Date.now() + 180_000).toISOString()
   });
 
   await officeRef.collection("operations").doc(ids.coopOp).set({
@@ -390,8 +391,8 @@ async function seed() {
     city: CITY,
     qaLiveE2e: true,
     qaLiveRunId: RUN_ID,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: new Date(Date.now() + 180_000).toISOString(),
+    updatedAt: new Date(Date.now() + 180_000).toISOString(),
     metadata: {
       cooperationTaskId: ids.coop,
       currentStage: "COOPERATION_MATCH_FOUND",
@@ -660,18 +661,20 @@ async function runJourney({ headed }) {
         throw new Error(`district editor missing. section=${JSON.stringify(beforeSection)}`);
       }
 
-      await lastRow.locator("[data-cv2-editor-root]").waitFor({ timeout: 15000 });
-      const cityInput = lastRow.locator('input[name="city"]');
-      if (await cityInput.count()) {
+      await lastRow.locator("[data-cv2-editor-root], #cv2Editor").first().waitFor({ timeout: 15000 });
+      const cityInput = broker.locator("#cv2Editor input[name='city'], [data-cv2-editor-root] input[name='city']").first();
+      if (await cityInput.isVisible().catch(() => false)) {
         const currentCity = await cityInput.inputValue();
         if (!String(currentCity || "").trim()) await cityInput.fill(CITY);
       }
-      await lastRow.locator('input[name="district"]').fill(DISTRICT_VALUE);
+      const districtInput = broker.locator("#cv2Editor input[name='district'], [data-cv2-editor-root] input[name='district']").first();
+      await districtInput.waitFor({ state: "visible", timeout: 10000 });
+      await districtInput.fill(DISTRICT_VALUE);
       const patchWaiter = broker.waitForResponse(
         (res) => res.url().includes("/opportunity/patch") && res.request().method() === "POST",
         { timeout: 30000 }
       ).catch(() => null);
-      await lastRow.locator("#cv2EditorSave").click();
+      await broker.locator("#cv2EditorSave").click();
       const patchRes = await patchWaiter;
       state.patchStatus = patchRes ? patchRes.status() : null;
       await broker.waitForTimeout(2000);
