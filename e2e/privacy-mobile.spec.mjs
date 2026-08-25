@@ -8,7 +8,7 @@ const VIEWPORTS = [
 ];
 
 test.beforeEach(async ({ request }) => {
-  await resetQa(request);
+  await resetQa(request, { matching: true });
 });
 
 test("complete-deal double click does not create a second completed task", async ({ page, request }) => {

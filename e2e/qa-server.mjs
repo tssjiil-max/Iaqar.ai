@@ -20,6 +20,8 @@ import {
   confirmCompletion,
   cooperationAction,
   bookAppointment,
+  runMatching,
+  partyAppointmentAction,
   setFailNextPatch,
   OFFICES
 } from "./qa-store.mjs";
@@ -114,6 +116,12 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, { ok: true, state: snapshot() });
     return true;
   }
+  if (req.method === "POST" && pathname === "/qa/run-matching") {
+    const body = await readBody(req);
+    const officeId = officeFrom(req, body);
+    sendJson(res, 200, runMatching(officeId));
+    return true;
+  }
   if (req.method === "GET" && pathname === "/qa/operations") {
     const officeId = url.searchParams.get("officeId") || OFFICES.client.id;
     sendJson(res, 200, { ok: true, items: operationsForOffice(officeId) });
@@ -156,6 +164,13 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && partyReply) {
     const body = await readBody(req);
     const result = replyPartySession(decodeURIComponent(partyReply[1]), body.action);
+    sendJson(res, result.status || 200, result);
+    return true;
+  }
+  const partyAppointment = pathname.match(/^\/party\/sessions\/([^/]+)\/appointment$/);
+  if (req.method === "POST" && partyAppointment) {
+    const body = await readBody(req);
+    const result = partyAppointmentAction(decodeURIComponent(partyAppointment[1]), body);
     sendJson(res, result.status || 200, result);
     return true;
   }

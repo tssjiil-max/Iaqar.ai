@@ -426,6 +426,34 @@ export function revealedDetailFromSnapshot(snapshot = {}, actionId = "") {
   return null;
 }
 
+function publicAppointmentView(appointment = null) {
+  if (!appointment || typeof appointment !== "object") return { phase: "none" };
+  const phase = text(appointment.phase) || "none";
+  const selected = appointment.selected && typeof appointment.selected === "object"
+    ? {
+      dayLabel: text(appointment.selected.dayLabel),
+      dateLabel: text(appointment.selected.dateLabel),
+      timeLabel: text(appointment.selected.timeLabel)
+    }
+    : null;
+  const slots = Array.isArray(appointment.slots)
+    ? appointment.slots.map((slot) => ({
+      id: text(slot.id || slot.startAt),
+      buttonLabel: text(slot.buttonLabel),
+      dayLabel: text(slot.dayLabel),
+      dateLabel: text(slot.dateLabel),
+      timeLabel: text(slot.timeLabel)
+    })).filter((slot) => slot.id && slot.buttonLabel)
+    : [];
+  return {
+    phase,
+    slots,
+    selected,
+    takenMessage: text(appointment.takenMessage),
+    confirmedCopy: text(appointment.confirmedCopy)
+  };
+}
+
 export function sanitizePartyPublicView({
   party = "client",
   status = PARTY_SESSION_STATUS.ACTIVE,
@@ -435,7 +463,8 @@ export function sanitizePartyPublicView({
   replyAction = "",
   followUpAction = "",
   revealedDetail = null,
-  livingStage = ""
+  livingStage = "",
+  appointment = null
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
   const replied = status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction);
@@ -443,6 +472,8 @@ export function sanitizePartyPublicView({
   const revealed = revealedDetail && text(revealedDetail.value)
     ? { label: text(revealedDetail.label), value: text(revealedDetail.value) }
     : null;
+  const publicAppointment = publicAppointmentView(appointment);
+  const appointmentActive = publicAppointment.phase && publicAppointment.phase !== "none";
   const view = {
     party: side,
     title: partyViewTitle(side),
@@ -451,12 +482,13 @@ export function sanitizePartyPublicView({
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot),
-    actions: replied ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
-    followUpActions: replied ? partyFollowUpActions(side, replyAction, followUpAction) : [],
+    actions: replied || appointmentActive ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
+    followUpActions: replied && !appointmentActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
     replied,
     replyLabel: replied ? partyActionLabel(side, replyAction) : "",
     followUpLabel,
-    revealedDetail: revealed
+    revealedDetail: revealed,
+    appointment: publicAppointment
   };
   const serialized = JSON.stringify(view);
   for (const key of SECRET_KEYS) {

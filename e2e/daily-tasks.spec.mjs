@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { openHarness, resetQa } from "./helpers/qa.mjs";
 
 test.beforeEach(async ({ request }) => {
-  await resetQa(request);
+  await resetQa(request, { matching: true });
 });
 
 test("collapsed match shows identity, type, district, city, price, and reference", async ({ page }) => {

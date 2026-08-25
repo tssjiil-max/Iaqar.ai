@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { attachWatchers, resetQa, stubRemoteWorker } from "./helpers/qa.mjs";
+import { attachWatchers, resetQa, runQaMatching, stubRemoteWorker } from "./helpers/qa.mjs";
 
 test.beforeEach(async ({ request }) => {
   await resetQa(request);
@@ -14,6 +14,7 @@ test("Access Gate appears on broker home without a party token", async ({ page }
 });
 
 test("Party link in a clean context skips Access Gate and broker login", async ({ page, request }) => {
+  await runQaMatching(request);
   const mint = await request.post("/party/sessions", {
     data: { officeId: "qa-office-client", matchId: "match_aziz_1842", party: "client" }
   });

@@ -22,6 +22,13 @@ import {
   LIVING_TASK_STAGE
 } from "../public/js/match-group-domain.js";
 import {
+  availableIaqarSlots,
+  formatPartySlotLabel,
+  slotIsTaken,
+  APPOINTMENT_SLOT_TAKEN_COPY,
+  APPOINTMENT_CONFIRMED_COPY
+} from "../public/js/iaqar-appointment-domain.js";
+import {
   applyCooperationWorkflowTransition,
   COOPERATION_STAGE,
   COOPERATION_ACTION
@@ -234,18 +241,6 @@ export function seedWorld() {
       hasNewResponse: false,
       nextActor: "BROKER",
       ownerContactNeeded: false
-    },
-    match_aziz_1842: {
-      id: "match_aziz_1842",
-      officeId: OFFICES.client.id,
-      operationType: "MATCH_REVIEW",
-      clientRequestId: req1842.id,
-      ownerOfferId: offer1842.id,
-      livingStage: LIVING_TASK_STAGE.MATCH_FOUND,
-      livingTimeline: [],
-      hasNewResponse: false,
-      nextActor: "BROKER",
-      ownerContactNeeded: false
     }
   };
   for (const row of multiOffers) {
@@ -370,6 +365,8 @@ export function operationsForOffice(officeId) {
       nextActor: match.nextActor,
       ownerContactNeeded: Boolean(match.ownerContactNeeded),
       livingUpdatedAt: match.livingUpdatedAt || "",
+      appointmentAt: match.appointmentAt || "",
+      proposedSlot: match.proposedSlot || "",
       clientPhone: request.contactPhone,
       ownerPhone: offer.contactPhone,
       clientName: "عميل QA",
@@ -429,7 +426,9 @@ function stampMatch(matchId, patch) {
     hasNewResponse: Boolean(patch.hasNewResponse),
     nextActor: patch.nextActor || match.nextActor,
     livingTimeline: timeline,
-    livingUpdatedAt: new Date().toISOString()
+    livingUpdatedAt: new Date().toISOString(),
+    appointmentAt: Object.prototype.hasOwnProperty.call(patch, "appointmentAt") ? patch.appointmentAt : match.appointmentAt,
+    proposedSlot: Object.prototype.hasOwnProperty.call(patch, "proposedSlot") ? patch.proposedSlot : match.proposedSlot
   };
 }
 
@@ -470,6 +469,54 @@ export function mintPartySession({ officeId, matchId, party }) {
   return { ok: true, token, reused: false };
 }
 
+function partyAppointmentView(session, match = {}) {
+  const stage = match.livingStage || "";
+  const selectedStart = match.appointmentAt || match.proposedSlot || "";
+  const selected = selectedStart ? formatPartySlotLabel(selectedStart) : null;
+  const booked = bookedSlotStarts(match.id);
+  if (stage === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED && selectedStart) {
+    return {
+      phase: "confirmed",
+      selected,
+      confirmedCopy: APPOINTMENT_CONFIRMED_COPY,
+      slots: []
+    };
+  }
+  if (stage === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION && selectedStart) {
+    return session.party === "owner"
+      ? { phase: "proposed", selected, slots: [] }
+      : { phase: "wait_owner", selected, slots: [] };
+  }
+  if (stage === LIVING_TASK_STAGE.PROPERTY_AVAILABLE) {
+    if (session.party === "client") {
+      return {
+        phase: "pick_slot",
+        selected: null,
+        slots: availableIaqarSlots({ bookedStarts: booked })
+      };
+    }
+    return { phase: "wait_client_slot", selected: null, slots: [] };
+  }
+  if (stage === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION && session.party === "client") {
+    return { phase: "wait_property", selected: null, slots: [] };
+  }
+  return { phase: "none", selected: null, slots: [] };
+}
+
+function bookedSlotStarts(excludeMatchId = "") {
+  const starts = [];
+  for (const row of world.appointments) {
+    if (excludeMatchId && row.matchId === excludeMatchId) continue;
+    if ((row.status === "booked" || row.status === "proposed") && row.slot) starts.push(row.slot);
+  }
+  for (const match of Object.values(world.matches)) {
+    if (excludeMatchId && match.id === excludeMatchId) continue;
+    if (match.appointmentAt) starts.push(match.appointmentAt);
+    else if (match.proposedSlot) starts.push(match.proposedSlot);
+  }
+  return starts;
+}
+
 function partyView(session) {
   const office = session.officeId === OFFICES.partner.id ? OFFICES.partner : OFFICES.client;
   const match = world.matches[session.matchId] || {};
@@ -483,7 +530,8 @@ function partyView(session) {
     revealedDetail: session.followUpAction
       ? revealedDetailFromSnapshot(session.snapshot, session.followUpAction)
       : null,
-    livingStage: match.livingStage || ""
+    livingStage: match.livingStage || "",
+    appointment: partyAppointmentView(session, match)
   });
 }
 
@@ -578,9 +626,175 @@ export function bookAppointment({ matchId, slot }) {
     livingStage: LIVING_TASK_STAGE.APPOINTMENT_COORDINATION,
     hasNewResponse: true,
     nextActor: "OWNER",
-    timelineEvent: { type: "appointment_selected", actor: "CLIENT", label: "العميل اختار موعد معاينة" }
+    appointmentAt: slot,
+    proposedSlot: slot,
+    timelineEvent: { type: "appointment_selected", actor: "CLIENT", label: "تم اختيار الموعد" }
   });
   return { ok: true };
+}
+
+function sameText(left, right) {
+  return String(left || "").replace(/^حي\s+/u, "").trim() === String(right || "").replace(/^حي\s+/u, "").trim();
+}
+
+function pairCompatible(request, offer) {
+  if (!request?.isReadyForMatching || !offer?.isReadyForMatching) return false;
+  if (request.officeId !== offer.officeId) return false;
+  if (!sameText(request.propertyType, offer.propertyType)) return false;
+  if (String(request.purpose || "").toUpperCase() !== String(offer.purpose || "").toUpperCase()) return false;
+  if (!sameText(request.city, offer.city) || !sameText(request.district, offer.district)) return false;
+  const budget = Number(request.budget || request.priceOrBudget || 0);
+  const price = Number(offer.salePrice || offer.priceOrBudget || 0);
+  if (budget > 0 && price > budget) return false;
+  const wantArea = Number(request.area || 0);
+  const offerArea = Number(offer.area || 0);
+  if (wantArea > 0 && offerArea > 0 && Math.abs(offerArea - wantArea) / wantArea > 0.25) return false;
+  return true;
+}
+
+function existingMatchForPair(requestId, offerId) {
+  return Object.values(world.matches).find((row) => row.clientRequestId === requestId && row.ownerOfferId === offerId) || null;
+}
+
+function opportunityAlreadyMatched(id) {
+  return Object.values(world.matches).some((row) => row.clientRequestId === id || row.ownerOfferId === id);
+}
+
+export function runMatching(officeId = OFFICES.client.id) {
+  const records = opportunitiesForOffice(officeId);
+  const requests = records.filter((row) => String(row.opportunityKind || "").toUpperCase() === "REQUEST");
+  const offers = records.filter((row) => String(row.opportunityKind || "").toUpperCase() === "OFFER");
+  const created = [];
+  const existing = [];
+  for (const request of requests) {
+    for (const offer of offers) {
+      if (!pairCompatible(request, offer)) continue;
+      const found = existingMatchForPair(request.id, offer.id);
+      if (found) {
+        existing.push({
+          matchId: found.id,
+          requestId: request.id,
+          offerId: offer.id,
+          created: false
+        });
+        continue;
+      }
+      if (opportunityAlreadyMatched(request.id) || opportunityAlreadyMatched(offer.id)) continue;
+      const id = request.id === "qa_req_1842" && offer.id === "qa_offer_1842"
+        ? "match_aziz_1842"
+        : `match_${request.id}_${offer.id}`;
+      world.matches[id] = {
+        id,
+        officeId,
+        operationType: "MATCH_REVIEW",
+        clientRequestId: request.id,
+        ownerOfferId: offer.id,
+        livingStage: LIVING_TASK_STAGE.MATCH_FOUND,
+        livingTimeline: [
+          { type: "match_found", actor: "BROKER", label: "تم العثور على مطابقة", createdAt: new Date().toISOString() }
+        ],
+        hasNewResponse: false,
+        nextActor: "BROKER",
+        ownerContactNeeded: false,
+        livingUpdatedAt: new Date().toISOString()
+      };
+      created.push({
+        matchId: id,
+        requestId: request.id,
+        offerId: offer.id,
+        created: true
+      });
+    }
+  }
+  return { ok: true, created, existing, matches: [...created, ...existing] };
+}
+
+function upsertAppointment(matchId, slot, status) {
+  const current = world.appointments.find((row) => row.matchId === matchId);
+  if (current) {
+    current.slot = slot;
+    current.status = status;
+    return;
+  }
+  world.appointments.push({ matchId, slot, status });
+}
+
+export function partyAppointmentAction(token, { action = "", slot = "" } = {}) {
+  const session = world.partySessions[token];
+  if (!session) return { ok: false, error: "invalid_party_link", status: 404 };
+  const match = world.matches[session.matchId];
+  if (!match) return { ok: false, error: "match_not_found", status: 404 };
+  const verb = String(action || "").trim().toLowerCase();
+
+  if (verb === "select") {
+    if (session.party !== "client") return { ok: false, error: "invalid_party_action", status: 400 };
+    const chosen = String(slot || "").trim();
+    if (!chosen) return { ok: false, error: "slot_required", status: 400 };
+    if (slotIsTaken(chosen, bookedSlotStarts(match.id))) {
+      return {
+        ok: false,
+        error: "slot_taken",
+        message: APPOINTMENT_SLOT_TAKEN_COPY,
+        status: 409,
+        view: partyView(session)
+      };
+    }
+    upsertAppointment(match.id, chosen, "proposed");
+    stampMatch(match.id, {
+      livingStage: LIVING_TASK_STAGE.APPOINTMENT_COORDINATION,
+      ownerContactNeeded: false,
+      hasNewResponse: true,
+      nextActor: "OWNER",
+      proposedSlot: chosen,
+      appointmentAt: chosen,
+      timelineEvent: { type: "appointment_selected", actor: "CLIENT", label: "تم اختيار الموعد" }
+    });
+    return { ok: true, view: partyView(session) };
+  }
+
+  if (verb === "rechoose") {
+    if (session.party !== "owner") return { ok: false, error: "invalid_party_action", status: 400 };
+    const current = world.appointments.find((row) => row.matchId === match.id);
+    if (current) current.status = "released";
+    stampMatch(match.id, {
+      livingStage: LIVING_TASK_STAGE.PROPERTY_AVAILABLE,
+      ownerContactNeeded: false,
+      hasNewResponse: true,
+      nextActor: "CLIENT",
+      proposedSlot: "",
+      appointmentAt: "",
+      timelineEvent: { type: "appointment_rechoose", actor: "OWNER", label: "المالك طلب وقتًا آخر" }
+    });
+    return { ok: true, view: partyView(session) };
+  }
+
+  if (verb === "confirm") {
+    if (session.party !== "owner") return { ok: false, error: "invalid_party_action", status: 400 };
+    const chosen = String(match.proposedSlot || match.appointmentAt || "").trim();
+    if (!chosen) return { ok: false, error: "slot_required", status: 400 };
+    if (slotIsTaken(chosen, bookedSlotStarts(match.id))) {
+      return {
+        ok: false,
+        error: "slot_taken",
+        message: APPOINTMENT_SLOT_TAKEN_COPY,
+        status: 409,
+        view: partyView(session)
+      };
+    }
+    upsertAppointment(match.id, chosen, "booked");
+    stampMatch(match.id, {
+      livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+      ownerContactNeeded: false,
+      hasNewResponse: false,
+      nextActor: "NONE",
+      proposedSlot: chosen,
+      appointmentAt: chosen,
+      timelineEvent: { type: "appointment_confirmed", actor: "OWNER", label: "تم تأكيد المعاينة" }
+    });
+    return { ok: true, view: partyView(session) };
+  }
+
+  return { ok: false, error: "invalid_party_action", message: "هذا الإجراء غير متاح.", status: 400 };
 }
 
 export { listingFrom };

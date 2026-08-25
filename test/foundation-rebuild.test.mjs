@@ -204,7 +204,7 @@ test("TEST H/I: existing snapshot details reveal immediately; missing info needs
 
 test("TEST K: owner is contacted only when viewing is requested", () => {
   const interested = livingStageAfterPartyAction({ party: "client", action: "interested" });
-  assert.equal(interested.ownerContactNeeded, true);
+  assert.equal(interested.ownerContactNeeded, false);
   const viewing = livingStageAfterPartyAction({ party: "client", action: "want_viewing", followUp: true });
   assert.equal(viewing.ownerContactNeeded, true);
   assert.equal(viewing.stage, LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION);

@@ -45,9 +45,18 @@ export function attachWatchers(page) {
   };
 }
 
-export async function resetQa(request) {
+export async function resetQa(request, { matching = false, officeId = "qa-office-client" } = {}) {
   const response = await request.post("/qa/reset");
   if (!response.ok()) throw new Error("qa reset failed");
+  if (!matching) return;
+  const matched = await request.post("/qa/run-matching", { data: { officeId } });
+  if (!matched.ok()) throw new Error("qa matching failed");
+}
+
+export async function runQaMatching(request, officeId = "qa-office-client") {
+  const response = await request.post("/qa/run-matching", { data: { officeId } });
+  if (!response.ok()) throw new Error("qa matching failed");
+  return response.json();
 }
 
 export async function stubRemoteWorker(page, origin) {

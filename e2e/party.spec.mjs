@@ -4,7 +4,7 @@ import { extractPartyToken, openHarness, openParty, resetQa } from "./helpers/qa
 const ORIGIN = "http://127.0.0.1:4191";
 
 test.beforeEach(async ({ request }) => {
-  await resetQa(request);
+  await resetQa(request, { matching: true });
 });
 
 test("send to client opens a WhatsApp deep-link and says تم فتح واتساب", async ({ page }) => {
@@ -65,7 +65,14 @@ test("client interested updates the same broker task timeline after reload", asy
   const updated = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
   await updated.getByTestId("match-open").click();
   await expect(updated).toContainText("العميل مهتم");
-  await expect(updated.getByTestId("send-owner")).toBeVisible();
+  await expect(updated.getByTestId("send-owner")).toHaveCount(0);
+  await expect(updated).toContainText("لا يوجد إجراء مطلوب منك الآن");
+  await partyPage.getByTestId("party-want_viewing").click();
+  await page.reload();
+  const afterViewing = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
+  await afterViewing.getByTestId("match-open").click();
+  await expect(afterViewing).toContainText("العميل طلب معاينة");
+  await expect(afterViewing.getByTestId("send-owner")).toBeVisible();
 });
 
 test("client needs more details shows follow-up choices", async ({ page, request, context }) => {
@@ -126,6 +133,7 @@ test("owner party never exposes the client phone and can confirm availability", 
   const clientPage = await context.newPage();
   await openParty(clientPage, clientToken, ORIGIN);
   await clientPage.getByTestId("party-interested").click();
+  await clientPage.getByTestId("party-want_viewing").click();
 
   await page.reload();
   const after = page.locator('[data-cv2-exec-task][data-match-id="match_aziz_1842"]');
