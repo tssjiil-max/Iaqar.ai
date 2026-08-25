@@ -218,6 +218,15 @@ export async function loadPartyPublicView({ token, env, helpers }) {
 }
 
 export async function handlePartySessionGet({ token, env, requestId, helpers, ip }) {
+  try {
+    return await getPartySessionPublic({ token, env, requestId, helpers, ip });
+  } catch (error) {
+    if (error && error.status === 429) throw error;
+    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+}
+
+async function getPartySessionPublic({ token, env, requestId, helpers, ip }) {
   const limited = helpers.consumePublicRateLimit(
     helpers.publicRateLimitKey({ route: "party-get", ip }),
     helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY
@@ -233,6 +242,15 @@ export async function handlePartySessionGet({ token, env, requestId, helpers, ip
 }
 
 export async function handlePartySessionReply({ token, env, request, requestId, helpers, ip }) {
+  try {
+    return await replyPartySession({ token, env, request, requestId, helpers, ip });
+  } catch (error) {
+    if (error && (error.status === 429 || error.status === 400)) throw error;
+    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+}
+
+async function replyPartySession({ token, env, request, requestId, helpers, ip }) {
   const limited = helpers.consumePublicRateLimit(
     helpers.publicRateLimitKey({ route: "party-reply", ip }),
     helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY

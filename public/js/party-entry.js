@@ -40,6 +40,27 @@ function mount(html) {
   return root;
 }
 
+function resolvePartyToken(locationLike = window.location) {
+  const fromSearch = readPartyTokenFromSearch(locationLike.search || "");
+  if (fromSearch) return fromSearch;
+  if (document.documentElement.dataset.partyMode === "1") {
+    const fromWindow = String(window.__IAQAR_PARTY_TOKEN__ || "").trim();
+    if (fromWindow) return fromWindow;
+    try {
+      return String(sessionStorage.getItem("iaqar.partyToken") || "").trim();
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function partyDiag(event, extra) {
+  if (typeof window.__IAQAR_PARTY_DIAG__ === "function") {
+    window.__IAQAR_PARTY_DIAG__(event, extra || {});
+  }
+}
+
 function showStatus(message, isError) {
   const node = document.getElementById("partyStatus");
   if (!node) return;
@@ -90,21 +111,26 @@ function bindActions(root, token) {
 }
 
 export async function bootPartyEntry(locationLike = window.location) {
-  const token = readPartyTokenFromSearch(locationLike.search || "");
+  const token = resolvePartyToken(locationLike);
   if (!token) return false;
+  partyDiag("PARTY_BOOTSTRAP_STARTED", { opaque: isOpaquePartyToken(token) });
   document.documentElement.dataset.partyMode = "1";
   document.documentElement.classList.add("is-party-mode");
   if (!isOpaquePartyToken(token)) {
     mount(buildPartyErrorHtml(PARTY_INVALID_COPY));
+    partyDiag("PARTY_VIEW_RENDERED", { invalid: true });
     return true;
   }
   const root = mount(buildPartyLoadingHtml());
   try {
     const view = await loadSession(token);
+    partyDiag("PARTY_SESSION_RESOLVED", { party: view.party || "" });
     mount(buildPartyShellHtml(view));
     bindActions(document.getElementById("partyRoot") || root, token);
+    partyDiag("PARTY_VIEW_RENDERED", { party: view.party || "" });
   } catch {
     mount(buildPartyErrorHtml(PARTY_INVALID_COPY));
+    partyDiag("PARTY_VIEW_RENDERED", { invalid: true });
   }
   return true;
 }

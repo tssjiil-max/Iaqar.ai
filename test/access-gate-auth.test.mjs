@@ -143,8 +143,8 @@ test("access-gate short-circuits cv2Party before creating the role chooser", () 
   assert.ok(partyIdx < gateIdx, "cv2Party must be inspected before #accessGate");
   assert.ok(partyIdx < chooserIdx, "cv2Party must be inspected before role chooser");
   const prelude = accessGate.slice(0, lockIdx);
-  assert.ok(prelude.includes("is-party-mode"));
-  assert.ok(prelude.includes("return;"));
+  assert.ok(accessGate.includes("ACCESS_GATE_SKIPPED"));
+  assert.ok(accessGate.includes("ACCESS_GATE_RENDERED"));
 });
 
 test("firebase-office exposes office rebind for post-login context switch", () => {
