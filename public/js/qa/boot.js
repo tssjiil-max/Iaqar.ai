@@ -91,11 +91,11 @@ function renderInbox() {
   const rows = [...records.values()];
   const needs = rows.filter((row) => evaluateMatchingReadiness(row).isReadyForMatching === false);
   const ready = rows.filter((row) => !needs.includes(row));
-  const section = (title, items) => {
+  const section = (title, items, testId) => {
     if (!items.length) return "";
-    return `<p class="cv2-inbox-section">${title}</p><div class="cv2-inbox-section-rule"></div>${items.map((row) => buildBankInboxCardHtml(row)).join("")}`;
+    return `<p class="cv2-inbox-section" data-testid="${testId}">${title}</p><div class="cv2-inbox-section-rule"></div>${items.map((row) => buildBankInboxCardHtml(row)).join("")}`;
   };
-  root.innerHTML = `${section("يحتاج استكمال", needs)}${section("قيد المطابقة", ready)}`;
+  root.innerHTML = `${section("يحتاج استكمال", needs, "inbox-needs-completion")}${section("قيد المطابقة", ready, "inbox-matching")}`;
 }
 
 function showEditorError(article, message) {
@@ -157,7 +157,7 @@ function openInboxEditor(article, editorKey, opener) {
   });
 }
 
-function switchTab(name) {
+function switchTab(name, { push = true } = {}) {
   const tasks = document.getElementById("contentV2");
   const offers = document.getElementById("inboxRoot");
   const settings = document.getElementById("settingsRoot");
@@ -167,17 +167,38 @@ function switchTab(name) {
   document.querySelectorAll("[data-qa-tab]").forEach((btn) => {
     btn.classList.toggle("is-active", btn.getAttribute("data-qa-tab") === name);
   });
+  const next = new URL(location.href);
+  next.searchParams.set("tab", name);
+  if (push && next.search !== location.search) {
+    history.pushState({ tab: name }, "", next);
+  } else if (next.search !== location.search) {
+    history.replaceState({ tab: name }, "", next);
+  }
 }
 
 function bind() {
   document.querySelectorAll("[data-qa-tab]").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.getAttribute("data-qa-tab")));
   });
+  window.addEventListener("popstate", () => {
+    switchTab(new URLSearchParams(location.search).get("tab") || "tasks", { push: false });
+  });
   document.getElementById("inboxRoot")?.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-cv2-toggle-details]");
     const complete = event.target.closest("[data-cv2-complete]");
     const editor = event.target.closest("[data-cv2-editor]");
     const article = event.target.closest("[data-cv2-inbox-item]");
     if (!article) return;
+    if (toggle) {
+      const card = article.querySelector("[data-cv2-data-card]");
+      const expanded = !card?.classList.contains("is-expanded");
+      card?.classList.toggle("is-expanded", expanded);
+      card?.classList.toggle("is-collapsed", !expanded);
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const label = toggle.querySelector("[data-cv2-toggle-label]");
+      if (label) label.textContent = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
+      return;
+    }
     if (complete) {
       const record = records.get(article.getAttribute("data-opportunity-id"));
       const vm = mapOpportunityDetailsV2ViewModel(record.id, record);
@@ -197,7 +218,7 @@ async function boot() {
   await loadInbox();
   window.addEventListener("iaqar:operations-refresh", () => { void loadOperations(); });
   const tab = params.get("tab") || "tasks";
-  switchTab(tab);
+  switchTab(tab, { push: false });
 }
 
 void boot();

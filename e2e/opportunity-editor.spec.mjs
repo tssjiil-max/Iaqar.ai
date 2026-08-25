@@ -24,8 +24,12 @@ test("incomplete items sit under يحتاج استكمال and do not claim 6/6"
   await openHarness(page, { tab: "offers" });
   const incomplete = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_incomplete"]');
   await expect(incomplete).toBeVisible();
-  await expect(incomplete).toContainText("يحتاج استكمال");
+  await expect(page.getByTestId("inbox-needs-completion")).toBeVisible();
   await expect(incomplete).not.toContainText("6 من 6");
+  const lastField = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_last_field"]');
+  await expect(lastField).toContainText("يحتاج استكمال");
+  await expect(lastField).not.toContainText("6 من 6");
+  await expect(lastField.getByTestId("complete-missing")).toBeVisible();
 });
 
 test("saving city and district persists after reload", async ({ page }) => {
@@ -68,13 +72,19 @@ test("empty location validation keeps the sheet open", async ({ page }) => {
   await expect(page.getByText("تم الحفظ")).toHaveCount(0);
 });
 
-test("cancel and outside click do not save", async ({ page }) => {
+test("cancel does not save; outside click also discards", async ({ page }) => {
   await openHarness(page, { tab: "offers" });
   const row = await openMissing(page, "qa_offer_incomplete", "location");
   await row.getByTestId("field-district").fill("لن تُحفظ");
   await row.getByTestId("cancel-field").click();
   await expect(row.locator("[data-cv2-editor-root]")).toHaveCount(0);
   await expect(row).not.toContainText("لن تُحفظ");
+
+  await row.locator('[data-cv2-editor="location"]').first().click();
+  await row.getByTestId("field-district").fill("خارج الشيت");
+  await row.locator("[data-cv2-editor-root]").click({ position: { x: 4, y: 4 } });
+  await expect(row.locator("[data-cv2-editor-root]")).toHaveCount(0);
+  await expect(row).not.toContainText("خارج الشيت");
 });
 
 test("save failure keeps the editor and does not toast success", async ({ page, request }) => {
@@ -105,11 +115,25 @@ test("completing the last missing field moves the item to قيد المطابق�
 
 test("invalid Saudi phone is rejected", async ({ page }) => {
   await openHarness(page, { tab: "offers" });
-  const row = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_incomplete"]');
-  const contactChip = row.locator('[data-cv2-editor="contactNumber"], [data-cv2-editor="contact"]').first();
-  if (!(await contactChip.count())) test.skip(true, "contact editor chip not visible on this incomplete card");
-  await contactChip.click();
+  const row = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_phone"]');
+  await expect(row).toBeVisible();
+  await row.getByTestId("complete-missing").click();
   await row.getByTestId("field-phone").fill("123");
   await row.getByTestId("save-field").click();
   await expect(row.locator("[data-cv2-editor-root]")).toBeVisible();
+  await expect(row.locator("#cv2EditorError")).toBeVisible();
+});
+
+test("saving area persists after reload", async ({ page }) => {
+  await openHarness(page, { tab: "offers" });
+  const row = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_incomplete"]');
+  await row.getByText("عرض التفاصيل").click();
+  await row.locator('[data-cv2-editor="area"]').first().click();
+  await row.getByTestId("field-area").fill("1175");
+  await row.getByTestId("save-field").click();
+  await page.reload();
+  await page.getByTestId("tab-offers").click();
+  const again = page.locator('[data-testid="inbox-row"][data-opportunity-id="qa_offer_incomplete"]');
+  await again.getByText("عرض التفاصيل").click();
+  await expect(again).toContainText("1,175");
 });

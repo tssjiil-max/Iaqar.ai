@@ -45,6 +45,19 @@ test("partner office can accept without seeing the client phone", async ({ page 
   await expect(page.locator('[data-cooperation-id="coop_431"]')).not.toContainText("بانتظار رد");
 });
 
+test("partner office can reject without seeing the client phone", async ({ page }) => {
+  await openHarness(page);
+  await page.locator('[data-cooperation-id="coop_431"]').getByTestId("coop-open").click();
+  await page.getByTestId("request-cooperation").click();
+  await page.goto("/qa/?officeId=qa-office-wadi&tab=tasks");
+  const partner = page.locator('[data-cv2-exec-task][data-cooperation-id="coop_431"]');
+  await partner.getByTestId("coop-open").click();
+  await expect(partner).not.toContainText("0508884310");
+  await partner.getByTestId("reject-cooperation").click();
+  await page.reload();
+  await expect(page.locator('[data-cooperation-id="coop_431"]')).toHaveCount(0);
+});
+
 test("double-clicking request cooperation does not duplicate the record", async ({ page, request }) => {
   await openHarness(page);
   const card = page.locator('[data-cv2-exec-task][data-cooperation-id="coop_431"]');

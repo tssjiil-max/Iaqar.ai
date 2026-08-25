@@ -64,6 +64,11 @@ function rowDisplayValues(vm = {}, rowKey = "") {
 }
 
 export function isDisplayedRowComplete(vm = {}, rowKey = "") {
+  if (rowKey === "location") {
+    const city = vm.cityValue || vm.city || "";
+    const district = vm.districtValue || vm.district || "";
+    return isDisplayValueComplete(city) && isDisplayValueComplete(district);
+  }
   return rowDisplayValues(vm, rowKey).some((value) => isDisplayValueComplete(value));
 }
 

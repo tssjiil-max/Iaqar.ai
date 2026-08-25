@@ -1,6 +1,6 @@
 import { escapeContentHtml } from "../domain.js";
 import { isDisplayValueComplete } from "../../../../public/js/opportunity-field-completion-domain.js";
-import { V2_DATA_ROWS, completenessLine, displayedMissingRows, editorForDisplayedRow } from "./view-model.js";
+import { V2_DATA_ROWS, completenessLine, displayedMissingRows, editorForDisplayedRow, isDisplayedRowComplete } from "./view-model.js";
 
 function iconUse(id) {
   return `<svg class="cv2-icon" aria-hidden="true"><use href="#${escapeContentHtml(id)}"/></svg>`;
@@ -40,7 +40,7 @@ const EXTRA_ROW_KEYS = new Set(["specs", "advertiser"]);
 
 function rowMarkup(row, vm) {
   const value = rowValue(vm, row.key);
-  const missing = isBlank(value.primary) && isBlank(value.secondary);
+  const missing = !isDisplayedRowComplete(vm, row.key);
   const editor = missing ? editorForDisplayedRow(row.key, vm) : "";
   const label = row.key === "price" ? (vm.priceLabel || row.label) : row.label;
   return `<div class="cv2-row" data-cv2-row="${escapeContentHtml(row.key)}">

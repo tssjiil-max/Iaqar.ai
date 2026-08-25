@@ -13,7 +13,7 @@ test("switching المهام اليومية / العروض والطلبات / إ
   await page.getByTestId("tab-offers").click();
   await expect(page.getByTestId("panel-offers")).toBeVisible();
   await expect(page.getByTestId("panel-tasks")).toBeHidden();
-  await expect(page.getByText("يحتاج استكمال")).toBeVisible();
+  await expect(page.getByTestId("inbox-needs-completion")).toBeVisible();
 
   await page.getByTestId("tab-settings").click();
   await expect(page.getByTestId("panel-settings")).toBeVisible();
@@ -32,6 +32,9 @@ test("reload and back keep the selected tab's data", async ({ page }) => {
   await page.reload();
   await expect(page.getByTestId("inbox-row").first()).toBeVisible();
   await page.getByTestId("tab-tasks").click();
+  await expect(page.getByTestId("panel-tasks")).toBeVisible();
   await page.goBack();
   await expect(page.getByTestId("panel-offers")).toBeVisible();
+  await page.goForward();
+  await expect(page.getByTestId("panel-tasks")).toBeVisible();
 });

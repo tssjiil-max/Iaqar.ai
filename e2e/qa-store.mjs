@@ -106,6 +106,16 @@ export function seedWorld() {
     contactPhone: "0504441850",
     advertiserPhoneNormalized: "+966504441850"
   });
+  const phoneOnly = opportunity("qa_offer_phone", OFFICES.client.id, {
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    district: "السكب",
+    salePrice: 850000,
+    area: 1175,
+    advertiserRole: "OWNER",
+    contactPhone: ""
+  });
   const nomatch = opportunity("qa_req_nomatch", OFFICES.client.id, {
     opportunityKind: "REQUEST",
     purpose: "SALE",
@@ -189,6 +199,7 @@ export function seedWorld() {
     [offer1842.id]: offer1842,
     [incomplete.id]: incomplete,
     [lastField.id]: lastField,
+    [phoneOnly.id]: phoneOnly,
     [nomatch.id]: nomatch,
     [multiReq.id]: multiReq,
     [coopReq.id]: coopReq,

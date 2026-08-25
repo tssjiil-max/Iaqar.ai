@@ -185,6 +185,12 @@ async function handleApi(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
+    const partyToken = String(url.searchParams.get("cv2Party") || "").trim();
+    if (partyToken && url.pathname.startsWith("/qa")) {
+      res.writeHead(302, { Location: `/?cv2Party=${encodeURIComponent(partyToken)}` });
+      res.end();
+      return;
+    }
     if (await handleApi(req, res, url)) return;
     if (serveStatic(req, res, url)) return;
     send(res, 404, "not found");

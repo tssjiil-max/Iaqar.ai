@@ -9,7 +9,10 @@ export function attachWatchers(page) {
     /favicon/,
     /gstatic\.com\/firebasejs/,
     /Failed to load resource/,
-    /net::ERR_/
+    /net::ERR_/,
+    /Firebase: No Firebase App/,
+    /app-compat\/no-app/,
+    /installations\/installations/
   ];
   page.on("pageerror", (error) => {
     pageErrors.push(String(error.message || error));
@@ -68,14 +71,23 @@ export async function openHarness(page, { officeId = "qa-office-client", tab = "
 export async function openParty(page, token, origin) {
   const watchers = attachWatchers(page);
   await stubRemoteWorker(page, origin);
-  await page.goto(`/?cv2Party=${token}`);
-  await page.locator("[data-party-shell]").waitFor();
+  await page.goto(`/?cv2Party=${encodeURIComponent(token)}`);
+  await page.locator("[data-party-shell][data-party], [data-party-error]").waitFor();
+  const error = page.locator("[data-party-error]");
+  if (await error.count()) {
+    throw new Error(`party link invalid: ${(await error.innerText()).trim()}`);
+  }
   return watchers;
 }
 
 export function extractPartyToken(whatsappUrl) {
-  const url = new URL(String(whatsappUrl || "").replace(/^https:\/\/wa\.me\/\d+\?text=/, "https://decoded/?text="));
-  const text = decodeURIComponent(url.searchParams.get("text") || String(whatsappUrl || ""));
-  const match = text.match(/cv2Party=([a-f0-9]{32,128})/i);
+  const raw = String(whatsappUrl || "");
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    decoded = raw;
+  }
+  const match = decoded.match(/cv2Party[=%](?:3D)?([a-f0-9]{32,128})/i);
   return match ? match[1] : "";
 }
