@@ -45,7 +45,7 @@ export function buildPartyShellHtml(view = {}) {
   ].filter(([, value]) => value);
   const details = rows.map(([label, value]) => `<p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`).join("");
   const logo = view.officeLogoUrl
-    ? `<img class="party-logo" src="${escapeHtml(view.officeLogoUrl)}" alt="">`
+    ? `<img class="party-logo" src="${escapeHtml(view.officeLogoUrl)}" alt="" onerror="this.remove()">`
     : "";
   const actions = (view.actions || []).map((action) => (
     `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
