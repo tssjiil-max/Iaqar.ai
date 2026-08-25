@@ -6,7 +6,7 @@ import { mapOperationsItemsToDailyTasks } from "../src/v2/content/daily-tasks/do
 import { buildDailyTaskCardHtml } from "../src/v2/content/daily-tasks/card.js";
 import { buildCooperationDailyTaskView, COOPERATION_STAGE } from "../public/js/cooperation-workflow-domain.js";
 import { mapOpportunityDetailsV2ViewModel } from "../public/js/opportunity-details-v2-domain.js";
-import { buildOpportunityDataCardV2, buildCompleteMissingButtonV2 } from "../src/v2/content/opportunity-details/data-card.js";
+import { buildOpportunityDataCardV2, buildCompleteMissingButtonV2 } from "../public/js/v2/opportunity-details/data-card.js";
 import { evaluateMatchingReadiness } from "../public/js/opportunity-readiness-domain.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -110,7 +110,8 @@ const coop = {
     area: 1180
   },
   proximityLabel: "نفس الحي",
-  compatibilityLabel: "مطابقة مرتفعة"
+  compatibilityLabel: "مطابقة مرتفعة",
+  matchReasons: ["السعر مناسب", "المواصفات متقاربة"]
 };
 const coopView = buildCooperationDailyTaskView(coop, { officeId: "office-client" });
 const waitingView = buildCooperationDailyTaskView({
@@ -120,7 +121,7 @@ const waitingView = buildCooperationDailyTaskView({
   requestedAt: "2026-08-25T09:00:00.000Z"
 }, { officeId: "office-client" });
 
-const incomplete = mapOpportunityDetailsV2ViewModel("opp_need", {
+const incomplete = mapOpportunityDetailsV2ViewModel("opp_1849", {
   opportunityKind: "OFFER",
   purpose: "SALE",
   propertyType: "أرض",
@@ -129,7 +130,7 @@ const incomplete = mapOpportunityDetailsV2ViewModel("opp_need", {
   advertiserRole: "OWNER",
   contactPhone: "0511123456"
 });
-const complete = mapOpportunityDetailsV2ViewModel("opp_ready", {
+const complete = mapOpportunityDetailsV2ViewModel("opp_1850", {
   opportunityKind: "OFFER",
   purpose: "SALE",
   propertyType: "أرض",
@@ -167,17 +168,19 @@ for (const shot of shots) {
 }
 
 const pngNames = [
-  "dt_01_match_collapsed.png",
-  "dt_02_match_expanded.png",
-  "dt_03_match_full_details.png",
-  "dt_04_timeline_client.png",
-  "dt_05_timeline_owner.png",
-  "dt_06_coop_collapsed.png",
-  "dt_07_coop_expanded.png",
-  "dt_08_coop_waiting.png",
-  "dt_09_opportunity_incomplete.png",
-  "dt_10_opportunity_matching.png"
+  "review_01_match_collapsed.png",
+  "review_02_match_expanded.png",
+  "review_03_match_full_details.png",
+  "review_04_timeline_client.png",
+  "review_05_timeline_owner.png",
+  "review_06_coop_collapsed.png",
+  "review_07_coop_expanded.png",
+  "review_08_coop_waiting.png",
+  "review_09_opportunity_incomplete.png",
+  "review_10_opportunity_matching.png"
 ];
+
+const shotHeights = [700, 1100, 1600, 1400, 1600, 700, 1400, 1500, 900, 800];
 
 for (let i = 0; i < shots.length; i += 1) {
   const htmlPath = path.join(tmpDir, shots[i].file);
@@ -188,7 +191,7 @@ for (let i = 0; i < shots.length; i += 1) {
     "--hide-scrollbars",
     "--force-device-scale-factor=2",
     `--screenshot=${pngPath}`,
-    "--window-size=390,844",
+    `--window-size=390,${shotHeights[i]}`,
     `file://${htmlPath}`
   ], { encoding: "utf8" });
   if (result.status !== 0) {
@@ -198,9 +201,9 @@ for (let i = 0; i < shots.length; i += 1) {
 }
 
 const extra = [
-  { file: "dt_17_360.html", png: "dt_17_viewport_360.png", width: 360, height: 780, title: "TEST 17 — 360px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) },
-  { file: "dt_17_390.html", png: "dt_17_viewport_390.png", width: 390, height: 844, title: "TEST 17 — 390px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) },
-  { file: "dt_17_430.html", png: "dt_17_viewport_430.png", width: 430, height: 900, title: "TEST 17 — 430px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) }
+  { file: "dt_17_360.html", png: "review_17_viewport_360.png", width: 360, height: 1600, title: "TEST 17 — 360px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) },
+  { file: "dt_17_390.html", png: "review_17_viewport_390.png", width: 390, height: 1600, title: "TEST 17 — 390px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) },
+  { file: "dt_17_430.html", png: "review_17_viewport_430.png", width: 430, height: 1600, title: "TEST 17 — 430px", html: buildDailyTaskCardHtml(matchTask, { open: true, detailsOpen: true }) }
 ];
 for (const shot of extra) {
   writeFileSync(path.join(tmpDir, shot.file), page(shot.title, shot.html));

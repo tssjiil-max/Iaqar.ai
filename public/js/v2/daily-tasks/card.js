@@ -108,7 +108,11 @@ function listingFacts(listing = {}, { moneyLabel = "", money = "" } = {}) {
     const label = moneyLabel || (listing.kindLabel === "طلب العميل" ? "الميزانية" : "السعر");
     bits.push(`<p>${escapeContentHtml(label)}: ${escapeContentHtml(amount)}</p>`);
   }
-  if (listing.area) bits.push(`<p>المساحة: ${escapeContentHtml(listing.area)}</p>`);
+  if (listing.area) {
+    const area = String(listing.area).trim();
+    const withUnit = /م/.test(area) ? area : `${area}م²`;
+    bits.push(`<p>المساحة: ${escapeContentHtml(withUnit)}</p>`);
+  }
   return bits.join("");
 }
 
