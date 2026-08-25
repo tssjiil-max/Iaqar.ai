@@ -48,6 +48,10 @@ import {
   revokeBankSharingScope,
   createExplicitCooperationRequest
 } from "./cooperation-phase6-service.js";
+import {
+  maybeCreateCrossOfficeCooperation,
+  runCooperationWorkflow
+} from "./cooperation-workflow-service.js";
 import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
 import { buildSuitableOfficesResult } from "./suitable-offices-service.mjs";
 import {
@@ -445,6 +449,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/suitable-offices") {
         return await handleCooperationSuitableOffices(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/workflow") {
+        return await handleCooperationWorkflow(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/request") {
@@ -3636,6 +3644,28 @@ async function findAndSaveMatchesForOpportunity({
   const operationsCreated = results.filter((item) => item.operationCreated).length
     + (missingData.created ? 1 : 0);
 
+  let cooperation = { created: 0, skipped: "internal_match_exists" };
+  if (results.length === 0) {
+    try {
+      cooperation = await maybeCreateCrossOfficeCooperation({
+        projectId,
+        officeId,
+        opportunity,
+        opportunityId,
+        internalMatchCount: results.length,
+        accessToken,
+        deps: {
+          ...operationsDeps(env),
+          listCollectionDocuments,
+          firestoreFieldsToJs
+        }
+      });
+    } catch (error) {
+      console.warn("[iaqar-coop] cross-office ranking skipped", error && error.message);
+      cooperation = { created: 0, skipped: "ranking_error" };
+    }
+  }
+
   return {
     matches: results,
     matchingRuleVersion: MATCHING_RULE_VERSION,
@@ -3643,6 +3673,7 @@ async function findAndSaveMatchesForOpportunity({
     createsOperation: operationsCreated > 0,
     operationsCreated,
     missingData,
+    cooperation,
     boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees(), createsOperation: operationsCreated > 0 }
   };
 }
@@ -4044,6 +4075,50 @@ async function handleCooperationRoom(request, env, requestId) {
   });
 }
 
+async function handleCooperationWorkflow(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 40).toUpperCase();
+  const reason = cleanText(body.reason, 200);
+  const appointmentAt = cleanText(body.appointmentAt, 80);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await runCooperationWorkflow({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    reason,
+    appointmentAt,
+    accessToken,
+    deps: operationsDeps(env)
+  });
+  if (!result.ok) {
+    throw appError(
+      result.error || "cooperation_workflow_failed",
+      result.status || 400,
+      result.message || "تعذر حفظ حالة التعاون"
+    );
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    status: result.status,
+    currentStage: result.currentStage,
+    duplicate: Boolean(result.duplicate),
+    message: result.message || "تم حفظ حالة التعاون.",
+    requestId
+  });
+}
+
 async function handleCooperationRequestCreate(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
@@ -4072,7 +4147,8 @@ async function handleCooperationRequestCreate(request, env, requestId) {
       getFirestoreDocument,
       setFirestoreDocument,
       firestoreFieldsToJs,
-      firestoreHelpers: operationsFirestoreHelpers()
+      firestoreHelpers: operationsFirestoreHelpers(),
+      upsertCooperationOperations
     }
   });
   if (!result.ok) {

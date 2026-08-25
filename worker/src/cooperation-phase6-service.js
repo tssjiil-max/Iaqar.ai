@@ -233,6 +233,13 @@ export async function runCooperationLifecycle({
     // Preserve party ids on update.
     fields.originatingOfficeId = firestoreHelpers.firestoreString(origin);
     fields.targetOfficeId = firestoreHelpers.firestoreString(target);
+    const nextStatusPreview = String(applied.patch.status || request.status || "").toUpperCase();
+    if (nextStatusPreview === "ACCEPTED") {
+      fields.currentStage = firestoreHelpers.firestoreString("COOPERATION_ACCEPTED");
+    }
+    if (nextStatusPreview === "REJECTED") {
+      fields.currentStage = firestoreHelpers.firestoreString("REJECTED");
+    }
     await setFirestoreDocument({
       projectId,
       segments: ["cooperationRequests", cooperationId],
@@ -397,7 +404,16 @@ export async function runCooperationLifecycle({
   if (typeof upsertCooperationOperations === "function") {
     await upsertCooperationOperations({
       projectId,
-      cooperation: { ...request, id: cooperationId, status: nextStatus },
+      cooperation: {
+        ...request,
+        id: cooperationId,
+        status: nextStatus,
+        currentStage: nextStatus === "ACCEPTED"
+          ? "COOPERATION_ACCEPTED"
+          : nextStatus === "REJECTED"
+            ? "REJECTED"
+            : request.currentStage || ""
+      },
       accessToken,
       deps
     }).catch(() => null);
@@ -599,6 +615,40 @@ export async function createExplicitCooperationRequest({
         message: "يوجد طلب تعاون نشط أو معلّق مسبقًا"
       };
     }
+    if (previewStatus === "SUGGESTED") {
+      const now = new Date();
+      await deps.setFirestoreDocument({
+        projectId,
+        segments: ["cooperationRequests", previewId],
+        accessToken,
+        fields: {
+          status: deps.firestoreHelpers.firestoreString("PENDING"),
+          currentStage: deps.firestoreHelpers.firestoreString("WAITING_PARTNER"),
+          requestedAt: deps.firestoreHelpers.firestoreTimestamp(now),
+          updatedAt: deps.firestoreHelpers.firestoreTimestamp(now)
+        }
+      });
+      const living = {
+        id: previewId,
+        ...preview,
+        status: "PENDING",
+        currentStage: "WAITING_PARTNER"
+      };
+      if (typeof deps.upsertCooperationOperations === "function") {
+        await deps.upsertCooperationOperations({
+          projectId,
+          cooperation: living,
+          accessToken,
+          deps
+        }).catch(() => null);
+      }
+      return {
+        ok: true,
+        duplicate: false,
+        requestId: previewId,
+        message: "تم إرسال طلب التعاون"
+      };
+    }
     if (["REJECTED", "REVOKED", "ENDED"].includes(previewStatus)) {
       idNonce = String(Date.now());
     }
@@ -708,6 +758,8 @@ export async function createExplicitCooperationRequest({
       createdBy: fh.firestoreString(originatingBrokerId),
       createdAt: fh.firestoreTimestamp(now),
       updatedAt: fh.firestoreTimestamp(now),
+      currentStage: fh.firestoreString("WAITING_PARTNER"),
+      cooperationTaskId: fh.firestoreString(requestId),
       schemaVersion: fh.firestoreInteger(1)
     }
   });
@@ -723,6 +775,32 @@ export async function createExplicitCooperationRequest({
       setFirestoreDocument: deps.setFirestoreDocument,
       firestoreHelpers: fh
     });
+  }
+
+  if (typeof deps.upsertCooperationOperations === "function") {
+    await deps.upsertCooperationOperations({
+      projectId,
+      cooperation: {
+        id: requestId,
+        originatingOfficeId: origin,
+        originatingOfficeName,
+        originatingBrokerId,
+        targetOfficeId: target,
+        targetOfficeName,
+        opportunityId: scopeType === "single" ? ids[0] : "",
+        opportunityIds: ids,
+        status: "PENDING",
+        currentStage: "WAITING_PARTNER",
+        propertyType: sharedSummary.propertyType,
+        purpose: sharedSummary.purpose,
+        district: sharedSummary.district,
+        city: sharedSummary.city,
+        originListing: sharedSummary,
+        counterpartListing: {}
+      },
+      accessToken,
+      deps
+    }).catch(() => null);
   }
 
   return {

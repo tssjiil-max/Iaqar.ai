@@ -8,8 +8,8 @@ import {
   OPERATION_STATUS,
   OPERATION_TYPES,
   applyOperationLifecycle,
-  buildCooperationOperation,
   buildInAppNotification,
+  buildLivingCooperationOperation,
   buildMatchReviewOperation,
   buildMissingDataOperation,
   phase5BoundaryGuarantees,
@@ -60,6 +60,7 @@ export function pushTypeForOperation(type) {
     case OPERATION_TYPES.MISSING_DATA: return "missing_data";
     case OPERATION_TYPES.COOPERATION_REQUEST: return "cooperation_request";
     case OPERATION_TYPES.COOPERATION_RESPONSE: return "cooperation_response";
+    case OPERATION_TYPES.COOPERATION_MATCH: return "cooperation_request";
     default: return "system";
   }
 }
@@ -83,6 +84,12 @@ export function operationToFirestoreFields(operation, {
     opportunityId: firestoreString(operation.opportunityId || ""),
     matchId: firestoreString(operation.matchId || ""),
     cooperationId: firestoreString(operation.cooperationId || ""),
+    currentStage: firestoreString(operation.currentStage || ""),
+    propertyType: firestoreString(operation.propertyType || ""),
+    purpose: firestoreString(operation.purpose || ""),
+    district: firestoreString(operation.district || ""),
+    partnerOfficeName: firestoreString(operation.partnerOfficeName || ""),
+    appointmentAt: firestoreString(operation.appointmentAt || ""),
     titleCode: firestoreString(operation.titleCode || ""),
     summaryCode: firestoreString(operation.summaryCode || ""),
     titleText: firestoreString(operation.titleText || ""),
@@ -515,123 +522,92 @@ export async function completeActiveMissingDataOperations({
   return { completed };
 }
 
+export async function upsertLivingCooperationOperation({
+  projectId,
+  officeId,
+  cooperation,
+  accessToken,
+  deps
+}) {
+  const operation = await buildLivingCooperationOperation({ officeId, cooperation });
+  const existingDoc = await deps.getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "operations", operation.id],
+    accessToken,
+    allowMissing: true
+  });
+  const existing = existingDoc
+    ? deps.firestoreHelpers.firestoreFieldsToJs(existingDoc.fields || {})
+    : null;
+  const now = new Date().toISOString();
+  const patch = {
+    ...operation,
+    createdAt: existing?.createdAt || operation.createdAt,
+    openedAt: existing?.openedAt || null,
+    updatedAt: now,
+    operationVersion: Number(existing?.operationVersion || 1)
+  };
+  await deps.setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "operations", operation.id],
+    accessToken,
+    fields: operationToFirestoreFields(patch, deps.firestoreHelpers)
+  });
+  let notificationCreated = false;
+  if (!existing) {
+    const notification = await buildInAppNotification({
+      officeId,
+      brokerId: operation.assignedBrokerId,
+      operation: patch
+    });
+    const notifResult = await upsertNotificationDocument({
+      projectId, officeId, notification, accessToken, ...deps
+    });
+    notificationCreated = notifResult.created;
+    if (notificationCreated && typeof deps.sendOfficePush === "function") {
+      const pushSummary = await deps.sendOfficePush({
+        projectId,
+        officeId,
+        title: notification.title,
+        body: notification.body,
+        type: pushTypeForOperation(operation.type),
+        recordId: operation.id,
+        accessToken
+      });
+      await recordNotificationPushResult({
+        projectId,
+        officeId,
+        notificationId: notification.id,
+        pushSummary,
+        accessToken,
+        setFirestoreDocument: deps.setFirestoreDocument,
+        firestoreHelpers: deps.firestoreHelpers
+      });
+    }
+  }
+  return { operation: patch, created: !existing, notificationCreated };
+}
+
 export async function upsertCooperationOperations({
   projectId,
   cooperation,
   accessToken,
   deps
 }) {
-  const status = String(cooperation.status || "PENDING").toUpperCase();
-  const opportunityId = String(cooperation.opportunityId || (cooperation.opportunityIds || [])[0] || "");
   const originatingOfficeId = String(cooperation.originatingOfficeId || "");
   const targetOfficeId = String(cooperation.targetOfficeId || "");
-  const cooperationId = String(cooperation.id || cooperation.cooperationId || "");
   const results = [];
-
-  if (status === "PENDING" && targetOfficeId) {
-    const operation = await buildCooperationOperation({
-      officeId: targetOfficeId,
-      assignedBrokerId: "",
-      cooperationId,
-      opportunityId,
-      responseStatus: status,
-      isResponse: false
+  const offices = [...new Set([originatingOfficeId, targetOfficeId].filter(Boolean))];
+  for (const officeId of offices) {
+    const result = await upsertLivingCooperationOperation({
+      projectId,
+      officeId,
+      cooperation,
+      accessToken,
+      deps
     });
-    const opResult = await upsertOperationDocument({
-      projectId, officeId: targetOfficeId, operation, accessToken, ...deps
-    });
-    let notificationCreated = false;
-    if (opResult.created) {
-      const notification = await buildInAppNotification({
-        officeId: targetOfficeId,
-        operation: opResult.operation
-      });
-      const notifResult = await upsertNotificationDocument({
-        projectId, officeId: targetOfficeId, notification, accessToken, ...deps
-      });
-      notificationCreated = notifResult.created;
-      if (notificationCreated) {
-        const pushSummary = await deps.sendOfficePush({
-          projectId,
-          officeId: targetOfficeId,
-          title: notification.title,
-          body: notification.body,
-          type: pushTypeForOperation(operation.type),
-          recordId: operation.id,
-          accessToken
-        });
-        await recordNotificationPushResult({
-          projectId,
-          officeId: targetOfficeId,
-          notificationId: notification.id,
-          pushSummary,
-          accessToken,
-          setFirestoreDocument: deps.setFirestoreDocument,
-          firestoreHelpers: deps.firestoreHelpers
-        });
-      }
-    }
-    results.push({ officeId: targetOfficeId, operation: opResult.operation, created: opResult.created, notificationCreated });
+    results.push({ officeId, operation: result.operation, created: result.created, notificationCreated: result.notificationCreated });
   }
-
-  if (["ACCEPTED", "REJECTED", "REVOKED", "ENDED"].includes(status) && originatingOfficeId) {
-    const operation = await buildCooperationOperation({
-      officeId: originatingOfficeId,
-      assignedBrokerId: String(cooperation.originatingBrokerId || ""),
-      cooperationId,
-      opportunityId,
-      responseStatus: status,
-      isResponse: true
-    });
-    const opResult = await upsertOperationDocument({
-      projectId, officeId: originatingOfficeId, operation, accessToken, ...deps
-    });
-    if (opResult.created) {
-      const notification = await buildInAppNotification({
-        officeId: originatingOfficeId,
-        brokerId: operation.assignedBrokerId,
-        operation: opResult.operation
-      });
-      const notifResult = await upsertNotificationDocument({
-        projectId, officeId: originatingOfficeId, notification, accessToken, ...deps
-      });
-      if (notifResult.created) {
-        const pushSummary = await deps.sendOfficePush({
-          projectId,
-          officeId: originatingOfficeId,
-          title: notification.title,
-          body: notification.body,
-          type: pushTypeForOperation(operation.type),
-          recordId: operation.id,
-          assignedBrokerId: operation.assignedBrokerId,
-          accessToken
-        });
-        await recordNotificationPushResult({
-          projectId,
-          officeId: originatingOfficeId,
-          notificationId: notification.id,
-          pushSummary,
-          accessToken,
-          setFirestoreDocument: deps.setFirestoreDocument,
-          firestoreHelpers: deps.firestoreHelpers
-        });
-      }
-    }
-    // Complete active COOPERATION_REQUEST on target when response recorded.
-    if (targetOfficeId) {
-      await completeActiveCooperationRequests({
-        projectId,
-        officeId: targetOfficeId,
-        cooperationId,
-        accessToken,
-        listCollectionDocuments: deps.listCollectionDocuments,
-        setFirestoreDocument: deps.setFirestoreDocument,
-        firestoreHelpers: deps.firestoreHelpers
-      });
-    }
-    results.push({ officeId: originatingOfficeId, operation: opResult.operation, created: opResult.created });
-  }
-
   return { results, boundaries: phase5BoundaryGuarantees() };
 }
 

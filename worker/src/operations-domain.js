@@ -9,6 +9,7 @@ export const OPERATION_TYPES = Object.freeze({
   MISSING_DATA: "MISSING_DATA",
   COOPERATION_REQUEST: "COOPERATION_REQUEST",
   COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
+  COOPERATION_MATCH: "COOPERATION_MATCH",
   EXTERNAL_RESPONSE: "EXTERNAL_RESPONSE",
   SYSTEM_ACTION: "SYSTEM_ACTION"
 });
@@ -81,6 +82,13 @@ const TYPE_COPY = Object.freeze({
     action: "عرض حالة التعاون",
     push: "يوجد تحديث على طلب تعاون.",
     notificationType: NOTIFICATION_TYPES.COOPERATION_RESPONSE
+  },
+  COOPERATION_MATCH: {
+    title: "مطابقة تعاون جديدة",
+    summary: "ظهرت فرصة تعاون تحتاج مراجعتك.",
+    action: "فتح التعاون",
+    push: "لديك مهمة تعاون تحتاج إجراء.",
+    notificationType: NOTIFICATION_TYPES.COOPERATION_REQUEST
   },
   EXTERNAL_RESPONSE: {
     title: "رد يحتاج متابعتك",
@@ -189,6 +197,14 @@ export function buildCooperationDedupKey({
     String(officeId || ""),
     String(cooperationId || ""),
     String(status || "")
+  ].join("|");
+}
+
+export function buildLivingCooperationDedupKey({ officeId, cooperationId }) {
+  return [
+    OPERATION_TYPES.COOPERATION_MATCH,
+    String(officeId || ""),
+    String(cooperationId || "")
   ].join("|");
 }
 
@@ -356,6 +372,90 @@ export async function buildCooperationOperation({
     schemaVersion: 1,
     metadata: {
       cooperationStatus: statusLabel
+    }
+  };
+}
+
+export async function buildLivingCooperationOperation({
+  officeId,
+  cooperation,
+  now = new Date()
+}) {
+  const cooperationId = String(cooperation.id || cooperation.cooperationId || cooperation.cooperationTaskId || "");
+  const type = OPERATION_TYPES.COOPERATION_MATCH;
+  const copy = copyFor(type);
+  const deduplicationKey = buildLivingCooperationDedupKey({ officeId, cooperationId });
+  const id = await operationDocumentId(deduplicationKey);
+  const stage = String(cooperation.currentStage || "").toUpperCase();
+  const archived = ["COMPLETED", "REJECTED", "REVOKED", "ENDED"].includes(String(cooperation.status || "").toUpperCase())
+    || stage === "COMPLETED"
+    || stage === "REJECTED";
+  return {
+    id,
+    officeId: String(officeId || ""),
+    assignedBrokerId: String(cooperation.originatingBrokerId || ""),
+    type,
+    sourceEntityType: "cooperationRequest",
+    sourceEntityId: cooperationId,
+    opportunityId: String(cooperation.opportunityId || (cooperation.opportunityIds || [])[0] || ""),
+    matchId: String(cooperation.matchId || ""),
+    cooperationId,
+    titleCode: "COOPERATION_MATCH_TITLE",
+    summaryCode: "COOPERATION_MATCH_SUMMARY",
+    titleText: copy.title,
+    summaryText: copy.summary,
+    recommendedActionCode: "OPEN_COOPERATION",
+    recommendedActionText: copy.action,
+    priority: OPERATION_PRIORITY.HIGH,
+    status: archived ? OPERATION_STATUS.COMPLETED : OPERATION_STATUS.OPEN,
+    deduplicationKey,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    openedAt: null,
+    completedAt: archived ? now.toISOString() : null,
+    dismissedAt: null,
+    dueAt: cooperation.appointmentAt || null,
+    createdBySystem: true,
+    operationVersion: 1,
+    schemaVersion: 1,
+    currentStage: String(cooperation.currentStage || ""),
+    propertyType: String(cooperation.propertyType || ""),
+    purpose: String(cooperation.purpose || ""),
+    district: String(cooperation.district || ""),
+    partnerOfficeName: String(
+      String(officeId) === String(cooperation.originatingOfficeId)
+        ? cooperation.targetOfficeName
+        : cooperation.originatingOfficeName
+    ),
+    appointmentAt: cooperation.appointmentAt || "",
+    metadata: {
+      cooperationTaskId: cooperationId,
+      currentStage: cooperation.currentStage || "",
+      status: cooperation.status || "",
+      originatingOfficeId: cooperation.originatingOfficeId || "",
+      targetOfficeId: cooperation.targetOfficeId || "",
+      originatingOfficeName: cooperation.originatingOfficeName || "",
+      targetOfficeName: cooperation.targetOfficeName || "",
+      clientOfficeId: cooperation.clientOfficeId || "",
+      propertyOfficeId: cooperation.propertyOfficeId || "",
+      originOpportunityId: cooperation.opportunityId || "",
+      counterpartOpportunityId: cooperation.counterpartOpportunityId || "",
+      propertyType: cooperation.propertyType || "",
+      purpose: cooperation.purpose || "",
+      district: cooperation.district || "",
+      city: cooperation.city || "",
+      proximityLabel: cooperation.proximityLabel || "",
+      compatibilityLabel: cooperation.compatibilityLabel || "",
+      matchReasons: Array.isArray(cooperation.matchReasons) ? cooperation.matchReasons.slice(0, 4) : [],
+      ownListing: cooperation.ownListing || {},
+      partnerListing: cooperation.partnerListing || {},
+      originListing: cooperation.originListing || {},
+      counterpartListing: cooperation.counterpartListing || {},
+      appointmentAt: cooperation.appointmentAt || "",
+      viewingAt: cooperation.viewingAt || "",
+      completionConfirmations: cooperation.completionConfirmations || {},
+      defaultSharePercent: cooperation.agreedSharePercent ?? cooperation.defaultSharePercent ?? null,
+      hasNewResponse: Boolean((cooperation.newResponseByOffice || {})[officeId])
     }
   };
 }

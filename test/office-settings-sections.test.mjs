@@ -19,7 +19,7 @@ test("all approved settings sections are present", async () => {
     for (const [id, heading] of [
       ["officeIdentitySection", "الهوية البصرية"],
       ["officeLinkSection", "رابط المكتب"],
-      ["cooperationSection", "السماح بالتعاون الذكي بين الوسطاء"],
+      ["cooperationSection", "التعاون بين المكاتب"],
       ["notificationPrefsSection", "الإشعارات"]
     ]) {
       const section = sheet.querySelector(`#${id}`);

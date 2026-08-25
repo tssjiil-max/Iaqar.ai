@@ -3255,6 +3255,66 @@
   .coop-option strong { font-size:12px; font-weight:800; }
   .coop-option small { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.55; }
 
+  .coop-select,
+  .coop-percent {
+    min-height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0 8px;
+    max-width: 88px;
+  }
+
+  .coop-history {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .coop-history h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .coop-summary-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 11px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: #FBFDFC;
+    margin-top: 8px;
+  }
+
+  .coop-summary-card strong,
+  .coop-summary-card span {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .coop-summary-card strong { font-size: 12px; font-weight: 800; }
+  .coop-summary-card span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+  .coop-summary-card button {
+    flex-shrink: 0;
+    min-height: 30px;
+    border: 0;
+    background: transparent;
+    color: var(--green);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
   .section-status {
     margin:9px 1px 0;
     min-height:15px;
@@ -6310,11 +6370,70 @@
       </div>
 
       <section class="settings-section" id="cooperationSection">
-        <h3>السماح بالتعاون الذكي بين الوسطاء</h3>
+        <h3>التعاون بين المكاتب</h3>
         <p class="section-help">
-          ملكية الفرصة تبقى لمكتبك في كل الأحوال، وبيانات تواصل المالك أو العميل
-          لا تُكشف تلقائيًا لأي وسيط متعاون.
+          إعدادات وضوابط فقط. متابعة التعاون اليومي تتم من المهام اليومية، والسجل يحفظ التعاون المنتهي.
         </p>
+        <label class="pref-row">
+          <span>تشغيل التعاون</span>
+          <span class="pref-switch"><input type="checkbox" id="cooperationEnabledToggle" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
+        </label>
+        <p class="section-help">نطاق التعاون</p>
+        <div class="coop-options" id="cooperationProximityOptions">
+          <label class="coop-option">
+            <input type="radio" name="cooperationProximityScope" value="SAME_DISTRICT" checked>
+            <span>
+              <strong>نفس الحي</strong>
+              <small>يُقترح التعاون داخل الحي نفسه فقط بعد توافق عقاري حقيقي.</small>
+            </span>
+          </label>
+          <label class="coop-option">
+            <input type="radio" name="cooperationProximityScope" value="NEARBY_DISTRICTS">
+            <span>
+              <strong>الأحياء القريبة</strong>
+              <small>نفس الحي أو حي مجاور موثّق. لا تُخترع مسافات.</small>
+            </span>
+          </label>
+          <label class="coop-option">
+            <input type="radio" name="cooperationProximityScope" value="DISTANCE">
+            <span>
+              <strong>نطاق مسافة</strong>
+              <small>يُستخدم فقط عند وجود إحداثيات حقيقية للطرفين.</small>
+            </span>
+          </label>
+        </div>
+        <p class="section-help">سياسة استقبال فرص التعاون: تلقائي حسب المطابقة. القبول يبقى بموافقة المكتب.</p>
+        <label class="pref-row" for="cooperationMaxConcurrent">
+          <span>عدد طلبات التعاون المتزامنة</span>
+          <select id="cooperationMaxConcurrent" class="coop-select">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+          </select>
+        </label>
+        <p class="section-help">إعدادات الإشعارات</p>
+        <div class="pref-list" id="cooperationNotifyList">
+          <label class="pref-row">
+            <span>مطابقة تعاون جديدة</span>
+            <span class="pref-switch"><input type="checkbox" id="coopNotifyNewMatch" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
+          <label class="pref-row">
+            <span>رد مكتب آخر</span>
+            <span class="pref-switch"><input type="checkbox" id="coopNotifyPartnerReply" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
+          <label class="pref-row">
+            <span>إجراء مطلوب</span>
+            <span class="pref-switch"><input type="checkbox" id="coopNotifyActionRequired" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
+          <label class="pref-row">
+            <span>تحديث مهم في الصفقة</span>
+            <span class="pref-switch"><input type="checkbox" id="coopNotifyDealUpdate" checked><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
+        </div>
+        <label class="pref-row" for="cooperationSharePercent">
+          <span>النسبة الافتراضية / حصة التعاون</span>
+          <input type="number" id="cooperationSharePercent" min="0" max="100" value="50" class="coop-percent">
+        </label>
+        <p class="section-help">سياسة التعاون داخل المكتب</p>
         <div class="coop-options" id="cooperationOptions">
           <label class="coop-option">
             <input type="radio" name="cooperationMode" value="DISABLED">
@@ -6339,6 +6458,11 @@
           </label>
         </div>
         <p class="section-status" id="cooperationStatus" role="status"></p>
+        <div class="coop-history" id="cooperationHistoryBlock">
+          <h4>التعاون الحالي والسجل</h4>
+          <p class="section-help">ملخص فقط. ليست قائمة تشغيل يومية.</p>
+          <div id="cooperationHistorySummary"></div>
+        </div>
       </section>
 
       <section class="settings-section" id="notificationPrefsSection">
@@ -6464,6 +6588,7 @@
   <script type="module" src="js/header-scroll.js"></script>
   <script type="module" src="js/office-library.js"></script>
   <script type="module" src="js/office-settings.js"></script>
+  <script type="module" src="js/cooperation-settings-summary.js"></script>
   <script type="module" src="js/add-opportunity.js"></script>
   <script type="module" src="js/opportunity-import-advert-ui.js"></script>
   <script type="module" src="js/opportunity-review.js"></script>
