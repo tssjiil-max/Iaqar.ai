@@ -23,11 +23,11 @@ const OUT = process.env.LIVE_E2E_OUT || "/opt/cursor/artifacts";
 
 const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
 if (!parsed.serviceAccount) {
-  console.error("FIREBASE_SERVICE_ACCOUNT_JSON missing");
+  console.error("FIREBASE_SERVICE_ACCOUNT_JSON missing", parsed.invalidFields || []);
   process.exit(1);
 }
 const app = admin.initializeApp({
-  credential: admin.credential.cert(parsed.serviceAccount),
+  credential: admin.cert(parsed.serviceAccount),
   projectId: PROJECT_ID
 });
 const db = getFirestore(app);
