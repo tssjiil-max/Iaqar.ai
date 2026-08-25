@@ -25,6 +25,10 @@ export const IMPORT_EXTRA_FIELD_DEFS = Object.freeze([
   { name: "livingRoom", label: "عدد الصالات", type: "number" },
   { name: "direction", label: "الواجهة", type: "text" },
   { name: "streetWidth", label: "عرض الشارع (م)", type: "number" },
+  { name: "streetDirection", label: "اتجاه الشارع", type: "text" },
+  { name: "depth", label: "العمق (م)", type: "number" },
+  { name: "plotNumber", label: "رقم القطعة", type: "text" },
+  { name: "locationUrl", label: "رابط الموقع", type: "text" },
   { name: "condition", label: "عمر العقار", type: "text" },
   { name: "usageType", label: "الغرض السكني أو التجاري", type: "text" },
   { name: "waterAndSewagePaidBy", label: "توفر الماء", type: "text" },
@@ -184,6 +188,7 @@ export function buildImportSimplifiedReviewDefaults(
   const purpose = safeTrim(extractionFields.purpose || defaults.extractedSnapshot?.purpose || "");
   const operationTypeId = resolveImportOperationTypeId({ opportunityKind, purpose });
   const extra = collectImportExtraFieldValues(extractionFields, meta.extended || extractionFields.extended || {});
+  const allowOfficeCityFallback = meta.allowOfficeCityFallback !== false;
   return {
     ...defaults,
     importSimplifiedReview: true,
@@ -191,10 +196,14 @@ export function buildImportSimplifiedReviewDefaults(
     opportunityKind: opportunityKind === "REQUEST" ? "REQUEST" : "OFFER",
     purpose,
     operationTypeId,
-    rawCityText: defaults.rawCityText || officeCity,
+    rawCityText: defaults.rawCityText || (allowOfficeCityFallback ? officeCity : ""),
     importExtraFields: extra,
     units: extra.units ?? extractionFields.units ?? "",
-    floorsCount: extra.floorsCount ?? extractionFields.floorsCount ?? ""
+    floorsCount: extra.floorsCount ?? extractionFields.floorsCount ?? "",
+    inferredPrice: Boolean(extractionFields.inferredPrice || meta.inferredPrice),
+    extractionConflicts: meta.extractionConflicts || extractionFields.extractionConflicts || [],
+    screenshotPhoneCandidates: meta.screenshotPhoneCandidates || extractionFields.screenshotPhoneCandidates || [],
+    screenshotSourceType: meta.screenshotSourceType || extractionFields.screenshotSourceType || ""
   };
 }
 
@@ -230,6 +239,10 @@ export function importSimplifiedReviewValuesToBrokerFields(review = {}) {
     livingRoom: review.livingRoom ?? extra.livingRoom ?? null,
     direction: review.direction ?? extra.direction ?? null,
     streetWidth: review.streetWidth ?? extra.streetWidth ?? null,
+    streetDirection: review.streetDirection ?? extra.streetDirection ?? null,
+    depth: review.depth ?? extra.depth ?? null,
+    plotNumber: review.plotNumber ?? extra.plotNumber ?? null,
+    locationUrl: review.locationUrl ?? extra.locationUrl ?? null,
     condition: review.condition ?? extra.condition ?? null,
     usageType: review.usageType ?? extra.usageType ?? null,
     waterAndSewagePaidBy: review.waterAndSewagePaidBy ?? extra.waterAndSewagePaidBy ?? null,

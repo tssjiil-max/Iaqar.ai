@@ -117,6 +117,13 @@ test("vision mapping does not invent price phone or district", () => {
   assert.equal(fields.advertiserPhoneNormalized, "");
 });
 
+test("Gemini Vision prompt forbids fixed layout assumptions", () => {
+  const prompt = visionTest.buildImageSystemPrompt();
+  assert.match(prompt, /ALL visible text|rawText/i);
+  assert.match(prompt, /Do not assume a fixed layout|Ignore layout position/i);
+  assert.doesNotMatch(prompt, /header is always|footer is always|top of the image is phone/i);
+});
+
 test("Gemini Vision primary path returns analyzer provider", async () => {
   const geminiResponse = {
     candidates: [{
@@ -140,6 +147,30 @@ test("Gemini Vision primary path returns analyzer provider", async () => {
   assert.equal(result.ok, true);
   assert.equal(result.analyzerProvider, ANALYZER_PROVIDERS.GEMINI_VISION);
   assert.equal(result.brokerFields.opportunityKind, "OFFER");
+});
+
+test("Workers AI OCR text is classified semantically without layout", async () => {
+  const listingText = `المطلوب 850 صافي
+أرض حي السكب المدينة المنورة
+1175م شارع جنوبي 10م الواجهة 25م العمق 47م رقم القطعة 14
+للتواصل 0530899289`;
+  const result = await extractListingFromImage({
+    env: { AI: {} },
+    imageBytes: MINIMAL_JPEG,
+    mimeType: "image/jpeg",
+    runLlamaVisionExtract: async () => listingText,
+    parseRealEstateMessage: () => ({ legacyFields: {}, confidence: 0 })
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.brokerFields.propertyType, "أرض");
+  assert.equal(result.brokerFields.district, "السكب");
+  assert.equal(result.brokerFields.city, "المدينة المنورة");
+  assert.equal(result.brokerFields.area, 1175);
+  assert.equal(result.brokerFields.salePrice, 850000);
+  assert.equal(result.brokerFields.streetWidth, 10);
+  assert.equal(result.brokerFields.depth, 47);
+  assert.equal(String(result.brokerFields.plotNumber), "14");
+  assert.equal(result.brokerFields.advertiserPhoneRaw, "0530899289");
 });
 
 test("Workers AI fallback when Gemini unavailable", async () => {

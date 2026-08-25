@@ -623,6 +623,7 @@ async function resolveMediaListingText(mediaPath, officeId, file = null, canonic
     extractionStatus: body.extractionStatus || "extracted",
     confidence: Number(body.confidence || 0),
     productionAi: Boolean(body.productionAi),
+    screenshotExtraction: body.screenshotExtraction || null,
     mediaPath: body.mediaPath || mediaPath
   };
 }

@@ -106,12 +106,20 @@ test("villa and apartment show rooms as primary info field", () => {
   }
 });
 
+test("simplified import review surfaces extraction conflicts for user choice", () => {
+  const section = simplifiedImportSection(reviewUi);
+  assert.match(section, /extractionConflictsMarkup/);
+  assert.match(reviewUi, /extraction-conflict-option/);
+  assert.match(importUi, /applyScreenshotExtractionToReview/);
+  assert.match(importUi, /snapshotImportReviewUserEdits/);
+});
+
 test("extra import fields are defined for collapsed details section", () => {
   assert.match(reviewUi, /function importExtraFieldsMarkup/);
   assert.match(reviewUi, /تفاصيل إضافية/);
   assert.match(reviewUi, /<details class="import-extra-details"/);
   assert.match(reviewUi, /IMPORT_EXTRA_FIELD_DEFS\.map/);
-  for (const name of ["bathrooms", "livingRoom", "description", "floorNumber"]) {
+  for (const name of ["bathrooms", "livingRoom", "description", "floorNumber", "depth", "plotNumber", "locationUrl", "streetDirection"]) {
     assert.ok(IMPORT_EXTRA_FIELD_DEFS.some((field) => field.name === name));
   }
 });

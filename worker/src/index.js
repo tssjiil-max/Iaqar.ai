@@ -6248,6 +6248,7 @@ async function handlePipelineMediaExtract(request, env, requestId) {
     productionAi: Boolean(vision.productionAi),
     geminiAttempted: Boolean(vision.geminiAttempted),
     geminiError: vision.geminiError || "",
+    screenshotExtraction: vision.screenshotExtraction || null,
     mediaPath,
     originalUrl: cleanText(body.originalUrl, 2000),
     resolvedUrl: cleanText(body.resolvedUrl, 2000),

@@ -15,7 +15,7 @@ import {
 import { buildImportSimplifiedReviewDefaults, importSimplifiedReviewValuesToBrokerFields } from "./import-advert-review-domain.js";
 import { mergeAdvertiserFieldsIntoOpportunity } from "./advertiser-phone-domain.js";
 import { isEligibleForMatchingRun } from "./opportunity-readiness-domain.js";
-import { openOpportunityReview } from "./opportunity-review.js";
+import { openOpportunityReview, snapshotImportReviewUserEdits } from "./opportunity-review.js";
 import {
   phase4BoundaryGuarantees,
   requestOpportunityRematch,
@@ -57,6 +57,12 @@ import {
   uploadSourceFile,
   workerBase
 } from "./add-opportunity.js";
+import {
+  applyScreenshotExtractionToReview,
+  clearConflictedScreenshotFields,
+  extractScreenshotSemantics,
+  mergeVisionWithScreenshotSemantics
+} from "./screenshot-semantic-extract.js";
 
 const EXTRACTION_TIMEOUT_MS = 40000;
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
@@ -302,16 +308,18 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
     listingText = String(mediaResolved.text || "").trim();
     mediaExtractionMode = mediaResolved.extractionMode || "workers_ai_vision_adapter";
     if (!sourceSite) sourceSite = sourceUrl ? resolveSourceSiteLabel(sourceUrl) : "صورة الإعلان";
+    const semantic = mergeVisionWithScreenshotSemantics(listingText, mediaResolved.brokerFields || {});
     importSession = {
       ...(importSession || {}),
       imageAnalysis: {
-        brokerFields: mediaResolved.brokerFields || null,
+        brokerFields: semantic.brokerFields || mediaResolved.brokerFields || null,
         fieldSources: mediaResolved.fieldSources || {},
         analyzerProvider: mediaResolved.analyzerProvider || "",
         extractionMode: mediaResolved.extractionMode || "",
         extractionStatus: mediaResolved.extractionStatus || "extracted",
         confidence: mediaResolved.confidence || 0,
-        mediaPath
+        mediaPath,
+        screenshotExtraction: mediaResolved.screenshotExtraction || semantic.screenshotExtraction || null
       }
     };
   } else if (mode === "audio") {
@@ -412,6 +420,16 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
         opportunityKind: true
       };
     }
+    const screenshotExtraction = imageAnalysis?.screenshotExtraction
+      || (mode === "image" ? extractScreenshotSemantics(listingText) : null);
+    if (screenshotExtraction) {
+      prepared.fields = clearConflictedScreenshotFields(prepared.fields, screenshotExtraction);
+      prepared.extraction.screenshotExtraction = screenshotExtraction;
+      prepared.extraction.needsReview = {
+        ...(prepared.extraction.needsReview || {}),
+        ...(screenshotExtraction.needsReview || {})
+      };
+    }
     importSession.canonical = merged.intake || buildCanonicalSourceMetadata(canonical || {}, listingText);
     Object.assign(prepared.source, buildCanonicalSourceMetadata(importSession.canonical, listingText));
   }
@@ -436,12 +454,31 @@ async function analyzeImportInput({ mode, url = "", text = "", file = null } = {
 function openImportReview() {
   if (!importSession?.prepared) return;
   const prepared = importSession.prepared;
+  const isImage = importSession.mode === "image";
+  const screenshotExtraction = prepared.extraction?.screenshotExtraction
+    || importSession.imageAnalysis?.screenshotExtraction
+    || (isImage ? extractScreenshotSemantics(importSession.listingText || "") : null);
   const fields = prepared.fields || {};
-  const reviewDefaults = buildImportSimplifiedReviewDefaults(fields, importSession.listingText, {
-    extended: prepared.extraction?.extended,
+  let reviewDefaults = buildImportSimplifiedReviewDefaults(fields, importSession.listingText, {
+    extended: { ...(prepared.extraction?.extended || {}), ...fields },
     needsReview: prepared.extraction?.needsReview,
-    listingTitle: importSession.canonical?.listingTitle || ""
+    listingTitle: importSession.canonical?.listingTitle || "",
+    allowOfficeCityFallback: !isImage,
+    extractionConflicts: screenshotExtraction?.conflicts || [],
+    screenshotPhoneCandidates: screenshotExtraction?.phones || [],
+    screenshotSourceType: screenshotExtraction?.sourceType || "",
+    inferredPrice: Boolean(fields.inferredPrice || screenshotExtraction?.inferredPrice)
   }, currentOffice() || {});
+  if (screenshotExtraction) {
+    reviewDefaults = {
+      ...reviewDefaults,
+      ...applyScreenshotExtractionToReview(
+        screenshotExtraction,
+        reviewDefaults,
+        importSession.userEditedFields || {}
+      )
+    };
+  }
   const summaryRecord = { ...fields, ...importReadinessPresentation(fields) };
   const importSummary = buildImportReadinessSummary(summaryRecord);
   const provenanceSummary = buildImportProvenanceSummary({
@@ -471,7 +508,9 @@ function openImportReview() {
     importSimplifiedReview: true,
     importPlainLocationFields: true,
     showReanalyze: true,
+    userEditedFields: importSession.userEditedFields || {},
     onReanalyze: () => {
+      importSession.userEditedFields = snapshotImportReviewUserEdits();
       openImportOverlay();
       if (importSession.mode === "url") {
         const input = $("importAdvertUrlInput");

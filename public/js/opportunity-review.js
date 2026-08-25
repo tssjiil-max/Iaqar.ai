@@ -42,6 +42,11 @@ import {
   resolveImportPriceFieldLabel,
   resolveImportPrimaryInfoFields
 } from "./import-advert-review-domain.js";
+import {
+  AREA_CONFLICT_MESSAGE,
+  PHONE_CONFLICT_MESSAGE,
+  PRICE_CONFLICT_MESSAGE
+} from "./screenshot-semantic-extract.js";
 
 function $(id) {
   return document.getElementById(id);
@@ -53,6 +58,7 @@ let onReanalyzeCallback = null;
 let activeReviewOptions = null;
 let advertiserExtractedAuto = false;
 let advertiserCandidates = [];
+let userEditedFields = {};
 let activeReviewValues = {};
 
 function escapeHtml(value) {
@@ -65,6 +71,54 @@ function escapeHtml(value) {
 
 function officeContext() {
   return window.IAQAR?.office || {};
+}
+
+function screenshotPhonesToAdvertiserCandidates(phones = []) {
+  return (Array.isArray(phones) ? phones : []).map((row) => ({
+    advertiserPhoneRaw: row.value || row.local || "",
+    advertiserPhoneNormalized: row.e164 || normalizeAdvertiserPhoneE164(row.value || ""),
+    advertiserPhoneSource: row.sourceType || "screenshot",
+    advertiserPhoneEvidence: row.sourceSnippet || ""
+  })).filter((row) => row.advertiserPhoneNormalized);
+}
+
+export function snapshotImportReviewUserEdits() {
+  const form = $("opportunityReviewForm");
+  if (!form) return { ...userEditedFields };
+  const data = Object.fromEntries(new FormData(form).entries());
+  const snapshot = { ...userEditedFields };
+  for (const [key, value] of Object.entries(userEditedFields)) {
+    if (data[key] !== undefined) snapshot[key] = data[key];
+  }
+  return snapshot;
+}
+
+function extractionConflictsMarkup(conflicts = []) {
+  if (!Array.isArray(conflicts) || !conflicts.length) return "";
+  const fieldName = (field) => {
+    if (field === "phone") return "advertiserPhoneLocal";
+    if (field === "price") return "salePrice";
+    if (field === "area") return "area";
+    if (field === "propertyType") return "rawPropertyTypeText";
+    if (field === "city") return "rawCityText";
+    if (field === "district") return "rawNeighborhoodText";
+    return field;
+  };
+  return conflicts.map((conflict) => {
+    const message = conflict.message
+      || (conflict.field === "phone" ? PHONE_CONFLICT_MESSAGE
+        : conflict.field === "price" ? PRICE_CONFLICT_MESSAGE
+          : conflict.field === "area" ? AREA_CONFLICT_MESSAGE
+            : "وجدنا قيمتين متعارضتين");
+    const options = (conflict.candidates || []).map((item) => {
+      const label = item.value;
+      return `<button type="button" class="extraction-conflict-option" data-conflict-field="${escapeHtml(fieldName(conflict.field))}" data-conflict-value="${escapeHtml(String(label))}">${escapeHtml(String(label))}</button>`;
+    }).join("");
+    return `<div class="extraction-conflict" role="status">
+      <strong>${escapeHtml(message)}</strong>
+      <div class="extraction-conflict-options">${options}</div>
+    </div>`;
+  }).join("");
 }
 
 function e164ToLocalInput(e164) {
@@ -83,6 +137,7 @@ function closeReview(options = {}) {
   activeDraft = null;
   advertiserExtractedAuto = false;
   advertiserCandidates = [];
+  userEditedFields = {};
   closeAdvertiserMessageModal();
   window.dispatchEvent(new CustomEvent("iaqar:opportunity-review-closed"));
   if (!options.explicit && window.history?.state?.iaqarOverlay) {
@@ -104,8 +159,7 @@ function openReviewOverlay(draft, onApprove, options = {}) {
   onApproveCallback = onApprove;
   onReanalyzeCallback = options.onReanalyze || null;
   activeReviewOptions = options;
-  advertiserCandidates = extractAdvertiserPhonesFromText(draft.sourceText || "");
-  advertiserExtractedAuto = advertiserCandidates.length > 0;
+  userEditedFields = { ...(options.userEditedFields || {}) };
   const defaults = draft.reviewDefaults || buildReviewDefaults(
     draft.fields || {},
     draft.sourceText || "",
@@ -114,6 +168,11 @@ function openReviewOverlay(draft, onApprove, options = {}) {
       needsReview: draft.needsReview || draft.fields?.needsReview
     }
   );
+  const screenshotPhones = screenshotPhonesToAdvertiserCandidates(defaults.screenshotPhoneCandidates);
+  advertiserCandidates = screenshotPhones.length
+    ? screenshotPhones
+    : extractAdvertiserPhonesFromText(draft.sourceText || "");
+  advertiserExtractedAuto = advertiserCandidates.length === 1;
   renderReviewForm(defaults, options);
   overlay.hidden = false;
   document.body.style.overflow = "hidden";
@@ -257,11 +316,15 @@ function renderImportPriceFieldMarkup(defaults = {}) {
         : "salePrice";
   const value = defaults[name] ?? "";
   const display = value === "" || value == null ? "" : String(value);
+  const inferredHint = defaults.inferredPrice && name === "salePrice"
+    ? '<small class="extraction-inferred-hint">سعر مستنتج من الصيغة السوقية — راجعه قبل الاعتماد</small>'
+    : "";
   return `
     <input type="hidden" name="operationTypeId" value="${escapeHtml(operationTypeId)}">
     <label class="review-field import-price-field">
-      <span>${escapeHtml(label)}</span>
+      <span>${escapeHtml(label)}${defaults.needsReview?.price || defaults.needsReview?.salePrice ? ' <span data-review-needed="true" title="يحتاج مراجعة" aria-label="يحتاج مراجعة" style="color:#b7791f;font-size:13px">●</span>' : ""}</span>
       <input name="${name}" type="number" min="0" step="any" value="${escapeHtml(display)}" inputmode="decimal" autocomplete="off">
+      ${inferredHint}
     </label>
   `;
 }
@@ -320,6 +383,7 @@ function renderImportSimplifiedReviewForm(defaults, options = {}) {
     ${options.sourceUrl
       ? `<a class="import-review-source-link" href="${escapeHtml(options.sourceUrl)}" target="_blank" rel="noopener noreferrer">فتح الإعلان الأصلي</a>` : ""}
     <p class="review-hint">عدّل البيانات الأساسية فقط — التفاصيل الإضافية اختيارية داخل القسم المغلق.</p>
+    ${extractionConflictsMarkup(defaults.extractionConflicts || [])}
     <form id="opportunityReviewForm" class="review-form import-simplified-review" autocomplete="off">
       ${importKindRadiosMarkup(defaults.opportunityKind)}
       ${plainTextField(
@@ -341,7 +405,7 @@ function renderImportSimplifiedReviewForm(defaults, options = {}) {
       <div id="importReviewPriceField">${renderImportPriceFieldMarkup(defaults)}</div>
       <div id="importReviewPrimaryInfo">${renderImportPrimaryInfoMarkup(defaults)}</div>
       <label class="review-field import-phone-field">
-        <span>رقم الجوال</span>
+        <span>${reviewLabel("phone", "رقم الجوال", needs)}</span>
         <input name="advertiserPhoneLocal" type="tel" inputmode="numeric" maxlength="10"
           placeholder="05XXXXXXXX" value="${escapeHtml(localPhone)}"
           aria-label="رقم جوال المعلن أو العميل" autocomplete="off">
@@ -415,6 +479,8 @@ function wireImportSimplifiedReviewForm(root, defaults = {}) {
 
   root.oninput = (event) => {
     const name = event.target?.name;
+    if (!name) return;
+    userEditedFields[name] = event.target.value;
     if (name && Object.prototype.hasOwnProperty.call(activeReviewValues, name)) {
       activeReviewValues[name] = event.target.value;
       if (String(event.target.value || "").trim()) {
@@ -422,6 +488,19 @@ function wireImportSimplifiedReviewForm(root, defaults = {}) {
       }
     }
   };
+
+  root.querySelectorAll(".extraction-conflict-option").forEach((button) => {
+    button.addEventListener("click", () => {
+      const name = button.getAttribute("data-conflict-field");
+      const value = button.getAttribute("data-conflict-value") || "";
+      const form = $("opportunityReviewForm");
+      const input = form?.querySelector(`[name="${name}"]`);
+      if (!input) return;
+      input.value = value;
+      userEditedFields[name] = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
 }
 
 function renderReviewForm(defaults, options = {}) {
@@ -1011,6 +1090,10 @@ function readReviewForm() {
       livingRoom: extra.livingRoom || "",
       direction: extra.direction || "",
       streetWidth: extra.streetWidth || "",
+      streetDirection: extra.streetDirection || "",
+      depth: extra.depth || "",
+      plotNumber: extra.plotNumber || "",
+      locationUrl: extra.locationUrl || "",
       condition: extra.condition || "",
       usageType: extra.usageType || "",
       waterAndSewagePaidBy: extra.waterAndSewagePaidBy || "",
