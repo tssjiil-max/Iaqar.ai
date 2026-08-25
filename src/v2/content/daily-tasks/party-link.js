@@ -47,7 +47,7 @@ export async function ensurePartyReviewLink(task = {}, party = "client") {
     if (!response.ok || !payload.ok || !isOpaquePartyToken(token)) return null;
     const url = buildPartyReviewUrl({
       origin: window.location.origin,
-      pathname: window.location.pathname || "/",
+      pathname: "/",
       token
     });
     if (!url) return null;

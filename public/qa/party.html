@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>IAQAR QA Party</title>
+  <script>
+    (function () {
+      var token = "";
+      try { token = String(new URLSearchParams(location.search).get("cv2Party") || "").trim(); } catch (_) {}
+      window.__IAQAR_PARTY_TOKEN__ = token;
+      window.IAQAR = window.IAQAR || {};
+      window.IAQAR.resolveWorkerBase = function () { return location.origin; };
+      window.IAQAR.workerBase = location.origin;
+      if (token) {
+        document.documentElement.dataset.partyMode = "1";
+        document.documentElement.classList.add("is-party-mode");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/css/party-shell.css">
+  <style>
+    body { margin: 0; background: #f4f8f6; font-family: Tajawal, Arial, sans-serif; }
+  </style>
+</head>
+<body>
+  <script type="module" src="/js/party-entry.js"></script>
+</body>
+</html>

@@ -47,6 +47,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
     <article
       class="cv2-details"
       data-cv2-inbox-item
+      data-testid="inbox-row"
       data-opportunity-id="${esc(opportunityId)}"
       data-inbox-status="${esc(statusKey)}"
       aria-label="${esc([vm.propertyPurpose || vm.type, statusLabel].filter(Boolean).join(" — "))}">

@@ -13,6 +13,21 @@ function escapeContentHtml(value = "") {
   }[character]));
 }
 
+function testIdForAction(actionId = "") {
+  return {
+    send_to_client: "send-client",
+    resend_to_client: "send-client",
+    send_to_owner: "send-owner",
+    request_cooperation: "request-cooperation",
+    accept_cooperation: "accept-cooperation",
+    reject_cooperation: "reject-cooperation",
+    confirm_deal: "complete-deal",
+    open_offer: "match-details",
+    open_details: "match-details",
+    share_details: "share-details"
+  }[actionId] || "";
+}
+
 function buttonHtml(action, kind) {
   if (!action?.id || !action?.label) return "";
   const cls = kind === "primary"
@@ -23,7 +38,9 @@ function buttonHtml(action, kind) {
   const attr = kind === "primary" ? "data-cv2-exec-primary" : "data-cv2-exec-secondary";
   const party = action.party ? ` data-party="${escapeContentHtml(action.party)}"` : "";
   const session = action.sessionKind ? ` data-session-kind="${escapeContentHtml(action.sessionKind)}"` : "";
-  return `<button type="button" class="${cls}" ${attr}="${escapeContentHtml(action.id)}"${party}${session}>${escapeContentHtml(action.label)}</button>`;
+  const testId = testIdForAction(action.id);
+  const testAttr = testId ? ` data-testid="${escapeContentHtml(testId)}"` : "";
+  return `<button type="button" class="${cls}" ${attr}="${escapeContentHtml(action.id)}"${party}${session}${testAttr}>${escapeContentHtml(action.label)}</button>`;
 }
 
 function nl(value) {
@@ -237,7 +254,7 @@ function fullDetailsHtml(task = {}) {
       ${rows.map(([label, value]) => `<div><dt>${escapeContentHtml(label)}</dt><dd>${escapeContentHtml(value)}</dd></div>`).join("")}
     </dl>
     <button type="button" class="cv2-exec-secondary cv2-exec-text" data-cv2-exec-secondary="share_details">مشاركة التفاصيل</button>
-    <button type="button" class="cv2-exec-secondary cv2-exec-text" data-cv2-exec-close-details>إغلاق التفاصيل</button>
+    <button type="button" class="cv2-exec-secondary cv2-exec-text" data-cv2-exec-close-details data-testid="close-details">إغلاق التفاصيل</button>
   </div>`;
 }
 
@@ -245,7 +262,8 @@ function revealHtml(task, open) {
   const closed = task.revealClosedLabel || "عرض البيانات";
   const opened = task.revealOpenLabel || "إخفاء البيانات";
   const label = open ? opened : closed;
-  return `<button type="button" class="cv2-exec-reveal" data-cv2-exec-reveal aria-expanded="${open ? "true" : "false"}">${label}</button>`;
+  const testId = task.taskKind === "cooperation" ? "coop-open" : "match-open";
+  return `<button type="button" class="cv2-exec-reveal" data-cv2-exec-reveal data-testid="${testId}" aria-expanded="${open ? "true" : "false"}">${label}</button>`;
 }
 
 export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = false } = {}) {

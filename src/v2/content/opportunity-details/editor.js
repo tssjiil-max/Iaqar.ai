@@ -31,28 +31,28 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
     advertiserRole: {
       title: "صفة المعلن",
       hint: "مالك، عميل، مفوض، وسيط عقاري",
-      input: `<input class="cv2-editor-input" name="advertiserRole" type="text" maxlength="40" autocomplete="off" value="${escapeContentHtml(roleValue)}" placeholder="${escapeContentHtml(ROLE_PLACEHOLDER)}">`
+      input: `<input class="cv2-editor-input" name="advertiserRole" data-testid="field-advertiser-role" type="text" maxlength="40" autocomplete="off" value="${escapeContentHtml(roleValue)}" placeholder="${escapeContentHtml(ROLE_PLACEHOLDER)}">`
     },
     contactNumber: {
       title: "رقم التواصل",
       hint: "05XXXXXXXX",
-      input: `<input class="cv2-editor-input" name="contactNumber" type="tel" inputmode="numeric" maxlength="14" autocomplete="off" value="${escapeContentHtml(seed || vm.contactNumber || "")}" placeholder="05XXXXXXXX">`
+      input: `<input class="cv2-editor-input" name="contactNumber" data-testid="field-phone" type="tel" inputmode="numeric" maxlength="14" autocomplete="off" value="${escapeContentHtml(seed || vm.contactNumber || "")}" placeholder="05XXXXXXXX">`
     },
     price: {
       title: vm.priceLabel || "السعر",
       hint: "أدخل الرقم فقط",
-      input: `<input class="cv2-editor-input" name="price" type="number" inputmode="numeric" autocomplete="off" value="${escapeContentHtml(seed)}" placeholder="مثال: 850000">`
+      input: `<input class="cv2-editor-input" name="price" data-testid="field-price" type="number" inputmode="numeric" autocomplete="off" value="${escapeContentHtml(seed)}" placeholder="مثال: 850000">`
     },
     area: {
       title: "المساحة",
       hint: "بالمتر المربع",
-      input: `<input class="cv2-editor-input" name="area" type="number" inputmode="numeric" autocomplete="off" value="${escapeContentHtml(String(vm.area || "").replace(/[^\d.]/g, ""))}" placeholder="0">`
+      input: `<input class="cv2-editor-input" name="area" data-testid="field-area" type="number" inputmode="numeric" autocomplete="off" value="${escapeContentHtml(String(vm.area || "").replace(/[^\d.]/g, ""))}" placeholder="0">`
     },
     location: {
       title: "الموقع",
       hint: "المدينة والحي",
-      input: `<input class="cv2-editor-input" name="city" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.cityValue || vm.city || seed)}" placeholder="المدينة">
-        <input class="cv2-editor-input" name="district" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.districtValue || vm.district || "")}" placeholder="الحي">`
+      input: `<input class="cv2-editor-input" name="city" data-testid="field-city" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.cityValue || vm.city || seed)}" placeholder="المدينة">
+        <input class="cv2-editor-input" name="district" data-testid="field-district" type="text" maxlength="80" autocomplete="off" value="${escapeContentHtml(vm.districtValue || vm.district || "")}" placeholder="الحي">`
     },
     propertyPurpose: {
       title: "العقار والغرض",
@@ -81,9 +81,9 @@ export function buildFieldEditorV2(editorKey, vm = {}, seed = "") {
         <p class="cv2-editor-error" id="cv2EditorError" hidden></p>
         <p class="cv2-editor-contact-status" id="cv2ContactSaveStatus" hidden></p>
         <div class="cv2-editor-actions${isContact ? " is-contact" : ""}">
-          <button type="submit" class="cv2-editor-save" id="cv2EditorSave">${saveLabel}</button>
+          <button type="submit" class="cv2-editor-save" id="cv2EditorSave" data-testid="save-field">${saveLabel}</button>
           ${contactAction}
-          <button type="button" class="cv2-editor-cancel" id="cv2EditorCancel">إلغاء</button>
+          <button type="button" class="cv2-editor-cancel" id="cv2EditorCancel" data-testid="cancel-field">إلغاء</button>
         </div>
       </form>
     </div>

@@ -145,7 +145,12 @@ test("empty appointment and report still keep their cards", () => {
   assert.match(appointment, /-</);
   assert.equal(buildCompleteMissingButtonV2({
     propertyPurpose: "أرض للبيع",
-    location: "المدينة المنورة",
+    location: "المدينة المنورة - حي عروة",
+    locationSecondary: "الحي: عروة",
+    city: "المدينة المنورة",
+    cityValue: "المدينة المنورة",
+    district: "عروة",
+    districtValue: "عروة",
     price: "1,000 ريال",
     area: "1,000 م²",
     advertiserRole: "مالك",
@@ -237,6 +242,23 @@ test("details markup exposes missing editors without a V2 header", () => {
   assert.match(html, /class="cv2-details"/);
   assert.equal(html.includes("opp-v2-header"), false);
   assert.ok(html.indexOf("data-cv2-complete") > html.indexOf("data-cv2-toggle-details"));
+});
+
+test("completeness line is not 6/6 when district is missing", () => {
+  const vm = mapOpportunityDetailsV2ViewModel("opp_city_only", {
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "المدينة المنورة",
+    district: "",
+    salePrice: 850000,
+    area: 1175,
+    advertiserRole: "OWNER",
+    contactPhone: "0511123456"
+  });
+  assert.equal(completenessLine(vm).includes("6 من 6"), false);
+  assert.match(completenessLine(vm), /الموقع/);
+  assert.equal(firstMissingEditor(vm), "location");
+  assert.match(buildCompleteMissingButtonV2(vm), /complete-missing/);
 });
 
 test("completeness line uses actual missing fields, not static copy", () => {

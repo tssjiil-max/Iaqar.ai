@@ -308,22 +308,20 @@ function actionsForState(stateKey, record = {}) {
   let primary = null;
   const ownerNeeded = Boolean(record.ownerContactNeeded);
   const living = upper(record.livingStage);
-  const readyToClose = living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
-    || living === LIVING_TASK_STAGE.FOLLOW_UP
-    || stateKey === DAILY_TASK_STATE.APPOINTMENT_TODAY;
-  if (readyToClose && living !== LIVING_TASK_STAGE.MATCH_FOUND) {
-    if (living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED || living === LIVING_TASK_STAGE.FOLLOW_UP) {
-      primary = confirmDealAction();
-      secondary.push(openOfferAction(record));
-      return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
-    }
+  if (living === LIVING_TASK_STAGE.FOLLOW_UP) {
+    primary = confirmDealAction();
+    secondary.push(openOfferAction(record));
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
-  if (ownerNeeded && living !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
+  if (ownerNeeded) {
     primary = sendToOwnerAction(record);
     secondary.push(openOfferAction(record));
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
-  if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
+  if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+    || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
+    || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
+    || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
     secondary.push(openOfferAction(record));
     return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
   }

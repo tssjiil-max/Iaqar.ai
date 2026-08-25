@@ -106,26 +106,32 @@ export function appendLivingTimeline(existing, event, { now = new Date() } = {})
 
 export function nextActorForLivingStage(stage, { ownerContactNeeded = false } = {}) {
   const key = upper(stage);
-  if (ownerContactNeeded && key !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
-    return TASK_ACTOR.BROKER;
-  }
+  if (ownerContactNeeded) return TASK_ACTOR.BROKER;
   if (
     key === LIVING_TASK_STAGE.MATCH_FOUND
     || key === LIVING_TASK_STAGE.BROKER_REVIEW
     || key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO
-    || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
-    || key === LIVING_TASK_STAGE.VIEWING_DECISION
-    || key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
     || key === LIVING_TASK_STAGE.FOLLOW_UP
-    || key === LIVING_TASK_STAGE.CLIENT_INTERESTED
   ) {
     return TASK_ACTOR.BROKER;
   }
-  if (key === LIVING_TASK_STAGE.CLIENT_SENT || key === LIVING_TASK_STAGE.WAITING_CLIENT) {
+  if (
+    key === LIVING_TASK_STAGE.CLIENT_SENT
+    || key === LIVING_TASK_STAGE.WAITING_CLIENT
+    || key === LIVING_TASK_STAGE.CLIENT_INTERESTED
+    || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
+  ) {
     return TASK_ACTOR.CLIENT;
   }
   if (key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) return TASK_ACTOR.OWNER;
-  if (key === LIVING_TASK_STAGE.COMPLETED || key === LIVING_TASK_STAGE.MATCH_EXHAUSTED) {
+  if (key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION || key === LIVING_TASK_STAGE.VIEWING_DECISION) {
+    return TASK_ACTOR.OWNER;
+  }
+  if (
+    key === LIVING_TASK_STAGE.COMPLETED
+    || key === LIVING_TASK_STAGE.MATCH_EXHAUSTED
+    || key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
+  ) {
     return TASK_ACTOR.NONE;
   }
   return TASK_ACTOR.BROKER;
@@ -137,7 +143,7 @@ export function partyReplyTimelineLabel(party, action) {
   if (side === "owner") {
     if (id === "property_available") return "المالك أكد أن العقار متاح";
     if (id === "not_available") return "المالك أبلغ أن العقار غير متاح";
-    if (id === "confirm_appointment") return "المالك أكد موعد المعاينة";
+    if (id === "confirm_appointment") return "تم تأكيد المعاينة";
     if (id === "opened") return "فتح المالك الرابط";
     return "المالك رد على المعاينة";
   }
@@ -289,7 +295,6 @@ export function mergeMatchGroupLivingState(members = []) {
     remaining,
     missingInfoKey: latest?.missingInfoKey || "",
     ownerContactNeeded: Boolean(latest?.ownerContactNeeded)
-      && stage !== LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
       && stage !== LIVING_TASK_STAGE.WAITING_CLIENT
       && stage !== LIVING_TASK_STAGE.CLIENT_SENT,
     hasNewResponse: Boolean(latest?.hasNewResponse),
@@ -340,27 +345,26 @@ export function sortGroupForLivingStage(stage, {
   }
   if (overdue) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   const key = upper(stage);
-  if (ownerContactNeeded && key === LIVING_TASK_STAGE.CLIENT_INTERESTED) {
-    return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
-  }
+  if (ownerContactNeeded) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   if (
     key === LIVING_TASK_STAGE.MATCH_FOUND
     || key === LIVING_TASK_STAGE.BROKER_REVIEW
     || key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO
-    || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
-    || key === LIVING_TASK_STAGE.VIEWING_DECISION
-    || key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
     || key === LIVING_TASK_STAGE.FOLLOW_UP
   ) {
     return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   }
-  if (hasNewResponse || key === LIVING_TASK_STAGE.CLIENT_INTERESTED || key === LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS) {
+  if (hasNewResponse || key === LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS) {
     return TASK_SORT_GROUP.NEW_EXTERNAL_RESPONSE;
   }
   if (
     key === LIVING_TASK_STAGE.CLIENT_SENT
     || key === LIVING_TASK_STAGE.WAITING_CLIENT
     || key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+    || key === LIVING_TASK_STAGE.CLIENT_INTERESTED
+    || key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
+    || key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
+    || key === LIVING_TASK_STAGE.VIEWING_DECISION
   ) {
     return TASK_SORT_GROUP.WAITING_EXTERNAL_PARTY;
   }
@@ -415,12 +419,12 @@ export function livingCopy(stage, {
     }
     return {
       kindLabel: "العميل مهتم",
-      statusLabel: "قيد المتابعة",
+      statusLabel: "بانتظار العميل",
       happenedLine: "العميل مهتم بالعقار",
-      turnLine: "دورك الآن",
-      yourTurnLine: "متابعة المعاينة",
-      nextActionLine: "متابعة المعاينة",
-      waiting: false,
+      turnLine: "",
+      yourTurnLine: "بانتظار اختيار العميل للمعاينة",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
       ...reveal
     };
   }
@@ -437,10 +441,22 @@ export function livingCopy(stage, {
     };
   }
   if (key === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION) {
+    if (ownerContactNeeded) {
+      return {
+        kindLabel: "العميل يريد معاينة",
+        statusLabel: "تأكيد التوفر",
+        happenedLine: "العميل طلب معاينة",
+        turnLine: "دورك الآن",
+        yourTurnLine: "تأكيد توفر العقار",
+        nextActionLine: "أرسل للمالك لتأكيد أن العقار ما زال متاحًا.",
+        waiting: false,
+        ...reveal
+      };
+    }
     return {
       kindLabel: "بانتظار تأكيد المالك",
       statusLabel: "بانتظار المالك",
-      happenedLine: "تم طلب تأكيد توفر العقار من المالك",
+      happenedLine: "تم فتح واتساب للمالك",
       turnLine: "",
       yourTurnLine: "بانتظار رد المالك",
       nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
@@ -451,24 +467,24 @@ export function livingCopy(stage, {
   if (key === LIVING_TASK_STAGE.PROPERTY_AVAILABLE) {
     return {
       kindLabel: "العقار متاح",
-      statusLabel: "قيد المتابعة",
+      statusLabel: "بانتظار العميل",
       happenedLine: "المالك أكد أن العقار متاح",
-      turnLine: "دورك الآن",
-      yourTurnLine: "تنسيق موعد المعاينة",
-      nextActionLine: "تنسيق موعد المعاينة",
-      waiting: false,
+      turnLine: "",
+      yourTurnLine: "بانتظار اختيار موعد المعاينة",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
       ...reveal
     };
   }
   if (key === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION || key === LIVING_TASK_STAGE.VIEWING_DECISION) {
     return {
       kindLabel: "موعد تحت التنسيق",
-      statusLabel: "موعد تحت التنسيق",
-      happenedLine: "",
-      turnLine: "دورك الآن",
-      yourTurnLine: "تنسيق موعد المعاينة",
-      nextActionLine: "تنسيق موعد المعاينة",
-      waiting: false,
+      statusLabel: "بانتظار المالك",
+      happenedLine: "تم اختيار الموعد",
+      turnLine: "",
+      yourTurnLine: "بانتظار تأكيد المالك للموعد",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
       ...reveal
     };
   }
@@ -476,11 +492,11 @@ export function livingCopy(stage, {
     return {
       kindLabel: appointmentLine ? `الموعد مؤكد — ${appointmentLine}` : "الموعد مؤكد",
       statusLabel: "",
-      happenedLine: appointmentLine ? `موعد مؤكد — ${appointmentLine}` : "موعد مؤكد",
-      turnLine: "دورك الآن",
-      yourTurnLine: "الصفقة جاهزة للإغلاق",
-      nextActionLine: "تأكيد إتمام الصفقة",
-      waiting: false,
+      happenedLine: appointmentLine ? `تم تأكيد المعاينة — ${appointmentLine}` : "تم تأكيد المعاينة",
+      turnLine: "",
+      yourTurnLine: appointmentLine || "الموعد مؤكد",
+      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
+      waiting: true,
       ...reveal
     };
   }
@@ -582,7 +598,7 @@ export function livingStageAfterPartyAction({
     return { stage: LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION };
   }
   if (id === "interested") {
-    return { stage: LIVING_TASK_STAGE.CLIENT_INTERESTED, ownerContactNeeded: true };
+    return { stage: LIVING_TASK_STAGE.CLIENT_INTERESTED, ownerContactNeeded: false };
   }
   if (id === "not_suitable") {
     return {

@@ -219,6 +219,21 @@ html.is-party-mode .toast {
   font-weight: 700;
 }
 
+.party-appointment {
+  display: grid;
+  gap: 8px;
+}
+
+.party-appointment .party-prompt {
+  margin-bottom: 4px;
+}
+
+.party-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .party-status {
   margin: 10px 0 0;
   font-size: 13px;

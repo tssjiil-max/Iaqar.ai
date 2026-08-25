@@ -75,8 +75,61 @@ function locationButtonHtml(property = {}) {
 
 function actionButtons(actions = []) {
   return (actions || []).map((action) => (
-    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
+    `<button type="button" class="party-action" data-party-action="${escapeHtml(action.id)}" data-testid="party-${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
   )).join("");
+}
+
+function appointmentBlock(appointment = {}) {
+  const phase = String(appointment.phase || "none");
+  if (phase === "none") return "";
+  const taken = appointment.takenMessage
+    ? `<p class="party-error" data-testid="party-taken-message">${escapeHtml(appointment.takenMessage)}</p>`
+    : "";
+  const selected = appointment.selected || {};
+  if (phase === "confirmed") {
+    return `<div class="party-appointment" data-testid="party-appointment-confirmed">
+      <p class="party-prompt">${escapeHtml(appointment.confirmedCopy || "تم تأكيد المعاينة")}</p>
+      ${selected.dayLabel ? `<p class="party-row"><span>اليوم</span><strong>${escapeHtml(selected.dayLabel)}</strong></p>` : ""}
+      ${selected.dateLabel ? `<p class="party-row"><span>التاريخ</span><strong>${escapeHtml(selected.dateLabel)}</strong></p>` : ""}
+      ${selected.timeLabel ? `<p class="party-row"><span>الوقت</span><strong>${escapeHtml(selected.timeLabel)}</strong></p>` : ""}
+    </div>`;
+  }
+  if (phase === "pick_slot") {
+    const slots = (appointment.slots || []).map((slot) => (
+      `<button type="button" class="party-action" data-party-slot="${escapeHtml(slot.id)}" data-testid="party-slot">${escapeHtml(slot.buttonLabel)}</button>`
+    )).join("");
+    return `<div class="party-appointment" data-testid="party-pick-slot">
+      <p class="party-prompt">اختر موعد المعاينة</p>
+      ${taken}
+      <div class="party-actions">${slots}</div>
+    </div>`;
+  }
+  if (phase === "wait_owner") {
+    return `<div class="party-appointment" data-testid="party-wait-owner">
+      <p class="party-prompt">بانتظار تأكيد المالك للموعد</p>
+      ${selected.timeLabel ? `<p class="party-row"><span>الوقت المقترح</span><strong>${escapeHtml(selected.timeLabel)}</strong></p>` : ""}
+    </div>`;
+  }
+  if (phase === "proposed") {
+    return `<div class="party-appointment" data-testid="party-proposed-slot">
+      <p class="party-prompt">تم اقتراح موعد المعاينة</p>
+      ${selected.dayLabel ? `<p class="party-row"><span>اليوم</span><strong>${escapeHtml(selected.dayLabel)}</strong></p>` : ""}
+      ${selected.dateLabel ? `<p class="party-row"><span>التاريخ</span><strong>${escapeHtml(selected.dateLabel)}</strong></p>` : ""}
+      ${selected.timeLabel ? `<p class="party-row"><span>الوقت</span><strong>${escapeHtml(selected.timeLabel)}</strong></p>` : ""}
+      ${taken}
+      <div class="party-actions">
+        <button type="button" class="party-action" data-party-appointment="confirm" data-testid="party-confirm-appointment">تأكيد الموعد</button>
+        <button type="button" class="party-action" data-party-appointment="rechoose" data-testid="party-choose-another-slot">اختيار وقت آخر</button>
+      </div>
+    </div>`;
+  }
+  if (phase === "wait_client_slot") {
+    return `<p class="party-prompt" data-testid="party-wait-client-slot">بانتظار اختيار العميل لموعد المعاينة</p>`;
+  }
+  if (phase === "wait_property") {
+    return `<p class="party-prompt" data-testid="party-wait-property">بانتظار تأكيد توفر العقار</p>`;
+  }
+  return taken;
 }
 
 export function buildPartyShellHtml(view = {}) {
@@ -96,14 +149,22 @@ export function buildPartyShellHtml(view = {}) {
     : "";
   const primaryActions = actionButtons(view.actions);
   const followUp = actionButtons(view.followUpActions);
+  const appointment = appointmentBlock(view.appointment || {});
   let replyBlock = "";
-  if (view.replied) {
+  if (appointment) {
+    replyBlock = `<div class="party-reply-block">${appointment}</div>`;
+  } else if (view.replied) {
+    const nextPrompt = view.replyLabel === "أحتاج تفاصيل أكثر" && followUp
+      ? `<p class="party-prompt">ما التفاصيل التي تحتاجها؟</p>`
+      : (view.replyLabel === "مهتم" && followUp
+        ? `<p class="party-prompt" data-testid="party-next-step">هل ترغب بمعاينة العقار؟</p>`
+        : "");
     replyBlock = `<div class="party-reply-block">
       <p class="party-recorded">${PARTY_REPLY_RECORDED}</p>
       <p class="party-reply">${escapeHtml(view.replyLabel || "")}</p>
       ${view.followUpLabel ? `<p class="party-followup-choice">${escapeHtml(view.followUpLabel)}</p>` : ""}
       ${revealed}
-      ${view.replyLabel === "أحتاج تفاصيل أكثر" && followUp ? `<p class="party-prompt">ما التفاصيل التي تحتاجها؟</p>` : ""}
+      ${nextPrompt}
       ${followUp ? `<div class="party-actions party-followup">${followUp}</div>` : ""}
     </div>`;
   } else if (primaryActions) {

@@ -120,7 +120,8 @@ async function submitReply(token, action, button) {
     if (!response.ok || !payload.ok || !payload.view) {
       throw new Error(payload.message || "تعذر تسجيل الرد.");
     }
-    renderView(payload.view, token);
+    const fresh = await loadSession(token);
+    renderView(fresh, token);
   } catch (error) {
     button.disabled = false;
     showStatus(error.message || "تعذر تسجيل الرد.", true);
@@ -134,6 +135,51 @@ function bindActions(root, token) {
       void submitReply(token, button.getAttribute("data-party-action"), button);
     });
   });
+  root.querySelectorAll("[data-party-slot]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      void submitAppointment(token, "select", button.getAttribute("data-party-slot"), button);
+    });
+  });
+  root.querySelectorAll("[data-party-appointment]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      void submitAppointment(token, button.getAttribute("data-party-appointment"), "", button);
+    });
+  });
+}
+
+async function submitAppointment(token, action, slot, button) {
+  button.disabled = true;
+  showStatus("");
+  try {
+    const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/appointment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ action, slot })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 409 || payload.error === "slot_taken") {
+      const fresh = payload.view || await loadSession(token);
+      renderView({
+        ...fresh,
+        appointment: {
+          ...(fresh.appointment || {}),
+          takenMessage: payload.message || "هذا الموعد لم يعد متاحًا، اختر موعدًا آخر."
+        }
+      }, token);
+      return;
+    }
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message || "تعذر حفظ الموعد.");
+    }
+    const fresh = await loadSession(token);
+    renderView(fresh, token);
+  } catch (error) {
+    button.disabled = false;
+    showStatus(error.message || "تعذر حفظ الموعد.", true);
+  }
 }
 
 export async function bootPartyEntry(locationLike = window.location) {
