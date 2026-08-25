@@ -24,6 +24,7 @@ const PASSWORD = process.env.STAGING_PASSWORD || "StagingLogo9";
 const PROJECT_ID = process.env.FIREBASE_STAGING_PROJECT_ID || "iaqar-ai-staging";
 const HEADED = process.argv.includes("--headed");
 const OUT = process.env.LIVE_E2E_OUT || "/opt/cursor/artifacts";
+const WORK = process.env.LIVE_E2E_WORK || `/tmp/live-e2e-${Date.now().toString(36)}`;
 const RUN_ID = `livee2e_${Date.now().toString(36)}`;
 const DISTRICT_VALUE = `العزيزية_${RUN_ID}`;
 const CITY = "المدينة المنورة";
@@ -43,7 +44,24 @@ function record(test, live, { persistence = "NOT RUN", evidence: ev = "", unit =
 }
 
 function shotPath(name) {
-  return path.join(OUT, name);
+  mkdirSync(WORK, { recursive: true });
+  return path.join(WORK, name);
+}
+
+function publish(name) {
+  const from = path.join(WORK, name);
+  const to = path.join(OUT, name);
+  if (!existsSync(from)) return "";
+  try {
+    mkdirSync(OUT, { recursive: true });
+    copyFileSync(from, to);
+    evidence.push(to);
+    return to;
+  } catch (error) {
+    console.warn("publish", name, error.message);
+    evidence.push(from);
+    return from;
+  }
 }
 
 const NOISE = [
@@ -518,8 +536,12 @@ async function lastOpened(page) {
 
 async function screenshot(page, name) {
   const file = shotPath(name);
-  await page.screenshot({ path: file, fullPage: true });
-  evidence.push(file);
+  try {
+    await page.screenshot({ path: file, fullPage: false });
+    publish(name);
+  } catch (error) {
+    console.warn("screenshot", name, error.message);
+  }
   return file;
 }
 
@@ -531,7 +553,7 @@ async function stopTrace(context, name) {
   const file = shotPath(name);
   try {
     await context.tracing.stop({ path: file });
-    evidence.push(file);
+    publish(name);
   } catch (error) {
     console.warn("trace stop", name, error.message);
   }
@@ -558,9 +580,10 @@ async function cleanupSeed() {
 }
 
 async function runJourney({ headed }) {
-  mkdirSync(OUT, { recursive: true });
-  const videoDir = path.join(OUT, headed ? "live-headed-videos" : "live-headless-videos");
+  const videoDir = path.join(WORK, headed ? "headed-videos" : "headless-videos");
+  mkdirSync(WORK, { recursive: true });
   mkdirSync(videoDir, { recursive: true });
+  mkdirSync(OUT, { recursive: true });
 
   const browser = await chromium.launch({
     headless: !headed,
@@ -767,8 +790,9 @@ async function runJourney({ headed }) {
           note: "party URL was not minted"
         });
       } else {
+        try {
         await clientPage.goto(state.clientPartyUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-        await clientPage.waitForSelector("[data-party-shell], [data-party-error]", { timeout: 60000 });
+        await clientPage.waitForSelector("[data-party-action], [data-party-error], .party-recorded", { timeout: 60000 });
         const hasLogin = (await clientPage.locator("#loginForm").count())
           + (await clientPage.getByText("تسجيل دخول مكتب").count());
         await screenshot(clientPage, headed ? "live-headed-C-client-initial.png" : "live-C-client-initial.png");
@@ -793,7 +817,7 @@ async function runJourney({ headed }) {
         clientPersisted = state.partyReplyAction === "interested";
 
         await clientPage.reload({ waitUntil: "domcontentloaded" });
-        await clientPage.waitForSelector("[data-party-shell], [data-party-error]", { timeout: 60000 });
+        await clientPage.waitForSelector("[data-party-action], [data-party-error], .party-recorded", { timeout: 60000 });
         const afterReloadText = (await clientPage.locator("body").innerText()).replace(/\s+/g, " ");
         clientStayAfterReload = afterReloadText.includes("مهتم") || afterReloadText.includes("تم تسجيل");
         await screenshot(clientPage, headed ? "live-headed-C-client-reload.png" : "live-C-client-reload.png");
@@ -804,9 +828,17 @@ async function runJourney({ headed }) {
           evidence: "live-C-client-interested.png + party/sessions/reply",
           note: `HTTP ${state.replyStatus} replyAction=${state.partyReplyAction} followUp=${state.followUpVisible} loginChrome=${hasLogin}`
         });
+        } catch (error) {
+          await screenshot(clientPage, headed ? "live-headed-C-client-error.png" : "live-C-client-error.png");
+          record("Client interested", "FAIL — LIVE E2E", {
+            persistence: "FAIL — LIVE E2E",
+            evidence: "live-C-client-error.png",
+            note: String(error?.message || error)
+          });
+        }
       }
       await stopTrace(clientContext, headed ? "live-headed-C-client-interested.zip" : "live-C-client-interested.zip");
-      await clientContext.close();
+      try { await clientContext.close(); } catch (error) { console.warn("client close", error.message); }
 
       await broker.reload({ waitUntil: "domcontentloaded" });
       await broker.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 120000 });
@@ -867,7 +899,7 @@ async function runJourney({ headed }) {
         await startTrace(ownerContext, "live-owner-party");
         if (state.ownerPartyUrl) {
           await ownerPage.goto(state.ownerPartyUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-          await ownerPage.waitForSelector("[data-party-shell], [data-party-error]", { timeout: 60000 });
+          await ownerPage.waitForSelector("[data-party-action], [data-party-error], .party-recorded", { timeout: 60000 });
           await screenshot(ownerPage, headed ? "live-headed-E-owner-initial.png" : "live-E-owner-initial.png");
           const ownerReplyWaiter = ownerPage.waitForResponse(
             (res) => /\/party\/sessions\/.+\/reply$/.test(res.url()) && res.request().method() === "POST",
@@ -885,13 +917,13 @@ async function runJourney({ headed }) {
             .find((row) => String(row.party || "") === "owner");
           ownerPersisted = ownerSession?.replyAction === "property_available";
           await ownerPage.reload({ waitUntil: "domcontentloaded" });
-          await ownerPage.waitForSelector("[data-party-shell], [data-party-error]", { timeout: 60000 });
+          await ownerPage.waitForSelector("[data-party-action], [data-party-error], .party-recorded", { timeout: 60000 });
           const ownerReloadText = (await ownerPage.locator("body").innerText()).replace(/\s+/g, " ");
           ownerStay = /متاح|تم تسجيل/.test(ownerReloadText);
           await screenshot(ownerPage, headed ? "live-headed-E-owner-reload.png" : "live-E-owner-reload.png");
         }
         await stopTrace(ownerContext, headed ? "live-headed-E-owner-available.zip" : "live-E-owner-available.zip");
-        await ownerContext.close();
+        try { await ownerContext.close(); } catch (error) { console.warn("owner close", error.message); }
 
         const ownerPass = ownerHttpOk && ownerPersisted && ownerStay;
         record("Owner available", ownerPass ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", {
@@ -972,14 +1004,20 @@ async function runJourney({ headed }) {
   }
 
   const videoFiles = [];
-  await brokerContext.close();
-  await browser.close();
+  try { await brokerContext.close(); } catch (error) { console.warn("broker close", error.message); }
+  try { await browser.close(); } catch (error) { console.warn("browser close", error.message); }
   if (existsSync(videoDir)) {
     for (const file of readdirSync(videoDir)) {
       if (!file.endsWith(".webm")) continue;
       const from = path.join(videoDir, file);
       const to = shotPath(`${headed ? "live-headed" : "live-headless"}-${file}`);
-      try { copyFileSync(from, to); videoFiles.push(to); } catch { videoFiles.push(from); }
+      try {
+        copyFileSync(from, to);
+        publish(`${headed ? "live-headed" : "live-headless"}-${file}`);
+        videoFiles.push(path.join(OUT, `${headed ? "live-headed" : "live-headless"}-${file}`));
+      } catch {
+        videoFiles.push(from);
+      }
     }
   }
 
@@ -1035,7 +1073,6 @@ function writeReport({ headed, state, videoFiles }) {
     evidence
   };
   const jsonPath = shotPath(headed ? "live-headed-core-flow-report.json" : "live-core-flow-report.json");
-  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   const md = [
     `# Live Staging Core Flow (${headed ? "headed" : "headless"})`,
     "",
@@ -1059,8 +1096,11 @@ function writeReport({ headed, state, videoFiles }) {
     "",
     ...(verdicts.map((row) => `- ${row.test}: ${row.note || row.live}`))
   ].join("\n");
+  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   writeFileSync(shotPath(headed ? "live-headed-core-flow-report.md" : "live-core-flow-report.md"), md);
   writeFileSync(path.join("/workspace/qa", headed ? "live-headed-core-flow-report.md" : "live-staging-core-flow-report.md"), md);
+  publish(headed ? "live-headed-core-flow-report.json" : "live-core-flow-report.json");
+  publish(headed ? "live-headed-core-flow-report.md" : "live-core-flow-report.md");
   console.log("\n" + md);
   return report;
 }
