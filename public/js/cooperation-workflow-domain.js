@@ -802,8 +802,11 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
   const stage = upper(record.currentStage) || COOPERATION_STAGE.MATCH_FOUND;
   const role = viewerRoleFor(record, officeId);
   const turn = yourTurnFor({ stage, role, record, officeId });
-  const ownListing = publicListingSlice(record.ownListing || record.originListing || {});
-  const partnerListing = publicListingSlice(record.partnerListing || record.counterpartListing || {});
+  const originListing = publicListingSlice(record.originListing || record.ownListing || {});
+  const counterpartListing = publicListingSlice(record.counterpartListing || record.partnerListing || {});
+  const isOriginViewer = text(officeId).toLowerCase() === text(record.originatingOfficeId).toLowerCase();
+  const ownListing = isOriginViewer ? originListing : counterpartListing;
+  const partnerListing = isOriginViewer ? counterpartListing : originListing;
   const listing = text(officeId).toLowerCase() === text(record.originatingOfficeId).toLowerCase()
     ? ownListing
     : partnerListing;

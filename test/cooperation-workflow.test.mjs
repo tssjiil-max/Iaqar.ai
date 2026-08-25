@@ -225,6 +225,15 @@ test("TEST 11 Partner office never sees the client phone", () => {
   assert.equal(sanitizeCooperationView(dirty).clientPhone, "");
 });
 
+test("partner view shows that office listing as own listing", () => {
+  const view = buildCooperationDailyTaskView(livingRecord({
+    status: "PENDING",
+    currentStage: COOPERATION_STAGE.WAITING_PARTNER
+  }), { officeId: "office-wadi" });
+  assert.equal(view.ownMoney, "870,000 ر.س");
+  assert.equal(view.partnerMoney, "850,000 ر.س");
+});
+
 test("TEST 12 Client office never sees the owner phone", () => {
   const dirty = livingRecord({
     ownerPhone: "0540000000",
