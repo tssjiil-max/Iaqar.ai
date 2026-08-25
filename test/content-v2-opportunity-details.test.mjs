@@ -178,6 +178,26 @@ test("advertiser role editor stays empty and maps وسيط before save", () => {
   assert.equal(fake.ok, false);
 });
 
+test("saving وسيط updates completeness and removes صفة المعلن from missing", () => {
+  const existing = {
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "عروة",
+    salePrice: 850000,
+    advertiserRole: "UNKNOWN",
+    advertiserPhoneNormalized: "+966511123456"
+  };
+  const before = completenessLine(mapOpportunityDetailsV2ViewModel("opp_role", existing));
+  assert.match(before, /المعلن/);
+  const built = buildV2FieldPatch(existing, "advertiserRole", { advertiserRole: "وسيط" });
+  assert.equal(built.patch.advertiserRole, "BROKER");
+  const afterVm = mapOpportunityDetailsV2ViewModel("opp_role", { ...existing, ...built.patch });
+  assert.equal(afterVm.advertiserRole, "وسيط عقاري");
+  assert.equal(completenessLine(afterVm).includes("المعلن"), false);
+  assert.equal(completenessLine(afterVm), "6 من 6 بيانات مكتملة");
+});
+
 test("field editor backdrop click dismisses without saving", () => {
   const dom = new JSDOM(`<!doctype html><html><body></body></html>`, { url: "https://example.test/" });
   globalThis.document = dom.window.document;
