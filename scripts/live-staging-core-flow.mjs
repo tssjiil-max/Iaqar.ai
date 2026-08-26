@@ -950,10 +950,17 @@ async function runJourney({ headed }) {
         state.partyFollowUpAction = clientSessionAfterViewing?.followUpAction || "";
         const matchAfterViewing = await readDoc("matches", ids.match);
         state.matchOwnerContactNeeded = Boolean(matchAfterViewing?.ownerContactNeeded);
+        const opAfterViewing = await readDoc("operations", ids.matchOp);
+        state.opAfterViewing = {
+          livingStage: opAfterViewing?.livingStage || "",
+          nextActor: opAfterViewing?.nextActor || "",
+          ownerContactNeeded: opAfterViewing?.ownerContactNeeded || ""
+        };
         console.log("client want_viewing", {
           status: state.viewingReplyStatus,
           followUpAction: state.partyFollowUpAction,
-          ownerContactNeeded: state.matchOwnerContactNeeded
+          ownerContactNeeded: state.matchOwnerContactNeeded,
+          operation: state.opAfterViewing
         });
         } catch (error) {
           await screenshot(clientPage, headed ? "live-headed-C-client-error.png" : "live-C-client-error.png");

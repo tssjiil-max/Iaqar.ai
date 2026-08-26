@@ -251,7 +251,9 @@ function livingFromItem(item = {}) {
     rejectedMatchIds: list(item.rejectedMatchIds || meta.rejectedMatchIds),
     activeMatchId: text(item.activeMatchId || meta.activeMatchId),
     missingInfoKey: text(item.missingInfoKey || meta.missingInfoKey),
-    ownerContactNeeded: Boolean(item.ownerContactNeeded || meta.ownerContactNeeded),
+    ownerContactNeeded: Boolean(item.ownerContactNeeded || meta.ownerContactNeeded)
+      || (upper(item.livingStage || meta.livingStage) === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+        && upper(item.nextActor || meta.nextActor) === TASK_ACTOR.BROKER),
     hasNewResponse: Boolean(item.hasNewResponse || meta.hasNewResponse),
     nextActor: upper(item.nextActor || meta.nextActor || ""),
     timeline: parseLivingTimeline(item.livingTimeline || item.livingTimelineJson || meta.livingTimeline || meta.livingTimelineJson),

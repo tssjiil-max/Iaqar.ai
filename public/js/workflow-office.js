@@ -281,6 +281,11 @@
       livingStage: item.livingStage || "",
       livingUpdatedAt: isoTime(item.livingUpdatedAt || item.updatedAt || item.createdAt),
       livingTimeline: item.livingTimeline || item.livingTimelineJson || [],
+      nextActor: item.nextActor || "",
+      ownerContactNeeded: item.ownerContactNeeded === true
+        || String(item.ownerContactNeeded || "").toLowerCase() === "true",
+      hasNewResponse: item.hasNewResponse === true
+        || String(item.hasNewResponse || "").toLowerCase() === "true",
       purpose: item.purpose || item.candidatePurpose || "",
       city: item.city || item.candidateCity || "",
       salePrice: item.salePrice ?? item.candidateSalePrice ?? item.price ?? 0,
