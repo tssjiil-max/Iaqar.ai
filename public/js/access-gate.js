@@ -1461,8 +1461,8 @@
           snapshot = await col.where("legacyPublicSlugs", "array-contains", publicSlug).limit(1).get();
         }
         if (snapshot.empty) {
-          frame(`<section class="access-card"><h2>رابط المكتب غير متاح</h2><p>تحقق من الرابط أو ارجع إلى المنصة العامة.</p><button class="access-btn" id="goPlatformHome">المنصة العامة</button></section>`);
-          gate.querySelector("#goPlatformHome").onclick = () => location.assign("/");
+          const worker = resolveWorkerBase();
+          location.replace(`${worker}/${publicSlugLegacy ? "o" : "m"}/${encodeURIComponent(publicSlug)}`);
           return;
         }
         const data = snapshot.docs[0].data() || {};

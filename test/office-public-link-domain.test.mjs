@@ -32,6 +32,7 @@ test("legacy /o/{slug} stays resolvable after a short slug is assigned", () => {
   const gate = readFileSync(new URL("../public/js/access-gate.js", import.meta.url), "utf8");
   assert.match(gate, /legacyPublicSlugs/);
   assert.match(gate, /array-contains/);
+  assert.match(gate, /resolveWorkerBase/);
   assert.match(gate, /history\.replaceState[\s\S]*\/m\//);
 });
 
