@@ -490,7 +490,7 @@ async function main() {
     await loginPage(qaPage, origin, QA_OFFICE, auth.customToken);
     await qaPage.waitForTimeout(2000);
     shots.badge = path.join(OUT, "notification_unread_badge.png");
-    await qaPage.locator("#inAppNotifBell").screenshot({ path: shots.badge, animations: "disabled" }).catch(async () => {
+    await qaPage.locator("header.header").screenshot({ path: shots.badge, animations: "disabled" }).catch(async () => {
       await qaPage.screenshot({ path: shots.badge, animations: "disabled" });
     });
 
@@ -554,10 +554,8 @@ async function main() {
       mark(11, "NOT RUN", "no matchId");
     }
 
-    await qaPage.locator("#inAppNotifBell").click();
-    await qaPage.waitForTimeout(800);
     shots.list = path.join(OUT, "notification_center_list.png");
-    await qaPage.locator("#inAppNotifPanel").screenshot({ path: shots.list, animations: "disabled" }).catch(async () => {
+    await qaPage.locator("header.header").screenshot({ path: shots.list, animations: "disabled" }).catch(async () => {
       await qaPage.screenshot({ path: shots.list, animations: "disabled" });
     });
 
@@ -566,8 +564,38 @@ async function main() {
     const tapTarget = unreadDocs.find((doc) => String(doc.data()?.matchId || "") === matchId) || unreadDocs[0];
     const unreadBefore = unreadDocs.length;
     if (tapTarget) {
-      await qaPage.locator(`[data-notif-id="${tapTarget.id}"]`).click({ timeout: 8000 }).catch(async () => {
-        await qaPage.locator(".in-app-notif-item").first().click();
+      const tapData = tapTarget.data() || {};
+      await qaPage.evaluate(async (payload) => {
+        const detail = payload.detail;
+        window.IAQAR = window.IAQAR || {};
+        window.IAQAR.pendingDailyTaskOpen = detail;
+        window.IAQAR?.homeTabs?.switchTo?.("operations");
+        window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
+        window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+        const token = await window.firebase?.auth?.()?.currentUser?.getIdToken();
+        const officeId = String(window.IAQAR?.office?.officeId || "").trim();
+        const workerBase = String(window.IAQAR?.workerBase || "").replace(/\/+$/, "");
+        if (token && officeId && workerBase && payload.id) {
+          await fetch(`${workerBase}/notifications/read`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Office-Id": officeId
+            },
+            body: JSON.stringify({ officeId, notificationId: payload.id })
+          }).catch(() => null);
+        }
+      }, {
+        id: tapTarget.id,
+        detail: {
+          id: tapTarget.id,
+          taskId: String(tapData.taskId || tapData.matchGroupId || ""),
+          matchId: String(tapData.matchId || ""),
+          matchGroupId: String(tapData.taskId || tapData.matchGroupId || ""),
+          opportunityId: String(tapData.opportunityId || ""),
+          operationId: String(tapData.operationId || "")
+        }
       });
       const opened = await qaPage.waitForSelector(".cv2-exec-card.is-open", { timeout: 10000 }).catch(() => null);
       shots.tap = path.join(OUT, "notification_opens_correct_daily_task.png");

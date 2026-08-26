@@ -155,11 +155,12 @@ function boot() {
   const bell = $("inAppNotifBell");
   const close = $("inAppNotifClose");
   const list = $("inAppNotifList");
-  if (!bell) return;
-  bell.addEventListener("click", () => {
-    setOpen(!state.open);
-    if (state.open) renderPanel();
-  });
+  if (bell) {
+    bell.addEventListener("click", () => {
+      setOpen(!state.open);
+      if (state.open) renderPanel();
+    });
+  }
   close?.addEventListener("click", () => setOpen(false));
   list?.addEventListener("click", (event) => void onItemClick(event));
   document.addEventListener("click", (event) => {

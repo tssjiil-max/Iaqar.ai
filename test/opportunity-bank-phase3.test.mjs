@@ -288,7 +288,20 @@ test("delete requires an explicit confirmation step in the bank UI", () => {
   assert.ok(bank.includes("permanentDeleteCopy") || bank.includes("سيتم حذف هذه الفرصة والبيانات التشغيلية المرتبطة بها نهائيًا"));
   assert.ok(bank.includes("permanentDeleteConfirm"));
   assert.ok(shell.includes("id=\"archiveOpportunityOverlay\""));
-  assert.ok(shell.includes("id=\"inAppNotifBell\""));
+  assert.equal(shell.includes("id=\"inAppNotifBell\""), false);
+  assert.equal(shell.includes("header-bell"), false);
+});
+
+test("in-app notifications keep listening without a header bell", () => {
+  const shell = readRepositoryFile("public", "index.html");
+  const module = readRepositoryFile("public", "js", "in-app-notifications.js");
+  assert.equal(/id="inAppNotifBell"/.test(shell), false);
+  assert.equal(/class="header-bell"/.test(shell), false);
+  assert.match(module, /function listen\(/);
+  assert.match(module, /\/notifications\/read/);
+  assert.match(module, /iaqar:open-daily-task/);
+  assert.match(module, /if \(officeId\(\) && officeId\(\) !== "platform"\) listen\(officeId\(\)\)/);
+  assert.equal(/if \(!bell\) return/.test(module), false);
 });
 
 test("new Opportunity defaults to NOT_SHARED / لم تُشارك", () => {

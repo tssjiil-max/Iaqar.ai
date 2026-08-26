@@ -210,13 +210,13 @@
       overflow:visible;
     }
 
-    /* الترويسة: الشعار يمين وعنوان متوازن */
+    /* الترويسة: الشعار يمين وعنوان متوازن — بدون جرس على اليسار */
     .header {
       min-height:29px;
       padding:3px 8px;
       display:grid;
-      grid-template-columns:32px minmax(0,1fr) 34px;
-      grid-template-areas:"logo title bell";
+      grid-template-columns:32px minmax(0,1fr);
+      grid-template-areas:"logo title";
       align-items:center;
       gap:5px;
       background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
@@ -265,70 +265,6 @@
       z-index:2;
     }
 
-    .header-bell-wrap {
-      grid-area:bell;
-      position:relative;
-    }
-      width:34px;
-      height:34px;
-      border:1px solid var(--line);
-      border-radius:12px;
-      background:#fff;
-      color:var(--green);
-      display:grid;
-      place-items:center;
-      box-shadow:0 4px 12px rgba(0,63,52,.06);
-    }
-    .header-bell .icon { width:18px;height:18px; }
-    .header-bell-badge {
-      position:absolute;
-      top:-6px;
-      left:-4px;
-      min-width:16px;
-      height:16px;
-      padding:0 4px;
-      border-radius:999px;
-      background:#c62828;
-      color:#fff;
-      font-size:10px;
-      font-weight:800;
-      display:grid;
-      place-items:center;
-    }
-    .header-bell-badge[hidden] { display:none; }
-    .in-app-notif-panel {
-      position:absolute;
-      top:calc(100% + 8px);
-      left:8px;
-      width:min(360px, calc(100vw - 16px));
-      background:#fff;
-      border:1px solid var(--line);
-      border-radius:16px;
-      box-shadow:0 12px 32px rgba(0,63,52,.12);
-      z-index:40;
-      padding:12px;
-    }
-    .in-app-notif-head {
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:8px;
-      margin-bottom:8px;
-    }
-    .in-app-notif-head h2 { margin:0; font-size:15px; }
-    .in-app-notif-list { display:grid; gap:8px; max-height:360px; overflow:auto; }
-    .in-app-notif-item {
-      display:grid;
-      gap:2px;
-      text-align:right;
-      padding:10px 12px;
-      border:1px solid var(--line);
-      border-radius:12px;
-      background:#fff;
-    }
-    .in-app-notif-item.is-unread { background:#f3fbf6; }
-    .in-app-notif-ref, .in-app-notif-time { color:var(--muted); font-size:12px; }
-    .in-app-notif-empty { color:var(--muted); margin:8px 0; }
     .opp-v2-more { display:grid; gap:8px; margin-top:12px; }
     .opp-v2-more-item {
       border:1px solid var(--line);
@@ -2873,7 +2809,7 @@
       .app { padding:9px 9px 24px; }
       .header {
         min-height:49px;
-        grid-template-columns:48px minmax(0,1fr) 34px;
+        grid-template-columns:48px minmax(0,1fr);
         padding:5px 10px;
       }
       .site-logo { width:48px;height:54px; }
@@ -5856,19 +5792,6 @@
       <div class="brand">
         <h1>مكاتب عقارية ذكية</h1>
         <p>منصة الفرص العقارية</p>
-      </div>
-      <div class="header-bell-wrap">
-      <button type="button" class="header-bell" id="inAppNotifBell" aria-label="التنبيهات" aria-expanded="false" aria-controls="inAppNotifPanel">
-        <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
-        <span class="header-bell-badge" id="inAppNotifBadge" hidden>0</span>
-      </button>
-      <section class="in-app-notif-panel" id="inAppNotifPanel" hidden aria-labelledby="inAppNotifTitle">
-        <div class="in-app-notif-head">
-          <h2 id="inAppNotifTitle">آخر التنبيهات</h2>
-          <button type="button" class="settings-close" id="inAppNotifClose" aria-label="إغلاق">×</button>
-        </div>
-        <div class="in-app-notif-list" id="inAppNotifList"></div>
-      </section>
       </div>
     </header>
 
