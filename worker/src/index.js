@@ -6433,7 +6433,7 @@ function base64UrlBytes(bytes) {
 function bytesToHex(bytes) { return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); }
 
 function normalizeOfficeId(value) {
-  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+  return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 function normalizeLoginPhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
