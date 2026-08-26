@@ -12,7 +12,8 @@ export const OPERATION_TYPES = Object.freeze({
   COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
   COOPERATION_MATCH: "COOPERATION_MATCH",
   EXTERNAL_RESPONSE: "EXTERNAL_RESPONSE",
-  SYSTEM_ACTION: "SYSTEM_ACTION"
+  SYSTEM_ACTION: "SYSTEM_ACTION",
+  PLATFORM_OPPORTUNITY_OFFER: "PLATFORM_OPPORTUNITY_OFFER"
 });
 
 export const OPERATION_STATUS = Object.freeze({
@@ -48,7 +49,7 @@ const TYPE_ICONS = Object.freeze({
   COOPERATION_RESPONSE: "i-user-clock",
   COOPERATION_MATCH: "i-user-clock",
   EXTERNAL_RESPONSE: "i-clipboard-list",
-  SYSTEM_ACTION: "i-clipboard-list"
+  PLATFORM_OPPORTUNITY_OFFER: "i-clipboard-list"
 });
 
 export function phase5BoundaryGuarantees() {
@@ -261,6 +262,13 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     purpose: String(op.purpose || metadata.purpose || ""),
     district: String(op.district || metadata.district || ""),
     city: String(metadata.city || ""),
+    moneyLine: String(metadata.moneyLine || ""),
+    reasonCodes: Array.isArray(metadata.reasonCodes) ? metadata.reasonCodes : [],
+    reasonLabels: Array.isArray(metadata.reasonLabels) ? metadata.reasonLabels : [],
+    livingTaskId: String(metadata.livingTaskId || ""),
+    attemptId: String(metadata.attemptId || ""),
+    hideContactUntilAccept: metadata.hideContactUntilAccept !== false && type === OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER,
+    metadata,
     proximityLabel: String(metadata.proximityLabel || ""),
     compatibilityLabel: String(metadata.compatibilityLabel || ""),
     matchReasons: Array.isArray(metadata.matchReasons) ? metadata.matchReasons : [],

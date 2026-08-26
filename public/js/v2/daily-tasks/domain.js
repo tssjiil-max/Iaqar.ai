@@ -23,6 +23,12 @@ import {
   sortGroupForLivingStage
 } from "../../match-group-domain.js";
 import { formatOpportunityReference } from "../../reference-code-domain.js";
+import {
+  ROUTER_REASON_LABELS,
+  livingTaskIdForOpportunity,
+  platformOpportunityHeadline,
+  platformOpportunityMoneyLine
+} from "../../opportunity-router-domain.js";
 
 export const DAILY_TASK_STATE = Object.freeze({
   NEW_MATCH: "new_match",
@@ -79,7 +85,9 @@ export const EXEC_ACTION = Object.freeze({
   COMPLETE_INFO: "complete_info",
   REVIEW_NEXT: "review_next_candidate",
   SHARE_DETAILS: "share_details",
-  CONFIRM_DEAL: "confirm_deal"
+  CONFIRM_DEAL: "confirm_deal",
+  ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
+  DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
 });
 
 export const SECURE_PARTY = Object.freeze({
@@ -781,6 +789,7 @@ export function isDailyTaskExecutionSource(item = {}) {
   const recordType = String(item.recordType || "").toLowerCase();
   if (opType === "MISSING_DATA") return false;
   if (upper(item.matchingReadiness) === "NEEDS_COMPLETION") return false;
+  if (opType === "PLATFORM_OPPORTUNITY_OFFER") return true;
   if (opType === "COOPERATION_MATCH" || opType === "COOPERATION_REQUEST" || opType === "COOPERATION_RESPONSE") {
     return Boolean(item.cooperationId || item.cooperationTaskId || item.id);
   }
@@ -1097,6 +1106,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
 
 export function mapOperationsItemToDailyTask(item = {}, now = new Date(), { officeId = "" } = {}) {
   if (!isDailyTaskExecutionSource(item)) return null;
+  if (isPlatformOpportunitySource(item)) return buildPlatformOpportunityDailyTask(item, now);
   if (isCooperationSource(item)) {
     const record = {
       ...item,
@@ -1131,6 +1141,16 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
   for (const item of items) {
     if (!isDailyTaskExecutionSource(item)) continue;
     if (!allowFixtures && isTestFixtureRecord(item)) continue;
+    if (isPlatformOpportunitySource(item)) {
+      const status = String(item.status || "OPEN").toUpperCase();
+      if (status === "COMPLETED" || status === "DISMISSED" || status === "EXPIRED") continue;
+      const view = buildPlatformOpportunityDailyTask(item, now);
+      const key = view?.id;
+      if (!view || !key || seen.has(key)) continue;
+      seen.add(key);
+      views.push(view);
+      continue;
+    }
     if (isCooperationSource(item)) {
       const view = mapOperationsItemToDailyTask(item, now, { officeId });
       const key = view?.cooperationTaskId || view?.id;
@@ -1199,8 +1219,75 @@ function liveBadgeKey(item = {}, now = new Date()) {
 
 function isCooperationSource(item = {}) {
   const opType = upper(item.operationType);
+  if (opType === "PLATFORM_OPPORTUNITY_OFFER") return false;
   if (opType === "COOPERATION_MATCH" || opType === "COOPERATION_REQUEST" || opType === "COOPERATION_RESPONSE") return true;
   return Boolean(item.currentStage && (item.cooperationId || item.cooperationTaskId));
+}
+
+function isPlatformOpportunitySource(item = {}) {
+  return upper(item.operationType) === "PLATFORM_OPPORTUNITY_OFFER";
+}
+
+function buildPlatformOpportunityDailyTask(item = {}, now = new Date()) {
+  const metadata = item.metadata && typeof item.metadata === "object" ? item.metadata : {};
+  const opportunityId = text(item.opportunityId || metadata.opportunityId);
+  const livingTaskId = text(metadata.livingTaskId) || livingTaskIdForOpportunity(opportunityId) || text(item.id);
+  const reasonCodes = Array.isArray(metadata.reasonCodes)
+    ? metadata.reasonCodes
+    : (Array.isArray(item.reasonCodes) ? item.reasonCodes : []);
+  const reasonLabels = Array.isArray(metadata.reasonLabels) && metadata.reasonLabels.length
+    ? metadata.reasonLabels.map((row) => text(row)).filter(Boolean)
+    : reasonCodes.map((code) => ROUTER_REASON_LABELS[code]).filter(Boolean);
+  const opportunity = {
+    opportunityKind: item.opportunityKind || metadata.opportunityKind,
+    purpose: item.purpose || metadata.purpose,
+    propertyType: item.propertyType || metadata.propertyType,
+    city: item.city || metadata.city,
+    district: item.district || metadata.district,
+    budget: item.budget || metadata.budget,
+    salePrice: item.salePrice || metadata.salePrice,
+    priceOrBudget: item.priceOrBudget || metadata.moneyLine,
+    annualRent: item.annualRent
+  };
+  const moneyLine = text(metadata.moneyLine) || platformOpportunityMoneyLine(opportunity);
+  const headline = platformOpportunityHeadline(opportunity);
+  const status = upper(item.status || "OPEN");
+  const active = status !== "COMPLETED" && status !== "DISMISSED" && status !== "EXPIRED";
+  return {
+    id: livingTaskId,
+    operationId: text(item.id),
+    opportunityId,
+    attemptId: text(metadata.attemptId),
+    livingTaskId,
+    taskKind: "platform_opportunity",
+    kindLabel: "فرصة جديدة من المنصة",
+    identityLine: headline,
+    typePurposeLine: headline,
+    placeLine: [opportunity.district, opportunity.city].filter(Boolean).join(" · "),
+    moneyLine,
+    priceOrBudget: moneyLine,
+    propertyType: text(opportunity.propertyType),
+    purpose: text(opportunity.purpose),
+    city: text(opportunity.city),
+    district: text(opportunity.district),
+    reasonTitle: "سبب ترشيح مكتبك",
+    reasonCodes,
+    reasonLabels,
+    hideContactUntilAccept: true,
+    statusLabel: active ? "بانتظار الاستلام" : status,
+    currentStatus: status,
+    requiresAction: active,
+    primaryAction: active
+      ? { id: EXEC_ACTION.ACCEPT_PLATFORM_OPPORTUNITY, label: "استلام الفرصة" }
+      : null,
+    secondaryActions: active
+      ? [{ id: EXEC_ACTION.DECLINE_PLATFORM_OPPORTUNITY, label: "اعتذار" }]
+      : [],
+    createdAt: item.createdAt || now.toISOString(),
+    updatedAt: item.updatedAt || item.createdAt || now.toISOString(),
+    isTestFixture: Boolean(item.isTestFixture || metadata.isTestFixture),
+    testRunId: text(item.testRunId || metadata.testRunId)
+  };
 }
 
 export function buildTaskHeaderViewModel(task = {}) {

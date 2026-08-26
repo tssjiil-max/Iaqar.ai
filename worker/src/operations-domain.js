@@ -11,7 +11,8 @@ export const OPERATION_TYPES = Object.freeze({
   COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
   COOPERATION_MATCH: "COOPERATION_MATCH",
   EXTERNAL_RESPONSE: "EXTERNAL_RESPONSE",
-  SYSTEM_ACTION: "SYSTEM_ACTION"
+  SYSTEM_ACTION: "SYSTEM_ACTION",
+  PLATFORM_OPPORTUNITY_OFFER: "PLATFORM_OPPORTUNITY_OFFER"
 });
 
 export const OPERATION_STATUS = Object.freeze({
@@ -102,6 +103,13 @@ const TYPE_COPY = Object.freeze({
     summary: "يوجد إجراء نظامي يحتاج انتباه المكتب.",
     action: "عرض التفاصيل",
     push: "يوجد إشعار نظامي يحتاج مراجعتك.",
+    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
+  },
+  PLATFORM_OPPORTUNITY_OFFER: {
+    title: "فرصة جديدة من المنصة",
+    summary: "رُشحت فرصة عامة لمكتبك.",
+    action: "استلام الفرصة",
+    push: "لديك فرصة جديدة من المنصة.",
     notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   }
 });
@@ -206,6 +214,79 @@ export function buildLivingCooperationDedupKey({ officeId, cooperationId }) {
     String(officeId || ""),
     String(cooperationId || "")
   ].join("|");
+}
+
+export function buildPlatformOfferDedupKey({ officeId, opportunityId }) {
+  return [
+    OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER,
+    String(officeId || ""),
+    String(opportunityId || "")
+  ].join("|");
+}
+
+export async function buildPlatformOpportunityOfferOperation({
+  officeId,
+  opportunityId,
+  livingTaskId = "",
+  attemptId = "",
+  rank = 1,
+  propertyType = "",
+  purpose = "",
+  city = "",
+  district = "",
+  moneyLine = "",
+  reasonCodes = [],
+  reasonLabels = [],
+  expiresAt = "",
+  now = new Date()
+} = {}) {
+  const type = OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER;
+  const copy = copyFor(type);
+  const deduplicationKey = buildPlatformOfferDedupKey({ officeId, opportunityId });
+  const id = await operationDocumentId(deduplicationKey);
+  const reasons = (Array.isArray(reasonLabels) ? reasonLabels : []).filter(Boolean).slice(0, 4);
+  return {
+    id,
+    officeId: String(officeId || ""),
+    assignedBrokerId: "",
+    type,
+    sourceEntityType: "platform_opportunity",
+    sourceEntityId: String(opportunityId || ""),
+    opportunityId: String(opportunityId || ""),
+    matchId: "",
+    cooperationId: "",
+    titleCode: "PLATFORM_OPPORTUNITY_OFFER_TITLE",
+    summaryCode: "PLATFORM_OPPORTUNITY_OFFER_SUMMARY",
+    titleText: copy.title,
+    summaryText: [copy.summary, ...reasons].filter(Boolean).join(" "),
+    recommendedActionCode: "ACCEPT_PLATFORM_OPPORTUNITY",
+    recommendedActionText: copy.action,
+    priority: OPERATION_PRIORITY.HIGH,
+    status: OPERATION_STATUS.OPEN,
+    deduplicationKey,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    openedAt: null,
+    completedAt: null,
+    dismissedAt: null,
+    dueAt: expiresAt || null,
+    createdBySystem: true,
+    operationVersion: 1,
+    schemaVersion: 1,
+    propertyType: String(propertyType || ""),
+    purpose: String(purpose || ""),
+    district: String(district || ""),
+    metadata: {
+      livingTaskId: String(livingTaskId || ""),
+      attemptId: String(attemptId || ""),
+      rank: Number(rank || 1),
+      city: String(city || ""),
+      moneyLine: String(moneyLine || ""),
+      reasonCodes: Array.isArray(reasonCodes) ? reasonCodes.slice(0, 6) : [],
+      reasonLabels: reasons,
+      hideContactUntilAccept: true
+    }
+  };
 }
 
 function copyFor(type) {

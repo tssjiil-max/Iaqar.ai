@@ -87,6 +87,7 @@ const defaults = {
   primaryNeighborhoodId: "",
   receiveExternalOpportunities: false,
   cooperationAvailableNow: false,
+  acceptPlatformPublicOpportunities: true,
   logoUrl: "",
   displayImageUrl: "",
   coverUrl: "",
@@ -179,6 +180,7 @@ function clean(data) {
     primaryNeighborhoodId: String(data.primaryNeighborhoodId || "").trim(),
     receiveExternalOpportunities: data.receiveExternalOpportunities === true,
     cooperationAvailableNow: data.cooperationAvailableNow === true,
+    acceptPlatformPublicOpportunities: data.acceptPlatformPublicOpportunities !== false,
     logoUrl: safeText(data.logoUrl).slice(0, 2000),
     displayImageUrl: safeText(data.displayImageUrl).slice(0, 2000),
     coverUrl: safeText(data.coverUrl).slice(0, 2000),
@@ -262,6 +264,9 @@ function writeOfficeScopeToForm(data = {}) {
       : "";
   }
   if (el.receiveExternalToggle) el.receiveExternalToggle.checked = scope.receiveExternalOpportunities === true;
+  if (el.acceptPlatformPublicToggle) {
+    el.acceptPlatformPublicToggle.checked = scope.acceptPlatformPublicOpportunities !== false;
+  }
   if (el.cooperationAvailableToggle) {
     el.cooperationAvailableToggle.checked = scope.cooperationAvailableNow === true;
   }
@@ -274,7 +279,10 @@ function readOfficeScopeFromForm() {
     primaryNeighborhoodId: el.primaryNeighborhoodId?.value || "",
     serviceNeighborhoodIds: readNeighborhoodsFromForm(),
     receiveExternalOpportunities: Boolean(el.receiveExternalToggle?.checked),
-    cooperationAvailableNow: Boolean(el.cooperationAvailableToggle?.checked)
+    cooperationAvailableNow: Boolean(el.cooperationAvailableToggle?.checked),
+    acceptPlatformPublicOpportunities: el.acceptPlatformPublicToggle
+      ? Boolean(el.acceptPlatformPublicToggle.checked)
+      : true
   };
 }
 
@@ -300,7 +308,8 @@ function initPrimaryNeighborhoodEditor() {
           primaryNeighborhoodId: id,
           serviceNeighborhoodIds: selectedServiceNeighborhoodIds,
           receiveExternalOpportunities: el.receiveExternalToggle?.checked,
-          cooperationAvailableNow: el.cooperationAvailableToggle?.checked
+          cooperationAvailableNow: el.cooperationAvailableToggle?.checked,
+          acceptPlatformPublicOpportunities: el.acceptPlatformPublicToggle?.checked !== false
         });
         if (merged.ok) writeNeighborhoodsToForm(merged.serviceNeighborhoodIds);
       }
@@ -309,6 +318,31 @@ function initPrimaryNeighborhoodEditor() {
   refresh();
   if (el.city) el.city.addEventListener("change", refresh);
   if (el.scopeCity) el.scopeCity.addEventListener("change", refresh);
+}
+
+function maybeShowPlatformOnboarding(data = {}) {
+  if (!el.platformOnboarding) return;
+  if (data.platformOpportunityOnboardingAckAt) {
+    el.platformOnboarding.hidden = true;
+    return;
+  }
+  el.platformOnboarding.hidden = false;
+}
+
+async function ackPlatformOnboarding() {
+  if (el.platformOnboarding) el.platformOnboarding.hidden = true;
+  const runtime = officeRuntime();
+  const user = authUser();
+  if (!runtime?.db || !user) return;
+  try {
+    await runtime.db.collection("offices").doc(officeId()).set({
+      officeId: officeId(),
+      platformOpportunityOnboardingAckAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    console.warn("[iaqar] platform onboarding ack", error);
+  }
 }
 
 async function saveOfficeScopeSettings() {
@@ -320,7 +354,8 @@ async function saveOfficeScopeSettings() {
     primaryNeighborhoodId: scopeInput.primaryNeighborhoodId,
     serviceNeighborhoodIds: scopeInput.serviceNeighborhoodIds,
     receiveExternalOpportunities: scopeInput.receiveExternalOpportunities,
-    cooperationAvailableNow: scopeInput.cooperationAvailableNow
+    cooperationAvailableNow: scopeInput.cooperationAvailableNow,
+    acceptPlatformPublicOpportunities: scopeInput.acceptPlatformPublicOpportunities
   });
   if (!payload.ok) {
     const message = payload.errors[0] || "تعذر حفظ نطاق العمل";
@@ -341,6 +376,7 @@ async function saveOfficeScopeSettings() {
       serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
       receiveExternalOpportunities: payload.receiveExternalOpportunities,
       cooperationAvailableNow: payload.cooperationAvailableNow,
+      acceptPlatformPublicOpportunities: payload.acceptPlatformPublicOpportunities !== false,
       city: scopeInput.city,
       updatedAt: serverTimestamp()
     };
@@ -351,6 +387,7 @@ async function saveOfficeScopeSettings() {
       serviceNeighborhoodIds: payload.serviceNeighborhoodIds,
       receiveExternalOpportunities: payload.receiveExternalOpportunities,
       cooperationAvailableNow: payload.cooperationAvailableNow,
+      acceptPlatformPublicOpportunities: payload.acceptPlatformPublicOpportunities !== false,
       city: scopeInput.city,
       approvalStatus: current.approvalStatus || "approved",
       accountStatus: current.accountStatus || "active",
@@ -593,6 +630,7 @@ async function loadFirestore() {
         primaryNeighborhoodId: data.primaryNeighborhoodId || "",
         receiveExternalOpportunities: data.receiveExternalOpportunities === true,
         cooperationAvailableNow: data.cooperationAvailableNow === true,
+        acceptPlatformPublicOpportunities: data.acceptPlatformPublicOpportunities !== false,
         approvalStatus: data.approvalStatus || "",
         accountStatus: data.accountStatus || "",
         logoUrl: data.logoUrl,
@@ -614,6 +652,7 @@ async function loadFirestore() {
       } catch (mirrorError) {
         console.warn("[iaqar] public office image mirror", mirrorError);
       }
+      maybeShowPlatformOnboarding(data);
     }
     el.note.textContent = "البيانات متزامنة مع Firestore لهذا المكتب.";
     return true;
@@ -680,6 +719,7 @@ async function reserveOfficeName(runtime, user, data) {
       primaryNeighborhoodId: data.primaryNeighborhoodId || "",
       receiveExternalOpportunities: data.receiveExternalOpportunities === true,
       cooperationAvailableNow: data.cooperationAvailableNow === true,
+      acceptPlatformPublicOpportunities: data.acceptPlatformPublicOpportunities !== false,
       cooperationMode: cooperationMode,
       updatedAt: serverTimestamp()
     }, { merge: true });
@@ -2096,6 +2136,9 @@ function init() {
   el.primaryNeighborhoodLabel = document.getElementById("officePrimaryNeighborhoodLabel");
   el.receiveExternalToggle = document.getElementById("officeReceiveExternalToggle");
   el.cooperationAvailableToggle = document.getElementById("officeCooperationAvailableToggle");
+  el.acceptPlatformPublicToggle = document.getElementById("officeAcceptPlatformPublicToggle");
+  el.platformOnboarding = document.getElementById("platformOpportunityOnboarding");
+  el.platformOnboardingAck = document.getElementById("platformOnboardingAckBtn");
   el.saveScopeBtn = document.getElementById("saveOfficeScopeBtn");
   el.scopeStatus = document.getElementById("officeScopeStatus");
   el.settingsOpeners = document.querySelectorAll("#officeSettingsBtn");
@@ -2159,6 +2202,9 @@ function init() {
     });
   }
   if (el.saveScopeBtn) el.saveScopeBtn.addEventListener("click", () => void saveOfficeScopeSettings());
+  if (el.platformOnboardingAck) {
+    el.platformOnboardingAck.addEventListener("click", () => void ackPlatformOnboarding());
+  }
   el.form.addEventListener("submit", onSave);
   if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
   el.logout.addEventListener("click", onLogout);

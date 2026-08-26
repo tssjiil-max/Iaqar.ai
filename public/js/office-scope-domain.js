@@ -20,7 +20,8 @@ export const OFFICE_SCOPE_MESSAGES = Object.freeze({
 export function defaultOfficeScopeFlags(existing = {}) {
   return {
     receiveExternalOpportunities: existing.receiveExternalOpportunities !== false,
-    cooperationAvailableNow: existing.cooperationAvailableNow !== false
+    cooperationAvailableNow: existing.cooperationAvailableNow !== false,
+    acceptPlatformPublicOpportunities: existing.acceptPlatformPublicOpportunities !== false
   };
 }
 
@@ -57,7 +58,8 @@ export function buildOfficeScopePayload({
   primaryNeighborhoodId = "",
   serviceNeighborhoodIds = [],
   receiveExternalOpportunities = false,
-  cooperationAvailableNow = false
+  cooperationAvailableNow = false,
+  acceptPlatformPublicOpportunities = true
 } = {}) {
   const cityLabel = String(city || "").trim();
   const primaryCheck = validatePrimaryNeighborhoodId(primaryNeighborhoodId, cityLabel);
@@ -73,6 +75,7 @@ export function buildOfficeScopePayload({
     serviceNeighborhoodIds: neighborhoodCheck.ids,
     receiveExternalOpportunities: receiveExternalOpportunities === true,
     cooperationAvailableNow: cooperationAvailableNow === true,
+    acceptPlatformPublicOpportunities: acceptPlatformPublicOpportunities !== false,
     errors: [
       ...(primaryCheck.ok ? [] : [primaryCheck.message]),
       ...(neighborhoodCheck.ok ? [] : [neighborhoodCheck.message])
@@ -95,7 +98,8 @@ export function resolveLegacyOfficeScope(record = {}) {
     primaryNeighborhoodId: primary,
     serviceNeighborhoodIds: mergePrimaryIntoServiceNeighborhoods(primary, serviceIds, city),
     receiveExternalOpportunities: flags.receiveExternalOpportunities,
-    cooperationAvailableNow: flags.cooperationAvailableNow
+    cooperationAvailableNow: flags.cooperationAvailableNow,
+    acceptPlatformPublicOpportunities: flags.acceptPlatformPublicOpportunities
   };
 }
 

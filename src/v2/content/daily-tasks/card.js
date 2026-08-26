@@ -24,7 +24,9 @@ function testIdForAction(actionId = "") {
     confirm_deal: "complete-deal",
     open_offer: "match-details",
     open_details: "match-details",
-    share_details: "share-details"
+    share_details: "share-details",
+    accept_platform_opportunity: "accept-platform",
+    decline_platform_opportunity: "decline-platform"
   }[actionId] || "";
 }
 
@@ -105,6 +107,12 @@ function summaryHtml(task = {}) {
   const proximity = task.proximityLine
     ? `<p class="cv2-exec-next">${escapeContentHtml(task.proximityLine)}</p>`
     : "";
+  const reasons = task.taskKind === "platform_opportunity" && Array.isArray(task.reasonLabels) && task.reasonLabels.length
+    ? `<div class="cv2-exec-reasons" data-testid="router-reasons">
+        <strong>${escapeContentHtml(task.reasonTitle || "سبب ترشيح مكتبك")}</strong>
+        <ul>${task.reasonLabels.map((label) => `<li>${escapeContentHtml(label)}</li>`).join("")}</ul>
+      </div>`
+    : "";
   const statusText = String(task.statusLabel || "").trim();
   const status = statusText && statusText !== String(task.kindLabel || "").trim()
     ? `<p class="cv2-exec-status">${escapeContentHtml(statusText)}</p>`
@@ -118,6 +126,7 @@ function summaryHtml(task = {}) {
     ${count}
     ${partner}
     ${proximity}
+    ${reasons}
     ${money}
     ${reference}
     ${status}`;
@@ -275,7 +284,7 @@ function revealHtml(task, open) {
   const closed = task.revealClosedLabel || "عرض البيانات";
   const opened = task.revealOpenLabel || "إخفاء البيانات";
   const label = open ? opened : closed;
-  const testId = task.taskKind === "cooperation" ? "coop-open" : "match-open";
+  const testId = task.taskKind === "cooperation" ? "coop-open" : (task.taskKind === "platform_opportunity" ? "platform-open" : "match-open");
   return `<button type="button" class="cv2-exec-reveal" data-cv2-exec-reveal data-testid="${testId}" aria-expanded="${open ? "true" : "false"}">${label}</button>`;
 }
 
@@ -287,9 +296,11 @@ export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = 
   const actions = open && (primary || secondary)
     ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
     : "";
-  const body = open && task.taskKind === "cooperation"
+  const body = open && task.taskKind === "platform_opportunity"
+    ? `<div class="cv2-exec-platform-body"><p>تظهر بيانات التواصل بعد استلام الفرصة.</p></div>`
+    : (open && task.taskKind === "cooperation"
     ? cooperationBodyHtml(task)
-    : (open && (task.taskKind === "match_group" || task.matchId) ? matchGroupBodyHtml(task) : (open ? `${yourTurnHtml(task)}${timelineHtml(task)}` : ""));
+    : (open && (task.taskKind === "match_group" || task.matchId) ? matchGroupBodyHtml(task) : (open ? `${yourTurnHtml(task)}${timelineHtml(task)}` : "")));
   const details = open && detailsOpen ? fullDetailsHtml(task) : "";
   return `<article
       class="cv2-exec-card${open ? " is-open" : ""}${detailsOpen ? " is-details-open" : ""}${task.taskKind === "cooperation" ? " is-coop" : ""}"
