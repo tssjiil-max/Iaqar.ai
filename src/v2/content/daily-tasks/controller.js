@@ -539,6 +539,23 @@ function onListClick(event) {
   toggleOpenTask(card.getAttribute("data-task-id"));
 }
 
+function consumePendingDailyTaskOpen() {
+  const pending = typeof window !== "undefined" ? window.IAQAR?.pendingDailyTaskOpen : null;
+  if (!pending) return;
+  const task = findTaskForNotification(pending);
+  if (!task) return;
+  window.IAQAR.pendingDailyTaskOpen = null;
+  if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+  else {
+    window.requestAnimationFrame(() => {
+      state.root?.querySelector(`[data-task-id="${task.id}"]`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    });
+  }
+}
+
 function renderList() {
   if (!state.root) return;
   state.root.innerHTML = buildDailyTaskListHtml(currentTasks(), {
@@ -546,6 +563,7 @@ function renderList() {
     detailsTaskId: state.detailsTaskId
   });
   restoreScroll();
+  consumePendingDailyTaskOpen();
 }
 
 function onOperationsData(event) {

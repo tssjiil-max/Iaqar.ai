@@ -104,23 +104,22 @@ async function markRead(id) {
 
 function openDailyTaskFromNotification(row) {
   const target = notificationTapTarget(row);
+  const detail = {
+    id: target.taskId || target.operationId || target.matchId,
+    taskId: target.taskId,
+    matchId: target.matchId,
+    matchGroupId: target.taskId,
+    opportunityId: target.opportunityId,
+    operationId: target.operationId
+  };
+  window.IAQAR = window.IAQAR || {};
+  window.IAQAR.pendingDailyTaskOpen = detail;
   window.IAQAR?.homeTabs?.switchTo?.("operations");
-  window.dispatchEvent(new CustomEvent("iaqar:open-operation", {
-    detail: {
-      id: target.taskId || target.operationId || target.matchId,
-      matchId: target.matchId,
-      matchGroupId: target.taskId,
-      opportunityId: target.opportunityId
-    }
-  }));
-  window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", {
-    detail: {
-      taskId: target.taskId,
-      matchId: target.matchId,
-      opportunityId: target.opportunityId,
-      operationId: target.operationId
-    }
-  }));
+  window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
+  window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+  window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+  }, 80);
 }
 
 async function onItemClick(event) {

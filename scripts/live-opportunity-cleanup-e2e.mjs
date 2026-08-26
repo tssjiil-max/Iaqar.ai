@@ -187,6 +187,61 @@ async function openOffers(page) {
   await page.waitForTimeout(800);
 }
 
+async function revealOpportunityCard(page, id) {
+  for (let i = 0; i < 10; i += 1) {
+    if (await page.locator(`[data-opportunity-id="${id}"]`).count()) return true;
+    const more = page.locator("#bankLoadMoreBtn");
+    if (!(await more.count()) || !(await more.isVisible().catch(() => false))) break;
+    await more.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  return Boolean(await page.locator(`[data-opportunity-id="${id}"]`).count());
+}
+
+async function waitForOpportunityState(officeId, id, predicate, timeoutMs = 20000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const snap = await db.collection("offices").doc(officeId).collection("opportunities").doc(id).get();
+    if (predicate(snap)) return snap;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return null;
+}
+
+async function deleteLeftoverManualOffers() {
+  const snap = await db.collection("offices").doc(USER_OFFICE).collection("opportunities").get();
+  const leftovers = snap.docs.filter((doc) => doc.id.startsWith("opp_manual_"));
+  await Promise.all(leftovers.map((doc) => doc.ref.delete()));
+  return leftovers.length;
+}
+
+async function openArchiveConfirm(page, id) {
+  if (await page.locator(`[data-inbox-archive="${id}"]`).count()) {
+    await page.locator(`[data-inbox-archive="${id}"]`).click();
+  } else {
+    await page.evaluate(async (opportunityId) => {
+      const officeId = window.IAQAR.office.officeId;
+      const snap = await window.IAQAR.office.db.collection("offices").doc(officeId)
+        .collection("opportunities").doc(opportunityId).get();
+      window.IAQAR.confirmArchiveOpportunity(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
+    }, id);
+  }
+  await page.locator("#archiveOpportunityConfirm").click({ timeout: 8000 });
+}
+
+async function openPermanentDeleteConfirm(page, id) {
+  if (await page.locator(`[data-archive-purge="${id}"]`).count()) {
+    await page.locator(`[data-archive-purge="${id}"]`).click();
+  } else {
+    await page.evaluate(async (opportunityId) => {
+      const officeId = window.IAQAR.office.officeId;
+      const snap = await window.IAQAR.office.db.collection("offices").doc(officeId)
+        .collection("opportunities").doc(opportunityId).get();
+      window.IAQAR.confirmPermanentDelete(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
+    }, id);
+  }
+}
+
 async function ensureQaOffice() {
   const source = db.collection("offices").doc(USER_OFFICE);
   const office = db.collection("offices").doc(QA_OFFICE);
@@ -274,9 +329,10 @@ async function main() {
       recordVideo: { dir: OUT, size: { width: 390, height: 844 } }
     });
 
+    await deleteLeftoverManualOffers();
     await loginPage(page, origin, USER_OFFICE, auth.customToken);
     await openOffers(page);
-    shots.clean = path.join(OUT, "offers_requests_clean.png");
+    shots.clean = path.join(OUT, "offers_requests_clean_after_qa_cleanup.png");
     await page.screenshot({ path: shots.clean, fullPage: true, animations: "disabled" });
 
     const created = await page.evaluate(async ({ officeId }) => {
@@ -321,82 +377,86 @@ async function main() {
     await page.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 60000 });
     await openOffers(page);
     await page.waitForTimeout(2000);
-    const row = page.locator(`[data-opportunity-id="${created.id}"]`);
-    if (!(await row.count())) {
-      await page.locator("#bankLoadMoreBtn").click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(1000);
-    }
-    const visible = await row.count();
+    const visible = await revealOpportunityCard(page, created.id);
     mark(4, visible ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", visible ? created.id : "offer not visible");
-    shots.created = path.join(OUT, "offers_manual_created.png");
+    shots.created = path.join(OUT, "offers_manual_created_active.png");
     await page.screenshot({ path: shots.created, fullPage: true, animations: "disabled" });
 
     try {
-    const archiveBtn = page.locator(`[data-inbox-archive="${created.id}"]`);
-    if (visible && await archiveBtn.count()) {
-      await archiveBtn.click();
-      await page.locator("#archiveOpportunityConfirm").click();
-      await page.waitForTimeout(2500);
-      await page.waitForFunction(() => {
-        const overlay = document.getElementById("archiveOpportunityOverlay");
-        return !overlay || overlay.hidden;
-      }, { timeout: 10000 }).catch(() => {});
-    }
-    await page.locator("#bankFilterArchived").click();
-    await page.waitForTimeout(800);
-    const inArchive = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
-    await page.locator("#bankFilterActive").click();
-    await page.waitForTimeout(400);
-    const stillActive = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
-    mark(5, inArchive && !stillActive ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `archive=${inArchive} active=${stillActive}`);
-    shots.archive = path.join(OUT, "offers_archive_list.png");
-    await page.locator("#bankFilterArchived").click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: shots.archive, fullPage: true, animations: "disabled" });
-
-    if (inArchive) {
-      await page.locator(`[data-archive-restore="${created.id}"]`).click();
+      if (visible) await openArchiveConfirm(page, created.id);
+      const archivedDoc = await waitForOpportunityState(
+        USER_OFFICE,
+        created.id,
+        (snap) => snap.exists && (snap.data()?.lifecycleStatus === "ARCHIVED" || Boolean(snap.data()?.archivedAt))
+      );
+      await page.locator("#bankFilterArchived").click();
       await page.waitForTimeout(1200);
+      const inArchive = await revealOpportunityCard(page, created.id);
       await page.locator("#bankFilterActive").click();
-      await page.waitForTimeout(600);
-      const restored = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
-      mark(6, restored ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", created.id);
-    } else {
-      mark(6, "FAIL — LIVE E2E", "not in archive");
-    }
+      await page.waitForTimeout(800);
+      const stillActive = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
+      mark(5, inArchive && !stillActive && archivedDoc ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        `archive=${inArchive} active=${stillActive} firestore=${Boolean(archivedDoc)}`);
+      shots.archive = path.join(OUT, "offers_archive_list_restore_actions.png");
+      await page.locator("#bankFilterArchived").click();
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: shots.archive, fullPage: true, animations: "disabled" });
 
-    if (await page.locator(`[data-inbox-archive="${created.id}"]`).count()) {
-      await page.locator(`[data-inbox-archive="${created.id}"]`).click();
-      await page.locator("#archiveOpportunityConfirm").click();
-      await page.waitForTimeout(1000);
-    }
-    await page.locator("#bankFilterArchived").click();
-    await page.waitForTimeout(600);
-    if (await page.locator(`[data-archive-purge="${created.id}"]`).count()) {
-      await page.locator(`[data-archive-purge="${created.id}"]`).click();
-      shots.delete = path.join(OUT, "offers_delete_confirmation.png");
+      if (inArchive) {
+        await page.locator(`[data-archive-restore="${created.id}"]`).click();
+      } else {
+        await page.evaluate(async (opportunityId) => {
+          const officeId = window.IAQAR.office.officeId;
+          const snap = await window.IAQAR.office.db.collection("offices").doc(officeId)
+            .collection("opportunities").doc(opportunityId).get();
+          await window.IAQAR.restoreOpportunity(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
+        }, created.id);
+      }
+      const restoredDoc = await waitForOpportunityState(
+        USER_OFFICE,
+        created.id,
+        (snap) => snap.exists && snap.data()?.lifecycleStatus !== "ARCHIVED" && !snap.data()?.archivedAt
+      );
+      await page.locator("#bankFilterActive").click();
+      await page.waitForTimeout(1200);
+      const restoredUi = await revealOpportunityCard(page, created.id);
+      mark(6, restoredDoc && restoredUi ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        `ui=${restoredUi} lifecycle=${restoredDoc?.data()?.lifecycleStatus || "missing"} archivedAt=${restoredDoc?.data()?.archivedAt ?? "cleared"}`);
+
+      await page.locator("#bankFilterActive").click();
+      await page.waitForTimeout(400);
+      await revealOpportunityCard(page, created.id);
+      await openArchiveConfirm(page, created.id);
+      await waitForOpportunityState(
+        USER_OFFICE,
+        created.id,
+        (snap) => snap.exists && (snap.data()?.lifecycleStatus === "ARCHIVED" || Boolean(snap.data()?.archivedAt))
+      );
+      await page.locator("#bankFilterArchived").click();
+      await page.waitForTimeout(1200);
+      await revealOpportunityCard(page, created.id);
+      await openPermanentDeleteConfirm(page, created.id);
+      shots.delete = path.join(OUT, "offers_permanent_delete_confirmation.png");
+      await page.locator("#permanentDeleteOverlay").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
       await page.locator("#permanentDeleteOverlay").screenshot({ path: shots.delete, animations: "disabled" }).catch(async () => {
         await page.screenshot({ path: shots.delete, animations: "disabled" });
       });
-      await page.locator("#permanentDeleteConfirm").click();
-      await page.waitForTimeout(1500);
-    } else {
-      shots.delete = path.join(OUT, "offers_delete_confirmation.png");
-      await page.screenshot({ path: shots.delete, animations: "disabled" });
-    }
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await interceptWorker(page);
-    await page.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 60000 });
-    await openOffers(page);
-    await page.locator("#bankFilterArchived").click();
-    await page.waitForTimeout(600);
-    const gone = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
-    const doc = await db.collection("offices").doc(USER_OFFICE).collection("opportunities").doc(created.id).get();
-    mark(7, !gone && !doc.exists ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `ui=${gone} firestore=${doc.exists}`);
+      await page.locator("#permanentDeleteConfirm").click({ timeout: 8000 });
+      const purged = await waitForOpportunityState(USER_OFFICE, created.id, (snap) => !snap.exists, 25000);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await interceptWorker(page);
+      await page.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 60000 });
+      await openOffers(page);
+      await page.locator("#bankFilterArchived").click();
+      await page.waitForTimeout(800);
+      const goneUi = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
+      const goneDoc = await db.collection("offices").doc(USER_OFFICE).collection("opportunities").doc(created.id).get();
+      mark(7, purged && !goneUi && !goneDoc.exists ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        `ui=${goneUi} firestore=${goneDoc.exists}`);
 
-    const leftoverMatch = await db.collection("offices").doc(USER_OFFICE).collection("matches")
-      .where("opportunityId", "==", created.id).limit(5).get().catch(() => ({ docs: [] }));
-    mark(8, leftoverMatch.docs.length === 0 ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `matches=${leftoverMatch.docs.length}`);
+      const leftoverMatch = await db.collection("offices").doc(USER_OFFICE).collection("matches")
+        .where("opportunityId", "==", created.id).limit(5).get().catch(() => ({ docs: [] }));
+      mark(8, leftoverMatch.docs.length === 0 ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `matches=${leftoverMatch.docs.length}`);
     } catch (error) {
       mark(5, results[5]?.status || "FAIL — LIVE E2E", String(error).slice(0, 180));
       if (!results[6]) mark(6, "FAIL — LIVE E2E", String(error).slice(0, 120));
@@ -421,29 +481,10 @@ async function main() {
     const qaPage = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "ar-SA" });
     await loginPage(qaPage, origin, QA_OFFICE, auth.customToken);
     await qaPage.waitForTimeout(2000);
-    shots.badge = path.join(OUT, "notification_badge.png");
+    shots.badge = path.join(OUT, "notification_unread_badge.png");
     await qaPage.locator("#inAppNotifBell").screenshot({ path: shots.badge, animations: "disabled" }).catch(async () => {
       await qaPage.screenshot({ path: shots.badge, animations: "disabled" });
     });
-    await qaPage.locator("#inAppNotifBell").click();
-    await qaPage.waitForTimeout(600);
-    shots.list = path.join(OUT, "notification_list.png");
-    await qaPage.locator("#inAppNotifPanel").screenshot({ path: shots.list, animations: "disabled" }).catch(async () => {
-      await qaPage.screenshot({ path: shots.list, animations: "disabled" });
-    });
-    const unreadBefore = await qaPage.locator("#inAppNotifBadge").innerText().catch(() => "");
-    const firstNotif = qaPage.locator(".in-app-notif-item").first();
-    if (await firstNotif.count()) {
-      await firstNotif.click();
-      await qaPage.waitForTimeout(1200);
-      shots.tap = path.join(OUT, "notification_opens_daily_task.png");
-      await qaPage.screenshot({ path: shots.tap, fullPage: true, animations: "disabled" });
-      mark(12, "PASS — LIVE E2E", "tapped first notification");
-    } else {
-      shots.tap = path.join(OUT, "notification_opens_daily_task.png");
-      await qaPage.screenshot({ path: shots.tap, fullPage: true, animations: "disabled" });
-      mark(12, "FAIL — LIVE E2E", "no notification items");
-    }
 
     if (matchId) {
       const mint = await worker.fetch(new Request("https://iaqar.test/party/sessions", {
@@ -465,11 +506,10 @@ async function main() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "interested" })
         }), workerEnv);
-        const replyBody = await reply.json().catch(() => ({}));
-        await qaPage.waitForTimeout(1500);
+        await qaPage.waitForTimeout(1800);
         const interested = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
-          .docs.some((doc) => /مهتم/.test(String(doc.data()?.title || "")));
-        mark(10, interested || reply.ok ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `reply=${reply.status} interested=${interested}`);
+          .docs.some((doc) => /مهتم/.test(String(doc.data()?.title || "")) && String(doc.data()?.matchId || "") === matchId);
+        mark(10, interested ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `reply=${reply.status} interested=${interested}`);
 
         const ownerMint = await worker.fetch(new Request("https://iaqar.test/party/sessions", {
           method: "POST",
@@ -490,10 +530,10 @@ async function main() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "property_available" })
           }), workerEnv);
-          await qaPage.waitForTimeout(1200);
+          await qaPage.waitForTimeout(1800);
           const ownerNotif = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
-            .docs.some((doc) => /المالك/.test(String(doc.data()?.title || "")));
-          mark(11, ownerNotif || ownerReply.ok ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `ownerNotif=${ownerNotif}`);
+            .docs.some((doc) => /المالك/.test(String(doc.data()?.title || "")) && String(doc.data()?.matchId || "") === matchId);
+          mark(11, ownerNotif ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `ownerNotif=${ownerNotif} status=${ownerReply.status}`);
         } else {
           mark(11, "FAIL — LIVE E2E", JSON.stringify(ownerBody).slice(0, 200));
         }
@@ -506,21 +546,66 @@ async function main() {
       mark(11, "NOT RUN", "no matchId");
     }
 
-    const unreadAfter = await qaPage.locator("#inAppNotifBadge").innerText().catch(() => "");
-    mark(13, unreadAfter !== unreadBefore || unreadAfter === "" || unreadAfter === "0" ? "PASS — LIVE E2E" : "PASS — LIVE E2E", `before=${unreadBefore} after=${unreadAfter}`);
-    await qaPage.reload({ waitUntil: "domcontentloaded" });
-    await interceptWorker(qaPage);
-    await qaPage.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 60000 });
-    await qaPage.waitForTimeout(1500);
-    mark(14, "PASS — LIVE E2E", "reload completed with listener");
-    const titles = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
-      .docs.map((doc) => doc.data()?.title || "");
-    const interestedCount = titles.filter((title) => /مهتم/.test(title)).length;
-    mark(15, interestedCount <= 1 ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `interested titles=${interestedCount}`);
+    await qaPage.locator("#inAppNotifBell").click();
+    await qaPage.waitForTimeout(800);
+    shots.list = path.join(OUT, "notification_center_list.png");
+    await qaPage.locator("#inAppNotifPanel").screenshot({ path: shots.list, animations: "disabled" }).catch(async () => {
+      await qaPage.screenshot({ path: shots.list, animations: "disabled" });
+    });
+
+    const unreadDocs = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
+      .docs.filter((doc) => !doc.data()?.readAt);
+    const tapTarget = unreadDocs.find((doc) => String(doc.data()?.matchId || "") === matchId) || unreadDocs[0];
+    const unreadBefore = unreadDocs.length;
+    if (tapTarget) {
+      await qaPage.locator(`[data-notif-id="${tapTarget.id}"]`).click({ timeout: 8000 }).catch(async () => {
+        await qaPage.locator(".in-app-notif-item").first().click();
+      });
+      const opened = await qaPage.waitForSelector(".cv2-exec-card.is-open", { timeout: 10000 }).catch(() => null);
+      shots.tap = path.join(OUT, "notification_opens_correct_daily_task.png");
+      await qaPage.screenshot({ path: shots.tap, fullPage: true, animations: "disabled" });
+      mark(12, opened ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", opened ? `opened ${tapTarget.id}` : "daily task card did not open");
+
+      const started = Date.now();
+      let readAt = null;
+      while (Date.now() - started < 15000) {
+        const snap = await db.collection("offices").doc(QA_OFFICE).collection("notifications").doc(tapTarget.id).get();
+        readAt = snap.data()?.readAt || null;
+        if (readAt) break;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      const unreadAfter = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
+        .docs.filter((doc) => !doc.data()?.readAt).length;
+      mark(13, readAt && unreadAfter <= unreadBefore ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        `readAt=${Boolean(readAt)} unread ${unreadBefore}→${unreadAfter}`);
+
+      await qaPage.reload({ waitUntil: "domcontentloaded" });
+      await interceptWorker(qaPage);
+      await qaPage.waitForFunction(() => !document.body.classList.contains("access-locked"), { timeout: 60000 });
+      await qaPage.waitForTimeout(2000);
+      const persisted = await db.collection("offices").doc(QA_OFFICE).collection("notifications").doc(tapTarget.id).get();
+      mark(14, persisted.data()?.readAt ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
+        `persistedRead=${Boolean(persisted.data()?.readAt)}`);
+    } else {
+      shots.tap = path.join(OUT, "notification_opens_correct_daily_task.png");
+      await qaPage.screenshot({ path: shots.tap, fullPage: true, animations: "disabled" });
+      mark(12, "FAIL — LIVE E2E", "no unread notifications");
+      mark(13, "FAIL — LIVE E2E", "no unread notifications");
+      mark(14, "NOT RUN", "no notification to persist");
+    }
+    const interestedDocs = (await db.collection("offices").doc(QA_OFFICE).collection("notifications").get())
+      .docs.filter((doc) => /مهتم/.test(String(doc.data()?.title || "")));
+    const interestedByMatch = new Map();
+    for (const doc of interestedDocs) {
+      const key = String(doc.data()?.matchId || doc.data()?.deduplicationKey || doc.id);
+      interestedByMatch.set(key, (interestedByMatch.get(key) || 0) + 1);
+    }
+    const duplicated = [...interestedByMatch.values()].some((count) => count > 1);
+    mark(15, duplicated ? "FAIL — LIVE E2E" : "PASS — LIVE E2E", `interested=${interestedDocs.length} unique=${interestedByMatch.size}`);
 
     const video = await page.video()?.path();
     if (video) {
-      copyFileSync(video, path.join(OUT, "archive_delete_notifications.webm"));
+      copyFileSync(video, path.join(OUT, "archive_restore_purge_notifications.webm"));
     }
     await qaPage.close();
     await page.close();

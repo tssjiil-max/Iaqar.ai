@@ -2996,9 +2996,12 @@ async function restoreOpportunity(id, existing) {
   }
   setStatus("جارٍ الاستعادة…");
   try {
-    await persistOpportunityPatch(id, result.patch, { context: "restore" });
-    state.records.set(id, { ...existing, ...result.patch, id });
-    renderList();
+    const { reloaded } = await persistOpportunityPatch(id, result.patch, { context: "restore" });
+    state.records.set(id, reloaded || { ...existing, ...result.patch, id });
+    state.filter = "active";
+    state.queryFilters.summaryKey = "total";
+    syncFilterButtons();
+    await loadBankPage({ reset: true });
     await rematchOpportunity(id, { reason: "restore" });
     setStatus("تمت الاستعادة", "is-done");
     toast("تمت استعادة الفرصة");
