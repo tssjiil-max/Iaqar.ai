@@ -34,11 +34,12 @@ test("production preflight does not require blaze-only scheduled backups on spar
   assert.equal(source.includes("enable managed backup schedule / PITR before controlled deploy"), false);
 });
 
-test("production preflight reports spark plan, pilot access, and registration lock", () => {
+test("production preflight reports spark plan, pilot max 5, office #6 denial, and registration lock", () => {
   const source = read("scripts", "preflight-production-blockers.mjs");
   assert.ok(source.includes("FIREBASE PLAN"));
+  assert.ok(source.includes("PILOT MAX 5"));
+  assert.ok(source.includes("OFFICE #6 DENIAL"));
+  assert.ok(source.includes("does not require 5 offices pre-seeded"));
   assert.ok(source.includes("evaluatePilotRegistration"));
   assert.ok(source.includes("REAL ACTIVE PRODUCTION OFFICES"));
-  assert.ok(source.includes("PILOT ACCESS"));
-  assert.ok(source.includes("do not seed fake offices"));
 });

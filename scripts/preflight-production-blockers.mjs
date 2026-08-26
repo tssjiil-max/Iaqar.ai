@@ -298,11 +298,32 @@ function verifyVersionMarkerMechanism() {
   return { ok: checks.length === 0, checks };
 }
 
-function assessPilotAccess(activeOffices, pilotConfig) {
+function assessPilotMaxFive(activeOffices, pilotConfig) {
+  const activeCount = activeOffices.length;
+  const maxOffices = pilotConfig.maxOffices || 5;
+  const architectureSupportsMaxFive = maxOffices === 5 && activeCount <= 5;
+  const detail = activeCount > 0
+    ? `maxOffices=5; ${activeCount} real active office(s); does not require 5 offices pre-seeded`
+    : "maxOffices=5; no active offices yet; limit enforced by registration lock at capacity";
+
+  if (!architectureSupportsMaxFive) {
+    return { status: STATUS.fail, detail: `maxOffices=${maxOffices}; active=${activeCount}` };
+  }
+
+  const unitConfig = normalizePilotAccessConfig({
+    enabled: true,
+    maxOffices: 5,
+    authorizedOfficeIds: activeOffices.map((office) => office.officeId).slice(0, 5)
+  });
+  if (unitConfig.maxOffices !== 5) {
+    return { status: STATUS.fail, detail: "pilot maxOffices normalization failed" };
+  }
+
+  return { status: STATUS.passUnit, detail };
+}
+
+function assessOfficeSixDenial(activeOffices, pilotConfig) {
   const activeIds = activeOffices.map((office) => office.officeId);
-  const architectureNote = activeOffices.length > 0
-    ? `maxOffices=${pilotConfig.maxOffices}; ${activeOffices.length} real active office(s); do not seed fake offices`
-    : "no active production offices to authorize";
 
   if (pilotConfig.enabled && pilotConfig.authorizedOfficeIds.length > 0) {
     const sixthCandidateId = activeOffices.find((office) => !pilotConfig.authorizedOfficeIds.includes(office.officeId))?.officeId
@@ -311,7 +332,7 @@ function assessPilotAccess(activeOffices, pilotConfig) {
     if (!sixthDecision.allowed) {
       return {
         status: STATUS.passPreflight,
-        detail: `live enabled; denies ${sixthCandidateId}; ${architectureNote}`
+        detail: `live enabled; denies ${sixthCandidateId}`
       };
     }
     return {
@@ -331,7 +352,7 @@ function assessPilotAccess(activeOffices, pilotConfig) {
   if (unitDenial.allowed === false) {
     return {
       status: STATUS.passUnit,
-      detail: `live disabled; unit denies office-6-probe; ${architectureNote}`
+      detail: "live pilotAccess disabled; unit denies office-6-probe"
     };
   }
   return {
@@ -352,11 +373,11 @@ async function main() {
     results.push(failPreflight("BACKUP/RECOVERY", "credentials unavailable"));
     results.push(failPreflight("ROLLBACK TARGET", "credentials unavailable"));
     results.push(report("REAL ACTIVE PRODUCTION OFFICES", STATUS.notRun));
-    results.push(failPreflight("PILOT ACCESS", "credentials unavailable"));
+    results.push(failPreflight("PILOT MAX 5", "credentials unavailable"));
+    results.push(failPreflight("OFFICE #6 DENIAL", "credentials unavailable"));
     results.push(failPreflight("REGISTRATION LOCK", "credentials unavailable"));
     results.push(failPreflight("VERSION MARKER", "credentials unavailable"));
   } else {
-    results.push(passPreflight("PRODUCTION CREDENTIALS"));
     const accessToken = await getProductionAccessToken(creds.serviceAccount);
     planInfo = await inferFirebasePlan(accessToken);
     results.push(report(
@@ -364,6 +385,7 @@ async function main() {
       planInfo.plan === SPARK_PLAN || planInfo.plan === BLAZE_PLAN ? STATUS.passPreflight : STATUS.fail,
       `${planInfo.plan}; source=${planInfo.source}`
     ));
+    results.push(passPreflight("PRODUCTION CREDENTIALS"));
 
     let rollback = { ok: false, reason: "not_checked" };
     try {
@@ -405,8 +427,11 @@ async function main() {
 
       results.push(report("REAL ACTIVE PRODUCTION OFFICES", String(activeOffices.length)));
 
-      const pilotAccess = assessPilotAccess(activeOffices, pilotConfig);
-      results.push(report("PILOT ACCESS", pilotAccess.status, pilotAccess.detail));
+      const pilotMaxFive = assessPilotMaxFive(activeOffices, pilotConfig);
+      results.push(report("PILOT MAX 5", pilotMaxFive.status, pilotMaxFive.detail));
+
+      const officeSix = assessOfficeSixDenial(activeOffices, pilotConfig);
+      results.push(report("OFFICE #6 DENIAL", officeSix.status, officeSix.detail));
 
       const registrationDecision = evaluatePilotRegistration(pilotConfig, {
         activeOfficeCount: activeOffices.length
@@ -428,7 +453,8 @@ async function main() {
       }
     } catch (error) {
       results.push(report("REAL ACTIVE PRODUCTION OFFICES", STATUS.notRun, error.message));
-      results.push(failPreflight("PILOT ACCESS", error.message));
+      results.push(failPreflight("PILOT MAX 5", error.message));
+      results.push(failPreflight("OFFICE #6 DENIAL", error.message));
       results.push(failPreflight("REGISTRATION LOCK", error.message));
     }
   }
