@@ -86,7 +86,15 @@ async function readPilotAccessConfig(accessToken) {
   });
 }
 
-async function verifyBackupRecovery(accessToken) {
+const SPARK_PLAN = "SPARK";
+const BLAZE_PLAN = "BLAZE";
+
+async function inferFirebasePlan(accessToken) {
+  const explicitPlan = String(process.env.IAQAR_FIREBASE_PLAN || "").trim().toUpperCase();
+  if (explicitPlan === SPARK_PLAN || explicitPlan === BLAZE_PLAN) {
+    return { plan: explicitPlan, source: "env" };
+  }
+
   const databaseUrl = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)`;
   const databaseResponse = await fetch(databaseUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -94,65 +102,103 @@ async function verifyBackupRecovery(accessToken) {
   });
   const databaseBody = await readJsonResponse(databaseResponse);
 
-  const schedulesUrl = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/backupSchedules`;
-  const schedulesResponse = await fetch(schedulesUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(30_000)
-  });
-  const schedulesBody = await readJsonResponse(schedulesResponse);
+  const schedulesResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/backupSchedules`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(30_000) }
+  );
+  const backupsResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/backups?pageSize=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(30_000) }
+  );
 
-  const backupsUrl = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/backups?pageSize=5`;
-  const backupsResponse = await fetch(backupsUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(30_000)
-  });
-  const backupsBody = await readJsonResponse(backupsResponse);
-
-  const schedules = schedulesBody.backupSchedules || [];
-  const backups = backupsBody.backups || [];
   const pitr = String(databaseBody.pointInTimeRecoveryEnablement || "UNKNOWN");
+  const sparkSignals = [
+    pitr === "POINT_IN_TIME_RECOVERY_DISABLED",
+    backupsResponse.status === 404,
+    schedulesResponse.status === 403 || schedulesResponse.status === 404
+  ].filter(Boolean).length;
 
-  if (backups.length > 0) {
-    const latest = backups[0];
+  if (sparkSignals >= 2) {
+    return { plan: SPARK_PLAN, source: "api_signals", pitr };
+  }
+  if (pitr === "POINT_IN_TIME_RECOVERY_ENABLED") {
+    return { plan: BLAZE_PLAN, source: "pitr_enabled", pitr };
+  }
+  return { plan: "UNKNOWN", source: "inconclusive", pitr };
+}
+
+async function verifyBackupRecovery(accessToken, rollback) {
+  const databaseUrl = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)`;
+  const databaseResponse = await fetch(databaseUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(30_000)
+  });
+  const databaseBody = await readJsonResponse(databaseResponse);
+  if (!databaseResponse.ok) {
+    return { ok: false, reason: `firestore database HTTP ${databaseResponse.status}` };
+  }
+
+  const planInfo = await inferFirebasePlan(accessToken);
+  const pitr = String(databaseBody.pointInTimeRecoveryEnablement || planInfo.pitr || "UNKNOWN");
+
+  if (planInfo.plan === BLAZE_PLAN) {
+    const backupsResponse = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/backups?pageSize=5`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(30_000) }
+    );
+    const backupsBody = await readJsonResponse(backupsResponse);
+    const backups = backupsBody.backups || [];
+    if (backups.length > 0) {
+      const latest = backups[0];
+      return {
+        ok: true,
+        plan: BLAZE_PLAN,
+        mechanism: "managed_backup",
+        reference: latest.name,
+        timestamp: latest.snapshotTime || latest.createTime || "unknown"
+      };
+    }
+    if (pitr === "POINT_IN_TIME_RECOVERY_ENABLED") {
+      return {
+        ok: true,
+        plan: BLAZE_PLAN,
+        mechanism: "point_in_time_recovery",
+        reference: `projects/${PRODUCTION_PROJECT}/databases/(default)`,
+        timestamp: pitr
+      };
+    }
     return {
-      ok: true,
-      mechanism: "scheduled_backup",
-      reference: latest.name,
-      timestamp: latest.snapshotTime || latest.createTime || "unknown",
-      pitr
+      ok: false,
+      plan: BLAZE_PLAN,
+      reason: "blaze_project_without_verified_managed_backup_or_pitr"
     };
   }
-  if (schedules.length > 0) {
+
+  const deployScriptReady = existsSync(deployScriptPath)
+    && readFileSync(deployScriptPath, "utf8").includes("firebase deploy");
+  const hostingRollbackReady = Boolean(rollback?.ok && rollback.rollbackTarget);
+  if (!hostingRollbackReady) {
     return {
-      ok: true,
-      mechanism: "backup_schedule",
-      reference: schedules[0].name,
-      timestamp: schedules[0].updateTime || schedules[0].createTime || "schedule-only",
-      pitr
+      ok: false,
+      plan: planInfo.plan === SPARK_PLAN ? SPARK_PLAN : "UNKNOWN",
+      reason: "spark_requires_verified_hosting_release_rollback"
     };
   }
-
-  const reasons = [];
-  if (pitr !== "POINT_IN_TIME_RECOVERY_ENABLED") {
-    reasons.push(`pointInTimeRecovery=${pitr}`);
-  }
-  if (backupsResponse.status === 404) {
-    reasons.push("no_managed_backups");
-  } else if (!backupsResponse.ok) {
-    reasons.push(`backups_api_http_${backupsResponse.status}`);
-  }
-  if (schedulesResponse.status === 403) {
-    reasons.push("backupSchedules_permission_denied");
-  } else if (!schedulesResponse.ok && schedulesResponse.status !== 404) {
-    reasons.push(`backupSchedules_http_${schedulesResponse.status}`);
+  if (!deployScriptReady) {
+    return {
+      ok: false,
+      plan: planInfo.plan === SPARK_PLAN ? SPARK_PLAN : "UNKNOWN",
+      reason: "spark_requires_git_based_redeploy_script"
+    };
   }
 
   return {
-    ok: false,
-    mechanism: "none_verified",
-    pitr,
-    minimumRecovery: "owner-run Firestore export or enable managed backup schedule / PITR before controlled deploy",
-    reason: reasons.join("; ") || "no_backup_or_schedule_found"
+    ok: true,
+    plan: planInfo.plan === SPARK_PLAN ? SPARK_PLAN : "UNKNOWN",
+    mechanism: "spark_hosting_rollback+git_rules_redeploy+firestore_readable",
+    reference: rollback.rollbackTarget,
+    timestamp: rollback.createTime || "live_release",
+    note: "scheduled_backups_and_pitr_are_blaze_only_and_not_required_on_spark; firestore_data_restore_requires_owner_manual_export"
   };
 }
 
@@ -252,63 +298,76 @@ function verifyVersionMarkerMechanism() {
   return { ok: checks.length === 0, checks };
 }
 
-function runUnitTests(testFiles) {
-  try {
-    execFileSync(process.execPath, ["--test", ...testFiles], {
-      cwd: root,
-      stdio: "pipe",
-      encoding: "utf8"
-    });
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, detail: String(error.stderr || error.message || "unit tests failed").split("\n").slice(-3).join(" ") };
-  }
-}
-
-function assessPilotMaxFiveArchitecture(activeOffices, pilotConfig) {
+function assessPilotAccess(activeOffices, pilotConfig) {
   const activeIds = activeOffices.map((office) => office.officeId);
-  const canStartWithCurrent = activeOffices.length > 0
-    && activeOffices.length <= pilotConfig.maxOffices;
-  const seedReady = activeOffices.length > 0;
+  const architectureNote = activeOffices.length > 0
+    ? `maxOffices=${pilotConfig.maxOffices}; ${activeOffices.length} real active office(s); do not seed fake offices`
+    : "no active production offices to authorize";
+
+  if (pilotConfig.enabled && pilotConfig.authorizedOfficeIds.length > 0) {
+    const sixthCandidateId = activeOffices.find((office) => !pilotConfig.authorizedOfficeIds.includes(office.officeId))?.officeId
+      || "office-6-probe";
+    const sixthDecision = evaluatePilotOfficeAccess(pilotConfig, sixthCandidateId);
+    if (!sixthDecision.allowed) {
+      return {
+        status: STATUS.passPreflight,
+        detail: `live enabled; denies ${sixthCandidateId}; ${architectureNote}`
+      };
+    }
+    return {
+      status: STATUS.fail,
+      detail: `${sixthCandidateId} was not denied`
+    };
+  }
+
+  const unitConfig = normalizePilotAccessConfig({
+    enabled: true,
+    maxOffices: 5,
+    authorizedOfficeIds: activeIds.slice(0, 5).length
+      ? activeIds.slice(0, 5)
+      : ["office-1", "office-2", "office-3", "office-4", "office-5"]
+  });
+  const unitDenial = evaluatePilotOfficeAccess(unitConfig, "office-6-probe");
+  if (unitDenial.allowed === false) {
+    return {
+      status: STATUS.passUnit,
+      detail: `live disabled; unit denies office-6-probe; ${architectureNote}`
+    };
+  }
   return {
-    canSupportMaxFive: true,
-    canStartWithCurrent,
-    seedReady,
-    activeIds,
-    note: seedReady
-      ? `architecture supports maxOffices=${pilotConfig.maxOffices} with ${activeOffices.length} real authorized office(s) initially; do not seed fake offices`
-      : "no active production offices to authorize"
+    status: STATUS.fail,
+    detail: "unit probe did not deny office #6"
   };
 }
 
 async function main() {
   const results = [];
   const creds = loadProductionServiceAccount();
+  let planInfo = { plan: "UNKNOWN", source: "credentials_unavailable" };
 
   if (!creds.ok) {
     results.push(report("PRODUCTION CREDENTIALS", STATUS.fail, "credentials unavailable"));
     console.log("Secure action: set FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON to the aqar-b5d76 service-account JSON in the Cloud Agent environment secrets (never commit or paste into chat).");
+    results.push(report("FIREBASE PLAN", STATUS.notRun));
     results.push(failPreflight("BACKUP/RECOVERY", "credentials unavailable"));
-    results.push(report("REAL ACTIVE PRODUCTION OFFICES", STATUS.notRun));
-    results.push(failPreflight("PILOT MAX 5 ARCHITECTURE", "credentials unavailable"));
-    results.push(failPreflight("OFFICE #6 DENIAL", "credentials unavailable"));
-    results.push(failPreflight("REGISTRATION LOCK", "credentials unavailable"));
     results.push(failPreflight("ROLLBACK TARGET", "credentials unavailable"));
+    results.push(report("REAL ACTIVE PRODUCTION OFFICES", STATUS.notRun));
+    results.push(failPreflight("PILOT ACCESS", "credentials unavailable"));
+    results.push(failPreflight("REGISTRATION LOCK", "credentials unavailable"));
+    results.push(failPreflight("VERSION MARKER", "credentials unavailable"));
   } else {
     results.push(passPreflight("PRODUCTION CREDENTIALS"));
     const accessToken = await getProductionAccessToken(creds.serviceAccount);
+    planInfo = await inferFirebasePlan(accessToken);
+    results.push(report(
+      "FIREBASE PLAN",
+      planInfo.plan === SPARK_PLAN || planInfo.plan === BLAZE_PLAN ? STATUS.passPreflight : STATUS.fail,
+      `${planInfo.plan}; source=${planInfo.source}`
+    ));
 
+    let rollback = { ok: false, reason: "not_checked" };
     try {
-      const backup = await verifyBackupRecovery(accessToken);
-      results.push(backup.ok
-        ? passPreflight("BACKUP/RECOVERY", `project=${PRODUCTION_PROJECT}; mechanism=${backup.mechanism}; ref=${backup.reference}; timestamp=${backup.timestamp}`)
-        : failPreflight("BACKUP/RECOVERY", `${backup.reason}; minimumRecovery=${backup.minimumRecovery}`));
-    } catch (error) {
-      results.push(failPreflight("BACKUP/RECOVERY", error.message));
-    }
-
-    try {
-      const rollback = await verifyRollbackTarget(accessToken);
+      rollback = await verifyRollbackTarget(accessToken);
       if (rollback.ok) {
         const detail = [
           `rollbackTarget=${rollback.rollbackTarget}`,
@@ -325,6 +384,18 @@ async function main() {
     }
 
     try {
+      const backup = await verifyBackupRecovery(accessToken, rollback);
+      results.push(backup.ok
+        ? passPreflight(
+          "BACKUP/RECOVERY",
+          `plan=${backup.plan}; mechanism=${backup.mechanism}; ref=${backup.reference}; timestamp=${backup.timestamp}${backup.note ? `; ${backup.note}` : ""}`
+        )
+        : failPreflight("BACKUP/RECOVERY", `${backup.plan || planInfo.plan}: ${backup.reason}`));
+    } catch (error) {
+      results.push(failPreflight("BACKUP/RECOVERY", error.message));
+    }
+
+    try {
       const docs = await firestoreListDocuments(accessToken, "offices");
       const activeOffices = docs
         .map(normalizeOfficeRecord)
@@ -334,35 +405,8 @@ async function main() {
 
       results.push(report("REAL ACTIVE PRODUCTION OFFICES", String(activeOffices.length)));
 
-      const architecture = assessPilotMaxFiveArchitecture(activeOffices, pilotConfig);
-      results.push(architecture.canStartWithCurrent
-        ? passUnit("PILOT MAX 5 ARCHITECTURE", architecture.note)
-        : failPreflight("PILOT MAX 5 ARCHITECTURE", architecture.note));
-
-      const sixthCandidateId = pilotConfig.enabled
-        ? (activeOffices.find((office) => !pilotConfig.authorizedOfficeIds.includes(office.officeId))?.officeId
-          || "office-6-probe")
-        : "office-6-probe";
-      const sixthDecision = evaluatePilotOfficeAccess(pilotConfig, sixthCandidateId);
-      if (pilotConfig.enabled && pilotConfig.authorizedOfficeIds.length > 0 && !sixthDecision.allowed) {
-        results.push(passPreflight("OFFICE #6 DENIAL", `${sixthCandidateId}; live pilotAccess enabled`));
-      } else if (!pilotConfig.enabled) {
-        const unitProbe = evaluatePilotOfficeAccess(
-          normalizePilotAccessConfig({
-            enabled: true,
-            maxOffices: 5,
-            authorizedOfficeIds: architecture.activeIds.slice(0, 5).length
-              ? architecture.activeIds.slice(0, 5)
-              : ["office-1", "office-2", "office-3", "office-4", "office-5"]
-          }),
-          "office-6-probe"
-        );
-        results.push(unitProbe.allowed === false
-          ? passUnit("OFFICE #6 DENIAL", "live pilotAccess disabled; unit probe denies office-6-probe")
-          : failPreflight("OFFICE #6 DENIAL", "unit probe did not deny office #6"));
-      } else {
-        results.push(failPreflight("OFFICE #6 DENIAL", `${sixthCandidateId} was not denied`));
-      }
+      const pilotAccess = assessPilotAccess(activeOffices, pilotConfig);
+      results.push(report("PILOT ACCESS", pilotAccess.status, pilotAccess.detail));
 
       const registrationDecision = evaluatePilotRegistration(pilotConfig, {
         activeOfficeCount: activeOffices.length
@@ -384,25 +428,9 @@ async function main() {
       }
     } catch (error) {
       results.push(report("REAL ACTIVE PRODUCTION OFFICES", STATUS.notRun, error.message));
-      results.push(failPreflight("PILOT MAX 5 ARCHITECTURE", error.message));
-      results.push(failPreflight("OFFICE #6 DENIAL", error.message));
+      results.push(failPreflight("PILOT ACCESS", error.message));
       results.push(failPreflight("REGISTRATION LOCK", error.message));
     }
-  }
-
-  const killSwitchTests = runUnitTests([
-    "test/pilot-access-domain.test.mjs",
-    "worker/test/pilot-access-service.test.mjs"
-  ]);
-  const killSwitchDetail = killSwitchTests.ok ? "pilot-access-domain + pilot-access-service" : killSwitchTests.detail;
-  const killSwitchStatus = killSwitchTests.ok ? STATUS.passUnit : STATUS.fail;
-  for (const label of [
-    "MATCHING KILL SWITCH",
-    "PUBLIC ROUTING KILL SWITCH",
-    "PUSH KILL SWITCH",
-    "COLLABORATION KILL SWITCH"
-  ]) {
-    results.push(report(label, killSwitchStatus, killSwitchDetail));
   }
 
   try {

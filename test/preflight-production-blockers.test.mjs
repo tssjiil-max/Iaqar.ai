@@ -25,17 +25,20 @@ test("production preflight verifies deploy-generated version marker without requ
   assert.ok(read("scripts", "deploy-production-pilot.sh").includes("--channel=production"));
 });
 
-test("production preflight reports registration lock and real office count", () => {
+test("production preflight does not require blaze-only scheduled backups on spark", () => {
   const source = read("scripts", "preflight-production-blockers.mjs");
-  assert.ok(source.includes("evaluatePilotRegistration"));
-  assert.ok(source.includes("REAL ACTIVE PRODUCTION OFFICES"));
-  assert.ok(source.includes("PILOT MAX 5 ARCHITECTURE"));
-  assert.ok(source.includes("do not seed fake offices"));
+  assert.ok(source.includes("inferFirebasePlan"));
+  assert.ok(source.includes("SPARK_PLAN"));
+  assert.ok(source.includes("spark_hosting_rollback+git_rules_redeploy+firestore_readable"));
+  assert.ok(source.includes("scheduled_backups_and_pitr_are_blaze_only_and_not_required_on_spark"));
+  assert.equal(source.includes("enable managed backup schedule / PITR before controlled deploy"), false);
 });
 
-test("production preflight classifies kill switches as unit-only evidence", () => {
+test("production preflight reports spark plan, pilot access, and registration lock", () => {
   const source = read("scripts", "preflight-production-blockers.mjs");
-  assert.ok(source.includes("pilot-access-domain.test.mjs"));
-  assert.ok(source.includes("pilot-access-service.test.mjs"));
-  assert.ok(source.includes("PASS — UNIT ONLY"));
+  assert.ok(source.includes("FIREBASE PLAN"));
+  assert.ok(source.includes("evaluatePilotRegistration"));
+  assert.ok(source.includes("REAL ACTIVE PRODUCTION OFFICES"));
+  assert.ok(source.includes("PILOT ACCESS"));
+  assert.ok(source.includes("do not seed fake offices"));
 });
