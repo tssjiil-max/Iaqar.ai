@@ -342,6 +342,36 @@ test("mapOperationsItemsToDailyTasks de-duplicates by match id", () => {
   assert.equal(views.length, 1);
 });
 
+test("PLATFORM_OPPORTUNITY_OFFER maps to one living task with real reason labels", () => {
+  const views = mapOperationsItemsToDailyTasks([{
+    id: "op_platform_1",
+    operationType: "PLATFORM_OPPORTUNITY_OFFER",
+    status: "OPEN",
+    opportunityId: "opp_intake_public_1",
+    propertyType: "أرض",
+    purpose: "PURCHASE",
+    city: "المدينة المنورة",
+    district: "السكب",
+    metadata: {
+      livingTaskId: "po_opp_intake_public_1",
+      reasonCodes: ["DISTRICT_SPECIALIZATION", "CITY_MATCH"],
+      reasonLabels: ["داخل نطاق تخصصك", "تعمل في نفس المدينة"],
+      moneyLine: "850,000 ر.س",
+      hideContactUntilAccept: true
+    }
+  }]);
+  assert.equal(views.length, 1);
+  assert.equal(views[0].id, "po_opp_intake_public_1");
+  assert.equal(views[0].taskKind, "platform_opportunity");
+  assert.equal(views[0].primaryAction.id, EXEC_ACTION.ACCEPT_PLATFORM_OPPORTUNITY);
+  assert.equal(views[0].hideContactUntilAccept, true);
+  assert.deepEqual(views[0].reasonLabels, ["داخل نطاق تخصصك", "تعمل في نفس المدينة"]);
+  const html = buildDailyTaskCardHtml(views[0], { open: true });
+  assert.match(html, /سبب ترشيح مكتبك/);
+  assert.match(html, /استلام الفرصة/);
+  assert.equal(html.includes("05111"), false);
+});
+
 test("secure link intent binds parties through matchId without counterparty contact", () => {
   const intent = buildSecureLinkIntent({
     actionId: EXEC_ACTION.SEND_TO_CLIENT,

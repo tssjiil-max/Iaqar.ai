@@ -40,7 +40,7 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys'
+        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'officeRatings'
       ];
     }
     function validOfficeProfile() {
@@ -247,6 +247,11 @@ service cloud.firestore {
           allow read, create: if isOfficeMember(officeId);
           allow update, delete: if canManage(officeId);
         }
+
+        match /routingAttempts/{attemptId} {
+          allow read: if isOfficeMember(officeId);
+          allow create, update, delete: if false;
+        }
       }
 
       match /partySessions/{sessionId} {
@@ -271,6 +276,11 @@ service cloud.firestore {
 
       // عمليات مركز العمليات (المرحلة 5): قراءة الأعضاء — الإنشاء/الحالة عبر Worker فقط.
       match /operations/{operationId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      match /officeRatings/{ratingId} {
         allow read: if isOfficeMember(officeId);
         allow create, update, delete: if false;
       }

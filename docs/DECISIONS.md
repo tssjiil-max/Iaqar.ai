@@ -7,6 +7,28 @@ part was **not** implemented.
 
 ---
 
+---
+
+## D-021 — Public Opportunity Router (platform `/add` vs office-direct links)
+
+**Directive.** Owner approved a real distribution system: OFFICE_DIRECT opportunities
+from an office public link stay with that office; PLATFORM_PUBLIC opportunities from
+`/add` are offered one office at a time by a scored router. Ratings (1–5 stars, no
+comments) are an approved routing input. This is not a prototype.
+
+**Decision.** Reuse `offices/{officeId}/opportunities` as the canonical inventory.
+Platform intake keeps `officeId=platform` until ACCEPT copies the same
+`opportunityId` into the assigned office. Scoring lives only in
+`public/js/opportunity-router-domain.js`. Q-4 remains unresolved for *cooperation*
+auto-recommend; this decision does not invent cooperation ranking. Worker routes:
+`/opportunity-router/accept|decline|tick|rate`.
+
+**Open question.** Party-facing star widget after a client session (vs office-member
+recording of an eligible party rating) can be tightened later without changing the
+rating event schema.
+
+---
+
 ## D-020 — Public office short links `/m/{slug}` plus Worker OG HTML
 
 **Directive.** Owner requested `/m/{slug}` short public office URLs, unique editable

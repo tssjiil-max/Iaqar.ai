@@ -89,9 +89,60 @@ function officeDisplayName() {
     || "المكتب العقاري";
 }
 
-function workerBase() {
-  if (typeof window.IAQAR?.resolveWorkerBase === "function") return window.IAQAR.resolveWorkerBase();
-  return window.IAQAR?.workerBase || "";
+async function runPlatformOpportunityAction(task, actionId, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const path = actionId === "decline_platform_opportunity"
+      ? "/opportunity-router/decline"
+      : "/opportunity-router/accept";
+    const response = await fetch(`${workerBase()}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        officeId,
+        opportunityId: task.opportunityId,
+        reason: actionId === "decline_platform_opportunity" ? "OTHER" : undefined
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || (actionId === "decline_platform_opportunity" ? "تعذر تسجيل الاعتذار." : "تعذر استلام الفرصة."));
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify(actionId === "decline_platform_opportunity" ? "تم الاعتذار وستنقل الفرصة للمكتب التالي." : "تم استلام الفرصة.");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true };
+  } catch {
+    notify("تعذر إتمام الإجراء.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
+async function tickPlatformOpportunityExpiry() {
+  const officeId = currentOfficeId();
+  const token = await idToken();
+  if (!officeId || !token) return;
+  try {
+    await fetch(`${workerBase()}/opportunity-router/tick`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ officeId })
+    });
+  } catch {
+    /* expiry is retried on the next load / action */
+  }
 }
 
 function currentOfficeId() {
@@ -490,6 +541,10 @@ function onListClick(event) {
       if (state.openTaskId !== task.id) toggleOpenTask(task.id);
       return;
     }
+    if (task.taskKind === "platform_opportunity") {
+      void runPlatformOpportunityAction(task, action, secondary);
+      return;
+    }
     if (task.taskKind === "cooperation") {
       void runCooperationTaskAction(task, action, secondary);
       return;
@@ -508,6 +563,10 @@ function onListClick(event) {
     event.preventDefault();
     event.stopPropagation();
     const action = primary.getAttribute("data-cv2-exec-primary");
+    if (task.taskKind === "platform_opportunity") {
+      void runPlatformOpportunityAction(task, action, primary);
+      return;
+    }
     if (task.taskKind === "cooperation") {
       void runCooperationTaskAction(task, action, primary);
       return;
@@ -636,6 +695,7 @@ export function mountDailyTasksContentV2(root) {
       const invalid = consumeDailyTaskDiagnostics();
       if (invalid.length) window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
     }
+    void tickPlatformOpportunityExpiry();
   }
   renderList();
 }

@@ -25,7 +25,8 @@
   let officeId = String(query.get("officeId") || query.get("office") || "")
     .trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);
   let isPublicOfficeLink = query.get("view") === "public" && officeId && officeId !== "platform";
-  let isPlatformHome = !officeId || officeId === "platform";
+  let isPlatformAddRoute = /^\/add\/?$/i.test(location.pathname);
+  let isPlatformHome = !officeId || officeId === "platform" || isPlatformAddRoute;
   const publicSlug = (() => {
     const match = location.pathname.match(/^\/(m|o)\/([^/]+)\/?$/i);
     if (!match) return "";
@@ -33,8 +34,9 @@
   })();
   const publicSlugLegacy = /^\/o\//i.test(location.pathname);
   function refreshRouteFlags() {
+    isPlatformAddRoute = /^\/add\/?$/i.test(location.pathname);
     isPublicOfficeLink = Boolean(officeId && officeId !== "platform" && (query.get("view") === "public" || publicSlug));
-    isPlatformHome = !officeId || officeId === "platform";
+    isPlatformHome = !officeId || officeId === "platform" || isPlatformAddRoute;
   }
   const gate = document.createElement("main");
   function resolveWorkerBase() {
@@ -390,6 +392,10 @@
     node.className = `access-status show ${ok ? "ok" : "err"}`;
   }
   function home() {
+    if (isPlatformAddRoute) {
+      platformAddChoice();
+      return;
+    }
     frame(`<section class="access-card"><h2>اختر الخدمة</h2>
       <p>رفع الطلب مباشر للعميل والمالك، وتسجيل الوسيط يخضع لمراجعة رخصة فال واعتماد الإدارة.</p>
       <div class="access-options">
@@ -409,6 +415,21 @@
       else intakeForm(button.dataset.go, "platform");
     });
     gate.dataset.activeScreen = "home";
+  }
+  function platformAddChoice() {
+    frame(`<section class="access-card" data-testid="platform-add">
+      <h2>إضافة فرصة للمنصة</h2>
+      <p>أرسل عرضك أو طلبك، والمنصة ترشّح المكتب الأنسب.</p>
+      <div class="access-options">
+        <button class="access-btn" data-go="owner" data-testid="add-offer">لدي عقار</button>
+        <button class="access-btn secondary" data-go="client" data-testid="add-request">أبحث عن عقار</button>
+      </div>
+      <div class="access-note">لا يحتاج هذا النموذج إلى إنشاء حساب.</div>
+    </section>`);
+    gate.querySelectorAll("[data-go]").forEach(button => {
+      button.onclick = () => intakeForm(button.dataset.go, "platform");
+    });
+    gate.dataset.activeScreen = "platform-add";
   }
   function resolvePublicOfficeImage(data = {}, targetOfficeId = "") {
     const oid = String(targetOfficeId || "").trim().toLowerCase();
@@ -468,6 +489,11 @@
         }
         const phoneHtml = data.phone ? ` — تواصل ${phoneDisplayHtml(data.phone)}` : "";
         const whatsappHtml = data.whatsapp ? ` — واتساب ${phoneDisplayHtml(data.whatsapp)}` : "";
+        const ratingCount = Number(data.ratingCount || 0);
+        const ratingAverage = Number(data.ratingAverage || 0);
+        const ratingHtml = ratingCount > 0
+          ? `<p data-testid="office-rating">${ratingAverage.toFixed(1)} ★ · ${ratingCount} تقييمًا</p>`
+          : "";
         const imgTag = primary
           ? `<img src="${escapeHtml(primary)}" alt="صورة المكتب" data-fallback="${escapeHtml(fallback)}"
               style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px"
@@ -477,7 +503,8 @@
           ${imgTag}
           <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
-          <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>`;
+          <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>
+          ${ratingHtml}`;
       }
     } catch (_) {}
   }
@@ -659,7 +686,7 @@
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
-    bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : home()));
+    bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : (isPlatformAddRoute ? platformAddChoice() : home())));
     const propertyInput = gate.querySelector("#propertyTypeInput");
     const districtInput = gate.querySelector("#districtInput");
     const requestKindInput = gate.querySelector("#requestKindInput");

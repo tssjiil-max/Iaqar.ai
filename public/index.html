@@ -6141,6 +6141,21 @@
     </section>
   </div>
 
+  <div class="settings-overlay" id="platformOpportunityOnboarding" hidden>
+    <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="platformOnboardingTitle">
+      <h2 id="platformOnboardingTitle">كيف تصلك الفرص؟</h2>
+      <ol class="platform-onboarding-list">
+        <li>الفرص التي تصل من رابط مكتبك تكون لمكتبك مباشرة.</li>
+        <li>الفرص العامة ترشحها المنصة للمكتب الأنسب حسب الموقع والتخصص والنشاط وسرعة الاستجابة.</li>
+        <li>تقييم العملاء عامل مساعد ضمن جودة الخدمة، وليس العامل الوحيد في توزيع الفرص.</li>
+        <li>تابع الفرص وحدّث حالتها باستمرار لتحصل على ترشيحات أدق.</li>
+      </ol>
+      <div class="office-settings-actions">
+        <button class="office-save-btn" id="platformOnboardingAckBtn" type="button">فهمت، ابدأ</button>
+      </div>
+    </section>
+  </div>
+
   <div class="settings-overlay" id="officeSettings" hidden>
     <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="officeSettingsTitle">
       <div class="settings-head">
@@ -6233,7 +6248,16 @@
             <span>متاح للتعاون حاليًا</span>
             <span class="pref-switch"><input type="checkbox" id="officeCooperationAvailableToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
           </label>
+          <label class="pref-row office-field full">
+            <span>استقبال فرص المنصة العامة</span>
+            <span class="pref-switch"><input type="checkbox" id="officeAcceptPlatformPublicToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+          </label>
         </div>
+        <p class="section-help" id="officeRoutingHelp">
+          كيف يتم توزيع الفرص؟ الفرص القادمة من رابط مكتبك تصل إليك مباشرة.
+          أما الفرص العامة فتُرشح بحسب المدينة والحي، تخصص المكتب، نوع العقار، سرعة الاستجابة، متابعة الفرص، والتقييم.
+          تستخدم المنصة كذلك توزيعًا عادلًا لمنع احتكار الفرص.
+        </p>
         <div class="office-settings-actions">
           <button class="office-save-btn" id="saveOfficeScopeBtn" type="button">حفظ نطاق العمل</button>
         </div>

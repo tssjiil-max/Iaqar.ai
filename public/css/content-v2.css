@@ -1302,6 +1302,28 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   font-weight: 700;
 }
 
+.cv2-exec-reasons {
+  margin: 6px 0 4px;
+  color: #173d35;
+  font-size: 13px;
+}
+
+.cv2-exec-reasons strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.cv2-exec-reasons ul {
+  margin: 0;
+  padding: 0 18px 0 0;
+}
+
+.cv2-exec-platform-body {
+  margin-top: 6px;
+  color: var(--cv2-muted, #6b7873);
+  font-size: 13px;
+}
+
 @media (max-width: 600px) {
   html.cv2-tasks-office-smart .app > .card.license,
   html.cv2-tasks-office-smart section.card.license {

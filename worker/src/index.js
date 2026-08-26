@@ -89,6 +89,21 @@ import {
   shareCardGetMatch
 } from "./office-public-preview.js";
 import {
+  afterPublicIntakePersisted,
+  acceptPlatformOffer,
+  declinePlatformOffer,
+  expireDuePlatformOffers,
+  submitOfficeRating
+} from "./opportunity-router-service.js";
+import {
+  ORIGIN_SOURCE_TYPE,
+  originSourceFromIntake,
+  livingTaskIdForOpportunity,
+  ASSIGNMENT_REASON,
+  ROUTING_STATUS,
+  routerCompleteness
+} from "../../public/js/opportunity-router-domain.js";
+import {
   MESSAGE_CHANNELS,
   MESSAGE_SEND_STATE,
   MESSAGE_DELIVERY_STATE,
@@ -629,6 +644,19 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/pipeline/public-intake") {
         return await handlePublicIntakeMatching(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity-router/accept") {
+        return await handleOpportunityRouterAccept(request, env, requestId);
+      }
+      if (request.method === "POST" && url.pathname === "/opportunity-router/decline") {
+        return await handleOpportunityRouterDecline(request, env, requestId);
+      }
+      if (request.method === "POST" && url.pathname === "/opportunity-router/tick") {
+        return await handleOpportunityRouterTick(request, env, requestId);
+      }
+      if (request.method === "POST" && url.pathname === "/opportunity-router/rate") {
+        return await handleOpportunityRouterRate(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/broker/apply") {
@@ -1832,6 +1860,17 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo))
   }});
 
+  const origin = originSourceFromIntake({
+    officeId,
+    source: intake.source || (officeId === "platform" ? "platform_public" : "office_public_link")
+  });
+  const opportunityKind = parsed.kind === "owner_offer" ? "OFFER" : "REQUEST";
+  const routingReady = routerCompleteness({
+    opportunityKind,
+    purpose: readiness.purpose,
+    propertyType: parsed.propertyType || intake.propertyType,
+    city: parsed.city || intake.city || DEFAULT_CITY
+  });
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, fields: {
     ...commonFields,
     city: firestoreString(parsed.city || DEFAULT_CITY),
@@ -1848,7 +1887,19 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     contactName: firestoreOptionalString(parsed.senderName),
     matchingReadiness: firestoreString(readiness.matchingReadiness),
     matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
-    opportunityKind: firestoreString(parsed.kind === "owner_offer" ? "OFFER" : "REQUEST"),
+    opportunityKind: firestoreString(opportunityKind),
+    originSourceType: firestoreString(origin.type),
+    originSourceOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
+    assignedOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
+    assignmentReason: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
+      ? firestoreString(ASSIGNMENT_REASON.DIRECT_OFFICE_LINK)
+      : firestoreString(""),
+    routingStatus: firestoreString(
+      origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
+        ? ROUTING_STATUS.ASSIGNED
+        : (routingReady.ok ? ROUTING_STATUS.ROUTING : ROUTING_STATUS.NEEDS_COMPLETION)
+    ),
+    livingTaskId: firestoreString(livingTaskIdForOpportunity(opportunityId)),
     mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
@@ -1864,14 +1915,40 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     }});
   }
 
-  const matches = await runCanonicalMatchingAfterOpportunityPersist({
-    projectId, officeId, opportunityId, accessToken, env
+  const persistedOpportunity = {
+    id: opportunityId,
+    opportunityId,
+    officeId,
+    opportunityKind,
+    purpose: readiness.purpose,
+    propertyType: parsed.propertyType || intake.propertyType,
+    city: parsed.city || intake.city || DEFAULT_CITY,
+    district: parsed.district || intake.district,
+    budget: Number(parsed.priceMax || parsed.price || intake.amount || 0),
+    salePrice: Number(parsed.price || intake.amount || 0),
+    originSourceType: origin.type,
+    contactPhone: parsed.phone,
+    contactName: parsed.senderName
+  };
+  const routerResult = await afterPublicIntakePersisted(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunity: persistedOpportunity,
+    source: intake.source || origin.type
   });
+
+  let matches = [];
+  if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC) {
+    matches = await runCanonicalMatchingAfterOpportunityPersist({
+      projectId, officeId, opportunityId, accessToken, env
+    });
+  }
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
     status: firestoreString("processed"), processingState: firestoreString("processed"),
     processedRecordId: firestoreString(recordId), opportunityId: firestoreString(opportunityId),
     matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now),
+    originSourceType: firestoreString(origin.type),
+    routingStatus: firestoreString(routerResult?.routingStatus || ""),
     ...lifecycleFieldsForIntake(intake, now),
     lifecycleStatus: firestoreString(matches.length > 0 ? LIFECYCLE_STATUS.MATCHED : LIFECYCLE_STATUS.NEW)
   }});
@@ -1881,8 +1958,112 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   }
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
-    kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null, requestId
+    kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null,
+    originSourceType: origin.type,
+    routingStatus: routerResult?.routingStatus || "",
+    assignedOfficeId: routerResult?.assignedOfficeId || (origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? officeId : ""),
+    currentOfferedOfficeId: routerResult?.currentOfferedOfficeId || "",
+    livingTaskId: routerResult?.livingTaskId || livingTaskIdForOpportunity(opportunityId),
+    requestId
   }, 201);
+}
+
+function opportunityRouterDeps(env, projectId, accessToken) {
+  return {
+    projectId,
+    accessToken,
+    env,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    patchFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs,
+    firestoreHelpers: {
+      ...operationsFirestoreHelpers(),
+      jsToFirestoreValue
+    },
+    sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+    runCanonicalMatchingAfterOpportunityPersist: (args) => runCanonicalMatchingAfterOpportunityPersist({
+      projectId,
+      accessToken,
+      env,
+      ...args
+    })
+  };
+}
+
+async function handleOpportunityRouterAccept(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاستلام غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = opportunityRouterDeps(env, projectId, accessToken);
+  await expireDuePlatformOffers(deps, { opportunityId });
+  const result = await acceptPlatformOffer(deps, { officeId, opportunityId });
+  if (!result.ok) {
+    const status = result.error === "lost_race" || result.error === "already_assigned" ? 409 : 400;
+    return jsonResponse({ ok: false, error: result.error, requestId }, status);
+  }
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterDecline(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const reason = cleanText(body.reason, 40);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاعتذار غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = opportunityRouterDeps(env, projectId, accessToken);
+  await expireDuePlatformOffers(deps, { opportunityId });
+  const result = await declinePlatformOffer(deps, { officeId, opportunityId, reason });
+  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterTick(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await expireDuePlatformOffers(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunityId: cleanText(body.opportunityId, 180)
+  });
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterRate(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const raterId = cleanText(body.raterId, 180);
+  const raterRole = cleanText(body.raterRole || "party", 40);
+  const stars = Number(body.stars);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات التقييم غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await submitOfficeRating(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunityId,
+    raterId,
+    raterRole,
+    stars
+  });
+  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
+  return jsonResponse({ ok: true, ...result, requestId });
 }
 
 function structuredPublicIntakeToParsed(intake) {
@@ -5884,6 +6065,29 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
     const detail = await response.text();
     console.error("[iaqar-whatsapp] Firestore set failed", response.status, detail);
     throw appError("firestore_write_failed", 502, "تعذر حفظ ربط واتساب");
+  }
+  return response.json();
+}
+
+async function patchFirestoreDocument({ projectId, segments, accessToken, fields, updateTime = "" }) {
+  const compacted = compactFields(fields);
+  const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
+  for (const fieldPath of Object.keys(compacted)) {
+    endpoint.searchParams.append("updateMask.fieldPaths", fieldPath);
+  }
+  if (updateTime) endpoint.searchParams.set("currentDocument.updateTime", updateTime);
+  const response = await fetch(endpoint.toString(), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compacted })
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    if (response.status === 400 || response.status === 409) {
+      throw appError("firestore_precondition_failed", 409, detail || "تعذر تثبيت الاستلام");
+    }
+    console.error("[iaqar-whatsapp] Firestore patch failed", response.status, detail);
+    throw appError("firestore_write_failed", 502, "تعذر حفظ الحالة");
   }
   return response.json();
 }

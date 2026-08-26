@@ -475,3 +475,42 @@ Listed so nobody mistakes the current model for the target model.
 | `conversations` threading beyond drafts | future | Optional conversation grouping around drafts. |
 | `eventOutbox` / `backgroundJobs` | 2+ | Database-backed job pattern for the event workflow. |
 | `officeHandles` | deferred | See `DECISIONS.md` D-004. |
+
+## 12. Public Opportunity Router
+
+Canonical inventory remains `offices/{officeId}/opportunities/{opportunityId}`.
+Platform-public intake is stored under the sentinel office `platform` until ACCEPT
+copies the **same** `opportunityId` into the winning office. There is no parallel
+opportunities table.
+
+### 12.1 Origin and assignment fields on `opportunities/{id}`
+
+| Field | Notes |
+| --- | --- |
+| `originSourceType` | `OFFICE_DIRECT` \| `PLATFORM_PUBLIC` \| `DIRECT_ADD` \| `IMPORT`. Stamped at create time. |
+| `originSourceOfficeId` | Set for `OFFICE_DIRECT`; empty for `PLATFORM_PUBLIC`. |
+| `assignedOfficeId` | Final office after ACCEPT or the direct-link office. |
+| `assignmentReason` | `DIRECT_OFFICE_LINK` or `PLATFORM_ROUTER`. |
+| `routingStatus` | `NEEDS_COMPLETION`, `ROUTING`, `OFFERED_TO_OFFICE`, `DECLINED`, `EXPIRED`, `ASSIGNED`, `NO_ELIGIBLE_OFFICE`. |
+| `currentOfferedOfficeId` / `currentAttemptId` / `currentOfferedExpiresAt` | One active offer at a time. |
+| `livingTaskId` | Stable `po_{opportunityId}`. |
+
+### 12.2 `offices/platform/opportunities/{id}/routingAttempts/{attemptId}`
+
+Worker-only writes. Audit of each offer: `officeId`, `rank`, `score`,
+`scoreBreakdownJson`, `reasonCodesJson`, `offeredAt`, `expiresAt`, `decision`,
+`decisionAt`, `declineReason`.
+
+### 12.3 `offices/{officeId}/officeRatings/{ratingId}`
+
+Immutable star events (1–5, no comments). Document ID is
+`{opportunityId}__{raterId}__{raterRole}`. Aggregates `ratingAverage` /
+`ratingCount` live on `offices/{officeId}` and `publicOffices/{officeId}`.
+
+### 12.4 Office flags
+
+`acceptPlatformPublicOpportunities` (default true) excludes the office from
+PLATFORM_PUBLIC routing when false. OFFICE_DIRECT links still work.
+`platformRouterStats` stores real response/follow-up/load samples used by scoring.
+`platformOpportunityOnboardingAckAt` records the broker onboarding acknowledgement.
+
