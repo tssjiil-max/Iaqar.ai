@@ -1,0 +1,375 @@
+{
+  "generatedAt": "2026-08-26T01:22:41.872Z",
+  "mode": "APPLY",
+  "officeId": "staging-logo-live-20260807",
+  "note": "Stored officeName is Staging Logo Live. مكتب الوادي المبارك is a different office (staging-sultan) and is not in scope.",
+  "before": {
+    "opportunities": 34,
+    "offers": 20,
+    "requests": 9,
+    "otherOpportunityKinds": 5,
+    "matches": 1,
+    "operations": 19,
+    "partySessions": 6,
+    "cooperations": 3,
+    "appointments": 0,
+    "timelineWorkflow": 27
+  },
+  "preserved": {
+    "officeExists": true,
+    "officeName": "Staging Logo Live",
+    "displayName": "Staging Logo Live",
+    "brokerName": "ثامر الرحيلي",
+    "licenseNumber": "1234567890",
+    "city": "المدينة المنورة",
+    "logoUrl": true,
+    "coverUrl": true,
+    "displayImageUrl": true,
+    "members": 1,
+    "settingsDocs": [
+      "cooperation"
+    ],
+    "devices": 7,
+    "library": 7,
+    "activityEvents": 100,
+    "contacts": 12
+  },
+  "completedDealSafety": {
+    "ok": true,
+    "completedCount": 0,
+    "blocked": []
+  },
+  "willDelete": {
+    "opportunities": {
+      "count": 34,
+      "ids": [
+        "opp_2af1b43969ddd4cca0f6c31ba9b9e3bab5bdb765",
+        "opp_32131617945a6b9b26eeef297c9ecfc08bdbf1ff",
+        "opp_334b58c6383e4f672122916e3b57d388c52193e3",
+        "opp_48eade4d85ceed28a670ce72928fd5b80c68140f",
+        "opp_54c4f9eb8d6e936247fef954c171ccf1e6af5402",
+        "opp_5b12103ca42c73a9e7ccfd8db3f7caf439a9a37e",
+        "opp_6109299bca2789a78e99dfd57a08bdb7d1501a67",
+        "opp_680289a216787a45c884bb56fb6f209be1877526",
+        "opp_6dfafa0bc2d6f0f291704f6734458de9ac893655",
+        "opp_73f553b10fc3652e4386cdb4c9c0acdd5f1c0628",
+        "opp_81f9321e49b180b71b4472e6cb43709e6cd30e09",
+        "opp_848841b32f972406d4e624f33af1c825266d4d2c",
+        "opp_917911b5c79adb343a9cade61b2f3f82d760f019",
+        "opp_9245e12f462c0964184c055c8664e5c760011d9a",
+        "opp_95169c970607e226b8e57ac0413cf5d70efcc642",
+        "opp_997adde9b06ec0ca8f5dedabb7464c84ba3b5362",
+        "opp_9b9af3ff03669e58e74e6fc75ec7650bd6f2b49e",
+        "opp_a05cd1fd1cd8452a264eb0dd32862df1d987072e",
+        "opp_acct_del_mt2m69lu",
+        "opp_b6e89761d6784862ed5f8e6b607d43360e5ec6a9",
+        "opp_be3925351708730bc4db1f218adbda381a73b952",
+        "opp_bf83667bab1f8b1a73e32057d0d8245b5cbc150f",
+        "opp_e49beaa73195c7b93152a00a59391528830290b7",
+        "opp_f06f1ffc85ae409d9a51041b26f4c318ce4766c7",
+        "opp_fc7c8b29025439b7ba9b47787d9d95b4efc04d22",
+        "opp_lifecycle_verify_1786696547036",
+        "opp_lifecycle_verify_1786697228610",
+        "opp_lifecycle_verify_1786697310418",
+        "opp_lifecycle_verify_1786697323275",
+        "opp_offer_1786141578785",
+        "opp_own_msjkrnqu",
+        "opp_own_msjks2uj",
+        "opp_own_msjksmww",
+        "opp_request_1786141578785"
+      ]
+    },
+    "matches": {
+      "count": 1,
+      "ids": [
+        "mat_ca0331307fd9db7738933d1216f13c95668e"
+      ]
+    },
+    "operations": {
+      "count": 19,
+      "ids": [
+        "op_16a78e92ce2254fce31cb66a02816c1bb5d15bf9",
+        "op_2345e84c1a6f21d1ae2aa6049cd404e2929c477c",
+        "op_275c15e4bab7b2fdec6ed444a395baa5ca2cde1b",
+        "op_2e9311143cb0f361f9d02d7fdb39c026f95b74d2",
+        "op_3c318e0f80848d10c47f5e6585255bfd459b48b7",
+        "op_43a8e7a0f700f95657d10aead33c5b8ce0caf627",
+        "op_50e00808cf1b2927865146bbdf4171d07eb53387",
+        "op_68a57ea53d77be2673f69da15dd16c63aae1a1e4",
+        "op_726b3c77f2361a0bb5a5dfa7947642b247814a1b",
+        "op_7db9aad37d40af1cb3a5782a85a250bc9ad02fc6",
+        "op_82b21c0c44816051a4197d7be3f2c7aac99dd65a",
+        "op_86fdced033dcda62499bc59bae8377b5e961890c",
+        "op_885423de5035c0924a1f57db7aea10bfc013d7db",
+        "op_937f37342e29e28b483c112bce9379335069f5dc",
+        "op_97fcaa9f993b63d503fe1a828b70cbe5d01a7f90",
+        "op_b24f16ac2d858686e4dc1357eb8e60b64bb2c765",
+        "op_ccbb8194f881ab56e761f7aee639392a86d2ea5d",
+        "op_dd1dd57a169f500b6e63d9283371a6d745c73a06",
+        "op_f2baabb1b351bb9193f0d809b4eee62aa76d1e7c"
+      ]
+    },
+    "partySessions": {
+      "count": 6,
+      "ids": [
+        "ps_2a58f988b2542cbcf13ebd9a",
+        "ps_552c8c1409acef8f198c9b15",
+        "ps_6382bfc2e7812bed51797ed9",
+        "ps_84d5d7270301b35db5ce4b9e",
+        "ps_9482085e936503c9fb82ee73",
+        "ps_b51e3d49a2e0c86369e97a58"
+      ]
+    },
+    "partyLinks": {
+      "count": 2,
+      "ids": [
+        "match_new_1__client",
+        "match_new_1__owner"
+      ]
+    },
+    "partySessionKeys": {
+      "count": 15,
+      "ids": [
+        "mat_02063b6521a236e542a77ce1d0dc29bf2e84__owner",
+        "mat_02b7dbac420ddb6492bd3811ef3a2b8d27ce__owner",
+        "match_livee2e_mt8febb9__client",
+        "match_livee2e_mt8fgb50__client",
+        "match_livee2e_mt8flffh__client",
+        "match_livee2e_mt8flffh__owner",
+        "match_livee2e_mt8frf5y__client",
+        "match_livee2e_mt8frf5y__owner",
+        "match_livee2e_mt8fu4dr__client",
+        "match_livee2e_mt8fu4dr__owner",
+        "match_new_1__client",
+        "match_new_1__owner",
+        "match_video_1__client",
+        "party-route-client-20260825__client",
+        "party-route-owner-20260825__owner"
+      ]
+    },
+    "clients": {
+      "count": 27,
+      "ids": [
+        "cli_intake_intake_cycle_mt3oco8s_req",
+        "cli_intake_intake_cycle_mt3of5pg_req",
+        "cli_intake_intake_pr42_mstw8vte_a",
+        "cli_intake_intake_pr42_mstwtgey_a",
+        "cli_intake_intake_pr42_mstx4sj8_a",
+        "cli_intake_intake_pr42_mstxmfik_a",
+        "cli_intake_intake_pr42_mstziwef_a",
+        "cli_intake_intake_pr42_msu1iksi_a",
+        "cli_intake_intake_probe_fu",
+        "cli_intake_intake_probe_fu2",
+        "cli_intake_intake_probe_full",
+        "cli_intake_intake_probe_opsfirst",
+        "cli_intake_intake_probe_save",
+        "cli_intake_intake_probe_save2",
+        "cli_intake_intake_probe_save3",
+        "cli_intake_intake_ui_mstwtxas",
+        "cli_intake_intake_ui_mstwv2zd",
+        "cli_intake_intake_ui_mstwvia3",
+        "cli_intake_intake_ui_mstwx0jq",
+        "cli_intake_intake_ui_mstwzf9v",
+        "cli_intake_intake_ui_mstx17hw",
+        "cli_intake_intake_ui_mstx4svz",
+        "cli_intake_intake_ui_mstx7jfb",
+        "cli_intake_intake_ui_mstxaemr",
+        "cli_intake_intake_ui_mstxmfzo",
+        "cli_intake_intake_ui_mstzjh7u",
+        "cli_intake_intake_ui_msu1j15i"
+      ]
+    },
+    "owners": {
+      "count": 4,
+      "ids": [
+        "own_intake_LCGuUOJWuJiGf2ldOYte",
+        "own_intake_intake_cycle_mt3oco8s_offer",
+        "own_intake_intake_cycle_mt3of5pg_offer",
+        "own_intake_rrXFfvJw0EKdqaxkz2XP"
+      ]
+    },
+    "alerts": {
+      "count": 10,
+      "ids": [
+        "alt_mat_02b7dbac420ddb6492bd3811ef3a2b8d27ce",
+        "alt_mat_11cf4608816e845a25fdfb8130e827bf8600",
+        "alt_mat_171aec2f1b73899b90a7fdadfb93399482cc",
+        "alt_mat_24ebcaee6256b757e2993846bcef98b04b78",
+        "alt_mat_4868da6c575e63e3e3bfb3c2ef1a4fcd6a46",
+        "alt_mat_599cf5bcc413de56e6c15bfbb77cea31ba13",
+        "alt_mat_7b528a2a349702b8f8f7554919befe880eea",
+        "alt_mat_c8c9e8c299a5d9ca77b1fda2de173e871aec",
+        "alt_mat_ca0331307fd9db7738933d1216f13c95668e",
+        "alt_mat_f7141fecdae247c31128c4df632a8e9edc9f"
+      ]
+    },
+    "notifications": {
+      "count": 25,
+      "ids": [
+        "nt_0598548c38960529b05d700eca56ebf3a2043c18",
+        "nt_08ad42b19950dead319b4e8fa293b0c3e1fdfcdb",
+        "nt_1d827c212eef97e7cc825064c34ec9e5ea1ecedb",
+        "nt_2a6a9cff2aa06e0eb6a755920d8cfee1f8283839",
+        "nt_2bc826d8a267a58dc7621e849e24bb4ef42ceca4",
+        "nt_3e5006f0bffc5ac20854da9851df84d2fe645750",
+        "nt_4c222db83d805c936c5696871fbc57468e67a6e1",
+        "nt_5511db011d28bd7e9766c8b3eace7e9766a81906",
+        "nt_55613487db31cc3813ce5f8f82db583f0d4baf7b",
+        "nt_6322ffa46a414a3b4a0760193a7f9972bc61a5ef",
+        "nt_7ba50bd3c79aa7ebffe0b7b397a1ba4ba64cbcec",
+        "nt_7bd50f900108d0246706698b04b822d78c421adc",
+        "nt_9090214be8980b2e1ff9f6222f2d1678af6e95dc",
+        "nt_94787d314fb0b8820c0c804fbdefe0f1fc887078",
+        "nt_a25f3844935e292cc422bf30f3aeb1a50f7ed321",
+        "nt_a98b6923504affaccbd6a357a2cf7b8014f31df4",
+        "nt_b852e99613979fde3ea20911eca0d285316c776e",
+        "nt_bc0bba1b17a01afce26ade3dbaeac10a5c59eb22",
+        "nt_bd4e3a3c0300ea0c7d644114e67034d33532923c",
+        "nt_c50245d204c4d7fa47db4112135c0ab7d324cce4",
+        "nt_c99e718a1dec715aa58e8a09d2e9414f4dd0a820",
+        "nt_d64aab2b550a60a16d4d132e0de66994ff8e82b4",
+        "nt_eb16314300bf65f03edd5f27d0e6446639a7653c",
+        "nt_eb2a5a96e64268752bbbf755e83e127cb346b0b8",
+        "nt_fc669674115f90e86bc388748e52ff7e5cdd81be"
+      ]
+    },
+    "opportunitySources": {
+      "count": 24,
+      "ids": [
+        "src_2af1b43969ddd4cca0f6c31ba9b9e3bab5bdb765",
+        "src_32131617945a6b9b26eeef297c9ecfc08bdbf1ff",
+        "src_334b58c6383e4f672122916e3b57d388c52193e3",
+        "src_48eade4d85ceed28a670ce72928fd5b80c68140f",
+        "src_54c4f9eb8d6e936247fef954c171ccf1e6af5402",
+        "src_5b12103ca42c73a9e7ccfd8db3f7caf439a9a37e",
+        "src_6109299bca2789a78e99dfd57a08bdb7d1501a67",
+        "src_680289a216787a45c884bb56fb6f209be1877526",
+        "src_6dfafa0bc2d6f0f291704f6734458de9ac893655",
+        "src_73f553b10fc3652e4386cdb4c9c0acdd5f1c0628",
+        "src_81f9321e49b180b71b4472e6cb43709e6cd30e09",
+        "src_848841b32f972406d4e624f33af1c825266d4d2c",
+        "src_917911b5c79adb343a9cade61b2f3f82d760f019",
+        "src_9245e12f462c0964184c055c8664e5c760011d9a",
+        "src_95169c970607e226b8e57ac0413cf5d70efcc642",
+        "src_997adde9b06ec0ca8f5dedabb7464c84ba3b5362",
+        "src_9b9af3ff03669e58e74e6fc75ec7650bd6f2b49e",
+        "src_a05cd1fd1cd8452a264eb0dd32862df1d987072e",
+        "src_b6e89761d6784862ed5f8e6b607d43360e5ec6a9",
+        "src_be3925351708730bc4db1f218adbda381a73b952",
+        "src_bf83667bab1f8b1a73e32057d0d8245b5cbc150f",
+        "src_e49beaa73195c7b93152a00a59391528830290b7",
+        "src_f06f1ffc85ae409d9a51041b26f4c318ce4766c7",
+        "src_fc7c8b29025439b7ba9b47787d9d95b4efc04d22"
+      ]
+    },
+    "importJobs": {
+      "count": 3,
+      "ids": [
+        "job_73f553b10fc3652e4386cdb4c9c0acdd5f1c0628",
+        "job_81f9321e49b180b71b4472e6cb43709e6cd30e09",
+        "job_997adde9b06ec0ca8f5dedabb7464c84ba3b5362"
+      ]
+    },
+    "messages": {
+      "count": 14,
+      "ids": [
+        "msg_00fdc8668eb43fe79d46bd8387ea693534a0269b",
+        "msg_15e208a3cfa65e5ba2e7f6da2ae43aa5df4cc58c",
+        "msg_1f73b7102fd5cc98cbc4a26f0fe41756368ec638",
+        "msg_219bfc2472e49fffd45ec66bd15b9895d8f706cf",
+        "msg_63eae07a88272233eae1115af9a077029ca8c0c5",
+        "msg_6912c928d18e790a443116d43df2580c87fdf282",
+        "msg_7f3fb62a8a6df1e40cf37234d3640e2bf599a2b7",
+        "msg_809d781623058e37169f2fc5fa7ec9e7080dba73",
+        "msg_a57c1b23bef77237c0604a5a2e1c1909563bba25",
+        "msg_acda47a60a944bf5c10dfd80420c2849ee6eedec",
+        "msg_c57ffc359522ef06d54933c281c7648147bf9717",
+        "msg_d8da896c6e3c33d92e4ddd184012a41d475acd72",
+        "msg_f488aec748c708d585c9a7081aeb59be1126d51a",
+        "msg_fdde502ac13249fd7ea1d50c3dbcbd127325fc04"
+      ]
+    },
+    "matchDiagnostics": {
+      "count": 0,
+      "ids": []
+    },
+    "deals": {
+      "count": 0,
+      "ids": []
+    },
+    "appointments": {
+      "count": 0,
+      "ids": []
+    },
+    "cooperationsLocal": {
+      "count": 0,
+      "ids": []
+    },
+    "cooperationRequests": {
+      "count": 3,
+      "ids": [
+        "coop_f2a8a317fac97d7334c9bf983b7cea85f128a009",
+        "coop_test_1786141718438",
+        "coop_test_manual2"
+      ]
+    },
+    "matchTimelines": [
+      {
+        "matchId": "mat_ca0331307fd9db7738933d1216f13c95668e",
+        "count": 3,
+        "ids": [
+          "evt_1787080908557_4bff9a95",
+          "evt_1787080910792_6531e9dc",
+          "evt_match_created"
+        ]
+      }
+    ]
+  },
+  "willNotDelete": [
+    "members",
+    "officeSettings",
+    "brokerSettings",
+    "devices",
+    "library",
+    "activityEvents",
+    "contacts"
+  ],
+  "deleted": {
+    "opportunities": 34,
+    "matches": 1,
+    "operations": 19,
+    "partySessions": 6,
+    "partyLinks": 2,
+    "partySessionKeys": 15,
+    "clients": 27,
+    "owners": 4,
+    "alerts": 10,
+    "notifications": 25,
+    "opportunitySources": 24,
+    "importJobs": 3,
+    "messages": 14,
+    "matchDiagnostics": 0,
+    "deals": 0,
+    "appointments": 0,
+    "cooperations": 0,
+    "cooperationRequests": 3
+  },
+  "after": {
+    "opportunities": 0,
+    "matches": 0,
+    "operations": 0,
+    "partySessions": 0,
+    "clients": 0,
+    "owners": 0,
+    "alerts": 0,
+    "notifications": 0,
+    "messages": 0,
+    "officeExists": true,
+    "members": 1,
+    "officeSettings": 1,
+    "logoUrl": true,
+    "coverUrl": true,
+    "displayImageUrl": true,
+    "officeName": "Staging Logo Live"
+  }
+}
