@@ -103,7 +103,7 @@ export async function verifyCanonicalMediaAccessToken(token, sig, secret) {
 }
 
 export async function startCanonicalIntake(body, ctx) {
-  const officeId = ctx.normalizeOfficeId(body.officeId);
+  const officeId = ctx.firestoreOfficeId(body.officeId);
   const brokerId = ctx.cleanText(body.brokerId || ctx.identity?.uid, 120);
   if (!officeId) throw ctx.appError("office_id_required", 400, "معرّف المكتب مطلوب");
   if (!brokerId) throw ctx.appError("broker_required", 400, "يلزم تسجيل الدخول");
@@ -521,7 +521,7 @@ export async function handleCanonicalIntakeCallback(body, ctx) {
   if (!expected || secret !== expected) {
     throw ctx.appError("forbidden", 403, "غير مصرح");
   }
-  const officeId = ctx.normalizeOfficeId(body.officeId);
+  const officeId = ctx.firestoreOfficeId(body.officeId);
   const opportunityId = ctx.cleanText(body.opportunityId, 180);
   const importJobId = ctx.cleanText(body.importJobId, 180);
   if (!officeId || !opportunityId || !importJobId) {
@@ -543,7 +543,7 @@ export async function handleCanonicalIntakeCallback(body, ctx) {
 }
 
 export async function retryCanonicalIntake(body, ctx) {
-  const officeId = ctx.normalizeOfficeId(body.officeId);
+  const officeId = ctx.firestoreOfficeId(body.officeId);
   const importJobId = ctx.cleanText(body.importJobId, 180);
   if (!officeId || !importJobId) throw ctx.appError("import_job_required", 400, "رقم مهمة الاستيراد مطلوب");
 
