@@ -19,6 +19,14 @@
     if (targetPath.startsWith("/")) {
       return { kind: "url", path: targetPath, officeId };
     }
+    const taskId = safeId(data.taskId);
+    if (taskId) {
+      return { kind: "daily-task", id: taskId, officeId };
+    }
+    const opportunityId = safeId(data.opportunityId);
+    if (opportunityId) {
+      return { kind: "opportunity", id: opportunityId, officeId, focusFollowUp: Boolean(data.focusFollowUp) };
+    }
 
     if (type === "opportunity_followup_reminder") {
       return { kind: "opportunity", id: entityId || recordId, officeId, focusFollowUp: true };
@@ -69,6 +77,8 @@
     const focusFollowUp = params.get("focusFollowUp") === "1";
 
     if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
+    const openDailyTask = safeId(params.get("openDailyTask"));
+    if (openDailyTask) return { kind: "daily-task", id: openDailyTask, officeId };
     if (openCooperation) return { kind: "cooperation", id: openCooperation, officeId };
     if (openMessage) return { kind: "message", id: openMessage, officeId };
     if (openDeal) return { kind: "match", id: openDeal, officeId };
@@ -97,6 +107,10 @@
     switch (target.kind) {
       case "url":
         return target.path || "/";
+      case "daily-task":
+        if (target.id) params.set("openDailyTask", target.id);
+        else params.set("openNotifications", "1");
+        break;
       case "opportunity":
         if (target.id) params.set("openOpportunity", target.id);
         if (target.focusFollowUp) params.set("focusFollowUp", "1");

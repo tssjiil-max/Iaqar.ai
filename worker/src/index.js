@@ -79,7 +79,15 @@ import {
 } from "./opportunity-purge-service.js";
 import { markNotificationRead } from "./in-app-notification-write.js";
 import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
-import { formatOfficePushPresentation } from "../../public/js/platform-brand-domain.js";
+import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
+import {
+  handlePublicOfficePreview,
+  handleOfficeShareCardGet,
+  handleOfficeShareCardUpload,
+  handleSavePublicSlug,
+  pickReachableHttpsIcon,
+  shareCardGetMatch
+} from "./office-public-preview.js";
 import {
   MESSAGE_CHANNELS,
   MESSAGE_SEND_STATE,
@@ -324,6 +332,28 @@ export default {
     try {
       if (request.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+
+      if (request.method === "GET" && (url.pathname.startsWith("/m/") || url.pathname.startsWith("/o/"))) {
+        assertFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+        const accessToken = await getGoogleAccessToken(env);
+        return await handlePublicOfficePreview(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
+      }
+
+      if (request.method === "GET" && shareCardGetMatch(url.pathname)) {
+        return await handleOfficeShareCardGet(request, env, publicPreviewDeps(env, requestId));
+      }
+
+      if (request.method === "POST" && url.pathname === "/media/office-share-card") {
+        return await handleOfficeShareCardUpload(request, env, publicPreviewDeps(env, requestId));
+      }
+
+      if (request.method === "POST" && url.pathname === "/office/public-slug") {
+        assertFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+        const accessToken = await getGoogleAccessToken(env);
+        return await handleSavePublicSlug(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
       }
 
       if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
@@ -3437,6 +3467,28 @@ function scoreMatch(source, candidate) {
   return scoreMatchEngine(source, candidate);
 }
 
+function publicPreviewDeps(env, requestId, projectId = "", accessToken = "") {
+  return {
+    env,
+    requestId,
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    deleteFirestoreDocument,
+    runFirestoreQuery,
+    firestoreFieldsToJs,
+    firestoreHelpers: operationsFirestoreHelpers(),
+    authorizeOfficeRequest,
+    requireMediaBucket,
+    resolveAppOrigin,
+    normalizeOfficeId,
+    corsHeaders,
+    jsonResponse,
+    appError
+  };
+}
+
 function operationsFirestoreHelpers() {
   return {
     firestoreString,
@@ -4778,6 +4830,7 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       body,
       // Deep-link as operation so Operations Center can open the actionable item.
       type: "operation",
+      presentationType: "match_found",
       recordId: operationId,
       assignedBrokerId: top.assignedBrokerId || "",
       accessToken,
@@ -4794,18 +4847,24 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
   return { sent: !skipPush, reason: "ok", operationId, matchId: top.matchId };
 }
 
-function buildNotificationLink({officeId,type="match",recordId=""}) {
+function buildNotificationLink({officeId,type="match",recordId="",taskId="",opportunityId=""}) {
   const safeOfficeId=normalizeOfficeId(officeId)||"platform";
   const safeRecordId=cleanText(recordId,200);
+  const safeTaskId=cleanText(taskId,200);
+  const safeOpportunityId=cleanText(opportunityId,200);
   const params=new URLSearchParams();
   if(safeOfficeId==="platform")params.set("office","platform"); else params.set("officeId",safeOfficeId);
   if(type==="notification_test"){
     // اختبار التفعيل يفتح المكتب فقط دون محاولة فتح سجل وهمي.
+  } else if(safeTaskId){
+    params.set("openDailyTask",safeTaskId);
+    if(safeRecordId)params.set("openOperation",safeRecordId);
+  } else if(safeOpportunityId){
+    params.set("openOpportunity",safeOpportunityId);
   } else if(type==="opportunity_followup_reminder"){
     if(safeRecordId)params.set("openOpportunity",safeRecordId);
     params.set("focusFollowUp","1");
   } else if(type==="deal"){
-    // Route deal alerts through the same deep link as matches — opens Operations Center, not legacy UI.
     if(safeRecordId)params.set("openMatch",safeRecordId);
   }
   else if(type==="broker_application"){
@@ -4814,8 +4873,8 @@ function buildNotificationLink({officeId,type="match",recordId=""}) {
   } else if(type==="message"||type==="conversation"){
     if(safeRecordId)params.set("openMessage",safeRecordId);
     else params.set("openNotifications","1");
-  } else if(safeRecordId.startsWith("opp_")){
-    params.set("openOpportunity",safeRecordId);
+  } else if(safeOpportunityId || safeRecordId.startsWith("opp_")){
+    params.set("openOpportunity",safeOpportunityId || safeRecordId);
   } else if(
     safeRecordId.startsWith("coop_")
     || type==="cooperation_request"
@@ -4919,21 +4978,35 @@ async function readOfficeBrandProfile({projectId,officeId,accessToken}) {
   }
 }
 
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null}) {
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null,taskId="",opportunityId="",missingLabel="",appointmentLabel="",presentationType=""}) {
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
   }
   const officeProfile=await readOfficeBrandProfile({projectId,officeId,accessToken});
+  const appOrigin=resolveAppOrigin(env||{});
   const presentation=formatOfficePushPresentation({
     office:officeProfile,
     officeId,
-    type,
+    type: presentationType || type,
     title,
     body,
     listing,
-    appOrigin:resolveAppOrigin(env||{})
+    missingLabel,
+    appointmentLabel,
+    appOrigin,
+    includeBadge:false
   });
+  const workerBase = String(env?.DEPLOYMENT_ENV || "").toLowerCase() === "staging"
+    ? "https://iaqar-intake-staging.iaqar-ai.workers.dev"
+    : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  const iconCandidates=officeBrandIconCandidates(officeProfile,{
+    workerBase,
+    officeId
+  }).map((url)=>toAbsoluteHttpsIcon(url,appOrigin));
+  const fallbackIcon=toAbsoluteHttpsIcon(PLATFORM_DEFAULT_LOGO,appOrigin);
+  presentation.icon=await pickReachableHttpsIcon([presentation.icon,...iconCandidates],fallbackIcon);
+  presentation.badge="";
   const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
   const brokerFilter=String(assignedBrokerId||"").trim();
   const activeDevices=devices.map(doc=>{
@@ -4956,7 +5029,7 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
   const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:presentation.badge});
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:"",taskId,opportunityId});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
@@ -4978,10 +5051,10 @@ function configureWebPushVapid(env) {
   return true;
 }
 
-async function sendWebPushNotification({ env, subscriptionJson, title, body, type = "match", recordId = "", officeId = "", icon = "", badge = "" }) {
+async function sendWebPushNotification({ env, subscriptionJson, title, body, type = "match", recordId = "", officeId = "", icon = "", badge = "", taskId = "", opportunityId = "" }) {
   if (!configureWebPushVapid(env)) throw new Error("Web Push VAPID keys are not configured");
   const subscription = JSON.parse(String(subscriptionJson || ""));
-  const relativeLink = buildNotificationLink({ officeId, type, recordId });
+  const relativeLink = buildNotificationLink({ officeId, type, recordId, taskId, opportunityId });
   const link = new URL(relativeLink, resolveAppOrigin(env)).href;
   const appOrigin = resolveAppOrigin(env || {});
   const notification = { title: String(title || "مكاتب عقارية ذكية"), body: String(body || "لديك تنبيه جديد") };
@@ -4989,7 +5062,7 @@ async function sendWebPushNotification({ env, subscriptionJson, title, body, typ
   if (badge && badge !== icon) notification.badge = badge;
   await webpush.sendNotification(subscription, JSON.stringify({
     notification,
-    data: { type: String(type), recordId: String(recordId || ""), officeId: String(officeId), url: link, iconUrl: icon || `${appOrigin}/icons/iaqar-default-icon-192.png`, badgeUrl: badge || `${appOrigin}/icons/iaqar-badge-icon.png` }
+    data: { type: String(type), recordId: String(recordId || ""), taskId: String(taskId || ""), opportunityId: String(opportunityId || ""), officeId: String(officeId), url: link, iconUrl: icon || `${appOrigin}/icons/iaqar-default-icon-192.png`, badgeUrl: badge && badge !== icon ? badge : "" }
   }));
   return { ok: true };
 }
@@ -5001,14 +5074,14 @@ function buildFcmTarget(registrationId,registrationType="fid") {
   return registrationType==="fid"?{fid:id}:{token:id};
 }
 
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode="",env=null,icon="",badge=""}) {
-  const relativeLink=buildNotificationLink({officeId,type,recordId});
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode="",env=null,icon="",badge="",taskId="",opportunityId=""}) {
+  const relativeLink=buildNotificationLink({officeId,type,recordId,taskId,opportunityId});
   const appOrigin=resolveAppOrigin(env||{});
   const link=new URL(relativeLink,appOrigin).href;
   const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const target=buildFcmTarget(registrationId,registrationType);
   const resolvedIcon=String(icon||`${appOrigin}/icons/iaqar-default-icon-192.png`);
-  const resolvedBadge=String(badge||`${appOrigin}/icons/iaqar-badge-icon.png`);
+  const resolvedBadge=String(badge||"");
   const webNotification={icon:resolvedIcon,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true};
   if(resolvedBadge && resolvedBadge!==resolvedIcon) webNotification.badge=resolvedBadge;
   return {message:{
@@ -5017,6 +5090,8 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
     data:{
       type:String(type),
       recordId:String(recordId||""),
+      taskId:String(taskId||""),
+      opportunityId:String(opportunityId||""),
       matchId:type==="match"?String(recordId||""):"",
       dealId:type==="deal"?String(recordId||""):"",
       officeId:String(officeId),
@@ -5037,15 +5112,15 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   }};
 }
 
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge=""}) {
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge="",taskId="",opportunityId=""}) {
   if(registrationType==="webpush"){
-    await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge});
+    await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge,taskId,opportunityId});
     return { name: "webpush" };
   }
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge}))
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge,taskId,opportunityId}))
   });
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){
@@ -5128,7 +5203,31 @@ async function sendFcmTestNotification(request,env,requestId) {
   const savedRegistration=device&&(device.fcmRegistrationId||device.fcmToken||"");
   if(!device||device.enabled===false||savedRegistration!==registrationId)throw appError("device_not_registered",409,"الجهاز غير مسجل للإشعارات");
   try{
-    await sendFcmMessage({projectId,registrationId,registrationType,title:"تم تفعيل إشعارات المكتب",body:"سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.",type:"notification_test",recordId:`test_${Date.now()}`,officeId,accessToken,env});
+    const officeProfile = await readOfficeBrandProfile({ projectId, officeId, accessToken });
+    const presentation = formatOfficePushPresentation({
+      office: officeProfile,
+      officeId,
+      type: "notification_test",
+      title: "تم تفعيل إشعارات المكتب",
+      body: "سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.",
+      appOrigin: resolveAppOrigin(env || {}),
+      includeBadge: false
+    });
+    const icon = await pickReachableHttpsIcon([presentation.icon], presentation.icon);
+    await sendFcmMessage({
+      projectId,
+      registrationId,
+      registrationType,
+      title: presentation.title,
+      body: presentation.body,
+      type: "notification_test",
+      recordId: `test_${Date.now()}`,
+      officeId,
+      accessToken,
+      env,
+      icon,
+      badge: ""
+    });
   }catch(error){
     if(error&&error.staleToken)await disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
     throw appError("fcm_test_failed",502,"تم تسجيل الجهاز لكن تعذر وصول الإشعار التجريبي");
@@ -7055,7 +7154,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version",
     "Access-Control-Max-Age": "86400"
   };
 }

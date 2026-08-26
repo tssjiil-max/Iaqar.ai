@@ -130,6 +130,10 @@
       {
         "source": "/o/**",
         "destination": "/index.html"
+      },
+      {
+        "source": "/m/**",
+        "destination": "/index.html"
       }
     ]
   },

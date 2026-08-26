@@ -99,6 +99,11 @@ def write_all() -> None:
     save_png(favicon_32.convert("RGB").convert("RGBA"), ICON_DIR / "favicon-32.png")
     save_png(favicon_16.convert("RGB").convert("RGBA"), ICON_DIR / "favicon-16.png")
 
+    landscape = Image.new("RGBA", (1200, 630), (246, 250, 248, 255))
+    mark = contain_onto(source, 280, WHITE, scale=0.92)
+    landscape.paste(mark, (80, (630 - 280) // 2), mark)
+    save_png(landscape, ICON_DIR / "iaqar-office-share-fallback-1200x630.png")
+
     print(f"Wrote approved brand icons to {ICON_DIR}")
 
 

@@ -6278,7 +6278,12 @@
 
       <section class="settings-section" id="officeLinkSection">
         <h3>رابط المكتب</h3>
-        <p class="section-help">شارك بطاقة مكتبك مع الرابط كرسالة نصية قابلة للضغط.</p>
+        <p class="section-help">شارك رابط المكتب القصير. واتساب يعرض بطاقة المكتب من الرابط نفسه.</p>
+        <label class="office-field full">
+          <span>معرّف الرابط القصير</span>
+          <input id="officePublicSlugInput" name="publicSlug" dir="ltr" maxlength="20" autocomplete="off" placeholder="wadi">
+        </label>
+        <p class="section-help" id="officePublicSlugHint">يظهر الرابط بهذا الشكل: /m/wadi — أحرف إنجليزية صغيرة، 3 إلى 20.</p>
         <button class="identity-btn" id="shareOfficeLinkCardBtn" type="button">مشاركة رابط المكتب</button>
         <input id="officeLinkInput" type="hidden" readonly aria-hidden="true">
         <p class="section-status" id="officeLinkStatus" role="status"></p>
@@ -6620,7 +6625,7 @@
       document.write('<script src="js/opportunity-lifecycle.js"><\/script>');
       document.write('<script src="js/voice-intake.js"><\/script>');
       document.write('<script src="js/firebase-office.js"><\/script>');
-      document.write('<script src="js/access-gate.js"><\/script>');
+      document.write('<script src="js/access-gate.js?v=office-slug-2"><\/script>');
       document.write('<script src="js/app-navigation.js"><\/script>');
       document.write('<script src="js/home-tabs.js"><\/script>');
       document.write('<script src="js/qrcode.js"><\/script>');

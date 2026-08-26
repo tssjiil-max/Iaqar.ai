@@ -7,7 +7,26 @@ part was **not** implemented.
 
 ---
 
-## D-001 — Remove the `الصفقات` tab; fold deal records into the single Operations Center
+## D-020 — Public office short links `/m/{slug}` plus Worker OG HTML
+
+**Directive.** Owner requested `/m/{slug}` short public office URLs, unique editable
+slugs, WhatsApp crawler OG tags, and office-branded Arabic push presentation. D-004 had
+deferred the clean-handle registry until the owner asked.
+
+**Decision.** Canonical share URL is `{origin}/m/{slug}` (3–20 lowercase ASCII, reserved
+routes blocked, uniqueness in `officeSlugClaims`). Legacy `/o/{slug}` still resolves and
+canonicalizes to `/m/{slug}` in the SPA. WhatsApp OG HTML is served by the Worker
+`GET /m/{slug}` because Firebase Hosting cannot inject per-office meta without a new
+compute layer. Browser clicks on Hosting `/m/{slug}` still open the existing public
+office page. Private party tokens stay opaque.
+
+**Open question.** Chrome/Android still prints the web.app origin as the Web Push source
+label. That is not controlled by notification title/body/manifest. WhatsApp OG for a
+Hosting `/m/{slug}` URL cannot be injected by the SPA; crawlers must hit the Worker
+`GET /m/{slug}` (or a future custom domain that routes crawlers there). Browser hits on
+the Worker 302 to Hosting. Crawler hits receive OG HTML with no meta-refresh.
+
+## D-001 — Remove the الصفقات tab from the home page
 
 **Phase:** 1
 **Directive:** §5 (home page has exactly three sections), §21 (no page named

@@ -24,6 +24,18 @@ function buildNotificationRelativeUrl(data = {}) {
   if (officeId === "platform") params.set("office", "platform");
   else if (officeId) params.set("officeId", officeId);
 
+  if (safeId(data.taskId)) {
+    params.set("openDailyTask", safeId(data.taskId));
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  }
+
+  if (safeId(data.opportunityId)) {
+    params.set("openOpportunity", safeId(data.opportunityId));
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  }
+
   if (type === "deal" || data.dealId) {
     params.set("openDeal", safeId(data.dealId) || recordId);
   } else if (type === "broker_application") {
@@ -80,7 +92,7 @@ self.addEventListener("push", event => {
   const icon = notification.icon || data.iconUrl || "/icons/iaqar-default-icon-192.png";
   const relativeLink = buildNotificationRelativeUrl(data);
   const absoluteLink = notificationUrl({ ...data, url: relativeLink });
-  const badge = notification.badge || data.badgeUrl || "/icons/iaqar-badge-icon.png";
+  const badge = notification.badge || data.badgeUrl || "";
   const options = {
     body: notification.body || "توجد مطابقة عقارية أو متابعة جديدة",
     icon,
@@ -92,11 +104,13 @@ self.addEventListener("push", event => {
       officeId: data.officeId || "",
       type: data.type || "",
       recordId: data.recordId || data.matchId || data.dealId || "",
+      taskId: data.taskId || "",
+      opportunityId: data.opportunityId || "",
       matchId: data.matchId || "",
       dealId: data.dealId || "",
       deliveryId: data.deliveryId || ""
     },
-    tag: notification.tag || data.recordId || data.matchId || data.dealId || data.deliveryId || "iaqar-workflow",
+    tag: notification.tag || data.recordId || data.matchId || data.dealId || data.deliveryId || "office-alert",
     renotify: notification.renotify !== false,
     requireInteraction: data.type === "match" && String(notification.body || "").includes("أفضل فرصة")
   };

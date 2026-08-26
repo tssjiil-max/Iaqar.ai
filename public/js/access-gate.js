@@ -27,10 +27,11 @@
   let isPublicOfficeLink = query.get("view") === "public" && officeId && officeId !== "platform";
   let isPlatformHome = !officeId || officeId === "platform";
   const publicSlug = (() => {
-    const match = location.pathname.match(/^\/o\/([^/]+)\/?$/i);
+    const match = location.pathname.match(/^\/(m|o)\/([^/]+)\/?$/i);
     if (!match) return "";
-    try { return decodeURIComponent(match[1]).trim().toLowerCase(); } catch (_) { return match[1].trim().toLowerCase(); }
+    try { return decodeURIComponent(match[2]).trim().toLowerCase(); } catch (_) { return match[2].trim().toLowerCase(); }
   })();
+  const publicSlugLegacy = /^\/o\//i.test(location.pathname);
   function refreshRouteFlags() {
     isPublicOfficeLink = Boolean(officeId && officeId !== "platform" && (query.get("view") === "public" || publicSlug));
     isPlatformHome = !officeId || officeId === "platform";
@@ -1454,15 +1455,23 @@
     }
     if (publicSlug && !officeId) {
       try {
-        const snapshot = await db().collection("publicOffices").where("publicSlug", "==", publicSlug).limit(1).get();
+        const col = db().collection("publicOffices");
+        let snapshot = await col.where("publicSlug", "==", publicSlug).limit(1).get();
         if (snapshot.empty) {
-          frame(`<section class="access-card"><h2>رابط المكتب غير متاح</h2><p>تحقق من الرابط أو ارجع إلى المنصة العامة.</p><button class="access-btn" id="goPlatformHome">المنصة العامة</button></section>`);
-          gate.querySelector("#goPlatformHome").onclick = () => location.assign("/");
+          snapshot = await col.where("legacyPublicSlugs", "array-contains", publicSlug).limit(1).get();
+        }
+        if (snapshot.empty) {
+          const worker = resolveWorkerBase();
+          location.replace(`${worker}/${publicSlugLegacy ? "o" : "m"}/${encodeURIComponent(publicSlug)}`);
           return;
         }
         const data = snapshot.docs[0].data() || {};
         officeId = String(data.officeId || snapshot.docs[0].id || "").trim().toLowerCase();
         refreshRouteFlags();
+        const canonicalSlug = String(data.publicSlug || publicSlug).trim().toLowerCase();
+        if (canonicalSlug && (publicSlugLegacy || publicSlug !== canonicalSlug)) {
+          try { history.replaceState({}, "", `/m/${encodeURIComponent(canonicalSlug)}`); } catch (_) {}
+        }
       } catch (error) {
         console.warn("[iaqar] public slug resolution", error);
         frame(`<section class="access-card"><h2>تعذر فتح رابط المكتب</h2><p>تحقق من الاتصال ثم حاول مرة أخرى.</p></section>`);
