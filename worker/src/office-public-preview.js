@@ -13,9 +13,11 @@ import {
   isCrawlerUserAgent,
   officeLicensePreviewLines,
   officeOgDescription,
+  officePublicLandingUrl,
   officeShareCardPath,
   officeShareCardVersion,
   parsePublicOfficePath,
+  suggestAssignablePublicSlug,
   validateAssignablePublicSlug
 } from "../../public/js/office-public-link-domain.js";
 import { normalizePublicSlug } from "../../public/js/office-domain.js";
@@ -130,25 +132,26 @@ export async function handlePublicOfficePreview(request, env, deps) {
   const appOrigin = deps.resolveAppOrigin(env);
   const workerOrigin = url.origin;
   const version = officeShareCardVersion(office);
-  const imageUrl = `${workerOrigin}${officeShareCardPath(office.officeId, version)}`;
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
+  const landingUrl = officePublicLandingUrl(appOrigin, officeId);
+  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
     const headers = deps.corsHeaders();
-    headers["location"] = canonicalUrl;
+    headers["location"] = landingUrl || canonicalUrl;
     headers["x-iaqar-office-preview"] = parsed.legacy ? "legacy" : "short";
     return new Response(null, { status: 302, headers });
   }
   const html = buildOfficeOgHtml({
     office,
-    slug: parsed.slug,
+    slug: canonicalSlug,
     origin: appOrigin,
     workerOrigin,
     canonicalUrl,
     imageUrl,
-    browserRedirectUrl: canonicalUrl,
-    includeBrowserRedirect: false
+    browserRedirectUrl: landingUrl || canonicalUrl,
+    includeBrowserRedirect: true
   });
   const headers = deps.corsHeaders();
   headers["x-iaqar-office-preview"] = parsed.legacy ? "legacy" : "short";
@@ -160,10 +163,11 @@ export async function handleOfficeShareCardGet(request, env, deps) {
   const url = new URL(request.url);
   const parsed = shareCardGetMatch(url.pathname);
   if (!parsed) throw deps.appError("media_not_found", 404, "بطاقة المشاركة غير موجودة");
-  const key = officeShareCardStorageKey(parsed.officeId);
   const bucket = deps.requireMediaBucket(env);
-  const object = await bucket.get(key);
-  if (object) {
+  const keys = [officeShareCardStorageKey(parsed.officeId)].filter(Boolean);
+  for (const key of keys) {
+    const object = await bucket.get(key);
+    if (!object) continue;
     const headers = new Headers(deps.corsHeaders());
     object.writeHttpMetadata(headers);
     headers.set("cache-control", "public, max-age=3600");
@@ -183,18 +187,27 @@ export async function handleOfficeShareCardUpload(request, env, deps) {
   if (contentType !== "image/png") throw deps.appError("unsupported_media", 415, "بطاقة المشاركة يجب أن تكون PNG");
   const size = Number(request.headers.get("content-length") || 0);
   if (size > 2 * 1024 * 1024) throw deps.appError("image_too_large", 413, "حجم بطاقة المشاركة كبير");
-  const key = officeShareCardStorageKey(officeId);
+  const bytes = await request.arrayBuffer();
+  const slug = normalizePublicSlug(request.headers.get("x-public-slug"));
+  const keys = [...new Set([
+    officeShareCardStorageKey(officeId),
+    slug ? officeShareCardStorageKey(slug) : ""
+  ].filter(Boolean))];
   const bucket = deps.requireMediaBucket(env);
-  await bucket.put(key, request.body, {
+  const metadata = {
     httpMetadata: { contentType: "image/png", cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, uploadedAt: new Date().toISOString() }
-  });
+    customMetadata: { officeId, publicSlug: slug, uploadedAt: new Date().toISOString() }
+  };
+  for (const key of keys) {
+    await bucket.put(key, bytes, metadata);
+  }
   const version = text(request.headers.get("x-share-card-version")).replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || "1";
   const origin = new URL(request.url).origin;
   return deps.jsonResponse({
     ok: true,
     officeId,
-    imageUrl: `${origin}${officeShareCardPath(officeId, version)}`,
+    publicSlug: slug,
+    imageUrl: `${origin}${officeShareCardPath(slug || officeId, version)}`,
     requestId: deps.requestId
   }, 201);
 }
@@ -216,7 +229,7 @@ export async function handleSavePublicSlug(request, env, deps) {
   if (existingClaim) {
     const claimed = deps.firestoreFieldsToJs(existingClaim.fields || {});
     if (text(claimed.officeId) && text(claimed.officeId) !== officeId) {
-      throw deps.appError("slug_taken", 409, "معرّف الرابط مستخدم لمكتب آخر");
+      throw deps.appError("slug_taken", 409, `معرّف الرابط مستخدم لمكتب آخر. جرّب: ${suggestAssignablePublicSlug(slug) || `${slug}2`}`);
     }
   }
   const occupied = await deps.runFirestoreQuery({
@@ -240,7 +253,7 @@ export async function handleSavePublicSlug(request, env, deps) {
     const owner = text(data.officeId) || id;
     return owner && owner !== officeId;
   });
-  if (takenByOther) throw deps.appError("slug_taken", 409, "معرّف الرابط مستخدم لمكتب آخر");
+  if (takenByOther) throw deps.appError("slug_taken", 409, `معرّف الرابط مستخدم لمكتب آخر. جرّب: ${suggestAssignablePublicSlug(slug) || `${slug}2`}`);
   const officeDoc = await deps.getFirestoreDocument({
     projectId: deps.projectId,
     segments: ["offices", officeId],
@@ -318,6 +331,7 @@ export {
   officeBrandIconCandidates,
   officeLicensePreviewLines,
   officeOgDescription,
+  officePublicLandingUrl,
   officeShareCardPath,
   officeShareCardVersion,
   PLATFORM_DEFAULT_LOGO_512,

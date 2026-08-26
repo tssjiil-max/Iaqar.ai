@@ -135,6 +135,13 @@
         "source": "/m/**",
         "destination": "/index.html"
       }
+    ],
+    "redirects": [
+      {
+        "source": "/m/:slug",
+        "destination": "https://iaqar-intake-staging.iaqar-ai.workers.dev/m/:slug",
+        "type": 302
+      }
     ]
   },
   "firestore": {

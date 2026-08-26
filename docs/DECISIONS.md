@@ -10,21 +10,24 @@ part was **not** implemented.
 ## D-020 — Public office short links `/m/{slug}` plus Worker OG HTML
 
 **Directive.** Owner requested `/m/{slug}` short public office URLs, unique editable
-slugs, WhatsApp crawler OG tags, and office-branded Arabic push presentation. D-004 had
+slugs, WhatsApp crawler OG tags, and a dedicated 1200×630 office share card. D-004 had
 deferred the clean-handle registry until the owner asked.
 
 **Decision.** Canonical share URL is `{origin}/m/{slug}` (3–20 lowercase ASCII, reserved
-routes blocked, uniqueness in `officeSlugClaims`). Legacy `/o/{slug}` still resolves and
-canonicalizes to `/m/{slug}` in the SPA. WhatsApp OG HTML is served by the Worker
-`GET /m/{slug}` because Firebase Hosting cannot inject per-office meta without a new
-compute layer. Browser clicks on Hosting `/m/{slug}` still open the existing public
-office page. Private party tokens stay opaque.
+routes blocked, uniqueness in `officeSlugClaims`). Legacy `/o/{slug}` still resolves on
+Hosting and canonicalizes to `/m/{slug}` in the SPA. Staging Hosting `302`s `/m/:slug`
+to the staging Worker so WhatsApp's crawler receives per-office OG HTML in the HTTP
+response. Browser hits on the Worker land on Hosting `/?office={officeId}&view=public`
+(not `/m/{slug}`) to avoid a redirect loop; the public office page then
+`history.replaceState`s back to `/m/{slug}`. OG HTML never uses `meta-refresh` (the
+crawler would follow it into the SPA). A JS `location.replace` remains so a human
+WhatsApp in-app browser still opens the office page. Share-card PNG is generated from
+canonical office profile fields only (not a page screenshot) and served at
+`/share/office/{slug}/card-v{version}.png`. Private party tokens stay opaque.
 
 **Open question.** Chrome/Android still prints the web.app origin as the Web Push source
-label. That is not controlled by notification title/body/manifest. WhatsApp OG for a
-Hosting `/m/{slug}` URL cannot be injected by the SPA; crawlers must hit the Worker
-`GET /m/{slug}` (or a future custom domain that routes crawlers there). Browser hits on
-the Worker 302 to Hosting. Crawler hits receive OG HTML with no meta-refresh.
+label. That is not controlled by notification title/body/manifest. Production Hosting
+will need its own `/m/:slug` destination when a production Worker hostname is approved.
 
 ## D-001 — Remove the الصفقات tab from the home page
 

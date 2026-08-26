@@ -64,13 +64,14 @@ test("WhatsApp crawler receives OG HTML without a meta-refresh", async () => {
   const html = await response.text();
   assert.equal(response.status, 200);
   assert.match(html, /property="og:title" content="Staging Logo Live"/);
-  assert.match(html, /property="og:image" content="https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/staging-logo-live-20260807\/card-v/);
+  assert.match(html, /property="og:image" content="https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/);
+  assert.match(html, /location\.replace\("https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/\?office=staging-logo-live-20260807&view=public"\)/);
   assert.equal(html.includes("http-equiv=\"refresh\""), false);
   assert.equal(html.includes("cv2Party"), false);
   assert.equal(response.headers.get("x-iaqar-crawler"), "1");
 });
 
-test("browser hits on the Worker short link redirect to Hosting /m/{slug}", async () => {
+test("browser hits on the Worker short link land on the Hosting public office page", async () => {
   const response = await handlePublicOfficePreview(
     new Request("https://iaqar-intake-staging.iaqar-ai.workers.dev/o/staging-logo-live-1pbwwl", {
       headers: { "user-agent": "Mozilla/5.0 Chrome/126" },
@@ -80,7 +81,10 @@ test("browser hits on the Worker short link redirect to Hosting /m/{slug}", asyn
     previewDeps()
   );
   assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/m/wadi");
+  assert.equal(
+    response.headers.get("location"),
+    "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/?office=staging-logo-live-20260807&view=public"
+  );
 });
 
 test("public slug uniqueness rejects another office", async () => {
@@ -94,6 +98,6 @@ test("public slug uniqueness rejects another office", async () => {
       {},
       previewDeps({ claimedBy: "office-b" })
     ),
-    (error) => error.code === "slug_taken"
+    (error) => error.code === "slug_taken" && String(error.message).includes("جرّب:")
   );
 });
