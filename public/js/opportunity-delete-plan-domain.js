@@ -56,6 +56,9 @@ export function planDependentDelete(record = {}, deletingIds = [], extraIds = []
     record.offerId,
     record.matchId,
     record.sourceEntityId,
+    record.operationId,
+    record.taskId,
+    record.workflowId,
     ...(extraIds || [])
   ]);
   if (!id) return { action: "skip", id: "", reason: "missing_id" };
@@ -82,18 +85,21 @@ export function buildOpportunityDeletePlan({
   const deleting = unique(opportunityIds);
   const matchPlans = matches.map((row) => ({ type: "match", ...planMatchDelete(row, deleting) }));
   const deletingMatchIds = matchPlans.filter((row) => row.action === "delete").map((row) => row.id);
-  const deletingAll = unique([...deleting, ...deletingMatchIds]);
+  const deletingOppAndMatches = unique([...deleting, ...deletingMatchIds]);
 
-  const withMatches = (record) => planDependentDelete(record, deletingAll);
-
+  const operationsPlan = (operations || []).map((row) => ({
+    type: "operation",
+    ...planDependentDelete(row, deletingOppAndMatches)
+  }));
+  const deletingOperationIds = operationsPlan.filter((row) => row.action === "delete").map((row) => row.id);
+  const deletingAll = unique([...deletingOppAndMatches, ...deletingOperationIds]);
   const planList = (type, rows, mapper) => (rows || []).map((row) => ({ type, ...mapper(row) }));
-
-  const operationsPlan = planList("operation", operations, withMatches);
-  const sessionsPlan = planList("partySession", partySessions, withMatches);
+  const withAll = (record) => planDependentDelete(record, deletingAll);
+  const sessionsPlan = planList("partySession", partySessions, withAll);
   const coopPlan = planList("cooperation", cooperations, (row) => planDependentDelete(row, deleting, row.opportunityIds || []));
-  const apptPlan = planList("appointment", appointments, withMatches);
-  const notifPlan = planList("notification", notifications, withMatches);
-  const timelinePlan = planList("timeline", timelineEvents, withMatches);
+  const apptPlan = planList("appointment", appointments, withAll);
+  const notifPlan = planList("notification", notifications, withAll);
+  const timelinePlan = planList("timeline", timelineEvents, withAll);
 
   const all = [
     ...deleting.map((id) => ({ type: "opportunity", action: "delete", id, reason: "requested" })),

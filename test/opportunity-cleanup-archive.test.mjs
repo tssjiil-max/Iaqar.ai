@@ -87,6 +87,16 @@ test("delete plan counts exclusive dependents only", () => {
   assert.ok(plan.skip.some((row) => row.id === "mat_share"));
 });
 
+test("notifications exclusive to a deleted operation are included", () => {
+  const plan = buildOpportunityDeletePlan({
+    opportunityIds: ["opp_a"],
+    matches: [{ id: "mat_ex", requestId: "opp_a", offerId: "opp_a" }],
+    operations: [{ id: "op_1", matchId: "mat_ex", opportunityId: "opp_a" }],
+    notifications: [{ id: "nt_1", operationId: "op_1", matchId: "mat_ex" }]
+  });
+  assert.equal(plan.counts.notification, 1);
+});
+
 test("closed deals use archive-deal copy", () => {
   assert.equal(archiveActionLabel({ lifecycleStatus: "CLOSED_WON" }), "أرشفة الصفقة");
   assert.equal(archiveActionLabel({ opportunityKind: "OFFER" }), "نقل إلى الأرشيف");
