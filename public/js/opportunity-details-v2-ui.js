@@ -201,10 +201,19 @@ export function buildNextAppointmentCardV2(vm) {
     </section>`;
 }
 
-export function buildOpportunityMoreActionsV2() {
+export function buildOpportunityMoreActionsV2(vm = {}) {
+  const archived = Boolean(vm.archived);
+  const archiveLabel = vm.archiveActionLabel || "نقل إلى الأرشيف";
+  if (archived) {
+    return `
+    <div class="opp-v2-more" id="oppV2MoreMenu" hidden>
+      <button type="button" class="opp-v2-more-item" id="oppV2RestoreBtn" data-testid="restore-opportunity">استعادة</button>
+      <button type="button" class="opp-v2-more-item is-danger" id="oppV2DeleteBtn" data-testid="permanent-delete">حذف نهائي</button>
+    </div>`;
+  }
   return `
     <div class="opp-v2-more" id="oppV2MoreMenu" hidden>
-      <p class="opp-v2-more-empty">لا توجد إجراءات إضافية الآن.</p>
+      <button type="button" class="opp-v2-more-item" id="oppV2ArchiveBtn" data-testid="archive-opportunity">${esc(archiveLabel)}</button>
     </div>`;
 }
 
@@ -280,7 +289,7 @@ export function buildOpportunityDetailsV2PageHtml(vm) {
         ${buildCompleteMissingButtonV2(vm)}
         ${buildDailyReportCardV2(vm)}
         ${buildNextAppointmentCardV2(vm)}
-        ${buildOpportunityMoreActionsV2()}
+        ${buildOpportunityMoreActionsV2(vm)}
       </div>
     </div>`;
 }

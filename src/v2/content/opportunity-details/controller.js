@@ -170,6 +170,15 @@ function bindPage(root) {
       void runDeviceContactSave(false);
     });
   });
+  root.querySelector("[data-cv2-archive]")?.addEventListener("click", () => {
+    window.IAQAR?.confirmArchiveOpportunity?.(state.opportunityId, state.record);
+  });
+  root.querySelector("[data-cv2-restore]")?.addEventListener("click", () => {
+    window.IAQAR?.restoreOpportunity?.(state.opportunityId, state.record);
+  });
+  root.querySelector("[data-cv2-purge]")?.addEventListener("click", () => {
+    window.IAQAR?.confirmPermanentDelete?.(state.opportunityId, state.record);
+  });
   root.querySelector("[data-cv2-toggle-details]")?.addEventListener("click", () => {
     state.dataCardExpanded = !state.dataCardExpanded;
     const card = root.querySelector("[data-cv2-data-card]");

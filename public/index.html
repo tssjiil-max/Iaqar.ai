@@ -215,8 +215,8 @@
       min-height:29px;
       padding:3px 8px;
       display:grid;
-      grid-template-columns:32px minmax(0,1fr);
-      grid-template-areas:"logo title";
+      grid-template-columns:32px minmax(0,1fr) 34px;
+      grid-template-areas:"logo title bell";
       align-items:center;
       gap:5px;
       background:linear-gradient(180deg, #ecf8f2 0%, #ffffff 78%);
@@ -265,6 +265,98 @@
       z-index:2;
     }
 
+    .header-bell-wrap {
+      grid-area:bell;
+      position:relative;
+    }
+      width:34px;
+      height:34px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+      color:var(--green);
+      display:grid;
+      place-items:center;
+      box-shadow:0 4px 12px rgba(0,63,52,.06);
+    }
+    .header-bell .icon { width:18px;height:18px; }
+    .header-bell-badge {
+      position:absolute;
+      top:-6px;
+      left:-4px;
+      min-width:16px;
+      height:16px;
+      padding:0 4px;
+      border-radius:999px;
+      background:#c62828;
+      color:#fff;
+      font-size:10px;
+      font-weight:800;
+      display:grid;
+      place-items:center;
+    }
+    .header-bell-badge[hidden] { display:none; }
+    .in-app-notif-panel {
+      position:absolute;
+      top:calc(100% + 8px);
+      left:8px;
+      width:min(360px, calc(100vw - 16px));
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:0 12px 32px rgba(0,63,52,.12);
+      z-index:40;
+      padding:12px;
+    }
+    .in-app-notif-head {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:8px;
+    }
+    .in-app-notif-head h2 { margin:0; font-size:15px; }
+    .in-app-notif-list { display:grid; gap:8px; max-height:360px; overflow:auto; }
+    .in-app-notif-item {
+      display:grid;
+      gap:2px;
+      text-align:right;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+    }
+    .in-app-notif-item.is-unread { background:#f3fbf6; }
+    .in-app-notif-ref, .in-app-notif-time { color:var(--muted); font-size:12px; }
+    .in-app-notif-empty { color:var(--muted); margin:8px 0; }
+    .opp-v2-more { display:grid; gap:8px; margin-top:12px; }
+    .opp-v2-more-item {
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:700;
+    }
+    .opp-v2-more-item.is-danger, .bank-action.danger { color:#b42318; }
+    .opp-archive-actions { display:flex; justify-content:flex-start; margin-top:8px; }
+    .opp-archive-link {
+      background:none;
+      border:0;
+      color:var(--muted);
+      font-size:12px;
+      text-decoration:underline;
+      padding:0;
+    }
+    .archive-row {
+      display:grid;
+      gap:10px;
+      padding:12px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:#fff;
+    }
+    .archive-row-main { display:grid; gap:4px; }
+    .archive-row-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .header-back[hidden] { display:none; }
 
     .header-back .icon { width:18px;height:18px; }
@@ -2774,7 +2866,7 @@
       .app { padding:9px 9px 24px; }
       .header {
         min-height:49px;
-        grid-template-columns:48px minmax(0,1fr);
+        grid-template-columns:48px minmax(0,1fr) 34px;
         padding:5px 10px;
       }
       .site-logo { width:48px;height:54px; }
@@ -5758,6 +5850,19 @@
         <h1>مكاتب عقارية ذكية</h1>
         <p>منصة الفرص العقارية</p>
       </div>
+      <div class="header-bell-wrap">
+      <button type="button" class="header-bell" id="inAppNotifBell" aria-label="التنبيهات" aria-expanded="false" aria-controls="inAppNotifPanel">
+        <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
+        <span class="header-bell-badge" id="inAppNotifBadge" hidden>0</span>
+      </button>
+      <section class="in-app-notif-panel" id="inAppNotifPanel" hidden aria-labelledby="inAppNotifTitle">
+        <div class="in-app-notif-head">
+          <h2 id="inAppNotifTitle">آخر التنبيهات</h2>
+          <button type="button" class="settings-close" id="inAppNotifClose" aria-label="إغلاق">×</button>
+        </div>
+        <div class="in-app-notif-list" id="inAppNotifList"></div>
+      </section>
+      </div>
     </header>
 
     <section class="card license">
@@ -5924,7 +6029,7 @@
 
               <div class="bank-toolbar">
                 <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
-                <button type="button" class="bank-filter" id="bankFilterArchived">المؤرشفة</button>
+                <button type="button" class="bank-filter" id="bankFilterArchived">الأرشيف</button>
               </div>
 
               <div class="bank-filters" id="bankFiltersBar" aria-label="بحث العروض والطلبات">
@@ -6076,12 +6181,27 @@
     </section>
   </div>
 
+  <div class="settings-overlay" id="archiveOpportunityOverlay" hidden>
+    <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="archiveOpportunityTitle">
+      <div class="settings-head">
+        <div>
+          <h2 id="archiveOpportunityTitle">نقل إلى الأرشيف</h2>
+          <p id="archiveOpportunityMessage">سيتم نقل العرض إلى الأرشيف ويمكن استعادته لاحقًا.</p>
+        </div>
+      </div>
+      <div class="permanent-delete-actions">
+        <button type="button" class="bank-action" id="archiveOpportunityCancel">إلغاء</button>
+        <button type="button" class="bank-action" id="archiveOpportunityConfirm">نقل إلى الأرشيف</button>
+      </div>
+    </section>
+  </div>
+
   <div class="settings-overlay" id="permanentDeleteOverlay" hidden>
     <section class="settings-sheet permanent-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="permanentDeleteTitle">
       <div class="settings-head">
         <div>
           <h2 id="permanentDeleteTitle">حذف نهائي</h2>
-          <p id="permanentDeleteMessage">سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟</p>
+          <p id="permanentDeleteMessage">سيتم حذف هذه الفرصة والبيانات التشغيلية المرتبطة بها نهائيًا، ولن يمكن استعادتها.</p>
         </div>
       </div>
       <div class="permanent-delete-actions">
@@ -6594,6 +6714,7 @@
   <script type="module" src="js/opportunity-review.js"></script>
   <script type="module" src="js/opportunity-details-v2.js"></script>
   <script type="module" src="js/opportunity-bank.js"></script>
+  <script type="module" src="js/in-app-notifications.js"></script>
   <script type="module" src="js/operations-center-bridge.js"></script>
   <script type="module" src="js/operations-domain-bridge.js"></script>
   <script type="module" src="js/messaging-domain-bridge.js"></script>

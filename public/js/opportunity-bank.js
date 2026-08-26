@@ -19,6 +19,8 @@ import {
   cooperationStateFromShareStatus,
   cooperationStatusLabel,
   shareRequestStatusLabel,
+  isActiveOpportunity,
+  isArchivedOpportunity,
   phase3BoundaryGuarantees,
   recordToReviewFields,
   readinessMissingToNeedsReview,
@@ -84,6 +86,11 @@ import {
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
 import { buildBankInboxCardHtml } from "./bank-inbox-card-ui.js";
+import {
+  archiveActionLabel,
+  archiveConfirmCopy,
+  permanentDeleteCopy
+} from "./opportunity-delete-plan-domain.js";
 import { sortBankInboxRecords } from "./bank-inbox-card-domain.js";
 import { firstMissingEditor } from "./v2/opportunity-details/view-model.js";
 import { buildFieldEditorV2, dismissFieldEditor, wireFieldEditorSheet } from "./v2/opportunity-details/editor.js";
@@ -463,13 +470,9 @@ function stopListener() {
 
 function isVisibleForFilter(record) {
   if (record.deletedAt || record.lifecycleStatus === LIFECYCLE.DELETED) return false;
-  if (state.filter === "archived") {
-    return record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
-  }
-  // active
-  if (record.lifecycleStatus === LIFECYCLE.ARCHIVED) return false;
-  if (record.archivedAt && record.lifecycleStatus !== LIFECYCLE.ACTIVE) return false;
-  return true;
+  const archived = isArchivedOpportunity(record);
+  if (state.filter === "archived") return archived;
+  return !archived;
 }
 
 
@@ -784,7 +787,9 @@ function renderList() {
         <div class="cv2-inbox-section-rule"></div>
         ${items.map((row) => bankRowHtml(row)).join("")}`;
     };
-    const rowsHtml = `${section("يحتاج استكمال", needsRows)}${section("قيد المطابقة", matchingRows)}`;
+    const rowsHtml = state.filter === "archived"
+      ? rows.map((row) => bankRowHtml(row)).join("")
+      : `${section("يحتاج استكمال", needsRows)}${section("قيد المطابقة", matchingRows)}`;
     bodyHtml = `<p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>${rowsHtml}`;
     if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
   }
@@ -932,19 +937,22 @@ function renderOpportunityDetailsV2InPanel(panel, id, record, extras = {}) {
         actorUid: authUser()?.uid || ""
       }, (patch) => persistOpportunityPatch(id, patch, { context: "v2-field" }));
     },
-    onSaved: async (result) => {
-      toast("تم الحفظ");
-      const fresh = state.records.get(id) || record;
-      const wasIncomplete = evaluateMatchingReadiness(record).isReadyForMatching === false;
-      const nowReady = Boolean(result?.readiness?.isReadyForMatching)
-        || evaluateMatchingReadiness(fresh).isReadyForMatching;
-      if (wasIncomplete && nowReady) {
-        toast("تم استكمال البيانات وانتقل العرض إلى قيد المطابقة");
-      }
-      renderOpportunityDetailsV2InPanel(panel, id, fresh, extras);
-      renderList();
-    }
-  });
+      onSaved: async (result) => {
+        toast("تم الحفظ");
+        const fresh = state.records.get(id) || record;
+        const wasIncomplete = evaluateMatchingReadiness(record).isReadyForMatching === false;
+        const nowReady = Boolean(result?.readiness?.isReadyForMatching)
+          || evaluateMatchingReadiness(fresh).isReadyForMatching;
+        if (wasIncomplete && nowReady) {
+          toast("تم استكمال البيانات وانتقل العرض إلى قيد المطابقة");
+        }
+        renderOpportunityDetailsV2InPanel(panel, id, fresh, extras);
+        renderList();
+      },
+      onArchive: () => confirmArchiveOpportunity(id, state.records.get(id) || record),
+      onRestore: () => void restoreOpportunity(id, state.records.get(id) || record),
+      onDelete: () => confirmPermanentDelete(id, state.records.get(id) || record)
+    });
 }
 
 async function renderDetail(id, options = {}) {
@@ -2921,6 +2929,37 @@ async function saveEdit(id, existing, input) {
   }
 }
 
+function confirmArchiveOpportunity(id, record) {
+  void (async () => {
+    const latest = (await reloadOpportunityFromBackend(id)) || record || state.records.get(id);
+    const modal = document.getElementById("archiveOpportunityOverlay");
+    const message = document.getElementById("archiveOpportunityMessage");
+    const confirmBtn = document.getElementById("archiveOpportunityConfirm");
+    const cancelBtn = document.getElementById("archiveOpportunityCancel");
+    const title = document.getElementById("archiveOpportunityTitle");
+    if (!modal || !confirmBtn || !cancelBtn) {
+      setStatus("تعذر فتح تأكيد الأرشفة", "is-error");
+      return;
+    }
+    if (title) title.textContent = archiveActionLabel(latest);
+    if (message) message.textContent = archiveConfirmCopy(latest);
+    if (confirmBtn) confirmBtn.textContent = archiveActionLabel(latest);
+    modal.hidden = false;
+    const close = () => {
+      modal.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+    };
+    const onCancel = () => close();
+    const onConfirm = () => {
+      close();
+      void archiveOpportunity(id, latest);
+    };
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+  })();
+}
+
 async function archiveOpportunity(id, existing) {
   const user = authUser();
   const result = buildArchivePatch(existing, { actorUid: user?.uid || "" });
@@ -2934,12 +2973,13 @@ async function archiveOpportunity(id, existing) {
   }
   setStatus("جارٍ الأرشفة…");
   try {
-    await patchOpportunity(id, result.patch);
+    await persistOpportunityPatch(id, result.patch, { context: "archive" });
     state.records.set(id, { ...existing, ...result.patch, id });
+    if (state.activeId === id) closeActiveDetailPanel();
     renderList();
     await rematchOpportunity(id, { reason: "archive" });
     setStatus("تمت الأرشفة", "is-done");
-    toast("تمت أرشفة الفرصة");
+    toast("تم النقل إلى الأرشيف");
   } catch (error) {
     console.warn("[iaqar] bank archive", error);
     setStatus("تعذرت الأرشفة", "is-error");
@@ -2959,9 +2999,12 @@ async function restoreOpportunity(id, existing) {
   }
   setStatus("جارٍ الاستعادة…");
   try {
-    await patchOpportunity(id, result.patch);
-    state.records.set(id, { ...existing, ...result.patch, id });
-    renderList();
+    const { reloaded } = await persistOpportunityPatch(id, result.patch, { context: "restore" });
+    state.records.set(id, reloaded || { ...existing, ...result.patch, id });
+    state.filter = "active";
+    state.queryFilters.summaryKey = "total";
+    syncFilterButtons();
+    await loadBankPage({ reset: true });
     await rematchOpportunity(id, { reason: "restore" });
     setStatus("تمت الاستعادة", "is-done");
     toast("تمت استعادة الفرصة");
@@ -2971,17 +3014,39 @@ async function restoreOpportunity(id, existing) {
   }
 }
 
-async function softDeleteOpportunity(id, existing) {
+async function permanentDeleteOpportunity(id, existing) {
   const user = authUser();
-  const result = buildSoftDeletePatch(existing, { actorUid: user?.uid || "", reason: "permanent_delete" });
-  if (result.idempotent) {
-    setStatus("الفرصة محذوفة مسبقًا", "is-done");
+  const validation = validatePermanentDelete(existing, { officeId: officeId() });
+  if (!validation.allowed) {
+    setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
+    return;
+  }
+  if (!user?.getIdToken) {
+    setStatus("يلزم تسجيل الدخول", "is-error");
     return;
   }
   setStatus("جارٍ الحذف النهائي…");
   try {
-    await patchOpportunity(id, result.patch);
-    await rematchOpportunity(id, { reason: "delete" });
+    const token = await user.getIdToken();
+    const response = await fetch(`${workerBaseUrl()}/opportunity/purge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Office-Id": officeId()
+      },
+      body: JSON.stringify({
+        officeId: officeId(),
+        opportunityId: id,
+        confirm: "PERMANENT_DELETE"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw Object.assign(new Error(payload.message || payload.error || "تعذر الحذف النهائي"), {
+        code: payload.error || "purge_failed"
+      });
+    }
     state.records.delete(id);
     state.activeId = null;
     $("opportunityBankDetail").hidden = true;
@@ -2989,42 +3054,45 @@ async function softDeleteOpportunity(id, existing) {
     setStatus("تم الحذف النهائي", "is-done");
     toast("تم حذف الفرصة نهائيًا");
   } catch (error) {
-    console.warn("[iaqar] bank delete", error);
-    setStatus("تعذر الحذف", "is-error");
+    console.warn("[iaqar] bank purge", error);
+    setStatus(error?.message || "تعذر الحذف", "is-error");
   }
 }
 
 function confirmPermanentDelete(id, record) {
-  const validation = validatePermanentDelete(record, { officeId: officeId() });
-  if (!validation.allowed) {
-    setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
-    toast(validation.reason || "لا يمكن حذف هذه الفرصة");
-    return;
-  }
-  const modal = document.getElementById("permanentDeleteOverlay");
-  const message = document.getElementById("permanentDeleteMessage");
-  const cancelBtn = document.getElementById("permanentDeleteCancel");
-  const confirmBtn = document.getElementById("permanentDeleteConfirm");
-  if (!modal || !confirmBtn || !cancelBtn) {
-    setStatus("تعذر فتح تأكيد الحذف", "is-error");
-    return;
-  }
-  if (message) {
-    message.textContent = "سيتم حذف هذه الفرصة نهائيًا، ولن يمكن استعادتها. هل أنت متأكد؟";
-  }
-  modal.hidden = false;
-  const close = () => {
-    modal.hidden = true;
-    cancelBtn.removeEventListener("click", onCancel);
-    confirmBtn.removeEventListener("click", onConfirm);
-  };
-  const onCancel = () => close();
-  const onConfirm = () => {
-    close();
-    void softDeleteOpportunity(id, record);
-  };
-  cancelBtn.addEventListener("click", onCancel);
-  confirmBtn.addEventListener("click", onConfirm);
+  void (async () => {
+    const latest = (await reloadOpportunityFromBackend(id)) || record || state.records.get(id);
+    const validation = validatePermanentDelete(latest, { officeId: officeId() });
+    if (!validation.allowed) {
+      setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
+      toast(validation.reason || "لا يمكن حذف هذه الفرصة");
+      return;
+    }
+    const modal = document.getElementById("permanentDeleteOverlay");
+    const message = document.getElementById("permanentDeleteMessage");
+    const cancelBtn = document.getElementById("permanentDeleteCancel");
+    const confirmBtn = document.getElementById("permanentDeleteConfirm");
+    if (!modal || !confirmBtn || !cancelBtn) {
+      setStatus("تعذر فتح تأكيد الحذف", "is-error");
+      return;
+    }
+    if (message) {
+      message.textContent = permanentDeleteCopy();
+    }
+    modal.hidden = false;
+    const close = () => {
+      modal.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+    };
+    const onCancel = () => close();
+    const onConfirm = () => {
+      close();
+      void permanentDeleteOpportunity(id, latest);
+    };
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+  })();
 }
 
 async function hideSharedFromBankPanel(sharedId) {
@@ -3662,6 +3730,27 @@ function bindListClicks() {
       event.preventDefault();
       const article = editorBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
       if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "", editorBtn);
+      return;
+    }
+    const archiveBtn = event.target.closest("[data-inbox-archive]");
+    if (archiveBtn && list.contains(archiveBtn)) {
+      event.preventDefault();
+      const id = archiveBtn.getAttribute("data-inbox-archive");
+      confirmArchiveOpportunity(id, state.records.get(id));
+      return;
+    }
+    const restoreBtn = event.target.closest("[data-archive-restore]");
+    if (restoreBtn && list.contains(restoreBtn)) {
+      event.preventDefault();
+      const id = restoreBtn.getAttribute("data-archive-restore");
+      void restoreOpportunity(id, state.records.get(id));
+      return;
+    }
+    const purgeBtn = event.target.closest("[data-archive-purge]");
+    if (purgeBtn && list.contains(purgeBtn)) {
+      event.preventDefault();
+      const id = purgeBtn.getAttribute("data-archive-purge");
+      confirmPermanentDelete(id, state.records.get(id));
     }
   });
 }
@@ -4206,6 +4295,9 @@ function boot() {
 
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
   window.IAQAR = window.IAQAR || {};
+  window.IAQAR.confirmArchiveOpportunity = confirmArchiveOpportunity;
+  window.IAQAR.restoreOpportunity = restoreOpportunity;
+  window.IAQAR.confirmPermanentDelete = confirmPermanentDelete;
   window.IAQAR.openOpportunityBank = openOpportunityBank;
   window.IAQAR.activateOpportunityBankInline = activateOpportunityBankInline;
   window.IAQAR.pauseOpportunityBankInline = pauseOpportunityBankInline;

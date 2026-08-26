@@ -157,6 +157,15 @@ export function wireOpportunityDetailsV2(container, options = {}) {
     const menu = root.querySelector("#oppV2MoreMenu");
     if (menu) menu.hidden = !menu.hidden;
   });
+  root.querySelector("#oppV2ArchiveBtn")?.addEventListener("click", () => {
+    options.onArchive?.(options.vm || {});
+  });
+  root.querySelector("#oppV2RestoreBtn")?.addEventListener("click", () => {
+    options.onRestore?.(options.vm || {});
+  });
+  root.querySelector("#oppV2DeleteBtn")?.addEventListener("click", () => {
+    options.onDelete?.(options.vm || {});
+  });
   root.querySelector("#oppV2CompleteBtn")?.addEventListener("click", () => {
     openEditor(firstMissingEditor(options.vm || {}), root.querySelector("#oppV2CompleteBtn"));
   });
@@ -217,7 +226,10 @@ export function mountOpportunityDetailsV2(container, record, extras = {}) {
     vm,
     onClose: extras.onClose,
     saveField: extras.saveField,
-    onSaved: extras.onSaved
+    onSaved: extras.onSaved,
+    onArchive: extras.onArchive,
+    onRestore: extras.onRestore,
+    onDelete: extras.onDelete
   });
   return vm;
 }

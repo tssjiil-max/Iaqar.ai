@@ -17,6 +17,7 @@
     "smoke:staging": "node scripts/smoke-staging.mjs",
     "check": "node scripts/check.mjs",
     "v2:content": "node scripts/copy-content-v2.mjs",
+    "cleanup:staging-opportunities": "node scripts/cleanup-staging-opportunities.mjs",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:report": "npx playwright show-report playwright-report"

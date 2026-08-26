@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-08-26T00:33:19.857Z",
+  "runId": "mt9cz2wx",
+  "results": {
+    "1": {
+      "status": "PASS — LIVE E2E",
+      "note": "dry-run 0 unintended; REVIEW_REQUIRED preserved"
+    },
+    "2": {
+      "status": "PASS — LIVE E2E",
+      "note": "216 QA records deleted"
+    },
+    "3": {
+      "status": "PASS — LIVE E2E",
+      "note": "office survived"
+    },
+    "4": {
+      "status": "PASS — LIVE E2E",
+      "note": "opp_manual_mt9czemg"
+    },
+    "5": {
+      "status": "PASS — LIVE E2E",
+      "note": "archive=true active=0 firestore=true"
+    },
+    "6": {
+      "status": "PASS — LIVE E2E",
+      "note": "ui=true lifecycle=ACTIVE archivedAt=cleared"
+    },
+    "7": {
+      "status": "PASS — LIVE E2E",
+      "note": "ui=0 firestore=false"
+    },
+    "8": {
+      "status": "PASS — LIVE E2E",
+      "note": "matches=0"
+    },
+    "9": {
+      "status": "PASS — LIVE E2E",
+      "note": "matchStatus=200 notifs=5 matchId=mat_c8ad0540abe41d55accf55320e1ab953a6ba"
+    },
+    "10": {
+      "status": "PASS — LIVE E2E",
+      "note": "reply=200 interested=true"
+    },
+    "11": {
+      "status": "PASS — LIVE E2E",
+      "note": "ownerNotif=true status=200"
+    },
+    "12": {
+      "status": "PASS — LIVE E2E",
+      "note": "opened nt_1884bad6644d7e6cd5aafb14704fcd6097a13646"
+    },
+    "13": {
+      "status": "PASS — LIVE E2E",
+      "note": "readAt=true unread 18→17"
+    },
+    "14": {
+      "status": "PASS — LIVE E2E",
+      "note": "persistedRead=true"
+    },
+    "15": {
+      "status": "PASS — LIVE E2E",
+      "note": "interested=4 unique=4"
+    }
+  },
+  "shots": {
+    "clean": "/opt/cursor/artifacts/offers_requests_clean_after_qa_cleanup.png",
+    "created": "/opt/cursor/artifacts/offers_manual_created_active.png",
+    "archive": "/opt/cursor/artifacts/offers_archive_with_restore_and_delete.png",
+    "delete": "/opt/cursor/artifacts/offers_permanent_delete_dialog.png",
+    "badge": "/opt/cursor/artifacts/notification_unread_badge.png",
+    "list": "/opt/cursor/artifacts/notification_center_list.png",
+    "tap": "/opt/cursor/artifacts/notification_opens_correct_daily_task.png"
+  }
+}

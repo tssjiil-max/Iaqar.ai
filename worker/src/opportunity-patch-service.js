@@ -39,6 +39,14 @@ export const PATCHABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "advertiserContactStatus",
   "marketingConsentStatus",
   "lifecycleStatus",
+  "archivedAt",
+  "archivedBy",
+  "restoredAt",
+  "restoredBy",
+  "preArchiveLifecycleStatus",
+  "deletedAt",
+  "deletedBy",
+  "deletionReason",
   "nextFollowUpAt",
   "nextActionAt",
   "nextActionType",
@@ -69,6 +77,12 @@ export function sanitizeOpportunityPatch(patch = {}) {
       }
       const num = Number(value);
       out[key] = Number.isFinite(num) ? num : null;
+      continue;
+    }
+    if (value === null && [
+      "archivedAt", "archivedBy", "restoredAt", "restoredBy", "deletedAt", "deletedBy", "deletionReason"
+    ].includes(key)) {
+      out[key] = null;
       continue;
     }
     if (key === "nearbyDistricts") {

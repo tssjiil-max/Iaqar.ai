@@ -539,6 +539,23 @@ function onListClick(event) {
   toggleOpenTask(card.getAttribute("data-task-id"));
 }
 
+function consumePendingDailyTaskOpen() {
+  const pending = typeof window !== "undefined" ? window.IAQAR?.pendingDailyTaskOpen : null;
+  if (!pending) return;
+  const task = findTaskForNotification(pending);
+  if (!task) return;
+  window.IAQAR.pendingDailyTaskOpen = null;
+  if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+  else {
+    window.requestAnimationFrame(() => {
+      state.root?.querySelector(`[data-task-id="${task.id}"]`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    });
+  }
+}
+
 function renderList() {
   if (!state.root) return;
   state.root.innerHTML = buildDailyTaskListHtml(currentTasks(), {
@@ -546,6 +563,7 @@ function renderList() {
     detailsTaskId: state.detailsTaskId
   });
   restoreScroll();
+  consumePendingDailyTaskOpen();
 }
 
 function onOperationsData(event) {
@@ -562,8 +580,31 @@ function onOperationsData(event) {
   renderList();
 }
 
+function findTaskForNotification(detail = {}) {
+  const taskId = String(detail.taskId || detail.id || "").trim();
+  const matchId = String(detail.matchId || "").trim();
+  const opportunityId = String(detail.opportunityId || "").trim();
+  const operationId = String(detail.operationId || "").trim();
+  return currentTasks().find((task) =>
+    task.id === taskId
+    || (matchId && (task.matchId === matchId || task.id === `mg_${matchId}` || task.id === matchId))
+    || (operationId && task.id === operationId)
+    || (opportunityId && (task.opportunityId === opportunityId || task.requestId === opportunityId || task.offerId === opportunityId))
+  ) || null;
+}
+
+function onOpenDailyTask(event) {
+  const task = findTaskForNotification(event.detail || {});
+  if (!task) return;
+  if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+  window.requestAnimationFrame(() => {
+    state.root?.querySelector(`[data-task-id="${task.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
 export function unmountDailyTasksContentV2() {
   window.removeEventListener("iaqar:operations-data", onOperationsData);
+  window.removeEventListener("iaqar:open-daily-task", onOpenDailyTask);
   closeOfferDetailsSheet();
   if (state.root) {
     state.root.removeEventListener("click", onListClick);
@@ -581,7 +622,9 @@ export function mountDailyTasksContentV2(root) {
   const alreadyMounted = state.root === root && state.bound;
   state.root = root;
   window.removeEventListener("iaqar:operations-data", onOperationsData);
+  window.removeEventListener("iaqar:open-daily-task", onOpenDailyTask);
   window.addEventListener("iaqar:operations-data", onOperationsData);
+  window.addEventListener("iaqar:open-daily-task", onOpenDailyTask);
   if (!alreadyMounted) {
     root.addEventListener("click", onListClick);
     state.bound = true;

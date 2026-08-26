@@ -5,6 +5,7 @@
  */
 
 import { evaluateMatchingReadiness, MISSING_FIELD_LABELS } from "./opportunity-readiness-domain.js";
+import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
 import {
   ADVERTISER_ROLES,
   formatLocalPhoneDisplay,
@@ -373,7 +374,10 @@ export function mapOpportunityDetailsV2ViewModel(id, record = {}, extras = {}) {
     activities: mapActivities(record, extras),
     currentResult,
     nextAppointment: mapAppointment(record, extras),
-    isOwner
+    isOwner,
+    archived: Boolean(record.archivedAt) || String(record.lifecycleStatus || "").toUpperCase() === "ARCHIVED",
+    archiveActionLabel: archiveActionLabel(record),
+    lifecycleStatus: String(record.lifecycleStatus || "")
   };
 }
 

@@ -12,6 +12,7 @@ import {
   opportunityBankRow,
   safeText
 } from "./office-domain.js";
+import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 import { normalizePurpose } from "./opportunity-intake-domain.js";
 
 export { COOPERATION_STATUS_LABELS, cooperationStatusLabel, opportunityBankRow };
@@ -147,8 +148,8 @@ export function isDeletedOpportunity(record = {}) {
 export function isArchivedOpportunity(record = {}) {
   if (!record || isDeletedOpportunity(record)) return false;
   if (normalizeLifecycle(record.lifecycleStatus) === LIFECYCLE.ARCHIVED) return true;
-  // Legacy docs that only stamped archivedAt without lifecycleStatus.
-  if (!record.lifecycleStatus && record.archivedAt) return true;
+  const archivedAt = record.archivedAt;
+  if (archivedAt && String(archivedAt).trim()) return true;
   return false;
 }
 
@@ -427,6 +428,7 @@ export function buildArchivePatch(existing, { now = new Date(), actorUid = "" } 
     idempotent: false,
     patch: {
       lifecycleStatus: LIFECYCLE.ARCHIVED,
+      preArchiveLifecycleStatus: safeText(existing.lifecycleStatus, 40) || LIFECYCLE.ACTIVE,
       archivedAt: now.toISOString(),
       archivedBy: safeText(actorUid, 120),
       restoredAt: null,
@@ -443,11 +445,24 @@ export function buildRestorePatch(existing, { now = new Date(), actorUid = "" } 
   if (isActiveOpportunity(existing) && !existing.archivedAt) {
     return { ok: true, patch: null, idempotent: true };
   }
+  const readiness = evaluateMatchingReadiness({
+    ...existing,
+    archivedAt: null,
+    archivedBy: null,
+    lifecycleStatus: existing.preArchiveLifecycleStatus || LIFECYCLE.ACTIVE
+  });
+  const nextLifecycle = readiness.isReadyForMatching
+    ? (safeText(existing.preArchiveLifecycleStatus, 40) || "NEW")
+    : "NEW";
   return {
     ok: true,
     idempotent: false,
     patch: {
-      lifecycleStatus: LIFECYCLE.ACTIVE,
+      lifecycleStatus: nextLifecycle === LIFECYCLE.ARCHIVED || nextLifecycle === LIFECYCLE.DELETED
+        ? "NEW"
+        : nextLifecycle,
+      matchingReadiness: readiness.matchingReadiness,
+      matchingReadinessMissing: readiness.matchingReadinessMissing,
       restoredAt: now.toISOString(),
       restoredBy: safeText(actorUid, 120),
       archivedAt: null,

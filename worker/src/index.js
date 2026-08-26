@@ -70,6 +70,14 @@ import {
   validateCooperationListingEnable,
   mapPatchErrorMessage
 } from "./opportunity-patch-service.js";
+import {
+  PERMANENT_DELETE_CONFIRM,
+  applyOpportunityPurge,
+  collectOfficeWorkflowRows,
+  planOpportunityPurge,
+  validatePurgeRequest
+} from "./opportunity-purge-service.js";
+import { markNotificationRead } from "./in-app-notification-write.js";
 import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
 import {
   MESSAGE_CHANNELS,
@@ -728,6 +736,14 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/opportunity/patch") {
         return handleOpportunityPatch(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/opportunity/purge") {
+        return handleOpportunityPurge(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/notifications/read") {
+        return handleNotificationRead(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/opportunity/workspace") {
@@ -3191,7 +3207,7 @@ function opportunityPatchToFirestoreFields(patch = {}) {
   const fields = {};
   for (const [key, value] of Object.entries(patch)) {
     if (value === null || value === undefined) {
-      fields[key] = null;
+      fields[key] = { nullValue: null };
       continue;
     }
     if (typeof value === "number") {
@@ -3288,6 +3304,126 @@ async function handleOpportunityPatch(request, env, requestId) {
     ok: true,
     opportunityId,
     opportunity: finalRecord,
+    requestId
+  });
+}
+
+async function handleOpportunityPurge(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) {
+    throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const opportunityDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  const existing = opportunityDoc ? firestoreFieldsToJs(opportunityDoc.fields || {}) : null;
+  const gate = validatePurgeRequest({
+    existing: existing ? { ...existing, officeId: existing.officeId || officeId } : null,
+    officeId,
+    confirm: body.confirm
+  });
+  if (!gate.ok) throw appError(gate.error, gate.status, gate.message);
+
+  const rows = await collectOfficeWorkflowRows({
+    projectId,
+    officeId,
+    accessToken,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  });
+  const [originCoop, targetCoop] = await Promise.all([
+    runFirestoreQuery({
+      projectId,
+      accessToken,
+      structuredQuery: {
+        from: [{ collectionId: "cooperationRequests" }],
+        where: { fieldFilter: { field: { fieldPath: "originatingOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
+        limit: 80
+      }
+    }).catch(() => []),
+    runFirestoreQuery({
+      projectId,
+      accessToken,
+      structuredQuery: {
+        from: [{ collectionId: "cooperationRequests" }],
+        where: { fieldFilter: { field: { fieldPath: "targetOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
+        limit: 80
+      }
+    }).catch(() => [])
+  ]);
+  const cooperations = [...originCoop, ...targetCoop].map((doc) => ({
+    id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+    ...(firestoreFieldsToJs(doc.fields || {}) || {})
+  }));
+  const plan = planOpportunityPurge({
+    opportunityId,
+    ...rows,
+    cooperations
+  });
+  const applied = await applyOpportunityPurge({
+    projectId,
+    officeId,
+    opportunityId,
+    plan,
+    accessToken,
+    deleteFirestoreDocument,
+    listCollectionDocuments
+  });
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    confirm: PERMANENT_DELETE_CONFIRM,
+    plan: { delete: plan.delete, skip: plan.skip, counts: plan.counts },
+    deleted: applied.deleted,
+    skipped: applied.skipped,
+    requestId
+  });
+}
+
+async function handleNotificationRead(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = normalizeOfficeId(body.officeId);
+  const notificationId = cleanText(body.notificationId, 180);
+  if (!officeId || !notificationId) {
+    throw appError("notification_data_missing", 400, "بيانات الإشعار غير مكتملة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await markNotificationRead({
+    projectId,
+    officeId,
+    notificationId,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreHelpers: {
+      firestoreFieldsToJs,
+      firestoreString,
+      firestoreTimestamp,
+      firestoreBoolean,
+      firestoreInteger
+    }
+  });
+  if (!result.ok) {
+    const status = result.error === "office_mismatch" ? 403 : 404;
+    throw appError(result.error, status, "تعذر تحديث الإشعار");
+  }
+  return jsonResponse({
+    ok: true,
+    notificationId,
+    alreadyRead: Boolean(result.alreadyRead),
+    notification: result.notification,
     requestId
   });
 }
@@ -5619,6 +5755,9 @@ function partySessionHelpers() {
     setFirestoreDocument,
     firestoreFieldsToJs,
     firestoreString,
+    firestoreTimestamp,
+    firestoreBoolean,
+    firestoreInteger,
     jsToFirestoreValue,
     normalizeOfficeId,
     cleanText,

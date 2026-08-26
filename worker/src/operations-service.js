@@ -15,6 +15,7 @@ import {
   phase5BoundaryGuarantees,
   shouldCreateMatchReview
 } from "./operations-domain.js";
+import { formatOpportunityReference } from "../../public/js/reference-code-domain.js";
 
 const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind", "purpose", "propertyType", "city",
@@ -126,6 +127,11 @@ export function notificationToFirestoreFields(notification, {
     officeId: firestoreString(notification.officeId),
     brokerId: firestoreString(notification.brokerId || ""),
     operationId: firestoreString(notification.operationId || ""),
+    matchId: firestoreString(notification.matchId || ""),
+    opportunityId: firestoreString(notification.opportunityId || ""),
+    taskId: firestoreString(notification.taskId || notification.workflowId || ""),
+    workflowId: firestoreString(notification.workflowId || notification.taskId || ""),
+    referenceCode: firestoreString(notification.referenceCode || ""),
     type: firestoreString(notification.type),
     title: firestoreString(notification.title || ""),
     body: firestoreString(notification.body || ""),
@@ -330,7 +336,10 @@ export async function createMatchReviewBundle({
   const notification = await buildInAppNotification({
     officeId,
     brokerId: operation.assignedBrokerId,
-    operation: opResult.operation
+    operation: opResult.operation,
+    referenceCode: formatOpportunityReference(
+      opResult.operation.opportunityId || opResult.operation.metadata?.clientRequestId || ""
+    )
   });
   const notifResult = await upsertNotificationDocument({
     projectId, officeId, notification, accessToken, ...deps

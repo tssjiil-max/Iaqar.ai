@@ -16,6 +16,8 @@ import {
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
 import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel } from "../../public/js/match-group-domain.js";
+import { upsertNotificationDocument } from "./operations-service.js";
+import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
 function publicWorkerOrigin(env = {}) {
   const explicit = String(env.PUBLIC_WORKER_ORIGIN || "").replace(/\/$/, "");
@@ -516,6 +518,32 @@ async function replyPartySession({ token, env, request, requestId, helpers, ip }
         label: partyReplyTimelineLabel(loaded.session.party, action)
       }
     }
+  });
+  const opportunityId = String(
+    loaded.session.requestId
+    || loaded.session.opportunityId
+    || loaded.session.offerId
+    || loaded.session.shareSnapshot?.permitted?.opportunityId
+    || ""
+  );
+  const livingNotification = await buildLivingEventNotification({
+    officeId: loaded.officeId,
+    matchId: loaded.session.matchId || "",
+    opportunityId,
+    taskId: loaded.session.matchId ? `mg_${loaded.session.matchId}` : opportunityId,
+    party: loaded.session.party,
+    action,
+    livingStage: living.stage,
+    now
+  });
+  await upsertNotificationDocument({
+    projectId,
+    officeId: loaded.officeId,
+    notification: livingNotification,
+    accessToken,
+    setFirestoreDocument: helpers.setFirestoreDocument,
+    getFirestoreDocument: helpers.getFirestoreDocument,
+    firestoreHelpers: helpers
   });
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
