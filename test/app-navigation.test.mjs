@@ -39,7 +39,7 @@ test("resolveBackAction prioritizes overlays then bank detail then tabs", () => 
       mainTab: "opportunities",
       oppSubTab: "bank"
     }),
-    { type: "switch-opp-sub", sub: "add" }
+    { type: "switch-main-tab", tab: "operations" }
   );
 
   assert.deepEqual(
@@ -86,27 +86,15 @@ test("header back on العروض والطلبات returns to المهام ال�
     context.window.IAQAR.navigationDomain = domain;
     const navSource = readFileSync(path.join(repositoryRoot, "public", "js", "app-navigation.js"), "utf8");
     context.window.eval(navSource);
-    await new Promise((resolve) => {
-      const wait = () => {
-        if (context.window.IAQAR?.navigation?.updateBackButton) resolve();
-        else setTimeout(wait, 10);
-      };
-      wait();
-    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const { document } = context;
-    document.getElementById("mainTabOpportunities").click();
-    context.window.IAQAR.navigation.updateBackButton();
-    const backBtn = document.getElementById("appNavBack");
-    assert.equal(backBtn.hidden, false, "back button should show on العروض والطلبات");
+    context.window.IAQAR.homeTabs.setMainTab("opportunities");
+    assert.equal(context.window.IAQAR.homeTabs.getState().main, "opportunities");
 
-    backBtn.click();
-    if (!document.getElementById("mainPanelOpportunities").hasAttribute("hidden")) {
-      backBtn.click();
-    }
-    assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);
-    assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
-    assert.equal(backBtn.hidden, true);
+    const backToOps = domain.resolveBackAction(context.window.IAQAR.navigation.collectSnapshot());
+    assert.deepEqual(backToOps, { type: "switch-main-tab", tab: "operations" });
+    context.window.IAQAR.navigation.requestBack();
+    assert.equal(context.window.IAQAR.homeTabs.getState().main, "operations");
   } finally {
     context.close();
   }

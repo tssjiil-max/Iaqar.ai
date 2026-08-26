@@ -540,6 +540,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /platformSettings/pilotAccess {
+      allow read, write: if isPlatformAdmin();
+    }
+
     match /platform/settings/pilotAccess {
       allow read, write: if isPlatformAdmin();
     }

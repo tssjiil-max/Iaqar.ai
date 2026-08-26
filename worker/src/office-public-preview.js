@@ -180,7 +180,7 @@ export async function handleOfficeShareCardGet(request, env, deps) {
 }
 
 export async function handleOfficeShareCardUpload(request, env, deps) {
-  const officeId = deps.normalizeOfficeId(request.headers.get("x-office-id"));
+  const officeId = deps.firestoreOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw deps.appError("office_id_required", 400, "officeId مطلوب");
   await deps.authorizeOfficeRequest(request, env, officeId, "manage");
   const contentType = text(request.headers.get("content-type")).toLowerCase();
@@ -214,7 +214,7 @@ export async function handleOfficeShareCardUpload(request, env, deps) {
 
 export async function handleSavePublicSlug(request, env, deps) {
   const body = await request.json().catch(() => ({}));
-  const officeId = deps.normalizeOfficeId(body.officeId);
+  const officeId = deps.firestoreOfficeId(body.officeId);
   if (!officeId) throw deps.appError("office_id_required", 400, "officeId مطلوب");
   await deps.authorizeOfficeRequest(request, env, officeId, "manage");
   const checked = validateAssignablePublicSlug(body.publicSlug);

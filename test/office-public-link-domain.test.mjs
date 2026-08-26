@@ -113,7 +113,7 @@ test("share-card version changes when office identity changes", () => {
   assert.match(officeShareCardPath("wadi", a), new RegExp(`/share/office/wadi/card-v${a}\\.png`));
   const firebase = readFileSync(new URL("../firebase.json", import.meta.url), "utf8");
   assert.match(firebase, /"source": "\/m\/:slug"/);
-  assert.match(firebase, /iaqar-intake-staging\.iaqar-ai\.workers\.dev\/m\/:slug/);
+  assert.match(firebase, /iaqar-macrodroid-intake\.iaqar-ai\.workers\.dev\/m\/:slug/);
   assert.match(firebase, /"source": "\/o\/\*\*"/);
   assert.equal(SHARE_CARD_WIDTH, 1200);
   assert.equal(SHARE_CARD_HEIGHT, 630);

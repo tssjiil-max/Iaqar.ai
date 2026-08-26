@@ -39,9 +39,6 @@ export function resolveBackAction(snapshot = {}) {
   if (snapshot.bankDetailOpen) {
     return { type: "close-bank-detail" };
   }
-  if (snapshot.mainTab === "opportunities" && snapshot.oppSubTab === "bank") {
-    return { type: "switch-opp-sub", sub: "add" };
-  }
   if (snapshot.mainTab === "opportunities") {
     return { type: "switch-main-tab", tab: "operations" };
   }

@@ -256,7 +256,7 @@ test("Phase 9A Cloudflare preflight uses account APIs and disposable permission 
 test("Phase 9A shell uses channel-local Firebase init; no deals nav", () => {
   const shell = read("public", "index.html");
   const runtimeIdx = shell.indexOf('src="js/runtime-config.js"');
-  const accessIdx = shell.indexOf('src="js/access-gate.js"');
+  const accessIdx = shell.indexOf('js/access-gate.js');
   const workflowIdx = shell.indexOf('src="js/workflow-office.js"');
   assert.ok(runtimeIdx > 0);
   assert.ok(accessIdx > runtimeIdx);

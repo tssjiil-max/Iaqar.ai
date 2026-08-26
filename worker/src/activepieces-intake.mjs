@@ -3,17 +3,14 @@
  * inbox + processInboundMessage path.
  */
 
+import { firestoreOfficeId } from "../../public/js/office-id-domain.js";
+
 export const ACTIVEPIECES_SOURCE = "activepieces";
 export const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";
 export const ALLOWED_INTAKE_TYPES = Object.freeze(["owner_offer", "buyer_request"]);
 
 function cleanText(value, maxLength) {
   return String(value == null ? "" : value).replace(/\u0000/g, "").trim().slice(0, maxLength);
-}
-
-function normalizeOfficeId(value) {
-  return String(value || "").trim().toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
 function constantTimeEqual(left, right) {
@@ -66,7 +63,7 @@ export function validateActivepiecesIntakeBody(body = {}) {
 
   const officeId = body.officeId == null || body.officeId === ""
     ? ""
-    : normalizeOfficeId(body.officeId);
+    : firestoreOfficeId(body.officeId);
   if (!officeId) missingFields.push("officeId");
 
   if (missingFields.length) {

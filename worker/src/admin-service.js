@@ -213,7 +213,7 @@ export async function handleAdminOffices(request, url, env, requestId, helpers) 
 export async function handleAdminOfficeDetail(request, url, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   await helpers.requirePlatformIdentity(request, env, true);
-  const officeId = helpers.normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeId = helpers.firestoreOfficeId(url.searchParams.get("officeId"));
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
@@ -243,7 +243,7 @@ export async function handleAdminOfficeDetail(request, url, env, requestId, help
 export async function handleAdminOfficeActivity(request, url, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   await helpers.requirePlatformIdentity(request, env, true);
-  const officeId = helpers.normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeId = helpers.firestoreOfficeId(url.searchParams.get("officeId"));
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
@@ -289,7 +289,7 @@ export async function handleAdminSuspend(request, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   const admin = await helpers.requirePlatformIdentity(request, env, true);
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   const reason = helpers.cleanText(body.reason, 500);
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   if (reason.length < 4) throw helpers.appError("reason_required", 400, "يلزم ذكر سبب الإيقاف");
@@ -330,7 +330,7 @@ export async function handleAdminReactivate(request, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   const admin = await helpers.requirePlatformIdentity(request, env, true);
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   const reason = helpers.cleanText(body.reason, 500);
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
@@ -370,7 +370,7 @@ export async function handleAdminSubscriptionUpdate(request, env, requestId, hel
   helpers.assertFirebaseSecrets(env);
   const admin = await helpers.requirePlatformIdentity(request, env, true);
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   const subscriptionStatus = helpers.cleanText(body.subscriptionStatus, 40);
   const subscriptionExpiresAt = body.subscriptionExpiresAt ? new Date(body.subscriptionExpiresAt) : null;
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
@@ -404,7 +404,7 @@ export async function handleAdminLicenseUpdate(request, env, requestId, helpers)
   helpers.assertFirebaseSecrets(env);
   const admin = await helpers.requirePlatformIdentity(request, env, true);
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   const licenseExpiresAt = body.licenseExpiresAt ? new Date(body.licenseExpiresAt) : null;
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
@@ -436,7 +436,7 @@ export async function handleAdminNoteAdd(request, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   const admin = await helpers.requirePlatformIdentity(request, env, true);
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   const note = helpers.cleanText(body.note, 2000);
   if (!officeId || officeId === "platform") throw helpers.appError("office_id_invalid", 400, "رمز المكتب غير صالح");
   if (note.length < 2) throw helpers.appError("note_required", 400, "الملاحظة مطلوبة");
@@ -472,7 +472,7 @@ export async function handleAdminAuditLog(request, url, env, requestId, helpers)
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") || 100)));
-  const officeId = helpers.normalizeOfficeId(url.searchParams.get("officeId") || "");
+  const officeId = helpers.firestoreOfficeId(url.searchParams.get("officeId") || "");
   const docs = await listAllCollectionDocuments({ projectId, segments: ["adminAuditLogs"], accessToken, helpers });
   let items = docs.map((doc) => docToRow(doc, helpers));
   if (officeId) items = items.filter((row) => row.officeId === officeId);

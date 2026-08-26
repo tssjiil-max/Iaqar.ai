@@ -46,7 +46,7 @@ function previewDeps({ slugOfficeId = "staging-logo-live-20260807", claimedBy = 
     },
     authorizeOfficeRequest: async () => ({ uid: "mgr" }),
     resolveAppOrigin: () => "https://iaqar-ai-staging--staging-9c4b0k7h.web.app",
-    normalizeOfficeId: (value) => String(value || "").trim(),
+    firestoreOfficeId: (value) => String(value || "").trim(),
     corsHeaders: () => ({ "Access-Control-Allow-Origin": "*" }),
     jsonResponse: (body, status = 200) => new Response(JSON.stringify(body), { status }),
     appError

@@ -33,9 +33,17 @@ function sha256Hex(value) {
   return createHash("sha256").update(String(value)).digest("hex");
 }
 
+import {
+  firestoreOfficeId,
+  officeAuthorizationKey,
+  officeIdsEquivalent
+} from "../public/js/office-id-domain.js";
+
 function mockHelpers(store) {
   return {
-    normalizeOfficeId: (value) => String(value || "").trim().toLowerCase(),
+    firestoreOfficeId: (value) => firestoreOfficeId(value),
+    officeAuthorizationKey: (value) => officeAuthorizationKey(value),
+    officeIdsEquivalent: (left, right) => officeIdsEquivalent(left, right),
     authorizeOfficeRequest: async () => {},
     assertFirebaseSecrets: () => {},
     getGoogleAccessToken: async () => "access-token",
@@ -53,6 +61,9 @@ function mockHelpers(store) {
     sha256Hex: async (value) => sha256Hex(value),
     firestoreFieldsToJs: (fields) => fields || {},
     firestoreString: (value) => ({ stringValue: String(value) }),
+    firestoreBoolean: (value) => ({ booleanValue: Boolean(value) }),
+    firestoreInteger: (value) => ({ integerValue: String(Number(value) || 0) }),
+    firestoreTimestamp: (value) => ({ timestampValue: (value instanceof Date ? value : new Date(value)).toISOString() }),
     jsToFirestoreValue(value) {
       return { mapValue: { fields: value } };
     },

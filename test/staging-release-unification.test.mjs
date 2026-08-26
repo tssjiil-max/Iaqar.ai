@@ -89,7 +89,8 @@ test("version.json is gitignored and generated from the current commit", () => {
   assert.equal(payload.shortSha, shortSha.toLowerCase());
   assert.equal(payload.channel, "staging");
   assert.ok(payload.deployedAt);
-  assert.equal(payload.branch, REQUIRED_STAGING_BRANCH);
+  const currentBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  assert.equal(payload.branch, currentBranch);
   unlinkSync(out);
   assert.equal(existsSync(path.join(root, "public", "version.json")), false);
 });

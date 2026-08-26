@@ -1,6 +1,6 @@
 /**
  * Production pilot access — Worker persistence + enforcement.
- * Reads platform/settings/pilotAccess from Firestore. Never hardcodes office IDs in UI.
+ * Reads platformSettings/pilotAccess from Firestore. Never hardcodes office IDs in UI.
  */
 
 import {
@@ -16,7 +16,7 @@ import {
 
 export { PILOT_FEATURE_DISABLED };
 
-const SETTINGS_DOC_SEGMENTS = Object.freeze(["platform", "settings", "pilotAccess"]);
+const SETTINGS_DOC_SEGMENTS = Object.freeze(["platformSettings", "pilotAccess"]);
 const CACHE_TTL_MS = 30_000;
 
 let cachedConfig = { expiresAt: 0, config: null };

@@ -164,7 +164,7 @@ export async function handlePartySessionMint({
   helpers
 }) {
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   if (!officeId) throw helpers.appError("office_id_required", 400, "تعذر تحديد المكتب");
   await helpers.authorizeOfficeRequest(request, env, officeId, "member");
   helpers.assertFirebaseSecrets(env);
@@ -342,7 +342,7 @@ export async function loadPartyPublicView({ token, env, helpers }) {
   });
   if (!pointer) return null;
   const pointerData = js(pointer, helpers);
-  const officeId = helpers.normalizeOfficeId(pointerData.officeId);
+  const officeId = helpers.firestoreOfficeId(pointerData.officeId);
   const sessionId = String(pointerData.sessionId || "").trim();
   if (!officeId || !sessionId) return null;
   const sessionDoc = await helpers.getFirestoreDocument({
@@ -591,7 +591,7 @@ export async function handleMatchLivingAction({
   helpers
 }) {
   const body = await request.json().catch(() => ({}));
-  const officeId = helpers.normalizeOfficeId(body.officeId);
+  const officeId = helpers.firestoreOfficeId(body.officeId);
   if (!officeId) throw helpers.appError("office_id_required", 400, "تعذر تحديد المكتب");
   await helpers.authorizeOfficeRequest(request, env, officeId, "member");
   helpers.assertFirebaseSecrets(env);
