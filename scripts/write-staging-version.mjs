@@ -8,8 +8,9 @@ import path from "node:path";
 import { buildVersionPayload } from "../public/js/release-version-domain.js";
 
 const root = path.resolve(import.meta.dirname, "..");
-const outPath = process.argv[2]
-  ? path.resolve(process.argv[2])
+const fileArg = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
+const outPath = fileArg
+  ? path.resolve(fileArg)
   : path.join(root, "public", "version.json");
 
 function git(args) {
@@ -19,12 +20,14 @@ function git(args) {
 const fullSha = git(["rev-parse", "HEAD"]).toLowerCase();
 const shortSha = git(["rev-parse", "--short=7", "HEAD"]).toLowerCase();
 const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
+const channelArg = process.argv.find((arg) => arg.startsWith("--channel="));
+const channel = channelArg ? channelArg.slice("--channel=".length).trim() : "staging";
 const payload = buildVersionPayload({
   fullSha,
   shortSha,
   branch,
   deployedAt: new Date().toISOString(),
-  channel: "staging"
+  channel
 });
 
 mkdirSync(path.dirname(outPath), { recursive: true });

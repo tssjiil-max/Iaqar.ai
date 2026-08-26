@@ -5,11 +5,16 @@
 
 import {
   DEFAULT_PILOT_REGISTRATION_MESSAGE,
+  PILOT_FEATURE_DISABLED,
+  PILOT_FEATURE_MESSAGES,
   evaluatePilotOfficeAccess,
   evaluatePilotRegistration,
+  isPilotFeatureEnabled,
   normalizePilotAccessConfig,
   pilotAccessSummary
 } from "../../public/js/pilot-access-domain.js";
+
+export { PILOT_FEATURE_DISABLED };
 
 const SETTINGS_DOC_SEGMENTS = Object.freeze(["platform", "settings", "pilotAccess"]);
 const CACHE_TTL_MS = 30_000;
@@ -153,5 +158,20 @@ export async function getPilotAccessStatus(deps, { officeId = "", isPlatformAdmi
 }
 
 export function isPilotFeatureEnabledSync(config, featureKey) {
-  return normalizePilotAccessConfig(config).featureFlags[featureKey] !== false;
+  return isPilotFeatureEnabled(config, featureKey);
+}
+
+export async function assertPilotFeatureEnabled(deps, featureKey) {
+  const config = await loadPilotAccessConfig(deps);
+  if (isPilotFeatureEnabled(config, featureKey)) {
+    return { config, featureKey, enabled: true };
+  }
+  logPilot("pilot.feature.disabled", { featureKey });
+  const error = new Error(
+    PILOT_FEATURE_MESSAGES[featureKey] || "الميزة متوقفة مؤقتًا في المرحلة التجريبية."
+  );
+  error.code = PILOT_FEATURE_DISABLED;
+  error.status = 503;
+  error.featureKey = featureKey;
+  throw error;
 }

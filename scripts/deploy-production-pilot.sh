@@ -37,7 +37,7 @@ npm run test:rules
 npm run check
 
 echo "--- Generate version.json ---"
-node scripts/write-staging-version.mjs
+node scripts/write-staging-version.mjs --channel=production
 
 echo "--- Deploy production Worker ---"
 (cd worker && npx wrangler deploy)

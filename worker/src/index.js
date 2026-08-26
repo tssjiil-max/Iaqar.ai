@@ -96,10 +96,10 @@ import {
   submitOfficeRating
 } from "./opportunity-router-service.js";
 import {
+  assertPilotFeatureEnabled,
   assertPilotOfficeAccess,
   assertPilotRegistrationAllowed,
   getPilotAccessStatus,
-  isPilotFeatureEnabledSync,
   loadPilotAccessConfig
 } from "./pilot-access-service.js";
 import {
@@ -500,6 +500,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/matching/preview") {
+        await ensurePilotFeatureEnabled(env, "matching");
         const body = await request.json().catch(() => ({}));
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
         const candidates = Array.isArray(body.candidates) ? body.candidates : [];
@@ -1777,6 +1778,7 @@ async function handleActivepiecesIntake(request, env, requestId) {
 
 
 async function handlePublicIntakeMatching(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -2034,6 +2036,7 @@ function opportunityRouterDeps(env, projectId, accessToken) {
 }
 
 async function handleOpportunityRouterAccept(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -2053,6 +2056,7 @@ async function handleOpportunityRouterAccept(request, env, requestId) {
 }
 
 async function handleOpportunityRouterDecline(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -2070,6 +2074,7 @@ async function handleOpportunityRouterDecline(request, env, requestId) {
 }
 
 async function handleOpportunityRouterTick(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
@@ -2085,6 +2090,7 @@ async function handleOpportunityRouterTick(request, env, requestId) {
 }
 
 async function handleOpportunityRouterRate(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4273,6 +4279,7 @@ async function findAndSaveMatchesForOpportunity({
 }
 
 async function handleMatchingRun(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "matching");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4344,6 +4351,7 @@ async function handleOperationsAction(request, env, requestId) {
 }
 
 async function handleOperationsFromCooperation(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4423,6 +4431,7 @@ async function handleOperationsMissingData(request, env, requestId) {
 }
 
 async function handleCooperationSuitableOffices(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4466,6 +4475,7 @@ async function handleCooperationSuitableOffices(request, env, requestId) {
 }
 
 async function handleCooperationNearbySuggestions(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4592,6 +4602,7 @@ async function handleOpportunityWorkspace(request, env, requestId) {
 }
 
 async function handleCooperationRoom(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4670,6 +4681,7 @@ async function handleCooperationRoom(request, env, requestId) {
 }
 
 async function handleCooperationWorkflow(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4714,6 +4726,7 @@ async function handleCooperationWorkflow(request, env, requestId) {
 }
 
 async function handleCooperationRequestCreate(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const targetOfficeId = normalizeOfficeId(body.targetOfficeId);
@@ -4765,6 +4778,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4809,6 +4823,7 @@ async function handleCooperationLifecycle(request, env, requestId) {
 }
 
 async function handleCooperationScopeRevoke(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const sharingScopeId = cleanText(body.sharingScopeId, 180);
@@ -5201,6 +5216,7 @@ async function readOfficeBrandProfile({projectId,officeId,accessToken}) {
 }
 
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null,taskId="",opportunityId="",missingLabel="",appointmentLabel="",presentationType=""}) {
+  if (env) await ensurePilotFeatureEnabled(env, "pushNotifications");
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
@@ -5367,6 +5383,7 @@ async function getFcmStatus(request,url,env,requestId) {
 }
 
 async function registerFcmDevice(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
   const officeId=normalizeOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
@@ -5408,6 +5425,7 @@ async function unregisterFcmDevice(request,env,requestId) {
 }
 
 async function sendFcmTestNotification(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
   const officeId=normalizeOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
@@ -5987,6 +6005,21 @@ function pilotAccessDeps(projectId, accessToken) {
     listCollectionDocuments,
     firestoreFieldsToJs
   };
+}
+
+async function ensurePilotFeatureEnabled(env, featureKey) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  try {
+    return await assertPilotFeatureEnabled(pilotAccessDeps(projectId, accessToken), featureKey);
+  } catch (error) {
+    throw appError(
+      error.code || "pilot_feature_disabled",
+      error.status || 503,
+      error.message || "الميزة متوقفة مؤقتًا في المرحلة التجريبية."
+    );
+  }
 }
 
 async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {

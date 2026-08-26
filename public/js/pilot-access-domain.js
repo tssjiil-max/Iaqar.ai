@@ -4,6 +4,14 @@
  */
 
 export const PILOT_ACCESS_DENIED = "PILOT_ACCESS_DENIED";
+export const PILOT_FEATURE_DISABLED = "PILOT_FEATURE_DISABLED";
+
+export const PILOT_FEATURE_MESSAGES = Object.freeze({
+  matching: "ميزة المطابقة متوقفة مؤقتًا في المرحلة التجريبية.",
+  publicOpportunityRouting: "توجيه الفرص العامة متوقف مؤقتًا في المرحلة التجريبية.",
+  pushNotifications: "الإشعارات الفورية متوقفة مؤقتًا في المرحلة التجريبية.",
+  crossOfficeCollaboration: "التعاون بين المكاتب متوقف مؤقتًا في المرحلة التجريبية."
+});
 
 export const DEFAULT_PILOT_REGISTRATION_MESSAGE =
   "التسجيل متاح حاليًا لعدد محدود من المكاتب ضمن المرحلة التجريبية.";
