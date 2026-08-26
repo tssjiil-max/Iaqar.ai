@@ -539,5 +539,9 @@ service cloud.firestore {
     match /_system/{document=**} {
       allow read, write: if false;
     }
+
+    match /platform/settings/pilotAccess {
+      allow read, write: if isPlatformAdmin();
+    }
   }
 }

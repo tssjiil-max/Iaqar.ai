@@ -96,6 +96,13 @@ import {
   submitOfficeRating
 } from "./opportunity-router-service.js";
 import {
+  assertPilotOfficeAccess,
+  assertPilotRegistrationAllowed,
+  getPilotAccessStatus,
+  isPilotFeatureEnabledSync,
+  loadPilotAccessConfig
+} from "./pilot-access-service.js";
+import {
   ORIGIN_SOURCE_TYPE,
   originSourceFromIntake,
   livingTaskIdForOpportunity,
@@ -369,6 +376,27 @@ export default {
         const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
         const accessToken = await getGoogleAccessToken(env);
         return await handleSavePublicSlug(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
+      }
+
+      if (request.method === "GET" && url.pathname === "/platform/pilot-status") {
+        assertFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+        const accessToken = await getGoogleAccessToken(env);
+        const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+        let isPlatformAdmin = false;
+        const authHeader = cleanText(request.headers.get("Authorization"), 5000);
+        const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+        if (bearer) {
+          try {
+            const claims = await verifyFirebaseIdToken(bearer, projectId);
+            isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
+          } catch (_) { /* public summary without auth */ }
+        }
+        const status = await getPilotAccessStatus(pilotAccessDeps(projectId, accessToken), {
+          officeId,
+          isPlatformAdmin
+        });
+        return jsonResponse({ ok: true, ...status, requestId });
       }
 
       if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
@@ -1163,6 +1191,13 @@ function firestoreStringArray(values = []) {
 async function handleBrokerApplication(request, env, requestId) {
   assertFirebaseSecrets(env);
   const identity = await requirePlatformIdentity(request, env, false);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  try {
+    await assertPilotRegistrationAllowed(pilotAccessDeps(projectId, accessToken));
+  } catch (error) {
+    throw appError(error.code || "pilot_registration_closed", error.status || 403, error.message);
+  }
   const body = await request.json().catch(() => ({}));
   const brokerName = cleanText(body.brokerName, 80);
   const phone = normalizeLoginPhone(body.phone);
@@ -1176,8 +1211,6 @@ async function handleBrokerApplication(request, env, requestId) {
   if (!/^\d{6,20}$/.test(falLicense)) {
     throw appError("fal_invalid", 400, "رقم رخصة فال غير صالح");
   }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
   const phoneHash = await sha256Hex(phone);
   const loginDirectory = await getFirestoreDocument({
     projectId,
@@ -1303,6 +1336,13 @@ async function decideBrokerApplication(request, env, requestId) {
   if (application.status !== "pending") throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
   const now = new Date();
   if (action === "approve") {
+    const pilotDeps = pilotAccessDeps(projectId, accessToken);
+    try {
+      await assertPilotRegistrationAllowed(pilotDeps);
+      await assertPilotOfficeAccess(pilotDeps, { officeId, isPlatformAdmin: false });
+    } catch (error) {
+      throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
+    }
     const normalizedPhone = normalizeLoginPhone(application.phone);
     if (!normalizedPhone) throw appError("phone_invalid", 400, "رقم جوال الوسيط غير صالح");
     const phoneHash = await sha256Hex(normalizedPhone);
@@ -1328,6 +1368,7 @@ async function decideBrokerApplication(request, env, requestId) {
         approvalStatus: firestoreString("approved"),
         accountStatus: firestoreString("active"),
         subscriptionStatus: firestoreString("trial"),
+        pilotAuthorized: firestoreBoolean(true),
         approvedAt: firestoreTimestamp(now),
         approvedByUid: firestoreString(admin.sub),
         registeredAt: firestoreTimestamp(now),
@@ -5938,6 +5979,16 @@ async function handleOfficeAnalytics(request,url,env,requestId){
 }
 
 
+function pilotAccessDeps(projectId, accessToken) {
+  return {
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  };
+}
+
 async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
@@ -5947,11 +5998,17 @@ async function authorizeOfficeRequest(request, env, officeId, permission = "mana
   }
   if (!token) throw appError("authentication_required", 401, "سجل دخول المكتب أولاً");
   const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
-  if (claims.platformAdmin === true || claims.admin === true) {
+  const isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
+  if (isPlatformAdmin) {
     return { uid: claims.sub, claims, role: "platformAdmin", permission };
   }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  try {
+    await assertPilotOfficeAccess(pilotAccessDeps(projectId, accessToken), { officeId, isPlatformAdmin: false });
+  } catch (error) {
+    throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
+  }
   const officeDoc = await getFirestoreDocument({ projectId, segments:["offices",officeId], accessToken, allowMissing:true });
   if (!officeDoc) throw appError("office_not_found",404,"المكتب غير موجود");
   const office = firestoreFieldsToJs(officeDoc.fields || {});
