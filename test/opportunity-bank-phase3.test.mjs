@@ -159,6 +159,8 @@ test("archive / restore / soft-delete are idempotent and preserve audit fields",
   assert.equal(buildSoftDeletePatch({ ...sample, ...deleted.patch }).idempotent, true);
 
   assert.equal(isArchivedOpportunity({ ...sample, lifecycleStatus: "ARCHIVED", archivedAt: "x" }), true);
+  assert.equal(isArchivedOpportunity({ ...sample, lifecycleStatus: "ACTIVE", archivedAt: "2026-08-26T00:00:00.000Z" }), true);
+  assert.equal(isArchivedOpportunity({ ...sample, lifecycleStatus: "ACTIVE", archivedAt: "" }), false);
   assert.equal(isActiveOpportunity({ ...sample, lifecycleStatus: "DELETED", deletedAt: "x" }), false);
 });
 

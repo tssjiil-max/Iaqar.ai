@@ -1,0 +1,21 @@
+{
+  "officeExists": true,
+  "officeName": "Staging Logo Live",
+  "logoUrl": true,
+  "coverUrl": true,
+  "displayImageUrl": true,
+  "members": 1,
+  "settingsDocs": [
+    "cooperation"
+  ],
+  "subscriptionStatus": "active",
+  "counts": {
+    "opportunities": 34,
+    "matches": 1,
+    "operations": 14,
+    "partySessions": 6,
+    "notifications": 21
+  },
+  "reviewSampleExists": true,
+  "e2eIdsRemaining": []
+}

@@ -242,12 +242,14 @@ async function main() {
   writeFileSync(path.join(OUT_DIR, "opportunity-cleanup-dry-run.json"), JSON.stringify(report, null, 2));
   writeFileSync("/opt/cursor/artifacts/opportunity-cleanup-dry-run.json", JSON.stringify(report, null, 2));
   writeFileSync(path.join(OUT_DIR, "opportunity-cleanup-candidates.json"), JSON.stringify(candidates, null, 2));
-  const recommendedAllowlist = {
-    officeId,
-    reason: "Inspected suspect QA ids (e2e/dbg/api) plus integrity-invalid matches. REVIEW_REQUIRED rows are excluded.",
-    ids: candidates.filter((row) => row.decision === CLEANUP_DECISION.CANDIDATE).map((row) => row.id)
-  };
-  writeFileSync(path.join(OUT_DIR, "opportunity-cleanup-allowlist.json"), JSON.stringify(recommendedAllowlist, null, 2));
+  if (!ALLOWLIST_FILE) {
+    const recommendedAllowlist = {
+      officeId,
+      reason: "Inspected suspect QA ids (e2e/dbg/api) plus integrity-invalid matches. REVIEW_REQUIRED rows are excluded.",
+      ids: candidates.filter((row) => row.decision === CLEANUP_DECISION.CANDIDATE).map((row) => row.id)
+    };
+    writeFileSync(path.join(OUT_DIR, "opportunity-cleanup-allowlist.json"), JSON.stringify(recommendedAllowlist, null, 2));
+  }
 
   console.log(`Office:\n${officeId}\n`);
   console.log("Candidates (in-scope tagged/allowlist + plan):");

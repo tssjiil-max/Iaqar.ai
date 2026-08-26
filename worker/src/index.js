@@ -3207,7 +3207,7 @@ function opportunityPatchToFirestoreFields(patch = {}) {
   const fields = {};
   for (const [key, value] of Object.entries(patch)) {
     if (value === null || value === undefined) {
-      fields[key] = null;
+      fields[key] = { nullValue: null };
       continue;
     }
     if (typeof value === "number") {

@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-08-26T00:15:47.660Z",
+  "runId": "mt9ccyvw",
+  "results": {
+    "1": {
+      "status": "PASS — LIVE E2E",
+      "note": "dry-run 0 unintended; REVIEW_REQUIRED preserved"
+    },
+    "2": {
+      "status": "PASS — LIVE E2E",
+      "note": "216 QA records deleted"
+    },
+    "3": {
+      "status": "PASS — LIVE E2E",
+      "note": "office survived"
+    },
+    "4": {
+      "status": "PASS — LIVE E2E",
+      "note": "opp_manual_mt9cd7mv"
+    },
+    "5": {
+      "status": "FAIL — LIVE E2E",
+      "note": "archive=1 active=1"
+    },
+    "6": {
+      "status": "PASS — LIVE E2E",
+      "note": "opp_manual_mt9cd7mv"
+    },
+    "7": {
+      "status": "FAIL — LIVE E2E",
+      "note": "ui=0 firestore=true"
+    },
+    "8": {
+      "status": "PASS — LIVE E2E",
+      "note": "matches=0"
+    },
+    "9": {
+      "status": "PASS — LIVE E2E",
+      "note": "matchStatus=200 notifs=4 matchId=mat_5986757b76898cf7137d66aaedbe9c9725f0"
+    },
+    "10": {
+      "status": "PASS — LIVE E2E",
+      "note": "reply=200 interested=true"
+    },
+    "11": {
+      "status": "PASS — LIVE E2E",
+      "note": "ownerNotif=true"
+    },
+    "12": {
+      "status": "PASS — LIVE E2E",
+      "note": "tapped first notification"
+    },
+    "13": {
+      "status": "PASS — LIVE E2E",
+      "note": "before=4 after=5"
+    },
+    "14": {
+      "status": "PASS — LIVE E2E",
+      "note": "reload completed with listener"
+    },
+    "15": {
+      "status": "PASS — LIVE E2E",
+      "note": "interested titles=1"
+    }
+  },
+  "shots": {
+    "clean": "/opt/cursor/artifacts/offers_requests_clean.png",
+    "created": "/opt/cursor/artifacts/offers_manual_created.png",
+    "archive": "/opt/cursor/artifacts/offers_archive_list.png",
+    "delete": "/opt/cursor/artifacts/offers_delete_confirmation.png",
+    "badge": "/opt/cursor/artifacts/notification_badge.png",
+    "list": "/opt/cursor/artifacts/notification_list.png",
+    "tap": "/opt/cursor/artifacts/notification_opens_daily_task.png"
+  }
+}

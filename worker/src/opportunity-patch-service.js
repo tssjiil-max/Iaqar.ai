@@ -79,6 +79,12 @@ export function sanitizeOpportunityPatch(patch = {}) {
       out[key] = Number.isFinite(num) ? num : null;
       continue;
     }
+    if (value === null && [
+      "archivedAt", "archivedBy", "restoredAt", "restoredBy", "deletedAt", "deletedBy", "deletionReason"
+    ].includes(key)) {
+      out[key] = null;
+      continue;
+    }
     if (key === "nearbyDistricts") {
       out[key] = Array.isArray(value)
         ? value.map((entry) => safeText(entry, 80)).filter(Boolean).slice(0, 12)

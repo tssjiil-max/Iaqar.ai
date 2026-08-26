@@ -19,6 +19,8 @@ import {
   cooperationStateFromShareStatus,
   cooperationStatusLabel,
   shareRequestStatusLabel,
+  isActiveOpportunity,
+  isArchivedOpportunity,
   phase3BoundaryGuarantees,
   recordToReviewFields,
   readinessMissingToNeedsReview,
@@ -468,13 +470,9 @@ function stopListener() {
 
 function isVisibleForFilter(record) {
   if (record.deletedAt || record.lifecycleStatus === LIFECYCLE.DELETED) return false;
-  if (state.filter === "archived") {
-    return record.lifecycleStatus === LIFECYCLE.ARCHIVED || Boolean(record.archivedAt);
-  }
-  // active
-  if (record.lifecycleStatus === LIFECYCLE.ARCHIVED) return false;
-  if (record.archivedAt && record.lifecycleStatus !== LIFECYCLE.ACTIVE) return false;
-  return true;
+  const archived = isArchivedOpportunity(record);
+  if (state.filter === "archived") return archived;
+  return !archived;
 }
 
 

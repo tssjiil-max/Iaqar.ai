@@ -148,8 +148,8 @@ export function isDeletedOpportunity(record = {}) {
 export function isArchivedOpportunity(record = {}) {
   if (!record || isDeletedOpportunity(record)) return false;
   if (normalizeLifecycle(record.lifecycleStatus) === LIFECYCLE.ARCHIVED) return true;
-  // Legacy docs that only stamped archivedAt without lifecycleStatus.
-  if (!record.lifecycleStatus && record.archivedAt) return true;
+  const archivedAt = record.archivedAt;
+  if (archivedAt && String(archivedAt).trim()) return true;
   return false;
 }
 
