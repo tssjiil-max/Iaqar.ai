@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-25T19:14:41.361Z",
-  "runId": "livee2e_matchint_mt91neuo",
+  "generatedAt": "2026-08-26T08:28:58.131Z",
+  "runId": "livee2e_matchint_mt9u0myl",
   "officeId": "qa-e2e-dedicated",
   "persisted": {
-    "requestId": "opp_livee2e_matchint_mt91neuo_req",
-    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "requestId": "opp_livee2e_matchint_mt9u0myl_req",
+    "offerId": "opp_livee2e_matchint_mt9u0myl_offer",
     "requestExists": true,
     "offerExists": true
   },
@@ -13,11 +13,11 @@
     "body": {
       "ok": true,
       "officeId": "qa-e2e-dedicated",
-      "opportunityId": "opp_livee2e_matchint_mt91neuo_req",
+      "opportunityId": "opp_livee2e_matchint_mt9u0myl_req",
       "matchCount": 1,
       "matches": [
         {
-          "matchId": "mat_157ef331b7f3d8c3ee27ee2700546b51746c",
+          "matchId": "mat_80266293bcdf835342940dfd929ea08e0027",
           "duplicate": false,
           "score": 100,
           "opportunityScore": 100,
@@ -64,17 +64,17 @@
           "propertyType": "شقة",
           "matchingRuleVersion": "4.0.0",
           "dataVersion": "03a6445563c9d38bcc600d11",
-          "pairKey": "opportunities:opp_livee2e_matchint_mt91neuo_offer|opportunities:opp_livee2e_matchint_mt91neuo_req",
-          "opportunityId": "opp_livee2e_matchint_mt91neuo_req",
-          "counterpartOpportunityId": "opp_livee2e_matchint_mt91neuo_offer",
+          "pairKey": "opportunities:opp_livee2e_matchint_mt9u0myl_offer|opportunities:opp_livee2e_matchint_mt9u0myl_req",
+          "opportunityId": "opp_livee2e_matchint_mt9u0myl_req",
+          "counterpartOpportunityId": "opp_livee2e_matchint_mt9u0myl_offer",
           "isCurrent": true,
           "assignedBrokerId": "",
-          "requestId": "opp_livee2e_matchint_mt91neuo_req",
-          "offerId": "opp_livee2e_matchint_mt91neuo_offer",
-          "clientRequestId": "opp_livee2e_matchint_mt91neuo_req",
-          "ownerOfferId": "opp_livee2e_matchint_mt91neuo_offer",
+          "requestId": "opp_livee2e_matchint_mt9u0myl_req",
+          "offerId": "opp_livee2e_matchint_mt9u0myl_offer",
+          "clientRequestId": "opp_livee2e_matchint_mt9u0myl_req",
+          "ownerOfferId": "opp_livee2e_matchint_mt9u0myl_offer",
           "integrityStatus": "VALID",
-          "matchGroupId": "opp_livee2e_matchint_mt91neuo_req",
+          "matchGroupId": "opp_livee2e_matchint_mt9u0myl_req",
           "sourceCollection": "opportunities",
           "candidateSalePrice": 50000,
           "candidateArea": 125,
@@ -82,7 +82,7 @@
           "candidateDistrict": "العزيزية",
           "candidateCity": "المدينة المنورة",
           "candidatePurpose": "RENT",
-          "operationId": "op_d0dccf4046c0023f0d678783f0c08e24f7f1de6f",
+          "operationId": "op_80d5695466bff90f832e56c60be5d03902d6c9e2",
           "operationCreated": true
         }
       ],
@@ -126,26 +126,26 @@
           "addsBottomNavigation": false
         }
       },
-      "requestId": "1254ef22-6af6-4566-81b2-c5095306e6d2"
+      "requestId": "77db7d8e-e4d9-42a8-ac4c-096fd06d91a1"
     }
   },
   "qaMatch": {
-    "matchId": "mat_157ef331b7f3d8c3ee27ee2700546b51746c",
-    "requestId": "opp_livee2e_matchint_mt91neuo_req",
-    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "matchId": "mat_80266293bcdf835342940dfd929ea08e0027",
+    "requestId": "opp_livee2e_matchint_mt9u0myl_req",
+    "offerId": "opp_livee2e_matchint_mt9u0myl_offer",
     "integrityStatus": "VALID",
     "integrityReason": ""
   },
   "mapper": {
     "visible": 1,
     "hidden": 0,
-    "taskId": "mg_opp_livee2e_matchint_mt91neuo_req",
-    "requestId": "opp_livee2e_matchint_mt91neuo_req",
-    "offerId": "opp_livee2e_matchint_mt91neuo_offer",
+    "taskId": "mg_opp_livee2e_matchint_mt9u0myl_req",
+    "requestId": "opp_livee2e_matchint_mt9u0myl_req",
+    "offerId": "opp_livee2e_matchint_mt9u0myl_offer",
     "typePurpose": "شقة للإيجار · حي العزيزية",
     "place": "المدينة المنورة",
     "money": "50,000 ر.س",
-    "reference": "#A-0291"
+    "reference": "#A-0290"
   },
   "reload": {
     "sameTaskId": true,
@@ -154,8 +154,10 @@
     "sameOfferId": true
   },
   "ui": {
-    "shots": {},
+    "shots": {
+      "task": "/opt/cursor/artifacts/match_integrity_new_task.png"
+    },
     "cardCount": 0,
-    "error": "page.evaluate: FirebaseError: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).\n    at o (https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js:1:30594)\n    at Object.e [as auth] (https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js:1:30119)\n    at eval (eval at evaluate (:291:30), <anonymous>:2:27)\n    at UtilityScript.evaluate (<anonymous>:293:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+    "origin": "http://127.0.0.1:39427"
   }
 }

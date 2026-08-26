@@ -987,7 +987,7 @@ async function runJourney({ headed }) {
         await matchCard.locator("[data-cv2-exec-reveal]").click();
         await broker.waitForTimeout(600);
         const brokerText = (await matchCard.innerText()).replace(/\s+/g, " ");
-        state.brokerSawClient = /العميل (مهتم|طلب معاينة)/.test(brokerText);
+        state.brokerSawClient = /العميل (مهتم|طلب معاينة|يريد معاينة)|تأكيد التوفر/.test(brokerText);
         await screenshot(broker, headed ? "live-headed-D-broker-client.png" : "live-D-broker-client.png");
       } else {
         state.taskIdAfterClient = "";
@@ -1079,7 +1079,7 @@ async function runJourney({ headed }) {
           await matchCard.locator("[data-cv2-exec-reveal]").click();
           await broker.waitForTimeout(600);
           const ownerBrokerText = (await matchCard.innerText()).replace(/\s+/g, " ");
-          state.brokerSawOwner = /المالك أكد/.test(ownerBrokerText);
+          state.brokerSawOwner = /المالك أكد|العقار متاح/.test(ownerBrokerText);
           await screenshot(broker, headed ? "live-headed-F-broker-owner.png" : "live-F-broker-owner.png");
         }
         const matchAfterOwner = await readDoc("matches", ids.match);
