@@ -403,7 +403,7 @@ export function buildOpportunityDetailsRevealFormButtonHtml() {
     <div class="opp-details-actions">
       <button type="button" class="opp-details-complete-btn" id="oppDetailsRevealFormBtn">
         ${iconUse("i-pencil")}
-        <span>أكمل البيانات الناقصة</span>
+        <span>استكمال البيانات</span>
       </button>
     </div>`;
 }

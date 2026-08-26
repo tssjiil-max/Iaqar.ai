@@ -268,7 +268,9 @@ test("TEST 14: deal records still surface in matched category", async () => {
           {
             id: "match-1", main: "opportunities", priority: 0, isAlert: true, icon: "i-match",
             title: "مطابقة بنسبة 88%", subtitle: "طلب عميل مع عرض مالك", time: "الآن",
-            details: "تفاصيل", recordType: "match", recordId: "match-1"
+            details: "تفاصيل", recordType: "match", recordId: "match-1",
+            matchId: "match-1", clientRequestId: "req-1", ownerOfferId: "off-1",
+            clientPhone: "0512345678", ownerPhone: "0598765432"
           }
         ]
       }

@@ -145,7 +145,7 @@ export function buildCompleteMissingButtonV2(vm) {
     <div class="opp-v2-complete-wrap">
       <button type="button" class="opp-v2-complete-btn" id="oppV2CompleteBtn">
         ${iconUse("i-pencil")}
-        <span>أكمل البيانات الناقصة</span>
+        <span>استكمال البيانات</span>
       </button>
     </div>`;
 }

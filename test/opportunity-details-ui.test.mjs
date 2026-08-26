@@ -154,10 +154,10 @@ test("unified details page has only identity, data table, and completion", () =>
   assert.ok(html.includes("opp-details-progress-top"));
   assert.ok(html.includes("opp-details-missing-badge"));
   assert.ok(html.includes("بيانات الفرصة"));
-  assert.ok(html.includes("أكمل البيانات الناقصة"));
+  assert.ok(html.includes("استكمال البيانات"));
   const dataIdx = html.indexOf("بيانات الفرصة");
   const completionIdx = html.indexOf("نسبة اكتمال البيانات");
-  const buttonIdx = html.indexOf("أكمل البيانات الناقصة");
+  const buttonIdx = html.indexOf("استكمال البيانات");
   assert.ok(dataIdx > 0 && dataIdx < completionIdx);
   assert.ok(completionIdx < buttonIdx);
   assert.ok(!html.includes("تقرير اليوم"));
@@ -192,7 +192,7 @@ test("ready client request page matches the unified three-section layout", () =>
   assert.ok(html.includes("الميزانية"));
   assert.ok(html.includes("100% مكتملة"));
   assert.ok(html.includes("is-complete"));
-  assert.ok(!html.includes("أكمل البيانات الناقصة"));
+  assert.ok(!html.includes("استكمال البيانات"));
   assert.ok(!html.includes("الفرصة جاهزة للمطابقة."));
   assert.ok(!html.includes("تقرير اليوم"));
   assert.ok(!html.includes("الموعد القادم"));

@@ -1,11 +1,12 @@
 import { saveV2FieldWithAdapter } from "../../opportunity-details-v2.js";
+import { canonicalFirestoreOfficeId, isOwnedByOffice, projectOpportunityFlowStatuses } from "../../../public/js/opportunity-data-flow-domain.js";
 
 function officeRuntime() {
   return window.IAQAR?.office || null;
 }
 
 function officeId() {
-  return String(officeRuntime()?.officeId || "").trim();
+  return canonicalFirestoreOfficeId(officeRuntime()?.officeId || "");
 }
 
 function workerBase() {
@@ -61,8 +62,14 @@ async function persistPatch(id, patch) {
 }
 
 export async function persistOpportunityField(existing, editorKey, formData = {}) {
+  if (!isOwnedByOffice(existing, officeId())) {
+    throw Object.assign(new Error("لا يمكن تعديل سجل يخص مكتبًا آخر."), { code: "office_forbidden" });
+  }
   return saveV2FieldWithAdapter(existing, editorKey, formData, async (patch) => {
-    const writeResult = await persistPatch(existing.id, patch);
+    const writeResult = await persistPatch(existing.id, {
+      ...patch,
+      ...projectOpportunityFlowStatuses({ ...existing, ...patch })
+    });
     const reloaded = await loadOpportunityRecord(existing.id);
     if (!reloaded) {
       throw Object.assign(new Error("تعذر التحقق من حفظ الفرصة بعد الكتابة"), { code: "reload_failed" });

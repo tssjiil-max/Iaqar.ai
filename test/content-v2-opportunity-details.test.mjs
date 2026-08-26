@@ -74,7 +74,7 @@ test("classified missing fields render غير محدد inline and stay clickable
   const html = buildOpportunityDetailsContentV2(vm);
   assert.match(html, /data-cv2-editor="price"/);
   assert.match(html, /data-cv2-editor="contactNumber"/);
-  assert.match(html, /أكمل البيانات الناقصة/);
+  assert.match(html, /استكمال البيانات/);
   assert.equal((html.match(/غير محدد/g) || []).length, 2);
   assert.match(html, /cv2-missing-dot/);
   assert.equal(html.includes("cv2-missing-badge"), false);
@@ -105,7 +105,7 @@ test("uncategorized empty values keep the row and leave the value blank", () => 
 test("page contains only the approved PHASE 2 sections", () => {
   const html = buildOpportunityDetailsContentV2(referenceViewModel());
   assert.match(html, /بيانات الفرصة/);
-  assert.match(html, /أكمل البيانات الناقصة/);
+  assert.match(html, /استكمال البيانات/);
   assert.match(html, /تقرير اليوم/);
   assert.match(html, /الإجراء/);
   assert.match(html, /النتيجة/);

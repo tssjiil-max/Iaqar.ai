@@ -53,6 +53,8 @@ const matchItem = {
   candidateSalePrice: 50000,
   candidateArea: 125,
   matchReasons: ["نفس الحي", "ضمن الميزانية", "المساحة متقاربة"],
+  clientPhone: "0512345678",
+  ownerPhone: "0598765432",
   createdAt: "2026-08-25T21:21:00.000+03:00"
 };
 

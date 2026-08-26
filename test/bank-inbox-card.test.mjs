@@ -152,7 +152,7 @@ test("inbox html reuses the opportunity data card instead of a compact duplicate
   assert.match(html, /data-cv2-row="propertyPurpose"/);
   assert.match(html, /data-cv2-row="contact"/);
   assert.match(html, /يحتاج استكمال/);
-  assert.match(html, /أكمل البيانات الناقصة/);
+  assert.match(html, /استكمال البيانات/);
   assert.match(html, /عرض التفاصيل/);
   assert.equal(html.includes("bank-inbox-kind"), false);
   assert.equal(html.includes("data-bank-open-details"), false);
@@ -164,7 +164,7 @@ test("matching and match-found statuses appear on the same data card", () => {
   const found = buildBankInboxCardHtml(BANK_INBOX_DEMO_FIXTURES[8]);
   assert.match(matching, /قيد المطابقة/);
   assert.match(matching, /class="cv2-card/);
-  assert.equal(matching.includes("أكمل البيانات الناقصة"), false);
+  assert.equal(matching.includes("استكمال البيانات"), false);
   assert.match(found, /تم العثور على مطابقة/);
   assert.match(found, /class="cv2-card/);
   assert.equal(found.includes("تمت المطابقة"), false);

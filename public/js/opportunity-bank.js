@@ -71,6 +71,11 @@ import {
   missingFieldLabelsArabic
 } from "./opportunity-readiness-domain.js";
 import {
+  canonicalFirestoreOfficeId,
+  indexOpportunityRecordsFromFeed,
+  shouldShowBankLoadMore
+} from "./opportunity-data-flow-domain.js";
+import {
   buildFollowUpLifecycleBody,
   buildQuickFollowUpDateTimeInput,
   formatFollowUpAppointmentLine,
@@ -190,7 +195,7 @@ function authUser() {
 }
 
 function officeId() {
-  return officeRuntime()?.officeId || "";
+  return canonicalFirestoreOfficeId(officeRuntime()?.officeId || "");
 }
 
 function setStatus(message, tone = "") {
@@ -764,6 +769,12 @@ function renderList() {
   }));
 
   let bodyHtml = "";
+  const visibleCount = rows.length;
+  const showLoadMore = shouldShowBankLoadMore({
+    hasMore: state.hasMore,
+    visibleCount,
+    scanExhausted: state.scanExhausted
+  });
   if (!rows.length && !hasActiveBankQuery(state.queryFilters)) {
     bodyHtml = state.filter === "archived"
       ? `<p class="bank-query-hint">لا توجد عناصر مؤرشفة.</p>`
@@ -771,7 +782,7 @@ function renderList() {
     if (loadMoreBtn) loadMoreBtn.hidden = true;
   } else if (!rows.length) {
     bodyHtml = `<p class="bank-query-hint">لا توجد نتائج مطابقة. عدّل البحث.</p>`;
-    if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
+    if (loadMoreBtn) loadMoreBtn.hidden = !showLoadMore;
   } else {
     const loadedCount = rows.length;
     const filteredTotal = state.resultTotal > 0 ? state.resultTotal : loadedCount;
@@ -791,7 +802,7 @@ function renderList() {
       ? rows.map((row) => bankRowHtml(row)).join("")
       : `${section("يحتاج استكمال", needsRows)}${section("قيد المطابقة", matchingRows)}`;
     bodyHtml = `<p class="bank-results-count" id="bankResultsCount">${escapeHtml(totalLabel)}</p>${rowsHtml}`;
-    if (loadMoreBtn) loadMoreBtn.hidden = !state.hasMore;
+    if (loadMoreBtn) loadMoreBtn.hidden = !showLoadMore;
   }
 
   list.innerHTML = "";
@@ -4063,6 +4074,7 @@ async function loadBankPage({ reset = false } = {}) {
     if (retry) retry.hidden = false;
   } finally {
     state.busy = false;
+    updateBankLoadMoreButton();
     if (state.pendingQueryRefresh) {
       state.pendingQueryRefresh = false;
       scheduleBankQueryRefresh();
@@ -4237,6 +4249,30 @@ export function closeOpportunityBank(options = {}) {
   window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-closed"));
 }
 
+function mergeOpportunityFeedRecords(items = []) {
+  const feedRecords = indexOpportunityRecordsFromFeed(items);
+  if (!feedRecords.size) return false;
+  let changed = false;
+  for (const [id, record] of feedRecords.entries()) {
+    if (!state.records.has(id)) {
+      state.records.set(id, record);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function updateBankLoadMoreButton() {
+  const loadMoreBtn = $("bankLoadMoreBtn");
+  if (!loadMoreBtn) return;
+  const visibleCount = [...state.records.values()].filter(passesListFilters).length;
+  loadMoreBtn.hidden = !shouldShowBankLoadMore({
+    hasMore: state.hasMore,
+    visibleCount,
+    scanExhausted: state.scanExhausted
+  });
+}
+
 function boot() {
   const bankRoot = $("opportunityBank");
   if (!bankRoot) return;
@@ -4292,6 +4328,23 @@ function boot() {
   });
   bindListClicks();
   bindOpportunityDeepLink();
+
+  window.addEventListener("iaqar:operations-data", (event) => {
+    const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
+    if (mergeOpportunityFeedRecords(items)) {
+      renderList();
+    }
+  });
+  window.addEventListener("iaqar:bank-refresh", () => {
+    if (officeRuntime()?.db && officeId() && authUser()) {
+      scheduleBankQueryRefresh();
+    }
+  });
+  window.addEventListener("iaqar:operations-refresh", () => {
+    if (officeRuntime()?.db && officeId() && authUser()) {
+      scheduleBankQueryRefresh();
+    }
+  });
 
   window.addEventListener("iaqar:office-settings-closed", () => closeOpportunityBank());
   window.IAQAR = window.IAQAR || {};

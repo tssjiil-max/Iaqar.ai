@@ -130,7 +130,7 @@ export function buildCompleteMissingButtonV2(vm = {}) {
   return `<div class="cv2-complete-wrap">
     <button type="button" class="cv2-complete-btn" data-cv2-complete data-testid="complete-missing">
       ${iconUse("i-pencil")}
-      <span>أكمل البيانات الناقصة</span>
+      <span>استكمال البيانات</span>
     </button>
   </div>`;
 }

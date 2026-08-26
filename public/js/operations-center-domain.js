@@ -4,6 +4,13 @@
  */
 
 import { missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import {
+  dedupeOperationsFeedItems,
+  enrichOperationsItemContactGate,
+  extractOpportunityIdFromOperationsItem,
+  indexOpportunityRecordsFromFeed,
+  operationsCategoryForItem
+} from "./opportunity-data-flow-domain.js";
 
 export const OPERATIONS_CATEGORIES = Object.freeze([
   {
@@ -89,7 +96,12 @@ export function isSavedOpportunityFeedback(item) {
 }
 
 export function filterBrokerVisibleItems(items) {
-  return (items || []).filter((item) => !isSavedOpportunityFeedback(item));
+  return dedupeOperationsFeedItems((items || []).filter((item) => !isSavedOpportunityFeedback(item)));
+}
+
+export function enrichBrokerVisibleItems(items = []) {
+  const opportunities = indexOpportunityRecordsFromFeed(items);
+  return filterBrokerVisibleItems(items).map((item) => enrichOperationsItemContactGate(item, opportunities));
 }
 
 export function getCategoryDefinition(key) {
@@ -100,19 +112,7 @@ export function getCategoryDefinition(key) {
  * Resolve opportunity id from an operations list item.
  */
 export function extractOpportunityId(item) {
-  if (!item) return "";
-  const opportunityId = String(item.opportunityId || "").trim();
-  if (opportunityId) return opportunityId;
-
-  const recordType = String(item.recordType || "").toLowerCase();
-  if (recordType === "opportunity" || recordType === "intake") {
-    const recordId = String(item.recordId || "").trim();
-    if (recordId) return recordId;
-  }
-
-  const rawId = String(item.id || "").trim();
-  if (rawId.startsWith("opp-")) return rawId.slice(4);
-  return "";
+  return extractOpportunityIdFromOperationsItem(item);
 }
 
 /**
@@ -287,15 +287,8 @@ export function categoryKey(item) {
     return "responded";
   }
 
-  if (
-    opType === "MATCH_REVIEW"
-    || status === "MATCHED"
-    || recordType === "match"
-    || Boolean(item.matchId)
-    || (recordType === "deal" && !ARCHIVED_STATUSES.has(status))
-  ) {
-    return "matched";
-  }
+  const matchCategory = operationsCategoryForItem(item);
+  if (matchCategory) return matchCategory;
 
   if (recordType === "intake") return "follow_up";
 
@@ -307,7 +300,7 @@ export function categoryKey(item) {
  */
 export function groupItems(items) {
   const groups = Object.fromEntries(OPERATIONS_CATEGORIES.map((cat) => [cat.key, []]));
-  for (const item of filterBrokerVisibleItems(items)) {
+  for (const item of enrichBrokerVisibleItems(items)) {
     const key = categoryKey(item);
     if (groups[key]) groups[key].push(item);
   }

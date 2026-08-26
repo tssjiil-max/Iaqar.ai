@@ -56,7 +56,7 @@ test("V2 page keeps six data rows and has no progress ring", () => {
   assert.equal((data.match(/data-v2-row=/g) || []).length, 6);
   assert.match(html, /data-v2-editor="price"/);
   assert.match(html, /data-v2-editor="contactNumber"/);
-  assert.match(html, /أكمل البيانات الناقصة/);
+  assert.match(html, /استكمال البيانات/);
   assert.match(html, /تقرير اليوم/);
   assert.match(html, /الوقت/);
   assert.match(html, /الإجراء/);

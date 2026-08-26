@@ -214,14 +214,18 @@ export function isRequestSource(item = {}) {
   return Boolean(text(item.clientRequestId || item.requestId));
 }
 
-export function matchGroupKey(item = {}) {
+export function matchGroupKey(item = {}, officeId = "") {
   const explicit = text(item.matchGroupId || item.groupKey);
   if (explicit) return explicit;
+  const office = text(officeId || item.officeId || item.viewerOfficeId || "");
   const requestId = text(item.clientRequestId || item.requestId);
   const offerId = text(item.ownerOfferId || item.offerId);
   const sourceId = text(item.opportunityId || item.sourceRecordId);
-  if (isRequestSource(item)) return requestId || sourceId || offerId;
-  return offerId || sourceId || requestId || text(item.matchId);
+  const pair = isRequestSource(item)
+    ? (requestId || sourceId || offerId)
+    : (offerId || sourceId || requestId || text(item.matchId));
+  if (office && pair) return `${office}|${pair}`;
+  return pair;
 }
 
 export function candidateScore(item = {}) {
@@ -310,10 +314,10 @@ export function mergeMatchGroupLivingState(members = []) {
   };
 }
 
-export function groupMatchItems(items = []) {
+export function groupMatchItems(items = [], { officeId = "" } = {}) {
   const groups = new Map();
   for (const item of items) {
-    const key = matchGroupKey(item);
+    const key = matchGroupKey(item, officeId);
     if (!key) continue;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);

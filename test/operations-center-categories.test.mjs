@@ -66,8 +66,18 @@ test("categoryKey maps operation types to expected buckets", () => {
   assert.equal(categoryKey({ operationType: "MISSING_DATA" }), "incomplete");
   assert.equal(categoryKey({ operationType: "ADVERTISER_FOLLOWUP" }), "follow_up");
   assert.equal(categoryKey({ matchingReadiness: "READY_FOR_MATCHING", title: "فرصة" }), "ready");
-  assert.equal(categoryKey({ operationType: "MATCH_REVIEW", recordType: "operation" }), "matched");
-  assert.equal(categoryKey({ recordType: "match", title: "مطابقة" }), "matched");
+  const matchedItem = {
+    operationType: "MATCH_REVIEW",
+    recordType: "operation",
+    matchId: "m1",
+    clientRequestId: "req-1",
+    ownerOfferId: "off-1",
+    clientPhone: "0512345678",
+    ownerPhone: "0598765432"
+  };
+  assert.equal(categoryKey(matchedItem), "matched");
+  assert.equal(categoryKey({ recordType: "match", title: "مطابقة", matchId: "m2", clientRequestId: "req-2", ownerOfferId: "off-2", clientPhone: "0511111111", ownerPhone: "0522222222" }), "matched");
+  assert.equal(categoryKey({ operationType: "MATCH_REVIEW", recordType: "operation", matchId: "m3", clientRequestId: "req-3", ownerOfferId: "off-3" }), "incomplete");
   assert.equal(categoryKey({ operationType: "COOPERATION_RESPONSE" }), "responded");
   assert.equal(categoryKey({ lifecycleStatus: "ARCHIVED" }), "archived");
 });
@@ -107,7 +117,17 @@ test("extractOpportunityId resolves opportunity records", () => {
 test("groupItems and categoryCounts tally real items", () => {
   const items = [
     { id: "a", operationType: "MISSING_DATA", priority: 1 },
-    { id: "b", operationType: "MATCH_REVIEW", recordType: "operation", priority: 0 },
+    {
+      id: "b",
+      operationType: "MATCH_REVIEW",
+      recordType: "operation",
+      matchId: "m1",
+      clientRequestId: "req-1",
+      ownerOfferId: "off-1",
+      clientPhone: "0512345678",
+      ownerPhone: "0598765432",
+      priority: 0
+    },
     { id: "c", operationType: "ADVERTISER_FOLLOWUP", priority: 2 },
     { id: "d", lifecycleStatus: "ARCHIVED", priority: 3 }
   ];
@@ -162,7 +182,9 @@ test("clicking a category shows only its records as task cards", async () => {
           {
             id: "match-1", main: "opportunities", priority: 0, isAlert: true, icon: "i-match",
             title: "مطابقة بنسبة 88%", subtitle: "طلب عميل", time: "الآن",
-            detailsLines: ["تفاصيل"], recordType: "match", recordId: "match-1"
+            detailsLines: ["تفاصيل"], recordType: "match", recordId: "match-1",
+            matchId: "match-1", clientRequestId: "req-1", ownerOfferId: "off-1",
+            clientPhone: "0512345678", ownerPhone: "0598765432"
           },
           {
             id: "op-md", operationType: "MISSING_DATA", recordType: "operation", priority: 1,

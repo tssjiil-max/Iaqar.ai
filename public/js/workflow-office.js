@@ -553,6 +553,14 @@
     };
   }
 
+  function dedupeFeedItems(items) {
+    const flow = window.IAQAR_OPPORTUNITY_DATA_FLOW;
+    if (flow && typeof flow.dedupeOperationsFeedItems === "function") {
+      return flow.dedupeOperationsFeedItems(items);
+    }
+    return items;
+  }
+
   function filterOpportunityView(items) {
     return items.filter(item => {
       if (item.recordType === "summary") return true;
@@ -777,14 +785,14 @@
     const workspaceItems = savedOpportunityWorkspaceItems.filter(
       (item) => !isSavedOpportunityPresentationItem(item)
     );
-    const baseItems = [
+    const baseItems = dedupeFeedItems([
       ...operationItems,
       ...intakeItems,
       ...opportunityItems,
       ...activeMatchOperations(),
       ...activeDealOperations(),
       ...workspaceItems
-    ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
     const alerts = BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : [];
     const items = filterOpportunityView([...alerts, ...baseItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true, opportunityView } }));

@@ -128,7 +128,7 @@ test("ready workspace HTML uses phase 1 details page without old action chrome",
   assert.ok(html.includes("opp-details-page"));
   assert.ok(html.includes("بيانات الفرصة"));
   assert.ok(html.indexOf("بيانات الفرصة") < html.indexOf("نسبة اكتمال البيانات"));
-  assert.ok(!html.includes("أكمل البيانات الناقصة"));
+  assert.ok(!html.includes("استكمال البيانات"));
   assert.ok(!html.includes("تقرير اليوم"));
   assert.ok(!html.includes("الموعد القادم"));
   assert.ok(!html.includes("إجراءات الفرصة"));

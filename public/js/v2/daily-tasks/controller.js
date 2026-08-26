@@ -26,6 +26,7 @@ import {
   whatsappOpenedMessage
 } from "./party-link-domain.js";
 import { ensurePartyReviewLink, resolvePartyPhone } from "./party-link.js";
+import { resolveDetailsOpportunityId } from "../../opportunity-data-flow-domain.js";
 
 const state = {
   root: null,
@@ -288,17 +289,20 @@ function ensureOfferDetailsSheet() {
 }
 
 export async function openExistingOfferDetails(task) {
-  const offerId = String(task?.offerId || "").trim();
+  const offerId = resolveDetailsOpportunityId(task, "offer");
+  const requestId = resolveDetailsOpportunityId(task, "request");
+  const targetId = offerId || requestId;
   const taskId = String(task?.id || "").trim();
   if (useDemoFixtures()) return toggleTaskDetails(taskId);
-  if (!offerId) {
+  if (!targetId) {
     console.warn("[iaqar] INVALID_TASK_DATA", {
       taskId,
       matchId: task?.matchId || "",
       requestId: task?.requestId || "",
-      offerId,
-      reason: "missing_offerId"
+      offerId: task?.offerId || "",
+      reason: "missing_offer_or_request_id"
     });
+    notify("تعذر فتح التفاصيل — المرجع غير متوفر.");
     return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
   }
   captureScroll();
@@ -307,24 +311,27 @@ export async function openExistingOfferDetails(task) {
     import("../opportunity-details/data.js"),
     import("../opportunity-details/controller.js")
   ]);
-  const record = await loadOpportunityRecord(offerId);
+  const record = await loadOpportunityRecord(targetId);
   if (!record) {
     console.warn("[iaqar] INVALID_TASK_DATA", {
       taskId,
       matchId: task?.matchId || "",
-      requestId: task?.requestId || "",
+      requestId,
       offerId,
-      reason: "unresolved_offer"
+      targetId,
+      reason: offerId ? "unresolved_offer" : "unresolved_request"
     });
     closeOfferDetailsSheet();
+    notify(offerId ? "تعذر فتح تفاصيل العرض — السجل غير موجود." : "تعذر فتح تفاصيل الطلب — السجل غير موجود.");
     return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
   }
   const host = ensureOfferDetailsSheet();
   if (!host) {
+    notify("تعذر فتح التفاصيل — الواجهة غير جاهزة.");
     return { ok: false, error: PARTY_SEND_COPY.detailsFailed, integrity: "INVALID_TASK_DATA" };
   }
-  await details.mountOpportunityDetailsContentV2(host, { opportunityId: offerId });
-  return { ok: true, offerId, detailsOpen: true };
+  await details.mountOpportunityDetailsContentV2(host, { opportunityId: targetId });
+  return { ok: true, offerId: targetId, detailsOpen: true };
 }
 
 function captureScroll() {

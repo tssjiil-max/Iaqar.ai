@@ -126,6 +126,8 @@ async function submitEditor(editorKey, formData) {
       toast.classList.add("show");
       toast.hidden = false;
     }
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    window.dispatchEvent(new CustomEvent("iaqar:bank-refresh"));
     closeEditor({ restoreFocus: false });
     renderPage();
   } catch (error) {

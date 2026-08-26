@@ -24,6 +24,13 @@ import {
 } from "../../match-group-domain.js";
 import { formatOpportunityReference } from "../../reference-code-domain.js";
 import {
+  evaluateMatchContactGate,
+  matchDedupeKey,
+  MATCH_CONTACT_INCOMPLETE_LABEL,
+  resolveDetailsOpportunityId,
+  isValidContactPhone
+} from "../../opportunity-data-flow-domain.js";
+import {
   ROUTER_REASON_LABELS,
   livingTaskIdForOpportunity,
   platformOpportunityHeadline,
@@ -569,19 +576,24 @@ function canOpenOffer(record = {}) {
   return Boolean(text(record.offerId || record.ownerOfferId));
 }
 
-function canSendParty(record = {}, party = "client") {
+function shouldOfferSendAction(record = {}, party = "client") {
   if (record.dataIntegrity === TASK_DATA_INTEGRITY.INVALID_TASK_DATA) return false;
   if (!text(record.matchId)) return false;
   if (!text(record.offerId || record.ownerOfferId)) return false;
   if (!text(record.requestId || record.clientRequestId || record.opportunityId)) return false;
+  return party === "owner" ? true : true;
+}
+
+function canSendParty(record = {}, party = "client") {
+  if (!shouldOfferSendAction(record, party)) return false;
   if (party === "owner") {
     if (record.canSendToOwner === false) return false;
     if (record.canSendToOwner === true) return true;
-    return Boolean(text(record.ownerPhone || record.ownerContactPhone) || record.canSendToOwner == null);
+    return isValidContactPhone(record.ownerPhone || record.ownerContactPhone || record.advertiserPhone);
   }
   if (record.canSendToClient === false) return false;
   if (record.canSendToClient === true) return true;
-  return Boolean(text(record.clientPhone || record.clientContactPhone) || record.canSendToClient == null);
+  return isValidContactPhone(record.clientPhone || record.clientContactPhone || record.buyerPhone);
 }
 
 function actionsForState(stateKey, record = {}) {
@@ -599,7 +611,7 @@ function actionsForState(stateKey, record = {}) {
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
   if (ownerNeeded) {
-    primary = canSendParty(record, "owner") ? sendToOwnerAction(record) : null;
+    primary = shouldOfferSendAction(record, "owner") ? sendToOwnerAction(record) : null;
     if (offerAction) secondary.push(offerAction);
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
@@ -621,7 +633,7 @@ function actionsForState(stateKey, record = {}) {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة المطابقات"
       };
-    } else if (canSendParty(record, "client")) {
+    } else if (shouldOfferSendAction(record, "client")) {
       primary = sendToClientAction(record);
     }
   }
@@ -632,7 +644,7 @@ function actionsForState(stateKey, record = {}) {
       label: "استكمال"
     };
   }
-  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT && canSendParty(record, "client")) {
+  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT && shouldOfferSendAction(record, "client")) {
     secondary.push(sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال"));
   }
   if (offerAction) secondary.push(offerAction);
@@ -1039,6 +1051,15 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     purpose: proposed.purpose,
     kindLabel: sourceIsRequest ? "العرض المطابق" : "الطلب المطابق"
   };
+  const contactGate = evaluateMatchContactGate({
+    item: active,
+    request: active._canonicalRequest,
+    offer: active._canonicalOffer,
+    ownerContactNeeded: group.living.ownerContactNeeded
+  });
+  const statusLabel = contactGate.statusLabel
+    || copy.statusLabel
+    || (contactGate.canShowAsMatched ? DAILY_TASK_STATUS_LABELS[stateKey] : MATCH_CONTACT_INCOMPLETE_LABEL);
   return buildDailyTaskView({
     ...matchRecordFromItem(active, now),
     id: group.taskId || livingTaskId(group.groupKey),
@@ -1076,7 +1097,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     revealClosedLabel: candidateCount > 1 ? "مراجعة المطابقات" : copy.revealClosedLabel,
     revealOpenLabel: copy.revealOpenLabel,
     kindLabel: copy.kindLabel,
-    statusLabel: copy.statusLabel,
+    statusLabel,
+    currentStatus: statusLabel,
     candidates,
     sourceListing,
     proposedListing,
@@ -1096,8 +1118,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     updatedAt: active.updatedAt || group.living.livingUpdatedAt,
     dataIntegrity: active.dataIntegrity || TASK_DATA_INTEGRITY.OK,
     integrityReasons: active.integrityReasons || [],
-    canSendToClient: active.canSendToClient,
-    canSendToOwner: active.canSendToOwner,
+    canSendToClient: contactGate.canSendToClient,
+    canSendToOwner: contactGate.canSendToOwner,
     canOpenOffer: active.canOpenOffer !== false && Boolean(text(active.ownerOfferId || active.offerId)),
     isTestFixture: Boolean(active.isTestFixture),
     testRunId: text(active.testRunId)
@@ -1181,19 +1203,28 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
     }
     const clientPhone = text(item.clientPhone || diagnosis.request?.contactPhone);
     const ownerPhone = text(item.ownerPhone || diagnosis.offer?.contactPhone);
+    const contactGate = evaluateMatchContactGate({
+      item: { ...item, clientPhone, ownerPhone },
+      request: diagnosis.request,
+      offer: diagnosis.offer,
+      ownerContactNeeded: item.ownerContactNeeded
+    });
     valid.push({
       ...item,
       dataIntegrity: TASK_DATA_INTEGRITY.OK,
-      canSendToClient: Boolean(clientPhone) || !opportunities.size,
-      canSendToOwner: Boolean(ownerPhone) || !opportunities.size,
-      canOpenOffer: Boolean(diagnosis.offerId && (diagnosis.offer || !opportunities.size)),
-      clientPhone: clientPhone || item.clientPhone,
-      ownerPhone: ownerPhone || item.ownerPhone
+      canSendToClient: contactGate.canSendToClient,
+      canSendToOwner: contactGate.canSendToOwner,
+      canOpenOffer: Boolean(diagnosis.offerId && diagnosis.offer),
+      clientPhone: contactGate.clientPhone || clientPhone || item.clientPhone,
+      ownerPhone: contactGate.ownerPhone || ownerPhone || item.ownerPhone,
+      matchContactStatusLabel: contactGate.statusLabel,
+      ownerContactNeeded: Boolean(item.ownerContactNeeded) || !contactGate.ownerComplete
     });
   }
-  for (const group of groupMatchItems(valid)) {
+  for (const group of groupMatchItems(valid, { officeId })) {
     const view = buildMatchGroupDailyTask(group, now);
-    const key = view?.id || view?.groupKey;
+    const dedupeSource = group?.living?.remaining?.[0] || group?.members?.[0] || {};
+    const key = view?.id || view?.groupKey || matchDedupeKey(dedupeSource, officeId);
     const matchKey = text(view?.matchId);
     if (!view || !key || seen.has(key)) continue;
     if (matchKey && seenMatchIds.has(matchKey) && Number(view.candidateCount || 0) <= 1) continue;
@@ -1345,7 +1376,9 @@ export function dailyTasksDemoFixtures() {
       matchId: "match_wait_1",
       offerId: "offer_wait_1",
       requestId: "request_wait_1",
-      opportunityId: "offer_wait_1"
+      opportunityId: "offer_wait_1",
+      clientPhone: "0533333333",
+      ownerPhone: "0544444444"
     }),
     buildDailyTaskView({
       id: "task_interested",
