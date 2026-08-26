@@ -33,6 +33,7 @@ import {
 } from "../worker/src/operations-service.js";
 import {
   projectOperationToUiItem,
+  resolveOwnerContactNeeded,
   phase5BoundaryGuarantees as clientBoundaries,
   OPERATIONS_ACTION_PATH,
   requestOperationAction
@@ -496,4 +497,21 @@ test("required operations indexes are documented in firestore.indexes.json", () 
   const ops = indexes.indexes.filter((item) => item.collectionGroup === "operations");
   assert.ok(ops.length >= 1);
   assert.ok(ops.some((item) => item.fields.some((f) => f.fieldPath === "status")));
+});
+
+test("ownerContactNeeded resolves from nextActor when metadata is stale", () => {
+  assert.equal(resolveOwnerContactNeeded(
+    { livingStage: "WAITING_PROPERTY_CONFIRMATION", nextActor: "BROKER" },
+    {}
+  ), true);
+  assert.equal(resolveOwnerContactNeeded(
+    { livingStage: "WAITING_PROPERTY_CONFIRMATION", nextActor: "OWNER" },
+    {}
+  ), false);
+  assert.equal(projectOperationToUiItem({
+    id: "op_1",
+    type: OPERATION_TYPES.MATCH_REVIEW,
+    livingStage: "WAITING_PROPERTY_CONFIRMATION",
+    nextActor: "BROKER"
+  }).ownerContactNeeded, true);
 });

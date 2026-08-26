@@ -136,6 +136,17 @@ function missingFieldsFrom(op, metadata) {
   return [];
 }
 
+/** Match living writes ownerContactNeeded on matches; operations may only carry nextActor. */
+export function resolveOwnerContactNeeded(op = {}, metadata = {}) {
+  if (metadata.ownerContactNeeded === true || metadata.ownerContactNeeded === "true") return true;
+  if (op.ownerContactNeeded === true || String(op.ownerContactNeeded || "").toLowerCase() === "true") {
+    return true;
+  }
+  const stage = String(op.livingStage || metadata.livingStage || "").toUpperCase();
+  const actor = String(op.nextActor || metadata.nextActor || "").toUpperCase();
+  return stage === "WAITING_PROPERTY_CONFIRMATION" && actor === "BROKER";
+}
+
 /** Project a persisted Operation document into the Operations Center card contract. */
 export function projectOperationToUiItem(op, { relativeTime = () => "الآن" } = {}) {
   const type = String(op.type || OPERATION_TYPES.SYSTEM_ACTION).toUpperCase();
@@ -239,7 +250,7 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     nextActor: String(op.nextActor || metadata.nextActor || ""),
     rejectedMatchIds: metadata.rejectedMatchIds || [],
     missingInfoKey: String(metadata.missingInfoKey || ""),
-    ownerContactNeeded: Boolean(metadata.ownerContactNeeded),
+    ownerContactNeeded: resolveOwnerContactNeeded(op, metadata),
     candidateSalePrice: Number(metadata.candidateSalePrice || 0),
     candidateArea: Number(metadata.candidateArea || 0),
     candidatePropertyType: String(metadata.candidatePropertyType || ""),

@@ -148,6 +148,7 @@ async function stampMatchLiving(helpers, {
     fields: {
       livingStage: helpers.firestoreString(livingStage),
       missingInfoKey: helpers.firestoreString(missingInfoKey),
+      ownerContactNeeded: helpers.firestoreString(ownerContactNeeded ? "true" : ""),
       livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
       livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
       hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
