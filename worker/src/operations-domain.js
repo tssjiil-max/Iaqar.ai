@@ -486,19 +486,32 @@ export async function buildInAppNotification({
   officeId,
   brokerId = "",
   operation,
+  referenceCode = "",
   now = new Date()
 }) {
   const copy = copyFor(operation.type);
   const deduplicationKey = `NOTIF|${operation.deduplicationKey}`;
   const id = await notificationDocumentId(deduplicationKey);
+  const ref = String(referenceCode || "").trim();
+  const title = operation.type === OPERATION_TYPES.MATCH_REVIEW && ref
+    ? `مطابقة جديدة — ${ref.startsWith("#") ? ref : `#${ref}`}`
+    : copy.push;
+  const matchId = String(operation.matchId || operation.sourceEntityId || "");
+  const opportunityId = String(operation.opportunityId || "");
+  const workflowId = String(operation.metadata?.matchGroupId || operation.id || matchId || "");
   return {
     id,
     officeId: String(officeId || operation.officeId || ""),
     brokerId: String(brokerId || operation.assignedBrokerId || ""),
     operationId: String(operation.id || ""),
+    matchId,
+    opportunityId,
+    taskId: workflowId,
+    workflowId,
+    referenceCode: ref,
     type: copy.notificationType,
-    title: copy.push,
-    body: copy.push,
+    title,
+    body: title,
     status: NOTIFICATION_STATUS.CREATED,
     readAt: null,
     createdAt: now.toISOString(),

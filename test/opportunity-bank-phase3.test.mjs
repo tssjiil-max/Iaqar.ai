@@ -148,7 +148,9 @@ test("archive / restore / soft-delete are idempotent and preserve audit fields",
   assert.equal(buildArchivePatch({ ...sample, ...archived.patch }).idempotent, true);
 
   const restored = buildRestorePatch({ ...sample, ...archived.patch }, { actorUid: "broker-a" });
-  assert.equal(restored.patch.lifecycleStatus, LIFECYCLE.ACTIVE);
+  assert.equal(restored.patch.lifecycleStatus, "NEW");
+  assert.equal(restored.patch.matchingReadiness, "NEEDS_COMPLETION");
+  assert.equal(restored.patch.archivedAt, null);
 
   const deleted = buildSoftDeletePatch(sample, { actorUid: "broker-a", reason: "test" });
   assert.equal(deleted.patch.lifecycleStatus, LIFECYCLE.DELETED);
@@ -281,8 +283,10 @@ test("delete requires an explicit confirmation step in the bank UI", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   const shell = readRepositoryFile("public", "index.html");
   assert.ok(bank.includes("permanentDeleteOverlay") || shell.includes("id=\"permanentDeleteOverlay\""));
-  assert.ok(bank.includes("سيتم حذف هذه الفرصة نهائيًا"));
+  assert.ok(bank.includes("permanentDeleteCopy") || bank.includes("سيتم حذف هذه الفرصة والبيانات التشغيلية المرتبطة بها نهائيًا"));
   assert.ok(bank.includes("permanentDeleteConfirm"));
+  assert.ok(shell.includes("id=\"archiveOpportunityOverlay\""));
+  assert.ok(shell.includes("id=\"inAppNotifBell\""));
 });
 
 test("new Opportunity defaults to NOT_SHARED / لم تُشارك", () => {
