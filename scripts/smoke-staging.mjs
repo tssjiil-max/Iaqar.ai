@@ -95,6 +95,21 @@ async function main() {
         throw new Error("runtime-config.js must export resolveWorkerBase");
       }
     });
+
+    const officeLinkProbe = await fetch(new URL("/m/wadi", STAGING_HOSTING).toString(), {
+      redirect: "manual"
+    });
+    const officeLinkLocation = String(officeLinkProbe.headers.get("location") || "");
+    if (officeLinkProbe.status !== 302) {
+      throw new Error(`/m/wadi expected 302, got ${officeLinkProbe.status}`);
+    }
+    if (!officeLinkLocation.includes("iaqar-intake-staging.iaqar-ai.workers.dev/m/wadi")) {
+      throw new Error(`/m/wadi must redirect to staging Worker, got ${officeLinkLocation}`);
+    }
+    if (officeLinkLocation.includes("iaqar-macrodroid-intake")) {
+      throw new Error("/m/wadi must not redirect to production Worker on staging hosting");
+    }
+    console.log(`OK ${STAGING_HOSTING}/m/wadi → staging Worker`);
   } else {
     console.log("SKIP hosting smoke (set STAGING_HOSTING_URL to enable)");
   }

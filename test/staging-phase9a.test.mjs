@@ -110,6 +110,7 @@ test("Phase 9A deploy script uses SA GAC, not FIREBASE_TOKEN", () => {
   assert.ok(script.includes("npm run test:phase9a"));
   assert.ok(script.includes("backendReady"));
   assert.ok(script.includes("smoke-staging.mjs"));
+  assert.ok(script.includes("patch-firebase-office-link-redirect.mjs"));
   assert.ok(script.includes("cannot deploy production") || script.includes("Refusing"));
   // Must not require FIREBASE_TOKEN or pass it to firebase-tools (ignore-note is OK).
   assert.equal(/FIREBASE_TOKEN is required/.test(script), false);

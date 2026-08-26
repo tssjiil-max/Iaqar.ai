@@ -88,6 +88,9 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
 )
 
 echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"
+FIREBASE_JSON_BACKUP="$(mktemp "${TMPDIR:-/tmp}/iaqar-firebase-json.XXXXXX")"
+cp firebase.json "$FIREBASE_JSON_BACKUP"
+node scripts/patch-firebase-office-link-redirect.mjs "$STAGING_WORKER_URL"
 CHANNEL_LOG="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-channel.XXXXXX")"
 set +e
 npx firebase-tools hosting:channel:deploy staging \
@@ -97,6 +100,7 @@ npx firebase-tools hosting:channel:deploy staging \
 CHANNEL_RC=${PIPESTATUS[0]}
 set -e
 [[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed for ${STAGING_FIREBASE_PROJECT}"
+mv "$FIREBASE_JSON_BACKUP" firebase.json
 
 if grep -qiE "Unable to add channel domain|authorized domain" "$CHANNEL_LOG"; then
   echo "WARNING: Auth authorized-domain sync may have failed." >&2
