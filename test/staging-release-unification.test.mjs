@@ -72,7 +72,7 @@ test("Firebase Hosting headers pin HTML, version.json, and SW to no-store", () =
   assert.equal(cacheControlFor("/version.json"), "no-store");
   assert.equal(cacheControlFor("/firebase-messaging-sw.js"), "no-store");
   assert.equal(cacheControlFor("**"), "no-cache");
-  assert.match(cacheControlFor("/icons/**"), /max-age=31536000/);
+  assert.match(cacheControlFor("/icons/**"), /max-age=3600/);
   assert.match(cacheControlFor("/fonts/**"), /max-age=31536000/);
 });
 
@@ -113,7 +113,8 @@ test("fetch strategies: HTML/version network-first, JS network-first, images cac
   assert.equal(fetchStrategyFor("/index.html"), "network-first-nostore");
   assert.equal(fetchStrategyFor("/version.json"), "network-first-nostore");
   assert.equal(fetchStrategyFor("/js/opportunity-bank.js"), "network-first");
-  assert.equal(fetchStrategyFor("/icons/icon-192.png"), "cache-first");
+  assert.equal(fetchStrategyFor("/icons/iaqar-default-icon-192.png"), "network-first");
+  assert.equal(fetchStrategyFor("/icons/icon-192.png"), "network-first");
   assert.equal(fetchStrategyFor("/fonts/tajawal/tajawal-400.woff2"), "cache-first");
 });
 

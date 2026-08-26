@@ -39,6 +39,12 @@ import {
   resolveLegacyOfficeScope
 } from "./office-scope-domain.js";
 import { cooperationSettingsExtras } from "./cooperation-workflow-domain.js";
+import {
+  PLATFORM_BADGE_ICON,
+  PLATFORM_DEFAULT_LOGO,
+  isPlatformDefaultLogo,
+  officeBrandIconCandidates
+} from "./platform-brand-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -443,40 +449,32 @@ function initNeighborhoodEditor() {
 
 function applyOfficeCardImages() {
   const logo = el.cardLogo;
-  if (logo) {
-    const oid = officeId();
-    const worker = resolveWorkerBase();
-    const canonicalLogo = oid && worker
-      ? `${worker}/media/public/office-covers/${encodeURIComponent(oid)}/logo`
-      : "";
-    const logoSource = withOfficeImageCacheBust(
-      canonicalLogo || resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
-      current.updatedAt || Date.now()
-    );
-    if (logoSource) {
+  if (!logo) return;
+  const stamp = current.updatedAt || Date.now();
+  const candidates = officeBrandIconCandidates(current, {
+    workerBase: resolveWorkerBase(),
+    officeId: officeId()
+  }).map((url) => (
+    isPlatformDefaultLogo(url) ? url : withOfficeImageCacheBust(url, stamp)
+  ));
+  const applySrc = (index) => {
+    const src = candidates[index] || PLATFORM_DEFAULT_LOGO;
+    const platform = isPlatformDefaultLogo(src);
+    logo.classList.toggle("is-platform-fallback", platform);
+    logo.hidden = false;
+    logo.onerror = () => {
+      if (index + 1 < candidates.length) {
+        applySrc(index + 1);
+        return;
+      }
+      logo.classList.add("is-platform-fallback");
       logo.hidden = false;
-      logo.onerror = () => {
-        const fallback = withOfficeImageCacheBust(
-          resolveCurrentOfficeImage(current) || String(current.logoUrl || "").trim(),
-          current.updatedAt || ""
-        );
-        if (fallback && logo.src !== fallback) {
-          logo.src = fallback;
-          return;
-        }
-        logo.hidden = true;
-        if (logo.dataset.defaultSrc) {
-          logo.hidden = false;
-          logo.src = logo.dataset.defaultSrc;
-        }
-      };
-      logo.onload = () => { logo.hidden = false; };
-      if (logo.src !== logoSource) logo.src = logoSource;
-    } else if (logo.dataset.defaultSrc) {
-      logo.hidden = false;
-      logo.src = logo.dataset.defaultSrc;
-    }
-  }
+      if (logo.src !== PLATFORM_DEFAULT_LOGO) logo.src = PLATFORM_DEFAULT_LOGO;
+    };
+    logo.onload = () => { logo.hidden = false; };
+    if (logo.src !== src) logo.src = src;
+  };
+  applySrc(0);
 }
 
 function applyImageSlots() {
@@ -1206,7 +1204,7 @@ function loadImage(src, options = {}) {
 }
 
 async function loadImageSafe(primarySrc) {
-  const candidates = [primarySrc, "/icons/default-office.png", "/icons/icon-192.png"].filter(Boolean);
+  const candidates = [primarySrc, PLATFORM_DEFAULT_LOGO].filter(Boolean);
   for (const src of candidates) {
     for (const crossOrigin of [true, false]) {
       try {
@@ -1306,7 +1304,7 @@ async function createOfficeCardBlob() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   try {
-    const platformLogo = await loadImageSafe("/icons/icon-192.png");
+    const platformLogo = await loadImageSafe(PLATFORM_DEFAULT_LOGO);
     drawImageContain(ctx, platformLogo, 48, 28, 40, 40);
   } catch (_) {}
 
@@ -1337,8 +1335,8 @@ async function createOfficeCardBlob() {
   }
   if (!drewOfficeImage) {
     try {
-      const fallbackImg = await loadImageSafe("/icons/default-office.png");
-      drawImageCover(ctx, fallbackImg, imageCenterX - 74, imageY, 148, 148, 22);
+      const fallbackImg = await loadImageSafe(PLATFORM_DEFAULT_LOGO);
+      drawImageContain(ctx, fallbackImg, imageCenterX - 74, imageY, 148, 148);
     } catch (_) {}
   }
 
@@ -1385,7 +1383,7 @@ async function createOfficeCardBlob() {
   ctx.textAlign = "right";
   ctx.fillStyle = "#71817c";
   ctx.font = "500 20px Tajawal, Arial, sans-serif";
-  ctx.fillText("منصة الفرص العقارية — IAQAR", 940, 990);
+  ctx.fillText("منصة الفرص العقارية", 940, 990);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -1410,7 +1408,7 @@ async function createOpportunityShareCardBlob({
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   try {
-    const platformLogo = await loadImage("/icons/icon-192.png");
+    const platformLogo = await loadImage(PLATFORM_DEFAULT_LOGO);
     drawImageContain(ctx, platformLogo, 502, 18, 40, 40);
   } catch (_) {}
 
@@ -1876,6 +1874,10 @@ function ensureSettingsNavDelegation() {
 ensureSettingsNavDelegation();
 
 window.IAQAR = window.IAQAR || {};
+window.IAQAR.platformBrand = Object.freeze({
+  PLATFORM_DEFAULT_LOGO,
+  PLATFORM_BADGE_ICON
+});
 window.IAQAR.openOfficeSettings = openSettings;
 window.IAQAR.closeOfficeSettings = closeSettings;
 window.IAQAR.shareOpportunityCard = shareOpportunityCard;

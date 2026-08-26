@@ -77,13 +77,13 @@ function notificationUrl(data = {}) {
 self.addEventListener("push", event => {
   const { notification, data } = notificationPayload(event);
   const title = notification.title || "مكاتب عقارية ذكية";
-  const icon = notification.icon || data.iconUrl || "/icons/icon-192.png";
+  const icon = notification.icon || data.iconUrl || "/icons/iaqar-default-icon-192.png";
   const relativeLink = buildNotificationRelativeUrl(data);
   const absoluteLink = notificationUrl({ ...data, url: relativeLink });
+  const badge = notification.badge || data.badgeUrl || "/icons/iaqar-badge-icon.png";
   const options = {
     body: notification.body || "توجد مطابقة عقارية أو متابعة جديدة",
     icon,
-    badge: notification.badge || "/icons/icon-192.png",
     dir: "rtl",
     lang: "ar",
     data: {
@@ -100,6 +100,7 @@ self.addEventListener("push", event => {
     renotify: notification.renotify !== false,
     requireInteraction: data.type === "match" && String(notification.body || "").includes("أفضل فرصة")
   };
+  if (badge && badge !== icon) options.badge = badge;
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
     const visibleClients = list.filter(client => client.visibilityState === "visible" || client.focused === true);
     if (visibleClients.length) {
@@ -145,13 +146,13 @@ const IAQAR_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/share-target.html",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-192-maskable.png",
-  "/icons/icon-512-maskable.png",
+  "/icons/iaqar-default-icon-192.png",
+  "/icons/iaqar-default-icon-512.png",
+  "/icons/iaqar-default-maskable-512.png",
+  "/icons/iaqar-apple-touch-icon-180.png",
+  "/icons/iaqar-badge-icon.png",
   "/icons/favicon-32.png",
   "/icons/favicon-16.png",
-  "/icons/default-office.png",
   "/js/notification-navigation.js",
   "/js/access-gate.js",
   "/js/firebase-office.js",
@@ -187,7 +188,19 @@ function isJavaScriptPath(pathname) {
   return pathname.endsWith(".js");
 }
 
+function isBrandIconPath(pathname) {
+  if (String(pathname || "").startsWith("/icons/iaqar-")) return true;
+  return pathname === "/icons/default-office.png"
+    || pathname === "/icons/icon-192.png"
+    || pathname === "/icons/icon-512.png"
+    || pathname === "/icons/icon-192-maskable.png"
+    || pathname === "/icons/icon-512-maskable.png"
+    || pathname === "/icons/favicon-16.png"
+    || pathname === "/icons/favicon-32.png";
+}
+
 function isLongCacheAssetPath(pathname) {
+  if (isBrandIconPath(pathname)) return false;
   if (pathname.startsWith("/icons/") || pathname.startsWith("/fonts/")) return true;
   return /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf)$/i.test(pathname);
 }
@@ -292,6 +305,9 @@ self.addEventListener("fetch", (event) => {
     }
     if (isHtmlPath(url.pathname)) {
       return networkFirst(event.request, "no-store", cacheName);
+    }
+    if (isBrandIconPath(url.pathname)) {
+      return networkFirst(event.request, "no-cache", cacheName);
     }
     if (isLongCacheAssetPath(url.pathname)) {
       return cacheFirst(event.request, cacheName);

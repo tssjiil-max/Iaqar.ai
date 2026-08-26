@@ -1,146 +1,105 @@
 #!/usr/bin/env python3
-"""Generate IAQAR gold/green PWA icons and header logo."""
+"""Generate platform icons from the approved IAQAR brand PNG.
+
+Contain-fit only. Never stretch. Never redraw the old gold pin.
+"""
 from __future__ import annotations
 
-import math
+import shutil
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "public" / "icons"
-
-GREEN_DARK = (0, 63, 52, 255)       # #003F34 splash / maskable bg
-GREEN = (0, 92, 75, 255)            # #005C4B
-GREEN_DEEP = (8, 105, 93, 255)      # #08695D
-GOLD = (197, 160, 89, 255)          # #C5A059
-GOLD_LIGHT = (229, 198, 130, 255)
-MINT = (241, 245, 242, 255)         # #F1F5F2 light icon bg
-CREAM = (248, 246, 240, 255)
+SOURCE_CANDIDATES = (
+    ICON_DIR / "iaqar-brand-source.png",
+    Path("/home/ubuntu/.cursor/projects/workspace/assets/ba88eb93-c26f-446e-98fb-64537853add2.png"),
+)
+WHITE = (255, 255, 255, 255)
+TRANSPARENT = (0, 0, 0, 0)
 
 
-def lerp(a: float, b: float, t: float) -> float:
-    return a + (b - a) * t
+def resolve_source() -> Path:
+    for path in SOURCE_CANDIDATES:
+        if path.is_file():
+            return path
+    raise SystemExit("Approved brand source PNG was not found")
 
 
-def draw_brand_logo(size: int, background: tuple[int, int, int, int]) -> Image.Image:
-    img = Image.new("RGBA", (size, size), background)
-    draw = ImageDraw.Draw(img)
-    cx = size * 0.5
-    head_cy = size * 0.36
-    head_r = size * 0.23
-    stroke = max(3, int(size * 0.028))
-
-    # Pin point
-    tip_y = size * 0.82
-    tip_x = cx
-    left_x = cx - head_r * 0.72
-    right_x = cx + head_r * 0.72
-    join_y = head_cy + head_r * 0.55
-
-    pin_points = [
-        (left_x, join_y),
-        (tip_x, tip_y),
-        (right_x, join_y),
-    ]
-
-    # Gold pin outline with subtle highlight
-    draw.line(
-        [(left_x, join_y), (tip_x, tip_y), (right_x, join_y)],
-        fill=GOLD,
-        width=stroke,
-        joint="curve",
-    )
-    draw.ellipse(
-        [
-            cx - head_r - stroke,
-            head_cy - head_r - stroke,
-            cx + head_r + stroke,
-            head_cy + head_r + stroke,
-        ],
-        outline=GOLD,
-        width=stroke,
-    )
-
-    # Inner cream disc + gold ring
-    inner_r = head_r * 0.58
-    draw.ellipse(
-        [cx - inner_r, head_cy - inner_r, cx + inner_r, head_cy + inner_r],
-        fill=CREAM,
-    )
-    ring_r = head_r * 0.52
-    draw.ellipse(
-        [cx - ring_r, head_cy - ring_r, cx + ring_r, head_cy + ring_r],
-        outline=GOLD,
-        width=max(2, int(size * 0.018)),
-    )
-
-    # House silhouette
-    house_w = inner_r * 1.05
-    house_h = inner_r * 0.82
-    base_y = head_cy + inner_r * 0.18
-    roof_top = base_y - house_h
-    left = cx - house_w * 0.5
-    right = cx + house_w * 0.5
-    draw.polygon(
-        [
-            (cx, roof_top),
-            (left, base_y - house_h * 0.42),
-            (right, base_y - house_h * 0.42),
-        ],
-        fill=GREEN,
-    )
-    body_h = house_h * 0.58
-    draw.rectangle([left, base_y - body_h, right, base_y], fill=GREEN)
-    door_w = house_w * 0.22
-    draw.rectangle(
-        [cx - door_w * 0.5, base_y - body_h * 0.42, cx + door_w * 0.5, base_y],
-        fill=GREEN_DEEP,
-    )
-
-    # Ground shadow oval
-    shadow_w = head_r * 1.05
-    shadow_h = head_r * 0.18
-    shadow_y = tip_y + size * 0.025
-    draw.ellipse(
-        [cx - shadow_w, shadow_y - shadow_h, cx + shadow_w, shadow_y + shadow_h],
-        outline=GOLD,
-        width=max(2, int(size * 0.016)),
-    )
-
-    return img
-
-
-def make_maskable(logo: Image.Image, size: int, background: tuple[int, int, int, int]) -> Image.Image:
+def contain_onto(src: Image.Image, size: int, background: tuple[int, int, int, int], scale: float = 1.0) -> Image.Image:
     canvas = Image.new("RGBA", (size, size), background)
-    logo_size = int(size * 0.72)
-    scaled = logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-    offset = (size - logo_size) // 2
-    canvas.paste(scaled, (offset, offset), scaled)
+    image = src.convert("RGBA")
+    box = max(1, int(round(size * scale)))
+    ratio = min(box / image.width, box / image.height)
+    new_w = max(1, int(round(image.width * ratio)))
+    new_h = max(1, int(round(image.height * ratio)))
+    scaled = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    x = (size - new_w) // 2
+    y = (size - new_h) // 2
+    canvas.paste(scaled, (x, y), scaled)
     return canvas
+
+
+def make_badge(src: Image.Image, size: int = 96) -> Image.Image:
+    rgba = src.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+    silhouette = Image.new("RGBA", (width, height), TRANSPARENT)
+    out_px = silhouette.load()
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if a < 12:
+                continue
+            distance = (765 - r - g - b) / 3  # 0 = white, 255 = black
+            if distance < 8:
+                continue
+            alpha = min(255, int(distance * 2.4))
+            out_px[x, y] = (255, 255, 255, alpha)
+    return contain_onto(silhouette, size, TRANSPARENT, scale=0.84)
+
+
+def save_png(image: Image.Image, path: Path) -> None:
+    image.save(path, format="PNG", optimize=True)
 
 
 def write_all() -> None:
     ICON_DIR.mkdir(parents=True, exist_ok=True)
+    source_path = resolve_source()
+    repo_source = ICON_DIR / "iaqar-brand-source.png"
+    if source_path.resolve() != repo_source.resolve():
+        shutil.copy2(source_path, repo_source)
 
-    light_512 = draw_brand_logo(512, MINT)
-    dark_512 = draw_brand_logo(512, GREEN_DARK)
+    source = Image.open(repo_source)
+    if source.size[0] != source.size[1]:
+        raise SystemExit(f"Brand source must stay square, got {source.size}")
 
-    light_512.save(ICON_DIR / "icon-512.png", optimize=True)
-    light_512.resize((192, 192), Image.Resampling.LANCZOS).save(ICON_DIR / "icon-192.png", optimize=True)
+    icon_512 = contain_onto(source, 512, WHITE)
+    icon_192 = contain_onto(source, 192, WHITE)
+    apple_180 = contain_onto(source, 180, WHITE)
+    maskable_512 = contain_onto(source, 512, WHITE, scale=0.72)
+    maskable_192 = contain_onto(source, 192, WHITE, scale=0.72)
+    badge = make_badge(source, 96)
+    favicon_32 = contain_onto(source, 32, WHITE)
+    favicon_16 = contain_onto(source, 16, WHITE)
 
-    make_maskable(dark_512, 512, GREEN_DARK).save(ICON_DIR / "icon-512-maskable.png", optimize=True)
-    make_maskable(dark_512, 192, GREEN_DARK).save(ICON_DIR / "icon-192-maskable.png", optimize=True)
+    save_png(icon_192.convert("RGB").convert("RGBA"), ICON_DIR / "iaqar-default-icon-192.png")
+    save_png(icon_512.convert("RGB").convert("RGBA"), ICON_DIR / "iaqar-default-icon-512.png")
+    save_png(maskable_512.convert("RGB").convert("RGBA"), ICON_DIR / "iaqar-default-maskable-512.png")
+    save_png(apple_180.convert("RGB").convert("RGBA"), ICON_DIR / "iaqar-apple-touch-icon-180.png")
+    save_png(badge, ICON_DIR / "iaqar-badge-icon.png")
 
-    header = draw_brand_logo(480, MINT)
-    header = header.resize((325, 480), Image.Resampling.LANCZOS)
-    header.save(ICON_DIR / "default-office.png", optimize=True)
+    # Compatibility aliases so leftover references are the new art, not the old gold pin.
+    save_png(icon_192.convert("RGB").convert("RGBA"), ICON_DIR / "icon-192.png")
+    save_png(icon_512.convert("RGB").convert("RGBA"), ICON_DIR / "icon-512.png")
+    save_png(maskable_192.convert("RGB").convert("RGBA"), ICON_DIR / "icon-192-maskable.png")
+    save_png(maskable_512.convert("RGB").convert("RGBA"), ICON_DIR / "icon-512-maskable.png")
+    save_png(icon_192.convert("RGB").convert("RGBA"), ICON_DIR / "default-office.png")
+    save_png(favicon_32.convert("RGB").convert("RGBA"), ICON_DIR / "favicon-32.png")
+    save_png(favicon_16.convert("RGB").convert("RGBA"), ICON_DIR / "favicon-16.png")
 
-    # Favicon sizes for desktop browser tabs
-    light_512.resize((32, 32), Image.Resampling.LANCZOS).save(ICON_DIR / "favicon-32.png", optimize=True)
-    light_512.resize((16, 16), Image.Resampling.LANCZOS).save(ICON_DIR / "favicon-16.png", optimize=True)
-
-    print(f"Wrote gold/green brand icons to {ICON_DIR}")
+    print(f"Wrote approved brand icons to {ICON_DIR}")
 
 
 if __name__ == "__main__":

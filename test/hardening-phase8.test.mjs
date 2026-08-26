@@ -111,14 +111,15 @@ test("Phase 8 PWA: manifest has no deals shortcut; icons and SW cache are curren
   assert.ok(sw.includes("/js/operations-domain-bridge.js"));
   assert.ok(sw.includes("/js/messaging-domain-bridge.js"));
   assert.ok(sw.includes("/js/add-opportunity.js"));
-  assert.ok(sw.includes("/icons/default-office.png"));
+  assert.ok(sw.includes("/icons/iaqar-default-icon-192.png"));
+  assert.ok(existsSync(path.join(root, "public/icons/iaqar-default-icon-192.png")));
   assert.ok(existsSync(path.join(root, "public/icons/default-office.png")));
 });
 
 test("Phase 8 shell: logos are file assets, not duplicated base64; public-intake dead code gone", () => {
   const shell = readRepositoryFile("public", "index.html");
   assert.equal(shell.includes("data:image/png;base64,"), false);
-  assert.ok(shell.includes('/icons/default-office.png'));
+  assert.ok(shell.includes('/icons/iaqar-default-icon-192.png'));
   assert.equal(existsSync(path.join(root, "public/js/public-intake.js")), false);
   assert.ok(shell.includes('rel="manifest"') || shell.includes("manifest.webmanifest"));
 

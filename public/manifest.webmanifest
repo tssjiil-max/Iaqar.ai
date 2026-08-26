@@ -1,5 +1,5 @@
 {
-  "name": "مكاتب عقارية ذكية — IAQAR",
+  "name": "مكاتب عقارية ذكية",
   "short_name": "مكاتب عقارية",
   "description": "تشغيل المكاتب العقارية وفرز الفرص والمطابقة حتى إغلاق الصفقة.",
   "lang": "ar",
@@ -11,28 +11,28 @@
   "theme_color": "#005C4B",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/icons/iaqar-default-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-192-maskable.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/iaqar-default-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512-maskable.png",
+      "src": "/icons/iaqar-default-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/iaqar-apple-touch-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "share_target": {
@@ -58,7 +58,7 @@
       "url": "/?source=pwa&open=operations",
       "icons": [
         {
-          "src": "/icons/icon-192.png",
+          "src": "/icons/iaqar-default-icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -70,7 +70,7 @@
       "url": "/?source=pwa&open=add-opportunity",
       "icons": [
         {
-          "src": "/icons/icon-192.png",
+          "src": "/icons/iaqar-default-icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }

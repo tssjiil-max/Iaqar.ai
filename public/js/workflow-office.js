@@ -572,9 +572,9 @@
       if ("Notification" in window && Notification.permission === "granted") {
         const registration = await navigator.serviceWorker?.ready.catch(() => null);
         if (registration && registration.showNotification) {
-          await registration.showNotification(title, { body, icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { type: "match", recordId: topMatch && topMatch.id || "" } });
+          await registration.showNotification(title, { body, icon: "/icons/iaqar-default-icon-192.png", badge: "/icons/iaqar-badge-icon.png", data: { type: "match", recordId: topMatch && topMatch.id || "" } });
         } else {
-          new Notification(title, { body, icon: "icons/icon-192.png" });
+          new Notification(title, { body, icon: "/icons/iaqar-default-icon-192.png" });
         }
       }
     } catch (error) {
@@ -2829,17 +2829,23 @@
     const body = message.notification && message.notification.body || "لديك تنبيه جديد";
     notify(`${title} — ${body}`);
     window.dispatchEvent(new CustomEvent("iaqar:push-received", { detail: { title, body, data } }));
+    const brand = window.IAQAR && window.IAQAR.platformBrand || {};
+    const icon = data.iconUrl || brand.PLATFORM_DEFAULT_LOGO || "/icons/iaqar-default-icon-192.png";
+    const badge = data.badgeUrl || brand.PLATFORM_BADGE_ICON || "/icons/iaqar-badge-icon.png";
     if (Notification.permission === "granted" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then(registration => registration.showNotification(title, {
-        body,
-        icon: "/icons/icon-192.png",
-        badge: "/icons/icon-192.png",
-        dir: "rtl",
-        lang: "ar",
-        tag: data.recordId || data.matchId || data.dealId || "iaqar-foreground",
-        renotify: true,
-        data: { url: notificationUrl(data) }
-      })).catch(() => {});
+      navigator.serviceWorker.ready.then(registration => {
+        const options = {
+          body,
+          icon,
+          dir: "rtl",
+          lang: "ar",
+          tag: data.recordId || data.matchId || data.dealId || "iaqar-foreground",
+          renotify: true,
+          data: { url: notificationUrl(data) }
+        };
+        if (badge && badge !== icon) options.badge = badge;
+        return registration.showNotification(title, options);
+      }).catch(() => {});
     }
   }
 

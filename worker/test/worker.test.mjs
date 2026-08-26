@@ -52,6 +52,9 @@ test("FCM HTTP v1 web payload uses an HTTPS deep link and REST fcm_options field
   assert.equal(payload.message.data.url, "https://iaqar.ai/?officeId=office-1&openMatch=match-9");
   assert.deepEqual(payload.message.webpush.fcm_options, { link: payload.message.data.url });
   assert.equal("fcmOptions" in payload.message.webpush, false);
+  assert.equal(payload.message.webpush.notification.icon, "https://iaqar.ai/icons/iaqar-default-icon-192.png");
+  assert.equal(payload.message.webpush.notification.badge, "https://iaqar.ai/icons/iaqar-badge-icon.png");
+  assert.notEqual(payload.message.webpush.notification.icon, payload.message.webpush.notification.badge);
 });
 
 test("Firebase service account secrets ignore PowerShell line endings", () => {
