@@ -1,5 +1,5 @@
 import { saveV2FieldWithAdapter } from "../../opportunity-details-v2.js";
-import { canonicalFirestoreOfficeId, isOwnedByOffice, projectOpportunityFlowStatuses } from "../../../public/js/opportunity-data-flow-domain.js";
+import { canonicalFirestoreOfficeId, isOwnedByOffice, projectOpportunityFlowStatuses } from "../../opportunity-data-flow-domain.js";
 
 function officeRuntime() {
   return window.IAQAR?.office || null;

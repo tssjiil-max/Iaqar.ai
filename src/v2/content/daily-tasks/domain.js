@@ -1057,9 +1057,17 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     offer: active._canonicalOffer,
     ownerContactNeeded: group.living.ownerContactNeeded
   });
-  const statusLabel = contactGate.statusLabel
-    || copy.statusLabel
-    || (contactGate.canShowAsMatched ? DAILY_TASK_STATUS_LABELS[stateKey] : MATCH_CONTACT_INCOMPLETE_LABEL);
+  const isEarlyContactGate = !contactGate.contactComplete
+    && stateKey === DAILY_TASK_STATE.NEW_MATCH
+    && upper(group.living.stage) === LIVING_TASK_STAGE.MATCH_FOUND
+    && group.living.rejectedMatchIds.length === 0;
+  const statusLabel = isEarlyContactGate
+    ? MATCH_CONTACT_INCOMPLETE_LABEL
+    : (copy.statusLabel != null
+      ? text(copy.statusLabel)
+      : (contactGate.canShowAsMatched
+        ? (DAILY_TASK_STATUS_LABELS[stateKey] || "")
+        : MATCH_CONTACT_INCOMPLETE_LABEL));
   return buildDailyTaskView({
     ...matchRecordFromItem(active, now),
     id: group.taskId || livingTaskId(group.groupKey),
@@ -1218,7 +1226,7 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
       clientPhone: contactGate.clientPhone || clientPhone || item.clientPhone,
       ownerPhone: contactGate.ownerPhone || ownerPhone || item.ownerPhone,
       matchContactStatusLabel: contactGate.statusLabel,
-      ownerContactNeeded: Boolean(item.ownerContactNeeded) || !contactGate.ownerComplete
+      ownerContactNeeded: Boolean(item.ownerContactNeeded || item.metadata?.ownerContactNeeded)
     });
   }
   for (const group of groupMatchItems(valid, { officeId })) {

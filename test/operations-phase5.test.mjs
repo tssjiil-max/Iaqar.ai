@@ -342,7 +342,8 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
     const todayEmpty = document.getElementById("operationsTodayEmpty");
     assert.ok(todayEmpty.textContent.includes("لا توجد مهام عاجلة اليوم"));
 
-    const ui = projectOperationToUiItem({
+    const ui = {
+      ...projectOperationToUiItem({
       id: "op_test",
       type: "MATCH_REVIEW",
       titleText: "مطابقة جديدة تحتاج مراجعتك",
@@ -352,7 +353,10 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
       status: "OPEN",
       createdAt: new Date().toISOString(),
       metadata: { score: 88, reasonPreview: "نفس الحي" }
-    });
+    }),
+      clientPhone: "0511123456",
+      ownerPhone: "0522233344"
+    };
     window.dispatchEvent(new window.CustomEvent("iaqar:operations-data", {
       detail: { authoritative: true, items: [ui] }
     }));
@@ -383,7 +387,8 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
   const shell = await loadShell({ firebase: firebaseStub(), officeRuntime: { officeId: "office-a" } });
   try {
     const { document, window } = shell;
-    const ui = projectOperationToUiItem({
+    const ui = {
+      ...projectOperationToUiItem({
       id: "op_bound",
       type: "MATCH_REVIEW",
       titleText: "مطابقة جديدة تحتاج مراجعتك",
@@ -392,7 +397,10 @@ test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft a
       priority: "NORMAL",
       status: "OPEN",
       createdAt: new Date().toISOString()
-    });
+    }),
+      clientPhone: "0511123456",
+      ownerPhone: "0522233344"
+    };
     // Phase 7: Match review may offer draft actions; never send claims.
     assert.equal(ui.whatsappOwner, true);
     assert.equal(ui.whatsappClient, true);

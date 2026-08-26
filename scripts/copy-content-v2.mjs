@@ -21,7 +21,9 @@ function rewriteBrowserImports(directory) {
     }
     if (!entry.name.endsWith(".js")) continue;
     const text = readFileSync(full, "utf8");
-    const next = text.replaceAll("../../../../public/js/", "../../");
+    const next = text
+      .replaceAll("../../../../public/js/", "../../")
+      .replaceAll("../../../public/js/", "../../");
     if (next !== text) writeFileSync(full, next);
   }
 }
