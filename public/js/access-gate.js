@@ -1455,7 +1455,11 @@
     }
     if (publicSlug && !officeId) {
       try {
-        const snapshot = await db().collection("publicOffices").where("publicSlug", "==", publicSlug).limit(1).get();
+        const col = db().collection("publicOffices");
+        let snapshot = await col.where("publicSlug", "==", publicSlug).limit(1).get();
+        if (snapshot.empty) {
+          snapshot = await col.where("legacyPublicSlugs", "array-contains", publicSlug).limit(1).get();
+        }
         if (snapshot.empty) {
           frame(`<section class="access-card"><h2>رابط المكتب غير متاح</h2><p>تحقق من الرابط أو ارجع إلى المنصة العامة.</p><button class="access-btn" id="goPlatformHome">المنصة العامة</button></section>`);
           gate.querySelector("#goPlatformHome").onclick = () => location.assign("/");
@@ -1464,8 +1468,9 @@
         const data = snapshot.docs[0].data() || {};
         officeId = String(data.officeId || snapshot.docs[0].id || "").trim().toLowerCase();
         refreshRouteFlags();
-        if (publicSlugLegacy && publicSlug && officeId) {
-          try { history.replaceState({}, "", `/m/${encodeURIComponent(publicSlug)}`); } catch (_) {}
+        const canonicalSlug = String(data.publicSlug || publicSlug).trim().toLowerCase();
+        if (canonicalSlug && (publicSlugLegacy || publicSlug !== canonicalSlug)) {
+          try { history.replaceState({}, "", `/m/${encodeURIComponent(canonicalSlug)}`); } catch (_) {}
         }
       } catch (error) {
         console.warn("[iaqar] public slug resolution", error);

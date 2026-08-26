@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   PUBLIC_OFFICE_PATH_PREFIX,
   SHARE_CARD_HEIGHT,
@@ -25,6 +26,13 @@ test("assignable public slugs are short unique handles and reject reserved route
   assert.equal(validateAssignablePublicSlug("admin").ok, false);
   assert.equal(isReservedPublicSlug("party"), true);
   assert.equal(isReservedPublicSlug("wadi"), false);
+});
+
+test("legacy /o/{slug} stays resolvable after a short slug is assigned", () => {
+  const gate = readFileSync(new URL("../public/js/access-gate.js", import.meta.url), "utf8");
+  assert.match(gate, /legacyPublicSlugs/);
+  assert.match(gate, /array-contains/);
+  assert.match(gate, /history\.replaceState[\s\S]*\/m\//);
 });
 
 test("canonical office links use /m/{slug} and keep /o/{slug} as legacy", () => {

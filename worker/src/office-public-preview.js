@@ -251,11 +251,23 @@ export async function handleSavePublicSlug(request, env, deps) {
   const previous = normalizePublicSlug(current.publicSlug);
   const now = new Date();
   const h = deps.firestoreHelpers;
+  const legacy = new Set(
+    (Array.isArray(current.legacyPublicSlugs) ? current.legacyPublicSlugs : [])
+      .map((value) => normalizePublicSlug(value))
+      .filter(Boolean)
+  );
   if (previous && previous !== slug) {
-    await deps.deleteFirestoreDocument({
+    legacy.add(previous);
+    await deps.setFirestoreDocument({
       projectId: deps.projectId,
       segments: ["officeSlugClaims", previous],
-      accessToken: deps.accessToken
+      accessToken: deps.accessToken,
+      fields: {
+        officeId: h.firestoreString(officeId),
+        publicSlug: h.firestoreString(previous),
+        supersededBy: h.firestoreString(slug),
+        updatedAt: h.firestoreTimestamp(now)
+      }
     }).catch(() => {});
   }
   await deps.setFirestoreDocument({
@@ -273,6 +285,14 @@ export async function handleSavePublicSlug(request, env, deps) {
     publicSlug: h.firestoreString(slug),
     updatedAt: h.firestoreTimestamp(now)
   };
+  const publicFields = {
+    ...profileFields,
+    legacyPublicSlugs: {
+      arrayValue: {
+        values: [...legacy].map((value) => ({ stringValue: value }))
+      }
+    }
+  };
   await deps.setFirestoreDocument({
     projectId: deps.projectId,
     segments: ["offices", officeId],
@@ -283,7 +303,7 @@ export async function handleSavePublicSlug(request, env, deps) {
     projectId: deps.projectId,
     segments: ["publicOffices", officeId],
     accessToken: deps.accessToken,
-    fields: profileFields
+    fields: publicFields
   });
   return deps.jsonResponse({
     ok: true,
