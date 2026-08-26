@@ -317,3 +317,41 @@ test("hanging extraction aborts into failed state and releases busy UI", async (
     context.close();
   }
 });
+
+test("voice-bound intake context approves when composer input is empty", async () => {
+  const { context, module } = await loadController();
+  try {
+    const summary = "شقة للبيع الرياض النرجس 1200000";
+    module.__test.setIntakeContextForTest({
+      sourceIdentity: module.__test.intakeIdentity(summary, null),
+      inputText: summary,
+      listingText: summary,
+      sourceType: "text"
+    });
+    assert.equal(
+      module.__test.sourceMaterialChangedSinceIntake(),
+      false
+    );
+    assert.equal(context.document.getElementById("addOpportunityInput").value, "");
+  } finally {
+    context.close();
+  }
+});
+
+test("changed composer text still blocks approve with context_changed", async () => {
+  const { context, module } = await loadController();
+  try {
+    const text = "أرض للبيع في الرياض حي النرجس";
+    module.__test.setIntakeContextForTest({
+      sourceIdentity: module.__test.intakeIdentity(text, null),
+      inputText: text,
+      listingText: text,
+      sourceType: "text"
+    });
+    const input = context.document.getElementById("addOpportunityInput");
+    input.value = "أرض للبيع في جدة حي السلام";
+    assert.equal(module.__test.sourceMaterialChangedSinceIntake(), true);
+  } finally {
+    context.close();
+  }
+});

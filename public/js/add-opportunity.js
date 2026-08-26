@@ -193,6 +193,35 @@ function intakeIdentity(text, file) {
   return `${String(text || "").trim()}|${fileIdentity}`;
 }
 
+function selectedFileMatchesIntakeContext(ctx = intakeContext) {
+  if (!ctx?.fileName) return !selectedFile;
+  if (!selectedFile) return false;
+  return String(selectedFile.name || "") === String(ctx.fileName || "")
+    && String(selectedFile.type || "") === String(ctx.contentType || selectedFile.type || "");
+}
+
+function currentSourceMaterialIdentity(ctx = intakeContext) {
+  if (!ctx) return intakeIdentity($("addOpportunityInput")?.value || "", selectedFile);
+  const liveText = String($("addOpportunityInput")?.value || "").trim();
+  const boundText = String(ctx.inputText || "").trim();
+  if (liveText && boundText && liveText !== boundText) {
+    return intakeIdentity(liveText, selectedFile);
+  }
+  const text = boundText || liveText;
+  let file = selectedFile;
+  if (ctx.fileName) {
+    file = selectedFileMatchesIntakeContext(ctx) ? selectedFile : null;
+  } else if (boundText && !liveText) {
+    file = null;
+  }
+  return intakeIdentity(text, file);
+}
+
+function sourceMaterialChangedSinceIntake(ctx = intakeContext) {
+  if (!ctx?.sourceIdentity) return true;
+  return currentSourceMaterialIdentity(ctx) !== ctx.sourceIdentity;
+}
+
 function logExtractionTrace(event, meta = {}) {
   console.info("[iaqar:intake-extraction]", event, {
     status: meta.status ?? null,
@@ -1005,7 +1034,7 @@ async function startVoiceIntake(structured) {
     if (!canOpenReview(prepared)) throw new Error("extraction_failed");
 
     intakeContext = {
-      sourceIdentity: `voice:${summary.slice(0, 120)}`,
+      sourceIdentity: intakeIdentity(summary, null),
       inputText: summary,
       listingText: summary,
       sourceType: "text",
@@ -1061,8 +1090,7 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     const user = currentUser();
     if (!office?.officeId || !user?.uid) throw new Error("auth_required");
     if (!intakeContext) throw new Error("context_missing");
-    const currentIdentity = intakeIdentity($("addOpportunityInput")?.value || "", selectedFile);
-    if (currentIdentity !== intakeContext.sourceIdentity) throw new Error("context_changed");
+    if (sourceMaterialChangedSinceIntake()) throw new Error("context_changed");
 
     const brokerFields = {
       opportunityKind: brokerExtras.opportunityKind,
@@ -1298,6 +1326,9 @@ export const __test = {
   countCoreFields,
   fetchWithTimeout,
   intakeIdentity,
+  currentSourceMaterialIdentity,
+  sourceMaterialChangedSinceIntake,
+  selectedFileMatchesIntakeContext,
   requestOpportunityExtraction,
   resetForNewIntake,
   buildOpportunityPersistPayload,
@@ -1313,5 +1344,6 @@ export const __test = {
   },
   getSelectedFile() { return selectedFile; },
   getIntakeContext() { return intakeContext; },
+  setIntakeContextForTest(ctx) { intakeContext = ctx; },
   getLastFailure() { return lastFailure; }
 };
