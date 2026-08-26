@@ -302,8 +302,13 @@ export function followUpFitScore({ stats = {} } = {}) {
   };
 }
 
-export function fairnessFitScore({ office = {}, eligibleLoad = [] } = {}) {
-  const recent = Math.max(0, Number(office.recentPlatformAssignments || 0));
+export function fairnessFitScore({ office = {}, stats = {}, eligibleLoad = [] } = {}) {
+  const recent = Math.max(0, Number(
+    stats.recentPlatformAssignments
+    || office.recentPlatformAssignments
+    || statsFromOffice(office).recentPlatformAssignments
+    || 0
+  ));
   const loads = eligibleLoad.map((row) => Math.max(0, Number(row) || 0));
   if (!loads.length) {
     return { points: OPPORTUNITY_ROUTER_WEIGHTS.fairness, code: ROUTER_REASON_CODE.PLATFORM_FAIRNESS, label: ROUTER_REASON_LABELS.PLATFORM_FAIRNESS };
@@ -359,7 +364,7 @@ export function scoreOfficeForOpportunity({
   const response = responseFitScore({ stats });
   const followUp = followUpFitScore({ stats });
   const rating = ratingFitScore({ office });
-  const fairness = fairnessFitScore({ office, eligibleLoad });
+  const fairness = fairnessFitScore({ office, stats, eligibleLoad });
   const breakdown = {
     location: location.points,
     specialization: specialization.points,

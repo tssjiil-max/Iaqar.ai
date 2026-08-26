@@ -220,6 +220,17 @@ test("fairness reduces a monopolizing office without making an unfit office elig
   const busy = fairnessFitScore({ office: { recentPlatformAssignments: 9 }, eligibleLoad: [9, 1, 1] });
   const rest = fairnessFitScore({ office: { recentPlatformAssignments: 1 }, eligibleLoad: [9, 1, 1] });
   assert.ok(busy.points < rest.points);
+  const fromStats = fairnessFitScore({
+    office: office("office-busy"),
+    stats: { recentPlatformAssignments: 9 },
+    eligibleLoad: [9, 0]
+  });
+  const fromNested = fairnessFitScore({
+    office: office("office-busy", { platformRouterStats: { recentPlatformAssignments: 9 } }),
+    eligibleLoad: [9, 0]
+  });
+  assert.equal(fromStats.points, 1);
+  assert.equal(fromNested.points, 1);
   const unfit = scoreOfficeForOpportunity({
     office: office("office-x", { city: "جدة" }),
     opportunity,

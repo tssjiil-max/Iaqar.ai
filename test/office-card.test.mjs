@@ -218,6 +218,7 @@ test("TEST 2: nothing outside the app shell could act as a fixed bottom bar", as
       "div#stopShareOverlay.settings-overlay",
       "div#archiveOpportunityOverlay.settings-overlay",
       "div#permanentDeleteOverlay.settings-overlay",
+      "div#platformOpportunityOnboarding.settings-overlay",
       "div#officeSettings.settings-overlay",
       "div#toast.toast"
     ]);
