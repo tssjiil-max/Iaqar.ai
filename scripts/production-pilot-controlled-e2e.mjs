@@ -118,12 +118,16 @@ async function verifyVersionMarker() {
 
 async function verifyRuntimeRouting() {
   const runtime = await fetch(`${PRODUCTION_HOST}/js/runtime-config.js`, { cache: "no-store" }).then((r) => r.text());
+  const productionWorkerMatch = runtime.match(/PRODUCTION_WORKER\s*=\s*"([^"]+)"/);
+  const stagingWorkerMatch = runtime.match(/STAGING_WORKER\s*=\s*"([^"]+)"/);
+  const productionWorker = productionWorkerMatch?.[1] || "";
+  const stagingWorker = stagingWorkerMatch?.[1] || "";
   const checks = {
-    productionWorker: runtime.includes("iaqar-macrodroid-intake"),
-    notStagingWorker: !runtime.includes("iaqar-intake-staging"),
+    productionWorker: productionWorker.includes("iaqar-macrodroid-intake"),
+    stagingWorkerSeparate: stagingWorker.includes("iaqar-intake-staging"),
     productionProject: runtime.includes("aqar-b5d76")
   };
-  return { ok: Object.values(checks).every(Boolean), checks };
+  return { ok: checks.productionWorker && checks.stagingWorkerSeparate && checks.productionProject, checks };
 }
 
 async function cleanupFixtures() {
@@ -131,6 +135,10 @@ async function cleanupFixtures() {
     const snap = await office.collection(name).where("testRunId", "==", RUN_ID).limit(100).get();
     await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
   }
+  const orphanOps = await office.collection("operations").get();
+  await Promise.all(orphanOps.docs
+    .filter((doc) => String(doc.data()?.requestId || "").includes(RUN_ID) || String(doc.data()?.offerId || "").includes(RUN_ID))
+    .map((doc) => doc.ref.delete()));
 }
 
 async function persistValidPair() {
@@ -190,29 +198,86 @@ async function runMatching(token, opportunityId) {
   });
 }
 
-function mapTasks(matchDocs) {
-  const items = matchDocs.map((doc) => {
-    const item = doc.data();
-    return {
-      id: doc.id,
-      recordId: doc.id,
-      recordType: "match",
-      matchId: doc.id,
-      requestId: item.requestId || item.clientRequestId || "",
-      offerId: item.offerId || item.ownerOfferId || "",
-      propertyType: item.propertyType || "",
-      purpose: item.purpose || "",
-      district: item.district || "",
-      city: item.city || "",
-      isTestFixture: true,
-      testRunId: RUN_ID,
-      createdBy: "E2E"
-    };
+function opportunityItem(doc) {
+  const item = doc.data() || {};
+  return {
+    id: `opp-${doc.id}`,
+    recordId: doc.id,
+    recordType: "opportunity",
+    opportunityId: doc.id,
+    propertyType: item.propertyType || "",
+    purpose: item.purpose || "",
+    district: item.district || "",
+    city: item.city || "",
+    salePrice: item.salePrice ?? item.annualRent ?? item.price,
+    budget: item.budget ?? item.priceMax,
+    area: item.area || 0,
+    contactPhone: item.contactPhone || "",
+    contactName: item.contactName || "",
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E"
+  };
+}
+
+function mapTasksFromFirestore(matchDocs, operationDocs, opportunityDocs = []) {
+  const items = [
+    ...opportunityDocs.map(opportunityItem),
+    ...operationDocs.map((doc) => {
+      const item = doc.data() || {};
+      return {
+        id: doc.id,
+        recordId: doc.id,
+        recordType: "operation",
+        operationType: item.operationType || "",
+        operationId: doc.id,
+        matchId: item.matchId || "",
+        requestId: item.requestId || item.clientRequestId || "",
+        offerId: item.offerId || item.ownerOfferId || "",
+        propertyType: item.propertyType || "",
+        purpose: item.purpose || "",
+        district: item.district || "",
+        city: item.city || "",
+        status: item.status || "",
+        lifecycleStatus: item.lifecycleStatus || "",
+        isTestFixture: true,
+        testRunId: RUN_ID,
+        createdBy: "E2E"
+      };
+    }),
+    ...matchDocs.map((doc) => {
+      const item = doc.data() || {};
+      return {
+        id: doc.id,
+        recordId: doc.id,
+        recordType: "match",
+        matchId: doc.id,
+        requestId: item.requestId || item.clientRequestId || "",
+        offerId: item.offerId || item.ownerOfferId || "",
+        propertyType: item.propertyType || "",
+        purpose: item.purpose || "",
+        district: item.district || "",
+        city: item.city || "",
+        integrityStatus: item.integrityStatus || "",
+        isTestFixture: true,
+        testRunId: RUN_ID,
+        createdBy: "E2E"
+      };
+    })
+  ];
+  consumeDailyTaskDiagnostics();
+  const mapped = mapOperationsItemsToDailyTasks(items, new Date(), {
+    officeId: AUTHORIZED_OFFICE,
+    showTestFixtures: true
   });
   consumeDailyTaskDiagnostics();
-  const mapped = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: AUTHORIZED_OFFICE });
-  const hidden = consumeDailyTaskDiagnostics();
-  return { mapped, hidden };
+  return mapped;
+}
+
+async function loadMatchOperations(matchId) {
+  if (!matchId) return [];
+  const snap = await office.collection("operations").get();
+  return snap.docs.filter((doc) => doc.data()?.matchId === matchId);
 }
 
 async function main() {
@@ -251,13 +316,16 @@ async function main() {
   );
 
   const matchDocs = matchId ? [await office.collection("matches").doc(matchId).get()] : [];
-  const firstTasks = mapTasks(matchDocs.filter((doc) => doc.exists));
-  const reloadTasks = mapTasks(matchDocs.filter((doc) => doc.exists));
-  const task = firstTasks.mapped[0];
-  const reloadTask = reloadTasks.mapped[0];
+  const operationDocs = await loadMatchOperations(matchId);
+  const opportunityDocs = [await office.collection("opportunities").doc(REQUEST_ID).get(),
+    await office.collection("opportunities").doc(OFFER_ID).get()].filter((doc) => doc.exists);
+  const firstTasks = mapTasksFromFirestore(matchDocs.filter((doc) => doc.exists), operationDocs, opportunityDocs);
+  const reloadTasks = mapTasksFromFirestore(matchDocs.filter((doc) => doc.exists), operationDocs, opportunityDocs);
+  const task = firstTasks[0];
+  const reloadTask = reloadTasks[0];
 
   const otherOfficeSnap = await db.collection("offices").doc(UNAUTHORIZED_OFFICE).collection("opportunities").limit(1).get();
-  const isolationProbe = await workerFetch(`/offices/${AUTHORIZED_OFFICE}/opportunities/${REQUEST_ID}`, { token: tokenBundle.idToken });
+  const isolationProbe = await workerFetch(`/platform/pilot-status?officeId=${encodeURIComponent(UNAUTHORIZED_OFFICE)}`, { token: tokenBundle.idToken });
 
   report.results.pilotAccess = {
     authorized: pilotStatusAuth.body?.officeAccess,
@@ -280,11 +348,11 @@ async function main() {
   report.results.livingTask = {
     taskId: task?.id || "",
     reloadSameTaskId: Boolean(task && reloadTask && task.id === reloadTask.id),
-    duplicateCount: firstTasks.mapped.filter((row) => row.matchId === matchId).length
+    duplicateCount: firstTasks.filter((row) => row.matchId === matchId).length
   };
   report.results.officeIsolation = {
     unauthorizedOfficeReadableFromAuth: otherOfficeSnap.size > 0,
-    authorizedOpportunityReadable: isolationProbe.status === 200
+    unauthorizedOfficeDenied: isolationProbe.body?.officeAccess?.allowed === false
   };
   report.results.monitoring = {
     workerHealth: report.results.health?.backendReady === true,
@@ -301,6 +369,7 @@ async function main() {
   if (!report.results.livingTask.taskId || !report.results.livingTask.reloadSameTaskId) failures.push("living_task");
   if (report.results.pilotAccess.authorized?.allowed !== true) failures.push("authorized_office");
   if (report.results.pilotAccess.unauthorized?.allowed !== false) failures.push("unauthorized_office");
+  if (report.results.officeIsolation.unauthorizedOfficeDenied !== true) failures.push("office_isolation");
 
   await cleanupFixtures();
   report.cleanup = "completed";
