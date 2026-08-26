@@ -110,10 +110,10 @@ const ids = {
 };
 
 function stamp() {
-  const now = new Date(Date.now() + 60_000).toISOString();
+  const ts = Timestamp.fromMillis(Date.now());
   return {
-    createdAt: now,
-    updatedAt: now,
+    createdAt: ts,
+    updatedAt: ts,
     isTestFixture: true,
     testRunId: RUN_ID,
     createdBy: "E2E",
@@ -206,6 +206,7 @@ async function ensureQaOffice() {
     isTestFixture: true,
     createdBy: "E2E",
     ownerUid: sourceData.ownerUid || "",
+    platformOpportunityOnboardingAckAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   await Promise.all(membersSnap.docs.map((doc) => (
@@ -513,6 +514,34 @@ function attachWatchers(page, label) {
   });
 }
 
+async function dismissOverlays(page) {
+  const ack = page.locator("#platformOnboardingAckBtn");
+  if (await ack.isVisible().catch(() => false)) {
+    await ack.click().catch(() => null);
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => {
+    const overlay = document.getElementById("platformOpportunityOnboarding");
+    if (overlay) overlay.hidden = true;
+  }).catch(() => null);
+}
+
+async function ensureE2eOfficeContext(page) {
+  const activeOffice = await page.evaluate(() => localStorage.getItem("iaqar.officeId") || "");
+  if (activeOffice === OFFICE_ID) return;
+  await page.goto(`${STAGING_URL}/?office=${encodeURIComponent(OFFICE_ID)}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 120000
+  });
+  await page.waitForFunction(
+    (target) => (localStorage.getItem("iaqar.officeId") || "") === target
+      && !document.body.classList.contains("access-locked"),
+    OFFICE_ID,
+    { timeout: 120000 }
+  );
+  await dismissOverlays(page);
+}
+
 async function login(page) {
   await page.goto(`${STAGING_URL}/?office=${encodeURIComponent(OFFICE_ID)}`, {
     waitUntil: "domcontentloaded",
@@ -525,9 +554,12 @@ async function login(page) {
   await page.waitForFunction(() => !document.body.classList.contains("access-locked"), {
     timeout: 120000
   });
+  await ensureE2eOfficeContext(page);
+  await dismissOverlays(page);
 }
 
 async function openOffersTab(page) {
+  await dismissOverlays(page);
   const tab = page.locator("#mainTabOpportunities, button:has-text('العروض والطلبات')").first();
   await tab.click();
   await page.waitForTimeout(800);
@@ -574,6 +606,7 @@ async function inboxSection(page, opportunityId) {
 }
 
 async function openTasksTab(page) {
+  await dismissOverlays(page);
   const tab = page.locator("#mainTabOperations, button:has-text('المهام اليومية')").first();
   await tab.click();
   await page.waitForTimeout(1500);
@@ -694,6 +727,9 @@ async function runJourney({ headed }) {
     firestoreDistrict: "",
     firestoreReady: false,
     partyReplyAction: "",
+    partyFollowUpAction: "",
+    viewingReplyStatus: null,
+    matchOwnerContactNeeded: false,
     matchLivingAfterClient: "",
     matchLivingAfterOwner: ""
   };
@@ -896,6 +932,36 @@ async function runJourney({ headed }) {
           evidence: "live-C-client-interested.png + party/sessions/reply",
           note: `HTTP ${state.replyStatus} replyAction=${state.partyReplyAction} followUp=${state.followUpVisible} loginChrome=${hasLogin}`
         });
+
+        // Golden journey: broker only gets send_to_owner after client follow-up want_viewing.
+        const viewingWaiter = clientPage.waitForResponse(
+          (res) => /\/party\/sessions\/.+\/reply$/.test(res.url()) && res.request().method() === "POST",
+          { timeout: 30000 }
+        ).catch(() => null);
+        await clientPage.locator('[data-party-action="want_viewing"]').click();
+        const viewingRes = await viewingWaiter;
+        state.viewingReplyStatus = viewingRes ? viewingRes.status() : null;
+        await clientPage.waitForTimeout(1500);
+        await screenshot(clientPage, headed ? "live-headed-C-client-viewing.png" : "live-C-client-viewing.png");
+        const sessionsAfterViewing = await officeRef.collection("partySessions").where("matchId", "==", ids.match).get();
+        const clientSessionAfterViewing = sessionsAfterViewing.docs
+          .map((doc) => doc.data())
+          .find((row) => String(row.party || "") === "client");
+        state.partyFollowUpAction = clientSessionAfterViewing?.followUpAction || "";
+        const matchAfterViewing = await readDoc("matches", ids.match);
+        state.matchOwnerContactNeeded = Boolean(matchAfterViewing?.ownerContactNeeded);
+        const opAfterViewing = await readDoc("operations", ids.matchOp);
+        state.opAfterViewing = {
+          livingStage: opAfterViewing?.livingStage || "",
+          nextActor: opAfterViewing?.nextActor || "",
+          ownerContactNeeded: opAfterViewing?.ownerContactNeeded || ""
+        };
+        console.log("client want_viewing", {
+          status: state.viewingReplyStatus,
+          followUpAction: state.partyFollowUpAction,
+          ownerContactNeeded: state.matchOwnerContactNeeded,
+          operation: state.opAfterViewing
+        });
         } catch (error) {
           await screenshot(clientPage, headed ? "live-headed-C-client-error.png" : "live-C-client-error.png");
           record("Client interested", "FAIL — LIVE E2E", {
@@ -921,7 +987,7 @@ async function runJourney({ headed }) {
         await matchCard.locator("[data-cv2-exec-reveal]").click();
         await broker.waitForTimeout(600);
         const brokerText = (await matchCard.innerText()).replace(/\s+/g, " ");
-        state.brokerSawClient = /العميل مهتم/.test(brokerText);
+        state.brokerSawClient = /العميل (مهتم|طلب معاينة|يريد معاينة)|تأكيد التوفر/.test(brokerText);
         await screenshot(broker, headed ? "live-headed-D-broker-client.png" : "live-D-broker-client.png");
       } else {
         state.taskIdAfterClient = "";
@@ -942,7 +1008,7 @@ async function runJourney({ headed }) {
       if (!(await matchCard.count()) || !(await sendOwner.count())) {
         record("Owner available", "FAIL — LIVE E2E", {
           persistence: "NOT RUN",
-          note: `send-owner button count=${await sendOwner.count()} (staging may hide owner send until a later stage)`
+          note: `send-owner button count=${await sendOwner.count()} followUp=${state.partyFollowUpAction || "none"} ownerContactNeeded=${state.matchOwnerContactNeeded}`
         });
         record("Broker receives owner update", "NOT RUN", { note: "owner party URL was not created from the UI" });
       } else {
@@ -1013,7 +1079,7 @@ async function runJourney({ headed }) {
           await matchCard.locator("[data-cv2-exec-reveal]").click();
           await broker.waitForTimeout(600);
           const ownerBrokerText = (await matchCard.innerText()).replace(/\s+/g, " ");
-          state.brokerSawOwner = /المالك أكد/.test(ownerBrokerText);
+          state.brokerSawOwner = /المالك أكد|العقار متاح/.test(ownerBrokerText);
           await screenshot(broker, headed ? "live-headed-F-broker-owner.png" : "live-F-broker-owner.png");
         }
         const matchAfterOwner = await readDoc("matches", ids.match);

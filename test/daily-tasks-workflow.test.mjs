@@ -167,6 +167,40 @@ test("TEST 5 client interested updates the same task timeline and sort", () => {
   assert.equal(waiting.id, "waiting");
 });
 
+test("TEST 5b want_viewing on match record exposes send_to_owner", () => {
+  const living = livingStageAfterPartyAction({ party: "client", action: "want_viewing", followUp: true });
+  const grouped = groupMatchItems([
+    {
+      ...matchItem,
+      id: "op_review",
+      recordType: "operation",
+      operationType: "MATCH_REVIEW",
+      livingStage: living.stage,
+      nextActor: "BROKER",
+      ownerContactNeeded: "true",
+      livingUpdatedAt: "2026-08-26T09:27:00.000Z"
+    },
+    {
+      ...matchItem,
+      id: matchItem.matchId,
+      recordType: "match",
+      livingStage: living.stage,
+      nextActor: "BROKER",
+      ownerContactNeeded: "true",
+      livingUpdatedAt: "2026-08-26T09:27:00.000Z",
+      livingTimeline: [
+        { type: "reply", actor: "CLIENT", label: partyReplyTimelineLabel("client", "want_viewing"), createdAt: "2026-08-26T09:27:00.000Z" }
+      ]
+    }
+  ]);
+  const task = buildMatchGroupDailyTask(grouped[0], new Date("2026-08-26T09:30:00.000Z"));
+  const html = visible(buildDailyTaskCardHtml(task, { open: true }));
+  assert.equal(task.ownerContactNeeded, true);
+  assert.equal(task.primaryAction?.id, "send_to_owner");
+  assert.match(html, /إرسال للمالك/);
+  assert.match(html, /تأكيد توفر العقار/);
+});
+
 test("TEST 6 owner available updates the same task", () => {
   const living = livingStageAfterPartyAction({ party: "owner", action: "property_available" });
   const grouped = groupMatchItems([{

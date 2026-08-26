@@ -80,12 +80,26 @@ async function ensureQaOffice() {
     isTestFixture: true,
     createdBy: "E2E",
     ownerUid: sourceData.ownerUid || "",
+    platformOpportunityOnboardingAckAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   await Promise.all(membersSnap.docs.map((doc) => office.collection("members").doc(doc.id).set({
     ...doc.data(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true })));
+}
+
+async function cleanupStaleQaFixtures() {
+  for (const name of ["matches", "opportunities", "operations"]) {
+    const col = office.collection(name);
+    const [fixtureSnap, runSnap] = await Promise.all([
+      col.where("isTestFixture", "==", true).limit(200).get(),
+      col.where("createdBy", "==", "E2E").limit(200).get()
+    ]);
+    const refs = new Map();
+    for (const doc of [...fixtureSnap.docs, ...runSnap.docs]) refs.set(doc.id, doc.ref);
+    await Promise.all([...refs.values()].map((ref) => ref.delete()));
+  }
 }
 
 async function persistCanonicalPair() {
@@ -190,8 +204,8 @@ function matchItem(doc) {
 
 async function mapperCheck() {
   const [matches, opps] = await Promise.all([
-    office.collection("matches").limit(50).get(),
-    office.collection("opportunities").limit(50).get()
+    office.collection("matches").where("testRunId", "==", RUN_ID).limit(20).get(),
+    office.collection("opportunities").where("testRunId", "==", RUN_ID).limit(20).get()
   ]);
   const items = [
     ...matches.docs.map(matchItem),
@@ -221,6 +235,12 @@ async function mapperCheck() {
   const mapped = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: OFFICE_ID });
   const hidden = consumeDailyTaskDiagnostics();
   return { mapped, hidden, matchDocs: matches.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+}
+
+function findMappedTask(mapped, { matchId, requestId, offerId }) {
+  return mapped.find((row) => row.requestId === requestId && row.offerId === offerId)
+    || mapped.find((row) => row.matchId === matchId
+      || (row.candidates || []).some((item) => item.matchId === matchId));
 }
 
 async function cleanup() {
@@ -334,13 +354,17 @@ async function captureUi({ customToken, matchId }) {
 
 async function main() {
   await ensureQaOffice();
+  await cleanupStaleQaFixtures();
   const persisted = await persistCanonicalPair();
   const auth = await idToken();
   const matching = await runMatching(auth.idToken);
   const created = matching.body?.matches || [];
-  const matchId = created[0]?.matchId || "";
-  if (matchId) {
-    await office.collection("matches").doc(matchId).set({
+  const qaPair = created.find((row) => row.requestId === REQUEST_ID && row.offerId === OFFER_ID) || created[0] || {};
+  const matchId = qaPair.matchId || "";
+  for (const row of created) {
+    const id = row.matchId || "";
+    if (!id) continue;
+    await office.collection("matches").doc(id).set({
       isTestFixture: true,
       testRunId: RUN_ID,
       createdBy: "E2E",
@@ -351,10 +375,16 @@ async function main() {
   const reload = await mapperCheck();
   const qaMatch = (first.matchDocs || []).find((row) => row.requestId === REQUEST_ID && row.offerId === OFFER_ID)
     || (first.matchDocs || []).find((row) => row.matchId === matchId || row.id === matchId);
-  const task = first.mapped.find((row) => row.matchId === (qaMatch?.id || matchId)
-    || (row.candidates || []).some((item) => item.matchId === (qaMatch?.id || matchId)));
-  const reloadTask = reload.mapped.find((row) => row.matchId === (qaMatch?.id || matchId)
-    || (row.candidates || []).some((item) => item.matchId === (qaMatch?.id || matchId)));
+  const task = findMappedTask(first.mapped, {
+    matchId: qaMatch?.id || matchId,
+    requestId: REQUEST_ID,
+    offerId: OFFER_ID
+  });
+  const reloadTask = findMappedTask(reload.mapped, {
+    matchId: qaMatch?.id || matchId,
+    requestId: REQUEST_ID,
+    offerId: OFFER_ID
+  });
 
   let ui = { shots: {}, cardCount: 0, error: "" };
   try {

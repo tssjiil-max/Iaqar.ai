@@ -894,6 +894,9 @@
         if (code === "auth_required" || code === "admin_required") {
           return message || "يلزم تسجيل الدخول لإرسال الطلب";
         }
+        if (code === "pilot_registration_closed" || code === "pilot_access_denied") {
+          return message || "التسجيل متاح حاليًا لعدد محدود من المكاتب ضمن المرحلة التجريبية.";
+        }
         return message || fallback || "تعذر إرسال الطلب الآن";
       };
       const brokerPhone = normalizeSaudiPhone(fields.get("phone"));
@@ -1222,6 +1225,27 @@
           null
         );
         return false;
+      }
+      try {
+        const idToken = await user.getIdToken(false);
+        const pilotResponse = await fetch(`${resolveWorkerBase()}/platform/pilot-status?officeId=${encodeURIComponent(target)}`, {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const pilotPayload = await pilotResponse.json().catch(() => ({}));
+        const pilotDenied = pilotPayload?.officeAccess?.allowed === false
+          || pilotPayload?.officeAccess?.code === "PILOT_ACCESS_DENIED";
+        if (pilotDenied) {
+          authDiag("AUTH_GUARD_DECISION", { decision: "pilot_access_denied", target });
+          await authSignOut("pilot_access_denied", pilotPayload?.officeAccess?.code || "PILOT_ACCESS_DENIED");
+          showAccessError(
+            "المرحلة التجريبية",
+            pilotPayload?.officeAccess?.message || "هذا المكتب غير مشمول في المرحلة التجريبية الحالية.",
+            null
+          );
+          return false;
+        }
+      } catch (pilotError) {
+        console.warn("[iaqar] pilot access check", pilotError);
       }
       localStorage.setItem("iaqar.officeId", target);
       authGuardState = "authenticated";

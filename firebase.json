@@ -147,7 +147,7 @@
     "redirects": [
       {
         "source": "/m/:slug",
-        "destination": "https://iaqar-intake-staging.iaqar-ai.workers.dev/m/:slug",
+        "destination": "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/m/:slug",
         "type": 302
       }
     ]

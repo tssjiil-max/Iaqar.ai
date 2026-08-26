@@ -96,6 +96,13 @@ import {
   submitOfficeRating
 } from "./opportunity-router-service.js";
 import {
+  assertPilotFeatureEnabled,
+  assertPilotOfficeAccess,
+  assertPilotRegistrationAllowed,
+  getPilotAccessStatus,
+  loadPilotAccessConfig
+} from "./pilot-access-service.js";
+import {
   ORIGIN_SOURCE_TYPE,
   originSourceFromIntake,
   livingTaskIdForOpportunity,
@@ -371,6 +378,27 @@ export default {
         return await handleSavePublicSlug(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
       }
 
+      if (request.method === "GET" && url.pathname === "/platform/pilot-status") {
+        assertFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+        const accessToken = await getGoogleAccessToken(env);
+        const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+        let isPlatformAdmin = false;
+        const authHeader = cleanText(request.headers.get("Authorization"), 5000);
+        const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+        if (bearer) {
+          try {
+            const claims = await verifyFirebaseIdToken(bearer, projectId);
+            isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
+          } catch (_) { /* public summary without auth */ }
+        }
+        const status = await getPilotAccessStatus(pilotAccessDeps(projectId, accessToken), {
+          officeId,
+          isPlatformAdmin
+        });
+        return jsonResponse({ ok: true, ...status, requestId });
+      }
+
       if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
         const deploymentEnvironment = String(env.DEPLOYMENT_ENV || "production").toLowerCase() === "staging"
           ? "staging"
@@ -472,6 +500,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/matching/preview") {
+        await ensurePilotFeatureEnabled(env, "matching");
         const body = await request.json().catch(() => ({}));
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
         const candidates = Array.isArray(body.candidates) ? body.candidates : [];
@@ -1163,6 +1192,13 @@ function firestoreStringArray(values = []) {
 async function handleBrokerApplication(request, env, requestId) {
   assertFirebaseSecrets(env);
   const identity = await requirePlatformIdentity(request, env, false);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  try {
+    await assertPilotRegistrationAllowed(pilotAccessDeps(projectId, accessToken));
+  } catch (error) {
+    throw appError(error.code || "pilot_registration_closed", error.status || 403, error.message);
+  }
   const body = await request.json().catch(() => ({}));
   const brokerName = cleanText(body.brokerName, 80);
   const phone = normalizeLoginPhone(body.phone);
@@ -1176,8 +1212,6 @@ async function handleBrokerApplication(request, env, requestId) {
   if (!/^\d{6,20}$/.test(falLicense)) {
     throw appError("fal_invalid", 400, "رقم رخصة فال غير صالح");
   }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
   const phoneHash = await sha256Hex(phone);
   const loginDirectory = await getFirestoreDocument({
     projectId,
@@ -1303,6 +1337,13 @@ async function decideBrokerApplication(request, env, requestId) {
   if (application.status !== "pending") throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
   const now = new Date();
   if (action === "approve") {
+    const pilotDeps = pilotAccessDeps(projectId, accessToken);
+    try {
+      await assertPilotRegistrationAllowed(pilotDeps);
+      await assertPilotOfficeAccess(pilotDeps, { officeId, isPlatformAdmin: false });
+    } catch (error) {
+      throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
+    }
     const normalizedPhone = normalizeLoginPhone(application.phone);
     if (!normalizedPhone) throw appError("phone_invalid", 400, "رقم جوال الوسيط غير صالح");
     const phoneHash = await sha256Hex(normalizedPhone);
@@ -1328,6 +1369,7 @@ async function decideBrokerApplication(request, env, requestId) {
         approvalStatus: firestoreString("approved"),
         accountStatus: firestoreString("active"),
         subscriptionStatus: firestoreString("trial"),
+        pilotAuthorized: firestoreBoolean(true),
         approvedAt: firestoreTimestamp(now),
         approvedByUid: firestoreString(admin.sub),
         registeredAt: firestoreTimestamp(now),
@@ -1736,6 +1778,7 @@ async function handleActivepiecesIntake(request, env, requestId) {
 
 
 async function handlePublicIntakeMatching(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -1993,6 +2036,7 @@ function opportunityRouterDeps(env, projectId, accessToken) {
 }
 
 async function handleOpportunityRouterAccept(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -2012,6 +2056,7 @@ async function handleOpportunityRouterAccept(request, env, requestId) {
 }
 
 async function handleOpportunityRouterDecline(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -2029,6 +2074,7 @@ async function handleOpportunityRouterDecline(request, env, requestId) {
 }
 
 async function handleOpportunityRouterTick(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
@@ -2044,6 +2090,7 @@ async function handleOpportunityRouterTick(request, env, requestId) {
 }
 
 async function handleOpportunityRouterRate(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4232,6 +4279,7 @@ async function findAndSaveMatchesForOpportunity({
 }
 
 async function handleMatchingRun(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "matching");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4303,6 +4351,7 @@ async function handleOperationsAction(request, env, requestId) {
 }
 
 async function handleOperationsFromCooperation(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4382,6 +4431,7 @@ async function handleOperationsMissingData(request, env, requestId) {
 }
 
 async function handleCooperationSuitableOffices(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4425,6 +4475,7 @@ async function handleCooperationSuitableOffices(request, env, requestId) {
 }
 
 async function handleCooperationNearbySuggestions(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
@@ -4551,6 +4602,7 @@ async function handleOpportunityWorkspace(request, env, requestId) {
 }
 
 async function handleCooperationRoom(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4629,6 +4681,7 @@ async function handleCooperationRoom(request, env, requestId) {
 }
 
 async function handleCooperationWorkflow(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4673,6 +4726,7 @@ async function handleCooperationWorkflow(request, env, requestId) {
 }
 
 async function handleCooperationRequestCreate(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const targetOfficeId = normalizeOfficeId(body.targetOfficeId);
@@ -4724,6 +4778,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
@@ -4768,6 +4823,7 @@ async function handleCooperationLifecycle(request, env, requestId) {
 }
 
 async function handleCooperationScopeRevoke(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
   const officeId = normalizeOfficeId(body.officeId);
   const sharingScopeId = cleanText(body.sharingScopeId, 180);
@@ -5160,6 +5216,7 @@ async function readOfficeBrandProfile({projectId,officeId,accessToken}) {
 }
 
 async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null,taskId="",opportunityId="",missingLabel="",appointmentLabel="",presentationType=""}) {
+  if (env) await ensurePilotFeatureEnabled(env, "pushNotifications");
   const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
   if(!notificationCategoryAllowed(type,preferences)){
     return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
@@ -5326,6 +5383,7 @@ async function getFcmStatus(request,url,env,requestId) {
 }
 
 async function registerFcmDevice(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
   const officeId=normalizeOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
@@ -5367,6 +5425,7 @@ async function unregisterFcmDevice(request,env,requestId) {
 }
 
 async function sendFcmTestNotification(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
   const officeId=normalizeOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
@@ -5938,6 +5997,31 @@ async function handleOfficeAnalytics(request,url,env,requestId){
 }
 
 
+function pilotAccessDeps(projectId, accessToken) {
+  return {
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  };
+}
+
+async function ensurePilotFeatureEnabled(env, featureKey) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  try {
+    return await assertPilotFeatureEnabled(pilotAccessDeps(projectId, accessToken), featureKey);
+  } catch (error) {
+    throw appError(
+      error.code || "pilot_feature_disabled",
+      error.status || 503,
+      error.message || "الميزة متوقفة مؤقتًا في المرحلة التجريبية."
+    );
+  }
+}
+
 async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
@@ -5947,11 +6031,17 @@ async function authorizeOfficeRequest(request, env, officeId, permission = "mana
   }
   if (!token) throw appError("authentication_required", 401, "سجل دخول المكتب أولاً");
   const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
-  if (claims.platformAdmin === true || claims.admin === true) {
+  const isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
+  if (isPlatformAdmin) {
     return { uid: claims.sub, claims, role: "platformAdmin", permission };
   }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  try {
+    await assertPilotOfficeAccess(pilotAccessDeps(projectId, accessToken), { officeId, isPlatformAdmin: false });
+  } catch (error) {
+    throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
+  }
   const officeDoc = await getFirestoreDocument({ projectId, segments:["offices",officeId], accessToken, allowMissing:true });
   if (!officeDoc) throw appError("office_not_found",404,"المكتب غير موجود");
   const office = firestoreFieldsToJs(officeDoc.fields || {});
