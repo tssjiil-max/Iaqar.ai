@@ -129,8 +129,7 @@
   document.body.classList.add("access-locked");
   document.body.appendChild(gate);
 
-  const logo = document.querySelector(".site-logo img,.brand-logo img,.office-logo img");
-  const logoSrc = logo ? logo.src : "/icons/icon-192.png";
+  const logoSrc = "/icons/iaqar-default-icon-192.png";
   const db = () => firebase.firestore();
   const optionList = values => values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
   const normalizeSaudiPhone = value => {

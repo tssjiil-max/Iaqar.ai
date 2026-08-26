@@ -355,7 +355,14 @@ export async function createMatchReviewBundle({
       type: pushTypeForOperation(operation.type),
       recordId: operation.id,
       assignedBrokerId: operation.assignedBrokerId,
-      accessToken
+      accessToken,
+      listing: {
+        propertyType: match.candidatePropertyType || match.propertyType || "",
+        purpose: match.candidatePurpose || "",
+        district: match.candidateDistrict || match.district || "",
+        city: match.candidateCity || match.city || "",
+        price: match.candidateSalePrice || 0
+      }
     });
     await recordNotificationPushResult({
       projectId,

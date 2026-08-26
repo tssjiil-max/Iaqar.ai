@@ -3,6 +3,10 @@
  * Pure logic shared by the page, tests, and deploy guards.
  */
 
+import { isBrandIconPath } from "./platform-brand-domain.js";
+
+export { isBrandIconPath };
+
 export const REQUIRED_STAGING_BRANCH = "cursor/opportunity-lifecycle-transfer-ed07";
 export const APPROVED_STAGING_URL = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 export const FORBIDDEN_STAGING_URL = `https://${["iaqar-ai-staging", "web.app"].join(".")}`;
@@ -105,6 +109,7 @@ export function isJavaScriptPath(pathname) {
 
 export function isLongCacheAssetPath(pathname) {
   const path = String(pathname || "");
+  if (isBrandIconPath(path)) return false;
   if (path.startsWith("/icons/") || path.startsWith("/fonts/")) return true;
   return /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf)$/i.test(path);
 }
