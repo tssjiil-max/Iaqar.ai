@@ -2930,31 +2930,34 @@ async function saveEdit(id, existing, input) {
 }
 
 function confirmArchiveOpportunity(id, record) {
-  const modal = document.getElementById("archiveOpportunityOverlay");
-  const message = document.getElementById("archiveOpportunityMessage");
-  const confirmBtn = document.getElementById("archiveOpportunityConfirm");
-  const cancelBtn = document.getElementById("archiveOpportunityCancel");
-  const title = document.getElementById("archiveOpportunityTitle");
-  if (!modal || !confirmBtn || !cancelBtn) {
-    setStatus("تعذر فتح تأكيد الأرشفة", "is-error");
-    return;
-  }
-  if (title) title.textContent = archiveActionLabel(record);
-  if (message) message.textContent = archiveConfirmCopy(record);
-  if (confirmBtn) confirmBtn.textContent = archiveActionLabel(record);
-  modal.hidden = false;
-  const close = () => {
-    modal.hidden = true;
-    cancelBtn.removeEventListener("click", onCancel);
-    confirmBtn.removeEventListener("click", onConfirm);
-  };
-  const onCancel = () => close();
-  const onConfirm = () => {
-    close();
-    void archiveOpportunity(id, record);
-  };
-  cancelBtn.addEventListener("click", onCancel);
-  confirmBtn.addEventListener("click", onConfirm);
+  void (async () => {
+    const latest = (await reloadOpportunityFromBackend(id)) || record || state.records.get(id);
+    const modal = document.getElementById("archiveOpportunityOverlay");
+    const message = document.getElementById("archiveOpportunityMessage");
+    const confirmBtn = document.getElementById("archiveOpportunityConfirm");
+    const cancelBtn = document.getElementById("archiveOpportunityCancel");
+    const title = document.getElementById("archiveOpportunityTitle");
+    if (!modal || !confirmBtn || !cancelBtn) {
+      setStatus("تعذر فتح تأكيد الأرشفة", "is-error");
+      return;
+    }
+    if (title) title.textContent = archiveActionLabel(latest);
+    if (message) message.textContent = archiveConfirmCopy(latest);
+    if (confirmBtn) confirmBtn.textContent = archiveActionLabel(latest);
+    modal.hidden = false;
+    const close = () => {
+      modal.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+    };
+    const onCancel = () => close();
+    const onConfirm = () => {
+      close();
+      void archiveOpportunity(id, latest);
+    };
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+  })();
 }
 
 async function archiveOpportunity(id, existing) {
@@ -3057,36 +3060,39 @@ async function permanentDeleteOpportunity(id, existing) {
 }
 
 function confirmPermanentDelete(id, record) {
-  const validation = validatePermanentDelete(record, { officeId: officeId() });
-  if (!validation.allowed) {
-    setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
-    toast(validation.reason || "لا يمكن حذف هذه الفرصة");
-    return;
-  }
-  const modal = document.getElementById("permanentDeleteOverlay");
-  const message = document.getElementById("permanentDeleteMessage");
-  const cancelBtn = document.getElementById("permanentDeleteCancel");
-  const confirmBtn = document.getElementById("permanentDeleteConfirm");
-  if (!modal || !confirmBtn || !cancelBtn) {
-    setStatus("تعذر فتح تأكيد الحذف", "is-error");
-    return;
-  }
-  if (message) {
-    message.textContent = permanentDeleteCopy();
-  }
-  modal.hidden = false;
-  const close = () => {
-    modal.hidden = true;
-    cancelBtn.removeEventListener("click", onCancel);
-    confirmBtn.removeEventListener("click", onConfirm);
-  };
-  const onCancel = () => close();
-  const onConfirm = () => {
-    close();
-    void permanentDeleteOpportunity(id, record);
-  };
-  cancelBtn.addEventListener("click", onCancel);
-  confirmBtn.addEventListener("click", onConfirm);
+  void (async () => {
+    const latest = (await reloadOpportunityFromBackend(id)) || record || state.records.get(id);
+    const validation = validatePermanentDelete(latest, { officeId: officeId() });
+    if (!validation.allowed) {
+      setStatus(validation.reason || "لا يمكن حذف هذه الفرصة", "is-error");
+      toast(validation.reason || "لا يمكن حذف هذه الفرصة");
+      return;
+    }
+    const modal = document.getElementById("permanentDeleteOverlay");
+    const message = document.getElementById("permanentDeleteMessage");
+    const cancelBtn = document.getElementById("permanentDeleteCancel");
+    const confirmBtn = document.getElementById("permanentDeleteConfirm");
+    if (!modal || !confirmBtn || !cancelBtn) {
+      setStatus("تعذر فتح تأكيد الحذف", "is-error");
+      return;
+    }
+    if (message) {
+      message.textContent = permanentDeleteCopy();
+    }
+    modal.hidden = false;
+    const close = () => {
+      modal.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+    };
+    const onCancel = () => close();
+    const onConfirm = () => {
+      close();
+      void permanentDeleteOpportunity(id, latest);
+    };
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+  })();
 }
 
 async function hideSharedFromBankPanel(sharedId) {

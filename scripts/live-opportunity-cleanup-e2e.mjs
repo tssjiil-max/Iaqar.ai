@@ -226,7 +226,12 @@ async function openArchiveConfirm(page, id) {
       window.IAQAR.confirmArchiveOpportunity(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
     }, id);
   }
+  await page.locator("#archiveOpportunityOverlay").waitFor({ state: "visible", timeout: 15000 });
   await page.locator("#archiveOpportunityConfirm").click({ timeout: 8000 });
+  await page.waitForFunction(() => {
+    const overlay = document.getElementById("archiveOpportunityOverlay");
+    return !overlay || overlay.hidden;
+  }, { timeout: 10000 }).catch(() => {});
 }
 
 async function openPermanentDeleteConfirm(page, id) {
@@ -240,6 +245,7 @@ async function openPermanentDeleteConfirm(page, id) {
       window.IAQAR.confirmPermanentDelete(opportunityId, { id: opportunityId, ...(snap.data() || {}) });
     }, id);
   }
+  await page.locator("#permanentDeleteOverlay").waitFor({ state: "visible", timeout: 15000 });
 }
 
 async function ensureQaOffice() {
@@ -391,6 +397,7 @@ async function main() {
       );
       await page.locator("#bankFilterArchived").click();
       await page.waitForTimeout(1200);
+      await page.waitForFunction(() => document.getElementById("bankFilterArchived")?.classList.contains("is-active"), { timeout: 8000 }).catch(() => {});
       const inArchive = await revealOpportunityCard(page, created.id);
       await page.locator("#bankFilterActive").click();
       await page.waitForTimeout(800);
@@ -400,6 +407,7 @@ async function main() {
       shots.archive = path.join(OUT, "offers_archive_list_restore_actions.png");
       await page.locator("#bankFilterArchived").click();
       await page.waitForTimeout(800);
+      await revealOpportunityCard(page, created.id);
       await page.screenshot({ path: shots.archive, fullPage: true, animations: "disabled" });
 
       if (inArchive) {
@@ -427,21 +435,21 @@ async function main() {
       await page.waitForTimeout(400);
       await revealOpportunityCard(page, created.id);
       await openArchiveConfirm(page, created.id);
-      await waitForOpportunityState(
+      const rearchivedDoc = await waitForOpportunityState(
         USER_OFFICE,
         created.id,
         (snap) => snap.exists && (snap.data()?.lifecycleStatus === "ARCHIVED" || Boolean(snap.data()?.archivedAt))
       );
+      if (!rearchivedDoc) {
+        throw new Error("re-archive did not persist before purge");
+      }
       await page.locator("#bankFilterArchived").click();
       await page.waitForTimeout(1200);
       await revealOpportunityCard(page, created.id);
       await openPermanentDeleteConfirm(page, created.id);
       shots.delete = path.join(OUT, "offers_permanent_delete_confirmation.png");
-      await page.locator("#permanentDeleteOverlay").waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
-      await page.locator("#permanentDeleteOverlay").screenshot({ path: shots.delete, animations: "disabled" }).catch(async () => {
-        await page.screenshot({ path: shots.delete, animations: "disabled" });
-      });
-      await page.locator("#permanentDeleteConfirm").click({ timeout: 8000 });
+      await page.locator("#permanentDeleteOverlay").screenshot({ path: shots.delete, animations: "disabled" });
+      await page.locator("#permanentDeleteConfirm").click({ timeout: 8000, force: true });
       const purged = await waitForOpportunityState(USER_OFFICE, created.id, (snap) => !snap.exists, 25000);
       await page.reload({ waitUntil: "domcontentloaded" });
       await interceptWorker(page);
@@ -458,7 +466,7 @@ async function main() {
         .where("opportunityId", "==", created.id).limit(5).get().catch(() => ({ docs: [] }));
       mark(8, leftoverMatch.docs.length === 0 ? "PASS — LIVE E2E" : "FAIL — LIVE E2E", `matches=${leftoverMatch.docs.length}`);
     } catch (error) {
-      mark(5, results[5]?.status || "FAIL — LIVE E2E", String(error).slice(0, 180));
+      if (!results[5]) mark(5, "FAIL — LIVE E2E", String(error).slice(0, 180));
       if (!results[6]) mark(6, "FAIL — LIVE E2E", String(error).slice(0, 120));
       if (!results[7]) mark(7, "FAIL — LIVE E2E", String(error).slice(0, 120));
       if (!results[8]) mark(8, "FAIL — LIVE E2E", String(error).slice(0, 120));
