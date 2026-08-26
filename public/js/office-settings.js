@@ -5,7 +5,6 @@ import {
   OFFICE_IMAGE_MESSAGES,
   OFFICE_IMAGE_VARIANTS,
   OFFICE_NAME_MESSAGES,
-  buildPublicSlug,
   cooperationSettingsPayload,
   cropRectForAspect,
   defaultNotificationPreferences,
@@ -45,6 +44,14 @@ import {
   isPlatformDefaultLogo,
   officeBrandIconCandidates
 } from "./platform-brand-domain.js";
+import {
+  SHARE_CARD_HEIGHT,
+  SHARE_CARD_WIDTH,
+  officeLicensePreviewLines,
+  officeShareCardVersion,
+  officeShareMessage,
+  validateAssignablePublicSlug
+} from "./office-public-link-domain.js";
 
 const SPECIALTY_LABELS = Object.freeze({
   sale: "بيع",
@@ -520,6 +527,7 @@ function apply(data) {
   el.license.value = current.licenseNumber;
   el.city.value = current.city;
   if (el.link) el.link.value = officeLink();
+  if (el.publicSlug) el.publicSlug.value = current.publicSlug || "";
   writeSpecialtiesToForm(current.specialties);
   writeNeighborhoodsToForm(current.serviceNeighborhoodIds);
   writeOfficeScopeToForm(current);
@@ -698,7 +706,7 @@ async function onSave(event) {
     city: el.city.value,
     specialties: readSpecialtiesFromForm(),
     serviceNeighborhoodIds: readNeighborhoodsFromForm(),
-    publicSlug: current.publicSlug || buildPublicSlug(el.officeName.value, officeId())
+    publicSlug: normalizePublicSlug(el.publicSlug?.value || current.publicSlug)
   });
 
   const neighborhoodCheck = validateServiceNeighborhoodIds(
@@ -729,6 +737,10 @@ async function onSave(event) {
   if (runtime && runtime.db && user) {
     try {
       await reserveOfficeName(runtime, user, data);
+      if (data.publicSlug && data.publicSlug !== current.publicSlug) {
+        await savePublicSlugOnServer(data.publicSlug);
+        data.publicSlug = current.publicSlug || data.publicSlug;
+      }
       synced = true;
     } catch (error) {
       console.warn("[iaqar] office settings sync failed", error);
@@ -737,6 +749,13 @@ async function onSave(event) {
         el.officeName.reportValidity();
         setStatus(el.nameAvailability, OFFICE_NAME_MESSAGES.taken, "is-error");
         toast(OFFICE_NAME_MESSAGES.taken);
+        el.save.disabled = false;
+        el.save.textContent = "حفظ التعديلات";
+        return;
+      }
+      if (error && /معرّف الرابط|slug_/i.test(String(error.message || ""))) {
+        setStatus(el.linkStatus, error.message, "is-error");
+        toast(error.message);
         el.save.disabled = false;
         el.save.textContent = "حفظ التعديلات";
         return;
@@ -1054,22 +1073,37 @@ function initImageSlots() {
 // Office link, QR and sharing
 // ---------------------------------------------------------------------------
 
-async function ensurePublicSlug() {
-  if (current.publicSlug) return current.publicSlug;
-  const slug = buildPublicSlug(current.officeName, officeId());
-  current = clean({ ...current, publicSlug: slug });
-  if (el.link) el.link.value = officeLink();
-  const runtime = officeRuntime();
+async function savePublicSlugOnServer(slug) {
+  const checked = validateAssignablePublicSlug(slug);
+  if (!checked.ok) throw new Error(checked.message);
   const user = authUser();
-  if (runtime && runtime.db && user) {
-    const now = serverTimestamp();
-    await Promise.all([
-      runtime.db.collection("offices").doc(officeId()).set({ officeId: officeId(), publicSlug: slug, updatedAt: now }, { merge: true }),
-      runtime.db.collection("publicOffices").doc(officeId()).set({ officeId: officeId(), publicSlug: slug, updatedAt: now }, { merge: true })
-    ]);
-    saveLocal(current);
+  if (!user?.getIdToken) throw new Error("سجل دخول المكتب لحفظ الرابط القصير");
+  const token = await user.getIdToken();
+  const response = await fetch(`${resolveWorkerBase()}/office/public-slug`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "X-Office-Id": officeId()
+    },
+    body: JSON.stringify({ officeId: officeId(), publicSlug: checked.slug })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || "تعذر حفظ معرّف الرابط");
+  current = clean({ ...current, publicSlug: checked.slug });
+  if (el.publicSlug) el.publicSlug.value = checked.slug;
+  if (el.link) el.link.value = officeLink();
+  saveLocal(current);
+  return checked.slug;
+}
+
+async function ensurePublicSlug() {
+  const fromInput = normalizePublicSlug(el.publicSlug?.value || current.publicSlug);
+  if (fromInput) {
+    if (fromInput !== current.publicSlug) await savePublicSlugOnServer(fromInput);
+    return current.publicSlug || fromInput;
   }
-  return slug;
+  throw new Error("أضف معرّف الرابط القصير أولاً");
 }
 
 async function copyLink() {
@@ -1087,11 +1121,15 @@ async function copyLink() {
 }
 
 async function shareLink() {
-  const link = el.link.value;
-  const text = `${current.officeName}\n${link}`;
+  const text = officeShareMessage({
+    officeName: current.officeName,
+    origin: window.location.origin,
+    publicSlug: current.publicSlug,
+    officeId: officeId()
+  });
   if (navigator.share) {
     try {
-      await navigator.share({ title: current.officeName, text, url: link });
+      await navigator.share({ title: current.officeName, text, url: officeLink() });
       return;
     } catch (error) {
       if (error && error.name === "AbortError") return;
@@ -1393,6 +1431,92 @@ async function createOfficeCardBlob() {
   });
 }
 
+async function createOfficeSharePreviewBlob() {
+  const canvas = document.createElement("canvas");
+  canvas.width = SHARE_CARD_WIDTH;
+  canvas.height = SHARE_CARD_HEIGHT;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#f6faf8";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const oid = officeId();
+  const worker = resolveWorkerBase();
+  const candidates = officeBrandIconCandidates(current, { workerBase: worker, officeId: oid });
+  let officeImg = null;
+  for (const src of candidates) {
+    try {
+      officeImg = await loadImageSafe(withOfficeImageCacheBust(src, current.updatedAt || Date.now()));
+      if (officeImg) break;
+    } catch (_) {}
+  }
+
+  ctx.direction = "rtl";
+  const imageX = 72;
+  const imageY = 90;
+  const imageSize = 360;
+  ctx.fillStyle = "#ffffff";
+  roundedRect(ctx, imageX, imageY, imageSize, imageSize, 36);
+  ctx.fill();
+  if (officeImg) {
+    drawImageCover(ctx, officeImg, imageX, imageY, imageSize, imageSize, 36);
+  }
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#073f35";
+  ctx.font = "800 48px Tajawal, Arial, sans-serif";
+  const nameX = 1128;
+  ctx.fillText(current.officeName || "مكتب عقاري", nameX, 160, 640);
+
+  ctx.font = "700 28px Tajawal, Arial, sans-serif";
+  ctx.fillStyle = "#005C4B";
+  let lineY = 230;
+  for (const line of officeLicensePreviewLines(current)) {
+    ctx.fillText(line, nameX, lineY, 640);
+    lineY += 44;
+  }
+  if (current.city) {
+    ctx.fillStyle = "#3d5c54";
+    ctx.font = "600 28px Tajawal, Arial, sans-serif";
+    ctx.fillText(current.city, nameX, lineY + 8, 640);
+  }
+
+  try {
+    const platformLogo = await loadImageSafe(PLATFORM_DEFAULT_LOGO);
+    drawImageContain(ctx, platformLogo, 980, 520, 48, 48);
+  } catch (_) {}
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#005C4B";
+  ctx.font = "700 22px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 968, 552);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("BLOB_FAILED"));
+      else resolve(blob);
+    }, "image/png", 0.95);
+  });
+}
+
+async function uploadOfficeSharePreview(blob) {
+  const user = authUser();
+  if (!user?.getIdToken || !blob) return "";
+  const token = await user.getIdToken();
+  const version = officeShareCardVersion(current);
+  const response = await fetch(`${resolveWorkerBase()}/media/office-share-card`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "image/png",
+      Authorization: `Bearer ${token}`,
+      "X-Office-Id": officeId(),
+      "X-Share-Card-Version": version
+    },
+    body: blob
+  });
+  if (!response.ok) return "";
+  const payload = await response.json().catch(() => ({}));
+  return payload.imageUrl || "";
+}
+
 async function createOpportunityShareCardBlob({
   propertyType = "",
   city = "",
@@ -1510,54 +1634,34 @@ async function shareOfficeLinkCard() {
   const originalText = el.shareLinkCard?.textContent || "مشاركة رابط المكتب";
   if (el.shareLinkCard) {
     el.shareLinkCard.disabled = true;
-    el.shareLinkCard.textContent = "جارٍ تجهيز البطاقة...";
+    el.shareLinkCard.textContent = "جارٍ تجهيز الرابط...";
   }
   try {
     await ensurePublicSlug();
     const link = officeLink();
-    const text = `${current.officeName}\nرابط المكتب:\n${link}`;
-    const blob = await createOfficeCardBlob();
-    if (!blob) throw new Error("CARD_FAILED");
-    const file = new File([blob], `رابط-${current.officeName}.png`, { type: "image/png" });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file], text })) {
-      await navigator.share({ files: [file], title: current.officeName, text });
-      setStatus(el.linkStatus, "تمت مشاركة بطاقة المكتب والرابط", "is-done");
-      return;
+    const text = officeShareMessage({
+      officeName: current.officeName,
+      origin: window.location.origin,
+      publicSlug: current.publicSlug,
+      officeId: officeId()
+    });
+    try {
+      const blob = await createOfficeSharePreviewBlob();
+      if (blob) await uploadOfficeSharePreview(blob);
+    } catch (cardError) {
+      console.warn("[iaqar] office share card upload", cardError);
     }
     if (navigator.share) {
-      try {
-        await navigator.share({ title: current.officeName, text });
-        setStatus(el.linkStatus, "تمت مشاركة الرابط", "is-done");
-        return;
-      } catch (shareError) {
-        if (shareError && shareError.name === "AbortError") return;
-      }
+      await navigator.share({ title: current.officeName, text, url: link });
+      setStatus(el.linkStatus, "تمت مشاركة رابط المكتب", "is-done");
+      return;
     }
-    const downloadUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = downloadUrl;
-    anchor.download = file.name;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
-    try {
-      await navigator.clipboard.writeText(link);
-      setStatus(el.linkStatus, "تم تنزيل البطاقة ونسخ الرابط", "is-done");
-      toast("تم تنزيل البطاقة ونسخ الرابط");
-    } catch (_) {
-      setStatus(el.linkStatus, "تم تنزيل البطاقة — انسخ الرابط يدويًا من الإعدادات", "is-done");
-    }
+    await navigator.clipboard.writeText(text);
+    setStatus(el.linkStatus, "تم نسخ رسالة الرابط القصير", "is-done");
+    toast("تم نسخ رابط المكتب");
   } catch (error) {
     if (error && error.name === "AbortError") return;
-    if (String(error && error.message || "").startsWith("MISSING:")) {
-      setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${error.message.slice(8)}`, "is-error");
-    } else if (error && error.message === "BLOB_FAILED") {
-      setStatus(el.linkStatus, "تعذر إنشاء صورة البطاقة — حاول مرة أخرى", "is-error");
-    } else if (error && error.message === "IMAGE_LOAD_FAILED") {
-      setStatus(el.linkStatus, "تعذر تحميل صورة المكتب — تم إنشاء بطاقة بالشعار الافتراضي", "is-error");
-    } else {
-      console.warn("[iaqar] office link card", error);
-      setStatus(el.linkStatus, "تعذر إنشاء بطاقة المكتب الآن", "is-error");
-    }
+    setStatus(el.linkStatus, error?.message || "تعذر مشاركة رابط المكتب", "is-error");
   } finally {
     if (el.shareLinkCard) {
       el.shareLinkCard.disabled = false;
@@ -1942,6 +2046,7 @@ function init() {
   el.license = document.getElementById("licenseNumberInput");
   el.city = document.getElementById("officeCityInput");
   el.link = document.getElementById("officeLinkInput");
+  el.publicSlug = document.getElementById("officePublicSlugInput");
   el.linkStatus = document.getElementById("officeLinkStatus");
   el.shareLinkCard = document.getElementById("shareOfficeLinkCardBtn");
   el.save = document.getElementById("saveOfficeSettingsBtn");

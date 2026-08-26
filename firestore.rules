@@ -413,6 +413,26 @@ service cloud.firestore {
         && (isPlatformAdmin() || canManage(resource.data.officeId));
     }
 
+    function validOfficeSlugClaim(slug) {
+      return request.resource.data.officeId is string
+        && request.resource.data.publicSlug is string
+        && request.resource.data.publicSlug == slug
+        && slug.size() >= 3
+        && slug.size() <= 64
+        && (isPlatformAdmin() || canManage(request.resource.data.officeId)
+          || getAfter(/databases/$(database)/documents/offices/$(request.resource.data.officeId)).data.ownerUid == request.auth.uid);
+    }
+    match /officeSlugClaims/{slug} {
+      allow read: if signedIn()
+        && (isPlatformAdmin() || canManage(resource.data.officeId));
+      allow create: if signedIn() && validOfficeSlugClaim(slug);
+      allow update: if signedIn()
+        && validOfficeSlugClaim(slug)
+        && resource.data.officeId == request.resource.data.officeId;
+      allow delete: if signedIn()
+        && (isPlatformAdmin() || canManage(resource.data.officeId));
+    }
+
     // طلبات التعاون الصريحة (المرحلة 3) — لا تعاون تلقائي.
     match /cooperationRequests/{requestId} {
       allow read: if signedIn()

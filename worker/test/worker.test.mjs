@@ -53,8 +53,7 @@ test("FCM HTTP v1 web payload uses an HTTPS deep link and REST fcm_options field
   assert.deepEqual(payload.message.webpush.fcm_options, { link: payload.message.data.url });
   assert.equal("fcmOptions" in payload.message.webpush, false);
   assert.equal(payload.message.webpush.notification.icon, "https://iaqar.ai/icons/iaqar-default-icon-192.png");
-  assert.equal(payload.message.webpush.notification.badge, "https://iaqar.ai/icons/iaqar-badge-icon.png");
-  assert.notEqual(payload.message.webpush.notification.icon, payload.message.webpush.notification.badge);
+  assert.equal(payload.message.webpush.notification.badge, undefined);
 });
 
 test("Firebase service account secrets ignore PowerShell line endings", () => {
@@ -1031,6 +1030,10 @@ test("opportunity notification links open opportunity detail", () => {
     buildNotificationLink({ officeId: "office-1", type: "match", recordId: "opp_abc" }),
     "/?officeId=office-1&openOpportunity=opp_abc"
   );
+  assert.equal(
+    buildNotificationLink({ officeId: "office-1", type: "missing_data", opportunityId: "opp_only" }),
+    "/?officeId=office-1&openOpportunity=opp_only"
+  );
 });
 
 test("Phase 5 operation deep links open Operations Center records", () => {
@@ -1039,8 +1042,8 @@ test("Phase 5 operation deep links open Operations Center records", () => {
     "/?officeId=office-1&openOperation=op_abc"
   );
   assert.equal(
-    buildNotificationLink({ officeId: "office-1", type: "match", recordId: "op_xyz" }),
-    "/?officeId=office-1&openOperation=op_xyz"
+    buildNotificationLink({ officeId: "office-1", type: "match", recordId: "op_xyz", taskId: "mg_1" }),
+    "/?officeId=office-1&openDailyTask=mg_1&openOperation=op_xyz"
   );
   assert.ok(
     buildNotificationLink({ officeId: "office-1", type: "match", recordId: "mat_legacy" }).includes("openMatch=mat_legacy")

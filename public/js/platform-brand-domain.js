@@ -108,7 +108,8 @@ export function resolveNotificationIcon({
   return toAbsoluteHttpsIcon(brand, appOrigin);
 }
 
-export function resolveNotificationBadge({ iconUrl = "", appOrigin = "" } = {}) {
+export function resolveNotificationBadge({ iconUrl = "", appOrigin = "", includeBadge = false } = {}) {
+  if (!includeBadge) return "";
   const badge = toAbsoluteHttpsIcon(PLATFORM_BADGE_ICON, appOrigin);
   if (!badge || badge === text(iconUrl)) return "";
   if (isPlatformDefaultLogo(iconUrl) && isPlatformDefaultLogo(badge)) return "";
@@ -138,15 +139,77 @@ export function formatListingPrice(value) {
   return `${Math.round(amount).toLocaleString("en-US")} ر.س`;
 }
 
-export function formatMatchNotificationBody(listing = {}) {
+const TECHNICAL_TOKEN_RE = /https?:\/\/\S+|\b(?:iaqar(?:-ai)?|staging(?:-[a-z0-9_-]+)?|firebase(?:app)?|workers?\.dev|web\.app|localhost|cloudflare)(?:[^\s]*)?/gi;
+
+export function sanitizeBrokerVisiblePushText(value, fallback = "") {
+  const cleaned = text(value)
+    .replace(TECHNICAL_TOKEN_RE, " ")
+    .replace(/\b[a-z0-9._-]{0,40}(?:web\.app|workers\.dev|firebaseapp\.com)\b/gi, " ")
+    .replace(/\b(?:staging-logo-live|office-id|officeId|taskId|matchId)[^\s]*/gi, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n")
+    .trim();
+  return cleaned || text(fallback);
+}
+
+function listingSubject(listing = {}) {
   const propertyType = text(listing.propertyType || listing.candidatePropertyType);
   const purpose = purposeSuffix(listing.purpose || listing.candidatePurpose, propertyType);
-  const district = text(listing.district || listing.candidateDistrict || listing.city || listing.candidateCity);
+  return [propertyType, purpose].filter(Boolean).join(" ");
+}
+
+function listingPlace(listing = {}) {
+  return text(listing.district || listing.candidateDistrict || listing.city || listing.candidateCity);
+}
+
+function listingRef(listing = {}) {
+  const raw = text(listing.referenceCode || listing.ref);
+  if (!raw) return "";
+  return raw.startsWith("#") ? raw : `#${raw}`;
+}
+
+function listingFactLine(listing = {}, extra = []) {
   const price = formatListingPrice(listing.price || listing.candidateSalePrice || listing.budget);
-  const subject = [propertyType, purpose].filter(Boolean).join(" ");
-  const facts = [subject, district, price].filter(Boolean);
-  if (!facts.length) return "مطابقة جديدة";
-  return `مطابقة جديدة\n${facts.join(" · ")}`;
+  const facts = [listingSubject(listing), listingPlace(listing), price, listingRef(listing), ...extra.map(text).filter(Boolean)]
+    .filter(Boolean);
+  return facts.join(" · ");
+}
+
+export function formatMatchNotificationBody(listing = {}) {
+  const facts = listingFactLine(listing);
+  if (!facts) return "مطابقة جديدة";
+  return `مطابقة جديدة\n${facts}`;
+}
+
+export function formatEventNotificationBody({ type = "", listing = {}, missingLabel = "", appointmentLabel = "", body = "" } = {}) {
+  const key = text(type).toLowerCase().replace(/-/g, "_");
+  const facts = listingFactLine(listing);
+  if (key === "match" || key === "match_found" || key === "new_match") {
+    return formatMatchNotificationBody(listing);
+  }
+  if (key === "client_interested") {
+    return facts ? `العميل مهتم بالعقار\n${facts}` : "العميل مهتم بالعقار";
+  }
+  if (key === "missing_data") {
+    const gap = text(missingLabel) || text(listing.missingLabel) || "بيانات ناقصة";
+    const subject = [listingSubject(listing), listingPlace(listing)].filter(Boolean).join(" · ");
+    if (subject) return `بيانات تحتاج استكمال\n${subject} — ${gap}`;
+    return `بيانات تحتاج استكمال\n${gap}`;
+  }
+  if (key === "owner_available") {
+    return facts ? `المالك أكد توفر العقار\n${facts}` : "المالك أكد توفر العقار";
+  }
+  if (key === "appointment_confirmed") {
+    const when = text(appointmentLabel) || text(listing.appointmentLabel);
+    const line = [when, listingRef(listing)].filter(Boolean).join(" · ");
+    return line ? `تم تأكيد المعاينة\n${line}` : "تم تأكيد المعاينة";
+  }
+  if (key === "notification_test") {
+    return sanitizeBrokerVisiblePushText(body, "سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.");
+  }
+  const sanitized = sanitizeBrokerVisiblePushText(body);
+  if (sanitized) return sanitized;
+  return "لديك تنبيه جديد";
 }
 
 function isPlatformNotification({ officeId, isPlatform }) {
@@ -154,7 +217,7 @@ function isPlatformNotification({ officeId, isPlatform }) {
 }
 
 function officeDisplayName(office = {}) {
-  return text(office.officeName) || text(office.displayName);
+  return sanitizeBrokerVisiblePushText(office.officeName || office.displayName);
 }
 
 export function formatOfficePushPresentation({
@@ -165,25 +228,33 @@ export function formatOfficePushPresentation({
   title = "",
   body = "",
   listing = null,
-  appOrigin = ""
+  missingLabel = "",
+  appointmentLabel = "",
+  appOrigin = "",
+  includeBadge = false
 } = {}) {
   const platform = isPlatformNotification({ officeId: officeId || office.officeId, isPlatform });
   const resolvedTitle = platform
     ? PLATFORM_APP_NAME
     : (officeDisplayName(office) || PLATFORM_APP_NAME);
-  const matchType = text(type).toLowerCase() === "match";
-  const listingBody = listing && typeof listing === "object"
-    ? formatMatchNotificationBody(listing)
-    : "";
-  let resolvedBody = text(body);
-  if (matchType || (listingBody && listingBody !== "مطابقة جديدة")) {
-    resolvedBody = listingBody || (matchType ? "مطابقة جديدة" : resolvedBody);
+  const listingPayload = listing && typeof listing === "object" ? listing : {};
+  let resolvedBody = formatEventNotificationBody({
+    type,
+    listing: listingPayload,
+    missingLabel,
+    appointmentLabel,
+    body
+  });
+  resolvedBody = sanitizeBrokerVisiblePushText(resolvedBody, "لديك تنبيه جديد");
+  if (resolvedBody === resolvedTitle) {
+    resolvedBody = formatEventNotificationBody({ type, listing: listingPayload, missingLabel, appointmentLabel });
+    resolvedBody = sanitizeBrokerVisiblePushText(resolvedBody, "لديك تنبيه جديد");
   }
-  if (!resolvedBody) resolvedBody = "لديك تنبيه جديد";
+  if (resolvedBody === resolvedTitle) resolvedBody = "لديك تنبيه جديد";
   const icon = resolveNotificationIcon({ office: { ...office, officeId: officeId || office.officeId }, isPlatform: platform, appOrigin });
-  const badge = resolveNotificationBadge({ iconUrl: icon, appOrigin });
+  const badge = resolveNotificationBadge({ iconUrl: icon, appOrigin, includeBadge });
   return {
-    title: resolvedTitle,
+    title: sanitizeBrokerVisiblePushText(resolvedTitle, PLATFORM_APP_NAME),
     body: resolvedBody,
     icon,
     badge

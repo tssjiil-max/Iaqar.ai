@@ -356,6 +356,8 @@ export async function createMatchReviewBundle({
       recordId: operation.id,
       assignedBrokerId: operation.assignedBrokerId,
       accessToken,
+      taskId: notification.taskId,
+      opportunityId: notification.opportunityId,
       listing: {
         propertyType: match.candidatePropertyType || match.propertyType || "",
         purpose: match.candidatePurpose || "",
@@ -487,7 +489,17 @@ export async function upsertMissingDataForOpportunity({
         type: pushTypeForOperation(operation.type),
         recordId: operation.id,
         assignedBrokerId,
-        accessToken
+        accessToken,
+        taskId: notification.taskId,
+        opportunityId: notification.opportunityId,
+        missingLabel: missingFieldLabels(listMissingOpportunityFields(opportunity || {})).join("، "),
+        listing: {
+          propertyType: opportunity.propertyType || opportunity.type || "",
+          purpose: opportunity.purpose || "",
+          district: opportunity.district || "",
+          city: opportunity.city || "",
+          referenceCode: formatOpportunityReference(opportunityId)
+        }
       });
       await recordNotificationPushResult({
         projectId,

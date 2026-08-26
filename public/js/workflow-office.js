@@ -2749,6 +2749,15 @@
     }
 
     switch (target.kind) {
+      case "daily-task": {
+        window.IAQAR?.homeTabs?.switchTo?.("operations");
+        const detail = { id: target.id, taskId: target.id };
+        window.IAQAR = window.IAQAR || {};
+        window.IAQAR.pendingDailyTaskOpen = detail;
+        window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
+        window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+        break;
+      }
       case "opportunity":
         if (target.id && window.IAQAR?.openOpportunityManagement) {
           void window.IAQAR.openOpportunityManagement(target.id, { focusFollowUp: target.focusFollowUp });

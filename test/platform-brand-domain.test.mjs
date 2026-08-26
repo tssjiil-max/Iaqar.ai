@@ -11,6 +11,7 @@ import {
   PLATFORM_DEFAULT_LOGO_512,
   PLATFORM_MASKABLE_512,
   PLATFORM_APPLE_TOUCH,
+  formatEventNotificationBody,
   formatListingPrice,
   formatMatchNotificationBody,
   formatOfficePushPresentation,
@@ -20,6 +21,7 @@ import {
   resolveNotificationBadge,
   resolveNotificationIcon,
   resolveOfficeBrandIcon,
+  sanitizeBrokerVisiblePushText,
   toAbsoluteHttpsIcon
 } from "../public/js/platform-brand-domain.js";
 import { fetchStrategyFor, isLongCacheAssetPath } from "../public/js/release-version-domain.js";
@@ -92,14 +94,15 @@ test("notification icons stay HTTPS and never use the colored logo as the badge"
   });
   assert.equal(officeIcon, "https://cdn.example/office-logo.png");
   const badge = resolveNotificationBadge({ iconUrl: officeIcon, appOrigin: origin });
-  assert.equal(badge, `${origin}${PLATFORM_BADGE_ICON}`);
-  assert.notEqual(badge, officeIcon);
+  assert.equal(badge, "");
+  const requestedBadge = resolveNotificationBadge({ iconUrl: officeIcon, appOrigin: origin, includeBadge: true });
+  assert.equal(requestedBadge, `${origin}${PLATFORM_BADGE_ICON}`);
+  assert.notEqual(requestedBadge, officeIcon);
 
   const platformIcon = resolveNotificationIcon({ isPlatform: true, appOrigin: origin });
   assert.equal(platformIcon, `${origin}${PLATFORM_DEFAULT_LOGO}`);
   const platformBadge = resolveNotificationBadge({ iconUrl: platformIcon, appOrigin: origin });
-  assert.equal(platformBadge, `${origin}${PLATFORM_BADGE_ICON}`);
-  assert.notEqual(platformBadge, platformIcon);
+  assert.equal(platformBadge, "");
 
   assert.equal(
     toAbsoluteHttpsIcon("http://insecure.example/logo.png", origin),
@@ -122,7 +125,7 @@ test("office push title uses the office Arabic name; platform push uses the plat
   assert.equal(officePush.title, "مكتب الوادي المبارك العقاري");
   assert.equal(officePush.body, "مطابقة جديدة\nشقة للإيجار · العزيزية · 50,000 ر.س");
   assert.equal(officePush.icon, "https://cdn.example/logo.png");
-  assert.equal(officePush.badge, `${origin}${PLATFORM_BADGE_ICON}`);
+  assert.equal(officePush.badge, "");
 
   const fallback = formatOfficePushPresentation({
     office: {},
@@ -146,6 +149,52 @@ test("office push title uses the office Arabic name; platform push uses the plat
   assert.equal(platform.icon, `${origin}${PLATFORM_DEFAULT_LOGO}`);
   assert.equal(formatListingPrice(50000), "50,000 ر.س");
   assert.equal(formatMatchNotificationBody({}), "مطابقة جديدة");
+  assert.equal(
+    sanitizeBrokerVisiblePushText("مطابقة https://iaqar-ai-staging--x.web.app iaqar-intake-staging.iaqar-ai.workers.dev"),
+    "مطابقة"
+  );
+  assert.equal(
+    formatEventNotificationBody({
+      type: "CLIENT_INTERESTED",
+      listing: { propertyType: "أرض", purpose: "sale", district: "السكب", referenceCode: "A-1842" }
+    }),
+    "العميل مهتم بالعقار\nأرض للبيع · السكب · #A-1842"
+  );
+  assert.equal(
+    formatEventNotificationBody({
+      type: "MISSING_DATA",
+      listing: { propertyType: "أرض", district: "السكب" },
+      missingLabel: "رقم التواصل ناقص"
+    }),
+    "بيانات تحتاج استكمال\nأرض · السكب — رقم التواصل ناقص"
+  );
+  const duplicate = formatOfficePushPresentation({
+    office: { officeName: "مكتب الوادي المبارك العقاري" },
+    type: "missing_data",
+    title: "توجد بيانات ناقصة في إحدى فرصك.",
+    body: "توجد بيانات ناقصة في إحدى فرصك.",
+    listing: { propertyType: "أرض", district: "السكب" },
+    missingLabel: "رقم التواصل ناقص",
+    appOrigin: origin
+  });
+  assert.equal(duplicate.title, "مكتب الوادي المبارك العقاري");
+  assert.equal(duplicate.body, "بيانات تحتاج استكمال\nأرض · السكب — رقم التواصل ناقص");
+  assert.equal(
+    formatEventNotificationBody({
+      type: "OWNER_AVAILABLE",
+      listing: { propertyType: "أرض", purpose: "sale", district: "السكب", referenceCode: "A-1842" }
+    }),
+    "المالك أكد توفر العقار\nأرض للبيع · السكب · #A-1842"
+  );
+  assert.equal(
+    formatEventNotificationBody({
+      type: "APPOINTMENT_CONFIRMED",
+      listing: { referenceCode: "A-1842" },
+      appointmentLabel: "الأربعاء · 6:00 م"
+    }),
+    "تم تأكيد المعاينة\nالأربعاء · 6:00 م · #A-1842"
+  );
+  assert.notEqual(duplicate.title, duplicate.body);
 });
 
 test("PWA identity is Arabic and points at the approved icon files", () => {

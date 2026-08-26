@@ -389,15 +389,22 @@ export function normalizePublicSlug(value) {
     .slice(0, 64);
 }
 
-/** The canonical shareable office link. Prefers the stable handle over a query string. */
+/** The canonical shareable office link. Prefers `/m/{slug}` over a query string. */
 export function officeLinkFor({ origin, publicSlug, officeId, pathname = "/" } = {}) {
   const base = safeText(origin) || "https://iaqar.ai";
   const slug = normalizePublicSlug(publicSlug);
-  if (slug) return new URL(`/o/${encodeURIComponent(slug)}`, base).toString();
+  if (slug) return new URL(`/m/${encodeURIComponent(slug)}`, base).toString();
   const url = new URL(pathname || "/", base);
   url.searchParams.set("office", safeText(officeId) || "platform");
   url.searchParams.set("view", "public");
   return url.toString();
+}
+
+export function legacyOfficeLinkFor({ origin, publicSlug } = {}) {
+  const base = safeText(origin) || "https://iaqar.ai";
+  const slug = normalizePublicSlug(publicSlug);
+  if (!slug) return "";
+  return new URL(`/o/${encodeURIComponent(slug)}`, base).toString();
 }
 
 // ---------------------------------------------------------------------------
