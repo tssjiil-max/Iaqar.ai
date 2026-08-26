@@ -61,7 +61,7 @@ async function readJsonResponse(response) {
 }
 
 async function readPilotAccessConfig(accessToken) {
-  const url = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/documents/platform/settings/pilotAccess`;
+  const url = `https://firestore.googleapis.com/v1/projects/${PRODUCTION_PROJECT}/databases/(default)/documents/platformSettings/pilotAccess`;
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(30_000)

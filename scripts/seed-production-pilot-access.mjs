@@ -6,12 +6,12 @@
  *   FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON='...' node scripts/seed-production-pilot-access.mjs \
  *     --office=office-one --office=office-two ...
  */
-import * as admin from "firebase-admin";
+import { cert, deleteApp, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { normalizePilotAccessConfig } from "../public/js/pilot-access-domain.js";
 
 const PROJECT_ID = "aqar-b5d76";
-const officeArgs = process.argv.filter((arg) => arg.startsWith("--office=")).map((arg) => arg.slice(8)).filter(Boolean);
+const officeArgs = process.argv.filter((arg) => arg.startsWith("--office=")).map((arg) => arg.slice("--office=".length)).filter(Boolean);
 const rawJson = process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON
   || process.env.FIREBASE_SERVICE_ACCOUNT_JSON
   || "";
@@ -44,10 +44,10 @@ const config = normalizePilotAccessConfig({
   }
 });
 
-admin.initializeApp({ credential: admin.cert(serviceAccount), projectId: PROJECT_ID });
+initializeApp({ credential: cert(serviceAccount), projectId: PROJECT_ID });
 const db = getFirestore();
 
-await db.doc("platform/settings/pilotAccess").set({
+await db.doc("platformSettings/pilotAccess").set({
   enabled: config.enabled,
   maxOffices: config.maxOffices,
   authorizedOfficeIds: config.authorizedOfficeIds,
@@ -60,9 +60,11 @@ await db.doc("platform/settings/pilotAccess").set({
 console.log(JSON.stringify({
   ok: true,
   projectId: PROJECT_ID,
-  path: "platform/settings/pilotAccess",
+  path: "platformSettings/pilotAccess",
   authorizedOfficeIds: config.authorizedOfficeIds,
   featureFlags: config.featureFlags
 }, null, 2));
 
-await admin.app().delete();
+for (const app of getApps()) {
+  await deleteApp(app).catch(() => {});
+}

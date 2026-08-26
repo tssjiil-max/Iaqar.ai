@@ -1,6 +1,6 @@
 /**
  * Production pilot access — pure domain. No I/O.
- * Authoritative office allowlist lives in Firestore (platform/settings/pilotAccess).
+ * Authoritative office allowlist lives in Firestore (platformSettings/pilotAccess).
  */
 
 export const PILOT_ACCESS_DENIED = "PILOT_ACCESS_DENIED";
