@@ -151,6 +151,7 @@ export function partyReplyTimelineLabel(party, action) {
   if (id === "needs_details") return "العميل طلب تفاصيل أكثر";
   if (id === "not_suitable") return "العميل اعتبر المطابقة غير مناسبة";
   if (id === "want_viewing") return "العميل طلب معاينة";
+  if (id === "select" || id === "pick_slot" || id === "propose_slots") return "موعد يحتاج إجراء";
   if (id === "info_sufficient") return "العميل أكد أن التفاصيل كافية";
   if (id === "opened") return "فتح العميل الرابط";
   if (id.startsWith("detail_")) return "العميل طلب تفاصيل أكثر";

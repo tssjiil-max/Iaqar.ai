@@ -54,6 +54,9 @@ export function notificationTypeFromPartyAction(party, action) {
   if (id === "interested") return IN_APP_NOTIFICATION_TYPE.CLIENT_INTERESTED;
   if (id === "needs_details" || id.startsWith("detail_")) return IN_APP_NOTIFICATION_TYPE.CLIENT_NEEDS_DETAILS;
   if (id === "want_viewing") return IN_APP_NOTIFICATION_TYPE.CLIENT_WANTS_VIEWING;
+  if (id === "select" || id === "pick_slot" || id === "propose_slots") {
+    return IN_APP_NOTIFICATION_TYPE.APPOINTMENT_ACTION;
+  }
   if (id === "confirm_appointment") return IN_APP_NOTIFICATION_TYPE.APPOINTMENT_CONFIRMED;
   return IN_APP_NOTIFICATION_TYPE.CLIENT_REPLY;
 }

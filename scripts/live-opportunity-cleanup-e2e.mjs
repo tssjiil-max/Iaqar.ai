@@ -404,7 +404,7 @@ async function main() {
       const stillActive = await page.locator(`[data-opportunity-id="${created.id}"]`).count();
       mark(5, inArchive && !stillActive && archivedDoc ? "PASS — LIVE E2E" : "FAIL — LIVE E2E",
         `archive=${inArchive} active=${stillActive} firestore=${Boolean(archivedDoc)}`);
-      shots.archive = path.join(OUT, "offers_archive_list_restore_actions.png");
+      shots.archive = path.join(OUT, "offers_archive_with_restore_and_delete.png");
       await page.locator("#bankFilterArchived").click();
       await page.waitForTimeout(800);
       await revealOpportunityCard(page, created.id);
@@ -447,7 +447,7 @@ async function main() {
       await page.waitForTimeout(1200);
       await revealOpportunityCard(page, created.id);
       await openPermanentDeleteConfirm(page, created.id);
-      shots.delete = path.join(OUT, "offers_permanent_delete_confirmation.png");
+      shots.delete = path.join(OUT, "offers_permanent_delete_dialog.png");
       await page.locator("#permanentDeleteOverlay").screenshot({ path: shots.delete, animations: "disabled" });
       await page.locator("#permanentDeleteConfirm").click({ timeout: 8000, force: true });
       const purged = await waitForOpportunityState(USER_OFFICE, created.id, (snap) => !snap.exists, 25000);

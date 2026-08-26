@@ -125,6 +125,9 @@ test("notification titles and unread counting", () => {
     "العميل مهتم بالعقار — #A-1842"
   );
   assert.equal(notificationTypeFromPartyAction("owner", "property_available"), "OWNER_AVAILABLE");
+  assert.equal(notificationTypeFromPartyAction("client", "want_viewing"), "CLIENT_WANTS_VIEWING");
+  assert.equal(notificationTypeFromPartyAction("client", "select"), "APPOINTMENT_ACTION");
+  assert.equal(notificationTypeFromPartyAction("owner", "confirm_appointment"), "APPOINTMENT_CONFIRMED");
   assert.equal(isNotificationUnread({ status: "CREATED" }), true);
   assert.equal(isNotificationUnread({ status: "CREATED", readAt: "2026-08-25T10:00:00.000Z" }), false);
   assert.equal(unreadNotificationCount([
