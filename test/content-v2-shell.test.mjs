@@ -53,7 +53,7 @@ test("index.html skips Access Gate scripts when cv2Party is present", () => {
   const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
   const headDetect = index.indexOf('URLSearchParams(location.search).get("cv2Party")');
   const skipLog = index.indexOf('ACCESS_GATE_SKIPPED');
-  const writeGate = index.indexOf('document.write(\'<script src="js/access-gate.js">');
+  const writeGate = index.indexOf('document.write(\'<script src="js/access-gate.js');
   const partyReturn = index.indexOf('if (document.documentElement.dataset.partyMode === "1")');
   assert.ok(headDetect > 0 && headDetect < skipLog, "cv2Party must be read before ACCESS_GATE_SKIPPED");
   assert.ok(partyReturn > 0 && partyReturn < writeGate, "party mode must return before writing access-gate.js");

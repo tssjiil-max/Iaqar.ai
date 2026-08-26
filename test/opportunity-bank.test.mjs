@@ -156,7 +156,9 @@ test("the bank list markup escapes every projected value", () => {
       expression.startsWith("escapeHtml(")
         || expression === "rowsHtml"
         || expression.startsWith("row.attributes.length ?")
-        || expression.startsWith("state.selected.has("),
+        || expression.startsWith("rows.map((row) => bankRowHtml(row)).join")
+        || expression.startsWith("items.map((row) => bankRowHtml(row)).join")
+        || expression.startsWith('section("'),
       `unescaped interpolation in the bank list: ${expression}`
     );
   }

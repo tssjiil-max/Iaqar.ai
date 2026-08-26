@@ -167,7 +167,7 @@ test("due reminder advances from 24h to 1h", () => {
 test("reminder dispatch is office-isolated in worker", () => {
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("processOpportunityFollowupReminders"));
-  assert.ok(worker.includes("normalizeOfficeId(value.officeId)"));
+  assert.ok(worker.includes("firestoreOfficeId(value.officeId)"));
 });
 
 test("old reminder is invalidated after rescheduling", () => {

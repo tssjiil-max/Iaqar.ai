@@ -21,9 +21,25 @@
     }
   } catch (_) { /* keep broker access-gate */ }
 
+  const officeIdDomain = () => window.IAQAR?.officeIdDomain || {};
+  function firestoreOfficeId(value) {
+    const fn = officeIdDomain().firestoreOfficeId;
+    if (typeof fn === "function") return fn(value);
+    return String(value || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80);
+  }
+  function officeIdsEquivalent(left, right) {
+    const fn = officeIdDomain().officeIdsEquivalent;
+    if (typeof fn === "function") return fn(left, right);
+    return firestoreOfficeId(left) === firestoreOfficeId(right);
+  }
+
   const query = new URLSearchParams(location.search);
-  let officeId = String(query.get("officeId") || query.get("office") || "")
-    .trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);
+  let officeId = firestoreOfficeId(query.get("officeId") || query.get("office") || "");
   let isPublicOfficeLink = query.get("view") === "public" && officeId && officeId !== "platform";
   let isPlatformAddRoute = /^\/add\/?$/i.test(location.pathname);
   let isPlatformHome = !officeId || officeId === "platform" || isPlatformAddRoute;
@@ -263,7 +279,7 @@
   }
 
   async function unlockOfficeWorkspace(target) {
-    const normalized = String(target || "").trim().toLowerCase();
+    const normalized = firestoreOfficeId(target);
     if (!normalized || normalized === "platform") return false;
     authDiag("OFFICE_LOADING", { officeId: normalized });
     const dbReady = await waitForOfficeDb();
@@ -277,7 +293,7 @@
     let rebound = false;
     if (window.IAQAR && typeof window.IAQAR.rebindOfficeContext === "function") {
       rebound = window.IAQAR.rebindOfficeContext(normalized);
-    } else if (dbReady && String(window.IAQAR?.office?.officeId || "").trim().toLowerCase() === normalized) {
+    } else if (dbReady && officeIdsEquivalent(window.IAQAR?.office?.officeId, normalized)) {
       rebound = true;
       authDiag("OFFICE_FOUND", { officeId: normalized, source: "existing_office_context" });
     }
@@ -509,7 +525,7 @@
     } catch (_) {}
   }
   async function resolveIntakeDefaultCity(targetOffice) {
-    const target = String(targetOffice || "").trim().toLowerCase();
+    const target = firestoreOfficeId(targetOffice);
     if (target && target !== "platform") {
       try {
         const publicSnap = await db().collection("publicOffices").doc(target).get();
@@ -1521,7 +1537,7 @@
           return;
         }
         const data = snapshot.docs[0].data() || {};
-        officeId = String(data.officeId || snapshot.docs[0].id || "").trim().toLowerCase();
+        officeId = firestoreOfficeId(data.officeId || snapshot.docs[0].id || "");
         refreshRouteFlags();
         const canonicalSlug = String(data.publicSlug || publicSlug).trim().toLowerCase();
         if (canonicalSlug && (publicSlugLegacy || publicSlug !== canonicalSlug)) {

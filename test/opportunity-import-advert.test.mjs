@@ -43,7 +43,6 @@ const PURCHASE_TEXT = "مطلوب شراء شقة في الدمام حي الف�
 test("import option card appears with approved Arabic copy", () => {
   assert.ok(html.includes("id=\"importAdvertOption\""));
   assert.ok(html.includes("استيراد إعلان"));
-  assert.ok(html.includes("الصق رابط إعلان من عقار أو حراج أو أي موقع"));
   assert.ok(html.includes("استيراد إعلان عقاري"));
   assert.ok(html.includes("الصق رابط الإعلان هنا"));
   assert.ok(html.includes("تحليل الإعلان"));

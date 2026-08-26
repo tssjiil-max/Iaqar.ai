@@ -3,6 +3,12 @@
  * Authoritative office allowlist lives in Firestore (platformSettings/pilotAccess).
  */
 
+import {
+  firestoreOfficeId,
+  officeAuthorizationKey,
+  text
+} from "./office-id-domain.js";
+
 export const PILOT_ACCESS_DENIED = "PILOT_ACCESS_DENIED";
 export const PILOT_FEATURE_DISABLED = "PILOT_FEATURE_DISABLED";
 
@@ -23,20 +29,12 @@ export const DEFAULT_FEATURE_FLAGS = Object.freeze({
   crossOfficeCollaboration: true
 });
 
-function text(value) {
-  return String(value == null ? "" : value).trim();
-}
-
-function normalizeOfficeId(value) {
-  return text(value).toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80);
-}
-
 export function normalizePilotAccessConfig(raw = {}) {
   const enabled = raw.enabled === true;
   const maxOffices = Math.max(1, Math.min(50, Number.parseInt(raw.maxOffices, 10) || 5));
   const authorizedOfficeIds = [...new Set(
     (Array.isArray(raw.authorizedOfficeIds) ? raw.authorizedOfficeIds : [])
-      .map(normalizeOfficeId)
+      .map(officeAuthorizationKey)
       .filter(Boolean)
   )].slice(0, maxOffices);
   const featureFlags = {
@@ -60,28 +58,31 @@ export function isPilotFeatureEnabled(config, featureKey) {
 
 export function evaluatePilotOfficeAccess(config, officeId, { isPlatformAdmin = false } = {}) {
   const cfg = normalizePilotAccessConfig(config);
-  const normalizedOfficeId = normalizeOfficeId(officeId);
+  const authKey = officeAuthorizationKey(officeId);
+  const firestoreId = firestoreOfficeId(officeId);
   if (!cfg.enabled) {
-    return { allowed: true, code: "PILOT_DISABLED", officeId: normalizedOfficeId };
+    return { allowed: true, code: "PILOT_DISABLED", officeId: firestoreId, officeAuthorizationKey: authKey };
   }
   if (isPlatformAdmin) {
-    return { allowed: true, code: "PLATFORM_ADMIN", officeId: normalizedOfficeId };
+    return { allowed: true, code: "PLATFORM_ADMIN", officeId: firestoreId, officeAuthorizationKey: authKey };
   }
-  if (!normalizedOfficeId || normalizedOfficeId === "platform") {
-    return { allowed: true, code: "NON_OFFICE_SCOPE", officeId: normalizedOfficeId };
+  if (!authKey || authKey === "platform") {
+    return { allowed: true, code: "NON_OFFICE_SCOPE", officeId: firestoreId, officeAuthorizationKey: authKey };
   }
-  if (cfg.authorizedOfficeIds.includes(normalizedOfficeId)) {
+  if (cfg.authorizedOfficeIds.includes(authKey)) {
     return {
       allowed: true,
       code: "PILOT_AUTHORIZED",
-      officeId: normalizedOfficeId,
+      officeId: firestoreId,
+      officeAuthorizationKey: authKey,
       pilotAuthorized: true
     };
   }
   return {
     allowed: false,
     code: PILOT_ACCESS_DENIED,
-    officeId: normalizedOfficeId,
+    officeId: firestoreId,
+    officeAuthorizationKey: authKey,
     message: "هذا المكتب غير مشمول في المرحلة التجريبية الحالية."
   };
 }

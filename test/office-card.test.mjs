@@ -194,6 +194,7 @@ test("TEST 2/5: the home page contains only the approved sections", async () => 
     assert.deepEqual(sections, [
       "header.card header",
       "section.card license",
+      "section.card shell-voice",
       "div.app-content-shell"
     ]);
   } finally {

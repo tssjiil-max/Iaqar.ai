@@ -19,6 +19,11 @@ import {
   rankMatchCandidates as rankMatchCandidatesEngine
 } from "./matching-engine.js";
 import {
+  firestoreOfficeId,
+  officeAuthorizationKey,
+  officeIdsEquivalent
+} from "../../public/js/office-id-domain.js";
+import {
   MATCH_INTEGRITY,
   collectCandidateOpportunityIds,
   resolveCanonicalPairFromDocs
@@ -382,7 +387,7 @@ export default {
         assertFirebaseSecrets(env);
         const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
         const accessToken = await getGoogleAccessToken(env);
-        const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+        const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
         let isPlatformAdmin = false;
         const authHeader = cleanText(request.headers.get("Authorization"), 5000);
         const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
@@ -426,7 +431,7 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname === "/meta/config") {
-        const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+        const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
         const enabled = Boolean(env.META_APP_ID && env.META_CONFIG_ID && env.META_APP_SECRET);
         return jsonResponse({
           ok: true,
@@ -500,7 +505,6 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/matching/preview") {
-        await ensurePilotFeatureEnabled(env, "matching");
         const body = await request.json().catch(() => ({}));
         const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
         const candidates = Array.isArray(body.candidates) ? body.candidates : [];
@@ -932,7 +936,7 @@ function enforcePublicRouteRateLimit(request, { route, officeId = "", limit, win
 
 async function uploadPublicIntakeMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
-  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
   const intakeId = cleanText(request.headers.get("x-intake-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
   const mediaKind = cleanText(request.headers.get("x-media-kind"), 12).toLowerCase();
   const index = Number(request.headers.get("x-media-index") || 0);
@@ -987,7 +991,7 @@ export function normalizeOpportunitySourceType(value) {
 
 async function uploadOpportunitySourceMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
-  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
   const sourceId = cleanText(request.headers.get("x-source-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
   const sourceType = normalizeOpportunitySourceType(request.headers.get("x-source-type"));
   const fileNameHeader = cleanText(decodeURIComponent(request.headers.get("x-file-name") || ""), 240);
@@ -1041,7 +1045,7 @@ function officeImageKey(officeId, variant) {
 }
 
 async function resolveOfficeImageTarget(request, env) {
-  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
   if (!variant) throw appError("unsupported_image_variant", 400, "نوع صورة المكتب غير مدعوم");
@@ -1097,7 +1101,7 @@ const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-s
 async function serveOfficeMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
   const url = new URL(request.url);
-  const officeId = normalizeOfficeId(url.searchParams.get("officeId") || request.headers.get("x-office-id"));
+  const officeId = firestoreOfficeId(url.searchParams.get("officeId") || request.headers.get("x-office-id"));
   const mediaPath = cleanText(url.searchParams.get("path"), 500);
   if (!officeId || !mediaPath) throw appError("media_path_required", 400, "مسار الوسائط مطلوب");
   if (!OFFICE_MEDIA_KEY_PATTERN.test(mediaPath) || !mediaPath.includes(`/${officeId}/`)) {
@@ -1125,7 +1129,7 @@ const OFFICE_LIBRARY_TYPES = Object.freeze({
 
 async function uploadOfficeLibraryMedia(request, env, requestId) {
   const bucket = requireMediaBucket(env);
-  const officeId = normalizeOfficeId(request.headers.get("x-office-id"));
+  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
   let fileNameRaw = cleanText(request.headers.get("x-file-name"), 240) || "file";
   try {
     fileNameRaw = decodeURIComponent(fileNameRaw);
@@ -1321,7 +1325,7 @@ async function decideBrokerApplication(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const applicationId = cleanText(body.applicationId, 120);
   const action = cleanText(body.action, 20);
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   if (!applicationId || !["approve", "reject"].includes(action)) {
     throw appError("decision_invalid", 400, "قرار الطلب غير صالح");
   }
@@ -1359,7 +1363,7 @@ async function decideBrokerApplication(request, env, requestId) {
       fields: {
         officeId: firestoreString(officeId),
         officeName: firestoreString(application.officeName),
-        officeNameKey: firestoreString(normalizeOfficeId(application.officeName) || officeId),
+        officeNameKey: firestoreString(firestoreOfficeId(application.officeName) || officeId),
         brokerName: firestoreString(application.brokerName),
         phone: firestoreString(application.phone),
         licenseNumber: firestoreString(application.falLicense),
@@ -1503,7 +1507,7 @@ async function handlePhoneLoginResolve(request, env, requestId) {
   return jsonResponse({
     ok: true,
     loginEmail: lookup.loginEmail,
-    officeId: normalizeOfficeId(lookup.directory.officeId),
+    officeId: firestoreOfficeId(lookup.directory.officeId),
     requestId
   });
 }
@@ -1601,7 +1605,7 @@ async function handleForgotPassword(request, env, requestId) {
 async function handleSharedIntake(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const messageText = cleanText(body.messageText, 12000);
   const senderName = cleanText(body.senderName || "مشاركة من واتساب", 200);
   const senderPhone = cleanText(body.senderPhone, 60);
@@ -1778,9 +1782,8 @@ async function handleActivepiecesIntake(request, env, requestId) {
 
 
 async function handlePublicIntakeMatching(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!intakeId || intakeId.length < 8) throw appError("intake_id_required", 400, "رقم الطلب غير صالح");
@@ -1790,6 +1793,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     officeId,
     ...PUBLIC_RATE_LIMITS.PUBLIC_INTAKE
   });
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   assertFirebaseSecrets(env);
 
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
@@ -1800,7 +1804,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   if (!intakeDoc) throw appError("intake_not_found", 404, "لم يتم العثور على الطلب");
 
   const intake = firestoreFieldsToJs(intakeDoc.fields || {});
-  if (normalizeOfficeId(intake.officeId) !== officeId) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
+  if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
   if (!["client", "owner"].includes(intake.kind)) throw appError("invalid_intake_kind", 400, "نوع الطلب غير صالح");
   if (intake.status === "processed" && intake.processedRecordId) {
     return jsonResponse({
@@ -2038,7 +2042,7 @@ function opportunityRouterDeps(env, projectId, accessToken) {
 async function handleOpportunityRouterAccept(request, env, requestId) {
   await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاستلام غير مكتملة");
   await authorizeOfficeRequest(request, env, officeId, "member");
@@ -2058,7 +2062,7 @@ async function handleOpportunityRouterAccept(request, env, requestId) {
 async function handleOpportunityRouterDecline(request, env, requestId) {
   await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   const reason = cleanText(body.reason, 40);
   if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاعتذار غير مكتملة");
@@ -2076,7 +2080,7 @@ async function handleOpportunityRouterDecline(request, env, requestId) {
 async function handleOpportunityRouterTick(request, env, requestId) {
   await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
   assertFirebaseSecrets(env);
@@ -2092,7 +2096,7 @@ async function handleOpportunityRouterTick(request, env, requestId) {
 async function handleOpportunityRouterRate(request, env, requestId) {
   await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   const raterId = cleanText(body.raterId, 180);
   const raterRole = cleanText(body.raterRole || "party", 40);
@@ -2144,7 +2148,7 @@ function structuredPublicIntakeToParsed(intake) {
 }
 
 async function handleStatus(request, url, env, requestId) {
-  const officeId = normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
 
   if (!hasFirebaseSecrets(env)) {
@@ -2250,7 +2254,7 @@ async function receiveMetaWebhook(request, env, requestId) {
         allowMissing: true
       });
       const mapping = mappingDoc ? firestoreFieldsToJs(mappingDoc.fields || {}) : {};
-      const officeId = normalizeOfficeId(mapping.officeId);
+      const officeId = firestoreOfficeId(mapping.officeId);
 
       if (!officeId || mapping.status !== "connected") {
         unlinked += messages.length;
@@ -2293,7 +2297,7 @@ async function completeEmbeddedSignup(request, env, requestId) {
   if (missing.length) throw appError("meta_not_configured", 503, "إعداد تطبيق Meta غير مكتمل");
 
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "integration");
 
@@ -2353,7 +2357,7 @@ async function completeEmbeddedSignup(request, env, requestId) {
   });
   if (existingAccount) {
     const existing = firestoreFieldsToJs(existingAccount.fields || {});
-    if (existing.officeId && normalizeOfficeId(existing.officeId) !== officeId) {
+    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId)) {
       throw appError("phone_already_linked", 409, "رقم واتساب مرتبط بمكتب آخر");
     }
   }
@@ -2844,7 +2848,7 @@ async function findActiveOpportunityByPhone({ projectId, officeId, phone, contac
   };
   for (const doc of docs) {
     const data = firestoreFieldsToJs(doc.fields || {});
-    if (normalizeOfficeId(data.officeId) !== officeId) continue;
+    if (!officeIdsEquivalent(data.officeId, officeId)) continue;
     const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || data.advertiserPhoneNormalized || "");
     if (docPhone !== digits) continue;
     if (!matchesDuplicateCriteria(data, searchCriteria)) continue;
@@ -2885,7 +2889,7 @@ async function resolveOpportunityRecord({ projectId, officeId, body, accessToken
       projectId, segments: ["offices", officeId, "publicIntake", recordId], accessToken
     });
     const intake = firestoreFieldsToJs(intakeDoc.fields || {});
-    if (normalizeOfficeId(intake.officeId) !== officeId) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
+    if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
     return {
       collection: "publicIntake",
       recordId,
@@ -2899,7 +2903,7 @@ async function resolveOpportunityRecord({ projectId, officeId, body, accessToken
     projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken
   });
   const data = firestoreFieldsToJs(opportunityDoc.fields || {});
-  if (normalizeOfficeId(data.officeId) !== officeId) throw appError("office_mismatch", 403, "الفرصة لا تتبع هذا المكتب");
+  if (!officeIdsEquivalent(data.officeId, officeId)) throw appError("office_mismatch", 403, "الفرصة لا تتبع هذا المكتب");
   return {
     collection: "opportunities",
     recordId,
@@ -2912,7 +2916,7 @@ async function resolveOpportunityRecord({ projectId, officeId, body, accessToken
 async function handleOpportunityLifecycle(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const action = cleanText(body.action, 60);
   if (!officeId || !action) throw appError("lifecycle_data_missing", 400, "بيانات دورة الفرصة غير مكتملة");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
@@ -3489,7 +3493,7 @@ function opportunityPatchToFirestoreFields(patch = {}) {
 async function handleOpportunityPatch(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId || !opportunityId) {
     throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
@@ -3509,7 +3513,7 @@ async function handleOpportunityPatch(request, env, requestId) {
     throw appError("opportunity_not_found", 404, mapPatchErrorMessage("opportunity_not_found"));
   }
   const existing = firestoreFieldsToJs(opportunityDoc.fields || {});
-  if (normalizeOfficeId(existing.officeId) !== officeId) {
+  if (!officeIdsEquivalent(existing.officeId, officeId)) {
     throw appError("office_mismatch", 403, mapPatchErrorMessage("office_mismatch"));
   }
 
@@ -3570,7 +3574,7 @@ async function handleOpportunityPatch(request, env, requestId) {
 async function handleOpportunityPurge(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId || !opportunityId) {
     throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
@@ -3651,7 +3655,7 @@ async function handleOpportunityPurge(request, env, requestId) {
 async function handleNotificationRead(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const notificationId = cleanText(body.notificationId, 180);
   if (!officeId || !notificationId) {
     throw appError("notification_data_missing", 400, "بيانات الإشعار غير مكتملة");
@@ -3710,7 +3714,9 @@ function publicPreviewDeps(env, requestId, projectId = "", accessToken = "") {
     authorizeOfficeRequest,
     requireMediaBucket,
     resolveAppOrigin,
-    normalizeOfficeId,
+    firestoreOfficeId,
+    officeAuthorizationKey,
+    officeIdsEquivalent,
     corsHeaders,
     jsonResponse,
     appError
@@ -4279,14 +4285,14 @@ async function findAndSaveMatchesForOpportunity({
 }
 
 async function handleMatchingRun(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "matching");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
   // Auth before Firestore work — missing Bearer token fails closed at 401.
   await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "matching");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4314,7 +4320,7 @@ async function handleMatchingRun(request, env, requestId) {
 
 async function handleOperationsAction(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const operationId = cleanText(body.operationId, 180);
   const action = cleanText(body.action, 40);
   const reason = cleanText(body.reason, 200);
@@ -4351,13 +4357,13 @@ async function handleOperationsAction(request, env, requestId) {
 }
 
 async function handleOperationsFromCooperation(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4393,7 +4399,7 @@ async function handleOperationsFromCooperation(request, env, requestId) {
 
 async function handleOperationsMissingData(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
@@ -4431,14 +4437,14 @@ async function handleOperationsMissingData(request, env, requestId) {
 }
 
 async function handleCooperationSuitableOffices(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   const searchQuery = cleanText(body.searchQuery || body.query || "", 80);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4475,13 +4481,13 @@ async function handleCooperationSuitableOffices(request, env, requestId) {
 }
 
 async function handleCooperationNearbySuggestions(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4557,7 +4563,7 @@ async function handleCooperationNearbySuggestions(request, env, requestId) {
 
 async function handleOpportunityWorkspace(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const opportunityId = cleanText(body.opportunityId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
@@ -4602,13 +4608,13 @@ async function handleOpportunityWorkspace(request, env, requestId) {
 }
 
 async function handleCooperationRoom(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4681,9 +4687,8 @@ async function handleCooperationRoom(request, env, requestId) {
 }
 
 async function handleCooperationWorkflow(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
   const action = cleanText(body.action, 40).toUpperCase();
   const reason = cleanText(body.reason, 200);
@@ -4692,6 +4697,7 @@ async function handleCooperationWorkflow(request, env, requestId) {
   if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
   if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4726,10 +4732,9 @@ async function handleCooperationWorkflow(request, env, requestId) {
 }
 
 async function handleCooperationRequestCreate(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
-  const targetOfficeId = normalizeOfficeId(body.targetOfficeId);
+  const officeId = firestoreOfficeId(body.officeId);
+  const targetOfficeId = firestoreOfficeId(body.targetOfficeId);
   const scopeType = cleanText(body.scopeType || "single", 20);
   const opportunityIds = Array.isArray(body.opportunityIds)
     ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
@@ -4738,6 +4743,7 @@ async function handleCooperationRequestCreate(request, env, requestId) {
   if (!targetOfficeId) throw appError("target_office_required", 400, "معرّف المكتب المستهدف مطلوب");
   if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "معرّف الفرصة مطلوب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4778,9 +4784,8 @@ async function handleCooperationRequestCreate(request, env, requestId) {
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const cooperationId = cleanText(body.cooperationId, 180);
   const action = cleanText(body.action, 40).toUpperCase();
   const reason = cleanText(body.reason, 200);
@@ -4788,6 +4793,7 @@ async function handleCooperationLifecycle(request, env, requestId) {
   if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
   if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4823,14 +4829,14 @@ async function handleCooperationLifecycle(request, env, requestId) {
 }
 
 async function handleCooperationScopeRevoke(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const sharingScopeId = cleanText(body.sharingScopeId, 180);
   const reason = cleanText(body.reason, 200);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!sharingScopeId) throw appError("scope_id_required", 400, "معرّف نطاق المشاركة مطلوب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
   assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -4898,7 +4904,7 @@ function messageDraftToFirestoreFields(draft) {
 
 async function handleMessagesDraft(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
   assertFirebaseSecrets(env);
@@ -4974,7 +4980,7 @@ async function handleMessagesDraft(request, env, requestId) {
 
 async function handleMessagesHandoff(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const messageId = cleanText(body.messageId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!messageId) throw appError("message_id_required", 400, "معرّف الرسالة مطلوب");
@@ -5085,7 +5091,7 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
 }
 
 function buildNotificationLink({officeId,type="match",recordId="",taskId="",opportunityId=""}) {
-  const safeOfficeId=normalizeOfficeId(officeId)||"platform";
+  const safeOfficeId=firestoreOfficeId(officeId)||"platform";
   const safeRecordId=cleanText(recordId,200);
   const safeTaskId=cleanText(taskId,200);
   const safeOpportunityId=cleanText(opportunityId,200);
@@ -5373,7 +5379,7 @@ async function sendFcmMessage({projectId,registrationId,registrationType="fid",t
 
 async function getFcmStatus(request,url,env,requestId) {
   assertFirebaseSecrets(env);
-  const officeId=normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
   if(!officeId)throw appError("office_id_required",400,"officeId مطلوب");
   await authorizeOfficeRequest(request,env,officeId,"member");
   const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
@@ -5385,7 +5391,7 @@ async function getFcmStatus(request,url,env,requestId) {
 async function registerFcmDevice(request,env,requestId) {
   await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId);
+  const officeId=firestoreOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
   let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
   if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
@@ -5410,7 +5416,7 @@ async function registerFcmDevice(request,env,requestId) {
 
 async function unregisterFcmDevice(request,env,requestId) {
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId);
+  const officeId=firestoreOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
   let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
   if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
@@ -5427,7 +5433,7 @@ async function unregisterFcmDevice(request,env,requestId) {
 async function sendFcmTestNotification(request,env,requestId) {
   await ensurePilotFeatureEnabled(env, "pushNotifications");
   assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId);
+  const officeId=firestoreOfficeId(body.officeId);
   let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
   let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
   if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
@@ -5581,7 +5587,7 @@ async function finalizeDealAndCloseSiblings({projectId,officeId,dealId,dealData,
 async function handleWorkflowAction(request,env,requestId) {
   assertFirebaseSecrets(env);
   const body=await request.json().catch(()=>({}));
-  const officeId=normalizeOfficeId(body.officeId),action=cleanText(body.action,50),recordId=cleanText(body.recordId,160);
+  const officeId=firestoreOfficeId(body.officeId),action=cleanText(body.action,50),recordId=cleanText(body.recordId,160);
   if(!officeId||!action||!recordId)throw appError("workflow_data_missing",400,"بيانات الإجراء غير مكتملة");
   const identity=await authorizeOfficeRequest(request,env,officeId,"member");
   const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),now=new Date();
@@ -5763,7 +5769,7 @@ async function handleWorkflowAction(request,env,requestId) {
 
 async function handleWorkflowTimeline(request,url,env,requestId){
   assertFirebaseSecrets(env);
-  const officeId=normalizeOfficeId(url.searchParams.get("officeId"));
+  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
   const recordType=cleanText(url.searchParams.get("recordType")||"match",20)==="deal"?"deal":"match";
   const recordId=cleanText(url.searchParams.get("recordId"),160);
   if(!officeId||!recordId)throw appError("timeline_data_missing",400,"بيانات سجل النشاط غير مكتملة");
@@ -5835,7 +5841,7 @@ async function processOpportunityFollowupReminders(env, scheduledTime = Date.now
   for (const document of docs) {
     checked += 1;
     const value = firestoreFieldsToJs(document.fields || {});
-    const officeId = normalizeOfficeId(value.officeId);
+    const officeId = firestoreOfficeId(value.officeId);
     const opportunityId = decodeURIComponent(String(document.name || "").split("/").pop() || "");
     if (!officeId || !opportunityId) continue;
 
@@ -5954,7 +5960,7 @@ async function processOverdueFollowups(env,scheduledTime=Date.now()){
     if(entry.recordType==="deal"&&["closed","lost"].includes(status)) continue;
     const lastNotified=value.followUpNotifiedAt?new Date(value.followUpNotifiedAt).getTime():0;
     if(Number.isFinite(lastNotified)&&now.getTime()-lastNotified<12*3600000) continue;
-    const officeId=normalizeOfficeId(value.officeId);
+    const officeId=firestoreOfficeId(value.officeId);
     const recordId=decodeURIComponent(String(entry.document.name||"").split("/").pop()||"");
     if(!officeId||!recordId) continue;
     const collection=workflowCollection(entry.recordType);
@@ -5984,7 +5990,7 @@ function parseJsonArray(value){
 }
 
 async function handleOfficeAnalytics(request,url,env,requestId){
-  assertFirebaseSecrets(env); const officeId=normalizeOfficeId(url.searchParams.get("officeId")); if(!officeId)throw appError("office_id_required",400,"officeId مطلوب");
+  assertFirebaseSecrets(env); const officeId=firestoreOfficeId(url.searchParams.get("officeId")); if(!officeId)throw appError("office_id_required",400,"officeId مطلوب");
   await authorizeOfficeRequest(request,env,officeId,"member"); const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
   const [clients,owners,matches,deals]=await Promise.all([
     listCollectionDocuments({projectId,segments:["offices",officeId,"clients"],accessToken,pageSize:200}),
@@ -6025,7 +6031,7 @@ async function ensurePilotFeatureEnabled(env, featureKey) {
 async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const trialOffice = normalizeOfficeId(env.META_TRIAL_OFFICE_ID);
+  const trialOffice = firestoreOfficeId(env.META_TRIAL_OFFICE_ID);
   if (!token && officeId === trialOffice && String(env.ALLOW_TRIAL_NO_AUTH || "").toLowerCase() === "true") {
     return { uid: "trial-admin", trial: true, permission };
   }
@@ -6195,7 +6201,9 @@ function partySessionHelpers() {
     firestoreBoolean,
     firestoreInteger,
     jsToFirestoreValue,
-    normalizeOfficeId,
+    firestoreOfficeId,
+    officeAuthorizationKey,
+    officeIdsEquivalent,
     cleanText,
     appError,
     jsonResponse,
@@ -6219,7 +6227,9 @@ function getAdminHelpers() {
     firestoreTimestamp,
     firestoreDocumentUrl,
     cleanText,
-    normalizeOfficeId,
+    firestoreOfficeId,
+    officeAuthorizationKey,
+    officeIdsEquivalent,
     appError,
     jsonResponse,
     DEFAULT_PROJECT_ID
@@ -6396,7 +6406,7 @@ async function createFirebaseCustomToken({ clientEmail, privateKey, privateKeyId
     iat: nowSeconds,
     exp: nowSeconds + 3600,
     uid: cleanText(uid, 128),
-    claims: { officeId: normalizeOfficeId(officeId), officeMember: true }
+    claims: { officeId: firestoreOfficeId(officeId), officeMember: true }
   };
   const unsigned = `${base64UrlJson(header)}.${base64UrlJson(claims)}`;
   const key = await crypto.subtle.importKey(
@@ -6432,9 +6442,6 @@ function base64UrlBytes(bytes) {
 }
 function bytesToHex(bytes) { return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); }
 
-function normalizeOfficeId(value) {
-  return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
-}
 function normalizeLoginPhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("00966")) digits = digits.slice(2);
@@ -6800,7 +6807,7 @@ async function runLlamaVisionExtract(env, input) {
 async function handleCanonicalIntakeStart(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -6831,7 +6838,7 @@ async function handleCanonicalIntakeCallbackRoute(request, env, requestId) {
 async function handleCanonicalIntakeRetryRoute(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId);
+  const officeId = firestoreOfficeId(body.officeId);
   const identity = await authorizeOfficeRequest(request, env, officeId, "member");
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
@@ -6874,7 +6881,9 @@ function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToke
     projectId,
     accessToken,
     requestUrl: request.url,
-    normalizeOfficeId,
+    firestoreOfficeId,
+    officeAuthorizationKey,
+    officeIdsEquivalent,
     cleanText,
     appError,
     getFirestoreDocument,
@@ -6899,7 +6908,7 @@ function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToke
 }
 
 async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute = false } = {}) {
-  const officeId = normalizeOfficeId(request.headers.get("X-Office-Id"));
+  const officeId = firestoreOfficeId(request.headers.get("X-Office-Id"));
   const context = cleanText(request.headers.get("X-Voice-Context"), 20).toLowerCase();
   const durationHeader = Number(request.headers.get("X-Voice-Duration-Sec") || 0);
   const durationSec = Number.isFinite(durationHeader) && durationHeader > 0 ? durationHeader : null;
@@ -6972,7 +6981,7 @@ async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute
 
 async function handlePipelineMediaExtract(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
   const mediaPath = cleanText(body.mediaPath, 500);
   const fileName = cleanText(body.fileName, 240);
   const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
@@ -7096,7 +7105,7 @@ async function handlePipelineMediaExtract(request, env, requestId) {
 
 async function handlePipelineAudioExtract(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
   const mediaPath = cleanText(body.mediaPath, 500);
   const fileName = cleanText(body.fileName, 240);
   const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
@@ -7188,7 +7197,7 @@ function bytesToBase64(bytes) {
 
 async function handlePipelineUrlResolve(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId || request.headers.get("X-Office-Id"));
+  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
   if (!officeId) throw appError("office_id_required", 400, "معرّف المكتب مطلوب");
   await authorizeOfficeRequest(request, env, officeId, "member");
   const resolved = await resolveCanonicalListingUrl({
@@ -7319,7 +7328,7 @@ async function resolveMatchForOpportunity({ projectId, officeId, opportunityId, 
   });
   for (const doc of matches) {
     const match = firestoreFieldsToJs(doc.fields || {});
-    if (normalizeOfficeId(match.officeId) !== officeId) continue;
+    if (!officeIdsEquivalent(match.officeId, officeId)) continue;
     if (match.ownerOfferId && match.clientRequestId
       && (match.opportunityId === opportunityId || match.counterpartOpportunityId === opportunityId)) {
       return match;
@@ -7419,7 +7428,7 @@ const ACTIVE_FOLLOWUP_STATUSES = new Set([
 async function handleProcessFollowupReminders(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
-  const officeId = normalizeOfficeId(body.officeId || "");
+  const officeId = firestoreOfficeId(body.officeId || "");
   if (officeId) await authorizeOfficeRequest(request, env, officeId, "member");
   else if (String(env.DEPLOYMENT_ENV || "").toLowerCase() !== "staging") {
     throw appError("office_id_required", 400, "officeId مطلوب");

@@ -16,11 +16,13 @@
   const DEFAULT_OFFICE_ID = "platform";
   const ROOT_COLLECTION = "offices";
 
-  function normalizeOfficeId(value) {
+  const { firestoreOfficeId, officeAuthorizationKey, officeIdsEquivalent } = window.IAQAR?.officeIdDomain || {};
+
+  function resolveOfficeIdValue(value) {
+    if (typeof firestoreOfficeId === "function") return firestoreOfficeId(value);
     return String(value || "")
       .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/[^a-zA-Z0-9_-]/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 80);
@@ -28,7 +30,7 @@
 
   function resolveOfficeId() {
     const params = new URLSearchParams(window.location.search);
-    const fromUrl = normalizeOfficeId(
+    const fromUrl = resolveOfficeIdValue(
       params.get("officeId") || params.get("office") || params.get("o")
     );
 
@@ -42,7 +44,7 @@
     }
 
     try {
-      const saved = normalizeOfficeId(localStorage.getItem(STORAGE_KEY));
+      const saved = resolveOfficeIdValue(localStorage.getItem(STORAGE_KEY));
       if (saved) return { officeId: saved, source: "storage" };
     } catch (_) {
       // نستخدم مكتب المنصة كقيمة آمنة عند تعذر التخزين المحلي.
@@ -101,7 +103,7 @@
 
   function rebindOfficeContext(nextOfficeId) {
     if (!runtime.db) return false;
-    const normalized = normalizeOfficeId(nextOfficeId);
+    const normalized = resolveOfficeIdValue(nextOfficeId);
     if (!normalized || normalized === DEFAULT_OFFICE_ID) return false;
     runtime.officeId = normalized;
     runtime.officeIdSource = "login";
