@@ -24,7 +24,7 @@ export const RESERVED_PUBLIC_SLUGS = Object.freeze([
   "staging", "support", "version", "w", "workflow", "cooperation"
 ]);
 
-export const CRAWLER_UA_RE = /whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|googlebot|bingbot|embedly|preview|pinterest|vkshare/i;
+export const CRAWLER_UA_RE = /whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|googlebot|bingbot|embedly|preview|pinterest|vkshare|opengraph|iframely/i;
 
 function text(value) {
   return String(value == null ? "" : value).trim();

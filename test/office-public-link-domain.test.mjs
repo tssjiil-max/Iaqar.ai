@@ -118,5 +118,6 @@ test("share-card version changes when office identity changes", () => {
   assert.equal(SHARE_CARD_WIDTH, 1200);
   assert.equal(SHARE_CARD_HEIGHT, 630);
   assert.equal(isCrawlerUserAgent("WhatsApp/2.0"), true);
+  assert.equal(isCrawlerUserAgent("OpenGraph.io/1.0"), true);
   assert.equal(isCrawlerUserAgent("Mozilla/5.0 Chrome"), false);
 });
