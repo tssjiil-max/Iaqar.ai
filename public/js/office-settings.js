@@ -48,6 +48,8 @@ import {
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
   officeLicensePreviewLines,
+  officeShareCardCityLine,
+  officeShareCardImageMode,
   officeShareCardVersion,
   officeShareMessage,
   validateAssignablePublicSlug
@@ -1286,6 +1288,34 @@ function drawImageContain(ctx, image, x, y, width, height) {
   ctx.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
+function drawImageContainInBox(ctx, image, x, y, width, height, radius = 0) {
+  ctx.save();
+  if (radius) {
+    roundedRect(ctx, x, y, width, height, radius);
+    ctx.clip();
+  }
+  drawImageContain(ctx, image, x, y, width, height);
+  ctx.restore();
+}
+
+function drawOfficeShareIdentity(ctx, image, mode, x, y, size) {
+  ctx.fillStyle = "#ffffff";
+  roundedRect(ctx, x, y, size, size, 36);
+  ctx.fill();
+  if (!image) return;
+  if (mode === "photo") {
+    ctx.strokeStyle = "#cfe3dc";
+    ctx.lineWidth = 6;
+    roundedRect(ctx, x + 3, y + 3, size - 6, size - 6, 32);
+    ctx.stroke();
+    const pad = 22;
+    drawImageContainInBox(ctx, image, x + pad, y + pad, size - pad * 2, size - pad * 2, 24);
+    return;
+  }
+  const pad = mode === "logo" ? 28 : 40;
+  drawImageContainInBox(ctx, image, x + pad, y + pad, size - pad * 2, size - pad * 2, 20);
+}
+
 function drawQr(ctx, text, x, y, size) {
   if (typeof window.qrcode !== "function") throw new Error("QR_UNAVAILABLE");
   const qr = window.qrcode(0, "M");
@@ -1454,12 +1484,7 @@ async function createOfficeSharePreviewBlob() {
   const imageX = 72;
   const imageY = 90;
   const imageSize = 360;
-  ctx.fillStyle = "#ffffff";
-  roundedRect(ctx, imageX, imageY, imageSize, imageSize, 36);
-  ctx.fill();
-  if (officeImg) {
-    drawImageCover(ctx, officeImg, imageX, imageY, imageSize, imageSize, 36);
-  }
+  drawOfficeShareIdentity(ctx, officeImg, officeShareCardImageMode(current), imageX, imageY, imageSize);
 
   ctx.textAlign = "right";
   ctx.fillStyle = "#073f35";
@@ -1474,10 +1499,11 @@ async function createOfficeSharePreviewBlob() {
     ctx.fillText(line, nameX, lineY, 640);
     lineY += 44;
   }
-  if (current.city) {
+  const cityLine = officeShareCardCityLine(current);
+  if (cityLine) {
     ctx.fillStyle = "#3d5c54";
     ctx.font = "600 28px Tajawal, Arial, sans-serif";
-    ctx.fillText(current.city, nameX, lineY + 8, 640);
+    ctx.fillText(cityLine, nameX, lineY + 8, 640);
   }
 
   try {
@@ -1508,6 +1534,7 @@ async function uploadOfficeSharePreview(blob) {
       "Content-Type": "image/png",
       Authorization: `Bearer ${token}`,
       "X-Office-Id": officeId(),
+      "X-Public-Slug": current.publicSlug || "",
       "X-Share-Card-Version": version
     },
     body: blob

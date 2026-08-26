@@ -462,6 +462,10 @@
         const fallbackCover = withImageCacheBust(String(data.coverUrl || "").trim(), data.updatedAt || "");
         const fallbackDisplay = withImageCacheBust(String(data.displayImageUrl || "").trim(), data.updatedAt || "");
         const fallback = fallbackCover || fallbackDisplay || "";
+        const canonicalSlug = String(data.publicSlug || "").trim().toLowerCase();
+        if (canonicalSlug && !/^\/m\//i.test(location.pathname)) {
+          try { history.replaceState({}, "", `/m/${encodeURIComponent(canonicalSlug)}`); } catch (_) {}
+        }
         const phoneHtml = data.phone ? ` — تواصل ${phoneDisplayHtml(data.phone)}` : "";
         const whatsappHtml = data.whatsapp ? ` — واتساب ${phoneDisplayHtml(data.whatsapp)}` : "";
         const imgTag = primary

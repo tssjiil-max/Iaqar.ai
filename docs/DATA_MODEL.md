@@ -33,7 +33,8 @@ The office profile and the tenant root. `officeId` is a normalized slug
 | `logoUrl` | string ≤2000 | **Phase 1.** Office logo. Empty means "use the platform placeholder". |
 | `displayImageUrl` | string ≤2000 | **Phase 1.** Square-ish display/front image. |
 | `coverUrl` | string ≤2000 | Wide cover image used for share previews. Pre-existing field, unchanged. |
-| `publicSlug` | string ≤64 | Stable office handle for `/o/{slug}`. Derived once as `slug(name)-shortHash(officeId)` and then kept stable. |
+| `publicSlug` | string 3–20 | Short public handle for `/m/{slug}`. Lowercase URL-safe ASCII. Not the internal `officeId`. |
+| `legacyPublicSlugs` | array of string | Previous `/o/{slug}` handles that must keep resolving after a short slug is assigned. |
 | `updatedAt` | timestamp | Server timestamp. |
 
 Access (`firestore.rules`): read = office member; create = platform admin only;
@@ -44,7 +45,21 @@ platform admin.
 
 World-readable projection used by the public office page and share previews. Contains
 `officeId`, `officeName`, `brokerName`, `phone`, `whatsapp`, `licenseNumber`, `city`,
-`specialties`, `logoUrl`, `displayImageUrl`, `coverUrl`, `publicSlug`, `updatedAt`.
+`specialties`, `logoUrl`, `displayImageUrl`, `coverUrl`, `publicSlug`,
+`legacyPublicSlugs`, `updatedAt`.
+
+Access: `read: if true`; writes only by `canManage(officeId)`.
+
+Deliberate exposure: this collection publishes the office contact numbers. That is the
+point of a public office link. It must never gain customer, owner, opportunity, match
+or cooperation data.
+
+Query used: `where("publicSlug", "==", slug).limit(1)` — single-field, served by the
+automatic index. Legacy `/o/{slug}` also queries
+`where("legacyPublicSlugs", "array-contains", slug)`.
+
+`officeSlugClaims/{slug}` maps a unique public handle to `officeId`. Claims are not
+world-readable; the public page resolves through `publicOffices`.
 
 Access: `read: if true`; writes only by `canManage(officeId)`.
 

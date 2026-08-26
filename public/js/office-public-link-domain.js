@@ -17,11 +17,11 @@ export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;
 
 export const RESERVED_PUBLIC_SLUGS = Object.freeze([
-  "admin", "api", "auth", "css", "cv2", "fcm", "fonts", "health", "icons",
-  "js", "m", "manifest", "media", "o", "office", "party", "pipeline",
-  "share", "share-target", "version", "w", "workflow", "notifications",
-  "matching", "operations", "cooperation", "messages", "index", "login",
-  "platform", "staging", "iaqar", "app"
+  "admin", "api", "app", "auth", "css", "cv2", "fcm", "fonts", "health",
+  "icons", "iaqar", "index", "js", "login", "m", "manifest", "matching",
+  "media", "messages", "notifications", "o", "office", "operations",
+  "party", "pipeline", "platform", "r", "settings", "share", "share-target",
+  "staging", "support", "version", "w", "workflow", "cooperation"
 ]);
 
 export const CRAWLER_UA_RE = /whatsapp|facebookexternalhit|facebot|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|googlebot|bingbot|embedly|preview|pinterest|vkshare/i;
@@ -53,6 +53,17 @@ export function validateAssignablePublicSlug(value) {
   return { ok: true, slug };
 }
 
+export function suggestAssignablePublicSlug(value) {
+  const base = normalizePublicSlug(value).replace(/-\d+$/, "") || "office";
+  const trimmed = base.slice(0, 18);
+  for (let n = 2; n <= 99; n += 1) {
+    const candidate = `${trimmed}${n}`.slice(0, 20);
+    const checked = validateAssignablePublicSlug(candidate);
+    if (checked.ok && checked.slug !== normalizePublicSlug(value)) return checked.slug;
+  }
+  return "";
+}
+
 export function parsePublicOfficePath(pathname = "") {
   const path = String(pathname || "").split("?")[0];
   const match = path.match(/^\/(m|o)\/([^/]+)\/?$/i);
@@ -73,9 +84,10 @@ export function officeShareCardVersion(office = {}) {
   const parts = [
     text(office.officeName || office.displayName),
     text(office.logoUrl),
-    text(office.displayImageUrl),
+    text(office.displayImageUrl || office.officeProfilePhoto || office.officeImage),
     text(office.licenseNumber),
     text(office.city),
+    hasRealLicenseVerification(office) ? "verified" : "unverified",
     text(office.updatedAt),
     text(office.shareCardNonce)
   ];
@@ -88,10 +100,31 @@ export function officeShareCardVersion(office = {}) {
   return (hash >>> 0).toString(36).slice(0, 10) || "1";
 }
 
-export function officeShareCardPath(officeId, version) {
-  const id = text(officeId).replace(/[^a-z0-9_-]/gi, "").slice(0, 80);
+export function officeShareCardPath(slug, version) {
+  const handle = normalizePublicSlug(slug) || text(slug).replace(/[^a-z0-9_-]/gi, "").slice(0, 80);
   const ver = text(version).replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || "1";
-  return `/share/office/${encodeURIComponent(id)}/card-v${ver}.png`;
+  return `/share/office/${encodeURIComponent(handle || "office")}/card-v${ver}.png`;
+}
+
+export function officePublicLandingUrl(origin, officeId) {
+  const base = text(origin).replace(/\/$/, "");
+  const id = text(officeId);
+  if (!base || !id) return "";
+  const url = new URL("/", `${base}/`);
+  url.searchParams.set("office", id);
+  url.searchParams.set("view", "public");
+  return url.toString();
+}
+
+export function officeShareCardImageMode(office = {}) {
+  if (text(office.logoUrl)) return "logo";
+  if (text(office.displayImageUrl || office.officeProfilePhoto || office.officeImage)) return "photo";
+  return "fallback";
+}
+
+export function officeShareCardCityLine(office = {}) {
+  const city = text(office.city);
+  return city ? `المدينة: ${city}` : "";
 }
 
 export function hasRealLicenseVerification(office = {}) {
@@ -104,7 +137,7 @@ export function officeLicensePreviewLines(office = {}) {
   const number = text(office.licenseNumber).replace(/[^\d]/g, "");
   const lines = [];
   if (hasRealLicenseVerification(office) && number) {
-    lines.push("مكتب عقاري مرخص");
+    lines.push("✓ مكتب عقاري مرخص");
     lines.push(`رخصة فال: ${number}`);
     return lines;
   }
@@ -114,6 +147,9 @@ export function officeLicensePreviewLines(office = {}) {
 
 export function officeOgDescription(office = {}) {
   const city = text(office.city);
+  const verified = hasRealLicenseVerification(office);
+  if (verified && city) return `مكتب عقاري مرخص في ${city}`;
+  if (verified) return "مكتب عقاري مرخص";
   if (city) return `مكتب عقاري في ${city}`;
   return "مكتب عقاري";
 }
@@ -142,30 +178,26 @@ export function buildOfficeOgHtml({
   canonicalUrl = "",
   imageUrl = "",
   browserRedirectUrl = "",
-  includeBrowserRedirect = false
+  includeBrowserRedirect = true
 } = {}) {
   const name = text(office.officeName || office.displayName) || PLATFORM_APP_NAME;
   const description = officeOgDescription(office);
   const pageUrl = text(canonicalUrl) || officeLinkFor({ origin, publicSlug: slug, officeId: office.officeId });
   const image = text(imageUrl)
-    || (workerOrigin ? `${String(workerOrigin).replace(/\/$/, "")}${officeShareCardPath(office.officeId, officeShareCardVersion(office))}` : "")
+    || (workerOrigin ? `${String(workerOrigin).replace(/\/$/, "")}${officeShareCardPath(slug || office.publicSlug, officeShareCardVersion(office))}` : "")
     || `${String(origin || workerOrigin).replace(/\/$/, "")}${PLATFORM_DEFAULT_LOGO_512}`;
-  const redirect = text(browserRedirectUrl) || pageUrl;
+  const landing = text(browserRedirectUrl) || officePublicLandingUrl(origin, office.officeId) || pageUrl;
   const title = escapeHtml(name);
   const desc = escapeHtml(description);
   const url = escapeHtml(pageUrl);
   const img = escapeHtml(image);
-  const go = escapeHtml(redirect);
-  // Crawlers must keep this HTML. A meta-refresh would send WhatsApp to the SPA
-  // which has no per-office OG tags.
-  const redirectTags = includeBrowserRedirect
-    ? `
-  <meta http-equiv="refresh" content="0;url=${go}">`
-    : "";
-  const redirectScript = includeBrowserRedirect
-    ? `
-  <script>location.replace(${JSON.stringify(redirect)});</script>`
-    : "";
+  const go = escapeHtml(landing);
+  // Never meta-refresh: WhatsApp's crawler follows it and then screenshots the SPA.
+  // A JS redirect still helps a human WhatsApp in-app browser after they tap the link.
+  const redirectScript = includeBrowserRedirect === false
+    ? ""
+    : `
+  <script>location.replace(${JSON.stringify(landing)});</script>`;
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -184,7 +216,7 @@ export function buildOfficeOgHtml({
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${desc}">
-  <meta name="twitter:image" content="${img}">${redirectTags}
+  <meta name="twitter:image" content="${img}">
 </head>
 <body>
   <p>${title}</p>
