@@ -15,7 +15,13 @@ import {
   revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
-import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel } from "../../public/js/match-group-domain.js";
+import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, resolveCoordinationLivingStage, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
+import {
+  applyCoordinationToMatch,
+  ensureCoordinationSession,
+  loadCoordinationSession,
+  submitCoordinationBundle
+} from "./coordination-session-service.js";
 import { upsertNotificationDocument } from "./operations-service.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
@@ -123,21 +129,26 @@ async function stampMatchLiving(helpers, {
   const nextActor = String(patch.nextActor || nextActorForLivingStage(livingStage, {
     ownerContactNeeded: Boolean(patch.ownerContactNeeded)
   }));
+  const coordinationOutcome = String(patch.coordinationOutcome || "");
+  const coordinationBrokerLine = String(patch.coordinationBrokerLine || "");
+  const fields = {
+    livingStage: helpers.firestoreString(livingStage),
+    missingInfoKey: helpers.firestoreString(missingInfoKey),
+    ownerContactNeeded: helpers.firestoreString(ownerContactNeeded ? "true" : ""),
+    rejectedMatchIds: helpers.firestoreString(JSON.stringify(rejected)),
+    activeMatchId: helpers.firestoreString(activeMatchId),
+    livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
+    livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
+    hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
+    nextActor: helpers.firestoreString(nextActor)
+  };
+  if (coordinationOutcome) fields.coordinationOutcome = helpers.firestoreString(coordinationOutcome);
+  if (coordinationBrokerLine) fields.coordinationBrokerLine = helpers.firestoreString(coordinationBrokerLine);
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", id],
     accessToken,
-    fields: {
-      livingStage: helpers.firestoreString(livingStage),
-      missingInfoKey: helpers.firestoreString(missingInfoKey),
-      ownerContactNeeded: helpers.firestoreString(ownerContactNeeded ? "true" : ""),
-      rejectedMatchIds: helpers.firestoreString(JSON.stringify(rejected)),
-      activeMatchId: helpers.firestoreString(activeMatchId),
-      livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
-      livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
-      hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
-      nextActor: helpers.firestoreString(nextActor)
-    }
+    fields
   });
   const operationId = String(match.operationId || "").trim();
   if (!operationId) return;
@@ -152,7 +163,9 @@ async function stampMatchLiving(helpers, {
       livingUpdatedAt: helpers.firestoreString(livingUpdatedAt),
       livingTimelineJson: helpers.firestoreString(JSON.stringify(timeline)),
       hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
-      nextActor: helpers.firestoreString(nextActor)
+      nextActor: helpers.firestoreString(nextActor),
+      ...(coordinationOutcome ? { coordinationOutcome: helpers.firestoreString(coordinationOutcome) } : {}),
+      ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {})
     }
   });
 }
@@ -319,6 +332,14 @@ export async function handlePartySessionMint({
       }
     }
   });
+  await ensureCoordinationSession(helpers, {
+    projectId,
+    officeId,
+    matchId,
+    accessToken,
+    clientSessionId: party === "client" ? sessionId : "",
+    ownerSessionId: party === "owner" ? sessionId : ""
+  });
   return helpers.jsonResponse({
     ok: true,
     token,
@@ -368,6 +389,12 @@ export async function loadPartyPublicView({ token, env, helpers }) {
     : "";
   const snapshot = session.shareSnapshot?.permitted || session.snapshot || {};
   const revealed = session.revealedDetail || revealedDetailFromSnapshot(snapshot, session.followUpAction || "");
+  const coordination = await loadCoordinationSession(helpers, {
+    projectId,
+    officeId,
+    matchId: session.matchId,
+    accessToken
+  });
   return {
     session,
     officeId,
@@ -381,7 +408,8 @@ export async function loadPartyPublicView({ token, env, helpers }) {
       replyAction: session.replyAction || "",
       followUpAction: session.followUpAction || "",
       revealedDetail: revealed,
-      livingStage: session.livingStage || session.currentStage || ""
+      livingStage: session.livingStage || session.currentStage || "",
+      coordination
     })
   };
 }
@@ -582,6 +610,84 @@ export async function handlePartySessionPhoto({ token, index, env, helpers, ip }
   headers.set("cache-control", "private, max-age=300");
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
+}
+
+export async function handlePartySessionBundle({ token, env, request, requestId, helpers, ip }) {
+  try {
+    return await submitPartyBundle({ token, env, request, requestId, helpers, ip });
+  } catch (error) {
+    if (error && (error.status === 429 || error.status === 400)) throw error;
+    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+}
+
+async function submitPartyBundle({ token, env, request, requestId, helpers, ip }) {
+  const limited = helpers.consumePublicRateLimit(
+    helpers.publicRateLimitKey({ route: "party-bundle", ip }),
+    helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY
+  );
+  if (!limited.ok) {
+    throw helpers.appError("rate_limited", 429, "محاولات كثيرة. حاول بعد قليل.");
+  }
+  const loaded = await loadPartyPublicView({ token, env, helpers });
+  if (!loaded) {
+    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+  const body = await request.json().catch(() => ({}));
+  const bundle = body.bundle && typeof body.bundle === "object" ? body.bundle : body;
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const matchId = String(loaded.session.matchId || "").trim();
+  const party = loaded.session.party === "owner" ? "owner" : "client";
+  const coordinationSession = await submitCoordinationBundle(helpers, {
+    projectId,
+    officeId: loaded.officeId,
+    matchId,
+    party,
+    bundleRaw: bundle,
+    accessToken
+  });
+  await applyCoordinationToMatch(helpers, {
+    projectId,
+    officeId: loaded.officeId,
+    matchId,
+    accessToken,
+    coordinationSession,
+    stampMatchLiving
+  });
+  const now = new Date();
+  await helpers.setFirestoreDocument({
+    projectId,
+    segments: ["offices", loaded.officeId, "partySessions", loaded.sessionId],
+    accessToken,
+    fields: {
+      status: helpers.firestoreString(PARTY_SESSION_STATUS.REPLIED),
+      replyAction: helpers.firestoreString("coordination_bundle"),
+      replyAt: helpers.firestoreString(now.toISOString()),
+      livingStage: helpers.firestoreString(coordinationSession.outcome || "")
+    }
+  });
+  const livingNotification = await buildLivingEventNotification({
+    officeId: loaded.officeId,
+    matchId,
+    opportunityId: String(loaded.session.requestId || loaded.session.opportunityId || loaded.session.offerId || ""),
+    taskId: matchId ? `mg_${matchId}` : "",
+    party,
+    action: "coordination_bundle",
+    livingStage: coordinationSession.outcome || "",
+    now
+  });
+  await upsertNotificationDocument({
+    projectId,
+    officeId: loaded.officeId,
+    notification: livingNotification,
+    accessToken,
+    setFirestoreDocument: helpers.setFirestoreDocument,
+    getFirestoreDocument: helpers.getFirestoreDocument,
+    firestoreHelpers: helpers
+  });
+  const next = await loadPartyPublicView({ token, env, helpers });
+  return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
 }
 
 export async function handleMatchLivingAction({

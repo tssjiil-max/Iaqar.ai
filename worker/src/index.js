@@ -143,6 +143,7 @@ import {
   handlePartySessionMint,
   handlePartySessionPhoto,
   handlePartySessionReply,
+  handlePartySessionBundle,
   handleMatchLivingAction
 } from "./party-session-service.js";
 import {
@@ -613,6 +614,18 @@ export default {
       if (request.method === "POST" && partyReply) {
         return await handlePartySessionReply({
           token: decodeURIComponent(partyReply[1] || ""),
+          env,
+          request,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
+      }
+
+      const partyBundle = url.pathname.match(/^\/party\/sessions\/([^/]+)\/bundle$/);
+      if (request.method === "POST" && partyBundle) {
+        return await handlePartySessionBundle({
+          token: decodeURIComponent(partyBundle[1] || ""),
           env,
           request,
           requestId,

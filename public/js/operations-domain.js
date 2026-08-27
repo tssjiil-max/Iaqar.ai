@@ -232,6 +232,8 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     score: Number(metadata.score || op.score || 0),
     opportunityScore: Number(metadata.opportunityScore || 0),
     isBestOpportunity: Boolean(metadata.isBestOpportunity),
+    coordinationOutcome: String(op.coordinationOutcome || metadata.coordinationOutcome || ""),
+    coordinationBrokerLine: String(op.coordinationBrokerLine || metadata.coordinationBrokerLine || ""),
     livingStage: String(op.livingStage || metadata.livingStage || ""),
     livingTimeline: (() => {
       const raw = op.livingTimeline || op.livingTimelineJson || metadata.livingTimeline || metadata.livingTimelineJson;

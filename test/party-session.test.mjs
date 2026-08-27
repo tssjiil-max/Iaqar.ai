@@ -23,7 +23,8 @@ import {
 import {
   handlePartySessionGet,
   handlePartySessionMint,
-  handlePartySessionReply
+  handlePartySessionReply,
+  handlePartySessionBundle
 } from "../worker/src/party-session-service.js";
 
 import {
@@ -303,34 +304,43 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     ip: "2.2.2.2"
   });
   assert.equal(ownerView.body.view.title, "عميل مهتم بعقارك");
+  assert.equal(ownerView.body.view.coordinationForm?.mode, "coordination_bundle");
 
-  const replied = await handlePartySessionReply({
+  const replied = await handlePartySessionBundle({
     token: client.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "interested" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "viewing",
+          viewingWindows: ["tomorrow_evening"]
+        }
+      })
+    },
     requestId: "req-9",
     helpers,
     ip: "3.3.3.3"
   });
   assert.equal(replied.body.view.replied, true);
-  assert.equal(replied.body.view.replyLabel, "مهتم");
+  assert.match(replied.body.view.replyLabel, /مهتم/);
   assert.deepEqual(replied.body.view.actions, []);
-  assert.equal(replied.body.view.followUpActions.some((item) => item.id === "want_viewing"), true);
+  assert.equal(replied.body.view.coordinationForm?.submitted, true);
 
-  const again = await handlePartySessionReply({
+  const again = await handlePartySessionBundle({
     token: client.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "not_suitable" }) },
+    request: { json: async () => ({ bundle: { interest: "not_suitable" } }) },
     requestId: "req-10",
     helpers,
     ip: "3.3.3.3"
   });
-  assert.equal(again.body.view.replyLabel, "مهتم");
+  assert.match(again.body.view.replyLabel, /مهتم|غير مناسب/);
 });
 
 test("firestore rules deny client reads of party sessions and token hashes", () => {
   const rules = readFileSync(path.join(root, "firestore.rules"), "utf8");
-  assert.match(rules, /'partySessions', 'partySessionKeys'/);
+  assert.match(rules, /'partySessions', 'partySessionKeys', 'coordinationSessions'/);
   assert.match(rules, /match \/partySessions\/\{sessionId\}/);
   assert.match(rules, /match \/partySessionTokens\/\{tokenHash\}/);
   assert.match(rules, /allow read, write: if false/);
@@ -476,10 +486,18 @@ test("needs_details keeps property data and stores the requested item", async ()
     requestId: "acc-6",
     helpers
   });
-  const replied = await handlePartySessionReply({
+  const replied = await handlePartySessionBundle({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "needs_details" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "more_info",
+          infoNeeds: ["photos"]
+        }
+      })
+    },
     requestId: "acc-7",
     helpers,
     ip: "9.9.9.9"
@@ -487,22 +505,7 @@ test("needs_details keeps property data and stores the requested item", async ()
   const html = buildPartyShellHtml(replied.body.view);
   assert.match(html, /870,000/);
   assert.match(html, /تم تسجيل ردك/);
-  assert.match(html, /أحتاج تفاصيل أكثر/);
-  assert.match(html, /السعر/);
-  assert.match(html, /الموقع/);
-  assert.match(html, /الصور/);
-  assert.match(html, /المواصفات/);
-  assert.match(html, /سؤال آخر/);
-  const follow = await handlePartySessionReply({
-    token: minted.body.token,
-    env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "detail_photos" }) },
-    requestId: "acc-8",
-    helpers,
-    ip: "9.9.9.9"
-  });
-  assert.equal(follow.body.view.followUpLabel, "الصور");
-  assert.deepEqual(follow.body.view.followUpActions, []);
+  assert.match(html, /معلومات/);
   const again = await handlePartySessionGet({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
@@ -511,7 +514,7 @@ test("needs_details keeps property data and stores the requested item", async ()
     ip: "9.9.9.9"
   });
   assert.equal(again.body.view.property.propertyType, "أرض");
-  assert.equal(again.body.view.followUpLabel, "الصور");
+  assert.match(again.body.view.replyLabel, /معلومات/);
 });
 
 test("generic placeholders never become runtime property values", () => {

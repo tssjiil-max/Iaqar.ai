@@ -128,7 +128,95 @@ async function submitReply(token, action, button) {
   }
 }
 
+async function submitBundle(token, bundle, button) {
+  button.disabled = true;
+  showStatus("");
+  try {
+    const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bundle })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok || !payload.view) {
+      throw new Error(payload.message || "تعذر تسجيل الرد.");
+    }
+    renderView(payload.view, token);
+  } catch (error) {
+    button.disabled = false;
+    showStatus(error.message || "تعذر تسجيل الرد.", true);
+  }
+}
+
+function collectBundleFromForm(root) {
+  const bundle = {};
+  root.querySelectorAll("[data-bundle-choice]").forEach((button) => {
+    if (button.classList.contains("is-selected")) {
+      bundle[button.getAttribute("data-bundle-choice")] = button.getAttribute("data-bundle-value");
+    }
+  });
+  root.querySelectorAll("[data-bundle-field]").forEach((input) => {
+    if (!input.checked) return;
+    const field = input.getAttribute("data-bundle-field");
+    if (!field) return;
+    if (!Array.isArray(bundle[field])) bundle[field] = [];
+    bundle[field].push(input.value);
+  });
+  root.querySelectorAll("[data-bundle-bool]").forEach((input) => {
+    const field = input.getAttribute("data-bundle-bool");
+    if (field) bundle[field] = Boolean(input.checked);
+  });
+  return bundle;
+}
+
+function stepVisible(stepEl, bundle = {}) {
+  const whenRaw = stepEl.getAttribute("data-bundle-when");
+  if (!whenRaw || whenRaw === "null") return true;
+  try {
+    const when = JSON.parse(whenRaw);
+    if (!when || typeof when !== "object") return true;
+    return Object.entries(when).every(([key, value]) => String(bundle[key] || "") === String(value));
+  } catch {
+    return true;
+  }
+}
+
+function refreshBundleSteps(root) {
+  const bundle = collectBundleFromForm(root);
+  root.querySelectorAll("[data-bundle-step]").forEach((stepEl) => {
+    stepEl.hidden = !stepVisible(stepEl, bundle);
+  });
+}
+
+function bindCoordinationForm(root, token) {
+  const form = root.querySelector("[data-party-coordination-form]");
+  if (!form) return;
+  form.querySelectorAll("[data-bundle-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.getAttribute("data-bundle-choice");
+      form.querySelectorAll(`[data-bundle-choice="${field}"]`).forEach((node) => {
+        node.classList.remove("is-selected");
+      });
+      button.classList.add("is-selected");
+      refreshBundleSteps(form);
+    });
+  });
+  form.querySelectorAll("[data-bundle-field], [data-bundle-bool]").forEach((input) => {
+    input.addEventListener("change", () => refreshBundleSteps(form));
+  });
+  const submit = form.querySelector("[data-party-bundle-submit]");
+  if (submit) {
+    submit.addEventListener("click", () => {
+      if (submit.disabled) return;
+      const bundle = collectBundleFromForm(form);
+      void submitBundle(token, bundle, submit);
+    });
+  }
+  refreshBundleSteps(form);
+}
+
 function bindActions(root, token) {
+  bindCoordinationForm(root, token);
   root.querySelectorAll("[data-party-action]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.disabled) return;
