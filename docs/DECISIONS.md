@@ -478,6 +478,17 @@ offices’ contacts.
 capability stays reachable. Empty state when there are no tasks; API errors stay
 visible. No production path depends on fake matches.
 
+## D-020 — Platform admin header matches the product header; title is إدارة المنصة in Naskh
+
+**Phase:** admin console visual maintenance
+**Directive:** owner asked for visual/layout maintenance of `/admin` only; header like
+the product app header; title `إدارة المنصة` in Naskh (`خط النسخ`).
+
+**Decision.** Replace the dark emerald admin bar with the same card header pattern as
+the broker app (logo at the start, centered title). The title is `إدارة المنصة` set in
+`Noto Naskh Arabic`. Body UI stays Tajawal. Column width and spacing follow the
+product `.app` shell. Broker home page is unchanged.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

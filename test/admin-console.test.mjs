@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   backfillOfficeRecord,
   buildActivitySummary,
@@ -120,4 +121,11 @@ test("sortOffices supports registration and activity ordering", () => {
     { officeId: "b", registeredAt: "2026-06-01T00:00:00.000Z", lastActivityAt: "2026-08-10T00:00:00.000Z" }
   ], "activity_desc");
   assert.equal(rows[0].officeId, "b");
+});
+
+test("platform admin header uses إدارة المنصة in Naskh", () => {
+  const html = readFileSync(new URL("../public/admin/index.html", import.meta.url), "utf8");
+  assert.match(html, /<h1>\s*إدارة المنصة\s*<\/h1>/);
+  assert.match(html, /Noto Naskh Arabic/);
+  assert.doesNotMatch(html, /لوحة إدارة المنصة \(Admin\)/);
 });
