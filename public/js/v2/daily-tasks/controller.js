@@ -37,6 +37,17 @@ const state = {
   scrollTop: 0
 };
 
+function officeRuntime() {
+  return window.IAQAR?.office || null;
+}
+
+function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
+}
+
 function useDemoFixtures() {
   try {
     return new URLSearchParams(window.location.search).get("cv2Tasks") === "1";
@@ -94,12 +105,33 @@ async function runPlatformOpportunityAction(task, actionId, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   setExecState(button, "working");
   try {
+    const base = workerBase();
+    if (!base) {
+      notify("تعذر الاتصال بالخادم. أعد تحميل الصفحة ثم حاول مرة أخرى.");
+      setExecState(button, "error");
+      return { ok: false, error: "worker_base_missing" };
+    }
     const token = await idToken();
+    if (!token) {
+      notify("تعذر التحقق من الجلسة. سجّل الدخول ثم حاول مرة أخرى.");
+      setExecState(button, "error");
+      return { ok: false, error: "auth_missing" };
+    }
     const officeId = currentOfficeId();
+    if (!officeId) {
+      notify("تعذر تحديد المكتب الحالي.");
+      setExecState(button, "error");
+      return { ok: false, error: "office_missing" };
+    }
+    if (!String(task.opportunityId || "").trim()) {
+      notify("تعذر تحديد الفرصة. أعد تحميل المهام ثم حاول مرة أخرى.");
+      setExecState(button, "error");
+      return { ok: false, error: "opportunity_missing" };
+    }
     const path = actionId === "decline_platform_opportunity"
       ? "/opportunity-router/decline"
       : "/opportunity-router/accept";
-    const response = await fetch(`${workerBase()}${path}`, {
+    const response = await fetch(`${base}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -119,7 +151,11 @@ async function runPlatformOpportunityAction(task, actionId, button) {
     }
     notify(actionId === "decline_platform_opportunity" ? "تم الاعتذار وستنقل الفرصة للمكتب التالي." : "تم استلام الفرصة.");
     setExecState(button, "success");
-    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    try {
+      window.dispatchEvent(new window.CustomEvent("iaqar:operations-refresh"));
+    } catch {
+      /* listeners are best-effort; accept already persisted */
+    }
     return { ok: true };
   } catch {
     notify("تعذر إتمام الإجراء.");
@@ -212,7 +248,11 @@ async function runCooperationTaskAction(task, actionId, button) {
     }
     notify(result.message || "تم حفظ حالة التعاون.");
     setExecState(button, "success");
-    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    try {
+      window.dispatchEvent(new window.CustomEvent("iaqar:operations-refresh"));
+    } catch {
+      /* listeners are best-effort */
+    }
     return { ok: true, result };
   } catch {
     notify("تعذر حفظ حالة التعاون. أبقينا الحالة السابقة.");
@@ -489,7 +529,11 @@ async function confirmDealCompletion(task, button) {
     }
     notify("تم إتمام الصفقة");
     setExecState(button, "success");
-    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    try {
+      window.dispatchEvent(new window.CustomEvent("iaqar:operations-refresh"));
+    } catch {
+      /* listeners are best-effort */
+    }
     return { ok: true };
   } catch {
     notify("تعذر تأكيد إتمام الصفقة.");

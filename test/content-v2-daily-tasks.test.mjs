@@ -585,6 +585,71 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
   delete global.document;
 });
 
+test("platform opportunity accept calls worker opportunity-router accept", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { mountDailyTasksContentV2, unmountDailyTasksContentV2 } = await import("../src/v2/content/daily-tasks/controller.js");
+  const { mapOperationsItemsToDailyTasks } = await import("../src/v2/content/daily-tasks/domain.js");
+  const calls = [];
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div id="toast" hidden></div>
+    <div id="contentV2"></div>
+  </body></html>`, { url: "https://example.test/", pretendToBeVisual: true });
+  const { window } = dom;
+  global.window = window;
+  global.document = window.document;
+  window.IAQAR = {
+    office: { officeId: "office-wadi", workerBase: "https://worker.test" },
+    workerBase: "https://worker.test",
+    resolveWorkerBase: () => "https://worker.test"
+  };
+  window.firebase = {
+    auth() {
+      return { currentUser: { getIdToken: async () => "id-token" } };
+    }
+  };
+  window.fetch = async (url, options = {}) => {
+    calls.push({ url, body: JSON.parse(options.body || "{}") });
+    return {
+      ok: true,
+      json: async () => ({ ok: true, assignedOfficeId: "office-wadi", opportunityId: "opp_intake_demo" })
+    };
+  };
+  global.fetch = window.fetch;
+
+  const operationItem = {
+    id: "op_platform_1",
+    operationType: "PLATFORM_OPPORTUNITY_OFFER",
+    status: "OPEN",
+    opportunityId: "opp_intake_demo",
+    opportunityKind: "REQUEST",
+    purpose: "PURCHASE",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "عروة",
+    metadata: { opportunityId: "opp_intake_demo", moneyLine: "500,000 ر.س" }
+  };
+  window.IAQAR.operationsItems = [operationItem];
+
+  mountDailyTasksContentV2(window.document.getElementById("contentV2"));
+  const card = window.document.querySelector('[data-task-kind="platform_opportunity"]');
+  assert.ok(card);
+  card.querySelector("[data-cv2-exec-reveal]").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const acceptBtn = window.document.querySelector('[data-cv2-exec-primary="accept_platform_opportunity"]');
+  assert.ok(acceptBtn);
+  acceptBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const acceptCall = calls.find((entry) => String(entry.url).includes("/opportunity-router/accept"));
+  assert.ok(acceptCall);
+  assert.equal(acceptCall.url, "https://worker.test/opportunity-router/accept");
+  assert.deepEqual(acceptCall.body, { officeId: "office-wadi", opportunityId: "opp_intake_demo" });
+  assert.equal(window.document.getElementById("toast").textContent, "تم استلام الفرصة.");
+
+  unmountDailyTasksContentV2();
+  delete global.window;
+  delete global.document;
+});
+
 test("tasks mount uses office smart hide instead of the details chevron", () => {
   const mount = readFileSync(path.join(root, "src", "v2", "content", "mount.js"), "utf8");
   assert.match(mount, /setupOfficeSmartHide/);
