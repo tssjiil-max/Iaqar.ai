@@ -26,7 +26,7 @@ import {
   sanitizePartyPublicView
 } from "../public/js/party-session-domain.js";
 import { buildPartyShellHtml } from "../public/js/party-shell-ui.js";
-import { handlePartySessionGet, handlePartySessionMint, handlePartySessionReply } from "../worker/src/party-session-service.js";
+import { handlePartySessionGet, handlePartySessionMint, handlePartySessionReply, handlePartySessionBundle } from "../worker/src/party-session-service.js";
 import { createHash } from "node:crypto";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -284,20 +284,29 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
     token: minted.body.token, env: { DEPLOYMENT_ENV: "staging" }, requestId: "g2", helpers, ip: "1.1.1.1"
   });
   const html = buildPartyShellHtml(before.body.view);
-  assert.match(html, /ما رأيك بالعقار؟/);
+  assert.match(html, /data-party-coordination-form|ما رأيك بالعقار؟/);
+  assert.match(html, />مهتم</);
   assert.match(html, /850,000/);
   assert.equal(html.includes("0500000000"), false);
-  const details = await handlePartySessionReply({
+  const details = await handlePartySessionBundle({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "needs_details" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "more_info",
+          infoNeeds: ["price"]
+        }
+      })
+    },
     requestId: "g3",
     helpers,
     ip: "1.1.1.1"
   });
   const detailsHtml = buildPartyShellHtml(details.body.view);
   assert.match(detailsHtml, /850,000/);
-  assert.match(detailsHtml, /ما التفاصيل التي تحتاجها؟/);
+  assert.match(detailsHtml, /تم تسجيل ردك/);
 
   const mintedInterested = await handlePartySessionMint({
     request: { json: async () => ({ officeId: "office-1", matchId: "match_interest", party: "client", offerId: "offer_1" }) },
@@ -308,18 +317,26 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
   store["offices/office-1/matches/match_interest"] = {
     fields: { ownerOfferId: "offer_1", clientRequestId: "req_1" }
   };
-  const interested = await handlePartySessionReply({
+  const interested = await handlePartySessionBundle({
     token: mintedInterested.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "interested" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "viewing",
+          viewingWindows: ["tomorrow_evening"]
+        }
+      })
+    },
     requestId: "g5",
     helpers,
     ip: "1.1.1.1"
   });
   const interestedHtml = buildPartyShellHtml(interested.body.view);
   assert.match(interestedHtml, /850,000/);
-  assert.match(interestedHtml, /أريد معاينة/);
-  assert.match(interestedHtml, /المعلومات والصور كافية/);
+  assert.match(interestedHtml, /تم تسجيل ردك/);
+  assert.match(interestedHtml, /مهتم|معاينة/);
 });
 
 test("TEST M/L: owner page identifies the property and never shows client phone", () => {

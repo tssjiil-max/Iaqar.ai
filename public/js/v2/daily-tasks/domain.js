@@ -977,6 +977,8 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     sourceCollection: item.sourceCollection,
     matchGroupId: item.matchGroupId,
     livingStage: item.livingStage || item.metadata?.livingStage,
+    coordinationOutcome: item.coordinationOutcome || item.metadata?.coordinationOutcome,
+    coordinationBrokerLine: item.coordinationBrokerLine || item.metadata?.coordinationBrokerLine,
     rejectedMatchIds: item.rejectedMatchIds || item.metadata?.rejectedMatchIds,
     missingInfoKey: item.missingInfoKey || item.metadata?.missingInfoKey,
     ownerContactNeeded: item.ownerContactNeeded || item.metadata?.ownerContactNeeded,
@@ -1149,7 +1151,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     moneyLine: candidateCount > 1
       ? formatBestResultLine({ money: best.moneyLine, area: best.areaLine })
       : (best.moneyLine || dailyTaskMoneyLine(active)),
-    nextActionLine: copy.nextActionLine,
+    nextActionLine: text(active.coordinationBrokerLine) || copy.nextActionLine,
     happenedLine: copy.happenedLine,
     turnLine: copy.turnLine,
     yourTurnLine: copy.yourTurnLine,
