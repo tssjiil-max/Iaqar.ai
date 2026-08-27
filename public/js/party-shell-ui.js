@@ -132,32 +132,150 @@ function appointmentBlock(appointment = {}) {
   return taken;
 }
 
-function coordinationFormBlock(form = {}) {
-  if (!form || form.mode !== "coordination_bundle") return "";
-  if (form.submitted) {
+function chipOptions(options = [], field = "", type = "multi") {
+  return (options || []).map((opt) => {
+    const inputType = type === "single" ? "radio" : "checkbox";
+    const nameAttr = type === "single" ? `name="${escapeHtml(field)}"` : "";
+    return `<label class="party-chip" data-party-chip>
+      <input type="${inputType}" ${nameAttr} data-package-field="${escapeHtml(field)}" value="${escapeHtml(opt.value)}">
+      <span>${escapeHtml(opt.label)}</span>
+    </label>`;
+  }).join("");
+}
+
+function decisionPackageBlock(pkg = {}, view = {}) {
+  if (!pkg || pkg.mode !== "decision_package_v1") return "";
+  if (pkg.submitted) {
     return `<div class="party-coordination" data-testid="party-bundle-recorded">
-      <p class="party-recorded">${PARTY_REPLY_RECORDED}</p>
-      <p class="party-reply">${escapeHtml(form.bundleSummary || "")}</p>
+      <p class="party-recorded">${escapeHtml(view.submitSuccessCopy || PARTY_REPLY_RECORDED)}</p>
+      <p class="party-reply">${escapeHtml(pkg.bundleSummary || "")}</p>
     </div>`;
   }
-  const steps = (form.steps || []).map((step) => {
-    const options = (step.options || []).map((opt) => {
-      if (step.type === "multi") {
-        return `<label class="party-choice"><input type="checkbox" data-bundle-field="${escapeHtml(step.field)}" value="${escapeHtml(opt.value)}"><span>${escapeHtml(opt.label)}</span></label>`;
-      }
-      return `<button type="button" class="party-action" data-bundle-choice="${escapeHtml(step.field)}" data-bundle-value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`;
-    }).join("");
-    const boolField = step.type === "boolean"
-      ? `<label class="party-choice"><input type="checkbox" data-bundle-bool="${escapeHtml(step.field)}"><span>${escapeHtml(step.label || "تنسيق مسبق")}</span></label>`
-      : "";
-    return `<div class="party-bundle-step" data-bundle-step="${escapeHtml(step.field)}" data-bundle-when="${escapeHtml(JSON.stringify(step.when || null))}">
-      ${step.type !== "boolean" ? `<div class="party-actions party-bundle-options">${options}</div>` : boolField}
+  const party = pkg.party || "client";
+  if (party === "client") {
+    const specSection = `<div class="party-package-section" data-package-section="specNeeds" hidden>
+      <p class="party-section-label">المواصفات المطلوبة</p>
+      <div class="party-chip-grid">${chipOptions(pkg.specOptions, "specNeeds")}</div>
     </div>`;
+    const viewingSection = `<div class="party-package-section" data-package-section="viewing" hidden>
+      <p class="party-section-label">أوقات المعاينة</p>
+      <p class="party-muted">اليوم</p>
+      <div class="party-chip-grid">${chipOptions(pkg.dayOptions, "viewingDays")}</div>
+      <p class="party-muted">الفترة</p>
+      <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>
+    </div>`;
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
+      <div class="party-package-section">
+        <p class="party-section-label">الاهتمام</p>
+        <div class="party-chip-grid party-chip-grid--single">
+          ${chipOptions([
+            { value: "interested", label: "مهتم" },
+            { value: "preliminary_ok", label: "موافق مبدئيًا بناءً على الصور والموقع" },
+            { value: "not_suitable", label: "غير مناسب" }
+          ], "interestStatus", "single")}
+        </div>
+      </div>
+      <div class="party-package-section" data-package-section="infoNeeds" hidden>
+        <p class="party-section-label">أحتاج تفاصيل</p>
+        <div class="party-chip-grid">${chipOptions(pkg.infoNeedOptions, "infoNeeds")}</div>
+      </div>
+      ${specSection}
+      <div class="party-package-section" data-package-section="wantsViewing" hidden>
+        <label class="party-chip party-chip--toggle">
+          <input type="checkbox" data-package-bool="wantsViewing">
+          <span>أريد معاينة</span>
+        </label>
+      </div>
+      ${viewingSection}
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit data-testid="party-bundle-submit">
+        <span class="party-send-icon" aria-hidden="true">➤</span> إرسال للوسيط
+      </button>
+    </div>`;
+  }
+  const priceBlock = pkg.hasCanonicalPrice
+    ? `<p class="party-row"><span>السعر المطلوب</span><strong>${escapeHtml(String(pkg.canonicalPrice))} ريال</strong></p>
+      <div class="party-chip-grid party-chip-grid--single">
+        ${chipOptions([
+          { value: "confirmed", label: "السعر صحيح" },
+          { value: "updated", label: "تعديل السعر" }
+        ], "priceConfirmation", "single")}
+      </div>
+      <div class="party-package-field" data-package-section="updatedPrice" hidden>
+        <label>السعر الجديد (ريال)</label>
+        <input type="number" class="party-input" data-package-number="updatedPrice" min="1" step="1" inputmode="numeric">
+      </div>`
+    : `<div class="party-package-field">
+        <label>السعر (ريال)</label>
+        <input type="number" class="party-input" data-package-number="updatedPrice" min="1" step="1" inputmode="numeric" required>
+      </div>`;
+  const missingSpecs = (pkg.missingSpecs || []).map((key) => {
+    const label = (pkg.missingSpecsLabels || [])[pkg.missingSpecs.indexOf(key)] || key;
+    if (key === "area") {
+      return `<div class="party-package-field"><label>${escapeHtml(label)}</label><input type="number" class="party-input" data-package-spec="area" min="1"></div>`;
+    }
+    if (key === "rooms_bathrooms") {
+      return `<div class="party-package-field"><label>الغرف</label><input type="number" class="party-input" data-package-spec="rooms" min="0">
+        <label>الحمامات</label><input type="number" class="party-input" data-package-spec="bathrooms" min="0"></div>`;
+    }
+    return `<div class="party-package-field"><label>${escapeHtml(label)}</label><input type="text" class="party-input" data-package-spec="${escapeHtml(key)}"></div>`;
   }).join("");
-  return `<div class="party-coordination" data-party-coordination-form data-question-set="${escapeHtml(form.questionSetVersion || "")}">
-    <div class="party-bundle-steps">${steps}</div>
-    <button type="button" class="party-action party-bundle-submit" data-party-bundle-submit data-testid="party-bundle-submit">تسجيل الرد</button>
+  return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
+    <div class="party-package-section">
+      <p class="party-section-label">توفر العقار</p>
+      <div class="party-chip-grid party-chip-grid--single">
+        ${chipOptions([
+          { value: "available", label: "العقار متاح" },
+          { value: "not_available", label: "غير متاح" }
+        ], "propertyAvailability", "single")}
+      </div>
+    </div>
+    <div class="party-package-section" data-package-section="price" hidden>
+      <p class="party-section-label">السعر</p>
+      ${priceBlock}
+    </div>
+    <div class="party-package-section" data-package-section="photos" hidden>
+      <p class="party-section-label">الصور</p>
+      <p class="party-warning">الصور التي ترفعها ستُشارك مع العميل وتُضاف للعقار. تأكد أنها لا تحتوي على رقم جوال أو بيانات تواصل خاصة.</p>
+      <label class="party-chip party-chip--toggle">
+        <input type="checkbox" data-package-bool="mediaAdded">
+        <span>إضافة صور</span>
+      </label>
+      <input type="file" accept="image/jpeg,image/png,image/webp" multiple class="party-file" data-package-photos hidden>
+      <div class="party-photo-preview" data-package-photo-preview></div>
+    </div>
+    <div class="party-package-section" data-package-section="location" hidden>
+      <label class="party-chip party-chip--toggle">
+        <input type="checkbox" data-package-bool="locationShare" ${pkg.hasLocation ? "checked" : ""}>
+        <span>مشاركة موقع العقار</span>
+      </label>
+    </div>
+    <div class="party-package-section" data-package-section="ownerSpecs" hidden>
+      <p class="party-section-label">المواصفات المطلوبة من العميل</p>
+      ${missingSpecs}
+    </div>
+    <div class="party-package-section" data-package-section="ownerViewing" hidden>
+      <p class="party-section-label">المعاينة</p>
+      <div class="party-chip-grid party-chip-grid--single">
+        ${chipOptions([
+          { value: "yes", label: "ممكنة" },
+          { value: "needs_coordination", label: "تحتاج تنسيق مسبق" }
+        ], "viewingAllowed", "single")}
+      </div>
+      <div data-package-section="ownerAvailability" hidden>
+        <p class="party-muted">اليوم</p>
+        <div class="party-chip-grid">${chipOptions(pkg.dayOptions, "viewingDays")}</div>
+        <p class="party-muted">الفترة</p>
+        <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>
+      </div>
+    </div>
+    <button type="button" class="party-action party-package-submit" data-party-bundle-submit data-testid="party-bundle-submit">
+      <span class="party-send-icon" aria-hidden="true">➤</span> تأكيد وإرسال
+    </button>
   </div>`;
+}
+
+function coordinationFormBlock(form = {}) {
+  return decisionPackageBlock(form, {});
 }
 
 export function buildPartyShellHtml(view = {}) {
@@ -165,6 +283,14 @@ export function buildPartyShellHtml(view = {}) {
   const details = propertyRows(property);
   const logo = view.officeLogoUrl
     ? `<img class="party-logo" src="${escapeHtml(view.officeLogoUrl)}" alt="" onerror="this.remove()">`
+    : (view.officeProfileUrl
+      ? `<img class="party-logo" src="${escapeHtml(view.officeProfileUrl)}" alt="" onerror="this.remove()">`
+      : "");
+  const officeNotice = view.officeCoordinationNotice
+    ? `<p class="party-office-notice">${escapeHtml(view.officeCoordinationNotice)}</p>`
+    : "";
+  const privacyNotice = view.privacyNotice
+    ? `<p class="party-privacy-notice">${escapeHtml(view.privacyNotice)}</p>`
     : "";
   const ownerStatus = view.ownerClientStatus
     ? `<p class="party-client-status">${escapeHtml(view.ownerClientStatus)}</p>`
@@ -177,14 +303,11 @@ export function buildPartyShellHtml(view = {}) {
     : "";
   const primaryActions = actionButtons(view.actions);
   const followUp = actionButtons(view.followUpActions);
-  const coordination = coordinationFormBlock(view.coordinationForm);
+  const decisionPackage = decisionPackageBlock(view.decisionPackage, view);
   const appointment = appointmentBlock(view.appointment || {});
   let replyBlock = "";
-  if (coordination) {
-    const prompt = view.promptLine
-      ? `<p class="party-prompt">${escapeHtml(view.promptLine)}</p>`
-      : "";
-    replyBlock = `<div class="party-reply-block">${prompt}${coordination}</div>`;
+  if (decisionPackage) {
+    replyBlock = `<div class="party-reply-block">${prompt}${decisionPackage}</div>`;
   } else if (appointment) {
     replyBlock = `<div class="party-reply-block">${appointment}</div>`;
   } else if (view.replied) {
@@ -208,6 +331,8 @@ export function buildPartyShellHtml(view = {}) {
     <header class="party-brand">
       ${logo}
       <p class="party-office">${escapeHtml(view.officeName || "المكتب العقاري")}</p>
+      ${officeNotice}
+      ${privacyNotice}
     </header>
     <section class="party-card party-property-card">
       <h1>${escapeHtml(view.title || "")}</h1>

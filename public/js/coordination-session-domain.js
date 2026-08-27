@@ -4,13 +4,15 @@
 
 import {
   COORDINATION_OUTCOME,
-  coordinationOutcomeLabel,
+  brokerCoordinationLine,
   clientBundleSummary,
+  coordinationOutcomeLabel,
   ownerBundleSummary,
   normalizeClientBundle,
   normalizeOwnerBundle,
   QUESTION_SET_VERSIONS,
-  resolveCoordinationOutcome
+  resolveCoordinationOutcome,
+  bundlesEqual
 } from "./coordination-bundle-domain.js";
 
 function text(value) {
@@ -35,12 +37,13 @@ export function emptyCoordinationSession(matchId = "", officeId = "") {
     brokerLine: "بانتظار رد العميل والمالك",
     conflictField: "",
     eventLog: [],
+    appliedMediaPaths: [],
     createdAt: "",
     updatedAt: ""
   };
 }
 
-export function parseCoordinationSession(raw = {}) {
+export function parseCoordinationSession(raw = {}, { canonicalOffer = {} } = {}) {
   if (!raw || typeof raw !== "object") return emptyCoordinationSession();
   const matchId = text(raw.matchId || raw.id);
   const clientBundle = raw.clientBundle
@@ -49,7 +52,11 @@ export function parseCoordinationSession(raw = {}) {
   const ownerBundle = raw.ownerBundle
     ? normalizeOwnerBundle(raw.ownerBundle)
     : null;
-  const resolved = resolveCoordinationOutcome({ clientBundle, ownerBundle });
+  const resolved = resolveCoordinationOutcome({
+    clientBundle,
+    ownerBundle,
+    canonicalOffer
+  });
   return {
     id: coordinationSessionId(matchId),
     matchId,
@@ -62,6 +69,9 @@ export function parseCoordinationSession(raw = {}) {
     brokerLine: text(raw.brokerLine) || resolved.brokerLine,
     conflictField: text(raw.conflictField) || resolved.conflictField,
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.map(normalizeCoordinationEvent).filter(Boolean) : [],
+    appliedMediaPaths: Array.isArray(raw.appliedMediaPaths)
+      ? raw.appliedMediaPaths.map((value) => text(value)).filter(Boolean)
+      : [],
     createdAt: text(raw.createdAt),
     updatedAt: text(raw.updatedAt)
   };

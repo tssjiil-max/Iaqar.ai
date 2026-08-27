@@ -3,7 +3,7 @@
  */
 
 import {
-  buildCoordinationFormView,
+  buildDecisionPackageView,
   clientBundleSummary,
   ownerBundleSummary
 } from "./coordination-bundle-domain.js";
@@ -466,12 +466,14 @@ export function sanitizePartyPublicView({
   snapshot = {},
   officeName = "",
   officeLogoUrl = "",
+  officeProfileUrl = "",
   replyAction = "",
   followUpAction = "",
   revealedDetail = null,
   livingStage = "",
   appointment = null,
-  coordination = null
+  coordination = null,
+  canonicalOffer = {}
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
   const coordinationSession = coordination && typeof coordination === "object" ? coordination : null;
@@ -482,13 +484,15 @@ export function sanitizePartyPublicView({
     ? ownerBundleSummary(coordinationSession?.ownerBundle)
     : clientBundleSummary(coordinationSession?.clientBundle);
   const useBundleMode = Boolean(coordinationSession?.id || coordinationSession?.matchId);
-  const coordinationForm = useBundleMode
-    ? buildCoordinationFormView(side, {
-      questionSetVersion: side === "owner"
-        ? coordinationSession?.ownerQuestionSet
-        : coordinationSession?.clientQuestionSet,
+  const propertyType = snapshot.propertyType || canonicalOffer.propertyType || "";
+  const decisionPackage = useBundleMode
+    ? buildDecisionPackageView(side, {
+      propertyType,
+      canonicalOffer,
+      clientBundle: coordinationSession?.clientBundle || null,
       submitted: bundleSubmitted,
-      bundleSummary
+      bundleSummary,
+      hasLocation: Boolean(snapshot.locationUrl || canonicalOffer.locationUrl)
     })
     : null;
   const followUpLabel = followUpAction ? partyActionLabel(side, followUpAction) : "";
@@ -500,26 +504,34 @@ export function sanitizePartyPublicView({
   const bundleModeActive = useBundleMode && !bundleSubmitted && !appointmentActive;
   const replied = bundleSubmitted
     || (status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction));
+  const officeLabel = text(officeName) || "المكتب العقاري";
   const view = {
     party: side,
     title: partyViewTitle(side),
     promptLine: bundleModeActive
-      ? (side === "client" ? "أجب على الأسئلة التالية" : "أكد توفر العقار وخيارات المعاينة")
+      ? (side === "client" ? "أجب على الأسئلة التالية" : "أكد توفر العقار والتفاصيل المطلوبة")
       : (side === "client" && !replied ? "ما رأيك بالعقار؟" : (side === "owner" && !replied ? "هل العقار ما زال متاحًا؟" : "")),
-    officeName: text(officeName) || "المكتب العقاري",
+    officeName: officeLabel,
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
+    officeProfileUrl: /^https:\/\//i.test(officeProfileUrl) ? officeProfileUrl : "",
+    officeCoordinationNotice: `يتم هذا التنسيق عبر مكتب ${officeLabel}، والمكتب مطّلع على الإجراءات لمتابعة الصفقة.`,
+    privacyNotice: "لن تتم مشاركة بيانات التواصل الخاصة بك مع الطرف الآخر عبر هذه الصفحة.",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot),
     actions: (replied || appointmentActive || bundleModeActive) ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
     followUpActions: replied && !appointmentActive && !bundleModeActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
-    coordinationForm: bundleModeActive ? coordinationForm : (bundleSubmitted ? { ...coordinationForm, submitted: true, bundleSummary } : null),
+    decisionPackage: bundleModeActive || bundleSubmitted ? decisionPackage : null,
+    coordinationForm: null,
     replied,
     replyLabel: bundleSubmitted
       ? bundleSummary
       : (replied ? partyActionLabel(side, replyAction) : ""),
     followUpLabel,
     revealedDetail: revealed,
-    appointment: publicAppointment
+    appointment: publicAppointment,
+    submitSuccessCopy: bundleSubmitted
+      ? `تم إرسال ردك إلى مكتب ${officeLabel}. المكتب مطّلع على الإجراءات وسيكمل التنسيق.`
+      : ""
   };
   const serialized = JSON.stringify(view);
   for (const key of SECRET_KEYS) {

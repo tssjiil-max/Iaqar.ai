@@ -266,3 +266,141 @@ html.is-party-mode .toast {
 .party-status.is-error {
   color: #9e3434;
 }
+
+.party-office-notice,
+.party-privacy-notice {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4a6b62;
+}
+
+.party-privacy-notice {
+  font-weight: 600;
+}
+
+.party-section-label {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #087064;
+}
+
+.party-package-section {
+  margin-bottom: 14px;
+}
+
+.party-package-section[hidden] {
+  display: none !important;
+}
+
+.party-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.party-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #c9e2da;
+  border-radius: 999px;
+  background: #f7fbf9;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.party-chip input {
+  margin: 0 6px 0 0;
+  width: 18px;
+  height: 18px;
+}
+
+.party-chip:has(input:checked) {
+  border-color: #087064;
+  background: #e8f6f1;
+  color: #087064;
+}
+
+.party-chip--toggle {
+  border-radius: 14px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.party-package-field {
+  margin-top: 8px;
+}
+
+.party-package-field label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.party-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  border: 1px solid #c9e2da;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.party-warning {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff6e8;
+  border: 1px solid #f0d59a;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b4f1d;
+}
+
+.party-file {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.party-photo-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.party-photo-preview img {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #eaf5f1;
+}
+
+.party-package-submit {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.party-send-icon {
+  font-size: 14px;
+}
+
+.party-package-field[hidden],
+.party-file[hidden] {
+  display: none !important;
+}

@@ -15,7 +15,7 @@ import {
   revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
-import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, resolveCoordinationLivingStage, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
+import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
 import {
   applyCoordinationToMatch,
   ensureCoordinationSession,
@@ -43,6 +43,49 @@ function js(doc, helpers) {
 }
 
 const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
+const PARTY_IMAGE_TYPES = Object.freeze({
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
+});
+
+async function parseBundleRequest(request) {
+  const contentType = String(request.headers?.get?.("content-type") || "").toLowerCase();
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const bundleRaw = form.get("bundle");
+    const bundle = bundleRaw ? JSON.parse(String(bundleRaw)) : {};
+    const photos = [];
+    for (const entry of form.getAll("photos")) {
+      if (entry && typeof entry === "object" && Number(entry.size || 0) > 0) {
+        photos.push(entry);
+      }
+    }
+    return { bundle, photos };
+  }
+  const body = await request.json().catch(() => ({}));
+  const bundle = body.bundle && typeof body.bundle === "object" ? body.bundle : body;
+  return { bundle, photos: [] };
+}
+
+async function uploadOwnerCoordinationPhoto(helpers, env, { officeId, offerId, file, index = 0 }) {
+  const bucket = env.IAQAR_MEDIA;
+  if (!bucket?.put) {
+    throw helpers.appError("media_storage_unavailable", 503, "تخزين الوسائط غير مفعّل");
+  }
+  const contentType = String(file.type || "").toLowerCase();
+  const ext = PARTY_IMAGE_TYPES[contentType];
+  if (!ext) throw helpers.appError("unsupported_media", 415, "نوع الصورة غير مدعوم");
+  if (Number(file.size || 0) > 8 * 1024 * 1024) {
+    throw helpers.appError("image_too_large", 413, "حجم الصورة يتجاوز 8 ميجابايت");
+  }
+  const key = `opportunity-sources/${officeId}/${offerId}/coord-party-${Date.now()}-${index}.${ext}`;
+  await bucket.put(key, file.stream ? file.stream() : file, {
+    httpMetadata: { contentType },
+    customMetadata: { officeId, offerId, uploadedAt: new Date().toISOString(), source: "party_coordination" }
+  });
+  return key;
+}
 
 export async function hashPartyToken(token, sha256Hex) {
   return sha256Hex(String(token || "").trim());
@@ -131,6 +174,8 @@ async function stampMatchLiving(helpers, {
   }));
   const coordinationOutcome = String(patch.coordinationOutcome || "");
   const coordinationBrokerLine = String(patch.coordinationBrokerLine || "");
+  const coordinationClientSummary = String(patch.coordinationClientSummary || "");
+  const coordinationOwnerSummary = String(patch.coordinationOwnerSummary || "");
   const fields = {
     livingStage: helpers.firestoreString(livingStage),
     missingInfoKey: helpers.firestoreString(missingInfoKey),
@@ -144,6 +189,8 @@ async function stampMatchLiving(helpers, {
   };
   if (coordinationOutcome) fields.coordinationOutcome = helpers.firestoreString(coordinationOutcome);
   if (coordinationBrokerLine) fields.coordinationBrokerLine = helpers.firestoreString(coordinationBrokerLine);
+  if (coordinationClientSummary) fields.coordinationClientSummary = helpers.firestoreString(coordinationClientSummary);
+  if (coordinationOwnerSummary) fields.coordinationOwnerSummary = helpers.firestoreString(coordinationOwnerSummary);
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", id],
@@ -165,7 +212,9 @@ async function stampMatchLiving(helpers, {
       hasNewResponse: helpers.firestoreString(hasNewResponse ? "true" : ""),
       nextActor: helpers.firestoreString(nextActor),
       ...(coordinationOutcome ? { coordinationOutcome: helpers.firestoreString(coordinationOutcome) } : {}),
-      ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {})
+      ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {}),
+      ...(coordinationClientSummary ? { coordinationClientSummary: helpers.firestoreString(coordinationClientSummary) } : {}),
+      ...(coordinationOwnerSummary ? { coordinationOwnerSummary: helpers.firestoreString(coordinationOwnerSummary) } : {})
     }
   });
 }
@@ -387,29 +436,44 @@ export async function loadPartyPublicView({ token, env, helpers }) {
   const logoUrl = workerHost
     ? `${workerHost}/media/public/office-covers/${encodeURIComponent(officeId)}/logo`
     : "";
+  const profileUrl = workerHost
+    ? `${workerHost}/media/public/office-covers/${encodeURIComponent(officeId)}/display`
+    : "";
   const snapshot = session.shareSnapshot?.permitted || session.snapshot || {};
+  const canonicalOffer = await loadCanonicalOfferListing(helpers, {
+    projectId,
+    officeId,
+    accessToken,
+    matchId: session.matchId,
+    session,
+    body: { offerId: session.offerId, ownerOfferId: session.offerId, opportunityId: session.opportunityId }
+  }) || {};
   const revealed = session.revealedDetail || revealedDetailFromSnapshot(snapshot, session.followUpAction || "");
   const coordination = await loadCoordinationSession(helpers, {
     projectId,
     officeId,
     matchId: session.matchId,
-    accessToken
+    accessToken,
+    canonicalOffer
   });
   return {
     session,
     officeId,
     sessionId,
+    canonicalOffer,
     view: sanitizePartyPublicView({
       party: session.party,
       status: session.status,
       snapshot,
       officeName: office.officeName || office.name || "المكتب العقاري",
       officeLogoUrl: logoUrl,
+      officeProfileUrl: profileUrl,
       replyAction: session.replyAction || "",
       followUpAction: session.followUpAction || "",
       revealedDetail: revealed,
       livingStage: session.livingStage || session.currentStage || "",
-      coordination
+      coordination,
+      canonicalOffer
     })
   };
 }
@@ -621,7 +685,7 @@ export async function handlePartySessionBundle({ token, env, request, requestId,
   }
 }
 
-async function submitPartyBundle({ token, env, request, requestId, helpers, ip }) {
+export async function submitPartyBundle({ token, env, request, requestId, helpers, ip }) {
   const limited = helpers.consumePublicRateLimit(
     helpers.publicRateLimitKey({ route: "party-bundle", ip }),
     helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY
@@ -633,19 +697,37 @@ async function submitPartyBundle({ token, env, request, requestId, helpers, ip }
   if (!loaded) {
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
   }
-  const body = await request.json().catch(() => ({}));
-  const bundle = body.bundle && typeof body.bundle === "object" ? body.bundle : body;
+  const { bundle, photos } = await parseBundleRequest(request);
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
   const accessToken = await helpers.getGoogleAccessToken(env);
   const matchId = String(loaded.session.matchId || "").trim();
   const party = loaded.session.party === "owner" ? "owner" : "client";
+  const offerId = String(loaded.session.offerId || loaded.canonicalOffer?.id || "").trim();
+  const canonicalOffer = loaded.canonicalOffer || {};
+  if (party === "owner" && photos.length) {
+    const mediaPaths = Array.isArray(bundle.mediaPaths) ? [...bundle.mediaPaths] : [];
+    for (let index = 0; index < photos.length; index += 1) {
+      const key = await uploadOwnerCoordinationPhoto(helpers, env, {
+        officeId: loaded.officeId,
+        offerId: offerId || matchId,
+        file: photos[index],
+        index
+      });
+      mediaPaths.push(key);
+    }
+    bundle.mediaPaths = [...new Set(mediaPaths)];
+  }
+  const locationUrl = text(canonicalOffer.locationUrl || canonicalOffer.mapUrl || loaded.view?.property?.locationUrl);
   const coordinationSession = await submitCoordinationBundle(helpers, {
     projectId,
     officeId: loaded.officeId,
     matchId,
     party,
     bundleRaw: bundle,
-    accessToken
+    accessToken,
+    canonicalOffer,
+    offerId,
+    locationUrl
   });
   await applyCoordinationToMatch(helpers, {
     projectId,
@@ -688,6 +770,10 @@ async function submitPartyBundle({ token, env, request, requestId, helpers, ip }
   });
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
+}
+
+function text(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
 export async function handleMatchLivingAction({

@@ -304,7 +304,7 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     ip: "2.2.2.2"
   });
   assert.equal(ownerView.body.view.title, "عميل مهتم بعقارك");
-  assert.equal(ownerView.body.view.coordinationForm?.mode, "coordination_bundle");
+  assert.equal(ownerView.body.view.decisionPackage?.mode, "decision_package_v1");
 
   const replied = await handlePartySessionBundle({
     token: client.body.token,
@@ -312,9 +312,10 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     request: {
       json: async () => ({
         bundle: {
-          interest: "interested",
-          nextAction: "viewing",
-          viewingWindows: ["tomorrow_evening"]
+          interestStatus: "interested",
+          wantsViewing: true,
+          viewingDays: ["tomorrow"],
+          viewingPeriods: ["evening"]
         }
       })
     },
@@ -325,12 +326,12 @@ test("client and owner sessions stay distinct and replies persist", async () => 
   assert.equal(replied.body.view.replied, true);
   assert.match(replied.body.view.replyLabel, /مهتم/);
   assert.deepEqual(replied.body.view.actions, []);
-  assert.equal(replied.body.view.coordinationForm?.submitted, true);
+  assert.equal(replied.body.view.decisionPackage?.submitted, true);
 
   const again = await handlePartySessionBundle({
     token: client.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ bundle: { interest: "not_suitable" } }) },
+    request: { json: async () => ({ bundle: { interestStatus: "not_suitable" } }) },
     requestId: "req-10",
     helpers,
     ip: "3.3.3.3"
@@ -492,8 +493,7 @@ test("needs_details keeps property data and stores the requested item", async ()
     request: {
       json: async () => ({
         bundle: {
-          interest: "interested",
-          nextAction: "more_info",
+          interestStatus: "interested",
           infoNeeds: ["photos"]
         }
       })
@@ -504,8 +504,8 @@ test("needs_details keeps property data and stores the requested item", async ()
   });
   const html = buildPartyShellHtml(replied.body.view);
   assert.match(html, /870,000/);
-  assert.match(html, /تم تسجيل ردك/);
-  assert.match(html, /معلومات/);
+  assert.match(html, /تم إرسال ردك|تم تسجيل ردك/);
+  assert.match(html, /صور/);
   const again = await handlePartySessionGet({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
@@ -514,7 +514,7 @@ test("needs_details keeps property data and stores the requested item", async ()
     ip: "9.9.9.9"
   });
   assert.equal(again.body.view.property.propertyType, "أرض");
-  assert.match(again.body.view.replyLabel, /معلومات/);
+  assert.match(again.body.view.replyLabel, /صور/);
 });
 
 test("generic placeholders never become runtime property values", () => {

@@ -128,15 +128,26 @@ async function submitReply(token, action, button) {
   }
 }
 
-async function submitBundle(token, bundle, button) {
+async function submitBundle(token, bundle, button, photoFiles = []) {
   button.disabled = true;
   showStatus("");
   try {
-    const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundle })
-    });
+    let response;
+    if (photoFiles.length) {
+      const form = new FormData();
+      form.append("bundle", JSON.stringify(bundle));
+      photoFiles.forEach((file) => form.append("photos", file));
+      response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
+        method: "POST",
+        body: form
+      });
+    } else {
+      response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle })
+      });
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok || !payload.view) {
       throw new Error(payload.message || "تعذر تسجيل الرد.");
@@ -148,71 +159,122 @@ async function submitBundle(token, bundle, button) {
   }
 }
 
-function collectBundleFromForm(root) {
-  const bundle = {};
-  root.querySelectorAll("[data-bundle-choice]").forEach((button) => {
-    if (button.classList.contains("is-selected")) {
-      bundle[button.getAttribute("data-bundle-choice")] = button.getAttribute("data-bundle-value");
+function collectPackageFromForm(root, party = "client") {
+  const bundle = { propertyAvailability: "", viewingAllowed: "" };
+  root.querySelectorAll("[data-package-field]").forEach((input) => {
+    const field = input.getAttribute("data-package-field");
+    if (!field) return;
+    if (input.type === "radio") {
+      if (!input.checked) return;
+      bundle[field] = input.value;
+      return;
+    }
+    if (input.type === "checkbox") {
+      if (!input.checked) return;
+      if (!Array.isArray(bundle[field])) bundle[field] = [];
+      bundle[field].push(input.value);
     }
   });
-  root.querySelectorAll("[data-bundle-field]").forEach((input) => {
-    if (!input.checked) return;
-    const field = input.getAttribute("data-bundle-field");
-    if (!field) return;
-    if (!Array.isArray(bundle[field])) bundle[field] = [];
-    bundle[field].push(input.value);
-  });
-  root.querySelectorAll("[data-bundle-bool]").forEach((input) => {
-    const field = input.getAttribute("data-bundle-bool");
+  root.querySelectorAll("[data-package-bool]").forEach((input) => {
+    const field = input.getAttribute("data-package-bool");
     if (field) bundle[field] = Boolean(input.checked);
   });
+  root.querySelectorAll("[data-package-number]").forEach((input) => {
+    const field = input.getAttribute("data-package-number");
+    if (!field) return;
+    const value = Number(input.value);
+    if (Number.isFinite(value) && value > 0) bundle[field] = value;
+  });
+  const specValues = {};
+  root.querySelectorAll("[data-package-spec]").forEach((input) => {
+    const key = input.getAttribute("data-package-spec");
+    if (!key) return;
+    const raw = input.type === "number" ? Number(input.value) : String(input.value || "").trim();
+    if (raw === "" || raw === 0) return;
+    specValues[key] = raw;
+  });
+  if (Object.keys(specValues).length) bundle.specValues = specValues;
+  if (party === "owner") {
+    bundle.locationShare = Boolean(bundle.locationShare);
+    if (bundle.mediaAdded) bundle.mediaAdded = true;
+  }
   return bundle;
 }
 
-function stepVisible(stepEl, bundle = {}) {
-  const whenRaw = stepEl.getAttribute("data-bundle-when");
-  if (!whenRaw || whenRaw === "null") return true;
-  try {
-    const when = JSON.parse(whenRaw);
-    if (!when || typeof when !== "object") return true;
-    return Object.entries(when).every(([key, value]) => String(bundle[key] || "") === String(value));
-  } catch {
-    return true;
+function refreshPackageSections(root) {
+  const party = root.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
+  const bundle = collectPackageFromForm(root, party);
+  const interest = String(bundle.interestStatus || "");
+  const notSuitable = interest === "not_suitable";
+  const positive = interest === "interested" || interest === "preliminary_ok";
+  const infoSection = root.querySelector("[data-package-section=\"infoNeeds\"]");
+  const specSection = root.querySelector("[data-package-section=\"specNeeds\"]");
+  const viewingToggle = root.querySelector("[data-package-section=\"wantsViewing\"]");
+  const viewingSection = root.querySelector("[data-package-section=\"viewing\"]");
+  if (infoSection) infoSection.hidden = notSuitable || !positive;
+  const wantsSpecs = (bundle.infoNeeds || []).includes("specifications");
+  if (specSection) specSection.hidden = notSuitable || !wantsSpecs;
+  if (viewingToggle) viewingToggle.hidden = notSuitable || !positive;
+  if (viewingSection) viewingSection.hidden = notSuitable || !bundle.wantsViewing;
+  if (party === "owner") {
+    const available = bundle.propertyAvailability === "available";
+    const unavailable = bundle.propertyAvailability === "not_available";
+    root.querySelectorAll("[data-package-section=\"price\"],[data-package-section=\"photos\"],[data-package-section=\"location\"],[data-package-section=\"ownerSpecs\"],[data-package-section=\"ownerViewing\"]").forEach((node) => {
+      if (unavailable) node.hidden = true;
+      else if (node.getAttribute("data-package-section") === "ownerViewing") node.hidden = !available;
+      else node.hidden = !available;
+    });
+    const photosSection = root.querySelector("[data-package-section=\"photos\"]");
+    const fileInput = root.querySelector("[data-package-photos]");
+    if (fileInput) fileInput.hidden = !bundle.mediaAdded;
+    if (photosSection && bundle.mediaAdded && fileInput) fileInput.hidden = false;
+    const ownerAvailability = root.querySelector("[data-package-section=\"ownerAvailability\"]");
+    if (ownerAvailability) ownerAvailability.hidden = bundle.viewingAllowed !== "yes";
+    const updatedPrice = root.querySelector("[data-package-section=\"updatedPrice\"]");
+    if (updatedPrice) updatedPrice.hidden = bundle.priceConfirmation !== "updated";
   }
 }
 
-function refreshBundleSteps(root) {
-  const bundle = collectBundleFromForm(root);
-  root.querySelectorAll("[data-bundle-step]").forEach((stepEl) => {
-    stepEl.hidden = !stepVisible(stepEl, bundle);
-  });
-}
-
-function bindCoordinationForm(root, token) {
-  const form = root.querySelector("[data-party-coordination-form]");
+function bindDecisionPackage(root, token) {
+  const form = root.querySelector("[data-party-decision-package]");
   if (!form) return;
-  form.querySelectorAll("[data-bundle-choice]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const field = button.getAttribute("data-bundle-choice");
-      form.querySelectorAll(`[data-bundle-choice="${field}"]`).forEach((node) => {
-        node.classList.remove("is-selected");
-      });
-      button.classList.add("is-selected");
-      refreshBundleSteps(form);
+  const party = root.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
+  form.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("change", () => refreshPackageSections(form));
+  });
+  const mediaToggle = form.querySelector("[data-package-bool=\"mediaAdded\"]");
+  const fileInput = form.querySelector("[data-package-photos]");
+  const preview = form.querySelector("[data-package-photo-preview]");
+  if (mediaToggle && fileInput) {
+    mediaToggle.addEventListener("change", () => {
+      fileInput.hidden = !mediaToggle.checked;
+      if (!mediaToggle.checked && preview) preview.innerHTML = "";
     });
-  });
-  form.querySelectorAll("[data-bundle-field], [data-bundle-bool]").forEach((input) => {
-    input.addEventListener("change", () => refreshBundleSteps(form));
-  });
+  }
+  if (fileInput && preview) {
+    fileInput.addEventListener("change", () => {
+      preview.innerHTML = "";
+      Array.from(fileInput.files || []).forEach((file) => {
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        preview.appendChild(img);
+      });
+    });
+  }
   const submit = form.querySelector("[data-party-bundle-submit]");
   if (submit) {
     submit.addEventListener("click", () => {
       if (submit.disabled) return;
-      const bundle = collectBundleFromForm(form);
-      void submitBundle(token, bundle, submit);
+      const bundle = collectPackageFromForm(form, party);
+      const photos = fileInput && !fileInput.hidden ? Array.from(fileInput.files || []) : [];
+      void submitBundle(token, bundle, submit, photos);
     });
   }
-  refreshBundleSteps(form);
+  refreshPackageSections(form);
+}
+
+function bindCoordinationForm(root, token) {
+  bindDecisionPackage(root, token);
 }
 
 function bindActions(root, token) {

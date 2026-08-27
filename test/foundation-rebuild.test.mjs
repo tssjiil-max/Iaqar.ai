@@ -282,7 +282,7 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
     token: minted.body.token, env: { DEPLOYMENT_ENV: "staging" }, requestId: "g2", helpers, ip: "1.1.1.1"
   });
   const html = buildPartyShellHtml(before.body.view);
-  assert.match(html, /data-party-coordination-form|ما رأيك بالعقار؟/);
+  assert.match(html, /data-party-decision-package|data-party-coordination-form|ما رأيك بالعقار؟/);
   assert.match(html, />مهتم</);
   assert.match(html, /850,000/);
   assert.equal(html.includes("0500000000"), false);
@@ -292,8 +292,7 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
     request: {
       json: async () => ({
         bundle: {
-          interest: "interested",
-          nextAction: "more_info",
+          interestStatus: "interested",
           infoNeeds: ["price"]
         }
       })
@@ -304,7 +303,7 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
   });
   const detailsHtml = buildPartyShellHtml(details.body.view);
   assert.match(detailsHtml, /850,000/);
-  assert.match(detailsHtml, /تم تسجيل ردك/);
+  assert.match(detailsHtml, /تم إرسال ردك|تم تسجيل ردك/);
 
   const mintedInterested = await handlePartySessionMint({
     request: { json: async () => ({ officeId: "office-1", matchId: "match_interest", party: "client", offerId: "offer_1" }) },
@@ -321,9 +320,10 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
     request: {
       json: async () => ({
         bundle: {
-          interest: "interested",
-          nextAction: "viewing",
-          viewingWindows: ["tomorrow_evening"]
+          interestStatus: "interested",
+          wantsViewing: true,
+          viewingDays: ["tomorrow"],
+          viewingPeriods: ["evening"]
         }
       })
     },
@@ -333,7 +333,7 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
   });
   const interestedHtml = buildPartyShellHtml(interested.body.view);
   assert.match(interestedHtml, /850,000/);
-  assert.match(interestedHtml, /تم تسجيل ردك/);
+  assert.match(interestedHtml, /تم إرسال ردك|تم تسجيل ردك/);
   assert.match(interestedHtml, /مهتم|معاينة/);
 });
 
