@@ -4,6 +4,14 @@
  * Does not create Operations Center items or send messages.
  */
 
+import {
+  areTransactionIntentsCompatible,
+  normalizeTransactionIntent,
+  opportunityKindFromTransactionIntent,
+  purposeFromTransactionIntent,
+  resolveTransactionIntentFromRecord
+} from "../../public/js/transaction-intent-domain.js";
+
 export const MATCHING_RULE_VERSION = "4.0.0";
 
 export const MATCHING_CONFIG = Object.freeze({
@@ -142,21 +150,33 @@ export function rangeGapRatio(a, b) {
   return gap / midpoint;
 }
 
-/** Map Phase 2 purpose / legacy transactionType into sale|rent. */
+/** Map canonical transactionIntent (or legacy purpose) into sale|rent for scoring. */
 export function normalizeTransactionType(record = {}) {
+  const intent = resolveTransactionIntentFromRecord(record);
+  if (intent) {
+    const purpose = purposeFromTransactionIntent(intent);
+    if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "rent";
+    if (purpose === "SALE" || purpose === "PURCHASE") return "sale";
+  }
   const raw = String(record.transactionType || record.purpose || "").trim().toUpperCase();
   if (["RENT", "LEASE", "LEASE_REQUEST", "إيجار", "تأجير"].includes(raw) || raw === "RENT") return "rent";
   if (raw === "SALE" || raw === "PURCHASE" || raw === "BUY" || raw === "بيع" || raw === "شراء") return "sale";
   const lower = String(record.transactionType || "").toLowerCase();
   if (lower === "rent") return "rent";
-  if (lower === "sale") return "sale";
-  return lower || "sale";
+  if (lower === "sale" || lower === "purchase") return "sale";
+  return "";
 }
 
 export function normalizeOpportunitySide(record = {}) {
   const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
   if (kind.includes("OFFER") || kind === "OWNER" || kind.includes("OWNER")) return "offer";
   if (kind.includes("REQUEST") || kind === "CLIENT" || kind.includes("CLIENT")) return "request";
+  const intent = resolveTransactionIntentFromRecord(record);
+  if (intent) {
+    const derived = opportunityKindFromTransactionIntent(intent);
+    if (derived === "OFFER") return "offer";
+    if (derived === "REQUEST") return "request";
+  }
   if (String(record.sourceCollection || "") === "owners") return "offer";
   if (String(record.sourceCollection || "") === "clients") return "request";
   return "";
@@ -176,13 +196,15 @@ export function isActiveLifecycle(record = {}) {
 
 export function opportunityToMatchInput(record = {}, { id = "" } = {}) {
   const price = record.priceOrBudget ?? record.price ?? null;
+  const intent = resolveTransactionIntentFromRecord(record);
   return {
     id: String(id || record.id || ""),
     city: record.city || "",
     district: record.district || "",
     propertyType: record.propertyType || "",
     transactionType: normalizeTransactionType(record),
-    purpose: record.purpose || "",
+    transactionIntent: intent || "",
+    purpose: intent ? purposeFromTransactionIntent(intent) : (record.purpose || ""),
     opportunityKind: record.opportunityKind || "",
     price: price == null || price === "" ? 0 : Number(price),
     priceMin: record.priceMin != null ? Number(record.priceMin) : undefined,
@@ -207,6 +229,14 @@ export function counterpartsEligible(sourceRecord, candidateRecord) {
   const sourceSide = normalizeOpportunitySide(sourceRecord);
   const candidateSide = normalizeOpportunitySide(candidateRecord);
   if (sourceSide && candidateSide && sourceSide === candidateSide) return false;
+
+  const sourceIntent = normalizeTransactionIntent(sourceRecord.transactionIntent)
+    || resolveTransactionIntentFromRecord(sourceRecord);
+  const candidateIntent = normalizeTransactionIntent(candidateRecord.transactionIntent)
+    || resolveTransactionIntentFromRecord(candidateRecord);
+  if (!sourceIntent || !candidateIntent) return false;
+  if (!areTransactionIntentsCompatible(sourceIntent, candidateIntent)) return false;
+
   const sourceTx = normalizeTransactionType(sourceRecord);
   const candidateTx = normalizeTransactionType(candidateRecord);
   if (sourceTx && candidateTx && sourceTx !== candidateTx) return false;

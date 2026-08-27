@@ -30,6 +30,7 @@ import { readRepositoryFile } from "./helpers/shell.mjs";
 const offer = {
   id: "opp_offer",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "الرياض",
   district: "النرجس",
@@ -45,6 +46,7 @@ const offer = {
 const request = {
   id: "opp_request",
   opportunityKind: "REQUEST",
+  transactionIntent: "BUY",
   purpose: "PURCHASE",
   city: "الرياض",
   district: "النرجس",
@@ -76,8 +78,8 @@ test("compatible offer/request scores above threshold with Arabic reasons", () =
 
 test("sale-rent conflict is rejected", () => {
   const scored = scoreMatch(
-    opportunityToMatchInput({ ...offer, purpose: "SALE" }),
-    opportunityToMatchInput({ ...request, purpose: "RENT" })
+    opportunityToMatchInput({ ...offer, transactionIntent: "SELL", purpose: "SALE" }),
+    opportunityToMatchInput({ ...request, transactionIntent: "RENT_IN", purpose: "LEASE_REQUEST" })
   );
   assert.equal(scored.eligible, false);
 });

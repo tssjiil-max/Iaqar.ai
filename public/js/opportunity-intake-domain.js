@@ -6,6 +6,10 @@
  */
 
 import { extractArabicOpportunityText } from "./opportunity-text-extraction.js";
+import {
+  purposeFromTransactionIntent,
+  resolveTransactionIntentFromRecord
+} from "./transaction-intent-domain.js";
 import { evaluateMatchingReadiness } from "./opportunity-readiness-domain.js";
 
 export const INTAKE_STATES = Object.freeze([
@@ -177,7 +181,10 @@ export function isLandProperty(value) {
 }
 
 export function normalizeOpportunityFinancials(fields = {}) {
-  const purpose = normalizePurpose(fields.purpose || fields.transactionType || fields.transactionTypeLabel);
+  const resolvedIntent = resolveTransactionIntentFromRecord(fields);
+  const purpose = resolvedIntent
+    ? purposeFromTransactionIntent(resolvedIntent)
+    : normalizePurpose(fields.purpose || fields.transactionType || fields.transactionTypeLabel);
   const legacy = nullableNumber(fields.priceOrBudget ?? fields.price);
   const salePrice = purpose === "SALE" ? (nullableNumber(fields.salePrice) ?? legacy) : null;
   const annualRent = purpose === "RENT" ? (nullableNumber(fields.annualRent) ?? legacy) : null;
@@ -201,6 +208,7 @@ export function normalizeOpportunityFinancials(fields = {}) {
   return {
     ...fields,
     purpose,
+    transactionIntent: resolvedIntent || fields.transactionIntent || null,
     transactionType: TRANSACTION_BY_PURPOSE[purpose] || "",
     salePrice,
     annualRent,
@@ -489,6 +497,7 @@ export function buildOpportunityRecord({
     sourceType,
     sourceReference: safeText(sourceReference, 500),
     opportunityKind: safeText(normalizedFields.opportunityKind, 20),
+    transactionIntent: normalizedFields.transactionIntent || null,
     purpose: normalizedFields.purpose,
     propertyType: safeText(normalizedFields.propertyType, 40),
     city: safeText(normalizedFields.city, 80),

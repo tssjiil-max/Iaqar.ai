@@ -548,6 +548,59 @@
     return window.IAQARPublicClientIntake || null;
   }
 
+  function transactionIntentFieldHtml(owner) {
+    const choices = owner
+      ? [{ intent: "SELL", label: "بيع" }, { intent: "RENT_OUT", label: "إيجار" }]
+      : [{ intent: "BUY", label: "شراء" }, { intent: "RENT_IN", label: "استئجار" }];
+    const buttons = choices.map((choice) =>
+      `<button type="button" class="access-btn light intent-choice" data-intent="${escapeHtml(choice.intent)}">${escapeHtml(choice.label)}</button>`
+    ).join("");
+    return `<div class="full"><span>نوع العملية (إلزامي)</span>
+      <div class="access-options intent-choice-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${buttons}</div>
+      <input type="hidden" name="transactionIntent" id="transactionIntentInput" required></div>`;
+  }
+
+  function bindTransactionIntentChoices(form, onChange) {
+    const hidden = form?.querySelector("#transactionIntentInput");
+    if (!hidden) return;
+    const buttons = form.querySelectorAll(".intent-choice");
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        buttons.forEach((entry) => {
+          entry.classList.remove("secondary");
+          entry.classList.add("light");
+        });
+        btn.classList.remove("light");
+        btn.classList.add("secondary");
+        hidden.value = btn.dataset.intent || "";
+        if (onChange) onChange();
+      });
+    });
+  }
+
+  function applyTransactionIntentPrefill(form, transactionIntent, onChange) {
+    const hidden = form?.querySelector("#transactionIntentInput");
+    if (!hidden || !transactionIntent) return;
+    hidden.value = transactionIntent;
+    const btn = form.querySelector(`.intent-choice[data-intent="${transactionIntent}"]`);
+    if (btn) {
+      form.querySelectorAll(".intent-choice").forEach((entry) => {
+        entry.classList.remove("secondary");
+        entry.classList.add("light");
+      });
+      btn.classList.remove("light");
+      btn.classList.add("secondary");
+    }
+    if (onChange) onChange();
+  }
+
+  function purposeFromTransactionIntent(intent) {
+    const api = window.IAQARTransactionIntent;
+    if (api?.purposeFromTransactionIntent) return api.purposeFromTransactionIntent(intent);
+    const map = { SELL: "SALE", BUY: "PURCHASE", RENT_OUT: "RENT", RENT_IN: "LEASE_REQUEST" };
+    return map[String(intent || "").trim().toUpperCase()] || "";
+  }
+
   function renderDynamicClientFields(container, requestKind, propertyType) {
     const api = clientIntakeApi();
     if (!container || !api) return;
@@ -620,9 +673,13 @@
     set("name", values.name);
     set("phone", values.phone);
     set("city", values.city);
-    if (!owner) set("requestKind", values.requestKind);
     set("propertyType", values.propertyType);
     set("district", values.district);
+    if (values.transactionIntent) {
+      applyTransactionIntentPrefill(form, values.transactionIntent, refreshClientDynamic);
+    } else if (!owner) {
+      set("requestKind", values.requestKind);
+    }
     if (!owner) refreshClientDynamic();
     set("budget", values.budget);
     set("annualRent", values.annualRent);
@@ -677,12 +734,11 @@
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        ${owner ? "" : `<label class="full"><span>نوع الطلب (إلزامي)</span>
-          <input name="requestKind" id="requestKindInput" maxlength="40" required autocomplete="off"
-            placeholder="اكتب نوع الطلب (مثل: شراء أو استئجار)"></label>`}
+        ${owner ? "" : ""}
         <label class="full"><span>نوع العقار (إلزامي)</span>
           <input name="propertyType" id="propertyTypeInput" maxlength="40" required autocomplete="off"
             placeholder="اكتب نوع العقار"></label>
+        ${transactionIntentFieldHtml(owner)}
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
         <label class="full"><span>الحي (إلزامي)</span>
@@ -705,21 +761,19 @@
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : (isPlatformAddRoute ? platformAddChoice() : home())));
     const propertyInput = gate.querySelector("#propertyTypeInput");
     const districtInput = gate.querySelector("#districtInput");
-    const requestKindInput = gate.querySelector("#requestKindInput");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
+    const intakeFormEl = gate.querySelector("#intakeForm");
     const clientApi = clientIntakeApi();
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
+      const intentInput = intakeFormEl?.querySelector("#transactionIntentInput");
       const requestKind = clientApi?.normalizeRequestKind
-        ? clientApi.normalizeRequestKind(requestKindInput?.value || "")
-        : String(requestKindInput?.value || "").trim();
+        ? clientApi.normalizeRequestKind(intentInput?.value || "")
+        : String(intentInput?.value || "").trim();
       const propertyType = String(propertyInput?.value || "").trim();
       renderDynamicClientFields(dynamicFields, requestKind, propertyType);
     };
-    if (requestKindInput) {
-      requestKindInput.addEventListener("input", () => refreshClientDynamic());
-      refreshClientDynamic();
-    }
+    bindTransactionIntentChoices(intakeFormEl, () => refreshClientDynamic());
     if (propertyInput) propertyInput.addEventListener("input", () => refreshClientDynamic());
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
@@ -740,10 +794,10 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const city = String(fields.get("city") || "").trim();
       if (!city) return showStatus("أدخل المدينة.");
-      const requestKind = owner ? "" : (clientIntakeApi()?.normalizeRequestKind
-        ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
-        : String(fields.get("requestKind") || "").trim());
-      if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
+      const transactionIntent = String(fields.get("transactionIntent") || "").trim();
+      if (!transactionIntent) return showStatus("اختر نوع العملية.");
+      const purpose = purposeFromTransactionIntent(transactionIntent);
+      if (!purpose) return showStatus("نوع العملية غير صالح.");
       const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
       if (owner && !(priceOrBudget > 0)) return showStatus("أدخل السعر أو الإيجار السنوي.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
@@ -784,16 +838,20 @@
         if (owner) {
           intakePayload = {
             officeId: targetOffice, kind,
+            opportunityKind: "OFFER",
+            transactionIntent,
             name,
             phone,
             city,
             propertyType,
             district,
             details: String(fields.get("details") || "").trim(),
-            salePrice: priceOrBudget,
+            salePrice: purpose === "SALE" ? priceOrBudget : null,
+            annualRent: purpose === "RENT" ? priceOrBudget : null,
             amount: priceOrBudget,
             priceOrBudget,
-            purpose: "SALE",
+            purpose,
+            transactionType: purpose === "SALE" ? "sale" : "rent",
             mediaPaths,
             imageCount: images.length,
             hasVideo: Boolean(video),
@@ -813,7 +871,8 @@
             city,
             district,
             propertyType,
-            requestKind,
+            transactionIntent,
+            requestKind: clientIntakeApi()?.normalizeRequestKind(transactionIntent) || "",
             details: fields.get("details"),
             budget: fields.get("budget"),
             annualRent: fields.get("annualRent"),

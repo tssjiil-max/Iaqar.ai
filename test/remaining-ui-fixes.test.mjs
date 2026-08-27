@@ -50,14 +50,15 @@ test("access-gate owner intake includes required price field", () => {
   assert.ok(gate.includes("السعر أو الإيجار السنوي"));
 });
 
-test("access-gate public forms use plain text inputs without catalog selects", () => {
+test("access-gate public forms use transaction intent buttons without catalog selects", () => {
   const gate = readRepo("public", "js", "access-gate.js");
   assert.ok(gate.includes("id=\"propertyTypeInput\""));
   assert.ok(gate.includes("id=\"districtInput\""));
-  assert.ok(gate.includes("id=\"requestKindInput\""));
+  assert.ok(gate.includes("id=\"transactionIntentInput\""));
+  assert.ok(gate.includes("intent-choice"));
   assert.equal(gate.includes("id=\"propertyTypeSelect\""), false);
   assert.equal(gate.includes("id=\"districtSelect\""), false);
-  assert.equal(gate.includes("id=\"requestKindSelect\""), false);
+  assert.equal(gate.includes("id=\"requestKindInput\""), false);
   assert.equal(gate.includes("wireArabicSuggestInput(propertyInput"), false);
   assert.doesNotMatch(gate, /<select[^>]*name="requestKind"/);
 });

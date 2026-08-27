@@ -37,11 +37,14 @@ test("needs-completion shows exact Arabic missing field names", () => {
 test("best next action after agreement points to deal completion", () => {
   const record = {
     id: "opp_a",
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     purpose: "SALE",
     propertyType: "أرض",
     city: "الرياض",
     district: "الوبرة",
-    price: 1000000,
+    salePrice: 1000000,
+    priceOrBudget: 1000000,
     area: 900,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678",
@@ -55,11 +58,14 @@ test("best next action after agreement points to deal completion", () => {
 test("best next action after refusal points to lifecycle close", () => {
   const record = {
     id: "opp_a",
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     purpose: "SALE",
     propertyType: "أرض",
     city: "الرياض",
     district: "الوبرة",
-    price: 1000000,
+    salePrice: 1000000,
+    priceOrBudget: 1000000,
     area: 900,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678",
@@ -71,7 +77,20 @@ test("best next action after refusal points to lifecycle close", () => {
 });
 
 test("real match count drives review action", () => {
-  const record = { id: "opp_a", purpose: "SALE", propertyType: "أرض", city: "الرياض", district: "الوبرة", price: 1000000, area: 900, advertiserRole: "OWNER", advertiserPhoneNormalized: "+966512345678" };
+  const record = {
+    id: "opp_a",
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
+    purpose: "SALE",
+    propertyType: "أرض",
+    city: "الرياض",
+    district: "الوبرة",
+    salePrice: 1000000,
+    priceOrBudget: 1000000,
+    area: 900,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966512345678"
+  };
   const matches = [
     { matchId: "m1", score: 82, opportunityId: "opp_a", counterpartOpportunityId: "opp_b", isCurrent: true, status: "active" },
     { matchId: "m2", score: 71, opportunityId: "opp_a", counterpartOpportunityId: "opp_c", isCurrent: true, status: "active" }
@@ -112,11 +131,14 @@ test("workspace header hides contact when incomplete", () => {
   const incomplete = buildWorkspaceHeader({ propertyType: "شقة" });
   assert.equal(incomplete.isReadyForMatching, false);
   const ready = buildWorkspaceHeader({
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     propertyType: "أرض",
     purpose: "SALE",
     city: "الرياض",
     district: "الوبرة",
-    price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     area: 900,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678",

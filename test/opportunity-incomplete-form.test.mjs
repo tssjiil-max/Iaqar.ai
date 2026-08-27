@@ -8,6 +8,7 @@ import {
   mergeIncompleteFormPreview
 } from "../public/js/opportunity-workspace-domain.js";
 import { evaluateMatchingReadiness } from "../public/js/opportunity-readiness-domain.js";
+import { TRANSACTION_INTENT } from "../public/js/transaction-intent-domain.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -18,7 +19,7 @@ function readRepo(...parts) {
   return readFileSync(path.join(root, "..", ...parts), "utf8");
 }
 
-test("missing purpose shows free-text purpose field for client request", () => {
+test("missing transaction intent shows free-text operation field for client request", () => {
   const record = {
     opportunityKind: "REQUEST",
     contactType: "buyer",
@@ -30,28 +31,28 @@ test("missing purpose shows free-text purpose field for client request", () => {
     advertiserPhoneNormalized: "+966512345678"
   };
   const readiness = evaluateMatchingReadiness(record);
-  assert.ok(readiness.matchingReadinessMissing.includes("purpose"));
+  assert.ok(readiness.matchingReadinessMissing.includes("transactionIntent"));
   const fields = buildIncompleteFormFields(record, readiness);
-  const purposeField = fields.find((f) => f.key === "purpose");
+  const intentField = fields.find((f) => f.key === "transactionIntent");
   const propertyField = fields.find((f) => f.key === "propertyType");
-  assert.equal(purposeField?.type, "text");
-  assert.equal(purposeField?.label, "الغرض");
+  assert.equal(intentField?.type, "text");
+  assert.equal(intentField?.label, "نوع العملية");
   assert.equal(propertyField, undefined);
 });
 
-test("owner offer purpose options are sale and rent", () => {
+test("owner offer intent options are sell and rent out", () => {
   const opts = purposeOptionsForRecord({ opportunityKind: "OFFER", contactType: "owner" });
-  assert.deepEqual(opts.map((o) => o.value), ["SALE", "RENT"]);
-  assert.deepEqual(opts.map((o) => o.label), ["بيع", "تأجير"]);
+  assert.deepEqual(opts.map((o) => o.value), [TRANSACTION_INTENT.SELL, TRANSACTION_INTENT.RENT_OUT]);
+  assert.deepEqual(opts.map((o) => o.label), ["بيع", "إيجار"]);
 });
 
-test("client request purpose options are purchase and lease", () => {
+test("client request intent options are buy and rent in", () => {
   const opts = purposeOptionsForRecord({ opportunityKind: "REQUEST", contactType: "buyer" });
-  assert.deepEqual(opts.map((o) => o.value), ["PURCHASE", "LEASE_REQUEST"]);
-  assert.deepEqual(opts.map((o) => o.label), ["شراء", "إيجار"]);
+  assert.deepEqual(opts.map((o) => o.value), [TRANSACTION_INTENT.BUY, TRANSACTION_INTENT.RENT_IN]);
+  assert.deepEqual(opts.map((o) => o.label), ["شراء", "استئجار"]);
 });
 
-test("after purpose save preview becomes ready when other fields complete", () => {
+test("after transaction intent save preview becomes ready when other fields complete", () => {
   const record = {
     opportunityKind: "OFFER",
     contactType: "owner",
@@ -59,13 +60,15 @@ test("after purpose save preview becomes ready when other fields complete", () =
     city: "الرياض",
     district: "الوبرة",
     price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     area: 900,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678"
   };
   const readiness = evaluateMatchingReadiness(record);
-  assert.ok(readiness.matchingReadinessMissing.includes("purpose"));
-  const merged = mergeIncompleteFormPreview(record, { purpose: "SALE" });
+  assert.ok(readiness.matchingReadinessMissing.includes("transactionIntent"));
+  const merged = mergeIncompleteFormPreview(record, { transactionIntent: "بيع" });
   const after = evaluateMatchingReadiness(merged);
   assert.equal(after.isReadyForMatching, true);
   assert.deepEqual(after.matchingReadinessMissing, []);
@@ -75,24 +78,34 @@ test("stays incomplete when another required field remains", () => {
   const record = {
     opportunityKind: "REQUEST",
     propertyType: "شقة",
+    transactionIntent: TRANSACTION_INTENT.BUY,
     purpose: "PURCHASE"
   };
-  const merged = mergeIncompleteFormPreview(record, { purpose: "PURCHASE" });
+  const merged = mergeIncompleteFormPreview(record, { transactionIntent: "شراء" });
   const after = evaluateMatchingReadiness(merged);
   assert.equal(after.isReadyForMatching, false);
   assert.ok(after.matchingReadinessMissing.length > 0);
 });
 
-test("incomplete form HTML uses free-text purpose input", () => {
+test("incomplete form HTML uses free-text transaction intent input", () => {
   const ui = readRepo("public", "js", "opportunity-bank-workspace-ui.js");
   const bank = readRepo("public", "js", "opportunity-bank.js");
-  assert.equal(/select[^>]*name="purpose"/.test(ui), false);
-  assert.equal(ui.includes("purpose_select"), false);
-  assert.ok(bank.includes("purpose: 'input[name=\"purpose\"]'"));
+  assert.equal(/select[^>]*name="transactionIntent"/.test(ui), false);
+  assert.ok(bank.includes("transactionIntent: 'input[name=\"transactionIntent\"]'"));
 });
 
 test("propertyType missing shows نوع العقار field only once", () => {
-  const record = { purpose: "SALE", propertyType: "", city: "الرياض", district: "حي", price: 1, advertiserRole: "OWNER", advertiserPhoneNormalized: "+966511122233" };
+  const record = {
+    transactionIntent: TRANSACTION_INTENT.SELL,
+    purpose: "SALE",
+    propertyType: "",
+    city: "الرياض",
+    district: "حي",
+    salePrice: 1,
+    priceOrBudget: 1,
+    advertiserRole: "OWNER",
+    advertiserPhoneNormalized: "+966511122233"
+  };
   const readiness = evaluateMatchingReadiness(record);
   const fields = buildIncompleteFormFields(record, readiness);
   const propertyFields = fields.filter((f) => f.key === "propertyType");
@@ -106,7 +119,16 @@ test("contact party label never returns raw office for client request", () => {
 });
 
 test("incomplete phone shows full phone field label", () => {
-  const record = { purpose: "SALE", propertyType: "شقة", city: "الرياض", district: "الوبرة", price: 1, advertiserRole: "OWNER" };
+  const record = {
+    transactionIntent: TRANSACTION_INTENT.SELL,
+    purpose: "SALE",
+    propertyType: "شقة",
+    city: "الرياض",
+    district: "الوبرة",
+    salePrice: 1,
+    priceOrBudget: 1,
+    advertiserRole: "OWNER"
+  };
   const readiness = evaluateMatchingReadiness(record);
   const fields = buildIncompleteFormFields(record, readiness);
   const phone = fields.find((f) => f.key === "contactPhone");
@@ -137,11 +159,13 @@ test("incomplete form DOM has single designed phone field and direct save", asyn
   const { evaluateMatchingReadiness } = await import("../public/js/opportunity-readiness-domain.js");
   const record = {
     opportunityKind: "OFFER",
+    transactionIntent: TRANSACTION_INTENT.SELL,
     purpose: "SALE",
     propertyType: "دور",
     city: "الرياض",
     district: "الوبرة",
-    price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     advertiserRole: "OWNER"
   };
   const html = buildNeedsCompletionDetailHtml("opp-phone", record, evaluateMatchingReadiness(record));
@@ -170,11 +194,13 @@ test("incomplete form DOM has single designed phone field and direct save", asyn
 test("merge preview applies phone for readiness after valid local input", () => {
   const record = {
     opportunityKind: "OFFER",
+    transactionIntent: TRANSACTION_INTENT.SELL,
     purpose: "SALE",
     propertyType: "شقة",
     city: "الرياض",
     district: "الوبرة",
-    price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     advertiserRole: "OWNER"
   };
   const before = evaluateMatchingReadiness(record);
@@ -187,11 +213,13 @@ test("merge preview applies phone for readiness after valid local input", () => 
 test("merge preview normalizes Arabic advertiser role for readiness", () => {
   const record = {
     opportunityKind: "OFFER",
+    transactionIntent: TRANSACTION_INTENT.SELL,
     purpose: "SALE",
     propertyType: "شقة",
     city: "الرياض",
     district: "الوبرة",
-    price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     advertiserPhoneNormalized: "+966512345678"
   };
   const before = evaluateMatchingReadiness(record);

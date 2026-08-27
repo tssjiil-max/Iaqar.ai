@@ -6,8 +6,10 @@ import {
   MATCHING_READINESS
 } from "../public/js/opportunity-readiness-domain.js";
 
-test("READY_FOR_MATCHING when all seven gate fields present", () => {
+test("READY_FOR_MATCHING when all gate fields present including transactionIntent", () => {
   const result = evaluateMatchingReadiness({
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     purpose: "SALE",
     propertyType: "شقة",
     city: "الرياض",
@@ -24,6 +26,8 @@ test("READY_FOR_MATCHING when all seven gate fields present", () => {
 
 test("NEEDS_COMPLETION when district missing", () => {
   const result = evaluateMatchingReadiness({
+    transactionIntent: "BUY",
+    opportunityKind: "REQUEST",
     purpose: "PURCHASE",
     propertyType: "أرض",
     city: "جدة",

@@ -43,11 +43,12 @@ test("add opportunity review renders plain text location fields", async () => {
   }
 });
 
-test("client intake markup uses plain text fields without suggest lists", async () => {
+test("client intake markup uses transaction intent choices without suggest lists", async () => {
   const gateSource = (await import("node:fs")).readFileSync(new URL("../public/js/access-gate.js", import.meta.url), "utf8");
   assert.doesNotMatch(gateSource, /wireArabicSuggestInput\(propertyInput/);
   assert.doesNotMatch(gateSource, /<select[^>]*name="requestKind"/);
-  assert.match(gateSource, /name="requestKind"/);
+  assert.match(gateSource, /name="transactionIntent"/);
+  assert.match(gateSource, /intent-choice/);
   assert.match(gateSource, /name="propertyType"/);
   assert.match(gateSource, /name="district"/);
 });

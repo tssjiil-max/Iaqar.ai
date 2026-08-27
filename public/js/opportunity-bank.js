@@ -508,6 +508,7 @@ const BANK_MISSING_FIELD_SELECTORS = Object.freeze({
   district: 'input[name="district"]',
   priceOrBudget: 'input[name="priceOrBudget"]',
   purpose: 'input[name="purpose"]',
+  transactionIntent: 'input[name="transactionIntent"]',
   contactPhone: 'input[name="advertiserPhoneLocal"]',
   advertiserRole: 'input[name="advertiserRole"]'
 });
@@ -1383,6 +1384,10 @@ function wireIncompleteDetailHandlers(id, record) {
     if (advResult.patch.advertiserPhoneNormalized) {
       patch.contactPhone = advResult.patch.advertiserPhoneNormalized;
       patch.phone = advResult.patch.advertiserPhoneRaw || advResult.patch.advertiserPhoneNormalized;
+    }
+    if (mergedPreview.transactionIntent) {
+      patch.transactionIntent = mergedPreview.transactionIntent;
+      patch.opportunityKind = mergedPreview.opportunityKind || patch.opportunityKind;
     }
     if (mergedPreview.purpose) {
       patch.purpose = mergedPreview.purpose;

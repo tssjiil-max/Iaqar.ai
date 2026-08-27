@@ -8,6 +8,7 @@ import { normalizeOpportunityFinancials, safeText } from "../../public/js/opport
 
 export const PATCHABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind",
+  "transactionIntent",
   "purpose",
   "propertyType",
   "city",

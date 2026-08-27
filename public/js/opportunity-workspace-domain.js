@@ -8,6 +8,16 @@ import {
   missingFieldLabelsArabic,
   MISSING_FIELD_LABELS
 } from "./opportunity-readiness-domain.js";
+import {
+  applyTransactionIntentToRecord,
+  isOwnerOfferRecord,
+  purposeFromTransactionIntent,
+  resolveTransactionIntentFromRecord,
+  transactionIntentFromClientChoice,
+  transactionIntentFromOwnerChoice,
+  transactionIntentLabel,
+  transactionIntentOptionsForRecord
+} from "./transaction-intent-domain.js";
 import { contactLineMarkup } from "./opportunity-card-domain.js";
 import { activeFollowUpFromRecord, formatFollowUpAppointmentLine } from "./opportunity-followup-domain.js";
 import { normalizePurpose, normalizeOpportunityFinancials } from "./opportunity-intake-domain.js";
@@ -19,11 +29,7 @@ import {
 } from "./advertiser-phone-domain.js";
 
 function isOwnerOffer(record = {}) {
-  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
-  return record.contactType === "owner"
-    || kind === "OWNER"
-    || kind === "OWNER_OFFER"
-    || kind === "OFFER";
+  return isOwnerOfferRecord(record);
 }
 
 /** Arabic label for contact party — never derived from officeId. */
@@ -37,16 +43,7 @@ export function contactPartyLabel(record = {}) {
 }
 
 export function purposeOptionsForRecord(record = {}) {
-  if (isOwnerOffer(record)) {
-    return [
-      { value: "SALE", label: "بيع" },
-      { value: "RENT", label: "تأجير" }
-    ];
-  }
-  return [
-    { value: "PURCHASE", label: "شراء" },
-    { value: "LEASE_REQUEST", label: "إيجار" }
-  ];
+  return transactionIntentOptionsForRecord(record);
 }
 
 const PURPOSE_DISPLAY = Object.freeze({
@@ -87,20 +84,20 @@ function phoneInputValue(record = {}) {
  */
 export function buildIncompleteFormFields(record = {}, readiness = {}) {
   const missing = readiness.matchingReadinessMissing || [];
-  const order = ["contactPhone", "purpose", "propertyType", "city", "district", "priceOrBudget", "advertiserRole", "area", "rooms"];
+  const order = ["contactPhone", "transactionIntent", "propertyType", "city", "district", "priceOrBudget", "advertiserRole", "area", "rooms"];
   const sorted = order.filter((key) => missing.includes(key));
-  const storedPurpose = resolveStoredPurpose(record);
-  const purposeDisplay = purposeInputValue(record, storedPurpose);
+  const resolvedIntent = resolveTransactionIntentFromRecord(record);
+  const intentDisplay = transactionIntentLabel(resolvedIntent);
 
   return sorted.map((key) => {
     switch (key) {
-      case "purpose":
+      case "transactionIntent":
         return {
           key,
-          label: "الغرض",
+          label: "نوع العملية",
           type: "text",
-          name: "purpose",
-          value: purposeDisplay
+          name: "transactionIntent",
+          value: intentDisplay
         };
       case "propertyType":
         return {
@@ -167,14 +164,19 @@ export function hasCompleteContactPhone(record = {}) {
 }
 
 export function mergeIncompleteFormPreview(existing = {}, formData = {}) {
-  const editKeys = ["purpose", "propertyType", "city", "district", "priceOrBudget", "area", "rooms", "advertiserRole"];
+  const editKeys = ["transactionIntent", "propertyType", "city", "district", "priceOrBudget", "area", "rooms", "advertiserRole"];
   const merged = { ...existing };
   for (const key of editKeys) {
     if (formData[key] !== undefined && formData[key] !== "") {
-      if (key === "purpose") merged[key] = normalizePurpose(formData[key]);
-      else if (key === "advertiserRole") merged[key] = resolveAdvertiserRoleValue(formData[key], existing.advertiserRole);
+      if (key === "advertiserRole") merged[key] = resolveAdvertiserRoleValue(formData[key], existing.advertiserRole);
       else merged[key] = formData[key];
     }
+  }
+  if (formData.transactionIntent) {
+    const intent = isOwnerOffer(merged)
+      ? transactionIntentFromOwnerChoice(formData.transactionIntent)
+      : transactionIntentFromClientChoice(formData.transactionIntent);
+    if (intent) Object.assign(merged, applyTransactionIntentToRecord(merged, intent));
   }
   if (formData.advertiserPhoneLocal) {
     merged.advertiserPhoneLocal = formData.advertiserPhoneLocal;
