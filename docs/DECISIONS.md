@@ -478,18 +478,20 @@ offices’ contacts.
 capability stays reachable. Empty state when there are no tasks; API errors stay
 visible. No production path depends on fake matches.
 
-## D-020 — Platform admin header matches the product header; title is إدارة المنصة in Naskh
+## D-020 — Platform admin header uses the owner banner image; title is إدارة المنصة in Naskh
 
 **Phase:** admin console visual maintenance
-**Directive:** owner asked for visual/layout maintenance of `/admin` only; header like
-the product app header; title `إدارة المنصة` in Naskh (`خط النسخ`). Follow-up: make the
-header match the floating mint pill screenshot (logo in a white square, gold subtitle).
+**Directive:** owner asked for visual/layout maintenance of `/admin` only. Follow-up:
+place the provided header image itself at the top of the admin page (not a CSS
+recreation), then arrange the rest of the admin shell under it. Title remains
+`إدارة المنصة` in Naskh (`خط النسخ`).
 
-**Decision.** `/admin` uses a floating mint pill header (`border-radius: 999px`, light
-emerald fill, soft shadow). Logo sits in a white rounded square at RTL start; title
-`إدارة المنصة` is centered in `Noto Naskh Arabic`; gold subtitle is `بيئة التحكم`.
-Login fields and primary buttons follow the same rounded teal language. Body UI stays
-Tajawal. Column width follows the product `.app` shell. Broker home page is unchanged.
+**Decision.** `/admin` uses the owner banner file at `/images/admin-header-banner.png`
+as the header at the top of the page. The page heading under the banner is
+`إدارة المنصة` in `Noto Naskh Arabic`. Login fields, tabs, and cards stay in the
+rounded teal language. Body UI stays Tajawal. Column width follows the product
+`.app` shell (432 / 720 / 960). Broker home page is unchanged. The image lives
+under `/images/` so Firebase Hosting’s `/admin/**` rewrite cannot intercept it.
 
 ## Open questions carried forward
 
