@@ -11,6 +11,7 @@ import {
 } from "../../../../public/js/cooperation-workflow-domain.js";
 import {
   LIVING_TASK_STAGE,
+  TASK_SORT_GROUP,
   TASK_SORT_GROUP_RANK,
   formatBestResultLine,
   formatCandidateCountLine,
@@ -20,6 +21,7 @@ import {
   livingTaskId,
   matchGroupKey,
   parseLivingTimeline,
+  partyCoordinationFlags,
   sortGroupForLivingStage
 } from "../../../../public/js/match-group-domain.js";
 import { formatOpportunityReference } from "../../../../public/js/reference-code-domain.js";
@@ -602,15 +604,19 @@ function maxSecondaryActions(record = {}) {
   return 2;
 }
 
-function coordinationSendActions(record = {}, { primaryParty = "client" } = {}) {
+function coordinationSendActions(record = {}, { excludeActionId = "" } = {}) {
+  const flags = partyCoordinationFlags({
+    timeline: record.timeline || record.livingTimeline,
+    livingStage: record.livingStage
+  });
   const actions = [];
-  if (primaryParty === "client" && shouldOfferSendAction(record, "owner")) {
+  if (flags.needsOwnerCoordination && shouldOfferSendAction(record, "owner")) {
     actions.push(sendToOwnerAction(record));
   }
-  if (primaryParty === "owner" && shouldOfferSendAction(record, "client")) {
+  if (flags.needsClientCoordination && shouldOfferSendAction(record, "client")) {
     actions.push(sendToClientAction(record));
   }
-  return actions;
+  return actions.filter((action) => action.id !== excludeActionId);
 }
 
 function actionsForState(stateKey, record = {}) {
@@ -629,7 +635,7 @@ function actionsForState(stateKey, record = {}) {
   }
   if (ownerNeeded) {
     primary = shouldOfferSendAction(record, "owner") ? sendToOwnerAction(record) : null;
-    for (const action of coordinationSendActions(record, { primaryParty: "owner" })) {
+    for (const action of coordinationSendActions(record, { excludeActionId: primary?.id })) {
       secondary.unshift(action);
     }
     if (offerAction) secondary.push(offerAction);
@@ -650,7 +656,7 @@ function actionsForState(stateKey, record = {}) {
       };
     } else if (shouldOfferSendAction(record, "client")) {
       primary = sendToClientAction(record);
-      for (const action of coordinationSendActions(record, { primaryParty: "client" })) {
+      for (const action of coordinationSendActions(record, { excludeActionId: EXEC_ACTION.SEND_TO_CLIENT })) {
         secondary.unshift(action);
       }
       if (Number(record.candidateCount || 0) > 1) {
@@ -674,8 +680,19 @@ function actionsForState(stateKey, record = {}) {
       label: "استكمال"
     };
   }
-  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT && shouldOfferSendAction(record, "client")) {
-    secondary.push(sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال"));
+  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT) {
+    const flags = partyCoordinationFlags({
+      timeline: record.timeline || record.livingTimeline,
+      livingStage: record.livingStage
+    });
+    if (flags.needsOwnerCoordination && shouldOfferSendAction(record, "owner")) {
+      primary = sendToOwnerAction(record);
+    }
+    if (shouldOfferSendAction(record, "client")) {
+      const clientAction = sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال");
+      if (!primary) primary = clientAction;
+      else secondary.unshift(clientAction);
+    }
   }
   if (offerAction) secondary.push(offerAction);
   return {
@@ -1027,11 +1044,19 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   };
   const appointmentToday = liveStateKey(active, now) === DAILY_TASK_STATE.APPOINTMENT_TODAY
     || group.living.stage === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED;
+  const coordination = partyCoordinationFlags({
+    timeline: group.living.timeline,
+    livingStage: group.living.stage
+  });
   const copy = livingCopy(group.living.stage, {
     missingInfoKey: group.living.missingInfoKey,
     hasNextCandidate: group.living.rejectedMatchIds.length > 0 && remaining.length > 0,
     appointmentLine: formatAppointmentLine(active.viewingAt || active.appointmentAt),
-    ownerContactNeeded: group.living.ownerContactNeeded
+    ownerContactNeeded: group.living.ownerContactNeeded,
+    ownerCoordinationPending: coordination.ownerCoordinationPending,
+    clientCoordinationPending: coordination.clientCoordinationPending,
+    ownerCoordinationOpened: coordination.ownerCoordinationOpened,
+    clientCoordinationOpened: coordination.clientCoordinationOpened
   });
   const candidates = remaining.map((item, index) => ({
     matchId: text(item.matchId || item.recordId || item.id),
@@ -1052,7 +1077,9 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   const badgeKey = remaining.some((item) => liveBadgeKey(item, now) === "overdue")
     ? "overdue"
     : (appointmentToday ? "today" : "now");
-  const sortGroup = sortGroupForLivingStage(group.living.stage, {
+  const sortGroup = coordination.ownerCoordinationPending
+    ? TASK_SORT_GROUP.NEEDS_BROKER_ACTION
+    : sortGroupForLivingStage(group.living.stage, {
     overdue: badgeKey === "overdue",
     appointmentToday,
     ownerContactNeeded: group.living.ownerContactNeeded,
@@ -1404,6 +1431,7 @@ export function dailyTasksDemoFixtures() {
     buildDailyTaskView({
       id: "task_awaiting_client",
       stateKey: DAILY_TASK_STATE.AWAITING_CLIENT,
+      livingStage: LIVING_TASK_STAGE.WAITING_CLIENT,
       createdAt: "2026-08-25T11:05:00.000+03:00",
       now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",

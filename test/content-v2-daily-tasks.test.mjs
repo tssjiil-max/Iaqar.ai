@@ -148,22 +148,26 @@ test("open match-found card shows client and owner send actions for coordination
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("awaiting client reply stays buttonless while collapsed and capped when open", () => {
+test("awaiting client reply keeps owner coordination send when owner not contacted", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_awaiting_client");
   const collapsed = buildDailyTaskCardHtml(task);
   assert.match(collapsed, />عرض البيانات</);
   assert.equal(collapsed.includes("إعادة الإرسال"), false);
+  assert.equal(collapsed.includes("إرسال للمالك"), false);
   assert.equal(countPrimary(collapsed), 0);
   assert.equal(countSecondary(collapsed), 0);
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
   assert.match(text, /بانتظار رد العميل/);
-  assert.equal(html.includes("data-cv2-exec-primary="), false);
+  assert.match(html, /data-cv2-exec-primary="send_to_owner"/);
+  assert.match(html, />إرسال للمالك</);
+  assert.match(html, /data-cv2-exec-secondary="resend_to_client"/);
   assert.match(html, />إعادة الإرسال</);
   assert.match(html, />عرض التفاصيل الكاملة</);
-  assert.equal(html.includes("إرسال للعميل"), false);
-  assert.equal(countPrimary(html), 0);
+  assert.equal(html.includes("data-cv2-exec-primary=\"send_to_client\""), false);
+  assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 2);
+  assert.equal(task.primaryAction.id, EXEC_ACTION.SEND_TO_OWNER);
   assert.equal(ENGLISH_UI.test(text), false);
 });
 

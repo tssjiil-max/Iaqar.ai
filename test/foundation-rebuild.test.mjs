@@ -11,7 +11,9 @@ import {
   livingStageAfterPartyAction,
   LIVING_TASK_STAGE,
   matchGroupKey,
+  partyCoordinationFlags,
   rankMatchCandidates,
+  resolveCoordinationLivingStage,
   snapshotHasPermittedDetail
 } from "../public/js/match-group-domain.js";
 import { mapOperationsItemsToDailyTasks } from "../src/v2/content/daily-tasks/domain.js";
@@ -412,8 +414,9 @@ test("TEST T: livingStage survives remapping as the same match-group task", () =
   assert.equal(first[0].id, "mg_req_awali");
   assert.equal(reloaded[0].id, first[0].id);
   assert.equal(reloaded[0].livingStage, "WAITING_CLIENT");
-  const html = buildDailyTaskCardHtml(reloaded[0]);
-  assert.equal((html.match(/بانتظار رد العميل/g) || []).length, 1);
+  const html = buildDailyTaskCardHtml(reloaded[0], { open: true });
+  assert.match(html, /إرسال للمالك/);
+  assert.match(html, /إعادة الإرسال/);
 });
 
 test("appointment confirmed copy appears once", () => {
@@ -451,4 +454,29 @@ test("share snapshot envelope keeps office data canonical and party history froz
   assert.equal(share.snapshotVersion, 1);
   assert.equal(share.permitted.priceLabel.includes("850,000"), true);
   assert.equal(matchGroupKey({ clientRequestId: "req_1", opportunityId: "req_1", sourceCollection: "clients" }), "req_1");
+});
+
+test("coordination flags keep owner send after client WhatsApp open", () => {
+  const flags = partyCoordinationFlags({
+    livingStage: LIVING_TASK_STAGE.WAITING_CLIENT,
+    timeline: [{ type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" }]
+  });
+  assert.equal(flags.ownerCoordinationPending, true);
+  assert.equal(flags.needsOwnerCoordination, true);
+  assert.equal(flags.needsClientCoordination, false);
+  const stage = resolveCoordinationLivingStage({
+    currentStage: LIVING_TASK_STAGE.MATCH_FOUND,
+    party: "client",
+    timeline: [{ type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" }]
+  });
+  assert.equal(stage, LIVING_TASK_STAGE.MATCH_FOUND);
+  const both = resolveCoordinationLivingStage({
+    currentStage: LIVING_TASK_STAGE.MATCH_FOUND,
+    party: "owner",
+    timeline: [
+      { type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" },
+      { type: "whatsapp_owner_opened", label: "تم فتح واتساب للمالك", createdAt: "2026-08-27T02:50:00.000Z" }
+    ]
+  });
+  assert.equal(both, LIVING_TASK_STAGE.WAITING_CLIENT);
 });

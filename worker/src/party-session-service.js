@@ -15,7 +15,7 @@ import {
   revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
-import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
+import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, resolveCoordinationLivingStage, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
 import { upsertNotificationDocument } from "./operations-service.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
@@ -201,6 +201,25 @@ export async function handlePartySessionMint({
 
   const offerId = helpers.cleanText(body.offerId || body.ownerOfferId, 180);
   const requestRecordId = helpers.cleanText(body.requestId || body.clientRequestId, 180);
+  const existingMatch = await readOfficeDoc(helpers, {
+    projectId, officeId, collection: "matches", id: matchId, accessToken
+  });
+  const existingMatchData = existingMatch || {};
+  const timelineEvent = {
+    type: party === "owner" ? "whatsapp_owner_opened" : "whatsapp_client_opened",
+    actor: "BROKER",
+    label: party === "owner" ? "تم فتح واتساب للمالك" : "تم فتح واتساب للعميل"
+  };
+  const nextTimeline = appendLivingTimeline(
+    existingMatchData.livingTimelineJson || existingMatchData.livingTimeline,
+    timelineEvent,
+    { now: new Date() }
+  );
+  const coordinationLivingStage = resolveCoordinationLivingStage({
+    currentStage: existingMatchData.livingStage,
+    party,
+    timeline: nextTimeline
+  });
   const liveOffer = await loadCanonicalOfferListing(helpers, {
     projectId,
     officeId,
@@ -307,16 +326,14 @@ export async function handlePartySessionMint({
     matchId,
     accessToken,
     patch: {
-      livingStage: party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT",
+      livingStage: coordinationLivingStage,
       activeMatchId: matchId,
       ownerContactNeeded: false,
       hasNewResponse: false,
-      nextActor: party === "owner" ? "OWNER" : "CLIENT",
-      timelineEvent: {
-        type: party === "owner" ? "whatsapp_owner_opened" : "whatsapp_client_opened",
-        actor: "BROKER",
-        label: party === "owner" ? "تم فتح واتساب للمالك" : "تم فتح واتساب للعميل"
-      }
+      nextActor: coordinationLivingStage === LIVING_TASK_STAGE.MATCH_FOUND
+        ? "BROKER"
+        : (party === "owner" ? "OWNER" : "CLIENT"),
+      timelineEvent
     }
   });
   return helpers.jsonResponse({
