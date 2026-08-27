@@ -4147,7 +4147,7 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
     const candidate = firestoreFieldsToJs(doc.fields || {});
     if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
     const scored = scoreMatch(parsed, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    if (!scored.hardMatch || !scored.eligible) continue;
     const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
     prepared.push({ candidate, candidateId, scored });
   }
@@ -4250,7 +4250,7 @@ async function findAndSaveMatchesForOpportunity({
     if (!counterpartsEligible(opportunity, candidateRaw)) continue;
     const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
     const scored = scoreMatch(source, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    if (!scored.hardMatch || !scored.eligible) continue;
     prepared.push({ candidate, candidateRaw, candidateId, scored });
   }
   prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
@@ -4304,6 +4304,25 @@ async function findAndSaveMatchesForOpportunity({
 
   const operationsCreated = results.filter((item) => item.operationCreated).length
     + (missingData.created ? 1 : 0);
+
+  if (results.length > 0) {
+    const now = new Date();
+    const matchedIds = new Set([opportunityId]);
+    for (const row of results) {
+      if (row.counterpartOpportunityId) matchedIds.add(row.counterpartOpportunityId);
+    }
+    for (const matchedId of matchedIds) {
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "opportunities", matchedId],
+        accessToken,
+        fields: compactFields({
+          lifecycleStatus: firestoreString(LIFECYCLE_STATUS.MATCHED),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+    }
+  }
 
   let cooperation = { created: 0, skipped: "internal_match_exists" };
   if (results.length === 0) {

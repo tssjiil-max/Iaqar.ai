@@ -81,10 +81,12 @@ test("cooperation ranking prefers specialized neighborhood offices", () => {
   const ranked = rankCooperationNearbySuggestions({
     sourceOpportunity: {
       opportunityKind: "REQUEST",
+      transactionIntent: "BUY",
       propertyType: "شقة",
       city: CITY,
       district: "الرانوناء",
       purpose: "PURCHASE",
+      budget: 500000,
       priceOrBudget: 500000,
       area: 120
     },
@@ -110,10 +112,12 @@ test("cooperation ranking prefers specialized neighborhood offices", () => {
         id: "opp-b",
         officeId: "office-b",
         opportunityKind: "OFFER",
+        transactionIntent: "SELL",
         propertyType: "شقة",
         city: CITY,
         district: "الرانوناء",
         purpose: "SALE",
+        salePrice: 480000,
         priceOrBudget: 480000,
         area: 120
       },
@@ -121,10 +125,12 @@ test("cooperation ranking prefers specialized neighborhood offices", () => {
         id: "opp-c",
         officeId: "office-c",
         opportunityKind: "OFFER",
+        transactionIntent: "SELL",
         propertyType: "شقة",
         city: CITY,
         district: "الرانوناء",
         purpose: "SALE",
+        salePrice: 470000,
         priceOrBudget: 470000,
         area: 120
       }

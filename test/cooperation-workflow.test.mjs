@@ -32,11 +32,13 @@ import { buildDailyTaskCardHtml } from "../src/v2/content/daily-tasks/card.js";
 const landOffer = opportunityToMatchInput({
   id: "offer_sakb",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "المدينة المنورة",
   district: "السكب",
   propertyType: "أرض",
-  priceOrBudget: 870000,
+  salePrice: 840000,
+  priceOrBudget: 840000,
   area: 1175,
   lifecycleStatus: "ACTIVE"
 }, { id: "offer_sakb" });
@@ -44,10 +46,12 @@ const landOffer = opportunityToMatchInput({
 const landRequest = opportunityToMatchInput({
   id: "req_sakb",
   opportunityKind: "REQUEST",
-  purpose: "SALE",
+  transactionIntent: "BUY",
+  purpose: "PURCHASE",
   city: "المدينة المنورة",
   district: "السكب",
   propertyType: "أرض",
+  budget: 850000,
   priceOrBudget: 850000,
   area: 1100,
   lifecycleStatus: "ACTIVE"
@@ -56,6 +60,7 @@ const landRequest = opportunityToMatchInput({
 const villaNearby = opportunityToMatchInput({
   id: "villa_near",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "المدينة المنورة",
   district: "العزيزية",
