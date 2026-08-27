@@ -584,11 +584,12 @@ test("the public media route refuses any key outside the office image allow-list
 test("pipeline classifies a client request", async () => {
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({messageText:"مطلوب شقة تمليك في حي العقيق بحدود 650 ألف مساحة 150 متر 4 غرف"})
+    body: JSON.stringify({messageText:"أبحث عن شراء شقة في حي العقيق بحدود 650 ألف مساحة 150 متر 4 غرف"})
   }), env);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionIntent, "BUY");
   assert.equal(body.parsed.propertyType, "شقة");
   assert.equal(body.parsed.district, "العقيق");
   assert.equal(body.parsed.price, 650000);
@@ -664,15 +665,16 @@ test("phase 2 parser extracts district price type operation phone and sender nam
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
-      messageText: "مطلوب شقة تمليك في حي وادي العقيق من 650 ألف إلى 700 ألف مساحة 160 متر، الاسم: محمد الحربي، الجوال 0552019909"
+      messageText: "أبحث عن شراء شقة في حي وادي العقيق من 650 ألف إلى 700 ألف مساحة 160 متر، الاسم: محمد الحربي، الجوال 0552019909"
     })
   }), env);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionIntent, "BUY");
   assert.equal(body.parsed.propertyType, "شقة");
   assert.equal(body.parsed.district, "وادي العقيق");
-  assert.equal(body.parsed.transactionType, "sale");
+  assert.equal(body.parsed.transactionType, "purchase");
   assert.equal(body.parsed.priceMin, 650000);
   assert.equal(body.parsed.priceMax, 700000);
   assert.equal(body.parsed.area, 160);
