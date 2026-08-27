@@ -525,22 +525,38 @@
     } catch (_) {}
   }
   async function resolveIntakeDefaultCity(targetOffice) {
+    const normalizeCity = (value = "") => {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) return "";
+      const aliases = {
+        riyadh: "الرياض",
+        madina: "المدينة المنورة",
+        "al madinah": "المدينة المنورة",
+        "al madinah al munawwarah": "المدينة المنورة",
+        "al-madinah": "المدينة المنورة",
+        "al-madinah al-munawwarah": "المدينة المنورة"
+      };
+      const key = trimmed.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
+      if (aliases[key]) return aliases[key];
+      if (/[a-zA-Z]{3,}/.test(trimmed)) return "";
+      return trimmed;
+    };
     const target = firestoreOfficeId(targetOffice);
     if (target && target !== "platform") {
       try {
         const publicSnap = await db().collection("publicOffices").doc(target).get();
         if (publicSnap.exists) {
-          const city = String(publicSnap.data()?.city || "").trim();
+          const city = normalizeCity(publicSnap.data()?.city);
           if (city) return city;
         }
         const officeSnap = await db().collection("offices").doc(target).get();
         if (officeSnap.exists) {
-          const city = String(officeSnap.data()?.city || "").trim();
+          const city = normalizeCity(officeSnap.data()?.city);
           if (city) return city;
         }
       } catch (_) { /* ignore */ }
     }
-    const remembered = window.IAQARPublicClientIntake?.readRememberedCity?.() || "";
+    const remembered = normalizeCity(window.IAQARPublicClientIntake?.readRememberedCity?.() || "");
     return remembered || "";
   }
 
