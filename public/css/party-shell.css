@@ -201,6 +201,29 @@ html.is-party-mode .toast {
   cursor: default;
 }
 
+.party-action.is-selected {
+  box-shadow: 0 0 0 2px #0b5f55;
+}
+
+.party-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #d8e5e1;
+  border-radius: 12px;
+  font: 600 15px Tajawal, Arial, sans-serif;
+}
+
+.party-bundle-step[hidden] {
+  display: none;
+}
+
+.party-bundle-submit {
+  margin-top: 12px;
+  width: 100%;
+}
+
 .party-recorded,
 .party-reply {
   margin: 12px 0 0;

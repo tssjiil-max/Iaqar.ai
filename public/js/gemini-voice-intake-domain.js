@@ -3,6 +3,14 @@
  */
 
 import {
+  extractTransactionIntentFromText,
+  purposeFromTransactionIntent,
+  opportunityKindFromTransactionIntent,
+  transactionIntentFromClientChoice,
+  transactionIntentFromOwnerChoice,
+  TRANSACTION_INTENT
+} from "./transaction-intent-domain.js";
+import {
   isLandProperty,
   mergeBrokerProvidedFields,
   normalizeDigits,
@@ -63,29 +71,61 @@ export function normalizeGeminiVoicePayload(raw = {}) {
   return out;
 }
 
-function inferPurposeAndKind(transactionType = "", context = "office") {
-  const tx = safeText(transactionType, 40).toLowerCase();
-  if (/purchase|شراء|مطلوب/.test(tx)) return { purpose: "PURCHASE", opportunityKind: "REQUEST" };
-  if (/lease_request|استئجار|طلب.*إيجار/.test(tx)) return { purpose: "LEASE_REQUEST", opportunityKind: "REQUEST" };
-  if (/rent|إيجار|ايجار/.test(tx)) {
-    return context === "client"
-      ? { purpose: "LEASE_REQUEST", opportunityKind: "REQUEST" }
-      : { purpose: "RENT", opportunityKind: "OFFER" };
+function inferFromExplicitIntent(transactionType = "", context = "office", sourceText = "") {
+  const fromText = extractTransactionIntentFromText(
+    [transactionType, sourceText].filter(Boolean).join(" ")
+  );
+  if (fromText) {
+    return {
+      transactionIntent: fromText,
+      purpose: purposeFromTransactionIntent(fromText),
+      opportunityKind: opportunityKindFromTransactionIntent(fromText)
+    };
   }
-  if (/invest|استثمار/.test(tx)) return { purpose: "INVESTMENT", opportunityKind: "OFFER" };
-  return { purpose: "SALE", opportunityKind: context === "client" ? "REQUEST" : "OFFER" };
+  const fromLabel = transactionIntentFromOwnerChoice(transactionType)
+    || transactionIntentFromClientChoice(transactionType);
+  if (fromLabel) {
+    return {
+      transactionIntent: fromLabel,
+      purpose: purposeFromTransactionIntent(fromLabel),
+      opportunityKind: opportunityKindFromTransactionIntent(fromLabel)
+    };
+  }
+  if (context === "owner") {
+    const ownerIntent = transactionIntentFromOwnerChoice(transactionType);
+    if (ownerIntent) {
+      return {
+        transactionIntent: ownerIntent,
+        purpose: purposeFromTransactionIntent(ownerIntent),
+        opportunityKind: "OFFER"
+      };
+    }
+  }
+  if (context === "client") {
+    const clientIntent = transactionIntentFromClientChoice(transactionType);
+    if (clientIntent) {
+      return {
+        transactionIntent: clientIntent,
+        purpose: purposeFromTransactionIntent(clientIntent),
+        opportunityKind: "REQUEST"
+      };
+    }
+  }
+  return { transactionIntent: null, purpose: "", opportunityKind: "" };
 }
 
 export function mapGeminiToOpportunityFields(structured = {}, { context = "office" } = {}) {
   const payload = normalizeGeminiVoicePayload(structured);
-  const { purpose, opportunityKind } = inferPurposeAndKind(payload.transactionType, context);
+  const summary = buildVoiceSummaryText(structured);
+  const inferred = inferFromExplicitIntent(payload.transactionType, context, summary);
   const propertyType = payload.propertyType || "";
   const land = isLandProperty(propertyType);
   const priceOrBudget = payload.salePrice ?? payload.annualRent ?? payload.budget ?? null;
 
   const fields = {
-    opportunityKind,
-    purpose,
+    opportunityKind: inferred.opportunityKind,
+    transactionIntent: inferred.transactionIntent,
+    purpose: inferred.purpose,
     propertyType,
     city: payload.city || "",
     district: payload.district || "",
@@ -171,10 +211,11 @@ function mapPropertyTypeToPublicOption(propertyType = "") {
 }
 
 function mapTransactionToRequestKind(transactionType = "", context = "client") {
-  const tx = safeText(transactionType, 40).toLowerCase();
   if (context !== "client") return "";
-  if (/rent|إيجار|ايجار|lease/.test(tx)) return "rent";
-  return "purchase";
+  const intent = transactionIntentFromClientChoice(transactionType);
+  if (intent === TRANSACTION_INTENT.RENT_IN) return "rent";
+  if (intent === TRANSACTION_INTENT.BUY) return "purchase";
+  return "";
 }
 
 export function mapGeminiToPublicFormValues(structured = {}, {
@@ -182,12 +223,14 @@ export function mapGeminiToPublicFormValues(structured = {}, {
   manualValues = {}
 } = {}) {
   const payload = normalizeGeminiVoicePayload(structured);
+  const inferred = inferFromExplicitIntent(payload.transactionType, context, buildVoiceSummaryText(structured));
   const extracted = {
     name: payload.advertiserName || "",
     phone: payload.advertiserPhone || "",
     city: payload.city || "",
     district: payload.district || "",
     propertyType: mapPropertyTypeToPublicOption(payload.propertyType),
+    transactionIntent: inferred.transactionIntent || "",
     requestKind: mapTransactionToRequestKind(payload.transactionType, context),
     budget: payload.budget ?? payload.salePrice ?? "",
     annualRent: payload.annualRent ?? "",

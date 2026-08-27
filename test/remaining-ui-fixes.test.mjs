@@ -8,7 +8,8 @@ import {
   sanitizeDisplayField,
   formatDistrictLabel,
   formatLocationLine,
-  isUntrustedDisplayValue
+  isUntrustedDisplayValue,
+  stripTechnicalDisplayNoise
 } from "../public/js/display-sanitize-domain.js";
 import { buildOpportunityCardView } from "../public/js/opportunity-card-domain.js";
 import { wireArabicSuggestInput } from "../public/js/arabic-field-suggest.js";
@@ -20,10 +21,11 @@ function readRepo(...parts) {
 }
 
 test("display sanitization hides Ms Dd dd II and spaced letters", () => {
-  for (const garbage of ["Ms", "Dd dd", "II", "سلمى II", "ا ب"]) {
+  for (const garbage of ["Ms", "Dd dd", "II", "ا ب"]) {
     assert.equal(isUntrustedDisplayValue(garbage), true);
     assert.equal(sanitizeDisplayField(garbage).display, "تحتاج مراجعة");
   }
+  assert.equal(sanitizeDisplayField("سلمى II").display, "سلمى");
 });
 
 test("formatDistrictLabel avoids double حي prefix", () => {
@@ -32,16 +34,29 @@ test("formatDistrictLabel avoids double حي prefix", () => {
   assert.equal(formatLocationLine("المدينة المنورة", "حي الرانوناء"), "المدينة المنورة — حي الرانوناء");
 });
 
-test("opportunity card does not surface garbage property or district tokens", () => {
+test("stripTechnicalDisplayNoise removes ctx test tags from broker-visible fields", () => {
+  assert.equal(stripTechnicalDisplayNoise("النرجس_ctxfix_mtaplt2r"), "النرجس");
+  assert.equal(stripTechnicalDisplayNoise("حي_ctx_mtapp9pz_"), "");
+  assert.equal(formatDistrictLabel("النرجس_ctxfix_mtaplt2r"), "حي النرجس");
+  assert.equal(
+    formatLocationLine("المدينة المنورة", "حي_ctx_mtapp9pz_"),
+    "المدينة المنورة"
+  );
+  assert.equal(sanitizeDisplayField("النرجس_ctxfix_mtaplt2r").display, "النرجس");
+});
+
+test("opportunity card strips ctx tags from district in location line", () => {
   const card = buildOpportunityCardView({
-    propertyType: "Ms",
-    district: "Dd dd",
-    contactName: "سلمى II",
-    city: "المدينة المنورة"
+    propertyType: "شقة",
+    purpose: "SALE",
+    city: "المدينة المنورة",
+    district: "النرجس_ctxfix_mtaplt2r",
+    salePrice: 1200000,
+    opportunityKind: "OFFER"
   });
-  assert.equal(card.description, "تحتاج مراجعة");
-  assert.ok(!card.location.includes("Dd"));
-  assert.ok(!card.contactLine.includes("II"));
+  assert.ok(!card.location.includes("ctxfix"));
+  assert.ok(!card.location.includes("mtaplt2r"));
+  assert.ok(card.location.includes("النرجس"));
 });
 
 test("access-gate owner intake includes required price field", () => {
@@ -50,14 +65,15 @@ test("access-gate owner intake includes required price field", () => {
   assert.ok(gate.includes("السعر أو الإيجار السنوي"));
 });
 
-test("access-gate public forms use plain text inputs without catalog selects", () => {
+test("access-gate public forms use transaction intent buttons without catalog selects", () => {
   const gate = readRepo("public", "js", "access-gate.js");
   assert.ok(gate.includes("id=\"propertyTypeInput\""));
   assert.ok(gate.includes("id=\"districtInput\""));
-  assert.ok(gate.includes("id=\"requestKindInput\""));
+  assert.ok(gate.includes("id=\"transactionIntentInput\""));
+  assert.ok(gate.includes("intent-choice"));
   assert.equal(gate.includes("id=\"propertyTypeSelect\""), false);
   assert.equal(gate.includes("id=\"districtSelect\""), false);
-  assert.equal(gate.includes("id=\"requestKindSelect\""), false);
+  assert.equal(gate.includes("id=\"requestKindInput\""), false);
   assert.equal(gate.includes("wireArabicSuggestInput(propertyInput"), false);
   assert.doesNotMatch(gate, /<select[^>]*name="requestKind"/);
 });

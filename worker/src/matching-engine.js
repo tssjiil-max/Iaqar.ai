@@ -4,7 +4,16 @@
  * Does not create Operations Center items or send messages.
  */
 
-export const MATCHING_RULE_VERSION = "4.0.0";
+import {
+  areTransactionIntentsCompatible,
+  normalizeTransactionIntent,
+  opportunityKindFromTransactionIntent,
+  purposeFromTransactionIntent,
+  resolveTransactionIntentFromRecord
+} from "../../public/js/transaction-intent-domain.js";
+import { normalizeOpportunityFinancials } from "../../public/js/opportunity-intake-domain.js";
+
+export const MATCHING_RULE_VERSION = "4.1.0";
 
 export const MATCHING_CONFIG = Object.freeze({
   threshold: 55,
@@ -142,21 +151,33 @@ export function rangeGapRatio(a, b) {
   return gap / midpoint;
 }
 
-/** Map Phase 2 purpose / legacy transactionType into sale|rent. */
+/** Map canonical transactionIntent (or legacy purpose) into sale|rent for scoring. */
 export function normalizeTransactionType(record = {}) {
+  const intent = resolveTransactionIntentFromRecord(record);
+  if (intent) {
+    const purpose = purposeFromTransactionIntent(intent);
+    if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "rent";
+    if (purpose === "SALE" || purpose === "PURCHASE") return "sale";
+  }
   const raw = String(record.transactionType || record.purpose || "").trim().toUpperCase();
   if (["RENT", "LEASE", "LEASE_REQUEST", "إيجار", "تأجير"].includes(raw) || raw === "RENT") return "rent";
   if (raw === "SALE" || raw === "PURCHASE" || raw === "BUY" || raw === "بيع" || raw === "شراء") return "sale";
   const lower = String(record.transactionType || "").toLowerCase();
   if (lower === "rent") return "rent";
-  if (lower === "sale") return "sale";
-  return lower || "sale";
+  if (lower === "sale" || lower === "purchase") return "sale";
+  return "";
 }
 
 export function normalizeOpportunitySide(record = {}) {
   const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
   if (kind.includes("OFFER") || kind === "OWNER" || kind.includes("OWNER")) return "offer";
   if (kind.includes("REQUEST") || kind === "CLIENT" || kind.includes("CLIENT")) return "request";
+  const intent = resolveTransactionIntentFromRecord(record);
+  if (intent) {
+    const derived = opportunityKindFromTransactionIntent(intent);
+    if (derived === "OFFER") return "offer";
+    if (derived === "REQUEST") return "request";
+  }
   if (String(record.sourceCollection || "") === "owners") return "offer";
   if (String(record.sourceCollection || "") === "clients") return "request";
   return "";
@@ -176,17 +197,28 @@ export function isActiveLifecycle(record = {}) {
 
 export function opportunityToMatchInput(record = {}, { id = "" } = {}) {
   const price = record.priceOrBudget ?? record.price ?? null;
+  const intent = resolveTransactionIntentFromRecord(record);
+  const financials = normalizeOpportunityFinancials({
+    ...record,
+    transactionIntent: intent || record.transactionIntent,
+    purpose: intent ? purposeFromTransactionIntent(intent) : record.purpose
+  });
   return {
     id: String(id || record.id || ""),
     city: record.city || "",
     district: record.district || "",
     propertyType: record.propertyType || "",
     transactionType: normalizeTransactionType(record),
-    purpose: record.purpose || "",
+    transactionIntent: intent || "",
+    purpose: financials.purpose || (intent ? purposeFromTransactionIntent(intent) : (record.purpose || "")),
     opportunityKind: record.opportunityKind || "",
     price: price == null || price === "" ? 0 : Number(price),
     priceMin: record.priceMin != null ? Number(record.priceMin) : undefined,
     priceMax: record.priceMax != null ? Number(record.priceMax) : undefined,
+    salePrice: financials.salePrice,
+    annualRent: financials.annualRent,
+    budget: financials.budget,
+    priceOrBudget: financials.priceOrBudget,
     area: record.area != null ? Number(record.area) : 0,
     rooms: record.rooms != null ? Number(record.rooms) : 0,
     completeness: Number(record.dataCompleteness ?? record.completeness ?? 0),
@@ -207,10 +239,137 @@ export function counterpartsEligible(sourceRecord, candidateRecord) {
   const sourceSide = normalizeOpportunitySide(sourceRecord);
   const candidateSide = normalizeOpportunitySide(candidateRecord);
   if (sourceSide && candidateSide && sourceSide === candidateSide) return false;
+
+  const sourceIntent = normalizeTransactionIntent(sourceRecord.transactionIntent)
+    || resolveTransactionIntentFromRecord(sourceRecord);
+  const candidateIntent = normalizeTransactionIntent(candidateRecord.transactionIntent)
+    || resolveTransactionIntentFromRecord(candidateRecord);
+  if (!sourceIntent || !candidateIntent) return false;
+  if (!areTransactionIntentsCompatible(sourceIntent, candidateIntent)) return false;
+
   const sourceTx = normalizeTransactionType(sourceRecord);
   const candidateTx = normalizeTransactionType(candidateRecord);
   if (sourceTx && candidateTx && sourceTx !== candidateTx) return false;
   return true;
+}
+
+function isFilledLabel(value = "") {
+  const text = String(value || "").trim();
+  return text.length > 0;
+}
+
+function partitionOfferRequest(source, candidate) {
+  const sourceSide = normalizeOpportunitySide(source);
+  const candidateSide = normalizeOpportunitySide(candidate);
+  if (sourceSide === "offer" && candidateSide === "request") {
+    return { offer: source, request: candidate };
+  }
+  if (sourceSide === "request" && candidateSide === "offer") {
+    return { offer: candidate, request: source };
+  }
+  return null;
+}
+
+function requestPriceRange(requestInput = {}, requestFin = {}) {
+  const purpose = requestFin.purpose;
+  const hasMin = Number(requestInput.priceMin || 0) > 0;
+  const hasMax = Number(requestInput.priceMax || 0) > 0;
+  const budgetCap = Number(requestFin.budget ?? requestFin.priceOrBudget ?? requestInput.price ?? 0);
+  if (purpose === "PURCHASE" || purpose === "LEASE_REQUEST") {
+    const max = hasMax ? Number(requestInput.priceMax) : budgetCap;
+    const min = hasMin ? Number(requestInput.priceMin) : 0;
+    if (!max) return null;
+    return { min, max };
+  }
+  return normalizePriceRange({
+    budget: requestFin.budget,
+    priceMin: requestInput.priceMin,
+    priceMax: requestInput.priceMax,
+    price: requestFin.budget ?? requestFin.priceOrBudget ?? requestInput.price,
+    priceOrBudget: requestFin.budget ?? requestFin.priceOrBudget
+  });
+}
+
+function passesHardPriceMatch(offerInput = {}, requestInput = {}) {
+  const offerFin = normalizeOpportunityFinancials({
+    ...offerInput,
+    transactionIntent: offerInput.transactionIntent,
+    purpose: offerInput.purpose
+  });
+  const requestFin = normalizeOpportunityFinancials({
+    ...requestInput,
+    transactionIntent: requestInput.transactionIntent,
+    purpose: requestInput.purpose
+  });
+  const requestRange = requestPriceRange(requestInput, requestFin);
+  const offerAmount = offerFin.purpose === "RENT" || Number(offerFin.annualRent) > 0
+    ? Number(offerFin.annualRent ?? offerFin.priceOrBudget ?? offerInput.price ?? 0)
+    : Number(offerFin.salePrice ?? offerFin.priceOrBudget ?? offerInput.price ?? 0);
+  if (!requestRange || Number(requestRange.max || 0) <= 0) return false;
+  if (!offerAmount || offerAmount <= 0) return false;
+  const offerRange = normalizePriceRange({
+    price: offerAmount,
+    priceMin: offerAmount,
+    priceMax: offerAmount,
+    priceOrBudget: offerAmount
+  });
+  if (offerAmount <= requestRange.max && offerAmount >= requestRange.min) return true;
+  return rangesIntersect(offerRange, requestRange);
+}
+
+/**
+ * LEVEL 1 — hard match gate. All checks must pass before a match may exist.
+ */
+export function evaluateHardMatch(source, candidate, config = MATCHING_CONFIG) {
+  const eq = (a, b) => a && b && normalizeArabicText(a) === normalizeArabicText(b);
+  const fail = (failureReason) => ({ hardMatch: false, failureReason });
+
+  const sourceRecord = {
+    transactionIntent: source.transactionIntent,
+    opportunityKind: source.opportunityKind,
+    lifecycleStatus: source.lifecycleStatus || "ACTIVE"
+  };
+  const candidateRecord = {
+    transactionIntent: candidate.transactionIntent,
+    opportunityKind: candidate.opportunityKind,
+    lifecycleStatus: candidate.lifecycleStatus || "ACTIVE"
+  };
+  if (!counterpartsEligible(sourceRecord, candidateRecord)) {
+    const sourceIntent = normalizeTransactionIntent(source.transactionIntent);
+    const candidateIntent = normalizeTransactionIntent(candidate.transactionIntent);
+    if (!sourceIntent || !candidateIntent || !areTransactionIntentsCompatible(sourceIntent, candidateIntent)) {
+      return fail("نوع العملية غير متوافق");
+    }
+    return fail("الأطراف غير متوافقة للمطابقة");
+  }
+
+  if (!isFilledLabel(source.propertyType) || !isFilledLabel(candidate.propertyType)) {
+    return fail("نوع العقار غير مكتمل");
+  }
+  if (!eq(source.propertyType, candidate.propertyType)) {
+    return fail("نوع العقار غير متوافق");
+  }
+
+  const sourceCity = source.city || config.defaultCity;
+  const candidateCity = candidate.city || config.defaultCity;
+  if (!eq(sourceCity, candidateCity)) {
+    return fail("المدينة غير متوافقة");
+  }
+
+  if (!isFilledLabel(source.district) || !isFilledLabel(candidate.district)) {
+    return fail("الحي غير مكتمل");
+  }
+  if (!eq(source.district, candidate.district)) {
+    return fail("الحي غير متوافق");
+  }
+
+  const sides = partitionOfferRequest(source, candidate);
+  if (!sides) return fail("اتجاه الطرفين غير صالح للمطابقة");
+  if (!passesHardPriceMatch(sides.offer, sides.request)) {
+    return fail("السعر خارج الميزانية");
+  }
+
+  return { hardMatch: true, failureReason: "" };
 }
 
 export function relevantFieldsFingerprint(record = {}) {
@@ -280,6 +439,7 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
   const eq = (a, b) => a && b && normalizeArabicText(a) === normalizeArabicText(b);
   const reject = (message) => ({
     eligible: false,
+    hardMatch: false,
     score: 0,
     opportunityScore: 0,
     priority: "rejected",
@@ -291,49 +451,22 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
     metrics
   });
 
+  const hard = evaluateHardMatch(source, candidate, config);
+  if (!hard.hardMatch) {
+    return reject(hard.failureReason || "فشلت شروط المطابقة الحاسمة");
+  }
+
+  breakdown.city = config.weights.citySame;
+  reasons.push("نفس المدينة");
+
+  breakdown.district = config.weights.districtSame;
+  reasons.push("نفس الحي");
+
+  breakdown.propertyType = config.weights.propertySame;
+  reasons.push("نفس نوع العقار");
+
   const sourceTx = normalizeTransactionType(source);
   const candidateTx = normalizeTransactionType(candidate);
-
-  if (source.city && candidate.city && !eq(source.city, candidate.city)) {
-    return reject("المدينة غير متوافقة");
-  }
-  if (eq(source.city || config.defaultCity, candidate.city || config.defaultCity)) {
-    breakdown.city = config.weights.citySame;
-    reasons.push("نفس المدينة");
-  }
-
-  if (sourceTx && candidateTx && sourceTx !== candidateTx) {
-    return reject("نوع العملية غير متوافق");
-  }
-
-  const districtConflict = Boolean(source.district && candidate.district && !eq(source.district, candidate.district));
-  const propertyTypeConflict = Boolean(
-    source.propertyType && candidate.propertyType && !eq(source.propertyType, candidate.propertyType)
-  );
-  if (districtConflict && propertyTypeConflict) {
-    return reject("الحي ونوع العقار غير متوافقين");
-  }
-
-  if (eq(source.district, candidate.district)) {
-    breakdown.district = config.weights.districtSame;
-    reasons.push("نفس الحي");
-  } else if (districtConflict) {
-    breakdown.district = config.weights.districtConflict;
-    warnings.push("الحي مختلف");
-  } else {
-    warnings.push("الحي غير مكتمل في أحد الطرفين");
-  }
-
-  if (eq(source.propertyType, candidate.propertyType)) {
-    breakdown.propertyType = config.weights.propertySame;
-    reasons.push("نفس نوع العقار");
-  } else if (propertyTypeConflict) {
-    breakdown.propertyType = config.weights.propertyConflict;
-    warnings.push("نوع العقار مختلف");
-  } else {
-    warnings.push("نوع العقار غير مكتمل في أحد الطرفين");
-  }
-
   if (sourceTx && candidateTx && sourceTx === candidateTx) {
     breakdown.transactionType = config.weights.transactionSame;
     reasons.push("نفس نوع العملية");
@@ -348,19 +481,18 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
     if (overlaps) {
       breakdown.price = config.weights.priceOverlap;
       reasons.push("السعر داخل الميزانية");
+    } else if (gap <= 0.10) {
+      breakdown.price = config.weights.priceGap10;
       reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`);
+    } else if (gap <= 0.20) {
+      breakdown.price = config.weights.priceGap20;
+      reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪ وقابل للتفاوض`);
     } else {
-      if (gap > config.maxPriceGapRatio) return reject("فرق السعر غير منطقي");
-      if (gap <= 0.10) {
-        breakdown.price = config.weights.priceGap10;
-        reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`);
-      } else if (gap <= 0.20) {
-        breakdown.price = config.weights.priceGap20;
-        reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪ وقابل للتفاوض`);
-      } else {
-        breakdown.price = config.weights.priceGapHigh;
-        warnings.push(`فرق السعر مرتفع: ${metrics.priceDifferencePercent}٪`);
-      }
+      breakdown.price = config.weights.priceGapHigh;
+      warnings.push(`فرق السعر مرتفع: ${metrics.priceDifferencePercent}٪`);
+    }
+    if (metrics.priceDifferencePercent > 0) {
+      reasons.push(`فرق السعر ${metrics.priceDifferencePercent}٪`);
     }
   } else {
     warnings.push("السعر غير مكتمل في أحد الطرفين");
@@ -371,9 +503,6 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
   if (sa && ca) {
     const diff = Math.abs(sa - ca) / Math.max(sa, ca);
     metrics.areaDifferencePercent = Math.round(diff * 100);
-    if (diff > config.maxAreaDiffWithPropertyConflict && propertyTypeConflict) {
-      return reject("المساحة ونوع العقار غير منطقيين للطلب");
-    }
     if (diff <= 0.10) {
       breakdown.area = config.weights.area10;
       reasons.push(`فرق المساحة ${metrics.areaDifferencePercent}٪`);
@@ -390,7 +519,6 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
   const cr = Number(candidate.rooms || 0);
   if (sr && cr) {
     const diff = Math.abs(sr - cr);
-    if (diff > config.maxRoomsDiff) return reject("عدد الغرف غير منطقي للطلب");
     if (diff === 0) {
       breakdown.rooms = config.weights.roomsExact;
       reasons.push("عدد الغرف مطابق");
@@ -442,6 +570,7 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
   const readiness = calculateClosingReadiness({ matchScore: score, source, candidate, status: "active" });
   return {
     eligible: true,
+    hardMatch: true,
     score,
     opportunityScore,
     readiness,
@@ -457,7 +586,7 @@ export function scoreMatch(source, candidate, config = MATCHING_CONFIG) {
 export function rankMatchCandidates(source, candidates, config = MATCHING_CONFIG) {
   return candidates
     .map((candidate, index) => ({ candidateIndex: index, candidate, ...scoreMatch(source, candidate, config) }))
-    .filter((item) => item.eligible && item.score >= config.threshold)
+    .filter((item) => item.hardMatch && item.eligible)
     .sort((a, b) => b.opportunityScore - a.opportunityScore || b.score - a.score)
     .slice(0, config.maxResults)
     .map((item, index) => ({ ...item, rank: index + 1, isBestOpportunity: index === 0 }));

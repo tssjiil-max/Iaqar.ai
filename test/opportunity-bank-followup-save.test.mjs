@@ -23,11 +23,13 @@ function readRepo(...parts) {
 test("incomplete form has single phone field inside grid when phone missing", () => {
   const record = {
     opportunityKind: "OFFER",
+    transactionIntent: "SELL",
     purpose: "SALE",
     propertyType: "دور",
     city: "الرياض",
     district: "الوبرة",
-    price: 1500000,
+    salePrice: 1500000,
+    priceOrBudget: 1500000,
     advertiserRole: "OWNER"
   };
   const readiness = evaluateMatchingReadiness(record);
@@ -46,11 +48,12 @@ test("incomplete form with complete phone has no phone input", () => {
     city: "الرياض",
     district: "الوبرة",
     budget: 5000,
+    priceOrBudget: 5000,
     advertiserRole: "CLIENT",
     advertiserPhoneNormalized: "+966512345678"
   };
   const readiness = evaluateMatchingReadiness(record);
-  assert.ok(readiness.matchingReadinessMissing.includes("purpose"));
+  assert.ok(readiness.matchingReadinessMissing.includes("transactionIntent"));
   const html = buildNeedsCompletionDetailHtml("opp-2", record, readiness);
   assert.equal(html.includes("name=\"advertiserPhoneLocal\""), false);
 });

@@ -8,12 +8,17 @@ import { createHash } from "node:crypto";
 import {
   OPERATION_STATUS,
   OPERATION_TYPES,
+  ACTIVE_OPERATION_STATUSES,
   buildInAppNotification,
   buildPlatformOpportunityOfferOperation,
   operationDocumentId,
   buildPlatformOfferDedupKey
 } from "./operations-domain.js";
-import { upsertNotificationDocument, upsertOperationDocument, operationToFirestoreFields } from "./operations-service.js";
+import {
+  upsertNotificationDocument,
+  upsertOperationDocument,
+  operationToFirestoreFields
+} from "./operations-service.js";
 import {
   ASSIGNMENT_REASON,
   ATTEMPT_DECISION,
@@ -263,16 +268,65 @@ async function listOfficeProfiles(deps) {
     .filter((office) => office.officeId && office.officeId !== PLATFORM_OFFICE_ID);
 }
 
+function operationIdFromDocName(name = "") {
+  return decodeURIComponent(String(name || "").split("/").pop() || "");
+}
+
 async function closeOfficeOfferOperation(deps, { officeId, opportunityId, status }) {
   const deduplicationKey = buildPlatformOfferDedupKey({ officeId, opportunityId });
-  const id = await operationDocumentId(deduplicationKey);
-  const raw = await deps.getFirestoreDocument({
+  let id = await operationDocumentId(deduplicationKey);
+  let raw = await deps.getFirestoreDocument({
     projectId: deps.projectId,
     segments: ["offices", officeId, "operations", id],
     accessToken: deps.accessToken,
     allowMissing: true
   });
-  if (!raw) return;
+  if (!raw && typeof deps.listCollectionDocuments === "function") {
+    const docs = await deps.listCollectionDocuments({
+      projectId: deps.projectId,
+      segments: ["offices", officeId, "operations"],
+      accessToken: deps.accessToken,
+      pageSize: 80
+    }).catch(() => []);
+    for (const doc of docs || []) {
+      const candidate = deps.firestoreFieldsToJs(doc.fields || {});
+      const candidateId = operationIdFromDocName(doc.name);
+      if (String(candidate.type || "") !== OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER) continue;
+      if (String(candidate.opportunityId || "") !== String(opportunityId || "")) continue;
+      if (!ACTIVE_OPERATION_STATUSES.includes(String(candidate.status || "").toUpperCase())) continue;
+      id = candidateId || id;
+      raw = doc;
+      break;
+    }
+  }
+  if (!raw) {
+    const forced = await buildPlatformOpportunityOfferOperation({
+      officeId,
+      opportunityId,
+      status,
+      now: new Date()
+    });
+    const forcedId = forced.id || id;
+    const now = nowIso();
+    const next = {
+      ...forced,
+      id: forcedId,
+      officeId,
+      status,
+      updatedAt: now,
+      completedAt: status === OPERATION_STATUS.COMPLETED ? now : forced.completedAt || "",
+      dismissedAt: status === OPERATION_STATUS.DISMISSED || status === OPERATION_STATUS.EXPIRED
+        ? now
+        : forced.dismissedAt || ""
+    };
+    await deps.setFirestoreDocument({
+      projectId: deps.projectId,
+      segments: ["offices", officeId, "operations", forcedId],
+      accessToken: deps.accessToken,
+      fields: operationToFirestoreFields(next, deps.firestoreHelpers)
+    });
+    return { closed: true, operationId: forcedId, forced: true };
+  }
   const existing = deps.firestoreFieldsToJs(raw.fields || {});
   const now = nowIso();
   const next = {
@@ -282,7 +336,9 @@ async function closeOfficeOfferOperation(deps, { officeId, opportunityId, status
     status,
     updatedAt: now,
     completedAt: status === OPERATION_STATUS.COMPLETED ? now : existing.completedAt || "",
-    dismissedAt: status === OPERATION_STATUS.DISMISSED ? now : existing.dismissedAt || ""
+    dismissedAt: status === OPERATION_STATUS.DISMISSED || status === OPERATION_STATUS.EXPIRED
+      ? now
+      : existing.dismissedAt || ""
   };
   await deps.setFirestoreDocument({
     projectId: deps.projectId,
@@ -290,6 +346,7 @@ async function closeOfficeOfferOperation(deps, { officeId, opportunityId, status
     accessToken: deps.accessToken,
     fields: operationToFirestoreFields(next, deps.firestoreHelpers)
   });
+  return { closed: true, operationId: id, forced: false };
 }
 
 async function updateOfficeRouterStats(deps, officeId, event) {
@@ -739,12 +796,15 @@ export async function acceptPlatformOffer(deps, { officeId, opportunityId } = {}
     routingStatus: ROUTING_STATUS.ASSIGNED,
     livingTaskId
   });
-  await closeOfficeOfferOperation(deps, {
+  const closed = await closeOfficeOfferOperation(deps, {
     officeId,
     opportunityId,
     status: OPERATION_STATUS.COMPLETED
   });
-  logRouter("accepted", { opportunityId, officeId });
+  if (!closed?.closed) {
+    return { ok: false, error: "operation_close_failed" };
+  }
+  logRouter("accepted", { opportunityId, officeId, operationId: closed.operationId, forced: closed.forced });
 
   if (typeof deps.runCanonicalMatchingAfterOpportunityPersist === "function") {
     await deps.runCanonicalMatchingAfterOpportunityPersist({
@@ -764,7 +824,10 @@ export async function acceptPlatformOffer(deps, { officeId, opportunityId } = {}
     ok: true,
     assignedOfficeId: officeId,
     opportunityId,
-    livingTaskId
+    livingTaskId,
+    operationClosed: true,
+    operationId: closed.operationId,
+    operationForced: Boolean(closed.forced)
   };
 }
 

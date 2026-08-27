@@ -30,6 +30,7 @@ import { readRepositoryFile } from "./helpers/shell.mjs";
 const offer = {
   id: "opp_offer",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "الرياض",
   district: "النرجس",
@@ -45,6 +46,7 @@ const offer = {
 const request = {
   id: "opp_request",
   opportunityKind: "REQUEST",
+  transactionIntent: "BUY",
   purpose: "PURCHASE",
   city: "الرياض",
   district: "النرجس",
@@ -58,7 +60,7 @@ const request = {
 };
 
 test("thresholds and rule version live in one matching config module", () => {
-  assert.equal(MATCHING_RULE_VERSION, "4.0.0");
+  assert.equal(MATCHING_RULE_VERSION, "4.1.0");
   assert.equal(MATCH_THRESHOLD, 55);
   assert.equal(MATCHING_CONFIG.threshold, MATCH_THRESHOLD);
   assert.equal(MATCHING_CONFIG.maxResults, 3);
@@ -76,8 +78,8 @@ test("compatible offer/request scores above threshold with Arabic reasons", () =
 
 test("sale-rent conflict is rejected", () => {
   const scored = scoreMatch(
-    opportunityToMatchInput({ ...offer, purpose: "SALE" }),
-    opportunityToMatchInput({ ...request, purpose: "RENT" })
+    opportunityToMatchInput({ ...offer, transactionIntent: "SELL", purpose: "SALE" }),
+    opportunityToMatchInput({ ...request, transactionIntent: "RENT_IN", purpose: "LEASE_REQUEST" })
   );
   assert.equal(scored.eligible, false);
 });
@@ -130,12 +132,20 @@ test("changing relevant opportunity data produces a new data version and match i
 
 test("rankMatchCandidates returns at most three current matches", () => {
   const source = {
+    opportunityKind: "OFFER",
+    transactionIntent: "SELL",
+    purpose: "SALE",
     city: "الرياض", district: "النرجس", propertyType: "شقة", transactionType: "sale",
-    price: 1200000, area: 180, rooms: 4, completeness: 90
+    salePrice: 1200000, price: 1200000, priceOrBudget: 1200000,
+    area: 180, rooms: 4, completeness: 90
   };
   const candidates = Array.from({ length: 5 }, (_, index) => ({
+    opportunityKind: "REQUEST",
+    transactionIntent: "BUY",
+    purpose: "PURCHASE",
     city: "الرياض", district: "النرجس", propertyType: "شقة", transactionType: "sale",
-    price: 1200000 + index * 10000, area: 180, rooms: 4, completeness: 90
+    budget: 1200000 + index * 10000, price: 1200000 + index * 10000, priceOrBudget: 1200000 + index * 10000,
+    area: 180, rooms: 4, completeness: 90
   }));
   const ranked = rankMatchCandidates(source, candidates);
   assert.equal(ranked.length, 3);

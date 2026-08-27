@@ -4,17 +4,24 @@
  */
 
 import { isLandProperty, normalizeDigits, safeText } from "./opportunity-intake-domain.js";
+import {
+  purposeFromTransactionIntent,
+  transactionIntentFromClientChoice,
+  TRANSACTION_INTENT
+} from "./transaction-intent-domain.js";
 
 export const REQUEST_KINDS = Object.freeze([
-  { id: "purchase", label: "شراء", transactionType: "purchase" },
-  { id: "rent", label: "استئجار", transactionType: "rent" }
+  { id: "purchase", label: "شراء", transactionIntent: TRANSACTION_INTENT.BUY },
+  { id: "rent", label: "استئجار", transactionIntent: TRANSACTION_INTENT.RENT_IN }
 ]);
 
-/** Map free-text request kind to canonical id for dynamic fields. */
+/** Map client choice to canonical request kind id for dynamic fields. */
 export function normalizeRequestKind(value = "") {
+  const intent = transactionIntentFromClientChoice(value);
+  if (intent === TRANSACTION_INTENT.RENT_IN) return "rent";
+  if (intent === TRANSACTION_INTENT.BUY) return "purchase";
   const text = safeText(value, 40).toLowerCase();
-  if (/rent|إيجار|ايجار|استئجار|lease|تأجير/.test(text)) return "rent";
-  if (/purchase|شراء|buy/.test(text)) return "purchase";
+  if (text === "rent" || text === "purchase") return text;
   return safeText(value, 20);
 }
 
@@ -104,8 +111,10 @@ function nullableNumber(value) {
 }
 
 export function buildClientIntakeDocument(formValues = {}, meta = {}) {
-  const requestKind = normalizeRequestKind(formValues.requestKind);
+  const transactionIntent = transactionIntentFromClientChoice(formValues.transactionIntent || formValues.requestKind);
+  const requestKind = normalizeRequestKind(transactionIntent || formValues.requestKind);
   const transactionType = requestKind === "rent" ? "rent" : "purchase";
+  const purpose = transactionIntent ? purposeFromTransactionIntent(transactionIntent) : "";
   const propertyType = safeText(formValues.propertyType, 80);
   const city = safeText(formValues.city, 80);
   const district = safeText(formValues.district, 80);
@@ -123,6 +132,8 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
 
   return {
     kind: "client",
+    opportunityKind: "REQUEST",
+    transactionIntent: transactionIntent || null,
     name: safeText(formValues.name, 80),
     phone: safeText(formValues.phone, 20),
     city,
@@ -130,6 +141,7 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
     propertyType,
     transactionType,
     requestKind,
+    purpose,
     budget,
     annualRent,
     amount,
@@ -164,7 +176,7 @@ function computeCompleteness(fields) {
     fields.propertyType,
     fields.city,
     fields.district,
-    fields.transactionType,
+    fields.transactionIntent || fields.transactionType,
     fields.amount
   ];
   const filled = checks.filter((v) => v !== null && v !== undefined && String(v).trim() !== "" && Number(v) !== 0).length;

@@ -11,7 +11,9 @@ import {
   livingStageAfterPartyAction,
   LIVING_TASK_STAGE,
   matchGroupKey,
+  partyCoordinationFlags,
   rankMatchCandidates,
+  resolveCoordinationLivingStage,
   snapshotHasPermittedDetail
 } from "../public/js/match-group-domain.js";
 import { mapOperationsItemsToDailyTasks } from "../src/v2/content/daily-tasks/domain.js";
@@ -24,7 +26,7 @@ import {
   sanitizePartyPublicView
 } from "../public/js/party-session-domain.js";
 import { buildPartyShellHtml } from "../public/js/party-shell-ui.js";
-import { handlePartySessionGet, handlePartySessionMint, handlePartySessionReply } from "../worker/src/party-session-service.js";
+import { handlePartySessionGet, handlePartySessionMint, handlePartySessionReply, handlePartySessionBundle } from "../worker/src/party-session-service.js";
 import { createHash } from "node:crypto";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -175,8 +177,8 @@ test("TEST D: expanded match group ranks candidates by current scores", () => {
   const html = buildDailyTaskCardHtml(views[0], { open: true });
   assert.match(html, /طلب العميل/);
   assert.match(html, /العرض المطابق/);
-  assert.match(html, /مراجعة المطابقات/);
-  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.match(html, /إرسال للعميل/);
+  assert.match(html, /إرسال للمالك/);
   assert.match(html, /مرشح 1/);
 });
 
@@ -282,20 +284,29 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
     token: minted.body.token, env: { DEPLOYMENT_ENV: "staging" }, requestId: "g2", helpers, ip: "1.1.1.1"
   });
   const html = buildPartyShellHtml(before.body.view);
-  assert.match(html, /ما رأيك بالعقار؟/);
+  assert.match(html, /data-party-coordination-form|ما رأيك بالعقار؟/);
+  assert.match(html, />مهتم</);
   assert.match(html, /850,000/);
   assert.equal(html.includes("0500000000"), false);
-  const details = await handlePartySessionReply({
+  const details = await handlePartySessionBundle({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "needs_details" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "more_info",
+          infoNeeds: ["price"]
+        }
+      })
+    },
     requestId: "g3",
     helpers,
     ip: "1.1.1.1"
   });
   const detailsHtml = buildPartyShellHtml(details.body.view);
   assert.match(detailsHtml, /850,000/);
-  assert.match(detailsHtml, /ما التفاصيل التي تحتاجها؟/);
+  assert.match(detailsHtml, /تم تسجيل ردك/);
 
   const mintedInterested = await handlePartySessionMint({
     request: { json: async () => ({ officeId: "office-1", matchId: "match_interest", party: "client", offerId: "offer_1" }) },
@@ -306,18 +317,26 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
   store["offices/office-1/matches/match_interest"] = {
     fields: { ownerOfferId: "offer_1", clientRequestId: "req_1" }
   };
-  const interested = await handlePartySessionReply({
+  const interested = await handlePartySessionBundle({
     token: mintedInterested.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ action: "interested" }) },
+    request: {
+      json: async () => ({
+        bundle: {
+          interest: "interested",
+          nextAction: "viewing",
+          viewingWindows: ["tomorrow_evening"]
+        }
+      })
+    },
     requestId: "g5",
     helpers,
     ip: "1.1.1.1"
   });
   const interestedHtml = buildPartyShellHtml(interested.body.view);
   assert.match(interestedHtml, /850,000/);
-  assert.match(interestedHtml, /أريد معاينة/);
-  assert.match(interestedHtml, /المعلومات والصور كافية/);
+  assert.match(interestedHtml, /تم تسجيل ردك/);
+  assert.match(interestedHtml, /مهتم|معاينة/);
 });
 
 test("TEST M/L: owner page identifies the property and never shows client phone", () => {
@@ -412,8 +431,9 @@ test("TEST T: livingStage survives remapping as the same match-group task", () =
   assert.equal(first[0].id, "mg_req_awali");
   assert.equal(reloaded[0].id, first[0].id);
   assert.equal(reloaded[0].livingStage, "WAITING_CLIENT");
-  const html = buildDailyTaskCardHtml(reloaded[0]);
-  assert.equal((html.match(/بانتظار رد العميل/g) || []).length, 1);
+  const html = buildDailyTaskCardHtml(reloaded[0], { open: true });
+  assert.match(html, /إرسال للمالك/);
+  assert.match(html, /إعادة الإرسال/);
 });
 
 test("appointment confirmed copy appears once", () => {
@@ -451,4 +471,29 @@ test("share snapshot envelope keeps office data canonical and party history froz
   assert.equal(share.snapshotVersion, 1);
   assert.equal(share.permitted.priceLabel.includes("850,000"), true);
   assert.equal(matchGroupKey({ clientRequestId: "req_1", opportunityId: "req_1", sourceCollection: "clients" }), "req_1");
+});
+
+test("coordination flags keep owner send after client WhatsApp open", () => {
+  const flags = partyCoordinationFlags({
+    livingStage: LIVING_TASK_STAGE.WAITING_CLIENT,
+    timeline: [{ type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" }]
+  });
+  assert.equal(flags.ownerCoordinationPending, true);
+  assert.equal(flags.needsOwnerCoordination, true);
+  assert.equal(flags.needsClientCoordination, false);
+  const stage = resolveCoordinationLivingStage({
+    currentStage: LIVING_TASK_STAGE.MATCH_FOUND,
+    party: "client",
+    timeline: [{ type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" }]
+  });
+  assert.equal(stage, LIVING_TASK_STAGE.MATCH_FOUND);
+  const both = resolveCoordinationLivingStage({
+    currentStage: LIVING_TASK_STAGE.MATCH_FOUND,
+    party: "owner",
+    timeline: [
+      { type: "whatsapp_client_opened", label: "تم فتح واتساب للعميل", createdAt: "2026-08-27T02:49:00.000Z" },
+      { type: "whatsapp_owner_opened", label: "تم فتح واتساب للمالك", createdAt: "2026-08-27T02:50:00.000Z" }
+    ]
+  });
+  assert.equal(both, LIVING_TASK_STAGE.WAITING_CLIENT);
 });

@@ -83,7 +83,14 @@ import {
   validatePurgeRequest
 } from "./opportunity-purge-service.js";
 import { markNotificationRead } from "./in-app-notification-write.js";
-import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
+import { evaluateMatchingReadiness, missingFieldLabelsArabic, isEligibleForMatchingRun } from "../../public/js/opportunity-readiness-domain.js";
+import {
+  extractTransactionIntentFromText,
+  opportunityKindFromTransactionIntent,
+  purposeFromTransactionIntent,
+  recordTypeFromTransactionIntent,
+  resolveTransactionIntentFromRecord
+} from "../../public/js/transaction-intent-domain.js";
 import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
 import {
   handlePublicOfficePreview,
@@ -143,6 +150,7 @@ import {
   handlePartySessionMint,
   handlePartySessionPhoto,
   handlePartySessionReply,
+  handlePartySessionBundle,
   handleMatchLivingAction
 } from "./party-session-service.js";
 import {
@@ -613,6 +621,18 @@ export default {
       if (request.method === "POST" && partyReply) {
         return await handlePartySessionReply({
           token: decodeURIComponent(partyReply[1] || ""),
+          env,
+          request,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        });
+      }
+
+      const partyBundle = url.pathname.match(/^\/party\/sessions\/([^/]+)\/bundle$/);
+      if (request.method === "POST" && partyBundle) {
+        return await handlePartySessionBundle({
+          token: decodeURIComponent(partyBundle[1] || ""),
           env,
           request,
           requestId,
@@ -1164,27 +1184,31 @@ async function uploadOfficeLibraryMedia(request, env, requestId) {
 }
 
 function evaluatePublicIntakeReadiness(intake = {}, parsed = {}) {
-  const missing = [];
   const isOwner = intake.kind === "owner";
-  const purpose = isOwner
-    ? (String(parsed.transactionType || intake.transactionType || "sale").toLowerCase() === "rent" ? "RENT" : "SALE")
-    : (String(parsed.transactionType || intake.transactionType || "").toLowerCase() === "rent" ? "LEASE_REQUEST" : "PURCHASE");
-  if (!purpose) missing.push("purpose");
-  if (!cleanText(intake.propertyType || parsed.propertyType, 80)) missing.push("propertyType");
-  if (!cleanText(intake.city || parsed.city, 80)) missing.push("city");
-  if (!cleanText(intake.district || parsed.district, 80)) missing.push("district");
-  const amount = Number(intake.amount || parsed.price || parsed.priceMax || 0);
-  if (!(amount > 0)) missing.push("priceOrBudget");
-  if (!isOwner && intake.kind !== "client") missing.push("advertiserRole");
-  const phone = normalizeSaudiPhone(intake.phone || parsed.phone);
-  if (!phone) missing.push("contactPhone");
-  const roleOk = isOwner ? "OWNER" : "CLIENT";
-  if (!roleOk) missing.push("advertiserRole");
+  const record = {
+    ...intake,
+    phone: intake.phone || parsed.phone,
+    propertyType: intake.propertyType || parsed.propertyType,
+    city: intake.city || parsed.city,
+    district: intake.district || parsed.district,
+    salePrice: intake.salePrice,
+    annualRent: intake.annualRent,
+    budget: intake.budget,
+    priceOrBudget: intake.priceOrBudget ?? intake.amount ?? parsed.price,
+    advertiserRole: isOwner ? "OWNER" : "CLIENT",
+    advertiserPhoneNormalized: intake.phone || parsed.phone,
+    contactPhone: intake.phone || parsed.phone,
+    opportunityKind: intake.opportunityKind || (isOwner ? "OFFER" : intake.kind === "client" ? "REQUEST" : ""),
+    transactionIntent: intake.transactionIntent || parsed.transactionIntent
+  };
+  const readiness = evaluateMatchingReadiness(record);
+  const intent = resolveTransactionIntentFromRecord(record);
   return {
-    matchingReadiness: missing.length === 0 ? "READY_FOR_MATCHING" : "NEEDS_COMPLETION",
-    matchingReadinessMissing: missing,
-    advertiserRole: roleOk,
-    purpose
+    matchingReadiness: readiness.matchingReadiness,
+    matchingReadinessMissing: readiness.matchingReadinessMissing,
+    advertiserRole: isOwner ? "OWNER" : "CLIENT",
+    purpose: intent ? purposeFromTransactionIntent(intent) : "",
+    transactionIntent: intent || null
   };
 }
 
@@ -1884,7 +1908,14 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   const mediaPaths = Array.isArray(intake.mediaPaths)
     ? intake.mediaPaths.map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 6)
     : [];
-  const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
+  const resolvedIntent = readiness.transactionIntent || resolveTransactionIntentFromRecord({
+    ...intake,
+    transactionIntent: intake.transactionIntent || parsed.transactionIntent
+  });
+  const opportunityKind = intake.opportunityKind
+    || (resolvedIntent ? opportunityKindFromTransactionIntent(resolvedIntent) : "")
+    || (parsed.kind === "owner_offer" ? "OFFER" : parsed.kind === "client_request" ? "REQUEST" : "");
+  const targetCollection = opportunityKind === "OFFER" ? "owners" : "clients";
   const prefix = targetCollection === "owners" ? "own" : "cli";
   const recordId = `${prefix}_intake_${intakeId}`.slice(0, 180);
   const opportunityId = `opp_intake_${intakeId}`.slice(0, 180);
@@ -1911,7 +1942,6 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     officeId,
     source: intake.source || (officeId === "platform" ? "platform_public" : "office_public_link")
   });
-  const opportunityKind = parsed.kind === "owner_offer" ? "OFFER" : "REQUEST";
   const routingReady = routerCompleteness({
     opportunityKind,
     purpose: readiness.purpose,
@@ -1926,7 +1956,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     sourceRecordId: firestoreString(recordId),
     workflowStage: firestoreString("new"),
     priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
-    purpose: firestoreString(readiness.purpose),
+    purpose: firestoreString(readiness.purpose || ""),
+    transactionIntent: resolvedIntent ? firestoreString(resolvedIntent) : null,
     advertiserRole: firestoreString(readiness.advertiserRole),
     advertiserDisplayName: firestoreOptionalString(parsed.senderName),
     advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
@@ -1967,6 +1998,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     opportunityId,
     officeId,
     opportunityKind,
+    transactionIntent: resolvedIntent || null,
     purpose: readiness.purpose,
     propertyType: parsed.propertyType || intake.propertyType,
     city: parsed.city || intake.city || DEFAULT_CITY,
@@ -1984,7 +2016,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   });
 
   let matches = [];
-  if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC) {
+  if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC && isEligibleForMatchingRun(persistedOpportunity)) {
     matches = await runCanonicalMatchingAfterOpportunityPersist({
       projectId, officeId, opportunityId, accessToken, env
     });
@@ -2123,16 +2155,31 @@ function structuredPublicIntakeToParsed(intake) {
   const amount = Number(intake.amount || 0);
   const propertyType = cleanText(intake.propertyType || detailsParsed.propertyType, 80);
   const district = cleanText(intake.district || detailsParsed.district, 100);
-  const transactionType = cleanText(intake.transactionType || detailsParsed.transactionType || "sale", 20);
+  const extractedIntent = extractTransactionIntentFromText(
+    cleanText(intake.details, 12000) || detailsParsed.rawText || ""
+  );
+  const transactionIntent = resolveTransactionIntentFromRecord({
+    ...intake,
+    transactionIntent: intake.transactionIntent || extractedIntent || detailsParsed.transactionIntent
+  });
+  const purpose = transactionIntent ? purposeFromTransactionIntent(transactionIntent) : "";
+  const transactionType = purpose === "SALE" || purpose === "PURCHASE"
+    ? (purpose === "SALE" ? "sale" : "purchase")
+    : purpose === "RENT" || purpose === "LEASE_REQUEST"
+      ? "rent"
+      : cleanText(intake.transactionType || detailsParsed.transactionType, 20);
   const phone = normalizeSaudiPhone(intake.phone || detailsParsed.phone);
   const senderName = cleanText(intake.name || detailsParsed.senderName, 200);
   const city = cleanText(intake.city || DEFAULT_CITY, 100);
+  const kind = transactionIntent
+    ? recordTypeFromTransactionIntent(transactionIntent)
+    : (isOwner ? "owner_offer" : intake.kind === "client" ? "client_request" : "unknown");
   const rawText = [isOwner ? "عرض مالك" : "طلب عميل", propertyType, district, intake.details].filter(Boolean).join(" — ");
-  const extractedCount = [propertyType, district, transactionType, amount, detailsParsed.area, phone, senderName].filter(Boolean).length;
+  const extractedCount = [propertyType, district, transactionIntent, amount, detailsParsed.area, phone, senderName].filter(Boolean).length;
   const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 7) * 100));
   return {
-    kind: isOwner ? "owner_offer" : "client_request",
-    rawText, normalizedText: normalizeArabicText(rawText), city, propertyType, district, transactionType,
+    kind, rawText, normalizedText: normalizeArabicText(rawText), city, propertyType, district, transactionType,
+    transactionIntent: transactionIntent || null,
     price: isOwner ? amount : (detailsParsed.price || 0),
     priceMin: isOwner ? amount : (detailsParsed.priceMin || 0),
     priceMax: isOwner ? amount : (amount || detailsParsed.priceMax || detailsParsed.price || 0),
@@ -2142,7 +2189,7 @@ function structuredPublicIntakeToParsed(intake) {
     urgency: detailsParsed.urgency || "normal", financingReady: Boolean(intake.financingReady || detailsParsed.financingReady),
     directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
     completeness: Math.min(100, completeness), confidence: Math.max(70, Number(detailsParsed.confidence || 0)),
-    missing: [!propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
+    missing: [!propertyType && "propertyType", !district && "district", !transactionIntent && "transactionIntent",
       !amount && "price", !detailsParsed.area && "area", !phone && "phone", !senderName && "senderName"].filter(Boolean)
   };
 }
@@ -2607,9 +2654,10 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
   ];
   const offerScore = countKeywords(text, offerWords);
   const requestScore = countKeywords(text, requestWords);
-  const kind = offerScore === 0 && requestScore === 0
-    ? "unknown"
-    : (offerScore > requestScore ? "owner_offer" : "client_request");
+  const transactionIntent = extractTransactionIntentFromText(raw);
+  const kind = transactionIntent
+    ? recordTypeFromTransactionIntent(transactionIntent)
+    : "unknown";
 
   // Keep the most-specific types first so "أرض تجارية" is not reduced to "أرض".
   const propertyTypes = [
@@ -2654,7 +2702,12 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
 
   const rentWords = /ايجار|للايجار|استئجار|مستاجر|مستأجر|اجار/;
   const saleWords = /بيع|شراء|تمليك|للبيع|للتمليك|مشتري/;
-  const transactionType = rentWords.test(text) ? "rent" : (saleWords.test(text) ? "sale" : "");
+  const purpose = transactionIntent ? purposeFromTransactionIntent(transactionIntent) : "";
+  const transactionType = purpose === "SALE" || purpose === "PURCHASE"
+    ? (purpose === "SALE" ? "sale" : "purchase")
+    : purpose === "RENT" || purpose === "LEASE_REQUEST"
+      ? "rent"
+      : "";
 
   const priceRange = extractMoneyRange(text);
   const price = priceRange.price || extractMoney(text);
@@ -2672,17 +2725,18 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
   const directOwner = /مالك مباشر|من المالك|مباشر من المالك|صاحب العقار/.test(text);
   const furnished = /مفروش|مؤثث/.test(text);
 
-  const extractedCount = [propertyType, district, transactionType, price, area, phone, senderName].filter(Boolean).length;
+  const extractedCount = [propertyType, district, transactionIntent, price, area, phone, senderName].filter(Boolean).length;
   const completeness = Math.round((extractedCount / 7) * 100);
   const confidence = Math.min(100, Math.round((Math.max(offerScore, requestScore) * 18) + (completeness * 0.72)));
 
   return {
     kind, rawText: raw, normalizedText: text, city: DEFAULT_CITY, propertyType, district, transactionType,
+    transactionIntent: transactionIntent || null,
     price: price || 0, priceMin: priceMin || 0, priceMax: priceMax || 0, area: area || 0,
     rooms: rooms || 0, streetWidth: streetWidth || 0, phone, senderName, urgency, financingReady,
     directOwner, furnished, offerScore, requestScore, completeness, confidence,
     missing: [
-      !propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
+      !propertyType && "propertyType", !district && "district", !transactionIntent && "transactionIntent",
       !price && "price", !area && "area", !phone && "phone", !senderName && "senderName"
     ].filter(Boolean)
   };
@@ -2785,12 +2839,15 @@ function normalizeSaudiPhone(value) {
 function parsedToFirestoreFields(parsed, context) {
   const normalizedSource = normalizeOpportunitySource(context.source || "whatsapp_cloud_api");
   const contactType = parsed.kind === "owner_offer" ? "owner" : (parsed.kind === "client_request" ? "buyer" : "unknown");
+  const transactionIntent = parsed.transactionIntent || null;
+  const purpose = transactionIntent ? purposeFromTransactionIntent(transactionIntent) : "";
+  const opportunityKind = transactionIntent ? opportunityKindFromTransactionIntent(transactionIntent) : "";
   return compactFields({
     schemaVersion: firestoreInteger(3), officeId: firestoreString(context.officeId),
     source: firestoreString(context.source || "whatsapp_cloud_api"),
     normalizedSource: firestoreString(normalizedSource),
     sourceInboxId: firestoreString(context.inboxDocumentId),
-    recordType: firestoreString(parsed.kind), status: firestoreString("active"), workflowStage: firestoreString("new"),
+    recordType: firestoreString(parsed.kind), status: firestoreString(transactionIntent ? "active" : "incomplete"), workflowStage: firestoreString("new"),
     lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
     contactType: firestoreString(contactType),
     contactName: firestoreOptionalString(parsed.senderName || context.senderName),
@@ -2807,6 +2864,9 @@ function parsedToFirestoreFields(parsed, context) {
     lifecycleUpdatedBy: firestoreOptionalString(context.lifecycleUpdatedBy || ""),
     rawText: firestoreString(parsed.rawText), city: firestoreOptionalString(parsed.city || DEFAULT_CITY), propertyType: firestoreOptionalString(parsed.propertyType),
     district: firestoreOptionalString(parsed.district), transactionType: firestoreOptionalString(parsed.transactionType),
+    transactionIntent: transactionIntent ? firestoreString(transactionIntent) : null,
+    purpose: purpose ? firestoreString(purpose) : null,
+    opportunityKind: opportunityKind ? firestoreString(opportunityKind) : null,
     price: parsed.price ? firestoreInteger(parsed.price) : null,
     priceMin: parsed.priceMin ? firestoreInteger(parsed.priceMin) : null,
     priceMax: parsed.priceMax ? firestoreInteger(parsed.priceMax) : null,
@@ -3739,6 +3799,7 @@ function operationsDeps(env = null) {
     setFirestoreDocument,
     getFirestoreDocument,
     listCollectionDocuments,
+    firestoreFieldsToJs,
     sendOfficePush: (args) => sendOfficePush({ ...args, env }),
     firestoreHelpers: operationsFirestoreHelpers()
   };
@@ -4100,7 +4161,7 @@ async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollectio
     const candidate = firestoreFieldsToJs(doc.fields || {});
     if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
     const scored = scoreMatch(parsed, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    if (!scored.hardMatch || !scored.eligible) continue;
     const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
     prepared.push({ candidate, candidateId, scored });
   }
@@ -4142,6 +4203,14 @@ async function findAndSaveMatchesForOpportunity({
     id: opportunityId,
     ...firestoreFieldsToJs(oppDoc.fields || {})
   };
+
+  if (!isEligibleForMatchingRun(opportunity)) {
+    return {
+      matches: [],
+      ineligible: true,
+      boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() }
+    };
+  }
 
   if (!isActiveLifecycle(opportunity)) {
     const docs = await listCollectionDocuments({
@@ -4195,7 +4264,7 @@ async function findAndSaveMatchesForOpportunity({
     if (!counterpartsEligible(opportunity, candidateRaw)) continue;
     const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
     const scored = scoreMatch(source, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    if (!scored.hardMatch || !scored.eligible) continue;
     prepared.push({ candidate, candidateRaw, candidateId, scored });
   }
   prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
@@ -4249,6 +4318,25 @@ async function findAndSaveMatchesForOpportunity({
 
   const operationsCreated = results.filter((item) => item.operationCreated).length
     + (missingData.created ? 1 : 0);
+
+  if (results.length > 0) {
+    const now = new Date();
+    const matchedIds = new Set([opportunityId]);
+    for (const row of results) {
+      if (row.counterpartOpportunityId) matchedIds.add(row.counterpartOpportunityId);
+    }
+    for (const matchedId of matchedIds) {
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "opportunities", matchedId],
+        accessToken,
+        fields: compactFields({
+          lifecycleStatus: firestoreString(LIFECYCLE_STATUS.MATCHED),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+    }
+  }
 
   let cooperation = { created: 0, skipped: "internal_match_exists" };
   if (results.length === 0) {

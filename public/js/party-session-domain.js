@@ -2,6 +2,12 @@
  * Party-link sessions. Opaque tokens only — never treat URL JSON as authority.
  */
 
+import {
+  buildCoordinationFormView,
+  clientBundleSummary,
+  ownerBundleSummary
+} from "./coordination-bundle-domain.js";
+
 export const PARTY_LINK_QUERY = "cv2Party";
 
 export const PARTY_SESSION_STATUS = Object.freeze({
@@ -464,28 +470,53 @@ export function sanitizePartyPublicView({
   followUpAction = "",
   revealedDetail = null,
   livingStage = "",
-  appointment = null
+  appointment = null,
+  coordination = null
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
-  const replied = status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction);
+  const coordinationSession = coordination && typeof coordination === "object" ? coordination : null;
+  const bundleSubmitted = side === "owner"
+    ? Boolean(coordinationSession?.ownerBundle)
+    : Boolean(coordinationSession?.clientBundle);
+  const bundleSummary = side === "owner"
+    ? ownerBundleSummary(coordinationSession?.ownerBundle)
+    : clientBundleSummary(coordinationSession?.clientBundle);
+  const useBundleMode = Boolean(coordinationSession?.id || coordinationSession?.matchId);
+  const coordinationForm = useBundleMode
+    ? buildCoordinationFormView(side, {
+      questionSetVersion: side === "owner"
+        ? coordinationSession?.ownerQuestionSet
+        : coordinationSession?.clientQuestionSet,
+      submitted: bundleSubmitted,
+      bundleSummary
+    })
+    : null;
   const followUpLabel = followUpAction ? partyActionLabel(side, followUpAction) : "";
   const revealed = revealedDetail && text(revealedDetail.value)
     ? { label: text(revealedDetail.label), value: text(revealedDetail.value) }
     : null;
   const publicAppointment = publicAppointmentView(appointment);
   const appointmentActive = publicAppointment.phase && publicAppointment.phase !== "none";
+  const bundleModeActive = useBundleMode && !bundleSubmitted && !appointmentActive;
+  const replied = bundleSubmitted
+    || (status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction));
   const view = {
     party: side,
     title: partyViewTitle(side),
-    promptLine: side === "client" && !replied ? "ما رأيك بالعقار؟" : (side === "owner" && !replied ? "هل العقار ما زال متاحًا؟" : ""),
+    promptLine: bundleModeActive
+      ? (side === "client" ? "أجب على الأسئلة التالية" : "أكد توفر العقار وخيارات المعاينة")
+      : (side === "client" && !replied ? "ما رأيك بالعقار؟" : (side === "owner" && !replied ? "هل العقار ما زال متاحًا؟" : "")),
     officeName: text(officeName) || "المكتب العقاري",
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot),
-    actions: replied || appointmentActive ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
-    followUpActions: replied && !appointmentActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
+    actions: (replied || appointmentActive || bundleModeActive) ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
+    followUpActions: replied && !appointmentActive && !bundleModeActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
+    coordinationForm: bundleModeActive ? coordinationForm : (bundleSubmitted ? { ...coordinationForm, submitted: true, bundleSummary } : null),
     replied,
-    replyLabel: replied ? partyActionLabel(side, replyAction) : "",
+    replyLabel: bundleSubmitted
+      ? bundleSummary
+      : (replied ? partyActionLabel(side, replyAction) : ""),
     followUpLabel,
     revealedDetail: revealed,
     appointment: publicAppointment

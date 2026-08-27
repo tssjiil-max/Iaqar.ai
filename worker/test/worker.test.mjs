@@ -584,11 +584,12 @@ test("the public media route refuses any key outside the office image allow-list
 test("pipeline classifies a client request", async () => {
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({messageText:"مطلوب شقة تمليك في حي العقيق بحدود 650 ألف مساحة 150 متر 4 غرف"})
+    body: JSON.stringify({messageText:"أبحث عن شراء شقة في حي العقيق بحدود 650 ألف مساحة 150 متر 4 غرف"})
   }), env);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionIntent, "BUY");
   assert.equal(body.parsed.propertyType, "شقة");
   assert.equal(body.parsed.district, "العقيق");
   assert.equal(body.parsed.price, 650000);
@@ -664,15 +665,16 @@ test("phase 2 parser extracts district price type operation phone and sender nam
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
-      messageText: "مطلوب شقة تمليك في حي وادي العقيق من 650 ألف إلى 700 ألف مساحة 160 متر، الاسم: محمد الحربي، الجوال 0552019909"
+      messageText: "أبحث عن شراء شقة في حي وادي العقيق من 650 ألف إلى 700 ألف مساحة 160 متر، الاسم: محمد الحربي، الجوال 0552019909"
     })
   }), env);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionIntent, "BUY");
   assert.equal(body.parsed.propertyType, "شقة");
   assert.equal(body.parsed.district, "وادي العقيق");
-  assert.equal(body.parsed.transactionType, "sale");
+  assert.equal(body.parsed.transactionType, "purchase");
   assert.equal(body.parsed.priceMin, 650000);
   assert.equal(body.parsed.priceMax, 700000);
   assert.equal(body.parsed.area, 160);
@@ -709,11 +711,28 @@ test("phase 3 matching ranks candidates and selects the best opportunity", async
   const response = await worker.fetch(new Request("https://example.test/matching/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
-      source: {kind:"client_request", district:"العقيق", propertyType:"شقة", transactionType:"sale", priceMin:600000, priceMax:700000, area:160, rooms:4, financingReady:true, urgency:"high", completeness:100},
+      source: {
+        opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+        city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+        budget: 700000, priceMin: 600000, priceMax: 700000,
+        area: 160, rooms: 4, financingReady: true, urgency: "high", completeness: 100
+      },
       candidates: [
-        {district:"العقيق", propertyType:"شقة", transactionType:"sale", price:650000, area:158, rooms:4, directOwner:true, completeness:100},
-        {district:"العقيق", propertyType:"شقة", transactionType:"sale", price:760000, area:180, rooms:5, completeness:80},
-        {district:"السلام", propertyType:"فيلا", transactionType:"sale", price:650000, area:400, rooms:7, completeness:100}
+        {
+          opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+          city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+          salePrice: 650000, price: 650000, area: 158, rooms: 4, directOwner: true, completeness: 100
+        },
+        {
+          opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+          city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+          salePrice: 760000, price: 760000, area: 180, rooms: 5, completeness: 80
+        },
+        {
+          opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+          city: "المدينة المنورة", district: "السلام", propertyType: "فيلا",
+          salePrice: 650000, price: 650000, area: 400, rooms: 7, completeness: 100
+        }
       ]
     })
   }), env);
@@ -745,8 +764,16 @@ test("phase 3 matching explains a close negotiable price", async () => {
   const response = await worker.fetch(new Request("https://example.test/matching/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
-      source: {district:"العزيزية", propertyType:"شقة", transactionType:"sale", priceMin:600000, priceMax:650000, area:150, completeness:80},
-      candidates: [{district:"العزيزية", propertyType:"شقة", transactionType:"sale", price:700000, area:155, completeness:80}]
+      source: {
+        opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+        city: "المدينة المنورة", district: "العزيزية", propertyType: "شقة",
+        budget: 750000, priceMin: 600000, priceMax: 750000, area: 150, completeness: 80
+      },
+      candidates: [{
+        opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+        city: "المدينة المنورة", district: "العزيزية", propertyType: "شقة",
+        salePrice: 700000, price: 700000, area: 155, completeness: 80
+      }]
     })
   }), env);
   const body = await response.json();
@@ -887,12 +914,21 @@ test("analytics preview includes morning priorities", async () => {
 
 test("stage 2 matching returns only the best three opportunities", async () => {
   const candidates = Array.from({length: 6}, (_, index) => ({
-    city:"المدينة المنورة", district:"العقيق", propertyType:"شقة", transactionType:"sale",
-    price:650000 + index * 5000, area:160 + index, rooms:4, completeness:90
+    opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+    city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+    salePrice: 650000 + index * 5000, price: 650000 + index * 5000,
+    area: 160 + index, rooms: 4, completeness: 90
   }));
   const response = await worker.fetch(new Request("https://example.test/matching/preview", {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({source:{city:"المدينة المنورة",district:"العقيق",propertyType:"شقة",transactionType:"sale",price:650000,area:160,rooms:4,completeness:90},candidates})
+    body:JSON.stringify({
+      source: {
+        opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+        city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+        budget: 700000, price: 650000, area: 160, rooms: 4, completeness: 90
+      },
+      candidates
+    })
   }), env);
   const body = await response.json();
   assert.equal(body.matches.length, 3);
@@ -903,8 +939,16 @@ test("stage 2 matching records precise price and area differences", async () => 
   const response = await worker.fetch(new Request("https://example.test/matching/preview", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      source:{city:"المدينة المنورة",district:"قباء",propertyType:"فيلا",transactionType:"sale",price:1000000,area:400,completeness:90},
-      candidates:[{city:"المدينة المنورة",district:"قباء",propertyType:"فيلا",transactionType:"sale",price:1030000,area:420,completeness:90}]
+      source: {
+        opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+        city: "المدينة المنورة", district: "قباء", propertyType: "فيلا",
+        budget: 1100000, price: 1000000, area: 400, completeness: 90
+      },
+      candidates: [{
+        opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+        city: "المدينة المنورة", district: "قباء", propertyType: "فيلا",
+        salePrice: 1030000, price: 1030000, area: 420, completeness: 90
+      }]
     })
   }), env);
   const body = await response.json();
@@ -959,12 +1003,14 @@ test("Phase 4 matching preview exposes rule version and threshold from one confi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       source: {
-        district: "العقيق", propertyType: "شقة", transactionType: "sale",
-        price: 650000, area: 160, rooms: 4, completeness: 90
+        opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+        city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+        budget: 700000, price: 650000, area: 160, rooms: 4, completeness: 90
       },
       candidates: [{
-        district: "العقيق", propertyType: "شقة", transactionType: "sale",
-        price: 650000, area: 160, rooms: 4, completeness: 90
+        opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+        city: "المدينة المنورة", district: "العقيق", propertyType: "شقة",
+        salePrice: 650000, price: 650000, area: 160, rooms: 4, completeness: 90
       }]
     })
   }), env);
@@ -978,12 +1024,14 @@ test("Phase 4 matching preview exposes rule version and threshold from one confi
 
 test("Phase 4 match ids include rule and data versions and stay idempotent", async () => {
   const left = {
-    opportunityKind: "OFFER", purpose: "SALE", city: "الرياض", district: "النرجس",
-    propertyType: "شقة", price: 1000000, area: 150, rooms: 3, completeness: 90, version: 1
+    opportunityKind: "OFFER", transactionIntent: "SELL", purpose: "SALE",
+    city: "الرياض", district: "النرجس", propertyType: "شقة",
+    salePrice: 1000000, price: 1000000, area: 150, rooms: 3, completeness: 90, version: 1
   };
   const right = {
-    opportunityKind: "REQUEST", purpose: "PURCHASE", city: "الرياض", district: "النرجس",
-    propertyType: "شقة", price: 1050000, area: 148, rooms: 3, completeness: 90, version: 1
+    opportunityKind: "REQUEST", transactionIntent: "BUY", purpose: "PURCHASE",
+    city: "الرياض", district: "النرجس", propertyType: "شقة",
+    budget: 1050000, price: 1050000, area: 148, rooms: 3, completeness: 90, version: 1
   };
   const pairKey = canonicalPairKey("opportunities:a", "opportunities:b");
   const dataVersion = await relevantDataVersion(left, right);

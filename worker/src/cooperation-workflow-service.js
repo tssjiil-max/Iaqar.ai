@@ -23,6 +23,10 @@ function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function upper(value) {
+  return text(value).toUpperCase();
+}
+
 function jsonField(fh, value) {
   return fh.firestoreString(JSON.stringify(value || {}));
 }
@@ -49,7 +53,7 @@ async function readCooperationSettings({
   };
 }
 
-function cooperationFields(fh, record) {
+export function cooperationFields(fh, record) {
   const ids = Array.isArray(record.opportunityIds) ? record.opportunityIds : [];
   return {
     id: fh.firestoreString(record.id),
@@ -77,11 +81,117 @@ function cooperationFields(fh, record) {
     originListingJson: jsonField(fh, record.originListing || {}),
     counterpartListingJson: jsonField(fh, record.counterpartListing || {}),
     completionConfirmationsJson: jsonField(fh, record.completionConfirmations || {}),
+    clientPhone: fh.firestoreString(record.clientPhone || ""),
+    ownerPhone: fh.firestoreString(record.ownerPhone || ""),
+    clientName: fh.firestoreString(record.clientName || ""),
+    ownerName: fh.firestoreString(record.ownerName || ""),
+    clientRequestId: fh.firestoreString(record.clientRequestId || record.requestId || ""),
+    ownerOfferId: fh.firestoreString(record.ownerOfferId || record.offerId || ""),
+    requestId: fh.firestoreString(record.requestId || record.clientRequestId || ""),
+    offerId: fh.firestoreString(record.offerId || record.ownerOfferId || ""),
+    matchId: fh.firestoreString(record.matchId || ""),
     agreedSharePercent: fh.firestoreInteger(Number(record.agreedSharePercent || record.defaultSharePercent || 50)),
     appointmentAt: fh.firestoreString(record.appointmentAt || ""),
     createdAt: fh.firestoreTimestamp(new Date(record.createdAt || Date.now())),
     updatedAt: fh.firestoreTimestamp(new Date(record.updatedAt || Date.now())),
     schemaVersion: fh.firestoreInteger(2)
+  };
+}
+
+function pickOpportunityPhone(opp = {}) {
+  if (!opp || typeof opp !== "object") return "";
+  return text(
+    opp.contactPhone
+    || opp.phone
+    || opp.advertiserPhoneNormalized
+    || opp.buyerPhone
+    || opp.clientPhone
+    || opp.ownerPhone
+  );
+}
+
+function opportunityKind(value = "") {
+  return upper(value);
+}
+
+export async function enrichCooperationContacts({
+  projectId,
+  cooperation = {},
+  accessToken,
+  deps
+}) {
+  const origin = text(cooperation.originatingOfficeId).toLowerCase();
+  const target = text(cooperation.targetOfficeId).toLowerCase();
+  const roles = resolveCooperationRoles({
+    originatingKind: cooperation.opportunityKind,
+    counterpartKind: cooperation.counterpartOpportunityKind,
+    originatingOfficeId: origin,
+    targetOfficeId: target
+  });
+  const clientOfficeId = text(roles.clientOfficeId).toLowerCase();
+  const propertyOfficeId = text(roles.propertyOfficeId).toLowerCase();
+
+  async function readOpportunity(officeId, opportunityId) {
+    const oppId = text(opportunityId);
+    const office = text(officeId).toLowerCase();
+    if (!office || !oppId) return null;
+    const doc = await deps.getFirestoreDocument({
+      projectId,
+      segments: ["offices", office, "opportunities", oppId],
+      accessToken,
+      allowMissing: true
+    });
+    return doc ? { id: oppId, officeId: office, ...deps.firestoreFieldsToJs(doc.fields || {}) } : null;
+  }
+
+  const originOppId = text(cooperation.opportunityId || (cooperation.opportunityIds || [])[0]);
+  const counterpartOppId = text(cooperation.counterpartOpportunityId);
+  const originOpp = await readOpportunity(origin, originOppId);
+  const counterpartOffice = clientOfficeId === origin ? propertyOfficeId : origin;
+  const counterpartOpp = counterpartOppId
+    ? await readOpportunity(counterpartOffice, counterpartOppId)
+    : null;
+
+  let clientOpp = null;
+  let ownerOpp = null;
+  if (originOpp) {
+    const kind = opportunityKind(originOpp.opportunityKind);
+    if (kind === "REQUEST" || kind === "CLIENT") clientOpp = originOpp;
+    else ownerOpp = originOpp;
+  }
+  if (counterpartOpp) {
+    const kind = opportunityKind(counterpartOpp.opportunityKind);
+    if (kind === "REQUEST" || kind === "CLIENT") clientOpp = counterpartOpp;
+    else ownerOpp = counterpartOpp;
+  }
+
+  const originListing = publicListingSlice(originOpp || cooperation.originListing || cooperation.ownListing || {});
+  const counterpartListing = publicListingSlice(
+    counterpartOpp || cooperation.counterpartListing || cooperation.partnerListing || {}
+  );
+
+  return {
+    ...cooperation,
+    clientOfficeId: roles.clientOfficeId,
+    propertyOfficeId: roles.propertyOfficeId,
+    clientPhone: pickOpportunityPhone(clientOpp) || text(cooperation.clientPhone),
+    ownerPhone: pickOpportunityPhone(ownerOpp) || text(cooperation.ownerPhone),
+    clientName: text(clientOpp?.contactName || clientOpp?.clientName || cooperation.clientName),
+    ownerName: text(ownerOpp?.contactName || ownerOpp?.ownerName || cooperation.ownerName),
+    originListing,
+    counterpartListing,
+    ownListing: originListing,
+    partnerListing: counterpartListing,
+    requestId: text(clientOpp?.id || cooperation.requestId || cooperation.clientRequestId),
+    offerId: text(ownerOpp?.id || cooperation.offerId || cooperation.ownerOfferId),
+    clientRequestId: text(clientOpp?.id || cooperation.clientRequestId || cooperation.requestId),
+    ownerOfferId: text(ownerOpp?.id || cooperation.ownerOfferId || cooperation.offerId),
+    counterpartOpportunityId: text(counterpartOpp?.id || cooperation.counterpartOpportunityId),
+    counterpartOpportunityKind: text(counterpartOpp?.opportunityKind || cooperation.counterpartOpportunityKind),
+    propertyType: text(cooperation.propertyType || originListing.propertyType || counterpartListing.propertyType),
+    purpose: text(cooperation.purpose || originListing.purpose || counterpartListing.purpose),
+    city: text(cooperation.city || originListing.city || counterpartListing.city),
+    district: text(cooperation.district || originListing.district || counterpartListing.district)
   };
 }
 
@@ -425,7 +535,12 @@ export async function runCooperationWorkflow({
 
   await upsertCooperationOperations({
     projectId,
-    cooperation: next,
+    cooperation: await enrichCooperationContacts({
+      projectId,
+      cooperation: next,
+      accessToken,
+      deps
+    }),
     accessToken,
     deps
   });

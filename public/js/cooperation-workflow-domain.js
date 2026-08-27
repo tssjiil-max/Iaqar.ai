@@ -307,6 +307,60 @@ export function cooperationRequestedLabel(partnerName = "") {
   return name ? `تم إرسال طلب التعاون إلى ${name}` : "تم إرسال طلب التعاون";
 }
 
+export function cooperationAuthorizedContacts(record = {}, officeId = "") {
+  const status = upper(record.status);
+  const stage = upper(record.currentStage);
+  const blockedStages = new Set([
+    COOPERATION_STAGE.MATCH_FOUND,
+    COOPERATION_STAGE.REVIEW,
+    COOPERATION_STAGE.WAITING_PARTNER,
+    COOPERATION_STAGE.REQUEST_SENT,
+    COOPERATION_STAGE.REJECTED
+  ]);
+  const empty = {
+    clientPhone: "",
+    ownerPhone: "",
+    exposeCounterpartyContact: false,
+    canSendToClient: false,
+    canSendToOwner: false
+  };
+  if (![COOPERATION_RECORD_STATUS.ACCEPTED, COOPERATION_RECORD_STATUS.COMPLETED].includes(status)) {
+    return empty;
+  }
+  if (blockedStages.has(stage)) return empty;
+
+  const role = viewerRoleFor(record, officeId);
+  const clientPhone = text(record.clientPhone);
+  const ownerPhone = text(record.ownerPhone);
+  const clientStages = new Set([
+    COOPERATION_STAGE.ACCEPTED,
+    COOPERATION_STAGE.CUSTOMER_ACTION,
+    COOPERATION_STAGE.FOLLOW_UP_AFTER_VIEWING,
+    COOPERATION_STAGE.APPOINTMENT,
+    COOPERATION_STAGE.APPOINTMENT_CONFIRMED,
+    COOPERATION_STAGE.PRELIMINARY_AGREEMENT,
+    COOPERATION_STAGE.DEAL_COMPLETION_PENDING,
+    COOPERATION_STAGE.COMPLETED
+  ]);
+  const ownerStages = new Set([
+    COOPERATION_STAGE.OWNER_ACTION,
+    COOPERATION_STAGE.APPOINTMENT,
+    COOPERATION_STAGE.APPOINTMENT_CONFIRMED,
+    COOPERATION_STAGE.PRELIMINARY_AGREEMENT,
+    COOPERATION_STAGE.DEAL_COMPLETION_PENDING,
+    COOPERATION_STAGE.COMPLETED
+  ]);
+  const canSendToClient = role === COOPERATION_ROLE.CLIENT_OFFICE && clientPhone && clientStages.has(stage);
+  const canSendToOwner = role === COOPERATION_ROLE.PROPERTY_OFFICE && ownerPhone && ownerStages.has(stage);
+  return {
+    clientPhone: canSendToClient ? clientPhone : "",
+    ownerPhone: canSendToOwner ? ownerPhone : "",
+    exposeCounterpartyContact: canSendToClient || canSendToOwner,
+    canSendToClient,
+    canSendToOwner
+  };
+}
+
 export function sanitizeCooperationView(record = {}) {
   const out = {};
   for (const [key, value] of Object.entries(record || {})) {
@@ -846,6 +900,7 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
   const { primaryAction, secondaryActions } = cooperationActionsFor({ stage, role, record, officeId });
   const sortGroup = sortGroupForCooperation({ stage, role, record, officeId, now });
   const partnerName = partnerOfficeNameFor(record, officeId);
+  const contacts = cooperationAuthorizedContacts(record, officeId);
   const isTarget = text(officeId).toLowerCase() === text(record.targetOfficeId).toLowerCase();
   const inbound = (stage === COOPERATION_STAGE.WAITING_PARTNER || stage === COOPERATION_STAGE.REQUEST_SENT) && isTarget;
   const propertyLine = cooperationPropertyLine(listing.propertyType ? listing : ownListing);
@@ -913,12 +968,14 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
     requestId: text(record.requestId || record.clientRequestId),
     opportunityId: text(record.opportunityId || record.originOpportunityId),
     counterpartOpportunityId: text(record.counterpartOpportunityId),
-    clientPhone: "",
-    ownerPhone: "",
-    clientName: "",
-    ownerName: "",
+    clientPhone: contacts.clientPhone,
+    ownerPhone: contacts.ownerPhone,
+    clientName: text(record.clientName),
+    ownerName: text(record.ownerName),
     sessionKind: "",
-    exposeCounterpartyContact: false,
+    exposeCounterpartyContact: contacts.exposeCounterpartyContact,
+    canSendToClient: contacts.canSendToClient,
+    canSendToOwner: contacts.canSendToOwner,
     sortGroup,
     priorityGroup: sortGroup === SORT_GROUP.NEEDS_ACTION ? "action_now"
       : sortGroup === SORT_GROUP.NEW_RESPONSE ? "new_reply"

@@ -132,6 +132,34 @@ function appointmentBlock(appointment = {}) {
   return taken;
 }
 
+function coordinationFormBlock(form = {}) {
+  if (!form || form.mode !== "coordination_bundle") return "";
+  if (form.submitted) {
+    return `<div class="party-coordination" data-testid="party-bundle-recorded">
+      <p class="party-recorded">${PARTY_REPLY_RECORDED}</p>
+      <p class="party-reply">${escapeHtml(form.bundleSummary || "")}</p>
+    </div>`;
+  }
+  const steps = (form.steps || []).map((step) => {
+    const options = (step.options || []).map((opt) => {
+      if (step.type === "multi") {
+        return `<label class="party-choice"><input type="checkbox" data-bundle-field="${escapeHtml(step.field)}" value="${escapeHtml(opt.value)}"><span>${escapeHtml(opt.label)}</span></label>`;
+      }
+      return `<button type="button" class="party-action" data-bundle-choice="${escapeHtml(step.field)}" data-bundle-value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`;
+    }).join("");
+    const boolField = step.type === "boolean"
+      ? `<label class="party-choice"><input type="checkbox" data-bundle-bool="${escapeHtml(step.field)}"><span>${escapeHtml(step.label || "تنسيق مسبق")}</span></label>`
+      : "";
+    return `<div class="party-bundle-step" data-bundle-step="${escapeHtml(step.field)}" data-bundle-when="${escapeHtml(JSON.stringify(step.when || null))}">
+      ${step.type !== "boolean" ? `<div class="party-actions party-bundle-options">${options}</div>` : boolField}
+    </div>`;
+  }).join("");
+  return `<div class="party-coordination" data-party-coordination-form data-question-set="${escapeHtml(form.questionSetVersion || "")}">
+    <div class="party-bundle-steps">${steps}</div>
+    <button type="button" class="party-action party-bundle-submit" data-party-bundle-submit data-testid="party-bundle-submit">تسجيل الرد</button>
+  </div>`;
+}
+
 export function buildPartyShellHtml(view = {}) {
   const property = view.property || {};
   const details = propertyRows(property);
@@ -149,9 +177,15 @@ export function buildPartyShellHtml(view = {}) {
     : "";
   const primaryActions = actionButtons(view.actions);
   const followUp = actionButtons(view.followUpActions);
+  const coordination = coordinationFormBlock(view.coordinationForm);
   const appointment = appointmentBlock(view.appointment || {});
   let replyBlock = "";
-  if (appointment) {
+  if (coordination) {
+    const prompt = view.promptLine
+      ? `<p class="party-prompt">${escapeHtml(view.promptLine)}</p>`
+      : "";
+    replyBlock = `<div class="party-reply-block">${prompt}${coordination}</div>`;
+  } else if (appointment) {
     replyBlock = `<div class="party-reply-block">${appointment}</div>`;
   } else if (view.replied) {
     const nextPrompt = view.replyLabel === "أحتاج تفاصيل أكثر" && followUp

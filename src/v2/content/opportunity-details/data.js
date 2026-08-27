@@ -1,5 +1,5 @@
 import { saveV2FieldWithAdapter } from "../../opportunity-details-v2.js";
-import { canonicalFirestoreOfficeId, isOwnedByOffice, projectOpportunityFlowStatuses } from "../../../../public/js/opportunity-data-flow-domain.js";
+import { canonicalFirestoreOfficeId, isOwnedByOffice, projectOpportunityFlowStatuses } from "../../opportunity-data-flow-domain.js";
 
 function officeRuntime() {
   return window.IAQAR?.office || null;
@@ -10,6 +10,9 @@ function officeId() {
 }
 
 function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return String(window.IAQAR.resolveWorkerBase() || "").replace(/\/+$/, "");
+  }
   return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
 }
 
@@ -21,14 +24,38 @@ function authUser() {
   }
 }
 
+async function loadOpportunityRecordFromWorker(id) {
+  const user = authUser();
+  const currentOfficeId = officeId();
+  const worker = workerBase();
+  if (!user?.getIdToken || !currentOfficeId || !worker || !id) return null;
+  const token = await user.getIdToken();
+  const response = await fetch(`${worker}/opportunity/workspace`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      officeId: currentOfficeId,
+      opportunityId: id
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.ok || !payload.opportunity) return null;
+  return { id, ...(payload.opportunity || {}) };
+}
+
 export async function loadOpportunityRecord(id) {
   const office = officeRuntime();
   const db = office?.db;
   const currentOfficeId = officeId();
-  if (!db || !currentOfficeId || !id) return null;
-  const snap = await db.collection("offices").doc(currentOfficeId).collection("opportunities").doc(id).get();
-  if (!snap.exists) return null;
-  return { id, ...(snap.data() || {}) };
+  if (!currentOfficeId || !id) return null;
+  if (db) {
+    const snap = await db.collection("offices").doc(currentOfficeId).collection("opportunities").doc(id).get();
+    if (snap.exists) return { id, ...(snap.data() || {}) };
+  }
+  return loadOpportunityRecordFromWorker(id);
 }
 
 async function persistPatch(id, patch) {

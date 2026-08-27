@@ -40,7 +40,7 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'officeRatings'
+        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'coordinationSessions', 'officeRatings'
       ];
     }
     function validOfficeProfile() {
@@ -258,6 +258,9 @@ service cloud.firestore {
         allow read, write: if false;
       }
       match /partySessionKeys/{keyId} {
+        allow read, write: if false;
+      }
+      match /coordinationSessions/{sessionId} {
         allow read, write: if false;
       }
 

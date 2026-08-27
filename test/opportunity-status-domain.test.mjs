@@ -25,11 +25,14 @@ test("normalizeDataCompleteness maps readiness to domains without false complete
   assert.equal(partial, DATA_COMPLETENESS.INCOMPLETE);
 
   const ready = normalizeDataCompleteness({
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     purpose: "SALE",
     propertyType: "شقة",
     city: "المدينة المنورة",
     district: "العوالي",
     salePrice: 500000,
+    priceOrBudget: 500000,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678"
   });

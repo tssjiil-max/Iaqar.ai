@@ -11,6 +11,7 @@ import {
 } from "../../cooperation-workflow-domain.js";
 import {
   LIVING_TASK_STAGE,
+  TASK_SORT_GROUP,
   TASK_SORT_GROUP_RANK,
   formatBestResultLine,
   formatCandidateCountLine,
@@ -20,6 +21,7 @@ import {
   livingTaskId,
   matchGroupKey,
   parseLivingTimeline,
+  partyCoordinationFlags,
   sortGroupForLivingStage
 } from "../../match-group-domain.js";
 import { formatOpportunityReference } from "../../reference-code-domain.js";
@@ -93,6 +95,7 @@ export const EXEC_ACTION = Object.freeze({
   REVIEW_NEXT: "review_next_candidate",
   SHARE_DETAILS: "share_details",
   CONFIRM_DEAL: "confirm_deal",
+  REJECT_CANDIDATE: "reject_candidate",
   ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
   DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
 });
@@ -596,6 +599,26 @@ function canSendParty(record = {}, party = "client") {
   return isValidContactPhone(record.clientPhone || record.clientContactPhone || record.buyerPhone);
 }
 
+function maxSecondaryActions(record = {}) {
+  if (record.taskKind === "match_group" || text(record.matchId)) return 3;
+  return 2;
+}
+
+function coordinationSendActions(record = {}, { excludeActionId = "" } = {}) {
+  const flags = partyCoordinationFlags({
+    timeline: record.timeline || record.livingTimeline,
+    livingStage: record.livingStage
+  });
+  const actions = [];
+  if (flags.needsOwnerCoordination && shouldOfferSendAction(record, "owner")) {
+    actions.push(sendToOwnerAction(record));
+  }
+  if (flags.needsClientCoordination && shouldOfferSendAction(record, "client")) {
+    actions.push(sendToClientAction(record));
+  }
+  return actions.filter((action) => action.id !== excludeActionId);
+}
+
 function actionsForState(stateKey, record = {}) {
   const secondary = [];
   let primary = null;
@@ -608,19 +631,22 @@ function actionsForState(stateKey, record = {}) {
   if (living === LIVING_TASK_STAGE.FOLLOW_UP) {
     primary = confirmDealAction();
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (ownerNeeded) {
     primary = shouldOfferSendAction(record, "owner") ? sendToOwnerAction(record) : null;
+    for (const action of coordinationSendActions(record, { excludeActionId: primary?.id })) {
+      secondary.unshift(action);
+    }
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
     || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
     || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: null, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
     if (record.hasRejectedCandidate && record.hasNextCandidate) {
@@ -628,13 +654,23 @@ function actionsForState(stateKey, record = {}) {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة العرض التالي"
       };
+    } else if (shouldOfferSendAction(record, "client")) {
+      primary = sendToClientAction(record);
+      for (const action of coordinationSendActions(record, { excludeActionId: EXEC_ACTION.SEND_TO_CLIENT })) {
+        secondary.unshift(action);
+      }
+      if (Number(record.candidateCount || 0) > 1) {
+        secondary.push({
+          id: EXEC_ACTION.REJECT_CANDIDATE,
+          label: "غير مناسب",
+          variant: "text"
+        });
+      }
     } else if (Number(record.candidateCount || 0) > 1) {
       primary = {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة المطابقات"
       };
-    } else if (shouldOfferSendAction(record, "client")) {
-      primary = sendToClientAction(record);
     }
   }
   if ((stateKey === DAILY_TASK_STATE.CLIENT_NEEDS_DETAILS && record.missingInfoKey)
@@ -644,13 +680,24 @@ function actionsForState(stateKey, record = {}) {
       label: "استكمال"
     };
   }
-  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT && shouldOfferSendAction(record, "client")) {
-    secondary.push(sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال"));
+  if (stateKey === DAILY_TASK_STATE.AWAITING_CLIENT) {
+    const flags = partyCoordinationFlags({
+      timeline: record.timeline || record.livingTimeline,
+      livingStage: record.livingStage
+    });
+    if (flags.needsOwnerCoordination && shouldOfferSendAction(record, "owner")) {
+      primary = sendToOwnerAction(record);
+    }
+    if (shouldOfferSendAction(record, "client")) {
+      const clientAction = sendToClientAction(record, EXEC_ACTION.RESEND_TO_CLIENT, "إعادة الإرسال");
+      if (!primary) primary = clientAction;
+      else secondary.unshift(clientAction);
+    }
   }
   if (offerAction) secondary.push(offerAction);
   return {
     primaryAction: primary,
-    secondaryActions: secondary.slice(0, 2)
+    secondaryActions: secondary.slice(0, maxSecondaryActions(record))
   };
 }
 
@@ -930,6 +977,8 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     sourceCollection: item.sourceCollection,
     matchGroupId: item.matchGroupId,
     livingStage: item.livingStage || item.metadata?.livingStage,
+    coordinationOutcome: item.coordinationOutcome || item.metadata?.coordinationOutcome,
+    coordinationBrokerLine: item.coordinationBrokerLine || item.metadata?.coordinationBrokerLine,
     rejectedMatchIds: item.rejectedMatchIds || item.metadata?.rejectedMatchIds,
     missingInfoKey: item.missingInfoKey || item.metadata?.missingInfoKey,
     ownerContactNeeded: item.ownerContactNeeded || item.metadata?.ownerContactNeeded,
@@ -997,11 +1046,19 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   };
   const appointmentToday = liveStateKey(active, now) === DAILY_TASK_STATE.APPOINTMENT_TODAY
     || group.living.stage === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED;
+  const coordination = partyCoordinationFlags({
+    timeline: group.living.timeline,
+    livingStage: group.living.stage
+  });
   const copy = livingCopy(group.living.stage, {
     missingInfoKey: group.living.missingInfoKey,
     hasNextCandidate: group.living.rejectedMatchIds.length > 0 && remaining.length > 0,
     appointmentLine: formatAppointmentLine(active.viewingAt || active.appointmentAt),
-    ownerContactNeeded: group.living.ownerContactNeeded
+    ownerContactNeeded: group.living.ownerContactNeeded,
+    ownerCoordinationPending: coordination.ownerCoordinationPending,
+    clientCoordinationPending: coordination.clientCoordinationPending,
+    ownerCoordinationOpened: coordination.ownerCoordinationOpened,
+    clientCoordinationOpened: coordination.clientCoordinationOpened
   });
   const candidates = remaining.map((item, index) => ({
     matchId: text(item.matchId || item.recordId || item.id),
@@ -1022,12 +1079,14 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   const badgeKey = remaining.some((item) => liveBadgeKey(item, now) === "overdue")
     ? "overdue"
     : (appointmentToday ? "today" : "now");
-  const sortGroup = sortGroupForLivingStage(group.living.stage, {
-    overdue: badgeKey === "overdue",
-    appointmentToday,
-    ownerContactNeeded: group.living.ownerContactNeeded,
-    hasNewResponse: group.living.hasNewResponse
-  });
+  const sortGroup = coordination.ownerCoordinationPending
+    ? TASK_SORT_GROUP.NEEDS_BROKER_ACTION
+    : sortGroupForLivingStage(group.living.stage, {
+      overdue: badgeKey === "overdue",
+      appointmentToday,
+      ownerContactNeeded: group.living.ownerContactNeeded,
+      hasNewResponse: group.living.hasNewResponse
+    });
   const missingInfo = group.living.stage === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO;
   const opportunityId = sourceIsRequest
     ? (active.clientRequestId || active.requestId || active.opportunityId)
@@ -1092,7 +1151,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     moneyLine: candidateCount > 1
       ? formatBestResultLine({ money: best.moneyLine, area: best.areaLine })
       : (best.moneyLine || dailyTaskMoneyLine(active)),
-    nextActionLine: copy.nextActionLine,
+    nextActionLine: text(active.coordinationBrokerLine) || copy.nextActionLine,
     happenedLine: copy.happenedLine,
     turnLine: copy.turnLine,
     yourTurnLine: copy.yourTurnLine,
@@ -1371,6 +1430,7 @@ export function dailyTasksDemoFixtures() {
     buildDailyTaskView({
       id: "task_awaiting_client",
       stateKey: DAILY_TASK_STATE.AWAITING_CLIENT,
+      livingStage: LIVING_TASK_STAGE.WAITING_CLIENT,
       createdAt: "2026-08-25T11:05:00.000+03:00",
       now: new Date("2026-08-25T21:30:00.000+03:00"),
       opportunityKind: "OFFER",

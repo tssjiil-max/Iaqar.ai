@@ -795,7 +795,33 @@
     ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
     const alerts = BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : [];
     const items = filterOpportunityView([...alerts, ...baseItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
+    window.IAQAR = window.IAQAR || {};
+    window.IAQAR.operationsItems = items;
     window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true, opportunityView } }));
+  }
+
+  function refreshOperationsFeed() {
+    const runtime = office();
+    if (!runtime?.db || !runtime.officeId) {
+      emitOperations();
+      return;
+    }
+    const operationsRef = runtime.refs.operations
+      || runtime.db.collection("offices").doc(runtime.officeId).collection("operations");
+    operationsRef
+      .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
+      .limit(50)
+      .get()
+      .then((snapshot) => {
+        operationItems = snapshot.docs.map(projectPersistedOperation)
+          .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+        pruneSavedOpportunityWorkspaceItems();
+        emitOperations();
+      })
+      .catch((error) => {
+        console.warn("[iaqar] operations refresh", error);
+        emitOperations();
+      });
   }
 
   async function opportunityLifecycleAction(action, detail, extra = {}) {
@@ -3214,6 +3240,7 @@
         emitOperations();
       }
     });
+    window.addEventListener("iaqar:operations-refresh", () => refreshOperationsFeed());
     if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
 
     const params = new URLSearchParams(location.search);

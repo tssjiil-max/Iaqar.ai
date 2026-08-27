@@ -378,11 +378,98 @@ export function sortGroupForLivingStage(stage, {
   return TASK_SORT_GROUP.PASSIVE_STATUS;
 }
 
+export function partyCoordinationFlags({
+  timeline = [],
+  livingStage = ""
+} = {}) {
+  const events = parseLivingTimeline(timeline);
+  const living = upper(livingStage);
+  const pastCoordination = [
+    LIVING_TASK_STAGE.CLIENT_INTERESTED,
+    LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS,
+    LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO,
+    LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION,
+    LIVING_TASK_STAGE.PROPERTY_AVAILABLE,
+    LIVING_TASK_STAGE.VIEWING_DECISION,
+    LIVING_TASK_STAGE.APPOINTMENT_COORDINATION,
+    LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+    LIVING_TASK_STAGE.FOLLOW_UP,
+    LIVING_TASK_STAGE.COMPLETED,
+    LIVING_TASK_STAGE.CLIENT_REJECTED,
+    LIVING_TASK_STAGE.PROPERTY_UNAVAILABLE,
+    LIVING_TASK_STAGE.MATCH_EXHAUSTED
+  ].includes(living);
+  const clientFromTimeline = events.some((event) => event.type === "whatsapp_client_opened");
+  const ownerFromTimeline = events.some((event) => event.type === "whatsapp_owner_opened");
+  const clientCoordinationOpened = clientFromTimeline
+    || living === LIVING_TASK_STAGE.WAITING_CLIENT
+    || living === LIVING_TASK_STAGE.CLIENT_SENT;
+  const ownerCoordinationOpened = ownerFromTimeline;
+  const needsOwnerCoordination = !pastCoordination && !ownerCoordinationOpened;
+  const needsClientCoordination = !pastCoordination && !clientCoordinationOpened;
+  const ownerCoordinationPending = needsOwnerCoordination && clientCoordinationOpened;
+  const clientCoordinationPending = needsClientCoordination;
+  return {
+    clientCoordinationOpened,
+    ownerCoordinationOpened,
+    needsOwnerCoordination,
+    needsClientCoordination,
+    ownerCoordinationPending,
+    clientCoordinationPending
+  };
+}
+
+export function resolveCoordinationLivingStage({
+  currentStage = "",
+  party = "client",
+  timeline = []
+} = {}) {
+  const living = upper(currentStage);
+  const events = parseLivingTimeline(timeline);
+  const ownerOpened = events.some((event) => event.type === "whatsapp_owner_opened");
+  const clientOpened = events.some((event) => event.type === "whatsapp_client_opened");
+  const pastCoordination = [
+    LIVING_TASK_STAGE.CLIENT_INTERESTED,
+    LIVING_TASK_STAGE.CLIENT_NEEDS_DETAILS,
+    LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO,
+    LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION,
+    LIVING_TASK_STAGE.PROPERTY_AVAILABLE,
+    LIVING_TASK_STAGE.VIEWING_DECISION,
+    LIVING_TASK_STAGE.APPOINTMENT_COORDINATION,
+    LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+    LIVING_TASK_STAGE.FOLLOW_UP,
+    LIVING_TASK_STAGE.COMPLETED
+  ].includes(living);
+  if (pastCoordination) {
+    return party === "owner"
+      ? LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+      : LIVING_TASK_STAGE.WAITING_CLIENT;
+  }
+  const earlyCoordination = [
+    LIVING_TASK_STAGE.MATCH_FOUND,
+    LIVING_TASK_STAGE.BROKER_REVIEW,
+    LIVING_TASK_STAGE.WAITING_CLIENT,
+    LIVING_TASK_STAGE.CLIENT_SENT,
+    ""
+  ].includes(living);
+  if (earlyCoordination) {
+    if (ownerOpened && clientOpened) return LIVING_TASK_STAGE.WAITING_CLIENT;
+    return LIVING_TASK_STAGE.MATCH_FOUND;
+  }
+  return party === "owner"
+    ? LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
+    : LIVING_TASK_STAGE.WAITING_CLIENT;
+}
+
 export function livingCopy(stage, {
   missingInfoKey = "",
   hasNextCandidate = false,
   appointmentLine = "",
-  ownerContactNeeded = false
+  ownerContactNeeded = false,
+  ownerCoordinationPending = false,
+  clientCoordinationPending = false,
+  ownerCoordinationOpened = false,
+  clientCoordinationOpened = false
 } = {}) {
   const key = upper(stage);
   const reveal = { revealClosedLabel: "عرض البيانات", revealOpenLabel: "إخفاء البيانات" };
@@ -400,6 +487,18 @@ export function livingCopy(stage, {
     };
   }
   if (key === LIVING_TASK_STAGE.WAITING_CLIENT || key === LIVING_TASK_STAGE.CLIENT_SENT) {
+    if (ownerCoordinationPending) {
+      return {
+        kindLabel: "مطابقة جديدة",
+        statusLabel: "تم فتح واتساب للعميل",
+        happenedLine: "تم فتح واتساب للعميل",
+        turnLine: "دورك الآن",
+        yourTurnLine: "إرسال للمالك للتنسيق",
+        nextActionLine: "أرسل للمالك للتنسيق مع العميل",
+        waiting: false,
+        ...reveal
+      };
+    }
     return {
       kindLabel: "بانتظار رد العميل",
       statusLabel: "بانتظار العميل",
@@ -531,6 +630,32 @@ export function livingCopy(stage, {
       ...reveal
     };
   }
+  if (key === LIVING_TASK_STAGE.MATCH_FOUND || key === LIVING_TASK_STAGE.BROKER_REVIEW) {
+    if (ownerCoordinationPending) {
+      return {
+        kindLabel: "مطابقة جديدة",
+        statusLabel: "تم فتح واتساب للعميل",
+        happenedLine: "تم فتح واتساب للعميل",
+        turnLine: "دورك الآن",
+        yourTurnLine: "إرسال للمالك للتنسيق",
+        nextActionLine: "أرسل للمالك للتنسيق مع العميل",
+        waiting: false,
+        ...reveal
+      };
+    }
+    if (ownerCoordinationOpened && clientCoordinationPending) {
+      return {
+        kindLabel: "مطابقة جديدة",
+        statusLabel: "تم فتح واتساب للمالك",
+        happenedLine: "تم فتح واتساب للمالك",
+        turnLine: "دورك الآن",
+        yourTurnLine: "إرسال للعميل للتنسيق",
+        nextActionLine: "أرسل للعميل للتنسيق مع المالك",
+        waiting: false,
+        ...reveal
+      };
+    }
+  }
   if (key === LIVING_TASK_STAGE.MATCH_FOUND && hasNextCandidate) {
     return {
       kindLabel: "مطابقة جديدة",
@@ -548,8 +673,8 @@ export function livingCopy(stage, {
     statusLabel: "تم العثور على مطابقة",
     happenedLine: "تم العثور على مطابقة",
     turnLine: "دورك الآن",
-    yourTurnLine: "إرسال العرض للعميل",
-    nextActionLine: "إرسال العرض للعميل",
+    yourTurnLine: "إرسال للعميل والمالك للتنسيق",
+    nextActionLine: "إرسال للعميل والمالك للتنسيق",
     waiting: false,
     ...reveal
   };

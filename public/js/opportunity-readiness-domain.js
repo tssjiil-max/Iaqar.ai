@@ -1,10 +1,14 @@
 /**
- * Minimum Matching Gate — seven required fields before READY_FOR_MATCHING.
+ * Minimum Matching Gate — required fields before READY_FOR_MATCHING.
  * Additive statuses; does not replace lifecycleStatus.
  */
 
 import { normalizeOpportunityFinancials, safeText } from "./opportunity-intake-domain.js";
 import { normalizeAdvertiserPhoneE164 } from "./advertiser-phone-domain.js";
+import {
+  purposeFromTransactionIntent,
+  resolveTransactionIntentFromRecord
+} from "./transaction-intent-domain.js";
 
 export const MATCHING_READINESS = Object.freeze({
   READY_FOR_MATCHING: "READY_FOR_MATCHING",
@@ -17,6 +21,7 @@ export const MATCHING_READINESS_LABELS = Object.freeze({
 });
 
 export const MISSING_FIELD_LABELS = Object.freeze({
+  transactionIntent: "نوع العملية",
   purpose: "الغرض",
   propertyType: "نوع العقار",
   city: "المدينة",
@@ -33,7 +38,10 @@ export const MISSING_FIELD_LABELS = Object.freeze({
 
 export function missingFieldLabelsArabic(keys = []) {
   return (keys || [])
-    .map((key) => MISSING_FIELD_LABELS[key] || "")
+    .map((key) => {
+      if (key === "transactionIntent") return "نوع العملية ناقص";
+      return MISSING_FIELD_LABELS[key] || "";
+    })
     .filter(Boolean);
 }
 
@@ -85,13 +93,20 @@ function resolveOwnerRole(record = {}) {
  * @returns {{ matchingReadiness: string, matchingReadinessMissing: string[], isReadyForMatching: boolean }}
  */
 export function evaluateMatchingReadiness(record = {}) {
-  const fields = normalizeOpportunityFinancials(record);
+  const resolvedIntent = resolveTransactionIntentFromRecord(record);
+  const enriched = resolvedIntent
+    ? {
+      ...record,
+      transactionIntent: resolvedIntent,
+      purpose: purposeFromTransactionIntent(resolvedIntent) || record.purpose
+    }
+    : record;
+  const fields = normalizeOpportunityFinancials(enriched);
   const missing = [];
 
-  const purpose = safeText(fields.purpose || record.purpose, 30).toUpperCase();
-  if (!purpose || !["SALE", "PURCHASE", "RENT", "LEASE_REQUEST"].includes(purpose)) {
-    missing.push("purpose");
-  }
+  const transactionIntent = resolveTransactionIntentFromRecord(enriched);
+  if (!transactionIntent) missing.push("transactionIntent");
+
   if (!isFilledText(fields.propertyType || record.propertyType)) missing.push("propertyType");
   if (!isFilledText(fields.city || record.city)) missing.push("city");
   if (!isFilledText(fields.district || record.district)) missing.push("district");

@@ -121,7 +121,7 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("open match-found card shows send-to-client and offer details, not send-to-owner", () => {
+test("open match-found card shows client and owner send actions for coordination", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
@@ -130,13 +130,15 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.match(html, />إخفاء البيانات</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
-  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
+  assert.match(html, />إرسال للمالك</);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.equal(task.primaryAction.party, SECURE_PARTY.CLIENT);
-  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.OPEN_OFFER);
+  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.SEND_TO_OWNER);
+  assert.equal(task.secondaryActions[1].id, EXEC_ACTION.OPEN_OFFER);
   const chrome = forbiddenBrokerChrome(html);
   assert.equal(chrome.hasAppointment, false);
   assert.equal(chrome.hasNegotiate, false);
@@ -146,22 +148,26 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("awaiting client reply stays buttonless while collapsed and capped when open", () => {
+test("awaiting client reply keeps owner coordination send when owner not contacted", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_awaiting_client");
   const collapsed = buildDailyTaskCardHtml(task);
   assert.match(collapsed, />عرض البيانات</);
   assert.equal(collapsed.includes("إعادة الإرسال"), false);
+  assert.equal(collapsed.includes("إرسال للمالك"), false);
   assert.equal(countPrimary(collapsed), 0);
   assert.equal(countSecondary(collapsed), 0);
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
   assert.match(text, /بانتظار رد العميل/);
-  assert.equal(html.includes("data-cv2-exec-primary="), false);
+  assert.match(html, /data-cv2-exec-primary="send_to_owner"/);
+  assert.match(html, />إرسال للمالك</);
+  assert.match(html, /data-cv2-exec-secondary="resend_to_client"/);
   assert.match(html, />إعادة الإرسال</);
   assert.match(html, />عرض التفاصيل الكاملة</);
-  assert.equal(html.includes("إرسال للعميل"), false);
-  assert.equal(countPrimary(html), 0);
+  assert.equal(html.includes("data-cv2-exec-primary=\"send_to_client\""), false);
+  assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 2);
+  assert.equal(task.primaryAction.id, EXEC_ACTION.SEND_TO_OWNER);
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
@@ -201,7 +207,7 @@ test("list accordion keeps a single open task", () => {
   assert.match(closedNewMatch, />عرض البيانات</);
   assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.match(html, />إخفاء البيانات</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });
@@ -579,6 +585,76 @@ test("send buttons open WhatsApp with role-specific links and block missing phon
   assert.equal(switched, "");
   assert.equal(window.document.querySelector("[data-cv2-exec-full-details]") != null, true);
   assert.match(window.document.body.innerHTML, /التفاصيل الكاملة/);
+
+  unmountDailyTasksContentV2();
+  delete global.window;
+  delete global.document;
+});
+
+test("platform opportunity accept calls worker opportunity-router accept", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { mountDailyTasksContentV2, unmountDailyTasksContentV2 } = await import("../src/v2/content/daily-tasks/controller.js");
+  const { mapOperationsItemsToDailyTasks } = await import("../src/v2/content/daily-tasks/domain.js");
+  const calls = [];
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div id="toast" hidden></div>
+    <div id="contentV2"></div>
+  </body></html>`, { url: "https://example.test/", pretendToBeVisual: true });
+  const { window } = dom;
+  global.window = window;
+  global.document = window.document;
+  window.IAQAR = {
+    office: { officeId: "office-wadi", workerBase: "https://worker.test" },
+    workerBase: "https://worker.test",
+    resolveWorkerBase: () => "https://worker.test"
+  };
+  window.firebase = {
+    auth() {
+      return { currentUser: { getIdToken: async () => "id-token" } };
+    }
+  };
+  window.fetch = async (url, options = {}) => {
+    calls.push({ url, body: JSON.parse(options.body || "{}") });
+    return {
+      ok: true,
+      json: async () => ({
+        ok: true,
+        assignedOfficeId: "office-wadi",
+        opportunityId: "opp_intake_demo",
+        operationClosed: true
+      })
+    };
+  };
+  global.fetch = window.fetch;
+
+  const operationItem = {
+    id: "op_platform_1",
+    operationType: "PLATFORM_OPPORTUNITY_OFFER",
+    status: "OPEN",
+    opportunityId: "opp_intake_demo",
+    opportunityKind: "REQUEST",
+    purpose: "PURCHASE",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "عروة",
+    metadata: { opportunityId: "opp_intake_demo", moneyLine: "500,000 ر.س" }
+  };
+  window.IAQAR.operationsItems = [operationItem];
+
+  mountDailyTasksContentV2(window.document.getElementById("contentV2"));
+  const card = window.document.querySelector('[data-task-kind="platform_opportunity"]');
+  assert.ok(card);
+  card.querySelector("[data-cv2-exec-reveal]").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const acceptBtn = window.document.querySelector('[data-cv2-exec-primary="accept_platform_opportunity"]');
+  assert.ok(acceptBtn);
+  acceptBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const acceptCall = calls.find((entry) => String(entry.url).includes("/opportunity-router/accept"));
+  assert.ok(acceptCall);
+  assert.equal(acceptCall.url, "https://worker.test/opportunity-router/accept");
+  assert.deepEqual(acceptCall.body, { officeId: "office-wadi", opportunityId: "opp_intake_demo" });
+  assert.equal(window.document.getElementById("toast").textContent, "تم استلام الفرصة.");
 
   unmountDailyTasksContentV2();
   delete global.window;

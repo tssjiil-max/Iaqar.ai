@@ -130,11 +130,14 @@ test("nearby empty reason distinguishes incomplete vs not enabled", () => {
   const incomplete = resolveNearbyEmptyReason({ purpose: "SALE" }, []);
   assert.equal(incomplete.code, "incomplete_data");
   const notEnabled = resolveNearbyEmptyReason({
+    transactionIntent: "SELL",
+    opportunityKind: "OFFER",
     purpose: "SALE",
     propertyType: "شقة",
     city: "المدينة المنورة",
     district: "العوالي",
     salePrice: 500000,
+    priceOrBudget: 500000,
     advertiserRole: "OWNER",
     advertiserPhoneNormalized: "+966512345678"
   }, []);

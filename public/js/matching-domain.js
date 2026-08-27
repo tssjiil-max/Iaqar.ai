@@ -3,7 +3,7 @@
  * Triggers Worker rematch; does not score in the browser and does not create Operations.
  */
 
-export const MATCHING_RULE_VERSION = "4.0.0";
+export const MATCHING_RULE_VERSION = "4.1.0";
 export const MATCHING_RUN_PATH = "/matching/run";
 
 export function phase4BoundaryGuarantees() {

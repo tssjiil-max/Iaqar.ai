@@ -19,6 +19,37 @@ function safeTrim(value, max = 120) {
   return String(value || "").trim().slice(0, max);
 }
 
+/** Strip internal test tags (ctx_*, ctxfix_*) and stray Latin tokens from broker-visible Arabic fields. */
+export function stripTechnicalDisplayNoise(value = "") {
+  let text = safeTrim(value, 500);
+  if (!text) return "";
+
+  text = text
+    .replace(/(?:^|[\s_]+)(?:ctxfix|ctx)[a-z0-9_]*/gi, "")
+    .replace(/_[a-z][a-z0-9]{3,}/gi, "")
+    .replace(/^[a-z][a-z0-9]{3,}_/gi, "")
+    .replace(/_{2,}/g, "_")
+    .replace(/^[_\s]+|[_\s]+$/g, "")
+    .trim();
+
+  if (/[a-zA-Z]{2,}/.test(text)) {
+    const arabicOnly = text
+      .replace(/[a-zA-Z]+/g, "")
+      .replace(/[_\s]+/g, " ")
+      .trim();
+    text = arabicOnly || text;
+  }
+
+  text = text
+    .replace(/^حي[_\s]+/u, "حي ")
+    .replace(/^حي\s+حي\s+/u, "حي ")
+    .trim();
+
+  if (/^حي$/u.test(text)) return "";
+
+  return safeTrim(text);
+}
+
 export function isUntrustedDisplayValue(value = "") {
   const raw = safeTrim(value);
   if (!raw) return false;
@@ -30,7 +61,7 @@ export function isUntrustedDisplayValue(value = "") {
 }
 
 export function sanitizeDisplayField(value = "") {
-  const raw = safeTrim(value);
+  const raw = safeTrim(stripTechnicalDisplayNoise(value));
   if (!raw) return { display: "", needsReview: false, raw: "" };
   if (isUntrustedDisplayValue(raw)) {
     return { display: "تحتاج مراجعة", needsReview: true, raw };

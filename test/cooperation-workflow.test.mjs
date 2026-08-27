@@ -20,6 +20,7 @@ import {
   applyCooperationWorkflowTransition,
   buildCooperationDailyTaskView,
   collaborationEnabled,
+  cooperationAuthorizedContacts,
   livingCooperationTaskId,
   sanitizeCooperationView,
   selectBestCooperationOffices,
@@ -32,11 +33,13 @@ import { buildDailyTaskCardHtml } from "../src/v2/content/daily-tasks/card.js";
 const landOffer = opportunityToMatchInput({
   id: "offer_sakb",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "المدينة المنورة",
   district: "السكب",
   propertyType: "أرض",
-  priceOrBudget: 870000,
+  salePrice: 840000,
+  priceOrBudget: 840000,
   area: 1175,
   lifecycleStatus: "ACTIVE"
 }, { id: "offer_sakb" });
@@ -44,10 +47,12 @@ const landOffer = opportunityToMatchInput({
 const landRequest = opportunityToMatchInput({
   id: "req_sakb",
   opportunityKind: "REQUEST",
-  purpose: "SALE",
+  transactionIntent: "BUY",
+  purpose: "PURCHASE",
   city: "المدينة المنورة",
   district: "السكب",
   propertyType: "أرض",
+  budget: 850000,
   priceOrBudget: 850000,
   area: 1100,
   lifecycleStatus: "ACTIVE"
@@ -56,6 +61,7 @@ const landRequest = opportunityToMatchInput({
 const villaNearby = opportunityToMatchInput({
   id: "villa_near",
   opportunityKind: "OFFER",
+  transactionIntent: "SELL",
   purpose: "SALE",
   city: "المدينة المنورة",
   district: "العزيزية",
@@ -357,4 +363,27 @@ test("roles never render office1/office2", () => {
   );
   assert.equal(/office1|office2|مكتب 1|مكتب 2/i.test(html), false);
   assert.match(html, /مكتب العميل|مكتب العقار/);
+});
+
+test("cooperationAuthorizedContacts exposes client phone after accept", () => {
+  const contacts = cooperationAuthorizedContacts({
+    status: COOPERATION_RECORD_STATUS.ACCEPTED,
+    currentStage: COOPERATION_STAGE.ACCEPTED,
+    clientOfficeId: "office-client",
+    clientPhone: "+966552382937"
+  }, "office-client");
+  assert.equal(contacts.canSendToClient, true);
+  assert.equal(contacts.clientPhone, "+966552382937");
+  assert.equal(contacts.canSendToOwner, false);
+});
+
+test("cooperationAuthorizedContacts hides phones before accept", () => {
+  const contacts = cooperationAuthorizedContacts({
+    status: COOPERATION_RECORD_STATUS.PENDING,
+    currentStage: COOPERATION_STAGE.WAITING_PARTNER,
+    clientOfficeId: "office-client",
+    clientPhone: "+966552382937"
+  }, "office-client");
+  assert.equal(contacts.clientPhone, "");
+  assert.equal(contacts.canSendToClient, false);
 });
