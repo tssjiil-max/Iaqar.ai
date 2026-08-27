@@ -482,12 +482,14 @@ visible. No production path depends on fake matches.
 
 **Phase:** admin console visual maintenance
 **Directive:** owner asked for visual/layout maintenance of `/admin` only; header like
-the product app header; title `إدارة المنصة` in Naskh (`خط النسخ`).
+the product app header; title `إدارة المنصة` in Naskh (`خط النسخ`). Follow-up: make the
+header match the floating mint pill screenshot (logo in a white square, gold subtitle).
 
-**Decision.** Replace the dark emerald admin bar with the same card header pattern as
-the broker app (logo at the start, centered title). The title is `إدارة المنصة` set in
-`Noto Naskh Arabic`. Body UI stays Tajawal. Column width and spacing follow the
-product `.app` shell. Broker home page is unchanged.
+**Decision.** `/admin` uses a floating mint pill header (`border-radius: 999px`, light
+emerald fill, soft shadow). Logo sits in a white rounded square at RTL start; title
+`إدارة المنصة` is centered in `Noto Naskh Arabic`; gold subtitle is `بيئة التحكم`.
+Login fields and primary buttons follow the same rounded teal language. Body UI stays
+Tajawal. Column width follows the product `.app` shell. Broker home page is unchanged.
 
 ## Open questions carried forward
 

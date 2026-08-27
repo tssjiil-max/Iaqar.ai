@@ -127,5 +127,7 @@ test("platform admin header uses إدارة المنصة in Naskh", () => {
   const html = readFileSync(new URL("../public/admin/index.html", import.meta.url), "utf8");
   assert.match(html, /<h1>\s*إدارة المنصة\s*<\/h1>/);
   assert.match(html, /Noto Naskh Arabic/);
+  assert.match(html, /\.header\s*\{[^}]*border-radius:\s*999px/);
+  assert.match(html, /بيئة التحكم/);
   assert.doesNotMatch(html, /لوحة إدارة المنصة \(Admin\)/);
 });
