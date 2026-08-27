@@ -149,6 +149,13 @@ async function runPlatformOpportunityAction(task, actionId, button) {
       setExecState(button, "error");
       return { ok: false };
     }
+    if (actionId === "accept_platform_opportunity") {
+      if (!String(payload.assignedOfficeId || "").trim() || payload.operationClosed !== true) {
+        notify("تعذر استلام الفرصة — لم يُحدَّث الإجراء في النظام.");
+        setExecState(button, "error");
+        return { ok: false, error: "operation_not_closed" };
+      }
+    }
     notify(actionId === "decline_platform_opportunity" ? "تم الاعتذار وستنقل الفرصة للمكتب التالي." : "تم استلام الفرصة.");
     setExecState(button, "success");
     try {
@@ -570,6 +577,10 @@ function onListClick(event) {
     event.stopPropagation();
     const action = secondary.getAttribute("data-cv2-exec-secondary");
     if (action === "open_offer" || action === "open_details") {
+      if (task.taskKind === "cooperation" && action === "open_details") {
+        toggleTaskDetails(task.id);
+        return;
+      }
       const result = openExistingOfferDetails(task);
       if (result && typeof result.then === "function") {
         void result.then((done) => {
@@ -676,6 +687,14 @@ function renderList() {
   consumePendingDailyTaskOpen();
 }
 
+function onOperationsRefresh() {
+  if (useDemoFixtures()) return;
+  const existing = window.IAQAR?.operationsItems;
+  if (Array.isArray(existing)) {
+    onOperationsData({ detail: { items: existing, authoritative: true } });
+  }
+}
+
 function onOperationsData(event) {
   if (useDemoFixtures()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
@@ -714,6 +733,7 @@ function onOpenDailyTask(event) {
 
 export function unmountDailyTasksContentV2() {
   window.removeEventListener("iaqar:operations-data", onOperationsData);
+  window.removeEventListener("iaqar:operations-refresh", onOperationsRefresh);
   window.removeEventListener("iaqar:open-daily-task", onOpenDailyTask);
   closeOfferDetailsSheet();
   if (state.root) {
@@ -732,8 +752,10 @@ export function mountDailyTasksContentV2(root) {
   const alreadyMounted = state.root === root && state.bound;
   state.root = root;
   window.removeEventListener("iaqar:operations-data", onOperationsData);
+  window.removeEventListener("iaqar:operations-refresh", onOperationsRefresh);
   window.removeEventListener("iaqar:open-daily-task", onOpenDailyTask);
   window.addEventListener("iaqar:operations-data", onOperationsData);
+  window.addEventListener("iaqar:operations-refresh", onOperationsRefresh);
   window.addEventListener("iaqar:open-daily-task", onOpenDailyTask);
   if (!alreadyMounted) {
     root.addEventListener("click", onListClick);

@@ -3786,6 +3786,7 @@ function operationsDeps(env = null) {
     setFirestoreDocument,
     getFirestoreDocument,
     listCollectionDocuments,
+    firestoreFieldsToJs,
     sendOfficePush: (args) => sendOfficePush({ ...args, env }),
     firestoreHelpers: operationsFirestoreHelpers()
   };

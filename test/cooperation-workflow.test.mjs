@@ -20,6 +20,7 @@ import {
   applyCooperationWorkflowTransition,
   buildCooperationDailyTaskView,
   collaborationEnabled,
+  cooperationAuthorizedContacts,
   livingCooperationTaskId,
   sanitizeCooperationView,
   selectBestCooperationOffices,
@@ -362,4 +363,27 @@ test("roles never render office1/office2", () => {
   );
   assert.equal(/office1|office2|مكتب 1|مكتب 2/i.test(html), false);
   assert.match(html, /مكتب العميل|مكتب العقار/);
+});
+
+test("cooperationAuthorizedContacts exposes client phone after accept", () => {
+  const contacts = cooperationAuthorizedContacts({
+    status: COOPERATION_RECORD_STATUS.ACCEPTED,
+    currentStage: COOPERATION_STAGE.ACCEPTED,
+    clientOfficeId: "office-client",
+    clientPhone: "+966552382937"
+  }, "office-client");
+  assert.equal(contacts.canSendToClient, true);
+  assert.equal(contacts.clientPhone, "+966552382937");
+  assert.equal(contacts.canSendToOwner, false);
+});
+
+test("cooperationAuthorizedContacts hides phones before accept", () => {
+  const contacts = cooperationAuthorizedContacts({
+    status: COOPERATION_RECORD_STATUS.PENDING,
+    currentStage: COOPERATION_STAGE.WAITING_PARTNER,
+    clientOfficeId: "office-client",
+    clientPhone: "+966552382937"
+  }, "office-client");
+  assert.equal(contacts.clientPhone, "");
+  assert.equal(contacts.canSendToClient, false);
 });

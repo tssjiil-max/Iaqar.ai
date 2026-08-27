@@ -611,7 +611,12 @@ test("platform opportunity accept calls worker opportunity-router accept", async
     calls.push({ url, body: JSON.parse(options.body || "{}") });
     return {
       ok: true,
-      json: async () => ({ ok: true, assignedOfficeId: "office-wadi", opportunityId: "opp_intake_demo" })
+      json: async () => ({
+        ok: true,
+        assignedOfficeId: "office-wadi",
+        opportunityId: "opp_intake_demo",
+        operationClosed: true
+      })
     };
   };
   global.fetch = window.fetch;

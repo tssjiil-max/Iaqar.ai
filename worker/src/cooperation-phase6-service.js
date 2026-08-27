@@ -18,6 +18,10 @@ import {
 } from "./cooperation-phase6-domain.js";
 import { ensureCooperationRoom } from "./opportunity-workspace-service.mjs";
 import { readTargetOfficeEligibility } from "./suitable-offices-service.mjs";
+import {
+  cooperationFields,
+  enrichCooperationContacts
+} from "./cooperation-workflow-service.js";
 
 function firestoreHelpersBundle(h) {
   return h;
@@ -339,6 +343,26 @@ export async function runCooperationLifecycle({
         firestoreHelpers
       });
     }
+    const enriched = await enrichCooperationContacts({
+      projectId,
+      cooperation: {
+        ...request,
+        id: cooperationId,
+        status: nextStatus,
+        currentStage: "COOPERATION_ACCEPTED"
+      },
+      accessToken,
+      deps: {
+        getFirestoreDocument,
+        firestoreFieldsToJs
+      }
+    });
+    await setFirestoreDocument({
+      projectId,
+      segments: ["cooperationRequests", cooperationId],
+      accessToken,
+      fields: cooperationFields(firestoreHelpers, enriched)
+    });
   }
 
   if (["REJECTED", "REVOKED", "ENDED"].includes(String(nextStatus).toUpperCase())) {
@@ -402,9 +426,22 @@ export async function runCooperationLifecycle({
   });
 
   if (typeof upsertCooperationOperations === "function") {
-    await upsertCooperationOperations({
-      projectId,
-      cooperation: {
+    const cooperationForOps = nextStatus === "ACCEPTED"
+      ? await enrichCooperationContacts({
+        projectId,
+        cooperation: {
+          ...request,
+          id: cooperationId,
+          status: nextStatus,
+          currentStage: "COOPERATION_ACCEPTED"
+        },
+        accessToken,
+        deps: {
+          getFirestoreDocument,
+          firestoreFieldsToJs
+        }
+      })
+      : {
         ...request,
         id: cooperationId,
         status: nextStatus,
@@ -413,7 +450,10 @@ export async function runCooperationLifecycle({
           : nextStatus === "REJECTED"
             ? "REJECTED"
             : request.currentStage || ""
-      },
+      };
+    await upsertCooperationOperations({
+      projectId,
+      cooperation: cooperationForOps,
       accessToken,
       deps
     }).catch(() => null);
