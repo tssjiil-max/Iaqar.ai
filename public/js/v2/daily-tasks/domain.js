@@ -93,6 +93,7 @@ export const EXEC_ACTION = Object.freeze({
   REVIEW_NEXT: "review_next_candidate",
   SHARE_DETAILS: "share_details",
   CONFIRM_DEAL: "confirm_deal",
+  REJECT_CANDIDATE: "reject_candidate",
   ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
   DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
 });
@@ -628,13 +629,20 @@ function actionsForState(stateKey, record = {}) {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة العرض التالي"
       };
+    } else if (shouldOfferSendAction(record, "client")) {
+      primary = sendToClientAction(record);
+      if (Number(record.candidateCount || 0) > 1) {
+        secondary.unshift({
+          id: EXEC_ACTION.REJECT_CANDIDATE,
+          label: "غير مناسب",
+          variant: "text"
+        });
+      }
     } else if (Number(record.candidateCount || 0) > 1) {
       primary = {
         id: EXEC_ACTION.REVIEW_NEXT,
         label: "مراجعة المطابقات"
       };
-    } else if (shouldOfferSendAction(record, "client")) {
-      primary = sendToClientAction(record);
     }
   }
   if ((stateKey === DAILY_TASK_STATE.CLIENT_NEEDS_DETAILS && record.missingInfoKey)

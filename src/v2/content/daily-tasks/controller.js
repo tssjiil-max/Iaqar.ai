@@ -510,6 +510,78 @@ function shareTaskDetails(task) {
   return { ok: true };
 }
 
+function canSendClientForTask(task = {}) {
+  if (task.canSendToClient === false) return false;
+  if (task.canSendToClient === true) return true;
+  return Boolean(
+    String(task.clientPhone || task.clientContactPhone || task.buyerPhone || "").trim()
+  );
+}
+
+async function rejectActiveMatchCandidate(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  const matchId = String(task?.matchId || "").trim();
+  if (!matchId) {
+    notify("تعذر تحديد المطابقة.");
+    return { ok: false, error: "match_missing" };
+  }
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/match/living-action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        officeId,
+        matchId,
+        action: "REJECT_CANDIDATE",
+        candidateCount: Number(task.candidateCount || 0)
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || "تعذر استبعاد المرشح.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify(payload.hasNextCandidate
+      ? "تم استبعاد المرشح. راجع العرض التالي."
+      : "لا يوجد مرشحين آخرين لهذا الطلب.");
+    setExecState(button, "success");
+    try {
+      window.dispatchEvent(new window.CustomEvent("iaqar:operations-refresh"));
+    } catch {
+      /* listeners are best-effort */
+    }
+    return { ok: true };
+  } catch {
+    notify("تعذر استبعاد المرشح.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
+function handleReviewNextCandidate(task, button) {
+  if (state.openTaskId !== task.id) {
+    toggleOpenTask(task.id);
+    return { ok: true, opened: true };
+  }
+  if (canSendClientForTask(task)) {
+    void runDailyTaskPartySend(task, "client", button);
+    return { ok: true, sending: true };
+  }
+  if (Number(task.candidateCount || 0) > 1) {
+    void rejectActiveMatchCandidate(task, button);
+    return { ok: true, rejecting: true };
+  }
+  notify("أكمل بيانات التواصل ثم أعد المحاولة.");
+  return { ok: false, error: "contact_incomplete" };
+}
+
 async function confirmDealCompletion(task, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   setExecState(button, "working");
@@ -600,7 +672,11 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, secondary);
+      return;
+    }
+    if (action === "reject_candidate") {
+      void rejectActiveMatchCandidate(task, secondary);
       return;
     }
     if (task.taskKind === "platform_opportunity") {
@@ -646,7 +722,11 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, primary);
+      return;
+    }
+    if (action === "reject_candidate") {
+      void rejectActiveMatchCandidate(task, primary);
       return;
     }
     if (action === "send_to_owner") {

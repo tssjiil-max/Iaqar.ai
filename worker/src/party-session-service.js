@@ -15,7 +15,7 @@ import {
   revealedDetailFromSnapshot,
   sanitizePartyPublicView
 } from "../../public/js/party-session-domain.js";
-import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel } from "../../public/js/match-group-domain.js";
+import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
 import { upsertNotificationDocument } from "./operations-service.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
@@ -598,6 +598,34 @@ export async function handleMatchLivingAction({
   const matchId = helpers.cleanText(body.matchId, 180);
   if (!matchId) throw helpers.appError("match_id_required", 400, "تعذر تحديد المطابقة");
   const action = String(body.action || "").toUpperCase();
+  const candidateCount = Number(body.candidateCount || 0);
+  if (action === "REJECT_CANDIDATE") {
+    await stampMatchLiving(helpers, {
+      projectId,
+      officeId,
+      matchId,
+      accessToken,
+      patch: {
+        livingStage: LIVING_TASK_STAGE.CLIENT_REJECTED,
+        rejectedMatchIds: [matchId],
+        activeMatchId: matchId,
+        ownerContactNeeded: false,
+        hasNewResponse: false,
+        nextActor: nextActorForLivingStage(LIVING_TASK_STAGE.CLIENT_REJECTED, { ownerContactNeeded: false }),
+        timelineEvent: {
+          type: "broker_rejected_candidate",
+          actor: "BROKER",
+          label: "اعتبر الوسيط المرشح غير مناسب"
+        }
+      }
+    });
+    return helpers.jsonResponse({
+      ok: true,
+      livingStage: LIVING_TASK_STAGE.CLIENT_REJECTED,
+      hasNextCandidate: candidateCount > 1,
+      requestId
+    });
+  }
   if (action !== "CONFIRM_COMPLETION") {
     throw helpers.appError("unknown_action", 400, "إجراء غير معروف.");
   }

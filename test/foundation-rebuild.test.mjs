@@ -175,7 +175,7 @@ test("TEST D: expanded match group ranks candidates by current scores", () => {
   const html = buildDailyTaskCardHtml(views[0], { open: true });
   assert.match(html, /طلب العميل/);
   assert.match(html, /العرض المطابق/);
-  assert.match(html, /مراجعة المطابقات/);
+  assert.match(html, /إرسال للعميل/);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.match(html, /مرشح 1/);
 });
