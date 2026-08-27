@@ -87,6 +87,9 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   fi
 )
 
+echo "--- Generate public/version.json from current Git commit ---"
+node scripts/write-staging-version.mjs
+
 echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"
 FIREBASE_JSON_BACKUP="$(mktemp "${TMPDIR:-/tmp}/iaqar-firebase-json.XXXXXX")"
 cp firebase.json "$FIREBASE_JSON_BACKUP"
