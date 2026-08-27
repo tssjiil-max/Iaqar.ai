@@ -18,7 +18,7 @@ import {
   normalizeDuplicatePhone,
   resolveOpportunityKind,
   isActiveOpportunityForDuplicate
-} from "../../worker/src/opportunity-duplicate.mjs";
+} from "./opportunity-duplicate-domain.js";
 
 export const IMPORT_SUMMARY_FIELDS = Object.freeze([
   "opportunityKind",

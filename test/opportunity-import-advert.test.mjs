@@ -40,6 +40,11 @@ const SALE_TEXT = "شقة للبيع في الرياض حي النرجس الس�
 const RENT_TEXT = "فيلا للإيجار في جدة حي الروضة إيجار سنوي 120000 المساحة 400 5 غرف";
 const PURCHASE_TEXT = "مطلوب شراء شقة في الدمام حي الفيصلية الميزانية 700000";
 
+test("import domain loads duplicate detection from browser-safe module", () => {
+  assert.equal(importDomain.includes("worker/src/opportunity-duplicate"), false);
+  assert.match(importDomain, /opportunity-duplicate-domain\.js/);
+});
+
 test("import option card appears with approved Arabic copy", () => {
   assert.ok(html.includes("id=\"importAdvertOption\""));
   assert.ok(html.includes("استيراد إعلان"));
