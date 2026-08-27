@@ -478,6 +478,21 @@ offices’ contacts.
 capability stays reachable. Empty state when there are no tasks; API errors stay
 visible. No production path depends on fake matches.
 
+## D-020 — Platform admin header uses the owner banner image; title is إدارة المنصة in Naskh
+
+**Phase:** admin console visual maintenance
+**Directive:** owner asked for visual/layout maintenance of `/admin` only. Follow-up:
+place the provided header image itself at the top of the admin page (not a CSS
+recreation), then arrange the rest of the admin shell under it. Title remains
+`إدارة المنصة` in Naskh (`خط النسخ`).
+
+**Decision.** `/admin` uses the owner banner file at `/images/admin-header-banner.png`
+as the header at the top of the page. The page heading under the banner is
+`إدارة المنصة` in `Noto Naskh Arabic`. Login fields, tabs, and cards stay in the
+rounded teal language. Body UI stays Tajawal. Column width follows the product
+`.app` shell (432 / 720 / 960). Broker home page is unchanged. The image lives
+under `/images/` so Firebase Hosting’s `/admin/**` rewrite cannot intercept it.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

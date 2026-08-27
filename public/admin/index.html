@@ -3,99 +3,132 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>لوحة الإدارة - مكاتب عقارية ذكية</title>
+  <title>إدارة المنصة</title>
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@500;600;700&family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f3f4f6;
+      --green: #005C4B;
+      --green-dark: #003F34;
+      --green-2: #08715E;
+      --green-soft: #EAF5F1;
+      --gold: #C5A059;
+      --bg: #F1F5F2;
       --card: #fff;
-      --line: #e5e7eb;
-      --text: #1f2937;
-      --muted: #4b5563;
-      --brand: #064e3b;
-      --accent: #065f46;
+      --line: #DEE7E2;
+      --text: #19231F;
+      --muted: #79847F;
+      --brand: #005C4B;
+      --accent: #08715E;
       --danger: #9e3434;
       --ok: #07634f;
+      --shadow: 0 9px 26px rgba(0, 63, 52, .08);
     }
     * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
     body {
       margin: 0;
-      font-family: Tajawal, Arial, sans-serif;
-      background: var(--bg);
+      font-family: Tajawal, "Segoe UI", Tahoma, Arial, sans-serif;
+      background:
+        radial-gradient(circle at 94% 3%, rgba(197, 160, 89, .07), transparent 18%),
+        linear-gradient(180deg, #FAFCFB 0%, var(--bg) 100%);
       color: var(--text);
       min-height: 100svh;
     }
-    .admin-header {
-      background: var(--brand);
-      color: #fff;
-      padding: 16px;
-      box-shadow: 0 4px 12px rgba(6, 78, 59, 0.2);
-    }
-    .admin-header-inner {
-      max-width: 42rem;
+    .admin-app {
+      width: min(100%, 432px);
       margin: 0 auto;
+      padding: 8px 10px calc(24px + env(safe-area-inset-bottom));
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
       gap: 12px;
     }
-    .admin-header h1 {
-      margin: 0;
-      font-size: 18px;
-      color: #fff;
+    @media (min-width: 768px) {
+      .admin-app { width: min(100%, 720px); padding: 12px 16px calc(18px + env(safe-area-inset-bottom)); }
     }
-    .env-badge {
-      font-size: 12px;
-      background: #065f46;
-      padding: 4px 10px;
-      border-radius: 999px;
-      white-space: nowrap;
+    @media (min-width: 1024px) {
+      .admin-app { width: min(100%, 960px); }
     }
-    .shell { max-width: 42rem; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
     .card {
       background: var(--card);
-      border: 1px solid #f3f4f6;
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(0, 92, 75, .08);
+      border-radius: 28px;
+      padding: 18px;
+      box-shadow: var(--shadow);
     }
-    h1, h2 { color: var(--brand); margin: 0 0 8px; }
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      padding: 0 0 4px;
+      background: #FAFCFB;
+      border: 0;
+      box-shadow: none;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    .header-banner {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 0;
+    }
+    .header h1 {
+      margin: 0;
+      text-align: center;
+      color: var(--green);
+      font-family: "Noto Naskh Arabic", "Amiri", "Traditional Arabic", serif;
+      font-size: clamp(22px, 5.6vw, 28px);
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    h2 { color: var(--green); margin: 0 0 8px; font-size: 16px; }
     p { color: var(--muted); line-height: 1.7; margin: 0 0 12px; }
+    label {
+      display: block;
+      margin: 0 0 6px;
+      color: #3d4a45;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .field { display: grid; gap: 0; }
     .tab-switch {
       display: flex;
+      gap: 6px;
       background: #fff;
-      border-radius: 16px;
+      border: 1px solid rgba(0, 92, 75, .08);
+      border-radius: 18px;
       padding: 4px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-      margin-bottom: 24px;
+      box-shadow: var(--shadow);
     }
     .tab-switch button {
       flex: 1;
       border: 0;
       background: transparent;
-      color: #4b5563;
-      border-radius: 12px;
+      color: var(--muted);
+      border-radius: 14px;
       padding: 10px 12px;
-      font: 600 15px Tajawal;
+      font: 700 14px Tajawal;
       cursor: pointer;
     }
     .tab-switch button.active {
-      background: var(--brand);
+      background: var(--green);
       color: #fff;
     }
     .btn {
       border: 0;
-      border-radius: 12px;
-      padding: 10px 12px;
-      font: 700 14px Tajawal;
+      border-radius: 999px;
+      padding: 13px 16px;
+      font: 800 15px Tajawal;
       cursor: pointer;
-      background: var(--accent);
+      background: var(--green);
       color: #fff;
     }
-    .btn.secondary { background: #f3f4f6; color: #374151; }
+    .btn.secondary { background: var(--green-soft); color: var(--green); }
     .btn.danger { background: #fff0f0; color: var(--danger); border: 1px solid #f0c7c7; }
     .btn.block { width: 100%; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -105,16 +138,17 @@
       padding: 12px;
       background: #f8fcfa;
     }
-    .stat strong { display: block; font-size: 24px; color: var(--brand); }
+    .stat strong { display: block; font-size: 24px; color: var(--green); }
     .stat span { font-size: 13px; color: var(--muted); }
-    .toolbar { display: grid; gap: 8px; margin-bottom: 12px; }
+    .toolbar { display: grid; gap: 12px; margin-bottom: 12px; }
     input, select, textarea {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px;
+      border-radius: 18px;
+      padding: 13px 16px;
       font: 500 15px Tajawal;
       background: #fff;
+      color: var(--text);
     }
     textarea { min-height: 90px; resize: vertical; }
     .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -126,16 +160,16 @@
       font: 700 13px Tajawal;
       cursor: pointer;
     }
-    .tabs button.active { background: #ecfdf5; color: var(--brand); }
+    .tabs button.active { background: var(--green-soft); color: var(--green); }
     .list-item, .task-card {
-      border: 1px solid #f3f4f6;
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 12px;
+      border: 1px solid rgba(0, 92, 75, .08);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 10px;
       background: #fff;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .04);
     }
-    .list-item h3, .task-card h3 { margin: 0 0 6px; font-size: 16px; color: #1f2937; }
+    .list-item h3, .task-card h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
     .task-head {
       display: flex;
       justify-content: space-between;
@@ -150,8 +184,8 @@
       border-radius: 999px;
       font-size: 12px;
       font-weight: 700;
-      background: #ecfdf5;
-      color: #065f46;
+      background: var(--green-soft);
+      color: var(--green);
       white-space: nowrap;
     }
     .task-actions {
@@ -161,40 +195,53 @@
       margin-top: 12px;
     }
     .task-actions .btn { width: auto; }
-    .status { display: none; margin-top: 10px; padding: 10px; border-radius: 12px; font-size: 14px; }
+    .status { display: none; margin-top: 10px; padding: 12px 14px; border-radius: 18px; font-size: 14px; }
     .status.show { display: block; }
     .status.err { background: #fff0f0; color: var(--danger); }
     .status.ok { background: #e8f7f2; color: var(--ok); }
     .hidden { display: none !important; }
     .row-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-    .user-line { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+    .user-line { margin: 0 4px; font-size: 13px; color: var(--muted); text-align: right; }
+    .admin-main { display: flex; flex-direction: column; gap: 12px; }
+    .logout-wrap { margin-top: 2px; }
     @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 365px) {
+      .header h1 { font-size: 22px; }
+    }
   </style>
 </head>
 <body>
-  <header class="admin-header">
-    <div class="admin-header-inner">
-      <h1>لوحة إدارة المنصة (Admin)</h1>
-      <span class="env-badge">بيئة التحكم</span>
-    </div>
-  </header>
-  <div class="shell" id="app">
-    <div class="card" id="loginCard">
-      <h2>دخول مخصص لمدير المنصة فقط</h2>
-      <form id="loginForm" class="toolbar">
-        <input name="email" type="email" autocomplete="username" placeholder="البريد الإلكتروني" required>
-        <input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required>
-        <button class="btn block" type="submit">دخول الإدارة</button>
-      </form>
-      <div id="status" class="status"></div>
-    </div>
-    <div id="console" class="hidden">
-      <p class="user-line" id="adminUserLine">مرحبًا</p>
-      <div class="tab-switch" id="mainNav"></div>
-      <div id="viewRoot"></div>
-      <div id="consoleStatus" class="status"></div>
-      <button class="btn secondary block" id="logoutBtn" type="button">تسجيل الخروج</button>
-    </div>
+  <div class="admin-app">
+    <header class="header">
+      <img class="header-banner" src="/images/admin-header-banner.png" width="1080" height="249" alt="مكاتب عقارية ذكية — منصة الفرص العقارية">
+      <h1>إدارة المنصة</h1>
+    </header>
+    <main class="admin-main" id="app">
+      <div class="card" id="loginCard">
+        <h2>دخول مخصص لمدير المنصة فقط</h2>
+        <form id="loginForm" class="toolbar">
+          <div class="field">
+            <label for="adminEmail">البريد الإلكتروني</label>
+            <input id="adminEmail" name="email" type="email" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="adminPassword">كلمة المرور</label>
+            <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn block" type="submit">دخول الإدارة</button>
+        </form>
+        <div id="status" class="status"></div>
+      </div>
+      <div id="console" class="hidden">
+        <p class="user-line" id="adminUserLine">مرحبًا</p>
+        <div class="tab-switch" id="mainNav"></div>
+        <div id="viewRoot"></div>
+        <div id="consoleStatus" class="status"></div>
+        <div class="logout-wrap">
+          <button class="btn secondary block" id="logoutBtn" type="button">تسجيل الخروج</button>
+        </div>
+      </div>
+    </main>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
