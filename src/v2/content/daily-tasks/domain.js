@@ -597,6 +597,22 @@ function canSendParty(record = {}, party = "client") {
   return isValidContactPhone(record.clientPhone || record.clientContactPhone || record.buyerPhone);
 }
 
+function maxSecondaryActions(record = {}) {
+  if (record.taskKind === "match_group" || text(record.matchId)) return 3;
+  return 2;
+}
+
+function coordinationSendActions(record = {}, { primaryParty = "client" } = {}) {
+  const actions = [];
+  if (primaryParty === "client" && shouldOfferSendAction(record, "owner")) {
+    actions.push(sendToOwnerAction(record));
+  }
+  if (primaryParty === "owner" && shouldOfferSendAction(record, "client")) {
+    actions.push(sendToClientAction(record));
+  }
+  return actions;
+}
+
 function actionsForState(stateKey, record = {}) {
   const secondary = [];
   let primary = null;
@@ -609,19 +625,22 @@ function actionsForState(stateKey, record = {}) {
   if (living === LIVING_TASK_STAGE.FOLLOW_UP) {
     primary = confirmDealAction();
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (ownerNeeded) {
     primary = shouldOfferSendAction(record, "owner") ? sendToOwnerAction(record) : null;
+    for (const action of coordinationSendActions(record, { primaryParty: "owner" })) {
+      secondary.unshift(action);
+    }
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
     || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
     || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: null, secondaryActions: secondary.slice(0, maxSecondaryActions(record)) };
   }
   if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
     if (record.hasRejectedCandidate && record.hasNextCandidate) {
@@ -631,8 +650,11 @@ function actionsForState(stateKey, record = {}) {
       };
     } else if (shouldOfferSendAction(record, "client")) {
       primary = sendToClientAction(record);
+      for (const action of coordinationSendActions(record, { primaryParty: "client" })) {
+        secondary.unshift(action);
+      }
       if (Number(record.candidateCount || 0) > 1) {
-        secondary.unshift({
+        secondary.push({
           id: EXEC_ACTION.REJECT_CANDIDATE,
           label: "غير مناسب",
           variant: "text"
@@ -658,7 +680,7 @@ function actionsForState(stateKey, record = {}) {
   if (offerAction) secondary.push(offerAction);
   return {
     primaryAction: primary,
-    secondaryActions: secondary.slice(0, 2)
+    secondaryActions: secondary.slice(0, maxSecondaryActions(record))
   };
 }
 

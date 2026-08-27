@@ -121,7 +121,7 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("open match-found card shows send-to-client and offer details, not send-to-owner", () => {
+test("open match-found card shows client and owner send actions for coordination", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
@@ -130,13 +130,15 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.match(html, />إخفاء البيانات</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
-  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
+  assert.match(html, />إرسال للمالك</);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.equal(task.primaryAction.party, SECURE_PARTY.CLIENT);
-  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.OPEN_OFFER);
+  assert.equal(task.secondaryActions[0].id, EXEC_ACTION.SEND_TO_OWNER);
+  assert.equal(task.secondaryActions[1].id, EXEC_ACTION.OPEN_OFFER);
   const chrome = forbiddenBrokerChrome(html);
   assert.equal(chrome.hasAppointment, false);
   assert.equal(chrome.hasNegotiate, false);
@@ -201,7 +203,7 @@ test("list accordion keeps a single open task", () => {
   assert.match(closedNewMatch, />عرض البيانات</);
   assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.match(html, />إخفاء البيانات</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });

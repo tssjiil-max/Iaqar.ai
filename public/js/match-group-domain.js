@@ -548,8 +548,8 @@ export function livingCopy(stage, {
     statusLabel: "تم العثور على مطابقة",
     happenedLine: "تم العثور على مطابقة",
     turnLine: "دورك الآن",
-    yourTurnLine: "إرسال العرض للعميل",
-    nextActionLine: "إرسال العرض للعميل",
+    yourTurnLine: "إرسال للعميل والمالك للتنسيق",
+    nextActionLine: "إرسال للعميل والمالك للتنسيق",
     waiting: false,
     ...reveal
   };
