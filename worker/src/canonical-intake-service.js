@@ -49,6 +49,95 @@ function mapParsedToUnifiedFields(parsed = {}, extractedFields = {}) {
   };
 }
 
+function parseCanonicalJsonField(value, fallback) {
+  if (value == null || value === "") return fallback;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storedCanonicalValue(opportunity = {}, extractedFields = {}, key, { asNumber = false } = {}) {
+  const fromOpportunity = opportunity[key];
+  const hasOpportunity = fromOpportunity !== undefined && fromOpportunity !== null && fromOpportunity !== "";
+  const fromExtracted = extractedFields[key];
+  const hasExtracted = fromExtracted !== undefined && fromExtracted !== null && fromExtracted !== "";
+  const value = hasOpportunity ? fromOpportunity : (hasExtracted ? fromExtracted : null);
+  if (asNumber) {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (value === null || value === undefined) return "";
+  return safeText(value, 240);
+}
+
+function buildCanonicalBrowserFieldsFromStored(opportunity = {}, extractedFields = {}) {
+  const priceOrBudget = storedCanonicalValue(opportunity, extractedFields, "priceOrBudget", { asNumber: true })
+    ?? storedCanonicalValue(opportunity, extractedFields, "price", { asNumber: true })
+    ?? storedCanonicalValue(opportunity, extractedFields, "budget", { asNumber: true });
+  return {
+    opportunityKind: storedCanonicalValue(opportunity, extractedFields, "opportunityKind", { asNumber: false }),
+    purpose: storedCanonicalValue(opportunity, extractedFields, "purpose", { asNumber: false }),
+    propertyType: storedCanonicalValue(opportunity, extractedFields, "propertyType", { asNumber: false }),
+    city: storedCanonicalValue(opportunity, extractedFields, "city", { asNumber: false }),
+    district: storedCanonicalValue(opportunity, extractedFields, "district", { asNumber: false }),
+    priceOrBudget,
+    area: storedCanonicalValue(opportunity, extractedFields, "area", { asNumber: true }),
+    rooms: storedCanonicalValue(opportunity, extractedFields, "rooms", { asNumber: true }),
+    contactPhone: storedCanonicalValue(opportunity, extractedFields, "contactPhone", { asNumber: false }),
+    contactName: storedCanonicalValue(opportunity, extractedFields, "contactName", { asNumber: false }),
+    advertiserPhoneRaw: storedCanonicalValue(opportunity, extractedFields, "advertiserPhoneRaw", { asNumber: false }),
+    advertiserPhoneNormalized: storedCanonicalValue(opportunity, extractedFields, "advertiserPhoneNormalized", { asNumber: false }),
+    advertiserRole: storedCanonicalValue(opportunity, extractedFields, "advertiserRole", { asNumber: false })
+  };
+}
+
+async function buildHydratedDuplicateCompleteResponse(ctx, {
+  officeId,
+  opportunityId,
+  importJobId,
+  job,
+  idempotencyKey
+}) {
+  const resolvedOpportunityId = ctx.cleanText(job.opportunityId || opportunityId, 180);
+  let opportunity = {};
+  const opportunityDoc = await ctx.getFirestoreDocument({
+    projectId: ctx.projectId,
+    segments: ["offices", officeId, "opportunities", resolvedOpportunityId],
+    accessToken: ctx.accessToken,
+    allowMissing: true
+  });
+  if (opportunityDoc) {
+    opportunity = ctx.firestoreFieldsToJs(opportunityDoc.fields || {});
+  }
+
+  const extractedFields = parseCanonicalJsonField(job.extractedFieldsJson, {});
+  const missingFields = parseCanonicalJsonField(job.missingFieldsJson, []);
+  const fields = buildCanonicalBrowserFieldsFromStored(opportunity, extractedFields);
+
+  return {
+    ok: true,
+    duplicate: true,
+    officeId,
+    opportunityId: resolvedOpportunityId,
+    importJobId,
+    analysisStatus: ANALYSIS_STATUS.COMPLETE,
+    idempotencyKey,
+    rawText: safeText(job.rawText || opportunity.rawText, 12000),
+    transcript: safeText(job.transcript || opportunity.transcript, 12000),
+    extractedFields,
+    confidence: Number(job.confidence ?? opportunity.confidence ?? 0),
+    missingFields,
+    fields,
+    matchingReadiness: safeText(opportunity.matchingReadiness, 40),
+    productionAi: false,
+    retryable: false
+  };
+}
+
 export async function buildCanonicalSecureMediaPayload({
   workerOrigin,
   officeId,
@@ -135,15 +224,13 @@ export async function startCanonicalIntake(body, ctx) {
   if (existingJob) {
     const job = ctx.firestoreFieldsToJs(existingJob.fields || {});
     if (job.analysisStatus === ANALYSIS_STATUS.COMPLETE) {
-      return {
-        ok: true,
-        duplicate: true,
+      return await buildHydratedDuplicateCompleteResponse(ctx, {
         officeId,
-        opportunityId: job.opportunityId || opportunityId,
+        opportunityId,
         importJobId,
-        analysisStatus: job.analysisStatus,
+        job,
         idempotencyKey
-      };
+      });
     }
     if (job.analysisStatus === ANALYSIS_STATUS.PENDING) {
       return {
