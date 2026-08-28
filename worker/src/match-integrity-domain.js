@@ -74,7 +74,8 @@ export function evaluateActiveMatchContract({
   offerId = "",
   requestDoc = null,
   offerDoc = null,
-  officeId = ""
+  officeId = "",
+  propertyOfficeId = ""
 } = {}) {
   const reasons = [];
   const reqId = String(requestId || "").trim();
@@ -91,11 +92,12 @@ export function evaluateActiveMatchContract({
   if (offerDoc && normalizeOpportunitySide(offerDoc) !== "offer") {
     reasons.push("offer_not_canonical_offer");
   }
-  const expectedOffice = String(officeId || requestDoc?.officeId || offerDoc?.officeId || "").trim();
-  if (expectedOffice && requestDoc && String(requestDoc.officeId || "") !== expectedOffice) {
+  const requestOffice = String(officeId || requestDoc?.officeId || "").trim();
+  const offerOffice = String(propertyOfficeId || officeId || offerDoc?.officeId || "").trim();
+  if (requestOffice && requestDoc && String(requestDoc.officeId || "") !== requestOffice) {
     reasons.push("request_office_mismatch");
   }
-  if (expectedOffice && offerDoc && String(offerDoc.officeId || "") !== expectedOffice) {
+  if (offerOffice && offerDoc && String(offerDoc.officeId || "") !== offerOffice) {
     reasons.push("offer_office_mismatch");
   }
   const unique = [...new Set(reasons)];
@@ -122,13 +124,15 @@ export function resolveCanonicalPairFromDocs(match = {}, docsById = {}) {
   if (docA && docB) {
     const sideA = normalizeOpportunitySide(docA);
     const sideB = normalizeOpportunitySide(docB);
+    const crossOffice = String(docA.officeId || "") !== String(docB.officeId || "");
     if (sideA === "request" && sideB === "offer") {
       return evaluateActiveMatchContract({
         requestId: oppA,
         offerId: oppB,
         requestDoc: docA,
         offerDoc: docB,
-        officeId: match.officeId
+        officeId: crossOffice ? docA.officeId : match.officeId,
+        propertyOfficeId: crossOffice ? docB.officeId : String(match.propertyOfficeId || "")
       });
     }
     if (sideA === "offer" && sideB === "request") {
@@ -137,7 +141,8 @@ export function resolveCanonicalPairFromDocs(match = {}, docsById = {}) {
         offerId: oppA,
         requestDoc: docB,
         offerDoc: docA,
-        officeId: match.officeId
+        officeId: crossOffice ? docB.officeId : match.officeId,
+        propertyOfficeId: crossOffice ? docA.officeId : String(match.propertyOfficeId || "")
       });
     }
   }
