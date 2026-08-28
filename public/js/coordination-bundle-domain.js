@@ -600,8 +600,10 @@ export function resolveCoordinationOutcome({
   };
 }
 
-export function livingStageForCoordinationOutcome(outcome = "") {
+export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
   const key = text(outcome);
+  const clientBundle = session?.clientBundle || null;
+  const ownerBundle = session?.ownerBundle || null;
   if (key === COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED) {
     return { stage: LIVING_TASK_STAGE.CLIENT_REJECTED, ownerContactNeeded: false };
   }
@@ -625,9 +627,27 @@ export function livingStageForCoordinationOutcome(outcome = "") {
     return { stage: LIVING_TASK_STAGE.MATCH_FOUND, ownerContactNeeded: false };
   }
   if (key === COORDINATION_OUTCOME.AWAITING_OTHER_PARTY) {
-    return { stage: LIVING_TASK_STAGE.MATCH_FOUND, ownerContactNeeded: false };
+    return {
+      stage: LIVING_TASK_STAGE.MATCH_FOUND,
+      ownerContactNeeded: Boolean(clientBundle && !ownerBundle)
+    };
   }
   return { stage: LIVING_TASK_STAGE.MATCH_FOUND, ownerContactNeeded: false };
+}
+
+/** Derive ownerContactNeeded from coordination outcome and bundle/summary stamps. */
+export function ownerContactNeededForCoordination({
+  outcome = "",
+  clientBundle = null,
+  ownerBundle = null,
+  clientSummary = "",
+  ownerSummary = ""
+} = {}) {
+  const hasClient = Boolean(clientBundle) || Boolean(text(clientSummary));
+  const hasOwner = Boolean(ownerBundle) || Boolean(text(ownerSummary));
+  if (hasClient && !hasOwner) return true;
+  if (!hasClient && hasOwner) return false;
+  return livingStageForCoordinationOutcome(outcome, { clientBundle, ownerBundle }).ownerContactNeeded;
 }
 
 export function coordinationOutcomeLabel(outcome = "") {
