@@ -28,9 +28,7 @@ import {
   clearAdvertiserMessageModalContext,
   inferAdvertiserRoleForOpportunity,
   mergeAdvertiserFieldsIntoOpportunity,
-  e164ToLocalInput,
   normalizeAdvertiserPhoneE164,
-  resolveAdvertiserEnumValue,
   validateAdvertiserPhoneLocalInput,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
