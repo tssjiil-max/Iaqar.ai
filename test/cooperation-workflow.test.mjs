@@ -358,3 +358,60 @@ test("roles never render office1/office2", () => {
   assert.equal(/office1|office2|مكتب 1|مكتب 2/i.test(html), false);
   assert.match(html, /مكتب العميل|مكتب العقار/);
 });
+
+test("accepted cross-office with client bundle exposes send_to_owner on property office", () => {
+  const record = livingRecord({
+    status: COOPERATION_RECORD_STATUS.ACCEPTED,
+    currentStage: COOPERATION_STAGE.ACCEPTED,
+    matchId: "mat_cross_1",
+    ownerContactNeeded: true,
+    coordinationOutcome: "AWAITING_OTHER_PARTY",
+    coordinationClientSummary: "مهتم — يريد معاينة غدًا مساءً",
+    originOpportunityId: "offer_sakb",
+    counterpartOpportunityId: "req_sakb"
+  });
+  const propertyView = buildCooperationDailyTaskView(record, { officeId: "office-wadi" });
+  assert.equal(propertyView.primaryAction?.id, "send_to_owner");
+  assert.equal(propertyView.primaryAction?.label, "إرسال للمالك");
+  assert.equal(propertyView.offerId, "offer_sakb");
+  assert.equal(propertyView.requestId, "req_sakb");
+
+  const clientView = buildCooperationDailyTaskView(record, { officeId: "office-client" });
+  assert.equal(clientView.primaryAction?.id, "follow_customer");
+});
+
+test("owner bundle submitted clears send_to_owner on property cooperation task", () => {
+  const record = livingRecord({
+    status: COOPERATION_RECORD_STATUS.ACCEPTED,
+    currentStage: COOPERATION_STAGE.ACCEPTED,
+    matchId: "mat_cross_1",
+    ownerContactNeeded: false,
+    coordinationOutcome: "AWAITING_OTHER_PARTY",
+    coordinationOwnerSummary: "متاح",
+    originOpportunityId: "offer_sakb",
+    counterpartOpportunityId: "req_sakb"
+  });
+  const propertyView = buildCooperationDailyTaskView(record, { officeId: "office-wadi" });
+  assert.notEqual(propertyView.primaryAction?.id, "send_to_owner");
+});
+
+test("mapOperationsItemsToDailyTasks maps stamped cooperation operation to send_to_owner", () => {
+  const record = livingRecord({
+    status: COOPERATION_RECORD_STATUS.ACCEPTED,
+    currentStage: COOPERATION_STAGE.ACCEPTED,
+    matchId: "mat_cross_1",
+    ownerContactNeeded: true,
+    coordinationOutcome: "AWAITING_OTHER_PARTY",
+    originOpportunityId: "offer_sakb",
+    counterpartOpportunityId: "req_sakb"
+  });
+  const tasks = mapOperationsItemsToDailyTasks([
+  {
+    operationType: "COOPERATION_MATCH",
+    ...record,
+    cooperationId: record.cooperationTaskId
+  }
+  ], new Date(), { officeId: "office-wadi" });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].primaryAction?.id, "send_to_owner");
+});

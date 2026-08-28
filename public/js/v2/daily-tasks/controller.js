@@ -141,6 +141,14 @@ async function tickPlatformOpportunityExpiry() {
       },
       body: JSON.stringify({ officeId })
     });
+    await fetch(`${workerBase()}/cooperation/sync-coordination`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ officeId })
+    });
   } catch {
     /* expiry is retried on the next load / action */
   }
@@ -564,6 +572,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", secondary);
+        return;
+      }
       void runCooperationTaskAction(task, action, secondary);
       return;
     }
@@ -586,6 +598,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", primary);
+        return;
+      }
       void runCooperationTaskAction(task, action, primary);
       return;
     }

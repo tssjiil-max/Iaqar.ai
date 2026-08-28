@@ -234,6 +234,8 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     isBestOpportunity: Boolean(metadata.isBestOpportunity),
     coordinationOutcome: String(op.coordinationOutcome || metadata.coordinationOutcome || ""),
     coordinationBrokerLine: String(op.coordinationBrokerLine || metadata.coordinationBrokerLine || ""),
+    coordinationClientSummary: String(op.coordinationClientSummary || metadata.coordinationClientSummary || ""),
+    coordinationOwnerSummary: String(op.coordinationOwnerSummary || metadata.coordinationOwnerSummary || ""),
     livingStage: String(op.livingStage || metadata.livingStage || ""),
     livingTimeline: (() => {
       const raw = op.livingTimeline || op.livingTimelineJson || metadata.livingTimeline || metadata.livingTimelineJson;

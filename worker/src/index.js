@@ -148,6 +148,9 @@ import {
   handleMatchLivingAction
 } from "./party-session-service.js";
 import {
+  syncCooperationCoordinationForOffice
+} from "./coordination-session-service.js";
+import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
   resolveGeminiModel,
@@ -557,6 +560,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
         return await handleCooperationLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/sync-coordination") {
+        return await handleCooperationSyncCoordination(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/scope-revoke") {
@@ -2103,6 +2110,22 @@ async function handleOpportunityRouterTick(request, env, requestId) {
   const result = await expireDuePlatformOffers(opportunityRouterDeps(env, projectId, accessToken), {
     officeId,
     opportunityId: cleanText(body.opportunityId, 180)
+  });
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleCooperationSyncCoordination(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await syncCooperationCoordinationForOffice(partySessionHelpers(), {
+    projectId,
+    officeId,
+    accessToken
   });
   return jsonResponse({ ok: true, ...result, requestId });
 }
@@ -6361,6 +6384,7 @@ function partySessionHelpers() {
     getGoogleAccessToken,
     getFirestoreDocument,
     setFirestoreDocument,
+    listCollectionDocuments,
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,

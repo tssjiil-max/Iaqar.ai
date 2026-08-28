@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/worker.test.mjs && node test/gemini-voice.test.mjs && node test/openai-voice.test.mjs && node test/opportunity-duplicate.test.mjs && node test/activepieces-intake.test.mjs && node test/match-integrity-domain.test.mjs && node test/cooperation-accept-match.test.mjs && node test/office-public-preview.test.mjs && node test/opportunity-router-service.test.mjs",
+    "test": "node test/worker.test.mjs && node test/gemini-voice.test.mjs && node test/openai-voice.test.mjs && node test/opportunity-duplicate.test.mjs && node test/activepieces-intake.test.mjs && node test/match-integrity-domain.test.mjs && node test/cooperation-accept-match.test.mjs && node test/cooperation-coordination-stamp.test.mjs && node test/office-public-preview.test.mjs && node test/opportunity-router-service.test.mjs",
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging"
   },

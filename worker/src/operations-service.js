@@ -110,7 +110,17 @@ export function operationToFirestoreFields(operation, {
     createdBySystem: firestoreBoolean(operation.createdBySystem !== false),
     operationVersion: firestoreInteger(operation.operationVersion || 1),
     metadataJson: firestoreString(JSON.stringify(operation.metadata || {})),
-    missingFieldsJson: firestoreString(JSON.stringify(operation.metadata?.missingFields || []))
+    missingFieldsJson: firestoreString(JSON.stringify(operation.metadata?.missingFields || [])),
+    coordinationOutcome: firestoreString(operation.coordinationOutcome || ""),
+    coordinationBrokerLine: firestoreString(operation.coordinationBrokerLine || ""),
+    coordinationClientSummary: firestoreString(operation.coordinationClientSummary || ""),
+    coordinationOwnerSummary: firestoreString(operation.coordinationOwnerSummary || ""),
+    ownerContactNeeded: firestoreString(
+      operation.ownerContactNeeded === true
+        || String(operation.ownerContactNeeded || "").toLowerCase() === "true"
+        ? "true"
+        : ""
+    )
   };
 }
 

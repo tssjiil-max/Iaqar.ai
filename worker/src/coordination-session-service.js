@@ -9,6 +9,7 @@ import {
   normalizeClientBundle,
   normalizeOwnerBundle,
   ownerBundleSummary,
+  ownerContactNeededForCoordination,
   PRICE_CONFIRMATION,
   QUESTION_SET_VERSIONS,
   resolveCoordinationOutcome,
@@ -367,7 +368,244 @@ export async function applyCoordinationToMatch(helpers, {
       }
     }
   });
+  await stampSharedCooperationCoordinationState(helpers, {
+    projectId,
+    clientOfficeId: officeId,
+    matchId,
+    accessToken,
+    coordinationOutcome: String(session.outcome || ""),
+    coordinationBrokerLine: brokerLine,
+    coordinationClientSummary: clientSummary,
+    coordinationOwnerSummary: ownerSummary,
+    ownerContactNeeded: Boolean(living.ownerContactNeeded)
+  });
   return living;
+}
+
+function decodeFirestoreDocId(doc = {}) {
+  return decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+}
+
+async function findAcceptedCooperationByMatchId(helpers, { projectId, matchId, accessToken }) {
+  const id = text(matchId);
+  if (!id || typeof helpers.listCollectionDocuments !== "function") return null;
+  const docs = await helpers.listCollectionDocuments({
+    projectId,
+    segments: ["cooperationRequests"],
+    accessToken,
+    pageSize: 200
+  });
+  for (const doc of docs) {
+    const record = js(doc, helpers);
+    if (text(record.matchId) !== id) continue;
+    const status = String(record.status || "").toUpperCase();
+    if (status !== "ACCEPTED") continue;
+    return { id: decodeFirestoreDocId(doc), ...record };
+  }
+  return null;
+}
+
+async function patchOfficeCooperationOperations(helpers, {
+  projectId,
+  officeId,
+  cooperationId,
+  accessToken,
+  patch = {}
+}) {
+  if (!officeId || !cooperationId || typeof helpers.listCollectionDocuments !== "function") return;
+  const docs = await helpers.listCollectionDocuments({
+    projectId,
+    segments: ["offices", officeId, "operations"],
+    accessToken,
+    pageSize: 100
+  });
+  const now = new Date();
+  const fields = {
+    matchId: helpers.firestoreString(text(patch.matchId)),
+    coordinationOutcome: helpers.firestoreString(text(patch.coordinationOutcome)),
+    coordinationBrokerLine: helpers.firestoreString(text(patch.coordinationBrokerLine)),
+    coordinationClientSummary: helpers.firestoreString(text(patch.coordinationClientSummary)),
+    coordinationOwnerSummary: helpers.firestoreString(text(patch.coordinationOwnerSummary)),
+    ownerContactNeeded: helpers.firestoreString(patch.ownerContactNeeded ? "true" : ""),
+    updatedAt: helpers.firestoreTimestamp(now)
+  };
+  for (const doc of docs) {
+    const op = js(doc, helpers);
+    const opId = decodeFirestoreDocId(doc);
+    if (!opId) continue;
+    if (String(op.cooperationId || "") !== String(cooperationId)) continue;
+    if (String(op.type || "").toUpperCase() !== "COOPERATION_MATCH") continue;
+    await helpers.setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "operations", opId],
+      accessToken,
+      fields
+    });
+  }
+}
+
+export async function stampSharedCooperationCoordinationState(helpers, {
+  projectId,
+  clientOfficeId,
+  matchId,
+  accessToken,
+  coordinationOutcome = "",
+  coordinationBrokerLine = "",
+  coordinationClientSummary = "",
+  coordinationOwnerSummary = "",
+  ownerContactNeeded = false
+}) {
+  const cooperation = await findAcceptedCooperationByMatchId(helpers, {
+    projectId,
+    matchId,
+    accessToken
+  });
+  if (!cooperation) return { ok: true, skipped: true, reason: "no_accepted_cooperation" };
+
+  const clientOffice = text(cooperation.clientOfficeId || "");
+  const propertyOffice = text(cooperation.propertyOfficeId || "");
+  if (!clientOffice || !propertyOffice || clientOffice === propertyOffice) {
+    return { ok: true, skipped: true, reason: "not_cross_office" };
+  }
+  if (text(clientOfficeId) && text(clientOfficeId) !== clientOffice) {
+    return { ok: true, skipped: true, reason: "client_office_mismatch" };
+  }
+
+  const cooperationId = text(cooperation.id);
+  const patch = {
+    matchId: text(matchId),
+    coordinationOutcome: text(coordinationOutcome),
+    coordinationBrokerLine: text(coordinationBrokerLine),
+    coordinationClientSummary: text(coordinationClientSummary),
+    coordinationOwnerSummary: text(coordinationOwnerSummary),
+    ownerContactNeeded: Boolean(ownerContactNeeded)
+  };
+  const now = new Date();
+  await helpers.setFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", cooperationId],
+    accessToken,
+    fields: {
+      matchId: helpers.firestoreString(patch.matchId),
+      coordinationOutcome: helpers.firestoreString(patch.coordinationOutcome),
+      coordinationBrokerLine: helpers.firestoreString(patch.coordinationBrokerLine),
+      coordinationClientSummary: helpers.firestoreString(patch.coordinationClientSummary),
+      coordinationOwnerSummary: helpers.firestoreString(patch.coordinationOwnerSummary),
+      ownerContactNeeded: helpers.firestoreString(patch.ownerContactNeeded ? "true" : ""),
+      updatedAt: helpers.firestoreTimestamp(now)
+    }
+  });
+
+  const stampedOffices = [...new Set([clientOffice, propertyOffice])];
+  for (const officeId of stampedOffices) {
+    await patchOfficeCooperationOperations(helpers, {
+      projectId,
+      officeId,
+      cooperationId,
+      accessToken,
+      patch
+    });
+  }
+
+  return {
+    ok: true,
+    cooperationId,
+    matchId: patch.matchId,
+    ownerContactNeeded: patch.ownerContactNeeded,
+    offices: stampedOffices
+  };
+}
+
+export async function syncCooperationCoordinationFromCanonicalMatch(helpers, {
+  projectId,
+  matchId,
+  accessToken
+}) {
+  const cooperation = await findAcceptedCooperationByMatchId(helpers, {
+    projectId,
+    matchId,
+    accessToken
+  });
+  if (!cooperation) return { ok: true, skipped: true, reason: "no_accepted_cooperation" };
+
+  const clientOffice = text(cooperation.clientOfficeId || "");
+  if (!clientOffice) return { ok: true, skipped: true, reason: "no_client_office" };
+
+  const match = await readOfficeDoc(helpers, {
+    projectId,
+    officeId: clientOffice,
+    collection: "matches",
+    id: text(matchId),
+    accessToken
+  });
+  if (!match) return { ok: true, skipped: true, reason: "no_canonical_match" };
+
+  const coordinationOutcome = text(match.coordinationOutcome);
+  const coordinationClientSummary = text(match.coordinationClientSummary);
+  const coordinationOwnerSummary = text(match.coordinationOwnerSummary);
+  const coordinationBrokerLine = text(match.coordinationBrokerLine);
+  const storedOwnerNeeded = match.ownerContactNeeded === true
+    || String(match.ownerContactNeeded || "").toLowerCase() === "true";
+  const ownerContactNeeded = storedOwnerNeeded || (
+    coordinationOutcome
+      ? ownerContactNeededForCoordination({
+        outcome: coordinationOutcome,
+        clientSummary: coordinationClientSummary,
+        ownerSummary: coordinationOwnerSummary
+      })
+      : false
+  );
+
+  if (!coordinationOutcome && !ownerContactNeeded) {
+    return { ok: true, skipped: true, reason: "no_coordination_state" };
+  }
+
+  return stampSharedCooperationCoordinationState(helpers, {
+    projectId,
+    clientOfficeId: clientOffice,
+    matchId: text(matchId),
+    accessToken,
+    coordinationOutcome,
+    coordinationBrokerLine,
+    coordinationClientSummary,
+    coordinationOwnerSummary,
+    ownerContactNeeded
+  });
+}
+
+export async function syncCooperationCoordinationForOffice(helpers, {
+  projectId,
+  officeId,
+  accessToken
+}) {
+  if (!officeId || typeof helpers.listCollectionDocuments !== "function") {
+    return { ok: true, synced: 0 };
+  }
+  const docs = await helpers.listCollectionDocuments({
+    projectId,
+    segments: ["cooperationRequests"],
+    accessToken,
+    pageSize: 200
+  });
+  let synced = 0;
+  for (const doc of docs) {
+    const record = js(doc, helpers);
+    const status = String(record.status || "").toUpperCase();
+    if (status !== "ACCEPTED") continue;
+    const matchId = text(record.matchId);
+    if (!matchId) continue;
+    const clientOffice = text(record.clientOfficeId);
+    const propertyOffice = text(record.propertyOfficeId);
+    if (!clientOffice || !propertyOffice || clientOffice === propertyOffice) continue;
+    if (text(officeId) !== clientOffice && text(officeId) !== propertyOffice) continue;
+    const result = await syncCooperationCoordinationFromCanonicalMatch(helpers, {
+      projectId,
+      matchId,
+      accessToken
+    });
+    if (result?.ok && !result.skipped) synced += 1;
+  }
+  return { ok: true, synced };
 }
 
 export function coordinationSessionForBrokerView(session = {}) {
