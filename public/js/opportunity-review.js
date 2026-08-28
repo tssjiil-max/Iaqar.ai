@@ -26,7 +26,12 @@ import {
   extractAdvertiserPhonesFromText,
   getAdvertiserMessageModalContext,
   clearAdvertiserMessageModalContext,
+  inferAdvertiserRoleForOpportunity,
+  mergeAdvertiserFieldsIntoOpportunity,
+  e164ToLocalInput,
   normalizeAdvertiserPhoneE164,
+  resolveAdvertiserEnumValue,
+  validateAdvertiserPhoneLocalInput,
   whatsappDigitsFromE164
 } from "./advertiser-phone-domain.js";
 import { openWhatsApp } from "./whatsapp-handoff-domain.js";
@@ -650,12 +655,24 @@ function readAdvertiserForm() {
   const form = $("opportunityReviewForm");
   if (!form) return {};
   const data = Object.fromEntries(new FormData(form).entries());
-  const local = String(data.advertiserPhoneLocal || "").replace(/\D/g, "");
-  const normalized = /^5\d{8}$/.test(local) ? normalizeAdvertiserPhoneE164(local) : "";
+  const phoneCheck = validateAdvertiserPhoneLocalInput(data.advertiserPhoneLocal);
+  const normalized = phoneCheck.ok ? phoneCheck.e164 : "";
   const primary = advertiserCandidates.length === 1 ? advertiserCandidates[0] : null;
+  const opportunityKind = String(
+    data.opportunityKind
+      || activeDraft?.fields?.opportunityKind
+      || activeDraft?.prepared?.opportunity?.opportunityKind
+      || ""
+  ).toUpperCase();
+  const explicitRole = resolveAdvertiserEnumValue(data.advertiserRole, ADVERTISER_ROLES);
+  const advertiserRole = inferAdvertiserRoleForOpportunity({
+    opportunityKind,
+    explicitRole,
+    existing: activeDraft?.fields?.advertiserRole || ""
+  });
   return {
     advertiserPhoneRaw: normalized
-      ? (primary?.advertiserPhoneRaw || `0${local}`)
+      ? (primary?.advertiserPhoneRaw || e164ToLocalInput(normalized) || "")
       : "",
     advertiserPhoneNormalized: normalized,
     advertiserPhoneSource: normalized && advertiserExtractedAuto
@@ -664,7 +681,7 @@ function readAdvertiserForm() {
     advertiserPhoneEvidence: normalized && advertiserExtractedAuto
       ? (primary?.advertiserPhoneEvidence || "")
       : "",
-    advertiserRole: resolveAdvertiserEnumValue(data.advertiserRole, ADVERTISER_ROLES) || "UNKNOWN",
+    advertiserRole,
     advertiserContactStatus: resolveAdvertiserEnumValue(
       data.advertiserContactStatus,
       ADVERTISER_CONTACT_STATUSES
@@ -674,7 +691,8 @@ function readAdvertiserForm() {
       MARKETING_CONSENT_STATUSES
     ) || "NOT_STARTED",
     lastContactAt: null,
-    contactNotes: ""
+    contactNotes: "",
+    advertiserPhoneLocal: data.advertiserPhoneLocal || ""
   };
 }
 
@@ -1232,8 +1250,31 @@ async function submitReview() {
         ? importReviewValuesToBrokerFields(review)
         : reviewValuesToBrokerFields(review);
     const advertiser = readAdvertiserForm();
+    let advertiserForApprove = advertiser;
+    if (activeReviewOptions?.importSimplifiedReview) {
+      const persistContext = {
+        purpose: brokerExtras.purpose,
+        opportunityKind: brokerExtras.opportunityKind || review.opportunityKind,
+        propertyType: brokerExtras.propertyType,
+        city: brokerExtras.city,
+        district: brokerExtras.district,
+        budget: brokerExtras.budget,
+        priceOrBudget: brokerExtras.priceOrBudget,
+        rooms: brokerExtras.rooms,
+        salePrice: brokerExtras.salePrice,
+        annualRent: brokerExtras.annualRent,
+        area: brokerExtras.area,
+        contactPhone: activeDraft?.fields?.contactPhone
+          || activeDraft?.prepared?.fields?.contactPhone
+          || ""
+      };
+      advertiserForApprove = {
+        ...advertiser,
+        ...mergeAdvertiserFieldsIntoOpportunity(persistContext, advertiser)
+      };
+    }
     if (typeof onApproveCallback === "function") {
-      await onApproveCallback(brokerExtras, review, advertiser);
+      await onApproveCallback(brokerExtras, review, advertiserForApprove);
     }
     closeReview();
   } catch (error) {
