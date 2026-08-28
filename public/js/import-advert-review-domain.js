@@ -69,7 +69,8 @@ export function resolveImportOperationTypeId({ opportunityKind = "", purpose = "
   const kind = String(opportunityKind || "").toUpperCase();
   const p = String(purpose || "").toUpperCase();
   if (kind === "REQUEST") {
-    return p === "LEASE_REQUEST" ? "rent" : "purchase";
+    if (p === "LEASE_REQUEST" || p === "RENT") return "rent";
+    return "purchase";
   }
   if (p === "RENT") return "rent";
   if (p === "INVESTMENT") return "investment";

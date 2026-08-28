@@ -18,6 +18,8 @@ import {
 } from "./cooperation-phase6-domain.js";
 import { ensureCooperationRoom } from "./opportunity-workspace-service.mjs";
 import { readTargetOfficeEligibility } from "./suitable-offices-service.mjs";
+import { resolveCooperationRoles } from "../../public/js/cooperation-workflow-domain.js";
+import { normalizeOpportunitySide } from "./matching-engine.js";
 
 function firestoreHelpersBundle(h) {
   return h;
@@ -154,6 +156,110 @@ async function deleteSharedProjections({
     removed += 1;
   }
   return removed;
+}
+
+function resolveClientPropertyOffices(request = {}) {
+  const clientOfficeId = String(request.clientOfficeId || "").trim();
+  const propertyOfficeId = String(request.propertyOfficeId || "").trim();
+  if (clientOfficeId && propertyOfficeId) {
+    return { clientOfficeId, propertyOfficeId };
+  }
+  const counterpartKind = String(
+    request.counterpartListing?.opportunityKind
+    || request.counterpartOpportunityKind
+    || ""
+  );
+  return resolveCooperationRoles({
+    originatingKind: request.opportunityKind,
+    counterpartKind,
+    originatingOfficeId: request.originatingOfficeId,
+    targetOfficeId: request.targetOfficeId
+  });
+}
+
+async function loadOpportunityRecord({
+  projectId,
+  officeId,
+  opportunityId,
+  accessToken,
+  getFirestoreDocument,
+  firestoreFieldsToJs
+}) {
+  const id = String(opportunityId || "").trim();
+  const office = String(officeId || "").trim();
+  if (!id || !office) return null;
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", office, "opportunities", id],
+    accessToken,
+    allowMissing: true
+  });
+  if (!doc) return null;
+  return { id, officeId: office, ...firestoreFieldsToJs(doc.fields || {}) };
+}
+
+export async function resolveAcceptedCooperationPair({
+  cooperation = {},
+  projectId,
+  accessToken,
+  getFirestoreDocument,
+  firestoreFieldsToJs
+}) {
+  const { clientOfficeId, propertyOfficeId } = resolveClientPropertyOffices(cooperation);
+  if (!clientOfficeId || !propertyOfficeId) {
+    return { ok: false, error: "office_roles_missing" };
+  }
+  if (clientOfficeId === propertyOfficeId) {
+    return { ok: false, skip: true, error: "same_office" };
+  }
+
+  const candidateIds = [];
+  const push = (value) => {
+    const id = String(value || "").trim();
+    if (id) candidateIds.push(id);
+  };
+  push(cooperation.opportunityId);
+  push(cooperation.counterpartOpportunityId);
+  for (const id of cooperation.opportunityIds || []) push(id);
+
+  let requestId = "";
+  let offerId = "";
+  for (const oppId of [...new Set(candidateIds)]) {
+    const requestDoc = await loadOpportunityRecord({
+      projectId,
+      officeId: clientOfficeId,
+      opportunityId: oppId,
+      accessToken,
+      getFirestoreDocument,
+      firestoreFieldsToJs
+    });
+    if (requestDoc && normalizeOpportunitySide(requestDoc) === "request" && !requestId) {
+      requestId = oppId;
+    }
+    const offerDoc = await loadOpportunityRecord({
+      projectId,
+      officeId: propertyOfficeId,
+      opportunityId: oppId,
+      accessToken,
+      getFirestoreDocument,
+      firestoreFieldsToJs
+    });
+    if (offerDoc && normalizeOpportunitySide(offerDoc) === "offer" && !offerId) {
+      offerId = oppId;
+    }
+  }
+
+  if (!requestId || !offerId) {
+    return {
+      ok: false,
+      error: "pair_not_resolved",
+      clientOfficeId,
+      propertyOfficeId,
+      requestId,
+      offerId
+    };
+  }
+  return { ok: true, requestId, offerId, clientOfficeId, propertyOfficeId };
 }
 
 export async function runCooperationLifecycle({
@@ -339,6 +445,33 @@ export async function runCooperationLifecycle({
         firestoreHelpers
       });
     }
+
+    let matchId = String(request.matchId || "").trim();
+    if (typeof deps.materializeAcceptedCooperationMatch === "function") {
+      const materialized = await deps.materializeAcceptedCooperationMatch({
+        projectId,
+        cooperation: {
+          ...request,
+          id: cooperationId,
+          status: nextStatus
+        },
+        accessToken,
+        existingMatchId: matchId
+      }).catch(() => null);
+      if (materialized?.ok && materialized.matchId) {
+        matchId = String(materialized.matchId);
+        await setFirestoreDocument({
+          projectId,
+          segments: ["cooperationRequests", cooperationId],
+          accessToken,
+          fields: {
+            matchId: firestoreHelpers.firestoreString(matchId),
+            updatedAt: firestoreHelpers.firestoreTimestamp(new Date())
+          }
+        });
+      }
+    }
+    request.matchId = matchId;
   }
 
   if (["REJECTED", "REVOKED", "ENDED"].includes(String(nextStatus).toUpperCase())) {
@@ -408,6 +541,7 @@ export async function runCooperationLifecycle({
         ...request,
         id: cooperationId,
         status: nextStatus,
+        matchId: String(request.matchId || ""),
         currentStage: nextStatus === "ACCEPTED"
           ? "COOPERATION_ACCEPTED"
           : nextStatus === "REJECTED"
@@ -423,6 +557,7 @@ export async function runCooperationLifecycle({
     ok: true,
     cooperationId,
     status: nextStatus,
+    matchId: String(request.matchId || ""),
     projectionsWritten,
     projectionsRemoved,
     opportunityIds,
