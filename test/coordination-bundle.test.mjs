@@ -14,6 +14,7 @@ import {
   normalizeOwnerBundle,
   resolveCoordinationOutcome,
   livingStageForCoordinationOutcome,
+  ownerContactNeededForCoordination,
   buildDecisionPackageView,
   bundleFromLegacyReply,
   specGroupsForPropertyType,
@@ -87,6 +88,57 @@ test("owner unavailable cannot produce viewing-ready outcome", () => {
   const owner = normalizeOwnerBundle({ propertyAvailability: OWNER_AVAILABILITY.NOT_AVAILABLE });
   const outcome = resolveCoordinationOutcome({ clientBundle: client, ownerBundle: owner, now });
   assert.equal(outcome.outcome, COORDINATION_OUTCOME.PROPERTY_NOT_AVAILABLE);
+});
+
+test("awaiting other party with client bundle only needs owner contact", () => {
+  const client = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
+    wantsViewing: true,
+    viewingDays: [VIEWING_DAY.TOMORROW],
+    viewingPeriods: [VIEWING_PERIOD.EVENING]
+  });
+  const outcome = resolveCoordinationOutcome({ clientBundle: client, ownerBundle: null, now });
+  assert.equal(outcome.outcome, COORDINATION_OUTCOME.AWAITING_OTHER_PARTY);
+  const living = livingStageForCoordinationOutcome(outcome.outcome, { clientBundle: client, ownerBundle: null });
+  assert.equal(living.ownerContactNeeded, true);
+  assert.equal(
+    ownerContactNeededForCoordination({
+      outcome: outcome.outcome,
+      clientBundle: client,
+      ownerBundle: null
+    }),
+    true
+  );
+  assert.equal(
+    ownerContactNeededForCoordination({
+      outcome: outcome.outcome,
+      clientSummary: "موافق مبدئيًا",
+      ownerSummary: ""
+    }),
+    true
+  );
+});
+
+test("awaiting other party with owner bundle only does not need owner contact", () => {
+  const owner = normalizeOwnerBundle({
+    propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
+    viewingAllowed: OWNER_VIEWING_ALLOWED.NEEDS_COORDINATION
+  });
+  const outcome = resolveCoordinationOutcome({ clientBundle: null, ownerBundle: owner, now });
+  assert.equal(outcome.outcome, COORDINATION_OUTCOME.AWAITING_OTHER_PARTY);
+  assert.equal(
+    ownerContactNeededForCoordination({
+      outcome: outcome.outcome,
+      ownerBundle: owner,
+      ownerSummary: "متاح"
+    }),
+    false
+  );
+});
+
+test("awaiting both parties does not force owner contact", () => {
+  const living = livingStageForCoordinationOutcome(COORDINATION_OUTCOME.AWAITING_BOTH_PARTIES);
+  assert.equal(living.ownerContactNeeded, false);
 });
 
 test("resolver finds viewing ready when windows overlap", () => {

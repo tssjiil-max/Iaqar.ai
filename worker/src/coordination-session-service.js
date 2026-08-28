@@ -339,7 +339,7 @@ export async function applyCoordinationToMatch(helpers, {
   stampMatchLiving
 }) {
   const session = parseCoordinationSession(coordinationSession);
-  const living = livingStageForCoordinationOutcome(session.outcome);
+  const living = livingStageForCoordinationOutcome(session.outcome, session);
   const clientSummary = session.clientBundle ? clientBundleSummary(session.clientBundle) : "";
   const ownerSummary = session.ownerBundle ? ownerBundleSummary(session.ownerBundle) : "";
   const brokerLine = brokerCoordinationLine(session);
