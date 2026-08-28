@@ -1067,7 +1067,13 @@ function readReviewForm() {
   const data = Object.fromEntries(new FormData(form).entries());
   const ctx = reviewContextFromDraft();
   if (activeReviewOptions?.importSimplifiedReview) {
-    const opportunityKind = data.opportunityKind || "OFFER";
+    const opportunityKind = String(
+      data.opportunityKind
+        || activeDraft?.fields?.opportunityKind
+        || activeDraft?.prepared?.opportunity?.opportunityKind
+        || activeDraft?.prepared?.fields?.opportunityKind
+        || "OFFER"
+    ).toUpperCase();
     const purpose = activeDraft?.fields?.purpose
       || activeDraft?.prepared?.opportunity?.purpose
       || ctx.purpose
