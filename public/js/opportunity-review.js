@@ -1264,7 +1264,9 @@ async function submitReview() {
         area: brokerExtras.area,
         contactPhone: activeDraft?.fields?.contactPhone
           || activeDraft?.prepared?.fields?.contactPhone
-          || ""
+          || "",
+        sourceText: activeDraft?.sourceText || "",
+        directOwner: activeDraft?.fields?.directOwner ?? activeDraft?.prepared?.fields?.directOwner
       };
       advertiserForApprove = {
         ...advertiser,

@@ -180,6 +180,7 @@ export function advertiserRoleLabel(id) {
 }
 
 const DIRECTION_MARKS_RE = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const DIRECT_OWNER_SIGNAL_RE = /مالك مباشر|من المالك|مباشر من المالك|صاحب العقار/;
 const ROLE_ALIASES = Object.freeze({
   وسيط: "BROKER",
   الوسيط: "BROKER",
@@ -230,16 +231,33 @@ export function resolveAdvertiserRoleValue(value = "", existing = "") {
   return resolved || "UNKNOWN";
 }
 
+export function isDirectOwnerSignal(context = {}) {
+  const directOwner = context.directOwner;
+  if (directOwner === true) return true;
+  if (directOwner === false) return false;
+  const text = String(context.sourceText || context.rawText || "");
+  return text ? DIRECT_OWNER_SIGNAL_RE.test(text) : false;
+}
+
 /** Default REQUEST party role when extraction/review left role empty or UNKNOWN. */
 export function inferAdvertiserRoleForOpportunity({
   opportunityKind = "",
   explicitRole = "",
-  existing = ""
+  existing = "",
+  directOwner = undefined,
+  sourceText = "",
+  rawText = ""
 } = {}) {
   const resolved = resolveAdvertiserEnumValue(explicitRole, ADVERTISER_ROLES)
     || resolveAdvertiserEnumValue(existing, ADVERTISER_ROLES);
   if (resolved && resolved !== "UNKNOWN") return resolved;
   if (String(opportunityKind || "").toUpperCase() === "REQUEST") return "CLIENT";
+  const isDirectOwner = isDirectOwnerSignal({
+    directOwner,
+    sourceText,
+    rawText
+  });
+  if (String(opportunityKind || "").toUpperCase() === "OFFER" && isDirectOwner) return "OWNER";
   return resolveAdvertiserRoleValue(explicitRole, existing);
 }
 
@@ -376,10 +394,20 @@ export function mergeAdvertiserFieldsIntoOpportunity(base = {}, advertiser = {})
   }
   const raw = safeText(advertiser.advertiserPhoneRaw || advertiser.phoneRaw, 40);
   const displayName = safeAdvertiserDisplayName(advertiser.advertiserDisplayName);
+  const sourceText = safeText(advertiser.sourceText || base.sourceText, 4000);
+  const rawText = safeText(advertiser.rawText || base.rawText, 4000);
+  const directOwner = isDirectOwnerSignal({
+    directOwner: advertiser.directOwner ?? base.directOwner,
+    sourceText,
+    rawText
+  });
   const advertiserRole = inferAdvertiserRoleForOpportunity({
     opportunityKind,
     explicitRole: advertiser.advertiserRole,
-    existing: base.advertiserRole
+    existing: base.advertiserRole,
+    directOwner,
+    sourceText,
+    rawText
   });
   const merged = {
     ...base,

@@ -6,6 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   inferAdvertiserRoleForOpportunity,
+  isDirectOwnerSignal,
   mergeAdvertiserFieldsIntoOpportunity,
   validateAdvertiserPhoneLocalInput
 } from "../public/js/advertiser-phone-domain.js";
@@ -32,15 +33,89 @@ test("REQUEST with missing explicit role defaults to CLIENT", () => {
   );
 });
 
-test("OFFER role behavior unchanged when role missing", () => {
+test("OFFER with directOwner signal and UNKNOWN role infers OWNER", () => {
   assert.equal(
-    inferAdvertiserRoleForOpportunity({ opportunityKind: "OFFER", explicitRole: "", existing: "" }),
+    inferAdvertiserRoleForOpportunity({
+      opportunityKind: "OFFER",
+      explicitRole: "UNKNOWN",
+      existing: "UNKNOWN",
+      directOwner: true
+    }),
+    "OWNER"
+  );
+  assert.equal(
+    inferAdvertiserRoleForOpportunity({
+      opportunityKind: "OFFER",
+      explicitRole: "",
+      existing: "",
+      sourceText: "عرض للإيجار مالك مباشر السعر 15000 ريال"
+    }),
+    "OWNER"
+  );
+  const merged = mergeAdvertiserFieldsIntoOpportunity(
+    {
+      opportunityKind: "OFFER",
+      purpose: "RENT",
+      propertyType: "شقة",
+      city: "المدينة المنورة",
+      district: "الوبرة",
+      priceOrBudget: 15000,
+      annualRent: 15000,
+      rooms: 2,
+      sourceText: "عرض للإيجار مالك مباشر السعر 15000 ريال"
+    },
+    {
+      advertiserPhoneLocal: "0551234567",
+      advertiserRole: "UNKNOWN"
+    }
+  );
+  assert.equal(merged.advertiserRole, "OWNER");
+});
+
+test("OFFER without directOwner signal keeps UNKNOWN role", () => {
+  assert.equal(
+    inferAdvertiserRoleForOpportunity({
+      opportunityKind: "OFFER",
+      explicitRole: "UNKNOWN",
+      existing: "",
+      directOwner: false
+    }),
     "UNKNOWN"
   );
   assert.equal(
-    inferAdvertiserRoleForOpportunity({ opportunityKind: "OFFER", explicitRole: "OWNER", existing: "" }),
-    "OWNER"
+    inferAdvertiserRoleForOpportunity({
+      opportunityKind: "OFFER",
+      explicitRole: "",
+      existing: "",
+      sourceText: "عرض للإيجار شقة حي الوبرة"
+    }),
+    "UNKNOWN"
   );
+  assert.equal(isDirectOwnerSignal({ directOwner: false }), false);
+});
+
+test("OFFER preserves explicit valid advertiser role", () => {
+  assert.equal(
+    inferAdvertiserRoleForOpportunity({
+      opportunityKind: "OFFER",
+      explicitRole: "BROKER",
+      existing: "",
+      directOwner: true
+    }),
+    "BROKER"
+  );
+  const merged = mergeAdvertiserFieldsIntoOpportunity(
+    {
+      opportunityKind: "OFFER",
+      purpose: "RENT",
+      sourceText: "مالك مباشر"
+    },
+    {
+      advertiserRole: "DELEGATE",
+      advertiserPhoneLocal: "0551234567"
+    }
+  );
+  assert.equal(merged.advertiserRole, "DELEGATE");
 });
 
 test("UNKNOWN must not remain on normal REQUEST when role is determinable", () => {
