@@ -281,6 +281,10 @@
       livingStage: item.livingStage || "",
       livingUpdatedAt: isoTime(item.livingUpdatedAt || item.updatedAt || item.createdAt),
       livingTimeline: item.livingTimeline || item.livingTimelineJson || [],
+      coordinationBrokerLine: item.coordinationBrokerLine || "",
+      coordinationClientSummary: item.coordinationClientSummary || "",
+      coordinationOwnerSummary: item.coordinationOwnerSummary || "",
+      coordinationOutcome: item.coordinationOutcome || "",
       nextActor: item.nextActor || "",
       ownerContactNeeded: (() => {
         const domain = window.IAQAR && window.IAQAR.coordinationBundleDomain;
