@@ -146,8 +146,19 @@ async function tickPlatformOpportunityExpiry() {
   }
 }
 
+function officeRuntime() {
+  return window.IAQAR?.office || null;
+}
+
 function currentOfficeId() {
-  return String(window.IAQAR?.office?.officeId || "").trim();
+  return String(officeRuntime()?.officeId || "").trim();
+}
+
+function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
 }
 
 async function idToken() {
