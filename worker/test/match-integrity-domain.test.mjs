@@ -71,6 +71,18 @@ test("active match contract accepts REQUEST+OFFER opportunity pair", () => {
   assert.equal(ok.integrityStatus, "VALID");
 });
 
+test("active match contract accepts cross-office request and offer offices", () => {
+  const ok = evaluateActiveMatchContract({
+    requestId: "opp_req_2",
+    offerId: "opp_off_3",
+    requestDoc: { ...requestDoc, officeId: "2" },
+    offerDoc: { ...offerDoc, officeId: "3" },
+    officeId: "2",
+    propertyOfficeId: "3"
+  });
+  assert.equal(ok.ok, true);
+});
+
 test("opportunity-vs-opportunity matches repair from stored opportunity ids", () => {
   const match = {
     officeId: "office-1",
