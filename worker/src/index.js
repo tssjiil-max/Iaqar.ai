@@ -2606,9 +2606,40 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   return { kind: parsed.kind, matches: matches.length };
 }
 
-function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
-  const raw = cleanText(input, 12000);
-  const text = normalizeArabicText(raw);
+function hasExplicitRequestCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)طلب(?:\s|$)/.test(padded)
+    || /(?:^|\s)(مطلوب|ابغى|أبغى|احتاج|أحتاج|يبحث|نبحث|نرغب|ارغب|أرغب)(?:\s|$)/.test(padded);
+}
+
+function hasExplicitOfferCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)(عرض|معروض|متوفر|متاح|عندي|لدينا|يوجد)(?:\s|$)/.test(padded);
+}
+
+function countDistinctKeywordMatches(text, words) {
+  const seen = new Set();
+  let score = 0;
+  for (const word of words) {
+    const normalized = normalizeArabicText(word);
+    if (!normalized || seen.has(normalized)) continue;
+    if (text.includes(normalized)) {
+      seen.add(normalized);
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function resolveParsedOpportunityKind(text) {
+  const explicitRequest = hasExplicitRequestCue(text);
+  const explicitOffer = hasExplicitOfferCue(text);
+  if (explicitRequest && !explicitOffer) {
+    return { kind: "client_request", offerScore: 0, requestScore: 1 };
+  }
+  if (explicitOffer && !explicitRequest) {
+    return { kind: "owner_offer", offerScore: 1, requestScore: 0 };
+  }
 
   const offerWords = [
     "للبيع", "للإيجار", "للايجار", "معروض", "عرض", "متوفر", "متاح", "مالك", "مباشر",
@@ -2618,11 +2649,19 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
     "مطلوب", "ابغى", "أبغى", "احتاج", "أحتاج", "يبحث", "نبحث", "طلب", "نرغب",
     "ارغب", "أرغب", "عميل", "مشتري", "مستأجر"
   ];
-  const offerScore = countKeywords(text, offerWords);
-  const requestScore = countKeywords(text, requestWords);
+  const offerScore = countDistinctKeywordMatches(text, offerWords);
+  const requestScore = countDistinctKeywordMatches(text, requestWords);
   const kind = offerScore === 0 && requestScore === 0
     ? "unknown"
     : (offerScore > requestScore ? "owner_offer" : "client_request");
+  return { kind, offerScore, requestScore };
+}
+
+function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
+  const raw = cleanText(input, 12000);
+  const text = normalizeArabicText(raw);
+
+  const { kind, offerScore, requestScore } = resolveParsedOpportunityKind(text);
 
   // Keep the most-specific types first so "أرض تجارية" is not reduced to "أرض".
   const propertyTypes = [

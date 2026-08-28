@@ -581,6 +581,43 @@ test("the public media route refuses any key outside the office image allow-list
 });
 
 
+test("parser classifies explicit request rent lead as client_request", async () => {
+  const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      messageText: "طلب للإيجار شقة المدينة المنورة حي الوبرة 2 غرف بميزانية 16000 ريال جوال 0511123456"
+    })
+  }), env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionType, "rent");
+});
+
+test("parser classifies explicit request purchase lead as client_request", async () => {
+  const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ messageText: "طلب شراء شقة في حي العقيق بميزانية 650 ألف" })
+  }), env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.parsed.kind, "client_request");
+  assert.equal(body.parsed.transactionType, "sale");
+});
+
+test("parser classifies explicit offer rent lead as owner_offer", async () => {
+  const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      messageText: "عرض للإيجار شقة المدينة المنورة حي الوبرة 2 غرف السعر 15000 ريال مالك مباشر"
+    })
+  }), env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.parsed.kind, "owner_offer");
+  assert.equal(body.parsed.transactionType, "rent");
+});
+
 test("pipeline classifies a client request", async () => {
   const response = await worker.fetch(new Request("https://example.test/pipeline/preview", {
     method: "POST", headers: {"Content-Type":"application/json"},
