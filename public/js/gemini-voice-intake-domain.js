@@ -182,6 +182,7 @@ export function mapGeminiToPublicFormValues(structured = {}, {
   manualValues = {}
 } = {}) {
   const payload = normalizeGeminiVoicePayload(structured);
+  const priceOrBudget = payload.salePrice ?? payload.annualRent ?? payload.budget ?? "";
   const extracted = {
     name: payload.advertiserName || "",
     phone: payload.advertiserPhone || "",
@@ -189,6 +190,7 @@ export function mapGeminiToPublicFormValues(structured = {}, {
     district: payload.district || "",
     propertyType: mapPropertyTypeToPublicOption(payload.propertyType),
     requestKind: mapTransactionToRequestKind(payload.transactionType, context),
+    priceOrBudget,
     budget: payload.budget ?? payload.salePrice ?? "",
     annualRent: payload.annualRent ?? "",
     area: payload.area ?? "",
