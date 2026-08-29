@@ -548,6 +548,14 @@
     return window.IAQARPublicClientIntake || null;
   }
 
+  function normalizeOwnerOfferKind(raw = "") {
+    const text = String(raw || "").trim().toLowerCase();
+    if (!text) return "";
+    if (/إيجار|ايجار|rent|lease|تأجير|للإيجار|للايجار/.test(text)) return "RENT";
+    if (/بيع|sale|للبيع|شراء/.test(text)) return "SALE";
+    return "";
+  }
+
   function renderDynamicClientFields(container, requestKind, propertyType) {
     const api = clientIntakeApi();
     if (!container || !api) return;
@@ -624,6 +632,10 @@
     set("propertyType", values.propertyType);
     set("district", values.district);
     if (!owner) refreshClientDynamic();
+    if (owner) {
+      set("offerKind", values.offerKind);
+      set("priceOrBudget", values.priceOrBudget);
+    }
     set("budget", values.budget);
     set("annualRent", values.annualRent);
     set("area", values.area);
@@ -680,18 +692,26 @@
         ${owner ? "" : `<label class="full"><span>نوع الطلب (إلزامي)</span>
           <input name="requestKind" id="requestKindInput" maxlength="40" required autocomplete="off"
             placeholder="اكتب نوع الطلب (مثل: شراء أو استئجار)"></label>`}
+        ${owner
+    ? `<label class="full"><span>نوع العرض (إلزامي)</span>
+          <input name="offerKind" id="offerKindInput" maxlength="40" required autocomplete="off"
+            placeholder="اكتب: بيع أو إيجار"></label>`
+    : ""}
         <label class="full"><span>نوع العقار (إلزامي)</span>
           <input name="propertyType" id="propertyTypeInput" maxlength="40" required autocomplete="off"
             placeholder="اكتب نوع العقار"></label>
+        ${owner
+    ? `<label class="full"><span>سعر قيمة الإيجار أو البيع (إلزامي)</span>
+          <input name="priceOrBudget" id="ownerPriceInput" data-testid="owner-price" inputmode="numeric" maxlength="12" required autocomplete="off"
+            placeholder="مثال: 500000 — إيجار سنوي أو سعر البيع"></label>`
+    : ""}
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
         <label class="full"><span>الحي (إلزامي)</span>
           <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
             placeholder="اكتب اسم الحي"></label>
         ${owner
-    ? `<label class="full"><span>السعر أو الإيجار السنوي (إلزامي)</span>
-          <input name="priceOrBudget" inputmode="numeric" maxlength="12" required autocomplete="off"
-            placeholder="مثال: 500000"></label>`
+    ? ""
     : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
@@ -744,8 +764,11 @@
         ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
         : String(fields.get("requestKind") || "").trim());
       if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
+      const offerKindRaw = owner ? String(fields.get("offerKind") || "").trim() : "";
+      const offerPurpose = owner ? normalizeOwnerOfferKind(offerKindRaw) : "";
+      if (owner && !offerPurpose) return showStatus("أدخل نوع العرض: بيع أو إيجار.");
       const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
-      if (owner && !(priceOrBudget > 0)) return showStatus("أدخل السعر أو الإيجار السنوي.");
+      if (owner && !(priceOrBudget > 0)) return showStatus("أدخل سعر قيمة الإيجار أو البيع.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -782,6 +805,7 @@
           contactPhone: phone
         };
         if (owner) {
+          const isRent = offerPurpose === "RENT";
           intakePayload = {
             officeId: targetOffice, kind,
             name,
@@ -790,10 +814,12 @@
             propertyType,
             district,
             details: String(fields.get("details") || "").trim(),
-            salePrice: priceOrBudget,
+            offerKind: offerKindRaw,
+            salePrice: isRent ? 0 : priceOrBudget,
+            annualRent: isRent ? priceOrBudget : 0,
             amount: priceOrBudget,
             priceOrBudget,
-            purpose: "SALE",
+            purpose: offerPurpose,
             mediaPaths,
             imageCount: images.length,
             hasVideo: Boolean(video),

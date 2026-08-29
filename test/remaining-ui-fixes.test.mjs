@@ -47,7 +47,8 @@ test("opportunity card does not surface garbage property or district tokens", ()
 test("access-gate owner intake includes required price field", () => {
   const gate = readRepo("public", "js", "access-gate.js");
   assert.ok(gate.includes('name="priceOrBudget"'));
-  assert.ok(gate.includes("السعر أو الإيجار السنوي"));
+  assert.ok(gate.includes("سعر قيمة الإيجار أو البيع"));
+  assert.ok(gate.includes('name="offerKind"'));
 });
 
 test("access-gate public forms use plain text inputs without catalog selects", () => {
