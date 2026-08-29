@@ -293,7 +293,9 @@ test("TEST G/J/N: client page keeps the listing and never leaks owner phone", as
       json: async () => ({
         bundle: {
           interestStatus: "interested",
-          infoNeeds: ["price"]
+          interestAction: "details",
+          infoNeeds: ["price"],
+          requestedDetailKeys: ["frontage"]
         }
       })
     },
