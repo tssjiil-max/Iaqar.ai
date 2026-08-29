@@ -41,6 +41,16 @@ test("bank list card uses stats grid for price area rooms", () => {
   assert.equal(card.location.includes("المدينة المنورة"), true);
 });
 
+test("bank card purpose label follows owner or client role", () => {
+  const owner = buildBankListCardView({ opportunityKind: "OFFER", propertyType: "فيلا", purpose: "SALE" });
+  const buyer = buildBankListCardView({ opportunityKind: "REQUEST", propertyType: "فيلا", purpose: "SALE" });
+  const tenant = buildBankListCardView({ opportunityKind: "REQUEST", propertyType: "شقة", purpose: "RENT" });
+
+  assert.equal(owner.title, "فيلا للبيع");
+  assert.equal(buyer.title, "فيلا للشراء");
+  assert.equal(tenant.title, "شقة للاستئجار");
+});
+
 test("land property hides rooms on bank card", () => {
   const card = buildBankListCardView({
     id: "opp_land",
