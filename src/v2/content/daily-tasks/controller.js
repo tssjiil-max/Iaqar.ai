@@ -498,6 +498,29 @@ async function confirmDealCompletion(task, button) {
   }
 }
 
+function handleReviewNextCandidate(task, button) {
+  if (state.openTaskId !== task.id) {
+    toggleOpenTask(task.id);
+    return;
+  }
+  if (task.hasRejectedCandidate && task.hasNextCandidate) {
+    toggleTaskDetails(task.id);
+    return;
+  }
+  if (task.canSendToClient && task.matchId && task.offerId && task.requestId) {
+    void runDailyTaskPartySend(task, "client", button);
+    return;
+  }
+  const result = openExistingOfferDetails(task);
+  if (result && typeof result.then === "function") {
+    void result.then((done) => {
+      if (!done?.ok && done?.error) notify(done.error);
+    });
+  } else if (result && result.ok === false) {
+    notify(result.error || PARTY_SEND_COPY.detailsFailed);
+  }
+}
+
 function onListClick(event) {
   const root = state.root;
   if (!root) return;
@@ -545,7 +568,7 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, secondary);
       return;
     }
     if (task.taskKind === "platform_opportunity") {
@@ -591,7 +614,7 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, primary);
       return;
     }
     if (action === "send_to_owner") {
