@@ -141,13 +141,32 @@ async function tickPlatformOpportunityExpiry() {
       },
       body: JSON.stringify({ officeId })
     });
+    await fetch(`${workerBase()}/cooperation/sync-coordination`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ officeId })
+    });
   } catch {
     /* expiry is retried on the next load / action */
   }
 }
 
+function officeRuntime() {
+  return window.IAQAR?.office || null;
+}
+
 function currentOfficeId() {
-  return String(window.IAQAR?.office?.officeId || "").trim();
+  return String(officeRuntime()?.officeId || "").trim();
+}
+
+function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
 }
 
 async function idToken() {
@@ -611,6 +630,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", secondary);
+        return;
+      }
       void runCooperationTaskAction(task, action, secondary);
       return;
     }
@@ -633,6 +656,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", primary);
+        return;
+      }
       void runCooperationTaskAction(task, action, primary);
       return;
     }
