@@ -22,7 +22,11 @@ import {
 } from "../public/js/broker-viewing-schedule-domain.js";
 import {
   CLIENT_INTEREST_STATUS,
+  CLIENT_INTEREST_ACTION,
   COORDINATION_OUTCOME,
+  NEGOTIATION_DECISION,
+  REJECTION_DISPOSITION,
+  REJECTION_REASON,
   normalizeClientBundle,
   normalizeOwnerBundle,
   resolveCoordinationOutcome,
@@ -56,11 +60,11 @@ test("interested client requires detail keys and does not start viewing", () => 
   }), null);
 });
 
-test("preliminary approval enables viewing preference flow", () => {
+test("interested client can choose viewing without preliminary approval", () => {
   const bundle = normalizeClientBundle({
     propertyType: "شقة",
-    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
-    wantsViewing: true,
+    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    interestAction: CLIENT_INTEREST_ACTION.VIEWING,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING]
   });
@@ -68,9 +72,51 @@ test("preliminary approval enables viewing preference flow", () => {
   assert.ok(bundle.viewingWindows.includes("tomorrow_evening"));
 });
 
-test("not suitable does not require viewing fields", () => {
-  const bundle = normalizeClientBundle({ interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE });
+test("final rejection records a structured reason without viewing", () => {
+  const bundle = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.SPECIFICATIONS,
+    rejectionDisposition: REJECTION_DISPOSITION.FINAL
+  });
   assert.equal(bundle.wantsViewing, false);
+});
+
+test("negotiable price rejection requires a proposed price", () => {
+  assert.equal(normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.PRICE,
+    rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE
+  }), null);
+  const bundle = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.PRICE,
+    rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
+    proposedPrice: 620000
+  });
+  assert.equal(bundle.proposedPrice, 620000);
+});
+
+test("negotiation session routes owner accept counter and reject", () => {
+  const clientBundle = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.PRICE,
+    rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
+    proposedPrice: 620000
+  });
+  for (const [decision, expected] of [
+    [NEGOTIATION_DECISION.ACCEPT, COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED],
+    [NEGOTIATION_DECISION.COUNTER, COORDINATION_OUTCOME.NEGOTIATION_COUNTERED],
+    [NEGOTIATION_DECISION.REJECT, COORDINATION_OUTCOME.NEGOTIATION_REJECTED]
+  ]) {
+    const ownerBundle = normalizeOwnerBundle({
+      propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
+      negotiationDecision: decision,
+      counterPrice: decision === NEGOTIATION_DECISION.COUNTER ? 650000 : 0,
+      viewingAllowed: OWNER_VIEWING_ALLOWED.NEEDS_COORDINATION,
+      coordinationRequired: true
+    });
+    assert.equal(resolveCoordinationOutcome({ clientBundle, ownerBundle }).outcome, expected);
+  }
 });
 
 test("apartment schema returns only apartment keys", () => {
@@ -234,13 +280,40 @@ test("sanitize party view strips contact fields", () => {
   assert.ok(view.property.locationView);
 });
 
-test("party UI shows unified interest labels", () => {
+test("party UI uses yes-no interest and structured negotiation without preliminary approval", () => {
   const html = buildPartyShellHtml(sanitizePartyPublicView({
     party: "client",
     snapshot: { propertyType: "شقة", city: "المدينة المنورة" },
     coordination: { matchId: "m1", createdAt: now.toISOString() }
   }));
-  assert.match(html, /موافق مبدئيًا/);
+  assert.doesNotMatch(html, /موافق مبدئيًا/);
+  assert.match(html, /مهتم/);
+  assert.match(html, /غير مهتم/);
+  assert.match(html, /السعر مرتفع/);
+  assert.match(html, /شروط الدفع غير مناسبة/);
+  assert.match(html, /قد أهتم إذا تغير الشرط/);
   assert.match(html, /ما المعلومات التي تحتاجها/);
   assert.match(html, /أرغب في المعاينة/);
+});
+
+test("owner negotiation UI is named جلسة تفاوض and has structured decisions", () => {
+  const html = buildPartyShellHtml(sanitizePartyPublicView({
+    party: "owner",
+    snapshot: { propertyType: "شقة", city: "المدينة المنورة" },
+    coordination: {
+      matchId: "m-negotiation",
+      createdAt: now.toISOString(),
+      clientBundle: normalizeClientBundle({
+        interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+        rejectionReason: REJECTION_REASON.PRICE,
+        rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
+        proposedPrice: 620000
+      })
+    }
+  }));
+  assert.match(html, /جلسة تفاوض/);
+  assert.match(html, /موافق على طلب العميل/);
+  assert.match(html, /أقدم اقتراحًا بديلًا/);
+  assert.match(html, /غير موافق/);
+  assert.doesNotMatch(html, /textarea/);
 });

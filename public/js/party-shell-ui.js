@@ -187,30 +187,86 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       <p class="party-muted">الفترة</p>
       <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>
     </div>`;
+    const interestActionSection = `<div class="party-package-section" data-package-section="interestAction" hidden>
+      <p class="party-section-label">ما الخطوة التالية؟</p>
+      <div class="party-chip-grid party-chip-grid--single">
+        ${chipOptions([
+          { value: "details", label: "أحتاج تفاصيل إضافية" },
+          { value: "viewing", label: "أرغب في المعاينة" }
+        ], "interestAction", "single")}
+      </div>
+    </div>`;
+    const rejectionSection = `<div class="party-package-section" data-package-section="rejection" hidden>
+      <p class="party-section-label">ما سبب عدم الاهتمام؟</p>
+      <div class="party-chip-grid">
+        ${chipOptions([
+          { value: "price", label: "السعر مرتفع" },
+          { value: "payment_terms", label: "شروط الدفع غير مناسبة" },
+          { value: "condition", label: "العقار يحتاج تجهيزًا أو صيانة" },
+          { value: "specifications", label: "المساحة أو المواصفات غير مناسبة" },
+          { value: "other", label: "سبب آخر" }
+        ], "rejectionReason", "single")}
+      </div>
+      <p class="party-section-label">هل يمكن إعادة النظر إذا تغير الشرط؟</p>
+      <div class="party-chip-grid party-chip-grid--single">
+        ${chipOptions([
+          { value: "negotiable", label: "قد أهتم إذا تغير الشرط" },
+          { value: "final", label: "غير مناسب نهائيًا" }
+        ], "rejectionDisposition", "single")}
+      </div>
+      <div class="party-package-field" data-package-section="proposedPrice" hidden>
+        <label>السعر المناسب لك (ريال)</label>
+        <input type="number" class="party-input" data-package-number="proposedPrice" min="1" step="1" inputmode="numeric">
+      </div>
+      <div class="party-package-section" data-package-section="negotiationPreference" hidden>
+        <p class="party-section-label">ما التعديل الذي يجعلك تعيد النظر؟</p>
+        <div class="party-chip-grid">${chipOptions([
+          { value: "installments", label: "تقسيم الدفعات" },
+          { value: "lower_deposit", label: "تخفيض التأمين أو الدفعة" },
+          { value: "payment_date", label: "تعديل موعد السداد" },
+          { value: "lease_term", label: "مدة مختلفة" },
+          { value: "maintenance", label: "تنفيذ الصيانة" },
+          { value: "readiness", label: "تجهيز العقار" },
+          { value: "spec_adjustment", label: "تعديل قابل للتنفيذ" }
+        ], "negotiationPreference", "single")}</div>
+      </div>
+    </div>`;
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
       <div class="party-package-section">
         <p class="party-section-label">الاهتمام</p>
         <div class="party-chip-grid party-chip-grid--single">
           ${chipOptions([
             { value: "interested", label: "مهتم" },
-            { value: "preliminary_ok", label: "موافق مبدئيًا" },
-            { value: "not_suitable", label: "غير مناسب" }
+            { value: "not_suitable", label: "غير مهتم" }
           ], "interestStatus", "single")}
         </div>
       </div>
+      ${interestActionSection}
       ${detailSection}
-      <div class="party-package-section" data-package-section="wantsViewing" hidden>
-        <label class="party-chip party-chip--toggle">
-          <input type="checkbox" data-package-bool="wantsViewing">
-          <span>أرغب في المعاينة</span>
-        </label>
-      </div>
       ${viewingSection}
+      ${rejectionSection}
       <button type="button" class="party-action party-package-submit" data-party-bundle-submit data-testid="party-bundle-submit">
         <span class="party-send-icon" aria-hidden="true">➤</span> إرسال للوسيط
       </button>
     </div>`;
   }
+  const negotiationBlock = pkg.negotiationRequest
+    ? `<div class="party-package-section" data-package-section="ownerNegotiation">
+      <p class="party-section-label">جلسة تفاوض</p>
+      <p class="party-muted">${escapeHtml(pkg.negotiationRequest.proposedPrice
+    ? `السعر المقترح: ${pkg.negotiationRequest.proposedPrice} ريال`
+    : "العميل قد يعيد النظر إذا تغير الشرط")}</p>
+      <div class="party-chip-grid party-chip-grid--single">${chipOptions([
+        { value: "accept", label: "موافق على طلب العميل" },
+        { value: "counter", label: "أقدم اقتراحًا بديلًا" },
+        { value: "reject", label: "غير موافق" }
+      ], "negotiationDecision", "single")}</div>
+      <div class="party-package-field" data-package-section="counterPrice" hidden>
+        <label>السعر البديل (ريال)</label>
+        <input type="number" class="party-input" data-package-number="counterPrice" min="1" step="1" inputmode="numeric">
+      </div>
+    </div>`
+    : "";
   const priceBlock = pkg.hasCanonicalPrice
     ? `<p class="party-row"><span>السعر المطلوب</span><strong>${escapeHtml(String(pkg.canonicalPrice))} ريال</strong></p>
       <div class="party-chip-grid party-chip-grid--single">
@@ -259,6 +315,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     return `<div class="party-package-field"><label>${escapeHtml(label)}</label><input type="text" class="party-input" data-package-spec="${escapeHtml(key)}"></div>`;
   }).join("");
   return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
+    ${negotiationBlock}
     <div class="party-package-section">
       <p class="party-section-label">توفر العقار</p>
       <div class="party-chip-grid party-chip-grid--single">

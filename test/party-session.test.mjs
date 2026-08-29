@@ -331,7 +331,11 @@ test("client and owner sessions stay distinct and replies persist", async () => 
   const again = await handlePartySessionBundle({
     token: client.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
-    request: { json: async () => ({ bundle: { interestStatus: "not_suitable" } }) },
+    request: { json: async () => ({ bundle: {
+      interestStatus: "not_suitable",
+      rejectionReason: "other",
+      rejectionDisposition: "final"
+    } }) },
     requestId: "req-10",
     helpers,
     ip: "3.3.3.3"

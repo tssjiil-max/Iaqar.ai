@@ -74,7 +74,11 @@ test("client can select multiple infoNeeds and viewing windows", () => {
 });
 
 test("client not suitable hides viewing requirements in normalized bundle", () => {
-  const bundle = normalizeClientBundle({ interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE });
+  const bundle = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: "other",
+    rejectionDisposition: "final"
+  });
   assert.equal(bundle.wantsViewing, false);
   assert.equal(bundle.viewingDays.length, 0);
 });

@@ -215,13 +215,23 @@ function refreshPackageSections(root) {
   const interest = String(bundle.interestStatus || "");
   const notSuitable = interest === "not_suitable";
   const interested = interest === "interested";
-  const preliminary = interest === "preliminary_ok";
+  const interestAction = String(bundle.interestAction || "");
+  const rejectionDisposition = String(bundle.rejectionDisposition || "");
+  const rejectionReason = String(bundle.rejectionReason || "");
+  const actionSection = root.querySelector("[data-package-section=\"interestAction\"]");
   const detailSection = root.querySelector("[data-package-section=\"requestedDetailKeys\"]");
-  const viewingToggle = root.querySelector("[data-package-section=\"wantsViewing\"]");
   const viewingSection = root.querySelector("[data-package-section=\"viewing\"]");
-  if (detailSection) detailSection.hidden = notSuitable || !interested;
-  if (viewingToggle) viewingToggle.hidden = notSuitable || !preliminary;
-  if (viewingSection) viewingSection.hidden = notSuitable || !preliminary || !bundle.wantsViewing;
+  const rejectionSection = root.querySelector("[data-package-section=\"rejection\"]");
+  const proposedPrice = root.querySelector("[data-package-section=\"proposedPrice\"]");
+  const preference = root.querySelector("[data-package-section=\"negotiationPreference\"]");
+  if (actionSection) actionSection.hidden = !interested;
+  if (detailSection) detailSection.hidden = !interested || interestAction !== "details";
+  if (viewingSection) viewingSection.hidden = !interested || interestAction !== "viewing";
+  if (rejectionSection) rejectionSection.hidden = !notSuitable;
+  if (proposedPrice) proposedPrice.hidden = !notSuitable
+    || rejectionDisposition !== "negotiable" || rejectionReason !== "price";
+  if (preference) preference.hidden = !notSuitable
+    || rejectionDisposition !== "negotiable" || !rejectionReason || rejectionReason === "price";
   if (party === "owner") {
     const available = bundle.propertyAvailability === "available";
     const unavailable = bundle.propertyAvailability === "not_available";
@@ -238,6 +248,8 @@ function refreshPackageSections(root) {
     if (ownerAvailability) ownerAvailability.hidden = bundle.viewingAllowed !== "yes";
     const updatedPrice = root.querySelector("[data-package-section=\"updatedPrice\"]");
     if (updatedPrice) updatedPrice.hidden = bundle.priceConfirmation !== "updated";
+    const counterPrice = root.querySelector("[data-package-section=\"counterPrice\"]");
+    if (counterPrice) counterPrice.hidden = bundle.negotiationDecision !== "counter";
   }
 }
 
