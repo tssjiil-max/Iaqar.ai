@@ -71,6 +71,13 @@ export function inferPropertyTypeChip(propertyType = "") {
   return hit ? hit.id : "other";
 }
 
+export function intakePriceFieldLabel(owner, purposeChipId = "") {
+  if (owner) {
+    return purposeChipId === "rent" ? "الإيجار السنوي" : "سعر البيع";
+  }
+  return purposeChipId === "rent" ? "ميزانية الإيجار السنوي" : "الميزانية";
+}
+
 if (typeof window !== "undefined") {
   window.IAQARPublicIntakeQuickChoice = {
     OWNER_PURPOSE_OPTIONS,
@@ -82,6 +89,7 @@ if (typeof window !== "undefined") {
     buildOwnerPricingFields,
     inferOwnerPurposeChip,
     inferClientPurposeChip,
-    inferPropertyTypeChip
+    inferPropertyTypeChip,
+    intakePriceFieldLabel
   };
 }

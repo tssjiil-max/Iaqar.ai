@@ -9,6 +9,7 @@ import {
   inferClientPurposeChip,
   inferOwnerPurposeChip,
   inferPropertyTypeChip,
+  intakePriceFieldLabel,
   ownerPurposeFromChip,
   propertyTypeFromChip
 } from "../public/js/public-intake-quick-choice-domain.js";
@@ -74,4 +75,49 @@ test("access-gate exposes quick-choice chips without owner/client wording", () =
 test("infer owner purpose from transaction type", () => {
   assert.equal(inferOwnerPurposeChip("rent"), "rent");
   assert.equal(inferOwnerPurposeChip("sale", "SALE"), "sale");
+});
+
+test("dynamic intake price labels follow purpose without changing stored field", () => {
+  assert.equal(intakePriceFieldLabel(true, "sale"), "سعر البيع");
+  assert.equal(intakePriceFieldLabel(true, "rent"), "الإيجار السنوي");
+  assert.equal(intakePriceFieldLabel(false, "purchase"), "الميزانية");
+  assert.equal(intakePriceFieldLabel(false, "rent"), "ميزانية الإيجار السنوي");
+});
+
+test("intake polish uses red asterisk labels without mandatory Arabic suffix", () => {
+  assert.equal(accessGate.includes("(إلزامي)"), false);
+  assert.ok(accessGate.includes("access-required-mark"));
+  assert.ok(accessGate.includes("updateIntakePriceLabel"));
+  assert.ok(accessGate.includes("intakePriceLabel"));
+});
+
+test("intake forms unify purpose label and compact voice button", () => {
+  assert.ok(accessGate.includes('accessRequiredLabel("الغرض")'));
+  assert.equal(accessGate.includes("نوع العرض"), false);
+  assert.equal(accessGate.includes("نوع الطلب"), false);
+  assert.ok(accessGate.includes("🎙️ إضافة بالصوت"));
+  assert.ok(accessGate.includes("access-voice-slot"));
+});
+
+test("intake form order places contact fields before submit", () => {
+  const formSlice = accessGate.slice(
+    accessGate.indexOf("id=\"intakeForm\""),
+    accessGate.indexOf("id=\"accessStatus\"")
+  );
+  const nameIdx = formSlice.indexOf("name=\"name\"");
+  const phoneIdx = formSlice.indexOf("name=\"phone\"");
+  const submitIdx = formSlice.indexOf("type=\"submit\"");
+  assert.ok(nameIdx > 0 && phoneIdx > nameIdx && submitIdx > phoneIdx);
+  const purposeIdx = formSlice.indexOf("access-chip-row--purpose");
+  const propertyIdx = formSlice.indexOf("access-chip-row--property");
+  const cityIdx = formSlice.indexOf("id=\"intakeCityInput\"");
+  const priceIdx = formSlice.indexOf("name=\"priceOrBudget\"");
+  assert.ok(purposeIdx < propertyIdx && propertyIdx < cityIdx && cityIdx < priceIdx && priceIdx < nameIdx);
+});
+
+test("property type chips use balanced grid without commercial chip option", () => {
+  assert.ok(accessGate.includes("access-chip-row--property"));
+  assert.ok(accessGate.includes("grid-template-columns:repeat(3"));
+  assert.ok(accessGate.includes("intake-chip-property-"));
+  assert.ok(accessGate.includes("propertyTypeOtherInput"));
 });
