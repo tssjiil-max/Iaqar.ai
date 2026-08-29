@@ -6247,6 +6247,7 @@ function partySessionHelpers() {
     getGoogleAccessToken,
     getFirestoreDocument,
     setFirestoreDocument,
+    listCollectionDocuments,
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,

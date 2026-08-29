@@ -461,7 +461,7 @@ test("client and owner party pages resolve the linked offer not request placehol
     assert.equal(html.includes("20,000"), false);
     assert.equal(html.includes("0500000000"), false);
     assert.equal(html.includes("خالد"), false);
-    assert.match(html, /عرض الموقع/);
+    assert.match(html, /المدينة المنورة - حي السكب|الموقع التقريبي/);
     const visible = html.replace(/<[^>]+>/g, " ");
     assert.equal(visible.includes("maps.app.goo.gl"), false);
     assert.equal(JSON.stringify(loaded.body).includes("0500000000"), false);
@@ -494,7 +494,7 @@ test("needs_details keeps property data and stores the requested item", async ()
       json: async () => ({
         bundle: {
           interestStatus: "interested",
-          infoNeeds: ["photos"]
+          requestedDetailKeys: ["frontage"]
         }
       })
     },
@@ -505,7 +505,7 @@ test("needs_details keeps property data and stores the requested item", async ()
   const html = buildPartyShellHtml(replied.body.view);
   assert.match(html, /870,000/);
   assert.match(html, /تم إرسال ردك|تم تسجيل ردك/);
-  assert.match(html, /صور/);
+  assert.match(html, /الواجهة|جنوبية/);
   const again = await handlePartySessionGet({
     token: minted.body.token,
     env: { DEPLOYMENT_ENV: "staging" },
@@ -514,7 +514,7 @@ test("needs_details keeps property data and stores the requested item", async ()
     ip: "9.9.9.9"
   });
   assert.equal(again.body.view.property.propertyType, "أرض");
-  assert.match(again.body.view.replyLabel, /صور/);
+  assert.match(again.body.view.replyLabel, /تفاصيل|الواجهة|مهتم/);
 });
 
 test("generic placeholders never become runtime property values", () => {

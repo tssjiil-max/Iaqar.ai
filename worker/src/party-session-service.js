@@ -17,6 +17,12 @@ import {
 } from "../../public/js/party-session-domain.js";
 import { livingStageAfterPartyAction, appendLivingTimeline, nextActorForLivingStage, partyReplyTimelineLabel, LIVING_TASK_STAGE } from "../../public/js/match-group-domain.js";
 import {
+  collectBrokerBookedStarts,
+  evaluateViewingCandidate,
+  VIEWING_APPOINTMENT_STATUS,
+  appointmentEndAt
+} from "../../public/js/broker-viewing-schedule-domain.js";
+import {
   applyCoordinationToMatch,
   ensureCoordinationSession,
   loadCoordinationSession,
@@ -191,6 +197,10 @@ async function stampMatchLiving(helpers, {
   if (coordinationBrokerLine) fields.coordinationBrokerLine = helpers.firestoreString(coordinationBrokerLine);
   if (coordinationClientSummary) fields.coordinationClientSummary = helpers.firestoreString(coordinationClientSummary);
   if (coordinationOwnerSummary) fields.coordinationOwnerSummary = helpers.firestoreString(coordinationOwnerSummary);
+  if (patch.viewingCandidateAt) fields.viewingCandidateAt = helpers.firestoreString(String(patch.viewingCandidateAt));
+  if (patch.appointmentAt) fields.appointmentAt = helpers.firestoreString(String(patch.appointmentAt));
+  if (patch.viewingAt) fields.viewingAt = helpers.firestoreString(String(patch.viewingAt));
+  if (patch.appointmentStatus) fields.appointmentStatus = helpers.firestoreString(String(patch.appointmentStatus));
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", id],
@@ -448,6 +458,11 @@ export async function loadPartyPublicView({ token, env, helpers }) {
     session,
     body: { offerId: session.offerId, ownerOfferId: session.offerId, opportunityId: session.opportunityId }
   }) || {};
+  const matchRecord = session.matchId
+    ? await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "matches", id: session.matchId, accessToken
+    })
+    : null;
   const revealed = session.revealedDetail || revealedDetailFromSnapshot(snapshot, session.followUpAction || "");
   const coordination = await loadCoordinationSession(helpers, {
     projectId,
@@ -471,9 +486,10 @@ export async function loadPartyPublicView({ token, env, helpers }) {
       replyAction: session.replyAction || "",
       followUpAction: session.followUpAction || "",
       revealedDetail: revealed,
-      livingStage: session.livingStage || session.currentStage || "",
+      livingStage: session.livingStage || session.currentStage || matchRecord?.livingStage || "",
       coordination,
-      canonicalOffer
+      canonicalOffer,
+      matchRecord: matchRecord || {}
     })
   };
 }
@@ -790,11 +806,79 @@ export async function handleMatchLivingAction({
   const matchId = helpers.cleanText(body.matchId, 180);
   if (!matchId) throw helpers.appError("match_id_required", 400, "تعذر تحديد المطابقة");
   const action = String(body.action || "").toUpperCase();
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  if (action === "CONFIRM_VIEWING") {
+    const match = await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "matches", id: matchId, accessToken
+    });
+    if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
+    const candidateStart = text(match.viewingCandidateAt || match.proposedSlot || match.appointmentAt);
+    if (!candidateStart) {
+      throw helpers.appError("viewing_candidate_missing", 400, "لا يوجد موعد معاينة جاهز للتأكيد.");
+    }
+    let officeMatches = [];
+    if (typeof helpers.listCollectionDocuments === "function") {
+      const docs = await helpers.listCollectionDocuments({
+        projectId,
+        segments: ["offices", officeId, "matches"],
+        accessToken,
+        pageSize: 200
+      });
+      officeMatches = (docs || []).map((doc) => {
+        const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+        return { id, ...js(doc, helpers) };
+      });
+    }
+    const bookedStarts = collectBrokerBookedStarts(officeMatches, {
+      brokerId: match.assignedBrokerId || match.brokerId,
+      excludeMatchId: matchId
+    });
+    const evaluation = evaluateViewingCandidate({
+      candidateStart,
+      bookedStarts,
+      candidateRecord: match
+    });
+    if (!evaluation.eligible) {
+      throw helpers.appError("viewing_schedule_conflict", 409, "تعارض في مواعيد المعاينة — اختر وقتًا آخر.");
+    }
+    const appointmentStatus = evaluation.status === VIEWING_APPOINTMENT_STATUS.BROKER_CONFIRM_REQUIRED_FOR_TRAVEL
+      ? VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
+      : VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER;
+    await stampMatchLiving(helpers, {
+      projectId,
+      officeId,
+      matchId,
+      accessToken,
+      patch: {
+        livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+        activeMatchId: matchId,
+        ownerContactNeeded: false,
+        hasNewResponse: true,
+        appointmentAt: candidateStart,
+        viewingAt: candidateStart,
+        appointmentStatus,
+        viewingCandidateAt: candidateStart,
+        nextActor: "NONE",
+        timelineEvent: {
+          type: "viewing_confirmed_by_broker",
+          actor: "BROKER",
+          label: evaluation.reason === "BROKER_CONFIRM_REQUIRED_FOR_TRAVEL"
+            ? "تم تأكيد المعاينة (مع مراجعة وقت السفر)"
+            : "تم تأكيد المعاينة"
+        }
+      }
+    });
+    return helpers.jsonResponse({
+      ok: true,
+      livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+      appointmentStatus,
+      requestId
+    });
+  }
   if (action !== "CONFIRM_COMPLETION") {
     throw helpers.appError("unknown_action", 400, "إجراء غير معروف.");
   }
-  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
-  const accessToken = await helpers.getGoogleAccessToken(env);
   await stampMatchLiving(helpers, {
     projectId,
     officeId,

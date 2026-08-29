@@ -12,9 +12,15 @@ import {
   PRICE_CONFIRMATION,
   QUESTION_SET_VERSIONS,
   resolveCoordinationOutcome,
+  resolveOwnerContactNeeded,
+  resolveViewingWindowStart,
   bundlesEqual,
   ownerMissingSpecGroups
 } from "../../public/js/coordination-bundle-domain.js";
+import { detailValuesToCanonicalPatch } from "../../public/js/property-detail-schema-domain.js";
+import {
+  VIEWING_APPOINTMENT_STATUS
+} from "../../public/js/broker-viewing-schedule-domain.js";
 import {
   appendCoordinationEvent,
   emptyCoordinationSession,
@@ -209,7 +215,8 @@ export async function applyOwnerCanonicalFromBundle(helpers, {
     events.push({ type: "OWNER_LOCATION_SHARED", label: "تم مشاركة موقع العقار" });
   }
   const specPatch = specValuesToPatch(ownerBundle.specValues, existing?.propertyType);
-  Object.assign(patch, specPatch);
+  const detailPatch = detailValuesToCanonicalPatch(ownerBundle.detailValues || {});
+  Object.assign(patch, specPatch, detailPatch);
   const existingMedia = listingMediaPaths(existing);
   const bundleMedia = uniqueList(ownerBundle.mediaPaths || []);
   const applied = uniqueList(session.appliedMediaPaths || []);
@@ -258,7 +265,7 @@ export async function submitCoordinationBundle(helpers, {
   const side = party === "owner" ? "owner" : "client";
   const normalized = side === "owner"
     ? normalizeOwnerBundle(bundleRaw)
-    : normalizeClientBundle(bundleRaw);
+    : normalizeClientBundle({ ...bundleRaw, propertyType: canonicalOffer.propertyType || bundleRaw.propertyType });
   if (!normalized) {
     throw helpers.appError("invalid_coordination_bundle", 400, "تعذر قبول الرد. أكمل جميع الحقول المطلوبة.");
   }
@@ -340,32 +347,45 @@ export async function applyCoordinationToMatch(helpers, {
 }) {
   const session = parseCoordinationSession(coordinationSession);
   const living = livingStageForCoordinationOutcome(session.outcome);
+  const ownerContactNeeded = resolveOwnerContactNeeded(session, session.outcome);
   const clientSummary = session.clientBundle ? clientBundleSummary(session.clientBundle) : "";
   const ownerSummary = session.ownerBundle ? ownerBundleSummary(session.ownerBundle) : "";
   const brokerLine = brokerCoordinationLine(session);
+  const patch = {
+    livingStage: living.stage,
+    ownerContactNeeded: Boolean(ownerContactNeeded),
+    activeMatchId: matchId,
+    hasNewResponse: true,
+    coordinationOutcome: session.outcome,
+    coordinationBrokerLine: brokerLine,
+    coordinationClientSummary: clientSummary,
+    coordinationOwnerSummary: ownerSummary,
+    nextActor: nextActorForLivingStage(living.stage, {
+      ownerContactNeeded: Boolean(ownerContactNeeded)
+    }),
+    timelineEvent: {
+      type: `coordination_${String(session.outcome || "").toLowerCase()}`,
+      actor: "SYSTEM",
+      label: session.brokerLine || session.outcome
+    }
+  };
+  if (session.outcome === "VIEWING_READY" && session.clientBundle && session.ownerBundle) {
+    const clientWindows = session.clientBundle.viewingWindows
+      || [];
+    const ownerWindows = session.ownerBundle.viewingWindows || [];
+    const overlapStart = clientWindows.find((id) => ownerWindows.includes(id));
+    if (overlapStart) {
+      const candidateStart = resolveViewingWindowStart(overlapStart);
+      patch.viewingCandidateAt = candidateStart;
+      patch.appointmentStatus = VIEWING_APPOINTMENT_STATUS.CANDIDATE;
+    }
+  }
   await stampMatchLiving(helpers, {
     projectId,
     officeId,
     matchId,
     accessToken,
-    patch: {
-      livingStage: living.stage,
-      ownerContactNeeded: Boolean(living.ownerContactNeeded),
-      activeMatchId: matchId,
-      hasNewResponse: true,
-      coordinationOutcome: session.outcome,
-      coordinationBrokerLine: brokerLine,
-      coordinationClientSummary: clientSummary,
-      coordinationOwnerSummary: ownerSummary,
-      nextActor: nextActorForLivingStage(living.stage, {
-        ownerContactNeeded: Boolean(living.ownerContactNeeded)
-      }),
-      timelineEvent: {
-        type: `coordination_${String(session.outcome || "").toLowerCase()}`,
-        actor: "SYSTEM",
-        label: session.brokerLine || session.outcome
-      }
-    }
+    patch
   });
   return living;
 }

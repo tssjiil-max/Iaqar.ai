@@ -7,6 +7,8 @@ import {
   clientBundleSummary,
   ownerBundleSummary
 } from "./coordination-bundle-domain.js";
+import { buildPartyLocationView } from "./approximate-location-domain.js";
+import { VIEWING_APPOINTMENT_STATUS } from "./broker-viewing-schedule-domain.js";
 
 export const PARTY_LINK_QUERY = "cv2Party";
 
@@ -357,11 +359,16 @@ export function buildPartySnapshot(record = {}) {
   };
 }
 
-function propertyFromSnapshot(snapshot = {}) {
+function propertyFromSnapshot(snapshot = {}, {
+  exactLocationAllowed = false,
+  canonicalOffer = {}
+} = {}) {
   const built = buildPartySnapshot(snapshot);
   const propertyType = displayText(snapshot.propertyType, 80) || built.propertyType;
   const purposeLabel = purposeWord(snapshot) || built.purposeLabel;
   const typePurpose = displayText(snapshot.typePurpose, 80) || [propertyType, purposeLabel].filter(Boolean).join(" ");
+  const locationSource = { ...canonicalOffer, ...snapshot };
+  const locationView = buildPartyLocationView(locationSource, { exactAllowed: exactLocationAllowed });
   return {
     photos: publicPhotoUrls(snapshot),
     photoCount: Number(snapshot.photoCount || listingMediaPaths(snapshot).length || 0),
@@ -380,7 +387,8 @@ function propertyFromSnapshot(snapshot = {}) {
     depthLabel: displayText(snapshot.depthLabel, 40) || built.depthLabel,
     plotNumber: displayText(snapshot.plotNumber, 40) || built.plotNumber,
     description: displayText(snapshot.description, 600) || built.description,
-    locationUrl: safePartyLocationUrl(snapshot.locationUrl) || built.locationUrl
+    locationUrl: exactLocationAllowed ? (safePartyLocationUrl(snapshot.locationUrl) || built.locationUrl) : "",
+    locationView
   };
 }
 
@@ -473,9 +481,13 @@ export function sanitizePartyPublicView({
   livingStage = "",
   appointment = null,
   coordination = null,
-  canonicalOffer = {}
+  canonicalOffer = {},
+  matchRecord = {}
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
+  const appointmentStatus = text(matchRecord.appointmentStatus || "");
+  const exactLocationAllowed = appointmentStatus === VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
+    || text(livingStage) === "APPOINTMENT_CONFIRMED";
   const coordinationSession = coordination && typeof coordination === "object" ? coordination : null;
   const bundleSubmitted = side === "owner"
     ? Boolean(coordinationSession?.ownerBundle)
@@ -517,7 +529,7 @@ export function sanitizePartyPublicView({
     officeCoordinationNotice: `يتم هذا التنسيق عبر مكتب ${officeLabel}، والمكتب مطّلع على الإجراءات لمتابعة الصفقة.`,
     privacyNotice: "لن تتم مشاركة بيانات التواصل الخاصة بك مع الطرف الآخر عبر هذه الصفحة.",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
-    property: propertyFromSnapshot(snapshot),
+    property: propertyFromSnapshot(snapshot, { exactLocationAllowed, canonicalOffer }),
     actions: (replied || appointmentActive || bundleModeActive) ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
     followUpActions: replied && !appointmentActive && !bundleModeActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
     decisionPackage: bundleModeActive || bundleSubmitted ? decisionPackage : null,

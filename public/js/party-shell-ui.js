@@ -67,10 +67,31 @@ function galleryHtml(property = {}) {
   return `<div class="party-photos">${images}</div>`;
 }
 
+function locationBlock(property = {}) {
+  const loc = property.locationView || {};
+  if (!loc.mode || loc.mode === "none") return "";
+  if (loc.mode === "exact" && loc.map?.locationUrl) {
+    return `<p class="party-location-wrap"><a class="party-location" href="${escapeHtml(loc.map.locationUrl)}" target="_blank" rel="noopener noreferrer">عرض الموقع</a></p>`;
+  }
+  if (loc.mode === "approximate" && loc.map) {
+    return `<div class="party-approx-location" data-testid="party-approx-location">
+      <p class="party-section-label">${escapeHtml(loc.title || "الموقع التقريبي")}</p>
+      <p class="party-muted">${escapeHtml(loc.areaLabel || "")}</p>
+      <p class="party-muted">نطاق تقريبي ~${escapeHtml(String(loc.map.radiusMeters || 400))} م</p>
+    </div>`;
+  }
+  if (loc.areaLabel) {
+    return `<p class="party-muted">${escapeHtml(loc.areaLabel)}</p>`;
+  }
+  return "";
+}
+
 function locationButtonHtml(property = {}) {
-  const url = String(property.locationUrl || "").trim();
-  if (!url) return "";
-  return `<p class="party-location-wrap"><a class="party-location" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">عرض الموقع</a></p>`;
+  const loc = property.locationView || {};
+  if (loc.mode === "exact" && loc.map?.locationUrl) {
+    return `<p class="party-location-wrap"><a class="party-location" href="${escapeHtml(loc.map.locationUrl)}" target="_blank" rel="noopener noreferrer">عرض الموقع</a></p>`;
+  }
+  return "";
 }
 
 function actionButtons(actions = []) {
@@ -153,12 +174,14 @@ function decisionPackageBlock(pkg = {}, view = {}) {
   }
   const party = pkg.party || "client";
   if (party === "client") {
-    const specSection = `<div class="party-package-section" data-package-section="specNeeds" hidden>
-      <p class="party-section-label">المواصفات المطلوبة</p>
-      <div class="party-chip-grid">${chipOptions(pkg.specOptions, "specNeeds")}</div>
-    </div>`;
+    const detailSection = (pkg.detailOptions || []).length
+      ? `<div class="party-package-section" data-package-section="requestedDetailKeys" hidden>
+      <p class="party-section-label">ما المعلومات التي تحتاجها؟</p>
+      <div class="party-chip-grid">${chipOptions(pkg.detailOptions, "requestedDetailKeys")}</div>
+    </div>`
+      : "";
     const viewingSection = `<div class="party-package-section" data-package-section="viewing" hidden>
-      <p class="party-section-label">أوقات المعاينة</p>
+      <p class="party-section-label">أوقات المعاينة المفضلة</p>
       <p class="party-muted">اليوم</p>
       <div class="party-chip-grid">${chipOptions(pkg.dayOptions, "viewingDays")}</div>
       <p class="party-muted">الفترة</p>
@@ -170,20 +193,16 @@ function decisionPackageBlock(pkg = {}, view = {}) {
         <div class="party-chip-grid party-chip-grid--single">
           ${chipOptions([
             { value: "interested", label: "مهتم" },
-            { value: "preliminary_ok", label: "موافق مبدئيًا بناءً على الصور والموقع" },
+            { value: "preliminary_ok", label: "موافق مبدئيًا" },
             { value: "not_suitable", label: "غير مناسب" }
           ], "interestStatus", "single")}
         </div>
       </div>
-      <div class="party-package-section" data-package-section="infoNeeds" hidden>
-        <p class="party-section-label">أحتاج تفاصيل</p>
-        <div class="party-chip-grid">${chipOptions(pkg.infoNeedOptions, "infoNeeds")}</div>
-      </div>
-      ${specSection}
+      ${detailSection}
       <div class="party-package-section" data-package-section="wantsViewing" hidden>
         <label class="party-chip party-chip--toggle">
           <input type="checkbox" data-package-bool="wantsViewing">
-          <span>أريد معاينة</span>
+          <span>أرغب في المعاينة</span>
         </label>
       </div>
       ${viewingSection}
@@ -208,6 +227,26 @@ function decisionPackageBlock(pkg = {}, view = {}) {
         <label>السعر (ريال)</label>
         <input type="number" class="party-input" data-package-number="updatedPrice" min="1" step="1" inputmode="numeric" required>
       </div>`;
+  const ownerDetailFields = (pkg.ownerDetailFields || []).map((field) => {
+    const key = field.key || "";
+    const label = field.label || key;
+    if (field.hasValue && field.currentValue) {
+      return `<div class="party-package-field" data-owner-detail="${escapeHtml(key)}">
+        <p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(field.currentValue)}</strong></p>
+        <div class="party-chip-grid party-chip-grid--single">
+          ${chipOptions([
+            { value: "confirm", label: "تأكيد" },
+            { value: "edit", label: "تعديل" }
+          ], `detailAction_${key}`, "single")}
+        </div>
+        <div class="party-package-field" data-detail-edit="${escapeHtml(key)}" hidden>
+          <input type="text" class="party-input" data-package-detail="${escapeHtml(key)}" placeholder="${escapeHtml(label)}">
+        </div>
+      </div>`;
+    }
+    return `<div class="party-package-field"><label>${escapeHtml(label)}</label>
+      <input type="text" class="party-input" data-package-detail="${escapeHtml(key)}" placeholder="${escapeHtml(label)}"></div>`;
+  }).join("");
   const missingSpecs = (pkg.missingSpecs || []).map((key) => {
     const label = (pkg.missingSpecsLabels || [])[pkg.missingSpecs.indexOf(key)] || key;
     if (key === "area") {
@@ -250,7 +289,8 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       </label>
     </div>
     <div class="party-package-section" data-package-section="ownerSpecs" hidden>
-      <p class="party-section-label">المواصفات المطلوبة من العميل</p>
+      <p class="party-section-label">التفاصيل المطلوبة من العميل</p>
+      ${ownerDetailFields}
       ${missingSpecs}
     </div>
     <div class="party-package-section" data-package-section="ownerViewing" hidden>
@@ -339,6 +379,7 @@ export function buildPartyShellHtml(view = {}) {
       ${ownerStatus}
       ${galleryHtml(property)}
       ${details}
+      ${locationBlock(property)}
       ${locationButtonHtml(property)}
     </section>
     <section class="party-card party-reply-card">

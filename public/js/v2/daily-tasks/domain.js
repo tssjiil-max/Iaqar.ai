@@ -93,6 +93,7 @@ export const EXEC_ACTION = Object.freeze({
   REVIEW_NEXT: "review_next_candidate",
   SHARE_DETAILS: "share_details",
   CONFIRM_DEAL: "confirm_deal",
+  CONFIRM_VIEWING: "confirm_viewing",
   ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
   DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
 });
@@ -619,8 +620,17 @@ function actionsForState(stateKey, record = {}) {
     || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
     || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
+    if (living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
+      && (upper(record.coordinationOutcome) === "VIEWING_READY"
+        || upper(record.appointmentStatus) === "CANDIDATE"
+        || text(record.viewingCandidateAt))) {
+      primary = {
+        id: EXEC_ACTION.CONFIRM_VIEWING,
+        label: "تأكيد المعاينة"
+      };
+    }
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
   if (stateKey === DAILY_TASK_STATE.NEW_MATCH || stateKey === DAILY_TASK_STATE.AWAITING_SEND) {
     if (record.hasRejectedCandidate && record.hasNextCandidate) {
