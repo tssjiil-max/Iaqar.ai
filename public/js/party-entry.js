@@ -223,16 +223,13 @@ function refreshPackageSections(root) {
   const detailSection = root.querySelector("[data-package-section=\"requestedDetailKeys\"]");
   const viewingSection = root.querySelector("[data-package-section=\"viewing\"]");
   const rejectionSection = root.querySelector("[data-package-section=\"rejection\"]");
-  const proposedPrice = root.querySelector("[data-package-section=\"proposedPrice\"]");
   const preference = root.querySelector("[data-package-section=\"negotiationPreference\"]");
   if (actionSection) actionSection.hidden = !interested;
   if (detailSection) detailSection.hidden = !interested || interestAction !== "details";
   if (viewingSection) viewingSection.hidden = !interested || interestAction !== "viewing";
   if (rejectionSection) rejectionSection.hidden = !notSuitable;
-  if (proposedPrice) proposedPrice.hidden = !notSuitable
-    || rejectionDisposition !== "negotiable" || rejectionReason !== "price";
   if (preference) preference.hidden = !notSuitable
-    || rejectionDisposition !== "negotiable" || !rejectionReason || rejectionReason === "price";
+    || rejectionDisposition !== "negotiable" || !rejectionReason;
   if (party === "owner") {
     const available = bundle.propertyAvailability === "available";
     const unavailable = bundle.propertyAvailability === "not_available";
@@ -247,10 +244,8 @@ function refreshPackageSections(root) {
     if (photosSection && bundle.mediaAdded && fileInput) fileInput.hidden = false;
     const ownerAvailability = root.querySelector("[data-package-section=\"ownerAvailability\"]");
     if (ownerAvailability) ownerAvailability.hidden = bundle.viewingAllowed !== "yes";
-    const updatedPrice = root.querySelector("[data-package-section=\"updatedPrice\"]");
-    if (updatedPrice) updatedPrice.hidden = bundle.priceConfirmation !== "updated";
-    const counterPrice = root.querySelector("[data-package-section=\"counterPrice\"]");
-    if (counterPrice) counterPrice.hidden = bundle.negotiationDecision !== "counter";
+    const counterPreference = root.querySelector("[data-package-section=\"counterPreference\"]");
+    if (counterPreference) counterPreference.hidden = bundle.negotiationDecision !== "counter";
   }
 }
 

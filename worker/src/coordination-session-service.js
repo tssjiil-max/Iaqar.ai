@@ -264,13 +264,6 @@ export async function submitCoordinationBundle(helpers, {
   locationUrl = ""
 }) {
   const side = party === "owner" ? "owner" : "client";
-  const normalized = side === "owner"
-    ? normalizeOwnerBundle(bundleRaw)
-    : normalizeClientBundle({ ...bundleRaw, propertyType: canonicalOffer.propertyType || bundleRaw.propertyType });
-  if (!normalized) {
-    throw helpers.appError("invalid_coordination_bundle", 400, "تعذر قبول الرد. أكمل جميع الحقول المطلوبة.");
-  }
-  normalized.submittedAt = new Date().toISOString();
   const session = await loadCoordinationSession(helpers, {
     projectId,
     officeId,
@@ -278,6 +271,16 @@ export async function submitCoordinationBundle(helpers, {
     accessToken,
     canonicalOffer
   });
+  const mergedBundleRaw = side === "client" && session.clientBundle
+    ? { ...session.clientBundle, ...bundleRaw }
+    : bundleRaw;
+  const normalized = side === "owner"
+    ? normalizeOwnerBundle(mergedBundleRaw)
+    : normalizeClientBundle({ ...mergedBundleRaw, propertyType: canonicalOffer.propertyType || mergedBundleRaw.propertyType });
+  if (!normalized) {
+    throw helpers.appError("invalid_coordination_bundle", 400, "تعذر قبول الرد. أكمل جميع الحقول المطلوبة.");
+  }
+  normalized.submittedAt = new Date().toISOString();
   const priorBundle = side === "owner" ? session.ownerBundle : session.clientBundle;
   if (priorBundle && bundlesEqual(priorBundle, normalized)) {
     return session;

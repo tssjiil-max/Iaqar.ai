@@ -277,20 +277,59 @@ test("tampered or unknown tokens never reveal another session", async () => {
   assert.equal(invalid.body.message, PARTY_INVALID_COPY);
 });
 
+test("mint rejects offer or request ids that do not belong to the match", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "سلطان العقاري" } },
+    "offices/office-1/matches/match_strict_1": { fields: {
+      ownerOfferId: "offer_right",
+      clientRequestId: "request_right"
+    } },
+    "offices/office-1/opportunities/offer_right": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "RENT",
+      annualRent: 15000
+    } }
+  };
+  const helpers = mockHelpers(store);
+  await assert.rejects(() => handlePartySessionMint({
+    request: mintRequest({
+      officeId: "office-1",
+      matchId: "match_strict_1",
+      party: "client",
+      offerId: "offer_wrong",
+      requestId: "request_right"
+    }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-strict",
+    helpers
+  }), (error) => error.code === "party_match_identity_mismatch");
+});
+
 test("client and owner sessions stay distinct and replies persist", async () => {
   const store = {
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
-    "offices/office-1/matches/match_new_1": { fields: { livingStage: "MATCH_FOUND" } }
+    "offices/office-1/matches/match_new_1": { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_1",
+      clientRequestId: "request_1"
+    } },
+    "offices/office-1/opportunities/offer_1": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "أرض",
+      purpose: "SALE",
+      salePrice: 500000
+    } }
   };
   const helpers = mockHelpers(store);
   const client = await handlePartySessionMint({
-    request: mintRequest({ officeId: "office-1", matchId: "match_new_1", party: "client", propertyType: "أرض", purpose: "SALE" }),
+    request: mintRequest({ officeId: "office-1", matchId: "match_new_1", party: "client", offerId: "offer_1", requestId: "request_1" }),
     env: { DEPLOYMENT_ENV: "staging" },
     requestId: "req-6",
     helpers
   });
   const owner = await handlePartySessionMint({
-    request: mintRequest({ officeId: "office-1", matchId: "match_new_1", party: "owner", propertyType: "أرض", purpose: "SALE" }),
+    request: mintRequest({ officeId: "office-1", matchId: "match_new_1", party: "owner", offerId: "offer_1", requestId: "request_1" }),
     env: { DEPLOYMENT_ENV: "staging" },
     requestId: "req-7",
     helpers

@@ -227,7 +227,7 @@ test("decision package replaces legacy buttons when session exists", () => {
   assert.equal(view.decisionPackage.mode, "decision_package_v1");
   const html = buildPartyShellHtml(view);
   assert.match(html, /data-party-decision-package/);
-  assert.match(html, /تأكيد وإرسال/);
+  assert.match(html, /إرسال الرد/);
 });
 
 test("submitted bundle shows success copy without legacy actions", () => {
@@ -249,7 +249,7 @@ test("submitted bundle shows success copy without legacy actions", () => {
     coordination: session
   });
   assert.equal(view.replied, true);
-  assert.match(view.submitSuccessCopy, /مكتب الاختبار/);
+  assert.match(view.submitSuccessCopy, /للطرف الآخر/);
   const html = buildPartyShellHtml(view);
   assert.match(html, /تم إرسال ردك/);
 });

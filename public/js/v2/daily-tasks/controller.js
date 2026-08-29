@@ -422,7 +422,7 @@ export async function runDailyTaskPartySend(task, party, button) {
     }
     const text = buildPartyWhatsAppMessage({
       party: side,
-      officeName: officeDisplayName(),
+      officeName: link.officeName || officeDisplayName(),
       contactName: contact.name || (side === "owner" ? task.ownerName : task.clientName) || "",
       propertyLine: task.propertyLine || "",
       reviewUrl: link.url

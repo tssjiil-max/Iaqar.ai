@@ -489,9 +489,13 @@ export function sanitizePartyPublicView({
   const exactLocationAllowed = appointmentStatus === VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
     || text(livingStage) === "APPOINTMENT_CONFIRMED";
   const coordinationSession = coordination && typeof coordination === "object" ? coordination : null;
+  const clientNeedsNegotiationReply = side === "client"
+    && Boolean(coordinationSession?.clientBundle)
+    && !coordinationSession?.clientBundle?.negotiationResponse
+    && ["accept", "counter"].includes(coordinationSession?.ownerBundle?.negotiationDecision);
   const bundleSubmitted = side === "owner"
     ? Boolean(coordinationSession?.ownerBundle)
-    : Boolean(coordinationSession?.clientBundle);
+    : Boolean(coordinationSession?.clientBundle) && !clientNeedsNegotiationReply;
   const bundleSummary = side === "owner"
     ? ownerBundleSummary(coordinationSession?.ownerBundle)
     : clientBundleSummary(coordinationSession?.clientBundle);
@@ -502,6 +506,7 @@ export function sanitizePartyPublicView({
       propertyType,
       canonicalOffer,
       clientBundle: coordinationSession?.clientBundle || null,
+      ownerBundle: coordinationSession?.ownerBundle || null,
       submitted: bundleSubmitted,
       bundleSummary,
       hasLocation: Boolean(snapshot.locationUrl || canonicalOffer.locationUrl)
@@ -517,6 +522,9 @@ export function sanitizePartyPublicView({
   const replied = bundleSubmitted
     || (status === PARTY_SESSION_STATUS.REPLIED && Boolean(replyAction));
   const officeLabel = text(officeName) || "المكتب العقاري";
+  const officeCoordinationLabel = officeLabel === "المكتب العقاري" || /^مكتب\s/.test(officeLabel)
+    ? officeLabel
+    : `مكتب ${officeLabel}`;
   const view = {
     party: side,
     title: partyViewTitle(side),
@@ -526,7 +534,7 @@ export function sanitizePartyPublicView({
     officeName: officeLabel,
     officeLogoUrl: /^https:\/\//i.test(officeLogoUrl) ? officeLogoUrl : "",
     officeProfileUrl: /^https:\/\//i.test(officeProfileUrl) ? officeProfileUrl : "",
-    officeCoordinationNotice: `يتم هذا التنسيق عبر مكتب ${officeLabel}، والمكتب مطّلع على الإجراءات لمتابعة الصفقة.`,
+    officeCoordinationNotice: `يتم هذا التنسيق عبر ${officeCoordinationLabel}، دون مشاركة بيانات التواصل بين الطرفين.`,
     privacyNotice: "لن تتم مشاركة بيانات التواصل الخاصة بك مع الطرف الآخر عبر هذه الصفحة.",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot, { exactLocationAllowed, canonicalOffer }),
@@ -542,7 +550,7 @@ export function sanitizePartyPublicView({
     revealedDetail: revealed,
     appointment: publicAppointment,
     submitSuccessCopy: bundleSubmitted
-      ? `تم إرسال ردك إلى مكتب ${officeLabel}. المكتب مطّلع على الإجراءات وسيكمل التنسيق.`
+      ? "تم إرسال ردك للطرف الآخر، وسيتدخل الوسيط عند اكتمال الاتفاق أو طلب المعاينة."
       : ""
   };
   const serialized = JSON.stringify(view);

@@ -60,15 +60,48 @@ export const REJECTION_DISPOSITION = Object.freeze({
 
 export const REJECTION_REASON = Object.freeze({
   PRICE: "price",
+  LOCATION: "location",
   PAYMENT_TERMS: "payment_terms",
   CONDITION: "condition",
   SPECIFICATIONS: "specifications",
+  AREA: "area",
+  BEDROOMS: "bedrooms",
+  BATHROOMS: "bathrooms",
+  FLOOR: "floor",
+  ELEVATOR: "elevator",
+  PARKING: "parking",
+  FURNISHED: "furnished",
+  YARD: "yard",
+  FRONTAGE: "frontage",
+  STREET_COUNT: "street_count",
+  STREET_WIDTHS: "street_widths",
+  DIMENSIONS: "dimensions",
+  USE_TYPE: "use_type",
+  UNITS: "units",
+  SHOPS: "shops",
+  ANNUAL_INCOME: "annual_income",
+  DELIVERY: "delivery",
   OTHER: "other"
+});
+
+export const PRICE_FLEXIBILITY = Object.freeze({
+  ASK_OWNER: "ask_owner",
+  FIXED: "fixed",
+  SLIGHT: "slight",
+  DISCOUNT_2: "discount_2",
+  DISCOUNT_5: "discount_5",
+  DISCUSS_AT_VIEWING: "discuss_at_viewing"
 });
 
 export const NEGOTIATION_DECISION = Object.freeze({
   ACCEPT: "accept",
   COUNTER: "counter",
+  REJECT: "reject"
+});
+
+export const CLIENT_NEGOTIATION_RESPONSE = Object.freeze({
+  ACCEPT: "accept",
+  VIEWING: "viewing",
   REJECT: "reject"
 });
 
@@ -217,6 +250,45 @@ export function specGroupOptions(propertyTypeLabel = "") {
     value,
     label: specGroupLabel(value)
   }));
+}
+
+export function rejectionReasonOptions(propertyTypeLabel = "") {
+  const id = resolvePropertyTypeId(propertyTypeLabel);
+  const common = [
+    { value: REJECTION_REASON.PRICE, label: "السعر مرتفع", icon: "💰", negotiable: true },
+    { value: REJECTION_REASON.LOCATION, label: "الموقع بعيد", icon: "📍", negotiable: false },
+    { value: REJECTION_REASON.AREA, label: "المساحة غير مناسبة", icon: "📐", negotiable: false },
+    { value: REJECTION_REASON.CONDITION, label: "حالة العقار", icon: "🛠️", negotiable: true },
+    { value: REJECTION_REASON.DELIVERY, label: "موعد التسليم", icon: "🗓️", negotiable: true }
+  ];
+  if (LAND_TYPE_IDS.has(id)) return [...common,
+    { value: REJECTION_REASON.USE_TYPE, label: "استخدام الأرض", icon: "🏷️", negotiable: false },
+    { value: REJECTION_REASON.FRONTAGE, label: "الواجهة", icon: "🧭", negotiable: false },
+    { value: REJECTION_REASON.STREET_COUNT, label: "عدد الشوارع", icon: "🛣️", negotiable: false },
+    { value: REJECTION_REASON.STREET_WIDTHS, label: "عرض الشارع", icon: "↔️", negotiable: false },
+    { value: REJECTION_REASON.DIMENSIONS, label: "الأبعاد", icon: "📏", negotiable: false }
+  ];
+  if (VILLA_TYPE_IDS.has(id)) return [...common,
+    { value: REJECTION_REASON.BEDROOMS, label: "عدد الغرف", icon: "🛏️", negotiable: false },
+    { value: REJECTION_REASON.BATHROOMS, label: "دورات المياه", icon: "🚿", negotiable: false },
+    { value: REJECTION_REASON.PARKING, label: "المواقف", icon: "🚗", negotiable: false },
+    { value: REJECTION_REASON.YARD, label: "الحوش", icon: "🌿", negotiable: false }
+  ];
+  if (COMMERCIAL_TYPE_IDS.has(id)) return [...common,
+    { value: REJECTION_REASON.UNITS, label: "عدد الوحدات", icon: "🏢", negotiable: false },
+    { value: REJECTION_REASON.SHOPS, label: "المحلات", icon: "🏪", negotiable: false },
+    { value: REJECTION_REASON.ELEVATOR, label: "المصعد", icon: "🛗", negotiable: false },
+    { value: REJECTION_REASON.PARKING, label: "المواقف", icon: "🚗", negotiable: false },
+    { value: REJECTION_REASON.ANNUAL_INCOME, label: "الدخل السنوي", icon: "📊", negotiable: false }
+  ];
+  return [...common,
+    { value: REJECTION_REASON.BEDROOMS, label: "عدد الغرف", icon: "🛏️", negotiable: false },
+    { value: REJECTION_REASON.BATHROOMS, label: "دورات المياه", icon: "🚿", negotiable: false },
+    { value: REJECTION_REASON.FLOOR, label: "الدور", icon: "🏬", negotiable: false },
+    { value: REJECTION_REASON.ELEVATOR, label: "المصعد", icon: "🛗", negotiable: false },
+    { value: REJECTION_REASON.PARKING, label: "المواقف", icon: "🚗", negotiable: false },
+    { value: REJECTION_REASON.FURNISHED, label: "التأثيث", icon: "🛋️", negotiable: false }
+  ];
 }
 
 function riyadhParts(now = new Date()) {
@@ -400,18 +472,21 @@ export function normalizeClientBundle(raw = {}) {
     rejectionDisposition: "",
     proposedPrice: null,
     negotiationPreference: "",
+    negotiationResponse: text(input.negotiationResponse),
     submittedAt: text(input.submittedAt)
   };
   if (interestStatus === CLIENT_INTEREST_STATUS.NOT_SUITABLE
     || interestStatus === CLIENT_INTEREST.NOT_SUITABLE) {
     bundle.rejectionReason = text(input.rejectionReason);
     bundle.rejectionDisposition = text(input.rejectionDisposition);
-    bundle.proposedPrice = Number(input.proposedPrice || 0) > 0 ? Number(input.proposedPrice) : null;
     bundle.negotiationPreference = text(input.negotiationPreference);
     if (!Object.values(REJECTION_REASON).includes(bundle.rejectionReason)) return null;
     if (!Object.values(REJECTION_DISPOSITION).includes(bundle.rejectionDisposition)) return null;
+    if (bundle.negotiationResponse
+      && !Object.values(CLIENT_NEGOTIATION_RESPONSE).includes(bundle.negotiationResponse)) return null;
     if (bundle.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE) {
-      if (bundle.rejectionReason === REJECTION_REASON.PRICE && !bundle.proposedPrice) return null;
+      if (bundle.rejectionReason === REJECTION_REASON.PRICE
+        && bundle.negotiationPreference !== PRICE_FLEXIBILITY.ASK_OWNER) return null;
       if (bundle.rejectionReason !== REJECTION_REASON.PRICE && !bundle.negotiationPreference) return null;
     }
     return bundle;
@@ -467,7 +542,7 @@ export function normalizeOwnerBundle(raw = {}) {
     viewingWindows: [],
     coordinationRequired: false,
     negotiationDecision: text(raw.negotiationDecision),
-    counterPrice: Number(raw.counterPrice || 0) > 0 ? Number(raw.counterPrice) : null,
+    counterPrice: null,
     counterPreference: text(raw.counterPreference),
     submittedAt: text(raw.submittedAt)
   };
@@ -476,7 +551,7 @@ export function normalizeOwnerBundle(raw = {}) {
   if (bundle.negotiationDecision
     && !Object.values(NEGOTIATION_DECISION).includes(bundle.negotiationDecision)) return null;
   if (bundle.negotiationDecision === NEGOTIATION_DECISION.COUNTER
-    && !bundle.counterPrice && !bundle.counterPreference) return null;
+    && !Object.values(PRICE_FLEXIBILITY).includes(bundle.counterPreference)) return null;
   const priceConfirmation = text(raw.priceConfirmation);
   if (priceConfirmation) {
     bundle.priceConfirmation = priceConfirmation;
@@ -619,9 +694,23 @@ export function resolveCoordinationOutcome({
         return { outcome: COORDINATION_OUTCOME.NEGOTIATION_PENDING_OWNER, brokerLine: "جلسة تفاوض — بانتظار رد المالك على شرط العميل", conflictField: "negotiationDecision" };
       }
       if (ownerBundle.negotiationDecision === NEGOTIATION_DECISION.ACCEPT) {
+        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.ACCEPT
+          || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING) {
+          return { outcome: COORDINATION_OUTCOME.NEEDS_BROKER, brokerLine: "اكتمل الاتفاق المبدئي — يتدخل الوسيط لتثبيت السعر والمعاينة", conflictField: "" };
+        }
+        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.REJECT) {
+          return { outcome: COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED, brokerLine: "العميل لم يقبل نتيجة التفاوض", conflictField: "" };
+        }
         return { outcome: COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED, brokerLine: "جلسة تفاوض — المالك وافق على شرط العميل ويلزم تأكيد العميل", conflictField: "" };
       }
       if (ownerBundle.negotiationDecision === NEGOTIATION_DECISION.COUNTER) {
+        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.ACCEPT
+          || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING) {
+          return { outcome: COORDINATION_OUTCOME.NEEDS_BROKER, brokerLine: "اكتمل الاتفاق المبدئي — يتدخل الوسيط لتثبيت السعر والمعاينة", conflictField: "" };
+        }
+        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.REJECT) {
+          return { outcome: COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED, brokerLine: "العميل لم يقبل اقتراح المالك", conflictField: "" };
+        }
         return { outcome: COORDINATION_OUTCOME.NEGOTIATION_COUNTERED, brokerLine: "جلسة تفاوض — المالك قدم اقتراحًا بديلًا ويلزم رد العميل", conflictField: "" };
       }
       return { outcome: COORDINATION_OUTCOME.NEGOTIATION_REJECTED, brokerLine: "جلسة تفاوض — المالك رفض شرط التفاوض", conflictField: "" };
@@ -788,6 +877,7 @@ export function buildDecisionPackageView(party = "client", {
   propertyType = "",
   canonicalOffer = {},
   clientBundle = null,
+  ownerBundle = null,
   submitted = false,
   bundleSummary = "",
   canonicalPrice = 0,
@@ -821,6 +911,7 @@ export function buildDecisionPackageView(party = "client", {
     propertyType,
     specOptions,
     detailOptions,
+    rejectionOptions: rejectionReasonOptions(propertyType),
     missingSpecs,
     missingSpecsLabels: missingSpecs.map(specGroupLabel),
     missingDetails,
@@ -831,6 +922,15 @@ export function buildDecisionPackageView(party = "client", {
         reason: clientBundle.rejectionReason,
         proposedPrice: clientBundle.proposedPrice,
         preference: clientBundle.negotiationPreference
+      }
+      : null,
+    negotiationResponseRequest: side === "client"
+      && clientBundle?.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
+      && [NEGOTIATION_DECISION.ACCEPT, NEGOTIATION_DECISION.COUNTER].includes(ownerBundle?.negotiationDecision)
+      && !clientBundle?.negotiationResponse
+      ? {
+        ownerDecision: ownerBundle.negotiationDecision,
+        ownerPreference: ownerBundle.counterPreference || ""
       }
       : null,
     canonicalPrice: Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0),

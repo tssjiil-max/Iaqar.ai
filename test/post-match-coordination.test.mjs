@@ -23,10 +23,13 @@ import {
 import {
   CLIENT_INTEREST_STATUS,
   CLIENT_INTEREST_ACTION,
+  CLIENT_NEGOTIATION_RESPONSE,
   COORDINATION_OUTCOME,
   NEGOTIATION_DECISION,
+  PRICE_FLEXIBILITY,
   REJECTION_DISPOSITION,
   REJECTION_REASON,
+  rejectionReasonOptions,
   normalizeClientBundle,
   normalizeOwnerBundle,
   resolveCoordinationOutcome,
@@ -81,7 +84,7 @@ test("final rejection records a structured reason without viewing", () => {
   assert.equal(bundle.wantsViewing, false);
 });
 
-test("negotiable price rejection requires a proposed price", () => {
+test("negotiable price rejection uses a structured flexibility request without a typed price", () => {
   assert.equal(normalizeClientBundle({
     interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
     rejectionReason: REJECTION_REASON.PRICE,
@@ -91,9 +94,10 @@ test("negotiable price rejection requires a proposed price", () => {
     interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
     rejectionReason: REJECTION_REASON.PRICE,
     rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
-    proposedPrice: 620000
+    negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
   });
-  assert.equal(bundle.proposedPrice, 620000);
+  assert.equal(bundle.proposedPrice, null);
+  assert.equal(bundle.negotiationPreference, PRICE_FLEXIBILITY.ASK_OWNER);
 });
 
 test("negotiation session routes owner accept counter and reject", () => {
@@ -101,7 +105,7 @@ test("negotiation session routes owner accept counter and reject", () => {
     interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
     rejectionReason: REJECTION_REASON.PRICE,
     rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
-    proposedPrice: 620000
+    negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
   });
   for (const [decision, expected] of [
     [NEGOTIATION_DECISION.ACCEPT, COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED],
@@ -111,12 +115,34 @@ test("negotiation session routes owner accept counter and reject", () => {
     const ownerBundle = normalizeOwnerBundle({
       propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
       negotiationDecision: decision,
-      counterPrice: decision === NEGOTIATION_DECISION.COUNTER ? 650000 : 0,
+      counterPreference: decision === NEGOTIATION_DECISION.COUNTER ? PRICE_FLEXIBILITY.DISCOUNT_2 : "",
       viewingAllowed: OWNER_VIEWING_ALLOWED.NEEDS_COORDINATION,
       coordinationRequired: true
     });
     assert.equal(resolveCoordinationOutcome({ clientBundle, ownerBundle }).outcome, expected);
   }
+});
+
+test("client confirms the owner negotiation before broker intervention", () => {
+  const clientBase = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.PRICE,
+    rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
+    negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
+  });
+  const ownerBundle = normalizeOwnerBundle({
+    propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
+    negotiationDecision: NEGOTIATION_DECISION.COUNTER,
+    counterPreference: PRICE_FLEXIBILITY.DISCOUNT_5,
+    viewingAllowed: OWNER_VIEWING_ALLOWED.NEEDS_COORDINATION,
+    coordinationRequired: true
+  });
+  assert.equal(resolveCoordinationOutcome({ clientBundle: clientBase, ownerBundle }).outcome, COORDINATION_OUTCOME.NEGOTIATION_COUNTERED);
+  const clientAccepted = normalizeClientBundle({
+    ...clientBase,
+    negotiationResponse: CLIENT_NEGOTIATION_RESPONSE.ACCEPT
+  });
+  assert.equal(resolveCoordinationOutcome({ clientBundle: clientAccepted, ownerBundle }).outcome, COORDINATION_OUTCOME.NEEDS_BROKER);
 });
 
 test("apartment schema returns only apartment keys", () => {
@@ -139,6 +165,17 @@ test("land schema never includes rooms or bathrooms", () => {
   assert.ok(!keys.includes(DETAIL_KEY.BATHROOMS));
   assert.ok(!keys.includes(DETAIL_KEY.FLOOR));
   assert.ok(isLandForbiddenDetailKey(DETAIL_KEY.BEDROOMS));
+});
+
+test("rejection reasons and icons follow the property type", () => {
+  const apartment = rejectionReasonOptions("شقة");
+  const land = rejectionReasonOptions("أرض");
+  assert.ok(apartment.some((item) => item.value === REJECTION_REASON.BEDROOMS && item.icon));
+  assert.ok(apartment.some((item) => item.value === REJECTION_REASON.ELEVATOR && item.icon));
+  assert.equal(land.some((item) => item.value === REJECTION_REASON.BEDROOMS), false);
+  assert.equal(land.some((item) => item.value === REJECTION_REASON.BATHROOMS), false);
+  assert.ok(land.some((item) => item.value === REJECTION_REASON.FRONTAGE && item.icon));
+  assert.ok(land.some((item) => item.value === REJECTION_REASON.STREET_COUNT && item.icon));
 });
 
 test("building schema returns building keys", () => {
@@ -307,13 +344,16 @@ test("owner negotiation UI is named جلسة تفاوض and has structured decis
         interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
         rejectionReason: REJECTION_REASON.PRICE,
         rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
-        proposedPrice: 620000
+        negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
       })
     }
   }));
   assert.match(html, /جلسة تفاوض/);
-  assert.match(html, /موافق على طلب العميل/);
-  assert.match(html, /أقدم اقتراحًا بديلًا/);
+  assert.match(html, /يوجد مجال للتفاوض/);
+  assert.match(html, /تحديد مجال التخفيض/);
   assert.match(html, /غير موافق/);
+  assert.match(html, /تخفيض 2%/);
+  assert.doesNotMatch(html, /السعر البديل|السعر المناسب لك/);
   assert.doesNotMatch(html, /textarea/);
+  assert.doesNotMatch(html, /data-package-number="(?:proposedPrice|counterPrice|updatedPrice)"/);
 });

@@ -261,11 +261,23 @@ export async function handlePartySessionMint({
       allowMissing: true
     });
     const session = existingSession ? js(existingSession, helpers) : null;
-    if (session && session.status !== PARTY_SESSION_STATUS.REVOKED && session.token && isOpaquePartyToken(session.token)) {
+    const identityMatches = session
+      && session.officeId === officeId
+      && session.matchId === matchId
+      && session.party === party
+      && keyData.party === party
+      && keyData.matchId === matchId;
+    if (identityMatches && session.status !== PARTY_SESSION_STATUS.REVOKED && session.token && isOpaquePartyToken(session.token)) {
       return helpers.jsonResponse({
         ok: true,
         token: session.token,
         reused: true,
+        officeName: String((await helpers.getFirestoreDocument({
+          projectId,
+          segments: ["offices", officeId],
+          accessToken,
+          allowMissing: true
+        }))?.fields?.officeName?.stringValue || ""),
         requestId
       });
     }
@@ -273,6 +285,22 @@ export async function handlePartySessionMint({
 
   const offerId = helpers.cleanText(body.offerId || body.ownerOfferId, 180);
   const requestRecordId = helpers.cleanText(body.requestId || body.clientRequestId, 180);
+  const canonicalMatch = await readOfficeDoc(helpers, {
+    projectId, officeId, collection: "matches", id: matchId, accessToken
+  });
+  if (canonicalMatch) {
+    const canonicalOfferIds = linkedOfferIdsFromMatch(canonicalMatch, {});
+    if (offerId && canonicalOfferIds.length && !canonicalOfferIds.includes(offerId)) {
+      throw helpers.appError("party_match_identity_mismatch", 409, "تعذر التحقق من بيانات المطابقة");
+    }
+    const canonicalRequestId = helpers.cleanText(
+      canonicalMatch.clientRequestId || canonicalMatch.requestId || canonicalMatch.buyerRequestId,
+      180
+    );
+    if (requestRecordId && canonicalRequestId && requestRecordId !== canonicalRequestId) {
+      throw helpers.appError("party_match_identity_mismatch", 409, "تعذر التحقق من بيانات المطابقة");
+    }
+  }
   const liveOffer = await loadCanonicalOfferListing(helpers, {
     projectId,
     officeId,
@@ -280,6 +308,9 @@ export async function handlePartySessionMint({
     matchId,
     body: { offerId, ownerOfferId: offerId, opportunityId: helpers.cleanText(body.opportunityId, 180) }
   });
+  if (canonicalMatch && !liveOffer) {
+    throw helpers.appError("party_offer_not_found", 409, "تعذر التحقق من العقار المرتبط بالمطابقة");
+  }
   const bodyHints = {
     propertyType: helpers.cleanText(body.propertyType, 40),
     purpose: helpers.cleanText(body.purpose, 40),
@@ -433,6 +464,10 @@ export async function loadPartyPublicView({ token, env, helpers }) {
   });
   if (!sessionDoc) return null;
   const session = js(sessionDoc, helpers);
+  if (pointerData.officeId !== officeId
+    || pointerData.sessionId !== sessionId
+    || pointerData.party !== session.party
+    || session.officeId !== officeId) return null;
   if (session.revoked === true || session.status === PARTY_SESSION_STATUS.REVOKED) return null;
   if (session.tokenHash && session.tokenHash !== tokenHash) return null;
   const officeDoc = await helpers.getFirestoreDocument({
