@@ -138,6 +138,14 @@
     .arabic-suggest-list button{width:100%;border:0;background:none;padding:10px 12px;text-align:right;font:500 15px Tajawal;cursor:pointer;color:#173d35}
     .arabic-suggest-list button:hover{background:#eaf7f3}
     @media(max-width:420px){.access-form{grid-template-columns:1fr}.access-form .full{grid-column:auto}}
+    .access-chip-section{display:grid;gap:8px}
+    .access-chip-label{font-size:13px;font-weight:700;color:#36574f}
+    .access-chip-row{display:flex;flex-wrap:wrap;gap:8px}
+    .access-chip{min-height:40px;padding:8px 14px;border-radius:12px;border:1.5px solid #128c7e;background:#fff;color:#087064;
+      font:700 14px Tajawal;cursor:pointer}
+    .access-chip.is-selected{background:#128c7e;color:#fff}
+    .access-chip-row--property .access-chip{min-height:36px;padding:6px 12px;font-size:13px}
+    #propertyTypeOtherWrap[hidden]{display:none!important}
   </style>`);
 
   gate.className = "access-gate";
@@ -415,8 +423,8 @@
     frame(`<section class="access-card"><h2>اختر الخدمة</h2>
       <p>رفع الطلب مباشر للعميل والمالك، وتسجيل الوسيط يخضع لمراجعة رخصة فال واعتماد الإدارة.</p>
       <div class="access-options">
-        <button class="access-btn" data-go="client">أنا عميل</button>
-        <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
+        <button class="access-btn" data-go="owner">لدي عقار</button>
+        <button class="access-btn secondary" data-go="client">أبحث عن عقار</button>
         <button class="access-btn secondary" data-go="login">دخول مكتب مسجل</button>
       </div>
       <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>
@@ -482,8 +490,8 @@
     frame(`<section class="access-card"><h2>خدمات المكتب</h2>
       <p>ارفع طلبك مباشرة دون تسجيل، ولا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.</p>
       <div id="publicOfficeProfile"></div>
-      <div class="access-options"><button class="access-btn" data-go="client">أنا عميل</button>
-      <button class="access-btn secondary" data-go="owner">أنا مالك عقار</button>
+      <div class="access-options"><button class="access-btn" data-go="owner">لدي عقار</button>
+      <button class="access-btn secondary" data-go="client">أبحث عن عقار</button>
       <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`, "public-office");
     gate.dataset.activeScreen = "public-office";
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => intakeForm(button.dataset.go, officeId));
@@ -546,6 +554,120 @@
 
   function clientIntakeApi() {
     return window.IAQARPublicClientIntake || null;
+  }
+
+  function quickChoiceApi() {
+    return window.IAQARPublicIntakeQuickChoice || null;
+  }
+
+  function intakePurposeChipHtml(isOwner) {
+    const api = quickChoiceApi();
+    const options = isOwner ? (api?.OWNER_PURPOSE_OPTIONS || []) : (api?.CLIENT_PURPOSE_OPTIONS || []);
+    return options.map((opt) =>
+      `<button type="button" class="access-chip" data-chip-group="purpose" data-chip-id="${escapeHtml(opt.id)}"
+        data-testid="intake-chip-purpose-${escapeHtml(opt.id)}">${escapeHtml(opt.label)}</button>`
+    ).join("");
+  }
+
+  function intakePropertyChipHtml() {
+    const api = quickChoiceApi();
+    const options = api?.PROPERTY_TYPE_OPTIONS || [];
+    return options.map((opt) =>
+      `<button type="button" class="access-chip" data-chip-group="property" data-chip-id="${escapeHtml(opt.id)}"
+        data-testid="intake-chip-property-${escapeHtml(opt.id)}">${escapeHtml(opt.label)}</button>`
+    ).join("");
+  }
+
+  function wireIntakeQuickChoices(scope, {
+    owner,
+    onPurposeChange,
+    onPropertyChange
+  } = {}) {
+    const api = quickChoiceApi();
+    const form = scope?.querySelector("#intakeForm");
+    if (!api || !form) return null;
+    const purposeHidden = scope.querySelector("#intakePurposeValue");
+    const propertyInput = scope.querySelector("#propertyTypeInput");
+    const propertyOtherWrap = scope.querySelector("#propertyTypeOtherWrap");
+    const propertyOtherInput = scope.querySelector("#propertyTypeOtherInput");
+    const requestKindInput = scope.querySelector("#requestKindInput");
+    const transactionTypeInput = scope.querySelector("#transactionTypeInput");
+
+    const setPurpose = (chipId) => {
+      if (owner) {
+        const row = api.ownerPurposeFromChip(chipId);
+        if (!row) return;
+        if (transactionTypeInput) transactionTypeInput.value = row.transactionType;
+        if (purposeHidden) purposeHidden.value = row.id;
+      } else {
+        const row = api.clientPurposeFromChip(chipId);
+        if (!row) return;
+        if (requestKindInput) requestKindInput.value = row.requestKind;
+        if (purposeHidden) purposeHidden.value = row.id;
+      }
+      onPurposeChange?.();
+    };
+
+    const setProperty = (chipId) => {
+      if (propertyInput) propertyInput.dataset.chipId = chipId;
+      scope.querySelectorAll("[data-chip-group=\"property\"]").forEach((btn) => {
+        btn.classList.toggle("is-selected", btn.dataset.chipId === chipId);
+      });
+      const isOther = chipId === "other";
+      if (propertyOtherWrap) propertyOtherWrap.hidden = !isOther;
+      if (propertyOtherInput) {
+        propertyOtherInput.required = isOther;
+        if (!isOther) propertyOtherInput.value = "";
+      }
+      if (propertyInput) {
+        propertyInput.value = isOther
+          ? String(propertyOtherInput?.value || "").trim()
+          : api.propertyTypeFromChip(chipId, "");
+      }
+      onPropertyChange?.();
+    };
+
+    scope.querySelectorAll(".access-chip").forEach((button) => {
+      button.onclick = () => {
+        const group = button.dataset.chipGroup;
+        scope.querySelectorAll(`[data-chip-group="${group}"]`).forEach((node) => {
+          node.classList.toggle("is-selected", node === button);
+        });
+        if (group === "purpose") setPurpose(button.dataset.chipId);
+        else if (group === "property") setProperty(button.dataset.chipId);
+      };
+    });
+
+    if (propertyOtherInput) {
+      propertyOtherInput.addEventListener("input", () => {
+        if (propertyInput?.dataset.chipId === "other") {
+          propertyInput.value = String(propertyOtherInput.value || "").trim();
+          onPropertyChange?.();
+        }
+      });
+    }
+
+    return {
+      syncFromValues(values = {}) {
+        const purposeChip = owner
+          ? api.inferOwnerPurposeChip(values.transactionType, values.purpose)
+          : api.inferClientPurposeChip(values.requestKind, values.transactionType);
+        if (purposeChip) {
+          scope.querySelectorAll("[data-chip-group=\"purpose\"]").forEach((btn) => {
+            if (btn.dataset.chipId === purposeChip) btn.click();
+          });
+        }
+        const propertyChip = api.inferPropertyTypeChip(values.propertyType);
+        if (propertyChip) {
+          if (propertyChip === "other" && propertyOtherInput) {
+            propertyOtherInput.value = values.propertyType || "";
+          }
+          scope.querySelectorAll("[data-chip-group=\"property\"]").forEach((btn) => {
+            if (btn.dataset.chipId === propertyChip) btn.click();
+          });
+        }
+      }
+    };
   }
 
   function renderDynamicClientFields(container, requestKind, propertyType) {
@@ -620,10 +742,8 @@
     set("name", values.name);
     set("phone", values.phone);
     set("city", values.city);
-    if (!owner) set("requestKind", values.requestKind);
-    set("propertyType", values.propertyType);
     set("district", values.district);
-    if (!owner) refreshClientDynamic();
+    set("priceOrBudget", values.priceOrBudget ?? values.budget ?? values.annualRent);
     set("budget", values.budget);
     set("annualRent", values.annualRent);
     set("area", values.area);
@@ -632,6 +752,16 @@
     set("streetWidth", values.streetWidth);
     set("facing", values.facing);
     set("details", values.details);
+    const quickSync = gate.__intakeQuickChoiceSync;
+    if (quickSync) {
+      quickSync.syncFromValues({
+        requestKind: values.requestKind,
+        transactionType: values.transactionType,
+        purpose: values.purpose,
+        propertyType: values.propertyType
+      });
+    }
+    if (!owner) refreshClientDynamic();
     showStatus("تم تعبئة النموذج من التسجيل — راجع الحقول قبل الإرسال.");
   }
 
@@ -675,14 +805,25 @@
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
       <div id="publicVoiceIntakePanel" class="full"></div>
       <form class="access-form" id="intakeForm">
+        <div class="access-chip-section full">
+          <span class="access-chip-label">${owner ? "نوع العرض (إلزامي)" : "نوع الطلب (إلزامي)"}</span>
+          <div class="access-chip-row access-chip-row--purpose">${intakePurposeChipHtml(owner)}</div>
+          <input type="hidden" id="intakePurposeValue" value="">
+          ${owner
+    ? `<input type="hidden" name="transactionType" id="transactionTypeInput" value="">`
+    : `<input type="hidden" name="requestKind" id="requestKindInput" value="">`}
+        </div>
+        <div class="access-chip-section full">
+          <span class="access-chip-label">نوع العقار (إلزامي)</span>
+          <div class="access-chip-row access-chip-row--property">${intakePropertyChipHtml()}</div>
+          <label id="propertyTypeOtherWrap" class="full" hidden>
+            <span>اكتب نوع العقار</span>
+            <input id="propertyTypeOtherInput" maxlength="40" autocomplete="off" placeholder="اكتب نوع العقار">
+          </label>
+          <input type="hidden" name="propertyType" id="propertyTypeInput" value="">
+        </div>
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        ${owner ? "" : `<label class="full"><span>نوع الطلب (إلزامي)</span>
-          <input name="requestKind" id="requestKindInput" maxlength="40" required autocomplete="off"
-            placeholder="اكتب نوع الطلب (مثل: شراء أو استئجار)"></label>`}
-        <label class="full"><span>نوع العقار (إلزامي)</span>
-          <input name="propertyType" id="propertyTypeInput" maxlength="40" required autocomplete="off"
-            placeholder="اكتب نوع العقار"></label>
         <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
         <label class="full"><span>الحي (إلزامي)</span>
@@ -716,11 +857,11 @@
       const propertyType = String(propertyInput?.value || "").trim();
       renderDynamicClientFields(dynamicFields, requestKind, propertyType);
     };
-    if (requestKindInput) {
-      requestKindInput.addEventListener("input", () => refreshClientDynamic());
-      refreshClientDynamic();
-    }
-    if (propertyInput) propertyInput.addEventListener("input", () => refreshClientDynamic());
+    gate.__intakeQuickChoiceSync = wireIntakeQuickChoices(gate, {
+      owner,
+      onPurposeChange: refreshClientDynamic,
+      onPropertyChange: refreshClientDynamic
+    });
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
@@ -740,10 +881,22 @@
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const city = String(fields.get("city") || "").trim();
       if (!city) return showStatus("أدخل المدينة.");
+      const quickApi = quickChoiceApi();
+      const purposeChip = String(gate.querySelector("#intakePurposeValue")?.value || "").trim();
+      if (!purposeChip) {
+        return showStatus(owner ? "اختر بيع أو تأجير." : "اختر شراء أو استئجار.");
+      }
+      const propertyChip = String(propertyInput?.dataset.chipId || "").trim();
+      if (!propertyChip) return showStatus("اختر نوع العقار.");
+      const propertyOther = String(gate.querySelector("#propertyTypeOtherInput")?.value || "").trim();
+      const propertyType = quickApi
+        ? quickApi.propertyTypeFromChip(propertyChip, propertyOther)
+        : String(propertyInput?.value || "").trim();
+      if (!propertyType) return showStatus("اكتب نوع العقار.");
       const requestKind = owner ? "" : (clientIntakeApi()?.normalizeRequestKind
         ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
         : String(fields.get("requestKind") || "").trim());
-      if (!owner && !requestKind) return showStatus("أدخل نوع الطلب.");
+      if (!owner && !requestKind) return showStatus("اختر شراء أو استئجار.");
       const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
       if (owner && !(priceOrBudget > 0)) return showStatus("أدخل السعر أو الإيجار السنوي.");
       const images = owner ? Array.from(form.elements.images.files || []) : [];
@@ -756,8 +909,7 @@
       submit.textContent = owner ? "جارٍ رفع العرض..." : "جارٍ إرسال الطلب...";
       try {
         const ref = db().collection("offices").doc(targetOffice).collection("publicIntake").doc();
-        const propertyType = String(fields.get("propertyType") || "").trim();
-        if (!propertyType) return showStatus("أدخل نوع العقار.");
+        if (propertyInput) propertyInput.value = propertyType;
         const district = String(fields.get("district") || "").trim();
         if (!district) return showStatus("أدخل الحي.");
         const mediaPaths = [];
@@ -782,6 +934,15 @@
           contactPhone: phone
         };
         if (owner) {
+          const ownerPurpose = quickApi?.ownerPurposeFromChip(purposeChip);
+          const pricing = quickApi?.buildOwnerPricingFields(ownerPurpose, priceOrBudget) || {
+            transactionType: "sale",
+            purpose: "SALE",
+            salePrice: priceOrBudget,
+            annualRent: 0,
+            amount: priceOrBudget,
+            priceOrBudget
+          };
           intakePayload = {
             officeId: targetOffice, kind,
             name,
@@ -790,10 +951,12 @@
             propertyType,
             district,
             details: String(fields.get("details") || "").trim(),
-            salePrice: priceOrBudget,
-            amount: priceOrBudget,
-            priceOrBudget,
-            purpose: "SALE",
+            transactionType: pricing.transactionType,
+            salePrice: pricing.salePrice,
+            annualRent: pricing.annualRent,
+            amount: pricing.amount,
+            priceOrBudget: pricing.priceOrBudget,
+            purpose: pricing.purpose,
             mediaPaths,
             imageCount: images.length,
             hasVideo: Boolean(video),
