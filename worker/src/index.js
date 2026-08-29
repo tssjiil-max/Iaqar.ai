@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 87013)
-Total output lines: 7685
-
 import {
   MATCHING_RULE_VERSION,
   MATCH_THRESHOLD,
@@ -1360,7 +1357,4876 @@ async function decideBrokerApplication(request, env, requestId) {
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const applicationDoc = await getFirestoreDocument({
-    projectId, segments: ["brokerApp…57013 tokens truncated…n, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
+    projectId, segments: ["brokerApplications", applicationId], accessToken
+  });
+  const application = firestoreFieldsToJs(applicationDoc.fields || {});
+  if (application.status !== "pending") throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
+  const now = new Date();
+  if (action === "approve") {
+    const pilotDeps = pilotAccessDeps(projectId, accessToken);
+    try {
+      await assertPilotRegistrationAllowed(pilotDeps);
+      await assertPilotOfficeAccess(pilotDeps, { officeId, isPlatformAdmin: false });
+    } catch (error) {
+      throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
+    }
+    const normalizedPhone = normalizeLoginPhone(application.phone);
+    if (!normalizedPhone) throw appError("phone_invalid", 400, "رقم جوال الوسيط غير صالح");
+    const phoneHash = await sha256Hex(normalizedPhone);
+    const loginDirectory = await getFirestoreDocument({ projectId, segments: ["loginDirectory", phoneHash], accessToken, allowMissing: true });
+    if (loginDirectory) {
+      const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
+      if (existingLogin.uid !== application.applicantUid) throw appError("phone_already_used", 409, "رقم الجوال مرتبط بحساب آخر");
+    }
+    const existing = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
+    if (existing) throw appError("office_exists", 409, "رمز المكتب مستخدم");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId], accessToken,
+      fields: {
+        officeId: firestoreString(officeId),
+        officeName: firestoreString(application.officeName),
+        officeNameKey: firestoreString(firestoreOfficeId(application.officeName) || officeId),
+        brokerName: firestoreString(application.brokerName),
+        phone: firestoreString(application.phone),
+        licenseNumber: firestoreString(application.falLicense),
+        city: firestoreString("المدينة المنورة"),
+        specialties: { arrayValue: { values: [] } },
+        ownerUid: firestoreString(application.applicantUid),
+        approvalStatus: firestoreString("approved"),
+        accountStatus: firestoreString("active"),
+        subscriptionStatus: firestoreString("trial"),
+        pilotAuthorized: firestoreBoolean(true),
+        approvedAt: firestoreTimestamp(now),
+        approvedByUid: firestoreString(admin.sub),
+        registeredAt: firestoreTimestamp(now),
+        createdAt: firestoreTimestamp(now)
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["publicOffices", officeId], accessToken,
+      fields: {
+        officeId: firestoreString(officeId),
+        officeName: firestoreString(application.officeName),
+        brokerName: firestoreString(application.brokerName),
+        phone: firestoreString(application.phone),
+        licenseNumber: firestoreString(application.falLicense),
+        city: firestoreString("المدينة المنورة"),
+        specialties: { arrayValue: { values: [] } },
+        coverUrl: firestoreString(""),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "members", application.applicantUid], accessToken,
+      fields: {
+        uid: firestoreString(application.applicantUid),
+        role: firestoreString("owner"),
+        active: firestoreBoolean(true),
+        createdAt: firestoreTimestamp(now)
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["loginDirectory", phoneHash], accessToken,
+      fields: {
+        uid: firestoreString(application.applicantUid),
+        officeId: firestoreString(officeId),
+        email: firestoreString(application.email),
+        phone: firestoreString(normalizedPhone),
+        active: firestoreBoolean(true),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+  }
+  await setFirestoreDocument({
+    projectId, segments: ["brokerApplications", applicationId], accessToken,
+    fields: {
+      status: firestoreString(action === "approve" ? "approved" : "rejected"),
+      officeId: firestoreOptionalString(action === "approve" ? officeId : ""),
+      decidedAt: firestoreTimestamp(now),
+      decidedByUid: firestoreString(admin.sub)
+    }
+  });
+  const adminHelpers = getAdminHelpers();
+  const auditId = `aud_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
+  await setFirestoreDocument({
+    projectId,
+    segments: ["adminAuditLogs", auditId],
+    accessToken,
+    fields: {
+      officeId: firestoreString(action === "approve" ? officeId : ""),
+      action: firestoreString(action === "approve" ? "office_approved" : "office_rejected"),
+      performedBy: firestoreString(admin.sub),
+      performedAt: firestoreTimestamp(now),
+      reason: firestoreString(cleanText(body.reason, 500)),
+      beforeJson: firestoreString(JSON.stringify(application)),
+      afterJson: firestoreString(JSON.stringify({
+        applicationId,
+        status: action === "approve" ? "approved" : "rejected",
+        officeId: action === "approve" ? officeId : ""
+      }))
+    }
+  });
+  if (action === "approve") {
+    await recordAdminActivityEvent(adminHelpers, {
+      projectId,
+      accessToken,
+      officeId,
+      eventType: "office_approved",
+      metadata: { applicationId, approvedBy: admin.sub }
+    }).catch(() => {});
+  }
+  return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
+}
+
+async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId }) {
+  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
+  if (!directoryDoc) {
+    console.warn("[iaqar-login] directory missing", { phone: maskPhone(phone), requestId });
+    return {
+      error: jsonResponse({
+        ok: false, error: "invalid_login", reason: "directory_missing",
+        message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId
+      }, 401)
+    };
+  }
+  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
+  if (directory.active !== true || !directory.email || !directory.uid || !directory.officeId) {
+    console.warn("[iaqar-login] directory inactive or incomplete", {
+      phone: maskPhone(phone),
+      active: directory.active,
+      hasEmail: Boolean(directory.email),
+      hasUid: Boolean(directory.uid),
+      officeId: directory.officeId || "",
+      requestId
+    });
+    return {
+      error: jsonResponse({
+        ok: false, error: "invalid_login", reason: "directory_inactive",
+        message: "رقم الجوال أو كلمة المرور غير صحيحة", requestId
+      }, 401)
+    };
+  }
+  return {
+    directory,
+    loginEmail: String(directory.email || "").trim().toLowerCase()
+  };
+}
+
+async function handlePhoneLoginResolve(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const phone = normalizeLoginPhone(body.phone);
+  if (!phone) {
+    return jsonResponse({
+      ok: false, error: "invalid_login", reason: "invalid_input",
+      message: "رقم الجوال غير صحيح", requestId
+    }, 401);
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
+  if (lookup.error) return lookup.error;
+  return jsonResponse({
+    ok: true,
+    loginEmail: lookup.loginEmail,
+    officeId: firestoreOfficeId(lookup.directory.officeId),
+    requestId
+  });
+}
+
+async function handlePhoneLogin(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const phone = normalizeLoginPhone(body.phone);
+  const password = cleanText(body.password, 200);
+  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
+  if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
+  const rateHash = await sha256Hex(`${phone}|${ip}`);
+  const rateSegments = ["loginRateLimits", rateHash];
+  const rateDoc = await getFirestoreDocument({ projectId, segments: rateSegments, accessToken, allowMissing: true });
+  const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
+  const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
+  if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
+  if (lookup.error) {
+    const errorResponse = lookup.error;
+    if (typeof errorResponse.json === "function") return errorResponse;
+    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  }
+  const directory = lookup.directory;
+  const loginEmail = lookup.loginEmail;
+  const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
+  });
+  if (!signInResponse.ok) {
+    const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
+    const inWindow = windowStartedAt && Date.now() - windowStartedAt < 15 * 60_000;
+    const failureCount = inWindow ? Number(rate.failureCount || 0) + 1 : 1;
+    const now = new Date();
+    await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
+      failureCount: firestoreInteger(failureCount),
+      windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
+      blockedUntil: firestoreTimestamp(failureCount >= 5 ? new Date(Date.now() + 15 * 60_000) : now),
+      updatedAt: firestoreTimestamp(now)
+    }});
+    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  }
+  const signedIn = await signInResponse.json();
+  if (signedIn.localId !== directory.uid) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
+    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
+    blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
+  }});
+  const customToken = await createFirebaseCustomToken({
+    clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
+    privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
+    uid: directory.uid, officeId: directory.officeId
+  });
+  await recordOfficeLoginActivity(getAdminHelpers(), {
+    projectId,
+    accessToken,
+    officeId: directory.officeId,
+    uid: directory.uid
+  }).catch(() => {});
+  return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
+}
+
+async function handleForgotPassword(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const phone = normalizeLoginPhone(body.phone);
+  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
+  const generic = { ok: true, requestId };
+  if (!phone || !apiKey) return jsonResponse(generic);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const phoneHash = await sha256Hex(phone);
+  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
+  if (!directoryDoc) return jsonResponse(generic);
+  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
+  if (directory.active !== true || !directory.email) return jsonResponse(generic);
+  const cooldownDoc = await getFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken, allowMissing: true });
+  const cooldown = cooldownDoc ? firestoreFieldsToJs(cooldownDoc.fields || {}) : {};
+  const previous = cooldown.lastRequestedAt ? Date.parse(cooldown.lastRequestedAt) : 0;
+  if (previous && Date.now() - previous < 60_000) return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email), cooldown: true });
+  const resetResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requestType: "PASSWORD_RESET", email: directory.email })
+  });
+  if (!resetResponse.ok) return jsonResponse(generic);
+  await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
+    fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
+  return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email) });
+}
+
+
+async function handleSharedIntake(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const messageText = cleanText(body.messageText, 12000);
+  const senderName = cleanText(body.senderName || "مشاركة من واتساب", 200);
+  const senderPhone = cleanText(body.senderPhone, 60);
+  const source = cleanText(body.source || "pwa_share_target", 80);
+  const eventId = cleanText(body.eventId || body.id, 200) || crypto.randomUUID();
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!messageText) throw appError("message_required", 400, "نص الرسالة مطلوب");
+
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
+  const safeReceivedAt = Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt;
+  const documentId = `share_${(await sha256Hex(`${officeId}|${eventId}`)).slice(0, 40)}`;
+  const now = new Date();
+
+  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
+  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compactFields({
+      schemaVersion: firestoreInteger(2),
+      officeId: firestoreString(officeId),
+      direction: firestoreString("inbound"),
+      source: firestoreString(source),
+      channel: firestoreString("shared_to_iaqar"),
+      status: firestoreString("pending_review"),
+      processingState: firestoreString("received"),
+      isProcessed: firestoreBoolean(false),
+      outboundEnabled: firestoreBoolean(false),
+      messageId: firestoreString(eventId),
+      messageType: firestoreString("text"),
+      messageText: firestoreString(messageText),
+      senderName: firestoreOptionalString(senderName),
+      senderPhone: firestoreOptionalString(senderPhone),
+      receivedAt: firestoreTimestamp(safeReceivedAt),
+      createdAt: firestoreTimestamp(now),
+      createdByUid: firestoreOptionalString(identity.uid),
+      rawPayload: firestoreString(safeJsonStringify({ source, eventId }).slice(0, MAX_RAW_LENGTH))
+    }) })
+  });
+
+  if (response.status === 409) {
+    return jsonResponse({ ok: true, duplicate: true, documentId, requestId });
+  }
+  if (!response.ok) throw appError("firestore_write_failed", 502, "تعذر حفظ الرسالة المشتركة");
+
+  const result = await processInboundMessage({
+    projectId, officeId, inboxDocumentId: documentId, messageText, senderName, senderPhone,
+    receivedAt: safeReceivedAt, source, accessToken, env
+  });
+  return jsonResponse({
+    ok: true, duplicate: false, documentId, officeId, kind: result.kind,
+    matches: result.matches, source, requestId
+  }, 201);
+}
+
+async function handleActivepiecesIntake(request, env, requestId) {
+  if (!isStagingFirebaseEnv(env)) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: [],
+      error: "not_found",
+      message: "المسار متاح في بيئة Staging فقط",
+      requestId
+    }, 404);
+  }
+
+  const auth = authorizeActivepieces(request, env);
+  if (!auth.ok) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: [],
+      error: "unauthorized",
+      message: "غير مصرح",
+      requestId
+    }, 401);
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const parsedBody = validateActivepiecesIntakeBody(body);
+  if (!parsedBody.ok) {
+    return jsonResponse({
+      success: false,
+      duplicate: false,
+      opportunityId: "",
+      missingFields: parsedBody.missingFields,
+      error: "invalid_body",
+      message: parsedBody.message,
+      requestId
+    }, 400);
+  }
+
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const officeId = parsedBody.officeId;
+  const messageText = composeActivepiecesMessage(parsedBody);
+  const senderPhone = parsedBody.extracted.contactPhone || "";
+  const documentId = `ap_${(await sha256Hex(`${officeId}|${parsedBody.idempotencyKey}`)).slice(0, 40)}`;
+  const now = new Date();
+  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
+  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compactFields({
+      schemaVersion: firestoreInteger(2),
+      officeId: firestoreString(officeId),
+      direction: firestoreString("inbound"),
+      source: firestoreString(ACTIVEPIECES_SOURCE),
+      channel: firestoreString("activepieces"),
+      status: firestoreString("pending_review"),
+      processingState: firestoreString("received"),
+      isProcessed: firestoreBoolean(false),
+      outboundEnabled: firestoreBoolean(false),
+      messageId: firestoreString(parsedBody.idempotencyKey),
+      messageType: firestoreString("text"),
+      messageText: firestoreString(messageText),
+      senderPhone: firestoreOptionalString(senderPhone),
+      receivedAt: firestoreTimestamp(now),
+      createdAt: firestoreTimestamp(now),
+      rawPayload: firestoreString(safeJsonStringify({
+        source: ACTIVEPIECES_SOURCE,
+        idempotencyKey: parsedBody.idempotencyKey,
+        type: parsedBody.type
+      }).slice(0, MAX_RAW_LENGTH))
+    }) })
+  });
+
+  if (response.status === 409) {
+    const existing = await getFirestoreDocument({
+      projectId, segments: ["offices", officeId, "inbox", documentId], accessToken, allowMissing: true
+    });
+    const data = existing ? firestoreFieldsToJs(existing.fields || {}) : {};
+    return jsonResponse({
+      success: true,
+      duplicate: true,
+      opportunityId: cleanText(data.opportunityId, 180),
+      missingFields: [],
+      requestId
+    });
+  }
+  if (!response.ok) throw appError("firestore_write_failed", 502, "تعذر حفظ الرسالة المشتركة");
+
+  const result = await processInboundMessage({
+    projectId,
+    officeId,
+    inboxDocumentId: documentId,
+    messageText,
+    senderName: "",
+    senderPhone,
+    receivedAt: now,
+    source: ACTIVEPIECES_SOURCE,
+    accessToken,
+    env
+  });
+  const opportunityId = result.opportunityId
+    || (result.kind === "unknown" ? "" : `opp_${documentId.replace(/^wa_/, "").slice(0, 32)}`);
+  const parsed = parseRealEstateMessage(messageText, senderPhone, "");
+  return jsonResponse({
+    success: true,
+    duplicate: Boolean(result.duplicateOpportunity),
+    opportunityId,
+    missingFields: Array.isArray(parsed.missing) ? parsed.missing : [],
+    requestId
+  }, result.duplicateOpportunity ? 200 : 201);
+}
+
+
+async function handlePublicIntakeMatching(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!intakeId || intakeId.length < 8) throw appError("intake_id_required", 400, "رقم الطلب غير صالح");
+  // Rate-limit before secret/Firestore work so abuse is stopped cheaply (Phase 8 / risk 4).
+  enforcePublicRouteRateLimit(request, {
+    route: "pipeline/public-intake",
+    officeId,
+    ...PUBLIC_RATE_LIMITS.PUBLIC_INTAKE
+  });
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
+  assertFirebaseSecrets(env);
+
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const intakeDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, allowMissing: true
+  });
+  if (!intakeDoc) throw appError("intake_not_found", 404, "لم يتم العثور على الطلب");
+
+  const intake = firestoreFieldsToJs(intakeDoc.fields || {});
+  if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
+  if (!["client", "owner"].includes(intake.kind)) throw appError("invalid_intake_kind", 400, "نوع الطلب غير صالح");
+  if (intake.status === "processed" && intake.processedRecordId) {
+    return jsonResponse({
+      ok: true, duplicate: true, officeId, intakeId,
+      recordId: intake.processedRecordId, opportunityId: intake.opportunityId || "",
+      matches: Number(intake.matchCount || 0), requestId
+    });
+  }
+
+  const now = new Date();
+  const parsed = structuredPublicIntakeToParsed(intake);
+  const readiness = evaluatePublicIntakeReadiness(intake, parsed);
+
+  const opportunityDocs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 120
+  });
+  const duplicateHit = findDuplicateOpportunity(
+    opportunityDocs.map((doc) => ({
+      id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+      data: firestoreFieldsToJs(doc.fields || {})
+    })),
+    {
+      officeId,
+      phone: parsed.phone || intake.phone,
+      contactType: intake.kind === "owner" ? "owner" : "buyer",
+      kind: intake.kind,
+      propertyType: parsed.propertyType || intake.propertyType,
+      city: parsed.city || intake.city,
+      district: parsed.district || intake.district
+    }
+  );
+
+  if (duplicateHit?.opportunityId) {
+    const existingId = duplicateHit.opportunityId;
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken,
+      fields: compactFields({
+        status: firestoreString("processed"),
+        opportunityId: firestoreString(existingId),
+        processedRecordId: firestoreString(existingId),
+        duplicateOpportunity: firestoreBoolean(true),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId: existingId, accessToken, now,
+      payload: {
+        type: "intake_link",
+        action: "duplicate_intake_linked",
+        statusBefore: getOpportunityLifecycleStatus(duplicateHit.data),
+        statusAfter: getOpportunityLifecycleStatus(duplicateHit.data),
+        createdBy: "system_public_intake"
+      }
+    });
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "opportunities", existingId], accessToken,
+      fields: compactFields({
+        updatedAt: firestoreTimestamp(now),
+        sourceIntakeId: firestoreOptionalString(intakeId),
+        lastIntakeLinkedAt: firestoreTimestamp(now)
+      })
+    });
+    return jsonResponse({
+      ok: true,
+      duplicate: true,
+      duplicateMessage: "توجد فرصة نشطة لهذا الرقم — تم تحديث الفرصة الحالية بدل إنشاء نسخة مكررة.",
+      officeId,
+      intakeId,
+      opportunityId: existingId,
+      recordId: existingId,
+      matches: 0,
+      requestId
+    });
+  }
+
+  const mediaPaths = Array.isArray(intake.mediaPaths)
+    ? intake.mediaPaths.map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 6)
+    : [];
+  const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
+  const prefix = targetCollection === "owners" ? "own" : "cli";
+  const recordId = `${prefix}_intake_${intakeId}`.slice(0, 180);
+  const opportunityId = `opp_intake_${intakeId}`.slice(0, 180);
+  const commonFields = parsedToFirestoreFields(parsed, {
+    officeId, inboxDocumentId: `public_${intakeId}`,
+    senderName: parsed.senderName, senderPhone: parsed.phone,
+    receivedAt: now, source: intake.source || "office_public_link", now
+  });
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, targetCollection, recordId], accessToken, fields: {
+    ...commonFields,
+    sourceIntakeId: firestoreString(intakeId),
+    city: firestoreString(parsed.city || DEFAULT_CITY),
+    name: firestoreOptionalString(parsed.senderName),
+    phone: firestoreOptionalString(parsed.phone),
+    details: firestoreOptionalString(intake.details),
+    amount: intake.amount ? firestoreInteger(intake.amount) : null,
+    mediaMissing: firestoreBoolean(Boolean(intake.mediaMissing)),
+    imageCount: firestoreInteger(Number(intake.imageCount || 0)),
+    hasVideo: firestoreBoolean(Boolean(intake.hasVideo))
+  }});
+
+  const origin = originSourceFromIntake({
+    officeId,
+    source: intake.source || (officeId === "platform" ? "platform_public" : "office_public_link")
+  });
+  const opportunityKind = parsed.kind === "owner_offer" ? "OFFER" : "REQUEST";
+  const routingReady = routerCompleteness({
+    opportunityKind,
+    purpose: readiness.purpose,
+    propertyType: parsed.propertyType || intake.propertyType,
+    city: parsed.city || intake.city || DEFAULT_CITY
+  });
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, fields: {
+    ...commonFields,
+    city: firestoreString(parsed.city || DEFAULT_CITY),
+    sourceIntakeId: firestoreString(intakeId),
+    sourceCollection: firestoreString(targetCollection),
+    sourceRecordId: firestoreString(recordId),
+    workflowStage: firestoreString("new"),
+    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
+    purpose: firestoreString(readiness.purpose),
+    advertiserRole: firestoreString(readiness.advertiserRole),
+    advertiserDisplayName: firestoreOptionalString(parsed.senderName),
+    advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
+    contactPhone: firestoreOptionalString(parsed.phone),
+    contactName: firestoreOptionalString(parsed.senderName),
+    matchingReadiness: firestoreString(readiness.matchingReadiness),
+    matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
+    opportunityKind: firestoreString(opportunityKind),
+    originSourceType: firestoreString(origin.type),
+    originSourceOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
+    assignedOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
+    assignmentReason: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
+      ? firestoreString(ASSIGNMENT_REASON.DIRECT_OFFICE_LINK)
+      : firestoreString(""),
+    routingStatus: firestoreString(
+      origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
+        ? ROUTING_STATUS.ASSIGNED
+        : (routingReady.ok ? ROUTING_STATUS.ROUTING : ROUTING_STATUS.NEEDS_COMPLETION)
+    ),
+    livingTaskId: firestoreString(livingTaskIdForOpportunity(opportunityId)),
+    mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
+    imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
+    hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
+  }});
+
+  const contactId = String(parsed.phone || "").replace(/\D/g, "");
+  if (contactId) {
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "contacts", contactId], accessToken, fields: {
+      officeId: firestoreString(officeId), fullName: firestoreOptionalString(parsed.senderName),
+      name: firestoreOptionalString(parsed.senderName), phone: firestoreOptionalString(parsed.phone),
+      lastRecordId: firestoreString(recordId), lastRecordType: firestoreString(targetCollection === "owners" ? "owner" : "client"),
+      updatedAt: firestoreTimestamp(now)
+    }});
+  }
+
+  const persistedOpportunity = {
+    id: opportunityId,
+    opportunityId,
+    officeId,
+    opportunityKind,
+    purpose: readiness.purpose,
+    propertyType: parsed.propertyType || intake.propertyType,
+    city: parsed.city || intake.city || DEFAULT_CITY,
+    district: parsed.district || intake.district,
+    budget: Number(parsed.priceMax || parsed.price || intake.amount || 0),
+    salePrice: Number(parsed.price || intake.amount || 0),
+    originSourceType: origin.type,
+    contactPhone: parsed.phone,
+    contactName: parsed.senderName
+  };
+  const routerResult = await afterPublicIntakePersisted(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunity: persistedOpportunity,
+    source: intake.source || origin.type
+  });
+
+  let matches = [];
+  if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC) {
+    matches = await runCanonicalMatchingAfterOpportunityPersist({
+      projectId, officeId, opportunityId, accessToken, env
+    });
+  }
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
+    status: firestoreString("processed"), processingState: firestoreString("processed"),
+    processedRecordId: firestoreString(recordId), opportunityId: firestoreString(opportunityId),
+    matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now),
+    originSourceType: firestoreString(origin.type),
+    routingStatus: firestoreString(routerResult?.routingStatus || ""),
+    ...lifecycleFieldsForIntake(intake, now),
+    lifecycleStatus: firestoreString(matches.length > 0 ? LIFECYCLE_STATUS.MATCHED : LIFECYCLE_STATUS.NEW)
+  }});
+
+  if (matches.length > 0) {
+    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
+  }
+  return jsonResponse({
+    ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
+    kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null,
+    originSourceType: origin.type,
+    routingStatus: routerResult?.routingStatus || "",
+    assignedOfficeId: routerResult?.assignedOfficeId || (origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? officeId : ""),
+    currentOfferedOfficeId: routerResult?.currentOfferedOfficeId || "",
+    livingTaskId: routerResult?.livingTaskId || livingTaskIdForOpportunity(opportunityId),
+    requestId
+  }, 201);
+}
+
+function opportunityRouterDeps(env, projectId, accessToken) {
+  return {
+    projectId,
+    accessToken,
+    env,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    patchFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs,
+    firestoreHelpers: {
+      ...operationsFirestoreHelpers(),
+      jsToFirestoreValue
+    },
+    sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+    runCanonicalMatchingAfterOpportunityPersist: (args) => runCanonicalMatchingAfterOpportunityPersist({
+      projectId,
+      accessToken,
+      env,
+      ...args
+    })
+  };
+}
+
+async function handleOpportunityRouterAccept(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاستلام غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = opportunityRouterDeps(env, projectId, accessToken);
+  await expireDuePlatformOffers(deps, { opportunityId });
+  const result = await acceptPlatformOffer(deps, { officeId, opportunityId });
+  if (!result.ok) {
+    const status = result.error === "lost_race" || result.error === "already_assigned" ? 409 : 400;
+    return jsonResponse({ ok: false, error: result.error, requestId }, status);
+  }
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterDecline(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const reason = cleanText(body.reason, 40);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات الاعتذار غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = opportunityRouterDeps(env, projectId, accessToken);
+  await expireDuePlatformOffers(deps, { opportunityId });
+  const result = await declinePlatformOffer(deps, { officeId, opportunityId, reason });
+  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterTick(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await expireDuePlatformOffers(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunityId: cleanText(body.opportunityId, 180)
+  });
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleCooperationSyncCoordination(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await syncCooperationCoordinationForOffice(partySessionHelpers(), {
+    projectId,
+    officeId,
+    accessToken
+  });
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+async function handleOpportunityRouterRate(request, env, requestId) {
+  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const raterId = cleanText(body.raterId, 180);
+  const raterRole = cleanText(body.raterRole || "party", 40);
+  const stars = Number(body.stars);
+  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "بيانات التقييم غير مكتملة");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await submitOfficeRating(opportunityRouterDeps(env, projectId, accessToken), {
+    officeId,
+    opportunityId,
+    raterId,
+    raterRole,
+    stars
+  });
+  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
+function structuredPublicIntakeToParsed(intake) {
+  const detailsParsed = parseRealEstateMessage(cleanText(intake.details, 12000), intake.phone, intake.name);
+  const isOwner = intake.kind === "owner";
+  const amount = Number(intake.amount || 0);
+  const propertyType = cleanText(intake.propertyType || detailsParsed.propertyType, 80);
+  const district = cleanText(intake.district || detailsParsed.district, 100);
+  const transactionType = cleanText(intake.transactionType || detailsParsed.transactionType || "sale", 20);
+  const phone = normalizeSaudiPhone(intake.phone || detailsParsed.phone);
+  const senderName = cleanText(intake.name || detailsParsed.senderName, 200);
+  const city = cleanText(intake.city || DEFAULT_CITY, 100);
+  const rawText = [isOwner ? "عرض مالك" : "طلب عميل", propertyType, district, intake.details].filter(Boolean).join(" — ");
+  const extractedCount = [propertyType, district, transactionType, amount, detailsParsed.area, phone, senderName].filter(Boolean).length;
+  const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 7) * 100));
+  return {
+    kind: isOwner ? "owner_offer" : "client_request",
+    rawText, normalizedText: normalizeArabicText(rawText), city, propertyType, district, transactionType,
+    price: isOwner ? amount : (detailsParsed.price || 0),
+    priceMin: isOwner ? amount : (detailsParsed.priceMin || 0),
+    priceMax: isOwner ? amount : (amount || detailsParsed.priceMax || detailsParsed.price || 0),
+    area: Number(intake.area || detailsParsed.area || 0), rooms: Number(intake.rooms || detailsParsed.rooms || 0),
+    bathrooms: Number(intake.bathrooms || detailsParsed.bathrooms || 0),
+    streetWidth: Number(intake.streetWidth || detailsParsed.streetWidth || 0), phone, senderName,
+    urgency: detailsParsed.urgency || "normal", financingReady: Boolean(intake.financingReady || detailsParsed.financingReady),
+    directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
+    completeness: Math.min(100, completeness), confidence: Math.max(70, Number(detailsParsed.confidence || 0)),
+    missing: [!propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
+      !amount && "price", !detailsParsed.area && "area", !phone && "phone", !senderName && "senderName"].filter(Boolean)
+  };
+}
+
+async function handleStatus(request, url, env, requestId) {
+  const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+
+  if (!hasFirebaseSecrets(env)) {
+    return jsonResponse({
+      ok: true,
+      connected: false,
+      usage: emptyUsage(),
+      configurationPending: true,
+      requestId
+    });
+  }
+
+  await authorizeOfficeRequest(request, env, officeId, "integration");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const integration = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "integrations", "whatsapp"],
+    accessToken,
+    allowMissing: true
+  });
+
+  const dayId = utcDayId(new Date());
+  const usageDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "usage", `whatsapp_${dayId}`],
+    accessToken,
+    allowMissing: true
+  });
+
+  const integrationData = integration ? firestoreFieldsToJs(integration.fields || {}) : {};
+  const usageData = usageDoc ? firestoreFieldsToJs(usageDoc.fields || {}) : {};
+  const inboundMessages = Number(usageData.inboundMessages || 0);
+  const estimatedWrites = Number(usageData.estimatedWrites || inboundMessages * ESTIMATED_WRITES_PER_MESSAGE);
+  const percent = Math.min(100, (estimatedWrites / DAILY_FREE_WRITES) * 100);
+
+  return jsonResponse({
+    ok: true,
+    connected: integrationData.status === "connected",
+    displayPhoneNumber: maskPhone(integrationData.displayPhoneNumber || ""),
+    outboundMessaging: false,
+    usage: {
+      inboundMessages,
+      estimatedWrites,
+      percent,
+      warnAtPercent: WARNING_PERCENT,
+      warning: percent >= WARNING_PERCENT,
+      isEstimate: true
+    },
+    requestId
+  });
+}
+
+function verifyWebhook(url, env) {
+  const mode = url.searchParams.get("hub.mode");
+  const token = url.searchParams.get("hub.verify_token");
+  const challenge = url.searchParams.get("hub.challenge") || "";
+
+  if (mode === "subscribe" && env.META_WEBHOOK_VERIFY_TOKEN && constantTimeEqual(token || "", env.META_WEBHOOK_VERIFY_TOKEN)) {
+    return new Response(challenge, {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
+    });
+  }
+
+  return new Response("Forbidden", { status: 403 });
+}
+
+async function receiveMetaWebhook(request, env, requestId) {
+  assertMetaWebhookSecrets(env);
+  assertFirebaseSecrets(env);
+
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-hub-signature-256") || "";
+  const valid = await verifyHmacSignature(rawBody, signature, env.META_APP_SECRET);
+  if (!valid) throw appError("invalid_signature", 401, "توقيع Meta غير صحيح");
+
+  let payload;
+  try { payload = JSON.parse(rawBody); }
+  catch (_) { throw appError("invalid_json", 400, "بيانات Webhook غير صالحة"); }
+
+  if (payload.object !== "whatsapp_business_account") {
+    return jsonResponse({ ok: true, ignored: true, requestId });
+  }
+
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  let received = 0;
+  let unlinked = 0;
+
+  for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
+    const wabaId = cleanText(entry && entry.id, 100);
+    for (const change of Array.isArray(entry && entry.changes) ? entry.changes : []) {
+      const value = change && change.value || {};
+      const phoneNumberId = cleanText(value.metadata && value.metadata.phone_number_id, 100);
+      const messages = Array.isArray(value.messages) ? value.messages : [];
+      if (!phoneNumberId || messages.length === 0) continue;
+
+      const mappingDoc = await getFirestoreDocument({
+        projectId,
+        segments: ["whatsapp_accounts", phoneNumberId],
+        accessToken,
+        allowMissing: true
+      });
+      const mapping = mappingDoc ? firestoreFieldsToJs(mappingDoc.fields || {}) : {};
+      const officeId = firestoreOfficeId(mapping.officeId);
+
+      if (!officeId || mapping.status !== "connected") {
+        unlinked += messages.length;
+        console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
+        continue;
+      }
+
+      const contactMap = new Map((Array.isArray(value.contacts) ? value.contacts : []).map(contact => [
+        String(contact && contact.wa_id || ""),
+        cleanText(contact && contact.profile && contact.profile.name, 200)
+      ]));
+
+      for (const message of messages) {
+        const result = await saveInboundMessage({
+          projectId,
+          officeId,
+          wabaId,
+          phoneNumberId,
+          displayPhoneNumber: cleanText(value.metadata && value.metadata.display_phone_number, 60),
+          message,
+          senderName: contactMap.get(String(message && message.from || "")) || "",
+          rawPayload: { entryId: wabaId, changeField: change.field, metadata: value.metadata, message },
+          accessToken
+        });
+        if (!result.duplicate) {
+          received += 1;
+          await incrementUsage({ projectId, officeId, accessToken });
+        }
+      }
+    }
+  }
+
+  return jsonResponse({ ok: true, received, unlinked, requestId });
+}
+
+async function completeEmbeddedSignup(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const required = ["META_APP_ID", "META_CONFIG_ID", "META_APP_SECRET"];
+  const missing = required.filter(key => !env[key]);
+  if (missing.length) throw appError("meta_not_configured", 503, "إعداد تطبيق Meta غير مكتمل");
+
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "integration");
+
+  const code = cleanText(body.code, 2000);
+  const wabaId = cleanText(body.wabaId, 120);
+  let phoneNumberId = cleanText(body.phoneNumberId, 120);
+  if (!code || !wabaId) {
+    throw appError("signup_data_missing", 400, "لم تكتمل بيانات الربط من Meta؛ أعد المحاولة");
+  }
+
+  const graphVersion = env.META_GRAPH_VERSION || GRAPH_VERSION;
+  const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
+  tokenUrl.searchParams.set("client_id", env.META_APP_ID);
+  tokenUrl.searchParams.set("client_secret", env.META_APP_SECRET);
+  tokenUrl.searchParams.set("code", code);
+
+  const tokenResponse = await fetch(tokenUrl.toString());
+  const tokenPayload = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || !tokenPayload.access_token) {
+    console.error("[iaqar-whatsapp] token exchange failed", tokenPayload);
+    throw appError("meta_token_exchange_failed", 502, "تعذر إكمال الربط مع Meta");
+  }
+  const accessToken = tokenPayload.access_token;
+
+  const subscribeResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  if (!subscribeResponse.ok) {
+    const detail = await subscribeResponse.text();
+    console.error("[iaqar-whatsapp] WABA subscribe failed", detail);
+    throw appError("waba_subscribe_failed", 502, "تعذر الاشتراك في رسائل الحساب");
+  }
+
+  let displayPhoneNumber = "";
+  if (!phoneNumberId) {
+    const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
+      headers: { "Authorization": `Bearer ${accessToken}` }
+    });
+    const phones = await phonesResponse.json().catch(() => ({}));
+    const first = Array.isArray(phones.data) ? phones.data[0] : null;
+    phoneNumberId = cleanText(first && first.id, 120);
+    displayPhoneNumber = cleanText(first && first.display_phone_number, 60);
+  }
+
+  if (!phoneNumberId) throw appError("phone_number_missing", 502, "لم يتم العثور على رقم واتساب المرتبط");
+
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const googleToken = await getGoogleAccessToken(env);
+  const now = new Date();
+
+  const existingAccount = await getFirestoreDocument({
+    projectId,
+    segments: ["whatsapp_accounts", phoneNumberId],
+    accessToken: googleToken,
+    allowMissing: true
+  });
+  if (existingAccount) {
+    const existing = firestoreFieldsToJs(existingAccount.fields || {});
+    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId)) {
+      throw appError("phone_already_linked", 409, "رقم واتساب مرتبط بمكتب آخر");
+    }
+  }
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["whatsapp_accounts", phoneNumberId],
+    accessToken: googleToken,
+    fields: {
+      officeId: firestoreString(officeId),
+      wabaId: firestoreString(wabaId),
+      phoneNumberId: firestoreString(phoneNumberId),
+      displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
+      status: firestoreString("connected"),
+      inboundOnly: firestoreBoolean(true),
+      outboundEnabled: firestoreBoolean(false),
+      connectedAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now),
+      connectedByUid: firestoreOptionalString(identity.uid)
+    }
+  });
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "integrations", "whatsapp"],
+    accessToken: googleToken,
+    fields: {
+      officeId: firestoreString(officeId),
+      wabaId: firestoreString(wabaId),
+      phoneNumberId: firestoreString(phoneNumberId),
+      displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
+      status: firestoreString("connected"),
+      inboundOnly: firestoreBoolean(true),
+      outboundEnabled: firestoreBoolean(false),
+      connectedAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now),
+      connectedByUid: firestoreOptionalString(identity.uid)
+    }
+  });
+
+  return jsonResponse({
+    ok: true,
+    connected: true,
+    officeId,
+    phoneNumberId,
+    displayPhoneNumber: maskPhone(displayPhoneNumber),
+    outboundMessaging: false,
+    requestId
+  });
+}
+
+async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, displayPhoneNumber, message, senderName, rawPayload, accessToken }) {
+  const messageId = cleanText(message && message.id, 200) || crypto.randomUUID();
+  const documentId = `wa_${(await sha256Hex(messageId)).slice(0, 40)}`;
+  const receivedAt = parseWhatsAppTimestamp(message && message.timestamp);
+  const messageType = cleanText(message && message.type, 50) || "unknown";
+  const messageText = extractMessageText(message);
+  const senderPhone = cleanText(message && message.from, 60);
+  const now = new Date();
+
+  const fields = compactFields({
+    schemaVersion: firestoreInteger(2),
+    officeId: firestoreString(officeId),
+    direction: firestoreString("inbound"),
+    source: firestoreString("whatsapp_cloud_api"),
+    channel: firestoreString("whatsapp_business"),
+    status: firestoreString("pending_review"),
+    processingState: firestoreString("received"),
+    isProcessed: firestoreBoolean(false),
+    outboundEnabled: firestoreBoolean(false),
+    messageId: firestoreString(messageId),
+    messageType: firestoreString(messageType),
+    messageText: firestoreOptionalString(messageText),
+    senderName: firestoreOptionalString(senderName),
+    senderPhone: firestoreOptionalString(senderPhone),
+    wabaId: firestoreString(wabaId),
+    phoneNumberId: firestoreString(phoneNumberId),
+    displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
+    receivedAt: firestoreTimestamp(receivedAt),
+    createdAt: firestoreTimestamp(now),
+    rawPayload: firestoreString(safeJsonStringify(rawPayload).slice(0, MAX_RAW_LENGTH))
+  });
+
+  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
+  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields })
+  });
+
+  if (response.status === 409) return { duplicate: true, documentId };
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("[iaqar-whatsapp] Firestore write failed", response.status, detail);
+    throw appError("firestore_write_failed", 502, "تعذر حفظ رسالة واتساب");
+  }
+
+  try {
+    await processInboundMessage({
+      projectId, officeId, inboxDocumentId: documentId, messageText,
+      senderName, senderPhone, receivedAt, accessToken
+    });
+  } catch (error) {
+    console.error("[iaqar-workflow] inbound processing failed", {
+      officeId, documentId, code: error && error.code, message: error && error.message
+    });
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", documentId],
+      accessToken,
+      fields: {
+        processingState: firestoreString("failed"),
+        processingError: firestoreString(cleanText(error && error.code || "processing_failed", 120)),
+        updatedAt: firestoreTimestamp(new Date())
+      }
+    }).catch(() => {});
+  }
+  return { duplicate: false, documentId };
+}
+
+
+async function processInboundMessage({ projectId, officeId, inboxDocumentId, messageText, senderName, senderPhone, receivedAt, source = "whatsapp_cloud_api", accessToken, env = null }) {
+  const parsed = parseRealEstateMessage(messageText, senderPhone, senderName);
+  const now = new Date();
+
+  if (parsed.kind === "unknown") {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", inboxDocumentId],
+      accessToken,
+      fields: {
+        processingState: firestoreString("needs_review"),
+        status: firestoreString("pending_review"),
+        isProcessed: firestoreBoolean(false),
+        extractedJson: firestoreString(JSON.stringify(parsed)),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    return { kind: "unknown", matches: 0 };
+  }
+
+  const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
+  const contactType = parsed.kind === "owner_offer" ? "owner" : "buyer";
+  const existingOpportunity = await findActiveOpportunityByPhone({
+    projectId,
+    officeId,
+    phone: parsed.phone || senderPhone,
+    contactType,
+    accessToken,
+    criteria: {
+      kind: parsed.kind === "owner_offer" ? "owner" : "client",
+      propertyType: parsed.propertyType,
+      city: parsed.city,
+      district: parsed.district
+    }
+  });
+  if (existingOpportunity) {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", inboxDocumentId],
+      accessToken,
+      fields: {
+        processingState: firestoreString("processed"),
+        status: firestoreString("processed"),
+        isProcessed: firestoreBoolean(true),
+        classifiedAs: firestoreString(parsed.kind),
+        extractedJson: firestoreString(JSON.stringify(parsed)),
+        sourceCollection: firestoreString(targetCollection),
+        sourceRecordId: firestoreString(existingOpportunity.data.sourceRecordId || ""),
+        opportunityId: firestoreString(existingOpportunity.opportunityId),
+        duplicateOpportunity: firestoreBoolean(true),
+        processedAt: firestoreTimestamp(now),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    return { kind: parsed.kind, matches: 0, duplicateOpportunity: true, opportunityId: existingOpportunity.opportunityId };
+  }
+
+  const recordId = `${parsed.kind === "owner_offer" ? "own" : "cli"}_${inboxDocumentId.replace(/^wa_/, "").slice(0, 32)}`;
+  const commonFields = parsedToFirestoreFields(parsed, {
+    officeId, inboxDocumentId, senderName, senderPhone, receivedAt, source, now
+  });
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, targetCollection, recordId],
+    accessToken,
+    fields: commonFields
+  });
+
+  const opportunityId = `opp_${inboxDocumentId.replace(/^wa_/, "").slice(0, 32)}`;
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    fields: {
+      ...commonFields,
+      sourceCollection: firestoreString(targetCollection),
+      sourceRecordId: firestoreString(recordId),
+      opportunityKind: firestoreString(parsed.kind === "owner_offer" ? "OFFER" : "REQUEST"),
+      workflowStage: firestoreString("new"),
+      priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2)
+    }
+  });
+
+  const matches = await runCanonicalMatchingAfterOpportunityPersist({
+    projectId, officeId, opportunityId, accessToken, env
+  });
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "inbox", inboxDocumentId],
+    accessToken,
+    fields: {
+      processingState: firestoreString("processed"),
+      status: firestoreString("processed"),
+      isProcessed: firestoreBoolean(true),
+      classifiedAs: firestoreString(parsed.kind),
+      extractedJson: firestoreString(JSON.stringify(parsed)),
+      sourceCollection: firestoreString(targetCollection),
+      sourceRecordId: firestoreString(recordId),
+      opportunityId: firestoreString(opportunityId),
+      matchCount: firestoreInteger(matches.length),
+      processedAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now)
+    }
+  });
+
+  if (matches.length > 0) {
+    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
+  }
+  return { kind: parsed.kind, matches: matches.length };
+}
+
+function hasExplicitRequestCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)طلب(?:\s|$)/.test(padded)
+    || /(?:^|\s)(مطلوب|ابغى|أبغى|احتاج|أحتاج|يبحث|نبحث|نرغب|ارغب|أرغب)(?:\s|$)/.test(padded);
+}
+
+function hasExplicitOfferCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)(عرض|معروض|متوفر|متاح|عندي|لدينا|يوجد)(?:\s|$)/.test(padded);
+}
+
+function countDistinctKeywordMatches(text, words) {
+  const seen = new Set();
+  let score = 0;
+  for (const word of words) {
+    const normalized = normalizeArabicText(word);
+    if (!normalized || seen.has(normalized)) continue;
+    if (text.includes(normalized)) {
+      seen.add(normalized);
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function resolveParsedOpportunityKind(text) {
+  const explicitRequest = hasExplicitRequestCue(text);
+  const explicitOffer = hasExplicitOfferCue(text);
+  if (explicitRequest && !explicitOffer) {
+    return { kind: "client_request", offerScore: 0, requestScore: 1 };
+  }
+  if (explicitOffer && !explicitRequest) {
+    return { kind: "owner_offer", offerScore: 1, requestScore: 0 };
+  }
+
+  const offerWords = [
+    "للبيع", "للإيجار", "للايجار", "معروض", "عرض", "متوفر", "متاح", "مالك", "مباشر",
+    "عندي", "لدينا", "يوجد", "للتمليك", "للتنازل"
+  ];
+  const requestWords = [
+    "مطلوب", "ابغى", "أبغى", "احتاج", "أحتاج", "يبحث", "نبحث", "طلب", "نرغب",
+    "ارغب", "أرغب", "عميل", "مشتري", "مستأجر"
+  ];
+  const offerScore = countDistinctKeywordMatches(text, offerWords);
+  const requestScore = countDistinctKeywordMatches(text, requestWords);
+  const kind = offerScore === 0 && requestScore === 0
+    ? "unknown"
+    : (offerScore > requestScore ? "owner_offer" : "client_request");
+  return { kind, offerScore, requestScore };
+}
+
+function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
+  const raw = cleanText(input, 12000);
+  const text = normalizeArabicText(raw);
+
+  const { kind, offerScore, requestScore } = resolveParsedOpportunityKind(text);
+
+  // Keep the most-specific types first so "أرض تجارية" is not reduced to "أرض".
+  const propertyTypes = [
+    ["أرض تجارية", ["ارض تجارية", "أرض تجارية", "ارض تجاري", "أرض تجاري"]],
+    ["أرض سكنية", ["ارض سكنية", "أرض سكنية", "ارض سكني", "أرض سكني"]],
+    ["شقة", ["شقة", "شقق", "شقه"]],
+    ["فيلا", ["فيلا", "فله", "فلل", "فيلة"]],
+    ["دور", ["دور", "دور كامل"]],
+    ["دوبلكس", ["دوبلكس", "دوبليكس", "دوبلكسات"]],
+    ["عمارة", ["عمارة", "عماره", "عماير"]],
+    ["أرض", ["ارض", "أرض"]],
+    ["محل", ["محل", "معرض", "دكان"]],
+    ["مكتب", ["مكتب", "مكاتب"]],
+    ["استراحة", ["استراحة", "استراحه"]],
+    ["مزرعة", ["مزرعة", "مزرعه"]],
+    ["مستودع", ["مستودع", "مخزن"]],
+    ["قصر", ["قصر", "قصور"]],
+    ["بيت شعبي", ["بيت شعبي", "منزل شعبي"]],
+    ["مجمع سكني", ["مجمع سكني"]],
+    ["مجمع تجاري", ["مجمع تجاري"]],
+    ["فندق", ["فندق"]],
+    ["شاليه", ["شاليه", "شاليهات"]]
+  ];
+  let propertyType = "";
+  for (const [label, words] of propertyTypes) {
+    if (words.some(word => containsArabicPhrase(text, word))) { propertyType = label; break; }
+  }
+
+  const districts = [
+    "أبيار علي","أبو بريقاء","أبو سدر","أحد","الإسكان","الأزهري","الأصيفرين","البدراني","البركة","البيداء",
+    "الجامعة","الجابرة","الجصة","الجماوات","الجرف","الجمعة","الحرم الشريف","الحساء","الحديقة","الخاتم",
+    "الخالدية","الدفاع","الدعيثة","الدويمة","الراية","الربوة","الرانوناء","الرمانة","الروابي","السحمان",
+    "السد","السلام","السكب","السيح","الشريبات","الشهباء","الصادقية","الصويدرة","العالية","العريض",
+    "العزيزية","العصبة","العهن","العنبرية","العيون","الغراء","الفيصلية","الفريش","الفتح","القصواء",
+    "القبلتين","المبعوث","المطار","المصانع","المستراح","المتنزه","المزيين","المغيسلة","المفرحات","المهدية",
+    "المناخة","الملك فهد","النخيل","النصر","النقاء","النقمى","النواعم","الهدراء","الهجرة","الوبرة",
+    "باقدو","بضاعة","بني بياضة","بني حارثة","بني ظفر","بني النجار","تلعة الهبوب","جبل أحد","جبل عير","جماء أم خالد",
+    "جشم","حرة الوبرة","حمراء الأسد","حزرة الجنوب","ذو الحليفة","رهط","سد الغابة","سكة الحديد","سيد الشهداء","شوران",
+    "طيبة","عروة","عين الخيف","قربان","نبلاء","وادي العقيق","وادي مذينب","وادي مهزور","ورقان","وعيرة"
+  ];
+  const district = districts.find(name => containsArabicPhrase(text, name)) || extractDistrictAfterKeyword(raw);
+
+  const rentWords = /ايجار|للايجار|استئجار|مستاجر|مستأجر|اجار/;
+  const saleWords = /بيع|شراء|تمليك|للبيع|للتمليك|مشتري/;
+  const transactionType = rentWords.test(text) ? "rent" : (saleWords.test(text) ? "sale" : "");
+
+  const priceRange = extractMoneyRange(text);
+  const price = priceRange.price || extractMoney(text);
+  const priceMin = priceRange.min || price;
+  const priceMax = priceRange.max || price;
+  const area = extractArea(text);
+  const rooms = extractNumberNear(text, ["غرف", "غرفة", "غرفه"], 1, 30);
+  const streetWidth = extractNumberNear(text, ["عرض الشارع", "شارع"], 4, 100);
+  const phone = normalizeSaudiPhone(extractPhone(raw) || fallbackPhone);
+  const senderName = extractSenderName(raw) || cleanText(fallbackSenderName, 200);
+  const urgency = /عاجل|مستعجل|اليوم|فورا|فوراً|باسرع وقت|بأسرع وقت/.test(text)
+    ? "high"
+    : (/قريب|خلال اسبوع|خلال أسبوع|هذا الاسبوع|هذا الأسبوع/.test(text) ? "medium" : "normal");
+  const financingReady = /كاش|جاهز|تمويل جاهز|موافقه بنكيه|موافقة بنكية|موافقة تمويل|المبلغ جاهز/.test(text);
+  const directOwner = /مالك مباشر|من المالك|مباشر من المالك|صاحب العقار/.test(text);
+  const furnished = /مفروش|مؤثث/.test(text);
+
+  const extractedCount = [propertyType, district, transactionType, price, area, phone, senderName].filter(Boolean).length;
+  const completeness = Math.round((extractedCount / 7) * 100);
+  const confidence = Math.min(100, Math.round((Math.max(offerScore, requestScore) * 18) + (completeness * 0.72)));
+
+  return {
+    kind, rawText: raw, normalizedText: text, city: DEFAULT_CITY, propertyType, district, transactionType,
+    price: price || 0, priceMin: priceMin || 0, priceMax: priceMax || 0, area: area || 0,
+    rooms: rooms || 0, streetWidth: streetWidth || 0, phone, senderName, urgency, financingReady,
+    directOwner, furnished, offerScore, requestScore, completeness, confidence,
+    missing: [
+      !propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
+      !price && "price", !area && "area", !phone && "phone", !senderName && "senderName"
+    ].filter(Boolean)
+  };
+}
+
+function normalizeArabicText(value) {
+  return String(value || "").toLowerCase()
+    .replace(/[إأآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/[ًٌٍَُِّْـ]/g, "").replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+    .replace(/[,،]/g, " ").replace(/\s+/g, " ").trim();
+}
+function containsArabicPhrase(text, phrase) {
+  const normalized = normalizeArabicText(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)${normalized}(?:$|\\s)`).test(` ${text} `);
+}
+function countKeywords(text, words) { return words.reduce((n, w) => n + (text.includes(normalizeArabicText(w)) ? 1 : 0), 0); }
+function extractDistrictAfterKeyword(raw) {
+  const m = String(raw || "").match(/(?:حي|حى)\s+([\u0600-\u06FF ]{2,40})/);
+  return m ? cleanText(m[1].split(/(?:بسعر|بحدود|ميزانية|الميزانية|مساحة|مطلوب|للبيع|للإيجار|للايجار|شارع|غرف)/)[0], 60) : "";
+}
+function extractSenderName(raw) {
+  const source = String(raw || "");
+  const patterns = [
+    /(?:الاسم|اسم المرسل|اسم العميل|اسم المالك)\s*[:：-]\s*([\u0600-\u06FFa-zA-Z ]{2,60})/i,
+    /(?:تواصل مع|للتواصل مع)\s+([\u0600-\u06FFa-zA-Z ]{2,40})(?=\s+(?:على|جوال|رقم|05|\+966)|$)/i
+  ];
+  for (const pattern of patterns) {
+    const m = source.match(pattern);
+    if (m) return cleanText(m[1].split(/\n|،|,/)[0], 80);
+  }
+  return "";
+}
+function parseMoneyToken(numberText, unit) {
+  const n = Number(String(numberText || "").replace(/,/g, ""));
+  if (!Number.isFinite(n)) return 0;
+  if (/مليون|ملايين/.test(unit || "")) return Math.round(n * 1000000);
+  if (/الف|ألف|الاف|آلاف/.test(unit || "")) return Math.round(n * 1000);
+  return Math.round(n);
+}
+function extractMoney(text) {
+  // Handles forms such as: مليون و200 ألف, 1.2 مليون, 650 ألف.
+  const compound = text.match(/(\d+(?:\.\d+)?)?\s*(مليون|ملايين)\s*(?:و\s*)?(\d+(?:\.\d+)?)?\s*(الف|ألف|الاف|آلاف)?/);
+  if (compound && (compound[1] || compound[3])) {
+    return parseMoneyToken(compound[1] || "1", compound[2]) + parseMoneyToken(compound[3] || "0", compound[4]);
+  }
+  const patterns = [
+    /(\d+(?:\.\d+)?)\s*(مليون|ملايين)/,
+    /(\d+(?:\.\d+)?)\s*(الف|ألف|الاف|آلاف)/,
+    /(?:بسعر|بحدود|الميزانيه|ميزانيه|السعر)\s*(?:الى|إلى|حدود)?\s*(\d[\d,.]*)/
+  ];
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (!m) continue;
+    return parseMoneyToken(m[1], m[2]);
+  }
+  const candidates = [...text.matchAll(/\b(\d{5,9})\b/g)].map(m => Number(m[1])).filter(n => n >= 20000 && n <= 100000000);
+  return candidates[0] || 0;
+}
+function extractMoneyRange(text) {
+  const m = String(text || "").match(/(\d+(?:\.\d+)?)\s*(الف|ألف|الاف|آلاف|مليون|ملايين)?\s*(?:الى|الي|إلى|-)\s*(\d+(?:\.\d+)?)\s*(الف|ألف|الاف|آلاف|مليون|ملايين)?/);
+  if (!m) return { min: 0, max: 0, price: 0 };
+  const a = parseMoneyToken(m[1], m[2] || m[4]);
+  const b = parseMoneyToken(m[3], m[4] || m[2]);
+  const min = Math.min(a, b), max = Math.max(a, b);
+  return { min, max, price: Math.round((min + max) / 2) };
+}
+function extractArea(text) {
+  const patterns = [
+    /(?:مساحه|المساحه)\s*(\d{2,6})\s*(?:متر|م2|م²)?/,
+    /(\d{2,6})\s*(?:متر مربع|متر|م2|م²)/
+  ];
+  for (const p of patterns) {
+    const m = text.match(p); const n = m ? Number(m[1]) : 0;
+    if (n >= 20 && n <= 200000) return n;
+  }
+  return 0;
+}
+function extractNumberNear(text, keywords, min, max) {
+  for (const keyword of keywords) {
+    const k = normalizeArabicText(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const patterns = [new RegExp(`(\\d{1,6})\\s*${k}`), new RegExp(`${k}\\s*(\\d{1,6})`)];
+    for (const p of patterns) { const m = text.match(p); const n = m ? Number(m[1]) : 0; if (n >= min && n <= max) return n; }
+  }
+  return 0;
+}
+function extractPhone(raw) {
+  const source = String(raw || "").replace(/[\s()-]/g, "");
+  const m = source.match(/(?:\+?966|00966|0)?5\d{8}/);
+  return m ? m[0] : "";
+}
+function normalizeSaudiPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (/^009665\d{8}$/.test(digits)) return `+${digits.slice(2)}`;
+  if (/^9665\d{8}$/.test(digits)) return `+${digits}`;
+  if (/^05\d{8}$/.test(digits)) return `+966${digits.slice(1)}`;
+  if (/^5\d{8}$/.test(digits)) return `+966${digits}`;
+  return cleanText(value, 60);
+}
+
+function parsedToFirestoreFields(parsed, context) {
+  const normalizedSource = normalizeOpportunitySource(context.source || "whatsapp_cloud_api");
+  const contactType = parsed.kind === "owner_offer" ? "owner" : (parsed.kind === "client_request" ? "buyer" : "unknown");
+  return compactFields({
+    schemaVersion: firestoreInteger(3), officeId: firestoreString(context.officeId),
+    source: firestoreString(context.source || "whatsapp_cloud_api"),
+    normalizedSource: firestoreString(normalizedSource),
+    sourceInboxId: firestoreString(context.inboxDocumentId),
+    recordType: firestoreString(parsed.kind), status: firestoreString("active"), workflowStage: firestoreString("new"),
+    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
+    contactType: firestoreString(contactType),
+    contactName: firestoreOptionalString(parsed.senderName || context.senderName),
+    contactPhone: firestoreOptionalString(parsed.phone || context.senderPhone),
+    lastContactAt: null,
+    nextFollowUpAt: null,
+    lastContactMethod: null,
+    lastWhatsAppAt: null,
+    lastWhatsAppOpenedAt: null,
+    closureReason: null,
+    closedAt: null,
+    archivedAt: null,
+    lifecycleUpdatedAt: firestoreTimestamp(context.now),
+    lifecycleUpdatedBy: firestoreOptionalString(context.lifecycleUpdatedBy || ""),
+    rawText: firestoreString(parsed.rawText), city: firestoreOptionalString(parsed.city || DEFAULT_CITY), propertyType: firestoreOptionalString(parsed.propertyType),
+    district: firestoreOptionalString(parsed.district), transactionType: firestoreOptionalString(parsed.transactionType),
+    price: parsed.price ? firestoreInteger(parsed.price) : null,
+    priceMin: parsed.priceMin ? firestoreInteger(parsed.priceMin) : null,
+    priceMax: parsed.priceMax ? firestoreInteger(parsed.priceMax) : null,
+    area: parsed.area ? firestoreInteger(parsed.area) : null,
+    rooms: parsed.rooms ? firestoreInteger(parsed.rooms) : null,
+    streetWidth: parsed.streetWidth ? firestoreInteger(parsed.streetWidth) : null,
+    urgency: firestoreString(parsed.urgency || "normal"), financingReady: firestoreBoolean(Boolean(parsed.financingReady)),
+    directOwner: firestoreBoolean(Boolean(parsed.directOwner)), furnished: firestoreBoolean(Boolean(parsed.furnished)),
+    confidence: firestoreInteger(parsed.confidence || 0), completeness: firestoreInteger(parsed.completeness),
+    missingFieldsJson: firestoreString(JSON.stringify(parsed.missing)), receivedAt: firestoreTimestamp(context.receivedAt),
+    createdAt: firestoreTimestamp(context.now), updatedAt: firestoreTimestamp(context.now)
+  });
+}
+
+function lifecycleFieldsForIntake(intake = {}, now = new Date()) {
+  const isOwner = intake.kind === "owner";
+  const normalizedSource = normalizeOpportunitySource(intake.source || "office_public_link");
+  return compactFields({
+    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
+    normalizedSource: firestoreString(normalizedSource),
+    contactType: firestoreString(isOwner ? "owner" : "buyer"),
+    contactName: firestoreOptionalString(intake.name),
+    contactPhone: firestoreOptionalString(intake.phone),
+    lifecycleUpdatedAt: firestoreTimestamp(now)
+  });
+}
+
+async function findActiveOpportunityByPhone({ projectId, officeId, phone, contactType, accessToken, criteria = {} }) {
+  const digits = normalizeSaudiPhoneForWhatsApp(phone);
+  if (!digits) return null;
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 80
+  });
+  const searchCriteria = {
+    officeId,
+    phone,
+    contactType,
+    ...criteria
+  };
+  for (const doc of docs) {
+    const data = firestoreFieldsToJs(doc.fields || {});
+    if (!officeIdsEquivalent(data.officeId, officeId)) continue;
+    const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || data.advertiserPhoneNormalized || "");
+    if (docPhone !== digits) continue;
+    if (!matchesDuplicateCriteria(data, searchCriteria)) continue;
+    const docId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    return { opportunityId: docId, data };
+  }
+  return null;
+}
+
+async function addOpportunityCommunication({ projectId, officeId, opportunityId, payload, accessToken, now = new Date() }) {
+  const communicationId = `comm_${(await sha256Hex(`${opportunityId}|${now.toISOString()}|${payload.action || "event"}`)).slice(0, 24)}`;
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId, "communications", communicationId],
+    accessToken,
+    fields: compactFields({
+      officeId: firestoreString(officeId),
+      opportunityId: firestoreString(opportunityId),
+      type: firestoreString(payload.type || "whatsapp"),
+      action: firestoreString(payload.action || "opened"),
+      result: firestoreOptionalString(payload.result || payload.contactOutcome || ""),
+      statusBefore: firestoreOptionalString(payload.statusBefore || ""),
+      statusAfter: firestoreOptionalString(payload.statusAfter || ""),
+      createdAt: firestoreTimestamp(now),
+      createdBy: firestoreOptionalString(payload.createdBy || "")
+    })
+  });
+  return communicationId;
+}
+
+async function resolveOpportunityRecord({ projectId, officeId, body, accessToken }) {
+  const recordType = cleanText(body.recordType || "opportunity", 30);
+  const recordId = cleanText(body.recordId || body.opportunityId, 180);
+  if (!recordId) throw appError("record_id_required", 400, "معرّف الفرصة مطلوب");
+
+  if (recordType === "intake") {
+    const intakeDoc = await getFirestoreDocument({
+      projectId, segments: ["offices", officeId, "publicIntake", recordId], accessToken
+    });
+    const intake = firestoreFieldsToJs(intakeDoc.fields || {});
+    if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
+    return {
+      collection: "publicIntake",
+      recordId,
+      data: intake,
+      opportunityId: intake.opportunityId || "",
+      contactType: intake.kind === "owner" ? "owner" : "buyer"
+    };
+  }
+
+  const opportunityDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken
+  });
+  const data = firestoreFieldsToJs(opportunityDoc.fields || {});
+  if (!officeIdsEquivalent(data.officeId, officeId)) throw appError("office_mismatch", 403, "الفرصة لا تتبع هذا المكتب");
+  return {
+    collection: "opportunities",
+    recordId,
+    data,
+    opportunityId: recordId,
+    contactType: data.contactType || (data.recordType === "owner_offer" ? "owner" : "buyer")
+  };
+}
+
+async function handleOpportunityLifecycle(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const action = cleanText(body.action, 60);
+  if (!officeId || !action) throw appError("lifecycle_data_missing", 400, "بيانات دورة الفرصة غير مكتملة");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date();
+  const resolved = await resolveOpportunityRecord({ projectId, officeId, body, accessToken });
+  const statusBefore = getOpportunityLifecycleStatus(resolved.data);
+  const collection = resolved.collection;
+  const recordId = resolved.recordId;
+  const opportunityId = resolved.opportunityId || recordId;
+  const fields = { officeId: firestoreString(officeId), updatedAt: firestoreTimestamp(now), lifecycleUpdatedAt: firestoreTimestamp(now), lifecycleUpdatedBy: firestoreString(identity.uid) };
+
+  if (statusBefore === LIFECYCLE_STATUS.ARCHIVED && ["close_opportunity", "close_won", "close_lost", "archive"].includes(action)) {
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      lifecycleStatus: statusBefore,
+      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[statusBefore] || statusBefore,
+      idempotent: true,
+      requestId
+    });
+  }
+
+  if (action === "update_status") {
+    const next = cleanText(body.lifecycleStatus, 40);
+    if (!LIFECYCLE_STATUS_LABELS[next]) throw appError("lifecycle_status_invalid", 400, "حالة الفرصة غير صحيحة");
+    fields.lifecycleStatus = firestoreString(next);
+    if (next === LIFECYCLE_STATUS.CONTACTED) {
+      fields.lastContactAt = firestoreTimestamp(now);
+      fields.lastContactMethod = firestoreOptionalString(body.lastContactMethod || "manual");
+    }
+    if (next === LIFECYCLE_STATUS.FOLLOW_UP && body.nextFollowUpAt) {
+      const followUp = new Date(body.nextFollowUpAt);
+      if (!Number.isNaN(followUp.getTime())) fields.nextFollowUpAt = firestoreTimestamp(followUp);
+    }
+  } else if (action === "confirm_contact") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+    fields.lastContactAt = firestoreTimestamp(now);
+    fields.lastContactMethod = firestoreString(cleanText(body.lastContactMethod || "whatsapp", 30));
+  } else if (action === "set_followup") {
+    return scheduleOpportunityFollowUp({
+      projectId,
+      officeId,
+      opportunityId,
+      collection,
+      recordId,
+      opportunity: resolved.data,
+      body,
+      identity,
+      accessToken,
+      now,
+      statusBefore,
+      requestId
+    });
+  } else if (action === "cancel_followup") {
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "لا يوجد موعد متابعة لإلغائه");
+    const cancelled = {
+      ...existingFollowUp,
+      status: FOLLOWUP_STATUSES.cancelled,
+      updatedBy: identity.uid,
+      updatedAt: now.toISOString()
+    };
+    const farFuture = new Date("2099-01-01T00:00:00.000Z");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedBy: firestoreString(identity.uid),
+        followUp: jsToFirestoreValue(cancelled),
+        followUpReminderAt: firestoreTimestamp(farFuture)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_cancelled",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({ ok: true, opportunityId, followUp: cancelled, requestId });
+  } else if (action === "complete_followup") {
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "لا يوجد موعد متابعة");
+    const completed = {
+      ...existingFollowUp,
+      status: FOLLOWUP_STATUSES.completed,
+      updatedBy: identity.uid,
+      updatedAt: now.toISOString()
+    };
+    const farFuture = new Date("2099-01-01T00:00:00.000Z");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedAt: firestoreTimestamp(now),
+        lifecycleUpdatedBy: firestoreString(identity.uid),
+        followUp: jsToFirestoreValue(completed),
+        followUpReminderAt: firestoreTimestamp(farFuture),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.followUpComplete, now)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_completed",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      followUp: completed,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.followUpComplete, now.toISOString()),
+      requestId
+    });
+  } else if (action === "followup_outcome") {
+    const outcome = cleanText(body.outcome || body.followUpOutcome, 40);
+    const allowed = new Set(["confirmed", "reschedule", "no_response"]);
+    if (!allowed.has(outcome)) throw appError("followup_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const updatedFollowUp = existingFollowUp
+      ? { ...existingFollowUp, confirmationOutcome: outcome, updatedAt: now.toISOString() }
+      : null;
+    const outcomeKey = followUpOutcomeActionKey(outcome);
+    const progressFields = brokerProgressFirestoreFields(resolved.data, outcomeKey, now);
+    if (updatedFollowUp) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          followUp: jsToFirestoreValue(updatedFollowUp),
+          ...progressFields
+        })
+      });
+    } else {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...progressFields
+        })
+      });
+    }
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_outcome_recorded",
+        result: outcome,
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      outcome,
+      followUp: updatedFollowUp,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, outcomeKey, now.toISOString()),
+      requestId
+    });
+  } else if (action === "followup_confirmation_opened") {
+    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const updatedFollowUp = recipientRole && existingFollowUp
+      ? mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now)
+      : existingFollowUp;
+    const whatsappKey = followUpWhatsAppActionKey(recipientRole);
+    const progressFields = whatsappKey
+      ? brokerProgressFirestoreFields(resolved.data, whatsappKey, now)
+      : {};
+    if (updatedFollowUp || whatsappKey) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...(updatedFollowUp ? { followUp: jsToFirestoreValue(updatedFollowUp) } : {}),
+          ...progressFields
+        })
+      });
+    }
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "followup",
+        action: "followup_confirmation_opened",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid,
+        result: recipientRole || ""
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      followUp: updatedFollowUp,
+      brokerActionProgress: whatsappKey
+        ? mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString())
+        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
+      requestId
+    });
+  } else if (action === "close_won") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || "تمت بنجاح", 200));
+  } else if (action === "close_lost") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || body.reason || "لم تتم", 200));
+  } else if (action === "archive") {
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
+    fields.archivedAt = firestoreTimestamp(now);
+  } else if (action === "whatsapp_opened") {
+    fields.lastWhatsAppOpenedAt = firestoreTimestamp(now);
+    fields.lastWhatsAppAt = firestoreTimestamp(now);
+    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
+    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
+    const whatsappKey = recipientRole
+      ? followUpWhatsAppActionKey(recipientRole)
+      : BROKER_ACTION.contactWhatsApp;
+    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, whatsappKey, now));
+    if (recipientRole && existingFollowUp) {
+      const updatedFollowUp = mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now);
+      fields.followUp = jsToFirestoreValue(updatedFollowUp);
+    }
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: { type: "whatsapp", action: "whatsapp_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
+    });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString()),
+      requestId
+    });
+  } else if (action === "listing_shared_whatsapp") {
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "listing_share",
+        action: "listing_shared_whatsapp",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now.toISOString()),
+      requestId
+    });
+  } else if (action === "listing_copied") {
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubCopyListing, now)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "listing_share",
+        action: "listing_copied",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubCopyListing, now.toISOString()),
+      requestId
+    });
+  } else if (action === "party_action") {
+    const partyAction = cleanText(body.partyAction, 40);
+    const actionKey = partyActionKey(partyAction);
+    if (actionKey) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          updatedAt: firestoreTimestamp(now),
+          ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
+        })
+      });
+    }
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "party",
+        action: partyAction || "party_action",
+        statusBefore,
+        statusAfter: statusBefore,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      partyAction,
+      brokerActionProgress: actionKey
+        ? mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString())
+        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
+      requestId
+    });
+  } else if (action === "call_opened") {
+    fields.lastCallOpenedAt = firestoreTimestamp(now);
+    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.contactCall, now));
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: { type: "call", action: "call_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
+    });
+    return jsonResponse({
+      ok: true,
+      lifecycleStatus: statusBefore,
+      opportunityId,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.contactCall, now.toISOString()),
+      requestId
+    });
+  } else if (action === "contact_outcome") {
+    const outcome = cleanText(body.contactOutcome, 40).toUpperCase();
+    fields.lastContactAt = firestoreTimestamp(now);
+    fields.lastContactOutcome = firestoreOptionalString(outcome);
+    let contactResult = outcome;
+    if (outcome === "CONTACTED") {
+      fields.advertiserContactStatus = firestoreString("RESPONDED");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+      contactResult = "RESPONDED";
+    } else if (outcome === "NO_RESPONSE") {
+      fields.advertiserContactStatus = firestoreString("NO_RESPONSE");
+      contactResult = "NO_RESPONSE";
+    } else if (outcome === "INTERESTED") {
+      fields.advertiserContactStatus = firestoreString("INTERESTED");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
+      contactResult = "INTERESTED";
+    } else if (outcome === "FOLLOW_UP") {
+      fields.advertiserContactStatus = firestoreString("CALL_LATER");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
+      contactResult = "CALL_LATER";
+    } else if (outcome === "REFUSED") {
+      fields.advertiserContactStatus = firestoreString("REFUSED");
+      contactResult = "REFUSED";
+    } else if (outcome === "AGREED") {
+      fields.marketingConsentStatus = firestoreString("PRELIMINARY_YES");
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.NEGOTIATION);
+      contactResult = "PRELIMINARY_YES";
+    } else {
+      throw appError("contact_outcome_invalid", 400, "نتيجة التواصل غير صحيحة");
+    }
+    const nextLifecycle = outcome === "CONTACTED" || outcome === "INTERESTED"
+      ? LIFECYCLE_STATUS.CONTACTED
+      : outcome === "FOLLOW_UP"
+        ? LIFECYCLE_STATUS.FOLLOW_UP
+        : outcome === "AGREED"
+          ? LIFECYCLE_STATUS.NEGOTIATION
+          : statusBefore;
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        ...fields,
+        ...brokerProgressFirestoreFields(resolved.data, contactOutcomeActionKey(outcome), now)
+      })
+    });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "contact",
+        action: outcome === "AGREED" ? "agreement_recorded" : "contact_outcome_recorded",
+        result: contactResult,
+        contactOutcome: outcome,
+        statusBefore,
+        statusAfter: contactResult,
+        createdBy: identity.uid
+      }
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      contactOutcome: outcome,
+      lastContactOutcome: outcome,
+      advertiserContactStatus: contactResult,
+      lifecycleStatus: nextLifecycle,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, contactOutcomeActionKey(outcome), now.toISOString()),
+      requestId
+    });
+  } else if (action === "broker_action_done") {
+    const actionKey = cleanText(body.actionKey, 80);
+    if (!actionKey) throw appError("broker_action_key_required", 400, "مفتاح الإجراء مطلوب");
+    await setFirestoreDocument({
+      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
+      fields: compactFields({
+        officeId: firestoreString(officeId),
+        updatedAt: firestoreTimestamp(now),
+        ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
+      })
+    });
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      actionKey,
+      brokerActionProgress: mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString()),
+      requestId
+    });
+  } else if (action === "close_opportunity") {
+    const reasonKey = cleanText(body.closureReasonKey || body.reasonKey, 40);
+    if (!OPPORTUNITY_FINAL_CLOSE_REASONS.includes(reasonKey)) {
+      throw appError("closure_reason_invalid", 400, "سبب إنهاء الفرصة غير صحيح");
+    }
+    if (resolved.data.closedAt) {
+      return jsonResponse({
+        ok: true,
+        opportunityId,
+        lifecycleStatus: statusBefore,
+        idempotent: true,
+        requestId
+      });
+    }
+    const reasonLabel = OPPORTUNITY_FINAL_CLOSE_REASON_LABELS[reasonKey] || reasonKey;
+    let finalOutcome = "";
+    if (reasonKey === "deal_done") {
+      finalOutcome = cleanText(body.finalOutcome, 30);
+      if (!OPPORTUNITY_FINAL_OUTCOMES.includes(finalOutcome)) {
+        throw appError("final_outcome_required", 400, "اختر نتيجة الصفقة النهائية");
+      }
+      fields.finalOutcome = firestoreString(finalOutcome);
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
+    } else {
+      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
+    }
+    const closureNote = cleanText(body.closureNote || body.note || "", 300);
+    fields.closureReason = firestoreOptionalString(closureNote || reasonLabel);
+    fields.closureReasonKey = firestoreString(reasonKey);
+    fields.closedAt = firestoreTimestamp(now);
+    fields.closedBy = firestoreString(identity.uid);
+    fields.archivedAt = firestoreTimestamp(now);
+    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
+    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+    await addOpportunityCommunication({
+      projectId, officeId, opportunityId, accessToken, now,
+      payload: {
+        type: "lifecycle",
+        action: "opportunity_closed",
+        result: reasonKey,
+        finalOutcome: finalOutcome || "",
+        statusBefore,
+        statusAfter: LIFECYCLE_STATUS.ARCHIVED,
+        createdBy: identity.uid
+      }
+    });
+    if (resolved.data.sourceRecordId && collection === "opportunities") {
+      const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
+      if (["clients", "owners"].includes(sourceCollection)) {
+        await setFirestoreDocument({
+          projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
+          fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
+        }).catch(() => {});
+      }
+    }
+    return jsonResponse({
+      ok: true,
+      opportunityId,
+      lifecycleStatus: LIFECYCLE_STATUS.ARCHIVED,
+      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.ARCHIVED],
+      closureReasonKey: reasonKey,
+      finalOutcome,
+      requestId
+    });
+  } else {
+    throw appError("lifecycle_action_invalid", 400, "إجراء دورة الفرصة غير معروف");
+  }
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+  const finalStatus = action === "update_status" ? cleanText(body.lifecycleStatus, 40)
+    : action === "confirm_contact" ? LIFECYCLE_STATUS.CONTACTED
+    : action === "set_followup" ? LIFECYCLE_STATUS.FOLLOW_UP
+    : action === "close_won" ? LIFECYCLE_STATUS.CLOSED_WON
+    : action === "close_lost" ? LIFECYCLE_STATUS.CLOSED_LOST
+    : action === "archive" ? LIFECYCLE_STATUS.ARCHIVED
+    : statusBefore;
+
+  await addOpportunityCommunication({
+    projectId, officeId, opportunityId, accessToken, now,
+    payload: {
+      type: cleanText(body.communicationType || "lifecycle", 30),
+      action: cleanText(
+        body.communicationAction
+          || (action === "set_followup" ? "followup_scheduled" : action),
+        40
+      ),
+      statusBefore,
+      statusAfter: finalStatus,
+      createdBy: identity.uid
+    }
+  });
+
+  if (resolved.data.sourceRecordId && collection === "opportunities") {
+    const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
+    if (["clients", "owners"].includes(sourceCollection)) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
+        fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
+      }).catch(() => {});
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    recordType: collection === "publicIntake" ? "intake" : "opportunity",
+    recordId,
+    lifecycleStatus: finalStatus,
+    lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[finalStatus] || finalStatus,
+    requestId
+  });
+}
+
+function opportunityPatchToFirestoreFields(patch = {}) {
+  const fields = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null || value === undefined) {
+      fields[key] = { nullValue: null };
+      continue;
+    }
+    if (typeof value === "number") {
+      fields[key] = firestoreInteger(value);
+      continue;
+    }
+    if (typeof value === "boolean") {
+      fields[key] = firestoreBoolean(value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      fields[key] = firestoreStringArray(value);
+      continue;
+    }
+    fields[key] = firestoreString(String(value));
+  }
+  return fields;
+}
+
+async function handleOpportunityPatch(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) {
+    throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
+  }
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date();
+
+  const opportunityDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!opportunityDoc) {
+    throw appError("opportunity_not_found", 404, mapPatchErrorMessage("opportunity_not_found"));
+  }
+  const existing = firestoreFieldsToJs(opportunityDoc.fields || {});
+  if (!officeIdsEquivalent(existing.officeId, officeId)) {
+    throw appError("office_mismatch", 403, mapPatchErrorMessage("office_mismatch"));
+  }
+
+  let sanitized = sanitizeOpportunityPatch(body.patch || {});
+  if (!Object.keys(sanitized).length) {
+    throw appError("patch_empty", 400, mapPatchErrorMessage("patch_empty"));
+  }
+
+  if (
+    String(sanitized.cooperationListing || "").toUpperCase() === "OPEN"
+    && String(existing.cooperationListing || "").toUpperCase() !== "OPEN"
+  ) {
+    const gate = validateCooperationListingEnable({ ...existing, ...sanitized });
+    if (!gate.ok) {
+      const labels = missingFieldLabelsArabic(gate.missing || []);
+      throw appError(
+        "cooperation_incomplete",
+        400,
+        labels.length ? `أكمل: ${labels.join("، ")} قبل إتاحة التعاون.` : mapPatchErrorMessage("cooperation_incomplete")
+      );
+    }
+    sanitized.cooperationEnabled = true;
+    sanitized.cooperationEnabledBy = identity.uid || "";
+    sanitized.cooperationEnabledAt = now.toISOString();
+  }
+
+  const financialPatch = mergeOpportunityFinancialPatch(existing, sanitized);
+  const merged = { ...existing, ...financialPatch };
+  const readinessFields = readinessFieldsForRecord(merged);
+  const version = Number(existing.version || 1) + 1;
+  const allPatch = {
+    ...financialPatch,
+    ...readinessFields,
+    updatedBy: identity.uid || "",
+    version
+  };
+
+  const fields = opportunityPatchToFirestoreFields(allPatch);
+  fields.officeId = firestoreString(officeId);
+  fields.updatedAt = firestoreTimestamp(now);
+
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    fields
+  });
+
+  const finalRecord = { ...merged, ...readinessFields, version };
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    opportunity: finalRecord,
+    requestId
+  });
+}
+
+async function handleOpportunityPurge(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId || !opportunityId) {
+    throw appError("lifecycle_data_missing", 400, "بيانات الفرصة غير مكتملة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const opportunityDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  const existing = opportunityDoc ? firestoreFieldsToJs(opportunityDoc.fields || {}) : null;
+  const gate = validatePurgeRequest({
+    existing: existing ? { ...existing, officeId: existing.officeId || officeId } : null,
+    officeId,
+    confirm: body.confirm
+  });
+  if (!gate.ok) throw appError(gate.error, gate.status, gate.message);
+
+  const rows = await collectOfficeWorkflowRows({
+    projectId,
+    officeId,
+    accessToken,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  });
+  const [originCoop, targetCoop] = await Promise.all([
+    runFirestoreQuery({
+      projectId,
+      accessToken,
+      structuredQuery: {
+        from: [{ collectionId: "cooperationRequests" }],
+        where: { fieldFilter: { field: { fieldPath: "originatingOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
+        limit: 80
+      }
+    }).catch(() => []),
+    runFirestoreQuery({
+      projectId,
+      accessToken,
+      structuredQuery: {
+        from: [{ collectionId: "cooperationRequests" }],
+        where: { fieldFilter: { field: { fieldPath: "targetOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
+        limit: 80
+      }
+    }).catch(() => [])
+  ]);
+  const cooperations = [...originCoop, ...targetCoop].map((doc) => ({
+    id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+    ...(firestoreFieldsToJs(doc.fields || {}) || {})
+  }));
+  const plan = planOpportunityPurge({
+    opportunityId,
+    ...rows,
+    cooperations
+  });
+  const applied = await applyOpportunityPurge({
+    projectId,
+    officeId,
+    opportunityId,
+    plan,
+    accessToken,
+    deleteFirestoreDocument,
+    listCollectionDocuments
+  });
+  return jsonResponse({
+    ok: true,
+    opportunityId,
+    confirm: PERMANENT_DELETE_CONFIRM,
+    plan: { delete: plan.delete, skip: plan.skip, counts: plan.counts },
+    deleted: applied.deleted,
+    skipped: applied.skipped,
+    requestId
+  });
+}
+
+async function handleNotificationRead(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const notificationId = cleanText(body.notificationId, 180);
+  if (!officeId || !notificationId) {
+    throw appError("notification_data_missing", 400, "بيانات الإشعار غير مكتملة");
+  }
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await markNotificationRead({
+    projectId,
+    officeId,
+    notificationId,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreHelpers: {
+      firestoreFieldsToJs,
+      firestoreString,
+      firestoreTimestamp,
+      firestoreBoolean,
+      firestoreInteger
+    }
+  });
+  if (!result.ok) {
+    const status = result.error === "office_mismatch" ? 403 : 404;
+    throw appError(result.error, status, "تعذر تحديث الإشعار");
+  }
+  return jsonResponse({
+    ok: true,
+    notificationId,
+    alreadyRead: Boolean(result.alreadyRead),
+    notification: result.notification,
+    requestId
+  });
+}
+
+function rankMatchCandidates(source, candidates) {
+  return rankMatchCandidatesEngine(source, candidates);
+}
+
+function scoreMatch(source, candidate) {
+  return scoreMatchEngine(source, candidate);
+}
+
+function publicPreviewDeps(env, requestId, projectId = "", accessToken = "") {
+  return {
+    env,
+    requestId,
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    deleteFirestoreDocument,
+    runFirestoreQuery,
+    firestoreFieldsToJs,
+    firestoreHelpers: operationsFirestoreHelpers(),
+    authorizeOfficeRequest,
+    requireMediaBucket,
+    resolveAppOrigin,
+    firestoreOfficeId,
+    officeAuthorizationKey,
+    officeIdsEquivalent,
+    corsHeaders,
+    jsonResponse,
+    appError
+  };
+}
+
+function operationsFirestoreHelpers() {
+  return {
+    firestoreString,
+    firestoreBoolean,
+    firestoreInteger,
+    firestoreTimestamp,
+    firestoreOptionalString,
+    firestoreFieldsToJs
+  };
+}
+
+function operationsDeps(env = null) {
+  return {
+    setFirestoreDocument,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    sendOfficePush: (args) => sendOfficePush({ ...args, env }),
+    firestoreHelpers: operationsFirestoreHelpers()
+  };
+}
+
+async function supersedeMatchesForPairKey({
+  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
+}) {
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  let superseded = 0;
+  const supersededMatchIds = [];
+  for (const doc of docs) {
+    const match = firestoreFieldsToJs(doc.fields || {});
+    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!matchId || matchId === keepMatchId) continue;
+    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
+    if (match.isCurrent === false || match.status === "superseded") continue;
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matches", matchId],
+      accessToken,
+      fields: {
+        isCurrent: firestoreBoolean(false),
+        status: firestoreString("superseded"),
+        statusLabel: firestoreString("أُلغيت بنسخة أحدث"),
+        supersededAt: firestoreTimestamp(now),
+        supersededByMatchId: firestoreString(keepMatchId || ""),
+        attentionRequired: firestoreBoolean(false),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+    superseded += 1;
+    supersededMatchIds.push(matchId);
+  }
+  if (supersededMatchIds.length) {
+    await expireOperationsForMatchIds({
+      projectId,
+      officeId,
+      matchIds: supersededMatchIds,
+      accessToken,
+      listCollectionDocuments,
+      setFirestoreDocument,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }).catch((error) => console.warn("[iaqar-ops] expire superseded match ops", error && error.message));
+  }
+  return superseded;
+}
+
+async function loadOpportunityDocsByIds({
+  projectId, officeId, officeIds = [], ids = [], accessToken
+}) {
+  const docsById = {};
+  const unique = [...new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))];
+  const offices = [...new Set([officeId, ...officeIds].map((value) => String(value || "").trim()).filter(Boolean))];
+  for (const office of offices) {
+    for (const id of unique) {
+      if (docsById[id]) continue;
+      const doc = await getFirestoreDocument({
+        projectId,
+        segments: ["offices", office, "opportunities", id],
+        accessToken,
+        allowMissing: true
+      });
+      if (doc) docsById[id] = { id, officeId: office, ...firestoreFieldsToJs(doc.fields || {}) };
+    }
+  }
+  return docsById;
+}
+
+async function resolveCanonicalMatchForPersist({
+  projectId, officeId, accessToken,
+  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+  opportunityId, counterpartOpportunityId, requestId, offerId, clientRequestId, ownerOfferId,
+  propertyOfficeId = ""
+}) {
+  const match = {
+    officeId,
+    propertyOfficeId,
+    sourceCollection,
+    sourceRecordId,
+    counterpartCollection,
+    counterpartRecordId,
+    opportunityId,
+    counterpartOpportunityId,
+    requestId,
+    offerId,
+    clientRequestId,
+    ownerOfferId
+  };
+  const extraOffices = propertyOfficeId && propertyOfficeId !== officeId ? [propertyOfficeId] : [];
+  const docsById = await loadOpportunityDocsByIds({
+    projectId,
+    officeId,
+    officeIds: extraOffices,
+    accessToken,
+    ids: collectCandidateOpportunityIds(match)
+  });
+  return resolveCanonicalPairFromDocs(match, docsById);
+}
+
+async function writeRejectedMatchDiagnostic({
+  projectId, officeId, matchId, reason, details = {}, accessToken
+}) {
+  const now = new Date();
+  const diagnosticId = String(matchId || `rej_${now.getTime()}`).slice(0, 180);
+  console.warn("[iaqar-match] REJECTED_ACTIVE_MATCH", { officeId, matchId: diagnosticId, reason, ...details });
+  try {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "matchDiagnostics", diagnosticId],
+      accessToken,
+      fields: {
+        officeId: firestoreString(officeId),
+        matchId: firestoreString(matchId || ""),
+        integrityStatus: firestoreString(MATCH_INTEGRITY.INVALID),
+        integrityReason: firestoreString(reason || "canonical_linkage_failed"),
+        detailsJson: firestoreString(JSON.stringify(details).slice(0, 4000)),
+        createdAt: firestoreTimestamp(now),
+        updatedAt: firestoreTimestamp(now)
+      }
+    });
+  } catch (error) {
+    console.warn("[iaqar-match] diagnostic write failed", error && error.message);
+  }
+}
+
+async function confirmPersistedOpportunity({ projectId, officeId, opportunityId, accessToken }) {
+  const id = String(opportunityId || "").trim();
+  if (!id) return null;
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", id],
+    accessToken,
+    allowMissing: true
+  });
+  return doc ? { id, ...firestoreFieldsToJs(doc.fields || {}) } : null;
+}
+
+async function runCanonicalMatchingAfterOpportunityPersist({
+  projectId, officeId, opportunityId, accessToken, env = null
+}) {
+  const confirmed = await confirmPersistedOpportunity({
+    projectId, officeId, opportunityId, accessToken
+  });
+  if (!confirmed) {
+    console.warn("[iaqar-match] SKIP_MATCH_UNCONFIRMED_OPPORTUNITY", { officeId, opportunityId });
+    await writeRejectedMatchDiagnostic({
+      projectId, officeId, matchId: `unconfirmed_${opportunityId || "missing"}`.slice(0, 180),
+      reason: "opportunity_persist_unconfirmed",
+      details: { opportunityId },
+      accessToken
+    });
+    return [];
+  }
+  const result = await findAndSaveMatchesForOpportunity({
+    projectId, officeId, opportunityId, accessToken, notify: false, env
+  });
+  return (result.matches || []).filter((row) => !row.skipped);
+}
+
+function canonicalMatchFields(linkage) {
+  return {
+    requestId: firestoreString(linkage.requestId),
+    offerId: firestoreString(linkage.offerId),
+    clientRequestId: firestoreString(linkage.requestId),
+    ownerOfferId: firestoreString(linkage.offerId),
+    integrityStatus: firestoreString(MATCH_INTEGRITY.VALID),
+    integrityReason: firestoreString("")
+  };
+}
+
+async function persistScoredMatch({
+  projectId, officeId, source, candidate, sourceRef, counterpartRef,
+  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+  opportunityId, counterpartOpportunityId, scored, rank, accessToken,
+  notifyOperation = false, assignedBrokerId = "", env = null,
+  propertyOfficeId = ""
+}) {
+  const pairKey = canonicalPairKey(sourceRef, counterpartRef);
+  const dataVersion = await relevantDataVersion(source, candidate);
+  const matchId = await buildMatchId({
+    officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
+  });
+  const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
+  const linkage = await resolveCanonicalMatchForPersist({
+    projectId, officeId, accessToken,
+    sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+    opportunityId, counterpartOpportunityId,
+    propertyOfficeId
+  });
+  if (!linkage.ok) {
+    await writeRejectedMatchDiagnostic({
+      projectId, officeId, matchId, reason: linkage.integrityReason,
+      details: {
+        sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
+        opportunityId, counterpartOpportunityId
+      },
+      accessToken
+    });
+    return {
+      matchId, skipped: true, duplicate: false,
+      integrityStatus: MATCH_INTEGRITY.INVALID,
+      integrityReason: linkage.integrityReason,
+      score: scored.score, opportunityScore: scored.opportunityScore
+    };
+  }
+  const clientRequestId = linkage.requestId;
+  const ownerOfferId = linkage.offerId;
+
+  const existingMatch = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
+  });
+  if (existingMatch) {
+    const existing = firestoreFieldsToJs(existingMatch.fields || {});
+    if (existing.isCurrent !== false && existing.status !== "superseded") {
+      if (existing.integrityStatus !== MATCH_INTEGRITY.VALID
+        || existing.clientRequestId !== clientRequestId
+        || existing.ownerOfferId !== ownerOfferId
+        || existing.requestId !== clientRequestId
+        || existing.offerId !== ownerOfferId) {
+        await setFirestoreDocument({
+          projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+            ...canonicalMatchFields(linkage),
+            updatedAt: firestoreTimestamp(new Date())
+          }
+        });
+      }
+      return {
+        matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
+        priority: scored.priority, closingReadiness: scored.readiness, status: "active",
+        statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+        rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+        metrics: scored.metrics, breakdown: scored.breakdown,
+        city: source.city || candidate.city || DEFAULT_CITY,
+        district: source.district || candidate.district || "",
+        propertyType: source.propertyType || candidate.propertyType || "",
+        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
+        requestId: clientRequestId, offerId: ownerOfferId, clientRequestId, ownerOfferId,
+        integrityStatus: MATCH_INTEGRITY.VALID
+      };
+    }
+  }
+
+  await supersedeMatchesForPairKey({
+    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
+  });
+
+  const now = new Date();
+  const readiness = scored.readiness;
+
+  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+    schemaVersion: firestoreInteger(7),
+    officeId: firestoreString(officeId),
+    matchId: firestoreString(matchId),
+    status: firestoreString("active"),
+    statusLabel: firestoreString(MATCH_STATUS_LABELS.active),
+    workflowStage: firestoreString("contact"),
+    nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active),
+    attentionRequired: firestoreBoolean(true),
+    isCurrent: firestoreBoolean(true),
+    matchingRuleVersion: firestoreString(MATCHING_RULE_VERSION),
+    dataVersion: firestoreString(dataVersion),
+    canonicalPairKey: firestoreString(pairKey),
+    pairRuleKey: firestoreString(pairRule),
+    score: firestoreInteger(scored.score),
+    opportunityScore: firestoreInteger(scored.opportunityScore),
+    closingReadinessScore: firestoreInteger(readiness.score),
+    closingReadinessKey: firestoreString(readiness.key),
+    closingReadinessLabel: firestoreString(readiness.label),
+    priority: firestoreString(scored.priority),
+    rank: firestoreInteger(rank),
+    isBestOpportunity: firestoreBoolean(rank === 1),
+    reasonsJson: firestoreString(JSON.stringify(scored.reasons)),
+    breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
+    warningsJson: firestoreString(JSON.stringify(scored.warnings)),
+    rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
+    sourceCollection: firestoreString(sourceCollection),
+    sourceRecordId: firestoreString(sourceRecordId),
+    counterpartCollection: firestoreString(counterpartCollection),
+    counterpartRecordId: firestoreString(counterpartRecordId),
+    ...canonicalMatchFields(linkage),
+    matchGroupId: firestoreString(opportunityId || sourceRecordId || clientRequestId || pairKey),
+    opportunityId: firestoreString(opportunityId || ""),
+    counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
+    city: firestoreOptionalString(source.city || candidate.city || DEFAULT_CITY),
+    district: firestoreOptionalString(source.district || candidate.district),
+    propertyType: firestoreOptionalString(source.propertyType || candidate.propertyType),
+    transactionType: firestoreOptionalString(source.transactionType || candidate.transactionType),
+    priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
+    areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
+    contactPhone: firestoreOptionalString(source.phone || candidate.contactPhone || candidate.phone),
+    contactName: firestoreOptionalString(source.senderName || candidate.contactName || candidate.senderName),
+    nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)),
+    followUpCount: firestoreInteger(0),
+    createdAt: firestoreTimestamp(now),
+    lastMatchedAt: firestoreTimestamp(now),
+    updatedAt: firestoreTimestamp(now)
+  }});
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],
+    accessToken,
+    fields: {
+      officeId: firestoreString(officeId),
+      recordType: firestoreString("match"),
+      recordId: firestoreString(matchId),
+      eventType: firestoreString("match_created"),
+      stage: firestoreString("active"),
+      note: firestoreString(`تم إنشاء المطابقة بنسبة ${scored.score}% — جاهزية الإغلاق ${readiness.label}`),
+      createdAt: firestoreTimestamp(now)
+    }
+  });
+
+  const persisted = {
+    matchId, duplicate: false, score: scored.score, opportunityScore: scored.opportunityScore,
+    priority: scored.priority, closingReadiness: readiness, status: "active",
+    statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
+    rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
+    metrics: scored.metrics, breakdown: scored.breakdown,
+    city: source.city || candidate.city || DEFAULT_CITY,
+    district: source.district || candidate.district || "",
+    propertyType: source.propertyType || candidate.propertyType || "",
+    matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
+    opportunityId: opportunityId || "",
+    counterpartOpportunityId: counterpartOpportunityId || "",
+    isCurrent: true,
+    assignedBrokerId: assignedBrokerId || "",
+    requestId: clientRequestId,
+    offerId: ownerOfferId,
+    clientRequestId,
+    ownerOfferId,
+    integrityStatus: MATCH_INTEGRITY.VALID,
+    matchGroupId: opportunityId || sourceRecordId || clientRequestId,
+    sourceCollection,
+    candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
+    candidateArea: Number(candidate.area || 0),
+    candidatePropertyType: candidate.propertyType || "",
+    candidateDistrict: candidate.district || "",
+    candidateCity: candidate.city || "",
+    candidatePurpose: candidate.purpose || candidate.transactionType || ""
+  };
+
+  // Phase 5: actionable Match → exactly one MATCH_REVIEW Operation (+ in-app Notification).
+  try {
+    const bundle = await createMatchReviewBundle({
+      projectId,
+      officeId,
+      match: persisted,
+      threshold: MATCH_THRESHOLD,
+      assignedBrokerId,
+      notifyPush: notifyOperation === true,
+      accessToken,
+      deps: operationsDeps(env)
+    });
+    persisted.operationId = bundle.operation?.id || "";
+    persisted.operationCreated = Boolean(bundle.created);
+  } catch (error) {
+    console.warn("[iaqar-ops] match review upsert failed", error && error.message);
+    persisted.operationCreated = false;
+  }
+
+  return persisted;
+}
+
+async function materializeAcceptedCooperationMatch({
+  projectId,
+  cooperation = {},
+  accessToken,
+  existingMatchId = "",
+  env = null
+}) {
+  const pair = await resolveAcceptedCooperationPair({
+    cooperation,
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    firestoreFieldsToJs
+  });
+  if (!pair.ok) {
+    if (pair.skip) return { ok: true, skipped: true, reason: pair.error };
+    return { ok: false, error: pair.error || "pair_not_resolved" };
+  }
+
+  const requestDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", pair.clientOfficeId, "opportunities", pair.requestId],
+    accessToken,
+    allowMissing: true
+  });
+  const offerDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", pair.propertyOfficeId, "opportunities", pair.offerId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!requestDoc || !offerDoc) {
+    return { ok: false, error: "opportunity_docs_missing" };
+  }
+
+  const requestRecord = {
+    id: pair.requestId,
+    officeId: pair.clientOfficeId,
+    ...firestoreFieldsToJs(requestDoc.fields || {})
+  };
+  const offerRecord = {
+    id: pair.offerId,
+    officeId: pair.propertyOfficeId,
+    ...firestoreFieldsToJs(offerDoc.fields || {})
+  };
+  const source = opportunityToMatchInput(requestRecord, { id: pair.requestId });
+  const candidate = opportunityToMatchInput(offerRecord, { id: pair.offerId });
+  const scored = scoreMatchEngine(source, candidate);
+
+  const persisted = await persistScoredMatch({
+    projectId,
+    officeId: pair.clientOfficeId,
+    source,
+    candidate,
+    sourceRef: `opportunities:${pair.requestId}`,
+    counterpartRef: `opportunities:${pair.offerId}`,
+    sourceCollection: "opportunities",
+    sourceRecordId: pair.requestId,
+    counterpartCollection: "opportunities",
+    counterpartRecordId: pair.offerId,
+    opportunityId: pair.requestId,
+    counterpartOpportunityId: pair.offerId,
+    scored,
+    rank: 1,
+    accessToken,
+    notifyOperation: false,
+    assignedBrokerId: String(
+      requestRecord.brokerId || requestRecord.originatingBrokerId || cooperation.originatingBrokerId || ""
+    ),
+    env,
+    propertyOfficeId: pair.propertyOfficeId
+  });
+
+  if (persisted?.skipped) {
+    return {
+      ok: false,
+      error: persisted.integrityReason || "match_skipped",
+      integrityStatus: persisted.integrityStatus
+    };
+  }
+
+  const matchId = String(persisted?.matchId || existingMatchId || "").trim();
+  if (!matchId) return { ok: false, error: "match_not_materialized" };
+  return {
+    ok: true,
+    matchId,
+    duplicate: Boolean(persisted?.duplicate),
+    requestId: pair.requestId,
+    offerId: pair.offerId,
+    clientOfficeId: pair.clientOfficeId,
+    propertyOfficeId: pair.propertyOfficeId
+  };
+}
+
+async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken, env = null }) {
+  const counterpart = sourceCollection === "owners" ? "clients" : "owners";
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  const prepared = [];
+  for (const doc of docs) {
+    const candidate = firestoreFieldsToJs(doc.fields || {});
+    if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
+    const scored = scoreMatch(parsed, candidate);
+    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    prepared.push({ candidate, candidateId, scored });
+  }
+  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
+
+  const results = [];
+  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
+  for (let index = 0; index < topPrepared.length; index += 1) {
+    const { candidate, candidateId, scored } = topPrepared[index];
+    const sourceRef = `${sourceCollection}:${sourceRecordId}`;
+    const counterpartRef = `${counterpart}:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source: parsed, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection, sourceRecordId,
+      counterpartCollection: counterpart, counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: "",
+      scored, rank: index + 1, accessToken,
+      // Create MATCH_REVIEW Operation (+ in-app notification). Push is deferred to
+      // sendOfficeMatchNotifications only when operationId exists (no orphan pushes).
+      notifyOperation: false,
+      env
+    });
+    if (persisted?.skipped) continue;
+    results.push(persisted);
+  }
+  return results;
+}
+
+async function findAndSaveMatchesForOpportunity({
+  projectId, officeId, opportunityId, accessToken, notify = false, env = null
+}) {
+  const oppDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const opportunity = {
+    id: opportunityId,
+    ...firestoreFieldsToJs(oppDoc.fields || {})
+  };
+
+  if (!isActiveLifecycle(opportunity)) {
+    const docs = await listCollectionDocuments({
+      projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+    });
+    const now = new Date();
+    let superseded = 0;
+    const supersededMatchIds = [];
+    for (const doc of docs) {
+      const match = firestoreFieldsToJs(doc.fields || {});
+      const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      const relates = match.opportunityId === opportunityId
+        || match.counterpartOpportunityId === opportunityId
+        || match.sourceRecordId === opportunityId
+        || match.counterpartRecordId === opportunityId;
+      if (!relates || match.isCurrent === false || match.status === "superseded") continue;
+      await setFirestoreDocument({
+        projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+          isCurrent: firestoreBoolean(false),
+          status: firestoreString("superseded"),
+          statusLabel: firestoreString("أُلغيت لأن الفرصة غير نشطة"),
+          supersededAt: firestoreTimestamp(now),
+          attentionRequired: firestoreBoolean(false),
+          updatedAt: firestoreTimestamp(now)
+        }
+      });
+      superseded += 1;
+      supersededMatchIds.push(matchId);
+    }
+    if (supersededMatchIds.length) {
+      await expireOperationsForMatchIds({
+        projectId, officeId, matchIds: supersededMatchIds, accessToken,
+        listCollectionDocuments, setFirestoreDocument, firestoreHelpers: operationsFirestoreHelpers()
+      }).catch((error) => console.warn("[iaqar-ops] expire inactive match ops", error && error.message));
+    }
+    return {
+      matches: [], superseded, inactive: true,
+      boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() }
+    };
+  }
+
+  const source = opportunityToMatchInput(opportunity, { id: opportunityId });
+  const docs = await listCollectionDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  });
+  const prepared = [];
+  for (const doc of docs) {
+    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!candidateId || candidateId === opportunityId) continue;
+    const candidateRaw = { id: candidateId, ...firestoreFieldsToJs(doc.fields || {}) };
+    if (!counterpartsEligible(opportunity, candidateRaw)) continue;
+    const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
+    const scored = scoreMatch(source, candidate);
+    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
+    prepared.push({ candidate, candidateRaw, candidateId, scored });
+  }
+  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
+
+  const results = [];
+  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
+  for (let index = 0; index < topPrepared.length; index += 1) {
+    const { candidate, candidateId, scored } = topPrepared[index];
+    const sourceRef = `opportunities:${opportunityId}`;
+    const counterpartRef = `opportunities:${candidateId}`;
+    const persisted = await persistScoredMatch({
+      projectId, officeId,
+      source, candidate,
+      sourceRef, counterpartRef,
+      sourceCollection: "opportunities", sourceRecordId: opportunityId,
+      counterpartCollection: "opportunities", counterpartRecordId: candidateId,
+      opportunityId, counterpartOpportunityId: candidateId,
+      scored, rank: index + 1, accessToken,
+      notifyOperation: notify === true,
+      assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || ""),
+      env
+    });
+    if (persisted?.skipped) continue;
+    results.push(persisted);
+  }
+
+  // Missing required fields → MISSING_DATA Operation; complete fields close it.
+  let missingData = { created: false };
+  try {
+    missingData = await upsertMissingDataForOpportunity({
+      projectId,
+      officeId,
+      opportunity,
+      opportunityId,
+      accessToken,
+      deps: operationsDeps(env)
+    });
+  } catch (error) {
+    console.warn("[iaqar-ops] missing-data upsert failed", error && error.message);
+  }
+
+  // Legacy alerts retained for older clients; Phase 5 push is lock-screen-safe via Operation bundle.
+  if (notify && results.length > 0) {
+    const fresh = results.filter((item) => !item.duplicate && item.operationCreated);
+    if (fresh.length > 0) {
+      await sendOfficeMatchNotifications({
+        projectId, officeId, matches: fresh, parsed: source, accessToken, skipPush: true, env
+      }).catch((error) => console.warn("[iaqar-ops] legacy alert write", error && error.message));
+    }
+  }
+
+  const operationsCreated = results.filter((item) => item.operationCreated).length
+    + (missingData.created ? 1 : 0);
+
+  let cooperation = { created: 0, skipped: "internal_match_exists" };
+  if (results.length === 0) {
+    try {
+      cooperation = await maybeCreateCrossOfficeCooperation({
+        projectId,
+        officeId,
+        opportunity,
+        opportunityId,
+        internalMatchCount: results.length,
+        accessToken,
+        deps: {
+          ...operationsDeps(env),
+          listCollectionDocuments,
+          firestoreFieldsToJs
+        }
+      });
+    } catch (error) {
+      console.warn("[iaqar-coop] cross-office ranking skipped", error && error.message);
+      cooperation = { created: 0, skipped: "ranking_error" };
+    }
+  }
+
+  return {
+    matches: results,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    createsOperation: operationsCreated > 0,
+    operationsCreated,
+    missingData,
+    cooperation,
+    boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees(), createsOperation: operationsCreated > 0 }
+  };
+}
+
+async function handleMatchingRun(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  // Auth before Firestore work — missing Bearer token fails closed at 401.
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "matching");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const notify = body.notify === true;
+  const result = await findAndSaveMatchesForOpportunity({
+    projectId, officeId, opportunityId, accessToken, notify, env
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    matchCount: result.matches.length,
+    matches: result.matches,
+    matchingRuleVersion: MATCHING_RULE_VERSION,
+    threshold: MATCH_THRESHOLD,
+    superseded: result.superseded || 0,
+    inactive: Boolean(result.inactive),
+    boundaries: result.boundaries || { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
+    createsOperation: Boolean(result.createsOperation),
+    operationsCreated: Number(result.operationsCreated || 0),
+    missingData: result.missingData || null,
+    requestId
+  });
+}
+
+async function handleOperationsAction(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const operationId = cleanText(body.operationId, 180);
+  const action = cleanText(body.action, 40);
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!operationId) throw appError("operation_id_required", 400, "معرّف العملية مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await applyTrustedOperationAction({
+    projectId,
+    officeId,
+    operationId,
+    action,
+    reason,
+    accessToken,
+    getFirestoreDocument,
+    setFirestoreDocument,
+    firestoreHelpers: operationsFirestoreHelpers()
+  });
+  if (!result.ok) {
+    throw appError(result.error || "operation_action_failed", result.status || 400, "تعذر تحديث العملية");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    operationId,
+    status: result.status,
+    idempotent: Boolean(result.idempotent),
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleOperationsFromCooperation(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const coopDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!coopDoc) throw appError("cooperation_not_found", 404, "طلب التعاون غير موجود");
+  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
+  const origin = String(cooperation.originatingOfficeId || "");
+  const target = String(cooperation.targetOfficeId || "");
+  if (officeId !== origin && officeId !== target) {
+    throw appError("cooperation_forbidden", 403, "لا يمكن إنشاء عملية تعاون لمكتب غير طرف");
+  }
+  // Never invent cooperation — only sync Operations from an explicit Phase 3 record.
+  const result = await upsertCooperationOperations({
+    projectId,
+    cooperation,
+    accessToken,
+    deps: operationsDeps(env)
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    results: result.results,
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleOperationsMissingData(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const oppDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const opportunity = { id: opportunityId, ...firestoreFieldsToJs(oppDoc.fields || {}) };
+  const result = await upsertMissingDataForOpportunity({
+    projectId,
+    officeId,
+    opportunity,
+    opportunityId,
+    accessToken,
+    deps: operationsDeps(env)
+  });
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    created: Boolean(result.created),
+    closed: Number(result.closed || 0),
+    operationId: result.operation?.id || "",
+    missingFields: listMissingOpportunityFields(opportunity),
+    boundaries: phase5BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleCooperationSuitableOffices(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  const searchQuery = cleanText(body.searchQuery || body.query || "", 80);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await buildSuitableOfficesResult({
+    projectId,
+    actorOfficeId: officeId,
+    opportunityId,
+    searchQuery,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      listCollectionDocuments,
+      firestoreFieldsToJs
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "suitable_offices_failed", result.status || 400, "تعذر جلب المكاتب المناسبة");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    requiresCompletion: Boolean(result.requiresCompletion),
+    message: result.message || "",
+    opportunityCity: result.opportunityCity || "",
+    opportunityDistrictLabels: result.opportunityDistrictLabels || [],
+    buckets: result.buckets || {},
+    total: result.total || 0,
+    tierLabels: result.tierLabels || {},
+    sharedPreview: result.sharedPreview || null,
+    boundaries: phase6BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleCooperationNearbySuggestions(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const oppDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "opportunities", opportunityId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!oppDoc) throw appError("opportunity_not_found", 404, "الفرصة غير موجودة");
+  const sourceOpportunity = {
+    id: opportunityId,
+    officeId,
+    ...firestoreFieldsToJs(oppDoc.fields || {})
+  };
+
+  const publicDocs = await listCollectionDocuments({
+    projectId,
+    segments: ["publicOffices"],
+    accessToken,
+    pageSize: 120
+  });
+  const publicOffices = publicDocs.map((doc) => ({
+    officeId: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
+    ...firestoreFieldsToJs(doc.fields || {})
+  }));
+
+  const officeOpportunities = [];
+  for (const office of publicOffices) {
+    const targetId = String(office.officeId || "").trim().toLowerCase();
+    if (!targetId || targetId === officeId) continue;
+    const docs = await listCollectionDocuments({
+      projectId,
+      segments: ["offices", targetId, "opportunities"],
+      accessToken,
+      pageSize: 40
+    });
+    for (const doc of docs) {
+      const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+      officeOpportunities.push({
+        id,
+        officeId: targetId,
+        ...firestoreFieldsToJs(doc.fields || {})
+      });
+    }
+  }
+
+  const suggestions = await buildCooperationNearbySuggestions({
+    sourceOpportunity,
+    ownOfficeId: officeId,
+    publicOffices,
+    officeOpportunities
+  });
+  const emptyReason = suggestions.length
+    ? ""
+    : resolveNearbyEmptyReason(sourceOpportunity, suggestions);
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    suggestions,
+    emptyReason,
+    boundaries: {
+      ...phase6BoundaryGuarantees(),
+      usesDeviceGps: false,
+      exposesContactBeforeAcceptance: false
+    },
+    requestId
+  });
+}
+
+async function handleOpportunityWorkspace(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const bundle = await loadOpportunityWorkspaceBundle({
+    projectId,
+    officeId,
+    opportunityId,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  });
+  if (!bundle.ok) {
+    throw appError(bundle.error || "workspace_load_failed", 404, "تعذر تحميل مساحة العمل");
+  }
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    opportunityId,
+    opportunity: bundle.opportunity,
+    matches: bundle.matches,
+    suggestions: bundle.suggestions,
+    suggestionsEmptyReason: bundle.suggestionsEmptyReason,
+    cooperationRequests: bundle.cooperationRequests,
+    cooperationRoom: bundle.cooperationRoom,
+    followUp: bundle.followUp,
+    readiness: bundle.readiness,
+    boundaries: {
+      ...phase4BoundaryGuarantees(),
+      ...phase6BoundaryGuarantees(),
+      usesDeviceGps: false,
+      exposesContactBeforeAcceptance: false
+    },
+    requestId
+  });
+}
+
+async function handleCooperationRoom(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+
+  const coopDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRequests", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!coopDoc) throw appError("cooperation_not_found", 404, "طلب التعاون غير موجود");
+  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
+  const origin = String(cooperation.originatingOfficeId || "");
+  const target = String(cooperation.targetOfficeId || "");
+  if (officeId !== origin && officeId !== target) {
+    throw appError("cooperation_forbidden", 403, "لا يمكنك فتح غرفة التعاون");
+  }
+  if (String(cooperation.status || "").toUpperCase() !== "ACCEPTED") {
+    throw appError("cooperation_not_accepted", 400, "التعاون غير مقبول بعد");
+  }
+
+  const roomDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRooms", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+  const opportunityId = String(
+    cooperation.opportunityId
+      || (Array.isArray(cooperation.opportunityIds) ? cooperation.opportunityIds[0] : "")
+      || ""
+  ).trim();
+  if (!roomDoc && opportunityId) {
+    await ensureCooperationRoom({
+      projectId,
+      cooperationId,
+      originatingOfficeId: origin,
+      targetOfficeId: target,
+      opportunityId,
+      accessToken,
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    });
+  }
+  const freshRoom = await getFirestoreDocument({
+    projectId,
+    segments: ["cooperationRooms", cooperationId],
+    accessToken,
+    allowMissing: true
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    cooperation: {
+      id: cooperationId,
+      status: cooperation.status,
+      originatingOfficeId: origin,
+      targetOfficeId: target,
+      originatingOfficeName: cooperation.originatingOfficeName || origin,
+      targetOfficeName: cooperation.targetOfficeName || target
+    },
+    room: freshRoom ? { id: cooperationId, ...firestoreFieldsToJs(freshRoom.fields || {}) } : null,
+    boundaries: phase6BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleCooperationWorkflow(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 40).toUpperCase();
+  const reason = cleanText(body.reason, 200);
+  const appointmentAt = cleanText(body.appointmentAt, 80);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await runCooperationWorkflow({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    reason,
+    appointmentAt,
+    accessToken,
+    deps: operationsDeps(env)
+  });
+  if (!result.ok) {
+    throw appError(
+      result.error || "cooperation_workflow_failed",
+      result.status || 400,
+      result.message || "تعذر حفظ حالة التعاون"
+    );
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    status: result.status,
+    currentStage: result.currentStage,
+    duplicate: Boolean(result.duplicate),
+    message: result.message || "تم حفظ حالة التعاون.",
+    requestId
+  });
+}
+
+async function handleCooperationRequestCreate(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const targetOfficeId = firestoreOfficeId(body.targetOfficeId);
+  const scopeType = cleanText(body.scopeType || "single", 20);
+  const opportunityIds = Array.isArray(body.opportunityIds)
+    ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
+    : [];
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!targetOfficeId) throw appError("target_office_required", 400, "معرّف المكتب المستهدف مطلوب");
+  if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "معرّف الفرصة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await createExplicitCooperationRequest({
+    projectId,
+    originatingOfficeId: officeId,
+    originatingBrokerId: identity.uid || "",
+    targetOfficeId,
+    opportunityIds,
+    scopeType,
+    message: cleanText(body.message || "", 500),
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers(),
+      upsertCooperationOperations
+    }
+  });
+  if (!result.ok) {
+    throw appError(
+      result.error || "cooperation_request_failed",
+      result.status || 400,
+      result.message || "تعذر إرسال طلب التعاون"
+    );
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    targetOfficeId,
+    cooperationRequestId: result.requestId,
+    duplicate: Boolean(result.duplicate),
+    message: result.message || "تم إرسال طلب التعاون",
+    boundaries: result.boundaries || phase6BoundaryGuarantees(),
+    requestId
+  }, result.duplicate ? 200 : 201);
+}
+
+async function handleCooperationLifecycle(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 40).toUpperCase();
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await runCooperationLifecycle({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    reason,
+    accessToken,
+    deps: {
+      ...operationsDeps(env),
+      deleteFirestoreDocument,
+      firestoreFieldsToJs,
+      upsertCooperationOperations,
+      materializeAcceptedCooperationMatch: (params) => materializeAcceptedCooperationMatch({
+        ...params,
+        env
+      })
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "cooperation_lifecycle_failed", result.status || 400, "تعذر تحديث التعاون");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    cooperationId,
+    status: result.status,
+    projectionsWritten: result.projectionsWritten,
+    projectionsRemoved: result.projectionsRemoved,
+    opportunityIds: result.opportunityIds,
+    boundaries: { ...phase6BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
+    requestId
+  });
+}
+
+async function handleCooperationScopeRevoke(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const sharingScopeId = cleanText(body.sharingScopeId, 180);
+  const reason = cleanText(body.reason, 200);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!sharingScopeId) throw appError("scope_id_required", 400, "معرّف نطاق المشاركة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await revokeBankSharingScope({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    sharingScopeId,
+    reason,
+    accessToken,
+    deps: {
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      firestoreHelpers: operationsFirestoreHelpers()
+    }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "scope_revoke_failed", result.status || 400, "تعذر إنهاء نطاق المشاركة");
+  }
+  return jsonResponse({
+    ok: true,
+    officeId,
+    sharingScopeId,
+    status: result.status,
+    boundaries: phase6BoundaryGuarantees(),
+    requestId
+  });
+}
+
+function messageDraftToFirestoreFields(draft) {
+  const h = operationsFirestoreHelpers();
+  return {
+    schemaVersion: h.firestoreInteger(draft.schemaVersion || 1),
+    id: h.firestoreString(draft.id),
+    officeId: h.firestoreString(draft.officeId),
+    brokerId: h.firestoreString(draft.brokerId || ""),
+    channel: h.firestoreString(draft.channel),
+    templateCode: h.firestoreString(draft.templateCode || ""),
+    body: h.firestoreString(draft.body || ""),
+    recipientRole: h.firestoreString(draft.recipientRole || ""),
+    recipientName: h.firestoreString(draft.recipientName || ""),
+    recipientPhone: h.firestoreString(draft.recipientPhone || ""),
+    operationId: h.firestoreString(draft.operationId || ""),
+    matchId: h.firestoreString(draft.matchId || ""),
+    opportunityId: h.firestoreString(draft.opportunityId || ""),
+    sendState: h.firestoreString(draft.sendState || MESSAGE_SEND_STATE.DRAFT),
+    deliveryState: h.firestoreString(draft.deliveryState || MESSAGE_DELIVERY_STATE.NOT_APPLICABLE),
+    failureReason: h.firestoreString(draft.failureReason || ""),
+    handoffUrl: h.firestoreString(draft.handoffUrl || ""),
+    adapterStatus: h.firestoreString(draft.adapterStatus || ""),
+    openedExternalAt: draft.openedExternalAt
+      ? h.firestoreTimestamp(new Date(draft.openedExternalAt))
+      : null,
+    sentAt: draft.sentAt ? h.firestoreTimestamp(new Date(draft.sentAt)) : null,
+    deliveredAt: draft.deliveredAt ? h.firestoreTimestamp(new Date(draft.deliveredAt)) : null,
+    createdAt: h.firestoreTimestamp(new Date(draft.createdAt)),
+    updatedAt: h.firestoreTimestamp(new Date(draft.updatedAt)),
+    createdBySystem: h.firestoreBoolean(Boolean(draft.createdBySystem)),
+    autoSend: h.firestoreBoolean(false),
+    providerConfirmedSend: h.firestoreBoolean(Boolean(draft.providerConfirmedSend)),
+    providerConfirmedDelivery: h.firestoreBoolean(false)
+  };
+}
+
+async function handleMessagesDraft(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const channel = normalizeChannel(body.channel);
+  const role = cleanText(body.role || "client", 20) === "owner" ? "owner" : "client";
+  const stage = cleanText(body.stage, 40) || "contact";
+  const messageMode = cleanText(body.messageMode, 40);
+  const templateCode = resolveTemplateCode({
+    templateCode: cleanText(body.templateCode, 40),
+    role,
+    stage,
+    messageMode,
+    ownerMediaMissing: body.ownerMediaMissing === true
+  });
+  const officeName = cleanText(body.officeName, 80) || "المكتب العقاري";
+  const contactPhone = cleanText(body.contactPhone, 40);
+  if (channel === MESSAGE_CHANNELS.WHATSAPP && !whatsappDigits(contactPhone)) {
+    throw appError("phone_required", 400, "رقم المستلم غير موجود أو غير صحيح");
+  }
+  const text = cleanText(body.body, 4000) || buildArabicMessageBody({
+    templateCode,
+    role,
+    officeName,
+    contactName: cleanText(body.contactName, 120),
+    propertyType: cleanText(body.propertyType, 40),
+    district: cleanText(body.district, 80),
+    appointmentLabel: cleanText(body.appointmentLabel, 80),
+    requestedItems: Array.isArray(body.requestedItems) ? body.requestedItems : [],
+    requestNote: cleanText(body.requestNote, 400),
+    stage
+  });
+
+  const built = await buildMessageDraft({
+    officeId,
+    brokerId: identity.uid || "",
+    channel,
+    templateCode,
+    body: text,
+    recipientRole: role,
+    recipientName: cleanText(body.contactName, 120),
+    recipientPhone: contactPhone,
+    operationId: cleanText(body.operationId, 180),
+    matchId: cleanText(body.matchId, 180),
+    opportunityId: cleanText(body.opportunityId, 180)
+  });
+  if (!built.ok) throw appError(built.error || "draft_failed", 400, "تعذر إنشاء مسودة الرسالة");
+
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", built.draft.id],
+    accessToken,
+    fields: messageDraftToFirestoreFields(built.draft)
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    messageId: built.draft.id,
+    draft: {
+      ...built.draft,
+      // Never claim send/delivery from draft creation.
+      sendState: MESSAGE_SEND_STATE.DRAFT,
+      deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
+      providerConfirmedSend: false,
+      providerConfirmedDelivery: false
+    },
+    boundaries: phase7BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function handleMessagesHandoff(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const messageId = cleanText(body.messageId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!messageId) throw appError("message_id_required", 400, "معرّف الرسالة مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const doc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", messageId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!doc) throw appError("message_not_found", 404, "المسودة غير موجودة");
+  const draft = { id: messageId, ...firestoreFieldsToJs(doc.fields || {}) };
+  const applied = applyExternalHandoff(draft);
+  if (!applied.ok) throw appError(applied.error || "handoff_failed", 400, "تعذر تسجيل الفتح الخارجي");
+
+  const h = operationsFirestoreHelpers();
+  const fields = {
+    sendState: h.firestoreString(applied.patch.sendState),
+    deliveryState: h.firestoreString(applied.patch.deliveryState),
+    openedExternalAt: h.firestoreTimestamp(new Date(applied.patch.openedExternalAt)),
+    updatedAt: h.firestoreTimestamp(new Date(applied.patch.updatedAt)),
+    providerConfirmedSend: h.firestoreBoolean(false),
+    providerConfirmedDelivery: h.firestoreBoolean(false)
+  };
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "messages", messageId],
+    accessToken,
+    fields
+  });
+
+  return jsonResponse({
+    ok: true,
+    officeId,
+    messageId,
+    sendState: MESSAGE_SEND_STATE.OPENED_EXTERNAL,
+    deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
+    handoffUrl: draft.handoffUrl || "",
+    // Explicit honesty: external handoff is not Cloud API send and not delivery.
+    providerConfirmedSend: false,
+    providerConfirmedDelivery: false,
+    boundaries: phase7BoundaryGuarantees(),
+    requestId
+  });
+}
+
+async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
+  const url=new URL(firestoreDocumentUrl(projectId,segments)); url.searchParams.set("pageSize",String(pageSize));
+  const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`}});
+  if(response.status===404)return[]; if(!response.ok)throw appError("firestore_read_failed",502,"تعذر قراءة بيانات المطابقة");
+  const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
+}
+
+async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null}) {
+  // Notification without a real Operations Center action is a product failure.
+  // Prefer a match that already has a MATCH_REVIEW operation id.
+  const actionable = (Array.isArray(matches) ? matches : []).filter((row) =>
+    row && row.matchId && String(row.operationId || "").trim()
+  );
+  const top = actionable[0] || null;
+  if (!top) {
+    console.warn("[iaqar-ops] match notification skipped — no MATCH_REVIEW operationId");
+    return { sent: false, reason: "missing_operation" };
+  }
+  const now=new Date();
+  const alertId=`alt_${top.matchId}`;
+  // Stored alert copy stays lock-screen-safe. FCM presentation (title/icon/body) is
+  // resolved separately in sendOfficePush from the office brand + listing facts.
+  const title = "لديك مطابقة جديدة تحتاج مراجعتك.";
+  const body = "لديك مطابقة جديدة تحتاج مراجعتك.";
+  const operationId = String(top.operationId || "").trim();
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
+    officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
+    title:firestoreString(title),body:firestoreString(body),
+    matchId:firestoreString(top.matchId),
+    operationId:firestoreString(operationId),
+    score:firestoreInteger(top.score),
+    opportunityScore:firestoreInteger(Number(top.opportunityScore || top.score || 0)),
+    isBestOpportunity:firestoreBoolean(Boolean(top.isBestOpportunity)),
+    createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
+  }});
+  if (!skipPush) {
+    await sendOfficePush({
+      projectId,
+      officeId,
+      title,
+      body,
+      // Deep-link as operation so Operations Center can open the actionable item.
+      type: "operation",
+      presentationType: "match_found",
+      recordId: operationId,
+      assignedBrokerId: top.assignedBrokerId || "",
+      accessToken,
+      env,
+      listing: {
+        propertyType: top.candidatePropertyType || top.propertyType || "",
+        purpose: top.candidatePurpose || "",
+        district: top.candidateDistrict || top.district || "",
+        city: top.candidateCity || top.city || "",
+        price: top.candidateSalePrice || top.price || 0
+      }
+    });
+  }
+  return { sent: !skipPush, reason: "ok", operationId, matchId: top.matchId };
+}
+
+function buildNotificationLink({officeId,type="match",recordId="",taskId="",opportunityId=""}) {
+  const safeOfficeId=firestoreOfficeId(officeId)||"platform";
+  const safeRecordId=cleanText(recordId,200);
+  const safeTaskId=cleanText(taskId,200);
+  const safeOpportunityId=cleanText(opportunityId,200);
+  const params=new URLSearchParams();
+  if(safeOfficeId==="platform")params.set("office","platform"); else params.set("officeId",safeOfficeId);
+  if(type==="notification_test"){
+    // اختبار التفعيل يفتح المكتب فقط دون محاولة فتح سجل وهمي.
+  } else if(safeTaskId){
+    params.set("openDailyTask",safeTaskId);
+    if(safeRecordId)params.set("openOperation",safeRecordId);
+  } else if(safeOpportunityId){
+    params.set("openOpportunity",safeOpportunityId);
+  } else if(type==="opportunity_followup_reminder"){
+    if(safeRecordId)params.set("openOpportunity",safeRecordId);
+    params.set("focusFollowUp","1");
+  } else if(type==="deal"){
+    if(safeRecordId)params.set("openMatch",safeRecordId);
+  }
+  else if(type==="broker_application"){
+    params.set("adminApplications","1");
+    if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
+  } else if(type==="message"||type==="conversation"){
+    if(safeRecordId)params.set("openMessage",safeRecordId);
+    else params.set("openNotifications","1");
+  } else if(safeOpportunityId || safeRecordId.startsWith("opp_")){
+    params.set("openOpportunity",safeOpportunityId || safeRecordId);
+  } else if(
+    safeRecordId.startsWith("coop_")
+    || type==="cooperation_request"
+    || type==="cooperation_response"
+  ){
+    if(safeRecordId)params.set("openCooperation",safeRecordId);
+    else params.set("openNotifications","1");
+  } else if(
+    type==="client_request"
+    || type==="owner_offer"
+    || type==="missing_data"
+    || type==="operation"
+    || type==="system"
+    || String(safeRecordId).startsWith("op_")
+  ){
+    params.set("openOperation",safeRecordId);
+  } else params.set("openMatch",safeRecordId);
+  return `/?${params.toString()}`;
+}
+
+function parseFcmFailure(payload,status) {
+  const error=payload&&payload.error||{};
+  const details=Array.isArray(error.details)?error.details:[];
+  const fcmDetail=details.find(item=>String(item&&item["@type"]||"").includes("FcmError"))||{};
+  const code=cleanText(fcmDetail.errorCode||error.status||"",80);
+  const staleToken=code==="UNREGISTERED"||code==="INVALID_ARGUMENT"||status===404;
+  return {code:code||`HTTP_${status}`,message:cleanText(error.message||`FCM HTTP ${status}`,300),staleToken};
+}
+
+async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason}) {
+  const now=new Date();
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields:{
+    enabled:firestoreBoolean(false),disabledReason:firestoreString(cleanText(reason,120)||"invalid_fcm_token"),
+    lastErrorAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
+  }}).catch(error=>console.warn("[iaqar-fcm] stale token cleanup failed",error&&error.message));
+}
+
+// خريطة نوع الإشعار إلى فئة التفضيلات. نسخة مطابقة موجودة في
+// public/js/office-domain.js، والاختباران يتحققان من الجدول نفسه فأي اختلاف يفشل البناء.
+// لا يمكن للعامل أن يستورد من public/ دون إضافة خطوة بناء.
+export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
+  match: "matchNotifications",
+  deal: "matchNotifications",
+  client_request: "ownerCustomerNotifications",
+  owner_offer: "ownerCustomerNotifications",
+  intake: "ownerCustomerNotifications",
+  missing_data: "ownerCustomerNotifications",
+  cooperation: "cooperationNotifications",
+  cooperation_request: "cooperationNotifications",
+  cooperation_response: "cooperationNotifications",
+  message: "messageNotifications",
+  conversation: "messageNotifications",
+  appointment: "appointmentNotifications",
+  followup: "appointmentNotifications",
+  opportunity_followup_reminder: "appointmentNotifications",
+  viewing: "appointmentNotifications",
+  operation: "systemNotifications",
+  system: "systemNotifications"
+});
+
+// أنواع طلبها الوسيط بنفسه، فلا تُحجب بأي تفضيل.
+export const ALWAYS_ALLOWED_PUSH_TYPES = Object.freeze(["notification_test"]);
+
+export function notificationCategoryForPushType(type) {
+  const key=String(type||"").trim().toLowerCase();
+  return PUSH_TYPE_NOTIFICATION_CATEGORIES[key]||"systemNotifications";
+}
+
+/** غياب المستند يعني "كل الفئات مفعّلة"، فلا تتغير سلوك المكاتب القائمة. */
+export function notificationCategoryAllowed(type,preferences) {
+  if(ALWAYS_ALLOWED_PUSH_TYPES.includes(String(type||"").trim().toLowerCase()))return true;
+  const source=preferences&&typeof preferences==="object"?preferences:{};
+  const value=source[notificationCategoryForPushType(type)];
+  return value!==false;
+}
+
+async function readOfficeNotificationPreferences({projectId,officeId,accessToken}) {
+  try{
+    const document=await getFirestoreDocument({
+      projectId,segments:["offices",officeId,"officeSettings","notifications"],accessToken,allowMissing:true
+    });
+    return document?firestoreFieldsToJs(document.fields||{}):{};
+  }catch(error){
+    // تعذر قراءة التفضيل لا يجوز أن يُسكت إشعارًا مطلوبًا.
+    console.warn("[iaqar-fcm] notification preferences read failed",error&&error.message);
+    return {};
+  }
+}
+
+async function readOfficeBrandProfile({projectId,officeId,accessToken}) {
+  const id=String(officeId||"").trim();
+  if(!id || id==="platform") return { officeId: id || "platform" };
+  try{
+    const document=await getFirestoreDocument({
+      projectId,segments:["offices",id],accessToken,allowMissing:true
+    });
+    return document?{officeId:id,...firestoreFieldsToJs(document.fields||{})}:{officeId:id};
+  }catch(error){
+    console.warn("[iaqar-fcm] office brand profile read failed",error&&error.message);
+    return { officeId: id };
+  }
+}
+
+async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null,taskId="",opportunityId="",missingLabel="",appointmentLabel="",presentationType=""}) {
+  if (env) await ensurePilotFeatureEnabled(env, "pushNotifications");
+  const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
+  if(!notificationCategoryAllowed(type,preferences)){
+    return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
+  }
+  const officeProfile=await readOfficeBrandProfile({projectId,officeId,accessToken});
+  const appOrigin=resolveAppOrigin(env||{});
+  const presentation=formatOfficePushPresentation({
+    office:officeProfile,
+    officeId,
+    type: presentationType || type,
+    title,
+    body,
+    listing,
+    missingLabel,
+    appointmentLabel,
+    appOrigin,
+    includeBadge:false
+  });
+  const workerBase = String(env?.DEPLOYMENT_ENV || "").toLowerCase() === "staging"
+    ? "https://iaqar-intake-staging.iaqar-ai.workers.dev"
+    : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+  const iconCandidates=officeBrandIconCandidates(officeProfile,{
+    workerBase,
+    officeId
+  }).map((url)=>toAbsoluteHttpsIcon(url,appOrigin));
+  const fallbackIcon=toAbsoluteHttpsIcon(PLATFORM_DEFAULT_LOGO,appOrigin);
+  presentation.icon=await pickReachableHttpsIcon([presentation.icon,...iconCandidates],fallbackIcon);
+  presentation.badge="";
+  const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
+  const brokerFilter=String(assignedBrokerId||"").trim();
+  const activeDevices=devices.map(doc=>{
+    const value=firestoreFieldsToJs(doc.fields||{});
+    return {
+      deviceId:decodeURIComponent(String(doc.name||"").split("/").pop()||""),
+      ...value,
+      registrationId:value.fcmRegistrationId||value.fcmToken||"",
+      registrationType:value.registrationType==="fid"?"fid":value.registrationType==="webpush"?"webpush":"token"
+    };
+  }).filter(device=>{
+    if(device.enabled===false||!device.registrationId)return false;
+    // Assigned broker: prefer devices owned by that uid; if none match, fall back to office queue.
+    return true;
+  });
+  const brokerDevices=brokerFilter
+    ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
+    : [];
+  const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
+  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
+  for(const device of targetDevices){
+    try{
+      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:"",taskId,opportunityId});
+      summary.sent+=1;
+    }catch(error){
+      summary.failed+=1;
+      console.warn("[iaqar-fcm] send failed",error&&error.message);
+      if(error&&error.staleToken&&device.deviceId){
+        summary.disabled+=1;
+        await disableStaleFcmDevice({projectId,officeId,deviceId:device.deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
+      }
+    }
+  }
+  return summary;
+}
+
+function configureWebPushVapid(env) {
+  const publicKey = cleanText(env.FCM_WEB_PUSH_VAPID_KEY, 200);
+  const privateKey = cleanText(env.FCM_VAPID_PRIVATE_KEY, 200);
+  if (!publicKey || !privateKey) return false;
+  webpush.setVapidDetails(`mailto:staging@${env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID}.web`, publicKey, privateKey);
+  return true;
+}
+
+async function sendWebPushNotification({ env, subscriptionJson, title, body, type = "match", recordId = "", officeId = "", icon = "", badge = "", taskId = "", opportunityId = "" }) {
+  if (!configureWebPushVapid(env)) throw new Error("Web Push VAPID keys are not configured");
+  const subscription = JSON.parse(String(subscriptionJson || ""));
+  const relativeLink = buildNotificationLink({ officeId, type, recordId, taskId, opportunityId });
+  const link = new URL(relativeLink, resolveAppOrigin(env)).href;
+  const appOrigin = resolveAppOrigin(env || {});
+  const notification = { title: String(title || "مكاتب عقارية ذكية"), body: String(body || "لديك تنبيه جديد") };
+  if (icon) notification.icon = icon;
+  if (badge && badge !== icon) notification.badge = badge;
+  await webpush.sendNotification(subscription, JSON.stringify({
+    notification,
+    data: { type: String(type), recordId: String(recordId || ""), taskId: String(taskId || ""), opportunityId: String(opportunityId || ""), officeId: String(officeId), url: link, iconUrl: icon || `${appOrigin}/icons/iaqar-default-icon-192.png`, badgeUrl: badge && badge !== icon ? badge : "" }
+  }));
+  return { ok: true };
+}
+
+function buildFcmTarget(registrationId,registrationType="fid") {
+  const id=cleanText(registrationId,4096);
+  if(!id)throw new Error("FCM registration ID is required");
+  if(registrationType==="webpush")return { webpush: {} };
+  return registrationType==="fid"?{fid:id}:{token:id};
+}
+
+function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode="",env=null,icon="",badge="",taskId="",opportunityId=""}) {
+  const relativeLink=buildNotificationLink({officeId,type,recordId,taskId,opportunityId});
+  const appOrigin=resolveAppOrigin(env||{});
+  const link=new URL(relativeLink,appOrigin).href;
+  const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
+  const target=buildFcmTarget(registrationId,registrationType);
+  const resolvedIcon=String(icon||`${appOrigin}/icons/iaqar-default-icon-192.png`);
+  const resolvedBadge=String(badge||"");
+  const webNotification={icon:resolvedIcon,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true};
+  if(resolvedBadge && resolvedBadge!==resolvedIcon) webNotification.badge=resolvedBadge;
+  return {message:{
+    ...target,
+    notification:{title:String(title||"مكاتب عقارية ذكية"),body:String(body||"لديك تنبيه جديد")},
+    data:{
+      type:String(type),
+      recordId:String(recordId||""),
+      taskId:String(taskId||""),
+      opportunityId:String(opportunityId||""),
+      matchId:type==="match"?String(recordId||""):"",
+      dealId:type==="deal"?String(recordId||""):"",
+      officeId:String(officeId),
+      url:link,
+      deliveryId:finalDeliveryId,
+      followUpAt:String(followUpAt||""),
+      recipientMode:String(recipientMode||""),
+      entityType:type==="opportunity_followup_reminder"?"opportunity":"",
+      entityId:String(recordId||""),
+      iconUrl:resolvedIcon,
+      badgeUrl:resolvedBadge!==resolvedIcon?resolvedBadge:""
+    },
+    webpush:{
+      headers:{Urgency:type==="match"?"high":"normal"},
+      notification:webNotification,
+      fcm_options:{link}
+    }
+  }};
+}
+
+async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge="",taskId="",opportunityId=""}) {
+  if(registrationType==="webpush"){
+    await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge,taskId,opportunityId});
+    return { name: "webpush" };
+  }
+  const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
+    method:"POST",
+    headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
+    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge,taskId,opportunityId}))
+  });
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok){
+    const failure=parseFcmFailure(payload,response.status);
+    const error=new Error(failure.message);
+    error.fcmCode=failure.code;
+    error.staleToken=failure.staleToken;
+    throw error;
+  }
+  return payload;
+}
+
+async function getFcmStatus(request,url,env,requestId) {
+  assertFirebaseSecrets(env);
+  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
+  if(!officeId)throw appError("office_id_required",400,"officeId مطلوب");
+  await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
+  const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
+  const parsed=devices.map(doc=>firestoreFieldsToJs(doc.fields||{}));
+  return jsonResponse({ok:true,officeId,registeredDevices:parsed.length,activeDevices:parsed.filter(item=>item.enabled!==false&&(item.fcmRegistrationId||item.fcmToken)).length,requestId});
+}
+
+async function registerFcmDevice(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
+  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
+  const officeId=firestoreOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
+  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
+  const existing=await getFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,allowMissing:true});
+  const fields={
+    officeId:firestoreString(officeId),fcmRegistrationId:firestoreString(registrationId),registrationType:firestoreString(registrationType),fcmToken:firestoreString(registrationType==="token"?registrationId:""),platform:firestoreString("web"),enabled:firestoreBoolean(true),
+    userUid:firestoreOptionalString(identity.uid),userAgent:firestoreOptionalString(cleanText(body.userAgent,500)),
+    deviceName:firestoreOptionalString(cleanText(body.deviceName,120)),installationId:firestoreOptionalString(installationId),language:firestoreOptionalString(cleanText(body.language,40)),
+    notificationPermission:firestoreOptionalString(cleanText(body.notificationPermission,30)),appVersion:firestoreOptionalString(cleanText(body.appVersion,60)),
+    lastSeenAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),updatedByUid:firestoreOptionalString(identity.uid),disabledReason:firestoreString("")
+  };
+  if(!existing)fields.createdAt=firestoreTimestamp(now);
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields});
+  return jsonResponse({ok:true,deviceId,enabled:true,requestId});
+}
+
+async function unregisterFcmDevice(request,env,requestId) {
+  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
+  const officeId=firestoreOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
+  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields:{officeId:firestoreString(officeId),fcmRegistrationId:firestoreString(registrationId),registrationType:firestoreString(registrationType),fcmToken:firestoreString(registrationType==="token"?registrationId:""),platform:firestoreString("web"),enabled:firestoreBoolean(false),disabledReason:firestoreString("disabled_by_user"),installationId:firestoreOptionalString(installationId),userUid:firestoreOptionalString(identity.uid),updatedAt:firestoreTimestamp(now),updatedByUid:firestoreOptionalString(identity.uid)}});
+  return jsonResponse({ok:true,deviceId,enabled:false,requestId});
+}
+
+async function sendFcmTestNotification(request,env,requestId) {
+  await ensurePilotFeatureEnabled(env, "pushNotifications");
+  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
+  const officeId=firestoreOfficeId(body.officeId);
+  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
+  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
+  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
+    registrationType="webpush";
+    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
+  }
+  const installationId=cleanText(body.installationId,160);
+  if(!officeId||!registrationId)throw appError("device_data_missing",400,"بيانات الجهاز غير مكتملة");
+  await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`;
+  const deviceDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,allowMissing:true});
+  const device=deviceDoc?firestoreFieldsToJs(deviceDoc.fields||{}):null;
+  const savedRegistration=device&&(device.fcmRegistrationId||device.fcmToken||"");
+  if(!device||device.enabled===false||savedRegistration!==registrationId)throw appError("device_not_registered",409,"الجهاز غير مسجل للإشعارات");
+  try{
+    const officeProfile = await readOfficeBrandProfile({ projectId, officeId, accessToken });
+    const presentation = formatOfficePushPresentation({
+      office: officeProfile,
+      officeId,
+      type: "notification_test",
+      title: "تم تفعيل إشعارات المكتب",
+      body: "سيصلك تنبيه عند وجود مطابقة أو متابعة جديدة.",
+      appOrigin: resolveAppOrigin(env || {}),
+      includeBadge: false
+    });
+    const icon = await pickReachableHttpsIcon([presentation.icon], presentation.icon);
+    await sendFcmMessage({
+      projectId,
+      registrationId,
+      registrationType,
+      title: presentation.title,
+      body: presentation.body,
+      type: "notification_test",
+      recordId: `test_${Date.now()}`,
+      officeId,
+      accessToken,
+      env,
+      icon,
+      badge: ""
+    });
+  }catch(error){
+    if(error&&error.staleToken)await disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
+    throw appError("fcm_test_failed",502,"تم تسجيل الجهاز لكن تعذر وصول الإشعار التجريبي");
+  }
+  return jsonResponse({ok:true,officeId,registered:1,sent:1,failed:0,disabled:0,requestId});
+}
+
+function workflowCollection(recordType) {
+  return recordType === "deal" ? "deals" : "matches";
+}
+
+async function addWorkflowTimeline({projectId,officeId,recordType,recordId,eventType,stage,note="",identity={},accessToken,createdAt=new Date()}) {
+  const eventId=`evt_${createdAt.getTime()}_${crypto.randomUUID().slice(0,8)}`;
+  const collection=workflowCollection(recordType);
+  await setFirestoreDocument({projectId,segments:["offices",officeId,collection,recordId,"timeline",eventId],accessToken,fields:{
+    officeId:firestoreString(officeId),recordType:firestoreString(recordType),recordId:firestoreString(recordId),
+    eventType:firestoreString(eventType),stage:firestoreString(stage),note:firestoreOptionalString(cleanText(note,1000)),
+    createdAt:firestoreTimestamp(createdAt),createdByUid:firestoreOptionalString(identity.uid)
+  }});
+  return eventId;
+}
+
+async function createDealFromMatch({projectId,officeId,matchId,matchData,identity,accessToken,now,commissionExpected=0,startStage="negotiation"}) {
+  const dealId=matchData.dealId || `deal_${matchId.replace(/^mat_/,"")}`;
+  const stage=DEAL_STAGE_ORDER.includes(startStage)?startStage:"contact";
+  const health=calculateDealHealth({stage,status:"open",updatedAt:now});
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
+    schemaVersion:firestoreInteger(5),officeId:firestoreString(officeId),dealId:firestoreString(dealId),matchId:firestoreString(matchId),
+    clientRequestId:firestoreOptionalString(matchData.clientRequestId),ownerOfferId:firestoreOptionalString(matchData.ownerOfferId),matchGroupId:firestoreOptionalString(matchData.matchGroupId||matchData.clientRequestId),
+    status:firestoreString("open"),workflowStage:firestoreString(stage),stageLabel:firestoreString(DEAL_STAGE_LABELS[stage]),
+    nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS[stage]),healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),
+    score:matchData.score?firestoreInteger(matchData.score):null,closingReadinessScore:matchData.closingReadinessScore?firestoreInteger(matchData.closingReadinessScore):null,
+    priority:firestoreOptionalString(matchData.priority),district:firestoreOptionalString(matchData.district),propertyType:firestoreOptionalString(matchData.propertyType),
+    assignedToUid:firestoreOptionalString(identity.uid),commissionExpected:commissionExpected?firestoreInteger(Number(commissionExpected)):null,
+    nextFollowUpAt:firestoreTimestamp(defaultNextFollowUp(stage==="closing"?8:24)),followUpCount:firestoreInteger(0),
+    createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
+  }});
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
+    status:firestoreString("negotiation"),statusLabel:firestoreString(MATCH_STATUS_LABELS.negotiation),workflowStage:firestoreString("negotiation"),
+    nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
+  }});
+  await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"تم إنشاء الصفقة من المطابقة",identity,accessToken,createdAt:now});
+  return dealId;
+}
+
+async function finalizeDealAndCloseSiblings({projectId,officeId,dealId,dealData,identity,accessToken,now,note="",commissionActual=0}) {
+  const matchId=dealData.matchId || "";
+  let matchData={};
+  if(matchId){
+    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,allowMissing:true});
+    matchData=matchDoc?firestoreFieldsToJs(matchDoc.fields||{}):{};
+  }
+  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
+    status:firestoreString("closed"),workflowStage:firestoreString("closed"),stageLabel:firestoreString(DEAL_STAGE_LABELS.closed),
+    nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.closed),healthScore:firestoreInteger(100),healthKey:firestoreString("excellent"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.excellent),
+    commissionActual:commissionActual?firestoreInteger(Number(commissionActual)):null,closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),lastNote:firestoreOptionalString(note),attentionRequired:firestoreBoolean(false)
+  }});
+  await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_closed",stage:"closed",note:note||"تمت الصفقة",identity,accessToken,createdAt:now});
+
+  if(matchId){
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
+      status:firestoreString("completed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.completed),workflowStage:firestoreString("completed"),
+      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.completed),closingReadinessScore:firestoreInteger(100),closingReadinessKey:firestoreString("very_high"),closingReadinessLabel:firestoreString(READINESS_LABELS.very_high),
+      completedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),closeReason:firestoreString("تمت الصفقة مع هذا العقار"),attentionRequired:firestoreBoolean(false)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:matchId,eventType:"match_completed",stage:"completed",note:"تمت الصفقة مع هذا العقار",identity,accessToken,createdAt:now});
+  }
+
+  const groupId=dealData.matchGroupId||dealData.clientRequestId||matchData.matchGroupId||matchData.clientRequestId||"";
+  let closedSiblings=0;
+  if(groupId){
+    const docs=await listCollectionDocuments({projectId,segments:["offices",officeId,"matches"],accessToken,pageSize:300});
+    for(const doc of docs){
+      const siblingId=decodeURIComponent(String(doc.name||"").split("/").pop()||"");
+      if(!siblingId||siblingId===matchId) continue;
+      const sibling=firestoreFieldsToJs(doc.fields||{});
+      const siblingGroup=sibling.matchGroupId||sibling.clientRequestId||"";
+      if(siblingGroup!==groupId) continue;
+      const siblingStatus=normalizeMatchStatus(sibling.status);
+      if(["completed","closed"].includes(siblingStatus)) continue;
+      closedSiblings+=1;
+      const reason="تمت الصفقة مع عقار آخر";
+      await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",siblingId],accessToken,fields:{
+        status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),
+        nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),
+        closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),closedByMatchId:firestoreString(matchId),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+      }});
+      await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:siblingId,eventType:"match_auto_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
+      if(sibling.dealId){
+        await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",sibling.dealId],accessToken,fields:{
+          status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),
+          nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),
+          lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+        }});
+        await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:sibling.dealId,eventType:"deal_auto_closed",stage:"lost",note:reason,identity,accessToken,createdAt:now});
+      }
+    }
+  }
+
+  const clientRequestId=dealData.clientRequestId||matchData.clientRequestId||"";
+  const ownerOfferId=dealData.ownerOfferId||matchData.ownerOfferId||"";
+  if(clientRequestId){
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"clients",clientRequestId],accessToken,fields:{status:firestoreString("fulfilled"),workflowStage:firestoreString("closed"),fulfilledAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
+  }
+  if(ownerOfferId){
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"owners",ownerOfferId],accessToken,fields:{status:firestoreString("closed"),workflowStage:firestoreString("sold"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
+  }
+  return {closedSiblings,matchId};
+}
+
+async function handleWorkflowAction(request,env,requestId) {
+  assertFirebaseSecrets(env);
+  const body=await request.json().catch(()=>({}));
+  const officeId=firestoreOfficeId(body.officeId),action=cleanText(body.action,50),recordId=cleanText(body.recordId,160);
+  if(!officeId||!action||!recordId)throw appError("workflow_data_missing",400,"بيانات الإجراء غير مكتملة");
+  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),now=new Date();
+  const note=cleanText(body.note,1000);
+  const requestedNext=body.nextFollowUpAt?new Date(body.nextFollowUpAt):null;
+  const nextFollowUpAt=requestedNext&&!Number.isNaN(requestedNext.getTime())?requestedNext:defaultNextFollowUp(24);
+
+  if(action==="start_match"||action==="advance_match"){
+    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
+    const m=firestoreFieldsToJs(matchDoc.fields||{});
+    const current=normalizeMatchStatus(m.status);
+    if(current==="completed"||current==="closed") return jsonResponse({ok:true,status:current,statusLabel:MATCH_STATUS_LABELS[current],requestId});
+    let next=current;
+    if(action==="start_match"&&["active","new"].includes(current)) next="active";
+    else if(current==="active") next="waiting_response";
+    else if(current==="waiting_response") next="viewing";
+    else if(current==="viewing") next="negotiation";
+    else if(current==="negotiation") next="negotiation";
+    const readiness=calculateClosingReadiness({matchScore:m.score,status:next});
+    const followUpCount=Number(m.followUpCount||0)+1;
+    const fields={
+      status:firestoreString(next),statusLabel:firestoreString(MATCH_STATUS_LABELS[next]),workflowStage:firestoreString(next),
+      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS[next]),closingReadinessScore:firestoreInteger(readiness.score),closingReadinessKey:firestoreString(readiness.key),closingReadinessLabel:firestoreString(readiness.label),
+      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(followUpCount),
+      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
+    };
+    if(next==="viewing") fields.viewingAt=firestoreTimestamp(nextFollowUpAt);
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
+    let dealId=m.dealId||"";
+    if(next==="negotiation"&&!dealId){
+      dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+    }
+    return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
+  }
+
+  if(action==="add_match_followup"){
+    if(!note&&!body.nextFollowUpAt)throw appError("followup_data_required",400,"اكتب ملاحظة أو حدد موعد المتابعة");
+    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
+    const m=firestoreFieldsToJs(matchDoc.fields||{});
+    const status=normalizeMatchStatus(m.status);
+    const count=Number(m.followUpCount||0)+1;
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:{
+      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
+      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false),assignedToUid:firestoreOptionalString(identity.uid)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"follow_up_added",stage:status,note:note||"تم تحديد موعد متابعة",identity,accessToken,createdAt:now});
+    return jsonResponse({ok:true,status,nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,requestId});
+  }
+
+  if(action==="close_match"){
+    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
+    const m=firestoreFieldsToJs(matchDoc.fields||{});
+    const current=normalizeMatchStatus(m.status);
+    if(current==="completed") return jsonResponse({ok:true,status:"completed",statusLabel:MATCH_STATUS_LABELS.completed,requestId});
+    if(current==="closed") return jsonResponse({ok:true,status:"closed",statusLabel:MATCH_STATUS_LABELS.closed,requestId});
+    const reason=note||"أُغلقت المطابقة يدويًا";
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:{
+      status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),
+      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),
+      closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"match_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
+    if(m.dealId){
+      const linkedDeal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",m.dealId],accessToken,allowMissing:true});
+      const linked=linkedDeal?firestoreFieldsToJs(linkedDeal.fields||{}):{};
+      if(linkedDeal&&!['closed','lost'].includes(linked.status)){
+        await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",m.dealId],accessToken,fields:{
+          status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),
+          healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+        }});
+        await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:m.dealId,eventType:"deal_lost",stage:"lost",note:reason,identity,accessToken,createdAt:now});
+      }
+    }
+    return jsonResponse({ok:true,status:"closed",statusLabel:MATCH_STATUS_LABELS.closed,requestId});
+  }
+
+  if(action==="create_deal"){
+    const match=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
+    const m=firestoreFieldsToJs(match.fields||{});
+    const matchStatus=normalizeMatchStatus(m.status);
+    if(["completed","closed"].includes(matchStatus)) throw appError("match_not_open",409,"لا يمكن إنشاء صفقة من مطابقة مغلقة");
+    if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":"contact",requestId});
+    const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:matchStatus==="negotiation"?"negotiation":"contact"});
+    return jsonResponse({ok:true,dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":"contact",requestId});
+  }
+
+  if(action==="advance_deal"||action==="set_deal_stage"){
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
+    const d=firestoreFieldsToJs(deal.fields||{});
+    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:0,requestId});
+    if(d.status==="lost"||d.workflowStage==="lost") return jsonResponse({ok:true,status:"lost",workflowStage:"lost",stageLabel:DEAL_STAGE_LABELS.lost,nextAction:DEAL_NEXT_ACTION_LABELS.lost,requestId});
+    const current=DEAL_STAGE_ORDER.includes(d.workflowStage)?d.workflowStage:"contact";
+    const requested=action==="set_deal_stage"?cleanText(body.stage,40):nextDealStage(current);
+    if(!DEAL_STAGE_ORDER.includes(requested))throw appError("deal_stage_invalid",400,"مرحلة الصفقة غير صحيحة");
+    if(requested==="closed"){
+      const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
+      return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:closed.closedSiblings,requestId});
+    }
+    const health=calculateDealHealth({stage:requested,status:"open",updatedAt:now,nextFollowUpAt});
+    const count=Number(d.followUpCount||0)+1;
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
+      status:firestoreString("open"),workflowStage:firestoreString(requested),stageLabel:firestoreString(DEAL_STAGE_LABELS[requested]),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS[requested]),
+      healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),
+      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
+      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"stage_changed",stage:requested,note:note||`انتقلت الصفقة إلى ${DEAL_STAGE_LABELS[requested]}`,identity,accessToken,createdAt:now});
+    return jsonResponse({ok:true,status:"open",workflowStage:requested,stageLabel:DEAL_STAGE_LABELS[requested],nextAction:DEAL_NEXT_ACTION_LABELS[requested],health,requestId});
+  }
+
+  if(action==="add_deal_note"||action==="add_deal_followup"){
+    if(!note&&!body.nextFollowUpAt)throw appError("deal_note_required",400,"اكتب ملاحظة أو حدد موعد المتابعة");
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
+    const d=firestoreFieldsToJs(deal.fields||{});
+    const count=Number(d.followUpCount||0)+1;
+    const health=calculateDealHealth({stage:d.workflowStage||"contact",status:d.status||"open",updatedAt:now,nextFollowUpAt});
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
+      lastNote:firestoreOptionalString(note),lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
+      healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"follow_up_added",stage:d.workflowStage||"follow_up",note:note||"تم تحديد موعد متابعة",identity,accessToken,createdAt:now});
+    return jsonResponse({ok:true,status:"noted",nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,health,requestId});
+  }
+
+  if(action==="mark_lost"){
+    const reason=note||"تعذّر إكمال الصفقة";
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
+    const d=firestoreFieldsToJs(deal.fields||{});
+    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",requestId});
+    if(d.status==="lost"||d.workflowStage==="lost") return jsonResponse({ok:true,status:"lost",requestId});
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
+      status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),
+      healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+    }});
+    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"deal_lost",stage:"lost",note:reason,identity,accessToken,createdAt:now});
+    if(d.matchId){
+      const linkedMatch=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",d.matchId],accessToken,allowMissing:true});
+      const linked=linkedMatch?firestoreFieldsToJs(linkedMatch.fields||{}):{};
+      const linkedStatus=normalizeMatchStatus(linked.status);
+      if(linkedMatch&&!['completed','closed'].includes(linkedStatus)){
+        await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",d.matchId],accessToken,fields:{
+          status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),
+          closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
+        }});
+        await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:d.matchId,eventType:"match_closed_after_deal_lost",stage:"closed",note:reason,identity,accessToken,createdAt:now});
+      }
+    }
+    return jsonResponse({ok:true,status:"lost",matchId:d.matchId||"",requestId});
+  }
+
+  if(action==="close_deal"){
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
+    const d=firestoreFieldsToJs(deal.fields||{});
+    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:0,requestId});
+    if(d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"لا يمكن إغلاق صفقة متوقفة");
+    const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
+    return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:closed.closedSiblings,requestId});
+  }
+
+  // Phase 8: broker-entered financial/note fields — Worker-trusted only (no client deal writes).
+  if(action==="update_deal_fields"){
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,allowMissing:true});
+    if(!deal) throw appError("deal_not_found",404,"الصفقة غير موجودة");
+    const fields={ updatedAt:firestoreTimestamp(now) };
+    const finalPrice=Number(body.finalPrice);
+    const commissionActual=Number(body.commissionActual);
+    const internalNote=cleanText(body.internalNote,1000);
+    if(Number.isFinite(finalPrice) && finalPrice >= 0) fields.finalPrice=firestoreInteger(Math.round(finalPrice));
+    if(Number.isFinite(commissionActual) && commissionActual >= 0) fields.commissionActual=firestoreInteger(Math.round(commissionActual));
+    if(internalNote) fields.internalNote=firestoreString(internalNote);
+    if(Object.keys(fields).length <= 1) throw appError("deal_fields_required",400,"لا توجد حقول لتحديثها");
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields});
+    return jsonResponse({ok:true,dealId:recordId,updated:true,requestId});
+  }
+
+  throw appError("workflow_action_invalid",400,"الإجراء غير معروف");
+}
+
+async function handleWorkflowTimeline(request,url,env,requestId){
+  assertFirebaseSecrets(env);
+  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
+  const recordType=cleanText(url.searchParams.get("recordType")||"match",20)==="deal"?"deal":"match";
+  const recordId=cleanText(url.searchParams.get("recordId"),160);
+  if(!officeId||!recordId)throw appError("timeline_data_missing",400,"بيانات سجل النشاط غير مكتملة");
+  await authorizeOfficeRequest(request,env,officeId,"member");
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
+  const docs=await listCollectionDocuments({projectId,segments:["offices",officeId,workflowCollection(recordType),recordId,"timeline"],accessToken,pageSize:100});
+  const events=docs.map(doc=>{
+    const value=firestoreFieldsToJs(doc.fields||{});
+    return {id:decodeURIComponent(String(doc.name||"").split("/").pop()||""),eventType:value.eventType||"",stage:value.stage||"",note:value.note||"",createdAt:value.createdAt||""};
+  }).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,20);
+  return jsonResponse({ok:true,recordType,recordId,events,requestId});
+}
+
+async function runFirestoreQuery({projectId,accessToken,structuredQuery}){
+  const response=await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery`,{
+    method:"POST",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},body:JSON.stringify({structuredQuery})
+  });
+  if(!response.ok){
+    const detail=await response.text();
+    console.warn("[iaqar-followups] Firestore query failed",response.status,detail);
+    throw appError("firestore_query_failed",502,"تعذر فحص المتابعات المستحقة");
+  }
+  const payload=await response.json();
+  return (Array.isArray(payload)?payload:[]).map(row=>row.document).filter(Boolean);
+}
+
+async function queryDueWorkflowRecords({projectId,accessToken,collectionId,now}){
+  return runFirestoreQuery({projectId,accessToken,structuredQuery:{
+    from:[{collectionId,allDescendants:true}],
+    where:{fieldFilter:{field:{fieldPath:"nextFollowUpAt"},op:"LESS_THAN_OR_EQUAL",value:{timestampValue:now.toISOString()}}},
+    orderBy:[{field:{fieldPath:"nextFollowUpAt"},direction:"ASCENDING"}],
+    limit:200
+  }});
+}
+
+async function queryDueOpportunityFollowupReminders({ projectId, accessToken, now }) {
+  return runFirestoreQuery({
+    projectId,
+    accessToken,
+    structuredQuery: {
+      from: [{ collectionId: "opportunities", allDescendants: true }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "followUpReminderAt" },
+          op: "LESS_THAN_OR_EQUAL",
+          value: { timestampValue: now.toISOString() }
+        }
+      },
+      orderBy: [{ field: { fieldPath: "followUpReminderAt" }, direction: "ASCENDING" }],
+      limit: 200
+    }
+  });
+}
+
+async function processOpportunityFollowupReminders(env, scheduledTime = Date.now()) {
+  if (!hasFirebaseSecrets(env)) {
+    console.warn("[iaqar-followups] Firebase server secrets are not configured");
+    return { ok: false, reason: "firebase_not_configured" };
+  }
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const now = new Date(Number(scheduledTime) || Date.now());
+  const docs = await queryDueOpportunityFollowupReminders({ projectId, accessToken, now });
+  let checked = 0;
+  let notified = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const document of docs) {
+    checked += 1;
+    const value = firestoreFieldsToJs(document.fields || {});
+    const officeId = firestoreOfficeId(value.officeId);
+    const opportunityId = decodeURIComponent(String(document.name || "").split("/").pop() || "");
+    if (!officeId || !opportunityId) continue;
+
+    const followUp = value.followUp && typeof value.followUp === "object" ? value.followUp : null;
+    const dueReminder = followUp ? getDueFollowUpReminder(followUp, now) : null;
+    if (!followUp || !dueReminder) {
+      skipped += 1;
+      continue;
+    }
+
+    const dedupKey = followUpReminderDedupKey(opportunityId, followUp.at, dueReminder.kind);
+    const existingAlert = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "alerts", dedupKey],
+      accessToken,
+      allowMissing: true
+    });
+    if (existingAlert) {
+      skipped += 1;
+      continue;
+    }
+
+    const title = followUpReminderTitle(dueReminder.kind);
+    const body = formatFollowUpReminderBody(value, followUp);
+    const pushSummary = await sendOfficePush({
+      projectId,
+      officeId,
+      title,
+      body,
+      type: "opportunity_followup_reminder",
+      recordId: opportunityId,
+      accessToken,
+      env,
+      followUpAt: followUp.at,
+      recipientMode: followUp.recipientMode || ""
+    });
+
+    const dispatchAccepted = Number(pushSummary.sent || 0) > 0;
+    const activityAction = dispatchAccepted ? "followup_reminder_dispatched" : "followup_reminder_failed";
+    await addOpportunityCommunication({
+      projectId,
+      officeId,
+      opportunityId,
+      accessToken,
+      now,
+      payload: {
+        type: "followup",
+        action: activityAction,
+        result: dispatchAccepted ? "sent" : pushSummary.reason || "failed",
+        statusBefore: value.lifecycleStatus || "",
+        statusAfter: value.lifecycleStatus || "",
+        createdBy: "system"
+      }
+    });
+
+    if (dispatchAccepted) {
+      const updatedFollowUp = advanceFollowUpAfterReminder({
+        ...followUp,
+        updatedBy: "system"
+      }, dueReminder.kind, now);
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "opportunities", opportunityId],
+        accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          ...followUpFirestoreFields(updatedFollowUp),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "alerts", dedupKey],
+        accessToken,
+        fields: compactFields({
+          officeId: firestoreString(officeId),
+          type: firestoreString("opportunity_followup_reminder"),
+          recordType: firestoreString("opportunity"),
+          recordId: firestoreString(opportunityId),
+          status: firestoreString("sent"),
+          title: firestoreString(title),
+          body: firestoreString(body),
+          followUpAt: firestoreTimestamp(new Date(followUp.at)),
+          createdAt: firestoreTimestamp(now),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+      notified += 1;
+    } else {
+      failed += 1;
+    }
+  }
+
+  console.info("[iaqar-opp-followups] completed", { checked, notified, skipped, failed });
+  return { ok: true, checked, notified, skipped, failed };
+}
+
+async function processOverdueFollowups(env,scheduledTime=Date.now()){
+  if(!hasFirebaseSecrets(env)){
+    console.warn("[iaqar-followups] Firebase server secrets are not configured");
+    return {ok:false,reason:"firebase_not_configured"};
+  }
+  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID;
+  const accessToken=await getGoogleAccessToken(env);
+  const now=new Date(Number(scheduledTime)||Date.now());
+  const [matchDocs,dealDocs]=await Promise.all([
+    queryDueWorkflowRecords({projectId,accessToken,collectionId:"matches",now}),
+    queryDueWorkflowRecords({projectId,accessToken,collectionId:"deals",now})
+  ]);
+  const records=[...matchDocs.map(document=>({recordType:"match",document})),...dealDocs.map(document=>({recordType:"deal",document}))];
+  let notified=0;
+  for(const entry of records){
+    const value=firestoreFieldsToJs(entry.document.fields||{});
+    const status=cleanText(value.status,40);
+    if(entry.recordType==="match"&&["completed","closed"].includes(normalizeMatchStatus(status))) continue;
+    if(entry.recordType==="deal"&&["closed","lost"].includes(status)) continue;
+    const lastNotified=value.followUpNotifiedAt?new Date(value.followUpNotifiedAt).getTime():0;
+    if(Number.isFinite(lastNotified)&&now.getTime()-lastNotified<12*3600000) continue;
+    const officeId=firestoreOfficeId(value.officeId);
+    const recordId=decodeURIComponent(String(entry.document.name||"").split("/").pop()||"");
+    if(!officeId||!recordId) continue;
+    const collection=workflowCollection(entry.recordType);
+    const title=entry.recordType==="match"?"متابعة مطابقة مستحقة":"متابعة صفقة مستحقة";
+    const stageText=entry.recordType==="match"?(value.statusLabel||MATCH_STATUS_LABELS[normalizeMatchStatus(status)]):(value.stageLabel||DEAL_STAGE_LABELS[value.workflowStage]||"المتابعة");
+    const actionText=value.nextAction||(entry.recordType==="match"?MATCH_NEXT_ACTION_LABELS[normalizeMatchStatus(status)]:DEAL_NEXT_ACTION_LABELS[value.workflowStage])||"اتخاذ الإجراء التالي";
+    const body=[value.propertyType,value.district,stageText,actionText].filter(Boolean).join(" — ");
+    const bucket=now.toISOString().slice(0,13).replace(/[-T]/g,"");
+    const alertId=`follow_${entry.recordType}_${recordId}_${bucket}`;
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
+      officeId:firestoreString(officeId),type:firestoreString("follow_up"),recordType:firestoreString(entry.recordType),recordId:firestoreString(recordId),
+      status:firestoreString("unread"),title:firestoreString(title),body:firestoreString(body||"لديك متابعة مستحقة الآن"),
+      createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
+    }});
+    await setFirestoreDocument({projectId,segments:["offices",officeId,collection,recordId],accessToken,fields:{
+      attentionRequired:firestoreBoolean(true),followUpNotifiedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
+    }});
+    await sendOfficePush({projectId,officeId,title,body:body||"لديك متابعة مستحقة الآن",type:entry.recordType,recordId,accessToken,env});
+    notified+=1;
+  }
+  console.info("[iaqar-followups] completed",{checked:records.length,notified});
+  return {ok:true,checked:records.length,notified};
+}
+
+function parseJsonArray(value){
+  try { const parsed=JSON.parse(String(value||"[]")); return Array.isArray(parsed)?parsed:[]; } catch (_) { return []; }
+}
+
+async function handleOfficeAnalytics(request,url,env,requestId){
+  assertFirebaseSecrets(env); const officeId=firestoreOfficeId(url.searchParams.get("officeId")); if(!officeId)throw appError("office_id_required",400,"officeId مطلوب");
+  await authorizeOfficeRequest(request,env,officeId,"member"); const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
+  const [clients,owners,matches,deals]=await Promise.all([
+    listCollectionDocuments({projectId,segments:["offices",officeId,"clients"],accessToken,pageSize:200}),
+    listCollectionDocuments({projectId,segments:["offices",officeId,"owners"],accessToken,pageSize:200}),
+    listCollectionDocuments({projectId,segments:["offices",officeId,"matches"],accessToken,pageSize:200}),
+    listCollectionDocuments({projectId,segments:["offices",officeId,"deals"],accessToken,pageSize:200})
+  ]);
+  const cs=clients.map(d=>firestoreFieldsToJs(d.fields||{})), os=owners.map(d=>firestoreFieldsToJs(d.fields||{})), ms=matches.map(d=>firestoreFieldsToJs(d.fields||{})), ds=deals.map(d=>firestoreFieldsToJs(d.fields||{}));
+  return jsonResponse({ok:true,officeId,...buildAnalyticsSummary({clients:cs,owners:os,matches:ms,deals:ds}),requestId});
+}
+
+
+function pilotAccessDeps(projectId, accessToken) {
+  return {
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    listCollectionDocuments,
+    firestoreFieldsToJs
+  };
+}
+
+async function ensurePilotFeatureEnabled(env, featureKey) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  try {
+    return await assertPilotFeatureEnabled(pilotAccessDeps(projectId, accessToken), featureKey);
+  } catch (error) {
+    throw appError(
+      error.code || "pilot_feature_disabled",
+      error.status || 503,
+      error.message || "الميزة متوقفة مؤقتًا في المرحلة التجريبية."
+    );
+  }
+}
+
+async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const trialOffice = firestoreOfficeId(env.META_TRIAL_OFFICE_ID);
+  if (!token && officeId === trialOffice && String(env.ALLOW_TRIAL_NO_AUTH || "").toLowerCase() === "true") {
+    return { uid: "trial-admin", trial: true, permission };
+  }
+  if (!token) throw appError("authentication_required", 401, "سجل دخول المكتب أولاً");
+  const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
   const isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
   if (isPlatformAdmin) {
     return { uid: claims.sub, claims, role: "platformAdmin", permission };
