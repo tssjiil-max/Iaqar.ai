@@ -44,11 +44,13 @@ test("opportunity card does not surface garbage property or district tokens", ()
   assert.ok(!card.contactLine.includes("II"));
 });
 
-test("access-gate owner intake includes required price field", () => {
+test("access-gate owner and client intake include required price field", () => {
   const gate = readRepo("public", "js", "access-gate.js");
   assert.ok(gate.includes('name="priceOrBudget"'));
-  assert.ok(gate.includes("سعر قيمة الإيجار أو البيع"));
-  assert.ok(gate.includes('name="offerKind"'));
+  assert.ok(gate.includes("السعر أو الإيجار السنوي"));
+  assert.ok(gate.includes("سعر قيمة الإيجار أو الشراء"));
+  assert.ok(gate.includes("client-price"));
+  assert.ok(gate.includes("owner-price"));
 });
 
 test("access-gate public forms use plain text inputs without catalog selects", () => {

@@ -16,17 +16,17 @@ test("propertyCategory classifies land apartment villa", () => {
 test("dynamic fields hide rooms for land purchase", () => {
   const fields = dynamicFieldDefs("purchase", "أرض سكنية");
   const names = fields.map((f) => f.name);
-  assert.ok(names.includes("budget"));
+  assert.equal(names.includes("budget"), false);
   assert.ok(names.includes("area"));
   assert.ok(names.includes("streetWidth"));
   assert.equal(names.includes("rooms"), false);
   assert.equal(names.includes("bathrooms"), false);
 });
 
-test("rent apartment includes annualRent and furnished", () => {
+test("rent apartment includes furnished without duplicate price field", () => {
   const fields = dynamicFieldDefs("rent", "شقة");
   const names = fields.map((f) => f.name);
-  assert.ok(names.includes("annualRent"));
+  assert.equal(names.includes("annualRent"), false);
   assert.ok(names.includes("furnished"));
   assert.ok(names.includes("paymentInstallments"));
 });
@@ -39,7 +39,7 @@ test("buildClientIntakeDocument uses canonical field names", () => {
     propertyType: "أرض سكنية",
     city: "المدينة المنورة",
     district: "الرانوناء",
-    budget: "580000",
+    priceOrBudget: "580000",
     area: "400",
     streetWidth: "24",
     details: "واجهة شمالية"

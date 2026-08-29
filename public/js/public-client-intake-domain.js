@@ -51,14 +51,12 @@ export function dynamicFieldDefs(requestKind, propertyType) {
 
   if (isPurchase && category === "land") {
     fields.push(
-      { name: "budget", label: "الميزانية", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة المطلوبة (م²)", type: "number", required: false, inputMode: "decimal" },
       { name: "streetWidth", label: "عرض الشارع (م)", type: "number", required: false, inputMode: "decimal" },
       { name: "facing", label: "الواجهة", type: "text", required: false, maxLength: 40 }
     );
   } else if (isPurchase && category === "apartment") {
     fields.push(
-      { name: "budget", label: "الميزانية", type: "number", required: false, inputMode: "numeric" },
       { name: "rooms", label: "عدد الغرف", type: "number", required: false, inputMode: "numeric" },
       { name: "bathrooms", label: "دورات المياه", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة (م²)", type: "number", required: false, inputMode: "decimal" },
@@ -66,14 +64,12 @@ export function dynamicFieldDefs(requestKind, propertyType) {
     );
   } else if (isPurchase && category === "villa_house") {
     fields.push(
-      { name: "budget", label: "الميزانية", type: "number", required: false, inputMode: "numeric" },
       { name: "rooms", label: "عدد الغرف", type: "number", required: false, inputMode: "numeric" },
       { name: "bathrooms", label: "دورات المياه", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة (م²)", type: "number", required: false, inputMode: "decimal" }
     );
   } else if (isRent && category === "apartment") {
     fields.push(
-      { name: "annualRent", label: "الميزانية السنوية", type: "number", required: false, inputMode: "numeric" },
       { name: "rooms", label: "عدد الغرف", type: "number", required: false, inputMode: "numeric" },
       { name: "bathrooms", label: "دورات المياه", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة (م²)", type: "number", required: false, inputMode: "decimal" },
@@ -83,15 +79,10 @@ export function dynamicFieldDefs(requestKind, propertyType) {
     );
   } else if (isRent && category === "villa_house") {
     fields.push(
-      { name: "annualRent", label: "الميزانية السنوية", type: "number", required: false, inputMode: "numeric" },
       { name: "rooms", label: "عدد الغرف", type: "number", required: false, inputMode: "numeric" },
       { name: "bathrooms", label: "دورات المياه", type: "number", required: false, inputMode: "numeric" },
       { name: "area", label: "المساحة (م²)", type: "number", required: false, inputMode: "decimal" }
     );
-  } else if (isPurchase) {
-    fields.push({ name: "budget", label: "الميزانية", type: "number", required: false, inputMode: "numeric" });
-  } else if (isRent) {
-    fields.push({ name: "annualRent", label: "الميزانية السنوية", type: "number", required: false, inputMode: "numeric" });
   }
 
   return fields;
@@ -109,8 +100,10 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
   const propertyType = safeText(formValues.propertyType, 80);
   const city = safeText(formValues.city, 80);
   const district = safeText(formValues.district, 80);
-  const budget = nullableNumber(formValues.budget);
-  const annualRent = nullableNumber(formValues.annualRent);
+  const budget = nullableNumber(formValues.budget)
+    ?? (transactionType === "purchase" ? nullableNumber(formValues.priceOrBudget) : null);
+  const annualRent = nullableNumber(formValues.annualRent)
+    ?? (transactionType === "rent" ? nullableNumber(formValues.priceOrBudget) : null);
   const amount = transactionType === "rent" ? (annualRent ?? 0) : (budget ?? 0);
   const furnishedRaw = safeText(formValues.furnished, 40).toLowerCase();
   const furnished = /مفروش/.test(furnishedRaw) && !/غير\s*مفروش|غيرمفروش/.test(furnishedRaw);
@@ -132,6 +125,7 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
     requestKind,
     budget,
     annualRent,
+    priceOrBudget: nullableNumber(formValues.priceOrBudget) ?? amount,
     amount,
     area: nullableNumber(formValues.area),
     rooms: nullableNumber(formValues.rooms),

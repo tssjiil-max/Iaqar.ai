@@ -172,11 +172,6 @@ function mapPropertyTypeToPublicOption(propertyType = "") {
 
 function mapTransactionToRequestKind(transactionType = "", context = "client") {
   const tx = safeText(transactionType, 40).toLowerCase();
-  if (context === "owner") {
-    if (/rent|إيجار|ايجار|lease|تأجير/.test(tx)) return "إيجار";
-    if (/sale|بيع|للبيع/.test(tx)) return "بيع";
-    return "";
-  }
   if (context !== "client") return "";
   if (/rent|إيجار|ايجار|lease/.test(tx)) return "rent";
   return "purchase";
@@ -195,8 +190,7 @@ export function mapGeminiToPublicFormValues(structured = {}, {
     district: payload.district || "",
     propertyType: mapPropertyTypeToPublicOption(payload.propertyType),
     requestKind: mapTransactionToRequestKind(payload.transactionType, context),
-    offerKind: context === "owner" ? mapTransactionToRequestKind(payload.transactionType, "owner") : "",
-    priceOrBudget: context === "owner" ? priceOrBudget : "",
+    priceOrBudget,
     budget: payload.budget ?? payload.salePrice ?? "",
     annualRent: payload.annualRent ?? "",
     area: payload.area ?? "",
