@@ -20,7 +20,7 @@ const OFFICES = [
   {
     slug: "co-client",
     officeName: "مكتب العقيق العقاري 2",
-    phone: "0500000000",
+    phone: "0558882961",
     brokerName: "وسيط العقيق 2"
   },
   {
