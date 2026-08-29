@@ -116,6 +116,13 @@
     .access-remember{display:flex!important;align-items:center;gap:8px;font-weight:700}
     .access-remember input{width:auto;margin:0}
     .access-note{text-align:center;color:#71817d;font-size:12px;line-height:1.7;margin-top:12px}
+    .access-field-label{font-size:13px;font-weight:700;color:#36574f}
+    .access-required-mark{color:#c0392b;font-weight:800;font-size:12px;line-height:1}
+    .access-voice-slot{margin-bottom:4px}
+    .access-voice-slot .voice-intake-panel{margin:0;padding:0;border:0;background:transparent}
+    .access-voice-slot .voice-intake-start{width:100%;min-height:48px;margin:0;padding:11px 15px;border-radius:16px;
+      border:1.5px solid #128c7e;background:#fff;color:#087064;font:700 15px Tajawal;cursor:pointer}
+    .access-voice-slot .voice-intake-status{margin:6px 0 0;min-height:12px;font-size:12px}
     .voice-intake-panel{margin-top:12px;padding:12px;border:1px dashed #d4e3de;border-radius:16px;background:#f5faf8}
     @media (max-width:430px){.access-brand{padding:13px 14px 11px;margin-bottom:7px}
       .access-brand img{width:50px;height:50px}.access-brand h1{font-size:16px;margin-top:3px}
@@ -141,10 +148,13 @@
     .access-chip-section{display:grid;gap:8px}
     .access-chip-label{font-size:13px;font-weight:700;color:#36574f}
     .access-chip-row{display:flex;flex-wrap:wrap;gap:8px}
+    .access-chip-row--purpose{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .access-chip-row--property{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .access-chip-row--property .access-chip,.access-chip-row--purpose .access-chip{width:100%;justify-content:center;text-align:center}
     .access-chip{min-height:40px;padding:8px 14px;border-radius:12px;border:1.5px solid #128c7e;background:#fff;color:#087064;
-      font:700 14px Tajawal;cursor:pointer}
+      font:700 14px Tajawal;cursor:pointer;display:flex;align-items:center}
     .access-chip.is-selected{background:#128c7e;color:#fff}
-    .access-chip-row--property .access-chip{min-height:36px;padding:6px 12px;font-size:13px}
+    .access-chip-row--property .access-chip{min-height:36px;padding:6px 10px;font-size:13px}
     #propertyTypeOtherWrap[hidden]{display:none!important}
   </style>`);
 
@@ -560,6 +570,23 @@
     return window.IAQARPublicIntakeQuickChoice || null;
   }
 
+  function accessRequiredLabel(text) {
+    return `<span class="access-field-label">${escapeHtml(text)} <span class="access-required-mark" aria-hidden="true">*</span></span>`;
+  }
+
+  function accessOptionalLabel(text) {
+    return `<span>${escapeHtml(text)}</span>`;
+  }
+
+  function updateIntakePriceLabel(scope, owner) {
+    const label = scope?.querySelector("#intakePriceLabel");
+    const api = quickChoiceApi();
+    if (!label || !api) return;
+    const purposeChip = String(scope.querySelector("#intakePurposeValue")?.value || "").trim();
+    const text = api.intakePriceFieldLabel(owner, purposeChip) || "السعر";
+    label.innerHTML = `${escapeHtml(text)} <span class="access-required-mark" aria-hidden="true">*</span>`;
+  }
+
   function intakePurposeChipHtml(isOwner) {
     const api = quickChoiceApi();
     const options = isOwner ? (api?.OWNER_PURPOSE_OPTIONS || []) : (api?.CLIENT_PURPOSE_OPTIONS || []);
@@ -605,6 +632,7 @@
         if (requestKindInput) requestKindInput.value = row.requestKind;
         if (purposeHidden) purposeHidden.value = row.id;
       }
+      updateIntakePriceLabel(scope, owner);
       onPurposeChange?.();
     };
 
@@ -762,6 +790,7 @@
       });
     }
     if (!owner) refreshClientDynamic();
+    updateIntakePriceLabel(gate, owner);
     showStatus("تم تعبئة النموذج من التسجيل — راجع الحقول قبل الإرسال.");
   }
 
@@ -781,7 +810,7 @@
         officeId: targetOffice,
         workerBase: resolveWorkerBase(),
         publicRoute: true,
-        startLabel: kind === "owner" ? "إضافة عقار بالصوت" : "إضافة طلب بالصوت",
+        startLabel: "🎙️ إضافة بالصوت",
         onStructured(structured) {
           applyPublicVoicePrefill(form, structured, {
             owner: kind === "owner",
@@ -803,10 +832,9 @@
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
       <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
-      <div id="publicVoiceIntakePanel" class="full"></div>
       <form class="access-form" id="intakeForm">
         <div class="access-chip-section full">
-          <span class="access-chip-label">${owner ? "نوع العرض (إلزامي)" : "نوع الطلب (إلزامي)"}</span>
+          ${accessRequiredLabel("الغرض")}
           <div class="access-chip-row access-chip-row--purpose">${intakePurposeChipHtml(owner)}</div>
           <input type="hidden" id="intakePurposeValue" value="">
           ${owner
@@ -814,33 +842,36 @@
     : `<input type="hidden" name="requestKind" id="requestKindInput" value="">`}
         </div>
         <div class="access-chip-section full">
-          <span class="access-chip-label">نوع العقار (إلزامي)</span>
+          ${accessRequiredLabel("نوع العقار")}
           <div class="access-chip-row access-chip-row--property">${intakePropertyChipHtml()}</div>
           <label id="propertyTypeOtherWrap" class="full" hidden>
-            <span>اكتب نوع العقار</span>
+            ${accessRequiredLabel("اكتب نوع العقار")}
             <input id="propertyTypeOtherInput" maxlength="40" autocomplete="off" placeholder="اكتب نوع العقار">
           </label>
           <input type="hidden" name="propertyType" id="propertyTypeInput" value="">
         </div>
-        <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
-        <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
-        <label><span>المدينة (إلزامي)</span><input name="city" id="intakeCityInput" maxlength="80" required
+        <label>${accessRequiredLabel("المدينة")}<input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
-        <label class="full"><span>الحي (إلزامي)</span>
+        <label class="full">${accessRequiredLabel("الحي")}
           <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
             placeholder="اكتب اسم الحي"></label>
+        <label class="full">
+          <span id="intakePriceLabel" class="access-field-label">السعر <span class="access-required-mark" aria-hidden="true">*</span></span>
+          <input name="priceOrBudget" data-testid="${owner ? "owner-price" : "client-price"}" inputmode="numeric" maxlength="12" required autocomplete="off"
+            placeholder="مثال: 500000"></label>
         ${owner
-    ? `<label class="full"><span>السعر أو الإيجار السنوي (إلزامي)</span>
-          <input name="priceOrBudget" inputmode="numeric" maxlength="12" required autocomplete="off"
-            placeholder="مثال: 500000"></label>`
+    ? ""
     : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
-        <label class="full"><span>تفاصيل إضافية (اختياري)</span><textarea name="details" maxlength="1000"></textarea></label>
-        ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
+        <div id="publicVoiceIntakePanel" class="full access-voice-slot"></div>
+        <label class="full">${accessOptionalLabel("تفاصيل إضافية (اختياري)")}<textarea name="details" maxlength="1000"></textarea></label>
+        ${owner ? `<label class="full">${accessOptionalLabel("صور العقار (اختياري، حتى 5 صور)")}
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
           <p class="file-help">يمكن إرسال العرض دون صور، ويطلبها الوسيط لاحقًا عبر واتساب. بحد أقصى 8 ميجابايت للصورة.</p></label>
-          <label class="full"><span>فيديو العقار (اختياري)</span>
+          <label class="full">${accessOptionalLabel("فيديو العقار (اختياري)")}
           <input name="video" type="file" accept="video/mp4,video/webm,video/quicktime">
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
+        <label>${accessRequiredLabel("الاسم الثنائي على الأقل")}<input name="name" maxlength="80" required></label>
+        <label>${accessRequiredLabel("رقم الجوال")}<input name="phone" inputmode="tel" maxlength="20" required></label>
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : (isPlatformAddRoute ? platformAddChoice() : home())));
@@ -862,6 +893,7 @@
       onPurposeChange: refreshClientDynamic,
       onPropertyChange: refreshClientDynamic
     });
+    updateIntakePriceLabel(gate, owner);
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
     }));
