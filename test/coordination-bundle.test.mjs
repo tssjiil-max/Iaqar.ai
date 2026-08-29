@@ -201,6 +201,25 @@ test("owner price confirmation and update normalize", () => {
   assert.equal(updated.updatedPrice, 450000);
 });
 
+test("owner basic available and confirmed reply does not require viewing", () => {
+  const basic = normalizeOwnerBundle({
+    propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
+    priceConfirmation: PRICE_CONFIRMATION.CONFIRMED,
+    viewingAllowed: ""
+  });
+  assert.notEqual(basic, null);
+  assert.equal(basic.propertyAvailability, OWNER_AVAILABILITY.AVAILABLE);
+  assert.equal(basic.priceConfirmation, PRICE_CONFIRMATION.CONFIRMED);
+  assert.equal(basic.viewingAllowed, "");
+
+  const incompleteViewing = normalizeOwnerBundle({
+    propertyAvailability: OWNER_AVAILABILITY.AVAILABLE,
+    priceConfirmation: PRICE_CONFIRMATION.CONFIRMED,
+    viewingAllowed: OWNER_VIEWING_ALLOWED.YES
+  });
+  assert.equal(incompleteViewing, null);
+});
+
 test("owner missing requested specification surfaces only missing groups", () => {
   const clientBundle = normalizeClientBundle({
     propertyType: "شقة",

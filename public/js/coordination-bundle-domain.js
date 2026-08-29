@@ -567,6 +567,7 @@ export function normalizeOwnerBundle(raw = {}) {
   bundle.locationShare = Boolean(raw.locationShare);
   const viewingAllowed = text(raw.viewingAllowed);
   bundle.viewingAllowed = viewingAllowed;
+  if (!viewingAllowed) return bundle;
   if (viewingAllowed === OWNER_VIEWING_ALLOWED.NO) return bundle;
   if (viewingAllowed === OWNER_VIEWING_ALLOWED.NEEDS_COORDINATION) {
     bundle.coordinationRequired = Boolean(raw.coordinationRequired);

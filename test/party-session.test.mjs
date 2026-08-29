@@ -306,6 +306,53 @@ test("mint rejects offer or request ids that do not belong to the match", async 
   }), (error) => error.code === "party_match_identity_mismatch");
 });
 
+test("owner bundle POST accepts available and confirmed without viewing selection", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "سلطان العقاري" } },
+    "offices/office-1/matches/match_owner_basic": { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_owner_basic",
+      clientRequestId: "request_owner_basic"
+    } },
+    "offices/office-1/opportunities/offer_owner_basic": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "RENT",
+      annualRent: 15000
+    } }
+  };
+  const helpers = mockHelpers(store);
+  const minted = await handlePartySessionMint({
+    request: mintRequest({
+      officeId: "office-1",
+      matchId: "match_owner_basic",
+      party: "owner",
+      offerId: "offer_owner_basic",
+      requestId: "request_owner_basic"
+    }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-owner-basic-mint",
+    helpers
+  });
+  const replied = await handlePartySessionBundle({
+    token: minted.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      priceConfirmation: "confirmed",
+      viewingAllowed: ""
+    } }) },
+    requestId: "req-owner-basic-submit",
+    helpers,
+    ip: "4.4.4.4"
+  });
+  assert.equal(replied.status, 200);
+  assert.equal(replied.body.ok, true);
+  const coordination = store["offices/office-1/coordinationSessions/match_owner_basic"];
+  assert.ok(coordination);
+  assert.match(JSON.stringify(coordination), /ownerBundle/);
+});
+
 test("client and owner sessions stay distinct and replies persist", async () => {
   const store = {
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
