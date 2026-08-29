@@ -727,16 +727,16 @@ export async function handlePartySessionPhoto({ token, index, env, helpers, ip }
   return new Response(object.body, { headers });
 }
 
-export async function handlePartySessionBundle({ token, env, request, requestId, helpers, ip }) {
+export async function handlePartySessionBundle({ token, env, request, requestId, helpers, ip, executionContext }) {
   try {
-    return await submitPartyBundle({ token, env, request, requestId, helpers, ip });
+    return await submitPartyBundle({ token, env, request, requestId, helpers, ip, executionContext });
   } catch (error) {
     if (error && (error.status === 429 || error.status === 400)) throw error;
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
   }
 }
 
-export async function submitPartyBundle({ token, env, request, requestId, helpers, ip }) {
+export async function submitPartyBundle({ token, env, request, requestId, helpers, ip, executionContext }) {
   const limited = helpers.consumePublicRateLimit(
     helpers.publicRateLimitKey({ route: "party-bundle", ip }),
     helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY
@@ -780,14 +780,6 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
     offerId,
     locationUrl
   });
-  await applyCoordinationToMatch(helpers, {
-    projectId,
-    officeId: loaded.officeId,
-    matchId,
-    accessToken,
-    coordinationSession,
-    stampMatchLiving
-  });
   const now = new Date();
   await helpers.setFirestoreDocument({
     projectId,
@@ -800,25 +792,42 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
       livingStage: helpers.firestoreString(coordinationSession.outcome || "")
     }
   });
-  const livingNotification = await buildLivingEventNotification({
-    officeId: loaded.officeId,
-    matchId,
-    opportunityId: String(loaded.session.requestId || loaded.session.opportunityId || loaded.session.offerId || ""),
-    taskId: matchId ? `mg_${matchId}` : "",
-    party,
-    action: "coordination_bundle",
-    livingStage: coordinationSession.outcome || "",
-    now
-  });
-  await upsertNotificationDocument({
-    projectId,
-    officeId: loaded.officeId,
-    notification: livingNotification,
-    accessToken,
-    setFirestoreDocument: helpers.setFirestoreDocument,
-    getFirestoreDocument: helpers.getFirestoreDocument,
-    firestoreHelpers: helpers
-  });
+  const finalizeBrokerState = async () => {
+    await applyCoordinationToMatch(helpers, {
+      projectId,
+      officeId: loaded.officeId,
+      matchId,
+      accessToken,
+      coordinationSession,
+      stampMatchLiving
+    });
+    const livingNotification = await buildLivingEventNotification({
+      officeId: loaded.officeId,
+      matchId,
+      opportunityId: String(loaded.session.requestId || loaded.session.opportunityId || loaded.session.offerId || ""),
+      taskId: matchId ? `mg_${matchId}` : "",
+      party,
+      action: "coordination_bundle",
+      livingStage: coordinationSession.outcome || "",
+      now
+    });
+    await upsertNotificationDocument({
+      projectId,
+      officeId: loaded.officeId,
+      notification: livingNotification,
+      accessToken,
+      setFirestoreDocument: helpers.setFirestoreDocument,
+      getFirestoreDocument: helpers.getFirestoreDocument,
+      firestoreHelpers: helpers
+    });
+  };
+  if (executionContext && typeof executionContext.waitUntil === "function") {
+    executionContext.waitUntil(finalizeBrokerState().catch((error) => {
+      console.error("[iaqar] party bundle broker sync failed", { requestId, matchId, message: error?.message || String(error) });
+    }));
+  } else {
+    await finalizeBrokerState();
+  }
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
 }
