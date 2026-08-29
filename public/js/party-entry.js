@@ -193,8 +193,16 @@ function collectPackageFromForm(root, party = "client") {
     if (raw === "" || raw === 0) return;
     specValues[key] = raw;
   });
+  const detailValues = {};
+  root.querySelectorAll("[data-package-detail]").forEach((input) => {
+    const key = input.getAttribute("data-package-detail");
+    if (!key) return;
+    const raw = input.type === "number" ? Number(input.value) : String(input.value || "").trim();
+    if (raw === "" || raw === 0) return;
+    detailValues[key] = raw;
+  });
   if (Object.keys(specValues).length) bundle.specValues = specValues;
-  if (party === "owner") {
+  if (Object.keys(detailValues).length) bundle.detailValues = detailValues;
     bundle.locationShare = Boolean(bundle.locationShare);
     if (bundle.mediaAdded) bundle.mediaAdded = true;
   }
@@ -206,16 +214,14 @@ function refreshPackageSections(root) {
   const bundle = collectPackageFromForm(root, party);
   const interest = String(bundle.interestStatus || "");
   const notSuitable = interest === "not_suitable";
-  const positive = interest === "interested" || interest === "preliminary_ok";
-  const infoSection = root.querySelector("[data-package-section=\"infoNeeds\"]");
-  const specSection = root.querySelector("[data-package-section=\"specNeeds\"]");
+  const interested = interest === "interested";
+  const preliminary = interest === "preliminary_ok";
+  const detailSection = root.querySelector("[data-package-section=\"requestedDetailKeys\"]");
   const viewingToggle = root.querySelector("[data-package-section=\"wantsViewing\"]");
   const viewingSection = root.querySelector("[data-package-section=\"viewing\"]");
-  if (infoSection) infoSection.hidden = notSuitable || !positive;
-  const wantsSpecs = (bundle.infoNeeds || []).includes("specifications");
-  if (specSection) specSection.hidden = notSuitable || !wantsSpecs;
-  if (viewingToggle) viewingToggle.hidden = notSuitable || !positive;
-  if (viewingSection) viewingSection.hidden = notSuitable || !bundle.wantsViewing;
+  if (detailSection) detailSection.hidden = notSuitable || !interested;
+  if (viewingToggle) viewingToggle.hidden = notSuitable || !preliminary;
+  if (viewingSection) viewingSection.hidden = notSuitable || !preliminary || !bundle.wantsViewing;
   if (party === "owner") {
     const available = bundle.propertyAvailability === "available";
     const unavailable = bundle.propertyAvailability === "not_available";
@@ -240,7 +246,15 @@ function bindDecisionPackage(root, token) {
   if (!form) return;
   const party = root.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
   form.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("change", () => refreshPackageSections(form));
+    input.addEventListener("change", () => {
+      refreshPackageSections(form);
+      const name = input.getAttribute("name") || "";
+      if (name.startsWith("detailAction_")) {
+        const key = name.replace("detailAction_", "");
+        const editWrap = form.querySelector(`[data-detail-edit="${key}"]`);
+        if (editWrap) editWrap.hidden = input.value !== "edit";
+      }
+    });
   });
   const mediaToggle = form.querySelector("[data-package-bool=\"mediaAdded\"]");
   const fileInput = form.querySelector("[data-package-photos]");

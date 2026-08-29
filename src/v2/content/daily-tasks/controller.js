@@ -463,6 +463,41 @@ function shareTaskDetails(task) {
   return { ok: true };
 }
 
+async function confirmViewingAppointment(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/match/living-action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        officeId,
+        matchId: task.matchId,
+        action: "CONFIRM_VIEWING"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || "تعذر تأكيد المعاينة.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify("تم تأكيد المعاينة");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true };
+  } catch {
+    notify("تعذر تأكيد المعاينة.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
 async function confirmDealCompletion(task, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   setExecState(button, "working");
@@ -607,6 +642,10 @@ function onListClick(event) {
     }
     if (action === "confirm_deal") {
       void confirmDealCompletion(task, primary);
+      return;
+    }
+    if (action === "confirm_viewing") {
+      void confirmViewingAppointment(task, primary);
       return;
     }
     if (action === "complete_info") {

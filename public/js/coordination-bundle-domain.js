@@ -10,6 +10,14 @@ import {
 import { LIVING_TASK_STAGE } from "./match-group-domain.js";
 import { PROPERTY_TYPES } from "./reference-catalog.js";
 import { listingMediaPaths } from "./party-session-domain.js";
+import {
+  detailKeyOptions,
+  ownerMissingDetailKeys,
+  canonicalHasDetailKey,
+  detailKeysForPropertyType,
+  detailKeyCanonicalValue,
+  detailKeyLabel
+} from "./property-detail-schema-domain.js";
 
 export const COORDINATION_OUTCOME = Object.freeze({
   AWAITING_OTHER_PARTY: "AWAITING_OTHER_PARTY",
@@ -374,11 +382,25 @@ export function normalizeClientBundle(raw = {}) {
     return need;
   });
   bundle.specNeeds = uniqueList(input.specNeeds);
+  bundle.requestedDetailKeys = uniqueList(input.requestedDetailKeys);
   bundle.wantsViewing = Boolean(input.wantsViewing);
   bundle.viewingDays = uniqueList(input.viewingDays);
   bundle.viewingPeriods = uniqueList(input.viewingPeriods);
   bundle.viewingWindows = viewingWindowsFromDaysPeriods(bundle.viewingDays, bundle.viewingPeriods);
-  if (bundle.wantsViewing && !bundle.viewingDays.length || bundle.wantsViewing && !bundle.viewingPeriods.length) {
+  if (interestStatus === CLIENT_INTEREST_STATUS.INTERESTED) {
+    const detailKeys = detailKeysForPropertyType(input.propertyType || "");
+    if (detailKeys.length && !bundle.requestedDetailKeys.length) return null;
+    bundle.wantsViewing = false;
+    bundle.viewingDays = [];
+    bundle.viewingPeriods = [];
+    bundle.viewingWindows = [];
+    return bundle;
+  }
+  if (interestStatus === CLIENT_INTEREST_STATUS.PRELIMINARY_OK) {
+    if (bundle.wantsViewing && (!bundle.viewingDays.length || !bundle.viewingPeriods.length)) return null;
+    return bundle;
+  }
+  if (bundle.wantsViewing && (!bundle.viewingDays.length || !bundle.viewingPeriods.length)) {
     return null;
   }
   const wantsSpecs = bundle.infoNeeds.includes(CLIENT_INFO_NEEDS.SPECIFICATIONS);
@@ -396,6 +418,8 @@ export function normalizeOwnerBundle(raw = {}) {
     locationShare: false,
     mediaPaths: uniqueList(raw.mediaPaths || raw.mediaAdded || []),
     specValues: raw.specValues && typeof raw.specValues === "object" ? { ...raw.specValues } : {},
+    detailValues: raw.detailValues && typeof raw.detailValues === "object" ? { ...raw.detailValues } : {},
+    detailConfirmations: uniqueList(raw.detailConfirmations || []),
     viewingAllowed: "",
     viewingDays: [],
     viewingPeriods: [],
@@ -476,6 +500,9 @@ export function clientBundleSummary(bundle = {}) {
     : "مهتم";
   const bits = [statusLabel];
   if (bundle.infoNeeds?.length) bits.push(`طلب ${infoNeedsSummary(bundle.infoNeeds)}`);
+  if (bundle.requestedDetailKeys?.length) {
+    bits.push(`طلب تفاصيل: ${bundle.requestedDetailKeys.length}`);
+  }
   if (bundle.wantsViewing) {
     const view = viewingSummary(bundle.viewingDays, bundle.viewingPeriods);
     bits.push(view ? `يريد معاينة ${view}` : "يريد معاينة");
@@ -545,11 +572,12 @@ export function resolveCoordinationOutcome({
   const unresolvedInfo = (clientBundle.infoNeeds || []).filter((need) =>
     !canonicalHasInfoNeed(need, canonicalOffer)
   );
-  if (unresolvedInfo.length && !clientBundle.wantsViewing) {
+  const missingDetails = ownerMissingDetailKeys(clientBundle, canonicalOffer, canonicalOffer.propertyType);
+  if ((missingDetails.length || unresolvedInfo.length) && !clientBundle.wantsViewing) {
     return {
       outcome: COORDINATION_OUTCOME.CLIENT_NEEDS_INFO,
       brokerLine: "العميل يحتاج معلومات إضافية",
-      conflictField: "infoNeeds"
+      conflictField: missingDetails.length ? "requestedDetailKeys" : "infoNeeds"
     };
   }
   if (clientBundle.wantsViewing) {
@@ -598,6 +626,17 @@ export function resolveCoordinationOutcome({
     brokerLine: "بانتظار رد أحد الأطراف",
     conflictField: ""
   };
+}
+
+export function resolveOwnerContactNeeded(session = {}, outcome = "") {
+  const client = session?.clientBundle;
+  if (client?.interestStatus === CLIENT_INTEREST_STATUS.INTERESTED
+    && (client.requestedDetailKeys?.length || client.specNeeds?.length)
+    && !session?.ownerBundle) {
+    return true;
+  }
+  const living = livingStageForCoordinationOutcome(outcome || session?.outcome, session);
+  return Boolean(living.ownerContactNeeded);
 }
 
 export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
@@ -677,9 +716,22 @@ export function buildDecisionPackageView(party = "client", {
 } = {}) {
   const side = party === "owner" ? "owner" : "client";
   const specOptions = specGroupOptions(propertyType);
+  const detailOptions = detailKeyOptions(propertyType);
   const missingSpecs = side === "owner"
     ? ownerMissingSpecGroups(clientBundle || {}, canonicalOffer, propertyType)
     : [];
+  const missingDetails = side === "owner"
+    ? ownerMissingDetailKeys(clientBundle || {}, canonicalOffer, propertyType)
+    : [];
+  const ownerRequestedKeys = side === "owner" && clientBundle
+    ? uniqueList(clientBundle.requestedDetailKeys || [])
+    : [];
+  const ownerDetailFields = ownerRequestedKeys.map((key) => ({
+    key,
+    label: detailKeyLabel(key),
+    currentValue: detailKeyCanonicalValue(key, canonicalOffer),
+    hasValue: canonicalHasDetailKey(key, canonicalOffer)
+  }));
   return {
     mode: "decision_package_v1",
     party: side,
@@ -688,8 +740,12 @@ export function buildDecisionPackageView(party = "client", {
     bundleSummary: text(bundleSummary),
     propertyType,
     specOptions,
+    detailOptions,
     missingSpecs,
     missingSpecsLabels: missingSpecs.map(specGroupLabel),
+    missingDetails,
+    missingDetailLabels: missingDetails.map((key) => detailKeyLabel(key)),
+    ownerDetailFields,
     canonicalPrice: Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0),
     hasCanonicalPrice: Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0) > 0,
     hasLocation: Boolean(hasLocation || canonicalOffer.locationUrl || canonicalOffer.mapUrl),

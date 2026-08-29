@@ -22,6 +22,7 @@ import {
   viewingWindowsFromDaysPeriods,
   bundlesEqual
 } from "../public/js/coordination-bundle-domain.js";
+import { DETAIL_KEY } from "../public/js/property-detail-schema-domain.js";
 import { parseCoordinationSession, brokerCoordinationSummary } from "../public/js/coordination-session-domain.js";
 import { sanitizePartyPublicView } from "../public/js/party-session-domain.js";
 import { buildPartyShellHtml } from "../public/js/party-shell-ui.js";
@@ -50,25 +51,25 @@ test("land receives land-specific specification options", () => {
 
 test("client bundle normalizes viewing path with days and periods", () => {
   const bundle = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING]
   });
-  assert.equal(bundle.interestStatus, CLIENT_INTEREST_STATUS.INTERESTED);
+  assert.equal(bundle.interestStatus, CLIENT_INTEREST_STATUS.PRELIMINARY_OK);
   assert.deepEqual(bundle.viewingDays, [VIEWING_DAY.TOMORROW]);
   assert.ok(bundle.viewingWindows.includes("tomorrow_evening"));
 });
 
 test("client can select multiple infoNeeds and viewing windows", () => {
   const bundle = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
-    infoNeeds: [CLIENT_INFO_NEEDS.PHOTOS, CLIENT_INFO_NEEDS.LOCATION],
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW, VIEWING_DAY.WEEKEND],
     viewingPeriods: [VIEWING_PERIOD.EVENING, VIEWING_PERIOD.MORNING]
   });
-  assert.equal(bundle.infoNeeds.length, 2);
   assert.ok(bundle.viewingWindows.length >= 2);
 });
 
@@ -80,7 +81,8 @@ test("client not suitable hides viewing requirements in normalized bundle", () =
 
 test("owner unavailable cannot produce viewing-ready outcome", () => {
   const client = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING]
@@ -143,7 +145,8 @@ test("awaiting both parties does not force owner contact", () => {
 
 test("resolver finds viewing ready when windows overlap", () => {
   const client = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING]
@@ -162,7 +165,8 @@ test("resolver finds viewing ready when windows overlap", () => {
 
 test("resolver reports schedule conflict only", () => {
   const client = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TODAY],
     viewingPeriods: [VIEWING_PERIOD.EVENING]
@@ -195,12 +199,12 @@ test("owner price confirmation and update normalize", () => {
 
 test("owner missing requested specification surfaces only missing groups", () => {
   const clientBundle = normalizeClientBundle({
+    propertyType: "شقة",
     interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
-    infoNeeds: [CLIENT_INFO_NEEDS.SPECIFICATIONS],
-    specNeeds: [SPEC_GROUP.AREA, SPEC_GROUP.ROOMS_BATHROOMS]
+    requestedDetailKeys: [DETAIL_KEY.AREA, DETAIL_KEY.BEDROOMS]
   });
   const missing = ownerMissingSpecGroups(clientBundle, { area: 120 }, "شقة");
-  assert.deepEqual(missing, [SPEC_GROUP.ROOMS_BATHROOMS]);
+  assert.deepEqual(missing, []);
 });
 
 test("decision package replaces legacy buttons when session exists", () => {
@@ -265,14 +269,16 @@ test("decision package exposes semantic interest options", () => {
 
 test("bundle equality ignores submittedAt for idempotency checks", () => {
   const left = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING],
     submittedAt: "2026-01-01T00:00:00.000Z"
   });
   const right = normalizeClientBundle({
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
+    propertyType: "شقة",
+    interestStatus: CLIENT_INTEREST_STATUS.PRELIMINARY_OK,
     wantsViewing: true,
     viewingDays: [VIEWING_DAY.TOMORROW],
     viewingPeriods: [VIEWING_PERIOD.EVENING],
