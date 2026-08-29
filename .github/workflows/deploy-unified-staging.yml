@@ -2,6 +2,9 @@ name: Deploy unified staging
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
 
 permissions:
   contents: read
