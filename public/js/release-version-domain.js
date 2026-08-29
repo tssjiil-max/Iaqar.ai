@@ -7,7 +7,7 @@ import { isBrandIconPath } from "./platform-brand-domain.js";
 
 export { isBrandIconPath };
 
-export const REQUIRED_STAGING_BRANCH = "cursor/opportunity-lifecycle-transfer-ed07";
+export const REQUIRED_STAGING_BRANCH = "codex/unified-staging-lineage-2026-08-29";
 export const APPROVED_STAGING_URL = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 export const FORBIDDEN_STAGING_URL = `https://${["iaqar-ai-staging", "web.app"].join(".")}`;
 export const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";

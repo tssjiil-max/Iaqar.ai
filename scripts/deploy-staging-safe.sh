@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-REQUIRED_BRANCH="cursor/opportunity-lifecycle-transfer-ed07"
+REQUIRED_BRANCH="codex/unified-staging-lineage-2026-08-29"
 STAGING_FIREBASE_PROJECT="iaqar-ai-staging"
 APPROVED_HOSTING="https://iaqar-ai-staging--staging-9c4b0k7h.web.app"
 
