@@ -203,6 +203,7 @@ function collectPackageFromForm(root, party = "client") {
   });
   if (Object.keys(specValues).length) bundle.specValues = specValues;
   if (Object.keys(detailValues).length) bundle.detailValues = detailValues;
+  if (party === "owner") {
     bundle.locationShare = Boolean(bundle.locationShare);
     if (bundle.mediaAdded) bundle.mediaAdded = true;
   }
