@@ -734,6 +734,35 @@ test("one request with several matches renders a single group card", () => {
   assert.equal(html.includes("الآن"), false);
 });
 
+test("multi-candidate review action continues after the card is already open", () => {
+  const controller = readFileSync(path.join(import.meta.dirname, "..", "public", "js", "v2", "daily-tasks", "controller.js"), "utf8");
+  assert.match(controller, /function handleReviewNextCandidate/);
+  assert.match(controller, /handleReviewNextCandidate\(task, primary\)/);
+  assert.match(controller, /runDailyTaskPartySend\(task, "client", button\)/);
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const views = mapOperationsItemsToDailyTasks([1, 2].map((n) => ({
+    recordType: "match",
+    matchId: `match_g_${n}`,
+    clientRequestId: "req_group",
+    ownerOfferId: `off_group_${n}`,
+    clientPhone: "0501111842",
+    ownerPhone: "0502221842",
+    propertyType: "شقة",
+    purpose: "RENT",
+    district: "العوالي",
+    city: "مكة",
+    budget: 50000,
+    candidatePropertyType: "شقة",
+    candidatePurpose: "RENT",
+    candidateDistrict: "العوالي",
+    candidateSalePrice: 45000,
+    createdAt: "2026-08-25T21:21:00.000+03:00"
+  })), now);
+  const task = views[0];
+  assert.equal(task.primaryAction?.id, "review_next_candidate");
+  assert.equal(task.canSendToClient, true);
+});
+
 test("canonical opportunities hydrate collapsed identity and expanded facts", () => {
   const now = new Date("2026-08-25T21:30:00.000+03:00");
   const views = mapOperationsItemsToDailyTasks([

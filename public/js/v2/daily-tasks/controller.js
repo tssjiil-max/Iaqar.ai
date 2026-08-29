@@ -141,13 +141,32 @@ async function tickPlatformOpportunityExpiry() {
       },
       body: JSON.stringify({ officeId })
     });
+    await fetch(`${workerBase()}/cooperation/sync-coordination`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ officeId })
+    });
   } catch {
     /* expiry is retried on the next load / action */
   }
 }
 
+function officeRuntime() {
+  return window.IAQAR?.office || null;
+}
+
 function currentOfficeId() {
-  return String(window.IAQAR?.office?.officeId || "").trim();
+  return String(officeRuntime()?.officeId || "").trim();
+}
+
+function workerBase() {
+  if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
+    return window.IAQAR.resolveWorkerBase();
+  }
+  return String(window.IAQAR?.workerBase || officeRuntime()?.workerBase || "").replace(/\/+$/, "");
 }
 
 async function idToken() {
@@ -498,6 +517,29 @@ async function confirmDealCompletion(task, button) {
   }
 }
 
+function handleReviewNextCandidate(task, button) {
+  if (state.openTaskId !== task.id) {
+    toggleOpenTask(task.id);
+    return;
+  }
+  if (task.hasRejectedCandidate && task.hasNextCandidate) {
+    toggleTaskDetails(task.id);
+    return;
+  }
+  if (task.canSendToClient && task.matchId && task.offerId && task.requestId) {
+    void runDailyTaskPartySend(task, "client", button);
+    return;
+  }
+  const result = openExistingOfferDetails(task);
+  if (result && typeof result.then === "function") {
+    void result.then((done) => {
+      if (!done?.ok && done?.error) notify(done.error);
+    });
+  } else if (result && result.ok === false) {
+    notify(result.error || PARTY_SEND_COPY.detailsFailed);
+  }
+}
+
 function onListClick(event) {
   const root = state.root;
   if (!root) return;
@@ -545,7 +587,7 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, secondary);
       return;
     }
     if (task.taskKind === "platform_opportunity") {
@@ -553,6 +595,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", secondary);
+        return;
+      }
       void runCooperationTaskAction(task, action, secondary);
       return;
     }
@@ -575,6 +621,10 @@ function onListClick(event) {
       return;
     }
     if (task.taskKind === "cooperation") {
+      if (action === "send_to_owner") {
+        void runDailyTaskPartySend(task, "owner", primary);
+        return;
+      }
       void runCooperationTaskAction(task, action, primary);
       return;
     }
@@ -591,7 +641,7 @@ function onListClick(event) {
       return;
     }
     if (action === "review_next_candidate") {
-      if (state.openTaskId !== task.id) toggleOpenTask(task.id);
+      handleReviewNextCandidate(task, primary);
       return;
     }
     if (action === "send_to_owner") {

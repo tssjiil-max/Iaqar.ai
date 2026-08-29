@@ -281,9 +281,23 @@
       livingStage: item.livingStage || "",
       livingUpdatedAt: isoTime(item.livingUpdatedAt || item.updatedAt || item.createdAt),
       livingTimeline: item.livingTimeline || item.livingTimelineJson || [],
+      coordinationBrokerLine: item.coordinationBrokerLine || "",
+      coordinationClientSummary: item.coordinationClientSummary || "",
+      coordinationOwnerSummary: item.coordinationOwnerSummary || "",
+      coordinationOutcome: item.coordinationOutcome || "",
       nextActor: item.nextActor || "",
-      ownerContactNeeded: item.ownerContactNeeded === true
-        || String(item.ownerContactNeeded || "").toLowerCase() === "true",
+      ownerContactNeeded: (() => {
+        const domain = window.IAQAR && window.IAQAR.coordinationBundleDomain;
+        if (domain && item.coordinationOutcome) {
+          return domain.ownerContactNeededForCoordination({
+            outcome: item.coordinationOutcome,
+            clientSummary: item.coordinationClientSummary,
+            ownerSummary: item.coordinationOwnerSummary
+          });
+        }
+        return item.ownerContactNeeded === true
+          || String(item.ownerContactNeeded || "").toLowerCase() === "true";
+      })(),
       hasNewResponse: item.hasNewResponse === true
         || String(item.hasNewResponse || "").toLowerCase() === "true",
       purpose: item.purpose || item.candidatePurpose || "",

@@ -56,7 +56,8 @@ import {
 import {
   runCooperationLifecycle,
   revokeBankSharingScope,
-  createExplicitCooperationRequest
+  createExplicitCooperationRequest,
+  resolveAcceptedCooperationPair
 } from "./cooperation-phase6-service.js";
 import {
   maybeCreateCrossOfficeCooperation,
@@ -146,6 +147,9 @@ import {
   handlePartySessionBundle,
   handleMatchLivingAction
 } from "./party-session-service.js";
+import {
+  syncCooperationCoordinationForOffice
+} from "./coordination-session-service.js";
 import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
@@ -556,6 +560,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
         return await handleCooperationLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/sync-coordination") {
+        return await handleCooperationSyncCoordination(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/scope-revoke") {
@@ -2106,6 +2114,22 @@ async function handleOpportunityRouterTick(request, env, requestId) {
   return jsonResponse({ ok: true, ...result, requestId });
 }
 
+async function handleCooperationSyncCoordination(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "officeId مطلوب");
+  await authorizeOfficeRequest(request, env, officeId, "member");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await syncCooperationCoordinationForOffice(partySessionHelpers(), {
+    projectId,
+    officeId,
+    accessToken
+  });
+  return jsonResponse({ ok: true, ...result, requestId });
+}
+
 async function handleOpportunityRouterRate(request, env, requestId) {
   await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
   const body = await request.json().catch(() => ({}));
@@ -2606,9 +2630,40 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
   return { kind: parsed.kind, matches: matches.length };
 }
 
-function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
-  const raw = cleanText(input, 12000);
-  const text = normalizeArabicText(raw);
+function hasExplicitRequestCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)طلب(?:\s|$)/.test(padded)
+    || /(?:^|\s)(مطلوب|ابغى|أبغى|احتاج|أحتاج|يبحث|نبحث|نرغب|ارغب|أرغب)(?:\s|$)/.test(padded);
+}
+
+function hasExplicitOfferCue(text) {
+  const padded = ` ${text} `;
+  return /(?:^|\s)(عرض|معروض|متوفر|متاح|عندي|لدينا|يوجد)(?:\s|$)/.test(padded);
+}
+
+function countDistinctKeywordMatches(text, words) {
+  const seen = new Set();
+  let score = 0;
+  for (const word of words) {
+    const normalized = normalizeArabicText(word);
+    if (!normalized || seen.has(normalized)) continue;
+    if (text.includes(normalized)) {
+      seen.add(normalized);
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function resolveParsedOpportunityKind(text) {
+  const explicitRequest = hasExplicitRequestCue(text);
+  const explicitOffer = hasExplicitOfferCue(text);
+  if (explicitRequest && !explicitOffer) {
+    return { kind: "client_request", offerScore: 0, requestScore: 1 };
+  }
+  if (explicitOffer && !explicitRequest) {
+    return { kind: "owner_offer", offerScore: 1, requestScore: 0 };
+  }
 
   const offerWords = [
     "للبيع", "للإيجار", "للايجار", "معروض", "عرض", "متوفر", "متاح", "مالك", "مباشر",
@@ -2618,11 +2673,19 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
     "مطلوب", "ابغى", "أبغى", "احتاج", "أحتاج", "يبحث", "نبحث", "طلب", "نرغب",
     "ارغب", "أرغب", "عميل", "مشتري", "مستأجر"
   ];
-  const offerScore = countKeywords(text, offerWords);
-  const requestScore = countKeywords(text, requestWords);
+  const offerScore = countDistinctKeywordMatches(text, offerWords);
+  const requestScore = countDistinctKeywordMatches(text, requestWords);
   const kind = offerScore === 0 && requestScore === 0
     ? "unknown"
     : (offerScore > requestScore ? "owner_offer" : "client_request");
+  return { kind, offerScore, requestScore };
+}
+
+function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
+  const raw = cleanText(input, 12000);
+  const text = normalizeArabicText(raw);
+
+  const { kind, offerScore, requestScore } = resolveParsedOpportunityKind(text);
 
   // Keep the most-specific types first so "أرض تجارية" is not reduced to "أرض".
   const propertyTypes = [
@@ -3802,17 +3865,23 @@ async function supersedeMatchesForPairKey({
   return superseded;
 }
 
-async function loadOpportunityDocsByIds({ projectId, officeId, ids = [], accessToken }) {
+async function loadOpportunityDocsByIds({
+  projectId, officeId, officeIds = [], ids = [], accessToken
+}) {
   const docsById = {};
   const unique = [...new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))];
-  for (const id of unique) {
-    const doc = await getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "opportunities", id],
-      accessToken,
-      allowMissing: true
-    });
-    if (doc) docsById[id] = { id, officeId, ...firestoreFieldsToJs(doc.fields || {}) };
+  const offices = [...new Set([officeId, ...officeIds].map((value) => String(value || "").trim()).filter(Boolean))];
+  for (const office of offices) {
+    for (const id of unique) {
+      if (docsById[id]) continue;
+      const doc = await getFirestoreDocument({
+        projectId,
+        segments: ["offices", office, "opportunities", id],
+        accessToken,
+        allowMissing: true
+      });
+      if (doc) docsById[id] = { id, officeId: office, ...firestoreFieldsToJs(doc.fields || {}) };
+    }
   }
   return docsById;
 }
@@ -3820,10 +3889,12 @@ async function loadOpportunityDocsByIds({ projectId, officeId, ids = [], accessT
 async function resolveCanonicalMatchForPersist({
   projectId, officeId, accessToken,
   sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-  opportunityId, counterpartOpportunityId, requestId, offerId, clientRequestId, ownerOfferId
+  opportunityId, counterpartOpportunityId, requestId, offerId, clientRequestId, ownerOfferId,
+  propertyOfficeId = ""
 }) {
   const match = {
     officeId,
+    propertyOfficeId,
     sourceCollection,
     sourceRecordId,
     counterpartCollection,
@@ -3835,8 +3906,13 @@ async function resolveCanonicalMatchForPersist({
     clientRequestId,
     ownerOfferId
   };
+  const extraOffices = propertyOfficeId && propertyOfficeId !== officeId ? [propertyOfficeId] : [];
   const docsById = await loadOpportunityDocsByIds({
-    projectId, officeId, accessToken, ids: collectCandidateOpportunityIds(match)
+    projectId,
+    officeId,
+    officeIds: extraOffices,
+    accessToken,
+    ids: collectCandidateOpportunityIds(match)
   });
   return resolveCanonicalPairFromDocs(match, docsById);
 }
@@ -3916,7 +3992,8 @@ async function persistScoredMatch({
   projectId, officeId, source, candidate, sourceRef, counterpartRef,
   sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
   opportunityId, counterpartOpportunityId, scored, rank, accessToken,
-  notifyOperation = false, assignedBrokerId = "", env = null
+  notifyOperation = false, assignedBrokerId = "", env = null,
+  propertyOfficeId = ""
 }) {
   const pairKey = canonicalPairKey(sourceRef, counterpartRef);
   const dataVersion = await relevantDataVersion(source, candidate);
@@ -3927,7 +4004,8 @@ async function persistScoredMatch({
   const linkage = await resolveCanonicalMatchForPersist({
     projectId, officeId, accessToken,
     sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-    opportunityId, counterpartOpportunityId
+    opportunityId, counterpartOpportunityId,
+    propertyOfficeId
   });
   if (!linkage.ok) {
     await writeRejectedMatchDiagnostic({
@@ -4101,6 +4179,100 @@ async function persistScoredMatch({
   }
 
   return persisted;
+}
+
+async function materializeAcceptedCooperationMatch({
+  projectId,
+  cooperation = {},
+  accessToken,
+  existingMatchId = "",
+  env = null
+}) {
+  const pair = await resolveAcceptedCooperationPair({
+    cooperation,
+    projectId,
+    accessToken,
+    getFirestoreDocument,
+    firestoreFieldsToJs
+  });
+  if (!pair.ok) {
+    if (pair.skip) return { ok: true, skipped: true, reason: pair.error };
+    return { ok: false, error: pair.error || "pair_not_resolved" };
+  }
+
+  const requestDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", pair.clientOfficeId, "opportunities", pair.requestId],
+    accessToken,
+    allowMissing: true
+  });
+  const offerDoc = await getFirestoreDocument({
+    projectId,
+    segments: ["offices", pair.propertyOfficeId, "opportunities", pair.offerId],
+    accessToken,
+    allowMissing: true
+  });
+  if (!requestDoc || !offerDoc) {
+    return { ok: false, error: "opportunity_docs_missing" };
+  }
+
+  const requestRecord = {
+    id: pair.requestId,
+    officeId: pair.clientOfficeId,
+    ...firestoreFieldsToJs(requestDoc.fields || {})
+  };
+  const offerRecord = {
+    id: pair.offerId,
+    officeId: pair.propertyOfficeId,
+    ...firestoreFieldsToJs(offerDoc.fields || {})
+  };
+  const source = opportunityToMatchInput(requestRecord, { id: pair.requestId });
+  const candidate = opportunityToMatchInput(offerRecord, { id: pair.offerId });
+  const scored = scoreMatchEngine(source, candidate);
+
+  const persisted = await persistScoredMatch({
+    projectId,
+    officeId: pair.clientOfficeId,
+    source,
+    candidate,
+    sourceRef: `opportunities:${pair.requestId}`,
+    counterpartRef: `opportunities:${pair.offerId}`,
+    sourceCollection: "opportunities",
+    sourceRecordId: pair.requestId,
+    counterpartCollection: "opportunities",
+    counterpartRecordId: pair.offerId,
+    opportunityId: pair.requestId,
+    counterpartOpportunityId: pair.offerId,
+    scored,
+    rank: 1,
+    accessToken,
+    notifyOperation: false,
+    assignedBrokerId: String(
+      requestRecord.brokerId || requestRecord.originatingBrokerId || cooperation.originatingBrokerId || ""
+    ),
+    env,
+    propertyOfficeId: pair.propertyOfficeId
+  });
+
+  if (persisted?.skipped) {
+    return {
+      ok: false,
+      error: persisted.integrityReason || "match_skipped",
+      integrityStatus: persisted.integrityStatus
+    };
+  }
+
+  const matchId = String(persisted?.matchId || existingMatchId || "").trim();
+  if (!matchId) return { ok: false, error: "match_not_materialized" };
+  return {
+    ok: true,
+    matchId,
+    duplicate: Boolean(persisted?.duplicate),
+    requestId: pair.requestId,
+    offerId: pair.offerId,
+    clientOfficeId: pair.clientOfficeId,
+    propertyOfficeId: pair.propertyOfficeId
+  };
 }
 
 async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken, env = null }) {
@@ -4822,7 +4994,11 @@ async function handleCooperationLifecycle(request, env, requestId) {
       ...operationsDeps(env),
       deleteFirestoreDocument,
       firestoreFieldsToJs,
-      upsertCooperationOperations
+      upsertCooperationOperations,
+      materializeAcceptedCooperationMatch: (params) => materializeAcceptedCooperationMatch({
+        ...params,
+        env
+      })
     }
   });
   if (!result.ok) {
@@ -6208,6 +6384,7 @@ function partySessionHelpers() {
     getGoogleAccessToken,
     getFirestoreDocument,
     setFirestoreDocument,
+    listCollectionDocuments,
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,

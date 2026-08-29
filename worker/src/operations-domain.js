@@ -502,6 +502,12 @@ export async function buildLivingCooperationOperation({
     sourceEntityId: cooperationId,
     opportunityId: String(cooperation.opportunityId || (cooperation.opportunityIds || [])[0] || ""),
     matchId: String(cooperation.matchId || ""),
+    coordinationOutcome: String(cooperation.coordinationOutcome || ""),
+    coordinationBrokerLine: String(cooperation.coordinationBrokerLine || ""),
+    coordinationClientSummary: String(cooperation.coordinationClientSummary || ""),
+    coordinationOwnerSummary: String(cooperation.coordinationOwnerSummary || ""),
+    ownerContactNeeded: cooperation.ownerContactNeeded === true
+      || String(cooperation.ownerContactNeeded || "").toLowerCase() === "true",
     cooperationId,
     titleCode: "COOPERATION_MATCH_TITLE",
     summaryCode: "COOPERATION_MATCH_SUMMARY",

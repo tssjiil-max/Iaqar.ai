@@ -454,6 +454,9 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
     if (r === COOPERATION_ROLE.CLIENT_OFFICE) {
       return { needsAction: true, label: "متابعة العميل", waitingLabel: "", emptyAction: "" };
     }
+    if (cooperationNeedsOwnerOutreach(record)) {
+      return { needsAction: true, label: "إرسال للمالك", waitingLabel: "", emptyAction: "" };
+    }
     return waiting(partnerName ? `بانتظار ${partnerName} لمتابعة العميل.` : "");
   }
 
@@ -715,6 +718,21 @@ export function collapsedKindLabel(stage, record = {}, officeId = "") {
   return "مطابقة تعاون جديدة";
 }
 
+export function cooperationOwnerContactNeeded(record = {}) {
+  return record.ownerContactNeeded === true
+    || String(record.ownerContactNeeded || "").toLowerCase() === "true";
+}
+
+export function cooperationNeedsOwnerOutreach(record = {}) {
+  const stage = upper(record.currentStage) || upper(record.stage);
+  const status = upper(record.status);
+  return (
+    (status === COOPERATION_RECORD_STATUS.ACCEPTED || stage === COOPERATION_STAGE.ACCEPTED)
+    && text(record.matchId)
+    && cooperationOwnerContactNeeded(record)
+  );
+}
+
 export function collapsedStatusLabel(stage, turn, partnerName = "") {
   const s = upper(stage);
   if (s === COOPERATION_STAGE.WAITING_PARTNER || s === COOPERATION_STAGE.REQUEST_SENT) {
@@ -728,10 +746,19 @@ export function collapsedStatusLabel(stage, turn, partnerName = "") {
 }
 
 export function cooperationActionsFor({ stage, role, record = {}, officeId = "" } = {}) {
-  const turn = yourTurnFor({ stage, role, record, officeId });
-  const s = upper(stage);
+  const r = role || viewerRoleFor(record, officeId);
+  const s = upper(stage) || upper(record.currentStage);
   const isTarget = text(officeId).toLowerCase() === text(record.targetOfficeId).toLowerCase();
   const details = { id: "open_details", label: "عرض التفاصيل", variant: "text" };
+
+  if (cooperationNeedsOwnerOutreach(record) && r === COOPERATION_ROLE.PROPERTY_OFFICE) {
+    return {
+      primaryAction: { id: "send_to_owner", label: "إرسال للمالك" },
+      secondaryActions: [details]
+    };
+  }
+
+  const turn = yourTurnFor({ stage: s, role: r, record, officeId });
   if (!turn.needsAction) return { primaryAction: null, secondaryActions: [] };
 
   if (s === COOPERATION_STAGE.MATCH_FOUND || s === COOPERATION_STAGE.REVIEW) {
@@ -843,6 +870,22 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
   const listing = text(officeId).toLowerCase() === text(record.originatingOfficeId).toLowerCase()
     ? ownListing
     : partnerListing;
+  const isPropertyViewer = text(officeId).toLowerCase() === text(record.propertyOfficeId).toLowerCase();
+  const isClientViewer = text(officeId).toLowerCase() === text(record.clientOfficeId).toLowerCase();
+  const resolvedOfferId = text(
+    record.offerId
+    || record.ownerOfferId
+    || (isPropertyViewer
+      ? (record.originOpportunityId || record.opportunityId || record.counterpartOpportunityId)
+      : (record.counterpartOpportunityId || record.originOpportunityId))
+  );
+  const resolvedRequestId = text(
+    record.requestId
+    || record.clientRequestId
+    || (isClientViewer
+      ? (record.originOpportunityId || record.opportunityId || record.counterpartOpportunityId)
+      : (record.counterpartOpportunityId || record.originOpportunityId))
+  );
   const { primaryAction, secondaryActions } = cooperationActionsFor({ stage, role, record, officeId });
   const sortGroup = sortGroupForCooperation({ stage, role, record, officeId, now });
   const partnerName = partnerOfficeNameFor(record, officeId);
@@ -909,8 +952,8 @@ export function buildCooperationDailyTaskView(record = {}, { officeId = "", now 
     primaryAction,
     secondaryActions,
     matchId: text(record.matchId),
-    offerId: text(record.offerId || record.ownerOfferId),
-    requestId: text(record.requestId || record.clientRequestId),
+    offerId: resolvedOfferId,
+    requestId: resolvedRequestId,
     opportunityId: text(record.opportunityId || record.originOpportunityId),
     counterpartOpportunityId: text(record.counterpartOpportunityId),
     clientPhone: "",
