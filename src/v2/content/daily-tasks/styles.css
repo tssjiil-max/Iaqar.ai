@@ -641,23 +641,6 @@
   padding: 0 10px 10px;
 }
 
-.cv2-match-history > summary > div {
-  display: grid;
-  flex: 1;
-}
-
-.cv2-match-history > summary small {
-  color: var(--cv2-muted, #6b7873);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.cv2-match-history time {
-  color: var(--cv2-muted, #6b7873);
-  direction: ltr;
-  font-size: 10px;
-}
-
 @media (max-width: 390px) {
   .cv2-match-facts {
     grid-template-columns: 1fr;

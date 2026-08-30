@@ -407,6 +407,9 @@ test("party progress checks only confirmed WhatsApp, link, and reply evidence", 
   assert.match(text, /طلب العميل نوع العقار: فيلا الغرض: للشراء/);
   assert.equal((html.match(/cv2-party-step is-done/g) || []).length, 4);
   assert.match(html, /فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد/);
+  assert.match(html, /الإجراءات التي تمت/);
+  assert.equal(html.includes("آخر إجراء"), false);
+  assert.equal(html.includes("cv2-match-history"), false);
   assert.equal((html.match(/data-cv2-exec-primary="send_to_client"/g) || []).length, 1);
   assert.equal((html.match(/data-cv2-exec-secondary="send_to_owner"/g) || []).length, 1);
   assert.equal(html.includes("رقم العميل غير متوفر"), false);

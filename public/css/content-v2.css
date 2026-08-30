@@ -1317,9 +1317,6 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
 .cv2-match-fold > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 9px 12px; color: var(--cv2-green, #1a5319); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
 .cv2-match-fold > summary::-webkit-details-marker { display: none; }
 .cv2-match-fold-body { display: grid; gap: 8px; padding: 0 10px 10px; }
-.cv2-match-history > summary > div { display: grid; flex: 1; }
-.cv2-match-history > summary small { color: var(--cv2-muted, #6b7873); font-size: 10px; font-weight: 600; }
-.cv2-match-history time { color: var(--cv2-muted, #6b7873); direction: ltr; font-size: 10px; }
 
 @media (max-width: 390px) {
   .cv2-match-facts { grid-template-columns: 1fr; }

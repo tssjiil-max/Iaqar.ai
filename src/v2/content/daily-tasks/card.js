@@ -375,16 +375,6 @@ function matchDetailsHtml(task = {}) {
   </details>`;
 }
 
-function matchTimelineFoldHtml(task = {}) {
-  const events = Array.isArray(task.timeline) ? task.timeline : [];
-  if (!events.length) return "";
-  const last = events[events.length - 1] || {};
-  return `<details class="cv2-match-fold cv2-match-history">
-    <summary><span>‹</span><div><strong>آخر إجراء</strong><small>${escapeContentHtml(last.label || "")}</small></div>${clockLabel(last.createdAt) ? `<time>${escapeContentHtml(clockLabel(last.createdAt))}</time>` : ""}</summary>
-    <div class="cv2-match-fold-body">${timelineHtml(task)}</div>
-  </details>`;
-}
-
 function matchGroupBodyHtml(task = {}) {
   const ranked = (task.candidates || [])
     .map((item) => {
@@ -398,7 +388,7 @@ function matchGroupBodyHtml(task = {}) {
     ${partyProgressHtml(task)}
     ${matchDetailsHtml(task)}
     ${ranked && (task.candidates || []).length > 1 ? `<details class="cv2-match-fold"><summary><span>☷</span> المرشحون</summary><div class="cv2-match-fold-body"><ol>${ranked}</ol></div></details>` : ""}
-    ${matchTimelineFoldHtml(task)}
+    ${timelineHtml(task)}
   </div>`;
 }
 
