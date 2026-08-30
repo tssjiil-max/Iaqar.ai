@@ -489,13 +489,6 @@ export function sanitizePartyPublicView({
   const exactLocationAllowed = appointmentStatus === VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
     || text(livingStage) === "APPOINTMENT_CONFIRMED";
   const coordinationSession = coordination && typeof coordination === "object" ? coordination : null;
-  const clientNeedsNegotiationReply = side === "client"
-    && Boolean(coordinationSession?.clientBundle)
-    && !coordinationSession?.clientBundle?.negotiationResponse
-    && ["accept", "counter"].includes(coordinationSession?.ownerBundle?.negotiationDecision);
-  const bundleSubmitted = side === "owner"
-    ? Boolean(coordinationSession?.ownerBundle)
-    : Boolean(coordinationSession?.clientBundle) && !clientNeedsNegotiationReply;
   const bundleSummary = side === "owner"
     ? ownerBundleSummary(coordinationSession?.ownerBundle)
     : clientBundleSummary(coordinationSession?.clientBundle);
@@ -507,11 +500,16 @@ export function sanitizePartyPublicView({
       canonicalOffer,
       clientBundle: coordinationSession?.clientBundle || null,
       ownerBundle: coordinationSession?.ownerBundle || null,
-      submitted: bundleSubmitted,
+      submitted: false,
       bundleSummary,
       hasLocation: Boolean(snapshot.locationUrl || canonicalOffer.locationUrl)
     })
     : null;
+  const hasSideBundle = side === "owner"
+    ? Boolean(coordinationSession?.ownerBundle)
+    : Boolean(coordinationSession?.clientBundle);
+  const bundleSubmitted = hasSideBundle && !decisionPackage?.requiresResponse;
+  if (decisionPackage) decisionPackage.submitted = bundleSubmitted;
   const followUpLabel = followUpAction ? partyActionLabel(side, followUpAction) : "";
   const revealed = revealedDetail && text(revealedDetail.value)
     ? { label: text(revealedDetail.label), value: text(revealedDetail.value) }

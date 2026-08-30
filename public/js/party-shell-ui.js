@@ -173,6 +173,17 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     </div>`;
   }
   const party = pkg.party || "client";
+  const viewingChoices = () => `<p class="party-muted">اليوم</p>
+    <div class="party-chip-grid">${chipOptions(pkg.dayOptions, "viewingDays")}</div>
+    <p class="party-muted">الفترة</p>
+    <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>`;
+  if (party === "client" && pkg.workflowStep === "client_viewing") {
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="client_viewing">
+      <p class="party-section-label">إدارة المفاوضات</p>
+      <div class="party-package-section"><p class="party-section-label">اختر أوقات المعاينة المناسبة</p>${viewingChoices()}</div>
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
+    </div>`;
+  }
   if (party === "client") {
     if (pkg.negotiationResponseRequest) {
       const preferenceLabels = {
@@ -182,18 +193,20 @@ function decisionPackageBlock(pkg = {}, view = {}) {
         discount_5: "تخفيض 5%",
         discuss_at_viewing: "يُناقش عند المعاينة"
       };
-      const ownerReply = pkg.negotiationResponseRequest.ownerDecision === "accept"
-        ? "المالك أكد وجود مجال للتفاوض"
+      const counterPrice = Number(pkg.negotiationResponseRequest.counterPrice || 0);
+      const ownerReply = counterPrice
+        ? `عرض المالك: ${counterPrice.toLocaleString("en-US")} ر.س`
         : (preferenceLabels[pkg.negotiationResponseRequest.ownerPreference] || "المالك قدّم ردًا تفاوضيًا");
-      return `<div class="party-coordination" data-party-decision-package data-party-coordination-form>
+      return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="client_price_response">
         <div class="party-package-section">
           <p class="party-section-label">رد المالك</p>
           <p class="party-muted">${escapeHtml(ownerReply)}</p>
           <div class="party-chip-grid party-chip-grid--single">${chipOptions([
             { value: "accept", label: "مناسب، أوافق" },
-            { value: "viewing", label: "مناسب وأرغب في المعاينة" },
+            { value: "viewing", label: "أفضل المعاينة أولًا" },
             { value: "reject", label: "ما زال غير مناسب" }
           ], "negotiationResponse", "single")}</div>
+          <div data-package-section="responseViewing" hidden>${viewingChoices()}</div>
         </div>
         <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
       </div>`;
@@ -269,6 +282,53 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       <button type="button" class="party-action party-package-submit" data-party-bundle-submit data-testid="party-bundle-submit">
         <span class="party-send-icon" aria-hidden="true">➤</span> إرسال الرد
       </button>
+    </div>`;
+  }
+  if (pkg.workflowStep === "owner_availability") {
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_availability">
+      <p class="party-section-label">إدارة المفاوضات</p>
+      <p class="party-section-label">توفر العقار</p><div class="party-chip-grid party-chip-grid--single">${chipOptions([
+        { value: "available", label: "العقار متاح" }, { value: "not_available", label: "غير متاح" }
+      ], "propertyAvailability", "single")}</div>
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
+    </div>`;
+  }
+  if (pkg.workflowStep === "owner_details") {
+    const fields = (pkg.ownerDetailFields || []).map((field) => `<div class="party-package-field">
+      <p class="party-row"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.hasValue ? field.currentValue : "غير متوفر حاليًا")}</strong></p>
+      <div class="party-chip-grid party-chip-grid--single">${chipOptions([
+        ...(field.hasValue ? [{ value: "confirm", label: "صحيح" }] : []),
+        { value: "needs_update", label: "يحتاج تحديث" }
+      ], `detailStatus_${field.key}`, "single")}</div></div>`).join("");
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_details">
+      <p class="party-section-label">إدارة المفاوضات</p>
+      <p class="party-section-label">التفاصيل المطلوبة من العميل</p>${fields}
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
+    </div>`;
+  }
+  if (pkg.workflowStep === "owner_price") {
+    const request = pkg.negotiationRequest || {};
+    const options = [
+      { value: "accept_discount", label: "أوافق" },
+      { value: "fixed", label: "أتمسك بالسعر" },
+      ...(request.midpointPrice ? [{ value: "slight", label: `${Number(request.midpointPrice).toLocaleString("en-US")} ر.س — حل وسط` }] : []),
+      { value: "discuss_at_viewing", label: "نناقشه عند المعاينة" }
+    ];
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_price">
+      <p class="party-section-label">إدارة المفاوضات</p>
+      <p class="party-row"><span>السعر الحالي</span><strong>${Number(pkg.canonicalPrice || 0).toLocaleString("en-US")} ر.س</strong></p>
+      ${request.proposedPrice ? `<p class="party-row"><span>طلب العميل</span><strong>${Number(request.proposedPrice).toLocaleString("en-US")} ر.س</strong></p>` : ""}
+      <div class="party-chip-grid">${chipOptions(options, "ownerPriceDecision", "single")}</div>
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
+    </div>`;
+  }
+  if (pkg.workflowStep === "owner_viewing") {
+    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_viewing">
+      <p class="party-section-label">إدارة المفاوضات</p>
+      <p class="party-section-label">المعاينة</p><div class="party-chip-grid party-chip-grid--single">${chipOptions([
+        { value: "yes", label: "ممكنة" }, { value: "needs_coordination", label: "تحتاج تنسيق مسبق" }, { value: "no", label: "غير ممكنة" }
+      ], "viewingAllowed", "single")}</div><div data-package-section="ownerAvailability" hidden>${viewingChoices()}</div>
+      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
     </div>`;
   }
   const ownerPriceOptions = [

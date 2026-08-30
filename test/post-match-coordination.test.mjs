@@ -342,23 +342,25 @@ test("party UI uses the five structured phase-one decisions without preliminary 
 });
 
 test("owner negotiation UI is named إدارة المفاوضات and has structured decisions", () => {
+  const clientBundle = normalizeClientBundle({
+    interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
+    rejectionReason: REJECTION_REASON.PRICE,
+    rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
+    negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
+  });
   const html = buildPartyShellHtml(sanitizePartyPublicView({
     party: "owner",
     snapshot: { propertyType: "شقة", city: "المدينة المنورة" },
     coordination: {
       matchId: "m-negotiation",
       createdAt: now.toISOString(),
-      clientBundle: normalizeClientBundle({
-        interestStatus: CLIENT_INTEREST_STATUS.NOT_SUITABLE,
-        rejectionReason: REJECTION_REASON.PRICE,
-        rejectionDisposition: REJECTION_DISPOSITION.NEGOTIABLE,
-        negotiationPreference: PRICE_FLEXIBILITY.ASK_OWNER
-      })
-    }
+      clientBundle,
+      ownerBundle: normalizeOwnerBundle({ propertyAvailability: OWNER_AVAILABILITY.AVAILABLE })
+    },
+    canonicalOffer: { propertyType: "شقة", price: 700000 }
   }));
   assert.match(html, /إدارة المفاوضات/);
-  assert.match(html, /أقبل مجالًا بسيطًا للتفاوض/);
-  assert.match(html, /أوافق على التخفيض المقترح/);
+  assert.match(html, /أوافق/);
   assert.match(html, /أتمسك بالسعر/);
   assert.match(html, /نناقشه عند المعاينة/);
   assert.doesNotMatch(html, /السعر البديل|السعر المناسب لك/);

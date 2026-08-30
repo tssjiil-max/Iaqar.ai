@@ -191,6 +191,7 @@ async function submitBundle(token, bundle, button, photoFiles = []) {
 
 function collectPackageFromForm(root, party = "client") {
   const bundle = { propertyAvailability: "", viewingAllowed: "" };
+  const workflowStep = String(root.getAttribute("data-workflow-step") || "");
   root.querySelectorAll("[data-package-field]").forEach((input) => {
     const field = input.getAttribute("data-package-field");
     if (!field) return;
@@ -269,8 +270,19 @@ function collectPackageFromForm(root, party = "client") {
   const detailConfirmations = Object.keys(bundle)
     .filter((key) => key.startsWith("detailStatus_") && bundle[key] === "confirm")
     .map((key) => key.replace("detailStatus_", ""));
+  const detailNeedsUpdate = Object.keys(bundle)
+    .filter((key) => key.startsWith("detailStatus_") && bundle[key] === "needs_update")
+    .map((key) => key.replace("detailStatus_", ""));
   Object.keys(bundle).filter((key) => key.startsWith("detailStatus_")).forEach((key) => delete bundle[key]);
   if (detailConfirmations.length) bundle.detailConfirmations = detailConfirmations;
+  if (detailNeedsUpdate.length) bundle.detailNeedsUpdate = detailNeedsUpdate;
+  if (workflowStep === "client_viewing") {
+    bundle.wantsViewing = true;
+    bundle.negotiationResponse = "viewing";
+  }
+  if (bundle.negotiationResponse === "viewing") bundle.wantsViewing = true;
+  if (!bundle.propertyAvailability) delete bundle.propertyAvailability;
+  if (!bundle.viewingAllowed) delete bundle.viewingAllowed;
   if (party === "owner") {
     bundle.locationShare = Boolean(bundle.locationShare);
     if (bundle.mediaAdded) bundle.mediaAdded = true;
@@ -290,12 +302,14 @@ function refreshPackageSections(root) {
   const priceNegotiationSection = root.querySelector("[data-package-section=\"priceNegotiation\"]");
   const rejectionSection = root.querySelector("[data-package-section=\"rejection\"]");
   const preference = root.querySelector("[data-package-section=\"negotiationPreference\"]");
+  const responseViewing = root.querySelector("[data-package-section=\"responseViewing\"]");
   if (detailSection) detailSection.hidden = clientDecision !== "details";
   if (viewingSection) viewingSection.hidden = clientDecision !== "viewing";
   if (priceNegotiationSection) priceNegotiationSection.hidden = clientDecision !== "price";
   if (rejectionSection) rejectionSection.hidden = !notSuitable;
   if (preference) preference.hidden = !notSuitable
     || rejectionDisposition !== "negotiable" || !rejectionReason;
+  if (responseViewing) responseViewing.hidden = bundle.negotiationResponse !== "viewing";
   if (party === "owner") {
     const available = bundle.propertyAvailability === "available";
     const unavailable = bundle.propertyAvailability === "not_available";

@@ -495,6 +495,16 @@ export function normalizeClientBundle(raw = {}) {
         ].includes(bundle.negotiationPreference)) return null;
       if (bundle.rejectionReason !== REJECTION_REASON.PRICE && !bundle.negotiationPreference) return null;
     }
+    const canonicalPrice = Number(input.canonicalPrice || 0);
+    if (bundle.rejectionReason === REJECTION_REASON.PRICE && Number.isFinite(canonicalPrice) && canonicalPrice > 0) {
+      if (bundle.negotiationPreference === PRICE_FLEXIBILITY.DISCOUNT_2) bundle.proposedPrice = Math.round(canonicalPrice * 0.98);
+      if (bundle.negotiationPreference === PRICE_FLEXIBILITY.DISCOUNT_5) bundle.proposedPrice = Math.round(canonicalPrice * 0.95);
+    }
+    bundle.wantsViewing = Boolean(input.wantsViewing);
+    bundle.viewingDays = uniqueList(input.viewingDays);
+    bundle.viewingPeriods = uniqueList(input.viewingPeriods);
+    bundle.viewingWindows = viewingWindowsFromDaysPeriods(bundle.viewingDays, bundle.viewingPeriods);
+    if (bundle.wantsViewing && (!bundle.viewingDays.length || !bundle.viewingPeriods.length)) return null;
     return bundle;
   }
   if (interestStatus !== CLIENT_INTEREST_STATUS.INTERESTED
@@ -545,6 +555,7 @@ export function normalizeOwnerBundle(raw = {}) {
     specValues: raw.specValues && typeof raw.specValues === "object" ? { ...raw.specValues } : {},
     detailValues: raw.detailValues && typeof raw.detailValues === "object" ? { ...raw.detailValues } : {},
     detailConfirmations: uniqueList(raw.detailConfirmations || []),
+    detailNeedsUpdate: uniqueList(raw.detailNeedsUpdate || []),
     viewingAllowed: "",
     viewingDays: [],
     viewingPeriods: [],
@@ -561,6 +572,17 @@ export function normalizeOwnerBundle(raw = {}) {
     && !Object.values(NEGOTIATION_DECISION).includes(bundle.negotiationDecision)) return null;
   if (bundle.negotiationDecision === NEGOTIATION_DECISION.COUNTER
     && !Object.values(PRICE_FLEXIBILITY).includes(bundle.counterPreference)) return null;
+  const canonicalPrice = Number(raw.canonicalPrice || 0);
+  const clientProposedPrice = Number(raw.clientProposedPrice || 0);
+  if (bundle.negotiationDecision === NEGOTIATION_DECISION.COUNTER) {
+    if (bundle.counterPreference === PRICE_FLEXIBILITY.FIXED
+      && Number.isFinite(canonicalPrice) && canonicalPrice > 0) bundle.counterPrice = canonicalPrice;
+    if (bundle.counterPreference === PRICE_FLEXIBILITY.SLIGHT
+      && Number.isFinite(canonicalPrice) && canonicalPrice > 0
+      && Number.isFinite(clientProposedPrice) && clientProposedPrice > 0) {
+      bundle.counterPrice = Math.round((canonicalPrice + clientProposedPrice) / 2);
+    }
+  }
   const priceConfirmation = text(raw.priceConfirmation);
   if (priceConfirmation) {
     bundle.priceConfirmation = priceConfirmation;
@@ -700,32 +722,30 @@ export function resolveCoordinationOutcome({
   }
   if (clientBundle.interestStatus === CLIENT_INTEREST_STATUS.NOT_SUITABLE) {
     if (clientBundle.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE) {
+      const deferredToViewing = clientBundle.negotiationPreference === PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+        || ownerBundle.counterPreference === PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+        || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING;
       if (!ownerBundle.negotiationDecision) {
         return { outcome: COORDINATION_OUTCOME.NEGOTIATION_PENDING_OWNER, brokerLine: "جلسة تفاوض — بانتظار رد المالك على شرط العميل", conflictField: "negotiationDecision" };
       }
       if (ownerBundle.negotiationDecision === NEGOTIATION_DECISION.ACCEPT) {
-        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.ACCEPT
-          || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING) {
-          return { outcome: COORDINATION_OUTCOME.NEEDS_BROKER, brokerLine: "اكتمل الاتفاق المبدئي — يتدخل الوسيط لتثبيت السعر والمعاينة", conflictField: "" };
-        }
-        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.REJECT) {
-          return { outcome: COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED, brokerLine: "العميل لم يقبل نتيجة التفاوض", conflictField: "" };
-        }
-        return { outcome: COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED, brokerLine: "جلسة تفاوض — المالك وافق على شرط العميل ويلزم تأكيد العميل", conflictField: "" };
+        return { outcome: COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED, brokerLine: "جلسة تفاوض — وافق المالك صراحة على عرض العميل", conflictField: "" };
       }
       if (ownerBundle.negotiationDecision === NEGOTIATION_DECISION.COUNTER) {
-        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.ACCEPT
-          || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING) {
+        if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.ACCEPT) {
           return { outcome: COORDINATION_OUTCOME.NEEDS_BROKER, brokerLine: "اكتمل الاتفاق المبدئي — يتدخل الوسيط لتثبيت السعر والمعاينة", conflictField: "" };
         }
         if (clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.REJECT) {
           return { outcome: COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED, brokerLine: "العميل لم يقبل اقتراح المالك", conflictField: "" };
         }
-        return { outcome: COORDINATION_OUTCOME.NEGOTIATION_COUNTERED, brokerLine: "جلسة تفاوض — المالك قدم اقتراحًا بديلًا ويلزم رد العميل", conflictField: "" };
+        if (!deferredToViewing) return { outcome: COORDINATION_OUTCOME.NEGOTIATION_COUNTERED, brokerLine: "جلسة تفاوض — المالك قدم اقتراحًا بديلًا ويلزم رد العميل", conflictField: "" };
       }
-      return { outcome: COORDINATION_OUTCOME.NEGOTIATION_REJECTED, brokerLine: "جلسة تفاوض — المالك رفض شرط التفاوض", conflictField: "" };
+      if (ownerBundle.negotiationDecision === NEGOTIATION_DECISION.REJECT) {
+        return { outcome: COORDINATION_OUTCOME.NEGOTIATION_REJECTED, brokerLine: "جلسة تفاوض — المالك رفض شرط التفاوض", conflictField: "" };
+      }
+      if (!deferredToViewing) return { outcome: COORDINATION_OUTCOME.NEGOTIATION_COUNTERED, brokerLine: "جلسة تفاوض — بانتظار القرار التالي", conflictField: "" };
     }
-    return {
+    if (!clientBundle.wantsViewing) return {
       outcome: COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED,
       brokerLine: "العميل غير مهتم",
       conflictField: ""
@@ -741,7 +761,19 @@ export function resolveCoordinationOutcome({
   const unresolvedInfo = (clientBundle.infoNeeds || []).filter((need) =>
     !canonicalHasInfoNeed(need, canonicalOffer)
   );
-  const missingDetails = ownerMissingDetailKeys(clientBundle, canonicalOffer, canonicalOffer.propertyType);
+  const requestedDetails = uniqueList(clientBundle.requestedDetailKeys || []);
+  const hasStructuredReview = Boolean(ownerBundle.detailConfirmations?.length || ownerBundle.detailNeedsUpdate?.length);
+  const needsBrokerDetails = requestedDetails.filter((key) => ownerBundle.detailNeedsUpdate?.includes(key));
+  const missingDetails = hasStructuredReview
+    ? requestedDetails.filter((key) => !ownerBundle.detailConfirmations?.includes(key))
+    : ownerMissingDetailKeys(clientBundle, canonicalOffer, canonicalOffer.propertyType);
+  if (needsBrokerDetails.length) {
+    return {
+      outcome: COORDINATION_OUTCOME.NEEDS_BROKER,
+      brokerLine: "تفاصيل العقار تحتاج تحديثًا عن طريق الوسيط",
+      conflictField: needsBrokerDetails[0]
+    };
+  }
   if ((missingDetails.length || unresolvedInfo.length) && !clientBundle.wantsViewing) {
     return {
       outcome: COORDINATION_OUTCOME.CLIENT_NEEDS_INFO,
@@ -906,7 +938,11 @@ export function buildDecisionPackageView(party = "client", {
   const ownerRequestedKeys = side === "owner" && clientBundle
     ? uniqueList(clientBundle.requestedDetailKeys || [])
     : [];
-  const ownerDetailFields = ownerRequestedKeys.map((key) => ({
+  const reviewedDetailKeys = new Set([
+    ...(ownerBundle?.detailConfirmations || []),
+    ...(ownerBundle?.detailNeedsUpdate || [])
+  ]);
+  const ownerDetailFields = ownerRequestedKeys.filter((key) => !reviewedDetailKeys.has(key)).map((key) => ({
     key,
     label: detailKeyLabel(key),
     currentValue: detailKeyCanonicalValue(key, canonicalOffer),
@@ -914,6 +950,11 @@ export function buildDecisionPackageView(party = "client", {
   }));
   const price = Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0);
   const hasCanonicalPrice = Number.isFinite(price) && price > 0;
+  const clientProposal = Number(clientBundle?.proposedPrice || 0);
+  const hasClientProposal = Number.isFinite(clientProposal) && clientProposal > 0;
+  const midpointPrice = hasCanonicalPrice && hasClientProposal
+    ? Math.round((price + clientProposal) / 2)
+    : 0;
   const priceOptions = [
     ...(hasCanonicalPrice
       ? [
@@ -933,11 +974,31 @@ export function buildDecisionPackageView(party = "client", {
     { value: PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING, label: "أفضل مناقشة السعر عند المعاينة" },
     { value: "final", label: "غير مناسب نهائيًا" }
   ];
+  let workflowStep = "complete";
+  if (side === "client") {
+    if (!clientBundle) workflowStep = "client_entry";
+    else if (clientBundle.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
+      && ownerBundle?.negotiationDecision === NEGOTIATION_DECISION.COUNTER
+      && ownerBundle?.counterPreference !== PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+      && !clientBundle.negotiationResponse) workflowStep = "client_price_response";
+    else if ((clientBundle.negotiationPreference === PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+      || ownerBundle?.counterPreference === PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+      || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING)
+      && !clientBundle.wantsViewing) workflowStep = "client_viewing";
+  } else if (!ownerBundle?.propertyAvailability) workflowStep = "owner_availability";
+  else if (ownerBundle.propertyAvailability === OWNER_AVAILABILITY.AVAILABLE) {
+    if (ownerDetailFields.length) workflowStep = "owner_details";
+    else if (clientBundle?.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
+      && !ownerBundle.negotiationDecision) workflowStep = "owner_price";
+    else if (clientBundle?.wantsViewing && !ownerBundle.viewingAllowed) workflowStep = "owner_viewing";
+  }
   return {
     mode: "decision_package_v1",
     party: side,
     questionSetVersion: side === "owner" ? QUESTION_SET_VERSIONS.OWNER_V1 : QUESTION_SET_VERSIONS.CLIENT_V1,
-    submitted: Boolean(submitted),
+    submitted: Boolean(submitted) && workflowStep === "complete",
+    workflowStep,
+    requiresResponse: workflowStep !== "complete",
     bundleSummary: text(bundleSummary),
     propertyType,
     specOptions,
@@ -951,17 +1012,19 @@ export function buildDecisionPackageView(party = "client", {
     negotiationRequest: side === "owner" && clientBundle?.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
       ? {
         reason: clientBundle.rejectionReason,
-        proposedPrice: clientBundle.proposedPrice,
-        preference: clientBundle.negotiationPreference
+        proposedPrice: hasClientProposal ? clientProposal : null,
+        preference: clientBundle.negotiationPreference,
+        midpointPrice: midpointPrice || null
       }
       : null,
     negotiationResponseRequest: side === "client"
       && clientBundle?.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
-      && [NEGOTIATION_DECISION.ACCEPT, NEGOTIATION_DECISION.COUNTER].includes(ownerBundle?.negotiationDecision)
+      && ownerBundle?.negotiationDecision === NEGOTIATION_DECISION.COUNTER
       && !clientBundle?.negotiationResponse
       ? {
         ownerDecision: ownerBundle.negotiationDecision,
-        ownerPreference: ownerBundle.counterPreference || ""
+        ownerPreference: ownerBundle.counterPreference || "",
+        counterPrice: ownerBundle.counterPrice || null
       }
       : null,
     canonicalPrice: hasCanonicalPrice ? price : 0,

@@ -271,12 +271,34 @@ export async function submitCoordinationBundle(helpers, {
     accessToken,
     canonicalOffer
   });
-  const mergedBundleRaw = side === "client" && session.clientBundle
-    ? { ...session.clientBundle, ...bundleRaw }
-    : bundleRaw;
+  const priorSideBundle = side === "owner" ? session.ownerBundle : session.clientBundle;
+  const mergedBundleRaw = priorSideBundle ? { ...priorSideBundle, ...bundleRaw } : { ...bundleRaw };
+  if (side === "owner" && priorSideBundle) {
+    if (bundleRaw.detailConfirmations) {
+      mergedBundleRaw.detailConfirmations = uniqueList([
+        ...(priorSideBundle.detailConfirmations || []),
+        ...bundleRaw.detailConfirmations
+      ]);
+    }
+    if (bundleRaw.detailNeedsUpdate) {
+      mergedBundleRaw.detailNeedsUpdate = uniqueList([
+        ...(priorSideBundle.detailNeedsUpdate || []),
+        ...bundleRaw.detailNeedsUpdate
+      ]);
+    }
+  }
+  const canonicalPrice = Number(canonicalOffer.salePrice || canonicalOffer.price || 0);
   const normalized = side === "owner"
-    ? normalizeOwnerBundle(mergedBundleRaw)
-    : normalizeClientBundle({ ...mergedBundleRaw, propertyType: canonicalOffer.propertyType || mergedBundleRaw.propertyType });
+    ? normalizeOwnerBundle({
+      ...mergedBundleRaw,
+      canonicalPrice,
+      clientProposedPrice: session.clientBundle?.proposedPrice || 0
+    })
+    : normalizeClientBundle({
+      ...mergedBundleRaw,
+      propertyType: canonicalOffer.propertyType || mergedBundleRaw.propertyType,
+      canonicalPrice
+    });
   if (!normalized) {
     throw helpers.appError("invalid_coordination_bundle", 400, "تعذر قبول الرد. أكمل جميع الحقول المطلوبة.");
   }
