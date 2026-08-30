@@ -48,6 +48,12 @@ const partyEntry = readFileSync(join(root, "public", "js", "party-entry.js"), "u
 
 const now = new Date("2026-08-27T12:00:00.000Z");
 
+test("party submit retries a timed-out owner reply and verifies persisted state", () => {
+  assert.match(partyEntry, /AbortController/);
+  assert.match(partyEntry, /\[15000, 25000\]/);
+  assert.match(partyEntry, /fresh\?\.replied \|\| fresh\?\.decisionPackage\?\.submitted/);
+});
+
 test("interested client requires detail keys and does not start viewing", () => {
   const bundle = normalizeClientBundle({
     propertyType: "شقة",

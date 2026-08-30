@@ -105,10 +105,11 @@ test("duplicate closure is idempotent in worker", () => {
   assert.ok(worker.includes("resolved.data.closedAt"));
 });
 
-test("office mismatch guard in openOpportunityManagement", () => {
+test("legacy opportunity management redirects to the current opportunity details", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
   assert.ok(workflow.includes("openOpportunityManagement"));
-  assert.ok(workflow.includes("لا يمكن فتح هذه الفرصة من هذا المكتب"));
+  assert.match(workflow, /openOpportunityManagement[\s\S]*?openOpportunityDetail/);
+  assert.match(workflow, /\["intake", "opportunity"\][\s\S]*?openOpportunityDetail/);
   const worker = readRepo("worker", "src", "index.js");
   assert.ok(worker.includes("office_mismatch"));
 });

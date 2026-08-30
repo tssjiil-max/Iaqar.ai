@@ -51,10 +51,11 @@ const clientReady = {
   advertiserPhoneNormalized: "+966598765432"
 };
 
-test("ready workspace shows exactly four primary actions", () => {
+test("ready workspace omits the retired management action", () => {
   const actions = readyWorkspacePrimaryActions(ownerReady);
-  assert.equal(actions.length, 4);
+  assert.equal(actions.length, 3);
   assert.deepEqual(actions.map((row) => row.id), [...READY_PRIMARY_ACTION_IDS]);
+  assert.equal(actions.some((row) => row.id === "manage_opportunity"), false);
 });
 
 test("owner vs client party action label on primary button", () => {

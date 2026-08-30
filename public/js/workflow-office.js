@@ -1594,6 +1594,14 @@
   }
 
   async function openWorkflowUi(detail) {
+    if (["intake", "opportunity"].includes(detail.recordType)) {
+      hideWorkflowOverlay();
+      const opportunityId = detail.opportunityId || detail.recordId || detail.id;
+      if (opportunityId && window.IAQAR?.openOpportunityDetail) {
+        return window.IAQAR.openOpportunityDetail(opportunityId);
+      }
+      return false;
+    }
     ensureWorkflowUi();
     activeWorkflowDetail = { ...detail };
     lifecycleContactAttempted = Boolean(
@@ -1601,15 +1609,6 @@
     );
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      activeWorkflowContacts = {
-        owner: detail.kind === "owner" || detail.contactType === "owner" ? { name: detail.contactName, phone: detail.contactPhone } : null,
-        client: detail.kind === "owner" || detail.contactType === "owner" ? null : { name: detail.contactName, phone: detail.contactPhone }
-      };
-      renderOpportunityLifecycleUi();
-      window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "iaqarWorkflowOverlay" } }));
-      return;
-    }
     workflowBody().innerHTML = `<div class="iaqar-workflow-summary">جارٍ تحميل بيانات العميل والمالك...</div>`;
     window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "iaqarWorkflowOverlay" } }));
     const [owner, client] = await Promise.all([
@@ -3238,54 +3237,15 @@
   }
 
   async function openOpportunityManagement(opportunityId, options = {}) {
-    const runtime = office();
-    if (!runtime?.db || !runtime.officeId || !opportunityId) {
-      notify("تعذر فتح إدارة الفرصة");
-      return;
+    if (!opportunityId) return false;
+    hideWorkflowOverlay();
+    if (window.IAQAR?.openOpportunityDetail) {
+      return window.IAQAR.openOpportunityDetail(opportunityId, options);
     }
-    try {
-      const snap = await runtime.db.collection("offices").doc(runtime.officeId)
-        .collection("opportunities").doc(opportunityId).get();
-      if (!snap.exists) {
-        notify("لم يتم العثور على الفرصة");
-        return;
-      }
-      const data = snap.data() || {};
-      if (normalizeOfficeId(data.officeId) && normalizeOfficeId(data.officeId) !== runtime.officeId) {
-        notify("لا يمكن فتح هذه الفرصة من هذا المكتب");
-        return;
-      }
-      const isOwner = data.contactType === "owner" || data.recordType === "owner_offer";
-      const phoneInfo = LC().resolveOpportunityCanonicalPhone
-        ? LC().resolveOpportunityCanonicalPhone(data)
-        : { valid: false, local: "", tel: "" };
-      const contactPhone = phoneInfo.valid
-        ? phoneInfo.local
-        : (data.contactPhone || data.advertiserPhone || data.phone || "");
-      await openWorkflowUi({
-        ...data,
-        recordId: opportunityId,
-        recordType: "opportunity",
-        opportunityId,
-        kind: isOwner ? "owner" : "client",
-        contactType: isOwner ? "owner" : "buyer",
-        contactName: data.contactName || data.advertiserDisplayName || "",
-        contactPhone,
-        focusFollowUpReminder: Boolean(options.focusFollowUp),
-        showFollowUpConfirmation: Boolean(options.focusFollowUp),
-        prefillCloseReasonKey: options.prefillCloseReason || "",
-        prefillCloseNote: options.prefillCloseNote || ""
-      });
-      if (options.openLifecycleClose) {
-        showLifecycleCloseForm({
-          reasonKey: options.prefillCloseReason || "not_interested",
-          closureNote: options.prefillCloseNote || ""
-        });
-      }
-    } catch (error) {
-      console.warn("[iaqar] open opportunity management", error);
-      notify("تعذر فتح إدارة الفرصة");
-    }
+    window.dispatchEvent(new CustomEvent("iaqar:open-bank-opportunity", {
+      detail: { opportunityId, ...options }
+    }));
+    return true;
   }
 
   function normalizeOfficeId(value) {

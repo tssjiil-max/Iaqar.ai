@@ -44,10 +44,12 @@ test("saved follow-up survives close/reopen via server reload helper", () => {
   assert.ok(workflow.includes("populateFollowUpInput"));
 });
 
-test("saved follow-up survives full reload via Firestore read on open", () => {
+test("retired management entry reopens the current Firestore-backed details page", () => {
   const workflow = readRepo("public", "js", "workflow-office.js");
+  const bank = readRepo("public", "js", "opportunity-bank.js");
   assert.ok(workflow.includes("openOpportunityManagement"));
-  assert.ok(workflow.includes(".collection(\"opportunities\").doc(opportunityId).get()"));
+  assert.match(workflow, /openOpportunityManagement[\s\S]*?openOpportunityDetail/);
+  assert.ok(bank.includes("fetchOfficeOpportunityById"));
 });
 
 test("past time is rejected server-side", () => {

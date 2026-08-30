@@ -130,32 +130,62 @@ async function submitReply(token, action, button) {
 
 async function submitBundle(token, bundle, button, photoFiles = []) {
   button.disabled = true;
+  const originalLabel = button.innerHTML;
+  button.textContent = "جارٍ إرسال الرد…";
   showStatus("");
   try {
-    let response;
-    if (photoFiles.length) {
-      const form = new FormData();
-      form.append("bundle", JSON.stringify(bundle));
-      photoFiles.forEach((file) => form.append("photos", file));
-      response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
-        method: "POST",
-        body: form
-      });
-    } else {
-      response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bundle })
-      });
+    const postOnce = async (timeoutMs) => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        if (photoFiles.length) {
+          const form = new FormData();
+          form.append("bundle", JSON.stringify(bundle));
+          photoFiles.forEach((file) => form.append("photos", file));
+          return await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
+            method: "POST",
+            body: form,
+            signal: controller.signal
+          });
+        }
+        return await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/bundle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bundle }),
+          signal: controller.signal
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
+    let lastError = null;
+    for (const timeoutMs of [15000, 25000]) {
+      try {
+        const response = await postOnce(timeoutMs);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok || !payload.view) {
+          throw new Error(payload.message || "تعذر تسجيل الرد.");
+        }
+        renderView(payload.view, token);
+        return;
+      } catch (error) {
+        lastError = error;
+        const fresh = await loadSession(token).catch(() => null);
+        if (fresh?.replied || fresh?.decisionPackage?.submitted) {
+          renderView(fresh, token);
+          return;
+        }
+        if (error?.name !== "AbortError") break;
+      }
     }
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok || !payload.view) {
-      throw new Error(payload.message || "تعذر تسجيل الرد.");
-    }
-    renderView(payload.view, token);
+    throw lastError || new Error("تعذر تسجيل الرد.");
   } catch (error) {
     button.disabled = false;
-    showStatus(error.message || "تعذر تسجيل الرد.", true);
+    button.innerHTML = originalLabel;
+    const message = error?.name === "AbortError"
+      ? "لم يصل تأكيد الحفظ. تحقق من الاتصال ثم اضغط إرسال الرد مرة أخرى."
+      : (error.message || "تعذر تسجيل الرد.");
+    showStatus(message, true);
   }
 }
 
