@@ -7,9 +7,15 @@
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F1F5F2",
-  "theme_color": "#005C4B",
+  "background_color": "#012116",
+  "theme_color": "#012116",
   "icons": [
+    {
+      "src": "/icons/iaqar-app.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
@@ -35,34 +41,19 @@
   },
   "id": "iaqar-ai-pwa",
   "orientation": "portrait-primary",
-  "categories": [
-    "business",
-    "productivity"
-  ],
+  "categories": ["business", "productivity"],
   "shortcuts": [
     {
-      "name": "مركز العمليات",
-      "short_name": "العمليات",
+      "name": "المهام اليومية",
+      "short_name": "المهام",
       "url": "/?source=pwa&open=operations",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
+      "icons": [{"src":"/icons/iaqar-app.svg","sizes":"any","type":"image/svg+xml"}]
     },
     {
       "name": "إضافة فرصة",
       "short_name": "فرصة",
       "url": "/?source=pwa&open=add-opportunity",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
+      "icons": [{"src":"/icons/iaqar-app.svg","sizes":"any","type":"image/svg+xml"}]
     }
   ]
 }
