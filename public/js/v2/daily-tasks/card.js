@@ -226,23 +226,16 @@ function progressStep(label, done) {
   return `<span class="cv2-party-step${done ? " is-done" : ""}"><span aria-hidden="true">${done ? "✓" : "○"}</span>${escapeContentHtml(label)}</span>`;
 }
 
-function partyJourneyStarted(task = {}) {
-  const client = partyProgress(task, "client");
-  const owner = partyProgress(task, "owner");
-  return client.replied || owner.openedWhatsApp || owner.openedLink || owner.replied;
-}
-
 function partyControlButton(task, party, progress) {
   const isOwner = party === "owner";
-  const canSend = isOwner ? task.canSendToOwner !== false : task.canSendToClient !== false;
   const hasContext = Boolean(task.matchId && task.offerId && task.requestId);
-  const disabled = !canSend || !hasContext;
+  const disabled = task.dataIntegrity === "INVALID_TASK_DATA" || !hasContext;
   const action = isOwner ? "send_to_owner" : "send_to_client";
   const attr = isOwner ? "data-cv2-exec-secondary" : "data-cv2-exec-primary";
   const label = progress.openedWhatsApp
     ? `إعادة الإرسال لل${isOwner ? "مالك" : "عميل"}`
     : `إرسال لل${isOwner ? "مالك" : "عميل"}`;
-  const unavailable = `رقم ${isOwner ? "المالك" : "العميل"} غير متوفر`;
+  const unavailable = "تعذر ربط جلسة التفاوض";
   return `<button type="button" class="cv2-party-control${disabled ? " is-disabled" : ""}" ${attr}="${action}" data-party="${party}"${disabled ? " disabled" : ""}>${escapeContentHtml(disabled ? unavailable : label)}</button>`;
 }
 
@@ -258,10 +251,10 @@ function partyProgressHtml(task = {}) {
     ${row("العميل", client)}
     ${row("المالك", owner)}
     <p class="cv2-party-progress-note">فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد.</p>
-    ${partyJourneyStarted(task) ? `<div class="cv2-party-controls">
+    <div class="cv2-party-controls">
       ${partyControlButton(task, "client", client)}
       ${partyControlButton(task, "owner", owner)}
-    </div>` : ""}
+    </div>
   </div>`;
 }
 
@@ -309,8 +302,90 @@ function yourTurnHtml(task = {}) {
   </div>`;
 }
 
+function cleanReasonLabel(value = "") {
+  return String(value || "").replace(/^\s*✓\s*/u, "").trim();
+}
+
+function matchHeroHtml(task = {}) {
+  const listing = task.proposedListing || task.sourceListing || {};
+  const reasons = (task.matchReasons || []).map(cleanReasonLabel).filter(Boolean);
+  const reasonCount = reasons.length;
+  const client = partyProgress(task, "client");
+  const livingStage = String(task.livingStage || "").toUpperCase();
+  const stateKey = String(task.stateKey || "").toUpperCase();
+  const viewing = /VIEWING|APPOINTMENT|PROPERTY_CONFIRMATION/.test(String(task.livingStage || "").toUpperCase())
+    || String(task.coordinationClientSummary || "").includes("معاينة");
+  const partyBadge = viewing
+    ? "عميل يريد معاينة"
+    : (stateKey === "CLIENT_NEEDS_DETAILS"
+      ? "العميل يحتاج تفاصيل أكثر"
+      : (stateKey === "MATCH_UNSUITABLE"
+        ? "المطابقة غير مناسبة"
+        : (livingStage === "CLIENT_INTERESTED" || stateKey === "CLIENT_INTERESTED"
+      ? "العميل مهتم"
+      : (client.replied ? "وصل رد العميل" : (livingStage === "WAITING_CLIENT" || livingStage === "CLIENT_SENT" || stateKey === "AWAITING_CLIENT" ? "بانتظار رد العميل" : "بانتظار العميل")))));
+  const quality = reasonCount >= 4 ? "مطابقة قوية" : "مطابقة مناسبة";
+  const clock = task.clockLabel || task.badgeLabel || "";
+  const title = typePurpose(listing) || task.identityLine || task.typePurposeLine || "مطابقة عقارية";
+  const location = [districtOnly(listing), listing.city].filter(Boolean).join("، ");
+  const facts = [
+    { icon: "⌂", label: "نوع العقار", value: listing.propertyType },
+    { icon: "◇", label: "السعر", value: listing.money || task.moneyLine },
+    { icon: "□", label: "المساحة", value: listing.area }
+  ].filter((item) => String(item.value || "").trim());
+  return `<section class="cv2-match-hero">
+    <div class="cv2-match-badges">
+      <span class="cv2-match-badge">☆ ${escapeContentHtml(quality)}</span>
+      <span class="cv2-match-badge is-party">♙ ${escapeContentHtml(partyBadge)}</span>
+      ${clock ? `<span class="cv2-match-clock">${escapeContentHtml(clock)}</span>` : ""}
+    </div>
+    <div class="cv2-match-title-row">
+      <span class="cv2-match-property-icon" aria-hidden="true">▥</span>
+      <div><h3>${escapeContentHtml(title)}</h3>${location ? `<p>⌖ ${escapeContentHtml(location)}</p>` : ""}</div>
+      ${task.referenceCode ? `<span class="cv2-match-reference">${escapeContentHtml(task.referenceCode)}</span>` : ""}
+    </div>
+    ${facts.length ? `<div class="cv2-match-facts">${facts.map((item) => `<div><span aria-hidden="true">${item.icon}</span><small>${escapeContentHtml(item.label)}</small><strong>${escapeContentHtml(item.value)}</strong></div>`).join("")}</div>` : ""}
+    ${reasonCount ? `<div class="cv2-match-score">
+      <div class="cv2-match-score-count">${reasonCount}/${reasonCount}</div>
+      <div><small>سبب المطابقة</small><strong>${reasonCount >= 4 ? "تطابق كامل" : "معايير متطابقة"}</strong><p>${escapeContentHtml(`${reasonCount} معايير مؤكدة`)}</p></div>
+      <ul>${reasons.map((reason) => `<li><span>✓</span>${escapeContentHtml(reason)}</li>`).join("")}</ul>
+    </div>` : ""}
+  </section>`;
+}
+
+function matchActionHtml(task = {}) {
+  const line = String(task.yourTurnLine || task.nextActionLine || "").trim();
+  if (!line) return "";
+  return `<section class="cv2-match-action${task.waiting ? " is-waiting" : ""}">
+    <span class="cv2-match-action-icon" aria-hidden="true">♙</span>
+    <div><strong>${task.waiting ? "الحالة الآن" : "دورك الآن"}</strong><p>${nl(line)}</p>${task.waiting ? `<small>لا يوجد إجراء مطلوب منك الآن.</small>` : ""}</div>
+  </section>`;
+}
+
+function matchDetailsHtml(task = {}) {
+  const request = task.sourceListing || {};
+  const offer = task.proposedListing || {};
+  if (!listingsDiffer(request, offer)) return "";
+  return `<details class="cv2-match-fold">
+    <summary><span>☷</span> تفاصيل المطابقة</summary>
+    <div class="cv2-match-fold-body">
+      ${matchFactBlock(request.kindLabel || "طلب العميل", request, "الميزانية")}
+      ${matchFactBlock(offer.kindLabel || "العرض المطابق", offer, "السعر")}
+    </div>
+  </details>`;
+}
+
+function matchTimelineFoldHtml(task = {}) {
+  const events = Array.isArray(task.timeline) ? task.timeline : [];
+  if (!events.length) return "";
+  const last = events[events.length - 1] || {};
+  return `<details class="cv2-match-fold cv2-match-history">
+    <summary><span>‹</span><div><strong>آخر إجراء</strong><small>${escapeContentHtml(last.label || "")}</small></div>${clockLabel(last.createdAt) ? `<time>${escapeContentHtml(clockLabel(last.createdAt))}</time>` : ""}</summary>
+    <div class="cv2-match-fold-body">${timelineHtml(task)}</div>
+  </details>`;
+}
+
 function matchGroupBodyHtml(task = {}) {
-  const reasons = reasonItems(task.matchReasons || []);
   const ranked = (task.candidates || [])
     .map((item) => {
       const bits = [item.propertyLine, item.moneyLine, item.areaLine].filter(Boolean).join(" · ");
@@ -318,12 +393,12 @@ function matchGroupBodyHtml(task = {}) {
     })
     .join("");
   return `<div class="cv2-coop-expanded cv2-match-expanded">
-    ${matchOverviewHtml(task)}
-    ${reasons ? `<div class="cv2-coop-block"><strong>سبب المطابقة</strong><ul>${reasons}</ul></div>` : ""}
-    ${ranked && (task.candidates || []).length > 1 ? `<div class="cv2-coop-block"><strong>المرشحون</strong><ol>${ranked}</ol></div>` : ""}
-    ${yourTurnHtml(task)}
+    ${matchHeroHtml(task)}
+    ${matchActionHtml(task)}
     ${partyProgressHtml(task)}
-    ${timelineHtml(task)}
+    ${matchDetailsHtml(task)}
+    ${ranked && (task.candidates || []).length > 1 ? `<details class="cv2-match-fold"><summary><span>☷</span> المرشحون</summary><div class="cv2-match-fold-body"><ol>${ranked}</ol></div></details>` : ""}
+    ${matchTimelineFoldHtml(task)}
   </div>`;
 }
 
@@ -377,7 +452,7 @@ function revealHtml(task, open) {
 }
 
 export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = false } = {}) {
-  const ownsPartyControls = open && (task.taskKind === "match_group" || task.matchId) && partyJourneyStarted(task);
+  const ownsPartyControls = open && (task.taskKind === "match_group" || task.matchId);
   const primaryAction = ownsPartyControls && ["send_to_client", "resend_to_client", "send_to_owner"].includes(task.primaryAction?.id)
     ? null
     : task.primaryAction;
@@ -414,9 +489,7 @@ export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = 
       data-target-office="${escapeContentHtml(task.targetOfficeId || "")}"
       data-origin-office="${escapeContentHtml(task.originatingOfficeId || "")}"
       data-session-kind="${escapeContentHtml(task.sessionKind || "CLIENT_MATCH_REVIEW")}">
-    <div class="cv2-exec-summary-block">
-      ${summaryHtml(task)}
-    </div>
+    ${open && (task.taskKind === "match_group" || task.matchId) ? "" : `<div class="cv2-exec-summary-block">${summaryHtml(task)}</div>`}
     ${body}
     ${details}
     ${actions}

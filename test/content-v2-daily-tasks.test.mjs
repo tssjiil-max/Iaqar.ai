@@ -107,7 +107,6 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.match(html, />عرض البيانات</);
   assert.equal(html.includes("الآن"), false);
   assert.match(html, /9:21 م/);
-  assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(html.includes("عرض تفاصيل العرض"), false);
   assert.equal(countPrimary(html), 0);
@@ -121,7 +120,7 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("open match-found card shows send-to-client and offer details, not send-to-owner", () => {
+test("open match-found card shows separate client and owner sends with offer details", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
@@ -130,11 +129,12 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.match(html, />إخفاء البيانات</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
-  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
+  assert.match(html, />إرسال للمالك</);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.equal(task.primaryAction.party, SECURE_PARTY.CLIENT);
   assert.equal(task.secondaryActions[0].id, EXEC_ACTION.OPEN_OFFER);
   const chrome = forbiddenBrokerChrome(html);
@@ -146,7 +146,7 @@ test("open match-found card shows send-to-client and offer details, not send-to-
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("awaiting client reply stays buttonless while collapsed and capped when open", () => {
+test("awaiting client reply stays buttonless while collapsed and exposes both party sends when open", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_awaiting_client");
   const collapsed = buildDailyTaskCardHtml(task);
   assert.match(collapsed, />عرض البيانات</);
@@ -156,23 +156,24 @@ test("awaiting client reply stays buttonless while collapsed and capped when ope
   const html = buildDailyTaskCardHtml(task, { open: true });
   const text = visibleText(html);
   assert.match(text, /بانتظار رد العميل/);
-  assert.equal(html.includes("data-cv2-exec-primary="), false);
-  assert.match(html, />إعادة الإرسال</);
+  assert.match(html, /data-cv2-exec-primary="send_to_client"/);
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
+  assert.match(html, />إرسال للعميل</);
   assert.match(html, />عرض التفاصيل الكاملة</);
-  assert.equal(html.includes("إرسال للعميل"), false);
-  assert.equal(countPrimary(html), 0);
+  assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 2);
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
-test("client interested drops send-to-client as primary and keeps future replies off the broker UI", () => {
+test("client interested keeps both party sends and future replies off the broker UI", () => {
   const byId = Object.fromEntries(dailyTasksDemoFixtures().map((task) => [task.id, task]));
   assert.equal(byId.task_interested.primaryAction, null);
   const interested = buildDailyTaskCardHtml(byId.task_interested, { open: true });
   const interestedText = visibleText(interested);
   assert.match(interestedText, /✓ العميل مهتم|العميل مهتم/);
   assert.equal(interestedText.includes("الخطوة التالية ستظهر هنا"), false);
-  assert.equal(interested.includes("إرسال للعميل"), false);
+  assert.match(interested, /data-cv2-exec-primary="send_to_client"/);
+  assert.match(interested, /data-cv2-exec-secondary="send_to_owner"/);
   assert.equal(interested.includes("إتمام صفقة"), false);
   assert.equal(interested.includes(FUTURE_CLIENT_REPLY_LABELS.interested) && /<button[^>]*>مهتم</.test(interested), false);
 
@@ -201,7 +202,7 @@ test("list accordion keeps a single open task", () => {
   assert.match(closedNewMatch, />عرض البيانات</);
   assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
   assert.equal(countPrimary(html), 1);
-  assert.equal(countSecondary(html), 1);
+  assert.equal(countSecondary(html), 2);
   assert.match(html, />إخفاء البيانات</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });
@@ -815,4 +816,3 @@ test("canonical opportunities hydrate collapsed identity and expanded facts", ()
   assert.equal(/cv2-exec-badge[^>]*>الآن</.test(open), false);
   assert.match(open, /9:21 م/);
 });
-

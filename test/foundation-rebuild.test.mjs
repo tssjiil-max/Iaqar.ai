@@ -176,7 +176,7 @@ test("TEST D: expanded match group ranks candidates by current scores", () => {
   assert.match(html, /طلب العميل/);
   assert.match(html, /العرض المطابق/);
   assert.match(html, /مراجعة المطابقات/);
-  assert.equal(html.includes("إرسال للمالك"), false);
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
   assert.match(html, /مرشح 1/);
 });
 

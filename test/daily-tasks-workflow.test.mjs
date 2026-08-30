@@ -372,7 +372,8 @@ test("broker match summary removes duplicate blocks but preserves real differenc
     proposedListing: { kindLabel: "العرض المطابق", propertyType: "شقة", purpose: "RENT", city: "المدينة المنورة", district: "عروة", money: "70,000 ر.س", area: "75م²" }
   };
   const compact = buildDailyTaskCardHtml(common, { open: true });
-  assert.match(compact, /ملخص المطابقة/);
+  assert.match(compact, /cv2-match-hero/);
+  assert.match(compact, /شقة للإيجار/);
   assert.equal(compact.includes("cv2-match-details"), false);
 
   const different = buildDailyTaskCardHtml({
@@ -390,8 +391,8 @@ test("party progress checks only confirmed WhatsApp, link, and reply evidence", 
     matchId: "match_progress",
     offerId: "offer_progress",
     requestId: "request_progress",
-    canSendToClient: true,
-    canSendToOwner: true,
+    canSendToClient: false,
+    canSendToOwner: false,
     sourceListing: { kindLabel: "طلب العميل", propertyType: "فيلا", purpose: "PURCHASE" },
     proposedListing: { kindLabel: "العرض المطابق", propertyType: "فيلا", purpose: "SALE", area: "300م²" },
     coordinationClientSummary: "العميل طلب تخفيض 5%",
@@ -408,6 +409,10 @@ test("party progress checks only confirmed WhatsApp, link, and reply evidence", 
   assert.match(html, /فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد/);
   assert.equal((html.match(/data-cv2-exec-primary="send_to_client"/g) || []).length, 1);
   assert.equal((html.match(/data-cv2-exec-secondary="send_to_owner"/g) || []).length, 1);
+  assert.equal(html.includes("رقم العميل غير متوفر"), false);
+  assert.equal(html.includes("رقم المالك غير متوفر"), false);
+  assert.equal(html.includes("data-cv2-exec-primary=\"send_to_client\" disabled"), false);
+  assert.equal(html.includes("data-cv2-exec-secondary=\"send_to_owner\" disabled"), false);
   assert.match(html, /إعادة الإرسال للعميل/);
   assert.match(html, /إعادة الإرسال للمالك/);
 });
