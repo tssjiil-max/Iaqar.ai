@@ -323,7 +323,7 @@ test("sanitize party view strips contact fields", () => {
   assert.ok(view.property.locationView);
 });
 
-test("party UI uses yes-no interest and structured negotiation without preliminary approval", () => {
+test("party UI uses the five structured phase-one decisions without preliminary approval", () => {
   const html = buildPartyShellHtml(sanitizePartyPublicView({
     party: "client",
     snapshot: { propertyType: "شقة", city: "المدينة المنورة" },
@@ -331,7 +331,9 @@ test("party UI uses yes-no interest and structured negotiation without prelimina
   }));
   assert.doesNotMatch(html, /موافق مبدئيًا/);
   assert.match(html, /مهتم/);
-  assert.match(html, /غير مهتم/);
+  assert.match(html, /غير مناسب/);
+  assert.match(html, /أحتاج معلومات/);
+  assert.match(html, /السعر غير مناسب/);
   assert.match(html, /السعر مرتفع/);
   assert.match(html, /شروط الدفع غير مناسبة/);
   assert.match(html, /قد أهتم إذا تغير الشرط/);
@@ -339,7 +341,7 @@ test("party UI uses yes-no interest and structured negotiation without prelimina
   assert.match(html, /أرغب في المعاينة/);
 });
 
-test("owner negotiation UI is named جلسة تفاوض and has structured decisions", () => {
+test("owner negotiation UI is named إدارة المفاوضات and has structured decisions", () => {
   const html = buildPartyShellHtml(sanitizePartyPublicView({
     party: "owner",
     snapshot: { propertyType: "شقة", city: "المدينة المنورة" },
@@ -354,11 +356,11 @@ test("owner negotiation UI is named جلسة تفاوض and has structured decis
       })
     }
   }));
-  assert.match(html, /جلسة تفاوض/);
-  assert.match(html, /يوجد مجال للتفاوض/);
-  assert.match(html, /تحديد مجال التخفيض/);
-  assert.match(html, /غير موافق/);
-  assert.match(html, /تخفيض 2%/);
+  assert.match(html, /إدارة المفاوضات/);
+  assert.match(html, /أقبل مجالًا بسيطًا للتفاوض/);
+  assert.match(html, /أوافق على التخفيض المقترح/);
+  assert.match(html, /أتمسك بالسعر/);
+  assert.match(html, /نناقشه عند المعاينة/);
   assert.doesNotMatch(html, /السعر البديل|السعر المناسب لك/);
   assert.doesNotMatch(html, /textarea/);
   assert.doesNotMatch(html, /data-package-number="(?:proposedPrice|counterPrice|updatedPrice)"/);

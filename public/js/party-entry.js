@@ -233,6 +233,44 @@ function collectPackageFromForm(root, party = "client") {
   });
   if (Object.keys(specValues).length) bundle.specValues = specValues;
   if (Object.keys(detailValues).length) bundle.detailValues = detailValues;
+  const clientDecision = String(bundle.clientDecision || "");
+  if (clientDecision === "interested") {
+    bundle.interestStatus = "interested";
+    bundle.interestAction = "interest_only";
+  } else if (clientDecision === "details") {
+    bundle.interestStatus = "interested";
+    bundle.interestAction = "details";
+  } else if (clientDecision === "viewing") {
+    bundle.interestStatus = "interested";
+    bundle.interestAction = "viewing";
+  } else if (clientDecision === "price") {
+    bundle.interestStatus = "not_suitable";
+    bundle.rejectionReason = "price";
+    const priceChoice = String(bundle.priceNegotiation || "");
+    bundle.rejectionDisposition = priceChoice === "final" ? "final" : "negotiable";
+    if (priceChoice && priceChoice !== "final") bundle.negotiationPreference = priceChoice;
+  } else if (clientDecision === "not_suitable") {
+    bundle.interestStatus = "not_suitable";
+  }
+  delete bundle.clientDecision;
+  delete bundle.priceNegotiation;
+
+  const ownerPriceDecision = String(bundle.ownerPriceDecision || "");
+  if (ownerPriceDecision === "confirmed") {
+    bundle.priceConfirmation = "confirmed";
+  } else if (ownerPriceDecision === "accept_discount") {
+    bundle.negotiationDecision = "accept";
+  } else if (["slight", "fixed", "discuss_at_viewing"].includes(ownerPriceDecision)) {
+    bundle.negotiationDecision = "counter";
+    bundle.counterPreference = ownerPriceDecision;
+  }
+  delete bundle.ownerPriceDecision;
+
+  const detailConfirmations = Object.keys(bundle)
+    .filter((key) => key.startsWith("detailStatus_") && bundle[key] === "confirm")
+    .map((key) => key.replace("detailStatus_", ""));
+  Object.keys(bundle).filter((key) => key.startsWith("detailStatus_")).forEach((key) => delete bundle[key]);
+  if (detailConfirmations.length) bundle.detailConfirmations = detailConfirmations;
   if (party === "owner") {
     bundle.locationShare = Boolean(bundle.locationShare);
     if (bundle.mediaAdded) bundle.mediaAdded = true;
@@ -243,20 +281,18 @@ function collectPackageFromForm(root, party = "client") {
 function refreshPackageSections(root) {
   const party = root.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
   const bundle = collectPackageFromForm(root, party);
-  const interest = String(bundle.interestStatus || "");
-  const notSuitable = interest === "not_suitable";
-  const interested = interest === "interested";
-  const interestAction = String(bundle.interestAction || "");
+  const clientDecision = String(root.querySelector('[data-package-field="clientDecision"]:checked')?.value || "");
+  const notSuitable = clientDecision === "not_suitable";
   const rejectionDisposition = String(bundle.rejectionDisposition || "");
   const rejectionReason = String(bundle.rejectionReason || "");
-  const actionSection = root.querySelector("[data-package-section=\"interestAction\"]");
   const detailSection = root.querySelector("[data-package-section=\"requestedDetailKeys\"]");
   const viewingSection = root.querySelector("[data-package-section=\"viewing\"]");
+  const priceNegotiationSection = root.querySelector("[data-package-section=\"priceNegotiation\"]");
   const rejectionSection = root.querySelector("[data-package-section=\"rejection\"]");
   const preference = root.querySelector("[data-package-section=\"negotiationPreference\"]");
-  if (actionSection) actionSection.hidden = !interested;
-  if (detailSection) detailSection.hidden = !interested || interestAction !== "details";
-  if (viewingSection) viewingSection.hidden = !interested || interestAction !== "viewing";
+  if (detailSection) detailSection.hidden = clientDecision !== "details";
+  if (viewingSection) viewingSection.hidden = clientDecision !== "viewing";
+  if (priceNegotiationSection) priceNegotiationSection.hidden = clientDecision !== "price";
   if (rejectionSection) rejectionSection.hidden = !notSuitable;
   if (preference) preference.hidden = !notSuitable
     || rejectionDisposition !== "negotiable" || !rejectionReason;
@@ -286,12 +322,6 @@ function bindDecisionPackage(root, token) {
   form.querySelectorAll("input").forEach((input) => {
     input.addEventListener("change", () => {
       refreshPackageSections(form);
-      const name = input.getAttribute("name") || "";
-      if (name.startsWith("detailAction_")) {
-        const key = name.replace("detailAction_", "");
-        const editWrap = form.querySelector(`[data-detail-edit="${key}"]`);
-        if (editWrap) editWrap.hidden = input.value !== "edit";
-      }
     });
   });
   const mediaToggle = form.querySelector("[data-package-bool=\"mediaAdded\"]");

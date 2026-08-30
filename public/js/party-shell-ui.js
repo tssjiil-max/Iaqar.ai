@@ -211,14 +211,12 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       <p class="party-muted">الفترة</p>
       <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>
     </div>`;
-    const interestActionSection = `<div class="party-package-section" data-package-section="interestAction" hidden>
-      <p class="party-section-label">ما الخطوة التالية؟</p>
-      <div class="party-chip-grid party-chip-grid--single">
-        ${chipOptions([
-          { value: "details", label: "أحتاج تفاصيل إضافية" },
-          { value: "viewing", label: "أرغب في المعاينة" }
-        ], "interestAction", "single")}
-      </div>
+    const priceSection = `<div class="party-package-section" data-package-section="priceNegotiation" hidden>
+      <p class="party-section-label">خيارات التفاوض على السعر</p>
+      ${pkg.hasCanonicalPrice
+        ? `<p class="party-row"><span>السعر الحالي</span><strong>${escapeHtml(Number(pkg.canonicalPrice).toLocaleString("en-US"))} ر.س</strong></p>`
+        : `<p class="party-muted">السعر الحالي غير متوفر، لذلك لن تُعرض قيم محسوبة.</p>`}
+      <div class="party-chip-grid">${chipOptions(pkg.priceOptions, "priceNegotiation", "single")}</div>
     </div>`;
     const rejectionSection = `<div class="party-package-section" data-package-section="rejection" hidden>
       <p class="party-section-label">ما سبب عدم الاهتمام؟</p>
@@ -251,54 +249,45 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       </div>
     </div>`;
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
+      <p class="party-section-label">إدارة المفاوضات</p>
       <div class="party-package-section">
-        <p class="party-section-label">الاهتمام</p>
-        <div class="party-chip-grid party-chip-grid--single">
+        <p class="party-section-label">ما قرارك؟</p>
+        <div class="party-chip-grid">
           ${chipOptions([
             { value: "interested", label: "مهتم" },
-            { value: "not_suitable", label: "غير مهتم" }
-          ], "interestStatus", "single")}
+            { value: "viewing", label: "أرغب في المعاينة" },
+            { value: "details", label: "أحتاج معلومات" },
+            { value: "price", label: "السعر غير مناسب" },
+            { value: "not_suitable", label: "غير مناسب" }
+          ], "clientDecision", "single")}
         </div>
       </div>
-      ${interestActionSection}
       ${detailSection}
       ${viewingSection}
+      ${priceSection}
       ${rejectionSection}
       <button type="button" class="party-action party-package-submit" data-party-bundle-submit data-testid="party-bundle-submit">
         <span class="party-send-icon" aria-hidden="true">➤</span> إرسال الرد
       </button>
     </div>`;
   }
-  const negotiationBlock = pkg.negotiationRequest
-    ? `<div class="party-package-section" data-package-section="ownerNegotiation">
-      <p class="party-section-label">جلسة تفاوض</p>
-      <p class="party-muted">العميل قد يعيد النظر إذا تغير الشرط، دون تغيير السعر يدويًا.</p>
-      <div class="party-chip-grid party-chip-grid--single">${chipOptions([
-        { value: "accept", label: "يوجد مجال للتفاوض" },
-        { value: "counter", label: "تحديد مجال التخفيض" },
-        { value: "reject", label: "غير موافق" }
-      ], "negotiationDecision", "single")}</div>
-      <div class="party-package-section" data-package-section="counterPreference" hidden>
-        <p class="party-section-label">مجال التفاوض</p>
-        <div class="party-chip-grid party-chip-grid--single">${chipOptions([
-          { value: "fixed", label: "السعر ثابت" },
-          { value: "slight", label: "مجال بسيط للتخفيض" },
-          { value: "discount_2", label: "تخفيض 2%" },
-          { value: "discount_5", label: "تخفيض 5%" },
-          { value: "discuss_at_viewing", label: "يُناقش عند المعاينة" }
-        ], "counterPreference", "single")}</div>
-      </div>
-    </div>`
-    : "";
+  const ownerPriceOptions = [
+    { value: "confirmed", label: "السعر صحيح" },
+    { value: "slight", label: "أقبل مجالًا بسيطًا للتفاوض" },
+    ...(pkg.negotiationRequest ? [{ value: "accept_discount", label: "أوافق على التخفيض المقترح" }] : []),
+    { value: "fixed", label: "أتمسك بالسعر" },
+    { value: "discuss_at_viewing", label: "نناقشه عند المعاينة" }
+  ];
   const priceBlock = pkg.hasCanonicalPrice
     ? `<p class="party-row"><span>السعر المطلوب</span><strong>${escapeHtml(String(pkg.canonicalPrice))} ريال</strong></p>
-      <div class="party-chip-grid party-chip-grid--single">
-        ${chipOptions([
-          { value: "confirmed", label: "السعر صحيح" }
-        ], "priceConfirmation", "single")}
+      <div class="party-chip-grid">
+        ${chipOptions(ownerPriceOptions, "ownerPriceDecision", "single")}
       </div>
       </div>`
-    : `<p class="party-muted">السعر غير مثبت، ويتولى الوسيط تثبيته عند اكتمال الاتفاق.</p>`;
+    : `<p class="party-muted">السعر غير مثبت، لذلك لا تُعرض قيمة رقمية.</p>
+      <div class="party-chip-grid">
+        ${chipOptions(ownerPriceOptions.filter((option) => option.value !== "confirmed"), "ownerPriceDecision", "single")}
+      </div>`;
   const ownerDetailFields = (pkg.ownerDetailFields || []).map((field) => {
     const key = field.key || "";
     const label = field.label || key;
@@ -307,31 +296,19 @@ function decisionPackageBlock(pkg = {}, view = {}) {
         <p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(field.currentValue)}</strong></p>
         <div class="party-chip-grid party-chip-grid--single">
           ${chipOptions([
-            { value: "confirm", label: "تأكيد" },
-            { value: "edit", label: "تعديل" }
-          ], `detailAction_${key}`, "single")}
-        </div>
-        <div class="party-package-field" data-detail-edit="${escapeHtml(key)}" hidden>
-          <input type="text" class="party-input" data-package-detail="${escapeHtml(key)}" placeholder="${escapeHtml(label)}">
+            { value: "confirm", label: "صحيح" },
+            { value: "needs_update", label: "يحتاج تحديث" }
+          ], `detailStatus_${key}`, "single")}
         </div>
       </div>`;
     }
-    return `<div class="party-package-field"><label>${escapeHtml(label)}</label>
-      <input type="text" class="party-input" data-package-detail="${escapeHtml(key)}" placeholder="${escapeHtml(label)}"></div>`;
-  }).join("");
-  const missingSpecs = (pkg.missingSpecs || []).map((key) => {
-    const label = (pkg.missingSpecsLabels || [])[pkg.missingSpecs.indexOf(key)] || key;
-    if (key === "area") {
-      return `<div class="party-package-field"><label>${escapeHtml(label)}</label><input type="number" class="party-input" data-package-spec="area" min="1"></div>`;
-    }
-    if (key === "rooms_bathrooms") {
-      return `<div class="party-package-field"><label>الغرف</label><input type="number" class="party-input" data-package-spec="rooms" min="0">
-        <label>الحمامات</label><input type="number" class="party-input" data-package-spec="bathrooms" min="0"></div>`;
-    }
-    return `<div class="party-package-field"><label>${escapeHtml(label)}</label><input type="text" class="party-input" data-package-spec="${escapeHtml(key)}"></div>`;
+    return `<div class="party-package-field" data-owner-detail="${escapeHtml(key)}">
+      <p class="party-row"><span>${escapeHtml(label)}</span><strong>غير متوفر حاليًا</strong></p>
+      <p class="party-muted">يتطلب استكماله عن طريق الوسيط.</p>
+    </div>`;
   }).join("");
   return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
-    ${negotiationBlock}
+    <p class="party-section-label">إدارة المفاوضات</p>
     <div class="party-package-section">
       <p class="party-section-label">توفر العقار</p>
       <div class="party-chip-grid party-chip-grid--single">
@@ -364,7 +341,6 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     <div class="party-package-section" data-package-section="ownerSpecs" hidden>
       <p class="party-section-label">التفاصيل المطلوبة من العميل</p>
       ${ownerDetailFields}
-      ${missingSpecs}
     </div>
     <div class="party-package-section" data-package-section="ownerViewing" hidden>
       <p class="party-section-label">المعاينة</p>

@@ -49,6 +49,7 @@ export const CLIENT_INTEREST_STATUS = Object.freeze({
 });
 
 export const CLIENT_INTEREST_ACTION = Object.freeze({
+  INTEREST_ONLY: "interest_only",
   DETAILS: "details",
   VIEWING: "viewing"
 });
@@ -486,7 +487,12 @@ export function normalizeClientBundle(raw = {}) {
       && !Object.values(CLIENT_NEGOTIATION_RESPONSE).includes(bundle.negotiationResponse)) return null;
     if (bundle.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE) {
       if (bundle.rejectionReason === REJECTION_REASON.PRICE
-        && bundle.negotiationPreference !== PRICE_FLEXIBILITY.ASK_OWNER) return null;
+        && ![
+          PRICE_FLEXIBILITY.ASK_OWNER,
+          PRICE_FLEXIBILITY.DISCOUNT_2,
+          PRICE_FLEXIBILITY.DISCOUNT_5,
+          PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
+        ].includes(bundle.negotiationPreference)) return null;
       if (bundle.rejectionReason !== REJECTION_REASON.PRICE && !bundle.negotiationPreference) return null;
     }
     return bundle;
@@ -504,6 +510,9 @@ export function normalizeClientBundle(raw = {}) {
   bundle.requestedDetailKeys = uniqueList(input.requestedDetailKeys);
   bundle.interestAction = text(input.interestAction)
     || (input.wantsViewing ? CLIENT_INTEREST_ACTION.VIEWING : CLIENT_INTEREST_ACTION.DETAILS);
+  if (bundle.interestAction === CLIENT_INTEREST_ACTION.INTEREST_ONLY) {
+    return bundle;
+  }
   bundle.wantsViewing = bundle.interestAction === CLIENT_INTEREST_ACTION.VIEWING;
   bundle.viewingDays = uniqueList(input.viewingDays);
   bundle.viewingPeriods = uniqueList(input.viewingPeriods);
@@ -903,6 +912,27 @@ export function buildDecisionPackageView(party = "client", {
     currentValue: detailKeyCanonicalValue(key, canonicalOffer),
     hasValue: canonicalHasDetailKey(key, canonicalOffer)
   }));
+  const price = Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0);
+  const hasCanonicalPrice = Number.isFinite(price) && price > 0;
+  const priceOptions = [
+    ...(hasCanonicalPrice
+      ? [
+        {
+          value: PRICE_FLEXIBILITY.DISCOUNT_2,
+          label: `${Math.round(price * 0.98).toLocaleString("en-US")} ر.س — تخفيض 2%`,
+          calculatedPrice: Math.round(price * 0.98)
+        },
+        {
+          value: PRICE_FLEXIBILITY.DISCOUNT_5,
+          label: `${Math.round(price * 0.95).toLocaleString("en-US")} ر.س — تخفيض 5%`,
+          calculatedPrice: Math.round(price * 0.95)
+        }
+      ]
+      : []),
+    { value: PRICE_FLEXIBILITY.ASK_OWNER, label: "اسأل المالك عن مجال للتفاوض" },
+    { value: PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING, label: "أفضل مناقشة السعر عند المعاينة" },
+    { value: "final", label: "غير مناسب نهائيًا" }
+  ];
   return {
     mode: "decision_package_v1",
     party: side,
@@ -934,8 +964,9 @@ export function buildDecisionPackageView(party = "client", {
         ownerPreference: ownerBundle.counterPreference || ""
       }
       : null,
-    canonicalPrice: Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0),
-    hasCanonicalPrice: Number(canonicalPrice || canonicalOffer.salePrice || canonicalOffer.price || 0) > 0,
+    canonicalPrice: hasCanonicalPrice ? price : 0,
+    hasCanonicalPrice,
+    priceOptions,
     hasLocation: Boolean(hasLocation || canonicalOffer.locationUrl || canonicalOffer.mapUrl),
     infoNeedOptions: [
       { value: CLIENT_INFO_NEEDS.PRICE, label: "السعر" },
