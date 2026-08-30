@@ -67,8 +67,9 @@ function clockLabel(value) {
 
 function purposeWord(listing = {}) {
   const purpose = String(listing.purpose || "").toUpperCase();
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
-  if (purpose === "SALE" || purpose === "PURCHASE") return "للبيع";
+  const isRequest = String(listing.kindLabel || "").includes("طلب");
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return isRequest ? "للاستئجار" : "للإيجار";
+  if (purpose === "SALE" || purpose === "PURCHASE" || purpose === "BUY") return isRequest ? "للشراء" : "للبيع";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return String(listing.purpose || "").trim();
 }
@@ -173,6 +174,73 @@ function matchFactBlock(title, listing = {}, moneyLabel = "") {
   </div>`;
 }
 
+function normalizedFact(listing = {}, key = "") {
+  if (key === "district") return districtOnly(listing).toLowerCase();
+  if (key === "purpose") {
+    const purpose = String(listing.purpose || "").toUpperCase();
+    if (["RENT", "LEASE_REQUEST"].includes(purpose)) return "rent";
+    if (["SALE", "PURCHASE", "BUY"].includes(purpose)) return "sale";
+  }
+  return String(listing[key] || "").replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+}
+
+function listingsDiffer(request = {}, offer = {}) {
+  return ["propertyType", "purpose", "district", "city", "money", "area"]
+    .some((key) => normalizedFact(request, key) !== normalizedFact(offer, key));
+}
+
+function matchOverviewHtml(task = {}) {
+  const request = task.sourceListing || {};
+  const offer = task.proposedListing || {};
+  const primary = Object.keys(offer).length ? offer : request;
+  const facts = listingFacts(primary, {
+    moneyLabel: String(primary.kindLabel || "").includes("طلب") ? "الميزانية" : "السعر"
+  });
+  const details = listingsDiffer(request, offer)
+    ? `<details class="cv2-match-details">
+        <summary>تفاصيل المطابقة</summary>
+        ${matchFactBlock(request.kindLabel || "طلب العميل", request, "الميزانية")}
+        ${matchFactBlock(offer.kindLabel || "العرض المطابق", offer, "السعر")}
+      </details>`
+    : "";
+  return `<div class="cv2-coop-block cv2-match-overview">
+      <strong>ملخص المطابقة</strong>
+      ${facts}
+    </div>${details}`;
+}
+
+function partyProgress(task = {}, party = "client") {
+  const labels = (Array.isArray(task.timeline) ? task.timeline : [])
+    .map((event) => String(event?.label || "").trim());
+  const name = party === "owner" ? "المالك" : "العميل";
+  const openedWhatsApp = labels.some((label) => label.includes(`واتساب ${party === "owner" ? "للمالك" : "للعميل"}`));
+  const openedLink = labels.some((label) => label.includes(`فتح ${name} الرابط`));
+  const summary = party === "owner" ? task.coordinationOwnerSummary : task.coordinationClientSummary;
+  const replied = Boolean(String(summary || "").trim()) || labels.some((label) => (
+    label.startsWith(`${name} `) && !label.includes("فتح")
+  ));
+  return { openedWhatsApp, openedLink, replied };
+}
+
+function progressStep(label, done) {
+  return `<span class="cv2-party-step${done ? " is-done" : ""}"><span aria-hidden="true">${done ? "✓" : "○"}</span>${escapeContentHtml(label)}</span>`;
+}
+
+function partyProgressHtml(task = {}) {
+  const client = partyProgress(task, "client");
+  const owner = partyProgress(task, "owner");
+  const row = (label, progress) => `<div class="cv2-party-progress-row">
+    <strong>${label}</strong>
+    <div>${progressStep("فتح واتساب", progress.openedWhatsApp)}${progressStep("فتح الرابط", progress.openedLink)}${progressStep("تم الرد", progress.replied)}</div>
+  </div>`;
+  return `<div class="cv2-coop-block cv2-party-progress">
+    <strong>مسار العميل والمالك</strong>
+    ${row("العميل", client)}
+    ${row("المالك", owner)}
+    <p class="cv2-party-progress-note">فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد.</p>
+  </div>`;
+}
+
 function reasonItems(reasons = []) {
   return reasons
     .map((line) => {
@@ -219,10 +287,6 @@ function yourTurnHtml(task = {}) {
 
 function matchGroupBodyHtml(task = {}) {
   const reasons = reasonItems(task.matchReasons || []);
-  const requestTitle = task.sourceListing?.kindLabel || "طلب العميل";
-  const offerTitle = task.proposedListing?.kindLabel || "العرض المطابق";
-  const requestMoney = requestTitle.includes("طلب") ? "الميزانية" : "السعر";
-  const offerMoney = offerTitle.includes("طلب") ? "الميزانية" : "السعر";
   const ranked = (task.candidates || [])
     .map((item) => {
       const bits = [item.propertyLine, item.moneyLine, item.areaLine].filter(Boolean).join(" · ");
@@ -230,11 +294,11 @@ function matchGroupBodyHtml(task = {}) {
     })
     .join("");
   return `<div class="cv2-coop-expanded cv2-match-expanded">
-    ${matchFactBlock(requestTitle, task.sourceListing || {}, requestMoney)}
-    ${matchFactBlock(offerTitle, task.proposedListing || {}, offerMoney)}
+    ${matchOverviewHtml(task)}
     ${reasons ? `<div class="cv2-coop-block"><strong>سبب المطابقة</strong><ul>${reasons}</ul></div>` : ""}
     ${ranked && (task.candidates || []).length > 1 ? `<div class="cv2-coop-block"><strong>المرشحون</strong><ol>${ranked}</ol></div>` : ""}
     ${yourTurnHtml(task)}
+    ${partyProgressHtml(task)}
     ${timelineHtml(task)}
   </div>`;
 }

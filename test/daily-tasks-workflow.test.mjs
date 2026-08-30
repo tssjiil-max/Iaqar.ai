@@ -363,3 +363,43 @@ test("TEST 17 mobile 360/390/430 cards do not clip actions", () => {
   const html = buildDailyTaskCardHtml(task, { open: true, detailsOpen: true });
   assert.equal(html.includes("overflow: hidden") && html.includes("cv2-exec-actions"), false);
 });
+
+test("broker match summary removes duplicate blocks but preserves real differences", () => {
+  const common = {
+    taskKind: "match_group",
+    matchId: "match_compact",
+    sourceListing: { kindLabel: "طلب العميل", propertyType: "شقة", purpose: "RENT", city: "المدينة المنورة", district: "عروة", money: "70,000 ر.س", area: "75م²" },
+    proposedListing: { kindLabel: "العرض المطابق", propertyType: "شقة", purpose: "RENT", city: "المدينة المنورة", district: "عروة", money: "70,000 ر.س", area: "75م²" }
+  };
+  const compact = buildDailyTaskCardHtml(common, { open: true });
+  assert.match(compact, /ملخص المطابقة/);
+  assert.equal(compact.includes("cv2-match-details"), false);
+
+  const different = buildDailyTaskCardHtml({
+    ...common,
+    proposedListing: { ...common.proposedListing, money: "68,000 ر.س" }
+  }, { open: true });
+  assert.match(different, /تفاصيل المطابقة/);
+  assert.match(different, /70,000 ر\.س/);
+  assert.match(different, /68,000 ر\.س/);
+});
+
+test("party progress checks only confirmed WhatsApp, link, and reply evidence", () => {
+  const html = buildDailyTaskCardHtml({
+    taskKind: "match_group",
+    matchId: "match_progress",
+    sourceListing: { kindLabel: "طلب العميل", propertyType: "فيلا", purpose: "PURCHASE" },
+    proposedListing: { kindLabel: "العرض المطابق", propertyType: "فيلا", purpose: "SALE", area: "300م²" },
+    coordinationClientSummary: "العميل طلب تخفيض 5%",
+    timeline: [
+      { label: "تم فتح واتساب للعميل" },
+      { label: "فتح العميل الرابط" },
+      { label: "تم فتح واتساب للمالك" }
+    ]
+  }, { open: true });
+  const text = visible(html);
+  assert.match(text, /نوع العقار: فيلا الغرض: للبيع/);
+  assert.match(text, /طلب العميل نوع العقار: فيلا الغرض: للشراء/);
+  assert.equal((html.match(/cv2-party-step is-done/g) || []).length, 4);
+  assert.match(html, /فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد/);
+});

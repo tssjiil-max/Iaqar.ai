@@ -1181,6 +1181,62 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   margin: 4px 0 0;
 }
 
+.cv2-match-details {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--cv2-border, #e4eae7);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.cv2-match-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cv2-green, #1a5319);
+}
+
+.cv2-match-details .cv2-coop-block {
+  margin-top: 7px;
+}
+
+.cv2-party-progress-row {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  align-items: start;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.cv2-party-progress-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cv2-party-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border: 1px solid var(--cv2-border, #e4eae7);
+  border-radius: 999px;
+  color: var(--cv2-muted, #6b7873);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cv2-party-step.is-done {
+  border-color: #acd7b1;
+  background: #eff9f1;
+  color: var(--cv2-green, #1a5319);
+}
+
+.cv2-party-progress-note {
+  color: var(--cv2-muted, #6b7873);
+  font-size: 10px !important;
+}
+
 .cv2-exec-time {
   font-size: 11px;
   font-weight: 700;
@@ -1349,4 +1405,3 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
     pointer-events: none;
   }
 }
-
