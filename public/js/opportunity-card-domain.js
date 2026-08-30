@@ -75,9 +75,14 @@ function propertyDescription(record = {}) {
     normalizePropertyTypeDisplay(record.propertyType)
   ).display;
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
-  const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? "للإيجار"
-    : purpose === "SALE" || purpose === "PURCHASE" ? "للبيع"
-    : "";
+  const owner = isOwnerRecord(record);
+  const isRent = purpose === "RENT" || purpose === "LEASE" || purpose === "LEASE_REQUEST" || purpose === "إيجار" || purpose === "ايجار" || purpose === "استئجار" || purpose === "تأجير";
+  const isSale = purpose === "SALE" || purpose === "PURCHASE" || purpose === "BUY" || purpose === "بيع" || purpose === "شراء";
+  const purposeWord = isRent
+    ? (owner ? "للإيجار" : "للاستئجار")
+    : isSale
+      ? (owner ? "للبيع" : "للشراء")
+      : "";
   if (propertyType && propertyType !== "تحتاج مراجعة" && purposeWord) {
     return `${propertyType} ${purposeWord}`;
   }
