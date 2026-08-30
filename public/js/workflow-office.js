@@ -2759,29 +2759,67 @@
     window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
   }
 
+  const PENDING_NOTIFICATION_TARGET_KEY = "iaqar.pendingNotificationTarget";
+
+  function savePendingNotificationTarget(target) {
+    if (!target) return;
+    try {
+      sessionStorage.setItem(PENDING_NOTIFICATION_TARGET_KEY, JSON.stringify(target));
+    } catch (_) { /* ignore */ }
+  }
+
+  function readPendingNotificationTarget() {
+    try {
+      return JSON.parse(sessionStorage.getItem(PENDING_NOTIFICATION_TARGET_KEY) || "null");
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearPendingNotificationTarget() {
+    try { sessionStorage.removeItem(PENDING_NOTIFICATION_TARGET_KEY); }
+    catch (_) { /* ignore */ }
+  }
+
   function navigateNotificationTarget(target) {
     if (!target) return openNotificationCenter();
     const user = window.firebase?.auth?.()?.currentUser;
     if (!user) {
+      savePendingNotificationTarget(target);
       notify("سجل دخول المكتب لعرض هذا الإشعار");
       return;
     }
     const runtime = office();
-    if (!runtime?.officeId) return;
+    if (!runtime?.officeId) {
+      savePendingNotificationTarget(target);
+      return;
+    }
     const requestedOffice = String(target.officeId || "").trim();
     if (requestedOffice && requestedOffice !== "platform" && requestedOffice !== runtime.officeId) {
       notify("هذا الإشعار يخص مكتبًا آخر");
       return openNotificationCenter();
     }
 
+    clearPendingNotificationTarget();
+
     switch (target.kind) {
       case "daily-task": {
         window.IAQAR?.homeTabs?.switchTo?.("operations");
-        const detail = { id: target.id, taskId: target.id };
+        const detail = {
+          id: target.id,
+          taskId: target.id,
+          matchGroupId: target.id,
+          matchId: target.matchId || "",
+          opportunityId: target.opportunityId || "",
+          operationId: target.operationId || ""
+        };
         window.IAQAR = window.IAQAR || {};
         window.IAQAR.pendingDailyTaskOpen = detail;
         window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
         window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
+        }, 120);
         break;
       }
       case "opportunity":
@@ -2837,6 +2875,12 @@
       default:
         openNotificationCenter();
     }
+  }
+
+  function replayPendingNotificationTarget() {
+    const pending = readPendingNotificationTarget();
+    if (!pending) return;
+    window.setTimeout(() => navigateNotificationTarget(pending), 350);
   }
 
   function handleNotificationDeepLinkFromData(data = {}) {
@@ -3203,6 +3247,7 @@
           refreshNotificationStatus();
           setupForegroundNotifications();
           syncEnabledNotifications();
+          replayPendingNotificationTarget();
         } else {
           stopLiveData();
           matchItems = [];
@@ -3218,6 +3263,8 @@
     window.addEventListener("iaqar:firebase-ready", startLiveData);
     window.addEventListener("iaqar:office-rebound", () => startLiveData());
     window.addEventListener("iaqar:access-granted", () => startLiveData());
+    window.addEventListener("iaqar:access-granted", replayPendingNotificationTarget);
+    window.addEventListener("iaqar:operations-refresh", replayPendingNotificationTarget);
     window.addEventListener("iaqar:opportunity-ingested", (event) => {
       const detail = event.detail || {};
       loadAnalytics();
@@ -3232,7 +3279,8 @@
     const params = new URLSearchParams(location.search);
     const deepLink = window.IAQAR?.parseNotificationSearchParams?.(params);
     if (deepLink) {
-      setTimeout(() => navigateNotificationTarget(deepLink), 900);
+      savePendingNotificationTarget(deepLink);
+      setTimeout(replayPendingNotificationTarget, 900);
     }
   }
 

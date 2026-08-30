@@ -5292,6 +5292,7 @@ function buildNotificationLink({officeId,type="match",recordId="",taskId="",oppo
   } else if(safeTaskId){
     params.set("openDailyTask",safeTaskId);
     if(safeRecordId)params.set("openOperation",safeRecordId);
+    if(safeOpportunityId)params.set("openOpportunity",safeOpportunityId);
   } else if(safeOpportunityId){
     params.set("openOpportunity",safeOpportunityId);
   } else if(type==="opportunity_followup_reminder"){

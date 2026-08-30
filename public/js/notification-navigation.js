@@ -21,7 +21,14 @@
     }
     const taskId = safeId(data.taskId);
     if (taskId) {
-      return { kind: "daily-task", id: taskId, officeId };
+      return {
+        kind: "daily-task",
+        id: taskId,
+        officeId,
+        matchId: safeId(data.matchId),
+        opportunityId: safeId(data.opportunityId),
+        operationId: safeId(data.operationId || data.recordId)
+      };
     }
     const opportunityId = safeId(data.opportunityId);
     if (opportunityId) {
@@ -76,9 +83,16 @@
 
     const focusFollowUp = params.get("focusFollowUp") === "1";
 
-    if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
     const openDailyTask = safeId(params.get("openDailyTask"));
-    if (openDailyTask) return { kind: "daily-task", id: openDailyTask, officeId };
+    if (openDailyTask) return {
+      kind: "daily-task",
+      id: openDailyTask,
+      officeId,
+      matchId: openMatch,
+      opportunityId: openOpportunity,
+      operationId: openOperation
+    };
+    if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
     if (openCooperation) return { kind: "cooperation", id: openCooperation, officeId };
     if (openMessage) return { kind: "message", id: openMessage, officeId };
     if (openDeal) return { kind: "match", id: openDeal, officeId };
@@ -108,7 +122,12 @@
       case "url":
         return target.path || "/";
       case "daily-task":
-        if (target.id) params.set("openDailyTask", target.id);
+        if (target.id) {
+          params.set("openDailyTask", target.id);
+          if (target.matchId) params.set("openMatch", target.matchId);
+          if (target.opportunityId) params.set("openOpportunity", target.opportunityId);
+          if (target.operationId) params.set("openOperation", target.operationId);
+        }
         else params.set("openNotifications", "1");
         break;
       case "opportunity":
