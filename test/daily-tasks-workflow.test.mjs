@@ -388,6 +388,10 @@ test("party progress checks only confirmed WhatsApp, link, and reply evidence", 
   const html = buildDailyTaskCardHtml({
     taskKind: "match_group",
     matchId: "match_progress",
+    offerId: "offer_progress",
+    requestId: "request_progress",
+    canSendToClient: true,
+    canSendToOwner: true,
     sourceListing: { kindLabel: "طلب العميل", propertyType: "فيلا", purpose: "PURCHASE" },
     proposedListing: { kindLabel: "العرض المطابق", propertyType: "فيلا", purpose: "SALE", area: "300م²" },
     coordinationClientSummary: "العميل طلب تخفيض 5%",
@@ -402,4 +406,8 @@ test("party progress checks only confirmed WhatsApp, link, and reply evidence", 
   assert.match(text, /طلب العميل نوع العقار: فيلا الغرض: للشراء/);
   assert.equal((html.match(/cv2-party-step is-done/g) || []).length, 4);
   assert.match(html, /فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد/);
+  assert.equal((html.match(/data-cv2-exec-primary="send_to_client"/g) || []).length, 1);
+  assert.equal((html.match(/data-cv2-exec-secondary="send_to_owner"/g) || []).length, 1);
+  assert.match(html, /إعادة الإرسال للعميل/);
+  assert.match(html, /إعادة الإرسال للمالك/);
 });

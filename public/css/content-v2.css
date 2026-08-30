@@ -1237,6 +1237,38 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   font-size: 10px !important;
 }
 
+.cv2-party-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.cv2-party-control {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--cv2-green, #1a5319);
+  border-radius: 10px;
+  background: var(--cv2-green, #1a5319);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cv2-party-control + .cv2-party-control {
+  background: #fff;
+  color: var(--cv2-green, #1a5319);
+}
+
+.cv2-party-control.is-disabled {
+  border-color: var(--cv2-border, #e4eae7);
+  background: #f4f7f6;
+  color: var(--cv2-muted, #6b7873);
+  cursor: not-allowed;
+}
+
 .cv2-exec-time {
   font-size: 11px;
   font-weight: 700;

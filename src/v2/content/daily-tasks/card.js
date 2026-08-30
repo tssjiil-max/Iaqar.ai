@@ -226,6 +226,26 @@ function progressStep(label, done) {
   return `<span class="cv2-party-step${done ? " is-done" : ""}"><span aria-hidden="true">${done ? "✓" : "○"}</span>${escapeContentHtml(label)}</span>`;
 }
 
+function partyJourneyStarted(task = {}) {
+  const client = partyProgress(task, "client");
+  const owner = partyProgress(task, "owner");
+  return client.replied || owner.openedWhatsApp || owner.openedLink || owner.replied;
+}
+
+function partyControlButton(task, party, progress) {
+  const isOwner = party === "owner";
+  const canSend = isOwner ? task.canSendToOwner !== false : task.canSendToClient !== false;
+  const hasContext = Boolean(task.matchId && task.offerId && task.requestId);
+  const disabled = !canSend || !hasContext;
+  const action = isOwner ? "send_to_owner" : "send_to_client";
+  const attr = isOwner ? "data-cv2-exec-secondary" : "data-cv2-exec-primary";
+  const label = progress.openedWhatsApp
+    ? `إعادة الإرسال لل${isOwner ? "مالك" : "عميل"}`
+    : `إرسال لل${isOwner ? "مالك" : "عميل"}`;
+  const unavailable = `رقم ${isOwner ? "المالك" : "العميل"} غير متوفر`;
+  return `<button type="button" class="cv2-party-control${disabled ? " is-disabled" : ""}" ${attr}="${action}" data-party="${party}"${disabled ? " disabled" : ""}>${escapeContentHtml(disabled ? unavailable : label)}</button>`;
+}
+
 function partyProgressHtml(task = {}) {
   const client = partyProgress(task, "client");
   const owner = partyProgress(task, "owner");
@@ -238,6 +258,10 @@ function partyProgressHtml(task = {}) {
     ${row("العميل", client)}
     ${row("المالك", owner)}
     <p class="cv2-party-progress-note">فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد.</p>
+    ${partyJourneyStarted(task) ? `<div class="cv2-party-controls">
+      ${partyControlButton(task, "client", client)}
+      ${partyControlButton(task, "owner", owner)}
+    </div>` : ""}
   </div>`;
 }
 
@@ -353,9 +377,16 @@ function revealHtml(task, open) {
 }
 
 export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = false } = {}) {
-  const primary = open ? buttonHtml(task.primaryAction, "primary") : "";
+  const ownsPartyControls = open && (task.taskKind === "match_group" || task.matchId) && partyJourneyStarted(task);
+  const primaryAction = ownsPartyControls && ["send_to_client", "resend_to_client", "send_to_owner"].includes(task.primaryAction?.id)
+    ? null
+    : task.primaryAction;
+  const secondaryActions = ownsPartyControls
+    ? (task.secondaryActions || []).filter((action) => !["send_to_client", "resend_to_client", "send_to_owner"].includes(action?.id))
+    : (task.secondaryActions || []);
+  const primary = open ? buttonHtml(primaryAction, "primary") : "";
   const secondary = open
-    ? (task.secondaryActions || []).map((action) => buttonHtml(action, "secondary")).join("")
+    ? secondaryActions.map((action) => buttonHtml(action, "secondary")).join("")
     : "";
   const actions = open && (primary || secondary)
     ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
