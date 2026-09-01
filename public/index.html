@@ -3290,6 +3290,35 @@
   .coop-option strong { font-size:12px; font-weight:800; }
   .coop-option small { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.55; }
 
+  .cooperation-advanced-only { display:none; }
+
+  .cooperation-privacy-row strong {
+    color:var(--green);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .settings-advanced {
+    margin-top:10px;
+    border-top:1px solid var(--line);
+  }
+
+  .settings-advanced > summary {
+    padding:12px 0 2px;
+    color:var(--green);
+    font-size:12px;
+    font-weight:800;
+    cursor:pointer;
+  }
+
+  .settings-advanced-body {
+    display:grid;
+    gap:9px;
+    padding-top:9px;
+  }
+
+  .settings-advanced-body > .section-help { margin:0; }
+
   .coop-select,
   .coop-percent {
     min-height: 30px;
@@ -6208,7 +6237,7 @@
           <button class="office-save-btn" id="saveOfficeSettingsBtn" type="submit">حفظ التعديلات</button>
           <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
         </div>
-        <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط حسب officeId.</p>
+        <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط.</p>
       </form>
 
       <section class="settings-section" id="officeScopeSection">
@@ -6240,24 +6269,27 @@
             <small class="office-field-help office-neighborhood-count" id="officeNeighborhoodCount" role="status"></small>
             <small class="office-field-help office-neighborhood-error" id="officeNeighborhoodError" role="alert"></small>
           </fieldset>
-          <label class="pref-row office-field full">
-            <span>استقبال فرص من مكاتب أخرى</span>
-            <span class="pref-switch"><input type="checkbox" id="officeReceiveExternalToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
-          </label>
-          <label class="pref-row office-field full">
-            <span>متاح للتعاون حاليًا</span>
-            <span class="pref-switch"><input type="checkbox" id="officeCooperationAvailableToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
-          </label>
-          <label class="pref-row office-field full">
-            <span>استقبال فرص المنصة العامة</span>
-            <span class="pref-switch"><input type="checkbox" id="officeAcceptPlatformPublicToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
-          </label>
+          <details class="settings-advanced office-field full">
+            <summary>إعدادات استقبال الفرص</summary>
+            <div class="settings-advanced-body">
+              <label class="pref-row office-field full">
+                <span>استقبال فرص من مكاتب أخرى</span>
+                <span class="pref-switch"><input type="checkbox" id="officeReceiveExternalToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+              </label>
+              <label class="pref-row office-field full">
+                <span>متاح للتعاون حاليًا</span>
+                <span class="pref-switch"><input type="checkbox" id="officeCooperationAvailableToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+              </label>
+              <label class="pref-row office-field full">
+                <span>استقبال فرص المنصة العامة</span>
+                <span class="pref-switch"><input type="checkbox" id="officeAcceptPlatformPublicToggle"><span class="pref-switch-slider" aria-hidden="true"></span></span>
+              </label>
+              <p class="section-help" id="officeRoutingHelp">
+                فرص رابط مكتبك تصل إليك مباشرة، وفرص المنصة تُرشح وفق نطاق عمل المكتب.
+              </p>
+            </div>
+          </details>
         </div>
-        <p class="section-help" id="officeRoutingHelp">
-          كيف يتم توزيع الفرص؟ الفرص القادمة من رابط مكتبك تصل إليك مباشرة.
-          أما الفرص العامة فتُرشح بحسب المدينة والحي، تخصص المكتب، نوع العقار، سرعة الاستجابة، متابعة الفرص، والتقييم.
-          تستخدم المنصة كذلك توزيعًا عادلًا لمنع احتكار الفرص.
-        </p>
         <div class="office-settings-actions">
           <button class="office-save-btn" id="saveOfficeScopeBtn" type="button">حفظ نطاق العمل</button>
         </div>
@@ -6473,7 +6505,7 @@
               <small>نفس الحي أو حي مجاور موثّق. لا تُخترع مسافات.</small>
             </span>
           </label>
-          <label class="coop-option">
+          <label class="coop-option cooperation-advanced-only">
             <input type="radio" name="cooperationProximityScope" value="DISTANCE">
             <span>
               <strong>نطاق مسافة</strong>
@@ -6481,6 +6513,13 @@
             </span>
           </label>
         </div>
+        <div class="pref-row cooperation-privacy-row">
+          <span>الموافقة قبل مشاركة بيانات التواصل</span>
+          <strong>مفعّلة</strong>
+        </div>
+        <details class="settings-advanced" id="cooperationAdvancedSettings">
+          <summary>إعدادات متقدمة</summary>
+          <div class="settings-advanced-body">
         <p class="section-help">سياسة استقبال فرص التعاون: تلقائي حسب المطابقة. القبول يبقى بموافقة المكتب.</p>
         <label class="pref-row" for="cooperationMaxConcurrent">
           <span>عدد طلبات التعاون المتزامنة</span>
@@ -6542,6 +6581,8 @@
           <p class="section-help">ملخص فقط. ليست قائمة تشغيل يومية.</p>
           <div id="cooperationHistorySummary"></div>
         </div>
+          </div>
+        </details>
       </section>
 
       <section class="settings-section" id="notificationPrefsSection">

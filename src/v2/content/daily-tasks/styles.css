@@ -111,6 +111,10 @@
   color: var(--cv2-muted, #6b7873);
 }
 
+.cv2-exec-next strong {
+  color: var(--cv2-green, #1a5319);
+}
+
 .cv2-exec-count,
 .cv2-exec-turn {
   margin: 2px 0 0;
@@ -564,6 +568,14 @@
   border-radius: 50%;
   background: #21a34b;
   color: #fff;
+}
+
+.cv2-match-score li.is-warning {
+  color: #805f16;
+}
+
+.cv2-match-score li.is-warning span {
+  background: #b88a20;
 }
 
 .cv2-match-action {

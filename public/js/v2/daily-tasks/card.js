@@ -118,6 +118,10 @@ function summaryHtml(task = {}) {
   const status = statusText && statusText !== String(task.kindLabel || "").trim()
     ? `<p class="cv2-exec-status">${escapeContentHtml(statusText)}</p>`
     : "";
+  const nextAction = String(task.nextActionLine || "").trim();
+  const next = nextAction && nextAction !== statusText
+    ? `<p class="cv2-exec-next"><strong>${task.requiresAction ? "المطلوب الآن:" : "الحالة الآن:"}</strong> ${escapeContentHtml(nextAction)}</p>`
+    : "";
   return `<header class="cv2-exec-head">
       <p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p>
       <span class="cv2-exec-head-meta">${badge}</span>
@@ -130,7 +134,8 @@ function summaryHtml(task = {}) {
     ${reasons}
     ${money}
     ${reference}
-    ${status}`;
+    ${status}
+    ${next}`;
 }
 
 function listingFacts(listing = {}, { moneyLabel = "", money = "" } = {}) {
@@ -309,6 +314,7 @@ function cleanReasonLabel(value = "") {
 function matchHeroHtml(task = {}) {
   const listing = task.proposedListing || task.sourceListing || {};
   const reasons = (task.matchReasons || []).map(cleanReasonLabel).filter(Boolean);
+  const differences = (task.matchDifferences || []).map(cleanReasonLabel).filter(Boolean);
   const reasonCount = reasons.length;
   const client = partyProgress(task, "client");
   const livingStage = String(task.livingStage || "").toUpperCase();
@@ -324,7 +330,11 @@ function matchHeroHtml(task = {}) {
         : (livingStage === "CLIENT_INTERESTED" || stateKey === "CLIENT_INTERESTED"
       ? "العميل مهتم"
       : (client.replied ? "وصل رد العميل" : (livingStage === "WAITING_CLIENT" || livingStage === "CLIENT_SENT" || stateKey === "AWAITING_CLIENT" ? "بانتظار رد العميل" : "بانتظار العميل")))));
-  const quality = reasonCount >= 4 ? "مطابقة قوية" : "مطابقة مناسبة";
+  const quality = task.matchStrengthLabel || (reasonCount >= 4 ? "مطابقة قوية" : (reasonCount >= 2 ? "مطابقة متوسطة" : "مطابقة مبدئية"));
+  const trustedScore = task.hasReliableMatchScore && Number(task.matchScore) > 0
+    ? Math.round(Number(task.matchScore))
+    : 0;
+  const scoreText = trustedScore ? `${trustedScore}%` : quality.replace(/^مطابقة\s+/u, "");
   const clock = task.clockLabel || task.badgeLabel || "";
   const title = typePurpose(listing) || task.identityLine || task.typePurposeLine || "مطابقة عقارية";
   const location = [districtOnly(listing), listing.city].filter(Boolean).join("، ");
@@ -345,10 +355,13 @@ function matchHeroHtml(task = {}) {
       ${task.referenceCode ? `<span class="cv2-match-reference">${escapeContentHtml(task.referenceCode)}</span>` : ""}
     </div>
     ${facts.length ? `<div class="cv2-match-facts">${facts.map((item) => `<div><span aria-hidden="true">${item.icon}</span><small>${escapeContentHtml(item.label)}</small><strong>${escapeContentHtml(item.value)}</strong></div>`).join("")}</div>` : ""}
-    ${reasonCount ? `<div class="cv2-match-score">
-      <div class="cv2-match-score-count">${reasonCount}/${reasonCount}</div>
-      <div><small>سبب المطابقة</small><strong>${reasonCount >= 4 ? "تطابق كامل" : "معايير متطابقة"}</strong><p>${escapeContentHtml(`${reasonCount} معايير مؤكدة`)}</p></div>
-      <ul>${reasons.map((reason) => `<li><span>✓</span>${escapeContentHtml(reason)}</li>`).join("")}</ul>
+    ${(reasonCount || differences.length || trustedScore) ? `<div class="cv2-match-score">
+      <div class="cv2-match-score-count">${escapeContentHtml(scoreText)}</div>
+      <div><small>${trustedScore ? "درجة المطابقة" : "تقييم حسب البيانات المتاحة"}</small><strong>${escapeContentHtml(quality)}</strong><p>${reasonCount ? escapeContentHtml(`سبب المطابقة: ${reasonCount} أسباب واضحة`) : "لا توجد أسباب تفصيلية كافية"}</p></div>
+      <ul>
+        ${reasons.map((reason) => `<li><span>✓</span>${escapeContentHtml(reason)}</li>`).join("")}
+        ${differences.map((difference) => `<li class="is-warning"><span>!</span>${escapeContentHtml(difference)}</li>`).join("")}
+      </ul>
     </div>` : ""}
   </section>`;
 }
@@ -442,25 +455,28 @@ function revealHtml(task, open) {
 }
 
 export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = false } = {}) {
-  const ownsPartyControls = open && (task.taskKind === "match_group" || task.matchId);
+  const isMatchTask = task.taskKind === "match_group";
+  const isDirectTask = task.taskKind === "opportunity_action" || task.taskKind === "deal_action";
+  const showActions = open || isDirectTask;
+  const ownsPartyControls = open && isMatchTask;
   const primaryAction = ownsPartyControls && ["send_to_client", "resend_to_client", "send_to_owner"].includes(task.primaryAction?.id)
     ? null
     : task.primaryAction;
   const secondaryActions = ownsPartyControls
     ? (task.secondaryActions || []).filter((action) => !["send_to_client", "resend_to_client", "send_to_owner"].includes(action?.id))
     : (task.secondaryActions || []);
-  const primary = open ? buttonHtml(primaryAction, "primary") : "";
-  const secondary = open
+  const primary = showActions ? buttonHtml(primaryAction, "primary") : "";
+  const secondary = showActions
     ? secondaryActions.map((action) => buttonHtml(action, "secondary")).join("")
     : "";
-  const actions = open && (primary || secondary)
+  const actions = showActions && (primary || secondary)
     ? `<div class="cv2-exec-actions">${primary}${secondary}</div>`
     : "";
   const body = open && task.taskKind === "platform_opportunity"
     ? `<div class="cv2-exec-platform-body"><p>تظهر بيانات التواصل بعد استلام الفرصة.</p></div>`
     : (open && task.taskKind === "cooperation"
     ? cooperationBodyHtml(task)
-    : (open && (task.taskKind === "match_group" || task.matchId) ? matchGroupBodyHtml(task) : (open ? `${yourTurnHtml(task)}${timelineHtml(task)}` : "")));
+    : (open && isMatchTask ? matchGroupBodyHtml(task) : (open ? `${yourTurnHtml(task)}${timelineHtml(task)}` : "")));
   const details = open && detailsOpen ? fullDetailsHtml(task) : "";
   return `<article
       class="cv2-exec-card${open ? " is-open" : ""}${detailsOpen ? " is-details-open" : ""}${task.taskKind === "cooperation" ? " is-coop" : ""}"
@@ -479,11 +495,11 @@ export function buildDailyTaskCardHtml(task = {}, { open = false, detailsOpen = 
       data-target-office="${escapeContentHtml(task.targetOfficeId || "")}"
       data-origin-office="${escapeContentHtml(task.originatingOfficeId || "")}"
       data-session-kind="${escapeContentHtml(task.sessionKind || "CLIENT_MATCH_REVIEW")}">
-    ${open && (task.taskKind === "match_group" || task.matchId) ? "" : `<div class="cv2-exec-summary-block">${summaryHtml(task)}</div>`}
+    ${open && isMatchTask ? "" : `<div class="cv2-exec-summary-block">${summaryHtml(task)}</div>`}
     ${body}
     ${details}
     ${actions}
-    <div class="cv2-exec-reveal-row">${revealHtml(task, open)}</div>
+    ${isDirectTask ? "" : `<div class="cv2-exec-reveal-row">${revealHtml(task, open)}</div>`}
   </article>`;
 }
 

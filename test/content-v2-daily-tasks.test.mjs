@@ -12,6 +12,8 @@ import {
   MATCH_UNSUITABLE_POLICY,
   SECURE_PARTY,
   buildDailyTaskView,
+  buildDealActionDailyTask,
+  buildOpportunityActionDailyTask,
   buildSecureLinkIntent,
   dailyTaskDetailsHash,
   dailyTasksDemoFixtures,
@@ -20,7 +22,9 @@ import {
   sortDailyTaskViews,
   consumeDailyTaskDiagnostics,
   formatDailyTaskClock,
-  isTestFixtureRecord
+  isTestFixtureRecord,
+  matchDifferenceLines,
+  reliableMatchScore
 } from "../src/v2/content/daily-tasks/domain.js";
 import {
   buildDailyTaskCardHtml,
@@ -104,7 +108,7 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.match(text, /500,000 ر\.س/);
   assert.match(text, /تم العثور على مطابقة/);
   assert.match(html, /data-cv2-exec-reveal/);
-  assert.match(html, />عرض البيانات</);
+  assert.match(html, />إدارة المطابقة</);
   assert.equal(html.includes("الآن"), false);
   assert.match(html, /9:21 م/);
   assert.equal(html.includes("إرسال للمالك"), false);
@@ -126,7 +130,7 @@ test("open match-found card shows separate client and owner sends with offer det
   const text = visibleText(html);
   assert.match(html, /class="cv2-exec-card is-open"/);
   assert.match(html, /aria-expanded="true"/);
-  assert.match(html, />إخفاء البيانات</);
+  assert.match(html, />إخفاء التفاصيل</);
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
   assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
@@ -149,7 +153,7 @@ test("open match-found card shows separate client and owner sends with offer det
 test("awaiting client reply stays buttonless while collapsed and exposes both party sends when open", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_awaiting_client");
   const collapsed = buildDailyTaskCardHtml(task);
-  assert.match(collapsed, />عرض البيانات</);
+  assert.match(collapsed, />إدارة المطابقة</);
   assert.equal(collapsed.includes("إعادة الإرسال"), false);
   assert.equal(countPrimary(collapsed), 0);
   assert.equal(countSecondary(collapsed), 0);
@@ -199,18 +203,18 @@ test("list accordion keeps a single open task", () => {
   assert.match(html, /data-task-id="task_new_match"[^>]*[\s\S]*?aria-expanded="false"/);
   const closedNewMatch = html.split('data-task-id="task_overdue"')[0];
   assert.equal(closedNewMatch.includes("data-cv2-exec-primary="), false);
-  assert.match(closedNewMatch, />عرض البيانات</);
-  assert.equal(closedNewMatch.includes("إخفاء البيانات"), false);
+  assert.match(closedNewMatch, />إدارة المطابقة</);
+  assert.equal(closedNewMatch.includes("إخفاء التفاصيل"), false);
   assert.equal(countPrimary(html), 1);
   assert.equal(countSecondary(html), 2);
-  assert.match(html, />إخفاء البيانات</);
+  assert.match(html, />إخفاء التفاصيل</);
   assert.equal(buildDailyTaskListHtml(fixtures).includes("is-open"), false);
 });
 
-test("collapsed match tasks use عرض البيانات and never send actions", () => {
+test("collapsed match tasks use إدارة المطابقة and never send actions", () => {
   const html = buildDailyTaskListHtml(dailyTasksDemoFixtures());
-  assert.equal((html.match(/>عرض البيانات</g) || []).length, 7);
-  assert.equal(html.includes("إخفاء البيانات"), false);
+  assert.equal((html.match(/>إدارة المطابقة</g) || []).length, 7);
+  assert.equal(html.includes("إخفاء التفاصيل"), false);
   assert.equal(html.includes("إرسال للعميل"), false);
   assert.equal(html.includes("إرسال للمالك"), false);
   assert.equal(countPrimary(html), 0);
@@ -225,6 +229,158 @@ test("empty state is compact Arabic copy without a huge blank card", () => {
   assert.equal(html.includes("content-v2-surface"), false);
   assert.equal(ENGLISH_UI.test(text), false);
   assert.equal(buildDailyTaskListHtml([]), html);
+});
+
+test("incomplete and new opportunities become direct actionable tasks while passive opportunities stay hidden", () => {
+  const now = new Date("2026-08-25T21:30:00.000+03:00");
+  const incomplete = buildOpportunityActionDailyTask({
+    recordType: "opportunity",
+    recordId: "opp_incomplete_1",
+    lifecycleStatus: "ACTIVE",
+    matchingReadiness: "NEEDS_COMPLETION",
+    matchingReadinessMissing: ["district", "priceOrBudget"],
+    opportunityKind: "REQUEST",
+    propertyType: "شقة",
+    purpose: "PURCHASE",
+    city: "المدينة المنورة",
+    createdAt: "2026-08-25T20:00:00.000+03:00"
+  }, now);
+  assert.equal(incomplete.taskKind, "opportunity_action");
+  assert.equal(incomplete.primaryAction.id, EXEC_ACTION.OPEN_RECORD);
+  assert.deepEqual(incomplete.missingFieldLabels, ["الحي", "الميزانية"]);
+  const html = buildDailyTaskCardHtml(incomplete);
+  assert.match(html, /فرصة تحتاج استكمال/);
+  assert.match(html, /المطلوب الآن:.*استكمل الحي/);
+  assert.match(html, /data-cv2-exec-primary="open_record"/);
+  assert.match(html, />استكمال الفرصة</);
+  assert.equal(html.includes("data-cv2-exec-reveal"), false);
+  assert.equal(/<(?:input|textarea)\b/i.test(html), false);
+
+  const passive = buildOpportunityActionDailyTask({
+    recordType: "opportunity",
+    recordId: "opp_active_old",
+    lifecycleStatus: "ACTIVE",
+    matchingReadiness: "READY_FOR_MATCHING",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  }, now);
+  assert.equal(passive, null);
+
+  const [fromPersistedOperation] = mapOperationsItemsToDailyTasks([{
+    id: "operation_missing_1",
+    recordId: "operation_missing_1",
+    recordType: "operation",
+    operationType: "MISSING_DATA",
+    opportunityId: "opp_incomplete_2",
+    matchingReadinessMissing: ["district"]
+  }, {
+    id: "opp-opp_incomplete_2",
+    recordId: "opp_incomplete_2",
+    recordType: "opportunity",
+    lifecycleStatus: "ACTIVE",
+    matchingReadiness: "NEEDS_COMPLETION",
+    matchingReadinessMissing: ["district"],
+    propertyType: "شقة",
+    city: "المدينة المنورة"
+  }], now);
+  assert.equal(fromPersistedOperation.opportunityId, "opp_incomplete_2");
+  assert.equal(fromPersistedOperation.id, "opportunity_action_opp_incomplete_2");
+});
+
+test("existing deal readiness projects one management CTA without auto-closing", () => {
+  const task = buildDealActionDailyTask({
+    id: "deal_1",
+    recordType: "deal",
+    workflowStage: "agreement",
+    status: "open",
+    ownerOfferId: "offer_1",
+    clientRequestId: "request_1",
+    nextAction: "مراجعة الاتفاق قبل الإغلاق"
+  });
+  assert.equal(task.taskKind, "deal_action");
+  assert.equal(task.primaryAction.id, EXEC_ACTION.OPEN_RECORD);
+  assert.equal(task.recordType, "deal");
+  assert.equal(task.recordId, "deal_1");
+  assert.equal(task.dealId, "deal_1");
+  const html = buildDailyTaskCardHtml(task);
+  assert.match(html, /فرصة جاهزة للإغلاق/);
+  assert.match(html, />إدارة الإغلاق</);
+  assert.equal(html.includes("confirm_deal"), false);
+  assert.equal(html.includes("مسار العميل والمالك"), false);
+});
+
+test("deal management CTA opens the existing deal workflow with its stable id", async () => {
+  const { JSDOM } = await import("jsdom");
+  const dom = new JSDOM(`<!doctype html><html><body><div id="contentV2"></div></body></html>`, {
+    url: "https://example.test/",
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  global.window = window;
+  global.document = window.document;
+  window.IAQAR = {
+    office: { officeId: "office-test" },
+    operationsItems: [{
+      id: "deal_1",
+      recordId: "deal_1",
+      recordType: "deal",
+      workflowStage: "agreement",
+      status: "open",
+      ownerOfferId: "offer_1",
+      clientRequestId: "request_1"
+    }]
+  };
+  let opened = null;
+  window.addEventListener("iaqar:workflow-action", (event) => {
+    opened = event.detail;
+  });
+  const { mountDailyTasksContentV2, unmountDailyTasksContentV2 } = await import("../src/v2/content/daily-tasks/controller.js");
+  mountDailyTasksContentV2(window.document.getElementById("contentV2"));
+  window.document.querySelector('[data-cv2-exec-primary="open_record"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(opened.recordType, "deal");
+  assert.equal(opened.recordId, "deal_1");
+  assert.equal(opened.dealId, "deal_1");
+  assert.equal(opened.actionMode, "primary");
+  unmountDailyTasksContentV2();
+  dom.window.close();
+  delete global.window;
+  delete global.document;
+});
+
+test("match presentation uses only a persisted score and deterministic visible differences", () => {
+  assert.equal(reliableMatchScore(91.4), 91);
+  assert.equal(reliableMatchScore(0), 0);
+  assert.equal(reliableMatchScore(150), 0);
+  assert.deepEqual(matchDifferenceLines(
+    { city: "المدينة المنورة", district: "العزيزية", propertyType: "شقة", purpose: "LEASE_REQUEST", money: "700,000 ر.س", area: "100 م²" },
+    { city: "المدينة المنورة", district: "العزيزية", propertyType: "شقة", purpose: "RENT", money: "721,000 ر.س", area: "125 م²" }
+  ), ["فرق السعر 3%", "فرق المساحة 25%"]);
+
+  const [task] = mapOperationsItemsToDailyTasks([{
+    recordType: "match",
+    matchId: "match_score_91",
+    clientRequestId: "request_score_91",
+    ownerOfferId: "offer_score_91",
+    metadata: { score: 91 },
+    propertyType: "شقة",
+    purpose: "LEASE_REQUEST",
+    district: "العزيزية",
+    city: "المدينة المنورة",
+    budget: 700000,
+    area: 100,
+    candidatePropertyType: "شقة",
+    candidatePurpose: "RENT",
+    candidateDistrict: "العزيزية",
+    candidateCity: "المدينة المنورة",
+    candidateSalePrice: 721000,
+    candidateArea: 125
+  }]);
+  assert.equal(task.matchScore, 91);
+  assert.equal(task.hasReliableMatchScore, true);
+  const html = buildDailyTaskCardHtml(task, { open: true });
+  assert.match(html, />91%</);
+  assert.match(html, /فرق السعر 3%/);
+  assert.equal(/\d+\/\d+/.test(visibleText(html)), false);
 });
 
 test("live mapping uses source ids and skips incomplete opportunities", () => {
@@ -305,7 +461,7 @@ test("appointment today maps from viewing date without copying listing fields", 
   const html = buildDailyTaskCardHtml(task);
   assert.equal(html.includes("بيانات الفرصة"), false);
   assert.equal(html.includes("cv2-data-extra"), false);
-  assert.equal(html.includes("الآن"), false);
+  assert.equal(/cv2-exec-badge[^>]*>الآن</.test(html), false);
 });
 
 test("offers and requests inbox still uses the approved data card", () => {
@@ -732,7 +888,7 @@ test("one request with several matches renders a single group card", () => {
   assert.match(views[0].candidateCountLine, /4 عروض مناسبة/);
   const html = buildDailyTaskCardHtml(views[0]);
   assert.match(html, /مراجعة المطابقات/);
-  assert.equal(html.includes("الآن"), false);
+  assert.equal(/cv2-exec-badge[^>]*>الآن</.test(html), false);
 });
 
 test("multi-candidate review action continues after the card is already open", () => {
@@ -803,7 +959,7 @@ test("canonical opportunities hydrate collapsed identity and expanded facts", ()
   assert.equal(views.length, 1);
   const task = views[0];
   assert.equal(task.badgeLabel, "9:21 م");
-  assert.match(task.identityLine || task.typePurposeLine, /شقة للإيجار/);
+  assert.match(task.identityLine || task.typePurposeLine, /شقة للاستئجار/);
   assert.match(task.identityLine || task.typePurposeLine, /حي النرجس/);
   const open = buildDailyTaskCardHtml(task, { open: true });
   assert.match(open, /طلب العميل/);

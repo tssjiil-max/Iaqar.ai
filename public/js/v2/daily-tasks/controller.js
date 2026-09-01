@@ -310,7 +310,7 @@ function ensureOfferDetailsSheet() {
 export async function openExistingOfferDetails(task) {
   const offerId = resolveDetailsOpportunityId(task, "offer");
   const requestId = resolveDetailsOpportunityId(task, "request");
-  const targetId = offerId || requestId;
+  const targetId = offerId || requestId || resolveDetailsOpportunityId(task, "auto") || String(task?.opportunityId || "").trim();
   const taskId = String(task?.id || "").trim();
   if (useDemoFixtures()) return toggleTaskDetails(taskId);
   if (!targetId) {
@@ -351,6 +351,26 @@ export async function openExistingOfferDetails(task) {
   }
   await details.mountOpportunityDetailsContentV2(host, { opportunityId: targetId });
   return { ok: true, offerId: targetId, detailsOpen: true };
+}
+
+function openActionableRecord(task = {}) {
+  if (task.taskKind !== "deal_action") return openExistingOfferDetails(task);
+  const dealId = String(task.dealId || task.recordId || "").trim();
+  if (!dealId) {
+    notify("تعذر فتح الصفقة — المرجع غير متوفر.");
+    return { ok: false, error: PARTY_SEND_COPY.detailsFailed };
+  }
+  window.dispatchEvent(new window.CustomEvent("iaqar:workflow-action", {
+    detail: {
+      ...task,
+      id: dealId,
+      recordId: dealId,
+      dealId,
+      recordType: "deal",
+      actionMode: "primary"
+    }
+  }));
+  return { ok: true, dealId };
 }
 
 function captureScroll() {
@@ -422,7 +442,7 @@ export async function runDailyTaskPartySend(task, party, button) {
     }
     const text = buildPartyWhatsAppMessage({
       party: side,
-      officeName: link.officeName || officeDisplayName(),
+      officeName: officeDisplayName(),
       contactName: contact.name || (side === "owner" ? task.ownerName : task.clientName) || "",
       propertyLine: task.propertyLine || "",
       reviewUrl: link.url
@@ -617,6 +637,10 @@ function onListClick(event) {
       toggleTaskDetails(task.id);
       return;
     }
+    if (action === "open_record") {
+      void openActionableRecord(task);
+      return;
+    }
     if (action === "share_details") {
       shareTaskDetails(task);
       return;
@@ -677,6 +701,10 @@ function onListClick(event) {
     }
     if (action === "complete_info") {
       toggleTaskDetails(task.id);
+      return;
+    }
+    if (action === "open_record") {
+      void openActionableRecord(task);
       return;
     }
     if (action === "review_next_candidate") {

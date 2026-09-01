@@ -93,13 +93,13 @@ test("TEST 1 collapsed match shows type purpose district city price and referenc
   const [task] = mapOperationsItemsToDailyTasks([matchItem], new Date());
   const html = buildDailyTaskCardHtml(task);
   const text = visible(html);
-  assert.match(text, /شقة للإيجار/);
+  assert.match(text, /شقة للاستئجار/);
   assert.match(text, /العزيزية/);
   assert.match(text, /المدينة المنورة/);
   assert.match(text, /50,000 ر\.س/);
   assert.equal(task.referenceCode, formatOpportunityReference("req_1842"));
   assert.match(text, /#A-1842/);
-  assert.match(html, />عرض البيانات</);
+  assert.match(html, />إدارة المطابقة</);
   assert.equal(html.includes("051"), false);
 });
 

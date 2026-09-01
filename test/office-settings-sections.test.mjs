@@ -32,6 +32,25 @@ test("all approved settings sections are present", async () => {
   }
 });
 
+test("cooperation keeps core controls visible and retains advanced controls behind one disclosure", async () => {
+  const context = await shell();
+  try {
+    const section = context.document.getElementById("cooperationSection");
+    assert.ok(section.querySelector("#cooperationEnabledToggle"));
+    assert.ok(section.querySelector('input[name="cooperationProximityScope"][value="SAME_DISTRICT"]'));
+    assert.ok(section.querySelector('input[name="cooperationProximityScope"][value="NEARBY_DISTRICTS"]'));
+    assert.match(section.textContent, /الموافقة قبل مشاركة بيانات التواصل\s*مفعّلة/);
+    const advanced = section.querySelector("#cooperationAdvancedSettings");
+    assert.ok(advanced);
+    assert.equal(advanced.open, false);
+    assert.ok(advanced.querySelector("#cooperationMaxConcurrent"));
+    assert.ok(advanced.querySelector("#cooperationSharePercent"));
+    assert.equal(section.querySelectorAll('input[name="cooperationMode"]').length, 3);
+  } finally {
+    context.close();
+  }
+});
+
 // --- 7.2 office data --------------------------------------------------------
 
 test("the office data form exposes exactly the five approved fields", async () => {

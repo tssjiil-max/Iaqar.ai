@@ -1017,6 +1017,10 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   color: var(--cv2-muted, #6b7873);
 }
 
+.cv2-exec-next strong {
+  color: var(--cv2-green, #1a5319);
+}
+
 .cv2-exec-count,
 .cv2-exec-turn {
   margin: 2px 0 0;
@@ -1306,6 +1310,8 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
 .cv2-match-score ul { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px 10px; margin: 0; padding: 0; list-style: none; }
 .cv2-match-score li { display: inline-flex; align-items: center; gap: 4px; color: #244d35; font-size: 10px; font-weight: 700; }
 .cv2-match-score li span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #21a34b; color: #fff; }
+.cv2-match-score li.is-warning { color: #805f16; }
+.cv2-match-score li.is-warning span { background: #b88a20; }
 .cv2-match-action { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 10px; padding: 14px; border: 1px solid #eadba8; border-radius: 16px; background: #fffdf6; }
 .cv2-match-action.is-waiting { border-color: var(--cv2-border, #e4eae7); background: #f7faf8; }
 .cv2-match-action strong, .cv2-match-action p, .cv2-match-action small { display: block; margin: 0; }

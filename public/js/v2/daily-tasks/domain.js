@@ -36,6 +36,13 @@ import {
   platformOpportunityHeadline,
   platformOpportunityMoneyLine
 } from "../../opportunity-router-domain.js";
+import { missingFieldLabelsArabic } from "../../opportunity-readiness-domain.js";
+import {
+  isNewReview,
+  isReadyToClose,
+  isTaskArchived,
+  isTaskOverdue
+} from "../../daily-tasks-domain.js";
 
 export const DAILY_TASK_STATE = Object.freeze({
   NEW_MATCH: "new_match",
@@ -94,6 +101,7 @@ export const EXEC_ACTION = Object.freeze({
   SHARE_DETAILS: "share_details",
   CONFIRM_DEAL: "confirm_deal",
   CONFIRM_VIEWING: "confirm_viewing",
+  OPEN_RECORD: "open_record",
   ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
   DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
 });
@@ -323,6 +331,13 @@ export function opportunityIdFromItem(item = {}) {
   return raw.replace(/^opp-/, "");
 }
 
+function actionableOpportunityIdFromItem(item = {}) {
+  if (String(item?.recordType || "").toLowerCase() === "opportunity") {
+    return opportunityIdFromItem(item);
+  }
+  return text(item?.opportunityId || item?.sourceRecordId || item?.recordId || item?.id).replace(/^opp-/, "");
+}
+
 export function indexOpportunityItems(items = []) {
   const map = new Map();
   for (const item of items) {
@@ -462,8 +477,14 @@ function uniqueMatchItems(items = []) {
 
 function purposeWord(record = {}) {
   const purpose = upper(record.purpose || record.transactionType);
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
-  if (purpose === "SALE" || purpose === "PURCHASE") return "للبيع";
+  const kind = upper(record.opportunityKind || record.kind || record.recordType);
+  const contact = upper(record.contactType);
+  const isRequest = ["REQUEST", "CLIENT", "CLIENT_REQUEST"].includes(kind)
+    || ["BUYER", "CLIENT"].includes(contact)
+    || purpose === "PURCHASE"
+    || purpose === "LEASE_REQUEST";
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return isRequest ? "للاستئجار" : "للإيجار";
+  if (purpose === "SALE" || purpose === "PURCHASE" || purpose === "BUY") return isRequest ? "للشراء" : "للبيع";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return "";
 }
@@ -696,7 +717,14 @@ export function buildDailyTaskView(record = {}) {
     [DAILY_TASK_STATE.MATCH_UNSUITABLE]: "",
     [DAILY_TASK_STATE.APPOINTMENT_TODAY]: ""
   };
-  const { primaryAction, secondaryActions } = actionsForState(stateKey, record);
+  const generatedActions = actionsForState(stateKey, record);
+  const primaryAction = Object.prototype.hasOwnProperty.call(record, "primaryAction")
+    ? record.primaryAction
+    : generatedActions.primaryAction;
+  const secondaryActions = Object.prototype.hasOwnProperty.call(record, "secondaryActions")
+    ? (Array.isArray(record.secondaryActions) ? record.secondaryActions : [])
+    : generatedActions.secondaryActions;
+  const taskKind = record.taskKind || "match_group";
   const sessionKind = primaryAction?.sessionKind
     || secondaryActions.find((action) => action.sessionKind)?.sessionKind
     || SECURE_SESSION_KIND.CLIENT_MATCH_REVIEW;
@@ -708,6 +736,13 @@ export function buildDailyTaskView(record = {}) {
   const placeLine = text(record.placeLine) || dailyTaskPlaceLine(record);
   return {
     id: text(record.id),
+    recordId: text(record.recordId || record.dealId || record.id),
+    recordType: text(record.recordType),
+    dealId: text(record.dealId || (String(record.recordType || "").toLowerCase() === "deal"
+      ? (record.recordId || record.id)
+      : "")),
+    workflowStage: text(record.workflowStage),
+    status: text(record.status),
     stateKey,
     kindLabel: text(record.kindLabel) || DAILY_TASK_STATE_LABELS[stateKey] || DAILY_TASK_STATE_LABELS.new_match,
     badgeKey,
@@ -759,13 +794,18 @@ export function buildDailyTaskView(record = {}) {
     priorityGroup: dailyTaskPriorityGroup(stateKey, badgeKey, record.sortGroup),
     endsThisMatchOnly: stateKey === DAILY_TASK_STATE.MATCH_UNSUITABLE,
     exposeCounterpartyContact: false,
-    taskKind: record.taskKind || "match_group",
+    taskKind,
     candidateCount: Number(record.candidateCount || 0),
     candidateCountLine: text(record.candidateCountLine),
     candidates: Array.isArray(record.candidates) ? record.candidates : [],
     sourceListing: record.sourceListing || null,
     proposedListing: record.proposedListing || null,
     matchReasons: Array.isArray(record.matchReasons) ? record.matchReasons : [],
+    matchDifferences: Array.isArray(record.matchDifferences) ? record.matchDifferences : [],
+    matchScore: Number(record.matchScore || 0),
+    hasReliableMatchScore: Boolean(record.hasReliableMatchScore),
+    matchStrengthLabel: text(record.matchStrengthLabel),
+    missingFieldLabels: Array.isArray(record.missingFieldLabels) ? record.missingFieldLabels : [],
     livingStage: text(record.livingStage),
     missingInfoKey: text(record.missingInfoKey),
     ownerContactNeeded: Boolean(record.ownerContactNeeded),
@@ -778,8 +818,9 @@ export function buildDailyTaskView(record = {}) {
     timeline: parseLivingTimeline(record.timeline || record.livingTimeline),
     coordinationClientSummary: text(record.coordinationClientSummary),
     coordinationOwnerSummary: text(record.coordinationOwnerSummary),
-    revealClosedLabel: text(record.revealClosedLabel) || "عرض البيانات",
-    revealOpenLabel: text(record.revealOpenLabel) || "إخفاء البيانات",
+    revealClosedLabel: text(record.revealClosedLabel)
+      || (taskKind === "match_group" ? "إدارة المطابقة" : "عرض التفاصيل"),
+    revealOpenLabel: text(record.revealOpenLabel) || "إخفاء التفاصيل",
     groupKey: text(record.groupKey),
     livingUpdatedAt: text(record.livingUpdatedAt || record.updatedAt),
     hasNewResponse: Boolean(record.hasNewResponse),
@@ -894,14 +935,86 @@ function moneyFromCandidate(record = {}) {
   });
 }
 
+function normalizedMatchFact(value = "") {
+  return text(value).replace(/^حي\s+/u, "").replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+}
+
+function normalizedPurposeGroup(value = "") {
+  const purpose = upper(value);
+  if (["SALE", "PURCHASE", "BUY"].includes(purpose)) return "sale";
+  if (["RENT", "LEASE_REQUEST"].includes(purpose)) return "rent";
+  if (purpose === "INVESTMENT") return "investment";
+  return normalizedMatchFact(purpose);
+}
+
+function listingNumber(value) {
+  const number = Number(String(value ?? "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+export function reliableMatchScore(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score <= 0 || score > 100) return 0;
+  return Math.round(score);
+}
+
+export function matchStrengthLabel(score = 0, reasonCount = 0) {
+  const trusted = reliableMatchScore(score);
+  if (trusted >= 80) return "مطابقة قوية";
+  if (trusted >= 60) return "مطابقة متوسطة";
+  if (trusted > 0) return "مطابقة مبدئية";
+  if (Number(reasonCount) >= 4) return "مطابقة قوية";
+  if (Number(reasonCount) >= 2) return "مطابقة متوسطة";
+  return "مطابقة مبدئية";
+}
+
+export function matchDifferenceLines(source = {}, proposed = {}) {
+  const differences = [];
+  const compare = (sourceValue, proposedValue, label, normalize = normalizedMatchFact) => {
+    const left = normalize(sourceValue);
+    const right = normalize(proposedValue);
+    if (left && right && left !== right) differences.push(label);
+  };
+  compare(source.city, proposed.city, "المدينة مختلفة");
+  compare(source.district, proposed.district, "الحي مختلف");
+  compare(source.propertyType, proposed.propertyType, "نوع العقار مختلف");
+  compare(source.purpose, proposed.purpose, "الغرض مختلف", normalizedPurposeGroup);
+
+  const sourceMoney = listingNumber(source.money || source.budget || source.salePrice);
+  const proposedMoney = listingNumber(proposed.money || proposed.salePrice || proposed.budget);
+  if (sourceMoney && proposedMoney) {
+    const percent = Math.round((Math.abs(proposedMoney - sourceMoney) / sourceMoney) * 100);
+    if (percent > 0) differences.push(`فرق السعر ${percent}%`);
+  }
+
+  const sourceArea = listingNumber(source.area);
+  const proposedArea = listingNumber(proposed.area);
+  if (sourceArea && proposedArea) {
+    const percent = Math.round((Math.abs(proposedArea - sourceArea) / sourceArea) * 100);
+    if (percent > 10) differences.push(`فرق المساحة ${percent}%`);
+  }
+  return [...new Set(differences)].slice(0, 4);
+}
+
 function derivedMatchReasons(source = {}, proposed = {}, existing = []) {
   const lines = existing.map((row) => text(row)).filter(Boolean);
   const add = (line) => {
     if (line && !lines.includes(line) && !lines.some((row) => row.includes(line))) lines.push(line);
   };
+  if (normalizedMatchFact(source.city) && normalizedMatchFact(source.city) === normalizedMatchFact(proposed.city)) {
+    add("نفس المدينة");
+  }
   const srcDistrict = text(source.district).replace(/^حي\s+/, "");
   const prDistrict = text(proposed.district).replace(/^حي\s+/, "");
   if (srcDistrict && prDistrict && srcDistrict === prDistrict) add("نفس الحي");
+  if (normalizedMatchFact(source.propertyType)
+    && normalizedMatchFact(source.propertyType) === normalizedMatchFact(proposed.propertyType)) {
+    add("نفس نوع العقار");
+  }
+  if (normalizedPurposeGroup(source.purpose)
+    && normalizedPurposeGroup(source.purpose) === normalizedPurposeGroup(proposed.purpose)) {
+    add("الغرض متوافق");
+  }
   const srcMoney = Number(String(source.money || "").replace(/[^\d.]/g, ""));
   const prMoney = Number(String(proposed.money || "").replace(/[^\d.]/g, ""));
   if (srcMoney > 0 && prMoney > 0 && prMoney <= srcMoney) add("ضمن الميزانية");
@@ -909,7 +1022,7 @@ function derivedMatchReasons(source = {}, proposed = {}, existing = []) {
   const srcArea = Number(String(source.area || "").replace(/[^\d.]/g, ""));
   const prArea = Number(String(proposed.area || "").replace(/[^\d.]/g, ""));
   if (srcArea > 0 && prArea > 0 && Math.abs(prArea - srcArea) / srcArea <= 0.15) add("المساحة متقاربة");
-  return lines.slice(0, 4);
+  return lines.slice(0, 5);
 }
 
 function reasonsFrom(item = {}) {
@@ -989,6 +1102,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   const active = remaining[0];
   const sourceIsRequest = isRequestSource(active) || Boolean(text(active.clientRequestId || active.requestId));
   const source = {
+    opportunityKind: sourceIsRequest ? "REQUEST" : "OFFER",
     propertyType: active.propertyType,
     purpose: active.purpose,
     district: active.district,
@@ -1003,6 +1117,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     })
   };
   const proposed = {
+    opportunityKind: sourceIsRequest ? "OFFER" : "REQUEST",
     propertyType: active.candidatePropertyType || active.propertyType,
     purpose: active.candidatePurpose || active.purpose,
     district: active.candidateDistrict || active.district,
@@ -1023,7 +1138,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     matchId: text(item.matchId || item.recordId || item.id),
     offerId: text(item.ownerOfferId || item.offerId),
     requestId: text(item.clientRequestId || item.requestId),
-    score: Number(item.opportunityScore || item.score || 0),
+    score: Number(item.opportunityScore || item.score || item.metadata?.opportunityScore || item.metadata?.score || 0),
     rank: index + 1,
     propertyLine: listingLine(item),
     moneyLine: moneyFromCandidate(item),
@@ -1050,6 +1165,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     : (active.ownerOfferId || active.offerId || active.opportunityId);
   const referenceCode = formatOpportunityReference(opportunityId);
   const sourceListing = {
+    opportunityKind: source.opportunityKind,
     propertyType: source.propertyType,
     district: source.district,
     city: source.city,
@@ -1059,6 +1175,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     kindLabel: sourceIsRequest ? "طلب العميل" : "عرض المالك"
   };
   const proposedListing = {
+    opportunityKind: proposed.opportunityKind,
     propertyType: proposed.propertyType,
     district: proposed.district,
     city: proposed.city,
@@ -1079,8 +1196,13 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     && group.living.rejectedMatchIds.length === 0;
   const statusLabel = isEarlyContactGate
     ? MATCH_CONTACT_INCOMPLETE_LABEL
-    : (copy.statusLabel
-      || (contactGate.canShowAsMatched ? DAILY_TASK_STATUS_LABELS[stateKey] : MATCH_CONTACT_INCOMPLETE_LABEL));
+    : (copy.statusLabel != null
+      ? text(copy.statusLabel)
+      : (contactGate.canShowAsMatched
+        ? (DAILY_TASK_STATUS_LABELS[stateKey] || "")
+        : MATCH_CONTACT_INCOMPLETE_LABEL));
+  const reasons = derivedMatchReasons(sourceListing, proposedListing, best.reasons || reasonsFrom(active));
+  const score = reliableMatchScore(best.score);
   return buildDailyTaskView({
     ...matchRecordFromItem(active, now),
     id: group.taskId || livingTaskId(group.groupKey),
@@ -1117,15 +1239,19 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     waiting: Boolean(copy.waiting),
     requiresAction: !copy.waiting,
     requiresActionBy: group.living.nextActor || "",
-    revealClosedLabel: candidateCount > 1 ? "مراجعة المطابقات" : copy.revealClosedLabel,
-    revealOpenLabel: copy.revealOpenLabel,
+    revealClosedLabel: candidateCount > 1 ? "مراجعة المطابقات" : "إدارة المطابقة",
+    revealOpenLabel: "إخفاء التفاصيل",
     kindLabel: copy.kindLabel,
     statusLabel,
     currentStatus: statusLabel,
     candidates,
     sourceListing,
     proposedListing,
-    matchReasons: derivedMatchReasons(sourceListing, proposedListing, best.reasons || reasonsFrom(active)),
+    matchReasons: reasons,
+    matchDifferences: matchDifferenceLines(sourceListing, proposedListing),
+    matchScore: score,
+    hasReliableMatchScore: score > 0,
+    matchStrengthLabel: matchStrengthLabel(score, reasons.length),
     timeline: group.living.timeline || [],
     missingInfoKey: missingInfo ? group.living.missingInfoKey : "",
     ownerContactNeeded: group.living.ownerContactNeeded,
@@ -1149,7 +1275,110 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
   });
 }
 
+function opportunityActionMode(item = {}, now = new Date()) {
+  if (isTaskArchived(item)) return "";
+  const opType = upper(item.operationType);
+  const readiness = upper(item.matchingReadiness);
+  const missing = Array.isArray(item.matchingReadinessMissing)
+    ? item.matchingReadinessMissing
+    : (Array.isArray(item.missingFields) ? item.missingFields : []);
+  if (opType === "MISSING_DATA" || readiness === "NEEDS_COMPLETION" || missing.length) return "incomplete";
+  if (isTaskOverdue(item, now) || opType === "ADVERTISER_FOLLOWUP") return "follow_up";
+  if (isNewReview(item)) return "new_review";
+  return "";
+}
+
+export function buildOpportunityActionDailyTask(item = {}, now = new Date()) {
+  const recordType = String(item.recordType || "").toLowerCase();
+  const opType = upper(item.operationType);
+  if (recordType !== "opportunity" && !["MISSING_DATA", "ADVERTISER_FOLLOWUP"].includes(opType)) return null;
+  const mode = opportunityActionMode(item, now);
+  if (!mode) return null;
+  const opportunityId = actionableOpportunityIdFromItem(item);
+  if (!opportunityId) return null;
+  const missingKeys = Array.isArray(item.matchingReadinessMissing)
+    ? item.matchingReadinessMissing
+    : (Array.isArray(item.missingFields) ? item.missingFields : []);
+  const missingLabels = missingFieldLabelsArabic(missingKeys);
+  const overdue = isTaskOverdue(item, now);
+  const copy = {
+    incomplete: {
+      kindLabel: "فرصة تحتاج استكمال",
+      statusLabel: missingLabels.length ? `ينقص: ${missingLabels.join("، ")}` : "بيانات الفرصة غير مكتملة",
+      nextActionLine: missingLabels.length ? `استكمل ${missingLabels[0]}` : "استكمل بيانات الفرصة",
+      actionLabel: "استكمال الفرصة"
+    },
+    follow_up: {
+      kindLabel: "متابعة مستحقة",
+      statusLabel: "موعد المتابعة حان",
+      nextActionLine: "نفّذ المتابعة المستحقة",
+      actionLabel: "فتح الفرصة"
+    },
+    new_review: {
+      kindLabel: "فرصة جديدة",
+      statusLabel: "بانتظار مراجعة المكتب",
+      nextActionLine: "راجع بيانات الفرصة وحدد الخطوة التالية",
+      actionLabel: "مراجعة الفرصة"
+    }
+  }[mode];
+  return buildDailyTaskView({
+    ...item,
+    id: `opportunity_action_${opportunityId}`,
+    opportunityId,
+    taskKind: "opportunity_action",
+    stateKey: DAILY_TASK_STATE.NEW_MATCH,
+    badgeKey: overdue ? "overdue" : "now",
+    kindLabel: copy.kindLabel,
+    statusLabel: copy.statusLabel,
+    nextActionLine: copy.nextActionLine,
+    requiresAction: true,
+    primaryAction: { id: EXEC_ACTION.OPEN_RECORD, label: copy.actionLabel },
+    secondaryActions: [],
+    missingFieldLabels: missingLabels,
+    referenceCode: formatOpportunityReference(opportunityId),
+    createdAt: item.updatedAt || item.createdAt,
+    revealClosedLabel: ""
+  });
+}
+
+export function buildDealActionDailyTask(item = {}, now = new Date()) {
+  if (String(item.recordType || "").toLowerCase() !== "deal" || !isReadyToClose(item)) return null;
+  const dealId = text(item.dealId || item.recordId || item.id);
+  if (!dealId) return null;
+  const opportunityId = text(item.ownerOfferId || item.offerId || item.clientRequestId || item.requestId || item.opportunityId);
+  const stage = upper(item.workflowStage || item.status);
+  const ready = ["AGREEMENT", "CLOSING"].includes(stage)
+    || Number(item.closingReadinessScore || 0) >= 85
+    || String(item.closingReadinessKey || "").toLowerCase() === "very_high";
+  return buildDailyTaskView({
+    ...item,
+    id: `deal_action_${dealId}`,
+    recordId: dealId,
+    recordType: "deal",
+    dealId,
+    opportunityId,
+    offerId: text(item.ownerOfferId || item.offerId),
+    requestId: text(item.clientRequestId || item.requestId),
+    taskKind: "deal_action",
+    stateKey: DAILY_TASK_STATE.NEW_MATCH,
+    badgeKey: isTaskOverdue(item, now) ? "overdue" : "now",
+    kindLabel: ready ? "فرصة جاهزة للإغلاق" : "صفقة تحتاج متابعة",
+    statusLabel: text(item.nextAction) || (ready ? "راجع الاتفاق وخطوة الإغلاق" : "تحتاج متابعة"),
+    nextActionLine: text(item.nextAction) || "راجع الاتفاق وخطوة الإغلاق",
+    requiresAction: true,
+    primaryAction: { id: EXEC_ACTION.OPEN_RECORD, label: "إدارة الإغلاق" },
+    secondaryActions: [],
+    referenceCode: formatOpportunityReference(opportunityId || dealId),
+    createdAt: item.updatedAt || item.createdAt,
+    revealClosedLabel: ""
+  });
+}
+
 export function mapOperationsItemToDailyTask(item = {}, now = new Date(), { officeId = "" } = {}) {
+  const opportunityTask = buildOpportunityActionDailyTask(item, now);
+  if (opportunityTask) return opportunityTask;
+  const dealTask = buildDealActionDailyTask(item, now);
+  if (dealTask) return dealTask;
   if (!isDailyTaskExecutionSource(item)) return null;
   if (isPlatformOpportunitySource(item)) return buildPlatformOpportunityDailyTask(item, now);
   if (isCooperationSource(item)) {
@@ -1182,8 +1411,43 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
   const seenMatchIds = new Set();
   const allowFixtures = showTestFixtures || isDedicatedQaOffice(officeId);
   const opportunities = indexOpportunityItems(items);
+  const explicitOpportunityActions = new Set(items
+    .filter((item) => ["MISSING_DATA", "ADVERTISER_FOLLOWUP"].includes(upper(item?.operationType)))
+    .map((item) => actionableOpportunityIdFromItem(item))
+    .filter(Boolean));
+  const matchedOpportunityIds = new Set(items
+    .filter((item) => String(item?.recordType || "").toLowerCase() === "match" || upper(item?.operationType) === "MATCH_REVIEW")
+    .flatMap((item) => [item?.clientRequestId, item?.requestId, item?.ownerOfferId, item?.offerId, item?.opportunityId])
+    .map((value) => text(value))
+    .filter(Boolean));
   const matchItems = [];
   for (const item of items) {
+    const recordType = String(item?.recordType || "").toLowerCase();
+    const opType = upper(item?.operationType);
+    if (recordType === "opportunity" || opType === "MISSING_DATA" || opType === "ADVERTISER_FOLLOWUP") {
+      const opportunityId = actionableOpportunityIdFromItem(item);
+      if (recordType === "opportunity" && explicitOpportunityActions.has(opportunityId)) continue;
+      const missing = Array.isArray(item?.matchingReadinessMissing) ? item.matchingReadinessMissing : [];
+      const incomplete = upper(item?.matchingReadiness) === "NEEDS_COMPLETION" || missing.length > 0;
+      if (recordType === "opportunity" && matchedOpportunityIds.has(opportunityId) && !incomplete) continue;
+      const canonical = opportunities.get(opportunityId) || {};
+      const view = buildOpportunityActionDailyTask({ ...canonical, ...item, opportunityId }, now);
+      const key = view?.id;
+      if (view && key && !seen.has(key) && (allowFixtures || !isTestFixtureRecord(item))) {
+        seen.add(key);
+        views.push(view);
+      }
+      continue;
+    }
+    if (recordType === "deal") {
+      const view = buildDealActionDailyTask(item, now);
+      const key = view?.id;
+      if (view && key && !seen.has(key) && (allowFixtures || !isTestFixtureRecord(item))) {
+        seen.add(key);
+        views.push(view);
+      }
+      continue;
+    }
     if (!isDailyTaskExecutionSource(item)) continue;
     if (!allowFixtures && isTestFixtureRecord(item)) continue;
     if (isPlatformOpportunitySource(item)) {
