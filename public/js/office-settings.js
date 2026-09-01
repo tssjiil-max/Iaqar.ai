@@ -1171,7 +1171,7 @@ async function shareLink() {
   });
   if (navigator.share) {
     try {
-      await navigator.share({ title: current.officeName, text, url: officeLink() });
+      await navigator.share({ title: current.officeName, text });
       return;
     } catch (error) {
       if (error && error.name === "AbortError") return;
@@ -1719,7 +1719,7 @@ async function shareOfficeLinkCard() {
       console.warn("[iaqar] office share card upload", cardError);
     }
     if (navigator.share) {
-      await navigator.share({ title: current.officeName, text, url: link });
+      await navigator.share({ title: current.officeName, text });
       setStatus(el.linkStatus, "تمت مشاركة رابط المكتب", "is-done");
       return;
     }

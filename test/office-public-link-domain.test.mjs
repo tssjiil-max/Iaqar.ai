@@ -60,13 +60,14 @@ test("canonical office links use /m/{slug} and keep /o/{slug} as legacy", () => 
   assert.equal(PUBLIC_OFFICE_PATH_PREFIX, "/m");
 });
 
-test("WhatsApp share copy is two lines plus the short URL", () => {
+test("WhatsApp share copy is professional and contains the short URL exactly once", () => {
   const message = officeShareMessage({
     officeName: "مكتب الوادي المبارك العقاري",
     origin: "https://iaqar.ai",
     publicSlug: "wadi"
   });
-  assert.equal(message, "مكتب الوادي المبارك العقاري\nرابط المكتب:\nhttps://iaqar.ai/m/wadi");
+  assert.equal(message, "مكتب الوادي المبارك العقاري\n\nأرسل عرضك أو طلبك العقاري بسهولة عبر رابط المكتب:\nhttps://iaqar.ai/m/wadi");
+  assert.equal((message.match(/https:\/\/iaqar\.ai\/m\/wadi/g) || []).length, 1);
 });
 
 test("OG HTML is server-rendered and never includes private tokens", () => {

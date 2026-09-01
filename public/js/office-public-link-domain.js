@@ -157,7 +157,7 @@ export function officeOgDescription(office = {}) {
 export function officeShareMessage({ officeName = "", origin = "", publicSlug = "", officeId = "" } = {}) {
   const name = text(officeName) || "مكتب عقاري";
   const link = officeLinkFor({ origin, publicSlug, officeId });
-  return `${name}\nرابط المكتب:\n${link}`;
+  return `${name}\n\nأرسل عرضك أو طلبك العقاري بسهولة عبر رابط المكتب:\n${link}`;
 }
 
 function escapeHtml(value) {
