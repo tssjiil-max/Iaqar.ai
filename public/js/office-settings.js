@@ -1558,14 +1558,25 @@ async function createOfficeSharePreviewBlob() {
   ctx.font = "800 27px Tajawal, Arial, sans-serif";
   ctx.fillText("إرسال العروض والطلبات", ctaX + ctaWidth / 2, ctaY + 46);
 
+  const brandX = 600;
+  const brandY = 518;
+  const brandWidth = 528;
+  const brandHeight = 76;
+  ctx.fillStyle = "#ffffff";
+  roundedRect(ctx, brandX, brandY, brandWidth, brandHeight, 22);
+  ctx.fill();
+  ctx.strokeStyle = "#cfe3dc";
+  ctx.lineWidth = 2;
+  roundedRect(ctx, brandX, brandY, brandWidth, brandHeight, 22);
+  ctx.stroke();
   try {
     const platformLogo = await loadImageSafe(PLATFORM_DEFAULT_LOGO);
-    drawImageContain(ctx, platformLogo, 980, 520, 48, 48);
+    drawImageContain(ctx, platformLogo, 1058, 530, 50, 50);
   } catch (_) {}
   ctx.textAlign = "right";
   ctx.fillStyle = "#005C4B";
-  ctx.font = "700 22px Tajawal, Arial, sans-serif";
-  ctx.fillText("مكاتب عقارية ذكية", 968, 552);
+  ctx.font = "800 25px Tajawal, Arial, sans-serif";
+  ctx.fillText("مكاتب عقارية ذكية", 1042, 568);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {

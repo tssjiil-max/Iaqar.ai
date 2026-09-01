@@ -157,5 +157,7 @@ test("office share card does not require cover image for blob generation", () =>
   assert.ok(settings.includes("officeBrandIconCandidates"));
   assert.ok(settings.includes("PLATFORM_DEFAULT_LOGO"));
   assert.ok(settings.includes("إرسال العروض والطلبات"));
+  assert.ok(settings.includes("مكاتب عقارية ذكية"));
+  assert.ok(settings.includes("const brandX = 600"));
   assert.equal(settings.includes("createOfficeCardBlob() {\n  const missing = officeMissingFields()"), false);
 });
