@@ -154,5 +154,8 @@ test("office share card does not require cover image for blob generation", () =>
   const settings = readRepo("public", "js", "office-settings.js");
   assert.ok(settings.includes("officeShareCardRequiredFields"));
   assert.ok(settings.includes("loadImageSafe"));
+  assert.ok(settings.includes("officeBrandIconCandidates"));
+  assert.ok(settings.includes("PLATFORM_DEFAULT_LOGO"));
+  assert.ok(settings.includes("إرسال العروض والطلبات"));
   assert.equal(settings.includes("createOfficeCardBlob() {\n  const missing = officeMissingFields()"), false);
 });

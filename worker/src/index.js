@@ -373,7 +373,7 @@ export default {
         return await handlePublicOfficePreview(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
       }
 
-      if (request.method === "GET" && shareCardGetMatch(url.pathname)) {
+      if ((request.method === "GET" || request.method === "HEAD") && shareCardGetMatch(url.pathname)) {
         return await handleOfficeShareCardGet(request, env, publicPreviewDeps(env, requestId));
       }
 

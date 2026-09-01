@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handlePublicOfficePreview, handleSavePublicSlug } from "../src/office-public-preview.js";
+import { handleOfficeShareCardGet, handlePublicOfficePreview, handleSavePublicSlug } from "../src/office-public-preview.js";
 
 function appError(code, status, message) {
   const error = new Error(message);
@@ -85,6 +85,29 @@ test("browser hits on the Worker short link land on the Hosting public office pa
     response.headers.get("location"),
     "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/?office=staging-logo-live-20260807&view=public"
   );
+});
+
+test("missing uploaded share card is proxied as direct PNG for WhatsApp GET and HEAD", async () => {
+  const deps = {
+    requireMediaBucket: () => ({ get: async () => null }),
+    resolveAppOrigin: () => "https://host.example",
+    corsHeaders: () => ({ "Access-Control-Allow-Origin": "*" }),
+    fetch: async (_url, { method }) => new Response(method === "HEAD" ? null : new Uint8Array([137, 80, 78, 71]), {
+      status: 200,
+      headers: { "content-type": "image/png" }
+    }),
+    appError
+  };
+  for (const method of ["GET", "HEAD"]) {
+    const response = await handleOfficeShareCardGet(
+      new Request("https://worker.example/share/office/wadi/card-v1.png", { method }),
+      {},
+      deps
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("location"), null);
+  }
 });
 
 test("public slug uniqueness rejects another office", async () => {

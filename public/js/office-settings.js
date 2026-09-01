@@ -1546,6 +1546,18 @@ async function createOfficeSharePreviewBlob() {
     ctx.fillText(cityLine, nameX, lineY + 8, 640);
   }
 
+  const ctaX = 600;
+  const ctaY = 420;
+  const ctaWidth = 528;
+  const ctaHeight = 72;
+  ctx.fillStyle = "#087064";
+  roundedRect(ctx, ctaX, ctaY, ctaWidth, ctaHeight, 22);
+  ctx.fill();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 27px Tajawal, Arial, sans-serif";
+  ctx.fillText("إرسال العروض والطلبات", ctaX + ctaWidth / 2, ctaY + 46);
+
   try {
     const platformLogo = await loadImageSafe(PLATFORM_DEFAULT_LOGO);
     drawImageContain(ctx, platformLogo, 980, 520, 48, 48);

@@ -173,10 +173,17 @@ export async function handleOfficeShareCardGet(request, env, deps) {
     headers.set("cache-control", "public, max-age=3600");
     headers.set("x-content-type-options", "nosniff");
     headers.set("content-type", "image/png");
-    return new Response(object.body, { headers });
+    return new Response(request.method === "HEAD" ? null : object.body, { headers });
   }
   const fallback = `${deps.resolveAppOrigin(env)}/icons/iaqar-office-share-fallback-1200x630.png`;
-  return Response.redirect(fallback, 302);
+  const fetchImpl = deps.fetch || fetch;
+  const response = await fetchImpl(fallback, { method: request.method === "HEAD" ? "HEAD" : "GET" });
+  if (!response.ok) throw deps.appError("media_not_found", 404, "بطاقة المشاركة غير موجودة");
+  const headers = new Headers(deps.corsHeaders());
+  headers.set("cache-control", "public, max-age=3600");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("content-type", "image/png");
+  return new Response(request.method === "HEAD" ? null : response.body, { headers });
 }
 
 export async function handleOfficeShareCardUpload(request, env, deps) {
