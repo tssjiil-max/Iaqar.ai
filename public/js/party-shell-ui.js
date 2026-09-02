@@ -217,6 +217,17 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       <div class="party-chip-grid">${chipOptions(pkg.detailOptions, "requestedDetailKeys")}</div>
     </div>`
       : "";
+    const smartDetailQuestion = pkg.smartDetailQuestion
+      ? `<div class="party-package-section party-smart-question" data-smart-detail-key="${escapeHtml(pkg.smartDetailQuestion.key)}">
+      <p class="party-section-label">سؤال يساعد على حسم المطابقة</p>
+      <p class="party-prompt">${escapeHtml(pkg.smartDetailQuestion.prompt)}</p>
+      <div class="party-chip-grid party-chip-grid--single">${chipOptions([
+        { value: "yes", label: "نعم، مهم" },
+        { value: "no", label: "لا" },
+        { value: "not_important", label: "غير مهم" }
+      ], "smartDetailImportance", "single")}</div>
+    </div>`
+      : "";
     const viewingSection = `<div class="party-package-section" data-package-section="viewing" hidden>
       <p class="party-section-label">أوقات المعاينة المفضلة</p>
       <p class="party-muted">اليوم</p>
@@ -275,6 +286,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
           ], "clientDecision", "single")}
         </div>
       </div>
+      ${smartDetailQuestion}
       ${detailSection}
       ${viewingSection}
       ${priceSection}
