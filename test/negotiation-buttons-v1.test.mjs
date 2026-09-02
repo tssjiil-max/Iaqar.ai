@@ -59,37 +59,6 @@ test("client decision UI exposes the five phase-one button choices", () => {
   }
 });
 
-test("client receives only one smart missing-detail question at a time", () => {
-  const pkg = buildDecisionPackageView("client", {
-    propertyType: "شقة",
-    canonicalOffer: { propertyType: "شقة", price: 700000 }
-  });
-  assert.equal(pkg.smartDetailQuestion?.key, "area");
-  const html = partyHtml("client", "شقة", { canonicalOffer: { price: 700000 } });
-  assert.match(html, /سؤال يساعد على حسم المطابقة/);
-  assert.match(html, /هل هذا التفصيل مهم لك: المساحة؟/);
-  assert.equal((html.match(/data-smart-detail-key=/g) || []).length, 1);
-});
-
-test("answered smart questions do not repeat", () => {
-  const pkg = buildDecisionPackageView("client", {
-    propertyType: "شقة",
-    canonicalOffer: { propertyType: "شقة", price: 700000 },
-    clientBundle: { ignoredDetailKeys: ["area"] }
-  });
-  assert.equal(pkg.smartDetailQuestion?.key, "bedrooms");
-});
-
-test("a smart detail marked important is preserved for owner follow-up", () => {
-  const bundle = normalizeClientBundle({
-    propertyType: "شقة",
-    interestStatus: CLIENT_INTEREST_STATUS.INTERESTED,
-    interestAction: CLIENT_INTEREST_ACTION.INTEREST_ONLY,
-    requestedDetailKeys: ["elevator"]
-  });
-  assert.deepEqual(bundle.requestedDetailKeys, ["elevator"]);
-});
-
 test("the four initial property types render their existing canonical detail choices", () => {
   const expectations = [
     ["شقة", ["المساحة", "عدد الغرف", "عدد الحمامات", "الدور", "مصعد", "موقف", "مفروشة"]],

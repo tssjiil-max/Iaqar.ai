@@ -256,16 +256,6 @@ function collectPackageFromForm(root, party = "client") {
   delete bundle.clientDecision;
   delete bundle.priceNegotiation;
 
-  const smartQuestion = root.querySelector("[data-smart-detail-key]");
-  const smartDetailKey = String(smartQuestion?.getAttribute("data-smart-detail-key") || "");
-  const smartImportance = String(bundle.smartDetailImportance || "");
-  if (smartDetailKey && smartImportance === "yes") {
-    bundle.requestedDetailKeys = [...new Set([...(bundle.requestedDetailKeys || []), smartDetailKey])];
-  } else if (smartDetailKey && ["no", "not_important"].includes(smartImportance)) {
-    bundle.ignoredDetailKeys = [...new Set([...(bundle.ignoredDetailKeys || []), smartDetailKey])];
-  }
-  delete bundle.smartDetailImportance;
-
   const ownerPriceDecision = String(bundle.ownerPriceDecision || "");
   if (ownerPriceDecision === "confirmed") {
     bundle.priceConfirmation = "confirmed";

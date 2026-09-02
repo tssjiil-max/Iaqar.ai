@@ -518,7 +518,6 @@ export function normalizeClientBundle(raw = {}) {
   });
   bundle.specNeeds = uniqueList(input.specNeeds);
   bundle.requestedDetailKeys = uniqueList(input.requestedDetailKeys);
-  bundle.ignoredDetailKeys = uniqueList(input.ignoredDetailKeys);
   bundle.interestAction = text(input.interestAction)
     || (input.wantsViewing ? CLIENT_INTEREST_ACTION.VIEWING : CLIENT_INTEREST_ACTION.DETAILS);
   if (bundle.interestAction === CLIENT_INTEREST_ACTION.INTEREST_ONLY) {
@@ -930,11 +929,6 @@ export function buildDecisionPackageView(party = "client", {
   const side = party === "owner" ? "owner" : "client";
   const specOptions = specGroupOptions(propertyType);
   const detailOptions = detailKeyOptions(propertyType);
-  const ignoredDetailKeys = new Set(clientBundle?.ignoredDetailKeys || []);
-  const smartDetailOption = side === "client"
-    ? detailOptions.find((option) => !ignoredDetailKeys.has(option.value)
-      && !canonicalHasDetailKey(option.value, canonicalOffer))
-    : null;
   const missingSpecs = side === "owner"
     ? ownerMissingSpecGroups(clientBundle || {}, canonicalOffer, propertyType)
     : [];
@@ -1008,13 +1002,6 @@ export function buildDecisionPackageView(party = "client", {
     propertyType,
     specOptions,
     detailOptions,
-    smartDetailQuestion: smartDetailOption
-      ? {
-        key: smartDetailOption.value,
-        label: smartDetailOption.label,
-        prompt: `هل هذا التفصيل مهم لك: ${smartDetailOption.label}؟`
-      }
-      : null,
     rejectionOptions: rejectionReasonOptions(propertyType),
     missingSpecs,
     missingSpecsLabels: missingSpecs.map(specGroupLabel),
