@@ -1431,6 +1431,9 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
     const recordType = String(item?.recordType || "").toLowerCase();
     const opType = upper(item?.operationType);
     if (recordType === "opportunity" || opType === "MISSING_DATA" || opType === "ADVERTISER_FOLLOWUP") {
+      // Legacy operations may still ask for area/rooms. Those details are gathered
+      // during coordination and must not hide an already-created match task.
+      if (opType === "MISSING_DATA" && item?.deferredOnlyMissingData === true) continue;
       const opportunityId = actionableOpportunityIdFromItem(item);
       if (recordType === "opportunity" && explicitOpportunityActions.has(opportunityId)) continue;
       const missing = Array.isArray(item?.matchingReadinessMissing) ? item.matchingReadinessMissing : [];

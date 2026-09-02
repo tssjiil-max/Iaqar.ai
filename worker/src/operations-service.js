@@ -19,7 +19,7 @@ import { formatOpportunityReference } from "../../public/js/reference-code-domai
 
 const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind", "purpose", "propertyType", "city",
-  "district", "priceOrBudget", "area", "rooms"
+  "district", "priceOrBudget"
 ]);
 
 const FIELD_LABELS_AR = Object.freeze({
@@ -39,16 +39,8 @@ function isBlank(value) {
   return String(value).trim() === "";
 }
 
-function isLandPropertyType(value) {
-  return /أرض|ارض/i.test(String(value || "").trim());
-}
-
 export function listMissingOpportunityFields(opportunity = {}) {
-  const required = REQUIRED_OPPORTUNITY_FIELDS.filter((key) => {
-    if (key === "rooms" && isLandPropertyType(opportunity.propertyType)) return false;
-    return true;
-  });
-  return required.filter((key) => isBlank(opportunity[key]));
+  return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => isBlank(opportunity[key]));
 }
 
 export function missingFieldLabels(missingFields = []) {

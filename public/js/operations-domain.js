@@ -191,12 +191,17 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
   const canDraftMessage = type === OPERATION_TYPES.MATCH_REVIEW
     || type === OPERATION_TYPES.EXTERNAL_RESPONSE;
 
-  const matchingReadinessMissing = type === OPERATION_TYPES.MISSING_DATA && missingFields.length
-    ? missingFields
+  const deferredSecondaryFields = new Set(["area", "rooms", "المساحة", "الغرف", "عدد الغرف"]);
+  const blockingMissingFields = missingFields.filter((field) => !deferredSecondaryFields.has(String(field || "").trim()));
+  const deferredOnlyMissingData = type === OPERATION_TYPES.MISSING_DATA
+    && missingFields.length > 0
+    && blockingMissingFields.length === 0;
+  const matchingReadinessMissing = type === OPERATION_TYPES.MISSING_DATA && blockingMissingFields.length
+    ? blockingMissingFields
     : [];
   const matchingReadiness = matchingReadinessMissing.length
     ? "NEEDS_COMPLETION"
-    : (type === OPERATION_TYPES.MISSING_DATA ? "NEEDS_COMPLETION" : "");
+    : "";
 
   return {
     id: String(op.id || ""),
@@ -300,6 +305,7 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     matchingReadiness,
     matchingReadinessMissing,
     missingFields: matchingReadinessMissing,
+    deferredOnlyMissingData,
     createdAt: isoFrom(op.createdAt),
     updatedAt: isoFrom(op.updatedAt || op.createdAt),
     isTestFixture: op.isTestFixture === true || metadata.isTestFixture === true || op.qaLiveE2e === true || metadata.qaLiveE2e === true,
