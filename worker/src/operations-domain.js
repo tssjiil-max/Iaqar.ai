@@ -4,6 +4,8 @@
  * No WhatsApp/Telegram/message drafts/automatic cooperation.
  */
 
+import { livingTaskId } from "../../public/js/match-group-domain.js";
+
 export const OPERATION_TYPES = Object.freeze({
   MATCH_REVIEW: "MATCH_REVIEW",
   MISSING_DATA: "MISSING_DATA",
@@ -585,7 +587,10 @@ export async function buildInAppNotification({
     : copy.push;
   const matchId = String(operation.matchId || operation.sourceEntityId || "");
   const opportunityId = String(operation.opportunityId || "");
-  const workflowId = String(operation.metadata?.matchGroupId || operation.id || matchId || "");
+  const matchGroupId = String(operation.metadata?.matchGroupId || "");
+  const workflowId = operation.type === OPERATION_TYPES.MATCH_REVIEW
+    ? livingTaskId(matchGroupId || opportunityId || matchId)
+    : String(matchGroupId || operation.id || matchId || "");
   return {
     id,
     officeId: String(officeId || operation.officeId || ""),

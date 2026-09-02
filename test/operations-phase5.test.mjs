@@ -284,10 +284,14 @@ test("24. duplicate Notification event is idempotent by id", async () => {
 
 test("25. Notification links to the correct Operation", async () => {
   const op = await buildMatchReviewOperation({
-    officeId: "office-a", matchId: "mat_link", dataVersion: "v", score: 80
+    officeId: "office-a", matchId: "mat_link", opportunityId: "opp_request_1",
+    matchGroupId: "opp_request_1", dataVersion: "v", score: 80
   });
   const n = await buildInAppNotification({ officeId: "office-a", operation: op });
   assert.equal(n.operationId, op.id);
+  assert.equal(n.matchId, "mat_link");
+  assert.equal(n.taskId, "mg_opp_request_1");
+  assert.equal(n.workflowId, "mg_opp_request_1");
 });
 
 test("26. match push type maps to matchNotifications preference category", () => {

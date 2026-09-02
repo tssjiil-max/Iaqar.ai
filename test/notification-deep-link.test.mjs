@@ -41,3 +41,29 @@ test("notification destination survives Android notification data and login", ()
   assert.match(workflowSource, /iaqar:access-granted["'], replayPendingNotificationTarget/);
   assert.match(workflowSource, /iaqar:operations-refresh["'], replayPendingNotificationTarget/);
 });
+
+test("legacy match notification task ids are repaired to the live mg_ task", () => {
+  const api = navigationApi();
+  const fromData = api.buildNotificationTargetFromData({
+    type: "match",
+    taskId: "opp_request_1",
+    matchId: "mat_1",
+    operationId: "op_1"
+  });
+  assert.equal(fromData.kind, "daily-task");
+  assert.equal(fromData.id, "mg_opp_request_1");
+
+  const fromUrl = api.parseNotificationSearchParams(new URLSearchParams({
+    openDailyTask: "opp_request_1",
+    openMatch: "mat_1",
+    openOperation: "op_1"
+  }));
+  assert.equal(fromUrl.id, "mg_opp_request_1");
+
+  const missingData = api.parseNotificationSearchParams(new URLSearchParams({
+    openDailyTask: "op_missing_1",
+    openOperation: "op_missing_1",
+    openOpportunity: "opp_incomplete_1"
+  }));
+  assert.equal(missingData.id, "op_missing_1");
+});

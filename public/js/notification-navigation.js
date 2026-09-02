@@ -8,6 +8,12 @@
     return String(value || "").trim();
   }
 
+  function matchTaskId(value) {
+    const id = safeId(value);
+    if (!id || id.startsWith("mg_")) return id;
+    return `mg_${id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  }
+
   function buildNotificationTargetFromData(data = {}) {
     const type = safeId(data.type || data.notificationType).toLowerCase();
     const recordId = safeId(data.recordId || data.matchId || data.dealId);
@@ -19,7 +25,10 @@
     if (targetPath.startsWith("/")) {
       return { kind: "url", path: targetPath, officeId };
     }
-    const taskId = safeId(data.taskId);
+    const rawTaskId = safeId(data.taskId);
+    const taskId = rawTaskId && (type === "match" || type === "match_found" || safeId(data.matchId))
+      ? matchTaskId(rawTaskId)
+      : rawTaskId;
     if (taskId) {
       return {
         kind: "daily-task",
@@ -83,7 +92,10 @@
 
     const focusFollowUp = params.get("focusFollowUp") === "1";
 
-    const openDailyTask = safeId(params.get("openDailyTask"));
+    const rawDailyTask = safeId(params.get("openDailyTask"));
+    const openDailyTask = rawDailyTask && (openMatch || rawDailyTask.startsWith("opp_"))
+      ? matchTaskId(rawDailyTask)
+      : rawDailyTask;
     if (openDailyTask) return {
       kind: "daily-task",
       id: openDailyTask,

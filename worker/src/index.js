@@ -85,6 +85,7 @@ import {
 } from "./opportunity-purge-service.js";
 import { markNotificationRead } from "./in-app-notification-write.js";
 import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
+import { livingTaskId } from "../../public/js/match-group-domain.js";
 import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
 import {
   handlePublicOfficePreview,
@@ -5199,6 +5200,9 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
   const title = "لديك مطابقة جديدة تحتاج مراجعتك.";
   const body = "لديك مطابقة جديدة تحتاج مراجعتك.";
   const operationId = String(top.operationId || "").trim();
+  const taskId = livingTaskId(
+    top.matchGroupId || top.opportunityId || top.clientRequestId || top.requestId || top.matchId
+  );
   await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
     officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
     title:firestoreString(title),body:firestoreString(body),
@@ -5219,6 +5223,8 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       type: "operation",
       presentationType: "match_found",
       recordId: operationId,
+      taskId,
+      opportunityId: top.opportunityId || top.clientRequestId || top.requestId || "",
       assignedBrokerId: top.assignedBrokerId || "",
       accessToken,
       env,

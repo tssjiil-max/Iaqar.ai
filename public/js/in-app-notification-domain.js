@@ -4,7 +4,7 @@
  */
 
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
-import { partyReplyTimelineLabel } from "./match-group-domain.js";
+import { livingTaskId, partyReplyTimelineLabel } from "./match-group-domain.js";
 
 export const IN_APP_NOTIFICATION_TYPE = Object.freeze({
   NEW_MATCH: "NEW_MATCH",
@@ -68,8 +68,12 @@ export function livingEventNotificationTitle({ party, action, referenceCode = ""
 }
 
 export function notificationTapTarget(row = {}) {
+  const rawTaskId = text(row.taskId || row.workflowId || row.matchGroupId);
+  const matchTaskId = text(row.matchId) && rawTaskId && !rawTaskId.startsWith("mg_")
+    ? livingTaskId(rawTaskId)
+    : rawTaskId;
   return {
-    taskId: text(row.taskId || row.workflowId || row.matchGroupId),
+    taskId: matchTaskId,
     matchId: text(row.matchId),
     operationId: text(row.operationId),
     opportunityId: text(row.opportunityId),
