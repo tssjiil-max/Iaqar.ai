@@ -54,3 +54,31 @@ test("buildClientIntakeDocument uses canonical field names", () => {
   assert.equal(doc.streetWidth, 24);
   assert.equal(REQUEST_KINDS.length, 2);
 });
+
+test("shared price field is interpreted as request budget for purchase", () => {
+  const doc = buildClientIntakeDocument({
+    requestKind: "purchase",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "السلام",
+    priceOrBudget: "980000",
+    phone: "0500000000"
+  });
+  assert.equal(doc.priceOrBudget, 980000);
+  assert.equal(doc.budget, 980000);
+  assert.equal(doc.amount, 980000);
+});
+
+test("shared price field is interpreted as request annual budget for rent", () => {
+  const doc = buildClientIntakeDocument({
+    requestKind: "rent",
+    propertyType: "شقة",
+    city: "المدينة المنورة",
+    district: "السلام",
+    priceOrBudget: "35000",
+    phone: "0500000000"
+  });
+  assert.equal(doc.priceOrBudget, 35000);
+  assert.equal(doc.annualRent, 35000);
+  assert.equal(doc.amount, 35000);
+});

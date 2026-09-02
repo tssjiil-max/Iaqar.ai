@@ -284,6 +284,9 @@ function collectPackageFromForm(root, party = "client") {
   if (!bundle.propertyAvailability) delete bundle.propertyAvailability;
   if (!bundle.viewingAllowed) delete bundle.viewingAllowed;
   if (party === "owner") {
+    // An active offer is available by default. Availability is not a separate
+    // administrative confirmation in the negotiation journey.
+    if (!bundle.propertyAvailability) bundle.propertyAvailability = "available";
     bundle.locationShare = Boolean(bundle.locationShare);
     if (bundle.mediaAdded) bundle.mediaAdded = true;
   }
@@ -311,7 +314,7 @@ function refreshPackageSections(root) {
     || rejectionDisposition !== "negotiable" || !rejectionReason;
   if (responseViewing) responseViewing.hidden = bundle.negotiationResponse !== "viewing";
   if (party === "owner") {
-    const available = bundle.propertyAvailability === "available";
+    const available = bundle.propertyAvailability !== "not_available";
     const unavailable = bundle.propertyAvailability === "not_available";
     root.querySelectorAll("[data-package-section=\"price\"],[data-package-section=\"photos\"],[data-package-section=\"location\"],[data-package-section=\"ownerSpecs\"],[data-package-section=\"ownerViewing\"]").forEach((node) => {
       if (unavailable) node.hidden = true;

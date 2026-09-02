@@ -53,15 +53,18 @@ export const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "propertyType",
   "city",
   "district",
-  "priceOrBudget",
-  "area",
-  "rooms"
+  "priceOrBudget"
 ]);
 
 export const EXTENDED_OPPORTUNITY_FIELDS = Object.freeze([
+  "area",
+  "rooms",
   "salePrice",
   "budget",
   "bathrooms",
+  "streetWidth",
+  "facing",
+  "furnished",
   "floorNumber",
   "floorPosition",
   "floorsCount",
@@ -156,7 +159,8 @@ const NUMERIC_FIELDS = new Set([
   "rooms",
   "bathrooms",
   "floorNumber",
-  "floorsCount"
+  "floorsCount",
+  "streetWidth"
 ]);
 
 function nullableNumber(value) {
@@ -219,8 +223,6 @@ export function requiredOpportunityFieldsFor(fields = {}) {
   else if (normalized.purpose === "RENT") required.push("annualRent");
   else if (normalized.purpose === "PURCHASE" || normalized.purpose === "LEASE_REQUEST") required.push("budget");
   else if (normalized.purpose === "INVESTMENT") required.push("priceOrBudget");
-  required.push("area");
-  if (!isLandProperty(normalized.propertyType)) required.push("rooms");
   return required;
 }
 

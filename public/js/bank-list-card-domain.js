@@ -57,7 +57,7 @@ function normalizeBankText(value = "") {
 function purposeWord(record = {}) {
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
   const owner = isOwnerRecord(record);
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return owner ? "للإيجار" : "للاستئجار";
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
   if (purpose === "SALE" || purpose === "PURCHASE") return owner ? "للبيع" : "للشراء";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return "";
@@ -67,7 +67,7 @@ function titleLine(record = {}) {
   const propertyType = normalizeBankText(record.propertyType);
   const purpose = purposeWord(record);
   if (propertyType && propertyType !== "تحتاج مراجعة" && purpose) {
-    return `${propertyType} ${purpose}`;
+    return `${isOwnerRecord(record) ? "عرض" : "طلب"} ${propertyType} ${purpose}`;
   }
   if (propertyType) return propertyType;
   return "";

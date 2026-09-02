@@ -147,6 +147,29 @@ test("missing-field flow asks only for absent required fields", async () => {
   assert.deepEqual(completed.missingFields, []);
 });
 
+test("secondary property details never block matching readiness", async () => {
+  const completed = await prepareOpportunityIntake({
+    officeId: "office-a",
+    brokerId: "broker-a",
+    text: "طلب شقة للإيجار في حي السلام المدينة المنورة بميزانية 35000",
+    brokerFields: {
+      opportunityKind: "REQUEST",
+      purpose: "LEASE_REQUEST",
+      propertyType: "شقة",
+      city: "المدينة المنورة",
+      district: "السلام",
+      priceOrBudget: 35000,
+      advertiserRole: "CLIENT",
+      advertiserPhoneRaw: "0501234567"
+    },
+    allowIncomplete: true
+  });
+  assert.equal(completed.state, "saved");
+  assert.equal(completed.opportunity.area, null);
+  assert.equal(completed.opportunity.rooms, null);
+  assert.equal(completed.opportunity.matchingReadiness, "READY_FOR_MATCHING");
+});
+
 test("duplicate prevention uses a stable office-scoped fingerprint", async () => {
   const a = await buildDeduplicationFingerprint({
     officeId: "office-a",

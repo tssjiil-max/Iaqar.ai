@@ -82,6 +82,32 @@ test("sale-rent conflict is rejected", () => {
   assert.equal(scored.eligible, false);
 });
 
+test("rent request matches rent offer without secondary details", () => {
+  const rentOffer = opportunityToMatchInput({
+    id: "rent_offer",
+    opportunityKind: "OFFER",
+    purpose: "RENT",
+    city: "المدينة المنورة",
+    district: "السلام",
+    propertyType: "شقة",
+    priceOrBudget: 32000,
+    lifecycleStatus: "ACTIVE"
+  });
+  const rentRequest = opportunityToMatchInput({
+    id: "rent_request",
+    opportunityKind: "REQUEST",
+    purpose: "LEASE_REQUEST",
+    city: "المدينة المنورة",
+    district: "السلام",
+    propertyType: "شقة",
+    priceOrBudget: 35000,
+    lifecycleStatus: "ACTIVE"
+  });
+  const scored = scoreMatch(rentRequest, rentOffer);
+  assert.equal(scored.eligible, true);
+  assert.ok(scored.score >= MATCH_THRESHOLD);
+});
+
 test("archived or deleted opportunities are not active counterparts", () => {
   assert.equal(isActiveLifecycle({ lifecycleStatus: "ARCHIVED", archivedAt: "x" }), false);
   assert.equal(isActiveLifecycle({ lifecycleStatus: "DELETED", deletedAt: "x" }), false);

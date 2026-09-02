@@ -57,14 +57,17 @@ test("property chips map to existing propertyType values", () => {
 });
 
 test("other property chip uses existing free-text propertyType field", () => {
-  assert.equal(propertyTypeFromChip("other", "مستودع"), "مستودع");
-  assert.equal(inferPropertyTypeChip("مستودع"), "other");
+  assert.equal(propertyTypeFromChip("other", "مزرعة"), "مزرعة");
+  assert.equal(inferPropertyTypeChip("مزرعة"), "other");
+  assert.equal(inferPropertyTypeChip("مستودع"), "warehouse");
   assert.equal(inferPropertyTypeChip("شقة"), "apartment");
 });
 
-test("access-gate exposes quick-choice chips without owner/client wording", () => {
-  assert.ok(accessGate.includes("لدي عقار"));
-  assert.ok(accessGate.includes("أبحث عن عقار"));
+test("access-gate exposes role-explicit quick-choice cards", () => {
+  assert.ok(accessGate.includes("عرض عقار"));
+  assert.ok(accessGate.includes("مالك العقار"));
+  assert.ok(accessGate.includes("اطلب عقار"));
+  assert.ok(accessGate.includes("باحث عن عقار"));
   assert.equal(accessGate.includes("أنا عميل"), false);
   assert.equal(accessGate.includes("أنا مالك"), false);
   assert.ok(accessGate.includes("access-chip"));
@@ -95,8 +98,11 @@ test("intake forms unify purpose label and compact voice button", () => {
   assert.ok(accessGate.includes('accessRequiredLabel("الغرض")'));
   assert.equal(accessGate.includes("نوع العرض"), false);
   assert.equal(accessGate.includes("نوع الطلب"), false);
-  assert.ok(accessGate.includes("🎙️ إضافة بالصوت"));
+  assert.ok(accessGate.includes("🎙️ أدخل عرض العقار بالصوت"));
+  assert.ok(accessGate.includes("🎙️ أدخل طلبك بالصوت"));
   assert.ok(accessGate.includes("access-voice-slot"));
+  assert.ok(accessGate.includes('id="intakeForm" novalidate'));
+  assert.ok(accessGate.includes('<input name="area"><input name="rooms"><input name="bathrooms">'));
 });
 
 test("intake form order places contact fields before submit", () => {

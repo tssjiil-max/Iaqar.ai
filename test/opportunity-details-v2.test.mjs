@@ -34,7 +34,7 @@ test("V2 mapper uses display number and missing field editors", () => {
   assert.equal(vm.displayNumber, "1258");
   assert.equal(vm.type, "عرض مالك");
   assert.equal(vm.status, "ناقصة");
-  assert.equal(vm.propertyPurpose, "أرض للبيع");
+  assert.equal(vm.propertyPurpose, "عرض أرض للبيع");
   assert.match(vm.location, /المدينة/);
   assert.equal(vm.price, "");
   assert.equal(vm.area, "1,000 م²");

@@ -92,7 +92,7 @@ test("owner view uses a different title and never includes client contact", () =
   });
   assert.equal(view.title, "عميل مهتم بعقارك");
   assert.equal(view.ownerClientStatus, "يوجد عميل مهتم بعقارك");
-  assert.equal(view.actions.some((item) => item.label === "العقار متاح"), true);
+  assert.equal(view.actions.some((item) => item.label === "متابعة التنسيق"), true);
   assert.equal(view.actions.some((item) => item.label === "تأكيد الموعد"), false);
   assert.equal(JSON.stringify(view).includes("clientName"), false);
 });

@@ -469,9 +469,9 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
 
   if (s === COOPERATION_STAGE.OWNER_ACTION) {
     if (r === COOPERATION_ROLE.PROPERTY_OFFICE) {
-      return { needsAction: true, label: "تأكيد توفر العقار", waitingLabel: "", emptyAction: "" };
+      return { needsAction: true, label: "متابعة التنسيق مع المالك", waitingLabel: "", emptyAction: "" };
     }
-    return waiting(partnerName ? `بانتظار ${partnerName} لتأكيد توفر العقار.` : "");
+    return waiting(partnerName ? `بانتظار ${partnerName} لمتابعة التنسيق مع المالك.` : "");
   }
 
   if (s === COOPERATION_STAGE.APPOINTMENT) {
@@ -787,8 +787,8 @@ export function cooperationActionsFor({ stage, role, record = {}, officeId = "" 
   }
   if (s === COOPERATION_STAGE.OWNER_ACTION && role === COOPERATION_ROLE.PROPERTY_OFFICE) {
     return {
-      primaryAction: { id: "property_available", label: "العقار متاح" },
-      secondaryActions: [{ id: "property_unavailable", label: "العقار غير متاح" }]
+      primaryAction: { id: "property_available", label: "متابعة التنسيق" },
+      secondaryActions: [{ id: "property_unavailable", label: "العقار لم يعد متاحًا" }]
     };
   }
   if (s === COOPERATION_STAGE.APPOINTMENT) {

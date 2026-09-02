@@ -169,10 +169,10 @@ export function bankOpportunityKindDisplayLabel(record = {}) {
   const purpose = String(record.purpose || "").toUpperCase();
   const isOffer = kind === "OFFER" || kind === "OWNER" || kind === "OWNER_OFFER";
   const isRequest = kind === "REQUEST" || kind === "CLIENT" || kind === "CLIENT_REQUEST";
-  if (isOffer && purpose === "SALE") return "عرض بيع";
-  if (isOffer && purpose === "RENT") return "عرض إيجار";
-  if (isRequest && purpose === "PURCHASE") return "طلب شراء";
-  if (isRequest && purpose === "LEASE_REQUEST") return "طلب استئجار";
+  if (isOffer && purpose === "SALE") return "عرض للبيع";
+  if (isOffer && purpose === "RENT") return "عرض للإيجار";
+  if (isRequest && purpose === "PURCHASE") return "طلب للشراء";
+  if (isRequest && purpose === "LEASE_REQUEST") return "طلب للإيجار";
   return "";
 }
 

@@ -46,9 +46,9 @@ test("bank card purpose label follows owner or client role", () => {
   const buyer = buildBankListCardView({ opportunityKind: "REQUEST", propertyType: "فيلا", purpose: "SALE" });
   const tenant = buildBankListCardView({ opportunityKind: "REQUEST", propertyType: "شقة", purpose: "RENT" });
 
-  assert.equal(owner.title, "فيلا للبيع");
-  assert.equal(buyer.title, "فيلا للشراء");
-  assert.equal(tenant.title, "شقة للاستئجار");
+  assert.equal(owner.title, "عرض فيلا للبيع");
+  assert.equal(buyer.title, "طلب فيلا للشراء");
+  assert.equal(tenant.title, "طلب شقة للإيجار");
 });
 
 test("land property hides rooms on bank card", () => {

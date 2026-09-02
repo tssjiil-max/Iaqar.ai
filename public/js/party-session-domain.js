@@ -41,7 +41,7 @@ export const CLIENT_INTERESTED_FOLLOWUP_ACTIONS = Object.freeze([
 ]);
 
 export const OWNER_PARTY_ACTIONS = Object.freeze([
-  Object.freeze({ id: "property_available", label: "العقار متاح" }),
+  Object.freeze({ id: "property_available", label: "متابعة التنسيق" }),
   Object.freeze({ id: "confirm_appointment", label: "تأكيد الموعد" }),
   Object.freeze({ id: "not_available", label: "غير متاح حالياً" })
 ]);
