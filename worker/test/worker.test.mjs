@@ -1087,6 +1087,19 @@ test("Phase 5 operation deep links open Operations Center records", () => {
   );
 });
 
+test("match notification deep link keeps the actionable daily-task and operation together", () => {
+  assert.equal(
+    buildNotificationLink({
+      officeId: "office-1",
+      type: "operation",
+      recordId: "op_match_1",
+      taskId: "mg_opp_request_1",
+      opportunityId: "opp_request_1"
+    }),
+    "/?officeId=office-1&openDailyTask=mg_opp_request_1&openOperation=op_match_1&openOpportunity=opp_request_1"
+  );
+});
+
 test("Phase 5 operations endpoints require authentication", async () => {
   for (const path of ["/operations/action", "/operations/from-cooperation", "/operations/missing-data"]) {
     const response = await worker.fetch(new Request(`https://example.test${path}`, {
