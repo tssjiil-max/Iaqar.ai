@@ -96,6 +96,16 @@ test("8) الإيجار ٢٢٬٠٠٠ ريال على دفعتين", () => {
   assert.equal(s.paymentInstallments, 2);
 });
 
+test("rent wording preserves client request versus owner offer semantics", () => {
+  const request = extractArabicOpportunityText("مطلوب شقة للاستئجار في حي السلام بميزانية 30000 ريال");
+  const offer = extractArabicOpportunityText("شقة للإيجار في حي السلام بسعر 30000 ريال");
+  assert.equal(request.publicShape.transactionType, "إيجار");
+  assert.equal(request.legacyFields.opportunityKind, "REQUEST");
+  assert.equal(request.legacyFields.purpose, "LEASE_REQUEST");
+  assert.equal(offer.legacyFields.opportunityKind, "OFFER");
+  assert.equal(offer.legacyFields.purpose, "RENT");
+});
+
 test("sale land keeps sale price out of every rent field", () => {
   const result = extractArabicOpportunityText(
     "أرض للبيع في المدينة المنورة حي الرانوناء المساحة 431.75 م² السعر المطلوب 580000 ريال"

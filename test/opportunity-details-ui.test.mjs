@@ -52,6 +52,7 @@ test("owner offer and client request share unified details layout", () => {
   assert.ok(client.html.includes("opp-details"));
   assert.ok(owner.html.includes("عرض مالك"));
   assert.ok(client.html.includes("طلب عميل"));
+  assert.ok(client.html.includes("شقة للاستئجار"));
   assert.ok(owner.html.includes("السعر"));
   assert.ok(client.html.includes("الميزانية"));
   assert.ok(!owner.html.includes("listing-field-mark"));

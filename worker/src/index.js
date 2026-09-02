@@ -209,6 +209,7 @@ import {
   isActiveLifecycle as isOpportunityLifecycleActive
 } from "./opportunity-lifecycle.mjs";
 import { findDuplicateOpportunity, matchesDuplicateCriteria } from "./opportunity-duplicate.mjs";
+import { resolveParsedOpportunityKind } from "./opportunity-message-classification.mjs";
 import {
   ACTIVEPIECES_SOURCE,
   authorizeActivepieces,
@@ -1853,9 +1854,13 @@ async function handlePublicIntakeMatching(request, env, requestId) {
       phone: parsed.phone || intake.phone,
       contactType: intake.kind === "owner" ? "owner" : "buyer",
       kind: intake.kind,
+      purpose: readiness.purpose,
+      transactionType: parsed.transactionType,
       propertyType: parsed.propertyType || intake.propertyType,
       city: parsed.city || intake.city,
-      district: parsed.district || intake.district
+      district: parsed.district || intake.district,
+      priceOrBudget: intake.amount || parsed.price || 0,
+      area: intake.area || parsed.area || 0
     }
   );
 
@@ -2629,57 +2634,6 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
     await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
   }
   return { kind: parsed.kind, matches: matches.length };
-}
-
-function hasExplicitRequestCue(text) {
-  const padded = ` ${text} `;
-  return /(?:^|\s)طلب(?:\s|$)/.test(padded)
-    || /(?:^|\s)(مطلوب|ابغى|أبغى|احتاج|أحتاج|يبحث|نبحث|نرغب|ارغب|أرغب)(?:\s|$)/.test(padded);
-}
-
-function hasExplicitOfferCue(text) {
-  const padded = ` ${text} `;
-  return /(?:^|\s)(عرض|معروض|متوفر|متاح|عندي|لدينا|يوجد)(?:\s|$)/.test(padded);
-}
-
-function countDistinctKeywordMatches(text, words) {
-  const seen = new Set();
-  let score = 0;
-  for (const word of words) {
-    const normalized = normalizeArabicText(word);
-    if (!normalized || seen.has(normalized)) continue;
-    if (text.includes(normalized)) {
-      seen.add(normalized);
-      score += 1;
-    }
-  }
-  return score;
-}
-
-function resolveParsedOpportunityKind(text) {
-  const explicitRequest = hasExplicitRequestCue(text);
-  const explicitOffer = hasExplicitOfferCue(text);
-  if (explicitRequest && !explicitOffer) {
-    return { kind: "client_request", offerScore: 0, requestScore: 1 };
-  }
-  if (explicitOffer && !explicitRequest) {
-    return { kind: "owner_offer", offerScore: 1, requestScore: 0 };
-  }
-
-  const offerWords = [
-    "للبيع", "للإيجار", "للايجار", "معروض", "عرض", "متوفر", "متاح", "مالك", "مباشر",
-    "عندي", "لدينا", "يوجد", "للتمليك", "للتنازل"
-  ];
-  const requestWords = [
-    "مطلوب", "ابغى", "أبغى", "احتاج", "أحتاج", "يبحث", "نبحث", "طلب", "نرغب",
-    "ارغب", "أرغب", "عميل", "مشتري", "مستأجر"
-  ];
-  const offerScore = countDistinctKeywordMatches(text, offerWords);
-  const requestScore = countDistinctKeywordMatches(text, requestWords);
-  const kind = offerScore === 0 && requestScore === 0
-    ? "unknown"
-    : (offerScore > requestScore ? "owner_offer" : "client_request");
-  return { kind, offerScore, requestScore };
 }
 
 function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {

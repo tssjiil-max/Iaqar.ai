@@ -217,27 +217,27 @@ function extractFloorNumber(text) {
 
 function extractTransactionType(text, title) {
   const titleHay = String(title || "");
-  const titleRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(titleHay);
+  const titleRent = /(?:^|\s)(?:للإيجار|للايجار|للاستئجار|استئجار)(?:\s|$)/i.test(titleHay);
   const titleSale = /(?:^|\s)للبيع(?:\s|$)/i.test(titleHay);
   if (titleSale && !titleRent) {
     const m = titleHay.match(/للبيع/i);
     return makeField("بيع", m ? m[0] : "للبيع", 0.99);
   }
   if (titleRent && !titleSale) {
-    const m = titleHay.match(/للإيجار|للايجار/i);
+    const m = titleHay.match(/للإيجار|للايجار|للاستئجار|استئجار/i);
     return makeField("إيجار", m ? m[0] : "للإيجار", 0.99);
   }
   if (titleSale && titleRent) return emptyField();
 
   const focus = [firstSentence(text)].filter(Boolean).join("\n");
-  const focusRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(focus);
+  const focusRent = /(?:^|\s)(?:للإيجار|للايجار|للاستئجار|استئجار)(?:\s|$)/i.test(focus);
   const focusSale = /(?:^|\s)للبيع(?:\s|$)/i.test(focus);
   if (focusSale && !focusRent) {
     const m = focus.match(/للبيع/i);
     return makeField("بيع", m ? m[0] : "للبيع", 0.96);
   }
   if (focusRent && !focusSale) {
-    const m = focus.match(/للإيجار|للايجار/i);
+    const m = focus.match(/للإيجار|للايجار|للاستئجار|استئجار/i);
     return makeField("إيجار", m ? m[0] : "للإيجار", 0.96);
   }
   if (focusSale && focusRent) return emptyField();
@@ -247,13 +247,16 @@ function extractTransactionType(text, title) {
     return makeField("إيجار", "الإيجار", 0.94);
   }
 
-  const hasRent = /(?:^|\s)للإيجار|للايجار(?:\s|$)/i.test(text) || /(?:^|\s)الإيجار(?:\s+[\d٠-٩])/.test(text);
+  const hasRent = /(?:^|\s)(?:للإيجار|للايجار|للاستئجار|استئجار)(?:\s|$)/i.test(text) || /(?:^|\s)الإيجار(?:\s+[\d٠-٩])/.test(text);
   const hasSale = /(?:^|\s)للبيع(?:\s|$)/i.test(text);
   const hasPurchase = /(?:^|\s)(?:مطلوب\s+شراء|شراء)(?:\s|$)/i.test(text);
   if ([hasRent, hasSale, hasPurchase].filter(Boolean).length > 1) {
     return emptyField();
   }
-  if (hasRent) return makeField("إيجار", "للإيجار", 0.88);
+  if (hasRent) {
+    const evidence = text.match(/للإيجار|للايجار|للاستئجار|استئجار/i);
+    return makeField("إيجار", evidence ? evidence[0] : "للإيجار", 0.88);
+  }
   if (hasSale) return makeField("بيع", "للبيع", 0.88);
   if (hasPurchase) return makeField("شراء", "شراء", 0.88);
   return emptyField();
@@ -583,7 +586,7 @@ function mapLegacyFields(fields) {
 
   if (transaction === "إيجار") {
     const evidence = fields.transactionType?.evidence || "";
-    const isRequest = /(?:^|\s)(?:مطلوب|أبحث|ابحث|أرغب\s+في\s+استئجار)(?:\s|$)/i.test(evidence);
+    const isRequest = /(?:^|\s)(?:مطلوب|أبحث|ابحث|أرغب\s+في\s+استئجار|للاستئجار|استئجار|مستأجر)(?:\s|$)/i.test(evidence);
     opportunityKind = isRequest ? "REQUEST" : "OFFER";
     purpose = opportunityKind === "REQUEST" ? "LEASE_REQUEST" : "RENT";
   } else if (transaction === "بيع") {

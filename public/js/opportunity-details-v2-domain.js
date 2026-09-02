@@ -132,8 +132,9 @@ function normalizePlace(value = "") {
 
 function purposeWord(record = {}) {
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
-  if (purpose === "SALE" || purpose === "PURCHASE") return "للبيع";
+  const owner = isOwnerRecord(record);
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return owner ? "للإيجار" : "للاستئجار";
+  if (purpose === "SALE" || purpose === "PURCHASE") return owner ? "للبيع" : "للشراء";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return "";
 }

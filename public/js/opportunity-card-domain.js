@@ -75,8 +75,9 @@ function propertyDescription(record = {}) {
     normalizePropertyTypeDisplay(record.propertyType)
   ).display;
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
-  const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? "للإيجار"
-    : purpose === "SALE" || purpose === "PURCHASE" ? "للبيع"
+  const owner = isOwnerRecord(record);
+  const purposeWord = purpose === "RENT" || purpose === "LEASE_REQUEST" ? (owner ? "للإيجار" : "للاستئجار")
+    : purpose === "SALE" || purpose === "PURCHASE" ? (owner ? "للبيع" : "للشراء")
     : "";
   if (propertyType && propertyType !== "تحتاج مراجعة" && purposeWord) {
     return `${propertyType} ${purposeWord}`;

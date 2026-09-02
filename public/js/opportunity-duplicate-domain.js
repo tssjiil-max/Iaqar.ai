@@ -94,6 +94,19 @@ function normalizeArabicLite(value) {
     .trim();
 }
 
+function normalizeDuplicatePurpose(record = {}) {
+  const raw = String(record.purpose || record.transactionType || "").trim().toUpperCase();
+  if (["RENT", "LEASE", "إيجار", "تأجير", "RENTAL"].includes(raw)) return "rent_offer";
+  if (["LEASE_REQUEST", "استئجار", "طلب إيجار"].includes(raw)) return "rent_request";
+  if (["SALE", "بيع"].includes(raw)) return "sale_offer";
+  if (["PURCHASE", "BUY", "شراء"].includes(raw)) return "sale_request";
+  return raw.toLowerCase();
+}
+
+function duplicateAmount(record = {}) {
+  return Number(record.priceOrBudget ?? record.salePrice ?? record.budget ?? record.annualRent ?? record.price ?? 0);
+}
+
 export function normalizeDuplicatePhone(phone) {
   const digits = normalizeSaudiPhoneForWhatsApp(phone);
   return digits || "";
@@ -148,17 +161,29 @@ export function matchesDuplicateCriteria(existing = {}, criteria = {}) {
     if (existingKind && existingKind !== "request") return false;
   }
 
+  const purpose = normalizeDuplicatePurpose(criteria);
+  const existingPurpose = normalizeDuplicatePurpose(existing);
+  if (purpose && existingPurpose && purpose !== existingPurpose) return false;
+
   const propertyType = normalizeArabicLite(criteria.propertyType);
   const existingProperty = normalizeArabicLite(existing.propertyType);
-  if (propertyType && existingProperty && propertyType !== existingProperty) return false;
+  if (!propertyType || !existingProperty || propertyType !== existingProperty) return false;
 
   const city = normalizeArabicLite(criteria.city);
   const existingCity = normalizeArabicLite(existing.city);
-  if (city && existingCity && city !== existingCity) return false;
+  if (!city || !existingCity || city !== existingCity) return false;
 
   const district = normalizeArabicLite(criteria.district);
   const existingDistrict = normalizeArabicLite(existing.district);
-  if (district && existingDistrict && district !== existingDistrict) return false;
+  if (!district || !existingDistrict || district !== existingDistrict) return false;
+
+  const amount = duplicateAmount(criteria);
+  const existingAmount = duplicateAmount(existing);
+  if (amount > 0 && existingAmount > 0 && amount !== existingAmount) return false;
+
+  const area = Number(criteria.area || 0);
+  const existingArea = Number(existing.area || 0);
+  if (area > 0 && existingArea > 0 && area !== existingArea) return false;
 
   return true;
 }

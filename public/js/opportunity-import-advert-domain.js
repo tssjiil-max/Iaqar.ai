@@ -229,7 +229,24 @@ function sameOfficeOnly(record = {}, officeId = "") {
   return safeText(record.officeId, 80) === office;
 }
 
+function samePartyAndPurpose(existing = {}, criteria = {}) {
+  const existingKind = resolveOpportunityKind(existing);
+  const incomingKind = String(criteria.opportunityKind || criteria.kind || "").toLowerCase();
+  if (incomingKind === "offer" && existingKind && existingKind !== "offer") return false;
+  if (incomingKind === "request" && existingKind && existingKind !== "request") return false;
+  const purpose = String(criteria.purpose || criteria.transactionType || "").toUpperCase();
+  const existingPurpose = String(existing.purpose || existing.transactionType || "").toUpperCase();
+  return !(purpose && existingPurpose && purpose !== existingPurpose);
+}
+
 function strongPropertyMatch(existing = {}, criteria = {}) {
+  const existingKind = resolveOpportunityKind(existing);
+  const incomingKind = String(criteria.opportunityKind || criteria.kind || "").toLowerCase();
+  if (incomingKind === "offer" && existingKind !== "offer") return false;
+  if (incomingKind === "request" && existingKind !== "request") return false;
+  const purpose = String(criteria.purpose || criteria.transactionType || "").toUpperCase();
+  const existingPurpose = String(existing.purpose || existing.transactionType || "").toUpperCase();
+  if (purpose && existingPurpose && purpose !== existingPurpose) return false;
   const propertyType = normalizeArabicLite(criteria.propertyType);
   const existingProperty = normalizeArabicLite(existing.propertyType);
   if (!propertyType || !existingProperty || propertyType !== existingProperty) return false;
@@ -262,7 +279,7 @@ export function findImportDuplicateOpportunities(docs = [], criteria = {}, offic
     if (!isActiveOpportunityForDuplicate(data)) continue;
 
     const existingUrl = normalizeUrl(data.sourceUrl || data.url || "");
-    if (normalizedUrl && existingUrl && normalizedUrl === existingUrl) {
+    if (normalizedUrl && existingUrl && normalizedUrl === existingUrl && samePartyAndPurpose(data, criteria)) {
       hits.push({ opportunityId, data, strength: "strong", reason: "source_url" });
       continue;
     }
@@ -275,7 +292,14 @@ export function findImportDuplicateOpportunities(docs = [], criteria = {}, offic
       kind: criteria.opportunityKind,
       propertyType: criteria.propertyType,
       city: criteria.city,
-      district: criteria.district
+      district: criteria.district,
+      purpose: criteria.purpose,
+      transactionType: criteria.transactionType,
+      priceOrBudget: criteria.priceOrBudget,
+      salePrice: criteria.salePrice,
+      budget: criteria.budget,
+      annualRent: criteria.annualRent,
+      area: criteria.area
     })) {
       hits.push({ opportunityId, data, strength: "strong", reason: "phone_property" });
       continue;

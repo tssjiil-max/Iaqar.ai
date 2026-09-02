@@ -32,3 +32,10 @@ test("buildOpportunityCardView shows real match score only when computed", () =>
   assert.equal(card.bestMatchScore, 84);
   assert.equal(card.bestMatchScoreText, "84%");
 });
+
+test("opportunity card distinguishes owner rent from client lease request", () => {
+  const owner = buildOpportunityCardView({ opportunityKind: "OFFER", purpose: "RENT", propertyType: "شقة" });
+  const client = buildOpportunityCardView({ opportunityKind: "REQUEST", purpose: "LEASE_REQUEST", propertyType: "شقة" });
+  assert.equal(owner.description, "شقة للإيجار");
+  assert.equal(client.description, "شقة للاستئجار");
+});

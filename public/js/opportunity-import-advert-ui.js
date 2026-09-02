@@ -755,6 +755,8 @@ async function saveImportedAdvert(brokerExtras, review, advertiser = {}) {
     contactPhone: advertiser.advertiserPhoneNormalized,
     contactType: brokerFields.opportunityKind === "OFFER" ? "owner" : "buyer",
     opportunityKind: brokerFields.opportunityKind,
+    purpose: brokerFields.purpose,
+    transactionType: brokerFields.transactionType,
     propertyType: brokerFields.propertyType,
     city: brokerFields.city,
     district: brokerFields.district,
