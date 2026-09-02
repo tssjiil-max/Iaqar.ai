@@ -93,7 +93,7 @@ test("TEST 1 collapsed match shows type purpose district city price and referenc
   const [task] = mapOperationsItemsToDailyTasks([matchItem], new Date());
   const html = buildDailyTaskCardHtml(task);
   const text = visible(html);
-  assert.match(text, /شقة للاستئجار/);
+  assert.match(text, /طلب شقة للإيجار/);
   assert.match(text, /العزيزية/);
   assert.match(text, /المدينة المنورة/);
   assert.match(text, /50,000 ر\.س/);
@@ -200,7 +200,7 @@ test("TEST 5b want_viewing on match record exposes send_to_owner", () => {
   assert.equal(task.ownerContactNeeded, true);
   assert.equal(task.primaryAction?.id, "send_to_owner");
   assert.match(html, /إرسال للمالك/);
-  assert.match(html, /تأكيد توفر العقار/);
+  assert.match(html, /إرسال طلب المعاينة للمالك/);
 });
 
 test("TEST 6 owner available updates the same task", () => {

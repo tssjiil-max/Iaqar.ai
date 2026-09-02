@@ -148,7 +148,7 @@ function appointmentBlock(appointment = {}) {
     return `<p class="party-prompt" data-testid="party-wait-client-slot">بانتظار اختيار العميل لموعد المعاينة</p>`;
   }
   if (phase === "wait_property") {
-    return `<p class="party-prompt" data-testid="party-wait-property">بانتظار تأكيد توفر العقار</p>`;
+    return `<p class="party-prompt" data-testid="party-wait-property">بانتظار رد المالك</p>`;
   }
   return taken;
 }
@@ -284,15 +284,6 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       </button>
     </div>`;
   }
-  if (pkg.workflowStep === "owner_availability") {
-    return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_availability">
-      <p class="party-section-label">إدارة المفاوضات</p>
-      <p class="party-section-label">توفر العقار</p><div class="party-chip-grid party-chip-grid--single">${chipOptions([
-        { value: "available", label: "العقار متاح" }, { value: "not_available", label: "غير متاح" }
-      ], "propertyAvailability", "single")}</div>
-      <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
-    </div>`;
-  }
   if (pkg.workflowStep === "owner_details") {
     const fields = (pkg.ownerDetailFields || []).map((field) => `<div class="party-package-field">
       <p class="party-row"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.hasValue ? field.currentValue : "غير متوفر حاليًا")}</strong></p>
@@ -369,20 +360,11 @@ function decisionPackageBlock(pkg = {}, view = {}) {
   }).join("");
   return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
     <p class="party-section-label">إدارة المفاوضات</p>
-    <div class="party-package-section">
-      <p class="party-section-label">توفر العقار</p>
-      <div class="party-chip-grid party-chip-grid--single">
-        ${chipOptions([
-          { value: "available", label: "العقار متاح" },
-          { value: "not_available", label: "غير متاح" }
-        ], "propertyAvailability", "single")}
-      </div>
-    </div>
-    <div class="party-package-section" data-package-section="price" hidden>
+    <div class="party-package-section" data-package-section="price">
       <p class="party-section-label">السعر</p>
       ${priceBlock}
     </div>
-    <div class="party-package-section" data-package-section="photos" hidden>
+    <div class="party-package-section" data-package-section="photos">
       <p class="party-section-label">الصور</p>
       <p class="party-warning">الصور التي ترفعها ستُشارك مع العميل وتُضاف للعقار. تأكد أنها لا تحتوي على رقم جوال أو بيانات تواصل خاصة.</p>
       <label class="party-chip party-chip--toggle">
@@ -392,17 +374,17 @@ function decisionPackageBlock(pkg = {}, view = {}) {
       <input type="file" accept="image/jpeg,image/png,image/webp" multiple class="party-file" data-package-photos hidden>
       <div class="party-photo-preview" data-package-photo-preview></div>
     </div>
-    <div class="party-package-section" data-package-section="location" hidden>
+    <div class="party-package-section" data-package-section="location">
       <label class="party-chip party-chip--toggle">
         <input type="checkbox" data-package-bool="locationShare" ${pkg.hasLocation ? "checked" : ""}>
         <span>مشاركة موقع العقار</span>
       </label>
     </div>
-    <div class="party-package-section" data-package-section="ownerSpecs" hidden>
+    <div class="party-package-section" data-package-section="ownerSpecs">
       <p class="party-section-label">التفاصيل المطلوبة من العميل</p>
       ${ownerDetailFields}
     </div>
-    <div class="party-package-section" data-package-section="ownerViewing" hidden>
+    <div class="party-package-section" data-package-section="ownerViewing">
       <p class="party-section-label">المعاينة</p>
       <div class="party-chip-grid party-chip-grid--single">
         ${chipOptions([

@@ -959,7 +959,7 @@ test("canonical opportunities hydrate collapsed identity and expanded facts", ()
   assert.equal(views.length, 1);
   const task = views[0];
   assert.equal(task.badgeLabel, "9:21 م");
-  assert.match(task.identityLine || task.typePurposeLine, /شقة للاستئجار/);
+  assert.match(task.identityLine || task.typePurposeLine, /طلب شقة للإيجار/);
   assert.match(task.identityLine || task.typePurposeLine, /حي النرجس/);
   const open = buildDailyTaskCardHtml(task, { open: true });
   assert.match(open, /طلب العميل/);

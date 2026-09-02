@@ -138,7 +138,7 @@ test("access-gate short-circuits cv2Party before creating the role chooser", () 
   const partyIdx = accessGate.indexOf('URLSearchParams(location.search).get("cv2Party")');
   const lockIdx = accessGate.indexOf('document.body.classList.add("access-locked")');
   const gateIdx = accessGate.indexOf('gate.id = "accessGate"');
-  const chooserIdx = accessGate.indexOf("لدي عقار");
+  const chooserIdx = accessGate.indexOf("عرض عقار");
   assert.ok(partyIdx > 0 && partyIdx < lockIdx, "cv2Party must be inspected before access-locked");
   assert.ok(partyIdx < gateIdx, "cv2Party must be inspected before #accessGate");
   assert.ok(partyIdx < chooserIdx, "cv2Party must be inspected before role chooser");

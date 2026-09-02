@@ -133,7 +133,7 @@ function normalizePlace(value = "") {
 function purposeWord(record = {}) {
   const purpose = String(record.purpose || record.transactionType || "").toUpperCase();
   const owner = isOwnerRecord(record);
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return owner ? "للإيجار" : "للاستئجار";
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
   if (purpose === "SALE" || purpose === "PURCHASE") return owner ? "للبيع" : "للشراء";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return "";
@@ -142,7 +142,7 @@ function purposeWord(record = {}) {
 function propertyPurposeLine(record = {}) {
   const propertyType = normalizePlace(record.propertyType);
   const purpose = purposeWord(record);
-  if (propertyType && purpose) return `${propertyType} ${purpose}`;
+  if (propertyType && purpose) return `${isOwnerRecord(record) ? "عرض" : "طلب"} ${propertyType} ${purpose}`;
   return propertyType || purpose || "";
 }
 

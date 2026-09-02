@@ -418,8 +418,8 @@ export function livingCopy(stage, {
         statusLabel: "قيد المتابعة",
         happenedLine: "العميل مهتم بالعقار",
         turnLine: "دورك الآن",
-        yourTurnLine: "تأكيد توفر العقار",
-        nextActionLine: "تأكيد توفر العقار",
+        yourTurnLine: "إرسال المطابقة للمالك",
+        nextActionLine: "إرسال المطابقة للمالك",
         waiting: false,
         ...reveal
       };
@@ -451,11 +451,11 @@ export function livingCopy(stage, {
     if (ownerContactNeeded) {
       return {
         kindLabel: "العميل يريد معاينة",
-        statusLabel: "تأكيد التوفر",
+        statusLabel: "تنسيق المعاينة",
         happenedLine: "العميل طلب معاينة",
         turnLine: "دورك الآن",
-        yourTurnLine: "تأكيد توفر العقار",
-        nextActionLine: "أرسل للمالك لتأكيد أن العقار ما زال متاحًا.",
+        yourTurnLine: "إرسال طلب المعاينة للمالك",
+        nextActionLine: "أرسل للمالك لبدء تنسيق المعاينة.",
         waiting: false,
         ...reveal
       };

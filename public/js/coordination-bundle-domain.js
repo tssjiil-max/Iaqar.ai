@@ -985,12 +985,11 @@ export function buildDecisionPackageView(party = "client", {
       || ownerBundle?.counterPreference === PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING
       || clientBundle.negotiationResponse === CLIENT_NEGOTIATION_RESPONSE.VIEWING)
       && !clientBundle.wantsViewing) workflowStep = "client_viewing";
-  } else if (!ownerBundle?.propertyAvailability) workflowStep = "owner_availability";
-  else if (ownerBundle.propertyAvailability === OWNER_AVAILABILITY.AVAILABLE) {
+  } else if (!ownerBundle || ownerBundle.propertyAvailability === OWNER_AVAILABILITY.AVAILABLE) {
     if (ownerDetailFields.length) workflowStep = "owner_details";
     else if (clientBundle?.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
-      && !ownerBundle.negotiationDecision) workflowStep = "owner_price";
-    else if (clientBundle?.wantsViewing && !ownerBundle.viewingAllowed) workflowStep = "owner_viewing";
+      && !ownerBundle?.negotiationDecision) workflowStep = "owner_price";
+    else if (clientBundle?.wantsViewing && !ownerBundle?.viewingAllowed) workflowStep = "owner_viewing";
   }
   return {
     mode: "decision_package_v1",

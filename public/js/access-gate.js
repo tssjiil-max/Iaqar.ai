@@ -102,6 +102,8 @@
     .access-card h2{color:#087064;font-size:21px;margin:0 0 6px}.access-options{display:grid;gap:10px}
     .access-btn{min-height:56px;border:0;border-radius:16px;padding:11px 15px;background:#128c7e;color:#fff;
       font:800 17px Tajawal;cursor:pointer}.access-btn.secondary{background:#fff;color:#087064;border:1.5px solid #128c7e}
+    .access-btn-main{display:block;font-size:18px;line-height:1.35}.access-btn-sub{display:block;margin-top:2px;font-size:12px;
+      line-height:1.35;color:inherit;opacity:.9;font-weight:700}
     .access-btn.light{background:#eaf7f3;color:#087064}.access-btn:disabled{opacity:.55}
     .access-back{border:0;background:none;color:#087064;font:700 14px Tajawal;margin:0 0 8px;cursor:pointer}
     .access-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.access-form label{display:grid;gap:5px;
@@ -156,6 +158,10 @@
     .access-chip.is-selected{background:#128c7e;color:#fff}
     .access-chip-row--property .access-chip{min-height:36px;padding:6px 10px;font-size:13px}
     #propertyTypeOtherWrap[hidden]{display:none!important}
+    .access-optional-details{grid-column:1/-1;border:1px solid #d4e3de;border-radius:14px;padding:10px 12px;background:#f8fbfa}
+    .access-optional-details summary{cursor:pointer;color:#087064;font-weight:800}
+    .access-optional-body{display:grid;gap:10px;margin-top:10px}
+    .access-voice-transcript{margin-top:8px}
   </style>`);
 
   gate.className = "access-gate";
@@ -433,8 +439,8 @@
     frame(`<section class="access-card"><h2>اختر الخدمة</h2>
       <p>رفع الطلب مباشر للعميل والمالك، وتسجيل الوسيط يخضع لمراجعة رخصة فال واعتماد الإدارة.</p>
       <div class="access-options">
-        <button class="access-btn" data-go="owner">لدي عقار</button>
-        <button class="access-btn secondary" data-go="client">أبحث عن عقار</button>
+        <button class="access-btn" data-go="owner"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
+        <button class="access-btn secondary" data-go="client"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
         <button class="access-btn secondary" data-go="login">دخول مكتب مسجل</button>
       </div>
       <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>
@@ -455,8 +461,8 @@
       <h2>إضافة فرصة للمنصة</h2>
       <p>أرسل عرضك أو طلبك، والمنصة ترشّح المكتب الأنسب.</p>
       <div class="access-options">
-        <button class="access-btn" data-go="owner" data-testid="add-offer">لدي عقار</button>
-        <button class="access-btn secondary" data-go="client" data-testid="add-request">أبحث عن عقار</button>
+        <button class="access-btn" data-go="owner" data-testid="add-offer"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
+        <button class="access-btn secondary" data-go="client" data-testid="add-request"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
       </div>
       <div class="access-note">لا يحتاج هذا النموذج إلى إنشاء حساب.</div>
     </section>`);
@@ -500,8 +506,8 @@
     frame(`<section class="access-card"><h2>خدمات المكتب</h2>
       <p>ارفع طلبك مباشرة دون تسجيل، ولا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.</p>
       <div id="publicOfficeProfile"></div>
-      <div class="access-options"><button class="access-btn" data-go="owner">لدي عقار</button>
-      <button class="access-btn secondary" data-go="client">أبحث عن عقار</button>
+      <div class="access-options"><button class="access-btn" data-go="owner"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
+      <button class="access-btn secondary" data-go="client"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
       <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`, "public-office");
     gate.dataset.activeScreen = "public-office";
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => intakeForm(button.dataset.go, officeId));
@@ -746,17 +752,40 @@
     });
   }
 
-  function applyPublicVoicePrefill(form, structured, {
+  async function applyPublicVoicePrefill(form, structured, {
     owner,
     refreshClientDynamic
   }) {
     const api = window.IAQARGeminiVoiceIntake;
     if (!api || !form) return;
+    let resolvedStructured = structured;
+    const editedTranscript = String(structured?.description || "").trim();
+    if (editedTranscript) {
+      try {
+        const { extractArabicOpportunityText } = await import("./opportunity-text-extraction.js");
+        const parsed = extractArabicOpportunityText(editedTranscript);
+        const fields = parsed?.legacyFields || {};
+        resolvedStructured = {
+          ...structured,
+          transactionType: fields.purpose || structured.transactionType,
+          propertyType: fields.propertyType || structured.propertyType,
+          city: fields.city || structured.city,
+          district: fields.district || structured.district,
+          salePrice: fields.salePrice ?? structured.salePrice,
+          annualRent: fields.annualRent ?? structured.annualRent,
+          budget: fields.budget ?? fields.priceOrBudget ?? structured.budget,
+          area: fields.area ?? structured.area,
+          rooms: fields.rooms ?? structured.rooms,
+          bathrooms: fields.bathrooms ?? structured.bathrooms,
+          description: editedTranscript
+        };
+      } catch (_) { /* keep server extraction */ }
+    }
     const manual = {
       name: form.elements.name?.value || "",
       phone: form.elements.phone?.value || ""
     };
-    const values = api.mapGeminiToPublicFormValues(structured, {
+    const values = api.mapGeminiToPublicFormValues(resolvedStructured, {
       context: owner ? "owner" : "client",
       manualValues: manual
     });
@@ -810,9 +839,13 @@
         officeId: targetOffice,
         workerBase: resolveWorkerBase(),
         publicRoute: true,
-        startLabel: "🎙️ إضافة بالصوت",
+        startLabel: kind === "owner" ? "🎙️ أدخل عرض العقار بالصوت" : "🎙️ أدخل طلبك بالصوت",
+        reviewTranscript: true,
+        transcriptPlaceholder: kind === "owner"
+          ? "عندي شقة للإيجار في حي العزيزية، السعر 32 ألف في السنة، 3 غرف ودورتين مياه، فيها مكيفات ومطبخ راكب."
+          : "أبغى شقة للإيجار في حي العزيزية أو السلام، ميزانيتي إلى 35 ألف، ويفضل 3 غرف ودورتين مياه ومكيفات ومطبخ راكب.",
         onStructured(structured) {
-          applyPublicVoicePrefill(form, structured, {
+          void applyPublicVoicePrefill(form, structured, {
             owner: kind === "owner",
             refreshClientDynamic
           });
@@ -830,9 +863,9 @@
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
     frame(`<section class="access-card"><button class="access-back">← رجوع</button>
-      <h2>${owner ? "إضافة عرض مالك" : "إضافة طلب عميل"}</h2>
+      <h2>${owner ? "عرض عقار" : "طلب عقار"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
-      <form class="access-form" id="intakeForm">
+      <form class="access-form" id="intakeForm" novalidate>
         <div class="access-chip-section full">
           ${accessRequiredLabel("الغرض")}
           <div class="access-chip-row access-chip-row--purpose">${intakePurposeChipHtml(owner)}</div>
@@ -859,18 +892,21 @@
           <span id="intakePriceLabel" class="access-field-label">السعر <span class="access-required-mark" aria-hidden="true">*</span></span>
           <input name="priceOrBudget" data-testid="${owner ? "owner-price" : "client-price"}" inputmode="numeric" maxlength="12" required autocomplete="off"
             placeholder="مثال: 500000"></label>
-        ${owner
-    ? ""
-    : `<div id="clientDynamicFields" class="access-form full" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>`}
         <div id="publicVoiceIntakePanel" class="full access-voice-slot"></div>
-        <label class="full">${accessOptionalLabel("تفاصيل إضافية (اختياري)")}<textarea name="details" maxlength="1000"></textarea></label>
-        ${owner ? `<label class="full">${accessOptionalLabel("صور العقار (اختياري، حتى 5 صور)")}
+        <div hidden aria-hidden="true">
+          <input name="area"><input name="rooms"><input name="bathrooms">
+          <input name="streetWidth"><input name="facing"><input name="furnished">
+        </div>
+        <details class="access-optional-details"><summary>تفاصيل اختيارية</summary><div class="access-optional-body">
+        <label class="full">${accessOptionalLabel("تفاصيل إضافية")}<textarea name="details" maxlength="1000"></textarea></label>
+        ${owner ? `<label class="full">${accessOptionalLabel("صور العقار (حتى 5 صور)")}
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
           <p class="file-help">يمكن إرسال العرض دون صور، ويطلبها الوسيط لاحقًا عبر واتساب. بحد أقصى 8 ميجابايت للصورة.</p></label>
-          <label class="full">${accessOptionalLabel("فيديو العقار (اختياري)")}
+          <label class="full">${accessOptionalLabel("فيديو العقار")}
           <input name="video" type="file" accept="video/mp4,video/webm,video/quicktime">
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
-        <label>${accessRequiredLabel("الاسم الثنائي على الأقل")}<input name="name" maxlength="80" required></label>
+        </div></details>
+        <label>${accessOptionalLabel("الاسم")}<input name="name" maxlength="80"></label>
         <label>${accessRequiredLabel("رقم الجوال")}<input name="phone" inputmode="tel" maxlength="20" required></label>
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
@@ -908,29 +944,29 @@
       const form = event.currentTarget;
       const fields = new FormData(form);
       const name = String(fields.get("name") || "").trim().replace(/\s+/g, " ");
-      if (!validFullName(name)) return showStatus("أدخل الاسم الثنائي على الأقل.");
+      if (name && !validFullName(name)) return showStatus("اكتب الاسم الثنائي أو اتركه فارغًا.");
       const phone = normalizeSaudiPhone(fields.get("phone"));
-      if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
       const city = String(fields.get("city") || "").trim();
-      if (!city) return showStatus("أدخل المدينة.");
       const quickApi = quickChoiceApi();
       const purposeChip = String(gate.querySelector("#intakePurposeValue")?.value || "").trim();
-      if (!purposeChip) {
-        return showStatus(owner ? "اختر بيع أو تأجير." : "اختر شراء أو استئجار.");
-      }
       const propertyChip = String(propertyInput?.dataset.chipId || "").trim();
-      if (!propertyChip) return showStatus("اختر نوع العقار.");
       const propertyOther = String(gate.querySelector("#propertyTypeOtherInput")?.value || "").trim();
       const propertyType = quickApi
         ? quickApi.propertyTypeFromChip(propertyChip, propertyOther)
         : String(propertyInput?.value || "").trim();
-      if (!propertyType) return showStatus("اكتب نوع العقار.");
       const requestKind = owner ? "" : (clientIntakeApi()?.normalizeRequestKind
         ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
         : String(fields.get("requestKind") || "").trim());
-      if (!owner && !requestKind) return showStatus("اختر شراء أو استئجار.");
+      const district = String(fields.get("district") || "").trim();
       const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
-      if (owner && !(priceOrBudget > 0)) return showStatus("أدخل السعر أو الإيجار السنوي.");
+      const missing = [];
+      if (!propertyType) missing.push("نوع العقار");
+      if (!purposeChip || (!owner && !requestKind)) missing.push("العملية");
+      if (!city) missing.push("المدينة");
+      if (!district) missing.push("الحي");
+      if (!(priceOrBudget > 0)) missing.push(owner ? "السعر" : "الميزانية");
+      if (!phone) missing.push("رقم الجوال");
+      if (missing.length) return showStatus(`باقي لإكمال ${owner ? "العرض" : "الطلب"}: ${missing.join("، ")}`);
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -942,8 +978,6 @@
       try {
         const ref = db().collection("offices").doc(targetOffice).collection("publicIntake").doc();
         if (propertyInput) propertyInput.value = propertyType;
-        const district = String(fields.get("district") || "").trim();
-        if (!district) return showStatus("أدخل الحي.");
         const mediaPaths = [];
         if (owner) {
           for (let index = 0; index < images.length; index += 1) {
@@ -983,6 +1017,12 @@
             propertyType,
             district,
             details: String(fields.get("details") || "").trim(),
+            area: Number(fields.get("area")) || null,
+            rooms: Number(fields.get("rooms")) || null,
+            bathrooms: Number(fields.get("bathrooms")) || null,
+            streetWidth: Number(fields.get("streetWidth")) || null,
+            facing: String(fields.get("facing") || "").trim(),
+            furnished: String(fields.get("furnished") || "").trim(),
             transactionType: pricing.transactionType,
             salePrice: pricing.salePrice,
             annualRent: pricing.annualRent,
@@ -1009,6 +1049,7 @@
             district,
             propertyType,
             requestKind,
+            priceOrBudget,
             details: fields.get("details"),
             budget: fields.get("budget"),
             annualRent: fields.get("annualRent"),

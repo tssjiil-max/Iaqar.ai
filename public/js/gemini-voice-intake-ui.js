@@ -330,6 +330,8 @@ export function mountVoiceIntakePanel(root, options = {}) {
     analyzingLabel = "جارٍ استخراج البيانات…",
     completedLabel = "تم استخراج البيانات — راجعها قبل الحفظ",
     failureLabel = "تعذر فهم التسجيل — حاول مرة أخرى",
+    reviewTranscript = false,
+    transcriptPlaceholder = "",
     onStructured = () => {},
     onManualContinue = () => {}
   } = options;
@@ -346,6 +348,12 @@ export function mountVoiceIntakePanel(root, options = {}) {
         <button type="button" class="voice-intake-cancel" data-voice-cancel>إلغاء</button>
       </div>
       <p class="voice-intake-status" data-voice-status role="status"></p>
+      ${reviewTranscript ? `<div class="voice-intake-transcript" data-voice-transcript-wrap hidden>
+        <label>راجع النص قبل اعتماده
+          <textarea data-voice-transcript maxlength="2000" placeholder="${String(transcriptPlaceholder || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"></textarea>
+        </label>
+        <button type="button" class="voice-intake-retry" data-voice-apply>اعتماد النص وتعبئة الحقول</button>
+      </div>` : ""}
       <div class="voice-intake-actions" data-voice-error-actions hidden>
         <button type="button" class="voice-intake-retry" data-voice-retry>إعادة المحاولة</button>
         <button type="button" class="voice-intake-manual" data-voice-manual>المتابعة يدويًا</button>
@@ -356,6 +364,9 @@ export function mountVoiceIntakePanel(root, options = {}) {
   const recordingEl = root.querySelector("[data-voice-recording]");
   const statusEl = root.querySelector("[data-voice-status]");
   const errorActions = root.querySelector("[data-voice-error-actions]");
+  const transcriptWrap = root.querySelector("[data-voice-transcript-wrap]");
+  const transcriptInput = root.querySelector("[data-voice-transcript]");
+  let pendingStructured = null;
 
   const setStatus = (text, isError = false) => {
     if (!statusEl) return;
@@ -403,7 +414,15 @@ export function mountVoiceIntakePanel(root, options = {}) {
       },
       onStructured(structured, meta) {
         flashCompleted();
-        onStructured(structured, meta);
+        if (reviewTranscript && transcriptWrap && transcriptInput) {
+          pendingStructured = { structured, meta };
+          transcriptInput.value = String(meta?.transcript || structured?.description || "").trim();
+          transcriptWrap.hidden = false;
+          transcriptWrap.classList.add("is-active");
+          setStatus("راجع النص ثم اعتمده لتعبئة الحقول.", false);
+        } else {
+          onStructured(structured, meta);
+        }
       },
       onError() {
         applyVisibility(controller.getState());
@@ -416,6 +435,17 @@ export function mountVoiceIntakePanel(root, options = {}) {
   });
 
   applyVisibility(VOICE_UI_STATE.IDLE);
+
+  root.querySelector("[data-voice-apply]")?.addEventListener("click", () => {
+    if (!pendingStructured || !transcriptInput) return;
+    const transcript = String(transcriptInput.value || "").trim();
+    const structured = { ...pendingStructured.structured, description: transcript };
+    onStructured(structured, { ...pendingStructured.meta, transcript });
+    pendingStructured = null;
+    transcriptWrap.hidden = true;
+    transcriptWrap.classList.remove("is-active");
+    setStatus(completedLabel, false);
+  });
 
   startBtn?.addEventListener("click", async () => {
     setStatus("");

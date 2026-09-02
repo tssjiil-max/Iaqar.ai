@@ -483,7 +483,7 @@ function purposeWord(record = {}) {
     || ["BUYER", "CLIENT"].includes(contact)
     || purpose === "PURCHASE"
     || purpose === "LEASE_REQUEST";
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return isRequest ? "للاستئجار" : "للإيجار";
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
   if (purpose === "SALE" || purpose === "PURCHASE" || purpose === "BUY") return isRequest ? "للشراء" : "للبيع";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return "";
@@ -497,7 +497,13 @@ function districtBit(record = {}) {
 export function dailyTaskTypePurposeLine(record = {}) {
   const propertyType = text(record.propertyType);
   const purpose = purposeWord(record);
-  return [propertyType, purpose].filter(Boolean).join(" ");
+  const kind = upper(record.opportunityKind || record.kind || record.recordType);
+  const contact = upper(record.contactType);
+  const isRequest = ["REQUEST", "CLIENT", "CLIENT_REQUEST"].includes(kind)
+    || ["BUYER", "CLIENT"].includes(contact)
+    || upper(record.purpose || record.transactionType) === "PURCHASE"
+    || upper(record.purpose || record.transactionType) === "LEASE_REQUEST";
+  return [propertyType ? (isRequest ? "طلب" : "عرض") : "", propertyType, purpose].filter(Boolean).join(" ");
 }
 
 export function dailyTaskPlaceLine(record = {}) {

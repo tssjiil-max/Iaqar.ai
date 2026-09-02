@@ -112,7 +112,7 @@ test("ready items without matches show قيد المطابقة, never مكتمل
   const view = buildBankInboxCardView(BANK_INBOX_DEMO_FIXTURES[0]);
   assert.equal(view.statusLabel, "قيد المطابقة");
   assert.equal(view.statusLabel.includes("مكتمل"), false);
-  assert.equal(view.kindTitle, "طلب شراء");
+  assert.equal(view.kindTitle, "طلب للشراء");
   assert.equal(view.sourceLabel, "من رابط المكتب");
 });
 

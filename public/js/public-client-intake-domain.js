@@ -7,7 +7,7 @@ import { isLandProperty, normalizeDigits, safeText } from "./opportunity-intake-
 
 export const REQUEST_KINDS = Object.freeze([
   { id: "purchase", label: "شراء", transactionType: "purchase" },
-  { id: "rent", label: "استئجار", transactionType: "rent" }
+  { id: "rent", label: "إيجار", transactionType: "rent" }
 ]);
 
 /** Map free-text request kind to canonical id for dynamic fields. */
@@ -109,8 +109,13 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
   const propertyType = safeText(formValues.propertyType, 80);
   const city = safeText(formValues.city, 80);
   const district = safeText(formValues.district, 80);
-  const budget = nullableNumber(formValues.budget);
-  const annualRent = nullableNumber(formValues.annualRent);
+  const sharedPrice = nullableNumber(formValues.priceOrBudget);
+  const budget = transactionType === "purchase"
+    ? (sharedPrice ?? nullableNumber(formValues.budget))
+    : null;
+  const annualRent = transactionType === "rent"
+    ? (sharedPrice ?? nullableNumber(formValues.annualRent))
+    : null;
   const amount = transactionType === "rent" ? (annualRent ?? 0) : (budget ?? 0);
   const furnishedRaw = safeText(formValues.furnished, 40).toLowerCase();
   const furnished = /مفروش/.test(furnishedRaw) && !/غير\s*مفروش|غيرمفروش/.test(furnishedRaw);
@@ -133,6 +138,7 @@ export function buildClientIntakeDocument(formValues = {}, meta = {}) {
     budget,
     annualRent,
     amount,
+    priceOrBudget: amount,
     area: nullableNumber(formValues.area),
     rooms: nullableNumber(formValues.rooms),
     bathrooms: nullableNumber(formValues.bathrooms),

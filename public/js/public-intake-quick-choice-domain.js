@@ -5,19 +5,24 @@
 
 export const OWNER_PURPOSE_OPTIONS = Object.freeze([
   { id: "sale", label: "بيع", transactionType: "sale", purpose: "SALE" },
-  { id: "rent", label: "تأجير", transactionType: "rent", purpose: "RENT" }
+  { id: "rent", label: "إيجار", transactionType: "rent", purpose: "RENT" }
 ]);
 
 export const CLIENT_PURPOSE_OPTIONS = Object.freeze([
   { id: "purchase", label: "شراء", requestKind: "purchase" },
-  { id: "rent", label: "استئجار", requestKind: "rent" }
+  { id: "rent", label: "إيجار", requestKind: "rent" }
 ]);
 
 export const PROPERTY_TYPE_OPTIONS = Object.freeze([
   { id: "apartment", label: "شقة", value: "شقة" },
   { id: "villa", label: "فيلا", value: "فيلا" },
+  { id: "floor", label: "دور", value: "دور" },
   { id: "land", label: "أرض", value: "أرض" },
   { id: "building", label: "عمارة", value: "عمارة" },
+  { id: "shop", label: "محل", value: "محل" },
+  { id: "office", label: "مكتب", value: "مكتب" },
+  { id: "rest_house", label: "استراحة", value: "استراحة" },
+  { id: "warehouse", label: "مستودع", value: "مستودع" },
   { id: "other", label: "أخرى", value: "" }
 ]);
 

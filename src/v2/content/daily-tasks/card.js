@@ -68,14 +68,15 @@ function clockLabel(value) {
 function purposeWord(listing = {}) {
   const purpose = String(listing.purpose || "").toUpperCase();
   const isRequest = String(listing.kindLabel || "").includes("طلب");
-  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return isRequest ? "للاستئجار" : "للإيجار";
+  if (purpose === "RENT" || purpose === "LEASE_REQUEST") return "للإيجار";
   if (purpose === "SALE" || purpose === "PURCHASE" || purpose === "BUY") return isRequest ? "للشراء" : "للبيع";
   if (purpose === "INVESTMENT") return "للاستثمار";
   return String(listing.purpose || "").trim();
 }
 
 function typePurpose(listing = {}) {
-  return [listing.propertyType, purposeWord(listing)].filter(Boolean).join(" ");
+  const prefix = listing.propertyType ? (String(listing.kindLabel || "").includes("طلب") ? "طلب" : "عرض") : "";
+  return [prefix, listing.propertyType, purposeWord(listing)].filter(Boolean).join(" ");
 }
 
 function districtOnly(listing = {}) {
