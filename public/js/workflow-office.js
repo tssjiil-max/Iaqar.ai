@@ -103,6 +103,7 @@
   const timelineCache = new Map();
   const timelinePending = new Set();
   const intakeProcessing = new Set();
+  const legacyReadinessRepairs = new Set();
 
   function notify(message) {
     const toast = document.getElementById("toast");
@@ -397,10 +398,12 @@
     const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
       ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
       : null;
-    const matchingReadiness = String(item.matchingReadiness || readinessEval?.matchingReadiness || "").toUpperCase();
-    const matchingReadinessMissing = Array.isArray(item.matchingReadinessMissing) && item.matchingReadinessMissing.length
-      ? item.matchingReadinessMissing.map(String)
-      : (readinessEval?.matchingReadinessMissing || []);
+    // Current normalized fields are authoritative. Persisted readiness may come
+    // from the former gate that required area/rooms and must not block matches.
+    const matchingReadiness = String(readinessEval?.matchingReadiness || item.matchingReadiness || "").toUpperCase();
+    const matchingReadinessMissing = readinessEval
+      ? (readinessEval.matchingReadinessMissing || [])
+      : (Array.isArray(item.matchingReadinessMissing) ? item.matchingReadinessMissing.map(String) : []);
     return {
       id: `intake-${doc.id}`,
       recordId: doc.id,
@@ -476,12 +479,19 @@
     const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
       ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
       : null;
-    const matchingReadiness = matchingReadinessStored
-      || readinessEval?.matchingReadiness
+    if (readinessEval?.isReadyForMatching === true
+      && (matchingReadinessStored === "NEEDS_COMPLETION" || matchingReadinessMissingStored.length > 0)) {
+      repairLegacyReadiness(doc.id);
+    }
+    // Recompute from the current normalized record before considering legacy
+    // persisted readiness. Older documents can legitimately list area/rooms as
+    // missing even though those details now belong to coordination.
+    const matchingReadiness = readinessEval?.matchingReadiness
+      || matchingReadinessStored
       || "";
-    const matchingReadinessMissing = matchingReadinessMissingStored.length
-      ? matchingReadinessMissingStored
-      : (readinessEval?.matchingReadinessMissing || []);
+    const matchingReadinessMissing = readinessEval
+      ? (readinessEval.matchingReadinessMissing || [])
+      : matchingReadinessMissingStored;
     const matchCount = Number(item.matchCount || item.activeMatchCount || 0);
 
     return {
@@ -858,6 +868,24 @@
       "Content-Type": "application/json",
       Authorization: `Bearer ${await user.getIdToken(true)}`
     };
+  }
+
+  function repairLegacyReadiness(opportunityId) {
+    const id = String(opportunityId || "").trim();
+    const runtime = office();
+    if (!id || !runtime?.officeId || legacyReadinessRepairs.has(id)) return;
+    legacyReadinessRepairs.add(id);
+    Promise.resolve().then(async () => {
+      const response = await fetch(`${resolveWorkerBase()}/operations/missing-data`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({ officeId: runtime.officeId, opportunityId: id })
+      });
+      if (!response.ok) throw new Error("legacy_readiness_repair_failed");
+    }).catch((error) => {
+      legacyReadinessRepairs.delete(id);
+      console.warn("[iaqar] legacy readiness repair", error?.message || error);
+    });
   }
 
   async function submitPendingShare() {
