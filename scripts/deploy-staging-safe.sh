@@ -33,6 +33,8 @@ npm test
 npm run check
 
 echo "--- Generate public/version.json from current Git commit ---"
+trap 'rm -f "$ROOT/public/version.json"' EXIT
+rm -f "$ROOT/public/version.json"
 node scripts/write-staging-version.mjs
 
 export IAQAR_DEPLOY_TARGET="staging"

@@ -1438,7 +1438,9 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
       if (recordType === "opportunity" && explicitOpportunityActions.has(opportunityId)) continue;
       const missing = Array.isArray(item?.matchingReadinessMissing) ? item.matchingReadinessMissing : [];
       const incomplete = upper(item?.matchingReadiness) === "NEEDS_COMPLETION" || missing.length > 0;
-      if (recordType === "opportunity" && matchedOpportunityIds.has(opportunityId) && !incomplete) continue;
+      // A matched opportunity remains represented by its Match task. A legacy
+      // incomplete operation must not create a contradictory completion task.
+      if (recordType === "opportunity" && matchedOpportunityIds.has(opportunityId)) continue;
       const canonical = opportunities.get(opportunityId) || {};
       const view = buildOpportunityActionDailyTask({ ...canonical, ...item, opportunityId }, now);
       const key = view?.id;

@@ -55,10 +55,11 @@ test("summarizeBankCounts uses readiness and archived lifecycle", () => {
     { lifecycleStatus: "ARCHIVED" },
     { deletedAt: "2026-01-01", matchingReadiness: MATCHING_READINESS.READY_FOR_MATCHING }
   ]);
-  assert.equal(summary.total, 3);
+  assert.equal(summary.total, 2);
   assert.equal(summary.readyForMatching, 1);
   assert.equal(summary.needsCompletion, 1);
   assert.equal(summary.archived, 1);
+  assert.equal(summary.active, 1);
   assert.deepEqual(emptyBankSummary().total, 0);
 });
 
@@ -67,8 +68,11 @@ test("bank search matches numeric price and area fields", () => {
     propertyType: "أرض",
     city: "المدينة المنورة",
     district: "العوالي",
+    purpose: "SALE",
     salePrice: 863333,
-    area: 530
+    area: 530,
+    advertiserRole: "OWNER",
+    contactPhone: "+966512345678"
   };
   assert.equal(matchesBankQueryFilters(priced, { search: "863333" }), true);
   assert.equal(matchesBankQueryFilters(priced, { search: "530" }), true);

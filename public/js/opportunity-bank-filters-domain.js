@@ -46,13 +46,16 @@ export function resolveRecordMatchingReadiness(record = {}) {
 export function matchesBankQueryFilters(record = {}, filters = {}) {
   const summaryKey = safeText(filters.summaryKey, 40);
   const search = normalizeSearchNeedle(safeText(filters.search, 120));
+  const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
+  const readiness = resolveRecordMatchingReadiness(record);
+  // The bank is the completed opportunity surface. Incomplete records belong
+  // to Daily Tasks, including when the broker searches by a field.
+  if (!archived && readiness !== MATCHING_READINESS.READY_FOR_MATCHING) return false;
   // Default bank view is all active items. Optional summaryKey "ready" still hides incomplete.
   if (summaryKey && !search) {
-    const readiness = resolveRecordMatchingReadiness(record);
-    const archived = record.lifecycleStatus === "ARCHIVED" || Boolean(record.archivedAt);
     if (summaryKey === "archived" && !archived) return false;
     if (summaryKey === "ready" && readiness !== MATCHING_READINESS.READY_FOR_MATCHING) return false;
-    if (summaryKey === "needs" && readiness !== MATCHING_READINESS.NEEDS_COMPLETION) return false;
+    if (summaryKey === "needs") return false;
     if (summaryKey === "total" && archived) return false;
   }
 
@@ -172,11 +175,14 @@ export function summarizeBankCounts(records = []) {
       summary.total += 1;
       continue;
     }
+    const readiness = resolveRecordMatchingReadiness(record);
+    if (readiness !== MATCHING_READINESS.READY_FOR_MATCHING) {
+      summary.needsCompletion += 1;
+      continue;
+    }
     summary.active += 1;
     summary.total += 1;
-    const readiness = resolveRecordMatchingReadiness(record);
-    if (readiness === MATCHING_READINESS.READY_FOR_MATCHING) summary.readyForMatching += 1;
-    else summary.needsCompletion += 1;
+    summary.readyForMatching += 1;
   }
   return summary;
 }

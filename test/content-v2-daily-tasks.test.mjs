@@ -286,6 +286,56 @@ test("incomplete and new opportunities become direct actionable tasks while pass
   assert.equal(fromPersistedOperation.id, "opportunity_action_opp_incomplete_2");
 });
 
+test("matched opportunity never emits a contradictory completion task", () => {
+  const tasks = mapOperationsItemsToDailyTasks([
+    {
+      id: "opp-request-1",
+      recordId: "request_1",
+      recordType: "opportunity",
+      propertyType: "شقة",
+      purpose: "PURCHASE",
+      city: "الرياض",
+      district: "النرجس"
+    },
+    {
+      id: "opp-offer-1",
+      recordId: "offer_1",
+      recordType: "opportunity",
+      propertyType: "شقة",
+      purpose: "SALE",
+      city: "الرياض",
+      district: "النرجس"
+    },
+    {
+      id: "opp-request_1-incomplete",
+      recordId: "request_1",
+      recordType: "opportunity",
+      matchingReadiness: "NEEDS_COMPLETION",
+      matchingReadinessMissing: ["area"],
+      operationType: "MISSING_DATA"
+    },
+    {
+      id: "match_1",
+      recordType: "match",
+      operationType: "MATCH_REVIEW",
+      opportunityId: "opp_matched_1",
+      matchId: "match_1",
+      clientRequestId: "request_1",
+      ownerOfferId: "offer_1",
+      opportunityId: "request_1",
+      propertyType: "شقة",
+      city: "الرياض",
+      district: "النرجس",
+      purpose: "SALE",
+      salePrice: 900000,
+      score: 82,
+      status: "active"
+    }
+  ], new Date("2026-08-25T21:30:00.000+03:00"));
+  assert.equal(tasks.some((task) => task.id === "opportunity_action_request_1"), false);
+  assert.equal(tasks.some((task) => task.taskKind === "match_group"), true);
+});
+
 test("existing deal readiness projects one management CTA without auto-closing", () => {
   const task = buildDealActionDailyTask({
     id: "deal_1",

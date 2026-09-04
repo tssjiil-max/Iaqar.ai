@@ -12,7 +12,7 @@ test("emptyBankFilters defaults to all active items", () => {
   assert.equal(hasActiveBankQuery(emptyBankFilters()), false);
 });
 
-test("matchesBankQueryFilters shows incomplete rows in default total view", () => {
+test("matchesBankQueryFilters keeps incomplete rows out of the completed bank", () => {
   const filters = emptyBankFilters();
   const incomplete = { propertyType: "شقة", lifecycleStatus: "ACTIVE" };
   const ready = {
@@ -25,11 +25,11 @@ test("matchesBankQueryFilters shows incomplete rows in default total view", () =
     contactPhone: "+966512345678",
     lifecycleStatus: "ACTIVE"
   };
-  assert.equal(matchesBankQueryFilters(incomplete, filters), true);
+  assert.equal(matchesBankQueryFilters(incomplete, filters), false);
   assert.equal(matchesBankQueryFilters(ready, filters), true);
 });
 
-test("search scans incomplete rows in the unified bank list", () => {
+test("search keeps incomplete rows in Daily Tasks instead of the bank", () => {
   const filters = { ...emptyBankFilters(), search: "الرانوناء" };
   const incomplete = {
     propertyType: "شقة",
@@ -37,7 +37,7 @@ test("search scans incomplete rows in the unified bank list", () => {
     lifecycleStatus: "ACTIVE"
   };
   assert.equal(hasActiveBankQuery(filters), true);
-  assert.equal(matchesBankQueryFilters(incomplete, filters), true);
+  assert.equal(matchesBankQueryFilters(incomplete, filters), false);
 });
 
 test("archived summary key is treated as an active bank query", () => {
