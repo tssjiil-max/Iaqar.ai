@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import {
   DETAIL_KEY,
   detailKeysForPropertyType,
+  filterRequestedDetailKeys,
   PROPERTY_DETAIL_SCHEMA,
   isLandForbiddenDetailKey,
   ownerMissingDetailKeys
@@ -196,6 +197,19 @@ test("central schema covers every catalog type and warehouse has no rooms", () =
   const warehouseKeys = detailKeysForPropertyType("مستودع");
   assert.ok(warehouseKeys.includes(DETAIL_KEY.AREA));
   assert.ok(!warehouseKeys.includes(DETAIL_KEY.BEDROOMS));
+  assert.ok(warehouseKeys.includes(DETAIL_KEY.CEILING_HEIGHT));
+  assert.ok(warehouseKeys.includes(DETAIL_KEY.TRUCK_ACCESS));
+});
+
+test("requested detail keys are filtered by the central property schema", () => {
+  assert.deepEqual(
+    filterRequestedDetailKeys("مستودع", [DETAIL_KEY.AREA, DETAIL_KEY.BEDROOMS, DETAIL_KEY.CEILING_HEIGHT]),
+    [DETAIL_KEY.AREA, DETAIL_KEY.CEILING_HEIGHT]
+  );
+  assert.deepEqual(
+    filterRequestedDetailKeys("شقة", [DETAIL_KEY.BEDROOMS, DETAIL_KEY.TRUCK_ACCESS]),
+    [DETAIL_KEY.BEDROOMS]
+  );
 });
 
 test("owner missing detail keys follow client requestedDetailKeys", () => {

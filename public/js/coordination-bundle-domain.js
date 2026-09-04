@@ -15,6 +15,7 @@ import {
   ownerMissingDetailKeys,
   canonicalHasDetailKey,
   detailKeysForPropertyType,
+  filterRequestedDetailKeys,
   detailKeyCanonicalValue,
   detailKeyLabel
 } from "./property-detail-schema-domain.js";
@@ -517,7 +518,7 @@ export function normalizeClientBundle(raw = {}) {
     return need;
   });
   bundle.specNeeds = uniqueList(input.specNeeds);
-  bundle.requestedDetailKeys = uniqueList(input.requestedDetailKeys);
+  bundle.requestedDetailKeys = filterRequestedDetailKeys(input.propertyType || "", input.requestedDetailKeys);
   bundle.interestAction = text(input.interestAction)
     || (input.wantsViewing ? CLIENT_INTEREST_ACTION.VIEWING : CLIENT_INTEREST_ACTION.DETAILS);
   if (bundle.interestAction === CLIENT_INTEREST_ACTION.INTEREST_ONLY) {

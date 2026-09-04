@@ -21,15 +21,28 @@ export const DETAIL_KEY = Object.freeze({
   ELEVATOR: "elevator",
   PARKING: "parking",
   FURNISHED: "furnished",
+  AC: "ac",
+  INDEPENDENT_ENTRANCE: "independentEntrance",
   LAND_AREA: "landArea",
   BUILDING_AREA: "buildingArea",
   FLOORS: "floors",
+  AGE: "age",
   YARD: "yard",
+  SECTIONS: "sections",
+  POOL: "pool",
+  SEATING: "seating",
   USE_TYPE: "useType",
   FRONTAGE: "frontage",
+  FRONTAGE_WIDTH: "frontageWidth",
   STREET_COUNT: "streetCount",
   STREET_WIDTHS: "streetWidths",
   DIMENSIONS: "dimensions",
+  CEILING_HEIGHT: "ceilingHeight",
+  ENTRANCE_WIDTH: "entranceWidth",
+  ELECTRICITY_CAPACITY: "electricityCapacity",
+  LOADING_YARD: "loadingYard",
+  TRUCK_ACCESS: "truckAccess",
+  INTERNAL_OFFICES: "internalOffices",
   CORNER: "corner",
   UNITS: "units",
   SHOPS: "shops",
@@ -47,15 +60,28 @@ const DETAIL_LABELS = Object.freeze({
   [DETAIL_KEY.ELEVATOR]: "مصعد",
   [DETAIL_KEY.PARKING]: "موقف",
   [DETAIL_KEY.FURNISHED]: "مفروشة",
+  [DETAIL_KEY.AC]: "التكييف",
+  [DETAIL_KEY.INDEPENDENT_ENTRANCE]: "مدخل مستقل",
   [DETAIL_KEY.LAND_AREA]: "مساحة الأرض",
   [DETAIL_KEY.BUILDING_AREA]: "مساحة البناء",
   [DETAIL_KEY.FLOORS]: "عدد الأدوار",
+  [DETAIL_KEY.AGE]: "عمر العقار",
   [DETAIL_KEY.YARD]: "حوش",
+  [DETAIL_KEY.SECTIONS]: "الأقسام",
+  [DETAIL_KEY.POOL]: "مسبح",
+  [DETAIL_KEY.SEATING]: "الحوش والجلسات",
   [DETAIL_KEY.USE_TYPE]: "الاستخدام",
   [DETAIL_KEY.FRONTAGE]: "الواجهة",
+  [DETAIL_KEY.FRONTAGE_WIDTH]: "عرض الواجهة",
   [DETAIL_KEY.STREET_COUNT]: "عدد الشوارع",
   [DETAIL_KEY.STREET_WIDTHS]: "عرض الشارع",
   [DETAIL_KEY.DIMENSIONS]: "الأطوال",
+  [DETAIL_KEY.CEILING_HEIGHT]: "ارتفاع السقف",
+  [DETAIL_KEY.ENTRANCE_WIDTH]: "عرض المدخل",
+  [DETAIL_KEY.ELECTRICITY_CAPACITY]: "قدرة الكهرباء",
+  [DETAIL_KEY.LOADING_YARD]: "ساحة تحميل",
+  [DETAIL_KEY.TRUCK_ACCESS]: "دخول الشاحنات",
+  [DETAIL_KEY.INTERNAL_OFFICES]: "مكاتب داخلية",
   [DETAIL_KEY.CORNER]: "زاوية / غير زاوية",
   [DETAIL_KEY.UNITS]: "عدد الوحدات",
   [DETAIL_KEY.SHOPS]: "عدد المحلات",
@@ -72,17 +98,30 @@ const APARTMENT_KEYS = Object.freeze([
   DETAIL_KEY.FLOOR,
   DETAIL_KEY.ELEVATOR,
   DETAIL_KEY.PARKING,
-  DETAIL_KEY.FURNISHED
+  DETAIL_KEY.FURNISHED,
+  DETAIL_KEY.AC
 ]);
 
 const VILLA_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
   DETAIL_KEY.LAND_AREA,
   DETAIL_KEY.BUILDING_AREA,
   DETAIL_KEY.BEDROOMS,
   DETAIL_KEY.BATHROOMS,
   DETAIL_KEY.FLOORS,
   DETAIL_KEY.PARKING,
-  DETAIL_KEY.YARD
+  DETAIL_KEY.YARD,
+  DETAIL_KEY.AGE,
+  DETAIL_KEY.AC
+]);
+
+const FLOOR_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.BEDROOMS,
+  DETAIL_KEY.BATHROOMS,
+  DETAIL_KEY.FLOOR,
+  DETAIL_KEY.INDEPENDENT_ENTRANCE,
+  DETAIL_KEY.ELEVATOR
 ]);
 
 const LAND_KEYS = Object.freeze([
@@ -102,7 +141,47 @@ const BUILDING_KEYS = Object.freeze([
   DETAIL_KEY.SHOPS,
   DETAIL_KEY.ELEVATOR,
   DETAIL_KEY.PARKING,
-  DETAIL_KEY.ANNUAL_INCOME
+  DETAIL_KEY.ANNUAL_INCOME,
+  DETAIL_KEY.AGE
+]);
+
+const WAREHOUSE_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.DIMENSIONS,
+  DETAIL_KEY.CEILING_HEIGHT,
+  DETAIL_KEY.ENTRANCE_WIDTH,
+  DETAIL_KEY.STREET_WIDTHS,
+  DETAIL_KEY.ELECTRICITY_CAPACITY,
+  DETAIL_KEY.LOADING_YARD,
+  DETAIL_KEY.TRUCK_ACCESS,
+  DETAIL_KEY.INTERNAL_OFFICES,
+  DETAIL_KEY.BATHROOMS
+]);
+
+const SHOP_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.FRONTAGE,
+  DETAIL_KEY.FRONTAGE_WIDTH,
+  DETAIL_KEY.STREET_WIDTHS,
+  DETAIL_KEY.BATHROOMS
+]);
+
+const OFFICE_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.UNITS,
+  DETAIL_KEY.BATHROOMS,
+  DETAIL_KEY.FLOOR,
+  DETAIL_KEY.ELEVATOR,
+  DETAIL_KEY.PARKING
+]);
+
+const REST_HOUSE_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.SECTIONS,
+  DETAIL_KEY.BEDROOMS,
+  DETAIL_KEY.BATHROOMS,
+  DETAIL_KEY.POOL,
+  DETAIL_KEY.SEATING
 ]);
 
 const COMMERCIAL_KEYS = Object.freeze([
@@ -119,15 +198,15 @@ export const PROPERTY_DETAIL_SCHEMA = Object.freeze({
   apartment: APARTMENT_KEYS,
   villa: VILLA_KEYS,
   land: LAND_KEYS,
-  floor: APARTMENT_KEYS,
+  floor: FLOOR_KEYS,
   building: BUILDING_KEYS,
   house: VILLA_KEYS,
-  rest_house: VILLA_KEYS,
+  rest_house: REST_HOUSE_KEYS,
   farm: LAND_KEYS,
-  shop: COMMERCIAL_KEYS,
-  office: COMMERCIAL_KEYS,
+  shop: SHOP_KEYS,
+  office: OFFICE_KEYS,
   showroom: COMMERCIAL_KEYS,
-  warehouse: COMMERCIAL_KEYS,
+  warehouse: WAREHOUSE_KEYS,
   commercial_building: BUILDING_KEYS,
   hotel: BUILDING_KEYS,
   furnished: APARTMENT_KEYS,
@@ -174,6 +253,12 @@ export function detailKeysForPropertyType(propertyTypeLabel = "") {
   return [...(PROPERTY_DETAIL_SCHEMA[id] || PROPERTY_DETAIL_SCHEMA.other)];
 }
 
+export function filterRequestedDetailKeys(propertyTypeLabel = "", requestedKeys = []) {
+  const allowed = new Set(detailKeysForPropertyType(propertyTypeLabel));
+  if (allowed.has(DETAIL_KEY.BEDROOMS)) allowed.add("rooms");
+  return uniqueList(requestedKeys).filter((key) => allowed.has(key));
+}
+
 export function detailKeyLabel(key = "") {
   return DETAIL_LABELS[text(key)] || text(key);
 }
@@ -190,7 +275,8 @@ export function isLandForbiddenDetailKey(key = "") {
 }
 
 export function canonicalHasDetailKey(key = "", offer = {}) {
-  const k = text(key);
+  const rawKey = text(key);
+  const k = rawKey === "rooms" ? DETAIL_KEY.BEDROOMS : rawKey;
   if (k === DETAIL_KEY.PRICE) {
     return Number(offer.salePrice || offer.price || offer.priceOrBudget || 0) > 0;
   }
@@ -241,7 +327,7 @@ export function canonicalHasDetailKey(key = "", offer = {}) {
 }
 
 export function ownerMissingDetailKeys(clientBundle = {}, offer = {}, propertyTypeLabel = "") {
-  const requested = uniqueList(clientBundle.requestedDetailKeys || []);
+  const requested = filterRequestedDetailKeys(propertyTypeLabel, clientBundle.requestedDetailKeys || []);
   if (!requested.length) return [];
   return requested.filter((key) => !canonicalHasDetailKey(key, offer));
 }
@@ -329,6 +415,7 @@ if (typeof window !== "undefined") {
     DETAIL_KEY,
     PROPERTY_DETAIL_SCHEMA,
     detailKeysForPropertyType,
+    filterRequestedDetailKeys,
     detailKeyOptions,
     detailKeyLabel,
     canonicalHasDetailKey,
