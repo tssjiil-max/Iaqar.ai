@@ -105,6 +105,35 @@ const BUILDING_KEYS = Object.freeze([
   DETAIL_KEY.ANNUAL_INCOME
 ]);
 
+const COMMERCIAL_KEYS = Object.freeze([
+  DETAIL_KEY.AREA,
+  DETAIL_KEY.USE_TYPE,
+  DETAIL_KEY.FRONTAGE,
+  DETAIL_KEY.STREET_COUNT,
+  DETAIL_KEY.STREET_WIDTHS
+]);
+
+// One detail contract for every catalog property type. Matching fields remain
+// outside this schema; these keys are post-match details only.
+export const PROPERTY_DETAIL_SCHEMA = Object.freeze({
+  apartment: APARTMENT_KEYS,
+  villa: VILLA_KEYS,
+  land: LAND_KEYS,
+  floor: APARTMENT_KEYS,
+  building: BUILDING_KEYS,
+  house: VILLA_KEYS,
+  rest_house: VILLA_KEYS,
+  farm: LAND_KEYS,
+  shop: COMMERCIAL_KEYS,
+  office: COMMERCIAL_KEYS,
+  showroom: COMMERCIAL_KEYS,
+  warehouse: COMMERCIAL_KEYS,
+  commercial_building: BUILDING_KEYS,
+  hotel: BUILDING_KEYS,
+  furnished: APARTMENT_KEYS,
+  other: Object.freeze([])
+});
+
 const LAND_FORBIDDEN = new Set([
   DETAIL_KEY.BEDROOMS,
   DETAIL_KEY.BATHROOMS,
@@ -141,12 +170,8 @@ export function propertyDetailCategory(propertyTypeLabel = "") {
 }
 
 export function detailKeysForPropertyType(propertyTypeLabel = "") {
-  const category = propertyDetailCategory(propertyTypeLabel);
-  if (category === PROPERTY_DETAIL_CATEGORY.APARTMENT) return [...APARTMENT_KEYS];
-  if (category === PROPERTY_DETAIL_CATEGORY.VILLA) return [...VILLA_KEYS];
-  if (category === PROPERTY_DETAIL_CATEGORY.LAND) return [...LAND_KEYS];
-  if (category === PROPERTY_DETAIL_CATEGORY.BUILDING) return [...BUILDING_KEYS];
-  return [];
+  const id = resolvePropertyTypeId(propertyTypeLabel);
+  return [...(PROPERTY_DETAIL_SCHEMA[id] || PROPERTY_DETAIL_SCHEMA.other)];
 }
 
 export function detailKeyLabel(key = "") {
@@ -302,6 +327,7 @@ export function detailValuesToCanonicalPatch(detailValues = {}) {
 if (typeof window !== "undefined") {
   window.IAQARPropertyDetailSchema = {
     DETAIL_KEY,
+    PROPERTY_DETAIL_SCHEMA,
     detailKeysForPropertyType,
     detailKeyOptions,
     detailKeyLabel,

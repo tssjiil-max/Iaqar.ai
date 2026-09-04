@@ -31,6 +31,11 @@ export const MISSING_FIELD_LABELS = Object.freeze({
   budget: "الميزانية"
 });
 
+export const MATCHING_PLACEHOLDER_VALUES = Object.freeze([
+  "", "—", "-", "غير محدد", "غير متوفر", "العقار", "تحتاج مراجعة",
+  "unknown", "null", "undefined", "n/a", "na", "property"
+]);
+
 export function missingFieldLabelsArabic(keys = []) {
   return (keys || [])
     .map((key) => MISSING_FIELD_LABELS[key] || "")
@@ -66,13 +71,18 @@ function resolveContactPhone(record = {}) {
   );
 }
 
+export function normalizeMatchingText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function isMatchingPlaceholder(value) {
+  const text = normalizeMatchingText(value);
+  return MATCHING_PLACEHOLDER_VALUES.includes(text)
+    || MATCHING_PLACEHOLDER_VALUES.includes(text.toLowerCase());
+}
+
 function isFilledText(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  if (text === "غير محدد" || text === "غير متوفر" || text === "العقار" || text === "تحتاج مراجعة") return false;
-  if (lower === "unknown" || lower === "null" || lower === "undefined" || lower === "n/a" || lower === "property") return false;
-  return true;
+  return !isMatchingPlaceholder(value);
 }
 
 function resolveOwnerRole(record = {}) {

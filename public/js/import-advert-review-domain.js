@@ -12,6 +12,7 @@ import {
   normalizeImportLocationFields
 } from "./import-field-normalization-domain.js";
 import { evaluateMatchingReadiness, missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
+import { detailKeysForPropertyType, DETAIL_KEY } from "./property-detail-schema-domain.js";
 
 export const IMPORT_RECORD_LABEL = "فرصة";
 
@@ -87,6 +88,10 @@ export function resolveImportPriceFieldLabel(operationTypeId = "", opportunityKi
 
 export function resolveImportPrimaryInfoFields(propertyTypeRaw = "", values = {}) {
   const kind = classifyImportPropertyType(propertyTypeRaw);
+  const detailKeys = detailKeysForPropertyType(propertyTypeRaw);
+  if (detailKeys.length && !detailKeys.includes(DETAIL_KEY.BEDROOMS)) {
+    return [{ name: "area", label: "المساحة (م²)", required: false, optional: true }];
+  }
   if (kind === "land") {
     return [{ name: "area", label: "المساحة (م²)", required: true, optional: false }];
   }

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import {
   DETAIL_KEY,
   detailKeysForPropertyType,
+  PROPERTY_DETAIL_SCHEMA,
   isLandForbiddenDetailKey,
   ownerMissingDetailKeys
 } from "../public/js/property-detail-schema-domain.js";
@@ -188,6 +189,13 @@ test("building schema returns building keys", () => {
   const keys = detailKeysForPropertyType("عمارة");
   assert.ok(keys.includes(DETAIL_KEY.UNITS));
   assert.ok(keys.includes(DETAIL_KEY.ANNUAL_INCOME));
+});
+
+test("central schema covers every catalog type and warehouse has no rooms", () => {
+  assert.equal(Object.keys(PROPERTY_DETAIL_SCHEMA).length, 16);
+  const warehouseKeys = detailKeysForPropertyType("مستودع");
+  assert.ok(warehouseKeys.includes(DETAIL_KEY.AREA));
+  assert.ok(!warehouseKeys.includes(DETAIL_KEY.BEDROOMS));
 });
 
 test("owner missing detail keys follow client requestedDetailKeys", () => {

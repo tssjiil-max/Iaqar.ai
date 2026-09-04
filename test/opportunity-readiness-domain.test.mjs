@@ -35,3 +35,16 @@ test("NEEDS_COMPLETION when district missing", () => {
   assert.ok(result.matchingReadinessMissing.includes("district"));
   assert.equal(isEligibleForMatchingRun(result), false);
 });
+
+test("matching readiness treats placeholders as missing basic fields", () => {
+  const result = evaluateMatchingReadiness({
+    purpose: "SALE",
+    propertyType: "غير محدد",
+    city: "المدينة المنورة",
+    district: "العزيزية",
+    salePrice: 100,
+    advertiserRole: "OWNER",
+    contactPhone: "+966512345678"
+  });
+  assert.ok(result.matchingReadinessMissing.includes("propertyType"));
+});
