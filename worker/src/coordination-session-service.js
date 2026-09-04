@@ -377,6 +377,13 @@ export async function applyCoordinationToMatch(helpers, {
   const clientSummary = session.clientBundle ? clientBundleSummary(session.clientBundle) : "";
   const ownerSummary = session.ownerBundle ? ownerBundleSummary(session.ownerBundle) : "";
   const brokerLine = brokerCoordinationLine(session);
+  const nextActor = session.outcome === "AWAITING_OTHER_PARTY"
+    ? (session.ownerBundle && !session.clientBundle ? "CLIENT"
+      : session.clientBundle && !session.ownerBundle ? "OWNER"
+        : nextActorForLivingStage(living.stage, { ownerContactNeeded: Boolean(ownerContactNeeded) }))
+    : nextActorForLivingStage(living.stage, {
+      ownerContactNeeded: Boolean(ownerContactNeeded)
+    });
   const patch = {
     livingStage: living.stage,
     ownerContactNeeded: Boolean(ownerContactNeeded),
@@ -386,9 +393,7 @@ export async function applyCoordinationToMatch(helpers, {
     coordinationBrokerLine: brokerLine,
     coordinationClientSummary: clientSummary,
     coordinationOwnerSummary: ownerSummary,
-    nextActor: nextActorForLivingStage(living.stage, {
-      ownerContactNeeded: Boolean(ownerContactNeeded)
-    }),
+    nextActor,
     timelineEvent: {
       type: `coordination_${String(session.outcome || "").toLowerCase()}`,
       actor: "SYSTEM",

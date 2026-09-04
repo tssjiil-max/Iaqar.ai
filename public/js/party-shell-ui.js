@@ -283,8 +283,15 @@ function decisionPackageBlock(pkg = {}, view = {}) {
         ], "negotiationPreference", "single")}</div>
       </div>
     </div>`;
+    const ownerResponse = pkg.workflowStep === "client_review"
+      ? `<div class="party-package-section" data-testid="owner-response">
+        <p class="party-section-label">رد المالك</p>
+        <p class="party-muted">تم تأكيد توفر العقار${pkg.hasCanonicalPrice ? " والسعر" : ""}. اختر خطوتك التالية.</p>
+      </div>`
+      : "";
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
       <p class="party-section-label">إدارة المفاوضات</p>
+      ${ownerResponse}
       <div class="party-package-section">
         <p class="party-section-label">ما قرارك؟</p>
         <div class="party-chip-grid">

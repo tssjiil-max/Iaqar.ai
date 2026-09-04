@@ -380,13 +380,20 @@ export function detailKeyCanonicalValue(key = "", offer = {}) {
 export function detailValuesToCanonicalPatch(detailValues = {}) {
   const patch = {};
   const values = detailValues && typeof detailValues === "object" ? detailValues : {};
+  const positiveNumber = (value) => {
+    const normalized = String(value ?? "").trim();
+    if (normalized === "6+") return 6;
+    const number = Number(normalized);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  };
   if (values.area != null && Number(values.area) > 0) patch.area = Number(values.area);
   if (values.buildingArea != null && Number(values.buildingArea) > 0) patch.area = Number(values.buildingArea);
-  if (values.landArea != null && Number(values.landArea) > 0) patch.landArea = Number(values.landArea);
-  if (values.bedrooms != null && Number(values.bedrooms) > 0) patch.rooms = Number(values.bedrooms);
-  if (values.bathrooms != null && Number(values.bathrooms) > 0) patch.bathrooms = Number(values.bathrooms);
-  if (values.floor != null && Number(values.floor) > 0) patch.floorNumber = Number(values.floor);
-  if (values.floors != null && Number(values.floors) > 0) patch.floors = Number(values.floors);
+  if (values.landArea != null && positiveNumber(values.landArea)) patch.landArea = positiveNumber(values.landArea);
+  if (values.bedrooms != null && positiveNumber(values.bedrooms)) patch.rooms = positiveNumber(values.bedrooms);
+  if (values.rooms != null && positiveNumber(values.rooms)) patch.rooms = positiveNumber(values.rooms);
+  if (values.bathrooms != null && positiveNumber(values.bathrooms)) patch.bathrooms = positiveNumber(values.bathrooms);
+  if (values.floor != null && positiveNumber(values.floor)) patch.floorNumber = positiveNumber(values.floor);
+  if (values.floors != null && positiveNumber(values.floors)) patch.floors = positiveNumber(values.floors);
   if (values.parking != null) patch.parking = text(values.parking);
   if (values.yard != null) patch.yard = text(values.yard);
   if (values.useType != null) patch.usage = text(values.useType);

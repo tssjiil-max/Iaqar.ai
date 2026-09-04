@@ -880,6 +880,8 @@ export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
   if (key === COORDINATION_OUTCOME.AWAITING_OTHER_PARTY) {
     return {
       stage: LIVING_TASK_STAGE.MATCH_FOUND,
+      // The missing side is the next actor: an owner response hands the turn
+      // to the client, while a client response hands it to the owner.
       ownerContactNeeded: Boolean(clientBundle && !ownerBundle)
     };
   }
@@ -977,7 +979,8 @@ export function buildDecisionPackageView(party = "client", {
   ];
   let workflowStep = "complete";
   if (side === "client") {
-    if (!clientBundle) workflowStep = "client_entry";
+    if (!clientBundle && ownerBundle) workflowStep = "client_review";
+    else if (!clientBundle) workflowStep = "client_entry";
     else if (clientBundle.rejectionDisposition === REJECTION_DISPOSITION.NEGOTIABLE
       && ownerBundle?.negotiationDecision === NEGOTIATION_DECISION.COUNTER
       && ownerBundle?.counterPreference !== PRICE_FLEXIBILITY.DISCUSS_AT_VIEWING

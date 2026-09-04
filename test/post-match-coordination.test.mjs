@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import {
   DETAIL_KEY,
   detailKeysForPropertyType,
+  detailValuesToCanonicalPatch,
   filterRequestedDetailKeys,
   PROPERTY_DETAIL_SCHEMA,
   isLandForbiddenDetailKey,
@@ -210,6 +211,10 @@ test("requested detail keys are filtered by the central property schema", () => 
     filterRequestedDetailKeys("شقة", [DETAIL_KEY.BEDROOMS, DETAIL_KEY.TRUCK_ACCESS]),
     [DETAIL_KEY.BEDROOMS]
   );
+});
+
+test("6+ rooms uses a canonical persisted numeric value", () => {
+  assert.deepEqual(detailValuesToCanonicalPatch({ rooms: "6+" }), { rooms: 6 });
 });
 
 test("owner missing detail keys follow client requestedDetailKeys", () => {

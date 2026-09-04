@@ -821,13 +821,7 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
       firestoreHelpers: helpers
     });
   };
-  if (executionContext && typeof executionContext.waitUntil === "function") {
-    executionContext.waitUntil(finalizeBrokerState().catch((error) => {
-      console.error("[iaqar] party bundle broker sync failed", { requestId, matchId, message: error?.message || String(error) });
-    }));
-  } else {
-    await finalizeBrokerState();
-  }
+  await finalizeBrokerState();
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
 }

@@ -353,6 +353,166 @@ test("owner bundle POST accepts available and confirmed without viewing selectio
   assert.match(JSON.stringify(coordination), /ownerBundle/);
 });
 
+test("owner bundle advances the client session to the next review action", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "مكتب النور" } },
+    "offices/office-1/matches/match_owner_next": { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_owner_next",
+      clientRequestId: "request_owner_next"
+    } },
+    "offices/office-1/opportunities/offer_owner_next": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "SALE",
+      salePrice: 700000,
+      city: "الرياض",
+      district: "النرجس"
+    } }
+  };
+  const helpers = mockHelpers(store);
+  const owner = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_owner_next", party: "owner", offerId: "offer_owner_next", requestId: "request_owner_next" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-owner-next-mint",
+    helpers
+  });
+  const client = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_owner_next", party: "client", offerId: "offer_owner_next", requestId: "request_owner_next" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-client-next-mint",
+    helpers
+  });
+  const ownerReply = await handlePartySessionBundle({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      priceConfirmation: "confirmed",
+      viewingAllowed: ""
+    } }) },
+    requestId: "req-owner-next-submit",
+    helpers,
+    ip: "4.4.4.4"
+  });
+  assert.equal(ownerReply.body.ok, true);
+  assert.equal(store["offices/office-1/matches/match_owner_next"].fields.nextActor, "CLIENT");
+  assert.equal(store["offices/office-1/matches/match_owner_next"].fields.hasNewResponse, "true");
+  const firstCoordinationJson = store["offices/office-1/coordinationSessions/match_owner_next"].fields.coordinationJson;
+  await handlePartySessionBundle({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      priceConfirmation: "confirmed",
+      viewingAllowed: ""
+    } }) },
+    requestId: "req-owner-next-duplicate",
+    helpers,
+    ip: "4.4.4.4"
+  });
+  assert.equal(store["offices/office-1/coordinationSessions/match_owner_next"].fields.coordinationJson, firstCoordinationJson);
+  const clientView = await handlePartySessionGet({
+    token: client.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-client-next-get",
+    helpers,
+    ip: "5.5.5.5"
+  });
+  assert.equal(clientView.body.view.decisionPackage?.workflowStep, "client_review");
+  assert.equal(clientView.body.view.decisionPackage?.requiresResponse, true);
+});
+
+test("owner bundle completes broker sync before responding when waitUntil is available", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "مكتب النور" } },
+    "offices/office-1/matches/match_owner_sync": { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_owner_sync",
+      clientRequestId: "request_owner_sync"
+    } },
+    "offices/office-1/opportunities/offer_owner_sync": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "SALE",
+      salePrice: 700000
+    } }
+  };
+  const helpers = mockHelpers(store);
+  const owner = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_owner_sync", party: "owner", offerId: "offer_owner_sync", requestId: "request_owner_sync" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-owner-sync-mint",
+    helpers
+  });
+  let deferred = false;
+  const replied = await handlePartySessionBundle({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      priceConfirmation: "confirmed",
+      viewingAllowed: ""
+    } }) },
+    requestId: "req-owner-sync-submit",
+    helpers,
+    ip: "4.4.4.4",
+    executionContext: { waitUntil() { deferred = true; } }
+  });
+  assert.equal(deferred, false);
+  assert.equal(replied.body.ok, true);
+  assert.equal(store["offices/office-1/matches/match_owner_sync"].fields.nextActor, "CLIENT");
+  assert.equal(store["offices/office-1/matches/match_owner_sync"].fields.hasNewResponse, "true");
+});
+
+test("owner needs-update stores the selected 6+ rooms value", async () => {
+  const store = {};
+  seedMatchStore(store);
+  store["offices/office-1/opportunities/offer_sakb"].fields.propertyType = "شقة";
+  store["offices/office-1/matches/match_sakb"].fields.clientRequestId = "req_sakb";
+  const helpers = mockHelpers(store);
+  const client = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_sakb", party: "client", offerId: "offer_sakb", requestId: "req_sakb" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-client-rooms-mint",
+    helpers
+  });
+  await handlePartySessionBundle({
+    token: client.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      interestStatus: "interested",
+      requestedDetailKeys: ["bedrooms"]
+    } }) },
+    requestId: "req-client-rooms-submit",
+    helpers,
+    ip: "5.5.5.5"
+  });
+  const owner = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_sakb", party: "owner", offerId: "offer_sakb", requestId: "req_sakb" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    requestId: "req-owner-rooms-mint",
+    helpers
+  });
+  const replied = await handlePartySessionBundle({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      detailNeedsUpdate: ["bedrooms"],
+      detailValues: { bedrooms: "6+" },
+      viewingAllowed: ""
+    } }) },
+    requestId: "req-owner-rooms-submit",
+    helpers,
+    ip: "6.6.6.6"
+  });
+  assert.equal(replied.body.ok, true);
+  assert.equal(store["offices/office-1/opportunities/offer_sakb"].fields.rooms.integerValue, "6");
+  const coordination = JSON.parse(store["offices/office-1/coordinationSessions/match_sakb"].fields.coordinationJson);
+  assert.equal(coordination.ownerBundle.detailValues.bedrooms, "6+");
+});
+
 test("client and owner sessions stay distinct and replies persist", async () => {
   const store = {
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
