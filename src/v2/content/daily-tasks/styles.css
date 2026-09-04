@@ -7,7 +7,7 @@
 
 .cv2-exec-card {
   background: #fff;
-  border: 1px solid var(--cv2-border, #e4eae7);
+  border: 1px solid var(--cv2-green-soft-border, #b7d3c5);
   border-radius: var(--cv2-card-radius, 10px);
   padding: 8px 10px;
   min-height: 0;

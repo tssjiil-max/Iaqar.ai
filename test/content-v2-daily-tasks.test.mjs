@@ -124,6 +124,11 @@ test("collapsed new-match card is compact Arabic summary with reveal only", () =
   assert.equal(ENGLISH_UI.test(text), false);
 });
 
+test("daily task card container uses a clear green identity border", () => {
+  const styles = readFileSync(path.join(root, "src", "v2", "content", "daily-tasks", "styles.css"), "utf8");
+  assert.match(styles, /\.cv2-exec-card[\s\S]*?border:\s*1px solid var\(--cv2-green-soft-border, #b7d3c5\)/);
+});
+
 test("open match-found card shows separate client and owner sends with offer details", () => {
   const task = dailyTasksDemoFixtures().find((item) => item.id === "task_new_match");
   const html = buildDailyTaskCardHtml(task, { open: true });
