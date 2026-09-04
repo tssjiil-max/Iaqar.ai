@@ -164,6 +164,28 @@ function chipOptions(options = [], field = "", type = "multi") {
   }).join("");
 }
 
+function ownerDetailEditor(field = {}) {
+  const key = String(field.key || "");
+  const valueKey = key === "rooms" ? "rooms" : key;
+  const options = key === "rooms" || key === "bedrooms"
+    ? [1, 2, 3, 4, 5, 6].map((value) => ({ value: String(value), label: String(value) })).concat([{ value: "6+", label: "6+" }])
+    : ["elevator", "parking", "furnished", "ac", "independentEntrance", "pool", "yard", "truckAccess", "loadingYard", "internalOffices"].includes(key)
+      ? [{ value: "yes", label: "يوجد" }, { value: "no", label: "لا يوجد" }]
+      : [];
+  if (options.length) {
+    return `<div class="party-detail-editor" data-party-detail-editor="${escapeHtml(key)}" hidden>
+      <p class="party-muted">أدخل قيمة ${escapeHtml(field.label || key)}</p>
+      <div class="party-chip-grid party-chip-grid--single">${chipOptions(options, `detailValue_${valueKey}`, "single")}</div>
+      <p class="party-field-error" data-party-detail-error="${escapeHtml(key)}" hidden>اختر قيمة لهذا الحقل قبل إرسال الرد.</p>
+    </div>`;
+  }
+  return `<div class="party-detail-editor" data-party-detail-editor="${escapeHtml(key)}" hidden>
+    <label class="party-muted" for="party-detail-${escapeHtml(key)}">قيمة ${escapeHtml(field.label || key)}</label>
+    <input id="party-detail-${escapeHtml(key)}" type="number" min="1" data-package-detail="${escapeHtml(valueKey)}">
+    <p class="party-field-error" data-party-detail-error="${escapeHtml(key)}" hidden>أدخل قيمة لهذا الحقل قبل إرسال الرد.</p>
+  </div>`;
+}
+
 function decisionPackageBlock(pkg = {}, view = {}) {
   if (!pkg || pkg.mode !== "decision_package_v1") return "";
   if (pkg.submitted) {
@@ -285,15 +307,16 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     </div>`;
   }
   if (pkg.workflowStep === "owner_details") {
-    const fields = (pkg.ownerDetailFields || []).map((field) => `<div class="party-package-field">
-      <p class="party-row"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.hasValue ? field.currentValue : "غير متوفر حاليًا")}</strong></p>
-      <div class="party-chip-grid party-chip-grid--single">${chipOptions([
-        ...(field.hasValue ? [{ value: "confirm", label: "صحيح" }] : []),
-        { value: "needs_update", label: "يحتاج تحديث" }
-      ], `detailStatus_${field.key}`, "single")}</div></div>`).join("");
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_details">
       <p class="party-section-label">إدارة المفاوضات</p>
-      <p class="party-section-label">التفاصيل المطلوبة من العميل</p>${fields}
+      <p class="party-section-label">التفاصيل المطلوبة من العميل</p>${(pkg.ownerDetailFields || []).map((field) => `<div class="party-package-field" data-owner-detail="${escapeHtml(field.key)}">
+        <p class="party-row"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.hasValue ? field.currentValue : "غير متوفر حاليًا")}</strong></p>
+        <div class="party-chip-grid party-chip-grid--single">${chipOptions([
+          ...(field.hasValue ? [{ value: "confirm", label: "صحيح" }] : []),
+          { value: "needs_update", label: "يحتاج تحديث" }
+        ], `detailStatus_${field.key}`, "single")}</div>
+        ${ownerDetailEditor(field)}
+      </div>`).join("")}
       <button type="button" class="party-action party-package-submit" data-party-bundle-submit>إرسال الرد</button>
     </div>`;
   }
