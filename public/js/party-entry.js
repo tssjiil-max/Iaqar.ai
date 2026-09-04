@@ -164,19 +164,24 @@ async function submitBundle(token, bundle, button, photoFiles = []) {
         const response = await postOnce(timeoutMs);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload.ok || !payload.view) {
-          throw new Error(payload.message || "تعذر تسجيل الرد.");
+          const error = new Error(payload.message || "تعذر تسجيل الرد.");
+          error.status = response.status;
+          throw error;
         }
         renderView(payload.view, token);
         return;
       } catch (error) {
         lastError = error;
-        const fresh = await loadSession(token).catch(() => null);
-        if (fresh?.replied || fresh?.decisionPackage?.submitted) {
-          renderView(fresh, token);
-          return;
-        }
-        if (error?.name !== "AbortError") break;
+        const retryable = error?.name === "AbortError"
+          || !Number.isFinite(Number(error?.status))
+          || Number(error.status) >= 500;
+        if (!retryable) break;
       }
+    }
+    const fresh = await loadSession(token).catch(() => null);
+    if (fresh?.replied || fresh?.decisionPackage?.submitted) {
+      renderView(fresh, token);
+      return;
     }
     throw lastError || new Error("تعذر تسجيل الرد.");
   } catch (error) {

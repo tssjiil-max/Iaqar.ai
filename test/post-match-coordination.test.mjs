@@ -55,6 +55,8 @@ test("party submit retries a timed-out owner reply and verifies persisted state"
   assert.match(partyEntry, /AbortController/);
   assert.match(partyEntry, /\[15000, 25000\]/);
   assert.match(partyEntry, /fresh\?\.replied \|\| fresh\?\.decisionPackage\?\.submitted/);
+  assert.match(partyEntry, /Number\(error\.status\) >= 500/);
+  assert.doesNotMatch(partyShell, /الصور التي ترفعها ستُشارك مع العميل/);
 });
 
 test("interested client requires detail keys and does not start viewing", () => {

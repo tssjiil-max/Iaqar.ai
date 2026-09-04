@@ -396,7 +396,6 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     </div>
     <div class="party-package-section" data-package-section="photos">
       <p class="party-section-label">الصور</p>
-      <p class="party-warning">الصور التي ترفعها ستُشارك مع العميل وتُضاف للعقار. تأكد أنها لا تحتوي على رقم جوال أو بيانات تواصل خاصة.</p>
       <label class="party-chip party-chip--toggle">
         <input type="checkbox" data-package-bool="mediaAdded">
         <span>إضافة صور</span>
