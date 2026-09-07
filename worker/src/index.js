@@ -50,6 +50,10 @@ import {
   pushTypeForOperation
 } from "./operations-service.js";
 import {
+  opportunityCoverageIntent,
+  dealCoverageIntent
+} from "./operations-coverage-sync.js";
+import {
   phase6BoundaryGuarantees,
   cooperationModeAllowsExplicitRequest
 } from "./cooperation-phase6-domain.js";
@@ -2608,6 +2612,10 @@ async function processInboundMessage({ projectId, officeId, inboxDocumentId, mes
     }
   });
 
+  await observeOpportunityCoverageShadow({
+    projectId, officeId, opportunityId, accessToken, source: "whatsapp_intake_persisted"
+  });
+
   const matches = await runCanonicalMatchingAfterOpportunityPersist({
     projectId, officeId, opportunityId, accessToken, env
   });
@@ -3594,6 +3602,10 @@ async function handleOpportunityPatch(request, env, requestId) {
     fields
   });
 
+  await observeOpportunityCoverageShadow({
+    projectId, officeId, opportunityId, accessToken, source: "opportunity_patch_persisted"
+  });
+
   const finalRecord = { ...merged, ...readinessFields, version };
   return jsonResponse({
     ok: true,
@@ -3764,6 +3776,82 @@ function operationsFirestoreHelpers() {
     firestoreOptionalString,
     firestoreFieldsToJs
   };
+}
+
+async function observeOpportunityCoverageShadow({
+  projectId, officeId, opportunityId, accessToken, source = "unknown"
+}) {
+  try {
+    const doc = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "opportunities", opportunityId],
+      accessToken,
+      allowMissing: true
+    });
+    if (!doc) {
+      console.warn("[iaqar-ops-shadow] opportunity missing", { officeId, opportunityId, source });
+      return { observed: false, reason: "opportunity_missing" };
+    }
+    const opportunity = { id: opportunityId, ...firestoreFieldsToJs(doc.fields || {}) };
+    const decision = opportunityCoverageIntent(opportunity);
+    console.log(JSON.stringify({
+      event: "operations_coverage_shadow",
+      entityType: "opportunity",
+      source,
+      officeId,
+      entityId: opportunityId,
+      intent: decision.intent,
+      reason: decision.reason,
+      dueAt: decision.dueAt || "",
+      missingFields: decision.missingFields || [],
+      lifecycleStatus: String(opportunity.lifecycleStatus || opportunity.internalStatus || ""),
+      workflowStage: String(opportunity.workflowStage || ""),
+      matchingReadiness: String(opportunity.matchingReadiness || "")
+    }));
+    return { observed: true, ...decision };
+  } catch (error) {
+    console.warn("[iaqar-ops-shadow] opportunity observation failed", {
+      officeId, opportunityId, source, message: error?.message || String(error)
+    });
+    return { observed: false, reason: "observer_error" };
+  }
+}
+
+async function observeDealCoverageShadow({
+  projectId, officeId, dealId, accessToken, source = "unknown"
+}) {
+  try {
+    const doc = await getFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "deals", dealId],
+      accessToken,
+      allowMissing: true
+    });
+    if (!doc) {
+      console.warn("[iaqar-ops-shadow] deal missing", { officeId, dealId, source });
+      return { observed: false, reason: "deal_missing" };
+    }
+    const deal = { dealId, ...firestoreFieldsToJs(doc.fields || {}) };
+    const decision = dealCoverageIntent(deal);
+    console.log(JSON.stringify({
+      event: "operations_coverage_shadow",
+      entityType: "deal",
+      source,
+      officeId,
+      entityId: dealId,
+      intent: decision.intent,
+      reason: decision.reason,
+      dueAt: decision.dueAt || "",
+      stage: String(deal.workflowStage || deal.stage || ""),
+      status: String(deal.status || "")
+    }));
+    return { observed: true, ...decision };
+  } catch (error) {
+    console.warn("[iaqar-ops-shadow] deal observation failed", {
+      officeId, dealId, source, message: error?.message || String(error)
+    });
+    return { observed: false, reason: "observer_error" };
+  }
 }
 
 function operationsDeps(env = null) {
@@ -5667,6 +5755,9 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
     nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
   }});
   await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"تم إنشاء الصفقة من المطابقة",identity,accessToken,createdAt:now});
+  await observeDealCoverageShadow({
+    projectId, officeId, dealId, accessToken, source: "deal_created"
+  });
   return dealId;
 }
 
@@ -5847,6 +5938,7 @@ async function handleWorkflowAction(request,env,requestId) {
       lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"stage_changed",stage:requested,note:note||`انتقلت الصفقة إلى ${DEAL_STAGE_LABELS[requested]}`,identity,accessToken,createdAt:now});
+    await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_stage_changed" });
     return jsonResponse({ok:true,status:"open",workflowStage:requested,stageLabel:DEAL_STAGE_LABELS[requested],nextAction:DEAL_NEXT_ACTION_LABELS[requested],health,requestId});
   }
 
@@ -5861,6 +5953,7 @@ async function handleWorkflowAction(request,env,requestId) {
       healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"follow_up_added",stage:d.workflowStage||"follow_up",note:note||"تم تحديد موعد متابعة",identity,accessToken,createdAt:now});
+    await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_followup_updated" });
     return jsonResponse({ok:true,status:"noted",nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,health,requestId});
   }
 
@@ -7052,6 +7145,14 @@ function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToke
     fetchListingPage,
     opportunityPatchToFirestoreFields,
     LIFECYCLE_STATUS,
+    observeOpportunityCoverageShadow: ({ officeId: observedOfficeId, opportunityId: observedOpportunityId, source = "canonical_intake_complete" }) =>
+      observeOpportunityCoverageShadow({
+        projectId,
+        officeId: observedOfficeId,
+        opportunityId: observedOpportunityId,
+        accessToken,
+        source
+      }),
     extractImageTextFromMediaPath: (mediaPath, officeId) =>
       extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract, parseRealEstateMessage),
     extractAudioFromMediaPath: (mediaPath, officeId) =>
@@ -7546,6 +7647,12 @@ async function scheduleOpportunityFollowUp({
   };
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
+  if (collection === "opportunities") {
+    await observeOpportunityCoverageShadow({
+      projectId, officeId, opportunityId, accessToken,
+      source: isReschedule ? "followup_rescheduled" : "followup_scheduled"
+    });
+  }
   const activityAction = isReschedule ? "followup_rescheduled" : "followup_scheduled";
   await addOpportunityCommunication({
     projectId, officeId, opportunityId, accessToken, now,

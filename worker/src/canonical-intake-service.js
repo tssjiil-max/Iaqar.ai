@@ -556,6 +556,14 @@ export async function completeCanonicalAnalysis({
     fields: opportunityPatch
   });
 
+  if (typeof ctx.observeOpportunityCoverageShadow === "function") {
+    await ctx.observeOpportunityCoverageShadow({
+      officeId,
+      opportunityId,
+      source: "canonical_intake_complete"
+    });
+  }
+
   const jobDoc = await ctx.getFirestoreDocument({
     projectId: ctx.projectId,
     segments: ["offices", officeId, "importJobs", importJobId],
