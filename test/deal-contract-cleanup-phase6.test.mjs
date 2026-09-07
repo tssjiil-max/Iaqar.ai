@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   BROKERAGE_CONTRACT_STATUS,
   DEAL_STAGE_ORDER,
@@ -11,6 +13,8 @@ import {
   planDealClosure,
   planDealStageTransition
 } from "../worker/src/deal-contract-domain.js";
+
+const root = path.resolve(import.meta.dirname, "..");
 
 test("deal creation requires serious coordination or confirmed viewing", () => {
   assert.equal(evaluateDealCreation({ match: { status: "active" } }).allowed, false);
@@ -73,4 +77,17 @@ test("deal boundary keeps Deal authoritative and Operations projection-only", ()
   assert.equal(boundary.matchOwnsDealStage, false);
   assert.equal(boundary.operationOwnsDealStage, false);
   assert.equal(boundary.brokerageContractRequiredBeforeClosing, true);
+});
+
+test("worker runtime is wired to canonical deal and brokerage contract guards", () => {
+  const source = readFileSync(path.join(root, "worker", "src", "index.js"), "utf8");
+  assert.match(source, /from "\.\/deal-contract-domain\.js"/);
+  assert.match(source, /evaluateDealCreation\(/);
+  assert.match(source, /planDealStageTransition\(/);
+  assert.match(source, /planDealClosure\(/);
+  assert.match(source, /set_brokerage_contract_status/);
+  assert.match(source, /brokerage_contract_required/);
+  assert.match(source, /requestDisposition:firestoreString\("FULFILLED"\)/);
+  assert.match(source, /offerDisposition:firestoreString\("SOLD"\)/);
+  assert.equal(source.includes('const DEAL_STAGE_ORDER = ["contact","viewing","negotiation","agreement","closing","closed"]'), false);
 });
