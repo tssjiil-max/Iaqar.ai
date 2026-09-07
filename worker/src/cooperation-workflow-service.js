@@ -8,6 +8,10 @@ import { buildCooperationRequestId, normalizeCooperationMode } from "./cooperati
 import { pickCooperationCandidates, rankCooperationCandidates } from "./cooperation-ranking-layer.js";
 import { upsertCooperationOperations } from "./operations-service.js";
 import {
+  canonicalOwnerForCooperationWorkflowAction,
+  cooperationWorkflowActionIsDelegated
+} from "./cooperation-contract-domain.js";
+import {
   COOPERATION_ACTION,
   COOPERATION_RECORD_STATUS,
   COOPERATION_STAGE,
@@ -359,6 +363,20 @@ export async function runCooperationWorkflow({
   if (!coopDoc) return { ok: false, error: "cooperation_not_found", status: 404, message: "سجل التعاون غير موجود." };
 
   const request = hydrateCooperation(cooperationId, deps.firestoreFieldsToJs(coopDoc.fields || {}));
+  if (cooperationWorkflowActionIsDelegated(action)) {
+    const canonicalOwner = canonicalOwnerForCooperationWorkflowAction(action);
+    return {
+      ok: false,
+      error: "canonical_transaction_required",
+      status: 409,
+      canonicalOwner,
+      message: canonicalOwner === "coordinationSessions"
+        ? "متابعة العميل والمالك تتم داخل جلسة التفاوض."
+        : canonicalOwner === "matches"
+          ? "تأكيد المعاينة يتم من سجل المطابقة."
+          : "الاتفاق والإغلاق يتمان من سجل الصفقة."
+    };
+  }
   const applied = applyCooperationWorkflowTransition(request, action, { actorOfficeId });
   if (!applied.ok) {
     return {

@@ -20,6 +20,11 @@ import { ensureCooperationRoom } from "./opportunity-workspace-service.mjs";
 import { readTargetOfficeEligibility } from "./suitable-offices-service.mjs";
 import { resolveCooperationRoles } from "../../public/js/cooperation-workflow-domain.js";
 import { normalizeOpportunitySide } from "./matching-engine.js";
+import {
+  COOPERATION_SUBCONTRACT_STATUS,
+  planAcceptedCooperationSubcontract,
+  planCooperationSubcontractUpdate
+} from "./cooperation-contract-domain.js";
 
 function firestoreHelpersBundle(h) {
   return h;
@@ -269,6 +274,9 @@ export async function runCooperationLifecycle({
   cooperationId,
   action,
   reason = "",
+  subcontractStatus = "",
+  subcontractReference = "",
+  primaryBrokerageContractId = "",
   accessToken,
   deps
 }) {
@@ -307,6 +315,68 @@ export async function runCooperationLifecycle({
   }
 
   const decision = String(action || "").toUpperCase();
+  if (decision === "SET_SUBCONTRACT_STATUS") {
+    const contractPlan = planCooperationSubcontractUpdate({
+      cooperation: request,
+      requestedStatus: subcontractStatus,
+      subcontractReference,
+      primaryBrokerageContractId,
+      now: new Date()
+    });
+    if (!contractPlan.ok) {
+      const status = contractPlan.reason === "cooperation_not_accepted" ? 409
+        : contractPlan.reason === "primary_brokerage_contract_required" ? 409
+        : contractPlan.reason === "signed_subcontract_terminal" ? 409
+        : 400;
+      return { ok: false, error: contractPlan.reason, status };
+    }
+    if (!contractPlan.idempotent) {
+      const p = contractPlan.patch;
+      const contractFields = {
+        originatingOfficeId: firestoreHelpers.firestoreString(origin),
+        targetOfficeId: firestoreHelpers.firestoreString(target),
+        subcontractRequired: firestoreHelpers.firestoreBoolean(true),
+        subcontractStatus: firestoreHelpers.firestoreString(p.subcontractStatus),
+        subcontractReference: firestoreHelpers.firestoreString(p.subcontractReference || ""),
+        primaryBrokerageContractId: firestoreHelpers.firestoreString(p.primaryBrokerageContractId || ""),
+        subcontractUpdatedAt: firestoreHelpers.firestoreTimestamp(new Date(p.subcontractUpdatedAt)),
+        updatedAt: firestoreHelpers.firestoreTimestamp(new Date())
+      };
+      if (p.subcontractSignedAt) contractFields.subcontractSignedAt = firestoreHelpers.firestoreTimestamp(new Date(p.subcontractSignedAt));
+      if (p.subcontractCancelledAt) contractFields.subcontractCancelledAt = firestoreHelpers.firestoreTimestamp(new Date(p.subcontractCancelledAt));
+      await setFirestoreDocument({
+        projectId,
+        segments: ["cooperationRequests", cooperationId],
+        accessToken,
+        fields: contractFields
+      });
+      if (p.subcontractStatus === COOPERATION_SUBCONTRACT_STATUS.SIGNED) {
+        await writeSubcontractLibraryEntriesOnSign({
+          projectId,
+          accessToken,
+          agreementId: cooperationId,
+          originatingOfficeId: origin,
+          targetOfficeId: target,
+          subcontractReference: p.subcontractReference,
+          primaryBrokerageContractId: p.primaryBrokerageContractId,
+          getFirestoreDocument,
+          setFirestoreDocument,
+          firestoreFieldsToJs,
+          firestoreHelpers
+        });
+      }
+    }
+    return {
+      ok: true,
+      cooperationId,
+      status: String(request.status || "").toUpperCase(),
+      subcontractStatus: contractPlan.requested,
+      subcontractReference: contractPlan.patch?.subcontractReference || request.subcontractReference || "",
+      primaryBrokerageContractId: contractPlan.patch?.primaryBrokerageContractId || request.primaryBrokerageContractId || "",
+      idempotent: Boolean(contractPlan.idempotent),
+      opportunityIds: Array.isArray(request.opportunityIds) ? request.opportunityIds : []
+    };
+  }
   if (["ACCEPT", "ACCEPTED", "REJECT", "REJECTED", "REQUEST_DETAILS", "DETAILS_REQUESTED"].includes(decision) && actorOfficeId !== target) {
     return { ok: false, error: "target_only", status: 403 };
   }
@@ -342,6 +412,12 @@ export async function runCooperationLifecycle({
     const nextStatusPreview = String(applied.patch.status || request.status || "").toUpperCase();
     if (nextStatusPreview === "ACCEPTED") {
       fields.currentStage = firestoreHelpers.firestoreString("COOPERATION_ACCEPTED");
+      const subcontract = planAcceptedCooperationSubcontract({ cooperation: request, now: new Date() });
+      fields.subcontractRequired = firestoreHelpers.firestoreBoolean(true);
+      fields.subcontractStatus = firestoreHelpers.firestoreString(subcontract.subcontractStatus);
+      fields.subcontractReference = firestoreHelpers.firestoreString(subcontract.subcontractReference || "");
+      fields.primaryBrokerageContractId = firestoreHelpers.firestoreString(subcontract.primaryBrokerageContractId || "");
+      fields.subcontractUpdatedAt = firestoreHelpers.firestoreTimestamp(new Date(subcontract.subcontractUpdatedAt));
     }
     if (nextStatusPreview === "REJECTED") {
       fields.currentStage = firestoreHelpers.firestoreString("REJECTED");
@@ -420,17 +496,6 @@ export async function runCooperationLifecycle({
         firestoreHelpers
       });
     }
-    await writeAgreementLibraryEntriesOnAccept({
-      projectId,
-      accessToken,
-      agreementId: cooperationId,
-      originatingOfficeId: origin,
-      targetOfficeId: target,
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      firestoreHelpers
-    });
     for (const opportunityId of opportunityIds) {
       await ensureCooperationRoom({
         projectId,
@@ -961,13 +1026,15 @@ async function readPublicOfficeName({
   return String(data.officeName || data.brokerName || officeId).trim() || officeId;
 }
 
-async function writeAgreementLibraryEntriesOnAccept({
+async function writeSubcontractLibraryEntriesOnSign({
   projectId,
   accessToken,
   agreementId,
   originatingOfficeId,
   targetOfficeId,
   commissionRate = null,
+  subcontractReference = "",
+  primaryBrokerageContractId = "",
   getFirestoreDocument,
   setFirestoreDocument,
   firestoreFieldsToJs,
@@ -983,11 +1050,14 @@ async function writeAgreementLibraryEntriesOnAccept({
   const now = new Date();
   const baseFields = {
     kind: fh.firestoreString("agreement"),
+    agreementType: fh.firestoreString("broker_subcontract"),
     agreementId: fh.firestoreString(agreementId),
-    fileName: fh.firestoreString("اتفاقية-تعاون.pdf"),
+    fileName: fh.firestoreString("عقد-تعاون-فرعي.pdf"),
     contentType: fh.firestoreString("application/pdf"),
     mediaPath: fh.firestoreString(""),
-    agreementStatus: fh.firestoreString("ACTIVE"),
+    agreementStatus: fh.firestoreString("SIGNED"),
+    subcontractReference: fh.firestoreString(String(subcontractReference || "")),
+    primaryBrokerageContractId: fh.firestoreString(String(primaryBrokerageContractId || "")),
     commissionRate: commissionRate == null ? null : fh.firestoreInteger(Number(commissionRate) || 0),
     createdAt: fh.firestoreTimestamp(now),
     updatedAt: fh.firestoreTimestamp(now),

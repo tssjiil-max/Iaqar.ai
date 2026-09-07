@@ -5022,6 +5022,9 @@ async function handleCooperationLifecycle(request, env, requestId) {
   const cooperationId = cleanText(body.cooperationId, 180);
   const action = cleanText(body.action, 40).toUpperCase();
   const reason = cleanText(body.reason, 200);
+  const subcontractStatus = cleanText(body.subcontractStatus || body.contractStatus, 40).toLowerCase();
+  const subcontractReference = cleanText(body.subcontractReference || body.contractReference, 180);
+  const primaryBrokerageContractId = cleanText(body.primaryBrokerageContractId, 180);
   if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
   if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
   if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
@@ -5037,6 +5040,9 @@ async function handleCooperationLifecycle(request, env, requestId) {
     cooperationId,
     action,
     reason,
+    subcontractStatus,
+    subcontractReference,
+    primaryBrokerageContractId,
     accessToken,
     deps: {
       ...operationsDeps(env),
@@ -5057,6 +5063,9 @@ async function handleCooperationLifecycle(request, env, requestId) {
     officeId,
     cooperationId,
     status: result.status,
+    subcontractStatus: result.subcontractStatus || "",
+    subcontractReference: result.subcontractReference || "",
+    primaryBrokerageContractId: result.primaryBrokerageContractId || "",
     projectionsWritten: result.projectionsWritten,
     projectionsRemoved: result.projectionsRemoved,
     opportunityIds: result.opportunityIds,
