@@ -23,88 +23,207 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm ci --prefix worker
-      - name: Delegate notification persistence out of Operations
+      - name: Extract notification domain from Operations
         shell: python
         run: |
           from pathlib import Path
           import re
 
+          notification_domain = Path('worker/src/notification-domain.js')
+          notification_domain.write_text(r'''/**
+           * Notification domain — deterministic alert identity and Operation-to-alert projection.
+           * This module does not create Operations or advance business workflow state.
+           */
+
+          import { livingTaskId } from "../../public/js/match-group-domain.js";
+
+          export const NOTIFICATION_TYPES = Object.freeze({
+            NEW_MATCH: "NEW_MATCH",
+            MISSING_DATA: "MISSING_DATA",
+            COOPERATION_REQUEST: "COOPERATION_REQUEST",
+            COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
+            SYSTEM_ACTION: "SYSTEM_ACTION"
+          });
+
+          export const NOTIFICATION_STATUS = Object.freeze({
+            CREATED: "CREATED",
+            QUEUED: "QUEUED",
+            SENT: "SENT",
+            DELIVERED: "DELIVERED",
+            FAILED: "FAILED",
+            READ: "READ",
+            DISMISSED: "DISMISSED"
+          });
+
+          const COPY = Object.freeze({
+            MATCH_REVIEW: { push: "لديك مطابقة جديدة تحتاج مراجعتك.", type: NOTIFICATION_TYPES.NEW_MATCH },
+            MISSING_DATA: { push: "توجد بيانات ناقصة في إحدى فرصك.", type: NOTIFICATION_TYPES.MISSING_DATA },
+            OPPORTUNITY_REVIEW: { push: "لديك عرض أو طلب جديد يحتاج مراجعتك.", type: NOTIFICATION_TYPES.SYSTEM_ACTION },
+            OPPORTUNITY_FOLLOW_UP: { push: "لديك متابعة مالك أو عميل تحتاج إجراء.", type: NOTIFICATION_TYPES.SYSTEM_ACTION },
+            DEAL_ACTION: { push: "لديك صفقة تحتاج متابعة.", type: NOTIFICATION_TYPES.SYSTEM_ACTION },
+            COOPERATION_REQUEST: { push: "وصل طلب تعاون جديد.", type: NOTIFICATION_TYPES.COOPERATION_REQUEST },
+            COOPERATION_RESPONSE: { push: "يوجد تحديث على طلب تعاون.", type: NOTIFICATION_TYPES.COOPERATION_RESPONSE },
+            COOPERATION_MATCH: { push: "لديك مهمة تعاون تحتاج إجراء.", type: NOTIFICATION_TYPES.COOPERATION_REQUEST },
+            EXTERNAL_RESPONSE: { push: "لديك رد يحتاج متابعتك.", type: NOTIFICATION_TYPES.SYSTEM_ACTION },
+            SYSTEM_ACTION: { push: "يوجد إشعار نظامي يحتاج مراجعتك.", type: NOTIFICATION_TYPES.SYSTEM_ACTION },
+            PLATFORM_OPPORTUNITY_OFFER: { push: "لديك فرصة جديدة من المنصة.", type: NOTIFICATION_TYPES.SYSTEM_ACTION }
+          });
+
+          function copyForOperation(type = "") {
+            return COPY[String(type || "").toUpperCase()] || COPY.SYSTEM_ACTION;
+          }
+
+          async function sha256Hex(value) {
+            const data = new TextEncoder().encode(String(value));
+            const digest = await crypto.subtle.digest("SHA-256", data);
+            return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+          }
+
+          export async function notificationDocumentId(deduplicationKey) {
+            const hex = await sha256Hex(`notif|${String(deduplicationKey || "")}`);
+            return `nt_${hex.slice(0, 40)}`;
+          }
+
+          export async function buildInAppNotification({ officeId, brokerId = "", operation, referenceCode = "", now = new Date() }) {
+            const copy = copyForOperation(operation?.type);
+            const deduplicationKey = `NOTIF|${operation?.deduplicationKey || ""}`;
+            const id = await notificationDocumentId(deduplicationKey);
+            const ref = String(referenceCode || "").trim();
+            const operationType = String(operation?.type || "").toUpperCase();
+            const title = operationType === "MATCH_REVIEW" && ref
+              ? `مطابقة جديدة — ${ref.startsWith("#") ? ref : `#${ref}`}`
+              : copy.push;
+            const matchId = operationType === "MATCH_REVIEW"
+              ? String(operation?.matchId || operation?.sourceEntityId || "")
+              : String(operation?.matchId || "");
+            const opportunityId = String(operation?.opportunityId || "");
+            const matchGroupId = String(operation?.metadata?.matchGroupId || "");
+            const workflowId = operationType === "MATCH_REVIEW"
+              ? livingTaskId(matchGroupId || opportunityId || matchId)
+              : String(matchGroupId || operation?.id || matchId || "");
+            return {
+              id,
+              officeId: String(officeId || operation?.officeId || ""),
+              brokerId: String(brokerId || operation?.assignedBrokerId || ""),
+              operationId: String(operation?.id || ""),
+              matchId,
+              dealId: String(operation?.dealId || operation?.metadata?.dealId || ""),
+              opportunityId,
+              cooperationId: String(operation?.cooperationId || ""),
+              taskId: workflowId,
+              workflowId,
+              referenceCode: ref,
+              entityType: String(operation?.sourceEntityType || ""),
+              entityId: String(operation?.sourceEntityId || ""),
+              type: copy.type,
+              title,
+              body: title,
+              status: NOTIFICATION_STATUS.CREATED,
+              readAt: null,
+              createdAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+              deduplicationKey,
+              deliveryChannels: ["in_app", "push"],
+              providerState: { push: "QUEUED", pushSentAt: null, pushDeliveredAt: null, pushFailedAt: null, pushError: "" },
+              sensitivePreview: false,
+              schemaVersion: 1,
+              createdBySystem: true
+            };
+          }
+          '''.replace('          ', ''))
+
+          p = Path('worker/src/operations-domain.js')
+          s = p.read_text()
+          s = s.replace(
+            ' * Phase 5 — Operations Center + in-app Notifications domain.\n * Pure builders for system-generated Operations and Notifications.',
+            ' * Phase 5 — Operations domain.\n * Pure builders for system-generated Operations; notification projection is delegated.'
+          )
+          marker = 'import { livingTaskId } from "../../public/js/match-group-domain.js";\n'
+          facade = '''export {
+            NOTIFICATION_TYPES,
+            NOTIFICATION_STATUS,
+            notificationDocumentId,
+            buildInAppNotification
+          } from "./notification-domain.js";
+          '''
+          if './notification-domain.js' not in s:
+            if marker not in s:
+              raise SystemExit('operations-domain import marker missing')
+            s = s.replace(marker, marker + facade, 1)
+
+          s, n = re.subn(
+            r'export const NOTIFICATION_TYPES = Object\.freeze\(\{[\s\S]*?\n\}\);\n\nexport const NOTIFICATION_STATUS = Object\.freeze\(\{[\s\S]*?\n\}\);\n\n',
+            '', s, count=1
+          )
+          if n not in (0, 1): raise SystemExit('notification constants patch ambiguous')
+
+          prefix, sep, suffix = s.partition('export function phase5BoundaryGuarantees()')
+          if not sep: raise SystemExit('phase5 boundary marker missing')
+          prefix = re.sub(r'\n\s+push: "[^"]*",', '', prefix)
+          prefix = re.sub(r'\n\s+notificationType: NOTIFICATION_TYPES\.[A-Z_]+', '', prefix)
+          s = prefix + sep + suffix
+
+          s, n = re.subn(
+            r'export async function notificationDocumentId\(deduplicationKey\) \{[\s\S]*?\n\}\n\n',
+            '', s, count=1
+          )
+          if n not in (0, 1): raise SystemExit('notification id patch ambiguous')
+          s, n = re.subn(
+            r'export async function buildInAppNotification\([\s\S]*?\n\}\n\nexport function applyOperationLifecycle',
+            'export function applyOperationLifecycle', s, count=1
+          )
+          if n not in (0, 1): raise SystemExit('notification builder patch ambiguous')
+          p.write_text(s)
+
           p = Path('worker/src/operations-service.js')
           s = p.read_text()
-
-          s = s.replace(
-            ' * Phase 5 — Operations + Notifications persistence orchestration (Worker trust boundary).',
-            ' * Phase 5 — Operations persistence/projector orchestration (Worker trust boundary).\n * Notification persistence and delivery state are delegated to notification-service.'
-          )
-
-          anchor = '''import {
-            canonicalOpportunityMissingFields,
-            looksCanonicalOpportunity,
-            matchingAdmissionFieldLabels
-          } from "./matching-admission-domain.js";
-          '''
-          notification_import = '''import {
-            notificationToFirestoreFields,
-            upsertNotificationDocument,
-            recordNotificationPushResult
-          } from "./notification-service.js";
-          export {
-            notificationToFirestoreFields,
-            upsertNotificationDocument,
-            recordNotificationPushResult
-          } from "./notification-service.js";
-          '''
-          if './notification-service.js' not in s:
-            if anchor not in s:
-              raise SystemExit('matching-admission import anchor not found')
-            s = s.replace(anchor, anchor + notification_import, 1)
-
-          s, count_serializer = re.subn(
-            r'export function notificationToFirestoreFields\([\s\S]*?\n}\n\nfunction isTerminalStatus\(',
-            'function isTerminalStatus(',
-            s,
-            count=1
-          )
-          if count_serializer != 1:
-            raise SystemExit(f'notification serializer block patch count={count_serializer}')
-
-          s, count_persistence = re.subn(
-            r'export async function upsertNotificationDocument\([\s\S]*?\n}\n\nasync function upsertCoverageOperationBundle\(',
-            'async function upsertCoverageOperationBundle(',
-            s,
-            count=1
-          )
-          if count_persistence != 1:
-            raise SystemExit(f'notification persistence block patch count={count_persistence}')
-
-          if s.count('NOTIFICATION_STATUS') == 1:
-            s = s.replace('  NOTIFICATION_STATUS,\n', '', 1)
-
-          if 'export function notificationToFirestoreFields(' in s:
-            raise SystemExit('old notification serializer still owned by operations-service')
-          if 'export async function upsertNotificationDocument(' in s:
-            raise SystemExit('old notification upsert still owned by operations-service')
-          if 'export async function recordNotificationPushResult(' in s:
-            raise SystemExit('old notification push state still owned by operations-service')
-          if './notification-service.js' not in s:
-            raise SystemExit('notification-service delegation missing')
-
+          s = s.replace('  buildInAppNotification,\n', '', 1)
+          if 'from "./notification-domain.js"' not in s:
+            anchor = '} from "./notification-service.js";\n'
+            if anchor not in s: raise SystemExit('notification-service import marker missing')
+            s = s.replace(anchor, anchor + 'import { buildInAppNotification } from "./notification-domain.js";\n', 1)
           p.write_text(s)
-      - name: Syntax
+
+          p = Path('worker/src/notification-service.js')
+          s = p.read_text().replace(
+            'import { NOTIFICATION_STATUS } from "./operations-domain.js";',
+            'import { NOTIFICATION_STATUS } from "./notification-domain.js";'
+          )
+          p.write_text(s)
+
+          p = Path('worker/src/in-app-notification-write.js')
+          s = p.read_text().replace(
+            '} from "./operations-domain.js";',
+            '} from "./notification-domain.js";',
+            1
+          )
+          p.write_text(s)
+
+          # Hard boundary checks.
+          notif = notification_domain.read_text()
+          service = Path('worker/src/notification-service.js').read_text()
+          writer = Path('worker/src/in-app-notification-write.js').read_text()
+          ops = Path('worker/src/operations-domain.js').read_text()
+          if './operations-domain.js' in notif or './operations-domain.js' in service or './operations-domain.js' in writer:
+            raise SystemExit('notification layer still imports operations-domain')
+          if 'export async function buildInAppNotification(' in ops:
+            raise SystemExit('Operations still implements notification builder')
+          if 'export const NOTIFICATION_STATUS = Object.freeze' in ops:
+            raise SystemExit('Operations still owns notification status')
+      - name: Validate separated domains
         run: |
-          node --check worker/src/operations-service.js
+          node --check worker/src/notification-domain.js
           node --check worker/src/notification-service.js
-      - name: Operations regression
-        run: node --test test/operations-phase5.test.mjs
-      - name: Deep-link regression
-        run: node --test test/notification-deep-link.test.mjs
-      - name: Preferences regression
-        run: node --test test/notification-preferences.test.mjs
-      - name: Commit runtime ownership wiring
+          node --check worker/src/operations-domain.js
+          node --check worker/src/operations-service.js
+          node --check worker/src/in-app-notification-write.js
+          npm run test:notifications:gate
+          npm run test:orchestrator:gate
+      - name: Commit separated notification domain
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add worker/src/operations-service.js
-          git commit -m "Notifications: separate persistence ownership from Operations"
+          git add worker/src/notification-domain.js worker/src/notification-service.js worker/src/operations-domain.js worker/src/operations-service.js worker/src/in-app-notification-write.js
+          git commit -m "Notifications: isolate domain from Operations"
           git push origin HEAD:chore/notifications-cleanup-phase10-20260907
