@@ -1,9 +1,11 @@
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
   COVERAGE_INTENT,
   opportunityCoverageIntent,
+  dealCoverageIntent,
   syncMatchViewingCoverage
 } from "../src/operations-coverage-sync.js";
 
@@ -56,6 +58,40 @@ test("a complete opportunity without follow-up resolves to review coverage", () 
 test("terminal opportunity creates no coverage intent", () => {
   const decision = opportunityCoverageIntent({ lifecycleStatus: "ARCHIVED" });
   assert.equal(decision.intent, COVERAGE_INTENT.NONE);
+});
+
+test("active deal resolves to DEAL_ACTION and preserves due time", () => {
+  const decision = dealCoverageIntent({
+    status: "open",
+    workflowStage: "closing",
+    nextFollowUpAt: "2026-09-10T09:00:00.000Z"
+  });
+  assert.equal(decision.intent, COVERAGE_INTENT.DEAL_ACTION);
+  assert.equal(decision.stage, "closing");
+  assert.equal(decision.dueAt, "2026-09-10T09:00:00.000Z");
+});
+
+test("terminal deal creates no coverage intent", () => {
+  assert.equal(dealCoverageIntent({ status: "closed", workflowStage: "closed" }).intent, COVERAGE_INTENT.NONE);
+  assert.equal(dealCoverageIntent({ status: "lost", workflowStage: "negotiation" }).intent, COVERAGE_INTENT.NONE);
+});
+
+test("shadow observers are wired to the intended persisted event boundaries", () => {
+  const indexSource = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const canonicalSource = fs.readFileSync(new URL("../src/canonical-intake-service.js", import.meta.url), "utf8");
+
+  for (const marker of [
+    'source: "whatsapp_intake_persisted"',
+    'source: "opportunity_patch_persisted"',
+    '"followup_scheduled"',
+    'source: "deal_created"',
+    'source: "deal_stage_changed"',
+    'source: "deal_followup_updated"'
+  ]) {
+    assert.ok(indexSource.includes(marker), `missing shadow wiring marker: ${marker}`);
+  }
+  assert.ok(canonicalSource.includes('source: "canonical_intake_complete"'));
+  assert.ok(indexSource.includes('event: "operations_coverage_shadow"'));
 });
 
 test("viewing projection mirrors only into linked operation", async () => {
