@@ -1,0 +1,44 @@
+name: Central Orchestrator runtime patch
+
+on:
+  push:
+    branches:
+      - chore/central-orchestrator-cleanup-phase9-20260907
+    paths:
+      - .github/central-orchestrator-runtime-patch.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/central-orchestrator-cleanup-phase9-20260907
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Patch Central Orchestrator runtime boundaries
+        run: python scripts/patch-central-orchestrator-runtime.py
+      - name: Validate syntax and contract
+        run: |
+          git diff --check
+          node --check worker/src/index.js
+          node --check worker/src/canonical-intake-service.js
+          node --check worker/src/party-session-service.js
+          node --check worker/src/central-orchestrator-service.js
+          npm ci
+          npm ci --prefix worker
+          npm run test:orchestrator:gate
+      - name: Commit runtime wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/index.js worker/src/canonical-intake-service.js worker/src/party-session-service.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Orchestrator: wire deterministic runtime boundaries"
+          git push origin HEAD:chore/central-orchestrator-cleanup-phase9-20260907
