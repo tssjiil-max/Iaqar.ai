@@ -76,7 +76,6 @@ jobs:
           if count_persistence != 1:
             raise SystemExit(f'notification persistence block patch count={count_persistence}')
 
-          # NOTIFICATION_STATUS belonged only to the removed notification persistence block.
           if s.count('NOTIFICATION_STATUS') == 1:
             s = s.replace('  NOTIFICATION_STATUS,\n', '', 1)
 
@@ -90,11 +89,16 @@ jobs:
             raise SystemExit('notification-service delegation missing')
 
           p.write_text(s)
-      - name: Validate syntax and notification regressions
+      - name: Syntax
         run: |
           node --check worker/src/operations-service.js
           node --check worker/src/notification-service.js
-          node --test test/operations-phase5.test.mjs test/notification-deep-link.test.mjs test/notification-preferences.test.mjs
+      - name: Operations regression
+        run: node --test test/operations-phase5.test.mjs
+      - name: Deep-link regression
+        run: node --test test/notification-deep-link.test.mjs
+      - name: Preferences regression
+        run: node --test test/notification-preferences.test.mjs
       - name: Commit runtime ownership wiring
         run: |
           if git diff --quiet; then exit 0; fi
