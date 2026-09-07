@@ -5,6 +5,7 @@ on:
     branches:
       - chore/operations-coverage-phase1-20260907
       - chore/core-intake-completion-phase1-20260907
+      - chore/matching-admission-phase2-20260907
   workflow_dispatch:
 
 permissions:
