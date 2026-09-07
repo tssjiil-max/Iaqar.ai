@@ -4,6 +4,8 @@
  * dispatches Activepieces with secure refs (adapter-ready when unset).
  */
 
+import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
+import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
   ANALYSIS_STATUS,
   buildFileSummary,
@@ -402,6 +404,18 @@ export async function startCanonicalIntake(body, ctx) {
     });
   }
 
+  const intakeOrchestration = await dispatchOrchestratorEvent({
+    event: ORCHESTRATOR_EVENT.INTAKE_PERSISTED,
+    eventId: buildOrchestratorEventId({
+      event: ORCHESTRATOR_EVENT.INTAKE_PERSISTED, officeId, entityId: opportunityId, occurrenceId: importJobId
+    }),
+    context: { officeId, entityId: opportunityId, importJobId, sourceChannel },
+    deferredTargets: [ORCHESTRATOR_OWNER.COMPLETION]
+  });
+  if (!intakeOrchestration.ok) {
+    throw ctx.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق الإدخال: ${intakeOrchestration.error || "unknown"}`);
+  }
+
   return {
     ok: true,
     duplicate: false,
@@ -577,6 +591,18 @@ export async function completeCanonicalAnalysis({
       opportunityId,
       source: "canonical_intake_complete"
     });
+  }
+
+  const completionOrchestration = await dispatchOrchestratorEvent({
+    event: ORCHESTRATOR_EVENT.OPPORTUNITY_COMPLETED,
+    eventId: buildOrchestratorEventId({
+      event: ORCHESTRATOR_EVENT.OPPORTUNITY_COMPLETED, officeId, entityId: opportunityId, occurrenceId: importJobId
+    }),
+    context: { officeId, entityId: opportunityId, importJobId, matchingReadiness },
+    deferredTargets: [ORCHESTRATOR_OWNER.MATCHING]
+  });
+  if (!completionOrchestration.ok) {
+    throw ctx.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق اكتمال الفرصة: ${completionOrchestration.error || "unknown"}`);
   }
 
   const jobDoc = await ctx.getFirestoreDocument({

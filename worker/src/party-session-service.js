@@ -1,3 +1,5 @@
+import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
+import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
   buildPartySnapshot,
   buildShareSnapshot,
@@ -736,7 +738,25 @@ export async function handlePartySessionBundle({ token, env, request, requestId,
     return await submitPartyBundle({ token, env, request, requestId, helpers, ip, executionContext });
   } catch (error) {
     if (error && (error.status === 429 || error.status === 400)) throw error;
-    return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+    const coordinationOrchestration = await dispatchOrchestratorEvent({
+    event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
+    eventId: buildOrchestratorEventId({
+      event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
+      officeId: loaded.officeId,
+      entityId: matchId,
+      occurrenceId: `${party}:${coordinationSession.outcome || "updated"}`
+    }),
+    context: { officeId: loaded.officeId, entityId: matchId, party, outcome: coordinationSession.outcome || "" },
+    adapters: {
+      [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: Boolean(coordinationSession) })
+    },
+    deferredTargets: [ORCHESTRATOR_OWNER.VIEWING]
+  });
+  if (!coordinationOrchestration.ok) {
+    throw helpers.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق التفاوض: ${coordinationOrchestration.error || "unknown"}`);
+  }
+
+  return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
   }
 }
 
@@ -933,6 +953,20 @@ export async function handleMatchLivingAction({
         }
       }
     });
+    const viewingOrchestration = await dispatchOrchestratorEvent({
+      event: ORCHESTRATOR_EVENT.VIEWING_CONFIRMED,
+      eventId: buildOrchestratorEventId({
+        event: ORCHESTRATOR_EVENT.VIEWING_CONFIRMED, officeId, entityId: matchId, occurrenceId: confirmation.appointmentAt
+      }),
+      context: { officeId, entityId: matchId, appointmentAt: confirmation.appointmentAt },
+      adapters: {
+        [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: true })
+      }
+    });
+    if (!viewingOrchestration.ok) {
+      throw helpers.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق المعاينة: ${viewingOrchestration.error || "unknown"}`);
+    }
+
     return helpers.jsonResponse({
       ok: true,
       idempotent: false,

@@ -1,3 +1,5 @@
+import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
+import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
   MATCHING_RULE_VERSION,
   MATCH_THRESHOLD,
@@ -287,6 +289,17 @@ const MAX_RAW_LENGTH = 16000;
 const DAILY_FREE_WRITES = 20000;
 const WARNING_PERCENT = 80;
 const ESTIMATED_WRITES_PER_MESSAGE = 8;
+
+async function runRuntimeOrchestration({ event, officeId, entityId, occurrenceId = "", context = {}, adapters = {}, deferredTargets = [] }) {
+  const eventId = buildOrchestratorEventId({ event, officeId, entityId, occurrenceId });
+  const result = await dispatchOrchestratorEvent({
+    event, eventId, context: { ...context, officeId, entityId }, adapters, deferredTargets
+  });
+  if (!result.ok) {
+    throw appError("orchestrator_dispatch_failed", 500, `فشل تنسيق الحدث ${event}: ${result.error || "unknown"}`);
+  }
+  return result;
+}
 
 const DEAL_STAGE_LABELS = Object.freeze({
   contact: "التواصل", viewing: "المعاينة", negotiation: "التفاوض",
@@ -4241,6 +4254,15 @@ async function persistScoredMatch({
       accessToken,
       deps: operationsDeps(env)
     });
+    await runRuntimeOrchestration({
+      event: ORCHESTRATOR_EVENT.MATCH_CREATED,
+      officeId, entityId: matchId, occurrenceId: "created",
+      context: { projectId, matchId, operationCreated: Boolean(bundle) },
+      adapters: {
+        [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: Boolean(bundle), error: bundle ? "" : "match_operation_missing" })
+      },
+      deferredTargets: [ORCHESTRATOR_OWNER.NEGOTIATION]
+    });
     persisted.operationId = bundle.operation?.id || "";
     persisted.operationCreated = Boolean(bundle.created);
   } catch (error) {
@@ -5080,6 +5102,15 @@ async function handleCooperationLifecycle(request, env, requestId) {
   if (!result.ok) {
     throw appError(result.error || "cooperation_lifecycle_failed", result.status || 400, "تعذر تحديث التعاون");
   }
+  await runRuntimeOrchestration({
+    event: ORCHESTRATOR_EVENT.COOPERATION_UPDATED,
+    officeId, entityId: cooperationId, occurrenceId: action || "updated",
+    context: { projectId, cooperationId, action },
+    adapters: {
+      [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: Boolean(result) })
+    }
+  });
+
   return jsonResponse({
     ok: true,
     officeId,
@@ -5791,8 +5822,16 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
     nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
   }});
   await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"تم إنشاء الصفقة من المطابقة",identity,accessToken,createdAt:now});
-  await observeDealCoverageShadow({
-    projectId, officeId, dealId, accessToken, source: "deal_created"
+  await runRuntimeOrchestration({
+    event: ORCHESTRATOR_EVENT.DEAL_CREATED,
+    officeId, entityId: dealId, occurrenceId: "created",
+    context: { projectId, dealId },
+    adapters: {
+      [ORCHESTRATOR_OWNER.TASKS]: async () => {
+        await observeDealCoverageShadow({ projectId, officeId, dealId, accessToken, source: "deal_created" });
+        return { ok: true };
+      }
+    }
   });
   return dealId;
 }
@@ -5997,7 +6036,17 @@ async function handleWorkflowAction(request,env,requestId) {
       lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"stage_changed",stage:requested,note:note||`انتقلت الصفقة إلى ${DEAL_STAGE_LABELS[requested]}`,identity,accessToken,createdAt:now});
-    await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_stage_changed" });
+    await runRuntimeOrchestration({
+      event: ORCHESTRATOR_EVENT.DEAL_STAGE_CHANGED,
+      officeId, entityId: recordId, occurrenceId: requested,
+      context: { projectId, dealId: recordId, workflowStage: requested },
+      adapters: {
+        [ORCHESTRATOR_OWNER.TASKS]: async () => {
+          await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_stage_changed" });
+          return { ok: true };
+        }
+      }
+    });
     return jsonResponse({ok:true,status:"open",workflowStage:requested,stageLabel:DEAL_STAGE_LABELS[requested],nextAction:DEAL_NEXT_ACTION_LABELS[requested],health,requestId});
   }
 
