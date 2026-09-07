@@ -1,3 +1,5 @@
+import { evaluateOpportunityCoreReadiness } from "../../public/js/opportunity-readiness-domain.js";
+
 /**
  * Phase 4 — Matching Engine (pure domain).
  * Thresholds, eligibility, scoring, reasons, and versioned match identity live here only.
@@ -202,10 +204,29 @@ export function opportunityToMatchInput(record = {}, { id = "" } = {}) {
   };
 }
 
+function looksCanonicalOpportunity(record = {}) {
+  return Boolean(
+    record.opportunityKind
+      || record.matchingReadiness
+      || record.deduplicationFingerprint
+      || record.originatingOfficeId
+      || record.currentOwningOfficeId
+  );
+}
+
 export function counterpartsEligible(sourceRecord, candidateRecord) {
   if (!isActiveLifecycle(sourceRecord) || !isActiveLifecycle(candidateRecord)) return false;
+
+  const canonicalMode = looksCanonicalOpportunity(sourceRecord) || looksCanonicalOpportunity(candidateRecord);
+  if (canonicalMode) {
+    const sourceReadiness = evaluateOpportunityCoreReadiness(sourceRecord);
+    const candidateReadiness = evaluateOpportunityCoreReadiness(candidateRecord);
+    if (!sourceReadiness.isReadyForMatching || !candidateReadiness.isReadyForMatching) return false;
+  }
+
   const sourceSide = normalizeOpportunitySide(sourceRecord);
   const candidateSide = normalizeOpportunitySide(candidateRecord);
+  if (canonicalMode && (!sourceSide || !candidateSide)) return false;
   if (sourceSide && candidateSide && sourceSide === candidateSide) return false;
   const sourceTx = normalizeTransactionType(sourceRecord);
   const candidateTx = normalizeTransactionType(candidateRecord);
