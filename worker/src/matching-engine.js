@@ -1,3 +1,5 @@
+import { evaluateCounterpartAdmission } from "./matching-admission-domain.js";
+
 /**
  * Phase 4 — Matching Engine (pure domain).
  * Thresholds, eligibility, scoring, reasons, and versioned match identity live here only.
@@ -204,6 +206,8 @@ export function opportunityToMatchInput(record = {}, { id = "" } = {}) {
 
 export function counterpartsEligible(sourceRecord, candidateRecord) {
   if (!isActiveLifecycle(sourceRecord) || !isActiveLifecycle(candidateRecord)) return false;
+  const admission = evaluateCounterpartAdmission(sourceRecord, candidateRecord);
+  if (!admission.admitted) return false;
   const sourceSide = normalizeOpportunitySide(sourceRecord);
   const candidateSide = normalizeOpportunitySide(candidateRecord);
   if (sourceSide && candidateSide && sourceSide === candidateSide) return false;
