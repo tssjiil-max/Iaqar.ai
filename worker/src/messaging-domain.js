@@ -372,12 +372,16 @@ export function applyProviderSendResult(draft, { confirmed = false, failureReaso
 
 export function telegramWebhookValidationFixture() {
   return {
-    adapterStatus: ADAPTER_STATUS.TELEGRAM_ADAPTER_SIMULATED,
+    adapterStatus: ADAPTER_STATUS.WHATSAPP_ADAPTER_READY,
+    outboundAdapterStatus: ADAPTER_STATUS.TELEGRAM_ADAPTER_SIMULATED,
     requiresSecretTokenHeader: true,
     headerName: "X-Telegram-Bot-Api-Secret-Token",
+    route: "/telegram/webhook/:officeId",
     outboundEnabled: false,
-    inboundEnabled: false,
-    note: "Structure only — no production Telegram bot credentials in Phase 7."
+    inboundEnabled: true,
+    requiresRuntimeConfiguration: true,
+    canonicalIntakeOnly: true,
+    note: "Inbound runtime is implemented; bot token/webhook secret/office scope must be configured before live use."
   };
 }
 

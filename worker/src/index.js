@@ -147,6 +147,11 @@ import {
   whatsappDigits
 } from "./messaging-domain.js";
 import {
+  handleTelegramCanonicalWebhook,
+  telegramWebhookRuntimeContract
+} from "./telegram-intake-service.js";
+import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
+import {
   PUBLIC_RATE_LIMITS,
   consumePublicRateLimit,
   evaluatePublicRateLimit,
@@ -474,6 +479,10 @@ export default {
         return receiveMetaWebhook(request, env, requestId);
       }
 
+      if (request.method === "POST" && /^\/telegram\/webhook\/[^/]+$/.test(url.pathname)) {
+        return await handleTelegramWebhookRoute(request, env, requestId);
+      }
+
       if (request.method === "POST" && url.pathname === "/meta/signup/complete") {
         return completeEmbeddedSignup(request, env, requestId);
       }
@@ -657,8 +666,8 @@ export default {
         return jsonResponse({
           ok: true,
           whatsapp: whatsappAdapterContract(),
-          telegram: telegramWebhookValidationFixture(),
-          boundaries: phase7BoundaryGuarantees(),
+          telegram: { ...telegramWebhookValidationFixture(), ...telegramWebhookRuntimeContract() },
+          boundaries: { ...phase7BoundaryGuarantees(), ...channelCleanupBoundaryGuarantees() },
           requestId
         });
       }
@@ -1634,6 +1643,43 @@ async function handleForgotPassword(request, env, requestId) {
 }
 
 
+async function handleTelegramWebhookRoute(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const bucket = env.IAQAR_MEDIA || null;
+  const result = await handleTelegramCanonicalWebhook({
+    request,
+    env,
+    requestId,
+    helpers: {
+      projectId,
+      accessToken,
+      bucket,
+      fetchImpl: fetch,
+      firestoreOfficeId,
+      getFirestoreDocument,
+      setFirestoreDocument,
+      firestoreFieldsToJs,
+      compactFields,
+      firestoreString,
+      firestoreOptionalString,
+      firestoreInteger,
+      firestoreBoolean,
+      firestoreTimestamp,
+      ingestCanonical: (body) => startCanonicalIntake(body, buildCanonicalIntakeCtx({
+        env,
+        request: { url: request.url, headers: request.headers },
+        identity: null,
+        projectId,
+        accessToken,
+        bucket
+      }))
+    }
+  });
+  return jsonResponse({ ...result, requestId }, Number(result.status || 200));
+}
+
 async function handleSharedIntake(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
@@ -2534,119 +2580,68 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
 
 async function processInboundMessage({ projectId, officeId, inboxDocumentId, messageText, senderName, senderPhone, receivedAt, source = "whatsapp_cloud_api", accessToken, env = null }) {
   const parsed = parseRealEstateMessage(messageText, senderPhone, senderName);
-  const now = new Date();
-
-  if (parsed.kind === "unknown") {
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "inbox", inboxDocumentId],
-      accessToken,
-      fields: {
-        processingState: firestoreString("needs_review"),
-        status: firestoreString("pending_review"),
-        isProcessed: firestoreBoolean(false),
-        extractedJson: firestoreString(JSON.stringify(parsed)),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    return { kind: "unknown", matches: 0 };
-  }
-
-  const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
-  const contactType = parsed.kind === "owner_offer" ? "owner" : "buyer";
-  const existingOpportunity = await findActiveOpportunityByPhone({
+  const sourceChannel = /whatsapp/i.test(String(source || "")) ? "whatsapp"
+    : /telegram/i.test(String(source || "")) ? "telegram"
+      : "web";
+  const canonicalText = [
+    cleanText(messageText, 12000),
+    senderName ? `اسم المرسل: ${cleanText(senderName, 200)}` : "",
+    senderPhone ? `رقم التواصل: ${cleanText(senderPhone, 60)}` : ""
+  ].filter(Boolean).join("\n");
+  const safeEnv = env || {};
+  const channelRequest = {
+    url: `${resolveAppOrigin(safeEnv)}/channels/${sourceChannel}/canonical-intake`,
+    headers: new Headers()
+  };
+  const ctx = buildCanonicalIntakeCtx({
+    env: safeEnv,
+    request: channelRequest,
+    identity: null,
     projectId,
+    accessToken,
+    bucket: safeEnv.IAQAR_MEDIA || null
+  });
+  const result = await startCanonicalIntake({
     officeId,
-    phone: parsed.phone || senderPhone,
-    contactType,
-    accessToken,
-    criteria: {
-      kind: parsed.kind === "owner_offer" ? "owner" : "client",
-      propertyType: parsed.propertyType,
-      city: parsed.city,
-      district: parsed.district
-    }
-  });
-  if (existingOpportunity) {
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "inbox", inboxDocumentId],
-      accessToken,
-      fields: {
-        processingState: firestoreString("processed"),
-        status: firestoreString("processed"),
-        isProcessed: firestoreBoolean(true),
-        classifiedAs: firestoreString(parsed.kind),
-        extractedJson: firestoreString(JSON.stringify(parsed)),
-        sourceCollection: firestoreString(targetCollection),
-        sourceRecordId: firestoreString(existingOpportunity.data.sourceRecordId || ""),
-        opportunityId: firestoreString(existingOpportunity.opportunityId),
-        duplicateOpportunity: firestoreBoolean(true),
-        processedAt: firestoreTimestamp(now),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    return { kind: parsed.kind, matches: 0, duplicateOpportunity: true, opportunityId: existingOpportunity.opportunityId };
-  }
+    brokerId: `channel_${sourceChannel}_${officeId}`.slice(0, 120),
+    contentType: "text",
+    text: canonicalText,
+    idempotencyKey: `${source}:${officeId}:${inboxDocumentId}`,
+    sourceChannel,
+    externalEventId: inboxDocumentId,
+    senderName: cleanText(senderName, 200),
+    senderPhone: cleanText(senderPhone, 60)
+  }, ctx);
 
-  const recordId = `${parsed.kind === "owner_offer" ? "own" : "cli"}_${inboxDocumentId.replace(/^wa_/, "").slice(0, 32)}`;
-  const commonFields = parsedToFirestoreFields(parsed, {
-    officeId, inboxDocumentId, senderName, senderPhone, receivedAt, source, now
-  });
-
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, targetCollection, recordId],
-    accessToken,
-    fields: commonFields
-  });
-
-  const opportunityId = `opp_${inboxDocumentId.replace(/^wa_/, "").slice(0, 32)}`;
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    fields: {
-      ...commonFields,
-      sourceCollection: firestoreString(targetCollection),
-      sourceRecordId: firestoreString(recordId),
-      opportunityKind: firestoreString(parsed.kind === "owner_offer" ? "OFFER" : "REQUEST"),
-      workflowStage: firestoreString("new"),
-      priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2)
-    }
-  });
-
-  await observeOpportunityCoverageShadow({
-    projectId, officeId, opportunityId, accessToken, source: "whatsapp_intake_persisted"
-  });
-
-  const matches = await runCanonicalMatchingAfterOpportunityPersist({
-    projectId, officeId, opportunityId, accessToken, env
-  });
-
+  const now = new Date();
   await setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "inbox", inboxDocumentId],
     accessToken,
     fields: {
-      processingState: firestoreString("processed"),
-      status: firestoreString("processed"),
-      isProcessed: firestoreBoolean(true),
-      classifiedAs: firestoreString(parsed.kind),
-      extractedJson: firestoreString(JSON.stringify(parsed)),
-      sourceCollection: firestoreString(targetCollection),
-      sourceRecordId: firestoreString(recordId),
-      opportunityId: firestoreString(opportunityId),
-      matchCount: firestoreInteger(matches.length),
-      processedAt: firestoreTimestamp(now),
+      processingState: firestoreString(result.analysisStatus === "analysis_complete" ? "processed" : "processing"),
+      status: firestoreString(result.analysisStatus === "analysis_complete" ? "processed" : "processing"),
+      isProcessed: firestoreBoolean(result.analysisStatus === "analysis_complete"),
+      classifiedAs: firestoreOptionalString(parsed.kind),
+      opportunityId: firestoreOptionalString(result.opportunityId || ""),
+      importJobId: firestoreOptionalString(result.importJobId || ""),
+      canonicalIntake: firestoreBoolean(true),
+      sourceChannel: firestoreString(sourceChannel),
+      matchCount: firestoreInteger(0),
+      processedAt: result.analysisStatus === "analysis_complete" ? firestoreTimestamp(now) : null,
       updatedAt: firestoreTimestamp(now)
     }
   });
 
-  if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
-  }
-  return { kind: parsed.kind, matches: matches.length };
+  return {
+    kind: parsed.kind,
+    matches: 0,
+    duplicateOpportunity: Boolean(result.duplicate),
+    opportunityId: result.opportunityId || "",
+    importJobId: result.importJobId || "",
+    analysisStatus: result.analysisStatus || "",
+    canonicalIntake: true
+  };
 }
 
 function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {

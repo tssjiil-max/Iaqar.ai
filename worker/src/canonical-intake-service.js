@@ -214,6 +214,10 @@ export async function startCanonicalIntake(body, ctx) {
   const sourceId = sourceDocumentIdFromFingerprint(fingerprint);
   const importJobId = importJobDocumentIdFromFingerprint(fingerprint);
   const now = new Date();
+  const sourceChannel = ctx.cleanText(body.sourceChannel || body.channel || "", 40).toLowerCase();
+  const externalEventId = ctx.cleanText(body.externalEventId || "", 180);
+  const externalMessageId = ctx.cleanText(body.externalMessageId || "", 180);
+  const senderExternalId = ctx.cleanText(body.senderExternalId || "", 180);
 
   const existingJob = await ctx.getFirestoreDocument({
     projectId: ctx.projectId,
@@ -262,6 +266,10 @@ export async function startCanonicalIntake(body, ctx) {
     originatingBrokerId: ctx.firestoreString(brokerId),
     currentOwningOfficeId: ctx.firestoreString(officeId),
     sourceType: ctx.firestoreString(parts[0]?.contentType || "text"),
+    sourceChannel: ctx.firestoreOptionalString(sourceChannel),
+    externalEventId: ctx.firestoreOptionalString(externalEventId),
+    externalMessageId: ctx.firestoreOptionalString(externalMessageId),
+    senderExternalId: ctx.firestoreOptionalString(senderExternalId),
     sourceReference: ctx.firestoreString(sourceId),
     deduplicationFingerprint: ctx.firestoreString(fingerprint),
     internalStatus: ctx.firestoreString("ANALYZING"),
@@ -280,6 +288,10 @@ export async function startCanonicalIntake(body, ctx) {
     brokerId: ctx.firestoreString(brokerId),
     opportunityId: ctx.firestoreString(opportunityId),
     sourceType: ctx.firestoreString(parts[0]?.contentType || "text"),
+    sourceChannel: ctx.firestoreOptionalString(sourceChannel),
+    externalEventId: ctx.firestoreOptionalString(externalEventId),
+    externalMessageId: ctx.firestoreOptionalString(externalMessageId),
+    senderExternalId: ctx.firestoreOptionalString(senderExternalId),
     deduplicationFingerprint: ctx.firestoreString(fingerprint),
     mediaPath: ctx.firestoreOptionalString(parts.find((p) => p.mediaPath)?.mediaPath || ""),
     fileName: ctx.firestoreOptionalString(parts.find((p) => p.fileName)?.fileName || ""),
@@ -297,6 +309,9 @@ export async function startCanonicalIntake(body, ctx) {
     brokerId: ctx.firestoreString(brokerId),
     opportunityId: ctx.firestoreString(opportunityId),
     sourceId: ctx.firestoreString(sourceId),
+    sourceChannel: ctx.firestoreOptionalString(sourceChannel),
+    externalEventId: ctx.firestoreOptionalString(externalEventId),
+    externalMessageId: ctx.firestoreOptionalString(externalMessageId),
     idempotencyKey: ctx.firestoreString(idempotencyKey),
     analysisStatus: ctx.firestoreString(ANALYSIS_STATUS.PENDING),
     partsJson: ctx.firestoreString(JSON.stringify(parts)),
