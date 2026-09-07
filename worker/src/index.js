@@ -209,10 +209,9 @@ import {
   handleAdminOverview,
   handleAdminReactivate,
   handleAdminSubscriptionUpdate,
-  handleAdminSuspend,
-  recordAdminActivityEvent,
-  recordOfficeLoginActivity
+  handleAdminSuspend
 } from "./admin-service.js";
+import { recordOfficeActivityEvent, recordOfficeLoginActivity } from "./office-activity-service.js";
 import {
   LIFECYCLE_STATUS,
   LIFECYCLE_STATUS_LABELS,
@@ -1508,7 +1507,7 @@ async function decideBrokerApplication(request, env, requestId) {
     }
   });
   if (action === "approve") {
-    await recordAdminActivityEvent(adminHelpers, {
+    await recordOfficeActivityEvent(adminHelpers, {
       projectId,
       accessToken,
       officeId,
