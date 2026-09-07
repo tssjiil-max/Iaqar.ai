@@ -23,7 +23,18 @@ jobs:
           node-version: 22
           cache: npm
       - name: Patch Central Orchestrator runtime boundaries
-        run: python scripts/patch-central-orchestrator-runtime.py
+        run: |
+          python scripts/patch-central-orchestrator-runtime.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('worker/src/canonical-intake-service.js')
+          source = path.read_text()
+          old = 'context: { officeId, entityId: opportunityId, importJobId, matchingReadiness },'
+          new = 'context: { officeId, entityId: opportunityId, importJobId },'
+          if old not in source:
+              raise SystemExit('orchestrator completion context anchor missing')
+          path.write_text(source.replace(old, new, 1))
+          PY
       - name: Validate syntax and contract
         run: |
           git diff --check
@@ -34,11 +45,12 @@ jobs:
           npm ci
           npm ci --prefix worker
           npm run test:orchestrator:gate
+          npm run test:worker
       - name: Commit runtime wiring
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add worker/src/index.js worker/src/canonical-intake-service.js worker/src/party-session-service.js
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Orchestrator: wire deterministic runtime boundaries"
+          git commit -m "Orchestrator: fix completed-opportunity context"
           git push origin HEAD:chore/central-orchestrator-cleanup-phase9-20260907
