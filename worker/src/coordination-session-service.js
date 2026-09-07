@@ -18,6 +18,10 @@ import {
   bundlesEqual,
   ownerMissingSpecGroups
 } from "../../public/js/coordination-bundle-domain.js";
+import {
+  resolveNegotiationState,
+  validateNegotiationSubmission
+} from "../../public/js/negotiation-domain.js";
 import { detailValuesToCanonicalPatch } from "../../public/js/property-detail-schema-domain.js";
 import {
   VIEWING_APPOINTMENT_STATUS
@@ -307,6 +311,18 @@ export async function submitCoordinationBundle(helpers, {
   if (priorBundle && bundlesEqual(priorBundle, normalized)) {
     return session;
   }
+  const negotiationValidation = validateNegotiationSubmission({
+    party: side,
+    session,
+    bundle: normalized
+  });
+  if (!negotiationValidation.ok) {
+    throw helpers.appError(
+      "invalid_negotiation_transition",
+      409,
+      "تعذر قبول رد التفاوض بهذا الترتيب. حدّث الجلسة وحاول من الخطوة الحالية."
+    );
+  }
   const next = { ...session };
   let canonicalEvents = [];
   let newMediaPaths = [];
@@ -330,11 +346,18 @@ export async function submitCoordinationBundle(helpers, {
   } else {
     next.clientBundle = normalized;
   }
-  const resolved = resolveCoordinationOutcome({
+  const negotiation = resolveNegotiationState({
     clientBundle: next.clientBundle,
     ownerBundle: next.ownerBundle,
     canonicalOffer
   });
+  const resolved = negotiation.handled && negotiation.coordination
+    ? negotiation.coordination
+    : resolveCoordinationOutcome({
+      clientBundle: next.clientBundle,
+      ownerBundle: next.ownerBundle,
+      canonicalOffer
+    });
   next.outcome = resolved.outcome;
   next.brokerLine = resolved.brokerLine;
   next.conflictField = resolved.conflictField;
