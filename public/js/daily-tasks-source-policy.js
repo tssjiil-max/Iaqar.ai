@@ -146,6 +146,7 @@ export function evaluateOperationsOnlyActivation({
   uncoveredCriticalTypes = [],
   shadowFailures = 0,
   missingRequiredOperationTypes = [],
+  shadowSourcesReady = true,
   shadowCycles = 0
 } = {}) {
   const uncovered = Array.isArray(uncoveredBusinessEntities)
@@ -159,6 +160,7 @@ export function evaluateOperationsOnlyActivation({
     ? missingRequiredOperationTypes.filter(Boolean)
     : [];
   const reasons = [];
+  if (shadowSourcesReady !== true) reasons.push("shadow_sources_not_ready");
   if (number(coveragePercent) < DAILY_TASK_OPERATIONS_ACTIVATION.requiredCoveragePercent) reasons.push("coverage_below_100");
   if (number(duplicateActiveTasks) > DAILY_TASK_OPERATIONS_ACTIVATION.maxDuplicateActiveTasks) reasons.push("duplicate_active_tasks");
   if (uncovered.length > DAILY_TASK_OPERATIONS_ACTIVATION.maxUncoveredBusinessEntities) reasons.push("uncovered_business_entities");
@@ -212,6 +214,7 @@ export function dailyTaskSourceBoundaryGuarantees() {
     requiresZeroUncoveredBusinessEntities: true,
     requiresZeroShadowFailures: true,
     requiresAllOperationTypesSupported: true,
+    requiresAllShadowSourcesReady: true,
     rawIntakeIsNotTaskTruth: true,
     homeTopTaskCount: DAILY_TASK_OPERATIONS_ACTIVATION.topHomeTasks,
     businessEntitiesRemainSourceOfTruth: true,

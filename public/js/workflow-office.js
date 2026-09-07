@@ -100,6 +100,15 @@
   let opportunityView = "active";
   let analyticsItem = null;
   const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
+  const DAILY_TASK_SOURCE_MODE = Object.freeze({ MIXED_SHADOW: "MIXED_SHADOW", OPERATIONS_ONLY: "OPERATIONS_ONLY" });
+  const DAILY_TASK_REQUIRED_OPERATION_TYPES = Object.freeze([
+    "MATCH_REVIEW", "MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP", "DEAL_ACTION",
+    "COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH", "EXTERNAL_RESPONSE",
+    "SYSTEM_ACTION", "PLATFORM_OPPORTUNITY_OFFER"
+  ]);
+  let dailyTaskShadowCycles = 0;
+  let dailyTaskShadowFailures = 0;
+  let dailyTaskShadowSourcesReady = { operations: false, intake: false, opportunities: false, matches: false, deals: false };
   const timelineCache = new Map();
   const timelinePending = new Set();
   const intakeProcessing = new Set();
@@ -803,23 +812,153 @@
     return dealItems.filter((item) => !["closed", "lost"].includes(String(item.status || "").toLowerCase()));
   }
 
+  function dailyTaskOperationBusinessKey(item = {}) {
+    const type = String(item.operationType || item.type || "").trim().toUpperCase();
+    const id = (value) => String(value || "").trim();
+    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
+      const value = id(item.opportunityId || item.sourceEntityId);
+      return value ? `opportunity:${value}` : "";
+    }
+    if (type === "MATCH_REVIEW") {
+      const value = id(item.matchId || item.sourceEntityId);
+      return value ? `match:${value}` : "";
+    }
+    if (type === "DEAL_ACTION") {
+      const value = id(item.dealId || item.sourceEntityId);
+      return value ? `deal:${value}` : "";
+    }
+    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
+      const value = id(item.cooperationId || item.sourceEntityId);
+      return value ? `cooperation:${value}` : "";
+    }
+    return "";
+  }
+
+  function dailyTaskLegacyBusinessKey(item = {}) {
+    const type = String(item.recordType || "").trim().toLowerCase();
+    const id = (value) => String(value || "").trim();
+    if (type === "opportunity") {
+      const value = id(item.opportunityId || item.recordId || item.id);
+      return value ? `opportunity:${value}` : "";
+    }
+    if (type === "match") {
+      const value = id(item.matchId || item.recordId || item.id);
+      return value ? `match:${value}` : "";
+    }
+    if (type === "deal") {
+      const value = id(item.dealId || item.recordId || item.id);
+      return value ? `deal:${value}` : "";
+    }
+    if (type === "cooperation") {
+      const value = id(item.cooperationId || item.recordId || item.id);
+      return value ? `cooperation:${value}` : "";
+    }
+    if (type === "intake") {
+      const opportunityId = id(item.opportunityId);
+      if (opportunityId) return `opportunity:${opportunityId}`;
+      const value = id(item.recordId || item.id);
+      return value ? `intake:${value}` : "";
+    }
+    return "";
+  }
+
+  function dailyTaskCoverageAudit(legacyItems = []) {
+    dailyTaskShadowCycles += 1;
+    try {
+      const operationKeys = new Set();
+      const semanticCounts = new Map();
+      for (const item of operationItems) {
+        const businessKey = dailyTaskOperationBusinessKey(item);
+        if (businessKey) operationKeys.add(businessKey);
+        const type = String(item.operationType || item.type || "").trim().toUpperCase();
+        if (businessKey && type) {
+          const semanticKey = `${type}:${businessKey}`;
+          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
+        }
+      }
+      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
+      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
+      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
+      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
+      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
+      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
+      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
+      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
+      const reasons = [];
+      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
+      if (coveragePercent < 100) reasons.push("coverage_below_100");
+      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
+      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
+      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
+      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
+      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
+      return {
+        allowed: reasons.length === 0,
+        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
+        reasons,
+        coveragePercent,
+        coveredBusinessEntities: covered,
+        observedBusinessEntities: legacyKeys.length,
+        duplicateActiveTasks,
+        uncoveredBusinessEntities,
+        shadowCycles: dailyTaskShadowCycles,
+        shadowFailures: dailyTaskShadowFailures,
+        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
+        allSourcesReady,
+        missingRequiredOperationTypes
+      };
+    } catch (error) {
+      dailyTaskShadowFailures += 1;
+      return {
+        allowed: false,
+        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
+        reasons: ["shadow_audit_failed"],
+        coveragePercent: 0,
+        duplicateActiveTasks: 0,
+        uncoveredBusinessEntities: [],
+        shadowCycles: dailyTaskShadowCycles,
+        shadowFailures: dailyTaskShadowFailures,
+        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
+        allSourcesReady: false,
+        missingRequiredOperationTypes: [],
+        error: String(error?.message || error || "audit_failed")
+      };
+    }
+  }
+
   function emitOperations() {
-    // Phase 5: Operations Center shows persisted Operations; hide save-success feedback only.
     pruneSavedOpportunityWorkspaceItems();
     const workspaceItems = savedOpportunityWorkspaceItems.filter(
       (item) => !isSavedOpportunityPresentationItem(item)
     );
-    const baseItems = dedupeFeedItems([
-      ...operationItems,
+    const legacyShadowItems = [
       ...intakeItems,
       ...opportunityItems,
       ...activeMatchOperations(),
-      ...activeDealOperations(),
+      ...activeDealOperations()
+    ];
+    const audit = dailyTaskCoverageAudit(legacyShadowItems);
+    const mixedShadowItems = dedupeFeedItems([
+      ...operationItems,
+      ...legacyShadowItems,
       ...workspaceItems
     ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
-    const alerts = BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : [];
+    const baseItems = audit.mode === DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY
+      ? dedupeFeedItems([...operationItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)))
+      : mixedShadowItems;
+    // Operations already carry priority. Legacy broker-alert cards remain only
+    // in shadow fallback so the final Operations-only list cannot duplicate work.
+    const alerts = audit.mode === DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY
+      ? []
+      : (BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : []);
     const items = filterOpportunityView([...alerts, ...baseItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
-    window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true, opportunityView } }));
+    window.IAQAR = window.IAQAR || {};
+    window.IAQAR.dailyTaskSourceAudit = audit;
+    window.dispatchEvent(new CustomEvent("iaqar:daily-task-source-audit", { detail: audit }));
+    window.dispatchEvent(new CustomEvent("iaqar:operations-data", {
+      detail: { items, authoritative: true, opportunityView, sourceMode: audit.mode, sourceAudit: audit }
+    }));
   }
 
   async function opportunityLifecycleAction(action, detail, extra = {}) {
@@ -990,15 +1129,18 @@
 
     const matchUnsub = runtime.refs.matches.orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
       matchItems = snapshot.docs.map(matchOperation);
+      dailyTaskShadowSourcesReady.matches = true;
       loadAnalytics();
     }, onError);
     const dealUnsub = runtime.refs.deals.orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
       dealItems = snapshot.docs.map(dealOperation);
+      dailyTaskShadowSourcesReady.deals = true;
       loadAnalytics();
     }, onError);
     const intakeUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("publicIntake")
       .orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
         intakeItems = snapshot.docs.map(intakeOperation);
+        dailyTaskShadowSourcesReady.intake = true;
         processNewPublicIntakes(snapshot);
       }, onError);
 
@@ -1011,6 +1153,7 @@
       .limit(50)
       .onSnapshot(snapshot => {
         operationItems = snapshot.docs.map(projectPersistedOperation);
+        dailyTaskShadowSourcesReady.operations = true;
         pruneSavedOpportunityWorkspaceItems();
         emitOperations();
       }, (error) => {
@@ -1023,6 +1166,7 @@
           .then((snapshot) => {
             operationItems = snapshot.docs.map(projectPersistedOperation)
               .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+            dailyTaskShadowSourcesReady.operations = true;
             pruneSavedOpportunityWorkspaceItems();
             emitOperations();
           })
@@ -1036,6 +1180,7 @@
     const opportunityUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("opportunities")
       .orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
         opportunityItems = snapshot.docs.map(opportunityOperation);
+        dailyTaskShadowSourcesReady.opportunities = true;
         emitOperations();
       }, onError);
     liveUnsubscribers.push(opportunityUnsub);
@@ -3283,6 +3428,9 @@
           intakeItems = [];
           operationItems = [];
           opportunityItems = [];
+          dailyTaskShadowSourcesReady = { operations: false, intake: false, opportunities: false, matches: false, deals: false };
+          dailyTaskShadowCycles = 0;
+          dailyTaskShadowFailures = 0;
           analyticsItem = null;
           emitOperations();
         }

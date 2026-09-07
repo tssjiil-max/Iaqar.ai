@@ -100,6 +100,20 @@ test("shadow failure or unsupported Operation type blocks cutover", () => {
   assert.ok(activation.reasons.includes("missing_required_operation_types"));
 });
 
+test("empty arrays cannot produce a false 100% before all shadow sources are loaded", () => {
+  const activation = evaluateOperationsOnlyActivation({
+    coveragePercent: 100,
+    duplicateActiveTasks: 0,
+    uncoveredBusinessEntities: [],
+    shadowFailures: 0,
+    missingRequiredOperationTypes: [],
+    shadowSourcesReady: false,
+    shadowCycles: 1
+  });
+  assert.equal(activation.allowed, false);
+  assert.ok(activation.reasons.includes("shadow_sources_not_ready"));
+});
+
 test("Operations-only source contains no legacy source cards", () => {
   const ops = [operation("MATCH_REVIEW", { matchId: "m1" })];
   const selected = selectDailyTaskSource({
