@@ -1,0 +1,59 @@
+name: Viewing runtime patch
+
+on:
+  push:
+    branches:
+      - chore/viewing-cleanup-phase5-20260907
+    paths:
+      - .github/viewing-runtime-patch.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: chore/viewing-cleanup-phase5-20260907
+          fetch-depth: 0
+      - name: Patch viewing confirmation path
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('worker/src/party-session-service.js')
+          src = path.read_text()
+
+          import_anchor = '''} from "../../public/js/broker-viewing-schedule-domain.js";\n'''
+          import_replacement = import_anchor + '''import {\n  canonicalViewingCandidateAt,\n  planViewingConfirmation\n} from "../../public/js/viewing-domain.js";\n'''
+          if 'from "../../public/js/viewing-domain.js"' not in src:
+              if import_anchor not in src:
+                  raise SystemExit('viewing import anchor not found')
+              src = src.replace(import_anchor, import_replacement, 1)
+
+          old_block = '''    const candidateStart = text(match.viewingCandidateAt || match.proposedSlot || match.appointmentAt);\n    if (!candidateStart) {\n      throw helpers.appError("viewing_candidate_missing", 400, "لا يوجد موعد معاينة جاهز للتأكيد.");\n    }\n    let officeMatches = [];\n    if (typeof helpers.listCollectionDocuments === "function") {\n      const docs = await helpers.listCollectionDocuments({\n        projectId,\n        segments: ["offices", officeId, "matches"],\n        accessToken,\n        pageSize: 200\n      });\n      officeMatches = (docs || []).map((doc) => {\n        const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");\n        return { id, ...js(doc, helpers) };\n      });\n    }\n    const bookedStarts = collectBrokerBookedStarts(officeMatches, {\n      brokerId: match.assignedBrokerId || match.brokerId,\n      excludeMatchId: matchId\n    });\n    const evaluation = evaluateViewingCandidate({\n      candidateStart,\n      bookedStarts,\n      candidateRecord: match\n    });\n    if (!evaluation.eligible) {\n      throw helpers.appError("viewing_schedule_conflict", 409, "تعارض في مواعيد المعاينة — اختر وقتًا آخر.");\n    }\n    const appointmentStatus = evaluation.status === VIEWING_APPOINTMENT_STATUS.BROKER_CONFIRM_REQUIRED_FOR_TRAVEL\n      ? VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER\n      : VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER;\n    await stampMatchLiving(helpers, {\n      projectId,\n      officeId,\n      matchId,\n      accessToken,\n      patch: {\n        livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,\n        activeMatchId: matchId,\n        ownerContactNeeded: false,\n        hasNewResponse: true,\n        appointmentAt: candidateStart,\n        viewingAt: candidateStart,\n        appointmentStatus,\n        viewingCandidateAt: candidateStart,\n        nextActor: "NONE",\n        timelineEvent: {\n          type: "viewing_confirmed_by_broker",\n          actor: "BROKER",\n          label: evaluation.reason === "BROKER_CONFIRM_REQUIRED_FOR_TRAVEL"\n            ? "تم تأكيد المعاينة (مع مراجعة وقت السفر)"\n            : "تم تأكيد المعاينة"\n        }\n      }\n    });\n    return helpers.jsonResponse({\n      ok: true,\n      livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,\n      appointmentStatus,\n      requestId\n    });\n'''
+
+          new_block = '''    const currentPlan = planViewingConfirmation({ match, evaluation: null });\n    if (currentPlan.ok && currentPlan.idempotent) {\n      return helpers.jsonResponse({\n        ok: true,\n        idempotent: true,\n        livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,\n        appointmentStatus: currentPlan.appointmentStatus,\n        appointmentAt: currentPlan.appointmentAt,\n        requestId\n      });\n    }\n    if (currentPlan.error === "viewing_already_confirmed") {\n      throw helpers.appError(\n        "viewing_already_confirmed",\n        409,\n        "المعاينة مؤكدة مسبقًا. استخدم إعادة الجدولة لتغيير الموعد."\n      );\n    }\n    const candidateStart = canonicalViewingCandidateAt(match);\n    if (!candidateStart) {\n      throw helpers.appError("viewing_candidate_missing", 400, "لا يوجد موعد معاينة جاهز للتأكيد.");\n    }\n    let officeMatches = [];\n    if (typeof helpers.listCollectionDocuments === "function") {\n      const docs = await helpers.listCollectionDocuments({\n        projectId,\n        segments: ["offices", officeId, "matches"],\n        accessToken,\n        pageSize: 200\n      });\n      officeMatches = (docs || []).map((doc) => {\n        const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");\n        return { id, ...js(doc, helpers) };\n      });\n    }\n    const bookedStarts = collectBrokerBookedStarts(officeMatches, {\n      brokerId: match.assignedBrokerId || match.brokerId,\n      excludeMatchId: matchId,\n      now: new Date()\n    });\n    const evaluation = evaluateViewingCandidate({\n      candidateStart,\n      bookedStarts,\n      candidateRecord: match\n    });\n    const confirmation = planViewingConfirmation({ match, evaluation });\n    if (!confirmation.ok) {\n      const code = confirmation.error === "viewing_candidate_missing"\n        ? "viewing_candidate_missing"\n        : "viewing_schedule_conflict";\n      const status = code === "viewing_candidate_missing" ? 400 : 409;\n      const message = code === "viewing_candidate_missing"\n        ? "لا يوجد موعد معاينة جاهز للتأكيد."\n        : "تعارض في مواعيد المعاينة — اختر وقتًا آخر.";\n      throw helpers.appError(code, status, message);\n    }\n    const appointmentStatus = confirmation.appointmentStatus;\n    await stampMatchLiving(helpers, {\n      projectId,\n      officeId,\n      matchId,\n      accessToken,\n      patch: {\n        livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,\n        activeMatchId: matchId,\n        ownerContactNeeded: false,\n        hasNewResponse: true,\n        ...confirmation.patch,\n        nextActor: "NONE",\n        timelineEvent: {\n          type: "viewing_confirmed_by_broker",\n          actor: "BROKER",\n          label: confirmation.travelConfirmationRequired\n            ? "تم تأكيد المعاينة (مع مراجعة وقت السفر)"\n            : "تم تأكيد المعاينة"\n        }\n      }\n    });\n    return helpers.jsonResponse({\n      ok: true,\n      idempotent: false,\n      livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,\n      appointmentStatus,\n      appointmentAt: confirmation.appointmentAt,\n      requestId\n    });\n'''
+
+          if 'const currentPlan = planViewingConfirmation({ match, evaluation: null });' not in src:
+              if old_block not in src:
+                  raise SystemExit('viewing confirmation block not found')
+              src = src.replace(old_block, new_block, 1)
+
+          path.write_text(src)
+          PY
+      - name: Commit runtime wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/party-session-service.js
+          if git diff --cached --quiet; then
+            echo "No runtime patch needed"
+            exit 0
+          fi
+          git commit -m "Viewing: wire canonical confirmation guard"
+          git push origin HEAD:chore/viewing-cleanup-phase5-20260907
