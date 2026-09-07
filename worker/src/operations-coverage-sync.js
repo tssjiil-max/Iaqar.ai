@@ -14,6 +14,7 @@ export const COVERAGE_INTENT = Object.freeze({
 });
 
 const TERMINAL_OPPORTUNITY = new Set(["ARCHIVED", "CLOSED", "COMPLETED", "LOST"]);
+const TERMINAL_DEAL = new Set(["CLOSED", "LOST", "COMPLETED", "ARCHIVED"]);
 const ACTIVE_FOLLOW_UP = new Set(["scheduled", "reminder_due", "reminder_sent", "SCHEDULED", "REMINDER_DUE", "REMINDER_SENT"]);
 
 function validIso(value) {
@@ -41,6 +42,20 @@ export function opportunityCoverageIntent(opportunity = {}) {
   }
 
   return { intent: COVERAGE_INTENT.OPPORTUNITY_REVIEW, reason: "reviewable_opportunity", dueAt: "" };
+}
+
+export function dealCoverageIntent(deal = {}) {
+  const status = String(deal.status || "").toUpperCase();
+  const stage = String(deal.workflowStage || deal.stage || "").toUpperCase();
+  if (TERMINAL_DEAL.has(status) || TERMINAL_DEAL.has(stage)) {
+    return { intent: COVERAGE_INTENT.NONE, reason: "terminal_deal", dueAt: "" };
+  }
+  return {
+    intent: COVERAGE_INTENT.DEAL_ACTION,
+    reason: "active_deal_action",
+    dueAt: validIso(deal.nextFollowUpAt || deal.dueAt || ""),
+    stage: String(deal.workflowStage || deal.stage || "contact")
+  };
 }
 
 export async function syncOpportunityCoverage({
@@ -94,6 +109,19 @@ export async function syncDealCoverage({
   deps,
   notifyPush = false
 }) {
+  const decision = dealCoverageIntent(deal);
+  if (decision.intent === COVERAGE_INTENT.NONE) {
+    const result = await upsertDealActionOperation({
+      projectId,
+      officeId,
+      deal,
+      dealId,
+      accessToken,
+      deps,
+      notifyPush
+    });
+    return { ...decision, skipped: true, result };
+  }
   const result = await upsertDealActionOperation({
     projectId,
     officeId,
@@ -103,11 +131,7 @@ export async function syncDealCoverage({
     deps,
     notifyPush
   });
-  return {
-    intent: result?.reason === "terminal_deal" ? COVERAGE_INTENT.NONE : COVERAGE_INTENT.DEAL_ACTION,
-    skipped: result?.reason === "terminal_deal",
-    result
-  };
+  return { ...decision, skipped: false, result };
 }
 
 /**
