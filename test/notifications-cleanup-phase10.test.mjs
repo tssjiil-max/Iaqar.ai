@@ -8,6 +8,15 @@ import {
   upsertNotificationDocument
 } from "../worker/src/notification-service.js";
 import {
+  NOTIFICATION_STATUS,
+  buildInAppNotification,
+  notificationDocumentId
+} from "../worker/src/notification-domain.js";
+import {
+  NOTIFICATION_STATUS as COMPAT_NOTIFICATION_STATUS,
+  notificationDocumentId as compatNotificationDocumentId
+} from "../worker/src/operations-domain.js";
+import {
   mapNotificationView,
   notificationTapTarget
 } from "../public/js/in-app-notification-domain.js";
@@ -113,6 +122,42 @@ test("notification upsert is deterministic and idempotent by notification id", a
   assert.equal(duplicateWrites, 0);
 });
 
+test("notification domain keeps deterministic ids and legacy facade compatibility", async () => {
+  assert.deepEqual(COMPAT_NOTIFICATION_STATUS, NOTIFICATION_STATUS);
+  const direct = await notificationDocumentId("NOTIF|office-a|event-1");
+  const compat = await compatNotificationDocumentId("NOTIF|office-a|event-1");
+  assert.equal(direct, compat);
+  assert.ok(direct.startsWith("nt_"));
+});
+
+test("Operation-to-alert projection carries exact business identifiers without advancing workflow", async () => {
+  const notification = await buildInAppNotification({
+    officeId: "office-a",
+    referenceCode: "A-123",
+    operation: {
+      id: "op_1",
+      officeId: "office-a",
+      type: "COOPERATION_RESPONSE",
+      sourceEntityType: "cooperationRequest",
+      sourceEntityId: "coop_1",
+      opportunityId: "opp_1",
+      matchId: "mat_1",
+      dealId: "deal_1",
+      cooperationId: "coop_1",
+      deduplicationKey: "COOPERATION_RESPONSE|office-a|coop_1|ACCEPTED"
+    },
+    now: new Date("2026-09-07T10:00:00.000Z")
+  });
+  assert.equal(notification.status, NOTIFICATION_STATUS.CREATED);
+  assert.equal(notification.operationId, "op_1");
+  assert.equal(notification.matchId, "mat_1");
+  assert.equal(notification.dealId, "deal_1");
+  assert.equal(notification.opportunityId, "opp_1");
+  assert.equal(notification.cooperationId, "coop_1");
+  assert.equal(notification.entityType, "cooperationRequest");
+  assert.equal(notification.entityId, "coop_1");
+});
+
 test("in-app view keeps opportunity/cooperation/deal identifiers instead of collapsing to Daily Tasks", () => {
   const row = mapNotificationView({
     id: "nt_nav",
@@ -155,9 +200,24 @@ test("match notifications still repair legacy task ids without losing exact matc
 test("Operations delegates notification persistence and no longer implements it", () => {
   const source = readRepo("worker/src/operations-service.js");
   assert.match(source, /from "\.\/notification-service\.js"/);
+  assert.match(source, /buildInAppNotification \} from "\.\/notification-domain\.js"/);
   assert.doesNotMatch(source, /export function notificationToFirestoreFields\s*\(/);
   assert.doesNotMatch(source, /export async function upsertNotificationDocument\s*\(/);
   assert.doesNotMatch(source, /export async function recordNotificationPushResult\s*\(/);
+});
+
+test("notification domain/service/writer do not depend on Operations domain", () => {
+  for (const path of [
+    "worker/src/notification-domain.js",
+    "worker/src/notification-service.js",
+    "worker/src/in-app-notification-write.js"
+  ]) {
+    assert.doesNotMatch(readRepo(path), /\.\/operations-domain\.js/, path);
+  }
+  const operationsDomain = readRepo("worker/src/operations-domain.js");
+  assert.match(operationsDomain, /from "\.\/notification-domain\.js"/);
+  assert.doesNotMatch(operationsDomain, /export const NOTIFICATION_STATUS = Object\.freeze/);
+  assert.doesNotMatch(operationsDomain, /export async function buildInAppNotification\s*\(/);
 });
 
 test("notification center opens the canonical deep link and never defaults every alert to Daily Tasks", () => {
