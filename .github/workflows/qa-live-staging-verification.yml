@@ -1,0 +1,57 @@
+name: QA live staging verification
+
+on:
+  push:
+    branches:
+      - qa/live-staging-verification-2026-09-08
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iaqar-live-staging-verification
+  cancel-in-progress: false
+
+jobs:
+  verify-live-staging:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      FIREBASE_STAGING_PROJECT_ID: iaqar-ai-staging
+      STAGING_HOSTING_URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
+      STAGING_WORKER_URL: https://iaqar-intake-staging.iaqar-ai.workers.dev
+      LIVE_E2E_OUT: /tmp/live-e2e
+
+    steps:
+      - name: Checkout deployed clean SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 1add2bb97172db535c687169288d742c1521e141
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Confirm deployed Staging is the clean SHA
+        run: node scripts/verify-staging-release.mjs
+
+      - name: Run live Staging core flow
+        run: node scripts/live-staging-core-flow.mjs
+
+      - name: Upload live E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-staging-verification-${{ github.run_id }}
+          path: /tmp/live-e2e
+          if-no-files-found: warn
+          retention-days: 7
