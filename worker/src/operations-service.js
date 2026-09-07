@@ -19,6 +19,11 @@ import {
   shouldCreateMatchReview
 } from "./operations-domain.js";
 import { formatOpportunityReference } from "../../public/js/reference-code-domain.js";
+import {
+  canonicalOpportunityMissingFields,
+  looksCanonicalOpportunity,
+  matchingAdmissionFieldLabels
+} from "./matching-admission-domain.js";
 
 const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind", "purpose", "propertyType", "city",
@@ -32,6 +37,8 @@ const FIELD_LABELS_AR = Object.freeze({
   city: "المدينة",
   district: "الحي",
   priceOrBudget: "السعر أو الميزانية",
+  advertiserRole: "صفة المعلن",
+  contactPhone: "رقم الجوال",
   area: "المساحة",
   rooms: "عدد الغرف"
 });
@@ -43,11 +50,15 @@ function isBlank(value) {
 }
 
 export function listMissingOpportunityFields(opportunity = {}) {
+  if (looksCanonicalOpportunity(opportunity)) {
+    return canonicalOpportunityMissingFields(opportunity);
+  }
   return REQUIRED_OPPORTUNITY_FIELDS.filter((key) => isBlank(opportunity[key]));
 }
 
 export function missingFieldLabels(missingFields = []) {
-  return missingFields.map((key) => FIELD_LABELS_AR[key] || key);
+  const canonical = matchingAdmissionFieldLabels(missingFields);
+  return canonical.map((label, index) => label || FIELD_LABELS_AR[missingFields[index]] || missingFields[index]);
 }
 
 export function pushTypeForOperation(type) {
@@ -813,14 +824,14 @@ async function completeActiveCooperationRequests({
     if (op.type !== OPERATION_TYPES.COOPERATION_REQUEST) continue;
     if (String(op.cooperationId || "") !== String(cooperationId || "")) continue;
     if (!ACTIVE_OPERATION_STATUSES.includes(String(op.status || "").toUpperCase())) continue;
-    await setFirestoreDocument({
+    await deps.setFirestoreDocument({
       projectId,
       segments: ["offices", officeId, "operations", opId],
       accessToken,
       fields: {
-        status: firestoreHelpers.firestoreString(OPERATION_STATUS.COMPLETED),
-        completedAt: firestoreHelpers.firestoreTimestamp(now),
-        updatedAt: firestoreHelpers.firestoreTimestamp(now)
+        status: deps.firestoreHelpers.firestoreString(OPERATION_STATUS.COMPLETED),
+        completedAt: deps.firestoreHelpers.firestoreTimestamp(now),
+        updatedAt: deps.firestoreHelpers.firestoreTimestamp(now)
       }
     });
   }
