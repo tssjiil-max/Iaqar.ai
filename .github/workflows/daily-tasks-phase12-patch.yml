@@ -1,0 +1,42 @@
+name: Daily Tasks phase12 patch
+
+on:
+  push:
+    branches:
+      - chore/full-e2e-regression-phase12-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  patch-daily-tasks:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/full-e2e-regression-phase12-20260907
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - name: Patch Daily Tasks runtime
+        run: python scripts/patch-daily-tasks-phase12.py
+      - name: Validate Daily Tasks gate
+        run: |
+          node --check public/js/workflow-office.js
+          npm run test:daily-tasks:gate
+          npm run test:completion:gate
+          npm run test:orchestrator:gate
+          npm run test:matching:gate
+      - name: Commit Daily Tasks runtime
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/js/workflow-office.js public/js/daily-tasks-source-policy.js test/daily-tasks-operations-only-phase12.test.mjs
+          git commit -m "Daily Tasks: gate Operations-only cutover on measured coverage"
+          git push origin HEAD:chore/full-e2e-regression-phase12-20260907
