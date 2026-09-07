@@ -75,9 +75,13 @@ export function notificationTapTarget(row = {}) {
   return {
     taskId: matchTaskId,
     matchId: text(row.matchId),
+    dealId: text(row.dealId),
     operationId: text(row.operationId),
     opportunityId: text(row.opportunityId),
-    cooperationId: text(row.cooperationId)
+    cooperationId: text(row.cooperationId),
+    entityType: text(row.entityType),
+    entityId: text(row.entityId),
+    targetPath: text(row.targetPath)
   };
 }
 
@@ -88,13 +92,20 @@ export function mapNotificationView(row = {}, now = new Date()) {
     officeId: text(row.officeId),
     type: text(row.type) || IN_APP_NOTIFICATION_TYPE.SYSTEM_ACTION,
     title: text(row.title || row.titleText || row.body),
+    body: text(row.body),
     createdAt,
     readAt: row.readAt || null,
     unread: isNotificationUnread(row),
     clockLabel: formatDailyTaskClock(createdAt, now),
     taskId: text(row.taskId || row.workflowId || row.matchGroupId),
     matchId: text(row.matchId),
+    dealId: text(row.dealId),
     operationId: text(row.operationId),
+    opportunityId: text(row.opportunityId),
+    cooperationId: text(row.cooperationId),
+    entityType: text(row.entityType),
+    entityId: text(row.entityId),
+    targetPath: text(row.targetPath),
     referenceCode: text(row.referenceCode),
     workflowId: text(row.workflowId || row.taskId || row.matchGroupId)
   };
