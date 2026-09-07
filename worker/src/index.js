@@ -88,6 +88,15 @@ import {
   validatePurgeRequest
 } from "./opportunity-purge-service.js";
 import { markNotificationRead } from "./in-app-notification-write.js";
+import {
+  BROKERAGE_CONTRACT_STATUS,
+  DEAL_STAGE_ORDER,
+  evaluateDealCreation,
+  nextDealStage,
+  planBrokerageContractUpdate,
+  planDealClosure,
+  planDealStageTransition
+} from "./deal-contract-domain.js";
 import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
 import { livingTaskId } from "../../public/js/match-group-domain.js";
 import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
@@ -274,7 +283,6 @@ const DAILY_FREE_WRITES = 20000;
 const WARNING_PERCENT = 80;
 const ESTIMATED_WRITES_PER_MESSAGE = 8;
 
-const DEAL_STAGE_ORDER = ["contact","viewing","negotiation","agreement","closing","closed"];
 const DEAL_STAGE_LABELS = Object.freeze({
   contact: "التواصل", viewing: "المعاينة", negotiation: "التفاوض",
   agreement: "اتفاقية الوساطة", closing: "جاهزة للإغلاق", closed: "تمت الصفقة", lost: "متوقفة"
@@ -300,10 +308,6 @@ const READINESS_LABELS = Object.freeze({
 const DEAL_HEALTH_LABELS = Object.freeze({
   excellent: "ممتازة", stable: "مستقرة", needs_intervention: "تحتاج تدخل", at_risk: "معرضة للفشل"
 });
-function nextDealStage(current){
-  const safe=DEAL_STAGE_ORDER.includes(current)?current:"contact";
-  return DEAL_STAGE_ORDER[Math.min(DEAL_STAGE_ORDER.indexOf(safe)+1,DEAL_STAGE_ORDER.length-1)];
-}
 function normalizeMatchStatus(value){
   return normalizeMatchStatusEngine(cleanText(value||"active",40));
 }
@@ -5747,6 +5751,7 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
     score:matchData.score?firestoreInteger(matchData.score):null,closingReadinessScore:matchData.closingReadinessScore?firestoreInteger(matchData.closingReadinessScore):null,
     priority:firestoreOptionalString(matchData.priority),district:firestoreOptionalString(matchData.district),propertyType:firestoreOptionalString(matchData.propertyType),
     assignedToUid:firestoreOptionalString(identity.uid),commissionExpected:commissionExpected?firestoreInteger(Number(commissionExpected)):null,
+    brokerageContractRequired:firestoreBoolean(true),brokerageContractStatus:firestoreString(BROKERAGE_CONTRACT_STATUS.NOT_STARTED),brokerageContractReference:firestoreString(""),
     nextFollowUpAt:firestoreTimestamp(defaultNextFollowUp(stage==="closing"?8:24)),followUpCount:firestoreInteger(0),
     createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
   }});
@@ -5818,9 +5823,11 @@ async function finalizeDealAndCloseSiblings({projectId,officeId,dealId,dealData,
   const clientRequestId=dealData.clientRequestId||matchData.clientRequestId||"";
   const ownerOfferId=dealData.ownerOfferId||matchData.ownerOfferId||"";
   if(clientRequestId){
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",clientRequestId],accessToken,fields:{lifecycleStatus:firestoreString("CLOSED_WON"),workflowStage:firestoreString("closed"),requestDisposition:firestoreString("FULFILLED"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
     await setFirestoreDocument({projectId,segments:["offices",officeId,"clients",clientRequestId],accessToken,fields:{status:firestoreString("fulfilled"),workflowStage:firestoreString("closed"),fulfilledAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
   }
   if(ownerOfferId){
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",ownerOfferId],accessToken,fields:{lifecycleStatus:firestoreString("CLOSED_WON"),workflowStage:firestoreString("closed"),offerDisposition:firestoreString("SOLD"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
     await setFirestoreDocument({projectId,segments:["offices",officeId,"owners",ownerOfferId],accessToken,fields:{status:firestoreString("closed"),workflowStage:firestoreString("sold"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
   }
   return {closedSiblings,matchId};
@@ -5861,7 +5868,13 @@ async function handleWorkflowAction(request,env,requestId) {
     await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
     let dealId=m.dealId||"";
     if(next==="negotiation"&&!dealId){
-      dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      const creationGate=evaluateDealCreation({
+        match:{...m,status:next,closingReadinessScore:readiness.score},
+        coordination:{outcome:m.coordinationOutcome||""}
+      });
+      if(creationGate.allowed){
+        dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      }
     }
     return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
   }
@@ -5912,8 +5925,11 @@ async function handleWorkflowAction(request,env,requestId) {
     const m=firestoreFieldsToJs(match.fields||{});
     const matchStatus=normalizeMatchStatus(m.status);
     if(["completed","closed"].includes(matchStatus)) throw appError("match_not_open",409,"لا يمكن إنشاء صفقة من مطابقة مغلقة");
-    if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":"contact",requestId});
-    const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:matchStatus==="negotiation"?"negotiation":"contact"});
+    if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact",requestId});
+    const creationGate=evaluateDealCreation({match:m,coordination:{outcome:m.coordinationOutcome||""}});
+    if(!creationGate.allowed) throw appError("deal_not_serious_yet",409,"لا تُنشأ الصفقة قبل ظهور جدية فعلية في التفاوض أو تأكيد المعاينة");
+    const startStage=matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact";
+    const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage});
     return jsonResponse({ok:true,dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":"contact",requestId});
   }
 
@@ -5926,8 +5942,20 @@ async function handleWorkflowAction(request,env,requestId) {
     const requested=action==="set_deal_stage"?cleanText(body.stage,40):nextDealStage(current);
     if(!DEAL_STAGE_ORDER.includes(requested))throw appError("deal_stage_invalid",400,"مرحلة الصفقة غير صحيحة");
     if(requested==="closed"){
+      const closureGate=planDealClosure({deal:d});
+      if(!closureGate.ok){
+        if(closureGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"يجب توقيع عقد الوساطة قبل إغلاق الصفقة");
+        throw appError("deal_not_ready_to_close",409,"يجب أن تصل الصفقة إلى مرحلة جاهزة للإغلاق قبل إتمامها");
+      }
       const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
       return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:closed.closedSiblings,requestId});
+    }
+    const transitionGate=planDealStageTransition({deal:d,requestedStage:requested});
+    if(!transitionGate.ok){
+      if(transitionGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"يجب توقيع عقد الوساطة قبل الانتقال إلى الإغلاق");
+      if(transitionGate.reason==="backward_transition") throw appError("deal_backward_transition",409,"لا يمكن إرجاع الصفقة إلى مرحلة سابقة");
+      if(transitionGate.reason==="skipped_stage") throw appError("deal_stage_skip",409,"لا يمكن تجاوز مراحل الصفقة");
+      throw appError("deal_stage_invalid",400,"مرحلة الصفقة غير صحيحة");
     }
     const health=calculateDealHealth({stage:requested,status:"open",updatedAt:now,nextFollowUpAt});
     const count=Number(d.followUpCount||0)+1;
@@ -5955,6 +5983,40 @@ async function handleWorkflowAction(request,env,requestId) {
     await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"follow_up_added",stage:d.workflowStage||"follow_up",note:note||"تم تحديد موعد متابعة",identity,accessToken,createdAt:now});
     await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_followup_updated" });
     return jsonResponse({ok:true,status:"noted",nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,health,requestId});
+  }
+
+  if(action==="set_brokerage_contract_status"){
+    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,allowMissing:true});
+    if(!deal) throw appError("deal_not_found",404,"الصفقة غير موجودة");
+    const d=firestoreFieldsToJs(deal.fields||{});
+    if(d.status==="closed"||d.workflowStage==="closed"||d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"لا يمكن تعديل عقد صفقة منتهية");
+    const contractPlan=planBrokerageContractUpdate({
+      deal:d,
+      requestedStatus:cleanText(body.contractStatus||body.status,40),
+      reference:cleanText(body.contractReference||body.reference,180),
+      now
+    });
+    if(!contractPlan.ok){
+      if(contractPlan.reason==="signed_contract_terminal") throw appError("signed_contract_terminal",409,"عقد الوساطة الموقع لا يُعاد إلى حالة سابقة");
+      throw appError("contract_status_invalid",400,"حالة عقد الوساطة غير صحيحة");
+    }
+    if(!contractPlan.idempotent){
+      const p=contractPlan.patch;
+      const fields={
+        brokerageContractRequired:firestoreBoolean(true),
+        brokerageContractStatus:firestoreString(p.brokerageContractStatus),
+        brokerageContractReference:firestoreOptionalString(p.brokerageContractReference),
+        brokerageContractUpdatedAt:firestoreTimestamp(new Date(p.brokerageContractUpdatedAt)),
+        updatedAt:firestoreTimestamp(now),
+        assignedToUid:firestoreOptionalString(identity.uid)
+      };
+      if(p.brokerageContractSignedAt) fields.brokerageContractSignedAt=firestoreTimestamp(new Date(p.brokerageContractSignedAt));
+      if(p.brokerageContractCancelledAt) fields.brokerageContractCancelledAt=firestoreTimestamp(new Date(p.brokerageContractCancelledAt));
+      await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields});
+      await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"brokerage_contract_updated",stage:d.workflowStage||"agreement",note:`حالة عقد الوساطة: ${p.brokerageContractStatus}`,identity,accessToken,createdAt:now});
+      await observeDealCoverageShadow({projectId,officeId,dealId:recordId,accessToken,source:"brokerage_contract_updated"});
+    }
+    return jsonResponse({ok:true,dealId:recordId,contractStatus:contractPlan.requested,idempotent:Boolean(contractPlan.idempotent),requestId});
   }
 
   if(action==="mark_lost"){
@@ -5988,6 +6050,11 @@ async function handleWorkflowAction(request,env,requestId) {
     const d=firestoreFieldsToJs(deal.fields||{});
     if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:0,requestId});
     if(d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"لا يمكن إغلاق صفقة متوقفة");
+    const closureGate=planDealClosure({deal:d});
+    if(!closureGate.ok){
+      if(closureGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"يجب توقيع عقد الوساطة قبل إغلاق الصفقة");
+      throw appError("deal_not_ready_to_close",409,"الصفقة ليست في مرحلة جاهزة للإغلاق");
+    }
     const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
     return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:closed.closedSiblings,requestId});
   }
