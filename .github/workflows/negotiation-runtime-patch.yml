@@ -1,0 +1,63 @@
+name: Negotiation runtime patch
+
+on:
+  push:
+    branches:
+      - chore/negotiation-cleanup-phase4-20260907
+    paths:
+      - .github/negotiation-runtime-patch.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    if: github.event.head_commit.message != 'Negotiation: wire canonical runtime guard'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: chore/negotiation-cleanup-phase4-20260907
+          fetch-depth: 0
+      - name: Patch coordination persistence path
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('worker/src/coordination-session-service.js')
+          src = path.read_text()
+
+          import_anchor = '} from "../../public/js/coordination-bundle-domain.js";\n'
+          import_replacement = import_anchor + '''import {\n  resolveNegotiationState,\n  validateNegotiationSubmission\n} from "../../public/js/negotiation-domain.js";\n'''
+          if 'from "../../public/js/negotiation-domain.js"' not in src:
+              if import_anchor not in src:
+                  raise SystemExit('negotiation import anchor not found')
+              src = src.replace(import_anchor, import_replacement, 1)
+
+          idempotent_anchor = '''  const priorBundle = side === "owner" ? session.ownerBundle : session.clientBundle;\n  if (priorBundle && bundlesEqual(priorBundle, normalized)) {\n    return session;\n  }\n  const next = { ...session };\n'''
+          idempotent_replacement = '''  const priorBundle = side === "owner" ? session.ownerBundle : session.clientBundle;\n  if (priorBundle && bundlesEqual(priorBundle, normalized)) {\n    return session;\n  }\n  const negotiationValidation = validateNegotiationSubmission({\n    party: side,\n    session,\n    bundle: normalized\n  });\n  if (!negotiationValidation.ok) {\n    throw helpers.appError(\n      "invalid_negotiation_transition",\n      409,\n      "تعذر قبول رد التفاوض بهذا الترتيب. حدّث الجلسة وحاول من الخطوة الحالية."\n    );\n  }\n  const next = { ...session };\n'''
+          if 'const negotiationValidation = validateNegotiationSubmission' not in src:
+              if idempotent_anchor not in src:
+                  raise SystemExit('idempotent anchor not found')
+              src = src.replace(idempotent_anchor, idempotent_replacement, 1)
+
+          resolver_anchor = '''  const resolved = resolveCoordinationOutcome({\n    clientBundle: next.clientBundle,\n    ownerBundle: next.ownerBundle,\n    canonicalOffer\n  });\n'''
+          resolver_replacement = '''  const negotiation = resolveNegotiationState({\n    clientBundle: next.clientBundle,\n    ownerBundle: next.ownerBundle,\n    canonicalOffer\n  });\n  const resolved = negotiation.handled && negotiation.coordination\n    ? negotiation.coordination\n    : resolveCoordinationOutcome({\n      clientBundle: next.clientBundle,\n      ownerBundle: next.ownerBundle,\n      canonicalOffer\n    });\n'''
+          if 'const negotiation = resolveNegotiationState({' not in src:
+              if resolver_anchor not in src:
+                  raise SystemExit('resolver anchor not found')
+              src = src.replace(resolver_anchor, resolver_replacement, 1)
+
+          path.write_text(src)
+      - name: Commit runtime wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/coordination-session-service.js
+          if git diff --cached --quiet; then
+            echo "No runtime patch needed"
+            exit 0
+          fi
+          git commit -m "Negotiation: wire canonical runtime guard"
+          git push origin HEAD:chore/negotiation-cleanup-phase4-20260907
