@@ -1,10 +1,10 @@
 /**
- * Phase 5 — Operations + Notifications persistence orchestration (Worker trust boundary).
+ * Phase 5 — Operations persistence/projector orchestration (Worker trust boundary).
+ * Notification persistence and delivery state are delegated to notification-service.
  */
 
 import {
   ACTIVE_OPERATION_STATUSES,
-  NOTIFICATION_STATUS,
   OPERATION_STATUS,
   OPERATION_TYPES,
   applyOperationLifecycle,
@@ -24,6 +24,16 @@ import {
   looksCanonicalOpportunity,
   matchingAdmissionFieldLabels
 } from "./matching-admission-domain.js";
+import {
+  notificationToFirestoreFields,
+  upsertNotificationDocument,
+  recordNotificationPushResult
+} from "./notification-service.js";
+export {
+  notificationToFirestoreFields,
+  upsertNotificationDocument,
+  recordNotificationPushResult
+} from "./notification-service.js";
 
 const REQUIRED_OPPORTUNITY_FIELDS = Object.freeze([
   "opportunityKind", "purpose", "propertyType", "city",
@@ -133,39 +143,6 @@ export function operationToFirestoreFields(operation, {
   };
 }
 
-export function notificationToFirestoreFields(notification, {
-  firestoreString,
-  firestoreBoolean,
-  firestoreInteger,
-  firestoreTimestamp
-}) {
-  const createdAt = notification.createdAt ? new Date(notification.createdAt) : new Date();
-  return {
-    schemaVersion: firestoreInteger(notification.schemaVersion || 1),
-    id: firestoreString(notification.id),
-    officeId: firestoreString(notification.officeId),
-    brokerId: firestoreString(notification.brokerId || ""),
-    operationId: firestoreString(notification.operationId || ""),
-    matchId: firestoreString(notification.matchId || ""),
-    opportunityId: firestoreString(notification.opportunityId || ""),
-    taskId: firestoreString(notification.taskId || notification.workflowId || ""),
-    workflowId: firestoreString(notification.workflowId || notification.taskId || ""),
-    referenceCode: firestoreString(notification.referenceCode || ""),
-    type: firestoreString(notification.type),
-    title: firestoreString(notification.title || ""),
-    body: firestoreString(notification.body || ""),
-    status: firestoreString(notification.status || NOTIFICATION_STATUS.CREATED),
-    readAt: notification.readAt ? firestoreTimestamp(new Date(notification.readAt)) : firestoreString(""),
-    createdAt: firestoreTimestamp(createdAt),
-    updatedAt: firestoreTimestamp(notification.updatedAt ? new Date(notification.updatedAt) : createdAt),
-    deduplicationKey: firestoreString(notification.deduplicationKey || ""),
-    deliveryChannelsJson: firestoreString(JSON.stringify(notification.deliveryChannels || ["in_app", "push"])),
-    providerStateJson: firestoreString(JSON.stringify(notification.providerState || {})),
-    sensitivePreview: firestoreBoolean(Boolean(notification.sensitivePreview)),
-    createdBySystem: firestoreBoolean(notification.createdBySystem !== false)
-  };
-}
-
 function isTerminalStatus(status) {
   return [OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED]
     .includes(String(status || "").toUpperCase());
@@ -216,83 +193,6 @@ export async function upsertOperationDocument({
     fields: operationToFirestoreFields(operation, firestoreHelpers)
   });
   return { operation, created: true, skippedTerminal: false };
-}
-
-export async function upsertNotificationDocument({
-  projectId,
-  officeId,
-  notification,
-  accessToken,
-  setFirestoreDocument,
-  getFirestoreDocument,
-  firestoreHelpers
-}) {
-  const existingDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "notifications", notification.id],
-    accessToken,
-    allowMissing: true
-  });
-  if (existingDoc) {
-    const existing = firestoreHelpers.firestoreFieldsToJs(existingDoc.fields || {});
-    return { notification: { ...existing, id: notification.id }, created: false };
-  }
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "notifications", notification.id],
-    accessToken,
-    fields: notificationToFirestoreFields(notification, firestoreHelpers)
-  });
-  return { notification, created: true };
-}
-
-export async function recordNotificationPushResult({
-  projectId,
-  officeId,
-  notificationId,
-  pushSummary,
-  accessToken,
-  setFirestoreDocument,
-  firestoreHelpers
-}) {
-  const now = new Date();
-  const failed = Number(pushSummary?.failed || 0) > 0 && Number(pushSummary?.sent || 0) === 0;
-  const skipped = pushSummary?.skipped === true;
-  const sent = Number(pushSummary?.sent || 0) > 0;
-  let status = NOTIFICATION_STATUS.CREATED;
-  let pushState = "QUEUED";
-  if (skipped) {
-    status = NOTIFICATION_STATUS.CREATED;
-    pushState = "SKIPPED_PREFERENCE";
-  } else if (sent) {
-    status = NOTIFICATION_STATUS.SENT;
-    pushState = "SENT";
-  } else if (failed) {
-    status = NOTIFICATION_STATUS.FAILED;
-    pushState = "FAILED";
-  }
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "notifications", notificationId],
-    accessToken,
-    fields: {
-      status: firestoreHelpers.firestoreString(status),
-      updatedAt: firestoreHelpers.firestoreTimestamp(now),
-      providerStateJson: firestoreHelpers.firestoreString(JSON.stringify({
-        push: pushState,
-        pushSentAt: sent ? now.toISOString() : null,
-        pushDeliveredAt: null,
-        pushFailedAt: failed ? now.toISOString() : null,
-        pushError: failed ? String(pushSummary?.reason || "fcm_send_failed") : "",
-        sent: Number(pushSummary?.sent || 0),
-        failed: Number(pushSummary?.failed || 0),
-        registered: Number(pushSummary?.registered || 0),
-        skipped: Boolean(skipped),
-        skipReason: skipped ? String(pushSummary?.reason || "") : ""
-      }))
-    }
-  });
-  return { status, pushState };
 }
 
 async function upsertCoverageOperationBundle({
