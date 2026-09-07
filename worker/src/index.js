@@ -196,9 +196,11 @@ import {
   extractImageTextFromMediaPath,
   verifyCanonicalMediaAccessToken
 } from "./canonical-intake-service.js";
+import { assertPlatformAdminClaims } from "./admin-control-plane-domain.js";
 import {
   createAdminHelpers,
   handleAdminAuditLog,
+  handleAdminSession,
   handleAdminLicenseUpdate,
   handleAdminNoteAdd,
   handleAdminOfficeActivity,
@@ -798,6 +800,10 @@ export default {
         return await decideBrokerApplication(request, env, requestId);
       }
 
+      if (request.method === "GET" && url.pathname === "/admin/session") {
+        return await handleAdminSession(request, env, requestId, getAdminHelpers());
+      }
+
       if (request.method === "GET" && url.pathname === "/admin/overview") {
         return await handleAdminOverview(request, env, requestId, getAdminHelpers());
       }
@@ -1354,8 +1360,11 @@ async function requirePlatformIdentity(request, env, requireAdmin = true) {
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) throw appError("auth_required", 401, "يلزم تسجيل الدخول");
   const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
-  if (requireAdmin && claims.platformAdmin !== true && claims.admin !== true) {
-    throw appError("admin_required", 403, "هذه العملية خاصة بإدارة المنصة");
+  if (requireAdmin) {
+    const authorization = assertPlatformAdminClaims(claims);
+    if (!authorization.ok) {
+      throw appError("admin_required", 403, "هذه العملية خاصة بإدارة المنصة");
+    }
   }
   return claims;
 }

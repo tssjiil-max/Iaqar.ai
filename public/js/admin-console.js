@@ -44,11 +44,6 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-async function ensurePlatformAdmin(user) {
-  const token = await user.getIdTokenResult(true);
-  if (token.claims.platformAdmin === true || token.claims.admin === true) return true;
-  throw new Error("admin_required");
-}
 
 function renderMainNav() {
   els.mainNav.innerHTML = MAIN_VIEWS.map((item) =>
@@ -361,10 +356,11 @@ async function renderView() {
 }
 
 async function enterConsole(user) {
-  await ensurePlatformAdmin(user);
+  const session = await api.session();
+  const admin = session.admin || {};
   els.loginCard.classList.add("hidden");
   els.console.classList.remove("hidden");
-  els.adminUserLine.textContent = `مرحبًا ${user.email || "مدير المنصة"}`;
+  els.adminUserLine.textContent = `مرحبًا ${admin.email || user.email || "مدير المنصة"}`;
   renderMainNav();
   await renderView();
 }

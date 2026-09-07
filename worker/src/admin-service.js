@@ -128,6 +128,20 @@ export function approvedOfficeDefaults(application, adminUid, now = new Date()) 
   };
 }
 
+export async function handleAdminSession(request, env, requestId, helpers) {
+  helpers.assertFirebaseSecrets(env);
+  const claims = await helpers.requirePlatformIdentity(request, env, true);
+  return helpers.jsonResponse({
+    ok: true,
+    admin: {
+      uid: String(claims.sub || claims.user_id || ""),
+      email: String(claims.email || ""),
+      platformAdmin: true
+    },
+    requestId
+  });
+}
+
 export async function handleAdminOverview(request, env, requestId, helpers) {
   helpers.assertFirebaseSecrets(env);
   await helpers.requirePlatformIdentity(request, env, true);

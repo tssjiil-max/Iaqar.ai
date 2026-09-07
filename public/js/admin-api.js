@@ -35,6 +35,7 @@ export class AdminApi {
     return payload;
   }
 
+  session() { return this.request("/admin/session"); }
   overview() { return this.request("/admin/overview"); }
   offices(params = {}) {
     const query = new URLSearchParams(params);
