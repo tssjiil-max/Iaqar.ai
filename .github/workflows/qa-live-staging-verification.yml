@@ -44,6 +44,11 @@ jobs:
       - name: Confirm deployed Staging is the clean SHA
         run: node scripts/verify-staging-release.mjs
 
+      - name: Prepare legacy QA output directory
+        run: |
+          sudo mkdir -p /workspace/qa
+          sudo chown "$USER":"$USER" /workspace/qa
+
       - name: Run live Staging core flow
         run: node scripts/live-staging-core-flow.mjs
 
