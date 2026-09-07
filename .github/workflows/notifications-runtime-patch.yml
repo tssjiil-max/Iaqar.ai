@@ -1,0 +1,105 @@
+name: Notifications runtime patch
+
+on:
+  push:
+    branches:
+      - chore/notifications-cleanup-phase10-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/notifications-cleanup-phase10-20260907
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Delegate notification persistence out of Operations
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('worker/src/operations-service.js')
+          s = p.read_text()
+
+          s = s.replace(
+            ' * Phase 5 — Operations + Notifications persistence orchestration (Worker trust boundary).',
+            ' * Phase 5 — Operations persistence/projector orchestration (Worker trust boundary).\n * Notification persistence and delivery state are delegated to notification-service.'
+          )
+
+          anchor = '''import {
+            canonicalOpportunityMissingFields,
+            looksCanonicalOpportunity,
+            matchingAdmissionFieldLabels
+          } from "./matching-admission-domain.js";
+          '''
+          notification_import = '''import {
+            notificationToFirestoreFields,
+            upsertNotificationDocument,
+            recordNotificationPushResult
+          } from "./notification-service.js";
+          export {
+            notificationToFirestoreFields,
+            upsertNotificationDocument,
+            recordNotificationPushResult
+          } from "./notification-service.js";
+          '''
+          if './notification-service.js' not in s:
+            if anchor not in s:
+              raise SystemExit('matching-admission import anchor not found')
+            s = s.replace(anchor, anchor + notification_import, 1)
+
+          s, count_serializer = re.subn(
+            r'export function notificationToFirestoreFields\([\s\S]*?\n}\n\nfunction isTerminalStatus\(',
+            'function isTerminalStatus(',
+            s,
+            count=1
+          )
+          if count_serializer != 1:
+            raise SystemExit(f'notification serializer block patch count={count_serializer}')
+
+          s, count_persistence = re.subn(
+            r'export async function upsertNotificationDocument\([\s\S]*?\n}\n\nasync function upsertCoverageOperationBundle\(',
+            'async function upsertCoverageOperationBundle(',
+            s,
+            count=1
+          )
+          if count_persistence != 1:
+            raise SystemExit(f'notification persistence block patch count={count_persistence}')
+
+          # NOTIFICATION_STATUS belonged only to the removed notification persistence block.
+          if s.count('NOTIFICATION_STATUS') == 1:
+            s = s.replace('  NOTIFICATION_STATUS,\n', '', 1)
+
+          if 'export function notificationToFirestoreFields(' in s:
+            raise SystemExit('old notification serializer still owned by operations-service')
+          if 'export async function upsertNotificationDocument(' in s:
+            raise SystemExit('old notification upsert still owned by operations-service')
+          if 'export async function recordNotificationPushResult(' in s:
+            raise SystemExit('old notification push state still owned by operations-service')
+          if './notification-service.js' not in s:
+            raise SystemExit('notification-service delegation missing')
+
+          p.write_text(s)
+      - name: Validate syntax and notification regressions
+        run: |
+          node --check worker/src/operations-service.js
+          node --check worker/src/notification-service.js
+          node --test test/operations-phase5.test.mjs test/notification-deep-link.test.mjs test/notification-preferences.test.mjs
+      - name: Commit runtime ownership wiring
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/operations-service.js
+          git commit -m "Notifications: separate persistence ownership from Operations"
+          git push origin HEAD:chore/notifications-cleanup-phase10-20260907
