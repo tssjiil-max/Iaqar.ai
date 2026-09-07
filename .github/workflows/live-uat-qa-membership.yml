@@ -14,6 +14,8 @@ env:
   QA_E2E_OFFICE_ID: qa-e2e-dedicated
   STAGING_HOSTING_URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
   STAGING_WORKER_URL: https://iaqar-intake-staging.iaqar-ai.workers.dev
+  LIVE_E2E_OUT: artifacts
+  LIVE_E2E_WORK: /tmp/iaqar-live-e2e
 
 jobs:
   live-uat:
@@ -23,8 +25,6 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       STAGING_PHONE: ${{ secrets.STAGING_PHONE }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
-      LIVE_E2E_OUT: ${{ github.workspace }}/artifacts
-      LIVE_E2E_WORK: ${{ runner.temp }}/iaqar-live-e2e
 
     steps:
       - name: Checkout QA branch
