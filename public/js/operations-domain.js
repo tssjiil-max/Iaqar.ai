@@ -8,6 +8,9 @@
 export const OPERATION_TYPES = Object.freeze({
   MATCH_REVIEW: "MATCH_REVIEW",
   MISSING_DATA: "MISSING_DATA",
+  OPPORTUNITY_REVIEW: "OPPORTUNITY_REVIEW",
+  OPPORTUNITY_FOLLOW_UP: "OPPORTUNITY_FOLLOW_UP",
+  DEAL_ACTION: "DEAL_ACTION",
   COOPERATION_REQUEST: "COOPERATION_REQUEST",
   COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
   COOPERATION_MATCH: "COOPERATION_MATCH",
@@ -45,6 +48,9 @@ export const OPERATIONS_MISSING_DATA_PATH = "/operations/missing-data";
 const TYPE_ICONS = Object.freeze({
   MATCH_REVIEW: "i-match",
   MISSING_DATA: "i-clipboard-list",
+  OPPORTUNITY_REVIEW: "i-clipboard-list",
+  OPPORTUNITY_FOLLOW_UP: "i-user-clock",
+  DEAL_ACTION: "i-clipboard-list",
   COOPERATION_REQUEST: "i-user-clock",
   COOPERATION_RESPONSE: "i-user-clock",
   COOPERATION_MATCH: "i-user-clock",
@@ -165,6 +171,15 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     action = "استكمال البيانات";
     detailsLines.length = 0;
     detailsLines.push(summary);
+  } else if (type === OPERATION_TYPES.OPPORTUNITY_REVIEW) {
+    title = title || "عرض أو طلب جديد يحتاج مراجعة";
+    action = action || "مراجعة العرض أو الطلب";
+  } else if (type === OPERATION_TYPES.OPPORTUNITY_FOLLOW_UP) {
+    title = title || "متابعة مالك أو عميل";
+    action = action || "فتح المتابعة";
+  } else if (type === OPERATION_TYPES.DEAL_ACTION) {
+    title = title || "إجراء مطلوب على الصفقة";
+    action = action || "فتح الصفقة";
   }
 
   if (type === OPERATION_TYPES.MATCH_REVIEW) {
@@ -177,6 +192,14 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
       detailsLines.push(`الحقول الناقصة: ${missingFields.join("، ")}`);
     }
     detailsLines.push("الإجراء المطلوب: استكمال البيانات ثم إعادة المطابقة.");
+  } else if (type === OPERATION_TYPES.OPPORTUNITY_REVIEW) {
+    detailsLines.push("الإجراء المطلوب: مراجعة العرض أو الطلب واعتماد بياناته التشغيلية.");
+  } else if (type === OPERATION_TYPES.OPPORTUNITY_FOLLOW_UP) {
+    if (metadata.followUpAt || op.dueAt) detailsLines.push(`موعد المتابعة: ${metadata.followUpAt || op.dueAt}`);
+    detailsLines.push("الإجراء المطلوب: تنفيذ المتابعة المسجلة على الفرصة.");
+  } else if (type === OPERATION_TYPES.DEAL_ACTION) {
+    if (metadata.dealStage || op.currentStage) detailsLines.push(`مرحلة الصفقة: ${metadata.dealStage || op.currentStage}`);
+    detailsLines.push("الإجراء المطلوب: متابعة الإجراء التالي للصفقة.");
   } else if (type === OPERATION_TYPES.COOPERATION_REQUEST || type === OPERATION_TYPES.COOPERATION_RESPONSE) {
     if (metadata.cooperationStatus) {
       detailsLines.push(`حالة التعاون: ${metadata.cooperationStatus}`);
@@ -226,6 +249,7 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     dismissLabel: "صرف النظر",
     matchId: String(op.matchId || ""),
     opportunityId: String(op.opportunityId || ""),
+    dealId: String(op.dealId || metadata.dealId || (type === OPERATION_TYPES.DEAL_ACTION ? op.sourceEntityId || "" : "")),
     clientRequestId: String(metadata.clientRequestId || op.clientRequestId || ""),
     ownerOfferId: String(metadata.ownerOfferId || op.ownerOfferId || ""),
     requestId: String(metadata.clientRequestId || op.clientRequestId || metadata.requestId || ""),
@@ -297,7 +321,9 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     originListing: metadata.originListing || {},
     counterpartListing: metadata.counterpartListing || {},
     appointmentAt: op.appointmentAt || metadata.appointmentAt || "",
-    viewingAt: metadata.viewingAt || "",
+    appointmentStatus: op.appointmentStatus || metadata.appointmentStatus || "",
+    viewingAt: op.viewingAt || metadata.viewingAt || "",
+    followUpAt: op.dueAt || metadata.followUpAt || "",
     completionConfirmations: metadata.completionConfirmations || {},
     hasNewResponse: Boolean(metadata.hasNewResponse) || String(op.hasNewResponse || "").toLowerCase() === "true",
     partnerOfficeName: String(op.partnerOfficeName || ""),
