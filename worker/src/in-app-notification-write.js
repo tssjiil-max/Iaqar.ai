@@ -7,7 +7,7 @@ import {
   NOTIFICATION_STATUS,
   notificationDocumentId
 } from "./operations-domain.js";
-import { notificationToFirestoreFields } from "./operations-service.js";
+import { notificationToFirestoreFields } from "./notification-service.js";
 import {
   livingEventDedupKey,
   livingEventNotificationTitle,
