@@ -87,7 +87,6 @@ test("shadow observers are wired to the intended persisted event boundaries", ()
   const canonicalSource = fs.readFileSync(new URL("../src/canonical-intake-service.js", import.meta.url), "utf8");
 
   for (const marker of [
-    'source: "whatsapp_intake_persisted"',
     'source: "opportunity_patch_persisted"',
     '"followup_scheduled"',
     'source: "deal_created"',
@@ -96,7 +95,12 @@ test("shadow observers are wired to the intended persisted event boundaries", ()
   ]) {
     assert.ok(indexSource.includes(marker), `missing shadow wiring marker: ${marker}`);
   }
+
+  // Channel intake (WhatsApp / Telegram / future adapters) now converges on one
+  // canonical persisted boundary instead of maintaining a WhatsApp-only observer.
   assert.ok(canonicalSource.includes('source: "canonical_intake_complete"'));
+  assert.ok(canonicalSource.includes("sourceChannel"));
+  assert.equal(indexSource.includes('source: "whatsapp_intake_persisted"'), false);
   assert.ok(indexSource.includes('event: "operations_coverage_shadow"'));
 });
 
