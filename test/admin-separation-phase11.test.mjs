@@ -48,6 +48,18 @@ test("admin service provides a server-verified session without office workflow m
   assert.doesNotMatch(sessionSection, /operations|matches|deals|opportunities/);
 });
 
+test("office operational activity is not owned by admin-service", () => {
+  const adminService = readRepo("worker/src/admin-service.js");
+  const activityService = readRepo("worker/src/office-activity-service.js");
+  const index = readRepo("worker/src/index.js");
+  assert.doesNotMatch(adminService, /export async function recordOfficeLoginActivity/);
+  assert.doesNotMatch(adminService, /async function recordActivityEvent/);
+  assert.match(adminService, /from "\.\/office-activity-service\.js"/);
+  assert.match(activityService, /export async function recordOfficeActivityEvent/);
+  assert.match(activityService, /export async function recordOfficeLoginActivity/);
+  assert.match(index, /from "\.\/office-activity-service\.js"/);
+});
+
 test("admin browser asks the Worker for session authorization instead of trusting token claims", () => {
   const api = readRepo("public/js/admin-api.js");
   const consoleSource = readRepo("public/js/admin-console.js");
