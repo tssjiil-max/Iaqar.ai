@@ -114,11 +114,12 @@ test("Test 13: WhatsApp adapter_ready + Telegram simulated contracts", () => {
   assert.equal(wa.neverFakeDelivery, true);
 
   const tg = telegramWebhookValidationFixture();
-  assert.equal(tg.adapterStatus, "simulated");
+  assert.equal(tg.adapterStatus, "adapter_ready");
   assert.equal(tg.outboundEnabled, false);
-  assert.equal(tg.inboundEnabled, false);
+  assert.equal(tg.inboundEnabled, true);
   assert.equal(tg.requiresSecretTokenHeader, true);
   assert.equal(tg.headerName, "X-Telegram-Bot-Api-Secret-Token");
+  assert.equal(tg.canonicalIntakeOnly, true);
 });
 
 test("Test 13: draft starts DRAFT / NOT_APPLICABLE and handoff is not SENT", async () => {
