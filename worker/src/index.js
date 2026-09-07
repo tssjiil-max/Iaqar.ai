@@ -1,6 +1,11 @@
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
 import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
+  createPersistentCompletionSession,
+  readPersistentCompletionSession,
+  submitPersistentCompletionSession
+} from "./data-completion-runtime-service.js";
+import {
   MATCHING_RULE_VERSION,
   MATCH_THRESHOLD,
   MAX_MATCH_CANDIDATES,
@@ -53,7 +58,8 @@ import {
 } from "./operations-service.js";
 import {
   opportunityCoverageIntent,
-  dealCoverageIntent
+  dealCoverageIntent,
+  syncOpportunityCoverage
 } from "./operations-coverage-sync.js";
 import {
   phase6BoundaryGuarantees,
@@ -524,6 +530,20 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/pipeline/public-voice-analyze") {
         return await handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute: true });
+      }
+
+      if (request.method === "POST" && url.pathname === "/completion/sessions") {
+        return await handleCompletionSessionCreate(request, env, requestId);
+      }
+      const completionPath = url.pathname.match(/^\/completion\/([^/]+)\/([^/]+)$/);
+      if (completionPath && (request.method === "GET" || request.method === "POST")) {
+        return await handleCompletionSessionPublic(
+          request,
+          env,
+          requestId,
+          firestoreOfficeId(decodeURIComponent(completionPath[1])),
+          cleanText(decodeURIComponent(completionPath[2]), 180)
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake") {
@@ -4567,6 +4587,101 @@ async function findAndSaveMatchesForOpportunity({
     cooperation,
     boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees(), createsOperation: operationsCreated > 0 }
   };
+}
+
+
+function completionTokenFromRequest(request) {
+  const auth = String(request.headers.get("Authorization") || "");
+  return auth.startsWith("Completion ") ? auth.slice("Completion ".length).trim() : "";
+}
+
+function completionResultError(result) {
+  const code = String(result?.error || "completion_failed");
+  const status = code === "opportunity_not_found" || code === "session_not_found" ? 404
+    : code === "office_mismatch" ? 403
+    : ["invalid_token", "session_not_active", "session_expired"].includes(code) ? 401
+    : code === "opportunity_already_complete" ? 409
+    : 400;
+  const messages = {
+    opportunity_not_found: "لم يتم العثور على الفرصة",
+    session_not_found: "لم يتم العثور على رابط الاستكمال",
+    office_mismatch: "الرابط لا يتبع هذا المكتب",
+    invalid_token: "رابط الاستكمال غير صالح",
+    session_not_active: "رابط الاستكمال لم يعد نشطًا",
+    session_expired: "انتهت صلاحية رابط الاستكمال",
+    opportunity_already_complete: "الفرصة مكتملة بالفعل"
+  };
+  throw appError(code, status, messages[code] || "تعذر تنفيذ الاستكمال");
+}
+
+function completionRuntimeDeps(env, projectId, accessToken) {
+  const ops = operationsDeps(env);
+  return {
+    ...ops,
+    officeIdsEquivalent,
+    projectMissingData: async ({ officeId, opportunityId, opportunity }) => {
+      return upsertMissingDataForOpportunity({
+        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops
+      });
+    },
+    onOpportunityReady: async ({ officeId, opportunityId, opportunity, completionSessionId }) => {
+      await upsertMissingDataForOpportunity({
+        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops
+      });
+      await syncOpportunityCoverage({
+        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops, notifyPush: false
+      });
+      await runRuntimeOrchestration({
+        event: ORCHESTRATOR_EVENT.OPPORTUNITY_COMPLETED,
+        officeId,
+        entityId: opportunityId,
+        occurrenceId: completionSessionId || "completed",
+        context: { projectId, opportunityId, matchingReadiness: "READY_FOR_MATCHING" },
+        adapters: {
+          [ORCHESTRATOR_OWNER.MATCHING]: async () => ({ ok: true, deferred: true })
+        }
+      });
+    }
+  };
+}
+
+async function handleCompletionSessionCreate(request, env, requestId) {
+  assertFirebaseSecrets(env);
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const opportunityId = cleanText(body.opportunityId, 180);
+  if (!officeId) throw appError("office_id_required", 400, "معرّف المكتب مطلوب");
+  if (!opportunityId) throw appError("opportunity_id_required", 400, "معرّف الفرصة مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "manage");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const result = await createPersistentCompletionSession({
+    projectId, officeId, opportunityId, createdBy: identity.uid || "broker",
+    ttlMinutes: body.ttlMinutes, accessToken, appOrigin: resolveAppOrigin(env),
+    deps: completionRuntimeDeps(env, projectId, accessToken)
+  });
+  if (!result.ok) completionResultError(result);
+  return jsonResponse({ ...result, requestId }, 201);
+}
+
+async function handleCompletionSessionPublic(request, env, requestId, officeId, sessionId) {
+  assertFirebaseSecrets(env);
+  const token = completionTokenFromRequest(request);
+  if (!token) throw appError("completion_token_required", 401, "رابط الاستكمال غير صالح");
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = completionRuntimeDeps(env, projectId, accessToken);
+  if (request.method === "GET") {
+    const result = await readPersistentCompletionSession({ projectId, officeId, sessionId, token, accessToken, deps });
+    if (!result.ok) completionResultError(result);
+    return jsonResponse({ ...result, requestId });
+  }
+  const body = await request.json().catch(() => ({}));
+  const result = await submitPersistentCompletionSession({
+    projectId, officeId, sessionId, token, patch: body.patch || {}, accessToken, deps
+  });
+  if (!result.ok) completionResultError(result);
+  return jsonResponse({ ...result, requestId });
 }
 
 async function handleMatchingRun(request, env, requestId) {
