@@ -1,10 +1,16 @@
 /**
- * Phase 5 — Operations Center + in-app Notifications domain.
- * Pure builders for system-generated Operations and Notifications.
+ * Phase 5 — Operations domain.
+ * Pure builders for system-generated Operations; notification projection is delegated.
  * No WhatsApp/Telegram/message drafts/automatic cooperation.
  */
 
 import { livingTaskId } from "../../public/js/match-group-domain.js";
+export {
+  NOTIFICATION_TYPES,
+  NOTIFICATION_STATUS,
+  notificationDocumentId,
+  buildInAppNotification
+} from "./notification-domain.js";
 
 export const OPERATION_TYPES = Object.freeze({
   MATCH_REVIEW: "MATCH_REVIEW",
@@ -36,24 +42,6 @@ export const OPERATION_PRIORITY = Object.freeze({
   LOW: "LOW"
 });
 
-export const NOTIFICATION_TYPES = Object.freeze({
-  NEW_MATCH: "NEW_MATCH",
-  MISSING_DATA: "MISSING_DATA",
-  COOPERATION_REQUEST: "COOPERATION_REQUEST",
-  COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
-  SYSTEM_ACTION: "SYSTEM_ACTION"
-});
-
-export const NOTIFICATION_STATUS = Object.freeze({
-  CREATED: "CREATED",
-  QUEUED: "QUEUED",
-  SENT: "SENT",
-  DELIVERED: "DELIVERED",
-  FAILED: "FAILED",
-  READ: "READ",
-  DISMISSED: "DISMISSED"
-});
-
 export const ACTIVE_OPERATION_STATUSES = Object.freeze([
   OPERATION_STATUS.OPEN,
   OPERATION_STATUS.IN_PROGRESS,
@@ -65,78 +53,56 @@ const TYPE_COPY = Object.freeze({
     title: "مطابقة جديدة تحتاج مراجعتك",
     summary: "ظهرت مطابقة جاهزة للمراجعة داخل مكتبكم.",
     action: "مراجعة المطابقة",
-    push: "لديك مطابقة جديدة تحتاج مراجعتك.",
-    notificationType: NOTIFICATION_TYPES.NEW_MATCH
   },
   MISSING_DATA: {
     title: "بيانات ناقصة في فرصة",
     summary: "يلزم استكمال بيانات مطلوبة قبل متابعة الفرصة.",
     action: "استكمال البيانات",
-    push: "توجد بيانات ناقصة في إحدى فرصك.",
-    notificationType: NOTIFICATION_TYPES.MISSING_DATA
   },
   OPPORTUNITY_REVIEW: {
     title: "عرض أو طلب جديد يحتاج مراجعة",
     summary: "وصل عرض أو طلب جديد ويحتاج مراجعة المكتب.",
     action: "مراجعة العرض أو الطلب",
-    push: "لديك عرض أو طلب جديد يحتاج مراجعتك.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   },
   OPPORTUNITY_FOLLOW_UP: {
     title: "متابعة مالك أو عميل",
     summary: "حان أو اقترب موعد متابعة مسجلة على العرض أو الطلب.",
     action: "فتح المتابعة",
-    push: "لديك متابعة مالك أو عميل تحتاج إجراء.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   },
   DEAL_ACTION: {
     title: "إجراء مطلوب على الصفقة",
     summary: "توجد صفقة نشطة تحتاج الإجراء التالي من الوسيط.",
     action: "فتح الصفقة",
-    push: "لديك صفقة تحتاج متابعة.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   },
   COOPERATION_REQUEST: {
     title: "طلب تعاون جديد",
     summary: "وصل طلب تعاون صريح يحتاج ردكم.",
     action: "مراجعة طلب التعاون",
-    push: "وصل طلب تعاون جديد.",
-    notificationType: NOTIFICATION_TYPES.COOPERATION_REQUEST
   },
   COOPERATION_RESPONSE: {
     title: "تحديث على طلب التعاون",
     summary: "تم تسجيل رد على طلب تعاون.",
     action: "عرض حالة التعاون",
-    push: "يوجد تحديث على طلب تعاون.",
-    notificationType: NOTIFICATION_TYPES.COOPERATION_RESPONSE
   },
   COOPERATION_MATCH: {
     title: "مطابقة تعاون جديدة",
     summary: "ظهرت فرصة تعاون تحتاج مراجعتك.",
     action: "فتح التعاون",
-    push: "لديك مهمة تعاون تحتاج إجراء.",
-    notificationType: NOTIFICATION_TYPES.COOPERATION_REQUEST
   },
   EXTERNAL_RESPONSE: {
     title: "رد يحتاج متابعتك",
     summary: "وصل رد مرتبط بفرصة تتطلب إجراءً.",
     action: "مراجعة الرد",
-    push: "لديك رد يحتاج متابعتك.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   },
   SYSTEM_ACTION: {
     title: "إجراء نظامي مطلوب",
     summary: "يوجد إجراء نظامي يحتاج انتباه المكتب.",
     action: "عرض التفاصيل",
-    push: "يوجد إشعار نظامي يحتاج مراجعتك.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   },
   PLATFORM_OPPORTUNITY_OFFER: {
     title: "فرصة جديدة من المنصة",
     summary: "رُشحت فرصة عامة لمكتبك.",
     action: "استلام الفرصة",
-    push: "لديك فرصة جديدة من المنصة.",
-    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
   }
 });
 
@@ -192,11 +158,6 @@ export async function sha256Hex(value) {
 export async function operationDocumentId(deduplicationKey) {
   const hex = await sha256Hex(String(deduplicationKey || ""));
   return `op_${hex.slice(0, 40)}`;
-}
-
-export async function notificationDocumentId(deduplicationKey) {
-  const hex = await sha256Hex(`notif|${String(deduplicationKey || "")}`);
-  return `nt_${hex.slice(0, 40)}`;
 }
 
 export function buildMatchReviewDedupKey({ officeId, matchId, dataVersion = "" }) {
@@ -725,46 +686,6 @@ export async function buildLivingCooperationOperation({ officeId, cooperation, n
       defaultSharePercent: cooperation.agreedSharePercent ?? cooperation.defaultSharePercent ?? null,
       hasNewResponse: Boolean((cooperation.newResponseByOffice || {})[officeId])
     }
-  };
-}
-
-export async function buildInAppNotification({ officeId, brokerId = "", operation, referenceCode = "", now = new Date() }) {
-  const copy = copyFor(operation.type);
-  const deduplicationKey = `NOTIF|${operation.deduplicationKey}`;
-  const id = await notificationDocumentId(deduplicationKey);
-  const ref = String(referenceCode || "").trim();
-  const title = operation.type === OPERATION_TYPES.MATCH_REVIEW && ref ? `مطابقة جديدة — ${ref.startsWith("#") ? ref : `#${ref}`}` : copy.push;
-  const matchId = operation.type === OPERATION_TYPES.MATCH_REVIEW
-    ? String(operation.matchId || operation.sourceEntityId || "")
-    : String(operation.matchId || "");
-  const opportunityId = String(operation.opportunityId || "");
-  const matchGroupId = String(operation.metadata?.matchGroupId || "");
-  const workflowId = operation.type === OPERATION_TYPES.MATCH_REVIEW
-    ? livingTaskId(matchGroupId || opportunityId || matchId)
-    : String(matchGroupId || operation.id || matchId || "");
-  return {
-    id,
-    officeId: String(officeId || operation.officeId || ""),
-    brokerId: String(brokerId || operation.assignedBrokerId || ""),
-    operationId: String(operation.id || ""),
-    matchId,
-    opportunityId,
-    taskId: workflowId,
-    workflowId,
-    referenceCode: ref,
-    type: copy.notificationType,
-    title,
-    body: title,
-    status: NOTIFICATION_STATUS.CREATED,
-    readAt: null,
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-    deduplicationKey,
-    deliveryChannels: ["in_app", "push"],
-    providerState: { push: "QUEUED", pushSentAt: null, pushDeliveredAt: null, pushFailedAt: null, pushError: "" },
-    sensitivePreview: false,
-    schemaVersion: 1,
-    createdBySystem: true
   };
 }
 

@@ -8,7 +8,6 @@ import {
   OPERATION_STATUS,
   OPERATION_TYPES,
   applyOperationLifecycle,
-  buildInAppNotification,
   buildLivingCooperationOperation,
   buildMatchReviewOperation,
   buildMissingDataOperation,
@@ -29,6 +28,7 @@ import {
   upsertNotificationDocument,
   recordNotificationPushResult
 } from "./notification-service.js";
+import { buildInAppNotification } from "./notification-domain.js";
 export {
   notificationToFirestoreFields,
   upsertNotificationDocument,

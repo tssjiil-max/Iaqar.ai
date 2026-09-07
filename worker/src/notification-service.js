@@ -4,7 +4,7 @@
  * business state and never create or advance Operations.
  */
 
-import { NOTIFICATION_STATUS } from "./operations-domain.js";
+import { NOTIFICATION_STATUS } from "./notification-domain.js";
 
 export function notificationBoundaryGuarantees() {
   return Object.freeze({
