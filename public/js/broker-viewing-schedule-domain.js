@@ -41,21 +41,46 @@ export function brokerScheduleHasConflict(candidateStart, bookedStarts = [], { e
   });
 }
 
-export function collectBrokerBookedStarts(matches = [], { brokerId = "", excludeMatchId = "" } = {}) {
+/**
+ * Collect time slots that actually reserve the broker.
+ *
+ * Confirmed appointments always remain authoritative. Candidate slots reserve
+ * time only while they are still in the future; a stale candidate must not
+ * block a broker forever. `viewingAt`/`proposedSlot` are compatibility reads
+ * only and are considered only when the persisted status proves the record is
+ * a candidate/confirmed viewing.
+ */
+export function collectBrokerBookedStarts(matches = [], {
+  brokerId = "",
+  excludeMatchId = "",
+  now = new Date()
+} = {}) {
   const starts = [];
+  const nowMs = startMs(now) || Date.now();
   for (const match of matches) {
     if (!match || typeof match !== "object") continue;
     if (excludeMatchId && text(match.id || match.matchId) === excludeMatchId) continue;
     if (brokerId && text(match.assignedBrokerId || match.brokerId) !== brokerId) continue;
-    const status = text(match.appointmentStatus || match.viewingAppointmentStatus);
+
+    const status = text(match.appointmentStatus || match.viewingAppointmentStatus).toUpperCase();
+    const livingStage = text(match.livingStage).toUpperCase();
     const confirmed = status === VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
-      || text(match.livingStage) === "APPOINTMENT_CONFIRMED";
-    const at = text(match.appointmentAt || match.viewingAt || match.viewingCandidateAt);
-    if (at && (confirmed || status === VIEWING_APPOINTMENT_STATUS.CANDIDATE)) {
-      starts.push(at);
+      || livingStage === "APPOINTMENT_CONFIRMED";
+    const candidate = status === VIEWING_APPOINTMENT_STATUS.CANDIDATE
+      || status === VIEWING_APPOINTMENT_STATUS.BROKER_CONFIRM_REQUIRED_FOR_TRAVEL;
+
+    if (confirmed) {
+      const at = text(match.appointmentAt || match.viewingAt);
+      if (at) starts.push(at);
+      continue;
+    }
+
+    if (candidate) {
+      const at = text(match.viewingCandidateAt || match.proposedSlot || match.appointmentAt || match.viewingAt);
+      if (at && startMs(at) > nowMs) starts.push(at);
     }
   }
-  return starts;
+  return [...new Set(starts)];
 }
 
 export function evaluateViewingCandidate({
