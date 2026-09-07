@@ -23,6 +23,10 @@ import {
   appointmentEndAt
 } from "../../public/js/broker-viewing-schedule-domain.js";
 import {
+  canonicalViewingCandidateAt,
+  planViewingConfirmation
+} from "../../public/js/viewing-domain.js";
+import {
   applyCoordinationToMatch,
   ensureCoordinationSession,
   loadCoordinationSession,
@@ -851,7 +855,25 @@ export async function handleMatchLivingAction({
       projectId, officeId, collection: "matches", id: matchId, accessToken
     });
     if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
-    const candidateStart = text(match.viewingCandidateAt || match.proposedSlot || match.appointmentAt);
+    const currentPlan = planViewingConfirmation({ match, evaluation: null });
+    if (currentPlan.ok && currentPlan.idempotent) {
+      return helpers.jsonResponse({
+        ok: true,
+        idempotent: true,
+        livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
+        appointmentStatus: currentPlan.appointmentStatus,
+        appointmentAt: currentPlan.appointmentAt,
+        requestId
+      });
+    }
+    if (currentPlan.error === "viewing_already_confirmed") {
+      throw helpers.appError(
+        "viewing_already_confirmed",
+        409,
+        "المعاينة مؤكدة مسبقًا. استخدم إعادة الجدولة لتغيير الموعد."
+      );
+    }
+    const candidateStart = canonicalViewingCandidateAt(match);
     if (!candidateStart) {
       throw helpers.appError("viewing_candidate_missing", 400, "لا يوجد موعد معاينة جاهز للتأكيد.");
     }
@@ -870,19 +892,26 @@ export async function handleMatchLivingAction({
     }
     const bookedStarts = collectBrokerBookedStarts(officeMatches, {
       brokerId: match.assignedBrokerId || match.brokerId,
-      excludeMatchId: matchId
+      excludeMatchId: matchId,
+      now: new Date()
     });
     const evaluation = evaluateViewingCandidate({
       candidateStart,
       bookedStarts,
       candidateRecord: match
     });
-    if (!evaluation.eligible) {
-      throw helpers.appError("viewing_schedule_conflict", 409, "تعارض في مواعيد المعاينة — اختر وقتًا آخر.");
+    const confirmation = planViewingConfirmation({ match, evaluation });
+    if (!confirmation.ok) {
+      const code = confirmation.error === "viewing_candidate_missing"
+        ? "viewing_candidate_missing"
+        : "viewing_schedule_conflict";
+      const status = code === "viewing_candidate_missing" ? 400 : 409;
+      const message = code === "viewing_candidate_missing"
+        ? "لا يوجد موعد معاينة جاهز للتأكيد."
+        : "تعارض في مواعيد المعاينة — اختر وقتًا آخر.";
+      throw helpers.appError(code, status, message);
     }
-    const appointmentStatus = evaluation.status === VIEWING_APPOINTMENT_STATUS.BROKER_CONFIRM_REQUIRED_FOR_TRAVEL
-      ? VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER
-      : VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER;
+    const appointmentStatus = confirmation.appointmentStatus;
     await stampMatchLiving(helpers, {
       projectId,
       officeId,
@@ -893,15 +922,12 @@ export async function handleMatchLivingAction({
         activeMatchId: matchId,
         ownerContactNeeded: false,
         hasNewResponse: true,
-        appointmentAt: candidateStart,
-        viewingAt: candidateStart,
-        appointmentStatus,
-        viewingCandidateAt: candidateStart,
+        ...confirmation.patch,
         nextActor: "NONE",
         timelineEvent: {
           type: "viewing_confirmed_by_broker",
           actor: "BROKER",
-          label: evaluation.reason === "BROKER_CONFIRM_REQUIRED_FOR_TRAVEL"
+          label: confirmation.travelConfirmationRequired
             ? "تم تأكيد المعاينة (مع مراجعة وقت السفر)"
             : "تم تأكيد المعاينة"
         }
@@ -909,8 +935,10 @@ export async function handleMatchLivingAction({
     });
     return helpers.jsonResponse({
       ok: true,
+      idempotent: false,
       livingStage: LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED,
       appointmentStatus,
+      appointmentAt: confirmation.appointmentAt,
       requestId
     });
   }
