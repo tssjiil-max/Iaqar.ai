@@ -1,0 +1,97 @@
+name: Post-match chain release gate
+
+on:
+  push:
+    branches:
+      - chore/post-match-chain-phase3-20260907
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matching-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Run matching release gate
+        run: npm run test:matching:gate
+
+  post-match-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Run post-match release gate
+        run: npm run test:post-match:gate
+
+  worker-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Run worker tests
+        run: npm test --prefix worker
+
+  root-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Run root web tests
+        run: npm run test:web
+
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Run static checks
+        run: npm run check
