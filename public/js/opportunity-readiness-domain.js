@@ -16,7 +16,13 @@ export const MATCHING_READINESS_LABELS = Object.freeze({
   NEEDS_COMPLETION: "ناقصة"
 });
 
+export const CORE_COMPLETION_STATUS = Object.freeze({
+  COMPLETE: "COMPLETE",
+  NEEDS_COMPLETION: "NEEDS_COMPLETION"
+});
+
 export const MISSING_FIELD_LABELS = Object.freeze({
+  opportunityKind: "نوع الفرصة",
   purpose: "الغرض",
   propertyType: "نوع العقار",
   city: "المدينة",
@@ -43,6 +49,7 @@ export function missingFieldLabelsArabic(keys = []) {
 }
 
 const VALID_OWNER_ROLES = new Set(["OWNER", "DELEGATE", "BROKER", "CLIENT"]);
+const VALID_OPPORTUNITY_KINDS = new Set(["OFFER", "REQUEST"]);
 
 function hasAppropriatePrice(fields = {}) {
   const purpose = safeText(fields.purpose, 30).toUpperCase();
@@ -91,6 +98,11 @@ function resolveOwnerRole(record = {}) {
   return VALID_OWNER_ROLES.has(role) ? role : "";
 }
 
+function resolveOpportunityKind(record = {}) {
+  const kind = safeText(record.opportunityKind || record.kind || "", 20).toUpperCase();
+  return VALID_OPPORTUNITY_KINDS.has(kind) ? kind : "";
+}
+
 /**
  * @returns {{ matchingReadiness: string, matchingReadinessMissing: string[], isReadyForMatching: boolean }}
  */
@@ -116,6 +128,35 @@ export function evaluateMatchingReadiness(record = {}) {
       : MATCHING_READINESS.NEEDS_COMPLETION,
     matchingReadinessMissing: missing,
     isReadyForMatching: isReady
+  };
+}
+
+/**
+ * Canonical Core gate for an Opportunity before it may leave Data Completion.
+ * It deliberately keeps opportunityKind as a structural requirement separate from
+ * the matching algorithm's seven-field gate, so existing matching semantics are
+ * not silently changed while every upstream writer migrates to this contract.
+ */
+export function evaluateOpportunityCoreReadiness(record = {}) {
+  const matching = evaluateMatchingReadiness(record);
+  const missing = [];
+  if (!resolveOpportunityKind(record)) missing.push("opportunityKind");
+  for (const key of matching.matchingReadinessMissing || []) {
+    if (!missing.includes(key)) missing.push(key);
+  }
+  const totalRequired = 8;
+  const filledRequired = Math.max(0, totalRequired - missing.length);
+  const isComplete = missing.length === 0;
+  return {
+    completionStatus: isComplete
+      ? CORE_COMPLETION_STATUS.COMPLETE
+      : CORE_COMPLETION_STATUS.NEEDS_COMPLETION,
+    completionMissingFields: missing,
+    dataCompleteness: Math.round((filledRequired / totalRequired) * 100),
+    isComplete,
+    matchingReadiness: matching.matchingReadiness,
+    matchingReadinessMissing: matching.matchingReadinessMissing || [],
+    isReadyForMatching: isComplete && matching.isReadyForMatching
   };
 }
 
