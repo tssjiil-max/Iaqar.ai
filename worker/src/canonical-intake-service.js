@@ -598,7 +598,7 @@ export async function completeCanonicalAnalysis({
     eventId: buildOrchestratorEventId({
       event: ORCHESTRATOR_EVENT.OPPORTUNITY_COMPLETED, officeId, entityId: opportunityId, occurrenceId: importJobId
     }),
-    context: { officeId, entityId: opportunityId, importJobId, matchingReadiness },
+    context: { officeId, entityId: opportunityId, importJobId },
     deferredTargets: [ORCHESTRATOR_OWNER.MATCHING]
   });
   if (!completionOrchestration.ok) {
