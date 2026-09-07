@@ -21,8 +21,9 @@ jobs:
           ref: chore/negotiation-cleanup-phase4-20260907
           fetch-depth: 0
       - name: Patch coordination persistence path
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('worker/src/coordination-session-service.js')
@@ -50,6 +51,7 @@ jobs:
               src = src.replace(resolver_anchor, resolver_replacement, 1)
 
           path.write_text(src)
+          PY
       - name: Commit runtime wiring
         run: |
           git config user.name "github-actions[bot]"
