@@ -9,6 +9,9 @@ import { livingTaskId } from "../../public/js/match-group-domain.js";
 export const OPERATION_TYPES = Object.freeze({
   MATCH_REVIEW: "MATCH_REVIEW",
   MISSING_DATA: "MISSING_DATA",
+  OPPORTUNITY_REVIEW: "OPPORTUNITY_REVIEW",
+  OPPORTUNITY_FOLLOW_UP: "OPPORTUNITY_FOLLOW_UP",
+  DEAL_ACTION: "DEAL_ACTION",
   COOPERATION_REQUEST: "COOPERATION_REQUEST",
   COOPERATION_RESPONSE: "COOPERATION_RESPONSE",
   COOPERATION_MATCH: "COOPERATION_MATCH",
@@ -72,6 +75,27 @@ const TYPE_COPY = Object.freeze({
     push: "توجد بيانات ناقصة في إحدى فرصك.",
     notificationType: NOTIFICATION_TYPES.MISSING_DATA
   },
+  OPPORTUNITY_REVIEW: {
+    title: "عرض أو طلب جديد يحتاج مراجعة",
+    summary: "وصل عرض أو طلب جديد ويحتاج مراجعة المكتب.",
+    action: "مراجعة العرض أو الطلب",
+    push: "لديك عرض أو طلب جديد يحتاج مراجعتك.",
+    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
+  },
+  OPPORTUNITY_FOLLOW_UP: {
+    title: "متابعة مالك أو عميل",
+    summary: "حان أو اقترب موعد متابعة مسجلة على العرض أو الطلب.",
+    action: "فتح المتابعة",
+    push: "لديك متابعة مالك أو عميل تحتاج إجراء.",
+    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
+  },
+  DEAL_ACTION: {
+    title: "إجراء مطلوب على الصفقة",
+    summary: "توجد صفقة نشطة تحتاج الإجراء التالي من الوسيط.",
+    action: "فتح الصفقة",
+    push: "لديك صفقة تحتاج متابعة.",
+    notificationType: NOTIFICATION_TYPES.SYSTEM_ACTION
+  },
   COOPERATION_REQUEST: {
     title: "طلب تعاون جديد",
     summary: "وصل طلب تعاون صريح يحتاج ردكم.",
@@ -118,7 +142,6 @@ const TYPE_COPY = Object.freeze({
 
 export function phase5BoundaryGuarantees() {
   return {
-    // Phase 7: draft generation is real; Cloud API / Bot send remains off.
     createsWhatsAppMessage: true,
     sendsWhatsApp: false,
     createsTelegramMessage: true,
@@ -177,53 +200,217 @@ export async function notificationDocumentId(deduplicationKey) {
 }
 
 export function buildMatchReviewDedupKey({ officeId, matchId, dataVersion = "" }) {
-  return [
-    OPERATION_TYPES.MATCH_REVIEW,
-    String(officeId || ""),
-    String(matchId || ""),
-    String(dataVersion || "v0")
-  ].join("|");
+  return [OPERATION_TYPES.MATCH_REVIEW, String(officeId || ""), String(matchId || ""), String(dataVersion || "v0")].join("|");
 }
 
 export function buildMissingDataDedupKey({ officeId, opportunityId, dataVersion = "", missingFields = [] }) {
   const fields = [...new Set((missingFields || []).map((f) => String(f || "").trim()).filter(Boolean))].sort();
-  return [
-    OPERATION_TYPES.MISSING_DATA,
-    String(officeId || ""),
-    String(opportunityId || ""),
-    String(dataVersion || "v0"),
-    fields.join(",")
-  ].join("|");
+  return [OPERATION_TYPES.MISSING_DATA, String(officeId || ""), String(opportunityId || ""), String(dataVersion || "v0"), fields.join(",")].join("|");
 }
 
-export function buildCooperationDedupKey({
-  type = OPERATION_TYPES.COOPERATION_REQUEST,
-  officeId,
-  cooperationId,
-  status = ""
-}) {
-  return [
-    String(type || OPERATION_TYPES.COOPERATION_REQUEST),
-    String(officeId || ""),
-    String(cooperationId || ""),
-    String(status || "")
-  ].join("|");
+export function buildOpportunityReviewDedupKey({ officeId, opportunityId }) {
+  return [OPERATION_TYPES.OPPORTUNITY_REVIEW, String(officeId || ""), String(opportunityId || "")].join("|");
+}
+
+export function buildOpportunityFollowUpDedupKey({ officeId, opportunityId, dueAt = "" }) {
+  return [OPERATION_TYPES.OPPORTUNITY_FOLLOW_UP, String(officeId || ""), String(opportunityId || ""), String(dueAt || "")].join("|");
+}
+
+export function buildDealActionDedupKey({ officeId, dealId, stage = "" }) {
+  return [OPERATION_TYPES.DEAL_ACTION, String(officeId || ""), String(dealId || ""), String(stage || "")].join("|");
+}
+
+export function buildCooperationDedupKey({ type = OPERATION_TYPES.COOPERATION_REQUEST, officeId, cooperationId, status = "" }) {
+  return [String(type || OPERATION_TYPES.COOPERATION_REQUEST), String(officeId || ""), String(cooperationId || ""), String(status || "")].join("|");
 }
 
 export function buildLivingCooperationDedupKey({ officeId, cooperationId }) {
-  return [
-    OPERATION_TYPES.COOPERATION_MATCH,
-    String(officeId || ""),
-    String(cooperationId || "")
-  ].join("|");
+  return [OPERATION_TYPES.COOPERATION_MATCH, String(officeId || ""), String(cooperationId || "")].join("|");
 }
 
 export function buildPlatformOfferDedupKey({ officeId, opportunityId }) {
-  return [
-    OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER,
-    String(officeId || ""),
-    String(opportunityId || "")
-  ].join("|");
+  return [OPERATION_TYPES.PLATFORM_OPPORTUNITY_OFFER, String(officeId || ""), String(opportunityId || "")].join("|");
+}
+
+function copyFor(type) {
+  return TYPE_COPY[type] || TYPE_COPY.SYSTEM_ACTION;
+}
+
+export async function buildOpportunityReviewOperation({
+  officeId,
+  assignedBrokerId = "",
+  opportunityId,
+  propertyType = "",
+  purpose = "",
+  city = "",
+  district = "",
+  opportunityKind = "",
+  now = new Date()
+} = {}) {
+  const type = OPERATION_TYPES.OPPORTUNITY_REVIEW;
+  const copy = copyFor(type);
+  const deduplicationKey = buildOpportunityReviewDedupKey({ officeId, opportunityId });
+  const id = await operationDocumentId(deduplicationKey);
+  return {
+    id,
+    officeId: String(officeId || ""),
+    assignedBrokerId: String(assignedBrokerId || ""),
+    type,
+    sourceEntityType: "opportunity",
+    sourceEntityId: String(opportunityId || ""),
+    opportunityId: String(opportunityId || ""),
+    matchId: "",
+    cooperationId: "",
+    titleCode: "OPPORTUNITY_REVIEW_TITLE",
+    summaryCode: "OPPORTUNITY_REVIEW_SUMMARY",
+    titleText: copy.title,
+    summaryText: copy.summary,
+    recommendedActionCode: "REVIEW_OPPORTUNITY",
+    recommendedActionText: copy.action,
+    priority: OPERATION_PRIORITY.NORMAL,
+    status: OPERATION_STATUS.OPEN,
+    deduplicationKey,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    openedAt: null,
+    completedAt: null,
+    dismissedAt: null,
+    dueAt: null,
+    createdBySystem: true,
+    operationVersion: 1,
+    schemaVersion: 1,
+    propertyType: String(propertyType || ""),
+    purpose: String(purpose || ""),
+    district: String(district || ""),
+    metadata: {
+      city: String(city || ""),
+      opportunityKind: String(opportunityKind || "")
+    }
+  };
+}
+
+export async function buildOpportunityFollowUpOperation({
+  officeId,
+  assignedBrokerId = "",
+  opportunityId,
+  dueAt,
+  note = "",
+  recipientMode = "",
+  propertyType = "",
+  purpose = "",
+  city = "",
+  district = "",
+  now = new Date()
+} = {}) {
+  const type = OPERATION_TYPES.OPPORTUNITY_FOLLOW_UP;
+  const copy = copyFor(type);
+  const due = dueAt ? new Date(dueAt) : null;
+  const dueIso = due && !Number.isNaN(due.getTime()) ? due.toISOString() : "";
+  const deduplicationKey = buildOpportunityFollowUpDedupKey({ officeId, opportunityId, dueAt: dueIso });
+  const id = await operationDocumentId(deduplicationKey);
+  return {
+    id,
+    officeId: String(officeId || ""),
+    assignedBrokerId: String(assignedBrokerId || ""),
+    type,
+    sourceEntityType: "opportunity",
+    sourceEntityId: String(opportunityId || ""),
+    opportunityId: String(opportunityId || ""),
+    matchId: "",
+    cooperationId: "",
+    titleCode: "OPPORTUNITY_FOLLOW_UP_TITLE",
+    summaryCode: "OPPORTUNITY_FOLLOW_UP_SUMMARY",
+    titleText: copy.title,
+    summaryText: note ? `${copy.summary} ${String(note).slice(0, 220)}` : copy.summary,
+    recommendedActionCode: "OPEN_OPPORTUNITY_FOLLOW_UP",
+    recommendedActionText: copy.action,
+    priority: OPERATION_PRIORITY.NORMAL,
+    status: OPERATION_STATUS.OPEN,
+    deduplicationKey,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    openedAt: null,
+    completedAt: null,
+    dismissedAt: null,
+    dueAt: dueIso || null,
+    createdBySystem: true,
+    operationVersion: 1,
+    schemaVersion: 1,
+    propertyType: String(propertyType || ""),
+    purpose: String(purpose || ""),
+    district: String(district || ""),
+    metadata: {
+      city: String(city || ""),
+      followUpAt: dueIso,
+      recipientMode: String(recipientMode || ""),
+      note: String(note || "").slice(0, 500)
+    }
+  };
+}
+
+export async function buildDealActionOperation({
+  officeId,
+  assignedBrokerId = "",
+  dealId,
+  matchId = "",
+  opportunityId = "",
+  stage = "contact",
+  nextActionText = "",
+  dueAt = "",
+  propertyType = "",
+  purpose = "",
+  city = "",
+  district = "",
+  now = new Date()
+} = {}) {
+  const type = OPERATION_TYPES.DEAL_ACTION;
+  const copy = copyFor(type);
+  const normalizedStage = String(stage || "contact");
+  const deduplicationKey = buildDealActionDedupKey({ officeId, dealId, stage: normalizedStage });
+  const id = await operationDocumentId(deduplicationKey);
+  const due = dueAt ? new Date(dueAt) : null;
+  const dueIso = due && !Number.isNaN(due.getTime()) ? due.toISOString() : "";
+  const terminal = ["closed", "lost"].includes(normalizedStage.toLowerCase());
+  return {
+    id,
+    officeId: String(officeId || ""),
+    assignedBrokerId: String(assignedBrokerId || ""),
+    type,
+    sourceEntityType: "deal",
+    sourceEntityId: String(dealId || ""),
+    dealId: String(dealId || ""),
+    opportunityId: String(opportunityId || ""),
+    matchId: String(matchId || ""),
+    cooperationId: "",
+    currentStage: normalizedStage,
+    titleCode: "DEAL_ACTION_TITLE",
+    summaryCode: "DEAL_ACTION_SUMMARY",
+    titleText: copy.title,
+    summaryText: nextActionText ? `${copy.summary} الإجراء التالي: ${String(nextActionText).slice(0, 160)}.` : copy.summary,
+    recommendedActionCode: "OPEN_DEAL",
+    recommendedActionText: nextActionText || copy.action,
+    priority: normalizedStage === "closing" ? OPERATION_PRIORITY.HIGH : OPERATION_PRIORITY.NORMAL,
+    status: terminal ? OPERATION_STATUS.COMPLETED : OPERATION_STATUS.OPEN,
+    deduplicationKey,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    openedAt: null,
+    completedAt: terminal ? now.toISOString() : null,
+    dismissedAt: null,
+    dueAt: dueIso || null,
+    createdBySystem: true,
+    operationVersion: 1,
+    schemaVersion: 1,
+    propertyType: String(propertyType || ""),
+    purpose: String(purpose || ""),
+    district: String(district || ""),
+    metadata: {
+      city: String(city || ""),
+      dealId: String(dealId || ""),
+      dealStage: normalizedStage,
+      nextActionText: String(nextActionText || "")
+    }
+  };
 }
 
 export async function buildPlatformOpportunityOfferOperation({
@@ -291,10 +478,6 @@ export async function buildPlatformOpportunityOfferOperation({
   };
 }
 
-function copyFor(type) {
-  return TYPE_COPY[type] || TYPE_COPY.SYSTEM_ACTION;
-}
-
 export async function buildMatchReviewOperation({
   officeId,
   assignedBrokerId = "",
@@ -324,9 +507,7 @@ export async function buildMatchReviewOperation({
   const deduplicationKey = buildMatchReviewDedupKey({ officeId, matchId, dataVersion });
   const id = await operationDocumentId(deduplicationKey);
   const priority = matchReviewPriority({ opportunityScore, score, isBestOpportunity });
-  const reasonText = Array.isArray(reasons) && reasons.length
-    ? reasons.slice(0, 2).join("، ")
-    : "مطابقة ضمن الحد المعتمد";
+  const reasonText = Array.isArray(reasons) && reasons.length ? reasons.slice(0, 2).join("، ") : "مطابقة ضمن الحد المعتمد";
   return {
     id,
     officeId: String(officeId || ""),
@@ -388,9 +569,7 @@ export async function buildMissingDataOperation({
   const type = OPERATION_TYPES.MISSING_DATA;
   const copy = copyFor(type);
   const fields = [...new Set((missingFields || []).map((f) => String(f || "").trim()).filter(Boolean))];
-  const deduplicationKey = buildMissingDataDedupKey({
-    officeId, opportunityId, dataVersion, missingFields: fields
-  });
+  const deduplicationKey = buildMissingDataDedupKey({ officeId, opportunityId, dataVersion, missingFields: fields });
   const id = await operationDocumentId(deduplicationKey);
   return {
     id,
@@ -405,9 +584,7 @@ export async function buildMissingDataOperation({
     titleCode: "MISSING_DATA_TITLE",
     summaryCode: "MISSING_DATA_SUMMARY",
     titleText: copy.title,
-    summaryText: fields.length
-      ? `${copy.summary} الحقول الناقصة: ${fields.join("، ")}.`
-      : copy.summary,
+    summaryText: fields.length ? `${copy.summary} الحقول الناقصة: ${fields.join("، ")}.` : copy.summary,
     recommendedActionCode: "COMPLETE_DATA",
     recommendedActionText: copy.action,
     priority: missingDataPriority({ missingFields: fields }),
@@ -422,10 +599,7 @@ export async function buildMissingDataOperation({
     createdBySystem: true,
     operationVersion: 1,
     schemaVersion: 1,
-    metadata: {
-      missingFields: fields,
-      dataVersion: String(dataVersion || "")
-    }
+    metadata: { missingFields: fields, dataVersion: String(dataVersion || "") }
   };
 }
 
@@ -440,9 +614,7 @@ export async function buildCooperationOperation({
 }) {
   const type = isResponse ? OPERATION_TYPES.COOPERATION_RESPONSE : OPERATION_TYPES.COOPERATION_REQUEST;
   const copy = copyFor(type);
-  const deduplicationKey = buildCooperationDedupKey({
-    type, officeId, cooperationId, status: responseStatus
-  });
+  const deduplicationKey = buildCooperationDedupKey({ type, officeId, cooperationId, status: responseStatus });
   const id = await operationDocumentId(deduplicationKey);
   const statusLabel = String(responseStatus || "PENDING").toUpperCase();
   return {
@@ -458,9 +630,7 @@ export async function buildCooperationOperation({
     titleCode: isResponse ? "COOPERATION_RESPONSE_TITLE" : "COOPERATION_REQUEST_TITLE",
     summaryCode: isResponse ? "COOPERATION_RESPONSE_SUMMARY" : "COOPERATION_REQUEST_SUMMARY",
     titleText: copy.title,
-    summaryText: isResponse
-      ? `${copy.summary} الحالة: ${statusLabel}.`
-      : copy.summary,
+    summaryText: isResponse ? `${copy.summary} الحالة: ${statusLabel}.` : copy.summary,
     recommendedActionCode: isResponse ? "VIEW_COOPERATION" : "REVIEW_COOPERATION",
     recommendedActionText: copy.action,
     priority: OPERATION_PRIORITY.NORMAL,
@@ -475,26 +645,18 @@ export async function buildCooperationOperation({
     createdBySystem: true,
     operationVersion: 1,
     schemaVersion: 1,
-    metadata: {
-      cooperationStatus: statusLabel
-    }
+    metadata: { cooperationStatus: statusLabel }
   };
 }
 
-export async function buildLivingCooperationOperation({
-  officeId,
-  cooperation,
-  now = new Date()
-}) {
+export async function buildLivingCooperationOperation({ officeId, cooperation, now = new Date() }) {
   const cooperationId = String(cooperation.id || cooperation.cooperationId || cooperation.cooperationTaskId || "");
   const type = OPERATION_TYPES.COOPERATION_MATCH;
   const copy = copyFor(type);
   const deduplicationKey = buildLivingCooperationDedupKey({ officeId, cooperationId });
   const id = await operationDocumentId(deduplicationKey);
   const stage = String(cooperation.currentStage || "").toUpperCase();
-  const archived = ["COMPLETED", "REJECTED", "REVOKED", "ENDED"].includes(String(cooperation.status || "").toUpperCase())
-    || stage === "COMPLETED"
-    || stage === "REJECTED";
+  const archived = ["COMPLETED", "REJECTED", "REVOKED", "ENDED"].includes(String(cooperation.status || "").toUpperCase()) || stage === "COMPLETED" || stage === "REJECTED";
   return {
     id,
     officeId: String(officeId || ""),
@@ -508,8 +670,7 @@ export async function buildLivingCooperationOperation({
     coordinationBrokerLine: String(cooperation.coordinationBrokerLine || ""),
     coordinationClientSummary: String(cooperation.coordinationClientSummary || ""),
     coordinationOwnerSummary: String(cooperation.coordinationOwnerSummary || ""),
-    ownerContactNeeded: cooperation.ownerContactNeeded === true
-      || String(cooperation.ownerContactNeeded || "").toLowerCase() === "true",
+    ownerContactNeeded: cooperation.ownerContactNeeded === true || String(cooperation.ownerContactNeeded || "").toLowerCase() === "true",
     cooperationId,
     titleCode: "COOPERATION_MATCH_TITLE",
     summaryCode: "COOPERATION_MATCH_SUMMARY",
@@ -533,11 +694,7 @@ export async function buildLivingCooperationOperation({
     propertyType: String(cooperation.propertyType || ""),
     purpose: String(cooperation.purpose || ""),
     district: String(cooperation.district || ""),
-    partnerOfficeName: String(
-      String(officeId) === String(cooperation.originatingOfficeId)
-        ? cooperation.targetOfficeName
-        : cooperation.originatingOfficeName
-    ),
+    partnerOfficeName: String(String(officeId) === String(cooperation.originatingOfficeId) ? cooperation.targetOfficeName : cooperation.originatingOfficeName),
     appointmentAt: cooperation.appointmentAt || "",
     metadata: {
       cooperationTaskId: cooperationId,
@@ -571,21 +728,15 @@ export async function buildLivingCooperationOperation({
   };
 }
 
-export async function buildInAppNotification({
-  officeId,
-  brokerId = "",
-  operation,
-  referenceCode = "",
-  now = new Date()
-}) {
+export async function buildInAppNotification({ officeId, brokerId = "", operation, referenceCode = "", now = new Date() }) {
   const copy = copyFor(operation.type);
   const deduplicationKey = `NOTIF|${operation.deduplicationKey}`;
   const id = await notificationDocumentId(deduplicationKey);
   const ref = String(referenceCode || "").trim();
-  const title = operation.type === OPERATION_TYPES.MATCH_REVIEW && ref
-    ? `مطابقة جديدة — ${ref.startsWith("#") ? ref : `#${ref}`}`
-    : copy.push;
-  const matchId = String(operation.matchId || operation.sourceEntityId || "");
+  const title = operation.type === OPERATION_TYPES.MATCH_REVIEW && ref ? `مطابقة جديدة — ${ref.startsWith("#") ? ref : `#${ref}`}` : copy.push;
+  const matchId = operation.type === OPERATION_TYPES.MATCH_REVIEW
+    ? String(operation.matchId || operation.sourceEntityId || "")
+    : String(operation.matchId || "");
   const opportunityId = String(operation.opportunityId || "");
   const matchGroupId = String(operation.metadata?.matchGroupId || "");
   const workflowId = operation.type === OPERATION_TYPES.MATCH_REVIEW
@@ -610,13 +761,7 @@ export async function buildInAppNotification({
     updatedAt: now.toISOString(),
     deduplicationKey,
     deliveryChannels: ["in_app", "push"],
-    providerState: {
-      push: "QUEUED",
-      pushSentAt: null,
-      pushDeliveredAt: null,
-      pushFailedAt: null,
-      pushError: ""
-    },
+    providerState: { push: "QUEUED", pushSentAt: null, pushDeliveredAt: null, pushFailedAt: null, pushError: "" },
     sensitivePreview: false,
     schemaVersion: 1,
     createdBySystem: true
@@ -629,76 +774,29 @@ export function applyOperationLifecycle(existing, action, { now = new Date(), re
   if (!existing) return { ok: false, error: "missing_operation" };
 
   if (next === "OPEN" || next === "VIEW") {
-    if (current === OPERATION_STATUS.COMPLETED || current === OPERATION_STATUS.DISMISSED || current === OPERATION_STATUS.EXPIRED) {
-      return { ok: false, error: "terminal_status" };
-    }
-    return {
-      ok: true,
-      patch: {
-        openedAt: existing.openedAt || now.toISOString(),
-        updatedAt: now.toISOString(),
-        status: current === OPERATION_STATUS.OPEN ? OPERATION_STATUS.OPEN : current
-      }
-    };
+    if ([OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED].includes(current)) return { ok: false, error: "terminal_status" };
+    return { ok: true, patch: { openedAt: existing.openedAt || now.toISOString(), updatedAt: now.toISOString(), status: current === OPERATION_STATUS.OPEN ? OPERATION_STATUS.OPEN : current } };
   }
 
   if (next === "START" || next === "IN_PROGRESS") {
-    if (![OPERATION_STATUS.OPEN, OPERATION_STATUS.IN_PROGRESS].includes(current)) {
-      return { ok: false, error: "invalid_transition" };
-    }
-    return {
-      ok: true,
-      patch: {
-        status: OPERATION_STATUS.IN_PROGRESS,
-        openedAt: existing.openedAt || now.toISOString(),
-        updatedAt: now.toISOString()
-      }
-    };
+    if (![OPERATION_STATUS.OPEN, OPERATION_STATUS.IN_PROGRESS].includes(current)) return { ok: false, error: "invalid_transition" };
+    return { ok: true, patch: { status: OPERATION_STATUS.IN_PROGRESS, openedAt: existing.openedAt || now.toISOString(), updatedAt: now.toISOString() } };
   }
 
   if (next === "COMPLETE" || next === "COMPLETED") {
-    if ([OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED].includes(current)) {
-      return { ok: true, patch: null, idempotent: true };
-    }
-    return {
-      ok: true,
-      patch: {
-        status: OPERATION_STATUS.COMPLETED,
-        completedAt: now.toISOString(),
-        updatedAt: now.toISOString()
-      }
-    };
+    if ([OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED].includes(current)) return { ok: true, patch: null, idempotent: true };
+    return { ok: true, patch: { status: OPERATION_STATUS.COMPLETED, completedAt: now.toISOString(), updatedAt: now.toISOString() } };
   }
 
   if (next === "DISMISS" || next === "DISMISSED") {
-    if (current === OPERATION_STATUS.DISMISSED) {
-      return { ok: true, patch: null, idempotent: true };
-    }
-    if (current === OPERATION_STATUS.COMPLETED || current === OPERATION_STATUS.EXPIRED) {
-      return { ok: false, error: "invalid_transition" };
-    }
-    return {
-      ok: true,
-      patch: {
-        status: OPERATION_STATUS.DISMISSED,
-        dismissedAt: now.toISOString(),
-        dismissalReason: String(reason || "").slice(0, 200),
-        updatedAt: now.toISOString()
-      }
-    };
+    if (current === OPERATION_STATUS.DISMISSED) return { ok: true, patch: null, idempotent: true };
+    if (current === OPERATION_STATUS.COMPLETED || current === OPERATION_STATUS.EXPIRED) return { ok: false, error: "invalid_transition" };
+    return { ok: true, patch: { status: OPERATION_STATUS.DISMISSED, dismissedAt: now.toISOString(), dismissalReason: String(reason || "").slice(0, 200), updatedAt: now.toISOString() } };
   }
 
   if (next === "EXPIRE" || next === "EXPIRED") {
-    if ([OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED].includes(current)) {
-      return { ok: true, patch: null, idempotent: true };
-    }
-    return {
-      ok: true,
-      patch: {
-        status: OPERATION_STATUS.EXPIRED,
-        updatedAt: now.toISOString()
-      }
-    };
+    if ([OPERATION_STATUS.COMPLETED, OPERATION_STATUS.DISMISSED, OPERATION_STATUS.EXPIRED].includes(current)) return { ok: true, patch: null, idempotent: true };
+    return { ok: true, patch: { status: OPERATION_STATUS.EXPIRED, updatedAt: now.toISOString() } };
   }
 
   return { ok: false, error: "unknown_action" };
