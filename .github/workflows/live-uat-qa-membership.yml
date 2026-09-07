@@ -42,6 +42,16 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Expose Playwright Chromium at expected path
+        run: |
+          CHROME_BIN="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-linux/chrome' | head -n 1)"
+          if [ -z "$CHROME_BIN" ]; then
+            CHROME_BIN="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-headless-shell-linux/headless_shell' | head -n 1)"
+          fi
+          test -n "$CHROME_BIN"
+          sudo ln -sf "$CHROME_BIN" /usr/local/bin/google-chrome
+          /usr/local/bin/google-chrome --version || true
+
       - name: Bootstrap QA office membership
         run: node scripts/qa-e2e-office-membership-bootstrap.mjs
 
