@@ -17,6 +17,8 @@ test("missing data stays authoritative over review/follow-up coverage", () => {
     city: "المدينة المنورة",
     district: "",
     priceOrBudget: 600000,
+    advertiserRole: "CLIENT",
+    contactPhone: "+966500000001",
     nextFollowUpAt: "2026-09-08T12:00:00.000Z"
   });
 
@@ -32,6 +34,8 @@ test("a complete scheduled opportunity resolves to follow-up coverage", () => {
     city: "المدينة المنورة",
     district: "عروة",
     priceOrBudget: 600000,
+    advertiserRole: "CLIENT",
+    contactPhone: "+966500000001",
     followUp: {
       status: "scheduled",
       at: "2026-09-08T12:00:00.000Z"
@@ -49,7 +53,9 @@ test("a complete opportunity without follow-up resolves to review coverage", () 
     propertyType: "فيلا",
     city: "المدينة المنورة",
     district: "العوالي",
-    priceOrBudget: 1500000
+    priceOrBudget: 1500000,
+    advertiserRole: "OWNER",
+    contactPhone: "+966500000002"
   });
 
   assert.equal(decision.intent, COVERAGE_INTENT.OPPORTUNITY_REVIEW);
