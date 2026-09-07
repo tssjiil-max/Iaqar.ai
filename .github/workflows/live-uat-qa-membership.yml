@@ -45,6 +45,12 @@ jobs:
       - name: Bootstrap QA office membership
         run: node scripts/qa-e2e-office-membership-bootstrap.mjs
 
+      - name: Prepare live UAT report paths
+        run: |
+          sudo mkdir -p /workspace/qa
+          sudo chown -R "$(id -u):$(id -g)" /workspace/qa
+          mkdir -p "$LIVE_E2E_OUT" "$LIVE_E2E_WORK"
+
       - name: Run live staging UAT
         run: node scripts/live-staging-core-flow.mjs
 
