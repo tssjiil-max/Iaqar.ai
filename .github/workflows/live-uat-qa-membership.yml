@@ -1,0 +1,58 @@
+name: Live UAT QA membership
+
+on:
+  push:
+    branches:
+      - qa/live-uat-membership-20260908
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FIREBASE_STAGING_PROJECT_ID: iaqar-ai-staging
+  QA_E2E_OFFICE_ID: qa-e2e-dedicated
+  STAGING_HOSTING_URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
+  STAGING_WORKER_URL: https://iaqar-intake-staging.iaqar-ai.workers.dev
+
+jobs:
+  live-uat:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      STAGING_PHONE: ${{ secrets.STAGING_PHONE }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      LIVE_E2E_OUT: ${{ github.workspace }}/artifacts
+      LIVE_E2E_WORK: ${{ runner.temp }}/iaqar-live-e2e
+
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Bootstrap QA office membership
+        run: node scripts/qa-e2e-office-membership-bootstrap.mjs
+
+      - name: Run live staging UAT
+        run: node scripts/live-staging-core-flow.mjs
+
+      - name: Upload UAT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-uat-qa-membership-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: warn
+          retention-days: 7
