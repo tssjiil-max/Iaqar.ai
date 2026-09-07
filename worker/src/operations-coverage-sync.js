@@ -1,9 +1,9 @@
 import {
-  listMissingOpportunityFields,
   upsertOpportunityReviewOperation,
   upsertOpportunityFollowUpOperation,
   upsertDealActionOperation
 } from "./operations-service.js";
+import { evaluateOpportunityCoreReadiness } from "../../public/js/opportunity-readiness-domain.js";
 
 export const COVERAGE_INTENT = Object.freeze({
   MISSING_DATA: "MISSING_DATA",
@@ -29,9 +29,16 @@ export function opportunityCoverageIntent(opportunity = {}) {
     return { intent: COVERAGE_INTENT.NONE, reason: "terminal_opportunity", dueAt: "" };
   }
 
-  const missingFields = listMissingOpportunityFields(opportunity);
+  const coreReadiness = evaluateOpportunityCoreReadiness(opportunity);
+  const missingFields = coreReadiness.completionMissingFields || [];
   if (missingFields.length) {
-    return { intent: COVERAGE_INTENT.MISSING_DATA, reason: "missing_data_authoritative", missingFields, dueAt: "" };
+    return {
+      intent: COVERAGE_INTENT.MISSING_DATA,
+      reason: "missing_data_authoritative",
+      missingFields,
+      dataCompleteness: coreReadiness.dataCompleteness,
+      dueAt: ""
+    };
   }
 
   const followUp = opportunity.followUp && typeof opportunity.followUp === "object" ? opportunity.followUp : {};
