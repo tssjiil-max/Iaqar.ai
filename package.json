@@ -11,6 +11,7 @@
     "test:matching:gate": "node --test test/matching-admission-domain.test.mjs test/matching-phase4.test.mjs test/matching-release-gate.test.mjs worker/test/match-integrity-domain.test.mjs test/operations-phase5.test.mjs",
     "test:post-match:gate": "node --test test/post-match-chain-release-gate.test.mjs test/full-transaction-chain-contract.test.mjs test/post-match-coordination.test.mjs test/match-operation-broker-sync.test.mjs",
     "test:negotiation:gate": "node --test test/negotiation-cleanup-phase4.test.mjs test/negotiation-workflow-v2.test.mjs test/negotiation-buttons-v1.test.mjs test/coordination-bundle.test.mjs test/party-session.test.mjs",
+    "test:viewing:gate": "node --test test/viewing-cleanup-phase5.test.mjs test/iaqar-appointment.test.mjs test/post-match-coordination.test.mjs test/match-operation-broker-sync.test.mjs test/party-session.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-iaqar-rules \"node --test test/emulator/firestore-rules.emulator.test.mjs\"",
     "test:phase1-security": "npm test && npm run test:rules && npm run check",
     "test:phase8": "npm test && npm run test:rules && npm run check",
