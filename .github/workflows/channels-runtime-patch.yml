@@ -19,7 +19,9 @@ jobs:
           ref: chore/channels-bot-cleanup-phase8-20260907
           fetch-depth: 0
       - name: Patch channel runtime
-        run: python scripts/patch-channels-runtime.py
+        run: |
+          python scripts/patch-channels-runtime.py
+          python scripts/patch-channels-tests.py
       - name: Validate patch
         run: |
           git diff --check
@@ -30,7 +32,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add worker/src/index.js worker/src/canonical-intake-service.js worker/src/messaging-domain.js
+          git add worker/src/index.js worker/src/canonical-intake-service.js worker/src/messaging-domain.js test/messaging-phase7.test.mjs
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Channels: route inbound adapters through canonical intake"
+          git commit -m "Channels: align messaging tests with canonical Telegram intake"
           git push origin HEAD:chore/channels-bot-cleanup-phase8-20260907
