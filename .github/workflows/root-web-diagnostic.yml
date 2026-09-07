@@ -1,0 +1,36 @@
+name: Root web diagnostic
+
+on:
+  push:
+    branches:
+      - chore/full-e2e-regression-phase12-20260907
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-root-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Capture full root web TAP
+        shell: bash
+        run: |
+          set +e
+          npm run test:web > root-web-test.log 2>&1
+          code=$?
+          echo "$code" > root-web-exit-code.txt
+          exit 0
+      - name: Upload diagnostic output
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-web-diagnostic
+          path: |
+            root-web-test.log
+            root-web-exit-code.txt
+          retention-days: 1
