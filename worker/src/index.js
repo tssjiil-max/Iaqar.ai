@@ -2375,7 +2375,8 @@ async function receiveMetaWebhook(request, env, requestId) {
           message,
           senderName: contactMap.get(String(message && message.from || "")) || "",
           rawPayload: { entryId: wabaId, changeField: change.field, metadata: value.metadata, message },
-          accessToken
+          accessToken,
+          env
         });
         if (!result.duplicate) {
           received += 1;
@@ -2507,7 +2508,7 @@ async function completeEmbeddedSignup(request, env, requestId) {
   });
 }
 
-async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, displayPhoneNumber, message, senderName, rawPayload, accessToken }) {
+async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, displayPhoneNumber, message, senderName, rawPayload, accessToken, env = null }) {
   const messageId = cleanText(message && message.id, 200) || crypto.randomUUID();
   const documentId = `wa_${(await sha256Hex(messageId)).slice(0, 40)}`;
   const receivedAt = parseWhatsAppTimestamp(message && message.timestamp);
@@ -2554,10 +2555,36 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
     throw appError("firestore_write_failed", 502, "تعذر حفظ رسالة واتساب");
   }
 
+  // Meta media messages may arrive without a text/caption. Until the official
+  // media downloader is wired, retain them for review instead of feeding an empty
+  // text part into Canonical Intake and falsely marking the channel as failed.
+  if (!messageText) {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", documentId],
+      accessToken,
+      fields: {
+        processingState: firestoreString("needs_media_adapter"),
+        status: firestoreString("pending_review"),
+        isProcessed: firestoreBoolean(false),
+        processingError: firestoreString("channel_media_requires_adapter"),
+        canonicalIntake: firestoreBoolean(true),
+        sourceChannel: firestoreString("whatsapp"),
+        updatedAt: firestoreTimestamp(new Date())
+      }
+    });
+    return {
+      duplicate: false,
+      documentId,
+      deferred: true,
+      reason: "channel_media_requires_adapter"
+    };
+  }
+
   try {
     await processInboundMessage({
       projectId, officeId, inboxDocumentId: documentId, messageText,
-      senderName, senderPhone, receivedAt, accessToken
+      senderName, senderPhone, receivedAt, accessToken, env
     });
   } catch (error) {
     console.error("[iaqar-workflow] inbound processing failed", {
