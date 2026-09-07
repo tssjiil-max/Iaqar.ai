@@ -1,6 +1,6 @@
 /**
  * In-app notification center. Realtime listener only — no polling.
- * Tap opens the same Daily Task; does not create a new workflow.
+ * A notification is an alert; opening it targets the existing business record/task.
  */
 
 import {
@@ -62,7 +62,7 @@ function renderPanel() {
     return;
   }
   list.innerHTML = views.map((row) => `
-    <button type="button" class="in-app-notif-item${row.unread ? " is-unread" : ""}" data-notif-id="${row.id}" data-task-id="${row.taskId}" data-match-id="${row.matchId}">
+    <button type="button" class="in-app-notif-item${row.unread ? " is-unread" : ""}" data-notif-id="${row.id}">
       <strong>${escapeHtml(row.title || "تنبيه")}</strong>
       ${row.referenceCode ? `<span class="in-app-notif-ref">${escapeHtml(row.referenceCode)}</span>` : ""}
       <span class="in-app-notif-time">${escapeHtml(row.clockLabel || "")}</span>
@@ -102,7 +102,31 @@ async function markRead(id) {
   }
 }
 
-function openDailyTaskFromNotification(row) {
+function navigationData(row = {}) {
+  const target = notificationTapTarget(row);
+  const recordId = target.operationId || target.matchId || target.dealId
+    || target.opportunityId || target.cooperationId || target.entityId || "";
+  return {
+    ...row,
+    ...target,
+    officeId: row.officeId || officeId(),
+    recordId,
+    entityId: target.entityId || target.opportunityId || target.cooperationId || recordId
+  };
+}
+
+function openNotificationTarget(row) {
+  const data = navigationData(row);
+  const buildUrl = window.IAQAR?.buildNotificationRelativeUrl;
+  if (typeof buildUrl === "function") {
+    const relativeUrl = String(buildUrl(data) || "").trim();
+    if (relativeUrl && relativeUrl !== "/") {
+      window.location.assign(relativeUrl);
+      return;
+    }
+  }
+
+  // Compatibility fallback for old shells: open the already-existing Operation/Match task.
   const target = notificationTapTarget(row);
   const detail = {
     id: target.taskId || target.operationId || target.matchId,
@@ -110,16 +134,21 @@ function openDailyTaskFromNotification(row) {
     matchId: target.matchId,
     matchGroupId: target.taskId,
     opportunityId: target.opportunityId,
-    operationId: target.operationId
+    operationId: target.operationId,
+    cooperationId: target.cooperationId
   };
-  window.IAQAR = window.IAQAR || {};
-  window.IAQAR.pendingDailyTaskOpen = detail;
-  window.IAQAR?.homeTabs?.switchTo?.("operations");
-  window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
-  window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
-  window.setTimeout(() => {
+  if (detail.id) {
+    window.IAQAR = window.IAQAR || {};
+    window.IAQAR.pendingDailyTaskOpen = detail;
+    window.IAQAR?.homeTabs?.switchTo?.("operations");
+    window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
     window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
-  }, 80);
+    return;
+  }
+
+  // Never silently open a generic business screen when the target cannot be resolved.
+  setOpen(true);
+  renderPanel();
 }
 
 async function onItemClick(event) {
@@ -130,7 +159,7 @@ async function onItemClick(event) {
   if (!row) return;
   setOpen(false);
   await markRead(id);
-  openDailyTaskFromNotification(row);
+  openNotificationTarget(row);
 }
 
 function listen(runtimeOfficeId) {
