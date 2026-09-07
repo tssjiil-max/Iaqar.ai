@@ -1042,6 +1042,121 @@
     }
   }
 
+  function dailyTaskOperationBusinessKey(item = {}) {
+    const type = String(item.operationType || item.type || "").trim().toUpperCase();
+    const id = (value) => String(value || "").trim();
+    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
+      const value = id(item.opportunityId || item.sourceEntityId);
+      return value ? `opportunity:${value}` : "";
+    }
+    if (type === "MATCH_REVIEW") {
+      const value = id(item.matchId || item.sourceEntityId);
+      return value ? `match:${value}` : "";
+    }
+    if (type === "DEAL_ACTION") {
+      const value = id(item.dealId || item.sourceEntityId);
+      return value ? `deal:${value}` : "";
+    }
+    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
+      const value = id(item.cooperationId || item.sourceEntityId);
+      return value ? `cooperation:${value}` : "";
+    }
+    return "";
+  }
+
+  function dailyTaskLegacyBusinessKey(item = {}) {
+    const type = String(item.recordType || "").trim().toLowerCase();
+    const id = (value) => String(value || "").trim();
+    if (type === "opportunity") {
+      const value = id(item.opportunityId || item.recordId || item.id);
+      return value ? `opportunity:${value}` : "";
+    }
+    if (type === "match") {
+      const value = id(item.matchId || item.recordId || item.id);
+      return value ? `match:${value}` : "";
+    }
+    if (type === "deal") {
+      const value = id(item.dealId || item.recordId || item.id);
+      return value ? `deal:${value}` : "";
+    }
+    if (type === "cooperation") {
+      const value = id(item.cooperationId || item.recordId || item.id);
+      return value ? `cooperation:${value}` : "";
+    }
+    if (type === "intake") {
+      const opportunityId = id(item.opportunityId);
+      if (opportunityId) return `opportunity:${opportunityId}`;
+      const value = id(item.recordId || item.id);
+      return value ? `intake:${value}` : "";
+    }
+    return "";
+  }
+
+  function dailyTaskCoverageAudit(legacyItems = []) {
+    dailyTaskShadowCycles += 1;
+    try {
+      const operationKeys = new Set();
+      const semanticCounts = new Map();
+      for (const item of operationItems) {
+        const businessKey = dailyTaskOperationBusinessKey(item);
+        if (businessKey) operationKeys.add(businessKey);
+        const type = String(item.operationType || item.type || "").trim().toUpperCase();
+        if (businessKey && type) {
+          const semanticKey = `${type}:${businessKey}`;
+          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
+        }
+      }
+      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
+      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
+      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
+      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
+      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
+      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
+      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
+      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
+      const reasons = [];
+      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
+      if (coveragePercent < 100) reasons.push("coverage_below_100");
+      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
+      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
+      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
+      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
+      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
+      return {
+        allowed: reasons.length === 0,
+        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
+        reasons,
+        coveragePercent,
+        coveredBusinessEntities: covered,
+        observedBusinessEntities: legacyKeys.length,
+        duplicateActiveTasks,
+        uncoveredBusinessEntities,
+        shadowCycles: dailyTaskShadowCycles,
+        shadowFailures: dailyTaskShadowFailures,
+        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
+        allSourcesReady,
+        missingRequiredOperationTypes
+      };
+    } catch (error) {
+      dailyTaskShadowFailures += 1;
+      return {
+        allowed: false,
+        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
+        reasons: ["shadow_audit_failed"],
+        coveragePercent: 0,
+        duplicateActiveTasks: 0,
+        uncoveredBusinessEntities: [],
+        shadowCycles: dailyTaskShadowCycles,
+        shadowFailures: dailyTaskShadowFailures,
+        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
+        allSourcesReady: false,
+        missingRequiredOperationTypes: [],
+        error: String(error?.message || error || "audit_failed")
+      };
+    }
+  }
+
   function emitOperations() {
     pruneSavedOpportunityWorkspaceItems();
     const workspaceItems = savedOpportunityWorkspaceItems.filter(
