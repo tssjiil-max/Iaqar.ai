@@ -307,7 +307,11 @@ test("Worker message routes require auth; outbound Cloud API still blocked", asy
   assert.equal(adapters.status, 200);
   const adapterBody = await adapters.json();
   assert.equal(adapterBody.whatsapp.adapterStatus, "adapter_ready");
-  assert.equal(adapterBody.telegram.adapterStatus, "simulated");
+  assert.equal(adapterBody.telegram.adapterStatus, "adapter_ready");
+  assert.equal(adapterBody.telegram.outboundAdapterStatus, "simulated");
+  assert.equal(adapterBody.telegram.inboundEnabled, true);
+  assert.equal(adapterBody.telegram.outboundEnabled, false);
+  assert.equal(adapterBody.telegram.canonicalIntakeOnly, true);
   assert.equal(adapterBody.boundaries.sendsWhatsApp, false);
 
   for (const path of ["/meta/messages", "/meta/phone/send"]) {

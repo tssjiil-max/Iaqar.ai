@@ -1180,7 +1180,11 @@ test("Phase 7 adapters endpoint and boundaries deny outbound send", async () => 
   const body = await response.json();
   assert.equal(body.ok, true);
   assert.equal(body.whatsapp.adapterStatus, "adapter_ready");
-  assert.equal(body.telegram.adapterStatus, "simulated");
+  assert.equal(body.telegram.adapterStatus, "adapter_ready");
+  assert.equal(body.telegram.outboundAdapterStatus, "simulated");
+  assert.equal(body.telegram.inboundEnabled, true);
+  assert.equal(body.telegram.outboundEnabled, false);
+  assert.equal(body.telegram.canonicalIntakeOnly, true);
   assert.equal(body.boundaries.sendsWhatsApp, false);
   assert.equal(body.boundaries.sendsTelegram, false);
   assert.equal(body.boundaries.autoSendsMessages, false);

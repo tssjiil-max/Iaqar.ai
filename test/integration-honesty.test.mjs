@@ -110,12 +110,14 @@ test("no shipped file claims a delivered or read WhatsApp/Telegram message", () 
   }
 });
 
-test("Telegram adapter is simulated, never production-connected or auto-sending", () => {
-  // Directive §10 / Phase 7: Telegram may exist as adapter-ready/simulated structure only.
+test("Telegram inbound adapter requires runtime config while outbound remains simulated and disabled", () => {
+  // Phase 8: Telegram inbound is adapter-ready but requires runtime credentials; outbound remains simulated/disabled.
   const messaging = readRepositoryFile("worker", "src", "messaging-domain.js");
   assert.ok(messaging.includes('TELEGRAM_ADAPTER_SIMULATED: "simulated"'));
   assert.ok(messaging.includes("outboundEnabled: false"));
-  assert.ok(messaging.includes("inboundEnabled: false"));
+  assert.ok(messaging.includes("inboundEnabled: true"));
+  assert.ok(messaging.includes("requiresRuntimeConfiguration: true"));
+  assert.ok(messaging.includes("canonicalIntakeOnly: true"));
   assert.equal(messaging.includes("production connected"), false);
   assert.equal(messaging.includes("production_connected"), false);
 
