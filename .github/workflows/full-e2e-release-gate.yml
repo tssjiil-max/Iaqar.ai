@@ -1,0 +1,111 @@
+name: Full E2E release gate
+
+on:
+  push:
+    branches:
+      - chore/full-e2e-regression-phase12-20260907
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  root-web-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:web
+
+  worker-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --prefix worker
+      - run: npm run test:worker
+
+  domain-gates:
+    name: gate-${{ matrix.gate }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - gate: matching
+            script: test:matching:gate
+          - gate: post-match
+            script: test:post-match:gate
+          - gate: negotiation
+            script: test:negotiation:gate
+          - gate: viewing
+            script: test:viewing:gate
+          - gate: deal
+            script: test:deal:gate
+          - gate: cooperation
+            script: test:cooperation:gate
+          - gate: channels
+            script: test:channels:gate
+          - gate: orchestrator
+            script: test:orchestrator:gate
+          - gate: notifications
+            script: test:notifications:gate
+          - gate: admin
+            script: test:admin:gate
+          - gate: completion
+            script: test:completion:gate
+          - gate: daily-tasks
+            script: test:daily-tasks:gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: npm run ${{ matrix.script }}
+
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: node --check worker/src/index.js
+      - run: node --check public/js/workflow-office.js
+      - run: node --check worker/src/data-completion-runtime-service.js
+
+  full-e2e-green:
+    if: always()
+    needs:
+      - root-web-tests
+      - worker-tests
+      - domain-gates
+      - static-checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every gate succeeded
+        env:
+          ROOT_RESULT: ${{ needs.root-web-tests.result }}
+          WORKER_RESULT: ${{ needs.worker-tests.result }}
+          DOMAIN_RESULT: ${{ needs.domain-gates.result }}
+          STATIC_RESULT: ${{ needs.static-checks.result }}
+        run: |
+          printf 'root=%s\nworker=%s\ndomains=%s\nstatic=%s\n' "$ROOT_RESULT" "$WORKER_RESULT" "$DOMAIN_RESULT" "$STATIC_RESULT"
+          test "$ROOT_RESULT" = success
+          test "$WORKER_RESULT" = success
+          test "$DOMAIN_RESULT" = success
+          test "$STATIC_RESULT" = success
