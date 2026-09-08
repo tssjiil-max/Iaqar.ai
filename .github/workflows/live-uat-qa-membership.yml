@@ -214,10 +214,8 @@ jobs:
               raise SystemExit('run QA patch target not found')
           s = s.replace(old_run, new_run, 1)
 
-          old_tail = '''    addResult("Same taskId after owner", taskIdAfterOwner === taskIdBefore, { taskIdBefore, taskIdAfterOwner });
-
-            const failed = results.filter((row) => !row.pass);'''
-          new_tail = '''    addResult("Same taskId after owner", taskIdAfterOwner === taskIdBefore, { taskIdBefore, taskIdAfterOwner });
+          anchor = '    addResult("Same taskId after owner", taskIdAfterOwner === taskIdBefore, { taskIdBefore, taskIdAfterOwner });'
+          extension = '''
 
             const candidateBeforeConfirm = (await officeRef.collection("matches").doc(ids.match).get()).data() || {};
             addResult("Viewing candidate generated", Boolean(candidateBeforeConfirm.viewingCandidateAt), {
@@ -249,7 +247,7 @@ jobs:
               note: "QA: confirmed viewing entered deal chain"
             });
             const dealId = String(createDeal.body?.dealId || "");
-            addResult("Deal created from confirmed viewing", createDeal.status >= 200 && createDeal.status < 300 && createDeal.body?.ok === true && dealId, {
+            addResult("Deal created from confirmed viewing", createDeal.status >= 200 && createDeal.status < 300 && createDeal.body?.ok === true && Boolean(dealId), {
               status: createDeal.status,
               note: `dealId=${dealId} stage=${createDeal.body?.workflowStage || ""}`
             });
@@ -302,12 +300,10 @@ jobs:
             const timelineStages = timelineSnap.docs.map((doc) => String(doc.data()?.stage || ""));
             addResult("Deal timeline records viewing and negotiation", timelineStages.includes("viewing") && timelineStages.includes("negotiation"), {
               note: `stages=${timelineStages.join(",")}`
-            });
-
-            const failed = results.filter((row) => !row.pass);'''
-          if old_tail not in s:
-              raise SystemExit('post-viewing QA patch target not found')
-          s = s.replace(old_tail, new_tail)
+            });'''
+          if anchor not in s:
+              raise SystemExit('post-viewing QA anchor not found')
+          s = s.replace(anchor, anchor + extension, 1)
 
           p.write_text(s)
           PY
