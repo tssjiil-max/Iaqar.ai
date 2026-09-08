@@ -73,7 +73,8 @@ export function isDisplayedRowComplete(vm = {}, rowKey = "") {
 }
 
 export function displayedMissingRows(vm = {}) {
-  return V2_DATA_ROWS.filter((row) => !isDisplayedRowComplete(vm, row.key));
+  // Area/specifications are negotiation details, not basic admission data.
+  return V2_DATA_ROWS.filter((row) => row.key !== "specs" && !isDisplayedRowComplete(vm, row.key));
 }
 
 export function displayedMissingRowLabels(vm = {}) {
@@ -96,7 +97,7 @@ export function firstMissingEditor(vm = {}) {
 }
 
 export function completenessLine(vm = {}) {
-  const total = V2_DATA_ROWS.length;
+  const total = V2_DATA_ROWS.filter((row) => row.key !== "specs").length;
   const missing = displayedMissingRowLabels(vm);
   const complete = Math.max(0, total - missing.length);
   if (!missing.length) return `${complete} من ${total} بيانات مكتملة`;

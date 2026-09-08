@@ -159,6 +159,18 @@ test("empty appointment and report still keep their cards", () => {
   }), "");
 });
 
+test("missing optional area is hidden and never creates completion CTA", () => {
+  const vm = mapOpportunityDetailsV2ViewModel("optional-area", {
+    opportunityKind: "REQUEST", purpose: "PURCHASE", propertyType: "شقة",
+    city: "المدينة المنورة", district: "عروة", budget: 30,
+    advertiserRole: "CLIENT", contactPhone: "0552019909"
+  });
+  const html = buildOpportunityDataCardV2(vm, { dataCardExpanded: true });
+  assert.equal(html.includes('data-cv2-row="specs"'), false);
+  assert.equal(html.includes("غير محدد"), false);
+  assert.equal(buildCompleteMissingButtonV2(vm), "");
+});
+
 test("single-field editor does not open the full opportunity form", () => {
   const html = buildFieldEditorV2("contactNumber", { contactNumber: "" });
   assert.match(html, /رقم التواصل/);
@@ -209,7 +221,7 @@ test("saving وسيط updates completeness and removes صفة المعلن from 
   const afterVm = mapOpportunityDetailsV2ViewModel("opp_role", { ...existing, ...built.patch });
   assert.equal(afterVm.advertiserRole, "وسيط عقاري");
   assert.equal(completenessLine(afterVm).includes("المعلن"), false);
-  assert.equal(completenessLine(afterVm), "6 من 6 بيانات مكتملة");
+  assert.equal(completenessLine(afterVm), "5 من 5 بيانات مكتملة");
 });
 
 test("field editor backdrop click dismisses without saving", () => {
@@ -273,7 +285,7 @@ test("completeness line uses actual missing fields, not static copy", () => {
     area: 1000,
     contactPhone: "0511123456"
   });
-  assert.equal(completenessLine(complete), "6 من 6 بيانات مكتملة");
+  assert.equal(completenessLine(complete), "5 من 5 بيانات مكتملة");
   assert.equal(nextActionLine(complete), "الإجراء التالي: متابعة الفرصة");
   assert.equal(buildCompleteMissingButtonV2(complete), "");
 });

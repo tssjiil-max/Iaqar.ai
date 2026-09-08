@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   completionRuntimeBoundaryGuarantees,
@@ -7,6 +8,16 @@ import {
   readPersistentCompletionSession,
   submitPersistentCompletionSession
 } from "../worker/src/data-completion-runtime-service.js";
+
+test("completed public form hands the same opportunity directly to matching", () => {
+  const source = readFileSync(new URL("../worker/src/index.js", import.meta.url), "utf8");
+  const start = source.indexOf("onOpportunityReady: async");
+  const end = source.indexOf("async function handleCompletionSessionCreate", start);
+  const block = source.slice(start, end);
+  assert.match(block, /findAndSaveMatchesForOpportunity\(\{/);
+  assert.match(block, /opportunityId/);
+  assert.match(block, /notify:\s*true/);
+});
 
 function helpersFixture(initial = {}) {
   const db = new Map();

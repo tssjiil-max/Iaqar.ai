@@ -1406,6 +1406,9 @@ function wireIncompleteDetailHandlers(id, record) {
     try {
       const { readiness: savedReadiness } = await persistOpportunityPatch(id, patch, { context: "incomplete-save" });
       assertPersistedMissingFieldsCleared(priorMissing, savedReadiness, patch);
+      if (savedReadiness.isReadyForMatching) {
+        await rematchOpportunity(id, { reason: "completion" });
+      }
       if (isDailyTaskDetail() && savedReadiness.isReadyForMatching) {
         toast("تم حفظ الفرصة ونقلها للمطابقة");
         if (statusNode) {

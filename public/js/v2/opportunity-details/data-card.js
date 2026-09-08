@@ -69,6 +69,8 @@ function rowsHtml(vm, extraId = "cv2DataExtra") {
     extra = [];
   };
   V2_DATA_ROWS.forEach((row) => {
+    // Do not render an empty optional specifications row as missing basic data.
+    if (row.key === "specs" && !isDisplayedRowComplete(vm, row.key)) return;
     const markup = rowMarkup(row, vm);
     if (EXTRA_ROW_KEYS.has(row.key)) extra.push(markup);
     else {
