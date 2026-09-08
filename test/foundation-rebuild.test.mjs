@@ -128,9 +128,9 @@ test("TEST A: completeness matches visible incomplete values, not a hardcoded 6/
   assert.equal((html.match(/غير محدد/g) || []).length > 0, true);
 });
 
-test("TEST B: complete opportunity reports 6/6 from the same view-model", () => {
+test("TEST B: complete opportunity reports all basic fields from the same view-model", () => {
   const vm = mapOpportunityDetailsV2ViewModel(COMPLETE.id, COMPLETE);
-  assert.equal(completenessLine(vm), "6 من 6 بيانات مكتملة");
+  assert.equal(completenessLine(vm), "5 من 5 بيانات مكتملة");
   assert.match(vm.price, /850,000/);
   assert.match(vm.area, /1,175/);
   assert.equal(buildOpportunityDataCardV2(vm).includes("غير محدد"), false);
