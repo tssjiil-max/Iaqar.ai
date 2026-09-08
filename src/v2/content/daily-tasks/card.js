@@ -269,6 +269,17 @@ function partyProgressHtml(task = {}) {
   </div>`;
 }
 
+function partyResponsesHtml(task = {}) {
+  const rows = [
+    ["رد العميل", task.coordinationClientSummary],
+    ["رد المالك", task.coordinationOwnerSummary]
+  ].filter(([, summary]) => String(summary || "").trim());
+  if (!rows.length) return "";
+  return `<section class="cv2-party-responses" aria-label="ردود الأطراف">
+    ${rows.map(([label, summary]) => `<div><strong>${escapeContentHtml(label)}</strong><p>${nl(summary)}</p></div>`).join("")}
+  </section>`;
+}
+
 function reasonItems(reasons = []) {
   return reasons
     .map((line) => {
@@ -404,6 +415,7 @@ function matchGroupBodyHtml(task = {}) {
   return `<div class="cv2-coop-expanded cv2-match-expanded">
     ${matchHeroHtml(task)}
     ${matchActionHtml(task)}
+    ${partyResponsesHtml(task)}
     ${partyProgressHtml(task)}
     ${matchDetailsHtml(task)}
     ${ranked && (task.candidates || []).length > 1 ? `<details class="cv2-match-fold"><summary><span>☷</span> المرشحون</summary><div class="cv2-match-fold-body"><ol>${ranked}</ol></div></details>` : ""}

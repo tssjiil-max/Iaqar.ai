@@ -874,6 +874,13 @@ export function sortDailyTaskViews(tasks = []) {
     };
     const rank = rankOf(a) - rankOf(b);
     if (rank !== 0) return rank;
+    // A real match waiting to be sent is the office's first executable action.
+    // Opportunity-completion cards must never bury it inside the same priority band.
+    const matchActionA = Number(a.taskKind === "match_group"
+      && [DAILY_TASK_STATE.NEW_MATCH, DAILY_TASK_STATE.AWAITING_SEND].includes(a.stateKey));
+    const matchActionB = Number(b.taskKind === "match_group"
+      && [DAILY_TASK_STATE.NEW_MATCH, DAILY_TASK_STATE.AWAITING_SEND].includes(b.stateKey));
+    if (matchActionA !== matchActionB) return matchActionB - matchActionA;
     const newA = Number(Boolean(a.hasNewResponse));
     const newB = Number(Boolean(b.hasNewResponse));
     if (newA !== newB) return newB - newA;
@@ -1317,13 +1324,21 @@ function opportunityActionMode(item = {}, now = new Date()) {
   if (isTaskArchived(item)) return "";
   const opType = upper(item.operationType);
   const readiness = upper(item.matchingReadiness);
-  const missing = Array.isArray(item.matchingReadinessMissing)
+  const rawMissing = Array.isArray(item.matchingReadinessMissing)
     ? item.matchingReadinessMissing
     : (Array.isArray(item.missingFields) ? item.missingFields : []);
-  if (opType === "MISSING_DATA" || readiness === "NEEDS_COMPLETION" || missing.length) return "incomplete";
+  const missing = optionalMatchingFieldsRemoved(rawMissing);
+  const optionalOnly = rawMissing.length > 0 && missing.length === 0;
+  if (!optionalOnly && (opType === "MISSING_DATA" || readiness === "NEEDS_COMPLETION" || missing.length)) return "incomplete";
   if (isTaskOverdue(item, now) || opType === "ADVERTISER_FOLLOWUP") return "follow_up";
   if (isNewReview(item)) return "new_review";
   return "";
+}
+
+const OPTIONAL_MATCHING_FIELDS = new Set(["area", "rooms", "specs", "specifications"]);
+
+function optionalMatchingFieldsRemoved(fields = []) {
+  return fields.filter((key) => !OPTIONAL_MATCHING_FIELDS.has(String(key || "").trim()));
 }
 
 export function buildOpportunityActionDailyTask(item = {}, now = new Date()) {
@@ -1334,9 +1349,9 @@ export function buildOpportunityActionDailyTask(item = {}, now = new Date()) {
   if (!mode) return null;
   const opportunityId = actionableOpportunityIdFromItem(item);
   if (!opportunityId) return null;
-  const missingKeys = Array.isArray(item.matchingReadinessMissing)
+  const missingKeys = optionalMatchingFieldsRemoved(Array.isArray(item.matchingReadinessMissing)
     ? item.matchingReadinessMissing
-    : (Array.isArray(item.missingFields) ? item.missingFields : []);
+    : (Array.isArray(item.missingFields) ? item.missingFields : []));
   const missingLabels = missingFieldLabelsArabic(missingKeys);
   const overdue = isTaskOverdue(item, now);
   const copy = {
@@ -1468,7 +1483,9 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
       if (opType === "MISSING_DATA" && item?.deferredOnlyMissingData === true) continue;
       const opportunityId = actionableOpportunityIdFromItem(item);
       if (recordType === "opportunity" && explicitOpportunityActions.has(opportunityId)) continue;
-      const missing = Array.isArray(item?.matchingReadinessMissing) ? item.matchingReadinessMissing : [];
+      const missing = optionalMatchingFieldsRemoved(
+        Array.isArray(item?.matchingReadinessMissing) ? item.matchingReadinessMissing : []
+      );
       const incomplete = upper(item?.matchingReadiness) === "NEEDS_COMPLETION" || missing.length > 0;
       // A matched opportunity remains represented by its Match task. A legacy
       // incomplete operation must not create a contradictory completion task.

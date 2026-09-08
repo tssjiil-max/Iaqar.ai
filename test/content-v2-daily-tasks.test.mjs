@@ -496,6 +496,34 @@ test("sort is operational priority not created-at", () => {
   assert.deepEqual(sorted, ["a", "b", "d", "c"]);
 });
 
+test("new match stays above newer opportunity completion work", () => {
+  const sorted = sortDailyTaskViews([
+    buildDailyTaskView({ id: "completion", taskKind: "opportunity_action", stateKey: DAILY_TASK_STATE.NEW_MATCH, livingUpdatedAt: "2026-09-08T12:00:00Z" }),
+    buildDailyTaskView({ id: "match", taskKind: "match_group", stateKey: DAILY_TASK_STATE.NEW_MATCH, livingUpdatedAt: "2026-09-08T10:00:00Z" })
+  ]);
+  assert.deepEqual(sorted.map((task) => task.id), ["match", "completion"]);
+});
+
+test("area-only legacy missing data does not create a completion task", () => {
+  const tasks = mapOperationsItemsToDailyTasks([{
+    id: "legacy-area", recordId: "request-area", recordType: "opportunity",
+    operationType: "MISSING_DATA", matchingReadiness: "NEEDS_COMPLETION",
+    matchingReadinessMissing: ["area"]
+  }]);
+  assert.equal(tasks.length, 0);
+});
+
+test("client and owner replies render together in compact vertical rows", () => {
+  const html = buildDailyTaskCardHtml({
+    id: "responses", taskKind: "match_group", matchId: "m", offerId: "o", requestId: "r",
+    coordinationClientSummary: "مهتم بالعقار",
+    coordinationOwnerSummary: "العقار متاح",
+    sourceListing: {}, proposedListing: {}
+  }, { open: true });
+  assert.match(html, /رد العميل[\s\S]*مهتم بالعقار[\s\S]*رد المالك[\s\S]*العقار متاح/);
+  assert.equal((html.match(/cv2-party-responses/g) || []).length, 1);
+});
+
 test("appointment today maps from viewing date without copying listing fields", () => {
   const now = new Date("2026-08-24T10:00:00.000+03:00");
   const task = mapOperationsItemToDailyTask({

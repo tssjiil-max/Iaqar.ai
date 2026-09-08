@@ -1212,6 +1212,21 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
   margin-top: 8px;
 }
 
+.cv2-party-responses {
+  display: grid;
+  gap: 6px;
+}
+
+.cv2-party-responses > div {
+  padding: 8px 10px;
+  border: 1px solid var(--cv2-border, #e4eae7);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.cv2-party-responses strong { color: var(--cv2-green, #1a5319); font-size: 11px; }
+.cv2-party-responses p { margin: 2px 0 0; font-size: 12px; line-height: 1.55; }
+
 .cv2-party-progress-row > div {
   display: flex;
   flex-wrap: wrap;
