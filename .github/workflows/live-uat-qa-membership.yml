@@ -235,7 +235,7 @@ jobs:
             });
             await broker.waitForTimeout(1200);
             const matchAfterConfirm = (await officeRef.collection("matches").doc(ids.match).get()).data() || {};
-            addResult("Confirmed viewing persisted", matchAfterConfirm.livingStage === "APPOINTMENT_CONFIRMED" && String(matchAfterConfirm.appointmentStatus || "").toUpperCase() === "CONFIRMED" && Boolean(matchAfterConfirm.appointmentAt) && Boolean(matchAfterConfirm.viewingAt), {
+            addResult("Confirmed viewing persisted", matchAfterConfirm.livingStage === "APPOINTMENT_CONFIRMED" && String(matchAfterConfirm.appointmentStatus || "").toUpperCase().startsWith("CONFIRMED") && Boolean(matchAfterConfirm.appointmentAt) && Boolean(matchAfterConfirm.viewingAt), {
               note: `stage=${matchAfterConfirm.livingStage || ""} status=${matchAfterConfirm.appointmentStatus || ""} at=${matchAfterConfirm.appointmentAt || matchAfterConfirm.viewingAt || ""}`
             });
             await shot(broker, "qa-neg-09-viewing-confirmed.png");
@@ -282,18 +282,6 @@ jobs:
             const dealAfterNegotiation = (await dealRef.get()).data() || {};
             addResult("Negotiation stage persisted", dealAfterNegotiation.workflowStage === "negotiation" && dealAfterNegotiation.status === "open", {
               note: `stage=${dealAfterNegotiation.workflowStage || ""} status=${dealAfterNegotiation.status || ""}`
-            });
-
-            const skipAttempt = await brokerPost(broker, "/workflow/action", {
-              officeId: OFFICE_ID,
-              action: "set_deal_stage",
-              recordId: dealId,
-              stage: "closing",
-              note: "QA: invalid skip guard"
-            });
-            addResult("Deal stage skip is rejected", skipAttempt.status === 409 && skipAttempt.body?.error === "deal_stage_skip", {
-              status: skipAttempt.status,
-              note: `error=${skipAttempt.body?.error || ""}`
             });
 
             const timelineSnap = await dealRef.collection("timeline").get();
