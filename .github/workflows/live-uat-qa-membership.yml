@@ -108,33 +108,33 @@ jobs:
           s = s.replace(old_shot, new_shot)
 
           old_owner = '''  const viewingYes = packageRoot.locator('[data-package-field="viewingAllowed"][value="yes"]');
-          if (await viewingYes.count()) {
-            await viewingYes.check({ force: true });
-            await page.waitForTimeout(250);
-            await chooseFirstVisible(page, '[data-package-field="viewingDays"]');
-            await chooseFirstVisible(page, '[data-package-field="viewingPeriods"]');
-          }'''
+            if (await viewingYes.count()) {
+              await viewingYes.check({ force: true });
+              await page.waitForTimeout(250);
+              await chooseFirstVisible(page, '[data-package-field="viewingDays"]');
+              await chooseFirstVisible(page, '[data-package-field="viewingPeriods"]');
+            }'''
           new_owner = '''  const viewingYes = packageRoot.locator('[data-package-field="viewingAllowed"][value="yes"]');
-          if (await viewingYes.count()) {
-            await viewingYes.check({ force: true });
-            await page.waitForTimeout(250);
-            await chooseFirstVisible(page, '[data-package-field="viewingDays"]');
-            await chooseFirstVisible(page, '[data-package-field="viewingPeriods"]');
-          } else if (workflowStep === "owner_viewing") {
-            const currentRadios = packageRoot.locator('input[type="radio"]');
-            const radioCount = await currentRadios.count();
-            let selected = false;
-            for (let i = 0; i < radioCount; i += 1) {
-              const radio = currentRadios.nth(i);
-              if (await radio.isVisible().catch(() => false)) {
-                await radio.check({ force: true });
-                console.log(`[QA] owner_viewing selected field=${await radio.getAttribute("data-package-field") || await radio.getAttribute("name") || "radio"} value=${await radio.getAttribute("value") || ""}`);
-                selected = true;
-                break;
+            if (await viewingYes.count()) {
+              await viewingYes.check({ force: true });
+              await page.waitForTimeout(250);
+              await chooseFirstVisible(page, '[data-package-field="viewingDays"]');
+              await chooseFirstVisible(page, '[data-package-field="viewingPeriods"]');
+            } else if (workflowStep === "owner_viewing") {
+              const currentRadios = packageRoot.locator('input[type="radio"]');
+              const radioCount = await currentRadios.count();
+              let selected = false;
+              for (let i = 0; i < radioCount; i += 1) {
+                const radio = currentRadios.nth(i);
+                if (await radio.isVisible().catch(() => false)) {
+                  await radio.check({ force: true });
+                  console.log(`[QA] owner_viewing selected field=${await radio.getAttribute("data-package-field") || await radio.getAttribute("name") || "radio"} value=${await radio.getAttribute("value") || ""}`);
+                  selected = true;
+                  break;
+                }
               }
-            }
-            if (!selected) throw new Error("owner_viewing has no selectable radio option");
-          }'''
+              if (!selected) throw new Error("owner_viewing has no selectable radio option");
+            }'''
           if old_owner not in s:
               raise SystemExit('owner viewing QA patch target not found')
           s = s.replace(old_owner, new_owner)
