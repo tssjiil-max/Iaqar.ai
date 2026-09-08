@@ -37,6 +37,9 @@ jobs:
       - name: Rebuild Content V2 public mirror
         run: npm run v2:content
 
+      - name: Drop unrelated generated CSS whitespace
+        run: git checkout -- public/css/content-v2.css
+
       - name: Install dependencies
         run: npm ci
 
