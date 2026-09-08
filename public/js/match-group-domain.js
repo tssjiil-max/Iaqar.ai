@@ -503,7 +503,7 @@ export function livingCopy(stage, {
   if (key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) {
     return {
       kindLabel: appointmentLine ? `الموعد مؤكد — ${appointmentLine}` : "الموعد مؤكد",
-      statusLabel: "موعد مؤكد",
+      statusLabel: "",
       happenedLine: appointmentLine ? `تم تأكيد المعاينة — ${appointmentLine}` : "تم تأكيد المعاينة",
       turnLine: "دورك الآن",
       yourTurnLine: "بعد انتهاء المعاينة",
