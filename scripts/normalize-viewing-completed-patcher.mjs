@@ -23,5 +23,15 @@ const replacement = `{
 
 const count = source.split(marker).length - 1;
 if (count !== 1) throw new Error(`patcher normalization marker count=${count}`);
-writeFileSync(file, source.replace(marker, replacement));
-console.log("Guarded patcher normalized for the two intended match-group contexts.");
+let normalized = source.replace(marker, replacement);
+
+const interpolation = "${workerBase()}";
+const escapedInterpolation = "\\${workerBase()}";
+const interpolationCount = normalized.split(interpolation).length - 1;
+if (interpolationCount !== 3) {
+  throw new Error(`patcher workerBase interpolation count=${interpolationCount}, expected 3`);
+}
+normalized = normalized.split(interpolation).join(escapedInterpolation);
+
+writeFileSync(file, normalized);
+console.log("Guarded patcher normalized for two match-group contexts and escaped controller interpolation.");
