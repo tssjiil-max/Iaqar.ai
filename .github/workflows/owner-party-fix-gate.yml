@@ -1,0 +1,31 @@
+name: Owner party bundle fix gate
+
+on:
+  push:
+    branches:
+      - fix/owner-party-bundle-party-detection-20260908
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact fix commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Run focused owner binding regression
+        run: node --test test/party-entry-owner-binding.test.mjs
+      - name: Run negotiation release gate
+        run: npm run test:negotiation:gate
+      - name: Run static checks
+        run: npm run check
