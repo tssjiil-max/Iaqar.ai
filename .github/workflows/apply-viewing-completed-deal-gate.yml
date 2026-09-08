@@ -6,6 +6,7 @@ on:
       - fix/viewing-completed-deal-gate-20260908
     paths:
       - scripts/apply-viewing-completed-deal-gate.mjs
+      - scripts/normalize-viewing-completed-patcher.mjs
       - .github/workflows/apply-viewing-completed-deal-gate.yml
 
 permissions:
@@ -26,6 +27,9 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+
+      - name: Normalize guarded patcher
+        run: node scripts/normalize-viewing-completed-patcher.mjs
 
       - name: Apply guarded patch
         run: node scripts/apply-viewing-completed-deal-gate.mjs
