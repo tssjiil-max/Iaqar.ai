@@ -59,7 +59,7 @@ jobs:
         run: |
           mkdir -p "$LIVE_E2E_OUT" "$LIVE_E2E_WORK"
 
-      - name: Patch QA harness for current Staging UI
+      - name: Patch QA harness for current Staging UI and post-viewing chain
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -153,10 +153,166 @@ jobs:
               raise SystemExit('owner response QA diagnostic patch target not found')
           s = s.replace(old_owner_response, new_owner_response)
 
+          old_cleanup = '''async function cleanup() {
+            const direct = [
+              officeRef.collection("opportunities").doc(ids.incomplete),
+              officeRef.collection("opportunities").doc(ids.request),
+              officeRef.collection("opportunities").doc(ids.offer),
+              officeRef.collection("matches").doc(ids.match),
+              officeRef.collection("operations").doc(ids.operation)
+            ];
+            await Promise.all(direct.map((ref) => ref.delete().catch(() => null)));
+            for (const name of ["partySessions", "partySessionKeys", "coordinationSessions", "notifications"]) {
+              try { await deleteQuery(officeRef.collection(name).where("matchId", "==", ids.match)); } catch { /* optional collection/index */ }
+            }
+          }'''
+          new_cleanup = '''async function cleanup() {
+            const dealId = `deal_${ids.match.replace(/^mat_/, "")}`;
+            const dealRef = officeRef.collection("deals").doc(dealId);
+            try { await deleteQuery(dealRef.collection("timeline")); } catch { /* optional timeline */ }
+            await dealRef.delete().catch(() => null);
+            const direct = [
+              officeRef.collection("opportunities").doc(ids.incomplete),
+              officeRef.collection("opportunities").doc(ids.request),
+              officeRef.collection("opportunities").doc(ids.offer),
+              officeRef.collection("matches").doc(ids.match),
+              officeRef.collection("operations").doc(ids.operation)
+            ];
+            await Promise.all(direct.map((ref) => ref.delete().catch(() => null)));
+            for (const name of ["partySessions", "partySessionKeys", "coordinationSessions", "notifications"]) {
+              try { await deleteQuery(officeRef.collection(name).where("matchId", "==", ids.match)); } catch { /* optional collection/index */ }
+            }
+          }'''
+          if old_cleanup not in s:
+              raise SystemExit('cleanup QA patch target not found')
+          s = s.replace(old_cleanup, new_cleanup)
+
+          old_run = '''async function run() {'''
+          new_run = '''async function brokerPost(page, route, body) {
+            return page.evaluate(async ({ route, body }) => {
+              const user = window.firebase?.auth?.()?.currentUser;
+              if (!user?.getIdToken) throw new Error("broker auth token unavailable");
+              const token = await user.getIdToken();
+              const base = typeof window.IAQAR?.resolveWorkerBase === "function"
+                ? window.IAQAR.resolveWorkerBase()
+                : String(window.IAQAR?.workerBase || "").replace(/\\/+$/, "");
+              const response = await fetch(`${base}${route}`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(body)
+              });
+              const payload = await response.json().catch(() => ({}));
+              return { status: response.status, body: payload };
+            }, { route, body });
+          }
+
+          async function run() {'''
+          if old_run not in s:
+              raise SystemExit('run QA patch target not found')
+          s = s.replace(old_run, new_run, 1)
+
+          old_tail = '''    addResult("Same taskId after owner", taskIdAfterOwner === taskIdBefore, { taskIdBefore, taskIdAfterOwner });
+
+            const failed = results.filter((row) => !row.pass);'''
+          new_tail = '''    addResult("Same taskId after owner", taskIdAfterOwner === taskIdBefore, { taskIdBefore, taskIdAfterOwner });
+
+            const candidateBeforeConfirm = (await officeRef.collection("matches").doc(ids.match).get()).data() || {};
+            addResult("Viewing candidate generated", Boolean(candidateBeforeConfirm.viewingCandidateAt), {
+              note: `candidate=${candidateBeforeConfirm.viewingCandidateAt || ""} stage=${candidateBeforeConfirm.livingStage || ""}`
+            });
+
+            const confirmViewing = card.locator('[data-cv2-exec-primary="confirm_viewing"], [data-cv2-exec-secondary="confirm_viewing"]').first();
+            addResult("Confirm viewing action appears", (await confirmViewing.count()) > 0, { count: await confirmViewing.count() });
+            if (!(await confirmViewing.count())) throw new Error("confirm_viewing action did not appear at APPOINTMENT_COORDINATION");
+            const confirmWaiter = broker.waitForResponse((res) => res.url().includes("/match/living-action") && res.request().method() === "POST", { timeout: 45000 });
+            await confirmViewing.click();
+            const confirmResponse = await confirmWaiter;
+            const confirmBody = await confirmResponse.json().catch(() => ({}));
+            addResult("Viewing appointment confirmed through Daily Tasks UI", confirmResponse.status() >= 200 && confirmResponse.status() < 300 && confirmBody.livingStage === "APPOINTMENT_CONFIRMED", {
+              status: confirmResponse.status(),
+              note: `livingStage=${confirmBody.livingStage || ""} appointmentStatus=${confirmBody.appointmentStatus || ""}`
+            });
+            await broker.waitForTimeout(1200);
+            const matchAfterConfirm = (await officeRef.collection("matches").doc(ids.match).get()).data() || {};
+            addResult("Confirmed viewing persisted", matchAfterConfirm.livingStage === "APPOINTMENT_CONFIRMED" && String(matchAfterConfirm.appointmentStatus || "").toUpperCase() === "CONFIRMED" && Boolean(matchAfterConfirm.appointmentAt) && Boolean(matchAfterConfirm.viewingAt), {
+              note: `stage=${matchAfterConfirm.livingStage || ""} status=${matchAfterConfirm.appointmentStatus || ""} at=${matchAfterConfirm.appointmentAt || matchAfterConfirm.viewingAt || ""}`
+            });
+            await shot(broker, "qa-neg-09-viewing-confirmed.png");
+
+            const createDeal = await brokerPost(broker, "/workflow/action", {
+              officeId: OFFICE_ID,
+              action: "create_deal",
+              recordId: ids.match,
+              note: "QA: confirmed viewing entered deal chain"
+            });
+            const dealId = String(createDeal.body?.dealId || "");
+            addResult("Deal created from confirmed viewing", createDeal.status >= 200 && createDeal.status < 300 && createDeal.body?.ok === true && dealId, {
+              status: createDeal.status,
+              note: `dealId=${dealId} stage=${createDeal.body?.workflowStage || ""}`
+            });
+            if (!dealId) throw new Error(`deal creation failed: ${JSON.stringify(createDeal)}`);
+            const dealRef = officeRef.collection("deals").doc(dealId);
+            const dealAfterCreate = (await dealRef.get()).data() || {};
+            addResult("Deal linkage persisted", dealAfterCreate.matchId === ids.match && dealAfterCreate.clientRequestId === ids.request && (dealAfterCreate.ownerOfferId === ids.offer || dealAfterCreate.offerId === ids.offer) && dealAfterCreate.workflowStage === "contact", {
+              note: `matchId=${dealAfterCreate.matchId || ""} stage=${dealAfterCreate.workflowStage || ""}`
+            });
+
+            const enterViewing = await brokerPost(broker, "/workflow/action", {
+              officeId: OFFICE_ID,
+              action: "advance_deal",
+              recordId: dealId,
+              note: "QA: enter viewing stage"
+            });
+            addResult("Deal entered viewing stage", enterViewing.status >= 200 && enterViewing.status < 300 && enterViewing.body?.workflowStage === "viewing", {
+              status: enterViewing.status,
+              note: `stage=${enterViewing.body?.workflowStage || ""}`
+            });
+
+            const completeViewing = await brokerPost(broker, "/workflow/action", {
+              officeId: OFFICE_ID,
+              action: "advance_deal",
+              recordId: dealId,
+              note: "QA: viewing completed; enter negotiation"
+            });
+            addResult("Viewing completed into seriousness/negotiation", completeViewing.status >= 200 && completeViewing.status < 300 && completeViewing.body?.workflowStage === "negotiation", {
+              status: completeViewing.status,
+              note: `stage=${completeViewing.body?.workflowStage || ""}`
+            });
+            const dealAfterNegotiation = (await dealRef.get()).data() || {};
+            addResult("Negotiation stage persisted", dealAfterNegotiation.workflowStage === "negotiation" && dealAfterNegotiation.status === "open", {
+              note: `stage=${dealAfterNegotiation.workflowStage || ""} status=${dealAfterNegotiation.status || ""}`
+            });
+
+            const skipAttempt = await brokerPost(broker, "/workflow/action", {
+              officeId: OFFICE_ID,
+              action: "set_deal_stage",
+              recordId: dealId,
+              stage: "closing",
+              note: "QA: invalid skip guard"
+            });
+            addResult("Deal stage skip is rejected", skipAttempt.status === 409 && skipAttempt.body?.error === "deal_stage_skip", {
+              status: skipAttempt.status,
+              note: `error=${skipAttempt.body?.error || ""}`
+            });
+
+            const timelineSnap = await dealRef.collection("timeline").get();
+            const timelineStages = timelineSnap.docs.map((doc) => String(doc.data()?.stage || ""));
+            addResult("Deal timeline records viewing and negotiation", timelineStages.includes("viewing") && timelineStages.includes("negotiation"), {
+              note: `stages=${timelineStages.join(",")}`
+            });
+
+            const failed = results.filter((row) => !row.pass);'''
+          if old_tail not in s:
+              raise SystemExit('post-viewing QA patch target not found')
+          s = s.replace(old_tail, new_tail)
+
           p.write_text(s)
           PY
 
-      - name: Run current negotiation live UAT
+      - name: Run current negotiation + post-viewing live UAT
         run: node scripts/qa-live-negotiation-uat.mjs
 
       - name: Upload UAT evidence
