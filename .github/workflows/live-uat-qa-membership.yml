@@ -139,6 +139,20 @@ jobs:
               raise SystemExit('owner viewing QA patch target not found')
           s = s.replace(old_owner, new_owner)
 
+          old_owner_response = '''  const response = await responseWaiter;
+            const body = await response.json().catch(() => ({}));
+            await page.waitForSelector(".party-recorded, [data-testid='party-bundle-recorded'], [data-party-decision-package]", { timeout: 30000 });
+            return { status: response.status(), body, workflowStep };'''
+          new_owner_response = '''  const response = await responseWaiter;
+            const body = await response.json().catch(() => ({}));
+            console.log(`[QA] owner bundle request=${response.request().postData() || ""}`);
+            console.log(`[QA] owner bundle response status=${response.status()} body=${JSON.stringify(body)}`);
+            await page.waitForSelector(".party-recorded, [data-testid='party-bundle-recorded'], [data-party-decision-package]", { timeout: 30000 });
+            return { status: response.status(), body, workflowStep };'''
+          if old_owner_response not in s:
+              raise SystemExit('owner response QA diagnostic patch target not found')
+          s = s.replace(old_owner_response, new_owner_response)
+
           p.write_text(s)
           PY
 
