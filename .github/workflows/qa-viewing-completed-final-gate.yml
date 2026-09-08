@@ -1,0 +1,43 @@
+name: QA Viewing Completed Final Gate
+
+on:
+  push:
+    branches:
+      - qa/viewing-completed-final-gate-20260908
+    paths:
+      - .github/workflows/qa-viewing-completed-final-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  clean-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout clean feature tree
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Viewing release gate
+        run: npm run test:viewing:gate
+
+      - name: Post-match release gate
+        run: npm run test:post-match:gate
+
+      - name: Deal release gate
+        run: npm run test:deal:gate
+
+      - name: Focused viewing-completed regression
+        run: node --test test/viewing-completed-deal-gate.test.mjs
+
+      - name: Repository checks
+        run: npm run check
