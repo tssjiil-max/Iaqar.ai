@@ -33,5 +33,32 @@ if (interpolationCount !== 3) {
 }
 normalized = normalized.split(interpolation).join(escapedInterpolation);
 
+const helperAnchor = "\n// 1) Canonical viewing domain: a confirmed appointment is not a completed viewing.\n";
+if ((normalized.split(helperAnchor).length - 1) !== 1) {
+  throw new Error("patcher helper anchor is not unique");
+}
+const helper = `
+function replaceFirstOfTwo(file, before, after, label = before.slice(0, 60)) {
+  const source = readFileSync(file, "utf8");
+  const count = source.split(before).length - 1;
+  if (count !== 2) {
+    throw new Error(\`${file}: expected exactly two matches for \${label}, found \${count}\`);
+  }
+  writeFileSync(file, source.replace(before, after));
+  console.log(\`[patched] \${file} :: \${label} (first of 2 contexts)\`);
+}
+`;
+normalized = normalized.replace(helperAnchor, `${helper}${helperAnchor}`);
+
+const secondaryCall = 'replaceOnce(\n  taskController,\n  `    if (action === "complete_info") {';
+const secondaryCallCount = normalized.split(secondaryCall).length - 1;
+if (secondaryCallCount !== 1) {
+  throw new Error(`secondary handler patch call count=${secondaryCallCount}, expected 1`);
+}
+normalized = normalized.replace(
+  secondaryCall,
+  'replaceFirstOfTwo(\n  taskController,\n  `    if (action === "complete_info") {'
+);
+
 writeFileSync(file, normalized);
-console.log("Guarded patcher normalized for two match-group contexts and escaped controller interpolation.");
+console.log("Guarded patcher normalized: exact match-group contexts, escaped controller interpolation, secondary handler targeted safely.");
