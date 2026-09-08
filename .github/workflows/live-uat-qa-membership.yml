@@ -59,19 +59,20 @@ jobs:
         run: |
           mkdir -p "$LIVE_E2E_OUT" "$LIVE_E2E_WORK"
 
-      - name: Make QA harness return from WhatsApp to Staging
+      - name: Patch QA harness for navigation and non-blocking evidence
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('scripts/qa-live-negotiation-uat.mjs')
           s = p.read_text()
-          old = '''async function openTasks(page) {
+
+          old_tasks = '''async function openTasks(page) {
             await dismissOverlays(page);
             await page.locator("#mainTabOperations, button:has-text('المهام اليومية')").first().click();
             await page.waitForTimeout(1800);
             await page.waitForSelector("[data-cv2-exec-task], [data-cv2-exec-empty], #contentV2", { timeout: 60000 });
           }'''
-          new = '''async function openTasks(page) {
+          new_tasks = '''async function openTasks(page) {
             await page.goto(`${STAGING_URL}/?office=${encodeURIComponent(OFFICE_ID)}`, {
               waitUntil: "domcontentloaded",
               timeout: 120000
@@ -84,9 +85,29 @@ jobs:
             await page.waitForTimeout(1800);
             await page.waitForSelector("[data-cv2-exec-task], [data-cv2-exec-empty], #contentV2", { timeout: 60000 });
           }'''
-          if old not in s:
+          if old_tasks not in s:
               raise SystemExit('openTasks QA patch target not found')
-          p.write_text(s.replace(old, new))
+          s = s.replace(old_tasks, new_tasks)
+
+          old_shot = '''async function shot(page, name) {
+            const file = path.join(OUT, name);
+            await page.screenshot({ path: file, fullPage: true });
+            artifacts.push(file);
+          }'''
+          new_shot = '''async function shot(page, name) {
+            const file = path.join(OUT, name);
+            try {
+              await page.screenshot({ path: file, fullPage: false, timeout: 10000 });
+              artifacts.push(file);
+            } catch (error) {
+              console.warn(`[EVIDENCE WARN] ${name}: ${error?.message || error}`);
+            }
+          }'''
+          if old_shot not in s:
+              raise SystemExit('shot QA patch target not found')
+          s = s.replace(old_shot, new_shot)
+
+          p.write_text(s)
           PY
 
       - name: Run current negotiation live UAT
