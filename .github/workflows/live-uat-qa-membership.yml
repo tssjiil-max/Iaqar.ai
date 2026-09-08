@@ -57,12 +57,10 @@ jobs:
 
       - name: Prepare live UAT report paths
         run: |
-          sudo mkdir -p /workspace/qa
-          sudo chown -R "$(id -u):$(id -g)" /workspace/qa
           mkdir -p "$LIVE_E2E_OUT" "$LIVE_E2E_WORK"
 
-      - name: Run live staging UAT
-        run: node scripts/live-staging-core-flow.mjs
+      - name: Run current negotiation live UAT
+        run: node scripts/qa-live-negotiation-uat.mjs
 
       - name: Upload UAT evidence
         if: always()
