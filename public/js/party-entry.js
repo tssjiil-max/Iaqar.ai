@@ -352,7 +352,7 @@ function refreshPackageSections(root) {
 function bindDecisionPackage(root, token) {
   const form = root.querySelector("[data-party-decision-package]");
   if (!form) return;
-  const party = root.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
+  const party = form.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
   form.querySelectorAll("input").forEach((input) => {
     input.addEventListener("change", () => {
       refreshPackageSections(form);
