@@ -19,6 +19,7 @@ export const LIVING_TASK_STAGE = Object.freeze({
   VIEWING_DECISION: "VIEWING_DECISION",
   APPOINTMENT_COORDINATION: "APPOINTMENT_COORDINATION",
   APPOINTMENT_CONFIRMED: "APPOINTMENT_CONFIRMED",
+  VIEWING_COMPLETED: "VIEWING_COMPLETED",
   FOLLOW_UP: "FOLLOW_UP",
   COMPLETED: "COMPLETED",
   MATCH_EXHAUSTED: "MATCH_EXHAUSTED"
@@ -111,6 +112,7 @@ export function nextActorForLivingStage(stage, { ownerContactNeeded = false } = 
     key === LIVING_TASK_STAGE.MATCH_FOUND
     || key === LIVING_TASK_STAGE.BROKER_REVIEW
     || key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO
+    || key === LIVING_TASK_STAGE.VIEWING_COMPLETED
     || key === LIVING_TASK_STAGE.FOLLOW_UP
   ) {
     return TASK_ACTOR.BROKER;
@@ -168,6 +170,7 @@ export function livingStatusLabel(stage) {
     return "موعد تحت التنسيق";
   }
   if (key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) return "موعد مؤكد";
+  if (key === LIVING_TASK_STAGE.VIEWING_COMPLETED) return "تمت المعاينة";
   if (key === LIVING_TASK_STAGE.FOLLOW_UP) return "قيد المتابعة";
   if (key === LIVING_TASK_STAGE.COMPLETED) return "الصفقة مكتملة";
   if (key === LIVING_TASK_STAGE.CLIENT_REJECTED || key === LIVING_TASK_STAGE.MATCH_EXHAUSTED) {
@@ -357,6 +360,7 @@ export function sortGroupForLivingStage(stage, {
     key === LIVING_TASK_STAGE.MATCH_FOUND
     || key === LIVING_TASK_STAGE.BROKER_REVIEW
     || key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO
+    || key === LIVING_TASK_STAGE.VIEWING_COMPLETED
     || key === LIVING_TASK_STAGE.FOLLOW_UP
   ) {
     return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
@@ -382,7 +386,8 @@ export function livingCopy(stage, {
   missingInfoKey = "",
   hasNextCandidate = false,
   appointmentLine = "",
-  ownerContactNeeded = false
+  ownerContactNeeded = false,
+  viewingOutcome = ""
 } = {}) {
   const key = upper(stage);
   const reveal = { revealClosedLabel: "عرض البيانات", revealOpenLabel: "إخفاء البيانات" };
@@ -498,12 +503,61 @@ export function livingCopy(stage, {
   if (key === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) {
     return {
       kindLabel: appointmentLine ? `الموعد مؤكد — ${appointmentLine}` : "الموعد مؤكد",
-      statusLabel: "",
+      statusLabel: "موعد مؤكد",
       happenedLine: appointmentLine ? `تم تأكيد المعاينة — ${appointmentLine}` : "تم تأكيد المعاينة",
-      turnLine: "",
-      yourTurnLine: appointmentLine || "الموعد مؤكد",
-      nextActionLine: "لا يوجد إجراء مطلوب منك الآن.",
-      waiting: true,
+      turnLine: "دورك الآن",
+      yourTurnLine: "بعد انتهاء المعاينة",
+      nextActionLine: "تأكيد أن المعاينة تمت",
+      waiting: false,
+      ...reveal
+    };
+  }
+  if (key === LIVING_TASK_STAGE.VIEWING_COMPLETED) {
+    const outcome = upper(viewingOutcome);
+    if (outcome === "SERIOUS") {
+      return {
+        kindLabel: "المعاينة تمت",
+        statusLabel: "جدية مؤكدة",
+        happenedLine: "تمت المعاينة وتم تأكيد الجدية",
+        turnLine: "دورك الآن",
+        yourTurnLine: "إنشاء الصفقة",
+        nextActionLine: "إنشاء الصفقة والانتقال للتفاوض",
+        waiting: false,
+        ...reveal
+      };
+    }
+    if (outcome === "FOLLOW_UP") {
+      return {
+        kindLabel: "المعاينة تمت",
+        statusLabel: "متابعة لاحقًا",
+        happenedLine: "تمت المعاينة",
+        turnLine: "",
+        yourTurnLine: "متابعة لاحقًا",
+        nextActionLine: "تم تسجيل قرار المتابعة.",
+        waiting: true,
+        ...reveal
+      };
+    }
+    if (outcome === "NOT_SERIOUS") {
+      return {
+        kindLabel: "المعاينة تمت",
+        statusLabel: "لا توجد جدية حاليًا",
+        happenedLine: "تمت المعاينة ولم تتحول إلى جدية",
+        turnLine: "",
+        yourTurnLine: "لا توجد صفقة ناشئة",
+        nextActionLine: "لن تُنشأ صفقة من هذه المعاينة.",
+        waiting: true,
+        ...reveal
+      };
+    }
+    return {
+      kindLabel: "المعاينة تمت",
+      statusLabel: "بانتظار تقييم الجدية",
+      happenedLine: "تمت المعاينة",
+      turnLine: "دورك الآن",
+      yourTurnLine: "قيّم جدية العميل",
+      nextActionLine: "اختر نتيجة المعاينة",
+      waiting: false,
       ...reveal
     };
   }

@@ -20,6 +20,7 @@ export const POST_MATCH_STAGE = Object.freeze({
   NEGOTIATION: "NEGOTIATION",
   VIEWING_CANDIDATE: "VIEWING_CANDIDATE",
   VIEWING_CONFIRMED: "VIEWING_CONFIRMED",
+  VIEWING_COMPLETED: "VIEWING_COMPLETED",
   DEAL_CONTACT: "DEAL_CONTACT",
   DEAL_VIEWING: "DEAL_VIEWING",
   DEAL_NEGOTIATION: "DEAL_NEGOTIATION",
@@ -77,6 +78,10 @@ export function resolvePostMatchStage({ match = {}, coordination = {}, deal = nu
     if (stage) return stage;
   }
 
+  const livingStage = upper(match.livingStage);
+  if (text(match.viewingCompletedAt) || livingStage === POST_MATCH_STAGE.VIEWING_COMPLETED) {
+    return POST_MATCH_STAGE.VIEWING_COMPLETED;
+  }
   const appointmentStatus = upper(match.appointmentStatus);
   if (appointmentStatus === "CONFIRMED" || text(match.viewingAt) || text(match.appointmentAt)) {
     return POST_MATCH_STAGE.VIEWING_CONFIRMED;
@@ -89,7 +94,6 @@ export function resolvePostMatchStage({ match = {}, coordination = {}, deal = nu
   if (outcome === "VIEWING_READY") return POST_MATCH_STAGE.VIEWING_CANDIDATE;
   if (outcome && outcome !== "AWAITING_OTHER_PARTY") return POST_MATCH_STAGE.NEGOTIATION;
 
-  const livingStage = upper(match.livingStage);
   if (livingStage.includes("NEGOTIATION") || livingStage.includes("COORDINATION")) {
     return POST_MATCH_STAGE.NEGOTIATION;
   }
@@ -122,23 +126,28 @@ export function validateDealTransition(current = "contact", requested = "") {
 export function canCreateDeal({ match = {}, coordination = {} } = {}) {
   const outcome = upper(coordination.outcome || match.coordinationOutcome);
   const stage = resolvePostMatchStage({ match, coordination });
-  const serious = [
-    "VIEWING_READY",
+  const seriousCoordination = [
     "NEGOTIATION_READY",
     "AGREEMENT_READY",
     "BOTH_INTERESTED",
     "PRICE_ALIGNED"
   ].includes(outcome);
-  const viewingConfirmed = stage === POST_MATCH_STAGE.VIEWING_CONFIRMED;
+  const seriousIntent = match.seriousIntentConfirmed === true || upper(match.seriousIntentConfirmed) === "TRUE";
+  const completedViewingSerious = stage === POST_MATCH_STAGE.VIEWING_COMPLETED && seriousIntent;
   return {
-    allowed: serious || viewingConfirmed,
-    reason: viewingConfirmed ? "viewing_confirmed" : serious ? "serious_coordination" : "not_serious_yet"
+    allowed: seriousCoordination || completedViewingSerious,
+    reason: completedViewingSerious
+      ? "viewing_completed_serious"
+      : seriousCoordination
+        ? "serious_coordination"
+        : "not_serious_yet"
   };
 }
 
 export const POST_MATCH_EVENT = Object.freeze({
   COORDINATION_UPDATED: "COORDINATION_UPDATED",
   VIEWING_CONFIRMED: "VIEWING_CONFIRMED",
+  VIEWING_COMPLETED: "VIEWING_COMPLETED",
   DEAL_CREATED: "DEAL_CREATED",
   DEAL_STAGE_CHANGED: "DEAL_STAGE_CHANGED",
   DEAL_LOST: "DEAL_LOST",
@@ -171,6 +180,21 @@ export function planPostMatchTransition({ event, match = {}, coordination = {}, 
   if (type === POST_MATCH_EVENT.VIEWING_CONFIRMED) {
     if (!text(payload.appointmentAt || match.viewingCandidateAt || match.appointmentAt)) {
       return { ok: false, reason: "viewing_time_required", writes: [] };
+    }
+    return {
+      ok: true,
+      writes: [
+        { target: POST_MATCH_SOURCE_OF_TRUTH.VIEWING, mode: "authoritative" },
+        { target: POST_MATCH_SOURCE_OF_TRUTH.TASKS, mode: "projection" }
+      ],
+      createsDeal: false,
+      sendsMessage: false
+    };
+  }
+
+  if (type === POST_MATCH_EVENT.VIEWING_COMPLETED) {
+    if (!text(payload.completedAt || match.viewingCompletedAt)) {
+      return { ok: false, reason: "viewing_completion_required", writes: [] };
     }
     return {
       ok: true,
@@ -239,6 +263,7 @@ export function postMatchBoundaryGuarantees() {
     operationOwnsBusinessState: false,
     partyReplyAutoCreatesDeal: false,
     viewingConfirmationAutoCreatesDeal: false,
+    viewingCompletionAutoCreatesDeal: false,
     autoSendsWhatsApp: false,
     autoSendsTelegram: false,
     exposesCounterpartyContact: false,

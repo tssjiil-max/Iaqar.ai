@@ -537,6 +537,90 @@ async function confirmViewingAppointment(task, button) {
   }
 }
 
+async function confirmViewingCompletion(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/match/living-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ officeId, matchId: task.matchId, action: "CONFIRM_VIEWING_COMPLETED" })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || "تعذر تسجيل إتمام المعاينة.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify("تم تسجيل إتمام المعاينة");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true };
+  } catch {
+    notify("تعذر تسجيل إتمام المعاينة.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
+async function setViewingOutcome(task, outcome, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/match/living-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ officeId, matchId: task.matchId, action: "SET_VIEWING_OUTCOME", outcome })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      notify(payload.message || "تعذر حفظ نتيجة المعاينة.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify(outcome === "SERIOUS" ? "تم تأكيد الجدية" : outcome === "FOLLOW_UP" ? "تم تسجيل المتابعة" : "تم تسجيل عدم الجدية");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true };
+  } catch {
+    notify("تعذر حفظ نتيجة المعاينة.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
+async function createDealFromViewing(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
+  setExecState(button, "working");
+  try {
+    const token = await idToken();
+    const officeId = currentOfficeId();
+    const response = await fetch(`${workerBase()}/workflow/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ officeId, recordId: task.matchId, action: "create_deal" })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false || !payload.dealId) {
+      notify(payload.message || "تعذر إنشاء الصفقة.");
+      setExecState(button, "error");
+      return { ok: false };
+    }
+    notify("تم إنشاء الصفقة والانتقال للتفاوض");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+    return { ok: true, dealId: payload.dealId };
+  } catch {
+    notify("تعذر إنشاء الصفقة.");
+    setExecState(button, "error");
+    return { ok: false };
+  }
+}
+
 async function confirmDealCompletion(task, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   setExecState(button, "working");
@@ -633,6 +717,14 @@ function onListClick(event) {
       }
       return;
     }
+    if (action === "mark_viewing_follow_up") {
+      void setViewingOutcome(task, "FOLLOW_UP", secondary);
+      return;
+    }
+    if (action === "mark_viewing_not_serious") {
+      void setViewingOutcome(task, "NOT_SERIOUS", secondary);
+      return;
+    }
     if (action === "complete_info") {
       toggleTaskDetails(task.id);
       return;
@@ -697,6 +789,26 @@ function onListClick(event) {
     }
     if (action === "confirm_viewing") {
       void confirmViewingAppointment(task, primary);
+      return;
+    }
+    if (action === "confirm_viewing_completed") {
+      void confirmViewingCompletion(task, primary);
+      return;
+    }
+    if (action === "mark_viewing_serious") {
+      void setViewingOutcome(task, "SERIOUS", primary);
+      return;
+    }
+    if (action === "mark_viewing_follow_up") {
+      void setViewingOutcome(task, "FOLLOW_UP", primary);
+      return;
+    }
+    if (action === "mark_viewing_not_serious") {
+      void setViewingOutcome(task, "NOT_SERIOUS", primary);
+      return;
+    }
+    if (action === "create_deal") {
+      void createDealFromViewing(task, primary);
       return;
     }
     if (action === "complete_info") {

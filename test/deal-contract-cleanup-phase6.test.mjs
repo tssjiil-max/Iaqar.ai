@@ -16,10 +16,13 @@ import {
 
 const root = path.resolve(import.meta.dirname, "..");
 
-test("deal creation requires serious coordination or confirmed viewing", () => {
+test("deal creation requires explicit seriousness; confirmed or merely ready viewing is insufficient", () => {
   assert.equal(evaluateDealCreation({ match: { status: "active" } }).allowed, false);
-  assert.equal(evaluateDealCreation({ match: { appointmentAt: "2026-09-08T10:00:00.000Z" } }).allowed, true);
-  assert.equal(evaluateDealCreation({ coordination: { outcome: "VIEWING_READY" } }).allowed, true);
+  assert.equal(evaluateDealCreation({ match: { appointmentStatus: "CONFIRMED", appointmentAt: "2026-09-08T10:00:00.000Z" } }).allowed, false);
+  assert.equal(evaluateDealCreation({ coordination: { outcome: "VIEWING_READY" } }).allowed, false);
+  assert.equal(evaluateDealCreation({
+    match: { viewingCompletedAt: "2026-09-08T11:00:00.000Z", livingStage: "VIEWING_COMPLETED", seriousIntentConfirmed: true }
+  }).allowed, true);
   assert.equal(evaluateDealCreation({ coordination: { outcome: "PRICE_ALIGNED" } }).allowed, true);
 });
 

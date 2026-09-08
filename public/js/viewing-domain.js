@@ -19,6 +19,7 @@ export const VIEWING_STATE = Object.freeze({
   CANDIDATE: "CANDIDATE",
   TRAVEL_CONFIRM_REQUIRED: "TRAVEL_CONFIRM_REQUIRED",
   CONFIRMED: "CONFIRMED",
+  COMPLETED: "COMPLETED",
   CONFLICT: "CONFLICT"
 });
 
@@ -61,7 +62,17 @@ export function canonicalConfirmedAppointmentAt(match = {}) {
 
 export function resolveViewingState(match = {}) {
   const status = upper(match.appointmentStatus || match.viewingAppointmentStatus);
+  const completedAt = text(match.viewingCompletedAt);
   const confirmedAt = canonicalConfirmedAppointmentAt(match);
+  if (completedAt) {
+    return {
+      state: VIEWING_STATE.COMPLETED,
+      candidateAt: canonicalViewingCandidateAt(match) || confirmedAt,
+      appointmentAt: confirmedAt || text(match.appointmentAt || match.viewingAt),
+      completedAt,
+      terminal: true
+    };
+  }
   if (confirmedAt) {
     return {
       state: VIEWING_STATE.CONFIRMED,
@@ -128,11 +139,48 @@ export function planViewingConfirmation({ match = {}, evaluation = null } = {}) 
   };
 }
 
+/**
+ * Complete the viewing only after a broker-confirmed appointment has started.
+ * Completion never creates a Deal; it only records Match-owned viewing state.
+ */
+export function planViewingCompletion({ match = {}, now = new Date() } = {}) {
+  const existing = text(match.viewingCompletedAt);
+  const appointmentAt = canonicalConfirmedAppointmentAt(match);
+  if (existing) {
+    return { ok: true, idempotent: true, appointmentAt, completedAt: existing, patch: null };
+  }
+  if (!appointmentAt) {
+    return { ok: false, error: "viewing_not_confirmed" };
+  }
+  const appointmentMs = new Date(appointmentAt).getTime();
+  const current = now instanceof Date ? now : new Date(now);
+  const currentMs = current.getTime();
+  if (!Number.isFinite(appointmentMs) || !Number.isFinite(currentMs)) {
+    return { ok: false, error: "viewing_time_invalid" };
+  }
+  if (appointmentMs > currentMs) {
+    return { ok: false, error: "viewing_not_started_yet", appointmentAt };
+  }
+  const completedAt = current.toISOString();
+  return {
+    ok: true,
+    idempotent: false,
+    appointmentAt,
+    completedAt,
+    patch: {
+      viewingCompletedAt: completedAt,
+      viewingOutcome: "",
+      seriousIntentConfirmed: false
+    }
+  };
+}
+
 export function viewingBoundaryGuarantees() {
   return {
     sourceOfTruth: "matches",
     candidateField: "viewingCandidateAt",
     confirmedField: "appointmentAt",
+    completedField: "viewingCompletedAt",
     statusField: "appointmentStatus",
     legacyAliasesReadOnly: ["viewingAt", "proposedSlot"],
     ownsNegotiation: false,

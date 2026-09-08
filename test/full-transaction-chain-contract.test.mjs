@@ -76,11 +76,27 @@ test("full chain blocks incomplete intake, admits after completion, then progres
   assert.equal(viewing.ok, true);
   assert.equal(viewing.createsDeal, false);
 
+  const completedViewing = planPostMatchTransition({
+    event: POST_MATCH_EVENT.VIEWING_COMPLETED,
+    payload: { completedAt: "2026-09-10T19:00:00+03:00" }
+  });
+  assert.equal(completedViewing.ok, true);
+  assert.equal(completedViewing.createsDeal, false);
+
+  const prematureDeal = planPostMatchTransition({
+    event: POST_MATCH_EVENT.DEAL_CREATED,
+    match: { appointmentStatus: "CONFIRMED", appointmentAt: "2026-09-10T18:00:00+03:00" }
+  });
+  assert.equal(prematureDeal.ok, false);
+
   const deal = planPostMatchTransition({
     event: POST_MATCH_EVENT.DEAL_CREATED,
     match: {
       appointmentStatus: "CONFIRMED",
-      appointmentAt: "2026-09-10T18:00:00+03:00"
+      appointmentAt: "2026-09-10T18:00:00+03:00",
+      viewingCompletedAt: "2026-09-10T19:00:00+03:00",
+      livingStage: "VIEWING_COMPLETED",
+      seriousIntentConfirmed: true
     }
   });
   assert.equal(deal.ok, true);

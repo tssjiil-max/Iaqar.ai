@@ -26,7 +26,8 @@ import {
 } from "../../public/js/broker-viewing-schedule-domain.js";
 import {
   canonicalViewingCandidateAt,
-  planViewingConfirmation
+  planViewingConfirmation,
+  planViewingCompletion
 } from "../../public/js/viewing-domain.js";
 import {
   applyCoordinationToMatch,
@@ -207,6 +208,9 @@ async function stampMatchLiving(helpers, {
   if (patch.appointmentAt) fields.appointmentAt = helpers.firestoreString(String(patch.appointmentAt));
   if (patch.viewingAt) fields.viewingAt = helpers.firestoreString(String(patch.viewingAt));
   if (patch.appointmentStatus) fields.appointmentStatus = helpers.firestoreString(String(patch.appointmentStatus));
+  if (Object.prototype.hasOwnProperty.call(patch, "viewingCompletedAt")) fields.viewingCompletedAt = helpers.firestoreString(String(patch.viewingCompletedAt || ""));
+  if (Object.prototype.hasOwnProperty.call(patch, "viewingOutcome")) fields.viewingOutcome = helpers.firestoreString(String(patch.viewingOutcome || ""));
+  if (Object.prototype.hasOwnProperty.call(patch, "seriousIntentConfirmed")) fields.seriousIntentConfirmed = helpers.firestoreString(patch.seriousIntentConfirmed ? "true" : "");
   await helpers.setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", id],
@@ -230,7 +234,10 @@ async function stampMatchLiving(helpers, {
       ...(coordinationOutcome ? { coordinationOutcome: helpers.firestoreString(coordinationOutcome) } : {}),
       ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {}),
       ...(coordinationClientSummary ? { coordinationClientSummary: helpers.firestoreString(coordinationClientSummary) } : {}),
-      ...(coordinationOwnerSummary ? { coordinationOwnerSummary: helpers.firestoreString(coordinationOwnerSummary) } : {})
+      ...(coordinationOwnerSummary ? { coordinationOwnerSummary: helpers.firestoreString(coordinationOwnerSummary) } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "viewingCompletedAt") ? { viewingCompletedAt: helpers.firestoreString(String(patch.viewingCompletedAt || "")) } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "viewingOutcome") ? { viewingOutcome: helpers.firestoreString(String(patch.viewingOutcome || "")) } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "seriousIntentConfirmed") ? { seriousIntentConfirmed: helpers.firestoreString(patch.seriousIntentConfirmed ? "true" : "") } : {})
     }
   });
 }
@@ -976,26 +983,106 @@ export async function handleMatchLivingAction({
       requestId
     });
   }
-  if (action !== "CONFIRM_COMPLETION") {
-    throw helpers.appError("unknown_action", 400, "إجراء غير معروف.");
-  }
-  await stampMatchLiving(helpers, {
-    projectId,
-    officeId,
-    matchId,
-    accessToken,
-    patch: {
-      livingStage: "COMPLETED",
-      activeMatchId: matchId,
-      ownerContactNeeded: false,
-      hasNewResponse: false,
-      nextActor: "NONE",
-      timelineEvent: {
-        type: "deal_completed",
-        actor: "BROKER",
-        label: "تم إتمام الصفقة"
+  if (action === "CONFIRM_VIEWING_COMPLETED") {
+    const match = await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "matches", id: matchId, accessToken
+    });
+    if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
+    const completion = planViewingCompletion({ match, now: new Date() });
+    if (!completion.ok) {
+      if (completion.error === "viewing_not_confirmed") {
+        throw helpers.appError("viewing_not_confirmed", 409, "يجب تأكيد موعد المعاينة أولًا.");
+      }
+      if (completion.error === "viewing_not_started_yet") {
+        throw helpers.appError("viewing_not_started_yet", 409, "لا يمكن تسجيل إتمام المعاينة قبل موعدها.");
+      }
+      throw helpers.appError("viewing_completion_invalid", 400, "تعذر تسجيل إتمام المعاينة.");
+    }
+    if (!completion.idempotent) {
+      await stampMatchLiving(helpers, {
+        projectId, officeId, matchId, accessToken,
+        patch: {
+          livingStage: LIVING_TASK_STAGE.VIEWING_COMPLETED,
+          activeMatchId: matchId,
+          ownerContactNeeded: false,
+          hasNewResponse: false,
+          ...completion.patch,
+          nextActor: "BROKER",
+          timelineEvent: {
+            type: "viewing_completed_by_broker",
+            actor: "BROKER",
+            label: "تمت المعاينة"
+          }
+        }
+      });
+      const viewingCompletionOrchestration = await dispatchOrchestratorEvent({
+        event: ORCHESTRATOR_EVENT.VIEWING_COMPLETED,
+        eventId: buildOrchestratorEventId({
+          event: ORCHESTRATOR_EVENT.VIEWING_COMPLETED, officeId, entityId: matchId, occurrenceId: completion.completedAt
+        }),
+        context: { officeId, entityId: matchId, appointmentAt: completion.appointmentAt, completedAt: completion.completedAt },
+        adapters: {
+          [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: true })
+        }
+      });
+      if (!viewingCompletionOrchestration.ok) {
+        throw helpers.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق إتمام المعاينة: ${viewingCompletionOrchestration.error || "unknown"}`);
       }
     }
-  });
-  return helpers.jsonResponse({ ok: true, livingStage: "COMPLETED", requestId });
+    return helpers.jsonResponse({
+      ok: true,
+      idempotent: Boolean(completion.idempotent),
+      livingStage: LIVING_TASK_STAGE.VIEWING_COMPLETED,
+      appointmentAt: completion.appointmentAt,
+      viewingCompletedAt: completion.completedAt,
+      requestId
+    });
+  }
+  if (action === "SET_VIEWING_OUTCOME") {
+    const outcome = String(body.outcome || "").toUpperCase();
+    const allowedOutcomes = new Set(["SERIOUS", "FOLLOW_UP", "NOT_SERIOUS"]);
+    if (!allowedOutcomes.has(outcome)) {
+      throw helpers.appError("viewing_outcome_invalid", 400, "نتيجة المعاينة غير صحيحة.");
+    }
+    const match = await readOfficeDoc(helpers, {
+      projectId, officeId, collection: "matches", id: matchId, accessToken
+    });
+    if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
+    if (!String(match.viewingCompletedAt || "").trim() && String(match.livingStage || "").toUpperCase() !== LIVING_TASK_STAGE.VIEWING_COMPLETED) {
+      throw helpers.appError("viewing_not_completed", 409, "سجّل إتمام المعاينة قبل تقييم الجدية.");
+    }
+    const serious = outcome === "SERIOUS";
+    await stampMatchLiving(helpers, {
+      projectId, officeId, matchId, accessToken,
+      patch: {
+        livingStage: LIVING_TASK_STAGE.VIEWING_COMPLETED,
+        activeMatchId: matchId,
+        ownerContactNeeded: false,
+        hasNewResponse: false,
+        viewingOutcome: outcome,
+        seriousIntentConfirmed: serious,
+        nextActor: serious ? "BROKER" : "NONE",
+        timelineEvent: {
+          type: "viewing_outcome_recorded",
+          actor: "BROKER",
+          label: serious
+            ? "تم تأكيد الجدية بعد المعاينة"
+            : outcome === "FOLLOW_UP"
+              ? "تم اختيار المتابعة بعد المعاينة"
+              : "لا توجد جدية بعد المعاينة"
+        }
+      }
+    });
+    return helpers.jsonResponse({
+      ok: true, livingStage: LIVING_TASK_STAGE.VIEWING_COMPLETED, viewingOutcome: outcome, seriousIntentConfirmed: serious, requestId
+    });
+  }
+  if (action === "CONFIRM_COMPLETION") {
+    throw helpers.appError(
+      "legacy_match_completion_removed",
+      409,
+      "إتمام الصفقة يتم من مسار الصفقة بعد الجدية وعقد الوساطة، وليس من المطابقة."
+    );
+  }
+  throw helpers.appError("unknown_action", 400, "إجراء غير معروف.");
 }

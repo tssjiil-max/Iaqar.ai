@@ -47,6 +47,7 @@ test("post-match sources of truth are explicit and non-overlapping", () => {
   assert.equal(boundaries.operationOwnsBusinessState, false);
   assert.equal(boundaries.partyReplyAutoCreatesDeal, false);
   assert.equal(boundaries.viewingConfirmationAutoCreatesDeal, false);
+  assert.equal(boundaries.viewingCompletionAutoCreatesDeal, false);
 });
 
 test("coordination updates negotiation authoritatively and only projects outward", () => {
@@ -77,6 +78,21 @@ test("viewing confirmation is owned by Match and requires an actual time", () =>
   assert.equal(plan.createsDeal, false);
 });
 
+test("viewing completion event remains Match-owned and does not create Deal", () => {
+  const missing = planPostMatchTransition({ event: POST_MATCH_EVENT.VIEWING_COMPLETED });
+  assert.deepEqual(missing, { ok: false, reason: "viewing_completion_required", writes: [] });
+  const plan = planPostMatchTransition({
+    event: POST_MATCH_EVENT.VIEWING_COMPLETED,
+    payload: { completedAt: "2026-09-08T19:00:00+03:00" }
+  });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.createsDeal, false);
+  assert.deepEqual(plan.writes, [
+    { target: "matches", mode: "authoritative" },
+    { target: "operations", mode: "projection" }
+  ]);
+});
+
 test("deal cannot be created from a weak match before seriousness", () => {
   assert.deepEqual(canCreateDeal({ match: { livingStage: "MATCH_FOUND" } }), {
     allowed: false,
@@ -90,18 +106,33 @@ test("deal cannot be created from a weak match before seriousness", () => {
   assert.equal(rejected.reason, "not_serious_yet");
 });
 
-test("confirmed viewing or serious coordination may open Deal", () => {
+test("confirmed appointment is not enough; completed serious viewing or explicit serious coordination may open Deal", () => {
   const confirmed = canCreateDeal({
     match: {
       appointmentStatus: "CONFIRMED",
       appointmentAt: "2026-09-08T18:00:00+03:00"
     }
   });
-  assert.equal(confirmed.allowed, true);
-  assert.equal(confirmed.reason, "viewing_confirmed");
+  assert.equal(confirmed.allowed, false);
+  assert.equal(confirmed.reason, "not_serious_yet");
 
-  const serious = canCreateDeal({ coordination: { outcome: "VIEWING_READY" } });
-  assert.equal(serious.allowed, true);
+  const completedNotSerious = canCreateDeal({
+    match: { viewingCompletedAt: "2026-09-08T19:00:00+03:00", livingStage: "VIEWING_COMPLETED" }
+  });
+  assert.equal(completedNotSerious.allowed, false);
+
+  const completedSerious = canCreateDeal({
+    match: {
+      viewingCompletedAt: "2026-09-08T19:00:00+03:00",
+      livingStage: "VIEWING_COMPLETED",
+      seriousIntentConfirmed: true
+    }
+  });
+  assert.equal(completedSerious.allowed, true);
+  assert.equal(completedSerious.reason, "viewing_completed_serious");
+
+  assert.equal(canCreateDeal({ coordination: { outcome: "VIEWING_READY" } }).allowed, false);
+  assert.equal(canCreateDeal({ coordination: { outcome: "PRICE_ALIGNED" } }).allowed, true);
 });
 
 test("post-match stage resolution follows coordination then viewing then Deal", () => {
@@ -109,6 +140,7 @@ test("post-match stage resolution follows coordination then viewing then Deal", 
   assert.equal(resolvePostMatchStage({ coordination: { outcome: "PRICE_NEGOTIATION" } }), POST_MATCH_STAGE.NEGOTIATION);
   assert.equal(resolvePostMatchStage({ match: { viewingCandidateAt: "2026-09-08T18:00:00+03:00" } }), POST_MATCH_STAGE.VIEWING_CANDIDATE);
   assert.equal(resolvePostMatchStage({ match: { appointmentStatus: "CONFIRMED", appointmentAt: "x" } }), POST_MATCH_STAGE.VIEWING_CONFIRMED);
+  assert.equal(resolvePostMatchStage({ match: { viewingCompletedAt: "x", livingStage: "VIEWING_COMPLETED" } }), POST_MATCH_STAGE.VIEWING_COMPLETED);
   assert.equal(resolvePostMatchStage({ deal: { workflowStage: "agreement" } }), POST_MATCH_STAGE.DEAL_AGREEMENT);
   assert.equal(resolvePostMatchStage({ deal: { workflowStage: "closed" } }), POST_MATCH_STAGE.CLOSED);
 });

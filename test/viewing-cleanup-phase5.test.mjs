@@ -5,6 +5,7 @@ import {
   canonicalConfirmedAppointmentAt,
   canonicalViewingCandidateAt,
   planViewingConfirmation,
+  planViewingCompletion,
   resolveViewingState,
   viewingBoundaryGuarantees
 } from "../public/js/viewing-domain.js";
@@ -22,6 +23,7 @@ test("viewing owns only Match appointment state", () => {
     sourceOfTruth: "matches",
     candidateField: "viewingCandidateAt",
     confirmedField: "appointmentAt",
+    completedField: "viewingCompletedAt",
     statusField: "appointmentStatus",
     legacyAliasesReadOnly: ["viewingAt", "proposedSlot"],
     ownsNegotiation: false,
@@ -125,6 +127,37 @@ test("confirmed appointment cannot be silently overwritten by another candidate"
   });
   assert.equal(plan.ok, false);
   assert.equal(plan.error, "viewing_already_confirmed");
+});
+
+test("viewing completion requires a confirmed appointment that has started", () => {
+  assert.equal(planViewingCompletion({ match: {} }).error, "viewing_not_confirmed");
+  const early = planViewingCompletion({
+    match: {
+      appointmentStatus: VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER,
+      appointmentAt: future
+    },
+    now: new Date("2030-01-15T09:00:00.000Z")
+  });
+  assert.equal(early.ok, false);
+  assert.equal(early.error, "viewing_not_started_yet");
+});
+
+test("completed viewing is Match-owned, idempotent, and distinct from appointment confirmation", () => {
+  const match = {
+    appointmentStatus: VIEWING_APPOINTMENT_STATUS.CONFIRMED_BY_BROKER,
+    appointmentAt: future
+  };
+  const first = planViewingCompletion({ match, now: new Date("2030-01-15T11:00:00.000Z") });
+  assert.equal(first.ok, true);
+  assert.equal(first.idempotent, false);
+  assert.equal(first.patch.viewingCompletedAt, "2030-01-15T11:00:00.000Z");
+  assert.equal(first.patch.seriousIntentConfirmed, false);
+  const completed = { ...match, ...first.patch };
+  assert.equal(resolveViewingState(completed).state, VIEWING_STATE.COMPLETED);
+  const second = planViewingCompletion({ match: completed, now: new Date("2030-01-15T12:00:00.000Z") });
+  assert.equal(second.ok, true);
+  assert.equal(second.idempotent, true);
+  assert.equal(second.patch, null);
 });
 
 test("stale candidate no longer reserves broker schedule", () => {

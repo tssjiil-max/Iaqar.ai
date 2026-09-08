@@ -51,12 +51,7 @@ export async function ensurePartyReviewLink(task = {}, party = "client") {
       token
     });
     if (!url) return null;
-    return {
-      token,
-      url,
-      officeName: String(payload.officeName || "").trim(),
-      persisted: payload.reused ? "session" : "worker"
-    };
+    return { token, url, persisted: payload.reused ? "session" : "worker" };
   } catch {
     return null;
   }

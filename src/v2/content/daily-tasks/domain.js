@@ -101,6 +101,11 @@ export const EXEC_ACTION = Object.freeze({
   SHARE_DETAILS: "share_details",
   CONFIRM_DEAL: "confirm_deal",
   CONFIRM_VIEWING: "confirm_viewing",
+  CONFIRM_VIEWING_COMPLETED: "confirm_viewing_completed",
+  MARK_VIEWING_SERIOUS: "mark_viewing_serious",
+  MARK_VIEWING_FOLLOW_UP: "mark_viewing_follow_up",
+  MARK_VIEWING_NOT_SERIOUS: "mark_viewing_not_serious",
+  CREATE_DEAL: "create_deal",
   OPEN_RECORD: "open_record",
   ACCEPT_PLATFORM_OPPORTUNITY: "accept_platform_opportunity",
   DECLINE_PLATFORM_OPPORTUNITY: "decline_platform_opportunity"
@@ -634,17 +639,37 @@ function actionsForState(stateKey, record = {}) {
   const living = upper(record.livingStage);
   const offerAction = canOpenOffer(record) ? openOfferAction(record) : null;
   if (living === LIVING_TASK_STAGE.FOLLOW_UP) {
-    primary = confirmDealAction();
     if (offerAction) secondary.push(offerAction);
-    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+    return { primaryAction: null, secondaryActions: secondary.slice(0, 2) };
   }
   if (ownerNeeded) {
     primary = shouldOfferSendAction(record, "owner") ? sendToOwnerAction(record) : null;
     if (offerAction) secondary.push(offerAction);
     return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
   }
+  if (living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED) {
+    primary = {
+      id: EXEC_ACTION.CONFIRM_VIEWING_COMPLETED,
+      label: "تمت المعاينة"
+    };
+    if (offerAction) secondary.push(offerAction);
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+  }
+  if (living === LIVING_TASK_STAGE.VIEWING_COMPLETED) {
+    const outcome = upper(record.viewingOutcome);
+    if (!outcome) {
+      primary = { id: EXEC_ACTION.MARK_VIEWING_SERIOUS, label: "جدي ونكمل" };
+      secondary.push(
+        { id: EXEC_ACTION.MARK_VIEWING_FOLLOW_UP, label: "متابعة لاحقًا" },
+        { id: EXEC_ACTION.MARK_VIEWING_NOT_SERIOUS, label: "غير جاد" }
+      );
+    } else if (outcome === "SERIOUS") {
+      primary = { id: EXEC_ACTION.CREATE_DEAL, label: "إنشاء الصفقة" };
+    }
+    if (offerAction && secondary.length < 2) secondary.push(offerAction);
+    return { primaryAction: primary, secondaryActions: secondary.slice(0, 2) };
+  }
   if (living === LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION
-    || living === LIVING_TASK_STAGE.APPOINTMENT_CONFIRMED
     || living === LIVING_TASK_STAGE.PROPERTY_AVAILABLE
     || living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION) {
     if (living === LIVING_TASK_STAGE.APPOINTMENT_COORDINATION
@@ -813,6 +838,9 @@ export function buildDailyTaskView(record = {}) {
     matchStrengthLabel: text(record.matchStrengthLabel),
     missingFieldLabels: Array.isArray(record.missingFieldLabels) ? record.missingFieldLabels : [],
     livingStage: text(record.livingStage),
+    viewingCompletedAt: text(record.viewingCompletedAt),
+    viewingOutcome: text(record.viewingOutcome),
+    seriousIntentConfirmed: record.seriousIntentConfirmed === true || upper(record.seriousIntentConfirmed) === "TRUE",
     missingInfoKey: text(record.missingInfoKey),
     ownerContactNeeded: Boolean(record.ownerContactNeeded),
     hasNextCandidate: Boolean(record.hasNextCandidate),
@@ -1078,6 +1106,9 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     matchReasons: reasonsFrom(item),
     viewingAt: item.viewingAt,
     appointmentAt: item.appointmentAt,
+    viewingCompletedAt: item.viewingCompletedAt || item.metadata?.viewingCompletedAt,
+    viewingOutcome: item.viewingOutcome || item.metadata?.viewingOutcome,
+    seriousIntentConfirmed: item.seriousIntentConfirmed || item.metadata?.seriousIntentConfirmed,
     livingTimeline: item.livingTimeline || item.livingTimelineJson || item.metadata?.livingTimeline,
     hasNewResponse: item.hasNewResponse || item.metadata?.hasNewResponse,
     nextActor: item.nextActor || item.metadata?.nextActor,
@@ -1138,7 +1169,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     missingInfoKey: group.living.missingInfoKey,
     hasNextCandidate: group.living.rejectedMatchIds.length > 0 && remaining.length > 0,
     appointmentLine: formatAppointmentLine(active.viewingAt || active.appointmentAt),
-    ownerContactNeeded: group.living.ownerContactNeeded
+    ownerContactNeeded: group.living.ownerContactNeeded,
+    viewingOutcome: active.viewingOutcome
   });
   const candidates = remaining.map((item, index) => ({
     matchId: text(item.matchId || item.recordId || item.id),

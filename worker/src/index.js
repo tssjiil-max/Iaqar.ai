@@ -6121,9 +6121,10 @@ async function handleWorkflowAction(request,env,requestId) {
     if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact",requestId});
     const creationGate=evaluateDealCreation({match:m,coordination:{outcome:m.coordinationOutcome||""}});
     if(!creationGate.allowed) throw appError("deal_not_serious_yet",409,"لا تُنشأ الصفقة قبل ظهور جدية فعلية في التفاوض أو تأكيد المعاينة");
-    const startStage=matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact";
+    const completedViewing=Boolean(m.viewingCompletedAt)||String(m.livingStage||"").toUpperCase()==="VIEWING_COMPLETED";
+    const startStage=matchStatus==="negotiation"||completedViewing?"negotiation":matchStatus==="viewing"?"viewing":"contact";
     const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage});
-    return jsonResponse({ok:true,dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":"contact",requestId});
+    return jsonResponse({ok:true,dealId,status:"open",workflowStage:startStage,requestId});
   }
 
   if(action==="advance_deal"||action==="set_deal_stage"){
