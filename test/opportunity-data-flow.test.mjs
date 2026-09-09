@@ -82,7 +82,7 @@ test("resolveDetailsOpportunityId prefers offer for open action", () => {
   }, "request"), "req-1");
 });
 
-test("dedupeOperationsFeedItems keeps match doc over MATCH_REVIEW operation", () => {
+test("dedupeOperationsFeedItems keeps MATCH_REVIEW over legacy match doc", () => {
   const items = [
     {
       id: "op-1",
@@ -103,7 +103,8 @@ test("dedupeOperationsFeedItems keeps match doc over MATCH_REVIEW operation", ()
   ];
   const out = dedupeOperationsFeedItems(items);
   assert.equal(out.length, 1);
-  assert.equal(out[0].recordType, "match");
+  assert.equal(out[0].recordType, "operation");
+  assert.equal(out[0].operationType, "MATCH_REVIEW");
 });
 
 test("shouldShowBankLoadMore hides when exhausted with zero visible rows", () => {
