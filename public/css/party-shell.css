@@ -56,6 +56,32 @@ html.is-party-mode .toast {
   color: #087064;
 }
 
+.party-card + .party-card { margin-top: 12px; }
+
+.party-card h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  color: #087064;
+}
+
+.party-agreement-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf3f1;
+}
+
+.party-agreement-row:last-child { border-bottom: 0; }
+.party-agreement-row > span { font-size: 20px; font-weight: 900; color: #128c7e; }
+.party-agreement-row.is-waiting > span { color: #a57a19; }
+.party-agreement-row.is-needs_negotiation > span { color: #a13b3b; }
+.party-agreement-row p { margin: 0; display: grid; gap: 2px; }
+.party-agreement-row small { color: #687c76; font-weight: 700; }
+.party-broker-notes { margin-bottom: 12px; padding: 10px; border-radius: 12px; background: #eaf5f1; }
+.party-broker-notes strong { color: #087064; }
+.party-broker-notes p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; }
+
 .party-photos {
   display: grid;
   gap: 8px;

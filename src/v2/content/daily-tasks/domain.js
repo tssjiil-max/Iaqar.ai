@@ -819,6 +819,7 @@ export function buildDailyTaskView(record = {}) {
     opportunityId: text(record.opportunityId || record.offerId || record.requestId || record.ownerOfferId || record.clientRequestId),
     clientPhone: text(record.clientPhone || record.clientContactPhone || record.buyerPhone),
     ownerPhone: text(record.ownerPhone || record.ownerContactPhone || record.advertiserPhone),
+    contactPhone: text(record.contactPhone || record.advertiserPhoneNormalized),
     clientName: text(record.clientName),
     ownerName: text(record.ownerName),
     sessionKind,
@@ -838,6 +839,7 @@ export function buildDailyTaskView(record = {}) {
     matchStrengthLabel: text(record.matchStrengthLabel),
     missingFieldLabels: Array.isArray(record.missingFieldLabels) ? record.missingFieldLabels : [],
     livingStage: text(record.livingStage),
+    coordinationOutcome: text(record.coordinationOutcome),
     viewingCompletedAt: text(record.viewingCompletedAt),
     viewingOutcome: text(record.viewingOutcome),
     seriousIntentConfirmed: record.seriousIntentConfirmed === true || upper(record.seriousIntentConfirmed) === "TRUE",
@@ -1385,7 +1387,10 @@ export function buildOpportunityActionDailyTask(item = {}, now = new Date()) {
     statusLabel: copy.statusLabel,
     nextActionLine: copy.nextActionLine,
     requiresAction: true,
-    primaryAction: { id: EXEC_ACTION.OPEN_RECORD, label: copy.actionLabel },
+    primaryAction: {
+      id: mode === "incomplete" ? "send_completion_request" : EXEC_ACTION.OPEN_RECORD,
+      label: mode === "incomplete" ? "إرسال رابط الاستكمال" : copy.actionLabel
+    },
     secondaryActions: [],
     missingFieldLabels: missingLabels,
     referenceCode: formatOpportunityReference(opportunityId),

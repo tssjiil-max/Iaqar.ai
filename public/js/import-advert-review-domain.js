@@ -93,7 +93,7 @@ export function resolveImportPrimaryInfoFields(propertyTypeRaw = "", values = {}
     return [{ name: "area", label: "المساحة (م²)", required: false, optional: true }];
   }
   if (kind === "land") {
-    return [{ name: "area", label: "المساحة (م²)", required: true, optional: false }];
+    return [{ name: "area", label: "المساحة (م²)", required: false, optional: true }];
   }
   if (kind === "residential") {
     return [
@@ -104,7 +104,7 @@ export function resolveImportPrimaryInfoFields(propertyTypeRaw = "", values = {}
   if (kind === "building") {
     const fields = [];
     if (numericFilled(values.area)) {
-      fields.push({ name: "area", label: "المساحة (م²)", required: true, optional: false });
+      fields.push({ name: "area", label: "المساحة (م²)", required: false, optional: true });
     }
     if (numericFilled(values.units) || numericFilled(values.floorsCount)) {
       fields.push({

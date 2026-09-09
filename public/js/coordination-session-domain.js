@@ -37,6 +37,7 @@ export function emptyCoordinationSession(matchId = "", officeId = "") {
     brokerLine: "بانتظار رد العميل والمالك",
     conflictField: "",
     eventLog: [],
+    brokerNotes: [],
     appliedMediaPaths: [],
     createdAt: "",
     updatedAt: ""
@@ -69,6 +70,10 @@ export function parseCoordinationSession(raw = {}, { canonicalOffer = {} } = {})
     brokerLine: text(raw.brokerLine) || resolved.brokerLine,
     conflictField: text(raw.conflictField) || resolved.conflictField,
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.map(normalizeCoordinationEvent).filter(Boolean) : [],
+    brokerNotes: Array.isArray(raw.brokerNotes) ? raw.brokerNotes.map((note) => ({
+      id: text(note.id), audience: text(note.audience) || "both", message: text(note.message),
+      actor: "BROKER", createdAt: text(note.createdAt)
+    })).filter((note) => note.message) : [],
     appliedMediaPaths: Array.isArray(raw.appliedMediaPaths)
       ? raw.appliedMediaPaths.map((value) => text(value)).filter(Boolean)
       : [],

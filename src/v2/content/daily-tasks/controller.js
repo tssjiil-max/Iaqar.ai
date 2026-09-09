@@ -27,6 +27,7 @@ import {
 } from "./party-link-domain.js";
 import { ensurePartyReviewLink, resolvePartyPhone } from "./party-link.js";
 import { resolveDetailsOpportunityId } from "../../../../public/js/opportunity-data-flow-domain.js";
+import { topHomeDailyTasks } from "../../../../public/js/daily-tasks-source-policy.js";
 
 const state = {
   root: null,
@@ -47,7 +48,32 @@ function useDemoFixtures() {
 
 function currentTasks() {
   if (useDemoFixtures()) return dailyTasksDemoFixtures();
-  return state.tasks;
+  return topHomeDailyTasks(state.tasks);
+}
+
+async function sendCompletionRequest(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return;
+  setExecState(button, "working");
+  try {
+    const response = await fetch(`${workerBase()}/completion/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await idToken()}`
+      },
+      body: JSON.stringify({ officeId: currentOfficeId(), opportunityId: task.opportunityId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.completionUrl) throw new Error(payload.message || "تعذر إنشاء رابط الاستكمال");
+    const missing = (task.missingFieldLabels || []).join("، ");
+    const body = `بيانات العقار غير مكتملة${missing ? ` (${missing})` : ""}. أكمل البيانات من الرابط التالي:\n${payload.completionUrl}`;
+    openWhatsAppHandoff({ phone: payload.recipientPhone || task.contactPhone, text: body });
+    setExecState(button, "success");
+    notify("تم فتح واتساب برسالة ورابط الاستكمال");
+  } catch (error) {
+    setExecState(button, "error");
+    notify(error.message || "تعذر إنشاء رابط الاستكمال");
+  }
 }
 
 function notify(message) {
@@ -621,6 +647,33 @@ async function createDealFromViewing(task, button) {
   }
 }
 
+async function runBrokerNegotiationAction(task, panel, action, button) {
+  if (button?.dataset?.cv2ExecState === "working") return;
+  setExecState(button, "working");
+  const preset = String(panel?.querySelector("[data-broker-preset]")?.value || "").trim();
+  const note = String(panel?.querySelector("[data-broker-note]")?.value || "").trim();
+  const audience = String(panel?.querySelector("[data-broker-audience]")?.value || "both");
+  const workflowAction = action === "continue" ? "create_deal" : action === "no_agreement" ? "close_match" : "add_negotiation_note";
+  try {
+    const response = await fetch(`${workerBase()}/workflow/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
+      body: JSON.stringify({
+        officeId: currentOfficeId(), recordId: task.matchId, action: workflowAction,
+        note: note || preset, preset, audience
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) throw new Error(payload.message || "تعذر حفظ تدخل الوسيط");
+    notify(action === "continue" ? "تم فتح دورة الصفقة" : action === "no_agreement" ? "أُغلقت هذه المطابقة فقط" : "تم حفظ ملاحظة الوسيط");
+    setExecState(button, "success");
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+  } catch (error) {
+    setExecState(button, "error");
+    notify(error.message || "تعذر حفظ تدخل الوسيط");
+  }
+}
+
 async function confirmDealCompletion(task, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
   setExecState(button, "working");
@@ -701,6 +754,13 @@ function onListClick(event) {
   const card = event.target.closest("[data-cv2-exec-task]");
   if (!card || !root.contains(card)) return;
   const task = taskFromCard(card);
+  const brokerAction = event.target.closest("[data-broker-action]");
+  if (brokerAction) {
+    event.preventDefault();
+    event.stopPropagation();
+    void runBrokerNegotiationAction(task, brokerAction.closest("[data-broker-panel]"), brokerAction.dataset.brokerAction, brokerAction);
+    return;
+  }
   const secondary = event.target.closest("[data-cv2-exec-secondary]");
   if (secondary) {
     event.preventDefault();
@@ -817,6 +877,10 @@ function onListClick(event) {
     }
     if (action === "open_record") {
       void openActionableRecord(task);
+      return;
+    }
+    if (action === "send_completion_request") {
+      void sendCompletionRequest(task, primary);
       return;
     }
     if (action === "review_next_candidate") {

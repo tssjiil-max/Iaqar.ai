@@ -9,6 +9,7 @@ import {
 } from "./coordination-bundle-domain.js";
 import { buildPartyLocationView } from "./approximate-location-domain.js";
 import { VIEWING_APPOINTMENT_STATUS } from "./broker-viewing-schedule-domain.js";
+import { negotiationAgreementSummary } from "./negotiation-management-domain.js";
 
 export const PARTY_LINK_QUERY = "cv2Party";
 
@@ -352,6 +353,14 @@ export function buildPartySnapshot(record = {}) {
     depthLabel: numberLabel(record.depth, " م"),
     plotNumber: displayText(record.plotNumber, 40),
     description: displayText(record.description || record.details, 600),
+    rooms: Number(record.rooms || record.bedrooms || 0) || "",
+    bathrooms: Number(record.bathrooms || 0) || "",
+    floorNumber: Number(record.floorNumber || record.floor || 0) || "",
+    floors: Number(record.floors || 0) || "",
+    parking: displayText(record.parking, 40),
+    elevator: displayText(record.elevator, 40),
+    propertyAge: Number(record.propertyAge || record.age || 0) || "",
+    usage: displayText(record.usage || record.landUse, 80),
     locationUrl: safePartyLocationUrl(record.locationUrl || record.mapUrl),
     photos: publicPhotoUrls(record),
     mediaPaths,
@@ -387,6 +396,14 @@ function propertyFromSnapshot(snapshot = {}, {
     depthLabel: displayText(snapshot.depthLabel, 40) || built.depthLabel,
     plotNumber: displayText(snapshot.plotNumber, 40) || built.plotNumber,
     description: displayText(snapshot.description, 600) || built.description,
+    rooms: snapshot.rooms || built.rooms,
+    bathrooms: snapshot.bathrooms || built.bathrooms,
+    floorNumber: snapshot.floorNumber || built.floorNumber,
+    floors: snapshot.floors || built.floors,
+    parking: displayText(snapshot.parking, 40) || built.parking,
+    elevator: displayText(snapshot.elevator, 40) || built.elevator,
+    propertyAge: snapshot.propertyAge || built.propertyAge,
+    usage: displayText(snapshot.usage, 80) || built.usage,
     locationUrl: exactLocationAllowed ? (safePartyLocationUrl(snapshot.locationUrl) || built.locationUrl) : "",
     locationView
   };
@@ -536,6 +553,15 @@ export function sanitizePartyPublicView({
     privacyNotice: "لن تتم مشاركة بيانات التواصل الخاصة بك مع الطرف الآخر عبر هذه الصفحة.",
     ownerClientStatus: side === "owner" ? OWNER_CLIENT_STATUS_LINE : "",
     property: propertyFromSnapshot(snapshot, { exactLocationAllowed, canonicalOffer }),
+    agreementSummary: negotiationAgreementSummary({
+      coordination: coordinationSession || {},
+      appointment: publicAppointment,
+      match: matchRecord
+    }),
+    brokerNotes: (coordinationSession?.brokerNotes || [])
+      .filter((note) => note.audience === "both" || note.audience === side)
+      .map((note) => ({ message: text(note.message), createdAt: text(note.createdAt) }))
+      .filter((note) => note.message),
     actions: (replied || appointmentActive || bundleModeActive) ? [] : partyActionsForRole(side, { livingStage }).map((item) => ({ ...item })),
     followUpActions: replied && !appointmentActive && !bundleModeActive ? partyFollowUpActions(side, replyAction, followUpAction) : [],
     decisionPackage: bundleModeActive || bundleSubmitted ? decisionPackage : null,

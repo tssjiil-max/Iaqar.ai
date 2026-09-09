@@ -131,6 +131,7 @@ export async function createPersistentCompletionSession({
     expiresAt: minted.record.expiresAt,
     allowedFields: minted.record.allowedFields,
     completionUrl,
+    recipientPhone: text(opportunity.contactPhone || opportunity.advertiserPhoneNormalized, 60),
     token: minted.token
   };
 }

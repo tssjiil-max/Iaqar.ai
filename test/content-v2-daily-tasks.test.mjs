@@ -251,13 +251,13 @@ test("incomplete and new opportunities become direct actionable tasks while pass
     createdAt: "2026-08-25T20:00:00.000+03:00"
   }, now);
   assert.equal(incomplete.taskKind, "opportunity_action");
-  assert.equal(incomplete.primaryAction.id, EXEC_ACTION.OPEN_RECORD);
+  assert.equal(incomplete.primaryAction.id, "send_completion_request");
   assert.deepEqual(incomplete.missingFieldLabels, ["الحي", "الميزانية"]);
   const html = buildDailyTaskCardHtml(incomplete);
   assert.match(html, /فرصة تحتاج استكمال/);
   assert.match(html, /المطلوب الآن:.*استكمل الحي/);
-  assert.match(html, /data-cv2-exec-primary="open_record"/);
-  assert.match(html, />استكمال الفرصة</);
+  assert.match(html, /data-cv2-exec-primary="send_completion_request"/);
+  assert.match(html, />إرسال رابط الاستكمال</);
   assert.equal(html.includes("data-cv2-exec-reveal"), false);
   assert.equal(/<(?:input|textarea)\b/i.test(html), false);
 
@@ -289,6 +289,14 @@ test("incomplete and new opportunities become direct actionable tasks while pass
   }], now);
   assert.equal(fromPersistedOperation.opportunityId, "opp_incomplete_2");
   assert.equal(fromPersistedOperation.id, "opportunity_action_opp_incomplete_2");
+});
+
+test("incomplete task creates a completion link for WhatsApp and home shows five tasks", () => {
+  const controller = readFileSync(path.join(root, "src/v2/content/daily-tasks/controller.js"), "utf8");
+  assert.match(controller, /\/completion\/sessions/);
+  assert.match(controller, /payload\.completionUrl/);
+  assert.match(controller, /openWhatsAppHandoff/);
+  assert.match(controller, /topHomeDailyTasks\(state\.tasks\)/);
 });
 
 test("matched opportunity never emits a contradictory completion task", () => {

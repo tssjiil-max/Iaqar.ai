@@ -105,6 +105,18 @@ test("persistent completion stores only token hash under the office namespace", 
   assert.equal(fx.callbacks.at(-1).type, "missing");
 });
 
+test("authenticated completion creation returns the advertiser phone for WhatsApp handoff", async () => {
+  const fx = helpersFixture({
+    "offices/office-a/opportunities/opp-phone": { ...incompleteOpportunity, district: "", contactPhone: "0551234567" },
+    "offices/office-a": { officeId: "office-a", name: "مكتب أ" }
+  });
+  const result = await createPersistentCompletionSession({
+    projectId: "p", officeId: "office-a", opportunityId: "opp-phone",
+    accessToken: "google", appOrigin: "https://example.test", deps: fx.deps
+  });
+  assert.equal(result.recipientPhone, "0551234567");
+});
+
 test("public completion read rejects a wrong token and does not expose owner-only fields", async () => {
   const fx = helpersFixture({
     "offices/office-a/opportunities/opp-1": { ...incompleteOpportunity, internalNote: "secret" },

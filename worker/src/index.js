@@ -175,8 +175,11 @@ import {
   handleMatchLivingAction
 } from "./party-session-service.js";
 import {
+  loadCoordinationSession,
+  saveCoordinationSession,
   syncCooperationCoordinationForOffice
 } from "./coordination-session-service.js";
+import { appendCoordinationEvent } from "../../public/js/coordination-session-domain.js";
 import {
   analyzeVoiceWithGemini,
   getVoiceTelemetrySnapshot,
@@ -2267,8 +2270,8 @@ function structuredPublicIntakeToParsed(intake) {
   const senderName = cleanText(intake.name || detailsParsed.senderName, 200);
   const city = cleanText(intake.city || DEFAULT_CITY, 100);
   const rawText = [isOwner ? "عرض مالك" : "طلب عميل", propertyType, district, intake.details].filter(Boolean).join(" — ");
-  const extractedCount = [propertyType, district, transactionType, amount, detailsParsed.area, phone, senderName].filter(Boolean).length;
-  const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 7) * 100));
+  const extractedCount = [propertyType, district, transactionType, amount, phone, senderName].filter(Boolean).length;
+  const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 6) * 100));
   return {
     kind: isOwner ? "owner_offer" : "client_request",
     rawText, normalizedText: normalizeArabicText(rawText), city, propertyType, district, transactionType,
@@ -2282,7 +2285,7 @@ function structuredPublicIntakeToParsed(intake) {
     directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
     completeness: Math.min(100, completeness), confidence: Math.max(70, Number(detailsParsed.confidence || 0)),
     missing: [!propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
-      !amount && "price", !detailsParsed.area && "area", !phone && "phone", !senderName && "senderName"].filter(Boolean)
+      !amount && "price", !phone && "phone", !senderName && "senderName"].filter(Boolean)
   };
 }
 
@@ -2779,8 +2782,8 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
   const directOwner = /مالك مباشر|من المالك|مباشر من المالك|صاحب العقار/.test(text);
   const furnished = /مفروش|مؤثث/.test(text);
 
-  const extractedCount = [propertyType, district, transactionType, price, area, phone, senderName].filter(Boolean).length;
-  const completeness = Math.round((extractedCount / 7) * 100);
+  const extractedCount = [propertyType, district, transactionType, price, phone, senderName].filter(Boolean).length;
+  const completeness = Math.round((extractedCount / 6) * 100);
   const confidence = Math.min(100, Math.round((Math.max(offerScore, requestScore) * 18) + (completeness * 0.72)));
 
   return {
@@ -2790,7 +2793,7 @@ function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = 
     directOwner, furnished, offerScore, requestScore, completeness, confidence,
     missing: [
       !propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
-      !price && "price", !area && "area", !phone && "phone", !senderName && "senderName"
+      !price && "price", !phone && "phone", !senderName && "senderName"
     ].filter(Boolean)
   };
 }
@@ -6091,6 +6094,21 @@ async function handleWorkflowAction(request,env,requestId) {
     return jsonResponse({ok:true,status,nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,requestId});
   }
 
+  if(action==="add_negotiation_note"){
+    const audience=["both","client","owner"].includes(String(body.audience||"").toLowerCase())?String(body.audience).toLowerCase():"both";
+    const message=note||cleanText(body.preset,200);
+    if(!message)throw appError("negotiation_note_required",400,"اكتب ملاحظة أو اختر إجراءً");
+    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
+    const matchData=firestoreFieldsToJs(matchDoc.fields||{});
+    const session=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
+    const brokerNote={id:`bn_${Date.now()}`,audience,message,actor:"BROKER",createdAt:now.toISOString()};
+    const next={...session,brokerNotes:[...(session.brokerNotes||[]),brokerNote].slice(-40)};
+    next.eventLog=appendCoordinationEvent(next.eventLog||[],{type:"BROKER_NOTE",actor:"BROKER",label:message},{now});
+    await saveCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,session:next});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"broker_negotiation_note",stage:matchData.workflowStage||"negotiation",note:message,identity,accessToken,createdAt:now});
+    return jsonResponse({ok:true,matchId:recordId,audience,noteId:brokerNote.id,requestId});
+  }
+
   if(action==="close_match"){
     const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
     const m=firestoreFieldsToJs(matchDoc.fields||{});
@@ -6104,6 +6122,14 @@ async function handleWorkflowAction(request,env,requestId) {
       closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"match_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
+    for(const opportunityId of [m.clientRequestId||m.requestId,m.ownerOfferId||m.offerId].filter(Boolean)){
+      await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",opportunityId],accessToken,fields:{
+        lifecycleStatus:firestoreString("ACTIVE"),workflowStage:firestoreString("matching"),matchingReadiness:firestoreString("READY_FOR_MATCHING"),updatedAt:firestoreTimestamp(now)
+      }});
+    }
+    await expireOperationsForMatchIds({
+      projectId,officeId,matchIds:[recordId],accessToken,listCollectionDocuments,setFirestoreDocument,firestoreHelpers:operationsFirestoreHelpers()
+    }).catch((error)=>console.warn("[iaqar-ops] close negotiation operation",error&&error.message));
     if(m.dealId){
       const linkedDeal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",m.dealId],accessToken,allowMissing:true});
       const linked=linkedDeal?firestoreFieldsToJs(linkedDeal.fields||{}):{};

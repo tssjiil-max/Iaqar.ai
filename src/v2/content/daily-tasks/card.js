@@ -417,10 +417,34 @@ function matchGroupBodyHtml(task = {}) {
     ${matchActionHtml(task)}
     ${partyResponsesHtml(task)}
     ${partyProgressHtml(task)}
+    ${brokerNegotiationPanelHtml(task)}
     ${matchDetailsHtml(task)}
     ${ranked && (task.candidates || []).length > 1 ? `<details class="cv2-match-fold"><summary><span>☷</span> المرشحون</summary><div class="cv2-match-fold-body"><ol>${ranked}</ol></div></details>` : ""}
     ${timelineHtml(task)}
   </div>`;
+}
+
+function brokerNegotiationPanelHtml(task = {}) {
+  const serious = task.seriousIntentConfirmed === true || String(task.viewingOutcome || "").toUpperCase() === "SERIOUS";
+  const context = `${task.livingStage || task.workflowStage || ""} ${task.coordinationOutcome || ""}`.toLowerCase();
+  const allOptions = ["طلب توضيح معلومة", "السعر يحتاج مراجعة", "اقترح حلًا وسطًا", "تنسيق معاينة", "الموعد يحتاج إعادة جدولة", "الطرفان متفقان مبدئيًا", "بانتظار قرار المالك", "بانتظار قرار العميل", "تمت المعاينة", "يوجد جدية", "لا يوجد اتفاق"];
+  const options = context.includes("viewing") ? allOptions.slice(3) : context.includes("negotiation") || context.includes("price") ? allOptions.slice(1) : allOptions;
+  const smartOptions = options.map((label) => `<option value="${escapeContentHtml(label)}">${escapeContentHtml(label)}</option>`).join("");
+  return `<details class="cv2-broker-panel" data-broker-panel>
+    <summary><span aria-hidden="true">♙</span> الوسيط</summary>
+    <div class="cv2-broker-panel-body">
+      <label>إجراء ذكي<select data-broker-preset>
+        ${smartOptions}
+      </select></label>
+      <label>ملاحظة<textarea data-broker-note maxlength="1000" rows="2" placeholder="ملاحظة مختصرة"></textarea></label>
+      <label>إرسال إلى<select data-broker-audience><option value="both">الطرفين</option><option value="client">العميل</option><option value="owner">المالك</option></select></label>
+      <button type="button" class="cv2-exec-secondary" data-broker-action="note">حفظ وإرسال الملاحظة</button>
+      <div class="cv2-broker-decisions">
+        ${serious ? `<button type="button" class="cv2-exec-primary" data-broker-action="continue">متابعة وإتمام الصفقة</button>` : ""}
+        <button type="button" class="cv2-exec-secondary" data-broker-action="no_agreement">لم يتم الاتفاق</button>
+      </div>
+    </div>
+  </details>`;
 }
 
 function cooperationBodyHtml(task = {}) {

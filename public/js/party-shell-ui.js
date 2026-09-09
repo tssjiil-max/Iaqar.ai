@@ -6,6 +6,7 @@ import {
   PARTY_INVALID_COPY,
   PARTY_REPLY_RECORDED
 } from "./party-session-domain.js";
+import { negotiationPropertyFacts } from "./negotiation-management-domain.js";
 
 function escapeHtml(value = "") {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -54,6 +55,29 @@ function propertyRows(property = {}) {
     .filter(([, value]) => value)
     .map(([label, value]) => `<p class="party-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`)
     .join("");
+}
+
+function negotiationPropertyRows(property = {}) {
+  return negotiationPropertyFacts(property)
+    .map((item) => `<p class="party-row"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></p>`)
+    .join("");
+}
+
+function agreementSummaryHtml(rows = []) {
+  if (!rows.length) return "";
+  const icon = { agreed: "✓", waiting: "◷", needs_negotiation: "!" };
+  return `<section class="party-card party-agreement-card" data-testid="party-agreement-summary">
+    <h2>ما تم الاتفاق عليه</h2>
+    ${rows.map((row) => `<div class="party-agreement-row is-${escapeHtml(row.key)}">
+      <span aria-hidden="true">${icon[row.key] || "◷"}</span>
+      <p><strong>${escapeHtml(row.title)}</strong><small>${escapeHtml(row.label)}</small></p>
+    </div>`).join("")}
+  </section>`;
+}
+
+function brokerNotesHtml(notes = []) {
+  if (!notes.length) return "";
+  return `<div class="party-broker-notes"><strong>ملاحظات الوسيط</strong>${notes.map((note) => `<p>${escapeHtml(note.message)}</p>`).join("")}</div>`;
 }
 
 function galleryHtml(property = {}) {
@@ -495,14 +519,17 @@ export function buildPartyShellHtml(view = {}) {
       ${privacyNotice}
     </header>
     <section class="party-card party-property-card">
-      <h1>${escapeHtml(view.title || "")}</h1>
+      <h1>معلومات العقار</h1>
       ${ownerStatus}
       ${galleryHtml(property)}
-      ${details}
+      ${negotiationPropertyRows(property) || details}
       ${locationBlock(property)}
       ${locationButtonHtml(property)}
     </section>
+    ${agreementSummaryHtml(view.agreementSummary || [])}
     <section class="party-card party-reply-card">
+      <h2>التفاوض</h2>
+      ${brokerNotesHtml(view.brokerNotes || [])}
       ${replyBlock}
       <p class="party-status" id="partyStatus" hidden></p>
     </section>
