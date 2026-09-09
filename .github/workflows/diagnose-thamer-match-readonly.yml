@@ -32,6 +32,7 @@ jobs:
 
       - name: Prepare read-only staging credentials
         run: |
+          mkdir -p /tmp/iaqar-staging-secret-files
           node scripts/staging-gac.mjs "/tmp/iaqar-staging-gac.json" "/tmp/iaqar-staging-secret-files"
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/iaqar-staging-gac.json" >> "$GITHUB_ENV"
 
