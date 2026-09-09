@@ -12,6 +12,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 import worker from "../worker/src/index.js";
+import { projectOperationToUiItem } from "../public/js/operations-domain.js";
 import {
   consumeDailyTaskDiagnostics,
   mapOperationsItemsToDailyTasks
@@ -211,12 +212,7 @@ async function mapperCheck(matchId = "") {
       : Promise.resolve({ docs: [] })
   ]);
   const items = [
-    ...operations.docs.map((doc) => ({
-      id: doc.id,
-      recordId: doc.id,
-      recordType: "operation",
-      ...doc.data()
-    })),
+    ...operations.docs.map((doc) => projectOperationToUiItem({ id: doc.id, ...doc.data() })),
     ...opps.docs.map((doc) => {
       const item = doc.data() || {};
       return {
@@ -464,9 +460,9 @@ async function main() {
     ui
   };
   mkdirSync(OUT, { recursive: true });
-  mkdirSync("/workspace/qa", { recursive: true });
+  mkdirSync(path.join(ROOT, "qa"), { recursive: true });
   writeFileSync(`${OUT}/match-integrity-live-qa.json`, JSON.stringify(report, null, 2));
-  writeFileSync("/workspace/qa/match-integrity-live-qa.json", JSON.stringify(report, null, 2));
+  writeFileSync(path.join(ROOT, "qa", "match-integrity-live-qa.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({
     matchingStatus: matching.status,
     matchCount: matching.body?.matchCount,
