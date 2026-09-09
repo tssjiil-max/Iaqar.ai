@@ -336,7 +336,7 @@ async function captureUi({ customToken, matchId }) {
     localStorage.setItem("iaqar.officeId", officeId);
   }, { customToken, officeId: OFFICE_ID });
   await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
-  await page.waitForTimeout(4000);
+  await page.locator("[data-cv2-exec-task]").first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
   const card = page.locator(`[data-cv2-exec-task][data-match-id="${matchId}"]`).first();
   const cardCount = await page.locator("[data-cv2-exec-task]").count();
   const matchedCardCount = await card.count();
@@ -361,10 +361,19 @@ async function captureUi({ customToken, matchId }) {
     await page.screenshot({ path: shots.offer, fullPage: false });
   }
   const html = await page.content();
+  const url = page.url();
+  const bodyPreview = (await page.locator("body").innerText()).slice(0, 500);
   writeFileSync(path.join(OUT, "match_integrity_ui.html"), html);
   await browser.close();
   server.close();
-  return { shots, cardCount, matchedCardCount, origin };
+  return {
+    shots,
+    cardCount,
+    matchedCardCount,
+    origin,
+    url,
+    bodyPreview
+  };
 }
 
 async function main() {
@@ -467,10 +476,14 @@ async function main() {
     matchingStatus: matching.status,
     matchCount: matching.body?.matchCount,
     qaMatch: report.qaMatch,
+    operation: report.operation,
     mapper: report.mapper,
     reload: report.reload,
     uiError: ui.error || "",
-    cardCount: ui.cardCount
+    cardCount: ui.cardCount,
+    matchedCardCount: ui.matchedCardCount,
+    uiUrl: ui.url || "",
+    uiBodyPreview: ui.bodyPreview || ""
   }, null, 2));
 
   const verified = Boolean(
