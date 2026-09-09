@@ -11,6 +11,8 @@ import {
   topHomeDailyTasks,
   dailyTaskSourceBoundaryGuarantees
 } from "../public/js/daily-tasks-source-policy.js";
+import { projectOperationToUiItem } from "../public/js/operations-domain.js";
+import { mapOperationsItemsToDailyTasks } from "../src/v2/content/daily-tasks/domain.js";
 
 const allTypes = [...DAILY_TASK_REQUIRED_OPERATION_TYPES];
 
@@ -147,4 +149,32 @@ test("operations fallback cannot hide a new match behind an unordered Firestore 
   assert.ok(fallback, "operations fallback block must exist");
   assert.doesNotMatch(fallback, /\.limit\(/, "unordered fallback must read all active operations");
   assert.match(fallback, /updatedAt \|\| b\.createdAt/, "equal-priority work must be newest first");
+});
+
+test("Operations-only MATCH_REVIEW remains visible and can resolve both party sends lazily", () => {
+  const item = projectOperationToUiItem({
+    id: "op-match-live",
+    type: "MATCH_REVIEW",
+    status: "OPEN",
+    matchId: "match-live",
+    opportunityId: "request-live",
+    metadataJson: JSON.stringify({
+      clientRequestId: "request-live",
+      ownerOfferId: "offer-live",
+      matchGroupId: "request-live",
+      score: 98,
+      opportunityScore: 98,
+      candidatePropertyType: "دور",
+      candidatePurpose: "SALE",
+      candidateDistrict: "عروة",
+      candidateCity: "المدينة المنورة"
+    }),
+    createdAt: "2026-09-09T09:00:00.000Z",
+    updatedAt: "2026-09-09T09:00:00.000Z"
+  });
+  const tasks = mapOperationsItemsToDailyTasks([item], new Date("2026-09-09T09:01:00.000Z"));
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].matchId, "match-live");
+  assert.equal(tasks[0].canSendToClient, true);
+  assert.equal(tasks[0].canSendToOwner, true);
 });

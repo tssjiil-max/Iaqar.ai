@@ -302,10 +302,13 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     propertyOfficeId: String(metadata.propertyOfficeId || ""),
     originOpportunityId: String(metadata.originOpportunityId || op.opportunityId || ""),
     counterpartOpportunityId: String(metadata.counterpartOpportunityId || ""),
-    propertyType: String(op.propertyType || metadata.propertyType || ""),
-    purpose: String(op.purpose || metadata.purpose || ""),
-    district: String(op.district || metadata.district || ""),
-    city: String(metadata.city || ""),
+    // MATCH_REVIEW operations created before source facts were duplicated still
+    // carry the matched candidate facts. Use them so Operations-only mode can
+    // render the task instead of rejecting it as an unidentified listing.
+    propertyType: String(op.propertyType || metadata.propertyType || metadata.candidatePropertyType || ""),
+    purpose: String(op.purpose || metadata.purpose || metadata.candidatePurpose || ""),
+    district: String(op.district || metadata.district || metadata.candidateDistrict || ""),
+    city: String(metadata.city || metadata.candidateCity || ""),
     moneyLine: String(metadata.moneyLine || ""),
     reasonCodes: Array.isArray(metadata.reasonCodes) ? metadata.reasonCodes : [],
     reasonLabels: Array.isArray(metadata.reasonLabels) ? metadata.reasonLabels : [],

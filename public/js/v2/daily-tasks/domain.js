@@ -1237,7 +1237,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     offer: active._canonicalOffer,
     ownerContactNeeded: group.living.ownerContactNeeded
   });
-  const isEarlyContactGate = !contactGate.contactComplete
+  const contactResolvable = contactGate.contactComplete || active.canSendToClient === true;
+  const isEarlyContactGate = !contactResolvable
     && stateKey === DAILY_TASK_STATE.NEW_MATCH
     && upper(group.living.stage) === LIVING_TASK_STAGE.MATCH_FOUND
     && group.living.rejectedMatchIds.length === 0;
@@ -1245,7 +1246,7 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     ? MATCH_CONTACT_INCOMPLETE_LABEL
     : (copy.statusLabel != null
       ? text(copy.statusLabel)
-      : (contactGate.canShowAsMatched
+      : (contactResolvable
         ? (DAILY_TASK_STATUS_LABELS[stateKey] || "")
         : MATCH_CONTACT_INCOMPLETE_LABEL));
   const reasons = derivedMatchReasons(sourceListing, proposedListing, best.reasons || reasonsFrom(active));
@@ -1314,8 +1315,8 @@ export function buildMatchGroupDailyTask(group, now = new Date()) {
     updatedAt: active.updatedAt || group.living.livingUpdatedAt,
     dataIntegrity: active.dataIntegrity || TASK_DATA_INTEGRITY.OK,
     integrityReasons: active.integrityReasons || [],
-    canSendToClient: contactGate.canSendToClient,
-    canSendToOwner: contactGate.canSendToOwner,
+    canSendToClient: contactGate.canSendToClient || active.canSendToClient === true,
+    canSendToOwner: contactGate.canSendToOwner || active.canSendToOwner === true,
     canOpenOffer: active.canOpenOffer !== false && Boolean(text(active.ownerOfferId || active.offerId)),
     isTestFixture: Boolean(active.isTestFixture),
     testRunId: text(active.testRunId)
@@ -1561,11 +1562,15 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
       offer: diagnosis.offer,
       ownerContactNeeded: item.ownerContactNeeded
     });
+    // Operations-only projections do not contain private phone numbers. The
+    // click handler resolves them securely from the canonical opportunity IDs.
+    const canResolveContactsLazily = opportunities.size === 0
+      && Boolean(diagnosis.requestId && diagnosis.offerId);
     valid.push({
       ...item,
       dataIntegrity: TASK_DATA_INTEGRITY.OK,
-      canSendToClient: contactGate.canSendToClient,
-      canSendToOwner: contactGate.canSendToOwner,
+      canSendToClient: contactGate.canSendToClient || canResolveContactsLazily,
+      canSendToOwner: contactGate.canSendToOwner || canResolveContactsLazily,
       canOpenOffer: Boolean(diagnosis.offerId && (diagnosis.offer || opportunities.size === 0)),
       clientPhone: contactGate.clientPhone || clientPhone || item.clientPhone,
       ownerPhone: contactGate.ownerPhone || ownerPhone || item.ownerPhone,
