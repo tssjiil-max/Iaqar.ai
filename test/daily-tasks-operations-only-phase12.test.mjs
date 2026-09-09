@@ -140,3 +140,11 @@ test("workflow runtime uses a measured cutover instead of unconditional mixed co
   assert.match(source, /iaqar:daily-task-source-audit/);
   assert.doesNotMatch(source, /const baseItems = dedupeFeedItems\(\[\s*\.\.\.operationItems,\s*\.\.\.intakeItems,\s*\.\.\.opportunityItems,\s*\.\.\.activeMatchOperations\(\),\s*\.\.\.activeDealOperations\(\),\s*\.\.\.workspaceItems/s);
 });
+
+test("operations fallback cannot hide a new match behind an unordered Firestore limit", async () => {
+  const source = await readFile(new URL("../public/js/workflow-office.js", import.meta.url), "utf8");
+  const fallback = source.match(/Fallback without orderBy[\s\S]*?\.catch\(\(fallbackError\)/)?.[0] || "";
+  assert.ok(fallback, "operations fallback block must exist");
+  assert.doesNotMatch(fallback, /\.limit\(/, "unordered fallback must read all active operations");
+  assert.match(fallback, /updatedAt \|\| b\.createdAt/, "equal-priority work must be newest first");
+});

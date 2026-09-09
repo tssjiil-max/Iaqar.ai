@@ -1503,14 +1503,20 @@
         emitOperations();
       }, (error) => {
         console.warn("[iaqar] operations listener", error);
-        // Fallback without orderBy if composite index/query fails — still surface MATCH_REVIEW.
+        // Fallback without orderBy if the staging composite index is unavailable.
+        // Never limit an unordered result: that can hide a newly-created match
+        // behind an arbitrary page of older operations.
         operationsRef
           .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
-          .limit(50)
           .get()
           .then((snapshot) => {
             operationItems = snapshot.docs.map(projectPersistedOperation)
-              .sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+              .sort((a, b) => {
+                const priority = (a.priority ?? 2) - (b.priority ?? 2);
+                if (priority !== 0) return priority;
+                return String(b.updatedAt || b.createdAt || "")
+                  .localeCompare(String(a.updatedAt || a.createdAt || ""));
+              });
             dailyTaskShadowSourcesReady.operations = true;
             pruneSavedOpportunityWorkspaceItems();
             emitOperations();
