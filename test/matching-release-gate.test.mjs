@@ -184,3 +184,23 @@ test("release gate keeps invalid active matches on the diagnostic path before re
   assert.match(invalidBlock, /return/);
   assert.doesNotMatch(invalidBlock, /createMatchReviewBundle\s*\(/);
 });
+
+test("an existing Match is repaired with MATCH_REVIEW before duplicate return", () => {
+  const workerSource = readRepositoryFile("worker", "src", "index.js");
+  const duplicateStart = workerSource.indexOf("if (existingMatch) {");
+  const duplicateEnd = workerSource.indexOf("await supersedeMatchesForPairKey", duplicateStart);
+  const duplicateBlock = workerSource.slice(duplicateStart, duplicateEnd);
+  assert.match(duplicateBlock, /ensurePersistedMatchReviewOperation/);
+  assert.match(duplicateBlock, /persisted\.operationId = ensured\.operationId/);
+  assert.ok(
+    duplicateBlock.indexOf("ensurePersistedMatchReviewOperation") < duplicateBlock.lastIndexOf("return persisted"),
+    "duplicate Match must not return before ensuring MATCH_REVIEW"
+  );
+
+  const ensureStart = workerSource.indexOf("async function ensurePersistedMatchReviewOperation");
+  const ensureEnd = workerSource.indexOf("async function persistScoredMatch", ensureStart);
+  const ensureBlock = workerSource.slice(ensureStart, ensureEnd);
+  assert.match(ensureBlock, /createMatchReviewBundle/);
+  assert.match(ensureBlock, /match_review_operation_missing/);
+  assert.doesNotMatch(ensureBlock, /catch\s*\(/);
+});
