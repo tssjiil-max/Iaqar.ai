@@ -1,5 +1,7 @@
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+import { projectOperationToUiItem } from "../public/js/operations-domain.js";
+import { mapOperationsItemsToDailyTasks, consumeDailyTaskDiagnostics } from "../src/v2/content/daily-tasks/domain.js";
 
 const PROJECT_ID = "iaqar-ai-staging";
 const SLUG = "thamer";
@@ -10,110 +12,51 @@ const db = getFirestore();
 const claimSnap = await db.collection("officeSlugClaims").doc(SLUG).get();
 const claim = claimSnap.exists ? (claimSnap.data() || {}) : {};
 const OFFICE_ID = String(claim.officeId || "").trim();
-
 console.log("slug:", SLUG);
 console.log("resolvedOfficeId:", OFFICE_ID || "NONE");
+if (!OFFICE_ID) process.exit(0);
 
-if (!OFFICE_ID) {
-  console.log("failure: slug claim missing or has no officeId");
+const office = db.collection("offices").doc(OFFICE_ID);
+const matchSnap = await office.collection("matches").orderBy("createdAt","desc").limit(10).get();
+const realMatches = matchSnap.docs
+  .map(d=>({id:d.id,...(d.data()||{})}))
+  .filter(x=>x.isTestFixture!==true && x.qaLiveE2e!==true);
+const match = realMatches[0] || null;
+
+if (!match) {
+  console.log("matchId: NONE");
   process.exit(0);
 }
 
-const office = db.collection("offices").doc(OFFICE_ID);
+const matchId = match.id;
+const opsSnap = await office.collection("operations").where("matchId","==",matchId).limit(20).get();
+const ops = opsSnap.docs.map(d=>({id:d.id,...(d.data()||{})}));
+const review = ops.find(x=>String(x.type||"").toUpperCase()==="MATCH_REVIEW") || null;
 
-function ts(v) {
-  if (!v) return "";
-  if (typeof v.toDate === "function") return v.toDate().toISOString();
-  return String(v);
+console.log("matchId:", matchId);
+console.log("requestId:", match.requestId || match.clientRequestId || "");
+console.log("offerId:", match.offerId || match.ownerOfferId || "");
+console.log("matchStatus:", match.status || "");
+console.log("matchScore:", match.score ?? "");
+console.log("matchOperationIdField:", match.operationId || "");
+console.log("MATCH_REVIEW created:", review ? "YES":"NO");
+console.log("operationId:", review?.id || "NONE");
+console.log("operationType:", review?.type || "NONE");
+console.log("operationStatus:", review?.status || "NONE");
+console.log("assignedBrokerId:", review?.assignedBrokerId || match.assignedBrokerId || "NONE");
+console.log("operationOfficeId:", review?.officeId || "NONE");
+
+if (review) {
+  const projected = projectOperationToUiItem(review);
+  consumeDailyTaskDiagnostics();
+  const mapped = mapOperationsItemsToDailyTasks([projected], new Date(), {officeId:OFFICE_ID});
+  const diags = consumeDailyTaskDiagnostics();
+  console.log("projectedRecordType:", projected.recordType || "");
+  console.log("projectedOperationType:", projected.operationType || "");
+  console.log("projectedMatchId:", projected.matchId || "");
+  console.log("projectedRequestId:", projected.requestId || projected.clientRequestId || "");
+  console.log("projectedOfferId:", projected.offerId || projected.ownerOfferId || "");
+  console.log("mappedTaskCount:", mapped.length);
+  console.log("mappedTaskIds:", mapped.map(x=>x.id).join(",") || "NONE");
+  console.log("mapperDiagnostics:", JSON.stringify(diags));
 }
-function pickOpp(doc) {
-  const x = doc.data() || {};
-  return {
-    id: doc.id,
-    opportunityKind: x.opportunityKind || x.kind || "",
-    purpose: x.purpose || x.transactionType || "",
-    propertyType: x.propertyType || "",
-    city: x.city || "",
-    district: x.district || "",
-    lifecycleStatus: x.lifecycleStatus || "",
-    status: x.status || "",
-    matchingReadiness: x.matchingReadiness || "",
-    completeness: x.completeness ?? x.dataCompleteness ?? "",
-    budget: x.budget ?? x.priceMax ?? "",
-    salePrice: x.salePrice ?? x.price ?? "",
-    annualRent: x.annualRent ?? "",
-    area: x.area ?? "",
-    rooms: x.rooms ?? "",
-    sourceRecordId: x.sourceRecordId || "",
-    sourceCollection: x.sourceCollection || "",
-    createdAt: ts(x.createdAt),
-    updatedAt: ts(x.updatedAt)
-  };
-}
-function pickIntake(doc) {
-  const x = doc.data() || {};
-  return {
-    id: doc.id,
-    kind: x.kind || "",
-    transactionType: x.transactionType || "",
-    propertyType: x.propertyType || "",
-    city: x.city || "",
-    district: x.district || "",
-    status: x.status || "",
-    processingState: x.processingState || "",
-    opportunityId: x.opportunityId || "",
-    processedRecordId: x.processedRecordId || "",
-    matchCount: x.matchCount ?? "",
-    lifecycleStatus: x.lifecycleStatus || "",
-    createdAt: ts(x.createdAt),
-    updatedAt: ts(x.updatedAt),
-    processedAt: ts(x.processedAt)
-  };
-}
-
-const [oppSnap, intakeSnap, matchSnap, diagSnap] = await Promise.all([
-  office.collection("opportunities").orderBy("createdAt", "desc").limit(10).get(),
-  office.collection("publicIntake").orderBy("createdAt", "desc").limit(10).get(),
-  office.collection("matches").orderBy("createdAt", "desc").limit(10).get(),
-  office.collection("matchDiagnostics").orderBy("createdAt", "desc").limit(10).get().catch(() => ({ docs: [] }))
-]);
-
-const opps = oppSnap.docs.map(pickOpp).filter(x => !String(x.id).includes("livee2e"));
-const intakes = intakeSnap.docs.map(pickIntake);
-const matches = matchSnap.docs.map(d => ({ id:d.id, status:d.data()?.status || "", createdAt:ts(d.data()?.createdAt), requestId:d.data()?.requestId || d.data()?.clientRequestId || "", offerId:d.data()?.offerId || d.data()?.ownerOfferId || "" }));
-const diags = diagSnap.docs.map(d => ({ id:d.id, ...(d.data() || {}) })).map(x => ({
-  id:x.id,
-  integrityStatus:x.integrityStatus || "",
-  integrityReason:x.integrityReason || "",
-  detailsJson:x.detailsJson || "",
-  createdAt:ts(x.createdAt)
-}));
-
-console.log("LATEST_OPPORTUNITIES");
-for (const x of opps.slice(0,6)) console.log(JSON.stringify(x));
-console.log("LATEST_PUBLIC_INTAKE");
-for (const x of intakes.slice(0,6)) console.log(JSON.stringify(x));
-console.log("LATEST_MATCHES");
-for (const x of matches.slice(0,6)) console.log(JSON.stringify(x));
-console.log("LATEST_MATCH_DIAGNOSTICS");
-for (const x of diags.slice(0,6)) console.log(JSON.stringify(x));
-
-const recentIntakes = intakes.slice(0,2);
-const linkedOppIds = recentIntakes.map(x => x.opportunityId).filter(Boolean);
-const linkedOpps = opps.filter(x => linkedOppIds.includes(x.id));
-
-let failure = "undetermined";
-if (recentIntakes.length && recentIntakes.every(x => Number(x.matchCount || 0) === 0)) {
-  failure = "publicIntake completed with matchCount=0; no persisted match was created";
-}
-if (diags[0]?.integrityReason) {
-  failure = "candidate reached canonical-linkage validation and was rejected: " + diags[0].integrityReason;
-}
-if (linkedOppIds.length && linkedOpps.length < linkedOppIds.length) {
-  failure = "publicIntake points to opportunityId not found among recent opportunities";
-}
-
-console.log("DIAGNOSIS");
-console.log("recentIntakeIds:", recentIntakes.map(x=>x.id).join(",") || "NONE");
-console.log("linkedOpportunityIds:", linkedOppIds.join(",") || "NONE");
-console.log("failure:", failure);
