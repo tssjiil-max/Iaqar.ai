@@ -2,10 +2,23 @@ import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 
 const PROJECT_ID = "iaqar-ai-staging";
-const OFFICE_ID = "thamer";
+const SLUG = "thamer";
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = getFirestore();
+
+const claimSnap = await db.collection("officeSlugClaims").doc(SLUG).get();
+const claim = claimSnap.exists ? (claimSnap.data() || {}) : {};
+const OFFICE_ID = String(claim.officeId || "").trim();
+
+console.log("slug:", SLUG);
+console.log("resolvedOfficeId:", OFFICE_ID || "NONE");
+
+if (!OFFICE_ID) {
+  console.log("failure: slug claim missing or has no officeId");
+  process.exit(0);
+}
+
 const office = db.collection("offices").doc(OFFICE_ID);
 
 function ts(v) {
@@ -91,13 +104,13 @@ const linkedOpps = opps.filter(x => linkedOppIds.includes(x.id));
 
 let failure = "undetermined";
 if (recentIntakes.length && recentIntakes.every(x => Number(x.matchCount || 0) === 0)) {
-  failure = "publicIntake completed with matchCount=0; persistScoredMatch was never reached for a successful candidate";
+  failure = "publicIntake completed with matchCount=0; no persisted match was created";
 }
 if (diags[0]?.integrityReason) {
-  failure = "matching candidate reached canonical-linkage validation and was rejected: " + diags[0].integrityReason;
+  failure = "candidate reached canonical-linkage validation and was rejected: " + diags[0].integrityReason;
 }
-if (linkedOpps.length < linkedOppIds.length) {
-  failure = "publicIntake points to opportunityId that is not present/readable in latest opportunities";
+if (linkedOppIds.length && linkedOpps.length < linkedOppIds.length) {
+  failure = "publicIntake points to opportunityId not found among recent opportunities";
 }
 
 console.log("DIAGNOSIS");
