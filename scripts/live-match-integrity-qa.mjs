@@ -242,7 +242,14 @@ async function mapperCheck(matchId = "") {
     mapped,
     hidden,
     matchDocs: matches.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-    operationDocs: operations.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    operationDocs: operations.docs.map((doc) => {
+      const data = doc.data() || {};
+      let metadata = data.metadata || {};
+      if ((!metadata || !Object.keys(metadata).length) && data.metadataJson) {
+        try { metadata = JSON.parse(data.metadataJson); } catch { metadata = {}; }
+      }
+      return { id: doc.id, ...data, metadata };
+    })
   };
 }
 
@@ -300,32 +307,9 @@ function startLocalServer() {
 }
 
 async function captureUi({ customToken, matchId }) {
-  const { server, port } = await startLocalServer();
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = STAGING_URL;
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  const stagingFirebase = {
-    apiKey: "AIzaSyDoP_FMh_ibKRotJmE7F4WBeEUfLJeAX4k",
-    authDomain: "iaqar-ai-staging.firebaseapp.com",
-    projectId: "iaqar-ai-staging",
-    storageBucket: "iaqar-ai-staging.firebasestorage.app",
-    messagingSenderId: "1010507631812",
-    appId: "1:1010507631812:web:65cf5a5934dd8e75c2cd91"
-  };
-  await page.route("**/__/firebase/init.js", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "text/javascript",
-      body: `if (typeof firebase !== "undefined" && firebase.initializeApp && (!firebase.apps || !firebase.apps.length)) { firebase.initializeApp(${JSON.stringify(stagingFirebase)}); }`
-    });
-  });
-  await page.route("**/__/firebase/init.json", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(stagingFirebase)
-    });
-  });
   await page.goto(`${origin}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}&contentV2=1`, {
     waitUntil: "domcontentloaded",
     timeout: 90000
@@ -365,7 +349,6 @@ async function captureUi({ customToken, matchId }) {
   const bodyPreview = (await page.locator("body").innerText()).slice(0, 500);
   writeFileSync(path.join(OUT, "match_integrity_ui.html"), html);
   await browser.close();
-  server.close();
   return {
     shots,
     cardCount,
