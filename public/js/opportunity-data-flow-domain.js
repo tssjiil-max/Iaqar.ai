@@ -163,8 +163,10 @@ export function extractOpportunityIdFromOperationsItem(item = {}) {
 function feedItemRank(item = {}) {
   const recordType = String(item.recordType || "").toLowerCase();
   const opType = String(item.operationType || "").toUpperCase();
+  // MATCH_REVIEW is the canonical broker execution item after a persisted match.
+  // Keep it over the legacy match shadow row for the same matchId.
+  if (opType === "MATCH_REVIEW") return 50;
   if (recordType === "match") return 40;
-  if (opType === "MATCH_REVIEW") return 30;
   if (recordType === "deal") return 20;
   if (recordType === "opportunity" && (Number(item.activeMatchCount || item.matchCount || 0) > 0 || item.matchId)) {
     return 10;
