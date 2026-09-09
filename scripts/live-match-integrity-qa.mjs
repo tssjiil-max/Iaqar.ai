@@ -202,13 +202,21 @@ function matchItem(doc) {
   };
 }
 
-async function mapperCheck() {
-  const [matches, opps] = await Promise.all([
+async function mapperCheck(matchId = "") {
+  const [matches, opps, operations] = await Promise.all([
     office.collection("matches").where("testRunId", "==", RUN_ID).limit(20).get(),
-    office.collection("opportunities").where("testRunId", "==", RUN_ID).limit(20).get()
+    office.collection("opportunities").where("testRunId", "==", RUN_ID).limit(20).get(),
+    matchId
+      ? office.collection("operations").where("matchId", "==", matchId).limit(20).get()
+      : Promise.resolve({ docs: [] })
   ]);
   const items = [
-    ...matches.docs.map(matchItem),
+    ...operations.docs.map((doc) => ({
+      id: doc.id,
+      recordId: doc.id,
+      recordType: "operation",
+      ...doc.data()
+    })),
     ...opps.docs.map((doc) => {
       const item = doc.data() || {};
       return {
@@ -234,7 +242,12 @@ async function mapperCheck() {
   consumeDailyTaskDiagnostics();
   const mapped = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: OFFICE_ID });
   const hidden = consumeDailyTaskDiagnostics();
-  return { mapped, hidden, matchDocs: matches.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+  return {
+    mapped,
+    hidden,
+    matchDocs: matches.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    operationDocs: operations.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  };
 }
 
 function findMappedTask(mapped, { matchId, requestId, offerId }) {
@@ -245,6 +258,11 @@ function findMappedTask(mapped, { matchId, requestId, offerId }) {
 
 async function cleanup() {
   if (process.argv.includes("--keep") || process.env.KEEP_FIXTURES === "1") return;
+  const fixtureMatches = await office.collection("matches").where("testRunId", "==", RUN_ID).limit(50).get();
+  for (const match of fixtureMatches.docs) {
+    const operations = await office.collection("operations").where("matchId", "==", match.id).limit(50).get();
+    await Promise.all(operations.docs.map((doc) => doc.ref.delete()));
+  }
   for (const name of ["opportunities", "matches", "operations"]) {
     const snap = await office.collection(name).where("testRunId", "==", RUN_ID).limit(50).get();
     await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
@@ -325,6 +343,7 @@ async function captureUi({ customToken, matchId }) {
   await page.waitForTimeout(4000);
   const card = page.locator(`[data-cv2-exec-task][data-match-id="${matchId}"]`).first();
   const cardCount = await page.locator("[data-cv2-exec-task]").count();
+  const matchedCardCount = await card.count();
   mkdirSync(OUT, { recursive: true });
   const shots = {};
   shots.task = path.join(OUT, "match_integrity_new_task.png");
@@ -349,7 +368,7 @@ async function captureUi({ customToken, matchId }) {
   writeFileSync(path.join(OUT, "match_integrity_ui.html"), html);
   await browser.close();
   server.close();
-  return { shots, cardCount, origin };
+  return { shots, cardCount, matchedCardCount, origin };
 }
 
 async function main() {
@@ -371,8 +390,8 @@ async function main() {
       officeId: OFFICE_ID
     }, { merge: true });
   }
-  const first = await mapperCheck();
-  const reload = await mapperCheck();
+  const first = await mapperCheck(matchId);
+  const reload = await mapperCheck(matchId);
   const qaMatch = (first.matchDocs || []).find((row) => row.requestId === REQUEST_ID && row.offerId === OFFER_ID)
     || (first.matchDocs || []).find((row) => row.matchId === matchId || row.id === matchId);
   const task = findMappedTask(first.mapped, {
@@ -385,6 +404,12 @@ async function main() {
     requestId: REQUEST_ID,
     offerId: OFFER_ID
   });
+  const operation = (first.operationDocs || []).find((row) => (
+    row.type === "MATCH_REVIEW"
+    && row.matchId === (qaMatch?.id || matchId)
+    && (row.metadata?.clientRequestId || row.clientRequestId) === REQUEST_ID
+    && (row.metadata?.ownerOfferId || row.ownerOfferId) === OFFER_ID
+  ));
 
   let ui = { shots: {}, cardCount: 0, error: "" };
   try {
@@ -411,6 +436,13 @@ async function main() {
       offerId: qaMatch.offerId || qaMatch.ownerOfferId,
       integrityStatus: qaMatch.integrityStatus,
       integrityReason: qaMatch.integrityReason
+    } : null,
+    operation: operation ? {
+      operationId: operation.id,
+      type: operation.type,
+      matchId: operation.matchId,
+      requestId: operation.metadata?.clientRequestId || operation.clientRequestId || "",
+      offerId: operation.metadata?.ownerOfferId || operation.ownerOfferId || ""
     } : null,
     mapper: {
       visible: first.mapped.length,
@@ -449,11 +481,17 @@ async function main() {
     report.qaMatch?.requestId === REQUEST_ID
     && report.qaMatch?.offerId === OFFER_ID
     && report.qaMatch?.integrityStatus === "VALID"
+    && report.operation?.type === "MATCH_REVIEW"
+    && report.operation?.matchId === report.qaMatch?.matchId
+    && report.operation?.requestId === REQUEST_ID
+    && report.operation?.offerId === OFFER_ID
     && task?.requestId === REQUEST_ID
     && task?.offerId === OFFER_ID
     && report.reload.sameMatchId
     && report.reload.sameRequestId
     && report.reload.sameOfferId
+    && !report.ui.error
+    && report.ui.matchedCardCount === 1
   );
   if (!verified) {
     console.error("MATCH INTEGRITY NOT VERIFIED");
