@@ -178,6 +178,27 @@ function feedItemKey(item = {}) {
   return text(item.id || item.recordId || item.matchId);
 }
 
+const MATCH_LIVING_STATE_FIELDS = Object.freeze([
+  "livingStage", "nextActor", "livingUpdatedAt", "livingTimeline", "livingTimelineJson",
+  "hasNewResponse", "coordinationOutcome", "coordinationBrokerLine",
+  "coordinationClientSummary", "coordinationOwnerSummary", "ownerContactNeeded",
+  "missingInfoKey", "activeMatchId", "rejectedMatchIds", "viewingCandidateAt",
+  "appointmentAt", "viewingAt", "appointmentStatus", "viewingCompletedAt",
+  "viewingOutcome", "seriousIntentConfirmed"
+]);
+
+function mergeMatchLivingState(winner = {}, shadow = {}) {
+  const winnerIsReview = String(winner.operationType || "").toUpperCase() === "MATCH_REVIEW";
+  const shadowIsMatch = String(shadow.recordType || "").toLowerCase() === "match";
+  if (!winnerIsReview || !shadowIsMatch) return winner;
+  const merged = { ...winner };
+  for (const field of MATCH_LIVING_STATE_FIELDS) {
+    const value = shadow[field];
+    if (value !== undefined && value !== null && value !== "") merged[field] = value;
+  }
+  return merged;
+}
+
 export function dedupeOperationsFeedItems(items = []) {
   const winnersByMatch = new Map();
   const dropKeys = new Set();
@@ -192,9 +213,10 @@ export function dedupeOperationsFeedItems(items = []) {
     }
     if (feedItemRank(item) > feedItemRank(prev)) {
       dropKeys.add(feedItemKey(prev));
-      winnersByMatch.set(ids.matchId, item);
+      winnersByMatch.set(ids.matchId, mergeMatchLivingState(item, prev));
     } else {
       dropKeys.add(feedItemKey(item));
+      winnersByMatch.set(ids.matchId, mergeMatchLivingState(prev, item));
     }
   }
 
@@ -207,6 +229,11 @@ export function dedupeOperationsFeedItems(items = []) {
     if (ids.matchId) {
       const winner = winnersByMatch.get(ids.matchId);
       if (winner && feedItemKey(winner) !== key) continue;
+      if (winner) {
+        seen.add(key);
+        out.push(winner);
+        continue;
+      }
     }
     seen.add(key);
     out.push(item);
