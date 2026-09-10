@@ -21,8 +21,21 @@ test("schedule conflict requests broker intervention", () => {
 
 test("both serious moves broker to agreement action", () => {
   const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "جدي ونكمل", coordinationOwnerSummary: "موافق نكمل" });
+  assert.equal(vm.currentStage, "agreement");
   assert.equal(vm.interventionRequired, true);
   assert.match(vm.interventionLine, /اتفاق الوساطة\/الصفقة/);
+});
+
+test("owner approval alone does not advance negotiation to agreement", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationOwnerSummary: "موافق نكمل" });
+  assert.equal(vm.currentStage, "viewing");
+  assert.equal(vm.interventionRequired, false);
+});
+
+test("client seriousness alone does not advance negotiation to agreement", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "جدي ونكمل" });
+  assert.equal(vm.currentStage, "viewing");
+  assert.equal(vm.interventionRequired, false);
 });
 
 test("post-viewing choices use approved wording", () => {
