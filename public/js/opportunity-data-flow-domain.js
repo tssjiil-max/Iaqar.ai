@@ -202,6 +202,18 @@ function mergeMatchLivingState(winner = {}, shadow = {}) {
 export function dedupeOperationsFeedItems(items = []) {
   const winnersByMatch = new Map();
   const dropKeys = new Set();
+  const readyOpportunityIds = new Set();
+
+  // The canonical opportunity is authoritative for completion state. A legacy
+  // MISSING_DATA operation may remain OPEN after the customer completes the form;
+  // once the opportunity is ready, that stale operation must leave the execution feed.
+  for (const item of items || []) {
+    if (String(item?.recordType || "").toLowerCase() !== "opportunity") continue;
+    const opportunityId = text(item.recordId || item.opportunityId || item.id?.replace(/^opp-/, ""));
+    if (!opportunityId) continue;
+    const readiness = evaluateMatchingReadiness(item);
+    if (readiness.isReadyForMatching) readyOpportunityIds.add(opportunityId);
+  }
 
   for (const item of items || []) {
     const ids = resolveMatchIds(item);
@@ -225,6 +237,11 @@ export function dedupeOperationsFeedItems(items = []) {
   for (const item of items || []) {
     const key = feedItemKey(item);
     if (!key || dropKeys.has(key) || seen.has(key)) continue;
+    const opType = String(item.operationType || "").toUpperCase();
+    if (opType === "MISSING_DATA") {
+      const opportunityId = extractOpportunityIdFromOperationsItem(item);
+      if (opportunityId && readyOpportunityIds.has(opportunityId)) continue;
+    }
     const ids = resolveMatchIds(item);
     if (ids.matchId) {
       const winner = winnersByMatch.get(ids.matchId);
