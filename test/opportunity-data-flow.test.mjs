@@ -15,96 +15,58 @@ import {
 } from "../public/js/opportunity-data-flow-domain.js";
 
 test("resolveMatchIds normalizes request and offer ids", () => {
-  const ids = resolveMatchIds({
-    recordType: "match",
-    id: "m1",
-    matchId: "m1",
-    clientRequestId: "req-1",
-    ownerOfferId: "off-1"
-  });
-  assert.equal(ids.matchId, "m1");
-  assert.equal(ids.requestId, "req-1");
-  assert.equal(ids.offerId, "off-1");
+  const ids = resolveMatchIds({ recordType: "match", id: "m1", matchId: "m1", clientRequestId: "req-1", ownerOfferId: "off-1" });
+  assert.equal(ids.matchId, "m1"); assert.equal(ids.requestId, "req-1"); assert.equal(ids.offerId, "off-1");
 });
 
 test("matchDedupeKey scopes by office and pair", () => {
-  const key = matchDedupeKey({
-    clientRequestId: "req-1",
-    ownerOfferId: "off-1"
-  }, "Office-A");
-  assert.equal(key, "Office-A|req-1|off-1");
+  assert.equal(matchDedupeKey({ clientRequestId: "req-1", ownerOfferId: "off-1" }, "Office-A"), "Office-A|req-1|off-1");
 });
 
 test("evaluateMatchContactGate blocks matched state without phones", () => {
-  const gate = evaluateMatchContactGate({
-    item: { clientPhone: "", ownerPhone: "" },
-    request: { contactPhone: "" },
-    offer: { contactPhone: "" }
-  });
-  assert.equal(gate.canShowAsMatched, false);
-  assert.equal(gate.canSendToClient, false);
-  assert.equal(gate.statusLabel, MATCH_CONTACT_INCOMPLETE_LABEL);
+  const gate = evaluateMatchContactGate({ item: { clientPhone: "", ownerPhone: "" }, request: { contactPhone: "" }, offer: { contactPhone: "" } });
+  assert.equal(gate.canShowAsMatched, false); assert.equal(gate.canSendToClient, false); assert.equal(gate.statusLabel, MATCH_CONTACT_INCOMPLETE_LABEL);
 });
 
 test("evaluateMatchContactGate accepts Saudi local and +966 formats", () => {
-  const gate = evaluateMatchContactGate({
-    item: {},
-    request: { contactPhone: "0512345678" },
-    offer: { contactPhone: "+966501234567" }
-  });
-  assert.equal(gate.clientComplete, true);
-  assert.equal(gate.ownerComplete, true);
-  assert.equal(gate.canShowAsMatched, true);
+  const gate = evaluateMatchContactGate({ item: {}, request: { contactPhone: "0512345678" }, offer: { contactPhone: "+966501234567" } });
+  assert.equal(gate.clientComplete, true); assert.equal(gate.ownerComplete, true); assert.equal(gate.canShowAsMatched, true);
 });
 
 test("isValidContactPhone rejects short numbers", () => {
-  assert.equal(isValidContactPhone("055123"), false);
-  assert.equal(isValidContactPhone("0512345678"), true);
+  assert.equal(isValidContactPhone("055123"), false); assert.equal(isValidContactPhone("0512345678"), true);
 });
 
 test("extractOpportunityIdFromOperationsItem resolves match offer/request", () => {
-  assert.equal(extractOpportunityIdFromOperationsItem({
-    recordType: "match",
-    matchId: "m1",
-    ownerOfferId: "off-9",
-    clientRequestId: "req-2"
-  }), "off-9");
+  assert.equal(extractOpportunityIdFromOperationsItem({ recordType: "match", matchId: "m1", ownerOfferId: "off-9", clientRequestId: "req-2" }), "off-9");
 });
 
 test("resolveDetailsOpportunityId prefers offer for open action", () => {
-  assert.equal(resolveDetailsOpportunityId({
-    offerId: "off-1",
-    requestId: "req-1"
-  }, "offer"), "off-1");
-  assert.equal(resolveDetailsOpportunityId({
-    offerId: "off-1",
-    requestId: "req-1"
-  }, "request"), "req-1");
+  assert.equal(resolveDetailsOpportunityId({ offerId: "off-1", requestId: "req-1" }, "offer"), "off-1");
+  assert.equal(resolveDetailsOpportunityId({ offerId: "off-1", requestId: "req-1" }, "request"), "req-1");
 });
 
 test("dedupeOperationsFeedItems keeps MATCH_REVIEW over legacy match doc", () => {
   const items = [
-    {
-      id: "op-1",
-      operationType: "MATCH_REVIEW",
-      matchId: "m1",
-      recordType: "operation",
-      clientRequestId: "req-1",
-      ownerOfferId: "off-1"
-    },
-    {
-      id: "m1",
-      recordId: "m1",
-      recordType: "match",
-      matchId: "m1",
-      clientRequestId: "req-1",
-      ownerOfferId: "off-1"
-    }
+    { id: "op-1", operationType: "MATCH_REVIEW", matchId: "m1", recordType: "operation", clientRequestId: "req-1", ownerOfferId: "off-1" },
+    { id: "m1", recordId: "m1", recordType: "match", matchId: "m1", clientRequestId: "req-1", ownerOfferId: "off-1" }
   ];
   const out = dedupeOperationsFeedItems(items);
-  assert.equal(out.length, 1);
-  assert.equal(out[0].recordType, "operation");
-  assert.equal(out[0].operationType, "MATCH_REVIEW");
+  assert.equal(out.length, 1); assert.equal(out[0].recordType, "operation"); assert.equal(out[0].operationType, "MATCH_REVIEW");
+});
+
+test("dedupeOperationsFeedItems carries live negotiation state from match into MATCH_REVIEW", () => {
+  const items = [
+    { id: "op-1", operationType: "MATCH_REVIEW", matchId: "m1", recordType: "operation", status: "OPEN", clientRequestId: "req-1", ownerOfferId: "off-1" },
+    { id: "m1", recordId: "m1", recordType: "match", matchId: "m1", status: "active", livingStage: "APPOINTMENT_COORDINATION", nextActor: "OWNER", hasNewResponse: "true", coordinationOutcome: "SCHEDULE_CONFLICT", coordinationBrokerLine: "تعارض في مواعيد المعاينة", clientRequestId: "req-1", ownerOfferId: "off-1" }
+  ];
+  const [out] = dedupeOperationsFeedItems(items);
+  assert.equal(out.id, "op-1");
+  assert.equal(out.status, "OPEN");
+  assert.equal(out.livingStage, "APPOINTMENT_COORDINATION");
+  assert.equal(out.nextActor, "OWNER");
+  assert.equal(out.hasNewResponse, "true");
+  assert.equal(out.coordinationOutcome, "SCHEDULE_CONFLICT");
 });
 
 test("shouldShowBankLoadMore hides when exhausted with zero visible rows", () => {
@@ -113,11 +75,7 @@ test("shouldShowBankLoadMore hides when exhausted with zero visible rows", () =>
 });
 
 test("scopedMatchGroupKey includes office scope", () => {
-  const key = scopedMatchGroupKey({
-    clientRequestId: "req-1",
-    opportunityKind: "REQUEST"
-  }, "MyOffice");
-  assert.equal(key, "MyOffice|req-1");
+  assert.equal(scopedMatchGroupKey({ clientRequestId: "req-1", opportunityKind: "REQUEST" }, "MyOffice"), "MyOffice|req-1");
 });
 
 test("canonicalFirestoreOfficeId preserves mixed case", () => {
