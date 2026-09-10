@@ -27,10 +27,15 @@ function priceGap(task = {}) {
   return Math.max(0, Math.abs(client - owner));
 }
 
+function bothPartiesSerious(task = {}) {
+  const all = blob(task);
+  return /الطرفان جادان/.test(all) || (/جدي ونكمل/.test(all) && /موافق نكمل/.test(all));
+}
+
 function stageIndex(task = {}) {
   const stage = upper(task.livingStage || task.stage);
   const all = blob(task);
-  if (stage === "COMPLETED" || /اتفاق|الطرفان جادان|موافق نكمل/.test(all)) return 4;
+  if (stage === "COMPLETED" || /اتفاق/.test(all) || bothPartiesSerious(task)) return 4;
   if (["APPOINTMENT_COORDINATION", "APPOINTMENT_CONFIRMED", "VIEWING_COMPLETED", "FOLLOW_UP"].includes(stage) || /معاين/.test(all)) return 3;
   if (["PROPERTY_AVAILABLE", "VIEWING_DECISION"].includes(stage) || /السعر|%|حل وسط/.test(all)) return 2;
   if (["CLIENT_NEEDS_DETAILS", "CLIENT_NEEDS_MISSING_INFO", "CLIENT_INTERESTED", "WAITING_PROPERTY_CONFIRMATION"].includes(stage) || /معلوم|تفاصيل/.test(all)) return 1;
@@ -62,7 +67,7 @@ export function buildNegotiationAssistant(task = {}) {
   const all = blob(task);
   const scheduleConflict = outcome === "SCHEDULE_CONFLICT" || /تعارض/.test(text(task.coordinationBrokerLine));
   const infoNeedsBroker = Boolean(text(task.missingInfoKey)) || /يحتاج (?:تحديث|تأكيد)|معلومة.*تأكيد/.test(all);
-  const bothSerious = /الطرفان جادان/.test(all) || (/جدي ونكمل/.test(all) && /موافق نكمل/.test(all));
+  const bothSerious = bothPartiesSerious(task);
   const priceNeedsBroker = Number.isFinite(gap) && gap > 0;
 
   let intervention = "";
