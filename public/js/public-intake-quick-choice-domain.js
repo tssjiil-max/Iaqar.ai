@@ -83,6 +83,78 @@ export function intakePriceFieldLabel(owner, purposeChipId = "") {
   return purposeChipId === "rent" ? "ميزانية الإيجار السنوي" : "الميزانية";
 }
 
+function chipMarkup(group, options) {
+  return options.map((opt) =>
+    `<button type="button" class="access-chip" data-chip-group="${group}" data-chip-id="${opt.id}" data-testid="intake-chip-${group}-${opt.id}">${opt.label}</button>`
+  ).join("");
+}
+
+/**
+ * Repairs the public intake form when the classic access-gate renders before
+ * this ES module has executed. Without this repair, quick-choice arrays are
+ * temporarily unavailable and the purpose/property rows render empty until a refresh.
+ */
+export function hydrateEarlyIntakeQuickChoices(root = document) {
+  const form = root?.querySelector?.("#intakeForm");
+  if (!form) return false;
+  const purposeRow = form.querySelector(".access-chip-row--purpose");
+  const propertyRow = form.querySelector(".access-chip-row--property");
+  if (!purposeRow || !propertyRow) return false;
+
+  const owner = Boolean(form.querySelector("#transactionTypeInput"));
+  if (!purposeRow.querySelector(".access-chip")) {
+    purposeRow.innerHTML = chipMarkup("purpose", owner ? OWNER_PURPOSE_OPTIONS : CLIENT_PURPOSE_OPTIONS);
+  }
+  if (!propertyRow.querySelector(".access-chip")) {
+    propertyRow.innerHTML = chipMarkup("property", PROPERTY_TYPE_OPTIONS);
+  }
+
+  const purposeHidden = form.querySelector("#intakePurposeValue");
+  const requestKindInput = form.querySelector("#requestKindInput");
+  const transactionTypeInput = form.querySelector("#transactionTypeInput");
+  const propertyInput = form.querySelector("#propertyTypeInput");
+  const otherWrap = form.querySelector("#propertyTypeOtherWrap");
+  const otherInput = form.querySelector("#propertyTypeOtherInput");
+  const priceLabel = form.querySelector("#intakePriceLabel");
+
+  form.querySelectorAll(".access-chip").forEach((button) => {
+    if (button.dataset.quickChoiceRepairBound === "1") return;
+    button.dataset.quickChoiceRepairBound = "1";
+    button.addEventListener("click", () => {
+      const group = button.dataset.chipGroup;
+      const chipId = button.dataset.chipId || "";
+      form.querySelectorAll(`[data-chip-group="${group}"]`).forEach((node) => {
+        node.classList.toggle("is-selected", node === button);
+      });
+      if (group === "purpose") {
+        if (purposeHidden) purposeHidden.value = chipId;
+        if (owner) {
+          const row = ownerPurposeFromChip(chipId);
+          if (transactionTypeInput && row) transactionTypeInput.value = row.transactionType;
+        } else {
+          const row = clientPurposeFromChip(chipId);
+          if (requestKindInput && row) requestKindInput.value = row.requestKind;
+        }
+        if (priceLabel) priceLabel.innerHTML = `${intakePriceFieldLabel(owner, chipId)} <span class="access-required-mark" aria-hidden="true">*</span>`;
+      } else if (group === "property") {
+        if (propertyInput) propertyInput.dataset.chipId = chipId;
+        const isOther = chipId === "other";
+        if (otherWrap) otherWrap.hidden = !isOther;
+        if (otherInput) otherInput.required = isOther;
+        if (propertyInput) propertyInput.value = propertyTypeFromChip(chipId, otherInput?.value || "");
+      }
+    });
+  });
+
+  if (otherInput && otherInput.dataset.quickChoiceRepairBound !== "1") {
+    otherInput.dataset.quickChoiceRepairBound = "1";
+    otherInput.addEventListener("input", () => {
+      if (propertyInput?.dataset.chipId === "other") propertyInput.value = String(otherInput.value || "").trim();
+    });
+  }
+  return true;
+}
+
 if (typeof window !== "undefined") {
   window.IAQARPublicIntakeQuickChoice = {
     OWNER_PURPOSE_OPTIONS,
@@ -95,6 +167,10 @@ if (typeof window !== "undefined") {
     inferOwnerPurposeChip,
     inferClientPurposeChip,
     inferPropertyTypeChip,
-    intakePriceFieldLabel
+    intakePriceFieldLabel,
+    hydrateEarlyIntakeQuickChoices
   };
+  // ES modules and classic deferred scripts do not have a reliable relative
+  // execution order across all mobile browsers. Repair an already-rendered form.
+  hydrateEarlyIntakeQuickChoices(document);
 }
