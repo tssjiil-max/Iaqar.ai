@@ -34,7 +34,7 @@ function partyHtml(party, propertyType, options = {}) {
   });
 }
 
-test("negotiation forms keep client decisions structured and owner updates typed", () => {
+test("negotiation forms keep both parties structured and button-only", () => {
   const client = partyHtml("client", "شقة", { canonicalOffer: { price: 700000 } });
   const owner = partyHtml("owner", "شقة", {
     canonicalOffer: { price: 700000, area: 75 },
@@ -45,11 +45,14 @@ test("negotiation forms keep client decisions structured and owner updates typed
       requestedDetailKeys: ["area"]
     })
   });
-  assert.doesNotMatch(client, /<textarea\b/i);
-  assert.doesNotMatch(client, /<input[^>]+type=["']text["']/i);
-  assert.doesNotMatch(client, /<input[^>]+type=["']number["']/i);
-  assert.match(owner, /data-party-detail-editor="area"/);
-  assert.match(owner, /<input[^>]+type=["']number["']/i);
+  for (const html of [client, owner]) {
+    assert.doesNotMatch(html, /<textarea\b/i);
+    assert.doesNotMatch(html, /<input[^>]+type=["']text["']/i);
+    assert.doesNotMatch(html, /<input[^>]+type=["']number["']/i);
+  }
+  assert.match(owner, /صحيح/);
+  assert.match(owner, /يحتاج تحديث/);
+  assert.doesNotMatch(owner, /data-party-detail-editor=/);
 });
 
 test("client decision UI exposes the five phase-one button choices", () => {
