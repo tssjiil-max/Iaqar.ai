@@ -19,26 +19,37 @@ test("schedule conflict requests broker intervention", () => {
   assert.match(vm.interventionLine, /نسّق موعدًا موحدًا/);
 });
 
-test("both serious moves broker to agreement action", () => {
-  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "جدي ونكمل", coordinationOwnerSummary: "موافق نكمل" });
+test("both approved continuation decisions move broker to agreement action", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "أرغب بالمتابعة", coordinationOwnerSummary: "موافق على المتابعة" });
   assert.equal(vm.currentStage, "agreement");
   assert.equal(vm.interventionRequired, true);
-  assert.match(vm.interventionLine, /اتفاق الوساطة\/الصفقة/);
+  assert.match(vm.interventionLine, /الطرفان يرغبان في المتابعة/);
+  assert.match(vm.interventionLine, /إجراءات الاتفاق/);
+});
+
+test("legacy paired continuation wording remains readable", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "جدي ونكمل", coordinationOwnerSummary: "موافق نكمل" });
+  assert.equal(vm.currentStage, "agreement");
 });
 
 test("owner approval alone does not advance negotiation to agreement", () => {
-  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationOwnerSummary: "موافق نكمل" });
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationOwnerSummary: "موافق على المتابعة" });
   assert.equal(vm.currentStage, "viewing");
   assert.equal(vm.interventionRequired, false);
 });
 
-test("client seriousness alone does not advance negotiation to agreement", () => {
-  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "جدي ونكمل" });
+test("client continuation alone does not advance negotiation to agreement", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationClientSummary: "أرغب بالمتابعة" });
   assert.equal(vm.currentStage, "viewing");
   assert.equal(vm.interventionRequired, false);
+});
+
+test("agreement word in a negative sentence does not advance the stage", () => {
+  const vm = buildNegotiationAssistant({ livingStage: "FOLLOW_UP", coordinationBrokerLine: "لم يتم الاتفاق" });
+  assert.equal(vm.currentStage, "viewing");
 });
 
 test("post-viewing choices use approved wording", () => {
-  assert.deepEqual(POST_VIEWING_CHOICES.client.map((x) => x.label), ["جدي ونكمل", "أحتاج تفاوض", "غير مهتم"]);
-  assert.deepEqual(POST_VIEWING_CHOICES.owner.map((x) => x.label), ["موافق نكمل", "أحتاج تفاوض", "غير مهتم"]);
+  assert.deepEqual(POST_VIEWING_CHOICES.client.map((x) => x.label), ["أرغب بالمتابعة", "استكمال التفاوض", "غير مهتم"]);
+  assert.deepEqual(POST_VIEWING_CHOICES.owner.map((x) => x.label), ["موافق على المتابعة", "استكمال التفاوض", "غير موافق"]);
 });
