@@ -27,15 +27,20 @@ function priceGap(task = {}) {
   return Math.max(0, Math.abs(client - owner));
 }
 
-function bothPartiesSerious(task = {}) {
+function bothPartiesContinue(task = {}) {
   const all = blob(task);
-  return /الطرفان جادان/.test(all) || (/جدي ونكمل/.test(all) && /موافق نكمل/.test(all));
+  if (/الطرفان (?:جادان|يرغبان في المتابعة)/.test(all)) return true;
+  const client = text(task.coordinationClientSummary);
+  const owner = text(task.coordinationOwnerSummary);
+  const clientContinues = /(?:جدي ونكمل|أرغب بالمتابعة)/.test(client);
+  const ownerContinues = /(?:موافق نكمل|موافق على المتابعة)/.test(owner);
+  return clientContinues && ownerContinues;
 }
 
 function stageIndex(task = {}) {
   const stage = upper(task.livingStage || task.stage);
   const all = blob(task);
-  if (stage === "COMPLETED" || /اتفاق/.test(all) || bothPartiesSerious(task)) return 4;
+  if (stage === "COMPLETED" || bothPartiesContinue(task)) return 4;
   if (["APPOINTMENT_COORDINATION", "APPOINTMENT_CONFIRMED", "VIEWING_COMPLETED", "FOLLOW_UP"].includes(stage) || /معاين/.test(all)) return 3;
   if (["PROPERTY_AVAILABLE", "VIEWING_DECISION"].includes(stage) || /السعر|%|حل وسط/.test(all)) return 2;
   if (["CLIENT_NEEDS_DETAILS", "CLIENT_NEEDS_MISSING_INFO", "CLIENT_INTERESTED", "WAITING_PROPERTY_CONFIRMATION"].includes(stage) || /معلوم|تفاصيل/.test(all)) return 1;
@@ -47,7 +52,7 @@ function clientStatus(task = {}) {
   if (value) return value;
   const all = blob(task);
   if (/غير مهتم|غير مناسب/.test(all)) return "غير مهتم";
-  if (/العميل.*جاد|العميل.*مهتم/.test(all)) return "مهتم";
+  if (/العميل.*جاد|العميل.*مهتم|أرغب بالمتابعة/.test(all)) return "مهتم";
   return "بانتظار الرد";
 }
 
@@ -55,8 +60,8 @@ function ownerStatus(task = {}) {
   const value = text(task.coordinationOwnerSummary);
   if (value) return value;
   const all = blob(task);
-  if (/غير متاح/.test(all)) return "العقار غير متاح";
-  if (/العقار متاح|المالك.*موافق/.test(all)) return "العقار متاح";
+  if (/غير متاح|غير موافق/.test(all)) return "غير موافق على المتابعة";
+  if (/العقار متاح|المالك.*موافق|موافق على المتابعة/.test(all)) return "العقار متاح";
   return "بانتظار الرد";
 }
 
@@ -67,14 +72,14 @@ export function buildNegotiationAssistant(task = {}) {
   const all = blob(task);
   const scheduleConflict = outcome === "SCHEDULE_CONFLICT" || /تعارض/.test(text(task.coordinationBrokerLine));
   const infoNeedsBroker = Boolean(text(task.missingInfoKey)) || /يحتاج (?:تحديث|تأكيد)|معلومة.*تأكيد/.test(all);
-  const bothSerious = bothPartiesSerious(task);
+  const bothContinue = bothPartiesContinue(task);
   const priceNeedsBroker = Number.isFinite(gap) && gap > 0;
 
   let intervention = "";
   if (scheduleConflict) intervention = "يوجد تعارض في موعد المعاينة — نسّق موعدًا موحدًا";
   else if (priceNeedsBroker) intervention = `الفجوة المتبقية ${gap}% — اقترح حلًا وسطًا`;
   else if (infoNeedsBroker) intervention = "توجد معلومة تحتاج تأكيدًا قبل استمرار التفاوض";
-  else if (bothSerious) intervention = "الطرفان جادان — ابدأ إجراءات اتفاق الوساطة/الصفقة";
+  else if (bothContinue) intervention = "الطرفان يرغبان في المتابعة — جاهز للانتقال إلى إجراءات الاتفاق";
 
   const summary = [
     ownerStatus(task),
@@ -98,13 +103,13 @@ export function buildNegotiationAssistant(task = {}) {
 
 export const POST_VIEWING_CHOICES = Object.freeze({
   client: Object.freeze([
-    { id: "serious_continue", label: "جدي ونكمل" },
-    { id: "needs_negotiation", label: "أحتاج تفاوض" },
+    { id: "serious_continue", label: "أرغب بالمتابعة" },
+    { id: "needs_negotiation", label: "استكمال التفاوض" },
     { id: "not_interested", label: "غير مهتم" }
   ]),
   owner: Object.freeze([
-    { id: "approve_continue", label: "موافق نكمل" },
-    { id: "needs_negotiation", label: "أحتاج تفاوض" },
-    { id: "not_interested", label: "غير مهتم" }
+    { id: "approve_continue", label: "موافق على المتابعة" },
+    { id: "needs_negotiation", label: "استكمال التفاوض" },
+    { id: "not_interested", label: "غير موافق" }
   ])
 });
