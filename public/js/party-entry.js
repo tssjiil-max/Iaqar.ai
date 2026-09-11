@@ -323,13 +323,6 @@ function refreshPackageSections(root) {
   if (preference) preference.hidden = !notSuitable
     || rejectionDisposition !== "negotiable" || !rejectionReason;
   if (responseViewing) responseViewing.hidden = bundle.negotiationResponse !== "viewing";
-  if (party === "owner" && root.getAttribute("data-workflow-step") === "owner_details") {
-    root.querySelectorAll("[data-party-detail-editor]").forEach((editor) => {
-      const key = editor.getAttribute("data-party-detail-editor") || "";
-      const selected = root.querySelector(`[data-package-field="detailStatus_${CSS.escape(key)}"]:checked`);
-      editor.hidden = selected?.value !== "needs_update";
-    });
-  }
   if (party === "owner") {
     const available = bundle.propertyAvailability !== "not_available";
     const unavailable = bundle.propertyAvailability === "not_available";
@@ -382,7 +375,6 @@ function bindDecisionPackage(root, token) {
     submit.addEventListener("click", () => {
       if (submit.disabled) return;
       const bundle = collectPackageFromForm(form, party);
-      if (!validateOwnerDetailReply(form, bundle)) return;
       const photos = fileInput && !fileInput.hidden ? Array.from(fileInput.files || []) : [];
       void submitBundle(token, bundle, submit, photos);
     });
@@ -392,22 +384,6 @@ function bindDecisionPackage(root, token) {
 
 function bindCoordinationForm(root, token) {
   bindDecisionPackage(root, token);
-}
-
-function validateOwnerDetailReply(form, bundle) {
-  if (form.getAttribute("data-workflow-step") !== "owner_details") return true;
-  for (const key of bundle.detailNeedsUpdate || []) {
-    const value = bundle.detailValues?.[key];
-    if (value !== undefined && value !== null && String(value).trim() !== "") continue;
-    const editor = form.querySelector(`[data-party-detail-editor="${CSS.escape(key)}"]`);
-    const error = form.querySelector(`[data-party-detail-error="${CSS.escape(key)}"]`);
-    if (editor) editor.hidden = false;
-    if (error) error.hidden = false;
-    (editor?.querySelector("input") || editor)?.focus();
-    showStatus("أكمل الحقل المحدد أولًا.", true);
-    return false;
-  }
-  return true;
 }
 
 function bindActions(root, token) {
