@@ -12,11 +12,11 @@ test("post-viewing choices are exposed only after viewing completes", () => {
   assert.deepEqual(postViewingActionsForRole("owner", { livingStage: "APPOINTMENT_CONFIRMED" }), []);
   assert.deepEqual(
     postViewingActionsForRole("client", { livingStage: "VIEWING_COMPLETED" }).map((x) => x.label),
-    ["جدي ونكمل", "أحتاج تفاوض", "غير مهتم"]
+    ["أرغب بالمتابعة", "استكمال التفاوض", "غير مهتم"]
   );
   assert.deepEqual(
     postViewingActionsForRole("owner", { livingStage: "VIEWING_COMPLETED" }).map((x) => x.label),
-    ["موافق نكمل", "أحتاج تفاوض", "غير مهتم"]
+    ["موافق على المتابعة", "استكمال التفاوض", "غير موافق"]
   );
 });
 
@@ -35,7 +35,7 @@ test("role-specific actions cannot cross roles", () => {
   assert.equal(isAllowedPostViewingAction("client", "serious_continue", { livingStage: "WAITING_CLIENT" }), false);
 });
 
-test("one party alone never resolves both parties as serious", () => {
+test("one party alone never resolves both parties as ready to continue", () => {
   assert.equal(resolvePostViewingPair({ clientDecision: "serious_continue" }).bothContinue, false);
   assert.equal(resolvePostViewingPair({ ownerDecision: "approve_continue" }).bothContinue, false);
   assert.equal(resolvePostViewingPair({ clientDecision: "serious_continue" }).awaitingOtherParty, true);
@@ -44,10 +44,17 @@ test("one party alone never resolves both parties as serious", () => {
 test("both approved continuation decisions produce broker agreement action", () => {
   const result = resolvePostViewingPair({ clientDecision: "serious_continue", ownerDecision: "approve_continue" });
   assert.equal(result.bothContinue, true);
-  assert.match(result.brokerAction, /اتفاق الوساطة\/الصفقة/);
+  assert.match(result.brokerAction, /الطرفان يرغبان في المتابعة/);
+  assert.match(result.brokerAction, /إجراءات الاتفاق/);
+});
+
+test("owner decline uses neutral non-interest resolution wording", () => {
+  const result = resolvePostViewingPair({ ownerDecision: "not_interested" });
+  assert.equal(result.rejected, true);
+  assert.match(result.brokerAction, /لا يرغب بالمتابعة/);
 });
 
 test("approved labels remain exact", () => {
-  assert.deepEqual(POST_VIEWING_ACTIONS.client.map((x) => x.label), ["جدي ونكمل", "أحتاج تفاوض", "غير مهتم"]);
-  assert.deepEqual(POST_VIEWING_ACTIONS.owner.map((x) => x.label), ["موافق نكمل", "أحتاج تفاوض", "غير مهتم"]);
+  assert.deepEqual(POST_VIEWING_ACTIONS.client.map((x) => x.label), ["أرغب بالمتابعة", "استكمال التفاوض", "غير مهتم"]);
+  assert.deepEqual(POST_VIEWING_ACTIONS.owner.map((x) => x.label), ["موافق على المتابعة", "استكمال التفاوض", "غير موافق"]);
 });
