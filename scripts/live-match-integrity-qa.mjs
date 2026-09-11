@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Dedicated QA office: persist canonical request+offer, run NEW Worker matching
- * in-process against staging Firestore (no hosting/Worker deploy).
+ * Dedicated QA office: persist canonical request+offer, run deployed Staging Worker matching,
+ * then verify Staging Firestore, Daily Tasks mapping, and live UI end to end.
  */
 import { writeFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import http from "node:http";
@@ -11,7 +11,6 @@ import * as admin from "firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
-import worker from "../worker/src/index.js";
 import { projectOperationToUiItem } from "../public/js/operations-domain.js";
 import {
   consumeDailyTaskDiagnostics,
@@ -40,14 +39,6 @@ const sa = parsedSa.serviceAccount;
 const app = admin.initializeApp({ credential: admin.cert(sa), projectId: PROJECT_ID });
 const db = getFirestore(app);
 const office = db.collection("offices").doc(OFFICE_ID);
-
-const workerEnv = {
-  FIREBASE_PROJECT_ID: PROJECT_ID,
-  FIREBASE_CLIENT_EMAIL: sa.client_email,
-  FIREBASE_PRIVATE_KEY: sa.private_key,
-  FIREBASE_PRIVATE_KEY_ID: sa.private_key_id,
-  DEPLOYMENT_ENV: "staging"
-};
 
 function stamp() {
   return {
@@ -167,14 +158,14 @@ async function idToken() {
 }
 
 async function runMatching(token) {
-  const response = await worker.fetch(new Request("https://iaqar.test/matching/run", {
+  const response = await fetch(`${STAGING_WORKER}/matching/run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({ officeId: OFFICE_ID, opportunityId: REQUEST_ID, notify: false })
-  }), workerEnv);
+  });
   const body = await response.json().catch(() => ({}));
   return { status: response.status, body };
 }
