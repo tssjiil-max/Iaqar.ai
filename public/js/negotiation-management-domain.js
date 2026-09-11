@@ -123,3 +123,43 @@ export function negotiationManagementBoundaryGuarantees() {
     closesMatchWithoutDeletingOpportunities: true
   };
 }
+
+const POST_VIEWING_TOPICS = Object.freeze({
+  built: Object.freeze([
+    Object.freeze({ id: "price", label: "السعر" }),
+    Object.freeze({ id: "equipment", label: "التجهيزات" }),
+    Object.freeze({ id: "other", label: "شرط آخر" }),
+    Object.freeze({ id: "another_viewing", label: "معاينة أخرى" })
+  ]),
+  land: Object.freeze([
+    Object.freeze({ id: "price", label: "السعر" }),
+    Object.freeze({ id: "terms", label: "شروط الصفقة" }),
+    Object.freeze({ id: "other", label: "شرط آخر" }),
+    Object.freeze({ id: "another_viewing", label: "معاينة أخرى" })
+  ]),
+  generic: Object.freeze([
+    Object.freeze({ id: "price", label: "السعر" }),
+    Object.freeze({ id: "terms", label: "الشروط" }),
+    Object.freeze({ id: "other", label: "شرط آخر" }),
+    Object.freeze({ id: "another_viewing", label: "معاينة أخرى" })
+  ])
+});
+
+/**
+ * Small presentation-only topic set for the post-viewing negotiation step.
+ * It never changes matching requirements or creates a per-property negotiation engine.
+ */
+export function postViewingNegotiationTopics({ propertyType = "", purpose = "" } = {}) {
+  const context = `${text(propertyType)} ${text(purpose)}`.toLowerCase();
+  const isLand = context.includes("أرض") || context.includes("land");
+  const isBuiltProperty = [
+    "شقة", "apartment", "فيلا", "villa", "عمارة", "building", "شاليه", "chalet",
+    "مكتب", "office", "محل", "shop", "مستودع", "warehouse"
+  ].some((token) => context.includes(token));
+  const source = isLand
+    ? POST_VIEWING_TOPICS.land
+    : isBuiltProperty
+      ? POST_VIEWING_TOPICS.built
+      : POST_VIEWING_TOPICS.generic;
+  return source.map((item) => ({ ...item }));
+}
