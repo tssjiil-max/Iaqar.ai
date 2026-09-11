@@ -7,14 +7,14 @@ export const POST_VIEWING_STAGE = "VIEWING_COMPLETED";
 
 export const POST_VIEWING_ACTIONS = Object.freeze({
   client: Object.freeze([
-    Object.freeze({ id: "serious_continue", label: "جدي ونكمل" }),
-    Object.freeze({ id: "needs_negotiation", label: "أحتاج تفاوض" }),
+    Object.freeze({ id: "serious_continue", label: "أرغب بالمتابعة" }),
+    Object.freeze({ id: "needs_negotiation", label: "استكمال التفاوض" }),
     Object.freeze({ id: "not_interested", label: "غير مهتم" })
   ]),
   owner: Object.freeze([
-    Object.freeze({ id: "approve_continue", label: "موافق نكمل" }),
-    Object.freeze({ id: "needs_negotiation", label: "أحتاج تفاوض" }),
-    Object.freeze({ id: "not_interested", label: "غير مهتم" })
+    Object.freeze({ id: "approve_continue", label: "موافق على المتابعة" }),
+    Object.freeze({ id: "needs_negotiation", label: "استكمال التفاوض" }),
+    Object.freeze({ id: "not_interested", label: "غير موافق" })
   ])
 });
 
@@ -60,11 +60,11 @@ export function resolvePostViewingPair({ clientDecision = "", ownerDecision = ""
     negotiationNeeded,
     awaitingOtherParty,
     brokerAction: bothContinue
-      ? "الطرفان جادان — ابدأ إجراءات اتفاق الوساطة/الصفقة"
+      ? "الطرفان يرغبان في المتابعة — جاهز للانتقال إلى إجراءات الاتفاق."
       : negotiationNeeded
-        ? "أحد الطرفين يحتاج تفاوضًا — تدخل الوسيط مطلوب"
+        ? "أحد الطرفين اختار استكمال التفاوض — تدخل الوسيط عند الحاجة."
         : rejected
-          ? "أحد الطرفين غير مهتم — أغلق التفاوض دون إنشاء مهمة جديدة"
+          ? "أحد الطرفين لا يرغب بالمتابعة — أغلق هذه المطابقة فقط دون إنشاء مهمة جديدة."
           : awaitingOtherParty
             ? "بانتظار رد الطرف الآخر"
             : "بانتظار رد الطرفين"
