@@ -57,48 +57,7 @@ jobs:
 
       - name: Verify live negotiation session path
         run: |
-          export LIVE_E2E_OUT="$RUNNER_TEMP/negotiation-live-qa"
-          export CHROME_PATH="$(node --input-type=module -e "import { chromium } from 'playwright'; console.log(chromium.executablePath())")"
-          sudo mkdir -p /workspace/qa
-          sudo chown "$USER":"$USER" /workspace/qa
-          node scripts/live-staging-core-flow.mjs
-
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import path from 'node:path';
-
-          const reportPath = path.join(process.env.LIVE_E2E_OUT, 'live-core-flow-report.json');
-          const report = JSON.parse(readFileSync(reportPath, 'utf8'));
-          const http = Array.isArray(report.http) ? report.http : [];
-          const mintRows = http.filter((row) => {
-            if (String(row.method || '').toUpperCase() !== 'POST') return false;
-            try {
-              return new URL(row.url).pathname.replace(/\/+$/, '') === '/party/sessions';
-            } catch {
-              return false;
-            }
-          });
-          const partyTokens = new Set();
-          for (const row of http) {
-            try {
-              const match = new URL(row.url).pathname.match(/\/party\/sessions\/([a-f0-9]{32,128})(?:\/|$)/i);
-              if (match) partyTokens.add(match[1]);
-            } catch {
-              // Ignore malformed/non-URL log rows.
-            }
-          }
-
-          if (!report.coreFlowVerified) {
-            throw new Error('live negotiation core flow was not verified');
-          }
-          if (mintRows.length !== 2) {
-            throw new Error(`expected exactly 2 party-session mints (client + owner), got ${mintRows.length}`);
-          }
-          if (partyTokens.size !== 2) {
-            throw new Error(`expected exactly 2 stable party tokens (client + owner), got ${partyTokens.size}`);
-          }
-          console.log(`LIVE_PARTY_TOKEN_STABILITY_OK mints=${mintRows.length} tokens=${partyTokens.size}`);
-          NODE
+          LIVE_E2E_OUT="$RUNNER_TEMP/negotiation-live-qa" node scripts/live-negotiation-session-qa.mjs
 
       - name: Upload live negotiation E2E evidence
         if: always()
