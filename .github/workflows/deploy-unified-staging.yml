@@ -50,6 +50,9 @@ jobs:
           export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
           npm run deploy:staging:safe
 
+      - name: Diagnose thamer Match to Daily Tasks
+        run: node scripts/diagnose-thamer-match-daily-task.mjs
+
       - name: Verify live Match to Daily Tasks path
         run: |
           npx playwright install --with-deps chromium
