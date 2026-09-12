@@ -85,6 +85,8 @@ async function persistPair() {
     budget: 55000,
     priceOrBudget: 55000,
     priceMax: 55000,
+    contactPhone: "0501111842",
+    advertiserPhoneNormalized: "+966501111842",
     contactName: `عميل QA ${RUN_ID}`
   });
   await office.collection("opportunities").doc(OFFER_ID).set({
@@ -94,8 +96,11 @@ async function persistPair() {
     purpose: "RENT",
     advertiserRole: "OWNER",
     contactType: "owner",
+    salePrice: 50000,
     annualRent: 50000,
     priceOrBudget: 50000,
+    contactPhone: "0502221842",
+    advertiserPhoneNormalized: "+966502221842",
     contactName: `مالك QA ${RUN_ID}`
   });
 }
@@ -256,8 +261,6 @@ async function submitBundle(page, label) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok() || !body.ok) throw new Error(`${label}: bundle submit failed ${response.status()} ${JSON.stringify(body)}`);
 
-  // Reload the same opaque party URL after every reply so assertions use
-  // persisted Staging state instead of a transient client-side DOM.
   await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
   const after = await waitReady(page);
   await assertButtonsOnly(page);
@@ -351,8 +354,6 @@ async function ownerJourney(browser, token) {
         if (!(await chooseFirstVisible(page, 'input[data-package-field="viewingDays"]'))) throw new Error("owner viewing day missing");
         if (!(await chooseFirstVisible(page, 'input[data-package-field="viewingPeriods"]'))) throw new Error("owner viewing period missing");
       } else {
-        // Compatibility with the older combined owner form: answer the current
-        // facts first. Viewing remains a later workflow stage when required.
         await chooseAllOwnerDetails(page);
         const hasPrice = await chooseFirstVisible(page, 'input[data-package-field="ownerPriceDecision"][value="confirmed"]')
           || await chooseFirstVisible(page, 'input[data-package-field="ownerPriceDecision"][value="fixed"]');
