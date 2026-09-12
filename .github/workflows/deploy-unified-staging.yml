@@ -51,7 +51,18 @@ jobs:
           npm run deploy:staging:safe
 
       - name: Diagnose thamer Match to Daily Tasks
-        run: node scripts/diagnose-thamer-match-daily-task.mjs
+        run: |
+          mkdir -p "$RUNNER_TEMP/thamer-match-diagnostic"
+          node scripts/diagnose-thamer-match-daily-task.mjs | tee "$RUNNER_TEMP/thamer-match-diagnostic/report.json"
+
+      - name: Upload thamer Match diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thamer-match-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/thamer-match-diagnostic/report.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify live Match to Daily Tasks path
         run: |
