@@ -7,6 +7,12 @@ on:
     paths:
       - 'tahdeeri-apk/**'
       - '.github/workflows/build-tahdeeri-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tahdeeri-apk/**'
+      - '.github/workflows/build-tahdeeri-apk.yml'
   workflow_dispatch:
 
 jobs:
