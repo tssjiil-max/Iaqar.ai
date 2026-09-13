@@ -1,4 +1,4 @@
-name: Apply daily-task match-review hotfix
+name: Inspect persisted match review
 
 on:
   push:
@@ -6,246 +6,68 @@ on:
       - hotfix/daily-task-match-review-2026-09-13
 
 permissions:
-  contents: write
-
-concurrency:
-  group: iaqar-unified-staging
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  hotfix:
+  inspect:
     runs-on: ubuntu-latest
     environment: staging
     env:
-      IAQAR_DEPLOY_TARGET: staging
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      TARGET_BRANCH: codex/unified-staging-lineage-2026-08-29
-      EXPECTED_HEAD: e16800f1694c85eeac1fdd8fa2fa680da554c74a
-
     steps:
-      - name: Checkout target staging branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: codex/unified-staging-lineage-2026-08-29
-          fetch-depth: 0
-
-      - name: Refuse concurrent target changes
-        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Inspect target operation read-only
         run: |
-          set -euo pipefail
-          actual="$(git rev-parse HEAD)"
-          test "$actual" = "$EXPECTED_HEAD" || { echo "Target moved: $actual"; exit 1; }
-
-      - name: Patch MATCH_REVIEW persistence contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('worker/src/operations-domain.js')
-          text = path.read_text()
-          needle = '      ownerOfferId: String(ownerOfferId || ""),\n      matchGroupId: String(matchGroupId || opportunityId || ""),'
-          replacement = '      ownerOfferId: String(ownerOfferId || ""),\n      integrityStatus: "valid",\n      matchIntegrityStatus: "valid",\n      matchGroupId: String(matchGroupId || opportunityId || ""),'
-          count = text.count(needle)
-          if count != 1:
-              raise SystemExit(f'Expected exactly one MATCH_REVIEW metadata insertion point, found {count}')
-          path.write_text(text.replace(needle, replacement, 1))
-          PY
-
-          cat > test/match-review-daily-task-regression.test.mjs <<'EOF'
-          import test from "node:test";
-          import assert from "node:assert/strict";
-          import { buildMatchReviewOperation } from "../worker/src/operations-domain.js";
-          import { projectOperationToUiItem } from "../public/js/operations-domain.js";
-          import { mapOperationsItemsToDailyTasks } from "../public/js/v2/daily-tasks/domain.js";
-
-          test("valid MATCH_REVIEW survives Firestore projection into Daily Tasks", async () => {
-            const operation = await buildMatchReviewOperation({
-              officeId: "office-regression",
-              matchId: "mat_regression",
-              opportunityId: "req_regression",
-              counterpartOpportunityId: "off_regression",
-              clientRequestId: "req_regression",
-              ownerOfferId: "off_regression",
-              score: 80,
-              opportunityScore: 80,
-              isBestOpportunity: true
-            });
-
-            assert.equal(operation.status, "OPEN");
-            assert.equal(operation.metadata.clientRequestId, "req_regression");
-            assert.equal(operation.metadata.ownerOfferId, "off_regression");
-            assert.equal(operation.metadata.integrityStatus, "valid");
-            assert.equal(operation.metadata.matchIntegrityStatus, "valid");
-
-            const persisted = {
-              ...operation,
-              metadataJson: JSON.stringify(operation.metadata),
-              sourceRefsJson: "[]"
-            };
-            delete persisted.metadata;
-
-            const projected = projectOperationToUiItem(persisted, { officeId: "office-regression" });
-            assert.equal(projected.recordType, "operation");
-            assert.equal(projected.matchId, "mat_regression");
-            assert.equal(projected.clientRequestId, "req_regression");
-            assert.equal(projected.ownerOfferId, "off_regression");
-            assert.equal(projected.integrityStatus, "valid");
-
-            const tasks = mapOperationsItemsToDailyTasks(
-              [projected],
-              new Date("2026-09-13T02:00:00.000Z"),
-              { officeId: "office-regression", showTestFixtures: true }
-            );
-            assert.equal(tasks.length, 1);
-            assert.equal(tasks[0].matchId, "mat_regression");
-          });
-          EOF
-
-      - name: Install dependencies
-        run: |
-          npm ci
-          npm ci --prefix worker
-
-      - name: Run focused regression and Daily Tasks gate
-        run: |
-          node --test test/match-review-daily-task-regression.test.mjs
-          npm run test:daily-tasks:gate
-
-      - name: Run full automated tests and checks
-        run: |
-          npm test
-          npm run check
-
-      - name: Commit the narrow permanent fix
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add worker/src/operations-domain.js test/match-review-daily-task-regression.test.mjs
-          git diff --cached --check
-          git commit -m "fix: keep valid match reviews in daily tasks"
-          git push origin HEAD:"$TARGET_BRANCH"
-          echo "PATCH_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Deploy verified patch to Staging only
-        shell: bash
-        run: |
-          set -euo pipefail
-          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
-          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
-          npm run deploy:staging:safe
-
-      - name: Repair only legacy active MATCH_REVIEW records in staging-hamra
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > scripts/.repair-staging-match-review.mjs <<'EOF'
+          cat > scripts/.inspect-match-review.mjs <<'EOF'
           import admin from "firebase-admin";
           import { getFirestore } from "firebase-admin/firestore";
           import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
-          import { projectOperationToUiItem } from "../public/js/operations-domain.js";
-          import { mapOperationsItemsToDailyTasks } from "../public/js/v2/daily-tasks/domain.js";
-
           const PROJECT_ID = "iaqar-ai-staging";
           const OFFICE_ID = "staging-hamra";
-          const TARGET_MATCH_ID = "O-ydQV__A-CokU";
-          const ACTIVE_OR_LEGACY = new Set(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"]);
+          const MATCH_ID = "O-ydQV__A-CokU";
+          const OP_ID = `op_match_${MATCH_ID}`;
           const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
           if (!parsed.serviceAccount) throw new Error("STAGING_READ_ACCESS_UNAVAILABLE");
-          if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(parsed.serviceAccount), projectId: PROJECT_ID });
+          admin.initializeApp({ credential: admin.credential.cert(parsed.serviceAccount), projectId: PROJECT_ID });
           const db = getFirestore();
-          const office = db.collection("offices").doc(OFFICE_ID);
-          const snap = await office.collection("operations").where("type", "==", "MATCH_REVIEW").get();
-          let repaired = 0;
-          let inspected = 0;
-
-          function parseJson(value) {
-            if (!value) return {};
-            if (typeof value === "object") return value;
-            try { const out = JSON.parse(String(value)); return out && typeof out === "object" ? out : {}; }
-            catch { return {}; }
-          }
-
-          for (const doc of snap.docs) {
-            const data = doc.data() || {};
-            const status = String(data.status || "").toUpperCase();
-            if (!ACTIVE_OR_LEGACY.has(status)) continue;
-            const metadata = parseJson(data.metadataJson);
-            const matchId = String(data.matchId || metadata.matchId || "");
-            if (!matchId) continue;
-            const matchSnap = await office.collection("matches").doc(matchId).get();
-            if (!matchSnap.exists) continue;
-            const match = matchSnap.data() || {};
-            if (String(match.integrityStatus || "").toLowerCase() !== "valid") continue;
-            const requestId = String(match.clientRequestId || match.requestId || match.metadata?.clientRequestId || match.metadata?.requestId || "");
-            const offerId = String(match.ownerOfferId || match.offerId || match.metadata?.ownerOfferId || match.metadata?.offerId || "");
-            if (!requestId || !offerId) throw new Error(`Valid match ${matchId} is missing canonical linkage`);
-            inspected += 1;
-            const nextMetadata = {
-              ...metadata,
-              matchId,
-              clientRequestId: requestId,
-              ownerOfferId: offerId,
-              integrityStatus: "valid",
-              matchIntegrityStatus: "valid"
-            };
-            const nextStatus = status === "READY" ? "OPEN" : status;
-            const changed = nextStatus !== status
-              || String(metadata.clientRequestId || "") !== requestId
-              || String(metadata.ownerOfferId || "") !== offerId
-              || String(metadata.integrityStatus || "").toLowerCase() !== "valid"
-              || String(metadata.matchIntegrityStatus || "").toLowerCase() !== "valid"
-              || String(data.matchId || "") !== matchId;
-            if (!changed) continue;
-            await doc.ref.update({
-              status: nextStatus,
-              matchId,
-              metadataJson: JSON.stringify(nextMetadata),
-              updatedAt: new Date()
-            });
-            repaired += 1;
-          }
-
-          const targetRef = office.collection("operations").doc(`op_match_${TARGET_MATCH_ID}`);
-          const targetSnap = await targetRef.get();
-          if (!targetSnap.exists) throw new Error("Target MATCH_REVIEW operation not found after repair");
-          const target = { id: targetSnap.id, ...(targetSnap.data() || {}) };
-          const targetMeta = parseJson(target.metadataJson);
-          if (String(target.status || "").toUpperCase() !== "OPEN") throw new Error(`Target operation status is ${target.status}, expected OPEN`);
-          if (String(targetMeta.integrityStatus || "").toLowerCase() !== "valid") throw new Error("Target operation missing valid integrityStatus");
-          if (!targetMeta.clientRequestId || !targetMeta.ownerOfferId) throw new Error("Target operation missing canonical request/offer linkage");
-
-          const projected = projectOperationToUiItem(target, { officeId: OFFICE_ID });
-          const tasks = mapOperationsItemsToDailyTasks([projected], new Date(), { officeId: OFFICE_ID, showTestFixtures: true });
-          if (!tasks.some((task) => String(task.matchId || "") === TARGET_MATCH_ID)) {
-            throw new Error("Target MATCH_REVIEW still does not reach Daily Tasks projection");
-          }
-          console.log(JSON.stringify({ ok: true, officeId: OFFICE_ID, inspected, repaired, targetMatchId: TARGET_MATCH_ID, targetOperationId: target.id, status: target.status, reachesDailyTasks: true }));
+          const [opSnap, matchSnap] = await Promise.all([
+            db.doc(`offices/${OFFICE_ID}/operations/${OP_ID}`).get(),
+            db.doc(`offices/${OFFICE_ID}/matches/${MATCH_ID}`).get()
+          ]);
+          const op = opSnap.data() || {};
+          const match = matchSnap.data() || {};
+          let metadata = {};
+          try { metadata = JSON.parse(String(op.metadataJson || "{}")); } catch {}
+          console.log(JSON.stringify({
+            operationExists: opSnap.exists,
+            matchExists: matchSnap.exists,
+            operationId: OP_ID,
+            matchId: MATCH_ID,
+            status: op.status || "",
+            type: op.type || "",
+            topLevelIntegrityStatus: op.integrityStatus || "",
+            metadata: {
+              matchId: metadata.matchId || "",
+              clientRequestId: metadata.clientRequestId || metadata.requestId || "",
+              ownerOfferId: metadata.ownerOfferId || metadata.offerId || "",
+              integrityStatus: metadata.integrityStatus || "",
+              matchIntegrityStatus: metadata.matchIntegrityStatus || "",
+              candidatePropertyType: metadata.candidatePropertyType || "",
+              candidateDistrict: metadata.candidateDistrict || "",
+              candidateCity: metadata.candidateCity || ""
+            },
+            match: {
+              integrityStatus: match.integrityStatus || "",
+              clientRequestId: match.clientRequestId || match.requestId || "",
+              ownerOfferId: match.ownerOfferId || match.offerId || ""
+            }
+          }, null, 2));
           EOF
-          node scripts/.repair-staging-match-review.mjs | tee "$RUNNER_TEMP/staging-hamra-repair.json"
-          rm -f scripts/.repair-staging-match-review.mjs
-
-      - name: Verify live Match to Daily Tasks and negotiation paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx playwright install --with-deps chromium
-          LIVE_E2E_OUT="$RUNNER_TEMP/match-review-live-qa" node scripts/live-match-integrity-qa.mjs
-          LIVE_E2E_OUT="$RUNNER_TEMP/negotiation-live-qa" node scripts/live-negotiation-session-qa.mjs
-
-      - name: Upload hotfix evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-task-match-review-hotfix-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/staging-hamra-repair.json
-            ${{ runner.temp }}/match-review-live-qa
-            ${{ runner.temp }}/negotiation-live-qa
-          if-no-files-found: warn
-          retention-days: 7
+          node scripts/.inspect-match-review.mjs
