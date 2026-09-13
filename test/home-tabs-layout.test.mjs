@@ -4,12 +4,13 @@ import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
 const shellSource = readRepositoryFile("public", "index.html");
 
-test("main tabs default to Operations with bank sub-tab ready under Opportunities", async () => {
+test("broker workspace defaults to Opportunities while the legacy Operations route remains available", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
     const { document } = context;
-    assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), false);
-    assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("mainTabs").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("mainPanelOperations").hasAttribute("hidden"), true);
+    assert.equal(document.getElementById("mainPanelOpportunities").hasAttribute("hidden"), false);
     assert.equal(document.getElementById("oppPanelAdd").hasAttribute("hidden"), true);
     assert.equal(document.getElementById("oppPanelBank").hasAttribute("hidden"), false);
     assert.ok(document.getElementById("workspace"));
