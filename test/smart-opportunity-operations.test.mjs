@@ -178,4 +178,5 @@ test("UI contract keeps one primary card and local action accents", () => {
   assert.match(shell, /grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
   assert.match(shell, /nth-last-child\(-n\+2\).*grid-column:span 3/);
   assert.match(shell, /id="mainTabs"[^>]*hidden/);
+  assert.match(shell, /\.main-tabs\[hidden\]\s*\{\s*display:none !important;\s*\}/);
 });
