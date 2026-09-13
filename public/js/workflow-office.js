@@ -99,7 +99,7 @@
   let opportunityItems = [];
   let opportunityView = "active";
   let analyticsItem = null;
-  const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
+  const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"]);
   const DAILY_TASK_SOURCE_MODE = Object.freeze({ MIXED_SHADOW: "MIXED_SHADOW", OPERATIONS_ONLY: "OPERATIONS_ONLY" });
   const DAILY_TASK_REQUIRED_OPERATION_TYPES = Object.freeze([
     "MATCH_REVIEW", "MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP", "DEAL_ACTION",
