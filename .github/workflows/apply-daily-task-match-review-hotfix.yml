@@ -1,4 +1,4 @@
-name: Inspect persisted match review
+name: Build verified daily-task match-review hotfix
 
 on:
   push:
@@ -6,68 +6,136 @@ on:
       - hotfix/daily-task-match-review-2026-09-13
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  build-hotfix:
     runs-on: ubuntu-latest
-    environment: staging
-    env:
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
         with:
-          ref: codex/unified-staging-lineage-2026-08-29
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Inspect target operation read-only
+          ref: hotfix/daily-task-match-review-2026-09-13
+          fetch-depth: 0
+
+      - name: Verify target lineage
+        shell: bash
         run: |
-          cat > scripts/.inspect-match-review.mjs <<'EOF'
-          import * as admin from "firebase-admin";
-          import { getFirestore } from "firebase-admin/firestore";
-          import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
-          const PROJECT_ID = "iaqar-ai-staging";
-          const OFFICE_ID = "staging-hamra";
-          const MATCH_ID = "O-ydQV__A-CokU";
-          const OP_ID = `op_match_${MATCH_ID}`;
-          const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
-          if (!parsed.serviceAccount) throw new Error("STAGING_READ_ACCESS_UNAVAILABLE");
-          const app = admin.initializeApp({ credential: admin.cert(parsed.serviceAccount), projectId: PROJECT_ID });
-          const db = getFirestore(app);
-          const [opSnap, matchSnap] = await Promise.all([
-            db.doc(`offices/${OFFICE_ID}/operations/${OP_ID}`).get(),
-            db.doc(`offices/${OFFICE_ID}/matches/${MATCH_ID}`).get()
-          ]);
-          const op = opSnap.data() || {};
-          const match = matchSnap.data() || {};
-          let metadata = {};
-          try { metadata = JSON.parse(String(op.metadataJson || "{}")); } catch {}
-          console.log(JSON.stringify({
-            operationExists: opSnap.exists,
-            matchExists: matchSnap.exists,
-            operationId: OP_ID,
-            matchId: MATCH_ID,
-            status: op.status || "",
-            type: op.type || "",
-            topLevelIntegrityStatus: op.integrityStatus || "",
-            metadata: {
-              matchId: metadata.matchId || "",
-              clientRequestId: metadata.clientRequestId || metadata.requestId || "",
-              ownerOfferId: metadata.ownerOfferId || metadata.offerId || "",
-              integrityStatus: metadata.integrityStatus || "",
-              matchIntegrityStatus: metadata.matchIntegrityStatus || "",
-              candidatePropertyType: metadata.candidatePropertyType || "",
-              candidateDistrict: metadata.candidateDistrict || "",
-              candidateCity: metadata.candidateCity || ""
-            },
-            match: {
-              integrityStatus: match.integrityStatus || "",
-              clientRequestId: match.clientRequestId || match.requestId || "",
-              ownerOfferId: match.ownerOfferId || match.offerId || ""
-            }
-          }, null, 2));
+          set -euo pipefail
+          git fetch origin codex/unified-staging-lineage-2026-08-29
+          git merge-base --is-ancestor e16800f1694c85eeac1fdd8fa2fa680da554c74a HEAD
+
+      - name: Apply narrow product patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          ops = Path('worker/src/operations-domain.js')
+          text = ops.read_text()
+          old = '      ownerOfferId: String(ownerOfferId || ""),\n      matchGroupId: String(matchGroupId || opportunityId || ""),'
+          new = '      ownerOfferId: String(ownerOfferId || ""),\n      integrityStatus: "valid",\n      matchIntegrityStatus: "valid",\n      matchGroupId: String(matchGroupId || opportunityId || ""),'
+          if text.count(old) != 1:
+              raise SystemExit('MATCH_REVIEW metadata insertion point changed')
+          ops.write_text(text.replace(old, new, 1))
+
+          office = Path('public/js/workflow-office.js')
+          text = office.read_text()
+          old = 'const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);'
+          new = 'const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"]);'
+          if text.count(old) != 1:
+              raise SystemExit('operations active-status listener changed')
+          office.write_text(text.replace(old, new, 1))
+          PY
+
+          cat > test/match-review-daily-task-regression.test.mjs <<'EOF'
+          import test from "node:test";
+          import assert from "node:assert/strict";
+          import { readFileSync } from "node:fs";
+          import { buildMatchReviewOperation } from "../worker/src/operations-domain.js";
+          import { projectOperationToUiItem } from "../public/js/operations-domain.js";
+          import { mapOperationsItemsToDailyTasks } from "../public/js/v2/daily-tasks/domain.js";
+
+          test("MATCH_REVIEW producer persists the integrity and listing identity required by Daily Tasks", async () => {
+            const operation = await buildMatchReviewOperation({
+              officeId: "office-regression",
+              matchId: "mat_regression",
+              opportunityId: "req_regression",
+              counterpartOpportunityId: "off_regression",
+              clientRequestId: "req_regression",
+              ownerOfferId: "off_regression",
+              candidatePropertyType: "شقة",
+              candidateDistrict: "قباء",
+              candidateCity: "المدينة المنورة",
+              candidatePurpose: "شراء",
+              score: 80,
+              opportunityScore: 80,
+              isBestOpportunity: true
+            });
+
+            assert.equal(operation.status, "OPEN");
+            assert.equal(operation.metadata.clientRequestId, "req_regression");
+            assert.equal(operation.metadata.ownerOfferId, "off_regression");
+            assert.equal(operation.metadata.integrityStatus, "valid");
+            assert.equal(operation.metadata.matchIntegrityStatus, "valid");
+
+            const persisted = {
+              ...operation,
+              metadataJson: JSON.stringify(operation.metadata),
+              sourceRefsJson: "[]"
+            };
+            delete persisted.metadata;
+
+            const projected = projectOperationToUiItem(persisted, { officeId: "office-regression" });
+            assert.equal(projected.recordType, "operation");
+            assert.equal(projected.matchId, "mat_regression");
+            assert.equal(projected.clientRequestId, "req_regression");
+            assert.equal(projected.ownerOfferId, "off_regression");
+            assert.equal(projected.integrityStatus, "valid");
+
+            const tasks = mapOperationsItemsToDailyTasks(
+              [projected],
+              new Date("2026-09-13T02:00:00.000Z"),
+              { officeId: "office-regression", showTestFixtures: true }
+            );
+            assert.equal(tasks.length, 1);
+            assert.equal(tasks[0].matchId, "mat_regression");
+          });
+
+          test("legacy READY MATCH_REVIEW operations are included by the live operations listener", () => {
+            const source = readFileSync(new URL("../public/js/workflow-office.js", import.meta.url), "utf8");
+            assert.match(source, /ACTIVE_OPERATION_STATUSES = Object\.freeze\(\["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"\]\)/);
+          });
           EOF
-          node scripts/.inspect-match-review.mjs
+
+      - name: Remove temporary workflow from final hotfix tree
+        run: rm -f .github/workflows/apply-daily-task-match-review-hotfix.yml
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix worker
+
+      - name: Run focused and Daily Tasks gates
+        run: |
+          node --test test/match-review-daily-task-regression.test.mjs
+          npm run test:daily-tasks:gate
+
+      - name: Run full tests and checks
+        run: |
+          npm test
+          npm run check
+
+      - name: Commit verified narrow hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/src/operations-domain.js public/js/workflow-office.js test/match-review-daily-task-regression.test.mjs .github/workflows/apply-daily-task-match-review-hotfix.yml
+          git diff --cached --check
+          git diff --cached --name-only
+          test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "public/js/workflow-office.js test/match-review-daily-task-regression.test.mjs worker/src/operations-domain.js "
+          git commit -m "fix: keep match reviews visible in daily tasks"
+          git push origin HEAD:hotfix/daily-task-match-review-2026-09-13
