@@ -135,7 +135,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add worker/src/operations-domain.js public/js/workflow-office.js test/match-review-daily-task-regression.test.mjs .github/workflows/apply-daily-task-match-review-hotfix.yml
           git diff --cached --check
-          git diff --cached --name-only
-          test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "public/js/workflow-office.js test/match-review-daily-task-regression.test.mjs worker/src/operations-domain.js "
+          product_changes="$(git diff --cached --name-only | grep -v '^\.github/workflows/apply-daily-task-match-review-hotfix\.yml$' | sort | tr '\n' ' ')"
+          test "$product_changes" = "public/js/workflow-office.js test/match-review-daily-task-regression.test.mjs worker/src/operations-domain.js "
           git commit -m "fix: keep match reviews visible in daily tasks"
           git push origin HEAD:hotfix/daily-task-match-review-2026-09-13
