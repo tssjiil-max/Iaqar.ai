@@ -315,8 +315,11 @@ async function captureUi({ customToken, matchId }) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${REQUEST_ID}"]`)
     .filter({ has: page.locator(`[data-match-id="${matchId}"]`) })
     .first();
+  await card.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
   const cardCount = await page.locator("[data-cv2-inbox-item]").count();
   const matchedCardCount = await card.count();
+  let cardExpanded = false;
+  let editMenuOpened = false;
   mkdirSync(OUT, { recursive: true });
   const shots = {};
   shots.task = path.join(OUT, "match_integrity_new_task.png");
@@ -324,16 +327,14 @@ async function captureUi({ customToken, matchId }) {
   if (await card.count()) {
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({ path: shots.task, fullPage: false });
-    const reveal = card.locator("[data-opportunity-primary-action], [data-cv2-toggle-details]").first();
-    if (await reveal.count()) await reveal.click();
+    await card.locator(".cv2-card-head").click();
     await page.waitForTimeout(800);
+    cardExpanded = await card.evaluate((node) => node.classList.contains("is-card-expanded"));
     shots.data = path.join(OUT, "match_integrity_view_data.png");
     await page.screenshot({ path: shots.data, fullPage: false });
-    const details = card.locator("[data-cv2-toggle-details]").first();
-    if (await details.count()) {
-      await details.click();
-      await page.waitForTimeout(1200);
-    }
+    const edit = card.locator("[data-inbox-edit]").first();
+    if (await edit.count()) await edit.click();
+    editMenuOpened = await card.locator("[data-inbox-edit-menu]").count() === 1;
     shots.offer = path.join(OUT, "match_integrity_offer_details.png");
     await page.screenshot({ path: shots.offer, fullPage: false });
   }
@@ -346,6 +347,8 @@ async function captureUi({ customToken, matchId }) {
     shots,
     cardCount,
     matchedCardCount,
+    cardExpanded,
+    editMenuOpened,
     origin,
     url,
     bodyPreview
@@ -458,6 +461,8 @@ async function main() {
     uiError: ui.error || "",
     cardCount: ui.cardCount,
     matchedCardCount: ui.matchedCardCount,
+    cardExpanded: ui.cardExpanded,
+    editMenuOpened: ui.editMenuOpened,
     uiUrl: ui.url || "",
     uiBodyPreview: ui.bodyPreview || ""
   }, null, 2));
@@ -477,6 +482,8 @@ async function main() {
     && report.reload.sameOfferId
     && !report.ui.error
     && report.ui.matchedCardCount === 1
+    && report.ui.cardExpanded === true
+    && report.ui.editMenuOpened === true
   );
   if (!verified) {
     console.error("MATCH INTEGRITY NOT VERIFIED");
