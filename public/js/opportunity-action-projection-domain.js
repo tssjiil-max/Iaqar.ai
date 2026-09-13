@@ -209,14 +209,24 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
   }
 
   const byOpportunity = new Map();
+  const newMatchCounts = new Map();
   for (const operation of deduped.values()) {
     const opportunityId = operationOpportunityId(operation);
     const action = projectOpportunityAction(operation, now);
     if (!action) continue;
+    if (action.category === OPPORTUNITY_ACTION_FILTER.MATCHES) {
+      newMatchCounts.set(opportunityId, (newMatchCounts.get(opportunityId) || 0) + 1);
+    }
     const candidate = { ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId) };
     const current = byOpportunity.get(opportunityId);
     if (!current || candidate.rank < current.rank || (candidate.rank === current.rank && instant(candidate.dueAt) < instant(current.dueAt))) {
       byOpportunity.set(opportunityId, candidate);
+    }
+  }
+  for (const [opportunityId, count] of newMatchCounts) {
+    const action = byOpportunity.get(opportunityId);
+    if (action?.category === OPPORTUNITY_ACTION_FILTER.MATCHES) {
+      byOpportunity.set(opportunityId, { ...action, matchCount: count });
     }
   }
   return byOpportunity;
@@ -234,8 +244,9 @@ export function compareOpportunityPriority(left = {}, right = {}, actionFor = ()
   const rightAction = actionFor(right);
   const rankDelta = Number(leftAction?.rank || 8) - Number(rightAction?.rank || 8);
   if (rankDelta) return rankDelta;
-  const leftDue = instant(leftAction?.dueAt || left.updatedAt || left.createdAt);
-  const rightDue = instant(rightAction?.dueAt || right.updatedAt || right.createdAt);
-  if (leftAction || rightAction) return leftDue - rightDue;
-  return rightDue - leftDue;
+  if (!leftAction && !rightAction) return 0;
+  const leftDue = instant(leftAction?.dueAt);
+  const rightDue = instant(rightAction?.dueAt);
+  if (!leftDue || !rightDue) return 0;
+  return leftDue - rightDue;
 }

@@ -74,19 +74,22 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
   if (archived) return buildArchiveInboxRowHtml(record, context.now);
   const archiveLabel = archiveActionLabel(record);
   const action = context.action || null;
-  const actionStrip = action ? `
-      <section class="bank-card-action bank-card-action--${esc(action.tone)}" data-opportunity-action-state="${esc(action.category)}">
+  const statusText = action
+    ? `${action.badge}${action.category === "matches" && action.matchCount > 1 ? ` — ${action.matchCount}` : ""}`
+    : "لا إجراء حالي";
+  const actionStrip = `
+      <section class="bank-card-action bank-card-action--${esc(action?.tone || "quiet")}" data-opportunity-action-state="${esc(action?.category || "none")}">
         <div class="bank-card-action-head">
-          <span class="bank-card-action-badge">${esc(action.badge)}</span>
-          <strong>${esc(action.reason)}</strong>
+          <span class="bank-card-action-badge"><i class="bank-card-status-dot" aria-hidden="true"></i>${esc(statusText)}</span>
+          ${action?.reason && action.reason !== statusText ? `<strong>${esc(action.reason)}</strong>` : ""}
         </div>
-        ${action.detail ? `<p class="bank-card-action-detail">${esc(action.detail)}</p>` : ""}
-        ${action.primaryAction ? `<div class="bank-card-action-row">
+        ${action?.detail ? `<p class="bank-card-action-detail">${esc(action.detail)}</p>` : ""}
+        ${action?.primaryAction ? `<div class="bank-card-action-row">
           <span><small>الإجراء التالي:</small> ${esc(action.primaryAction)}</span>
           <button type="button" class="bank-card-primary-action" data-opportunity-primary-action="${esc(action.actionCode)}"
             data-operation-id="${esc(action.operationId)}" data-match-id="${esc(action.matchId)}">${esc(action.primaryAction)}</button>
         </div>` : ""}
-      </section>` : "";
+      </section>`;
   return `
     <article
       class="cv2-details${context.dataCardExpanded ? " is-card-expanded" : ""}${action ? ` has-bank-action is-${esc(action.tone)}` : ""}"

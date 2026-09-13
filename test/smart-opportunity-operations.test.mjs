@@ -130,6 +130,34 @@ test("TEST 10: opportunity without action remains in priority sorting", () => {
   assert.equal(opportunityMatchesActionFilter(null, OPPORTUNITY_ACTION_FILTER.ALL), true);
 });
 
+test("UI STATUS 1-2: no action and pending matching render gray, never green", () => {
+  const ui = readFileSync(new URL("../public/js/bank-inbox-card-ui.js", import.meta.url), "utf8");
+  assert.match(ui, /لا إجراء حالي/);
+  assert.match(ui, /bank-card-action--.*quiet/);
+  assert.equal(projectOpportunityAction({ status: "OPEN", operationType: "SEARCHING_FOR_MATCH" }, NOW), null);
+});
+
+test("UI STATUS 3-4: real matches are green and counted on one primary card", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ id: "op-1", matchId: "match-1" }),
+    operation({ id: "op-2", matchId: "match-2" })
+  ], { officeId: "office-a", now: NOW });
+  assert.equal(index.size, 1);
+  assert.equal(index.get("request-1").tone, "match");
+  assert.equal(index.get("request-1").matchCount, 2);
+});
+
+test("UI STATUS 5-7: appointment, follow-up and overdue use existing data", () => {
+  assert.equal(projectOpportunityAction(operation({ appointmentAt: "2026-09-13T14:00:00.000Z" }), NOW).tone, "appointment");
+  assert.equal(projectOpportunityAction(operation({ operationType: "OPPORTUNITY_FOLLOW_UP" }), NOW).tone, "followup");
+  assert.equal(projectOpportunityAction(operation({ appointmentAt: "2026-09-13T11:00:00.000Z" }), NOW).tone, "overdue");
+});
+
+test("priority ties without time preserve the current system order", () => {
+  const records = [{ id: "first" }, { id: "second" }];
+  assert.deepEqual(records.sort((a, b) => compareOpportunityPriority(a, b, () => null)).map((row) => row.id), ["first", "second"]);
+});
+
 test("TEST 11: completed and archived Operations never project active actions", () => {
   const index = buildOpportunityActionIndex([
     operation({ status: "COMPLETED" }), operation({ id: "op_2", status: "EXPIRED" })
