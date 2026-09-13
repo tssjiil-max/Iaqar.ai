@@ -169,7 +169,8 @@ test("bank default state shows all active items without sending brokers to daily
   assert.ok(bank.includes("hasActiveBankQuery"));
   assert.equal(bank.includes("data-bank-open-tasks"), false);
   assert.equal(bank.includes("bank-summary-chip"), false);
-  assert.ok(bank.includes("sortBankInboxRecords"));
+  assert.ok(bank.includes("compareOpportunityPriority"));
+  assert.ok(bank.includes("buildOpportunityActionIndex"));
   assert.ok(bank.includes("loadBankPage"));
   assert.equal(bank.includes("bankFilterCity"), false);
   assert.equal(bank.includes("bankFilterClearBtn"), false);

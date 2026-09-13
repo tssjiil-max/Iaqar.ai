@@ -36,7 +36,8 @@
         officeId,
         matchId: safeId(data.matchId),
         opportunityId: safeId(data.opportunityId),
-        operationId: safeId(data.operationId || data.recordId)
+        operationId: safeId(data.operationId || data.recordId),
+        appointmentId: safeId(data.appointmentId)
       };
     }
     const opportunityId = safeId(data.opportunityId);
@@ -89,6 +90,7 @@
     const openDeal = safeId(params.get("openDeal"));
     const openMatch = safeId(params.get("openMatch"));
     const openOperation = safeId(params.get("openOperation"));
+    const openAppointment = safeId(params.get("openAppointment"));
 
     const focusFollowUp = params.get("focusFollowUp") === "1";
 
@@ -102,7 +104,8 @@
       officeId,
       matchId: openMatch,
       opportunityId: openOpportunity,
-      operationId: openOperation
+      operationId: openOperation,
+      appointmentId: openAppointment
     };
     if (openOpportunity) return { kind: "opportunity", id: openOpportunity, officeId, focusFollowUp };
     if (openCooperation) return { kind: "cooperation", id: openCooperation, officeId };
@@ -139,6 +142,7 @@
           if (target.matchId) params.set("openMatch", target.matchId);
           if (target.opportunityId) params.set("openOpportunity", target.opportunityId);
           if (target.operationId) params.set("openOperation", target.operationId);
+          if (target.appointmentId) params.set("openAppointment", target.appointmentId);
         }
         else params.set("openNotifications", "1");
         break;

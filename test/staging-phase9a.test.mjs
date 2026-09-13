@@ -77,7 +77,7 @@ test("Phase 9A runtime-config: staging never falls back to production Worker", (
   assert.equal(cfg.resolveWorkerBase(), "https://iaqar-intake-staging.iaqar-ai.workers.dev");
 });
 
-test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
+test("Phase 9A wrangler staging uses iaqar-ai-staging and only the viewing reminder cron", () => {
   const toml = read("worker", "wrangler.toml");
   assert.ok(toml.includes("[env.staging]"));
   assert.ok(toml.includes('name = "iaqar-intake-staging"'));
@@ -89,7 +89,7 @@ test("Phase 9A wrangler staging uses iaqar-ai-staging and no cron", () => {
   assert.equal(stagingBlock.includes('name = "iaqar-macrodroid-intake"'), false);
   assert.ok(stagingBlock.includes('FIREBASE_PROJECT_ID = "iaqar-ai-staging"'));
   assert.equal(stagingBlock.includes('FIREBASE_PROJECT_ID = "aqar-b5d76"'), false);
-  assert.ok(/crons\s*=\s*\[\s*\]/.test(stagingBlock) || stagingBlock.includes("crons = []"));
+  assert.match(stagingBlock, /crons\s*=\s*\["\*\/5 \* \* \* \*"\]/);
 
   const rc = JSON.parse(read(".firebaserc"));
   assert.equal(rc.projects.default, "aqar-b5d76");

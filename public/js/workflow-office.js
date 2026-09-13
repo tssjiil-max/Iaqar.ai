@@ -1,3836 +1,4 @@
-(() => {
-  "use strict";
-
-  function resolveWorkerBase() {
-    if (window.IAQAR && typeof window.IAQAR.resolveWorkerBase === "function") {
-      return window.IAQAR.resolveWorkerBase();
-    }
-    // Fail closed if runtime-config did not load: never send staging hosts to prod Worker.
-    try {
-      const host = String(window.location && window.location.hostname || "").toLowerCase();
-      if (host.includes("--staging") || host.startsWith("staging.")) {
-        return "https://iaqar-intake-staging.iaqar-ai.workers.dev";
-      }
-    } catch (_) { /* ignore */ }
-    return "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
-  }
-  const SHARED_STORAGE_KEY = "iaqar.pendingSharedMessage";
-  const APP_VERSION = "stage3-fcm-fid-v1";
-  const office = () => window.IAQAR && window.IAQAR.office;
-  const messagingDomain = () => window.IAQAR && window.IAQAR.messagingDomain;
-  const LC = () => window.IAQAR_LIFECYCLE || {};
-  const OPP = () => window.IAQAR_OPPORTUNITY?.card || null;
-  const FD = () => window.IAQAR_OPPORTUNITY?.followup || null;
-  const BUX = () => window.IAQAR?.brokerMatchUxDomain || null;
-  const BAL = () => window.IAQAR?.brokerAlertsDomain || null;
-
-  function brokerUxStatusLine(item = {}) {
-    const domain = BUX();
-    if (!domain) return "";
-    if (item.viewingAt || item.appointmentAt) {
-      const viewingLine = domain.viewingConfirmationOpsLine?.(item);
-      if (viewingLine) return viewingLine;
-    }
-    return domain.negotiationOpsLine?.(item) || "";
-  }
-
-  function sanitizeOpsText(value) {
-    const raw = String(value || "").trim();
-    if (!raw) return "";
-    const lower = raw.toLowerCase();
-    if (["ms", "dd", "dd dd", "ii", "Ø§ Ø¨"].includes(lower)) return "";
-    if (/^Ø³Ù„Ù…Ù‰\s*ii$/i.test(raw)) return "";
-    if (raw.length <= 2 && !/^\d+$/.test(raw)) return "";
-    if (/^(?:[\u0621-\u064A]\s+){1,4}[\u0621-\u064A]$/.test(raw)) return "";
-    return raw;
-  }
-
-  function buildOpsSubtitle(card, fallbackParts = []) {
-    if (!card) return fallbackParts.filter(Boolean).join(" â€” ");
-    const parts = [
-      card.description,
-      card.location !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? card.location : "",
-      card.priceOrBudget !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? card.priceOrBudget : "",
-      card.area !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? card.area : ""
-    ].filter(Boolean);
-    return parts.join(" Â· ") || fallbackParts.filter(Boolean).join(" â€” ");
-  }
-
-  const MATCH_STATUS = Object.freeze({
-    new: { key: "active", label: "Ù†Ø´Ø·Ø©", mark: "ğŸŸ¢", next: "Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø·Ø±ÙÙŠÙ†" },
-    active: { key: "active", label: "Ù†Ø´Ø·Ø©", mark: "ğŸŸ¢", next: "Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø·Ø±ÙÙŠÙ†" },
-    in_progress: { key: "active", label: "Ù†Ø´Ø·Ø©", mark: "ğŸŸ¢", next: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙˆØ§ØµÙ„" },
-    waiting_response: { key: "waiting_response", label: "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø±Ø¯", mark: "ğŸŸ¡", next: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ø±Ø¯" },
-    viewing: { key: "viewing", label: "Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©", mark: "ğŸ”µ", next: "ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©" },
-    negotiation: { key: "negotiation", label: "ØªÙØ§ÙˆØ¶", mark: "ğŸŸ£", next: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙØ§ÙˆØ¶" },
-    converted: { key: "negotiation", label: "ØªÙØ§ÙˆØ¶", mark: "ğŸŸ£", next: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØµÙÙ‚Ø©" },
-    completed: { key: "completed", label: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", mark: "âœ…", next: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©" },
-    closed: { key: "closed", label: "Ø£ÙØºÙ„Ù‚Øª", mark: "ğŸ”´", next: "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø¥Ø¬Ø±Ø§Ø¡" }
-  });
-  const READINESS = Object.freeze({
-    very_high: { label: "Ø¹Ø§Ù„ÙŠØ© Ø¬Ø¯Ù‹Ø§", mark: "ğŸŸ¢" },
-    high: { label: "Ø¹Ø§Ù„ÙŠØ©", mark: "ğŸŸ¡" },
-    medium: { label: "Ù…ØªÙˆØ³Ø·Ø©", mark: "ğŸŸ " },
-    low: { label: "Ù…Ù†Ø®ÙØ¶Ø©", mark: "ğŸ”´" }
-  });
-  const DEAL_STAGE = Object.freeze({
-    contact: { label: "Ø§Ù„ØªÙˆØ§ØµÙ„", next: "ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©" },
-    viewing: { label: "Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©", next: "Ø¨Ø¯Ø¡ Ø§Ù„ØªÙØ§ÙˆØ¶" },
-    negotiation: { label: "Ø§Ù„ØªÙØ§ÙˆØ¶", next: "ØªØ¬Ù‡ÙŠØ² Ø§ØªÙØ§Ù‚ÙŠØ© Ø§Ù„ÙˆØ³Ø§Ø·Ø©" },
-    agreement: { label: "Ø§ØªÙØ§Ù‚ÙŠØ© Ø§Ù„ÙˆØ³Ø§Ø·Ø©", next: "Ø§Ø¹ØªÙ…Ø§Ø¯ Ø§Ù„Ø§ØªÙØ§Ù‚ÙŠØ©" },
-    closing: { label: "Ø¬Ø§Ù‡Ø²Ø© Ù„Ù„Ø¥ØºÙ„Ø§Ù‚", next: "Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØµÙÙ‚Ø©" },
-    closed: { label: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", next: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©" },
-    lost: { label: "Ù…ØªÙˆÙ‚ÙØ©", next: "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø¥Ø¬Ø±Ø§Ø¡" }
-  });
-  const HEALTH = Object.freeze({
-    excellent: { label: "Ù…Ù…ØªØ§Ø²Ø©", mark: "ğŸŸ¢" },
-    stable: { label: "Ù…Ø³ØªÙ‚Ø±Ø©", mark: "ğŸŸ¡" },
-    needs_intervention: { label: "ØªØ­ØªØ§Ø¬ ØªØ¯Ø®Ù„", mark: "ğŸŸ " },
-    at_risk: { label: "Ù…Ø¹Ø±Ø¶Ø© Ù„Ù„ÙØ´Ù„", mark: "ğŸ”´" }
-  });
-
-  let liveUnsubscribers = [];
-  let liveOfficeKey = "";
-  let matchItems = [];
-  let dealItems = [];
-  let intakeItems = [];
-  let operationItems = [];
-  let savedOpportunityWorkspaceItems = [];
-  let opportunityItems = [];
-  let opportunityView = "active";
-  let analyticsItem = null;
-  const ACTIVE_OPERATION_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"]);
-  const DAILY_TASK_SOURCE_MODE = Object.freeze({ MIXED_SHADOW: "MIXED_SHADOW", OPERATIONS_ONLY: "OPERATIONS_ONLY" });
-  const DAILY_TASK_REQUIRED_OPERATION_TYPES = Object.freeze([
-    "MATCH_REVIEW", "MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP", "DEAL_ACTION",
-    "COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH", "EXTERNAL_RESPONSE",
-    "SYSTEM_ACTION", "PLATFORM_OPPORTUNITY_OFFER"
-  ]);
-  let dailyTaskShadowCycles = 0;
-  let dailyTaskShadowFailures = 0;
-  let dailyTaskShadowSourcesReady = { operations: false, intake: false, opportunities: false, matches: false, deals: false };
-  const timelineCache = new Map();
-  const timelinePending = new Set();
-  const intakeProcessing = new Set();
-  const legacyReadinessRepairs = new Set();
-
-  function notify(message) {
-    const toast = document.getElementById("toast");
-    if (!toast) return;
-    toast.textContent = message;
-    toast.classList.add("show");
-    clearTimeout(notify.timer);
-    notify.timer = setTimeout(() => toast.classList.remove("show"), 2600);
-  }
-
-  function readPendingShare() {
-    try {
-      const raw = localStorage.getItem(SHARED_STORAGE_KEY);
-      if (!raw) return null;
-      const value = JSON.parse(raw);
-      return value && value.messageText ? value : null;
-    } catch (_) { return null; }
-  }
-
-  function clearPendingShare() {
-    try { localStorage.removeItem(SHARED_STORAGE_KEY); } catch (_) {}
-  }
-
-  function toDate(value) {
-    if (!value) return null;
-    if (typeof value.toDate === "function") return value.toDate();
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  function isoTime(value) {
-    const date = toDate(value);
-    return date ? date.toISOString() : "";
-  }
-
-  function relativeTime(value) {
-    const date = toDate(value) || new Date();
-    const diff = Date.now() - date.getTime();
-    if (!Number.isFinite(diff) || diff < 0) return "Ø§Ù„Ø¢Ù†";
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return "Ø§Ù„Ø¢Ù†";
-    if (minutes < 60) return `Ù‚Ø¨Ù„ ${minutes} Ø¯`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Ù‚Ø¨Ù„ ${hours} Ø³`;
-    return date.toLocaleDateString("ar-SA", { month: "short", day: "numeric" });
-  }
-
-  function dateTimeLabel(value) {
-    const date = toDate(value);
-    if (!date) return "ØºÙŠØ± Ù…Ø­Ø¯Ø¯";
-    return date.toLocaleString("ar-SA", {
-      timeZone: "Asia/Riyadh",
-      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-    });
-  }
-
-  function localDateTimeValue(date) {
-    const d = new Date(date);
-    const pad = value => String(value).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
-  function isOverdue(value) {
-    const date = toDate(value);
-    return Boolean(date && date.getTime() < Date.now());
-  }
-
-  function isFollowUpOverdueRecord(record = {}) {
-    const follow = FD()?.activeFollowUpFromRecord?.(record);
-    if (follow) return FD().isFollowUpOverdue(follow);
-    return isOverdue(record.nextFollowUpAt || record.nextActionAt);
-  }
-
-  function parseArray(value) {
-    try {
-      if (Array.isArray(value)) return value;
-      const parsed = JSON.parse(value || "[]");
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (_) { return []; }
-  }
-
-  function normalizeMatchStatus(status) {
-    return MATCH_STATUS[status] || MATCH_STATUS.active;
-  }
-
-  function readinessInfo(item) {
-    const score = Number(item.closingReadinessScore || 0);
-    const fallbackKey = score >= 85 ? "very_high" : score >= 70 ? "high" : score >= 50 ? "medium" : "low";
-    const key = READINESS[item.closingReadinessKey] ? item.closingReadinessKey : fallbackKey;
-    return { key, score, ...(READINESS[key] || READINESS.low), label: item.closingReadinessLabel || READINESS[key].label };
-  }
-
-  function healthInfo(item) {
-    const stageBase = { contact: 66, viewing: 76, negotiation: 82, agreement: 88, closing: 95, closed: 100, lost: 10 };
-    let score = Number(item.healthScore);
-    if (!Number.isFinite(score) || score <= 0) score = stageBase[item.workflowStage] || 60;
-    const updated = toDate(item.updatedAt || item.createdAt);
-    if (updated && Date.now() - updated.getTime() > 7 * 86400000) score -= 25;
-    else if (updated && Date.now() - updated.getTime() > 3 * 86400000) score -= 12;
-    if (isOverdue(item.nextFollowUpAt)) score -= 18;
-    score = Math.max(0, Math.min(100, Math.round(score)));
-    let fallbackKey = score >= 85 ? "excellent" : score >= 65 ? "stable" : score >= 40 ? "needs_intervention" : "at_risk";
-    const key = HEALTH[item.healthKey] && !isOverdue(item.nextFollowUpAt) ? item.healthKey : fallbackKey;
-    return { key, score, ...(HEALTH[key] || HEALTH.stable), label: HEALTH[key].label };
-  }
-
-  function timelineLines(recordType, recordId) {
-    const events = timelineCache.get(`${recordType}:${recordId}`) || [];
-    if (!events.length) return [];
-    return ["Ø³Ø¬Ù„ Ø§Ù„Ù†Ø´Ø§Ø·:", ...events.slice(0, 5).map(event => {
-      const note = event.note || event.stage || "ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø³Ø¬Ù„";
-      return `â€¢ ${note} â€” ${relativeTime(event.createdAt)}`;
-    })];
-  }
-
-  function matchOperation(doc) {
-    const item = doc.data();
-    const status = normalizeMatchStatus(item.status);
-    const readiness = readinessInfo(item);
-    const overdue = isOverdue(item.nextFollowUpAt) && !["completed", "closed"].includes(status.key);
-    const reasons = parseArray(item.reasonsJson);
-    const warnings = parseArray(item.warningsJson);
-    const appointmentAt = item.viewingAt || null;
-    const lines = [
-      `Ù†Ø³Ø¨Ø© Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©: ${Number(item.score || 0)}%`,
-      `Ø¬Ø§Ù‡Ø²ÙŠØ© Ø§Ù„Ø¥ØºÙ„Ø§Ù‚: ${readiness.mark} ${readiness.label}`,
-      `Ø§Ù„Ø­Ø§Ù„Ø©: ${status.mark} ${status.label}`,
-      appointmentAt ? `Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©: ${dateTimeLabel(appointmentAt)}` : "Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©: Ù„Ù… ÙŠØ­Ø¯Ø¯ Ø¨Ø¹Ø¯",
-      `Ø§Ù„Ø®Ø·ÙˆØ© Ø§Ù„ØªØ§Ù„ÙŠØ©: ${item.nextAction || status.next}`
-    ];
-    if (reasons.length) lines.push(`Ø£Ø³Ø¨Ø§Ø¨ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©: ${reasons.join("ØŒ ")}`);
-    if (warnings.length) lines.push(`ØªØ­ØªØ§Ø¬ Ù…Ø±Ø§Ø¬Ø¹Ø©: ${warnings.join("ØŒ ")}`);
-    if (item.ownerMediaMissing === true) lines.push("ØµÙˆØ± Ø§Ù„Ø¹Ù‚Ø§Ø± Ù†Ø§Ù‚ØµØ© â€” Ø§Ø·Ù„Ø¨Ù‡Ø§ Ù…Ù† Ø§Ù„Ù…Ø§Ù„Ùƒ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨");
-    if (item.lastNote) lines.push(`Ø¢Ø®Ø± Ù…Ù„Ø§Ø­Ø¸Ø©: ${item.lastNote}`);
-    if (item.closeReason) lines.push(`Ø³Ø¨Ø¨ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚: ${item.closeReason}`);
-    lines.push(...timelineLines("match", doc.id));
-
-    let priority = 4;
-    if (overdue || item.attentionRequired === true) priority = 0;
-    else if (readiness.key === "very_high") priority = 1;
-    else if (readiness.key === "high") priority = 2;
-    else if (status.key === "negotiation") priority = 1;
-
-    let actionLabel = appointmentAt ? "Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø©" : "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©";
-    if (["completed", "closed"].includes(status.key)) actionLabel = "Ø¹Ø±Ø¶ Ø§Ù„Ø³Ø¬Ù„";
-
-    return {
-      id: doc.id,
-      recordId: doc.id,
-      recordType: "match",
-      main: "opportunities",
-      priority,
-      isAlert: overdue || item.attentionRequired === true,
-      icon: status.key === "completed" ? "i-house-check" : "i-match",
-      title: `Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¨Ù†Ø³Ø¨Ø© ${Number(item.score || 0)}%`,
-      subtitle: [item.propertyType, item.district, `${readiness.mark} ${readiness.label}`].filter(Boolean).join(" â€” ") || "Ø·Ù„Ø¨ Ø¹Ù…ÙŠÙ„ Ù…Ø¹ Ø¹Ø±Ø¶ Ù…Ø§Ù„Ùƒ",
-      propertyType: item.propertyType || "",
-      district: item.district || "",
-      time: relativeTime(item.updatedAt || item.createdAt),
-      detailsLines: lines,
-      status: status.key,
-      statusLabel: status.label,
-      workflowStage: item.workflowStage || status.key,
-      nextAction: item.nextAction || status.next,
-      actionLabel,
-      secondaryActionLabel: ["completed", "closed"].includes(status.key) ? "Ø¹Ø±Ø¶ Ø§Ù„Ù†Ø´Ø§Ø·" : "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØ±ØµØ©",
-      dealId: item.dealId || "",
-      clientRequestId: item.clientRequestId || "",
-      ownerOfferId: item.ownerOfferId || "",
-      matchId: doc.id,
-      whatsappOwner: Boolean(item.ownerOfferId),
-      whatsappOwnerLabel: item.ownerMediaMissing === true ? "Ø·Ù„Ø¨ Ø§Ù„ØµÙˆØ± Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨" : "ÙˆØ§ØªØ³Ø§Ø¨ Ø§Ù„Ù…Ø§Ù„Ùƒ",
-      whatsappClient: Boolean(item.clientRequestId),
-      createdAt: isoTime(item.createdAt),
-      updatedAt: isoTime(item.updatedAt || item.createdAt),
-      livingStage: item.livingStage || "",
-      livingUpdatedAt: isoTime(item.livingUpdatedAt || item.updatedAt || item.createdAt),
-      livingTimeline: item.livingTimeline || item.livingTimelineJson || [],
-      coordinationBrokerLine: item.coordinationBrokerLine || "",
-      coordinationClientSummary: item.coordinationClientSummary || "",
-      coordinationOwnerSummary: item.coordinationOwnerSummary || "",
-      coordinationOutcome: item.coordinationOutcome || "",
-      nextActor: item.nextActor || "",
-      ownerContactNeeded: (() => {
-        const domain = window.IAQAR && window.IAQAR.coordinationBundleDomain;
-        if (domain && item.coordinationOutcome) {
-          return domain.ownerContactNeededForCoordination({
-            outcome: item.coordinationOutcome,
-            clientSummary: item.coordinationClientSummary,
-            ownerSummary: item.coordinationOwnerSummary
-          });
-        }
-        return item.ownerContactNeeded === true
-          || String(item.ownerContactNeeded || "").toLowerCase() === "true";
-      })(),
-      hasNewResponse: item.hasNewResponse === true
-        || String(item.hasNewResponse || "").toLowerCase() === "true",
-      purpose: item.purpose || item.candidatePurpose || "",
-      city: item.city || item.candidateCity || "",
-      salePrice: item.salePrice ?? item.candidateSalePrice ?? item.price ?? 0,
-      budget: item.budget || 0,
-      annualRent: item.annualRent || 0,
-      area: item.area ?? item.candidateArea ?? 0,
-      candidatePropertyType: item.candidatePropertyType || "",
-      candidatePurpose: item.candidatePurpose || "",
-      candidateDistrict: item.candidateDistrict || "",
-      candidateCity: item.candidateCity || "",
-      candidateSalePrice: item.candidateSalePrice || 0,
-      candidateArea: item.candidateArea || 0,
-      requestId: item.requestId || item.clientRequestId || "",
-      offerId: item.offerId || item.ownerOfferId || "",
-      clientPhone: item.clientPhone || item.clientContactPhone || "",
-      ownerPhone: item.ownerPhone || item.ownerContactPhone || "",
-      matchReasons: parseArray(item.matchReasons || item.reasonsJson),
-      isTestFixture: item.isTestFixture === true || item.qaLiveE2e === true,
-      testRunId: item.testRunId || item.qaLiveRunId || "",
-      createdBy: item.createdBy || "",
-      qaLiveE2e: item.qaLiveE2e === true,
-      sourceType: item.sourceType || "",
-      ownerMediaMissing: item.ownerMediaMissing === true,
-      nextFollowUpAt: item.nextFollowUpAt || null,
-      appointmentAt,
-      viewingAt: item.viewingAt || null,
-      lastNote: item.lastNote || "",
-      closeReason: item.closeReason || "",
-      closingReadinessScore: readiness.score,
-      closingReadinessKey: readiness.key,
-      brokerUx: item.brokerUx || {},
-      opsStatusLine: brokerUxStatusLine({ ...item, viewingAt: item.viewingAt, appointmentAt })
-    };
-  }
-
-  function dealOperation(doc) {
-    const item = doc.data();
-    const stage = DEAL_STAGE[item.workflowStage] || DEAL_STAGE.contact;
-    const health = healthInfo(item);
-    const overdue = isOverdue(item.nextFollowUpAt) && !["closed", "lost"].includes(item.status);
-    const lines = [
-      `Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø­Ø§Ù„ÙŠØ©: ${stage.label}`,
-      `ØµØ­Ø© Ø§Ù„ØµÙÙ‚Ø©: ${health.mark} ${health.label}`,
-      `Ø§Ù„Ø®Ø·ÙˆØ© Ø§Ù„ØªØ§Ù„ÙŠØ©: ${item.nextAction || stage.next}`,
-      `Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ù‚Ø§Ø¯Ù…Ø©: ${dateTimeLabel(item.nextFollowUpAt)}${overdue ? " â€” Ù…ØªØ£Ø®Ø±Ø©" : ""}`
-    ];
-    if (item.lastNote) lines.push(`Ø¢Ø®Ø± Ù…Ù„Ø§Ø­Ø¸Ø©: ${item.lastNote}`);
-    if (item.commissionExpected) lines.push(`Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…ØªÙˆÙ‚Ø¹Ø©: ${Number(item.commissionExpected).toLocaleString("ar-SA")} Ø±ÙŠØ§Ù„`);
-    if (item.commissionActual) lines.push(`Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ©: ${Number(item.commissionActual).toLocaleString("ar-SA")} Ø±ÙŠØ§Ù„`);
-    if (item.lostReason) lines.push(`Ø³Ø¨Ø¨ Ø§Ù„ØªÙˆÙ‚Ù: ${item.lostReason}`);
-    lines.push(...timelineLines("deal", doc.id));
-
-    let priority = overdue || item.attentionRequired === true ? 0 : 3;
-    if (["negotiation", "agreement", "closing"].includes(item.workflowStage)) priority = 1;
-    if (item.status === "closed") priority = 5;
-
-    return {
-      id: doc.id,
-      recordId: doc.id,
-      recordType: "deal",
-      main: "operations",
-      priority,
-      isAlert: overdue || item.attentionRequired === true || item.workflowStage === "closing",
-      icon: item.status === "closed" ? "i-house-check" : "i-briefcase-check",
-      title: item.status === "closed" ? "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©" : item.status === "lost" ? "ØµÙÙ‚Ø© Ù…ØªÙˆÙ‚ÙØ©" : "ØµÙÙ‚Ø© Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°",
-      subtitle: [item.propertyType, item.district, stage.label].filter(Boolean).join(" â€” ") || stage.label,
-      propertyType: item.propertyType || "",
-      district: item.district || "",
-      time: relativeTime(item.updatedAt || item.createdAt),
-      detailsLines: lines,
-      status: item.status || "open",
-      workflowStage: item.workflowStage || "contact",
-      nextAction: item.nextAction || stage.next,
-      actionLabel: item.status === "closed" || item.status === "lost" ? "Ø¹Ø±Ø¶ Ø§Ù„Ø³Ø¬Ù„" : "Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ØµÙÙ‚Ø©",
-      secondaryActionLabel: item.status === "closed" || item.status === "lost" ? "Ø¹Ø±Ø¶ Ø§Ù„Ù†Ø´Ø§Ø·" : "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ØµÙÙ‚Ø©",
-      clientRequestId: item.clientRequestId || "",
-      ownerOfferId: item.ownerOfferId || "",
-      matchId: item.matchId || "",
-      dealId: doc.id,
-      whatsappOwner: Boolean(item.ownerOfferId),
-      whatsappClient: Boolean(item.clientRequestId),
-      nextFollowUpAt: item.nextFollowUpAt || null,
-      healthKey: health.key,
-      healthScore: health.score,
-      brokerUx: item.brokerUx || {},
-      opsStatusLine: brokerUxStatusLine(item)
-    };
-  }
-
-
-  function intakeOperation(doc) {
-    const item = doc.data() || {};
-    const isOwner = item.kind === "owner";
-    const amountLabel = isOwner ? "Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ù…Ø·Ù„ÙˆØ¨" : "Ø§Ù„Ù…ÙŠØ²Ø§Ù†ÙŠØ©";
-    const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
-      ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
-      : null;
-    // Current normalized fields are authoritative. Persisted readiness may come
-    // from the former gate that required area/rooms and must not block matches.
-    const matchingReadiness = String(readinessEval?.matchingReadiness || item.matchingReadiness || "").toUpperCase();
-    const matchingReadinessMissing = readinessEval
-      ? (readinessEval.matchingReadinessMissing || [])
-      : (Array.isArray(item.matchingReadinessMissing) ? item.matchingReadinessMissing.map(String) : []);
-    return {
-      id: `intake-${doc.id}`,
-      recordId: doc.id,
-      recordType: "intake",
-      main: "opportunities",
-      priority: 0,
-      isAlert: item.status === "new",
-      icon: isOwner ? "i-house-check" : "i-user-clock",
-      title: isOwner ? "Ø¹Ø±Ø¶ Ø¬Ø¯ÙŠØ¯ Ù…Ù† Ù…Ø§Ù„Ùƒ" : "Ø·Ù„Ø¨ Ø¬Ø¯ÙŠØ¯ Ù…Ù† Ø¹Ù…ÙŠÙ„",
-      subtitle: buildOpsSubtitle(null, [
-        sanitizeOpsText(item.propertyType),
-        sanitizeOpsText(item.district),
-        sanitizeOpsText(item.name)
-      ]),
-      propertyType: item.propertyType || "",
-      district: item.district || "",
-      time: relativeTime(item.createdAt),
-      detailsLines: [
-        `Ø§Ù„Ø§Ø³Ù…: ${item.name || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `Ø§Ù„Ø¬ÙˆØ§Ù„: ${item.phone || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `Ù†ÙˆØ¹ Ø§Ù„Ø¹Ù‚Ø§Ø±: ${item.propertyType || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `Ø§Ù„Ø­ÙŠ: ${item.district || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `${amountLabel}: ${Number(item.amount || 0).toLocaleString("ar-SA")} Ø±ÙŠØ§Ù„`,
-        item.details ? `Ø§Ù„ØªÙØ§ØµÙŠÙ„: ${item.details}` : "Ø§Ù„ØªÙØ§ØµÙŠÙ„: Ù„Ø§ ÙŠÙˆØ¬Ø¯",
-        ...(isOwner && item.mediaMissing === true ? ["ØµÙˆØ± Ø§Ù„Ø¹Ù‚Ø§Ø± Ù†Ø§Ù‚ØµØ© â€” Ø§Ø·Ù„Ø¨Ù‡Ø§ Ù…Ù† Ø§Ù„Ù…Ø§Ù„Ùƒ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨"] : [])
-      ],
-      status: item.status || "new",
-      workflowStage: "intake",
-      nextAction: "Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ÙˆØ§Ù„ØªÙˆØ§ØµÙ„",
-      actionLabel: "ØªÙ…Øª Ø§Ù„Ù…Ø±Ø§Ø¬Ø¹Ø©",
-      secondaryActionLabel: "Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØªÙØ§ØµÙŠÙ„"
-      ,kind: item.kind || "client"
-      ,contactName: item.name || ""
-      ,contactPhone: item.phone || ""
-      ,whatsappOwner: isOwner
-      ,whatsappOwnerLabel: isOwner && item.mediaMissing === true ? "Ø·Ù„Ø¨ Ø§Ù„ØµÙˆØ± Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨" : "ÙˆØ§ØªØ³Ø§Ø¨ Ø§Ù„Ù…Ø§Ù„Ùƒ"
-      ,whatsappClient: !isOwner
-      ,ownerMediaMissing: isOwner && item.mediaMissing === true
-      ,lifecycleStatus: LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(item) : "NEW"
-      ,lifecycleStatusLabel: (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[LC().getOpportunityLifecycleStatus(item)]) || "Ø¬Ø¯ÙŠØ¯Ø©"
-      ,normalizedSource: item.normalizedSource || item.source || "office_link"
-      ,opportunityId: item.opportunityId || ""
-      ,contactType: isOwner ? "owner" : "buyer"
-      ,transactionType: item.transactionType || ""
-      ,amount: item.amount || 0
-      ,area: item.area || 0
-      ,matchingReadiness
-      ,matchingReadinessMissing
-      ,isReadyForMatching: matchingReadiness === "READY_FOR_MATCHING" || readinessEval?.isReadyForMatching === true
-    };
-  }
-
-  function opportunityOperation(doc) {
-    const item = doc.data() || {};
-    const lifecycleStatus = LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(item) : "NEW";
-    const lifecycleLabel = (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[lifecycleStatus]) || lifecycleStatus;
-    const isOwner = item.contactType === "owner" || item.recordType === "owner_offer";
-    const overdue = isFollowUpOverdueRecord(item) && lifecycleStatus !== "ARCHIVED"
-      && !["CLOSED_WON", "CLOSED_LOST"].includes(lifecycleStatus);
-    const card = OPP()?.buildOpportunityCardView
-      ? OPP().buildOpportunityCardView({ ...item, id: doc.id, opportunityId: doc.id })
-      : null;
-    const title = card?.kindBadge || (isOwner ? "Ø¹Ø±Ø¶ Ù…Ø§Ù„Ùƒ" : "Ø·Ù„Ø¨ Ø¹Ù…ÙŠÙ„");
-    const subtitle = buildOpsSubtitle(card, [
-      sanitizeOpsText(item.propertyType),
-      sanitizeOpsText(item.district),
-      lifecycleLabel
-    ]);
-    const matchingReadinessStored = String(item.matchingReadiness || "").toUpperCase();
-    const matchingReadinessMissingStored = Array.isArray(item.matchingReadinessMissing)
-      ? item.matchingReadinessMissing.map(String)
-      : [];
-    const readinessEval = window.IAQAR_OPPORTUNITY?.evaluateMatchingReadiness
-      ? window.IAQAR_OPPORTUNITY.evaluateMatchingReadiness({ ...item, id: doc.id })
-      : null;
-    if (readinessEval?.isReadyForMatching === true
-      && (matchingReadinessStored === "NEEDS_COMPLETION" || matchingReadinessMissingStored.length > 0)) {
-      repairLegacyReadiness(doc.id);
-    }
-    // Recompute from the current normalized record before considering legacy
-    // persisted readiness. Older documents can legitimately list area/rooms as
-    // missing even though those details now belong to coordination.
-    const matchingReadiness = readinessEval?.matchingReadiness
-      || matchingReadinessStored
-      || "";
-    const matchingReadinessMissing = readinessEval
-      ? (readinessEval.matchingReadinessMissing || [])
-      : matchingReadinessMissingStored;
-    const matchCount = Number(item.matchCount || item.activeMatchCount || 0);
-
-    return {
-      id: `opp-${doc.id}`,
-      recordId: doc.id,
-      recordType: "opportunity",
-      main: "opportunities",
-      priority: overdue ? 0 : lifecycleStatus === "NEW" ? 1 : 3,
-      isAlert: overdue || lifecycleStatus === "NEW",
-      icon: isOwner ? "i-house-check" : "i-user-clock",
-      title,
-      subtitle,
-      opsStatusLine: card
-        ? `${card.dataCompletenessLabel} Â· ${card.contactStatusLabel}${card.nextActionLabel !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? ` Â· ${card.nextActionLabel}` : ""}`
-        : "",
-      propertyType: item.propertyType || "",
-      district: item.district || "",
-      city: item.city || "",
-      purpose: item.purpose || item.transactionType || "",
-      advertiserRole: item.advertiserRole || item.ownerRole || "",
-      contactPhone: item.contactPhone || item.phone || "",
-      matchingReadiness,
-      matchingReadinessMissing,
-      isReadyForMatching: matchingReadiness === "READY_FOR_MATCHING" || readinessEval?.isReadyForMatching === true,
-      matchCount,
-      bestMatchScoreText: card?.bestMatchScoreText || "",
-      createdAt: String(item.createdAt || item.receivedAt || ""),
-      updatedAt: String(item.updatedAt || item.createdAt || item.receivedAt || ""),
-      time: relativeTime(item.updatedAt || item.createdAt || item.receivedAt),
-      detailsLines: card ? [
-        card.description,
-        card.location,
-        `${card.priceOrBudget} Â· ${card.area}`,
-        card.contactLine,
-        `Ø§Ù„Ù…ØµØ¯Ø±: ${card.sourceLabel}`,
-        `Ø§ÙƒØªÙ…Ø§Ù„ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª: ${card.dataCompletenessLabel}`,
-        `Ø§Ù„ØªÙˆØ§ØµÙ„: ${card.contactStatusLabel}`,
-        `Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©: ${card.matchStatusLabel}`,
-        `Ø§Ù„Ù†ØªÙŠØ¬Ø©: ${card.outcomeStatusLabel}`,
-        card.nextActionLabel !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? `Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ø§Ù„Ù‚Ø§Ø¯Ù…: ${card.nextActionLabel}` : "",
-        card.bestMatchScoreText ? `Ø£ÙØ¶Ù„ Ù…Ø·Ø§Ø¨Ù‚Ø©: ${card.bestMatchScoreText}` : ""
-      ].filter(Boolean) : [
-        `Ø§Ù„Ø­Ø§Ù„Ø©: ${lifecycleLabel}`,
-        `Ø§Ù„Ù…ØµØ¯Ø±: ${item.normalizedSource || item.source || "â€”"}`,
-        `Ø§Ù„Ø§Ø³Ù…: ${item.contactName || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `Ø§Ù„Ø¬ÙˆØ§Ù„: ${item.contactPhone || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯"}`,
-        `Ø§Ù„Ù…Ù„Ø®Øµ: ${LC().buildOpportunitySummary ? LC().buildOpportunitySummary(item) : ""}`,
-        item.nextFollowUpAt ? `Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ù‚Ø§Ø¯Ù…Ø©: ${dateTimeLabel(item.nextFollowUpAt)}` : "Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ù‚Ø§Ø¯Ù…Ø©: ØºÙŠØ± Ù…Ø­Ø¯Ø¯Ø©"
-      ],
-      status: lifecycleStatus,
-      lifecycleStatus,
-      lifecycleStatusLabel: lifecycleLabel,
-      workflowStage: lifecycleStatus,
-      nextAction: card?.nextActionLabel !== "ØºÙŠØ± Ù…Ø­Ø¯Ø¯" ? card.nextActionLabel : "ØªÙØ§ØµÙŠÙ„ Ø§Ù„ÙØ±ØµØ©",
-      actionLabel: "ØªÙØ§ØµÙŠÙ„ Ø§Ù„ÙØ±ØµØ©",
-      secondaryActionLabel: "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØ±ØµØ©",
-      kind: isOwner ? "owner" : "client",
-      contactType: isOwner ? "owner" : "buyer",
-      contactName: item.contactName || "",
-      contactPhone: item.contactPhone || "",
-      whatsappOwner: isOwner,
-      whatsappClient: !isOwner,
-      nextFollowUpAt: item.nextFollowUpAt || null,
-      normalizedSource: item.normalizedSource || item.source || "",
-      opportunityId: doc.id,
-      sourceRecordId: item.sourceRecordId || "",
-      sourceCollection: item.sourceCollection || "",
-      transactionType: item.transactionType || "",
-      opportunityKind: item.opportunityKind || item.kind || (isOwner ? "OFFER" : "REQUEST"),
-      isTestFixture: item.isTestFixture === true || item.qaLiveE2e === true,
-      testRunId: item.testRunId || item.qaLiveRunId || "",
-      createdBy: item.createdBy || "",
-      qaLiveE2e: item.qaLiveE2e === true,
-      sourceType: item.sourceType || "",
-      amount: item.price || item.priceMax || 0,
-      salePrice: item.salePrice ?? item.price,
-      annualRent: item.annualRent,
-      budget: item.budget ?? item.priceMax,
-      priceOrBudget: item.priceOrBudget ?? item.price ?? item.amount,
-      area: item.area || 0,
-      rooms: item.rooms || 0,
-      closureReason: item.closureReason || ""
-    };
-  }
-
-  function dedupeFeedItems(items) {
-    const flow = window.IAQAR_OPPORTUNITY_DATA_FLOW;
-    if (flow && typeof flow.dedupeOperationsFeedItems === "function") {
-      return flow.dedupeOperationsFeedItems(items);
-    }
-    return items;
-  }
-
-  function filterOpportunityView(items) {
-    return items.filter(item => {
-      if (item.recordType === "summary") return true;
-      if (item.main !== "opportunities") return true;
-      if (item.recordType === "match" || item.recordType === "deal" || item.recordType === "operation") return true;
-      const status = item.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(item) : "NEW");
-      const archived = status === "ARCHIVED";
-      return opportunityView === "archived" ? archived : !archived;
-    });
-  }
-
-
-  // Phase 8: client-side matcher removed â€” Worker matching-engine is authoritative.
-
-  async function showLocalMatchNotification(matchCount, topMatch) {
-    const title = matchCount > 1 ? `ØªÙ… Ø§ÙƒØªØ´Ø§Ù ${matchCount} Ù…Ø·Ø§Ø¨Ù‚Ø§Øª Ø¬Ø¯ÙŠØ¯Ø©` : "ØªÙ… Ø§ÙƒØªØ´Ø§Ù Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¬Ø¯ÙŠØ¯Ø©";
-    const body = topMatch
-      ? `${topMatch.propertyType || "Ø¹Ù‚Ø§Ø±"} â€” ${topMatch.district || ""} â€” Ù†Ø³Ø¨Ø© ${topMatch.score}%`
-      : "Ø§ÙØªØ­ Ù…Ø³Ø§Ø­Ø© Ø§Ù„Ø¹Ù…Ù„ Ù„Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©.";
-    notify(title);
-    try {
-      if ("Notification" in window && Notification.permission === "granted") {
-        const registration = await navigator.serviceWorker?.ready.catch(() => null);
-        if (registration && registration.showNotification) {
-          await registration.showNotification(title, { body, icon: "/icons/iaqar-default-icon-192.png", badge: "/icons/iaqar-badge-icon.png", data: { type: "match", recordId: topMatch && topMatch.id || "" } });
-        } else {
-          new Notification(title, { body, icon: "/icons/iaqar-default-icon-192.png" });
-        }
-      }
-    } catch (error) {
-      console.warn("[iaqar] local notification", error);
-    }
-  }
-
-  async function processPublicIntakeDoc(doc) {
-    const runtime = office();
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!runtime || !runtime.officeId || !user || !doc || intakeProcessing.has(doc.id)) return;
-    const intake = doc.data() || {};
-    if (intake.status !== "new") return;
-    intakeProcessing.add(doc.id);
-
-    try {
-      const response = await fetch(`${resolveWorkerBase()}/pipeline/public-intake`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ officeId: runtime.officeId, intakeId: doc.id })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || "ØªØ¹Ø°Ø± ØªØ´ØºÙŠÙ„ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ø§Ù„Ù…Ø±ÙƒØ²ÙŠØ©");
-      if (Number(payload.matches || 0) > 0 && payload.bestMatch) {
-        await showLocalMatchNotification(Number(payload.matches), {
-          id: payload.bestMatch.matchId,
-          score: payload.bestMatch.score,
-          propertyType: payload.bestMatch.propertyType,
-          district: payload.bestMatch.district
-        });
-      } else if (!payload.duplicate) {
-        notify(intake.kind === "owner" ? "ØªÙ… Ø§Ø¹ØªÙ…Ø§Ø¯ Ø¹Ø±Ø¶ Ø§Ù„Ù…Ø§Ù„ÙƒØŒ ÙˆÙ„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø·Ø§Ø¨Ù‚Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§" : "ØªÙ… Ø§Ø¹ØªÙ…Ø§Ø¯ Ø·Ù„Ø¨ Ø§Ù„Ø¹Ù…ÙŠÙ„ØŒ ÙˆÙ„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø·Ø§Ø¨Ù‚Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
-      }
-    } catch (error) {
-      console.error("[iaqar] central public intake matching", error);
-      notify("ØªØ¹Ø°Ø± ØªØ´ØºÙŠÙ„ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ø§Ù„Ø¢Ù†Ø› Ø³ÙŠØ¹Ø§Ø¯ ØªØ´ØºÙŠÙ„Ù‡Ø§ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¹Ù†Ø¯ ØªÙˆÙØ± Ø§Ù„Ø§ØªØµØ§Ù„");
-    } finally {
-      intakeProcessing.delete(doc.id);
-    }
-  }
-
-  function processNewPublicIntakes(snapshot) {
-    snapshot.docs
-      .filter(doc => (doc.data() || {}).status === "new")
-      .forEach(doc => processPublicIntakeDoc(doc));
-  }
-
-  function opsDomain() {
-    return (window.IAQAR && window.IAQAR.operationsDomain) || null;
-  }
-
-  function projectPersistedOperation(doc) {
-    const data = { id: doc.id, ...(doc.data() || {}) };
-    const domain = opsDomain();
-    if (domain && typeof domain.projectOperationToUiItem === "function") {
-      return domain.projectOperationToUiItem(data, { relativeTime });
-    }
-    // Fallback projector if the domain module has not loaded yet.
-    const priorityMap = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
-    return {
-      id: data.id,
-      recordId: data.id,
-      recordType: "operation",
-      operationType: data.type || "SYSTEM_ACTION",
-      main: "opportunities",
-      priority: priorityMap[String(data.priority || "NORMAL").toUpperCase()] ?? 2,
-      priorityKey: data.priority || "NORMAL",
-      isAlert: ["URGENT", "HIGH"].includes(String(data.priority || "").toUpperCase()),
-      icon: "i-clipboard-list",
-      title: data.titleText || "Ø¥Ø¬Ø±Ø§Ø¡ Ù…Ø·Ù„ÙˆØ¨",
-      subtitle: data.summaryText || "",
-      time: relativeTime(data.updatedAt || data.createdAt),
-      detailsLines: [data.summaryText || "Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙØ§ØµÙŠÙ„ Ø¥Ø¶Ø§ÙÙŠØ©."],
-      status: data.status || "OPEN",
-      actionLabel: data.recommendedActionText || "Ø¹Ø±Ø¶ Ø§Ù„ØªÙØ§ØµÙŠÙ„",
-      secondaryActionLabel: "Ø¥ØªÙ…Ø§Ù…",
-      canDismiss: ACTIVE_OPERATION_STATUSES.includes(String(data.status || "").toUpperCase()),
-      dismissLabel: "ØµØ±Ù Ø§Ù„Ù†Ø¸Ø±",
-      matchId: data.matchId || "",
-      opportunityId: data.opportunityId || "",
-      cooperationId: data.cooperationId || "",
-      whatsappOwner: false,
-      whatsappClient: false
-    };
-  }
-
-  function pruneSavedOpportunityWorkspaceItems() {
-    const covered = new Set(
-      operationItems.map(item => String(item.opportunityId || "").trim()).filter(Boolean)
-    );
-    savedOpportunityWorkspaceItems = savedOpportunityWorkspaceItems.filter(
-      item => !covered.has(String(item.opportunityId || "").trim())
-    );
-  }
-
-  function buildSavedOpportunityWorkspaceItem(opportunityId, matchCount = 0) {
-    const id = String(opportunityId || "").trim();
-    if (!id) return null;
-    const matches = Number(matchCount || 0);
-    return {
-      id: `saved-opportunity-${id}`,
-      recordId: id,
-      recordType: "opportunity",
-      operationType: "OPPORTUNITY_SAVED",
-      main: "bank",
-      priority: 0,
-      isAlert: false,
-      icon: "i-clipboard-list",
-      title: "ÙØ±ØµØ© Ø¬Ø¯ÙŠØ¯Ø© Ù…Ø­ÙÙˆØ¸Ø©",
-      subtitle: matches > 0 ? `ØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ ${matches} Ù…Ø·Ø§Ø¨Ù‚Ø©` : "Ø£ÙØ¶ÙŠÙØª Ø¥Ù„Ù‰ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª",
-      time: "Ø§Ù„Ø¢Ù†",
-      detailsLines: [
-        matches > 0
-          ? `ØªÙ… Ø­ÙØ¸ Ø§Ù„ÙØ±ØµØ© ÙˆØ¥Ù†Ø´Ø§Ø¡ ${matches} Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¬Ø¯ÙŠØ¯Ø©.`
-          : "ØªÙ… Ø­ÙØ¸ Ø§Ù„ÙØ±ØµØ© Ø¨Ù†Ø¬Ø§Ø­ â€” Ø±Ø§Ø¬Ø¹ Ø§Ù„ØªÙØ§ØµÙŠÙ„ ÙÙŠ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª."
-      ],
-      actionLabel: "ÙØªØ­ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª",
-      secondaryActionLabel: "Ø¥ØºÙ„Ø§Ù‚",
-      canDismiss: false,
-      opportunityId: id
-    };
-  }
-
-  function pushSavedOpportunityToWorkspace({
-    opportunityId,
-    duplicate = false,
-    matchCount = 0,
-    advertiserPhone = "",
-    propertyType = "",
-    district = "",
-    marketingConsentStatus = ""
-  } = {}) {
-    const id = String(opportunityId || "").trim();
-    if (!id) return;
-    const savedItem = buildSavedOpportunityWorkspaceItem(id, matchCount);
-    if (!savedItem) return;
-    if (duplicate) {
-      savedItem.title = "ÙØ±ØµØ© Ù…ÙˆØ¬ÙˆØ¯Ø©";
-      savedItem.subtitle = "ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ÙØ±ØµØ© Ø§Ù„Ø­Ø§Ù„ÙŠØ©";
-      savedItem.detailsLines = ["ØªÙˆØ¬Ø¯ ÙØ±ØµØ© Ù†Ø´Ø·Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ø±Ù‚Ù… â€” ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ÙØ±ØµØ© Ø§Ù„Ø­Ø§Ù„ÙŠØ© Ø¨Ø¯Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ù†Ø³Ø®Ø© Ù…ÙƒØ±Ø±Ø©."];
-    }
-    savedOpportunityWorkspaceItems = [
-      savedItem,
-      ...savedOpportunityWorkspaceItems.filter(item => item.recordId !== savedItem.recordId)
-    ].slice(0, 3);
-
-    const phone = String(advertiserPhone || "").trim();
-    const needsFollowup = phone
-      && !["PRELIMINARY_YES", "REFUSED"].includes(String(marketingConsentStatus || "").toUpperCase());
-    if (needsFollowup && !duplicate) {
-      const label = [propertyType, district].filter(Boolean).join(" â€” ");
-      const followup = {
-        id: `advertiser-followup-${id}`,
-        recordId: id,
-        recordType: "opportunity",
-        operationType: "ADVERTISER_FOLLOWUP",
-        main: "bank",
-        priority: 1,
-        isAlert: false,
-        icon: "i-user-clock",
-        title: label ? `Ø§Ø³ØªÙƒÙ…Ø§Ù„ Ø¨ÙŠØ§Ù†Ø§Øª Ù…Ø¹Ù„Ù† ÙØ±ØµØ© ${label}` : "Ø§Ø³ØªÙƒÙ…Ø§Ù„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø¹Ù„Ù†",
-        subtitle: "Ø±Ø§Ø¬Ø¹ Ø±Ù‚Ù… Ø§Ù„Ù…Ø¹Ù„Ù† ÙˆØ±Ø³Ø§Ù„Ø© Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„",
-        time: "Ø§Ù„Ø¢Ù†",
-        detailsLines: ["ÙŠÙˆØ¬Ø¯ Ø±Ù‚Ù… Ù…Ø¹Ù„Ù† â€” Ø£ÙƒÙ…Ù„ Ø§Ù„ØªÙˆØ§ØµÙ„ ÙˆØªØ­Ø¯ÙŠØ« Ø§Ù„Ø­Ø§Ù„Ø© ÙŠØ¯ÙˆÙŠÙ‹Ø§."],
-        actionLabel: "ÙØªØ­ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª",
-        secondaryActionLabel: "Ø¥ØºÙ„Ø§Ù‚",
-        canDismiss: true,
-        opportunityId: id
-      };
-      savedOpportunityWorkspaceItems = [
-        followup,
-        ...savedOpportunityWorkspaceItems.filter(item => item.id !== followup.id)
-      ].slice(0, 4);
-    }
-    emitOperations();
-  }
-
-  function isSavedOpportunityPresentationItem(item) {
-    const type = String(item?.operationType || "").toUpperCase();
-    return type === "OPPORTUNITY_SAVED"
-      || String(item?.title || "").trim() === "ÙØ±ØµØ© Ù…Ø­ÙÙˆØ¸Ø© Ù…Ø³Ø¨Ù‚Ù‹Ø§";
-  }
-
-  function activeMatchOperations() {
-    return matchItems.filter((item) => !["completed", "closed"].includes(String(item.status || "").toLowerCase()));
-  }
-
-  function activeDealOperations() {
-    return dealItems.filter((item) => !["closed", "lost"].includes(String(item.status || "").toLowerCase()));
-  }
-
-  function dailyTaskOperationBusinessKey(item = {}) {
-    const type = String(item.operationType || item.type || "").trim().toUpperCase();
-    const id = (value) => String(value || "").trim();
-    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
-      const value = id(item.opportunityId || item.sourceEntityId);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "MATCH_REVIEW") {
-      const value = id(item.matchId || item.sourceEntityId);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "DEAL_ACTION") {
-      const value = id(item.dealId || item.sourceEntityId);
-      return value ? `deal:${value}` : "";
-    }
-    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
-      const value = id(item.cooperationId || item.sourceEntityId);
-      return value ? `cooperation:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskLegacyBusinessKey(item = {}) {
-    const type = String(item.recordType || "").trim().toLowerCase();
-    const id = (value) => String(value || "").trim();
-    if (type === "opportunity") {
-      const value = id(item.opportunityId || item.recordId || item.id);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "match") {
-      const value = id(item.matchId || item.recordId || item.id);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "deal") {
-      const value = id(item.dealId || item.recordId || item.id);
-      return value ? `deal:${value}` : "";
-    }
-    if (type === "cooperation") {
-      const value = id(item.cooperationId || item.recordId || item.id);
-      return value ? `cooperation:${value}` : "";
-    }
-    if (type === "intake") {
-      const opportunityId = id(item.opportunityId);
-      if (opportunityId) return `opportunity:${opportunityId}`;
-      const value = id(item.recordId || item.id);
-      return value ? `intake:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskCoverageAudit(legacyItems = []) {
-    dailyTaskShadowCycles += 1;
-    try {
-      const operationKeys = new Set();
-      const semanticCounts = new Map();
-      for (const item of operationItems) {
-        const businessKey = dailyTaskOperationBusinessKey(item);
-        if (businessKey) operationKeys.add(businessKey);
-        const type = String(item.operationType || item.type || "").trim().toUpperCase();
-        if (businessKey && type) {
-          const semanticKey = `${type}:${businessKey}`;
-          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
-        }
-      }
-      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
-      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
-      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
-      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
-      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
-      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
-      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
-      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
-      const reasons = [];
-      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
-      if (coveragePercent < 100) reasons.push("coverage_below_100");
-      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
-      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
-      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
-      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
-      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
-      return {
-        allowed: reasons.length === 0,
-        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons,
-        coveragePercent,
-        coveredBusinessEntities: covered,
-        observedBusinessEntities: legacyKeys.length,
-        duplicateActiveTasks,
-        uncoveredBusinessEntities,
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady,
-        missingRequiredOperationTypes
-      };
-    } catch (error) {
-      dailyTaskShadowFailures += 1;
-      return {
-        allowed: false,
-        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons: ["shadow_audit_failed"],
-        coveragePercent: 0,
-        duplicateActiveTasks: 0,
-        uncoveredBusinessEntities: [],
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady: false,
-        missingRequiredOperationTypes: [],
-        error: String(error?.message || error || "audit_failed")
-      };
-    }
-  }
-
-  function dailyTaskOperationBusinessKey(item = {}) {
-    const type = String(item.operationType || item.type || "").trim().toUpperCase();
-    const id = (value) => String(value || "").trim();
-    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
-      const value = id(item.opportunityId || item.sourceEntityId);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "MATCH_REVIEW") {
-      const value = id(item.matchId || item.sourceEntityId);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "DEAL_ACTION") {
-      const value = id(item.dealId || item.sourceEntityId);
-      return value ? `deal:${value}` : "";
-    }
-    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
-      const value = id(item.cooperationId || item.sourceEntityId);
-      return value ? `cooperation:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskLegacyBusinessKey(item = {}) {
-    const type = String(item.recordType || "").trim().toLowerCase();
-    const id = (value) => String(value || "").trim();
-    if (type === "opportunity") {
-      const value = id(item.opportunityId || item.recordId || item.id);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "match") {
-      const value = id(item.matchId || item.recordId || item.id);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "deal") {
-      const value = id(item.dealId || item.recordId || item.id);
-      return value ? `deal:${value}` : "";
-    }
-    if (type === "cooperation") {
-      const value = id(item.cooperationId || item.recordId || item.id);
-      return value ? `cooperation:${value}` : "";
-    }
-    if (type === "intake") {
-      const opportunityId = id(item.opportunityId);
-      if (opportunityId) return `opportunity:${opportunityId}`;
-      const value = id(item.recordId || item.id);
-      return value ? `intake:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskCoverageAudit(legacyItems = []) {
-    dailyTaskShadowCycles += 1;
-    try {
-      const operationKeys = new Set();
-      const semanticCounts = new Map();
-      for (const item of operationItems) {
-        const businessKey = dailyTaskOperationBusinessKey(item);
-        if (businessKey) operationKeys.add(businessKey);
-        const type = String(item.operationType || item.type || "").trim().toUpperCase();
-        if (businessKey && type) {
-          const semanticKey = `${type}:${businessKey}`;
-          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
-        }
-      }
-      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
-      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
-      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
-      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
-      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
-      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
-      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
-      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
-      const reasons = [];
-      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
-      if (coveragePercent < 100) reasons.push("coverage_below_100");
-      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
-      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
-      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
-      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
-      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
-      return {
-        allowed: reasons.length === 0,
-        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons,
-        coveragePercent,
-        coveredBusinessEntities: covered,
-        observedBusinessEntities: legacyKeys.length,
-        duplicateActiveTasks,
-        uncoveredBusinessEntities,
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady,
-        missingRequiredOperationTypes
-      };
-    } catch (error) {
-      dailyTaskShadowFailures += 1;
-      return {
-        allowed: false,
-        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons: ["shadow_audit_failed"],
-        coveragePercent: 0,
-        duplicateActiveTasks: 0,
-        uncoveredBusinessEntities: [],
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady: false,
-        missingRequiredOperationTypes: [],
-        error: String(error?.message || error || "audit_failed")
-      };
-    }
-  }
-
-  function dailyTaskOperationBusinessKey(item = {}) {
-    const type = String(item.operationType || item.type || "").trim().toUpperCase();
-    const id = (value) => String(value || "").trim();
-    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
-      const value = id(item.opportunityId || item.sourceEntityId);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "MATCH_REVIEW") {
-      const value = id(item.matchId || item.sourceEntityId);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "DEAL_ACTION") {
-      const value = id(item.dealId || item.sourceEntityId);
-      return value ? `deal:${value}` : "";
-    }
-    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
-      const value = id(item.cooperationId || item.sourceEntityId);
-      return value ? `cooperation:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskLegacyBusinessKey(item = {}) {
-    const type = String(item.recordType || "").trim().toLowerCase();
-    const id = (value) => String(value || "").trim();
-    if (type === "opportunity") {
-      const value = id(item.opportunityId || item.recordId || item.id);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "match") {
-      const value = id(item.matchId || item.recordId || item.id);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "deal") {
-      const value = id(item.dealId || item.recordId || item.id);
-      return value ? `deal:${value}` : "";
-    }
-    if (type === "cooperation") {
-      const value = id(item.cooperationId || item.recordId || item.id);
-      return value ? `cooperation:${value}` : "";
-    }
-    if (type === "intake") {
-      const opportunityId = id(item.opportunityId);
-      if (opportunityId) return `opportunity:${opportunityId}`;
-      const value = id(item.recordId || item.id);
-      return value ? `intake:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskCoverageAudit(legacyItems = []) {
-    dailyTaskShadowCycles += 1;
-    try {
-      const operationKeys = new Set();
-      const semanticCounts = new Map();
-      for (const item of operationItems) {
-        const businessKey = dailyTaskOperationBusinessKey(item);
-        if (businessKey) operationKeys.add(businessKey);
-        const type = String(item.operationType || item.type || "").trim().toUpperCase();
-        if (businessKey && type) {
-          const semanticKey = `${type}:${businessKey}`;
-          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
-        }
-      }
-      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
-      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
-      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
-      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
-      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
-      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
-      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
-      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
-      const reasons = [];
-      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
-      if (coveragePercent < 100) reasons.push("coverage_below_100");
-      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
-      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
-      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
-      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
-      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
-      return {
-        allowed: reasons.length === 0,
-        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons,
-        coveragePercent,
-        coveredBusinessEntities: covered,
-        observedBusinessEntities: legacyKeys.length,
-        duplicateActiveTasks,
-        uncoveredBusinessEntities,
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady,
-        missingRequiredOperationTypes
-      };
-    } catch (error) {
-      dailyTaskShadowFailures += 1;
-      return {
-        allowed: false,
-        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons: ["shadow_audit_failed"],
-        coveragePercent: 0,
-        duplicateActiveTasks: 0,
-        uncoveredBusinessEntities: [],
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady: false,
-        missingRequiredOperationTypes: [],
-        error: String(error?.message || error || "audit_failed")
-      };
-    }
-  }
-
-  function dailyTaskOperationBusinessKey(item = {}) {
-    const type = String(item.operationType || item.type || "").trim().toUpperCase();
-    const id = (value) => String(value || "").trim();
-    if (["MISSING_DATA", "OPPORTUNITY_REVIEW", "OPPORTUNITY_FOLLOW_UP"].includes(type)) {
-      const value = id(item.opportunityId || item.sourceEntityId);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "MATCH_REVIEW") {
-      const value = id(item.matchId || item.sourceEntityId);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "DEAL_ACTION") {
-      const value = id(item.dealId || item.sourceEntityId);
-      return value ? `deal:${value}` : "";
-    }
-    if (["COOPERATION_REQUEST", "COOPERATION_RESPONSE", "COOPERATION_MATCH"].includes(type)) {
-      const value = id(item.cooperationId || item.sourceEntityId);
-      return value ? `cooperation:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskLegacyBusinessKey(item = {}) {
-    const type = String(item.recordType || "").trim().toLowerCase();
-    const id = (value) => String(value || "").trim();
-    if (type === "opportunity") {
-      const value = id(item.opportunityId || item.recordId || item.id);
-      return value ? `opportunity:${value}` : "";
-    }
-    if (type === "match") {
-      const value = id(item.matchId || item.recordId || item.id);
-      return value ? `match:${value}` : "";
-    }
-    if (type === "deal") {
-      const value = id(item.dealId || item.recordId || item.id);
-      return value ? `deal:${value}` : "";
-    }
-    if (type === "cooperation") {
-      const value = id(item.cooperationId || item.recordId || item.id);
-      return value ? `cooperation:${value}` : "";
-    }
-    if (type === "intake") {
-      const opportunityId = id(item.opportunityId);
-      if (opportunityId) return `opportunity:${opportunityId}`;
-      const value = id(item.recordId || item.id);
-      return value ? `intake:${value}` : "";
-    }
-    return "";
-  }
-
-  function dailyTaskCoverageAudit(legacyItems = []) {
-    dailyTaskShadowCycles += 1;
-    try {
-      const operationKeys = new Set();
-      const semanticCounts = new Map();
-      for (const item of operationItems) {
-        const businessKey = dailyTaskOperationBusinessKey(item);
-        if (businessKey) operationKeys.add(businessKey);
-        const type = String(item.operationType || item.type || "").trim().toUpperCase();
-        if (businessKey && type) {
-          const semanticKey = `${type}:${businessKey}`;
-          semanticCounts.set(semanticKey, (semanticCounts.get(semanticKey) || 0) + 1);
-        }
-      }
-      const legacyKeys = [...new Set(legacyItems.map(dailyTaskLegacyBusinessKey).filter(Boolean))];
-      const uncoveredBusinessEntities = legacyKeys.filter((key) => !operationKeys.has(key));
-      const covered = legacyKeys.length - uncoveredBusinessEntities.length;
-      const coveragePercent = legacyKeys.length ? Math.round((covered / legacyKeys.length) * 100) : 100;
-      const duplicateActiveTasks = [...semanticCounts.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-      const allSourcesReady = Object.values(dailyTaskShadowSourcesReady).every(Boolean);
-      const domainTypes = Object.values(opsDomain()?.OPERATION_TYPES || {});
-      const supportedTypes = new Set(domainTypes.length ? domainTypes : DAILY_TASK_REQUIRED_OPERATION_TYPES);
-      const missingRequiredOperationTypes = DAILY_TASK_REQUIRED_OPERATION_TYPES.filter((type) => !supportedTypes.has(type));
-      const reasons = [];
-      if (!allSourcesReady) reasons.push("shadow_sources_not_ready");
-      if (coveragePercent < 100) reasons.push("coverage_below_100");
-      if (duplicateActiveTasks > 0) reasons.push("duplicate_active_tasks");
-      if (uncoveredBusinessEntities.length) reasons.push("uncovered_business_entities");
-      if (dailyTaskShadowFailures > 0) reasons.push("shadow_failures");
-      if (missingRequiredOperationTypes.length) reasons.push("missing_required_operation_types");
-      if (dailyTaskShadowCycles < 1) reasons.push("shadow_cycle_required");
-      return {
-        allowed: reasons.length === 0,
-        mode: reasons.length === 0 ? DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY : DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons,
-        coveragePercent,
-        coveredBusinessEntities: covered,
-        observedBusinessEntities: legacyKeys.length,
-        duplicateActiveTasks,
-        uncoveredBusinessEntities,
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady,
-        missingRequiredOperationTypes
-      };
-    } catch (error) {
-      dailyTaskShadowFailures += 1;
-      return {
-        allowed: false,
-        mode: DAILY_TASK_SOURCE_MODE.MIXED_SHADOW,
-        reasons: ["shadow_audit_failed"],
-        coveragePercent: 0,
-        duplicateActiveTasks: 0,
-        uncoveredBusinessEntities: [],
-        shadowCycles: dailyTaskShadowCycles,
-        shadowFailures: dailyTaskShadowFailures,
-        shadowSourcesReady: { ...dailyTaskShadowSourcesReady },
-        allSourcesReady: false,
-        missingRequiredOperationTypes: [],
-        error: String(error?.message || error || "audit_failed")
-      };
-    }
-  }
-
-  function emitOperations() {
-    pruneSavedOpportunityWorkspaceItems();
-    const workspaceItems = savedOpportunityWorkspaceItems.filter(
-      (item) => !isSavedOpportunityPresentationItem(item)
-    );
-    const legacyShadowItems = [
-      ...intakeItems,
-      ...opportunityItems,
-      ...activeMatchOperations(),
-      ...activeDealOperations()
-    ];
-    const audit = dailyTaskCoverageAudit(legacyShadowItems);
-    const mixedShadowItems = dedupeFeedItems([
-      ...operationItems,
-      ...legacyShadowItems,
-      ...workspaceItems
-    ].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
-    const baseItems = audit.mode === DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY
-      ? dedupeFeedItems([...operationItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)))
-      : mixedShadowItems;
-    // Operations already carry priority. Legacy broker-alert cards remain only
-    // in shadow fallback so the final Operations-only list cannot duplicate work.
-    const alerts = audit.mode === DAILY_TASK_SOURCE_MODE.OPERATIONS_ONLY
-      ? []
-      : (BAL()?.scanBrokerAlerts ? BAL().scanBrokerAlerts(baseItems) : []);
-    const items = filterOpportunityView([...alerts, ...baseItems].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2)));
-    window.IAQAR = window.IAQAR || {};
-    window.IAQAR.dailyTaskSourceAudit = audit;
-    window.dispatchEvent(new CustomEvent("iaqar:daily-task-source-audit", { detail: audit }));
-    window.dispatchEvent(new CustomEvent("iaqar:operations-data", {
-      detail: { items, authoritative: true, opportunityView, sourceMode: audit.mode, sourceAudit: audit }
-    }));
-  }
-
-  async function opportunityLifecycleAction(action, detail, extra = {}) {
-    const runtime = office();
-    if (!runtime || !runtime.officeId) throw new Error("ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-    const response = await fetch(`${resolveWorkerBase()}/opportunity/lifecycle`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({
-        officeId: runtime.officeId,
-        recordType: detail.recordType === "intake" ? "intake" : "opportunity",
-        recordId: detail.recordId,
-        opportunityId: detail.opportunityId || detail.recordId,
-        action,
-        ...extra
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø¯ÙˆØ±Ø© Ø§Ù„ÙØ±ØµØ©");
-    return payload;
-  }
-
-  async function postOperationAction(operationId, action, reason = "") {
-    const runtime = office();
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!runtime || !runtime.officeId || !user) throw new Error("Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ù‹Ø§");
-    const response = await fetch(`${resolveWorkerBase()}/operations/action`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({
-        officeId: runtime.officeId,
-        operationId,
-        action,
-        reason
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || payload.error || "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¹Ù…Ù„ÙŠØ©");
-    return payload;
-  }
-
-  async function authHeaders() {
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!user) throw new Error("Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ù‹Ø§");
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${await user.getIdToken(true)}`
-    };
-  }
-
-  function repairLegacyReadiness(opportunityId) {
-    const id = String(opportunityId || "").trim();
-    const runtime = office();
-    if (!id || !runtime?.officeId || legacyReadinessRepairs.has(id)) return;
-    legacyReadinessRepairs.add(id);
-    Promise.resolve().then(async () => {
-      const response = await fetch(`${resolveWorkerBase()}/operations/missing-data`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({ officeId: runtime.officeId, opportunityId: id })
-      });
-      if (!response.ok) throw new Error("legacy_readiness_repair_failed");
-    }).catch((error) => {
-      legacyReadinessRepairs.delete(id);
-      console.warn("[iaqar] legacy readiness repair", error?.message || error);
-    });
-  }
-
-  async function submitPendingShare() {
-    const pending = readPendingShare();
-    if (!pending) return;
-    const runtime = office();
-    if (!runtime || !runtime.officeId || runtime.officeId === "platform") {
-      notify("Ø§ÙØªØ­ Ø±Ø§Ø¨Ø· Ù…ÙƒØªØ¨Ùƒ Ø£ÙˆÙ„Ù‹Ø§ Ø«Ù… Ø£Ø¹Ø¯ Ù…Ø´Ø§Ø±ÙƒØ© Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-      return;
-    }
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!user) {
-      notify("Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ù„Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ù…Ø´ØªØ±ÙƒØ©");
-      return;
-    }
-    try {
-      notify("Ø¬Ø§Ø±ÙŠ ÙØ±Ø² Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙˆØªØ´ØºÙŠÙ„ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©");
-      const response = await fetch(`${resolveWorkerBase()}/pipeline/intake`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({
-          officeId: runtime.officeId,
-          eventId: pending.id,
-          messageText: pending.messageText,
-          senderName: pending.senderName || "Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ù† ÙˆØ§ØªØ³Ø§Ø¨",
-          source: "pwa_share_target",
-          receivedAt: pending.receivedAt || new Date().toISOString()
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || "ØªØ¹Ø°Ø± Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-      clearPendingShare();
-      notify(Number(payload.matches || 0) > 0
-        ? `ØªÙ… ÙØ±Ø² Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙˆØ¥Ù†Ø´Ø§Ø¡ ${payload.matches} Ù…Ø·Ø§Ø¨Ù‚Ø©`
-        : "ØªÙ… ÙØ±Ø² Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙˆÙ„Ù… ØªØ¸Ù‡Ø± Ù…Ø·Ø§Ø¨Ù‚Ø© Ø­Ø§Ù„ÙŠÙ‹Ø§");
-      history.replaceState({}, "", location.pathname + (runtime.officeId ? `?officeId=${encodeURIComponent(runtime.officeId)}` : ""));
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ù…Ø´ØªØ±ÙƒØ©");
-    }
-  }
-
-  async function loadAnalytics() {
-    const runtime = office();
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!runtime || !runtime.officeId || !user) return;
-    try {
-      const response = await fetch(`${resolveWorkerBase()}/office/analytics?officeId=${encodeURIComponent(runtime.officeId)}`, { headers: await authHeaders() });
-      const data = await response.json();
-      if (!response.ok) return;
-      const summary = data.morningSummary || data.counts || {};
-      const best = data.bestOpportunity || null;
-      analyticsItem = {
-        id: "daily-priorities",
-        recordId: "daily-priorities",
-        recordType: "summary",
-        main: "opportunities",
-        priority: -1,
-        isAlert: Number(summary.dueFollowUps || 0) > 0,
-        icon: "i-clipboard-list",
-        title: "Ø£ÙˆÙ„ÙˆÙŠØ§Øª Ø§Ù„ÙŠÙˆÙ…",
-        subtitle: Number(summary.dueFollowUps || 0) > 0 ? `${summary.dueFollowUps} Ù…ØªØ§Ø¨Ø¹Ø§Øª Ù…Ø³ØªØ­Ù‚Ø©` : "Ø§Ù„Ø¹Ù…Ù„ Ù…Ø±ØªØ¨ Ø­Ø³Ø¨ Ø§Ù„Ø£Ù‚Ø±Ø¨ Ù„Ù„Ø¥ØºÙ„Ø§Ù‚",
-        time: "Ø§Ù„Ø¢Ù†",
-        detailsLines: [
-          `Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø§Øª Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø©: ${Number(summary.dueFollowUps || 0)}`,
-          `ÙØ±Øµ Ø¬Ø§Ù‡Ø²ÙŠØªÙ‡Ø§ Ø¹Ø§Ù„ÙŠØ© Ø¬Ø¯Ù‹Ø§: ${Number(summary.veryReady || 0)}`,
-          `ØµÙÙ‚Ø§Øª ÙÙŠ Ø§Ù„ØªÙØ§ÙˆØ¶ ÙˆÙ…Ø§ Ø¨Ø¹Ø¯Ù‡: ${Number(summary.negotiationDeals || 0)}`,
-          `Ø§Ù„Ø¹Ù…ÙˆÙ„Ø§Øª Ø§Ù„Ù…ØªÙˆÙ‚Ø¹Ø©: ${Number(summary.commissionExpected || 0).toLocaleString("ar-SA")} Ø±ÙŠØ§Ù„`,
-          best ? `Ø£ÙØ¶Ù„ ÙØ±ØµØ©: ${best.matchScore || best.score || 0}% â€” Ø¬Ø§Ù‡Ø²ÙŠØ© Ø§Ù„Ø¥ØºÙ„Ø§Ù‚ ${best.closingReadinessLabel || "Ù…ØªÙˆØ³Ø·Ø©"}` : "Ù„Ø§ ØªÙˆØ¬Ø¯ ÙØ±ØµØ© Ù…ÙƒØªÙ…Ù„Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¢Ù†"
-        ],
-        actionLabel: best ? "ÙØªØ­ Ø£ÙØ¶Ù„ ÙØ±ØµØ©" : "Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„ÙØ±Øµ",
-        secondaryActionLabel: "Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØªÙØ§ØµÙŠÙ„",
-        targetId: best && best.matchId || "",
-        targetMain: "opportunities"
-      };
-      emitOperations();
-    } catch (error) {
-      console.warn("[iaqar] analytics", error);
-    }
-  }
-
-  function stopLiveData() {
-    liveUnsubscribers.forEach(unsubscribe => { try { unsubscribe(); } catch (_) {} });
-    liveUnsubscribers = [];
-    liveOfficeKey = "";
-  }
-
-  function startLiveData() {
-    const runtime = office();
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    if (!runtime || !runtime.refs || !user) return;
-    const key = `${runtime.officeId}:${user.uid}`;
-    if (liveOfficeKey === key && liveUnsubscribers.length) return;
-    stopLiveData();
-    liveOfficeKey = key;
-
-    const onError = error => {
-      console.warn("[iaqar] live listener", error);
-      if (String(error && error.code || "").includes("permission-denied")) {
-        notify("Ø­Ø³Ø§Ø¨Ùƒ Ù„Ø§ ÙŠÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© Ø¨ÙŠØ§Ù†Ø§Øª Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-      }
-    };
-
-    const matchUnsub = runtime.refs.matches.orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
-      matchItems = snapshot.docs.map(matchOperation);
-      dailyTaskShadowSourcesReady.matches = true;
-      loadAnalytics();
-    }, onError);
-    const dealUnsub = runtime.refs.deals.orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
-      dealItems = snapshot.docs.map(dealOperation);
-      dailyTaskShadowSourcesReady.deals = true;
-      loadAnalytics();
-    }, onError);
-    const intakeUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("publicIntake")
-      .orderBy("createdAt", "desc").limit(100).onSnapshot(snapshot => {
-        intakeItems = snapshot.docs.map(intakeOperation);
-        dailyTaskShadowSourcesReady.intake = true;
-        processNewPublicIntakes(snapshot);
-      }, onError);
-
-    const operationsRef = runtime.refs.operations
-      || runtime.db.collection("offices").doc(runtime.officeId).collection("operations");
-    // Bounded active-status query; client sorts by priority after snapshot.
-    const opsUnsub = operationsRef
-      .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .onSnapshot(snapshot => {
-        operationItems = snapshot.docs.map(projectPersistedOperation);
-        dailyTaskShadowSourcesReady.operations = true;
-        pruneSavedOpportunityWorkspaceItems();
-        emitOperations();
-      }, (error) => {
-        console.warn("[iaqar] operations listener", error);
-        // Fallback without orderBy if the staging composite index is unavailable.
-        // Never limit an unordered result: that can hide a newly-created match
-        // behind an arbitrary page of older operations.
-        operationsRef
-          .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
-          .get()
-          .then((snapshot) => {
-            operationItems = snapshot.docs.map(projectPersistedOperation)
-              .sort((a, b) => {
-                const priority = (a.priority ?? 2) - (b.priority ?? 2);
-                if (priority !== 0) return priority;
-                return String(b.updatedAt || b.createdAt || "")
-                  .localeCompare(String(a.updatedAt || a.createdAt || ""));
-              });
-            dailyTaskShadowSourcesReady.operations = true;
-            pruneSavedOpportunityWorkspaceItems();
-            emitOperations();
-          })
-          .catch((fallbackError) => {
-            console.warn("[iaqar] operations fallback", fallbackError);
-            onError(fallbackError);
-          });
-      });
-
-    liveUnsubscribers = [matchUnsub, dealUnsub, intakeUnsub, opsUnsub];
-    const opportunityUnsub = runtime.db.collection("offices").doc(runtime.officeId).collection("opportunities")
-      .orderBy("updatedAt", "desc").limit(100).onSnapshot(snapshot => {
-        opportunityItems = snapshot.docs.map(opportunityOperation);
-        dailyTaskShadowSourcesReady.opportunities = true;
-        emitOperations();
-      }, onError);
-    liveUnsubscribers.push(opportunityUnsub);
-    // Ensure empty authoritative state until the first operations snapshot arrives.
-    if (!operationItems.length) emitOperations();
-  }
-
-  async function loadTimeline(recordType, recordId) {
-    if (!recordId || !["match", "deal"].includes(recordType)) return;
-    const cacheKey = `${recordType}:${recordId}`;
-    if (timelinePending.has(cacheKey)) return;
-    timelinePending.add(cacheKey);
-    try {
-      const runtime = office();
-      if (!runtime || !runtime.refs) return;
-      const collection = recordType === "deal" ? runtime.refs.deals : runtime.refs.matches;
-      const snapshot = await collection.doc(recordId).collection("timeline").orderBy("createdAt", "desc").limit(20).get();
-      timelineCache.set(cacheKey, snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      // Ø¥Ø¹Ø§Ø¯Ø© Ù‚Ø±Ø§Ø¡Ø© Ø§Ù„Ù…Ø³ØªÙ†Ø¯ Ù†ÙØ³Ù‡ ØªØ¶Ù…Ù† ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù†Øµ Ø¨Ø¯ÙˆÙ† Ø¥Ù†Ø´Ø§Ø¡ Ù…Ø³ØªÙ…Ø¹Ø§Øª ÙØ±Ø¹ÙŠØ© Ø¯Ø§Ø¦Ù…Ø©.
-      const currentDoc = await collection.doc(recordId).get();
-      if (currentDoc.exists) {
-        if (recordType === "match") matchItems = replaceOperation(matchItems, matchOperation(currentDoc));
-        else dealItems = replaceOperation(dealItems, dealOperation(currentDoc));
-      }
-      emitOperations();
-    } catch (error) {
-      console.warn("[iaqar] timeline", error);
-    } finally {
-      timelinePending.delete(cacheKey);
-    }
-  }
-
-  function replaceOperation(items, operation) {
-    const index = items.findIndex(item => item.recordId === operation.recordId);
-    if (index < 0) return [operation, ...items];
-    const copy = [...items];
-    copy[index] = operation;
-    return copy;
-  }
-
-  async function workflowAction(action, recordId, extra = {}) {
-    const runtime = office();
-    if (!runtime || !runtime.officeId) throw new Error("ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-    const response = await fetch(`${resolveWorkerBase()}/workflow/action`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify({ officeId: runtime.officeId, action, recordId, ...extra })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || "ØªØ¹Ø°Ø± ØªÙ†ÙÙŠØ° Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡");
-    return payload;
-  }
-
-  function whatsappPhone(value) {
-    if (LC().normalizeSaudiPhoneForWhatsApp) return LC().normalizeSaudiPhoneForWhatsApp(value);
-    const digits = String(value || "").replace(/\D/g, "");
-    if (/^009665\d{8}$/.test(digits)) return digits.slice(2);
-    if (/^9665\d{8}$/.test(digits)) return digits;
-    if (/^05\d{8}$/.test(digits)) return `966${digits.slice(1)}`;
-    if (/^5\d{8}$/.test(digits)) return `966${digits}`;
-    return "";
-  }
-
-  function openWhatsAppHandoff({ phone = "", text = "", url = "" } = {}) {
-    const handoff = window.IAQAR?.whatsappHandoff;
-    if (handoff?.openWhatsAppUrl && url) {
-      return handoff.openWhatsAppUrl(url, { phone, text });
-    }
-    if (handoff?.openWhatsApp) {
-      return handoff.openWhatsApp({ phone: phone || whatsappPhone(phone), text });
-    }
-    const digits = whatsappPhone(phone || url);
-    const fallback = digits
-      ? `https://wa.me/${digits}?text=${encodeURIComponent(String(text || ""))}`
-      : (url || `https://wa.me/?text=${encodeURIComponent(String(text || ""))}`);
-    window.location.href = fallback;
-    return { ok: true, mode: "fallback", url: fallback };
-  }
-
-  function brokerDisplayName() {
-    return String(document.getElementById("brokerDisplayName")?.textContent || document.getElementById("officeDisplayName")?.textContent || "Ø§Ù„ÙˆØ³ÙŠØ·").trim();
-  }
-
-  function officeDisplayName() {
-    return String(document.getElementById("officeDisplayName")?.textContent || "Ø§Ù„Ù…ÙƒØªØ¨ Ø§Ù„Ø¹Ù‚Ø§Ø±ÙŠ").trim();
-  }
-
-  function escapeUi(value) {
-    return String(value == null ? "" : value).replace(/[&<>"']/g, character => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    }[character]));
-  }
-
-  function BAP() {
-    return window.IAQAR?.brokerActionProgress || {};
-  }
-
-  function brokerDoneClass(detail = {}, actionKey = "") {
-    return BAP().brokerActionDoneClass?.(detail, actionKey) || "";
-  }
-
-  function brokerPressed(detail = {}, actionKey = "") {
-    return BAP().brokerActionAriaPressed?.(detail, actionKey) || "false";
-  }
-
-  function applyWorkflowBrokerMarks(detail = {}) {
-    BAP().applyBrokerActionMarks?.(workflowBody(), detail);
-  }
-
-  function mergeWorkflowBrokerProgress(detail = {}, actionKey = "", followPatch = null) {
-    let next = detail;
-    if (actionKey) next = BAP().markBrokerActionDoneLocally?.(next, actionKey) || next;
-    if (followPatch) next = BAP().markFollowUpProgressLocally?.(next, followPatch) || next;
-    return next;
-  }
-
-  function syncWorkflowDetailFromLifecyclePayload(payload = {}, actionKey = "", followPatch = null) {
-    let next = {
-      ...activeWorkflowDetail,
-      ...payload,
-      followUp: payload.followUp || activeWorkflowDetail.followUp,
-      brokerActionProgress: payload.brokerActionProgress || activeWorkflowDetail.brokerActionProgress
-    };
-    next = mergeWorkflowBrokerProgress(next, actionKey, followPatch);
-    activeWorkflowDetail = next;
-    return next;
-  }
-
-  function appointmentValue(detail) {
-    return detail.appointmentAt || detail.viewingAt || null;
-  }
-
-  function appointmentText(detail) {
-    const value = appointmentValue(detail);
-    return value ? dateTimeLabel(value) : "Ù„Ù… ÙŠØ­Ø¯Ø¯ Ø¨Ø¹Ø¯";
-  }
-
-  async function syncOfficeContact(role, contact, recordId = "") {
-    const runtime = office();
-    const digits = String(contact && contact.phone || "").replace(/\D/g, "");
-    if (!runtime || !runtime.db || !runtime.officeId || !digits) return;
-    try {
-      await runtime.db.collection("offices").doc(runtime.officeId).collection("contacts").doc(digits).set({
-        officeId: runtime.officeId,
-        fullName: contact.name || "",
-        name: contact.name || "",
-        phone: contact.phone || "",
-        roles: window.firebase.firestore.FieldValue.arrayUnion(role),
-        lastRecordId: recordId || "",
-        lastRecordType: role,
-        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    } catch (error) {
-      console.warn("[iaqar] contact sync", error);
-    }
-  }
-
-  async function workflowContact(detail, role) {
-    if (detail.recordType === "intake") {
-      if ((role === "owner" && detail.kind !== "owner") || (role === "client" && detail.kind === "owner")) return null;
-      const contact = { name: detail.contactName || "", phone: detail.contactPhone || "" };
-      await syncOfficeContact(role, contact, detail.recordId);
-      return contact;
-    }
-    const runtime = office();
-    if (!runtime || !runtime.refs) return null;
-    const recordId = role === "owner" ? detail.ownerOfferId : detail.clientRequestId;
-    const collection = role === "owner" ? runtime.refs.owners : runtime.refs.clients;
-    if (!recordId || !collection) return null;
-    const snapshot = await collection.doc(recordId).get();
-    if (!snapshot.exists) return null;
-    const data = snapshot.data() || {};
-    const contact = {
-      name: data.contactName || data.name || "",
-      phone: data.contactPhone || data.phone || ""
-    };
-    await syncOfficeContact(role, contact, recordId);
-    return contact;
-  }
-
-  function isOwnerPartyDetail(detail = {}) {
-    const contactType = String(detail.contactType || "").toLowerCase();
-    const recordType = String(detail.recordType || "").toLowerCase();
-    const kind = String(detail.kind || "").toLowerCase();
-    const opportunityKind = String(detail.opportunityKind || "").toUpperCase();
-    const advertiserRole = String(detail.advertiserRole || "").toUpperCase();
-    if (contactType === "owner" || recordType === "owner_offer" || kind === "owner" || kind === "owner_offer") {
-      return true;
-    }
-    if (opportunityKind === "OFFER" || recordType === "owner") return true;
-    if (advertiserRole === "OWNER") return true;
-    return false;
-  }
-
-  async function resolveWorkflowPartyContact(detail, role) {
-    const roleKey = String(role || "").toLowerCase();
-    const linked = await workflowContact(detail, roleKey);
-    if (linked?.phone) return linked;
-
-    const phoneInfo = resolveLifecyclePhone(detail);
-    if (!phoneInfo.valid) return null;
-
-    const isOwnerParty = isOwnerPartyDetail(detail);
-    const matchesOwner = roleKey === "owner" && isOwnerParty;
-    const matchesClient = roleKey === "client" && !isOwnerParty;
-    if (!matchesOwner && !matchesClient) return null;
-
-    return {
-      name: detail.contactName || detail.advertiserDisplayName || "",
-      phone: phoneInfo.whatsappDigits || phoneInfo.local || detail.contactPhone || ""
-    };
-  }
-
-  function resolveMessageStage(detail) {
-    return detail.messageStage
-      || (detail.recordType === "deal" ? detail.workflowStage : detail.status)
-      || (detail.recordType === "operation" ? "match_review" : "contact");
-  }
-
-  function whatsappMessage(detail, role, contact) {
-    const domain = messagingDomain();
-    const officeName = officeDisplayName();
-    const stage = resolveMessageStage(detail);
-    if (domain && typeof domain.buildArabicMessageBody === "function") {
-      const templateCode = typeof domain.resolveTemplateCode === "function"
-        ? domain.resolveTemplateCode({
-          templateCode: detail.templateCode,
-          role,
-          stage,
-          messageMode: detail.messageMode || "",
-          ownerMediaMissing: detail.ownerMediaMissing === true
-        })
-        : "";
-      return domain.buildArabicMessageBody({
-        templateCode,
-        role,
-        officeName,
-        contactName: contact && contact.name || "",
-        propertyType: detail.propertyType || "",
-        district: detail.district || "",
-        appointmentLabel: appointmentText(detail),
-        requestedItems: detail.requestedItems || [],
-        requestNote: detail.requestNote || "",
-        stage
-      });
-    }
-    // Fallback if messaging domain module has not loaded yet.
-    const name = contact.name ? ` ${contact.name}` : "";
-    const greeting = `Ù…Ø±Ø­Ø¨Ù‹Ø§${name}ØŒ Ù…Ø¹Ùƒ ${officeName}.`;
-    const property = [detail.propertyType, detail.district].filter(Boolean).join(" ÙÙŠ ") || "Ø§Ù„Ø¹Ù‚Ø§Ø±";
-    return `${greeting}\n\nÙ†ØªÙˆØ§ØµÙ„ Ù…Ø¹Ùƒ Ø¨Ø®ØµÙˆØµ ${property} Ù„ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª ÙˆØªØ±ØªÙŠØ¨ Ø§Ù„Ø®Ø·ÙˆØ© Ø§Ù„ØªØ§Ù„ÙŠØ©.\n\nÙ…Ø¹ Ø§Ù„ØªØ­ÙŠØ©ØŒ\n${officeName}`;
-  }
-
-  async function enrichDetailForMessaging(detail) {
-    const next = { ...detail };
-    if (next.ownerOfferId && next.clientRequestId) return next;
-    const matchId = next.matchId || (next.recordType === "match" ? next.recordId : "");
-    if (!matchId) return next;
-    const fromCache = matchItems.find((item) => item.recordId === matchId || item.id === matchId);
-    if (fromCache) {
-      next.ownerOfferId = next.ownerOfferId || fromCache.ownerOfferId || "";
-      next.clientRequestId = next.clientRequestId || fromCache.clientRequestId || "";
-      next.propertyType = next.propertyType || fromCache.propertyType || "";
-      next.district = next.district || fromCache.district || "";
-      next.ownerMediaMissing = next.ownerMediaMissing ?? fromCache.ownerMediaMissing;
-      next.status = next.status || fromCache.status || "";
-      return next;
-    }
-    const runtime = office();
-    if (!runtime || !runtime.refs || !runtime.refs.matches) return next;
-    try {
-      const snap = await runtime.refs.matches.doc(matchId).get();
-      if (!snap.exists) return next;
-      const data = snap.data() || {};
-      next.ownerOfferId = next.ownerOfferId || data.ownerOfferId || "";
-      next.clientRequestId = next.clientRequestId || data.clientRequestId || "";
-      next.propertyType = next.propertyType || data.propertyType || "";
-      next.district = next.district || data.district || "";
-      next.ownerMediaMissing = next.ownerMediaMissing ?? data.ownerMediaMissing;
-      next.status = next.status || data.status || "";
-    } catch (error) {
-      console.warn("[iaqar] enrich match for messaging", error);
-    }
-    return next;
-  }
-
-  async function persistAndOpenMessageDraft(detail, channel) {
-    const runtime = office();
-    const user = window.firebase && window.firebase.auth && window.firebase.auth().currentUser;
-    const domain = messagingDomain();
-    if (!runtime || !runtime.officeId || !user) {
-      return notify("Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ù‹Ø§");
-    }
-    const role = detail.recipientRole === "owner" ? "owner" : "client";
-    const enriched = await enrichDetailForMessaging(detail);
-    const contact = await resolveWorkflowPartyContact(enriched, role);
-    const safeChannel = channel === "telegram" ? "telegram" : "whatsapp";
-    if (safeChannel === "whatsapp") {
-      const phone = whatsappPhone(contact && contact.phone);
-      if (!phone) {
-        return notify(`Ø±Ù‚Ù… ${role === "owner" ? "Ø§Ù„Ù…Ø§Ù„Ùƒ" : "Ø§Ù„Ø¹Ù…ÙŠÙ„"} ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± ØµØ­ÙŠØ­`);
-      }
-    }
-
-    const stage = resolveMessageStage(enriched);
-    const bodyText = whatsappMessage(enriched, role, contact || {});
-    let handoffUrl = "";
-    let messageId = "";
-
-    if (domain && typeof domain.requestCreateMessageDraft === "function") {
-      const idToken = await user.getIdToken(true);
-      const created = await domain.requestCreateMessageDraft({
-        workerBase: resolveWorkerBase(),
-        idToken,
-        officeId: runtime.officeId,
-        channel: safeChannel,
-        role,
-        contactName: contact && contact.name || "",
-        contactPhone: contact && contact.phone || "",
-        propertyType: enriched.propertyType || "",
-        district: enriched.district || "",
-        appointmentLabel: appointmentText(enriched),
-        officeName: officeDisplayName(),
-        stage,
-        messageMode: enriched.messageMode || "",
-        ownerMediaMissing: enriched.ownerMediaMissing === true,
-        requestedItems: enriched.requestedItems || [],
-        requestNote: enriched.requestNote || "",
-        operationId: enriched.recordType === "operation" ? (enriched.recordId || enriched.id || "") : "",
-        matchId: enriched.matchId || (enriched.recordType === "match" ? enriched.recordId : "") || "",
-        opportunityId: enriched.opportunityId || "",
-        body: bodyText
-      });
-      if (!created.ok) {
-        return notify(created.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ù…Ø³ÙˆØ¯Ø© Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-      }
-      messageId = created.messageId || (created.draft && created.draft.id) || "";
-      handoffUrl = (created.draft && created.draft.handoffUrl) || "";
-      if (messageId && typeof domain.requestMessageHandoff === "function") {
-        const handed = await domain.requestMessageHandoff({
-          workerBase: resolveWorkerBase(),
-          idToken,
-          officeId: runtime.officeId,
-          messageId
-        });
-        if (handed.ok) {
-          handoffUrl = handed.handoffUrl || handoffUrl;
-          // OPENED_EXTERNAL only â€” never treat as provider SENT/DELIVERED.
-        }
-      }
-    }
-
-    if (safeChannel === "whatsapp") {
-      const phone = whatsappPhone(contact && contact.phone);
-      if (!phone && !handoffUrl) {
-        return notify("ØªØ¹Ø°Ø± ØªØ¬Ù‡ÙŠØ² Ø±Ø§Ø¨Ø· Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-      }
-      openWhatsAppHandoff({
-        phone,
-        text: bodyText,
-        url: handoffUrl || undefined
-      });
-      notify("ÙÙØªØ­ ÙˆØ§ØªØ³Ø§Ø¨ â€” Ø£ÙƒÙ‘Ø¯ Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¨Ù†ÙØ³Ùƒ");
-      return;
-    }
-
-    if (!handoffUrl) {
-      if (domain && typeof domain.buildTelegramHandoffUrl === "function") {
-        handoffUrl = domain.buildTelegramHandoffUrl({ body: bodyText }).url;
-      } else {
-        handoffUrl = `https://t.me/share/url?url=${encodeURIComponent("https://iaqar.ai/")}&text=${encodeURIComponent(bodyText)}`;
-      }
-    }
-
-    if (!handoffUrl) {
-      return notify("ØªØ¹Ø°Ø± ØªØ¬Ù‡ÙŠØ² Ø±Ø§Ø¨Ø· Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-    }
-    window.location.href = handoffUrl;
-    notify("ÙÙØªØ­ ØªÙ„ÙŠØ¬Ø±Ø§Ù… â€” Ø£ÙƒÙ‘Ø¯ Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¨Ù†ÙØ³Ùƒ");
-  }
-
-  function resolveLifecyclePhone(detail) {
-    if (LC().resolveOpportunityCanonicalPhone) {
-      return LC().resolveOpportunityCanonicalPhone(detail);
-    }
-    const whatsappDigits = whatsappPhone(detail.contactPhone);
-    if (!whatsappDigits) return { valid: false, error: "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„" };
-    const local = `0${whatsappDigits.slice(3)}`;
-    return { valid: true, whatsappDigits, local, tel: local };
-  }
-
-  function buildLifecycleContactMessage(detail) {
-    const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
-    const actionType = LC().whatsappActionTypeForStatus ? LC().whatsappActionTypeForStatus(lifecycleStatus) : "first_contact";
-    const isOwner = detail.kind === "owner" || detail.contactType === "owner";
-    const role = isOwner ? "owner" : "client";
-    const contactName = String(detail.contactName || detail.advertiserDisplayName || "").trim();
-    const payload = {
-      ...detail,
-      contactType: isOwner ? "owner" : "buyer",
-      kind: isOwner ? "owner" : "client",
-      contactPhone: detail.contactPhone || detail.advertiserPhone || detail.advertiserPhoneNormalized || ""
-    };
-    if (contactName) payload.contactName = contactName;
-    return LC().buildOpportunityWhatsAppMessage
-      ? LC().buildOpportunityWhatsAppMessage(payload, actionType, {
-        brokerName: brokerDisplayName(),
-        officeName: officeDisplayName(),
-        matchSummary: detail.matchSummary || ""
-      })
-      : whatsappMessage(detail, role, { name: contactName, phone: payload.contactPhone });
-  }
-
-  async function openContactWhatsAppDirect() {
-    const detail = activeWorkflowDetail;
-    if (!detail) return;
-    const phoneInfo = resolveLifecyclePhone(detail);
-    if (!phoneInfo.valid) return notify(phoneInfo.error || "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-    const message = buildLifecycleContactMessage(detail);
-    openWhatsAppHandoff({ phone: phoneInfo.whatsappDigits, text: message });
-    lifecycleContactAttempted = true;
-    try {
-      const payload = await opportunityLifecycleAction("whatsapp_opened", detail, { communicationAction: "whatsapp_opened" });
-      syncWorkflowDetailFromLifecyclePayload(
-        payload,
-        BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
-      );
-    } catch (error) {
-      console.warn("[iaqar] whatsapp opened log", error);
-      activeWorkflowDetail = mergeWorkflowBrokerProgress(
-        detail,
-        BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"
-      );
-    }
-    notify("ØªÙ… ÙØªØ­ ÙˆØ§ØªØ³Ø§Ø¨");
-    renderOpportunityLifecycleUi();
-  }
-
-  async function openContactCallDirect() {
-    const detail = activeWorkflowDetail;
-    if (!detail) return;
-    const phoneInfo = resolveLifecyclePhone(detail);
-    if (!phoneInfo.valid) return notify(phoneInfo.error || "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-    window.location.href = `tel:${phoneInfo.tel || phoneInfo.local}`;
-    lifecycleContactAttempted = true;
-    try {
-      const payload = await opportunityLifecycleAction("call_opened", detail);
-      syncWorkflowDetailFromLifecyclePayload(
-        payload,
-        BAP().BROKER_ACTION?.contactCall || "contact:call"
-      );
-    } catch (error) {
-      console.warn("[iaqar] call opened log", error);
-      activeWorkflowDetail = mergeWorkflowBrokerProgress(
-        detail,
-        BAP().BROKER_ACTION?.contactCall || "contact:call"
-      );
-    }
-    notify("ØªÙ… ÙØªØ­ Ø§Ù„Ø§ØªØµØ§Ù„");
-    renderOpportunityLifecycleUi();
-  }
-
-  async function openLifecycleWhatsApp(detail) {
-    activeWorkflowDetail = { ...detail };
-    openContactWhatsAppDirect();
-  }
-
-  function buildMissingDataWhatsAppMessage(opportunity = {}) {
-    const brokerName = brokerDisplayName();
-    const officeName = officeDisplayName();
-    const isOwner = opportunity.contactType === "owner" || opportunity.kind === "owner";
-    const property = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(opportunity) : "";
-    const intro = `Ù…Ø¹Ùƒ ${brokerName} Ù…Ù† ${officeName}.`;
-    if (isOwner) {
-      return [
-        "Ø§Ù„Ø³Ù„Ø§Ù… Ø¹Ù„ÙŠÙƒÙ…ØŒ",
-        intro,
-        "",
-        `Ø¨Ø®ØµÙˆØµ Ø¹Ø±Ø¶ÙƒÙ…: ${property}`,
-        "",
-        "Ù†Ø±ØºØ¨ ÙÙŠ Ø§Ø³ØªÙƒÙ…Ø§Ù„ ØµÙˆØ± Ø§Ù„Ø¹Ù‚Ø§Ø± ÙˆØ§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù†Ø§Ù‚ØµØ© Ù‚Ø¨Ù„ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©.",
-        "",
-        "Ø´Ø§ÙƒØ±ÙŠÙ† Ù„ÙƒÙ…."
-      ].join("\n");
-    }
-    return [
-      "Ø§Ù„Ø³Ù„Ø§Ù… Ø¹Ù„ÙŠÙƒÙ…ØŒ",
-      intro,
-      "",
-      `Ø¨Ø®ØµÙˆØµ Ø·Ù„Ø¨ÙƒÙ…: ${property}`,
-      "",
-      "Ù†Ø±ØºØ¨ ÙÙŠ Ø§Ø³ØªÙƒÙ…Ø§Ù„ Ø¨Ø¹Ø¶ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø£Ùˆ Ø§Ù„ØµÙˆØ± Ø§Ù„Ù†Ø§Ù‚ØµØ© Ù„Ù…Ø³Ø§Ø¹Ø¯ØªÙƒÙ… Ø¨Ø´ÙƒÙ„ Ø£ÙØ¶Ù„.",
-      "",
-      "Ø´Ø§ÙƒØ±ÙŠÙ† Ù„ÙƒÙ…."
-    ].join("\n");
-  }
-
-  async function openWorkflowWhatsApp(detail) {
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      return openLifecycleWhatsApp(detail);
-    }
-    return persistAndOpenMessageDraft(detail, "whatsapp");
-  }
-
-  async function openWorkflowTelegram(detail) {
-    return persistAndOpenMessageDraft(detail, "telegram");
-  }
-
-  let activeWorkflowDetail = null;
-  let activeWorkflowContacts = { owner: null, client: null };
-  let lifecycleContactAttempted = false;
-  let followUpEditMode = false;
-  let followUpRecipientContext = null;
-  const CLOSE_REASONS = Object.freeze([
-    ["client_not_interested", "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…Ù‡ØªÙ…"],
-    ["owner_not_responding", "Ø§Ù„Ù…Ø§Ù„Ùƒ ØºÙŠØ± Ù…ØªØ¬Ø§ÙˆØ¨"],
-    ["property_unavailable", "Ø§Ù„Ø¹Ù‚Ø§Ø± Ù„Ù… ÙŠØ¹Ø¯ Ù…ØªØ§Ø­Ù‹Ø§"],
-    ["price_not_suitable", "Ø§Ù„Ø³Ø¹Ø± ØºÙŠØ± Ù…Ù†Ø§Ø³Ø¨"],
-    ["specifications_not_suitable", "Ø§Ù„Ù…ÙˆØ§ØµÙØ§Øª ØºÙŠØ± Ù…Ù†Ø§Ø³Ø¨Ø©"],
-    ["outside_platform", "ØªÙ… Ø§Ù„ØªØ¹Ø§Ù…Ù„ Ø®Ø§Ø±Ø¬ Ø§Ù„Ù…Ù†ØµØ©"],
-    ["duplicate", "Ø·Ù„Ø¨ Ù…ÙƒØ±Ø±"],
-    ["other", "Ø³Ø¨Ø¨ Ø¢Ø®Ø±"]
-  ]);
-
-  function ensureWorkflowUi() {
-    if (!document.getElementById("iaqarWorkflowStyles")) {
-      document.head.insertAdjacentHTML("beforeend", `<style id="iaqarWorkflowStyles">
-      .iaqar-workflow-overlay[hidden]{display:none!important}.iaqar-workflow-overlay{position:fixed;inset:0;z-index:2000;background:rgba(8,36,31,.55);display:flex;align-items:flex-end;justify-content:center;padding:12px;box-sizing:border-box;direction:rtl}
-      .iaqar-workflow-panel{width:min(100%,560px);max-height:92svh;overflow:auto;background:#fff;border-radius:24px 24px 18px 18px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Tajawal,Arial,sans-serif;color:#173d35}
-      .iaqar-workflow-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;background:#fff;border-bottom:1px solid #e2ece8}.iaqar-workflow-head h2,.iaqar-workflow-head h3{margin:0;color:#087064;font-size:21px;font-weight:700}.iaqar-workflow-close{width:38px;height:38px;border:0;border-radius:12px;background:#edf6f3;color:#087064;font-size:25px;cursor:pointer;line-height:1}
-      .iaqar-workflow-body{padding:16px}.iaqar-workflow-summary{background:#f4f8f6;border:1px solid #dce8e4;border-radius:16px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.8}.iaqar-workflow-steps{display:grid;gap:10px}.iaqar-workflow-step{border:1px solid #dce8e4;border-radius:18px;padding:14px}.iaqar-workflow-step.is-done{border-color:#9fd1c5;background:#f1faf7}.iaqar-workflow-step h3,.iaqar-workflow-step h4{margin:0 0 5px;font-size:17px;color:#0a695d;font-weight:700}.iaqar-workflow-step p{margin:0 0 10px;color:#657b74;font-size:13px;line-height:1.6}
-      .iaqar-workflow-actions,.iaqar-whatsapp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.iaqar-workflow-btn{min-height:52px;border:0;border-radius:14px;padding:10px 12px;font:700 15px Tajawal;cursor:pointer;background:#087064;color:#fff}.iaqar-workflow-btn.secondary{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-workflow-btn.danger{background:#fff1f1;color:#a33a3a;border:1px solid #efc4c4}.iaqar-workflow-btn.success{background:#087064;color:#fff}.iaqar-workflow-btn.whatsapp{background:#087064;color:#fff}.iaqar-workflow-btn.call{background:#edf7f4;color:#087064;border:1px solid #b9ddd4}.iaqar-outcome-actions{grid-template-columns:1fr 1fr}.iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected{background:#087064;color:#fff;border-color:#087064;box-shadow:0 0 0 2px #fff,0 0 0 4px #087064}.iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected::after{content:" âœ“";font-size:13px}.iaqar-workflow-btn:disabled{opacity:.48;cursor:not-allowed}
-      .iaqar-workflow-form{display:grid;gap:11px}.iaqar-workflow-form label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}.iaqar-workflow-form input,.iaqar-workflow-form select,.iaqar-workflow-form textarea{width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px}.iaqar-workflow-form textarea{min-height:82px;resize:vertical}.iaqar-workflow-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.iaqar-workflow-form-grid label,.iaqar-workflow-step label{display:grid;gap:5px;font-size:13px;font-weight:700;color:#36574f}.iaqar-workflow-form-grid .full{grid-column:1/-1}.iaqar-workflow-step input:not([type=checkbox]):not([type=radio]),.iaqar-workflow-step select,.iaqar-workflow-step textarea,.iaqar-workflow-form-grid input,.iaqar-workflow-form-grid select,.iaqar-workflow-form-grid textarea{width:100%;box-sizing:border-box;border:1px solid #d4e3de;border-radius:14px;padding:12px;font:500 15px Tajawal;background:#fff;color:#173d35;min-height:48px}.iaqar-workflow-form select,.iaqar-workflow-step select,.iaqar-workflow-form-grid select{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23087064' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat left 14px center;padding-left:36px}.iaqar-workflow-step textarea,.iaqar-workflow-form-grid textarea{min-height:82px;resize:vertical}.iaqar-workflow-form input:focus,.iaqar-workflow-form select:focus,.iaqar-workflow-form textarea:focus,.iaqar-workflow-step input:focus,.iaqar-workflow-step select:focus,.iaqar-workflow-step textarea:focus,.iaqar-workflow-form-grid input:focus,.iaqar-workflow-form-grid select:focus,.iaqar-workflow-form-grid textarea:focus{outline:none;border-color:#9fd1c5;box-shadow:0 0 0 3px rgba(8,112,100,.1)}.iaqar-checks{display:grid;gap:8px;background:#f7faf9;border-radius:14px;padding:12px}.iaqar-checks label{display:flex;align-items:center;gap:8px}.iaqar-workflow-note{font-size:12px;color:#70817c;line-height:1.6}.iaqar-workflow-result{padding:18px;border-radius:17px;text-align:center;font-weight:800}.iaqar-workflow-result.success{background:#eaf8f3;color:#087064}.iaqar-workflow-result.closed{background:#fff1f1;color:#9c3c3c}.iaqar-internal-details{margin-top:12px;border:1px solid #e1ebe7;border-radius:15px;padding:10px}.iaqar-internal-details summary{cursor:pointer;font-weight:700;color:#54716a}.iaqar-viewing-alert{color:#a33a3a;font-size:13px;font-weight:700;margin:0 0 8px}
-      @media(min-width:700px){.iaqar-workflow-overlay{align-items:center}.iaqar-workflow-panel{border-radius:24px}}@media(max-width:420px){.iaqar-workflow-actions,.iaqar-whatsapp-grid,.iaqar-workflow-form-grid{grid-template-columns:1fr}}
-    </style>`);
-    }
-    if (document.getElementById("iaqarWorkflowOverlay")) return;
-    document.body.insertAdjacentHTML("beforeend", `<div class="iaqar-workflow-overlay" id="iaqarWorkflowOverlay" hidden>
-      <section class="iaqar-workflow-panel" role="dialog" aria-modal="true" aria-labelledby="iaqarWorkflowTitle">
-        <header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØ±ØµØ©</h2><button class="iaqar-workflow-close" type="button" data-ui-action="close-overlay" aria-label="Ø¥ØºÙ„Ø§Ù‚">Ã—</button></header>
-        <div class="iaqar-workflow-body" id="iaqarWorkflowBody"></div>
-      </section></div>`);
-    const overlay = document.getElementById("iaqarWorkflowOverlay");
-    overlay.addEventListener("click", event => {
-      if (event.target === overlay) closeWorkflowUi();
-    });
-    overlay.addEventListener("change", event => {
-      if (event.target.id === "iaqarCloseReason") {
-        const note = document.getElementById("iaqarCloseOtherNote");
-        if (note) note.hidden = event.target.value !== "other";
-      }
-    });
-    overlay.addEventListener("click", handleWorkflowUiClick);
-  }
-
-  function workflowBody() {
-    return document.getElementById("iaqarWorkflowBody");
-  }
-
-  function closeWorkflowUi() {
-    const overlay = document.getElementById("iaqarWorkflowOverlay");
-    if (!overlay || overlay.hidden) return;
-    overlay.hidden = true;
-    activeWorkflowDetail = null;
-    if (window.history?.state?.iaqarOverlay) {
-      window.history.replaceState(null, "", location.href);
-    }
-    window.dispatchEvent(new CustomEvent("iaqar:workflow-overlay-closed"));
-    window.IAQAR?.navigation?.updateBackButton?.();
-    window.dispatchEvent(new CustomEvent("iaqar:navigation-changed"));
-  }
-
-  function hideWorkflowOverlay() {
-    const overlay = document.getElementById("iaqarWorkflowOverlay");
-    if (overlay) overlay.hidden = true;
-    activeWorkflowDetail = null;
-  }
-
-  function setUiBusy(button, busy, text = "Ø¬Ø§Ø±Ù Ø§Ù„ØªÙ†ÙÙŠØ°...") {
-    if (!button) return;
-    if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
-    button.disabled = busy;
-    button.textContent = busy ? text : button.dataset.originalText;
-  }
-
-  async function openWorkflowUi(detail) {
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      hideWorkflowOverlay();
-      const opportunityId = detail.opportunityId || detail.recordId || detail.id;
-      if (opportunityId && window.IAQAR?.openOpportunityDetail) {
-        return window.IAQAR.openOpportunityDetail(opportunityId);
-      }
-      return false;
-    }
-    ensureWorkflowUi();
-    activeWorkflowDetail = { ...detail };
-    lifecycleContactAttempted = Boolean(
-      detail.lastWhatsAppOpenedAt || detail.lastCallOpenedAt || detail.lastContactAt
-    );
-    const overlay = document.getElementById("iaqarWorkflowOverlay");
-    overlay.hidden = false;
-    workflowBody().innerHTML = `<div class="iaqar-workflow-summary">Ø¬Ø§Ø±Ù ØªØ­Ù…ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¹Ù…ÙŠÙ„ ÙˆØ§Ù„Ù…Ø§Ù„Ùƒ...</div>`;
-    window.dispatchEvent(new CustomEvent("iaqar:nav-open", { detail: { view: "iaqarWorkflowOverlay" } }));
-    const [owner, client] = await Promise.all([
-      workflowContact(activeWorkflowDetail, "owner").catch(() => null),
-      workflowContact(activeWorkflowDetail, "client").catch(() => null)
-    ]);
-    activeWorkflowContacts = { owner, client };
-    renderWorkflowUi();
-  }
-
-  function contactButtonLabel(role) {
-    const contact = activeWorkflowContacts[role];
-    const label = role === "owner" ? "Ø§Ù„Ù…Ø§Ù„Ùƒ" : "Ø§Ù„Ø¹Ù…ÙŠÙ„";
-    return contact && contact.name ? `ÙˆØ§ØªØ³Ø§Ø¨ ${label}: ${contact.name}` : `ÙˆØ§ØªØ³Ø§Ø¨ ${label}`;
-  }
-
-  function renderWorkflowUi() {
-    const detail = activeWorkflowDetail;
-    if (!detail) return;
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      document.getElementById("iaqarWorkflowTitle").textContent = "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØ±ØµØ©";
-      return renderOpportunityLifecycleUi();
-    }
-    const body = workflowBody();
-    const isMatch = detail.recordType === "match";
-    const isCompleted = detail.status === "completed" || (detail.recordType === "deal" && detail.status === "closed");
-    const isClosed = detail.status === "closed" || detail.status === "lost";
-    const hasAppointment = Boolean(appointmentValue(detail));
-    document.getElementById("iaqarWorkflowTitle").textContent = isMatch ? "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØ±ØµØ©" : "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ØµÙÙ‚Ø©";
-
-    const summary = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.propertyType || "Ø¹Ù‚Ø§Ø±")}</strong>${detail.district ? ` â€” ${escapeUi(detail.district)}` : ""}<br>Ø§Ù„Ø¹Ù…ÙŠÙ„: ${escapeUi(activeWorkflowContacts.client?.name || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯")} â€” Ø§Ù„Ù…Ø§Ù„Ùƒ: ${escapeUi(activeWorkflowContacts.owner?.name || "ØºÙŠØ± Ù…Ø­Ø¯Ø¯")}</div>`;
-
-    if (isCompleted) {
-      body.innerHTML = `${summary}<div class="iaqar-workflow-result success">ØµÙÙ‚Ø© Ù…ÙƒØªÙ…Ù„Ø© âœ“</div>
-        <div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>`;
-      return;
-    }
-    if (isClosed) {
-      body.innerHTML = `${summary}<div class="iaqar-workflow-result closed">ØªÙ… Ø¥ØºÙ„Ø§Ù‚ ${isMatch ? "Ø§Ù„ÙØ±ØµØ©" : "Ø§Ù„ØµÙÙ‚Ø©"}<br><small>${escapeUi(detail.closeReason || detail.lostReason || "ØªÙ… Ø­ÙØ¸ Ø³Ø¨Ø¨ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚ ÙÙŠ Ø§Ù„Ø³Ø¬Ù„")}</small></div>`;
-      return;
-    }
-
-    if (!isMatch) {
-      body.innerHTML = `${summary}${negotiationPanelHtml(detail)}<div class="iaqar-workflow-step"><h3>Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ØµÙÙ‚Ø©</h3><p>ÙŠÙ…ÙƒÙ† Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø© Ù…Ø¨Ø§Ø´Ø±Ø©ØŒ Ø£Ùˆ Ø¥ÙŠÙ‚Ø§ÙÙ‡Ø§ Ù…Ø¹ Ø­ÙØ¸ Ø§Ù„Ø³Ø¨Ø¨.</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete">ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">Ù„Ù… ØªØªÙ… Ø§Ù„ØµÙÙ‚Ø©</button></div></div>
-        <div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>${internalDealFields()}`;
-      return;
-    }
-
-    body.innerHTML = `${summary}<div class="iaqar-workflow-steps">
-      <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>1. ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©</h3><p>${hasAppointment ? `Ø§Ù„Ù…ÙˆØ¹Ø¯: ${escapeUi(appointmentText(detail))}` : "Ø§Ø®ØªØ± Ø§Ù„ØªØ§Ø±ÙŠØ® ÙˆØ§Ù„ÙˆÙ‚Øª Ø«Ù… Ø§Ø­ÙØ¸ Ø§Ù„Ù…ÙˆØ¹Ø¯."}</p><button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "ØªØºÙŠÙŠØ± Ø§Ù„Ù…ÙˆØ¹Ø¯" : "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©"}</button></article>
-      ${viewingConfirmationHtml(detail)}
-      ${negotiationPanelHtml(detail)}
-      <article class="iaqar-workflow-step"><h3>2. Ù†ØªÙŠØ¬Ø© Ø§Ù„ØµÙÙ‚Ø©</h3><p>${hasAppointment ? "Ø¨Ø¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø© Ø³Ø¬Ù‘Ù„ Ø§Ù„Ù†ØªÙŠØ¬Ø©." : "ÙŠØªØ§Ø­ Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø© Ø¨Ø¹Ø¯ Ø­ÙØ¸ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">Ù„Ù… ØªØªÙ… Ø§Ù„ØµÙÙ‚Ø©</button></div></article>
-    </div>${hasAppointment ? `<div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>` : ""}
-    <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn secondary" data-ui-action="open-request">Ø·Ù„Ø¨ Ø§Ù„ØµÙˆØ± Ø£Ùˆ Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ø£Ùˆ Ø±Ø§Ø¨Ø· Ø§Ù„Ø¹Ù‚Ø§Ø±</button></div>${internalDealFields()}`;
-  }
-
-  function internalDealFields() {
-    return `<details class="iaqar-internal-details"><summary>Ø¨ÙŠØ§Ù†Ø§Øª Ø¯Ø§Ø®Ù„ÙŠØ© Ø§Ø®ØªÙŠØ§Ø±ÙŠØ©</summary><div class="iaqar-workflow-form" style="margin-top:10px"><label>Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ<input id="iaqarFinalPrice" inputmode="decimal" placeholder="Ø§Ø®ØªÙŠØ§Ø±ÙŠ"></label><label>Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©<input id="iaqarCommission" inputmode="decimal" placeholder="Ø§Ø®ØªÙŠØ§Ø±ÙŠ"></label><label>Ù…Ù„Ø§Ø­Ø¸Ø© Ø¯Ø§Ø®Ù„ÙŠØ©<textarea id="iaqarInternalNote" placeholder="Ù„Ø§ ØªØ¸Ù‡Ø± Ù„Ù„Ø¹Ù…ÙŠÙ„ Ø£Ùˆ Ø§Ù„Ù…Ø§Ù„Ùƒ"></textarea></label></div></details>`;
-  }
-
-  function negotiationPanelHtml(detail) {
-    const domain = BUX();
-    if (!domain?.buildNegotiationPanelView) return "";
-    const panel = domain.buildNegotiationPanelView(detail);
-    return `<article class="iaqar-workflow-step"><h3>Ø§Ù„ØªÙØ§ÙˆØ¶</h3>
-      <div class="iaqar-workflow-form iaqar-workflow-form-grid">
-        <label>Ø³Ø¹Ø± Ø§Ù„Ù…Ø§Ù„Ùƒ<input id="iaqarOwnerPrice" inputmode="numeric" value="${escapeUi(panel.ownerPrice || "")}" placeholder="Ø±ÙŠØ§Ù„"></label>
-        <label>Ø³Ø¹Ø± Ø§Ù„Ø¹Ù…ÙŠÙ„<input id="iaqarClientPrice" inputmode="numeric" value="${escapeUi(panel.clientPrice || "")}" placeholder="Ø±ÙŠØ§Ù„"></label>
-        <label class="full">Ø¢Ø®Ø± Ø¹Ø±Ø¶<input id="iaqarLastOffer" inputmode="numeric" value="${escapeUi(panel.lastOffer || "")}" placeholder="Ø±ÙŠØ§Ù„"></label>
-        <label>Ø­Ø§Ù„Ø© Ø§Ù„ØªÙØ§ÙˆØ¶<select id="iaqarNegotiationStatus">
-          <option value="in_progress"${panel.negotiationStatus === "in_progress" ? " selected" : ""}>Ø¬Ø§Ø±ÙŠ</option>
-          <option value="agreed"${panel.negotiationStatus === "agreed" ? " selected" : ""}>Ø§ØªÙÙ‚ÙˆØ§</option>
-          <option value="failed"${panel.negotiationStatus === "failed" ? " selected" : ""}>ÙØ´Ù„</option>
-        </select></label>
-        <label class="full">Ø³Ø¨Ø¨ Ø§Ù„Ø±ÙØ¶ Ø£Ùˆ Ù…Ù„Ø§Ø­Ø¸Ø©<textarea id="iaqarNegotiationNote" placeholder="Ø§Ø®ØªÙŠØ§Ø±ÙŠ">${escapeUi(panel.negotiationNote || "")}</textarea></label>
-      </div>
-      <button class="iaqar-workflow-btn secondary" type="button" data-ui-action="save-negotiation">Ø­ÙØ¸ Ø§Ù„ØªÙØ§ÙˆØ¶</button>
-    </article>`;
-  }
-
-  function viewingConfirmationHtml(detail) {
-    const domain = BUX();
-    if (!domain?.buildViewingConfirmationView || !appointmentValue(detail)) return "";
-    const view = domain.buildViewingConfirmationView(detail);
-    return `<article class="iaqar-workflow-step${view.bothConfirmed ? " is-done" : ""}"><h3>ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©</h3>
-      <p>${escapeUi(appointmentText(detail))}</p>
-      ${view.needsAlert ? `<p class="iaqar-viewing-alert">${escapeUi(view.alertLine)}</p>` : ""}
-      <div class="iaqar-workflow-actions">
-        <button class="iaqar-workflow-btn ${view.clientViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="client">${view.clientViewingConfirmed ? "âœ…" : "â³"} Ø¹Ù…ÙŠÙ„ Ø£ÙƒÙ‘Ø¯</button>
-        <button class="iaqar-workflow-btn ${view.ownerViewingConfirmed ? "success" : "secondary"}" type="button" data-ui-action="confirm-viewing" data-party="owner">${view.ownerViewingConfirmed ? "âœ…" : "â³"} Ù…Ø§Ù„Ùƒ Ø£ÙƒÙ‘Ø¯</button>
-      </div>
-    </article>`;
-  }
-
-  async function persistBrokerUx(recordType, recordId, patch) {
-    const runtime = office();
-    const domain = BUX();
-    if (!runtime?.refs || !runtime.officeId || !domain?.mergeBrokerUx) {
-      throw new Error("ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªÙØ§ÙˆØ¶");
-    }
-    const collection = recordType === "deal" ? runtime.refs.deals : runtime.refs.matches;
-    const snapshot = await collection.doc(recordId).get();
-    const current = snapshot.exists ? snapshot.data() : {};
-    const brokerUx = domain.mergeBrokerUx(current, patch);
-    await collection.doc(recordId).set({
-      officeId: runtime.officeId,
-      brokerUx,
-      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    return brokerUx;
-  }
-
-  function showScheduleForm() {
-    const detail = activeWorkflowDetail;
-    const currentValue = toDate(appointmentValue(detail)) || new Date(Date.now() + 24 * 3600000);
-    const local = localDateTimeValue(currentValue);
-    const [date, time] = local.split("T");
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form" id="iaqarScheduleForm"><h3>${appointmentValue(detail) ? "ØªØºÙŠÙŠØ± Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©" : "ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©"}</h3><div class="iaqar-workflow-form-grid"><label>Ø§Ù„ØªØ§Ø±ÙŠØ®<input id="iaqarAppointmentDate" type="date" value="${escapeUi(date)}" required></label><label>Ø§Ù„ÙˆÙ‚Øª<input id="iaqarAppointmentTime" type="time" value="${escapeUi(time)}" required></label></div><label>Ù…Ù„Ø§Ø­Ø¸Ø© Ø§Ø®ØªÙŠØ§Ø±ÙŠØ©<textarea id="iaqarAppointmentNote" placeholder="Ù…Ø«Ø§Ù„: Ø§Ù„ØªÙˆØ§ØµÙ„ Ù‚Ø¨Ù„ Ø§Ù„Ù…ÙˆØ¹Ø¯ Ø¨Ù†ØµÙ Ø³Ø§Ø¹Ø©"></textarea></label><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" type="button" data-ui-action="save-schedule">Ø­ÙØ¸ Ø§Ù„Ù…ÙˆØ¹Ø¯</button><button class="iaqar-workflow-btn secondary" type="button" data-ui-action="back">Ø±Ø¬ÙˆØ¹</button></div></form>`;
-  }
-
-  function showCloseForm() {
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form"><h3>Ø¥ØºÙ„Ø§Ù‚ ${activeWorkflowDetail.recordType === "deal" ? "Ø§Ù„ØµÙÙ‚Ø©" : "Ø§Ù„ÙØ±ØµØ©"}</h3><label>Ø³Ø¨Ø¨ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚<select id="iaqarCloseReason" required><option value="">Ø§Ø®ØªØ± Ø§Ù„Ø³Ø¨Ø¨</option>${CLOSE_REASONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></label><label id="iaqarCloseOtherNote" hidden>Ø§ÙƒØªØ¨ Ø§Ù„Ø³Ø¨Ø¨<textarea id="iaqarCloseNote"></textarea></label><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn danger" type="button" data-ui-action="save-close">ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚</button><button class="iaqar-workflow-btn secondary" type="button" data-ui-action="back">Ø±Ø¬ÙˆØ¹</button></div></form>`;
-  }
-
-  function showRequestForm() {
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form"><h3>Ø·Ù„Ø¨ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ù…Ù† Ø§Ù„Ù…Ø§Ù„Ùƒ</h3><div class="iaqar-checks"><label><input type="checkbox" name="requestItem" value="photos"> ØµÙˆØ± Ø§Ù„Ø¹Ù‚Ø§Ø±</label><label><input type="checkbox" name="requestItem" value="location"> Ù…ÙˆÙ‚Ø¹ Ø§Ù„Ø¹Ù‚Ø§Ø±</label><label><input type="checkbox" name="requestItem" value="propertyLink"> Ø±Ø§Ø¨Ø· Ø§Ù„Ø¹Ù‚Ø§Ø±</label></div><label>Ù…Ù„Ø§Ø­Ø¸Ø© Ø§Ø®ØªÙŠØ§Ø±ÙŠØ©<textarea id="iaqarRequestNote"></textarea></label><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn whatsapp" type="button" data-ui-action="send-request">ÙØªØ­ ÙˆØ§ØªØ³Ø§Ø¨ Ø§Ù„Ù…Ø§Ù„Ùƒ</button><button class="iaqar-workflow-btn secondary" type="button" data-ui-action="back">Ø±Ø¬ÙˆØ¹</button></div></form>`;
-  }
-
-  async function persistViewingAt(detail, date, note) {
-    await persistBrokerUx("match", detail.recordId, {
-      clientViewingConfirmed: false,
-      ownerViewingConfirmed: false,
-      viewingConfirmedAt: null
-    }).catch(() => null);
-  }
-
-  async function saveNegotiation(button) {
-    const detail = activeWorkflowDetail;
-    const domain = BUX();
-    if (!detail || !domain?.parseBrokerUxPatch) return;
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù Ø§Ù„Ø­ÙØ¸...");
-    try {
-      const patch = domain.parseBrokerUxPatch({
-        ownerPrice: document.getElementById("iaqarOwnerPrice")?.value,
-        clientPrice: document.getElementById("iaqarClientPrice")?.value,
-        lastOffer: document.getElementById("iaqarLastOffer")?.value,
-        negotiationStatus: document.getElementById("iaqarNegotiationStatus")?.value,
-        negotiationNote: document.getElementById("iaqarNegotiationNote")?.value
-      });
-      const brokerUx = await persistBrokerUx(detail.recordType, detail.recordId, patch);
-      activeWorkflowDetail = { ...detail, brokerUx };
-      notify("ØªÙ… Ø­ÙØ¸ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªÙØ§ÙˆØ¶");
-      renderWorkflowUi();
-      emitOperations();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„ØªÙØ§ÙˆØ¶");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function confirmViewingParty(button) {
-    const detail = activeWorkflowDetail;
-    const party = button.dataset.party;
-    if (!detail || !party) return;
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù Ø§Ù„Ø­ÙØ¸...");
-    try {
-      const domain = BUX();
-      const current = domain?.mergeBrokerUx ? domain.mergeBrokerUx(detail, {}) : {};
-      const nextClient = party === "client" ? !current.clientViewingConfirmed : current.clientViewingConfirmed;
-      const nextOwner = party === "owner" ? !current.ownerViewingConfirmed : current.ownerViewingConfirmed;
-      const patch = {
-        clientViewingConfirmed: nextClient,
-        ownerViewingConfirmed: nextOwner,
-        viewingConfirmedAt: nextClient && nextOwner ? new Date().toISOString() : null
-      };
-      const brokerUx = await persistBrokerUx(detail.recordType === "deal" ? "deal" : "match", detail.recordId, patch);
-      activeWorkflowDetail = { ...detail, brokerUx };
-      notify("ØªÙ… ØªØ­Ø¯ÙŠØ« ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©");
-      renderWorkflowUi();
-      emitOperations();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„ØªØ£ÙƒÙŠØ¯");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function saveViewingSchedule(button) {
-    const detail = activeWorkflowDetail;
-    const dateValue = document.getElementById("iaqarAppointmentDate")?.value || "";
-    const timeValue = document.getElementById("iaqarAppointmentTime")?.value || "";
-    const note = document.getElementById("iaqarAppointmentNote")?.value.trim() || "";
-    const date = new Date(`${dateValue}T${timeValue}`);
-    if (!dateValue || !timeValue || Number.isNaN(date.getTime())) return notify("Ø§Ø®ØªØ± ØªØ§Ø±ÙŠØ®Ù‹Ø§ ÙˆÙˆÙ‚ØªÙ‹Ø§ ØµØ­ÙŠØ­ÙŠÙ†");
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù Ø­ÙØ¸ Ø§Ù„Ù…ÙˆØ¹Ø¯...");
-    try {
-      const iso = date.toISOString();
-      let status = detail.status || "active";
-      if (["active", "new", "in_progress"].includes(status)) {
-        const first = await workflowAction("advance_match", detail.recordId, { note: "ØªÙ… Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø·Ø±ÙÙŠÙ†", nextFollowUpAt: iso });
-        status = first.status || "waiting_response";
-      }
-      if (status === "waiting_response") {
-        const second = await workflowAction("advance_match", detail.recordId, { note: note || "ØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©", nextFollowUpAt: iso });
-        status = second.status || "viewing";
-      } else {
-        await workflowAction("add_match_followup", detail.recordId, { note: note || "ØªÙ… ØªØ­Ø¯ÙŠØ« Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©", nextFollowUpAt: iso });
-      }
-      await persistViewingAt(detail, date, note);
-      activeWorkflowDetail = { ...detail, status: status === "negotiation" ? "negotiation" : "viewing", appointmentAt: iso, viewingAt: iso, nextFollowUpAt: iso };
-      notify("ØªÙ… Ø­ÙØ¸ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©");
-      renderWorkflowUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ù…ÙˆØ¹Ø¯");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function ensureDealForMatch(detail) {
-    let status = detail.status || "active";
-    let dealId = detail.dealId || "";
-    let loops = 0;
-    while (!dealId && !["completed", "closed"].includes(status) && loops < 5) {
-      const result = await workflowAction("advance_match", detail.recordId, {
-        note: "ØªÙ… Ø§Ù„ØªÙ‚Ø¯Ù… ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¶Ù…Ù† Ù…Ø³Ø§Ø± Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ØµÙÙ‚Ø© Ø§Ù„Ø³Ø±ÙŠØ¹",
-        nextFollowUpAt: new Date().toISOString()
-      });
-      status = result.status || status;
-      dealId = result.dealId || dealId;
-      loops += 1;
-      if (status === "negotiation" && !dealId) {
-        const created = await workflowAction("create_deal", detail.recordId, {});
-        dealId = created.dealId || "";
-      }
-    }
-    if (!dealId) throw new Error("ØªØ¹Ø°Ø± Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØµÙÙ‚Ø© Ø§Ù„Ù…Ø±ØªØ¨Ø·Ø©");
-    return dealId;
-  }
-
-  async function saveInternalDealData(dealId) {
-    const runtime = office();
-    if (!runtime || !runtime.officeId || !dealId) return;
-    const finalPriceRaw = document.getElementById("iaqarFinalPrice")?.value.trim() || "";
-    const commissionRaw = document.getElementById("iaqarCommission")?.value.trim() || "";
-    const internalNote = document.getElementById("iaqarInternalNote")?.value.trim() || "";
-    const payload = {};
-    if (finalPriceRaw && Number.isFinite(Number(finalPriceRaw))) payload.finalPrice = Number(finalPriceRaw);
-    if (commissionRaw && Number.isFinite(Number(commissionRaw))) payload.commissionActual = Number(commissionRaw);
-    if (internalNote) payload.internalNote = internalNote;
-    // Phase 8: deals are Worker-writable only â€” never patch from the client SDK.
-    if (Object.keys(payload).length) {
-      await workflowAction("update_deal_fields", dealId, payload);
-    }
-  }
-
-  async function completeFastDeal(button) {
-    const detail = activeWorkflowDetail;
-    if (detail.recordType === "match" && !appointmentValue(detail)) return notify("Ø­Ø¯Ø¯ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø© Ø£ÙˆÙ„Ù‹Ø§");
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø©...");
-    try {
-      const dealId = detail.recordType === "deal" ? (detail.dealId || detail.recordId) : await ensureDealForMatch(detail);
-      await saveInternalDealData(dealId);
-      const runtime = office();
-      let stage = detail.recordType === "deal" ? detail.workflowStage : "negotiation";
-      if (runtime && runtime.refs && runtime.refs.deals) {
-        const snapshot = await runtime.refs.deals.doc(dealId).get().catch(() => null);
-        if (snapshot && snapshot.exists) stage = snapshot.data().workflowStage || stage;
-      }
-      const order = ["contact", "viewing", "negotiation", "agreement", "closing", "closed"];
-      if (order.indexOf(stage) < order.indexOf("agreement")) {
-        await workflowAction("set_deal_stage", dealId, { stage: "agreement", note: "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø§ØªÙØ§Ù‚ Ø¶Ù…Ù† Ù…Ø³Ø§Ø± Ø§Ù„Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ø³Ø±ÙŠØ¹" });
-      }
-      const commissionRaw = document.getElementById("iaqarCommission")?.value.trim() || "";
-      const commissionActual = commissionRaw && Number.isFinite(Number(commissionRaw)) ? Number(commissionRaw) : 0;
-      const result = await workflowAction("set_deal_stage", dealId, { stage: "closed", note: "ØªÙ… Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø© Ù…Ù† Ø§Ù„Ù…Ø³Ø§Ø± Ø§Ù„Ø³Ø±ÙŠØ¹", commissionActual });
-      activeWorkflowDetail = { ...detail, status: detail.recordType === "deal" ? "closed" : "completed", workflowStage: "closed", dealId };
-      notify(result.closedSiblings > 0 ? `ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø© ÙˆØ£ÙØºÙ„Ù‚Øª ${result.closedSiblings} ÙØ±Øµ Ø£Ø®Ø±Ù‰ Ù…Ø±ØªØ¨Ø·Ø©` : "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø© Ø¨Ù†Ø¬Ø§Ø­");
-      renderWorkflowUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function saveCloseReason(button) {
-    const detail = activeWorkflowDetail;
-    const reasonKey = document.getElementById("iaqarCloseReason")?.value || "";
-    const custom = document.getElementById("iaqarCloseNote")?.value.trim() || "";
-    const label = CLOSE_REASONS.find(([value]) => value === reasonKey)?.[1] || "";
-    if (!reasonKey) return notify("Ø§Ø®ØªØ± Ø³Ø¨Ø¨ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚");
-    if (reasonKey === "other" && !custom) return notify("Ø§ÙƒØªØ¨ Ø³Ø¨Ø¨ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚");
-    const reason = reasonKey === "other" ? custom : label;
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù Ø§Ù„Ø¥ØºÙ„Ø§Ù‚...");
-    try {
-      if (detail.recordType === "deal") await workflowAction("mark_lost", detail.recordId, { note: reason });
-      else await workflowAction("close_match", detail.recordId, { note: reason });
-      activeWorkflowDetail = { ...detail, status: detail.recordType === "deal" ? "lost" : "closed", closeReason: reason, lostReason: reason };
-      notify("ØªÙ… Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ÙØ±ØµØ© Ù…Ø¹ Ø­ÙØ¸ Ø§Ù„Ø³Ø¨Ø¨");
-      renderWorkflowUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ÙØ±ØµØ©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function sendOwnerRequest(button) {
-    const items = Array.from(document.querySelectorAll('input[name="requestItem"]:checked')).map(input => input.value);
-    const note = document.getElementById("iaqarRequestNote")?.value.trim() || "";
-    if (!items.length) return notify("Ø§Ø®ØªØ± Ø§Ù„ØµÙˆØ± Ø£Ùˆ Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ø£Ùˆ Ø±Ø§Ø¨Ø· Ø§Ù„Ø¹Ù‚Ø§Ø±");
-    setUiBusy(button, true, "Ø¬Ø§Ø±Ù ØªØ¬Ù‡ÙŠØ² Ø§Ù„Ø±Ø³Ø§Ù„Ø©...");
-    try {
-      const detail = { ...activeWorkflowDetail, recipientRole: "owner", messageMode: "request", requestedItems: items, requestNote: note };
-      if (detail.recordType === "match") {
-        await workflowAction("add_match_followup", detail.recordId, {
-          note: `ØªÙ… Ø·Ù„Ø¨: ${items.join("ØŒ ")}${note ? ` â€” ${note}` : ""}`,
-          nextFollowUpAt: new Date(Date.now() + 24 * 3600000).toISOString()
-        });
-      }
-      await openWorkflowWhatsApp(detail);
-      renderWorkflowUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± ØªØ¬Ù‡ÙŠØ² Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  function isLifecycleClosed(detail = {}) {
-    const status = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
-    return Boolean(detail.closedAt) || ["CLOSED_WON", "CLOSED_LOST", "ARCHIVED"].includes(status);
-  }
-
-  function contactOutcomesVisible(detail = {}) {
-    return lifecycleContactAttempted
-      || detail.lastWhatsAppOpenedAt
-      || detail.lastCallOpenedAt
-      || detail.lastContactAt;
-  }
-
-  function shouldShowFollowUpSection(detail = {}, lastOutcome = "") {
-    if (isLifecycleClosed(detail)) return false;
-    const status = detail.lifecycleStatus || "NEW";
-    return lastOutcome === "NO_RESPONSE"
-      || lastOutcome === "FOLLOW_UP"
-      || lastOutcome === "INTERESTED"
-      || status === "FOLLOW_UP"
-      || Boolean(detail.nextFollowUpAt);
-  }
-
-  function shouldShowLifecycleCloseSection(detail = {}, lastOutcome = "") {
-    if (isLifecycleClosed(detail)) return false;
-    if (lastOutcome === "AGREED") return false;
-    return true;
-  }
-
-  function shouldShowMatchingSection(detail = {}, lastOutcome = "") {
-    if (isLifecycleClosed(detail)) return false;
-    if (lastOutcome === "REFUSED") return false;
-    if (!contactOutcomesVisible(detail)) return false;
-    const readiness = detail.matchingReadiness === "READY" || detail.isReadyForMatching === true;
-    const hasFields = Boolean(
-      detail.propertyType
-      && detail.district
-      && (detail.price || detail.priceMax || detail.priceOrBudget || detail.amount)
-    );
-    const status = detail.lifecycleStatus || "NEW";
-    const contactAllows = ["INTERESTED", "AGREED", "CONTACTED", "FOLLOW_UP", "NEGOTIATION", "MATCHED"].includes(status)
-      || lastOutcome === "INTERESTED"
-      || lastOutcome === "AGREED"
-      || lastOutcome === "FOLLOW_UP";
-    return (readiness || hasFields) && contactAllows;
-  }
-
-  async function reloadActiveOpportunityFromServer() {
-    const detail = activeWorkflowDetail;
-    if (!detail?.recordId || detail.recordType === "intake") return detail;
-    const runtime = office();
-    if (!runtime?.db || !runtime.officeId) return detail;
-    try {
-      const snap = await runtime.db.collection("offices").doc(runtime.officeId)
-        .collection("opportunities").doc(detail.recordId).get();
-      if (!snap.exists) return detail;
-      const data = snap.data() || {};
-      activeWorkflowDetail = {
-        ...detail,
-        ...data,
-        recordId: detail.recordId,
-        recordType: "opportunity",
-        opportunityId: detail.recordId
-      };
-    } catch (error) {
-      console.warn("[iaqar] reload opportunity", error);
-    }
-    return activeWorkflowDetail;
-  }
-
-  async function ensureFollowUpRecipientContext(detail = {}) {
-    if (followUpRecipientContext?.detailId === detail.recordId) return followUpRecipientContext;
-    const context = await resolveFollowUpRecipientContext(detail);
-    followUpRecipientContext = { detailId: detail.recordId, ...context };
-    return followUpRecipientContext;
-  }
-
-  async function resolveFollowUpRecipientContext(detail = {}) {
-    const base = FD()?.resolveRecipientContext?.(detail) || {
-      availableModes: [FD()?.defaultRecipientMode?.(detail) || "owner"],
-      defaultMode: FD()?.defaultRecipientMode?.(detail) || "owner",
-      hasBothParties: false,
-      ownerContactId: "",
-      clientContactId: ""
-    };
-    if (base.hasBothParties) return base;
-    const enriched = await enrichDetailForMessaging(detail);
-    if (enriched.ownerOfferId && enriched.clientRequestId) {
-      return FD()?.resolveRecipientContext?.(detail, {
-        ownerOfferId: enriched.ownerOfferId,
-        clientRequestId: enriched.clientRequestId
-      }) || base;
-    }
-    return base;
-  }
-
-  function populateFollowUpInput(detail = {}) {
-    const input = document.getElementById("iaqarCustomFollowUp");
-    if (!input) return;
-    const follow = FD()?.activeFollowUpFromRecord?.(detail);
-    const value = follow?.at || detail.nextFollowUpAt || "";
-    if (!value) {
-      input.value = "";
-      return;
-    }
-    input.value = FD()?.riyadhDateTimeInputValue?.(value) || localDateTimeValue(value);
-  }
-
-  function buildFollowUpRecipientOptionsHtml(context = {}, selected = "") {
-    const labels = FD()?.RECIPIENT_MODE_LABELS || { owner: "Ø§Ù„Ù…Ø§Ù„Ùƒ", client: "Ø§Ù„Ø¹Ù…ÙŠÙ„", both: "Ø§Ù„Ù…Ø§Ù„Ùƒ ÙˆØ§Ù„Ø¹Ù…ÙŠÙ„" };
-    let modes = Array.isArray(context.availableModes) ? context.availableModes.filter(Boolean) : [];
-    const fallback = context.defaultMode || "owner";
-    if (!modes.length) modes = [fallback];
-    const selectedMode = modes.includes(selected) ? selected : (context.defaultMode || modes[0]);
-    return modes.map((mode) =>
-      `<option value="${escapeUi(mode)}" ${mode === selectedMode ? "selected" : ""}>${escapeUi(labels[mode] || mode)}</option>`
-    ).join("");
-  }
-
-  function renderFollowUpAppointmentCard(detail = {}) {
-    const follow = FD()?.activeFollowUpFromRecord?.(detail);
-    if (!follow || !follow.at) return "";
-    const labels = FD()?.RECIPIENT_MODE_LABELS || {};
-    const appointmentLine = FD()?.formatFollowUpAppointmentLine?.(follow.at) || dateTimeLabel(follow.at);
-    const recipientLabel = labels[follow.recipientMode] || labels.owner || "Ø§Ù„Ù…Ø§Ù„Ùƒ";
-    const overdue = FD()?.isFollowUpOverdue?.(follow);
-    return `<article class="iaqar-followup-card" id="iaqarFollowUpCard">
-      <h3>Ø§Ù„Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù‚Ø§Ø¯Ù…</h3>
-      <p class="iaqar-followup-when">${escapeUi(appointmentLine)}${overdue ? " â€” Ù…ØªØ£Ø®Ø±Ø©" : ""}</p>
-      <p class="iaqar-followup-meta">Ø§Ù„ØªØ°ÙƒÙŠØ±: Ù‚Ø¨Ù„ Ø§Ù„Ù…ÙˆØ¹Ø¯ Ø¨Ù€ Ù¢Ù¤ Ø³Ø§Ø¹Ø© Ø«Ù… Ù‚Ø¨Ù„ Ø³Ø§Ø¹Ø©</p>
-      <p class="iaqar-followup-meta">Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹: ${escapeUi(recipientLabel)} â€” Ø£Ø±Ø³Ù„ ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…ÙˆØ¹Ø¯ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨</p>
-      <div class="iaqar-workflow-actions">
-        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ù…ÙˆØ¹Ø¯</button>
-        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="cancel-followup">Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙˆØ¹Ø¯</button>
-        <button type="button" class="iaqar-workflow-btn success" data-ui-action="complete-followup">ØªÙ…Øª Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©</button>
-      </div>
-    </article>`;
-  }
-
-  function renderFollowUpConfirmationActions(detail = {}, follow = {}) {
-    const modes = [];
-    const recipient = String(follow.recipientMode || "");
-    if (recipient === "both") modes.push("owner", "client");
-    else if (recipient === "owner") modes.push("owner");
-    else if (recipient === "client") modes.push("client");
-    else modes.push(FD()?.defaultRecipientMode?.(detail) || "owner");
-    const buttons = modes.map((role) => {
-      const actionKey = BAP().followUpWhatsAppActionKey?.(role) || `followup:whatsapp:${role}`;
-      return `<button type="button" class="iaqar-workflow-btn whatsapp${brokerDoneClass(detail, actionKey)}" data-ui-action="followup-whatsapp" data-broker-action="${escapeUi(actionKey)}" data-role="${role}" aria-pressed="${brokerPressed(detail, actionKey)}">ÙˆØ§ØªØ³Ø§Ø¨ ${role === "owner" ? "Ø§Ù„Ù…Ø§Ù„Ùƒ" : "Ø§Ù„Ø¹Ù…ÙŠÙ„"}</button>`;
-    }).join("");
-    const confirmedKey = BAP().followUpOutcomeActionKey?.("confirmed") || "followup:outcome:confirmed";
-    const noResponseKey = BAP().followUpOutcomeActionKey?.("no_response") || "followup:outcome:no_response";
-    return `<div class="iaqar-workflow-step" id="iaqarFollowUpConfirmSection">
-      <h3>ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…ÙˆØ¹Ø¯</h3>
-      <p class="iaqar-workflow-note">Ø£Ø±Ø³Ù„ Ø±Ø³Ø§Ù„Ø© ÙˆØ§ØªØ³Ø§Ø¨ Ù„Ù„Ø·Ø±Ù Ø§Ù„Ù…Ø®ØªØ§Ø± â€” Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ ÙŠØ¯ÙˆÙŠ ÙˆÙ„Ø§ ÙŠØªÙ… ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§.</p>
-      <div class="iaqar-whatsapp-grid">${buttons}</div>
-      <div class="iaqar-workflow-actions">
-        <button type="button" class="iaqar-workflow-btn success${brokerDoneClass(detail, confirmedKey)}" data-ui-action="followup-outcome" data-broker-action="${confirmedKey}" data-outcome="confirmed" aria-pressed="${brokerPressed(detail, confirmedKey)}">ØªÙ… Ø§Ù„ØªØ£ÙƒÙŠØ¯</button>
-        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="edit-followup">ØªØºÙŠÙŠØ± Ø§Ù„Ù…ÙˆØ¹Ø¯</button>
-        <button type="button" class="iaqar-workflow-btn secondary${brokerDoneClass(detail, noResponseKey)}" data-ui-action="followup-outcome" data-broker-action="${noResponseKey}" data-outcome="no_response" aria-pressed="${brokerPressed(detail, noResponseKey)}">Ù„Ù… ÙŠØ±Ø¯</button>
-      </div>
-    </div>`;
-  }
-
-  function selectWorkflowContactOutcome(outcome = "") {
-    const key = String(outcome || "").toUpperCase();
-    const actionKey = BAP().contactOutcomeActionKey?.(key) || `contact:outcome:${key}`;
-    workflowBody().querySelectorAll('[data-ui-action="contact-outcome"]').forEach((btn) => {
-      const active = String(btn.dataset.outcome || "").toUpperCase() === key;
-      btn.classList.toggle("is-selected", active);
-      btn.classList.toggle("is-action-done", active);
-      btn.setAttribute("aria-pressed", active ? "true" : "false");
-      if (actionKey) btn.setAttribute("data-broker-action", actionKey);
-    });
-  }
-
-  async function renderOpportunityLifecycleUi() {
-    const detail = activeWorkflowDetail;
-    const body = workflowBody();
-    const lifecycleStatus = detail.lifecycleStatus || (LC().getOpportunityLifecycleStatus ? LC().getOpportunityLifecycleStatus(detail) : "NEW");
-    const lifecycleLabel = (LC().LIFECYCLE_STATUS_LABELS && LC().LIFECYCLE_STATUS_LABELS[lifecycleStatus]) || lifecycleStatus;
-    const summaryText = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(detail) : "";
-    const phoneInfo = resolveLifecyclePhone(detail);
-    const closed = isLifecycleClosed(detail);
-    const outcomesVisible = contactOutcomesVisible(detail);
-    const lastOutcome = String(detail.lastContactOutcome || detail.advertiserContactStatus || "").toUpperCase();
-    const showFollowUp = shouldShowFollowUpSection(detail, lastOutcome);
-    const showMatching = shouldShowMatchingSection(detail, lastOutcome);
-    const showLifecycleClose = shouldShowLifecycleCloseSection(detail, lastOutcome);
-    const activeFollowUp = FD()?.activeFollowUpFromRecord?.(detail);
-    const recipientContext = showFollowUp ? await ensureFollowUpRecipientContext(detail) : null;
-    const selectedRecipient = activeFollowUp?.recipientMode || recipientContext?.defaultMode || "owner";
-    const outcomeLabels = LC().CONTACT_OUTCOME_LABELS || {
-      NO_RESPONSE: "Ù„Ù… ÙŠØ±Ø¯",
-      INTERESTED: "Ù…Ù‡ØªÙ…",
-      REFUSED: "ØºÙŠØ± Ù…Ù‡ØªÙ…",
-      FOLLOW_UP: "Ø·Ù„Ø¨ Ù…ØªØ§Ø¨Ø¹Ø©",
-      AGREED: "ØªÙ… Ø§Ù„Ø§ØªÙØ§Ù‚"
-    };
-    const outcomeButtons = Object.entries(outcomeLabels).map(([value, label]) => {
-      const actionKey = BAP().contactOutcomeActionKey?.(value) || `contact:outcome:${value}`;
-      const selected = lastOutcome === value;
-      return `<button type="button" class="iaqar-workflow-btn secondary iaqar-contact-outcome-btn${selected ? " is-selected is-action-done" : ""}" data-ui-action="contact-outcome" data-broker-action="${actionKey}" data-outcome="${value}" aria-pressed="${selected ? "true" : "false"}" ${closed ? "disabled" : ""}>${escapeUi(label)}</button>`;
-    }).join("");
-
-    let html = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.contactName || detail.advertiserDisplayName || "Ø¬Ù‡Ø© Ø§Ù„ØªÙˆØ§ØµÙ„")}</strong><br>${escapeUi(summaryText)}<br>Ø§Ù„Ø­Ø§Ù„Ø©: ${escapeUi(lifecycleLabel)}</div>`;
-
-    if (!closed) {
-      html += `<div class="iaqar-workflow-step"><h3>Ø§Ù„ØªÙˆØ§ØµÙ„</h3><p>ØªÙˆØ§ØµÙ„ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨ Ø£Ùˆ Ø§ØªØµØ§Ù„ Ø«Ù… Ø³Ø¬Ù‘Ù„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„.</p>
-        <div class="iaqar-workflow-actions">
-          <button type="button" class="iaqar-workflow-btn whatsapp${brokerDoneClass(detail, BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp")}" data-ui-action="whatsapp-contact" data-broker-action="${BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp"}" aria-pressed="${brokerPressed(detail, BAP().BROKER_ACTION?.contactWhatsApp || "contact:whatsapp")}" ${phoneInfo.valid ? "" : "disabled"}>ÙˆØ§ØªØ³Ø§Ø¨</button>
-          <button type="button" class="iaqar-workflow-btn call${brokerDoneClass(detail, BAP().BROKER_ACTION?.contactCall || "contact:call")}" data-ui-action="call-contact" data-broker-action="${BAP().BROKER_ACTION?.contactCall || "contact:call"}" aria-pressed="${brokerPressed(detail, BAP().BROKER_ACTION?.contactCall || "contact:call")}" ${phoneInfo.valid ? "" : "disabled"}>Ø§ØªØµØ§Ù„</button>
-        </div>
-        ${phoneInfo.valid ? "" : `<p class="iaqar-workflow-note">${escapeUi(phoneInfo.error || "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„")}</p>`}
-      </div>`;
-      html += `<div class="iaqar-workflow-step"><h3>Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„</h3>
-        ${outcomesVisible
-          ? `<div class="iaqar-workflow-actions iaqar-outcome-actions">${outcomeButtons}</div>`
-          : `<p class="iaqar-workflow-note">Ø¨Ø¹Ø¯ ÙˆØ§ØªØ³Ø§Ø¨ Ø£Ùˆ Ø§ØªØµØ§Ù„ Ø§Ø®ØªØ± Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„.</p>`}
-      </div>`;
-      if (showFollowUp) {
-        html += `<div class="iaqar-workflow-step" id="iaqarNextActionSection"><h3>Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ø§Ù„Ù‚Ø§Ø¯Ù…</h3>`;
-        if (activeFollowUp && !followUpEditMode) {
-          html += renderFollowUpAppointmentCard(detail);
-          if (detail.focusFollowUpReminder || detail.showFollowUpConfirmation) {
-            html += renderFollowUpConfirmationActions(detail, activeFollowUp);
-          }
-        }
-        if (!activeFollowUp || followUpEditMode) {
-          html += `<div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="0">Ø§Ù„ÙŠÙˆÙ…</button>
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="1">ØºØ¯Ù‹Ø§</button>
-            <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="pick-followup-day" data-days="2">Ø¨Ø¹Ø¯ ØºØ¯</button>
-          </div>
-          <label class="iaqar-workflow-form" style="margin-top:10px;display:grid;gap:6px">ØªØ§Ø±ÙŠØ® ÙˆÙˆÙ‚Øª Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©
-            <input id="iaqarCustomFollowUp" type="datetime-local">
-          </label>
-          <label class="iaqar-workflow-form" style="display:grid;gap:6px">Ø§Ù„ØªØ£ÙƒÙŠØ¯ Ù…Ø¹
-            <select id="iaqarFollowUpRecipient">${buildFollowUpRecipientOptionsHtml(recipientContext, selectedRecipient)}</select>
-          </label>
-          <div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn success" data-ui-action="save-followup-custom">Ø­ÙØ¸ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©</button>
-          </div>`;
-        }
-        html += `</div>`;
-      }
-      if (showMatching) {
-        const coopLabel = lastOutcome === "AGREED"
-          ? "Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø© Ù…Ù† Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©"
-          : (String(detail.cooperationListing || "").toUpperCase() === "OPEN"
-            ? "Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© ÙˆØ§Ù„ØªØ¹Ø§ÙˆÙ†"
-            : "ÙØªØ­ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© ÙˆØ§Ù„ØªØ¹Ø§ÙˆÙ†");
-        const matchingHint = lastOutcome === "AGREED"
-          ? "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø§ØªÙØ§Ù‚ â€” Ø£ÙƒÙ…Ù„ Ø§Ù„ØµÙÙ‚Ø© Ù…Ù† Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ø«Ù… Ø³Ø¬Ù‘Ù„ Ø§Ù„Ù†ØªÙŠØ¬Ø©."
-          : "Ø§Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙˆØ§Ù„Ø·Ù„Ø¨Ø§Øª Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© ÙˆØ§Ù„ØªØ¹Ø§ÙˆÙ†.";
-        html += `<div class="iaqar-workflow-step"><h3>${lastOutcome === "AGREED" ? "Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø©" : "Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© ÙˆØ§Ù„ØªØ¹Ø§ÙˆÙ†"}</h3>
-          <p>${escapeUi(matchingHint)}</p>
-          <div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn ${lastOutcome === "AGREED" ? "success" : "secondary"}" data-ui-action="open-matching-bank">${escapeUi(coopLabel)}</button>
-          </div>
-        </div>`;
-      }
-      if (showLifecycleClose) {
-        const closeHint = lastOutcome === "REFUSED"
-          ? "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø¹Ø¯Ù… Ø§Ù„Ø§Ù‡ØªÙ…Ø§Ù… â€” Ø£ÙƒÙ…Ù„ Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ© Ù…Ø¹ Ø§Ù„Ø³Ø¨Ø¨."
-          : "Ø§Ø³ØªØ®Ø¯Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ ÙÙ‚Ø· Ø¹Ù†Ø¯ Ø§Ù†ØªÙ‡Ø§Ø¡ Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ÙØ±ØµØ©.";
-        html += `<div class="iaqar-workflow-step" id="iaqarLifecycleCloseSection"><h3>Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©</h3>
-          <p class="iaqar-workflow-note">${escapeUi(closeHint)}</p>
-          <div class="iaqar-workflow-actions">
-            <button type="button" class="iaqar-workflow-btn ${lastOutcome === "REFUSED" ? "success" : "secondary"}" data-ui-action="open-lifecycle-close">Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©</button>
-          </div>
-        </div>`;
-      }
-    } else {
-      html += `<div class="iaqar-workflow-result closed">Ø§Ù„ÙØ±ØµØ© Ù…Ø¤Ø±Ø´ÙØ© / Ù…Ù†ØªÙ‡ÙŠØ©<br><small>${escapeUi(detail.closureReason || lifecycleLabel)}</small></div>`;
-    }
-    body.innerHTML = html;
-    populateFollowUpInput(detail);
-    applyWorkflowBrokerMarks(detail);
-    if (detail.focusFollowUpReminder) {
-      const card = document.getElementById("iaqarFollowUpCard");
-      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }
-
-  function showLifecycleCloseForm(prefill = {}) {
-    const reasons = (LC().OPPORTUNITY_FINAL_CLOSE_REASONS || []).map(([value, label]) =>
-      `<option value="${value}">${label}</option>`
-    ).join("");
-    const outcomes = (LC().OPPORTUNITY_FINAL_OUTCOMES || []).map(([value, label]) =>
-      `<option value="${value}">${label}</option>`
-    ).join("");
-    const prefillReason = String(prefill.reasonKey || activeWorkflowDetail?.prefillCloseReasonKey || "").trim();
-    const prefillNote = String(prefill.closureNote || activeWorkflowDetail?.prefillCloseNote || "").trim();
-    workflowBody().innerHTML = `<form class="iaqar-workflow-form" id="iaqarCloseForm"><h3>Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©</h3>
-      <label>Ø§Ù„Ø³Ø¨Ø¨ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ<select id="iaqarCloseReasonKey" required><option value="">Ø§Ø®ØªØ± Ø§Ù„Ø³Ø¨Ø¨</option>${reasons}</select></label>
-      <div id="iaqarFinalOutcomeWrap" hidden>
-        <label>Ù†ØªÙŠØ¬Ø© Ø§Ù„ØµÙÙ‚Ø©<select id="iaqarFinalOutcome"><option value="">Ø§Ø®ØªØ± Ø§Ù„Ù†ØªÙŠØ¬Ø©</option>${outcomes}</select></label>
-        <label>Ù…Ù„Ø§Ø­Ø¸Ø© Ù†Ù‡Ø§Ø¦ÙŠØ© (Ø§Ø®ØªÙŠØ§Ø±ÙŠ)<textarea id="iaqarCloseNote" placeholder="Ù…Ù„Ø§Ø­Ø¸Ø© Ø§Ø®ØªÙŠØ§Ø±ÙŠØ©"></textarea></label>
-      </div>
-      <div class="iaqar-workflow-actions">
-        <button type="button" class="iaqar-workflow-btn success" data-ui-action="confirm-final-close">ØªØ£ÙƒÙŠØ¯ Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©</button>
-        <button type="button" class="iaqar-workflow-btn secondary" data-ui-action="back">Ø±Ø¬ÙˆØ¹</button>
-      </div>
-    </form>`;
-    const reasonSelect = document.getElementById("iaqarCloseReasonKey");
-    const outcomeWrap = document.getElementById("iaqarFinalOutcomeWrap");
-    reasonSelect?.addEventListener("change", () => {
-      if (outcomeWrap) outcomeWrap.hidden = reasonSelect.value !== "deal_done";
-    });
-    if (prefillReason && reasonSelect) {
-      reasonSelect.value = prefillReason;
-      reasonSelect.dispatchEvent(new Event("change"));
-    }
-    if (prefillNote) {
-      const noteInput = document.getElementById("iaqarCloseNote");
-      if (noteInput) noteInput.value = prefillNote;
-    }
-  }
-
-  async function recordContactOutcomeAction(button, outcome) {
-    if (!outcome) return;
-    const previousOutcome = String(
-      activeWorkflowDetail.lastContactOutcome || activeWorkflowDetail.advertiserContactStatus || ""
-    ).toUpperCase();
-    selectWorkflowContactOutcome(outcome);
-    setUiBusy(button, true);
-    try {
-      const payload = await opportunityLifecycleAction("contact_outcome", activeWorkflowDetail, { contactOutcome: outcome });
-      syncWorkflowDetailFromLifecyclePayload(payload, BAP().contactOutcomeActionKey?.(outcome) || `contact:outcome:${outcome}`);
-      activeWorkflowDetail = {
-        ...activeWorkflowDetail,
-        lastContactOutcome: outcome,
-        lifecycleStatus: payload.lifecycleStatus || activeWorkflowDetail.lifecycleStatus,
-        advertiserContactStatus: payload.advertiserContactStatus || outcome
-      };
-      notify("ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„");
-      if (outcome === "REFUSED") {
-        await renderOpportunityLifecycleUi();
-        document.getElementById("iaqarLifecycleCloseSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else if (outcome === "AGREED") {
-        await renderOpportunityLifecycleUi();
-        notify("Ø§Ù„Ø®Ø·ÙˆØ© Ø§Ù„ØªØ§Ù„ÙŠØ©: Ø¥ØªÙ…Ø§Ù… Ø§Ù„ØµÙÙ‚Ø© Ù…Ù† Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©");
-      } else {
-        renderOpportunityLifecycleUi();
-      }
-    } catch (error) {
-      selectWorkflowContactOutcome(previousOutcome);
-      notify(error.message || "ØªØ¹Ø°Ø± ØªØ³Ø¬ÙŠÙ„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  function pickFollowUpDay(daysValue) {
-    const days = Number(daysValue || 0);
-    const input = document.getElementById("iaqarCustomFollowUp");
-    if (!input) return;
-    const base = new Date();
-    base.setDate(base.getDate() + days);
-    const pad = (value) => String(value).padStart(2, "0");
-    const datePart = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
-    const existingTime = String(input.value || "").includes("T") ? input.value.split("T")[1] : "10:00";
-    input.value = `${datePart}T${existingTime}`;
-  }
-
-  async function saveFollowUpAction(button) {
-    const custom = document.getElementById("iaqarCustomFollowUp")?.value || "";
-    if (!custom) return notify("Ø§Ø®ØªØ± Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    const parsed = FD()?.parseRiyadhDateTimeInput?.(custom) || new Date(custom);
-    const recipientMode = document.getElementById("iaqarFollowUpRecipient")?.value || "";
-    const todayCheck = FD()?.validateTodayRequiresFutureTime?.(parsed);
-    if (todayCheck && !todayCheck.ok) return notify(todayCheck.message);
-    setUiBusy(button, true);
-    try {
-      const payload = await opportunityLifecycleAction("set_followup", activeWorkflowDetail, {
-        nextFollowUpAt: parsed.toISOString(),
-        recipientMode
-      });
-      await reloadActiveOpportunityFromServer();
-      syncWorkflowDetailFromLifecyclePayload(payload, BAP().BROKER_ACTION?.followUpScheduled || "followup:scheduled");
-      if (payload.followUp) activeWorkflowDetail.followUp = payload.followUp;
-      activeWorkflowDetail.nextFollowUpAt = payload.nextFollowUpAt || parsed.toISOString();
-      activeWorkflowDetail.lifecycleStatus = payload.lifecycleStatus || "FOLLOW_UP";
-      activeWorkflowDetail.showFollowUpConfirmation = true;
-      followUpEditMode = false;
-      notify("ØªÙ… Ø­ÙØ¸ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø© â€” Ø£Ø±Ø³Ù„ ØªØ£ÙƒÙŠØ¯Ù‹Ø§ Ø¹Ø¨Ø± ÙˆØ§ØªØ³Ø§Ø¨. Ø³ØªØµÙ„Ùƒ ØªØ°ÙƒÙŠØ±Ø§Øª Ù‚Ø¨Ù„ Ø§Ù„Ù…ÙˆØ¹Ø¯ Ø¨Ù€ Ù¢Ù¤ Ø³Ø§Ø¹Ø© ÙˆØ³Ø§Ø¹Ø©.");
-      await renderOpportunityLifecycleUi();
-      document.getElementById("iaqarFollowUpConfirmSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function cancelFollowUpAction(button) {
-    if (!confirm("Ø¥Ù„ØºØ§Ø¡ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©ØŸ")) return;
-    setUiBusy(button, true);
-    try {
-      await opportunityLifecycleAction("cancel_followup", activeWorkflowDetail, {});
-      await reloadActiveOpportunityFromServer();
-      followUpEditMode = false;
-      notify("ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-      await renderOpportunityLifecycleUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙˆØ¹Ø¯");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function completeFollowUpAction(button) {
-    setUiBusy(button, true);
-    try {
-      const payload = await opportunityLifecycleAction("complete_followup", activeWorkflowDetail, {});
-      syncWorkflowDetailFromLifecyclePayload(
-        payload,
-        BAP().BROKER_ACTION?.followUpComplete || "followup:complete"
-      );
-      followUpEditMode = false;
-      notify("ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„");
-      await renderOpportunityLifecycleUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥ØªÙ…Ø§Ù… Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function recordFollowUpOutcome(button, outcome) {
-    if (!outcome) return;
-    setUiBusy(button, true);
-    try {
-      const payload = await opportunityLifecycleAction("followup_outcome", activeWorkflowDetail, { outcome });
-      const outcomeKey = BAP().followUpOutcomeActionKey?.(outcome) || `followup:outcome:${outcome}`;
-      syncWorkflowDetailFromLifecyclePayload(payload, outcomeKey, { confirmationOutcome: outcome });
-      notify("ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„");
-      if (outcome === "confirmed") {
-        await completeFollowUpAction(button);
-        return;
-      }
-      await renderOpportunityLifecycleUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ù†ØªÙŠØ¬Ø©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function openFollowUpReminderWhatsApp(role) {
-    const detail = await enrichDetailForMessaging(activeWorkflowDetail);
-    const enriched = {
-      ...detail,
-      recipientRole: role,
-      ownerOfferId: detail.ownerOfferId || followUpRecipientContext?.ownerContactId || "",
-      clientRequestId: detail.clientRequestId || followUpRecipientContext?.clientContactId || ""
-    };
-    const contact = await resolveWorkflowPartyContact(enriched, role);
-    if (!contact?.phone) return notify(`Ø±Ù‚Ù… ${role === "owner" ? "Ø§Ù„Ù…Ø§Ù„Ùƒ" : "Ø§Ù„Ø¹Ù…ÙŠÙ„"} ØºÙŠØ± Ù…ØªÙˆÙØ±`);
-    const phone = whatsappPhone(contact.phone);
-    if (!phone) return notify("Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-    const property = LC().buildOpportunitySummary ? LC().buildOpportunitySummary(detail) : "";
-    const follow = FD()?.activeFollowUpFromRecord?.(detail);
-    const appointmentLine = follow?.at
-      ? (FD()?.formatFollowUpAppointmentLine?.(follow.at) || dateTimeLabel(follow.at))
-      : "";
-    const message = [
-      "Ø§Ù„Ø³Ù„Ø§Ù… Ø¹Ù„ÙŠÙƒÙ…ØŒ ØªØ°ÙƒÙŠØ± Ø¨Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø© Ø¨Ø®ØµÙˆØµ Ø§Ù„Ø¹Ù‚Ø§Ø±.",
-      property ? `Ø¨Ø®ØµÙˆØµ: ${property}` : "",
-      appointmentLine ? `Ø§Ù„Ù…ÙˆØ¹Ø¯: ${appointmentLine}` : "",
-      "Ù‡Ù„ Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ù…ÙˆØ¹Ø¯ Ù…Ù†Ø§Ø³Ø¨Ù‹Ø§ØŸ"
-    ].filter(Boolean).join("\n");
-    openWhatsAppHandoff({ phone, text: message });
-    notify("ØªÙ… ÙØªØ­ ÙˆØ§ØªØ³Ø§Ø¨");
-    const whatsappKey = BAP().followUpWhatsAppActionKey?.(role) || `followup:whatsapp:${role}`;
-    try {
-      const payload = await opportunityLifecycleAction("whatsapp_opened", activeWorkflowDetail, {
-        communicationAction: "whatsapp_opened",
-        recipientRole: role
-      });
-      syncWorkflowDetailFromLifecyclePayload(payload, whatsappKey, { whatsappRole: role });
-    } catch (error) {
-      console.warn("[iaqar] followup whatsapp progress", error);
-      activeWorkflowDetail = mergeWorkflowBrokerProgress(activeWorkflowDetail, whatsappKey, { whatsappRole: role });
-    }
-    void opportunityLifecycleAction("followup_confirmation_opened", activeWorkflowDetail, { recipientRole: role }).catch(() => {});
-    activeWorkflowDetail = { ...activeWorkflowDetail, showFollowUpConfirmation: true };
-    await renderOpportunityLifecycleUi();
-  }
-
-  async function confirmCloseOpportunityFinal(button) {
-    const reasonKey = document.getElementById("iaqarCloseReasonKey")?.value || "";
-    if (!reasonKey) return notify("Ø§Ø®ØªØ± Ø³Ø¨Ø¨ Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©");
-    const finalOutcome = document.getElementById("iaqarFinalOutcome")?.value || "";
-    if (reasonKey === "deal_done" && !finalOutcome) return notify("Ø§Ø®ØªØ± Ù†ØªÙŠØ¬Ø© Ø§Ù„ØµÙÙ‚Ø©");
-    const closureNote = document.getElementById("iaqarCloseNote")?.value || "";
-    setUiBusy(button, true);
-    try {
-      await opportunityLifecycleAction("close_opportunity", activeWorkflowDetail, {
-        closureReasonKey: reasonKey,
-        finalOutcome: reasonKey === "deal_done" ? finalOutcome : "",
-        closureNote
-      });
-      activeWorkflowDetail = {
-        ...activeWorkflowDetail,
-        lifecycleStatus: "ARCHIVED",
-        closedAt: new Date().toISOString()
-      };
-      notify("ØªÙ… Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ© ÙˆØ£Ø±Ø´ÙØªÙ‡Ø§");
-      emitOperations();
-      renderOpportunityLifecycleUi();
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ©");
-    } finally {
-      setUiBusy(button, false);
-    }
-  }
-
-  async function openMatchingBankFromWorkflow() {
-    const detail = activeWorkflowDetail;
-    const oppId = String(detail?.opportunityId || detail?.recordId || "").replace(/^opp-/, "");
-    if (oppId && window.IAQAR?.openOpportunityDetail) {
-      closeWorkflowUi();
-      await window.IAQAR.openOpportunityDetail(oppId);
-    }
-  }
-
-  async function handleWorkflowUiClick(event) {
-    const button = event.target.closest("[data-ui-action]");
-    if (!button) return;
-    const action = button.dataset.uiAction;
-    if (action === "close-overlay") return closeWorkflowUi();
-    if (action === "back") return renderWorkflowUi();
-    if (action === "open-schedule") return showScheduleForm();
-    if (action === "open-close") return showCloseForm();
-    if (action === "open-request") return showRequestForm();
-    if (action === "save-schedule") return saveViewingSchedule(button);
-    if (action === "save-negotiation") return saveNegotiation(button);
-    if (action === "confirm-viewing") return confirmViewingParty(button);
-    if (action === "complete") return completeFastDeal(button);
-    if (action === "save-close") return saveCloseReason(button);
-    if (action === "send-request") return sendOwnerRequest(button);
-    const messageStage = activeWorkflowDetail.status === "closed" && activeWorkflowDetail.workflowStage === "closed" ? "completed" : activeWorkflowDetail.status;
-    if (action === "whatsapp-client") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
-    if (action === "whatsapp-owner") return openWorkflowWhatsApp({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
-    if (action === "telegram-client") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "client", messageStage });
-    if (action === "telegram-owner") return openWorkflowTelegram({ ...activeWorkflowDetail, recipientRole: "owner", messageStage });
-    if (action === "whatsapp-contact") return openContactWhatsAppDirect();
-    if (action === "call-contact") return openContactCallDirect();
-    if (action === "contact-outcome") return recordContactOutcomeAction(button, button.dataset.outcome);
-    if (action === "save-followup-custom") return saveFollowUpAction(button);
-    if (action === "pick-followup-day") return pickFollowUpDay(button.dataset.days);
-    if (action === "edit-followup") {
-      followUpEditMode = true;
-      return void renderOpportunityLifecycleUi();
-    }
-    if (action === "cancel-followup") return cancelFollowUpAction(button);
-    if (action === "complete-followup") return completeFollowUpAction(button);
-    if (action === "followup-outcome") return recordFollowUpOutcome(button, button.dataset.outcome);
-    if (action === "followup-whatsapp") return openFollowUpReminderWhatsApp(button.dataset.role);
-    if (action === "open-lifecycle-close") return showLifecycleCloseForm();
-    if (action === "confirm-final-close") return confirmCloseOpportunityFinal(button);
-    if (action === "open-matching-bank") return openMatchingBankFromWorkflow();
-    if (action === "confirm-contact") return notify("Ø³Ø¬Ù‘Ù„ Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„ Ø¨Ø¹Ø¯ ÙˆØ§ØªØ³Ø§Ø¨ Ø£Ùˆ Ø§ØªØµØ§Ù„");
-    if (action === "save-lifecycle-status") return notify("Ø§Ø³ØªØ®Ø¯Ù… Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„ Ø¨Ø¯Ù„ ØªØºÙŠÙŠØ± Ø§Ù„Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ø§Ù…");
-    if (action === "open-followup") return renderOpportunityLifecycleUi();
-  }
-
-  async function handleOperationPrimary(detail) {
-    const operationId = detail.recordId || detail.id;
-    await postOperationAction(operationId, "START");
-    notify(detail.actionLabel || "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø¨Ø¯Ø¡ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡");
-    if (detail.operationType === "MISSING_DATA") {
-      const opportunityId = String(detail.opportunityId || "").trim();
-      if (opportunityId && window.IAQAR?.renderDailyTaskOpportunity) {
-        const opened = await window.IAQAR.renderDailyTaskOpportunity("operationsTaskPanel", opportunityId);
-        if (opened) return;
-      }
-      if (opportunityId && window.IAQAR?.openOpportunityDetail) {
-        void window.IAQAR.openOpportunityDetail(opportunityId);
-      } else if (window.IAQAR?.openOpportunityBank) {
-        window.IAQAR.openOpportunityBank();
-      }
-      return;
-    }
-    if (detail.operationType === "COOPERATION_REQUEST" || detail.operationType === "COOPERATION_RESPONSE") {
-      if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
-    }
-  }
-
-  async function handleOperationSecondary(detail) {
-    const operationId = detail.recordId || detail.id;
-    await postOperationAction(operationId, "COMPLETE");
-    notify("ØªÙ… Ø¥ØªÙ…Ø§Ù… Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡");
-  }
-
-  async function handleOperationDismiss(detail) {
-    const operationId = detail.recordId || detail.id;
-    await postOperationAction(operationId, "DISMISS", detail.dismissalReason || "");
-    notify("ØªÙ… ØµØ±Ù Ø§Ù„Ù†Ø¸Ø± Ø¹Ù† Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡");
-  }
-
-  async function handlePrimaryAction(detail) {
-    if (detail.recordType === "summary") {
-      if (detail.targetId) window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: detail.targetId, main: detail.targetMain || "opportunities" } }));
-      else notify("Ù„Ø§ ØªÙˆØ¬Ø¯ ÙØ±ØµØ© Ø¬Ø§Ù‡Ø²Ø© Ø§Ù„Ø¢Ù†");
-      return;
-    }
-    if (detail.recordType === "operation") {
-      await handleOperationPrimary(detail);
-      return;
-    }
-    if (detail.recordType === "opportunity") {
-      const oppId = String(detail.recordId || detail.opportunityId || "")
-        .replace(/^opp-/, "");
-      if (oppId && window.IAQAR?.openOpportunityDetail) {
-        await window.IAQAR.openOpportunityDetail(oppId);
-        return;
-      }
-    }
-    if (detail.recordType === "intake") {
-      const oppId = String(detail.opportunityId || "").trim();
-      if (oppId && window.IAQAR?.openOpportunityDetail) {
-        await window.IAQAR.openOpportunityDetail(oppId);
-        return;
-      }
-      await openWorkflowUi(detail);
-      return;
-    }
-    if (["match", "deal"].includes(detail.recordType)) {
-      await openWorkflowUi(detail);
-      return;
-    }
-    if (detail.recordType === "intake") {
-      await openWorkflowUi(detail);
-    }
-  }
-
-  async function handleSecondaryAction(detail) {
-    if (detail.recordType === "summary") return;
-    if (detail.recordType === "operation") {
-      await handleOperationSecondary(detail);
-      return;
-    }
-    if (detail.recordType === "opportunity") {
-      const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
-      if (oppId) await openOpportunityManagement(oppId);
-      return;
-    }
-    if (["match", "deal"].includes(detail.recordType)) {
-      await openWorkflowUi(detail);
-      return;
-    }
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      await openWorkflowUi(detail);
-    }
-  }
-
-  function setOpportunityView(view) {
-    opportunityView = view === "archived" ? "archived" : "active";
-    emitOperations();
-  }
-
-  async function handleQuickCall(detail) {
-    if (["match", "deal"].includes(detail.recordType)) {
-      await openWorkflowUi(detail);
-      return;
-    }
-    const phoneInfo = resolveLifecyclePhone(detail);
-    if (!phoneInfo.valid) return notify(phoneInfo.error || "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-    window.location.href = `tel:${phoneInfo.local}`;
-    void opportunityLifecycleAction("call_opened", detail, { communicationAction: "call_opened" }).catch((error) => {
-      console.warn("[iaqar] call opened log", error);
-    });
-  }
-
-  async function handleQuickFollowup(detail) {
-    if (detail.recordType === "opportunity" || detail.opportunityId) {
-      const oppId = String(detail.recordId || detail.opportunityId || "").replace(/^opp-/, "");
-      if (oppId && window.IAQAR?.openOpportunityManagement) {
-        await window.IAQAR.openOpportunityManagement(oppId, { focusFollowUp: true });
-        return;
-      }
-    }
-    await openWorkflowUi({ ...detail, focusFollowUpReminder: true });
-  }
-
-  async function handleQuickScheduleViewing(detail) {
-    if (!["match", "deal"].includes(detail.recordType)) {
-      return handleQuickFollowup(detail);
-    }
-    await openWorkflowUi(detail);
-    showScheduleForm();
-  }
-
-  async function handleAction(event) {
-    const detail = event.detail || {};
-    try {
-      if (detail.actionMode === "call") await handleQuickCall(detail);
-      else if (detail.actionMode === "followup") await handleQuickFollowup(detail);
-      else if (detail.actionMode === "schedule_viewing") await handleQuickScheduleViewing(detail);
-      else if (detail.actionMode === "whatsapp" || detail.actionMode === "telegram") {
-        // Phase 7: Match/communication Operations may create drafts; never auto-send.
-        const channel = detail.actionMode === "telegram" || detail.channel === "telegram"
-          ? "telegram"
-          : "whatsapp";
-        if (channel === "telegram") await openWorkflowTelegram(detail);
-        else await openWorkflowWhatsApp(detail);
-      } else if (detail.actionMode === "dismiss") await handleOperationDismiss(detail);
-      else if (detail.actionMode === "secondary") await handleSecondaryAction(detail);
-      else await handlePrimaryAction(detail);
-    } catch (error) {
-      notify(error.message || "ØªØ¹Ø°Ø± ØªÙ†ÙÙŠØ° Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡");
-    }
-  }
-
-  let currentFcmRegistration = { id: "", type: "" };
-  let foregroundMessageUnsubscribe = null;
-  let foregroundSetupPending = false;
-  const seenPushDeliveries = new Set();
-  let deferredInstallPrompt = null;
-
-  function notificationNodes() {
-    return {
-      control: document.getElementById("officeNotificationControl"),
-      status: document.getElementById("officeNotificationStatus")
-    };
-  }
-
-  function setNotificationStatus(text) {
-    const node = notificationNodes().status;
-    if (node) node.textContent = text;
-  }
-
-  async function getFcmConfig() {
-    const response = await fetch(`${resolveWorkerBase()}/fcm/config`, { cache: "no-store" });
-    if (!response.ok) throw new Error("ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª");
-    return response.json();
-  }
-
-  function notificationInstallationId() {
-    const key = "iaqar.notificationInstallationId";
-    try {
-      let value = localStorage.getItem(key);
-      if (!value) {
-        value = window.crypto && typeof window.crypto.randomUUID === "function"
-          ? window.crypto.randomUUID()
-          : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem(key, value);
-      }
-      return value;
-    } catch (_) {
-      return `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    }
-  }
-
-  function deviceName() {
-    const agent = navigator.userAgent || "";
-    const browser = /Edg\//.test(agent) ? "Edge" : /Chrome\//.test(agent) ? "Chrome" : /Firefox\//.test(agent) ? "Firefox" : /Safari\//.test(agent) ? "Safari" : "Ù…ØªØµÙØ­";
-    const platform = /Android/i.test(agent) ? "Android" : /iPhone|iPad|iPod/i.test(agent) ? "iPhone/iPad" : /Windows/i.test(agent) ? "Windows" : /Macintosh/i.test(agent) ? "Mac" : "Ø¬Ù‡Ø§Ø²";
-    return `${browser} â€” ${platform}`;
-  }
-
-  function notificationUrl(data = {}) {
-    if (window.IAQAR?.buildNotificationRelativeUrl) {
-      return window.IAQAR.buildNotificationRelativeUrl(data);
-    }
-    if (data.url && String(data.url).startsWith("/")) return data.url;
-    const runtime = office();
-    const params = new URLSearchParams({ officeId: runtime && runtime.officeId || "platform" });
-    if (data.dealId) params.set("openDeal", data.dealId);
-    else if (data.matchId || data.recordId) params.set("openMatch", data.matchId || data.recordId);
-    return `/?${params.toString()}`;
-  }
-
-  function ensureOperationsHome() {
-    window.IAQAR?.homeTabs?.switchTo?.("operations");
-    const workspace = document.getElementById("workspace");
-    if (workspace) workspace.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  async function openRecordFromNotification(recordId) {
-    const id = String(recordId || "").trim();
-    if (!id) return openNotificationCenter();
-    ensureOperationsHome();
-    const existing = operationItems.find((item) =>
-      item.id === id
-      || item.recordId === id
-      || item.matchId === id
-      || item.dealId === id
-    );
-    if (existing) {
-      window.dispatchEvent(new CustomEvent("iaqar:open-operation", {
-        detail: { id: existing.id, matchId: existing.matchId || undefined }
-      }));
-      return;
-    }
-    const runtime = office();
-    if (runtime?.refs) {
-      const matchSnap = await runtime.refs.matches.doc(id).get().catch(() => null);
-      if (matchSnap?.exists) {
-        await openWorkflowUi({ ...matchSnap.data(), recordId: id, recordType: "match" });
-        return;
-      }
-      const dealSnap = await runtime.refs.deals.doc(id).get().catch(() => null);
-      if (dealSnap?.exists) {
-        await openWorkflowUi({ ...dealSnap.data(), recordId: id, recordType: "deal", dealId: id });
-        return;
-      }
-    }
-    window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id, matchId: id } }));
-  }
-
-  function openNotificationCenter() {
-    ensureOperationsHome();
-    window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail: { id: null } }));
-  }
-
-  const PENDING_NOTIFICATION_TARGET_KEY = "iaqar.pendingNotificationTarget";
-
-  function savePendingNotificationTarget(target) {
-    if (!target) return;
-    try {
-      sessionStorage.setItem(PENDING_NOTIFICATION_TARGET_KEY, JSON.stringify(target));
-    } catch (_) { /* ignore */ }
-  }
-
-  function readPendingNotificationTarget() {
-    try {
-      return JSON.parse(sessionStorage.getItem(PENDING_NOTIFICATION_TARGET_KEY) || "null");
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function clearPendingNotificationTarget() {
-    try { sessionStorage.removeItem(PENDING_NOTIFICATION_TARGET_KEY); }
-    catch (_) { /* ignore */ }
-  }
-
-  function navigateNotificationTarget(target) {
-    if (!target) return openNotificationCenter();
-    const user = window.firebase?.auth?.()?.currentUser;
-    if (!user) {
-      savePendingNotificationTarget(target);
-      notify("Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ù„Ø¹Ø±Ø¶ Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±");
-      return;
-    }
-    const runtime = office();
-    if (!runtime?.officeId) {
-      savePendingNotificationTarget(target);
-      return;
-    }
-    const requestedOffice = String(target.officeId || "").trim();
-    if (requestedOffice && requestedOffice !== "platform" && requestedOffice !== runtime.officeId) {
-      notify("Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± ÙŠØ®Øµ Ù…ÙƒØªØ¨Ù‹Ø§ Ø¢Ø®Ø±");
-      return openNotificationCenter();
-    }
-
-    clearPendingNotificationTarget();
-
-    switch (target.kind) {
-      case "daily-task": {
-        window.IAQAR?.homeTabs?.switchTo?.("operations");
-        const detail = {
-          id: target.id,
-          taskId: target.id,
-          matchGroupId: target.id,
-          matchId: target.matchId || "",
-          opportunityId: target.opportunityId || "",
-          operationId: target.operationId || ""
-        };
-        window.IAQAR = window.IAQAR || {};
-        window.IAQAR.pendingDailyTaskOpen = detail;
-        window.dispatchEvent(new CustomEvent("iaqar:open-operation", { detail }));
-        window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
-        window.setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("iaqar:open-daily-task", { detail }));
-        }, 120);
-        break;
-      }
-      case "opportunity":
-        if (target.id && window.IAQAR?.openOpportunityManagement) {
-          void window.IAQAR.openOpportunityManagement(target.id, { focusFollowUp: target.focusFollowUp });
-        } else if (target.id && window.IAQAR?.openOpportunityDetail) {
-          void window.IAQAR.openOpportunityDetail(target.id);
-        } else if (window.IAQAR?.openOpportunityBank) {
-          window.IAQAR.openOpportunityBank();
-        } else openNotificationCenter();
-        break;
-      case "cooperation":
-        if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
-        setTimeout(() => {
-          const panel = document.getElementById("bankIncomingRequests");
-          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 600);
-        break;
-      case "message":
-        if (target.id) {
-          void openRecordFromNotification(target.id);
-        } else openNotificationCenter();
-        break;
-      case "deal":
-      case "match":
-        void openRecordFromNotification(target.id);
-        break;
-      case "operation":
-        if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityManagement) {
-          void window.IAQAR.openOpportunityManagement(target.id.replace(/^opp_/, ""), { focusFollowUp: false });
-        } else if (target.id?.startsWith("opp_") && window.IAQAR?.openOpportunityDetail) {
-          void window.IAQAR.openOpportunityDetail(target.id);
-        } else if (target.id?.startsWith("coop_")) {
-          if (window.IAQAR?.openOpportunityBank) window.IAQAR.openOpportunityBank();
-        } else {
-          void openRecordFromNotification(target.id);
-        }
-        break;
-      case "admin":
-        const params = new URLSearchParams();
-        params.set("office", "platform");
-        params.set("adminApplications", "1");
-        if (target.id) params.set("openBrokerApplication", target.id);
-        window.location.href = `/?${params.toString()}`;
-        break;
-      case "url":
-        const path = String(target.path || "");
-        if (path && path !== "/" && !path.includes("view=public")) {
-          window.location.href = path.startsWith("/") ? path : `/${path}`;
-        } else openNotificationCenter();
-        break;
-      case "center":
-      default:
-        openNotificationCenter();
-    }
-  }
-
-  function replayPendingNotificationTarget() {
-    const pending = readPendingNotificationTarget();
-    if (!pending) return;
-    window.setTimeout(() => navigateNotificationTarget(pending), 350);
-  }
-
-  function handleNotificationDeepLinkFromData(data = {}) {
-    if (window.IAQAR?.buildNotificationTargetFromData) {
-      navigateNotificationTarget(window.IAQAR.buildNotificationTargetFromData(data));
-    }
-  }
-
-  async function preferredFcmBridge() {
-    if (!window.IAQAR_FCM_READY) return null;
-    try { return await window.IAQAR_FCM_READY; }
-    catch (_) { return null; }
-  }
-
-  function handleForegroundPayload(payload) {
-    const message = payload || {};
-    const data = message.data || {};
-    const deliveryId = String(data.deliveryId || message.messageId || "");
-    if (deliveryId && seenPushDeliveries.has(deliveryId)) return;
-    if (deliveryId) {
-      seenPushDeliveries.add(deliveryId);
-      setTimeout(() => seenPushDeliveries.delete(deliveryId), 60000);
-    }
-    const title = message.notification && message.notification.title || "Ù…ÙƒØ§ØªØ¨ Ø¹Ù‚Ø§Ø±ÙŠØ© Ø°ÙƒÙŠØ©";
-    const body = message.notification && message.notification.body || "Ù„Ø¯ÙŠÙƒ ØªÙ†Ø¨ÙŠÙ‡ Ø¬Ø¯ÙŠØ¯";
-    notify(`${title} â€” ${body}`);
-    window.dispatchEvent(new CustomEvent("iaqar:push-received", { detail: { title, body, data } }));
-    const brand = window.IAQAR && window.IAQAR.platformBrand || {};
-    const icon = data.iconUrl || brand.PLATFORM_DEFAULT_LOGO || "/icons/iaqar-default-icon-192.png";
-    const badge = data.badgeUrl || brand.PLATFORM_BADGE_ICON || "/icons/iaqar-badge-icon.png";
-    if (Notification.permission === "granted" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then(registration => {
-        const options = {
-          body,
-          icon,
-          dir: "rtl",
-          lang: "ar",
-          tag: data.recordId || data.matchId || data.dealId || "iaqar-foreground",
-          renotify: true,
-          data: { url: notificationUrl(data) }
-        };
-        if (badge && badge !== icon) options.badge = badge;
-        return registration.showNotification(title, options);
-      }).catch(() => {});
-    }
-  }
-
-  async function setupForegroundNotifications() {
-    if (foregroundMessageUnsubscribe || foregroundSetupPending) return;
-    foregroundSetupPending = true;
-    try {
-      const bridge = await preferredFcmBridge();
-      if (bridge && typeof bridge.onMessage === "function") {
-        foregroundMessageUnsubscribe = bridge.onMessage(handleForegroundPayload);
-        return;
-      }
-      if (window.firebase && typeof window.firebase.messaging === "function") {
-        foregroundMessageUnsubscribe = window.firebase.messaging().onMessage(handleForegroundPayload);
-      }
-    } catch (error) {
-      console.warn("[iaqar] foreground notifications", error);
-    } finally {
-      foregroundSetupPending = false;
-    }
-  }
-
-  function urlBase64ToUint8Array(base64String) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const raw = atob(base64);
-    return Uint8Array.from(raw, char => char.charCodeAt(0));
-  }
-
-  async function createFcmRegistration(config, serviceWorkerRegistration) {
-    const tokenOptions = { serviceWorkerRegistration };
-    if (config.vapidKey) tokenOptions.vapidKey = config.vapidKey;
-    const bridge = await preferredFcmBridge();
-    if (bridge && typeof bridge.register === "function") {
-      try {
-        const fid = await bridge.register({ vapidKey: config.vapidKey, serviceWorkerRegistration });
-        if (fid) return { id: fid, type: "fid" };
-      } catch (error) {
-        console.warn("[iaqar] FID registration failed; using token fallback", error);
-      }
-    }
-    if (window.firebase && typeof window.firebase.messaging === "function") {
-      try {
-        const token = await window.firebase.messaging().getToken(tokenOptions);
-        if (token) return { id: token, type: "token" };
-      } catch (error) {
-        console.warn("[iaqar] FCM token registration failed; using Web Push fallback", error);
-      }
-    }
-    if (!config.vapidKey) throw new Error("ÙŠÙ„Ø²Ù… Ù…ÙØªØ§Ø­ Web Push ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù…");
-    const subscription = await serviceWorkerRegistration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.vapidKey)
-    });
-    const pushSubscription = subscription.toJSON();
-    return {
-      id: JSON.stringify(pushSubscription),
-      type: "webpush",
-      pushSubscription
-    };
-  }
-
-  function registrationPayload(runtime, registration, permission) {
-    const payload = {
-      officeId: runtime.officeId,
-      fcmRegistrationId: registration.id,
-      registrationType: registration.type,
-      fcmToken: registration.type === "token" ? registration.id : "",
-      userAgent: navigator.userAgent,
-      deviceName: deviceName(),
-      installationId: notificationInstallationId(),
-      language: navigator.language || "ar-SA",
-      notificationPermission: permission,
-      appVersion: APP_VERSION
-    };
-    if (registration.pushSubscription) payload.pushSubscription = registration.pushSubscription;
-    return payload;
-  }
-
-  async function registerNotificationDevice({ requestPermission = false, sendTest = false, silent = false } = {}) {
-    if (!runtimeOfficeReady(silent)) return false;
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-      setNotificationStatus("ØºÙŠØ± Ù…ØªØ§Ø­Ø© ÙÙŠ Ù‡Ø°Ø§ Ø§Ù„Ù…ØªØµÙØ­");
-      if (!silent) notify("Ø®Ø¯Ù…Ø© Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ØºÙŠØ± Ù…ØªØ§Ø­Ø© ÙÙŠ Ù‡Ø°Ø§ Ø§Ù„Ù…ØªØµÙØ­");
-      return false;
-    }
-    const config = await getFcmConfig();
-    if (!config.serverReady) {
-      setNotificationStatus("Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø¥Ø¹Ø¯Ø§Ø¯ FCM");
-      if (!silent) notify("Ø¨ÙŠØ§Ù†Ø§Øª Firebase ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-      return false;
-    }
-    if (!config.vapidKey) {
-      setNotificationStatus("Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙØªØ§Ø­ Web Push");
-      if (!silent) notify("ÙŠÙ„Ø²Ù… Ø¥ÙƒÙ…Ø§Ù„ Ù…ÙØªØ§Ø­ Web Push ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù…");
-      return false;
-    }
-    let permission = Notification.permission;
-    if (requestPermission && permission !== "granted") permission = await Notification.requestPermission();
-    if (permission !== "granted") {
-      setNotificationStatus(permission === "denied" ? "Ù…Ø­Ø¸ÙˆØ±Ø© Ù…Ù† Ø§Ù„Ù…ØªØµÙØ­" : "ØºÙŠØ± Ù…ÙØ¹Ù‘Ù„Ø©");
-      if (!silent && permission === "denied") notify("Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ø­Ø¸ÙˆØ±Ø© Ù…Ù† Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù…ØªØµÙØ­.");
-      return false;
-    }
-    const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
-    const registration = await createFcmRegistration(config, serviceWorkerRegistration);
-    const runtime = office();
-    const payload = registrationPayload(runtime, registration, permission);
-    const response = await fetch(`${resolveWorkerBase()}/fcm/register`, {
-      method: "POST",
-      headers: await authHeaders(),
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) throw new Error("ØªØ¹Ø°Ø± ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¬Ù‡Ø§Ø²");
-    currentFcmRegistration = registration;
-    localStorage.setItem(`iaqar.fcm.enabled.${runtime.officeId}`, "1");
-    setupForegroundNotifications();
-    setNotificationStatus("Ù…ÙØ¹Ù‘Ù„Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-    if (sendTest) {
-      const testResponse = await fetch(`${resolveWorkerBase()}/fcm/test`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify(payload)
-      });
-      const testPayload = await testResponse.json().catch(() => ({}));
-      if (!testResponse.ok) throw new Error(testPayload.message || "ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¬Ù‡Ø§Ø² Ù„ÙƒÙ† ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± Ø§Ù„ØªØ¬Ø±ÙŠØ¨ÙŠ");
-      if (!silent) notify(testPayload.sent > 0 ? "ØªÙ… Ø§Ù„ØªÙØ¹ÙŠÙ„ ÙˆØ¥Ø±Ø³Ø§Ù„ Ø¥Ø´Ø¹Ø§Ø± ØªØ¬Ø±ÙŠØ¨ÙŠ" : "ØªÙ… Ø§Ù„ØªÙØ¹ÙŠÙ„ØŒ ÙˆØ³ÙŠØ¨Ø¯Ø£ Ø§Ø³ØªÙ‚Ø¨Ø§Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø©");
-    }
-    return true;
-  }
-
-  async function enableNotifications() {
-    try {
-      setNotificationStatus("Ø¬Ø§Ø±Ù Ø§Ù„ØªÙØ¹ÙŠÙ„â€¦");
-      const activated = await registerNotificationDevice({ requestPermission: true, sendTest: true, silent: false });
-      if (!activated) refreshNotificationStatus();
-    } catch (error) {
-      setNotificationStatus("ØªØ¹Ø°Ø± Ø§Ù„ØªÙØ¹ÙŠÙ„");
-      const permission = typeof Notification !== "undefined" ? Notification.permission : "default";
-      if (permission === "denied") {
-        notify("Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ø­Ø¸ÙˆØ±Ø© Ù…Ù† Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù…ØªØµÙØ­.");
-      } else if (String(error?.message || "").includes("Web Push")) {
-        notify("ÙŠÙ„Ø²Ù… Ø¥ÙƒÙ…Ø§Ù„ Ù…ÙØªØ§Ø­ Web Push ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù…");
-      } else if (String(error?.message || "").includes("Firebase") || String(error?.message || "").includes("Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª")) {
-        notify("Ø¨ÙŠØ§Ù†Ø§Øª Firebase ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-      } else {
-        notify(error.message || "ØªØ¹Ø°Ø± ØªÙØ¹ÙŠÙ„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª");
-      }
-    }
-  }
-
-  async function syncEnabledNotifications() {
-    const runtime = office();
-    if (!runtime || !runtime.officeId || runtime.officeId === "platform") return;
-    const enabled = localStorage.getItem(`iaqar.fcm.enabled.${runtime.officeId}`) === "1";
-    if (!enabled || !("Notification" in window) || Notification.permission !== "granted") return;
-    try {
-      const ok = await registerNotificationDevice({ requestPermission: false, sendTest: false, silent: true });
-      if (!ok) setNotificationStatus("Ù…ÙØ¹Ù‘Ù„Ø© â€” Ø¬Ø§Ø±Ù Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ø±Ø¨Ø·");
-    }
-    catch (error) {
-      console.warn("[iaqar] notification registration refresh", error);
-      setNotificationStatus("Ù…ÙØ¹Ù‘Ù„Ø© â€” ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªØ³Ø¬ÙŠÙ„ Ù…Ø¤Ù‚ØªÙ‹Ø§");
-    }
-  }
-
-  async function disableNotifications() {
-    const runtime = office();
-    if (!runtime || !runtime.officeId) return;
-    try {
-      setNotificationStatus("Ø¬Ø§Ø±Ù Ø§Ù„Ø¥ÙŠÙ‚Ø§Ùâ€¦");
-      let registration = currentFcmRegistration;
-      if (!registration.id) {
-        const config = await getFcmConfig().catch(() => null);
-        if (config && config.enabled && config.vapidKey && Notification.permission === "granted") {
-          const serviceWorkerRegistration = await navigator.serviceWorker.ready;
-          registration = await createFcmRegistration(config, serviceWorkerRegistration).catch(() => ({ id: "", type: "" }));
-        }
-      }
-      if (registration.id) {
-        const response = await fetch(`${resolveWorkerBase()}/fcm/unregister`, {
-          method: "POST",
-          headers: await authHeaders(),
-          body: JSON.stringify(registrationPayload(runtime, registration, Notification.permission))
-        });
-        if (!response.ok) throw new Error("ØªØ¹Ø°Ø± Ø¥ÙŠÙ‚Ø§Ù ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¬Ù‡Ø§Ø²");
-      }
-      localStorage.removeItem(`iaqar.fcm.enabled.${runtime.officeId}`);
-      currentFcmRegistration = { id: "", type: "" };
-      setNotificationStatus("ØºÙŠØ± Ù…ÙØ¹Ù‘Ù„Ø©");
-      notify("ØªÙ… Ø¥ÙŠÙ‚Ø§Ù Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨ Ø¹Ù„Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ø¬Ù‡Ø§Ø²");
-    } catch (error) {
-      setNotificationStatus("ØªØ¹Ø°Ø± Ø§Ù„Ø¥ÙŠÙ‚Ø§Ù");
-      notify(error.message || "ØªØ¹Ø°Ø± Ø¥ÙŠÙ‚Ø§Ù Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª");
-    }
-  }
-
-  function runtimeOfficeReady(silent = false) {
-    const runtime = office();
-    if (!runtime || !runtime.officeId || runtime.officeId === "platform") {
-      if (!silent) notify("Ø³Ø¬Ù‘Ù„ Ø¨Ø­Ø³Ø§Ø¨ Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ù‹Ø§");
-      return false;
-    }
-    return true;
-  }
-
-  async function toggleNotifications() {
-    if (!runtimeOfficeReady()) return;
-    const runtime = office();
-    const enabled = localStorage.getItem(`iaqar.fcm.enabled.${runtime.officeId}`) === "1";
-    if (enabled) await disableNotifications(); else await enableNotifications();
-  }
-
-  function refreshNotificationStatus() {
-    const runtime = office();
-    if (!runtime || !runtime.officeId || runtime.officeId === "platform") return setNotificationStatus("Ø³Ø¬Ù‘Ù„ Ø¨Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ù‹Ø§");
-    const enabled = localStorage.getItem(`iaqar.fcm.enabled.${runtime.officeId}`) === "1";
-    if (enabled && "Notification" in window && Notification.permission === "denied") {
-      localStorage.removeItem(`iaqar.fcm.enabled.${runtime.officeId}`);
-      return setNotificationStatus("Ù…Ø±ÙÙˆØ¶Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø¬Ù‡Ø§Ø²");
-    }
-    if (!enabled) return setNotificationStatus("ØºÙŠØ± Ù…ÙØ¹Ù‘Ù„Ø©");
-    if ("Notification" in window && Notification.permission !== "granted") {
-      return setNotificationStatus("Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø¥Ø°Ù† Ø§Ù„Ø¬Ù‡Ø§Ø²");
-    }
-    setNotificationStatus("Ù…ÙØ¹Ù‘Ù„Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-  }
-
-  function isStandalone() {
-    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-  }
-
-  function refreshInstallStatus() {
-    const node = document.getElementById("pwaInstallStatus");
-    const btn = document.getElementById("pwaInstallBtn");
-    const iosHint = document.getElementById("pwaInstallIosHint");
-    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    if (isStandalone()) {
-      if (node) node.textContent = "Ù…Ø«Ø¨Ù‘Øª Ø¹Ù„Ù‰ Ø§Ù„Ø¬Ù‡Ø§Ø²";
-      if (btn) btn.hidden = true;
-      if (iosHint) iosHint.hidden = true;
-      return;
-    }
-    if (btn) btn.hidden = !deferredInstallPrompt;
-    if (iosHint) iosHint.hidden = !isIos;
-    if (!node) return;
-    if (deferredInstallPrompt) node.textContent = "Ø§Ø¶ØºØ· Â«ØªØ«Ø¨ÙŠØª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚Â» Ø£Ø¯Ù†Ø§Ù‡";
-    else if (isIos) node.textContent = "Ø§ØªØ¨Ø¹ Ø§Ù„ØªØ¹Ù„ÙŠÙ…Ø§Øª Ø£Ø¯Ù†Ø§Ù‡ Ù„Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø§Ø®ØªØµØ§Ø±";
-    else node.textContent = "Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ØªØµÙØ­ â† ØªØ«Ø¨ÙŠØª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚";
-  }
-
-  async function installAppShortcut() {
-    if (isStandalone()) return notify("Ø§Ø®ØªØµØ§Ø± Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ù…Ø«Ø¨Øª Ø¨Ø§Ù„ÙØ¹Ù„");
-    if (deferredInstallPrompt) {
-      deferredInstallPrompt.prompt();
-      await deferredInstallPrompt.userChoice.catch(() => null);
-      deferredInstallPrompt = null;
-      refreshInstallStatus();
-      return;
-    }
-    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) notify("Ø§Ø¶ØºØ· Ù…Ø´Ø§Ø±ÙƒØ© Ø«Ù… Ø¥Ø¶Ø§ÙØ© Ø¥Ù„Ù‰ Ø§Ù„Ø´Ø§Ø´Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©");
-    else notify("Ø§ÙØªØ­ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…ØªØµÙØ­ ÙˆØ§Ø®ØªØ± ØªØ«Ø¨ÙŠØª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ø£Ùˆ Ø¥Ø¶Ø§ÙØ© Ø¥Ù„Ù‰ Ø§Ù„Ø´Ø§Ø´Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©");
-  }
-
-  function init() {
-    ensureWorkflowUi();
-    window.IAQAR_WORKFLOW = { setOpportunityView };
-    window.addEventListener("iaqar:workflow-action", handleAction);
-    window.addEventListener("iaqar:operation-opened", event => {
-      const detail = event.detail || {};
-      if (["match", "deal"].includes(detail.recordType)) loadTimeline(detail.recordType, detail.recordId);
-      if (detail.recordType === "operation" && detail.recordId) {
-        postOperationAction(detail.recordId, "OPEN").catch((error) => {
-          console.warn("[iaqar] operation open", error);
-        });
-      }
-    });
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(error => console.warn("[iaqar] service worker registration", error));
-      navigator.serviceWorker.addEventListener("message", event => {
-        const message = event.data || {};
-        if (message.type === "IAQAR_FCM_FOREGROUND") handleForegroundPayload(message.payload || {});
-      });
-    }
-
-    const notificationItem = document.getElementById("officeNotificationControl");
-    if (notificationItem) {
-      notificationItem.addEventListener("click", toggleNotifications);
-      notificationItem.addEventListener("keydown", event => {
-        if (event.key === "Enter" || event.key === " ") toggleNotifications();
-      });
-    }
-    const installBtn = document.getElementById("pwaInstallBtn");
-    if (installBtn) {
-      installBtn.addEventListener("click", installAppShortcut);
-      installBtn.addEventListener("keydown", event => {
-        if (event.key === "Enter" || event.key === " ") installAppShortcut();
-      });
-    }
-    window.addEventListener("beforeinstallprompt", event => {
-      event.preventDefault();
-      deferredInstallPrompt = event;
-      refreshInstallStatus();
-    });
-    window.addEventListener("appinstalled", () => {
-      deferredInstallPrompt = null;
-      refreshInstallStatus();
-      notify("ØªÙ… ØªØ«Ø¨ÙŠØª Ø§Ø®ØªØµØ§Ø± Ù…ÙƒØ§ØªØ¨ Ø¹Ù‚Ø§Ø±ÙŠØ© Ø°ÙƒÙŠØ©");
-    });
-    window.addEventListener("iaqar:workflow-overlay-closed", hideWorkflowOverlay);
-    refreshNotificationStatus();
-    refreshInstallStatus();
-
-    if (window.firebase && window.firebase.auth) {
-      window.firebase.auth().onAuthStateChanged(user => {
-        if (user) {
-          startLiveData();
-          submitPendingShare();
-          refreshNotificationStatus();
-          setupForegroundNotifications();
-          syncEnabledNotifications();
-          replayPendingNotificationTarget();
-        } else {
-          stopLiveData();
-          matchItems = [];
-          dealItems = [];
-          intakeItems = [];
-          operationItems = [];
-          opportunityItems = [];
-          dailyTaskShadowSourcesReady = { operations: false, intake: false, opportunities: false, matches: false, deals: false };
-          dailyTaskShadowCycles = 0;
-          dailyTaskShadowFailures = 0;
-          analyticsItem = null;
-          emitOperations();
-        }
-      });
-    }
-    window.addEventListener("iaqar:firebase-ready", startLiveData);
-    window.addEventListener("iaqar:office-rebound", () => startLiveData());
-    window.addEventListener("iaqar:access-granted", () => startLiveData());
-    window.addEventListener("iaqar:access-granted", replayPendingNotificationTarget);
-    window.addEventListener("iaqar:operations-refresh", replayPendingNotificationTarget);
-    window.addEventListener("iaqar:opportunity-ingested", (event) => {
-      const detail = event.detail || {};
-      loadAnalytics();
-      if (detail.opportunityId) {
-        pushSavedOpportunityToWorkspace(detail);
-      } else {
-        emitOperations();
-      }
-    });
-    if (new URLSearchParams(location.search).get("shared") === "1") setTimeout(submitPendingShare, 500);
-
-    const params = new URLSearchParams(location.search);
-    const deepLink = window.IAQAR?.parseNotificationSearchParams?.(params);
-    if (deepLink) {
-      savePendingNotificationTarget(deepLink);
-      setTimeout(replayPendingNotificationTarget, 900);
-    }
-  }
-
-  async function openOpportunityManagement(opportunityId, options = {}) {
-    if (!opportunityId) return false;
-    hideWorkflowOverlay();
-    if (window.IAQAR?.openOpportunityDetail) {
-      return window.IAQAR.openOpportunityDetail(opportunityId, options);
-    }
-    window.dispatchEvent(new CustomEvent("iaqar:open-bank-opportunity", {
-      detail: { opportunityId, ...options }
-    }));
-    return true;
-  }
-
-  function normalizeOfficeId(value) {
-    return String(value || "").trim();
-  }
-
-  window.addEventListener("beforeunload", stopLiveData);
-  window.IAQAR = window.IAQAR || {};
-  window.IAQAR.pushSavedOpportunityToWorkspace = pushSavedOpportunityToWorkspace;
-  window.IAQAR.openOpportunityManagement = openOpportunityManagement;
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
-})();
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíë}ùá:-jZ.¶›­–)Ş³R‚‚’Óâ°¢'W6R7G&–7B#° ¢gVæ7F–öâ&W6öÇfUv÷&¶W$&6R‚’°¢–b‡v–æF÷rä”"bbG—Vöbv–æF÷rä”"ç&W6öÇfUv÷&¶W$&6RÓÓÒ&gVæ7F–öâ"’°¢&WGW&âv–æF÷rä”"ç&W6öÇfUv÷&¶W$&6R‚“°¢Ğ¢òòf–Â6Æ÷6VB–b'VçF–ÖRÖ6öæf–rF–Bæ÷BÆöC¢æWfW"6VæB7Fv–ær†÷7G2Fò&öBv÷&¶W"à¢G'’°¢6öç7B†÷7BÒ7G&–ær‡v–æF÷ræÆö6F–öâbbv–æF÷ræÆö6F–öâæ†÷7FæÖRÇÂ""’çFôÆ÷vW$66R‚“°¢–b††÷7Bæ–æ6ÇVFW2‚"Ò×7Fv–ær"’ÇÂ†÷7Bç7F'G5v—F‚‚'7Fv–ærâ"’’°¢&WGW&â&‡GG3¢òö–"Ö–çF¶R×7Fv–æræ–"Ö’çv÷&¶W'2æFWb#°¢Ğ¢Ò6F6‚…ò’²ò¢–væ÷&R¢òĞ¢&WGW&â&‡GG3¢òö–"ÖÖ7&öG&ö–BÖ–çF¶Ræ–"Ö’çv÷&¶W'2æFWb#°¢Ğ¢6öç7B4„$TEõ5Dõ$tUô´U’Ò&–"çVæF–æu6†&VDÖW76vR#°¢6öç7BõdU%4”ôâÒ'7FvS2Öf6ÒÖf–B×c#°¢6öç7Böff–6RÒ‚’Óâv–æF÷rä”"bbv–æF÷rä”"æöff–6S°¢6öç7BÖW76v–ætFöÖ–âÒ‚’Óâv–æF÷rä”"bbv–æF÷rä”"æÖW76v–ætFöÖ–ã°¢6öç7BÄ2Ò‚’Óâv–æF÷rä”%ôÄ”dT5”4ÄRÇÂ·Ó°¢6öç7BõÒ‚’Óâv–æF÷rä”%ôõõ%ETä•E“òæ6&BÇÂçVÆÃ°¢6öç7BdBÒ‚’Óâv–æF÷rä”%ôõõ%ETä•E“òæföÆÆ÷wWÇÂçVÆÃ°¢6öç7B%U‚Ò‚’Óâv–æF÷rä”#òæ'&ö¶W$ÖF6…W„FöÖ–âÇÂçVÆÃ°¢6öç7B$ÂÒ‚’Óâv–æF÷rä”#òæ'&ö¶W$ÆW'G4FöÖ–âÇÂçVÆÃ° ¢gVæ7F–öâ'&ö¶W%W…7FGW4Æ–æR†—FVÒÒ·Ò’°¢6öç7BFöÖ–âÒ%U‚‚“°¢–b‚FöÖ–â’&WGW&â"#°¢–b†—FVÒçf–Wv–ætBÇÂ—FVÒæö–çFÖVçDB’°¢6öç7Bf–Wv–ætÆ–æRÒFöÖ–âçf–Wv–æt6öæf—&ÖF–öä÷4Æ–æSòâ†—FVÒ“°¢–b‡f–Wv–ætÆ–æR’&WGW&âf–Wv–ætÆ–æS°¢Ğ¢&WGW&âFöÖ–âææVv÷F–F–öä÷4Æ–æSòâ†—FVÒ’ÇÂ"#°¢Ğ ¢gVæ7F–öâ6æ—F—¦T÷5FW‡B‡fÇVR’°¢6öç7B&rÒ7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢–b‚&r’&WGW&â"#°¢6öç7BÆ÷vW"Ò&rçFôÆ÷vW$66R‚“°¢–b…²&×2"Â&FB"Â&FBFB"Â&–’"Â-ŠrŠ‚%Òæ–æ6ÇVFW2†Æ÷vW"’’&WGW&â"#°¢–b‚õí‹=˜M˜]˜•Ç2¦–’Bö’çFW7B‡&r’’&WGW&â"#°¢–b‡&ræÆVæwF‚ÃÒ"bbõåÆB²BòçFW7B‡&r’’&WGW&â"#°¢–b‚õâƒó¥µÇSc#ÕÇScDÕÇ2²—³ÃGÕµÇSc#ÕÇScDÒBòçFW7B‡&r’’&WGW&â"#°¢&WGW&â&s°¢Ğ ¢gVæ7F–öâ'V–ÆD÷57V'F—FÆR†6&BÂfÆÆ&6µ'G2ÒµÒ’°¢–b‚6&B’&WGW&âfÆÆ&6µ'G2æf–ÇFW"„&ööÆVâ’æ¦ö–â‚"(	B"“°¢6öç7B'G2Ò°¢6&BæFW67&—F–öâÀ¢6&BæÆö6F–öâÓÒ-‹­˜­‹˜]ŠİŠıŠò"ò6&BæÆö6F–öâ¢""À¢6&Bç&–6T÷$'VFvWBÓÒ-‹­˜­‹˜]ŠİŠıŠò"ò6&Bç&–6T÷$'VFvWB¢""À¢6&Bæ&VÓÒ-‹­˜­‹˜]ŠİŠıŠò"ò6&Bæ&V¢" ¢Òæf–ÇFW"„&ööÆVâ“°¢&WGW&â'G2æ¦ö–â‚"+r"’ÇÂfÆÆ&6µ'G2æf–ÇFW"„&ööÆVâ’æ¦ö–â‚"(	B"“°¢Ğ ¢6öç7BÔD4…õ5DEU2Òö&¦V7Bæg&VW¦R‡°¢æWs¢²¶W“¢&7F—fR"ÂÆ&VÃ¢-˜m‹M‹}Š’"ÂÖ&³¢/	ùú""ÂæW‡C¢-Š}˜MŠ­˜Š}‹]˜B˜]‹’Š}˜M‹}‹˜˜­˜b"ÒÀ¢7F—fS¢²¶W“¢&7F—fR"ÂÆ&VÃ¢-˜m‹M‹}Š’"ÂÖ&³¢/	ùú""ÂæW‡C¢-Š}˜MŠ­˜Š}‹]˜B˜]‹’Š}˜M‹}‹˜˜­˜b"ÒÀ¢–å÷&öw&W73¢²¶W“¢&7F—fR"ÂÆ&VÃ¢-˜m‹M‹}Š’"ÂÖ&³¢/	ùú""ÂæW‡C¢-˜]Š­Š}Š‹Š’Š}˜MŠ­˜Š}‹]˜B"ÒÀ¢v—F–æu÷&W7öç6S¢²¶W“¢'v—F–æu÷&W7öç6R"ÂÆ&VÃ¢-ŠŠ}˜mŠ­‹Š}‹‹Šò"ÂÖ&³¢/	ùú"ÂæW‡C¢-˜]Š­Š}Š‹Š’Š}˜M‹Šò"ÒÀ¢f–Wv–æs¢²¶W“¢'f–Wv–ær"ÂÆ&VÃ¢-˜]˜‹Šò˜]‹Š}˜­˜mŠ’"ÂÖ&³¢/	ùKR"ÂæW‡C¢-Š­Š=˜=˜­ŠòŠ}˜M˜]‹Š}˜­˜mŠ’"ÒÀ¢æVv÷F–F–öã¢²¶W“¢&æVv÷F–F–öâ"ÂÆ&VÃ¢-Š­˜Š}˜‹b"ÂÖ&³¢/	ùú2"ÂæW‡C¢-˜]Š­Š}Š‹Š’Š}˜MŠ­˜Š}˜‹b"ÒÀ¢6öçfW'FVC¢²¶W“¢&æVv÷F–F–öâ"ÂÆ&VÃ¢-Š­˜Š}˜‹b"ÂÖ&³¢/	ùú2"ÂæW‡C¢-˜]Š­Š}Š‹Š’Š}˜M‹]˜˜-Š’"ÒÀ¢6ö×ÆWFVC¢²¶W“¢&6ö×ÆWFVB"ÂÆ&VÃ¢-Š­˜]Š¢Š}˜M‹]˜˜-Š’"ÂÖ&³¢.)ÈR"ÂæW‡C¢-Š­˜]Š¢Š}˜M‹]˜˜-Š’"ÒÀ¢6Æ÷6VC¢²¶W“¢&6Æ÷6VB"ÂÆ&VÃ¢-Š=˜ı‹­˜M˜-Š¢"ÂÖ&³¢/	ùKB"ÂæW‡C¢-˜MŠr˜­˜ŠÍŠòŠ]ŠÍ‹Š}Š"Ğ¢Ò“°¢6öç7B$TD”äU52Òö&¦V7Bæg&VW¦R‡°¢fW'•ö†–vƒ¢²Æ&VÃ¢-‹Š}˜M˜­Š’ŠÍŠı˜½Šr"ÂÖ&³¢/	ùú""ÒÀ¢†–vƒ¢²Æ&VÃ¢-‹Š}˜M˜­Š’"ÂÖ&³¢/	ùú"ÒÀ¢ÖVF—VÓ¢²Æ&VÃ¢-˜]Š­˜‹=‹}Š’"ÂÖ&³¢/	ùú"ÒÀ¢Æ÷s¢²Æ&VÃ¢-˜]˜mŠí˜‹mŠ’"ÂÖ&³¢/	ùKB"Ğ¢Ò“°¢6öç7BDTÅõ5DtRÒö&¦V7Bæg&VW¦R‡°¢6öçF7C¢²Æ&VÃ¢-Š}˜MŠ­˜Š}‹]˜B"ÂæW‡C¢-Š­ŠİŠı˜­Šò˜]˜‹Šò˜]‹Š}˜­˜mŠ’"ÒÀ¢f–Wv–æs¢²Æ&VÃ¢-Š}˜M˜]‹Š}˜­˜mŠ’"ÂæW‡C¢-ŠŠıŠŠ}˜MŠ­˜Š}˜‹b"ÒÀ¢æVv÷F–F–öã¢²Æ&VÃ¢-Š}˜MŠ­˜Š}˜‹b"ÂæW‡C¢-Š­ŠÍ˜}˜­‹"Š}Š­˜Š}˜-˜­Š’Š}˜M˜‹=Š}‹}Š’"ÒÀ¢w&VVÖVçC¢²Æ&VÃ¢-Š}Š­˜Š}˜-˜­Š’Š}˜M˜‹=Š}‹}Š’"ÂæW‡C¢-Š}‹Š­˜]Š}ŠòŠ}˜MŠ}Š­˜Š}˜-˜­Š’"ÒÀ¢6Æ÷6–æs¢²Æ&VÃ¢-ŠÍŠ}˜}‹-Š’˜M˜MŠ]‹­˜MŠ}˜""ÂæW‡C¢-Š]‹­˜MŠ}˜"Š}˜M‹]˜˜-Š’"ÒÀ¢6Æ÷6VC¢²Æ&VÃ¢-Š­˜]Š¢Š}˜M‹]˜˜-Š’"ÂæW‡C¢-Š­˜]Š¢Š}˜M‹]˜˜-Š’"ÒÀ¢Æ÷7C¢²Æ&VÃ¢-˜]Š­˜˜-˜Š’"ÂæW‡C¢-˜MŠr˜­˜ŠÍŠòŠ]ŠÍ‹Š}Š"Ğ¢Ò“°¢6öç7B„TÅD‚Òö&¦V7Bæg&VW¦R‡°¢W†6VÆÆVçC¢²Æ&VÃ¢-˜]˜]Š­Š}‹-Š’"ÂÖ&³¢/	ùú""ÒÀ¢7F&ÆS¢²Æ&VÃ¢-˜]‹=Š­˜-‹Š’"ÂÖ&³¢/	ùú"ÒÀ¢æVVG5ö–çFW'fVçF–öã¢²Æ&VÃ¢-Š­ŠİŠ­Š}ŠÂŠ­ŠıŠí˜B"ÂÖ&³¢/	ùú"ÒÀ¢E÷&—6³¢²Æ&VÃ¢-˜]‹‹‹mŠ’˜M˜M˜‹M˜B"ÂÖ&³¢/	ùKB"Ğ¢Ò“° ¢ÆWBÆ—fUVç7V'67&–&W'2ÒµÓ°¢ÆWBÆ—fTöff–6T¶W’Ò"#°¢ÆWBÖF6„—FV×2ÒµÓ°¢ÆWBFVÄ—FV×2ÒµÓ°¢ÆWB–çF¶T—FV×2ÒµÓ°¢ÆWB÷W&F–öä—FV×2ÒµÓ°¢ÆWB6fVD÷÷'GVæ—G•v÷&·76T—FV×2ÒµÓ°¢ÆWB÷÷'GVæ—G”—FV×2ÒµÓ°¢ÆWB÷÷'GVæ—G•f–WrÒ&7F—fR#°¢ÆWBæÇ—F–74—FVÒÒçVÆÃ°¢6öç7B5D•dUôõU$D”ôåõ5DEU4U2Òö&¦V7Bæg&VW¦R…²$õTâ"Â$”åõ$ôu$U52"Â%t•D”äuôU…DU$äÅõ$U5ôå4R"Â%$TE’%Ò“°¢6öç7BD”Å•õD4µõ4õU$4UôÔôDRÒö&¦V7Bæg&VW¦R‡²Ô•„TEõ4„Dõs¢$Ô•„TEõ4„Dõr"ÂõU$D”ôå5ôôäÅ“¢$õU$D”ôå5ôôäÅ’"Ò“°¢6öç7BD”Å•õD4µõ$UT•$TEôõU$D”ôåõE•U2Òö&¦V7Bæg&VW¦R…°¢$ÔD4…õ$Ud”Ur"Â$Ô•54”äuôDD"Â$õõ%ETä•E•õ$Ud”Ur"Â$õõ%ETä•E•ôdôÄÄõuõU"Â$DTÅô5D”ôâ"À¢$4ôõU$D”ôåõ$UTU5B"Â$4ôõU$D”ôåõ$U5ôå4R"Â$4ôõU$D”ôåôÔD4‚"Â$U…DU$äÅõ$U5ôå4R"À¢%5•5DTÕô5D”ôâ"Â%ÄDdõ$Õôõõ%ETä•E•ôôddU" ¢Ò“°¢ÆWBF–Ç•F6µ6†F÷t7–6ÆW2Ò°¢ÆWBF–Ç•F6µ6†F÷tf–ÇW&W2Ò°¢ÆWBF–Ç•F6µ6†F÷u6÷W&6W5&VG’Ò²÷W&F–öç3¢fÇ6RÂ–çF¶S¢fÇ6RÂ÷÷'GVæ—F–W3¢fÇ6RÂÖF6†W3¢fÇ6RÂFVÇ3¢fÇ6RÓ°¢6öç7BF–ÖVÆ–æT66†RÒæWrÖ‚“°¢6öç7BF–ÖVÆ–æUVæF–ærÒæWr6WB‚“°¢6öç7B–çF¶U&ö6W76–ærÒæWr6WB‚“°¢6öç7BÆVv7•&VF–æW75&W—'2ÒæWr6WB‚“° ¢gVæ7F–öâæ÷F–g’†ÖW76vR’°¢6öç7BFö7BÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'Fö7B"“°¢–b‚Fö7B’&WGW&ã°¢Fö7BçFW‡D6öçFVçBÒÖW76vS°¢Fö7Bæ6Æ74Æ—7BæFB‚'6†÷r"“°¢6ÆV%F–ÖV÷WB†æ÷F–g’çF–ÖW"“°¢æ÷F–g’çF–ÖW"Ò6WEF–ÖV÷WB‚‚’ÓâFö7Bæ6Æ74Æ—7Bç&VÖ÷fR‚'6†÷r"’Â#c“°¢Ğ ¢gVæ7F–öâ&VEVæF–æu6†&R‚’°¢G'’°¢6öç7B&rÒÆö6Å7F÷&vRævWD—FVÒ…4„$TEõ5Dõ$tUô´U’“°¢–b‚&r’&WGW&âçVÆÃ°¢6öç7BfÇVRÒ¥4ôâç'6R‡&r“°¢&WGW&âfÇVRbbfÇVRæÖW76vUFW‡BòfÇVR¢çVÆÃ°¢Ò6F6‚…ò’²&WGW&âçVÆÃ²Ğ¢Ğ ¢gVæ7F–öâ6ÆV%VæF–æu6†&R‚’°¢G'’²Æö6Å7F÷&vRç&VÖ÷fT—FVÒ…4„$TEõ5Dõ$tUô´U’“²Ò6F6‚…ò’·Ğ¢Ğ ¢gVæ7F–öâFôFFR‡fÇVR’°¢–b‚fÇVR’&WGW&âçVÆÃ°¢–b‡G—VöbfÇVRçFôFFRÓÓÒ&gVæ7F–öâ"’&WGW&âfÇVRçFôFFR‚“°¢6öç7BFFRÒæWrFFR‡fÇVR“°¢&WGW&âçVÖ&W"æ—4æâ†FFRævWEF–ÖR‚’’òçVÆÂ¢FFS°¢Ğ ¢gVæ7F–öâ—6õF–ÖR‡fÇVR’°¢6öç7BFFRÒFôFFR‡fÇVR“°¢&WGW&âFFRòFFRçFô•4õ7G&–ær‚’¢"#°¢Ğ ¢gVæ7F–öâ&VÆF—fUF–ÖR‡fÇVR’°¢6öç7BFFRÒFôFFR‡fÇVR’ÇÂæWrFFR‚“°¢6öç7BF–fbÒFFRææ÷r‚’ÒFFRævWEF–ÖR‚“°¢–b‚çVÖ&W"æ—4f–æ—FR†F–fb’ÇÂF–fbÂ’&WGW&â-Š}˜MŠ-˜b#°¢6öç7BÖ–çWFW2ÒÖF‚æfÆö÷"†F–fbòc“°¢–b†Ö–çWFW2Â’&WGW&â-Š}˜MŠ-˜b#°¢–b†Ö–çWFW2Âc’&WGW&â˜-Š˜BG¶Ö–çWFW7ÒŠö°¢6öç7B†÷W'2ÒÖF‚æfÆö÷"†Ö–çWFW2òc“°¢–b††÷W'2Â#B’&WGW&â˜-Š˜BG¶†÷W'7Ò‹6°¢&WGW&âFFRçFôÆö6ÆTFFU7G&–ær‚&"Õ4"Â²ÖöçFƒ¢'6†÷'B"ÂF“¢&çVÖW&–2"Ò“°¢Ğ ¢gVæ7F–öâFFUF–ÖTÆ&VÂ‡fÇVR’°¢6öç7BFFRÒFôFFR‡fÇVR“°¢–b‚FFR’&WGW&â-‹­˜­‹˜]ŠİŠıŠò#°¢&WGW&âFFRçFôÆö6ÆU7G&–ær‚&"Õ4"Â°¢F–ÖU¦öæS¢$6–õ&—–F‚"À¢ÖöçFƒ¢'6†÷'B"ÂF“¢&çVÖW&–2"Â†÷W#¢&çVÖW&–2"ÂÖ–çWFS¢#"ÖF–v—B ¢Ò“°¢Ğ ¢gVæ7F–öâÆö6ÄFFUF–ÖUfÇVR†FFR’°¢6öç7BBÒæWrFFR†FFR“°¢6öç7BBÒfÇVRÓâ7G&–ær‡fÇVR’çE7F'Bƒ"Â#"“°¢&WGW&âG¶BævWDgVÆÅ–V"‚—ÒÒG·B†BævWDÖöçF‚‚’²—ÒÒG·B†BævWDFFR‚’—ÕBG·B†BævWD†÷W'2‚’—Ó¢G·B†BævWDÖ–çWFW2‚’—Ö°¢Ğ ¢gVæ7F–öâ—4÷fW&GVR‡fÇVR’°¢6öç7BFFRÒFôFFR‡fÇVR“°¢&WGW&â&ööÆVâ†FFRbbFFRævWEF–ÖR‚’ÂFFRææ÷r‚’“°¢Ğ ¢gVæ7F–öâ—4föÆÆ÷uW÷fW&GVU&V6÷&B‡&V6÷&BÒ·Ò’°¢6öç7BföÆÆ÷rÒdB‚“òæ7F—fTföÆÆ÷uWg&öÕ&V6÷&Còâ‡&V6÷&B“°¢–b†föÆÆ÷r’&WGW&âdB‚’æ—4föÆÆ÷uW÷fW&GVR†föÆÆ÷r“°¢&WGW&â—4÷fW&GVR‡&V6÷&BææW‡DföÆÆ÷uWBÇÂ&V6÷&BææW‡D7F–öäB“°¢Ğ ¢gVæ7F–öâ'6T'&’‡fÇVR’°¢G'’°¢–b„'&’æ—4'&’‡fÇVR’’&WGW&âfÇVS°¢6öç7B'6VBÒ¥4ôâç'6R‡fÇVRÇÂ%µÒ"“°¢&WGW&â'&’æ—4'&’‡'6VB’ò'6VB¢µÓ°¢Ò6F6‚…ò’²&WGW&âµÓ²Ğ¢Ğ ¢gVæ7F–öâæ÷&ÖÆ—¦TÖF6…7FGW2‡7FGW2’°¢&WGW&âÔD4…õ5DEU5·7FGW5ÒÇÂÔD4…õ5DEU2æ7F—fS°¢Ğ ¢gVæ7F–öâ&VF–æW74–æfò†—FVÒ’°¢6öç7B66÷&RÒçVÖ&W"†—FVÒæ6Æ÷6–æu&VF–æW7566÷&RÇÂ“°¢6öç7BfÆÆ&6´¶W’Ò66÷&RãÒƒRò'fW'•ö†–v‚"¢66÷&RãÒsò&†–v‚"¢66÷&RãÒSò&ÖVF—VÒ"¢&Æ÷r#°¢6öç7B¶W’Ò$TD”äU55¶—FVÒæ6Æ÷6–æu&VF–æW74¶W•Òò—FVÒæ6Æ÷6–æu&VF–æW74¶W’¢fÆÆ&6´¶W“°¢&WGW&â²¶W’Â66÷&RÂâââ…$TD”äU55¶¶W•ÒÇÂ$TD”äU52æÆ÷r’ÂÆ&VÃ¢—FVÒæ6Æ÷6–æu&VF–æW74Æ&VÂÇÂ$TD”äU55¶¶W•ÒæÆ&VÂÓ°¢Ğ ¢gVæ7F–öâ†VÇF„–æfò†—FVÒ’°¢6öç7B7FvT&6RÒ²6öçF7C¢cbÂf–Wv–æs¢sbÂæVv÷F–F–öã¢ƒ"Âw&VVÖVçC¢ƒ‚Â6Æ÷6–æs¢“RÂ6Æ÷6VC¢ÂÆ÷7C¢Ó°¢ÆWB66÷&RÒçVÖ&W"†—FVÒæ†VÇF…66÷&R“°¢–b‚çVÖ&W"æ—4f–æ—FR‡66÷&R’ÇÂ66÷&RÃÒ’66÷&RÒ7FvT&6U¶—FVÒçv÷&¶fÆ÷u7FvUÒÇÂc°¢6öç7BWFFVBÒFôFFR†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDB“°¢–b‡WFFVBbbFFRææ÷r‚’ÒWFFVBævWEF–ÖR‚’âr¢ƒcC’66÷&RÓÒ#S°¢VÇ6R–b‡WFFVBbbFFRææ÷r‚’ÒWFFVBævWEF–ÖR‚’â2¢ƒcC’66÷&RÓÒ#°¢–b†—4÷fW&GVR†—FVÒææW‡DföÆÆ÷uWB’’66÷&RÓÒƒ°¢66÷&RÒÖF‚æÖ‚ƒÂÖF‚æÖ–âƒÂÖF‚ç&÷VæB‡66÷&R’’“°¢ÆWBfÆÆ&6´¶W’Ò66÷&RãÒƒRò&W†6VÆÆVçB"¢66÷&RãÒcRò'7F&ÆR"¢66÷&RãÒCò&æVVG5ö–çFW'fVçF–öâ"¢&E÷&—6²#°¢6öç7B¶W’Ò„TÅD…¶—FVÒæ†VÇF„¶W•Òbb—4÷fW&GVR†—FVÒææW‡DföÆÆ÷uWB’ò—FVÒæ†VÇF„¶W’¢fÆÆ&6´¶W“°¢&WGW&â²¶W’Â66÷&RÂâââ„„TÅD…¶¶W•ÒÇÂ„TÅD‚ç7F&ÆR’ÂÆ&VÃ¢„TÅD…¶¶W•ÒæÆ&VÂÓ°¢Ğ ¢gVæ7F–öâF–ÖVÆ–æTÆ–æW2‡&V6÷&EG—RÂ&V6÷&D–B’°¢6öç7BWfVçG2ÒF–ÖVÆ–æT66†RævWB†G·&V6÷&EG—WÓ¢G·&V6÷&D–GÖ’ÇÂµÓ°¢–b‚WfVçG2æÆVæwF‚’&WGW&âµÓ°¢&WGW&â²-‹=ŠÍ˜BŠ}˜M˜m‹MŠ}‹s¢"ÂââæWfVçG2ç6Æ–6RƒÂR’æÖ†WfVçBÓâ°¢6öç7Bæ÷FRÒWfVçBææ÷FRÇÂWfVçBç7FvRÇÂ-Š­˜RŠ­ŠİŠı˜­Š²Š}˜M‹=ŠÍ˜B#°¢&WGW&â(
+"G¶æ÷FWÒ(	BG·&VÆF—fUF–ÖR†WfVçBæ7&VFVDB—Ö°¢Ò•Ó°¢Ğ ¢gVæ7F–öâÖF6„÷W&F–öâ†Fö2’°¢6öç7B—FVÒÒFö2æFF‚“°¢6öç7B7FGW2Òæ÷&ÖÆ—¦TÖF6…7FGW2†—FVÒç7FGW2“°¢6öç7B&VF–æW72Ò&VF–æW74–æfò†—FVÒ“°¢6öç7B÷fW&GVRÒ—4÷fW&GVR†—FVÒææW‡DföÆÆ÷uWB’bb²&6ö×ÆWFVB"Â&6Æ÷6VB%Òæ–æ6ÇVFW2‡7FGW2æ¶W’“°¢6öç7B&V6öç2Ò'6T'&’†—FVÒç&V6öç4§6öâ“°¢6öç7Bv&æ–æw2Ò'6T'&’†—FVÒçv&æ–æw4§6öâ“°¢6öç7Bö–çFÖVçDBÒ—FVÒçf–Wv–ætBÇÂçVÆÃ°¢6öç7BÆ–æW2Ò°¢˜m‹=ŠŠ’Š}˜M˜]‹}Š}Š˜-Š“¢G´çVÖ&W"†—FVÒç66÷&RÇÂ—ÒVÀ¢ŠÍŠ}˜}‹-˜­Š’Š}˜MŠ]‹­˜MŠ}˜#¢G·&VF–æW72æÖ&·ÒG·&VF–æW72æÆ&VÇÖÀ¢Š}˜MŠİŠ}˜MŠ“¢G·7FGW2æÖ&·ÒG·7FGW2æÆ&VÇÖÀ¢ö–çFÖVçDBò˜]˜‹ŠòŠ}˜M˜]‹Š}˜­˜mŠ“¢G¶FFUF–ÖTÆ&VÂ†ö–çFÖVçDB—Ö¢-˜]˜‹ŠòŠ}˜M˜]‹Š}˜­˜mŠ“¢˜M˜R˜­ŠİŠıŠòŠ‹Šò"À¢Š}˜MŠí‹}˜Š’Š}˜MŠ­Š}˜M˜­Š“¢G¶—FVÒææW‡D7F–öâÇÂ7FGW2ææW‡GÖ ¢Ó°¢–b‡&V6öç2æÆVæwF‚’Æ–æW2çW6‚†Š=‹=ŠŠ}Š‚Š}˜M˜]‹}Š}Š˜-Š“¢G·&V6öç2æ¦ö–â‚-ˆÂ"—Ö“°¢–b‡v&æ–æw2æÆVæwF‚’Æ–æW2çW6‚†Š­ŠİŠ­Š}ŠÂ˜]‹Š}ŠÍ‹Š“¢G·v&æ–æw2æ¦ö–â‚-ˆÂ"—Ö“°¢–b†—FVÒæ÷væW$ÖVF–Ö—76–ærÓÓÒG'VR’Æ–æW2çW6‚‚-‹]˜‹Š}˜M‹˜-Š}‹˜mŠ}˜-‹]Š’(	BŠ}‹}˜MŠ˜}Šr˜]˜bŠ}˜M˜]Š}˜M˜2‹Š‹˜Š}Š­‹=Š}Š‚"“°¢–b†—FVÒæÆ7Dæ÷FR’Æ–æW2çW6‚†Š-Ší‹˜]˜MŠ}Šİ‹Š“¢G¶—FVÒæÆ7Dæ÷FWÖ“°¢–b†—FVÒæ6Æ÷6U&V6öâ’Æ–æW2çW6‚†‹=ŠŠ‚Š}˜MŠ]‹­˜MŠ}˜#¢G¶—FVÒæ6Æ÷6U&V6öçÖ“°¢Æ–æW2çW6‚‚ââçF–ÖVÆ–æTÆ–æW2‚&ÖF6‚"ÂFö2æ–B’“° ¢ÆWB&–÷&—G’ÒC°¢–b†÷fW&GVRÇÂ—FVÒæGFVçF–öå&WV—&VBÓÓÒG'VR’&–÷&—G’Ò°¢VÇ6R–b‡&VF–æW72æ¶W’ÓÓÒ'fW'•ö†–v‚"’&–÷&—G’Ò°¢VÇ6R–b‡&VF–æW72æ¶W’ÓÓÒ&†–v‚"’&–÷&—G’Ò#°¢VÇ6R–b‡7FGW2æ¶W’ÓÓÒ&æVv÷F–F–öâ"’&–÷&—G’Ò° ¢ÆWB7F–öäÆ&VÂÒö–çFÖVçDBò-Š]Š­˜]Š}˜RŠ}˜M‹]˜˜-Š’"¢-Š­ŠİŠı˜­ŠòŠ}˜M˜]‹Š}˜­˜mŠ’#°¢–b…²&6ö×ÆWFVB"Â&6Æ÷6VB%Òæ–æ6ÇVFW2‡7FGW2æ¶W’’’7F–öäÆ&VÂÒ-‹‹‹bŠ}˜M‹=ŠÍ˜B#° ¢&WGW&â°¢–C¢Fö2æ–BÀ¢&V6÷&D–C¢Fö2æ–BÀ¢&V6÷&EG—S¢&ÖF6‚"À¢Ö–ã¢&÷÷'GVæ—F–W2"À¢&–÷&—G’À¢—4ÆW'C¢÷fW&GVRÇÂ—FVÒæGFVçF–öå&WV—&VBÓÓÒG'VRÀ¢–6öã¢7FGW2æ¶W’ÓÓÒ&6ö×ÆWFVB"ò&’Ö†÷W6RÖ6†V6²"¢&’ÖÖF6‚"À¢F—FÆS¢˜]‹}Š}Š˜-Š’Š˜m‹=ŠŠ’G´çVÖ&W"†—FVÒç66÷&RÇÂ—ÒVÀ¢7V'F—FÆS¢¶—FVÒç&÷W'G•G—RÂ—FVÒæF—7G&–7BÂG·&VF–æW72æÖ&·ÒG·&VF–æW72æÆ&VÇÖÒæf–ÇFW"„&ööÆVâ’æ¦ö–â‚"(	B"’ÇÂ-‹}˜MŠ‚‹˜]˜­˜B˜]‹’‹‹‹b˜]Š}˜M˜2"À¢&÷W'G•G—S¢—FVÒç&÷W'G•G—RÇÂ""À¢F—7G&–7C¢—FVÒæF—7G&–7BÇÂ""À¢F–ÖS¢&VÆF—fUF–ÖR†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDB’À¢FWF–Ç4Æ–æW3¢Æ–æW2À¢7FGW3¢7FGW2æ¶W’À¢7FGW4Æ&VÃ¢7FGW2æÆ&VÂÀ¢v÷&¶fÆ÷u7FvS¢—FVÒçv÷&¶fÆ÷u7FvRÇÂ7FGW2æ¶W’À¢æW‡D7F–öã¢—FVÒææW‡D7F–öâÇÂ7FGW2ææW‡BÀ¢7F–öäÆ&VÂÀ¢6V6öæF'”7F–öäÆ&VÃ¢²&6ö×ÆWFVB"Â&6Æ÷6VB%Òæ–æ6ÇVFW2‡7FGW2æ¶W’’ò-‹‹‹bŠ}˜M˜m‹MŠ}‹r"¢-Š]ŠıŠ}‹Š’Š}˜M˜‹‹]Š’"À¢FVÄ–C¢—FVÒæFVÄ–BÇÂ""À¢6Æ–VçE&WVW7D–C¢—FVÒæ6Æ–VçE&WVW7D–BÇÂ""À¢÷væW$öffW$–C¢—FVÒæ÷væW$öffW$–BÇÂ""À¢ÖF6„–C¢Fö2æ–BÀ¢v†G6÷væW#¢&ööÆVâ†—FVÒæ÷væW$öffW$–B’À¢v†G6÷væW$Æ&VÃ¢—FVÒæ÷væW$ÖVF–Ö—76–ærÓÓÒG'VRò-‹}˜MŠ‚Š}˜M‹]˜‹‹Š‹˜Š}Š­‹=Š}Š‚"¢-˜Š}Š­‹=Š}Š‚Š}˜M˜]Š}˜M˜2"À¢v†G66Æ–VçC¢&ööÆVâ†—FVÒæ6Æ–VçE&WVW7D–B’À¢7&VFVDC¢—6õF–ÖR†—FVÒæ7&VFVDB’À¢WFFVDC¢—6õF–ÖR†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDB’À¢Æ—f–æu7FvS¢—FVÒæÆ—f–æu7FvRÇÂ""À¢Æ—f–æuWFFVDC¢—6õF–ÖR†—FVÒæÆ—f–æuWFFVDBÇÂ—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDB’À¢Æ—f–æuF–ÖVÆ–æS¢—FVÒæÆ—f–æuF–ÖVÆ–æRÇÂ—FVÒæÆ—f–æuF–ÖVÆ–æT§6öâÇÂµÒÀ¢6ö÷&F–æF–öä'&ö¶W$Æ–æS¢—FVÒæ6ö÷&F–æF–öä'&ö¶W$Æ–æRÇÂ""À¢6ö÷&F–æF–öä6Æ–VçE7VÖÖ'“¢—FVÒæ6ö÷&F–æF–öä6Æ–VçE7VÖÖ'’ÇÂ""À¢6ö÷&F–æF–öä÷væW%7VÖÖ'“¢—FVÒæ6ö÷&F–æF–öä÷væW%7VÖÖ'’ÇÂ""À¢6ö÷&F–æF–öä÷WF6öÖS¢—FVÒæ6ö÷&F–æF–öä÷WF6öÖRÇÂ""À¢æW‡D7F÷#¢—FVÒææW‡D7F÷"ÇÂ""À¢÷væW$6öçF7DæVVFVC¢‚‚’Óâ°¢6öç7BFöÖ–âÒv–æF÷rä”"bbv–æF÷rä”"æ6ö÷&F–æF–öä'VæFÆTFöÖ–ã°¢–b†FöÖ–âbb—FVÒæ6ö÷&F–æF–öä÷WF6öÖR’°¢&WGW&âFöÖ–âæ÷væW$6öçF7DæVVFVDf÷$6ö÷&F–æF–öâ‡°¢÷WF6öÖS¢—FVÒæ6ö÷&F–æF–öä÷WF6öÖRÀ¢6Æ–VçE7VÖÖ'“¢—FVÒæ6ö÷&F–æF–öä6Æ–VçE7VÖÖ'’À¢÷væW%7VÖÖ'“¢—FVÒæ6ö÷&F–æF–öä÷væW%7VÖÖ'¢Ò“°¢Ğ¢&WGW&â—FVÒæ÷væW$6öçF7DæVVFVBÓÓÒG'VP¢ÇÂ7G&–ær†—FVÒæ÷væW$6öçF7DæVVFVBÇÂ""’çFôÆ÷vW$66R‚’ÓÓÒ'G'VR#°¢Ò’‚’À¢†4æWu&W7öç6S¢—FVÒæ†4æWu&W7öç6RÓÓÒG'VP¢ÇÂ7G&–ær†—FVÒæ†4æWu&W7öç6RÇÂ""’çFôÆ÷vW$66R‚’ÓÓÒ'G'VR"À¢W'÷6S¢—FVÒçW'÷6RÇÂ—FVÒæ6æF–FFUW'÷6RÇÂ""À¢6—G“¢—FVÒæ6—G’ÇÂ—FVÒæ6æF–FFT6—G’ÇÂ""À¢6ÆU&–6S¢—FVÒç6ÆU&–6Róò—FVÒæ6æF–FFU6ÆU&–6Róò—FVÒç&–6RóòÀ¢'VFvWC¢—FVÒæ'VFvWBÇÂÀ¢æçVÅ&VçC¢—FVÒææçVÅ&VçBÇÂÀ¢&V¢—FVÒæ&Vóò—FVÒæ6æF–FFT&VóòÀ¢6æF–FFU&÷W'G•G—S¢—FVÒæ6æF–FFU&÷W'G•G—RÇÂ""À¢6æF–FFUW'÷6S¢—FVÒæ6æF–FFUW'÷6RÇÂ""À¢6æF–FFTF—7G&–7C¢—FVÒæ6æF–FFTF—7G&–7BÇÂ""À¢6æF–FFT6—G“¢—FVÒæ6æF–FFT6—G’ÇÂ""À¢6æF–FFU6ÆU&–6S¢—FVÒæ6æF–FFU6ÆU&–6RÇÂÀ¢6æF–FFT&V¢—FVÒæ6æF–FFT&VÇÂÀ¢&WVW7D–C¢—FVÒç&WVW7D–BÇÂ—FVÒæ6Æ–VçE&WVW7D–BÇÂ""À¢öffW$–C¢—FVÒæöffW$–BÇÂ—FVÒæ÷væW$öffW$–BÇÂ""À¢6Æ–VçE†öæS¢—FVÒæ6Æ–VçE†öæRÇÂ—FVÒæ6Æ–VçD6öçF7E†öæRÇÂ""À¢÷væW%†öæS¢—FVÒæ÷væW%†öæRÇÂ—FVÒæ÷væW$6öçF7E†öæRÇÂ""À¢ÖF6…&V6öç3¢'6T'&’†—FVÒæÖF6…&V6öç2ÇÂ—FVÒç&V6öç4§6öâ’À¢—5FW7Df—‡GW&S¢—FVÒæ—5FW7Df—‡GW&RÓÓÒG'VRÇÂ—FVÒçÆ—fTS&RÓÓÒG'VRÀ¢FW7E'Vä–C¢—FVÒçFW7E'Vä–BÇÂ—FVÒçÆ—fU'Vä–BÇÂ""À¢7&VFVD'“¢—FVÒæ7&VFVD'’ÇÂ""À¢Æ—fTS&S¢—FVÒçÆ—fTS&RÓÓÒG'VRÀ¢6÷W&6UG—S¢—FVÒç6÷W&6UG—RÇÂ""À¢÷væW$ÖVF–Ö—76–æs¢—FVÒæ÷væW$ÖVF–Ö—76–ærÓÓÒG'VRÀ¢æW‡DföÆÆ÷uWC¢—FVÒææW‡DföÆÆ÷uWBÇÂçVÆÂÀ¢ö–çFÖVçDBÀ¢f–Wv–ætC¢—FVÒçf–Wv–ætBÇÂçVÆÂÀ¢Æ7Dæ÷FS¢—FVÒæÆ7Dæ÷FRÇÂ""À¢6Æ÷6U&V6öã¢—FVÒæ6Æ÷6U&V6öâÇÂ""À¢6Æ÷6–æu&VF–æW7566÷&S¢&VF–æW72ç66÷&RÀ¢6Æ÷6–æu&VF–æW74¶W“¢&VF–æW72æ¶W’À¢'&ö¶W%Wƒ¢—FVÒæ'&ö¶W%W‚ÇÂ·ÒÀ¢÷57FGW4Æ–æS¢'&ö¶W%W…7FGW4Æ–æR‡²ââæ—FVÒÂf–Wv–ætC¢—FVÒçf–Wv–ætBÂö–çFÖVçDBÒ¢Ó°¢Ğ ¢gVæ7F–öâFVÄ÷W&F–öâ†Fö2’°¢6öç7B—FVÒÒFö2æFF‚“°¢6öç7B7FvRÒDTÅõ5DtU¶—FVÒçv÷&¶fÆ÷u7FvUÒÇÂDTÅõ5DtRæ6öçF7C°¢6öç7B†VÇF‚Ò†VÇF„–æfò†—FVÒ“°¢6öç7B÷fW&GVRÒ—4÷fW&GVR†—FVÒææW‡DföÆÆ÷uWB’bb²&6Æ÷6VB"Â&Æ÷7B%Òæ–æ6ÇVFW2†—FVÒç7FGW2“°¢6öç7BÆ–æW2Ò°¢Š}˜M˜]‹Šİ˜MŠ’Š}˜MŠİŠ}˜M˜­Š“¢G·7FvRæÆ&VÇÖÀ¢‹]ŠİŠ’Š}˜M‹]˜˜-Š“¢G¶†VÇF‚æÖ&·ÒG¶†VÇF‚æÆ&VÇÖÀ¢Š}˜MŠí‹}˜Š’Š}˜MŠ­Š}˜M˜­Š“¢G¶—FVÒææW‡D7F–öâÇÂ7FvRææW‡GÖÀ¢Š}˜M˜]Š­Š}Š‹Š’Š}˜M˜-Š}Šı˜]Š“¢G¶FFUF–ÖTÆ&VÂ†—FVÒææW‡DföÆÆ÷uWB—ÒG¶÷fW&GVRò"(	B˜]Š­Š=Ší‹Š’"¢"'Ö ¢Ó°¢–b†—FVÒæÆ7Dæ÷FR’Æ–æW2çW6‚†Š-Ší‹˜]˜MŠ}Šİ‹Š“¢G¶—FVÒæÆ7Dæ÷FWÖ“°¢–b†—FVÒæ6öÖÖ—76–öäW‡V7FVB’Æ–æW2çW6‚†Š}˜M‹˜]˜˜MŠ’Š}˜M˜]Š­˜˜-‹Š“¢G´çVÖ&W"†—FVÒæ6öÖÖ—76–öäW‡V7FVB’çFôÆö6ÆU7G&–ær‚&"Õ4"—Ò‹˜­Š}˜F“°¢–b†—FVÒæ6öÖÖ—76–öä7GVÂ’Æ–æW2çW6‚†Š}˜M‹˜]˜˜MŠ’Š}˜M˜‹˜M˜­Š“¢G´çVÖ&W"†—FVÒæ6öÖÖ—76–öä7GVÂ’çFôÆö6ÆU7G&–ær‚&"Õ4"—Ò‹˜­Š}˜F“°¢–b†—FVÒæÆ÷7E&V6öâ’Æ–æW2çW6‚†‹=ŠŠ‚Š}˜MŠ­˜˜-˜¢G¶—FVÒæÆ÷7E&V6öçÖ“°¢Æ–æW2çW6‚‚ââçF–ÖVÆ–æTÆ–æW2‚&FVÂ"ÂFö2æ–B’“° ¢ÆWB&–÷&—G’Ò÷fW&GVRÇÂ—FVÒæGFVçF–öå&WV—&VBÓÓÒG'VRò¢3°¢–b…²&æVv÷F–F–öâ"Â&w&VVÖVçB"Â&6Æ÷6–ær%Òæ–æ6ÇVFW2†—FVÒçv÷&¶fÆ÷u7FvR’’&–÷&—G’Ò°¢–b†—FVÒç7FGW2ÓÓÒ&6Æ÷6VB"’&–÷&—G’ÒS° ¢&WGW&â°¢–C¢Fö2æ–BÀ¢&V6÷&D–C¢Fö2æ–BÀ¢&V6÷&EG—S¢&FVÂ"À¢Ö–ã¢&÷W&F–öç2"À¢&–÷&—G’À¢—4ÆW'C¢÷fW&GVRÇÂ—FVÒæGFVçF–öå&WV—&VBÓÓÒG'VRÇÂ—FVÒçv÷&¶fÆ÷u7FvRÓÓÒ&6Æ÷6–ær"À¢–6öã¢—FVÒç7FGW2ÓÓÒ&6Æ÷6VB"ò&’Ö†÷W6RÖ6†V6²"¢&’Ö'&–Vf66RÖ6†V6²"À¢F—FÆS¢—FVÒç7FGW2ÓÓÒ&6Æ÷6VB"ò-Š­˜]Š¢Š}˜M‹]˜˜-Š’"¢—FVÒç7FGW2ÓÓÒ&Æ÷7B"ò-‹]˜˜-Š’˜]Š­˜˜-˜Š’"¢-‹]˜˜-Š’˜-˜­ŠòŠ}˜MŠ­˜m˜˜­‹"À¢7V'F—FÆS¢¶—FVÒç&÷W'G•G—RÂ—FVÒæF—7G&–7BÂ7FvRæÆ&VÅÒæf–ÇFW"„&ööÆVâ’æ¦ö–â‚"(	B"’ÇÂ7FvRæÆ&VÂÀ¢&÷W'G•G—S¢—FVÒç&÷W'G•G—RÇÂ""À¢F—7G&–7C¢—FVÒæF—7G&–7BÇÂ""À¢F–ÖS¢&VÆF—fUF–ÖR†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDB’À¢FWF–Ç4Æ–æW3¢Æ–æW2À¢7FGW3¢—FVÒç7FGW2ÇÂ&÷Vâ"À¢v÷&¶fÆ÷u7FvS¢—FVÒçv÷&¶fÆ÷u7FvRÇÂ&6öçF7B"À¢æW‡D7F–öã¢—FVÒææW‡D7F–öâÇÂ7FvRææW‡BÀ¢7F–öäÆ&VÃ¢—FVÒç7FGW2ÓÓÒ&6Æ÷6VB"ÇÂ—FVÒç7FGW2ÓÓÒ&Æ÷7B"ò-‹‹‹bŠ}˜M‹=ŠÍ˜B"¢-Š]˜m˜}Š}ŠŠ}˜M‹]˜˜-Š’"À¢6V6öæF'”7F–öäÆ&VÃ¢—FVÒç7FGW2ÓÓÒ&6Æ÷6VB"ÇÂ—FVÒç7FGW2ÓÓÒ&Æ÷7B"ò-‹‹‹bŠ}˜M˜m‹MŠ}‹r"¢-Š]ŠıŠ}‹Š’Š}˜M‹]˜˜-Š’"À¢6Æ–VçE&WVW7D–C¢—FVÒæ6Æ–VçE&WVW7D–BÇÂ""À¢÷væW$öffW$–C¢—FVÒæ÷væW$öffW$–BÇÂ""À¢ÖF6„–C¢—FVÒæÖF6„–BÇÂ""À¢FVÄ–C¢Fö2æ–BÀ¢v†G6÷væW#¢&ööÆVâ†—FVÒæ÷væW$öffW$–B’À¢v†G66Æ–VçC¢&ööÆVâ†—FVÒæ6Æ–VçE&WVW7D–B’À¢æW‡DföÆÆ÷uWC¢—FVÒææW‡DföÆÆ÷uWBÇÂçVÆÂÀ¢†VÇF„¶W“¢†VÇF‚æ¶W’À¢†VÇF…66÷&S¢†VÇF‚ç66÷&RÀ¢'&ö¶W%Wƒ¢—FVÒæ'&ö¶W%W‚ÇÂ·ÒÀ¢÷57FGW4Æ–æS¢'&ö¶W%W…7FGW4Æ–æR†—FVÒ¢Ó°¢Ğ  ¢gVæ7F–öâ–çF¶T÷W&F–öâ†Fö2’°¢6öç7B—FVÒÒFö2æFF‚’ÇÂ·Ó°¢6öç7B—4÷væW"Ò—FVÒæ¶–æBÓÓÒ&÷væW"#°¢6öç7BÖ÷VçDÆ&VÂÒ—4÷væW"ò-Š}˜M‹=‹‹Š}˜M˜]‹}˜M˜Š‚"¢-Š}˜M˜]˜­‹-Š}˜m˜­Š’#°¢6öç7B&VF–æW74WfÂÒv–æF÷rä”%ôõõ%ETä•E“òæWfÇVFTÖF6†–æu&VF–æW70¢òv–æF÷rä”%ôõõ%ETä•E’æWfÇVFTÖF6†–æu&VF–æW72‡²ââæ—FVÒÂ–C¢Fö2æ–BÒ¢¢çVÆÃ°¢òò7W'&VçBæ÷&ÖÆ—¦VBf–VÆG2&RWF†÷&—FF—fRâW'6—7FVB&VF–æW72Ö’6öÖP¢òòg&öÒF†Rf÷&ÖW"vFRF†B&WV—&VB&V÷&öö×2æB×W7Bæ÷B&Æö6²ÖF6†W2à¢6öç7BÖF6†–æu&VF–æW72Ò7G&–ær‡&VF–æW74WfÃòæÖF6†–æu&VF–æW72ÇÂ—FVÒæÖF6†–æu&VF–æW72ÇÂ""’çFõWW$66R‚“°¢6öç7BÖF6†–æu&VF–æW74Ö—76–ærÒ&VF–æW74WfÀ¢ò‡&VF–æW74WfÂæÖF6†–æu&VF–æW74Ö—76–ærÇÂµÒ¢¢„'&’æ—4'&’†—FVÒæÖF6†–æu&VF–æW74Ö—76–ær’ò—FVÒæÖF6†–æu&VF–æW74Ö—76–æræÖ…7G&–ær’¢µÒ“°¢&WGW&â°¢–C¢–çF¶RÒG¶Fö2æ–GÖÀ¢&V6÷&D–C¢Fö2æ–BÀ¢&V6÷&EG—S¢&–çF¶R"À¢Ö–ã¢&÷÷'GVæ—F–W2"À¢&–÷&—G“¢À¢—4ÆW'C¢—FVÒç7FGW2ÓÓÒ&æWr"À¢–6öã¢—4÷væW"ò&’Ö†÷W6RÖ6†V6²"¢&’×W6W"Ö6Æö6²"À¢F—FÆS¢—4÷væW"ò-‹‹‹bŠÍŠı˜­Šò˜]˜b˜]Š}˜M˜2"¢-‹}˜MŠ‚ŠÍŠı˜­Šò˜]˜b‹˜]˜­˜B"À¢7V'F—FÆS¢'V–ÆD÷57V'F—FÆR†çVÆÂÂ°¢6æ—F—¦T÷5FW‡B†—FVÒç&÷W'G•G—R’À¢6æ—F—¦T÷5FW‡B†—FVÒæF—7G&–7B’À¢6æ—F—¦T÷5FW‡B†—FVÒææÖR¢Ò’À¢&÷W'G•G—S¢—FVÒç&÷W'G•G—RÇÂ""À¢F—7G&–7C¢—FVÒæF—7G&–7BÇÂ""À¢F–ÖS¢&VÆF—fUF–ÖR†—FVÒæ7&VFVDB’À¢FWF–Ç4Æ–æW3¢°¢Š}˜MŠ}‹=˜S¢G¶—FVÒææÖRÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢Š}˜MŠÍ˜Š}˜C¢G¶—FVÒç†öæRÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢˜m˜‹’Š}˜M‹˜-Š}‹¢G¶—FVÒç&÷W'G•G—RÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢Š}˜MŠİ˜£¢G¶—FVÒæF—7G&–7BÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢G¶Ö÷VçDÆ&VÇÓ¢G´çVÖ&W"†—FVÒæÖ÷VçBÇÂ’çFôÆö6ÆU7G&–ær‚&"Õ4"—Ò‹˜­Š}˜FÀ¢—FVÒæFWF–Ç2òŠ}˜MŠ­˜Š}‹]˜­˜C¢G¶—FVÒæFWF–Ç7Ö¢-Š}˜MŠ­˜Š}‹]˜­˜C¢˜MŠr˜­˜ŠÍŠò"À¢âââ†—4÷væW"bb—FVÒæÖVF–Ö—76–ærÓÓÒG'VRò²-‹]˜‹Š}˜M‹˜-Š}‹˜mŠ}˜-‹]Š’(	BŠ}‹}˜MŠ˜}Šr˜]˜bŠ}˜M˜]Š}˜M˜2‹Š‹˜Š}Š­‹=Š}Š‚%Ò¢µÒ¢ÒÀ¢7FGW3¢—FVÒç7FGW2ÇÂ&æWr"À¢v÷&¶fÆ÷u7FvS¢&–çF¶R"À¢æW‡D7F–öã¢-˜]‹Š}ŠÍ‹Š’Š}˜MŠ˜­Š}˜mŠ}Š¢˜Š}˜MŠ­˜Š}‹]˜B"À¢7F–öäÆ&VÃ¢-Š­˜]Š¢Š}˜M˜]‹Š}ŠÍ‹Š’"À¢6V6öæF'”7F–öäÆ&VÃ¢-Š]‹­˜MŠ}˜"Š}˜MŠ­˜Š}‹]˜­˜B ¢Æ¶–æC¢—FVÒæ¶–æBÇÂ&6Æ–VçB ¢Æ6öçF7DæÖS¢—FVÒææÖRÇÂ" ¢Æ6öçF7E†öæS¢—FVÒç†öæRÇÂ" ¢Çv†G6÷væW#¢—4÷væW ¢Çv†G6÷væW$Æ&VÃ¢—4÷væW"bb—FVÒæÖVF–Ö—76–ærÓÓÒG'VRò-‹}˜MŠ‚Š}˜M‹]˜‹‹Š‹˜Š}Š­‹=Š}Š‚"¢-˜Š}Š­‹=Š}Š‚Š}˜M˜]Š}˜M˜2 ¢Çv†G66Æ–VçC¢—4÷væW ¢Æ÷væW$ÖVF–Ö—76–æs¢—4÷væW"bb—FVÒæÖVF–Ö—76–ærÓÓÒG'VP¢ÆÆ–fV7–6ÆU7FGW3¢Ä2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2òÄ2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2†—FVÒ’¢$äUr ¢ÆÆ–fV7–6ÆU7FGW4Æ&VÃ¢„Ä2‚’äÄ”dT5”4ÄUõ5DEU5ôÄ$TÅ2bbÄ2‚’äÄ”dT5”4ÄUõ5DEU5ôÄ$TÅ5´Ä2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2†—FVÒ•Ò’ÇÂ-ŠÍŠı˜­ŠıŠ’ ¢Ææ÷&ÖÆ—¦VE6÷W&6S¢—FVÒææ÷&ÖÆ—¦VE6÷W&6RÇÂ—FVÒç6÷W&6RÇÂ&öff–6UöÆ–æ² ¢Æ÷÷'GVæ—G”–C¢—FVÒæ÷÷'GVæ—G”–BÇÂ" ¢Æ6öçF7EG—S¢—4÷væW"ò&÷væW""¢&'W–W" ¢ÇG&ç67F–öåG—S¢—FVÒçG&ç67F–öåG—RÇÂ" ¢ÆÖ÷VçC¢—FVÒæÖ÷VçBÇÂ ¢Æ&V¢—FVÒæ&VÇÂ ¢ÆÖF6†–æu&VF–æW70¢ÆÖF6†–æu&VF–æW74Ö—76–æp¢Æ—5&VG”f÷$ÖF6†–æs¢ÖF6†–æu&VF–æW72ÓÓÒ%$TE•ôdõ%ôÔD4„”är"ÇÂ&VF–æW74WfÃòæ—5&VG”f÷$ÖF6†–ærÓÓÒG'VP¢Ó°¢Ğ ¢gVæ7F–öâ÷÷'GVæ—G”÷W&F–öâ†Fö2’°¢6öç7B—FVÒÒFö2æFF‚’ÇÂ·Ó°¢6öç7BÆ–fV7–6ÆU7FGW2ÒÄ2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2òÄ2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2†—FVÒ’¢$äUr#°¢6öç7BÆ–fV7–6ÆTÆ&VÂÒ„Ä2‚’äÄ”dT5”4ÄUõ5DEU5ôÄ$TÅ2bbÄ2‚’äÄ”dT5”4ÄUõ5DEU5ôÄ$TÅ5¶Æ–fV7–6ÆU7FGW5Ò’ÇÂÆ–fV7–6ÆU7FGW3°¢6öç7B—4÷væW"Ò—FVÒæ6öçF7EG—RÓÓÒ&÷væW""ÇÂ—FVÒç&V6÷&EG—RÓÓÒ&÷væW%ööffW"#°¢6öç7B÷fW&GVRÒ—4föÆÆ÷uW÷fW&GVU&V6÷&B†—FVÒ’bbÆ–fV7–6ÆU7FGW2ÓÒ$$4„•dTB ¢bb²$4Äõ4TEõtôâ"Â$4Äõ4TEôÄõ5B%Òæ–æ6ÇVFW2†Æ–fV7–6ÆU7FGW2“°¢6öç7B6&BÒõ‚“òæ'V–ÆD÷÷'GVæ—G”6&Ef–Wp¢òõ‚’æ'V–ÆD÷÷'GVæ—G”6&Ef–Wr‡²ââæ—FVÒÂ–C¢Fö2æ–BÂ÷÷'GVæ—G”–C¢Fö2æ–BÒ¢¢çVÆÃ°¢6öç7BF—FÆRÒ6&Còæ¶–æD&FvRÇÂ†—4÷væW"ò-‹‹‹b˜]Š}˜M˜2"¢-‹}˜MŠ‚‹˜]˜­˜B"“°¢6öç7B7V'F—FÆRÒ'V–ÆD÷57V'F—FÆR†6&BÂ°¢6æ—F—¦T÷5FW‡B†—FVÒç&÷W'G•G—R’À¢6æ—F—¦T÷5FW‡B†—FVÒæF—7G&–7B’À¢Æ–fV7–6ÆTÆ&VÀ¢Ò“°¢6öç7BÖF6†–æu&VF–æW757F÷&VBÒ7G&–ær†—FVÒæÖF6†–æu&VF–æW72ÇÂ""’çFõWW$66R‚“°¢6öç7BÖF6†–æu&VF–æW74Ö—76–æu7F÷&VBÒ'&’æ—4'&’†—FVÒæÖF6†–æu&VF–æW74Ö—76–ær¢ò—FVÒæÖF6†–æu&VF–æW74Ö—76–æræÖ…7G&–ær¢¢µÓ°¢6öç7B&VF–æW74WfÂÒv–æF÷rä”%ôõõ%ETä•E“òæWfÇVFTÖF6†–æu&VF–æW70¢òv–æF÷rä”%ôõõ%ETä•E’æWfÇVFTÖF6†–æu&VF–æW72‡²ââæ—FVÒÂ–C¢Fö2æ–BÒ¢¢çVÆÃ°¢–b‡&VF–æW74WfÃòæ—5&VG”f÷$ÖF6†–ærÓÓÒG'VP¢bb†ÖF6†–æu&VF–æW757F÷&VBÓÓÒ$äTTE5ô4ôÕÄUD”ôâ"ÇÂÖF6†–æu&VF–æW74Ö—76–æu7F÷&VBæÆVæwF‚â’’°¢&W—$ÆVv7•&VF–æW72†Fö2æ–B“°¢Ğ¢òò&V6ö×WFRg&öÒF†R7W'&VçBæ÷&ÖÆ—¦VB&V6÷&B&Vf÷&R6öç6–FW&–ærÆVv7¢òòW'6—7FVB&VF–æW72âöÆFW"Fö7VÖVçG26âÆVv—F–ÖFVÇ’Æ—7B&V÷&öö×20¢òòÖ—76–ærWfVâF†÷Vv‚F†÷6RFWF–Ç2æ÷r&VÆöærFò6ö÷&F–æF–öâà¢6öç7BÖF6†–æu&VF–æW72Ò&VF–æW74WfÃòæÖF6†–æu&VF–æW70¢ÇÂÖF6†–æu&VF–æW757F÷&V@¢ÇÂ"#°¢6öç7BÖF6†–æu&VF–æW74Ö—76–ærÒ&VF–æW74WfÀ¢ò‡&VF–æW74WfÂæÖF6†–æu&VF–æW74Ö—76–ærÇÂµÒ¢¢ÖF6†–æu&VF–æW74Ö—76–æu7F÷&VC°¢6öç7BÖF6„6÷VçBÒçVÖ&W"†—FVÒæÖF6„6÷VçBÇÂ—FVÒæ7F—fTÖF6„6÷VçBÇÂ“° ¢&WGW&â°¢–C¢÷ÒG¶Fö2æ–GÖÀ¢&V6÷&D–C¢Fö2æ–BÀ¢&V6÷&EG—S¢&÷÷'GVæ—G’"À¢Ö–ã¢&÷÷'GVæ—F–W2"À¢&–÷&—G“¢÷fW&GVRò¢Æ–fV7–6ÆU7FGW2ÓÓÒ$äUr"ò¢2À¢—4ÆW'C¢÷fW&GVRÇÂÆ–fV7–6ÆU7FGW2ÓÓÒ$äUr"À¢–6öã¢—4÷væW"ò&’Ö†÷W6RÖ6†V6²"¢&’×W6W"Ö6Æö6²"À¢F—FÆRÀ¢7V'F—FÆRÀ¢÷57FGW4Æ–æS¢6&@¢òG¶6&BæFF6ö×ÆWFVæW74Æ&VÇÒ+rG¶6&Bæ6öçF7E7FGW4Æ&VÇÒG¶6&BææW‡D7F–öäÆ&VÂÓÒ-‹­˜­‹˜]ŠİŠıŠò"ò+rG¶6&BææW‡D7F–öäÆ&VÇÖ¢"'Ö ¢¢""À¢&÷W'G•G—S¢—FVÒç&÷W'G•G—RÇÂ""À¢F—7G&–7C¢—FVÒæF—7G&–7BÇÂ""À¢6—G“¢—FVÒæ6—G’ÇÂ""À¢W'÷6S¢—FVÒçW'÷6RÇÂ—FVÒçG&ç67F–öåG—RÇÂ""À¢GfW'F—6W%&öÆS¢—FVÒæGfW'F—6W%&öÆRÇÂ—FVÒæ÷væW%&öÆRÇÂ""À¢6öçF7E†öæS¢—FVÒæ6öçF7E†öæRÇÂ—FVÒç†öæRÇÂ""À¢ÖF6†–æu&VF–æW72À¢ÖF6†–æu&VF–æW74Ö—76–ærÀ¢—5&VG”f÷$ÖF6†–æs¢ÖF6†–æu&VF–æW72ÓÓÒ%$TE•ôdõ%ôÔD4„”är"ÇÂ&VF–æW74WfÃòæ—5&VG”f÷$ÖF6†–ærÓÓÒG'VRÀ¢ÖF6„6÷VçBÀ¢&W7DÖF6…66÷&UFW‡C¢6&Còæ&W7DÖF6…66÷&UFW‡BÇÂ""À¢7&VFVDC¢7G&–ær†—FVÒæ7&VFVDBÇÂ—FVÒç&V6V—fVDBÇÂ""’À¢WFFVDC¢7G&–ær†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDBÇÂ—FVÒç&V6V—fVDBÇÂ""’À¢F–ÖS¢&VÆF—fUF–ÖR†—FVÒçWFFVDBÇÂ—FVÒæ7&VFVDBÇÂ—FVÒç&V6V—fVDB’À¢FWF–Ç4Æ–æW3¢6&Bò°¢6&BæFW67&—F–öâÀ¢6&BæÆö6F–öâÀ¢G¶6&Bç&–6T÷$'VFvWGÒ+rG¶6&Bæ&VÖÀ¢6&Bæ6öçF7DÆ–æRÀ¢Š}˜M˜]‹]Šı‹¢G¶6&Bç6÷W&6TÆ&VÇÖÀ¢Š}˜=Š­˜]Š}˜BŠ}˜MŠ˜­Š}˜mŠ}Š£¢G¶6&BæFF6ö×ÆWFVæW74Æ&VÇÖÀ¢Š}˜MŠ­˜Š}‹]˜C¢G¶6&Bæ6öçF7E7FGW4Æ&VÇÖÀ¢Š}˜M˜]‹}Š}Š˜-Š“¢G¶6&BæÖF6…7FGW4Æ&VÇÖÀ¢Š}˜M˜mŠ­˜­ŠÍŠ“¢G¶6&Bæ÷WF6öÖU7FGW4Æ&VÇÖÀ¢6&BææW‡D7F–öäÆ&VÂÓÒ-‹­˜­‹˜]ŠİŠıŠò"òŠ}˜MŠ]ŠÍ‹Š}ŠŠ}˜M˜-Š}Šı˜S¢G¶6&BææW‡D7F–öäÆ&VÇÖ¢""À¢6&Bæ&W7DÖF6…66÷&UFW‡BòŠ=˜‹m˜B˜]‹}Š}Š˜-Š“¢G¶6&Bæ&W7DÖF6…66÷&UFW‡GÖ¢" ¢Òæf–ÇFW"„&ööÆVâ’¢°¢Š}˜MŠİŠ}˜MŠ“¢G¶Æ–fV7–6ÆTÆ&VÇÖÀ¢Š}˜M˜]‹]Šı‹¢G¶—FVÒææ÷&ÖÆ—¦VE6÷W&6RÇÂ—FVÒç6÷W&6RÇÂ.(	B'ÖÀ¢Š}˜MŠ}‹=˜S¢G¶—FVÒæ6öçF7DæÖRÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢Š}˜MŠÍ˜Š}˜C¢G¶—FVÒæ6öçF7E†öæRÇÂ-‹­˜­‹˜]ŠİŠıŠò'ÖÀ¢Š}˜M˜]˜MŠí‹S¢G´Ä2‚’æ'V–ÆD÷÷'GVæ—G•7VÖÖ'’òÄ2‚’æ'V–ÆD÷÷'GVæ—G•7VÖÖ'’†—FVÒ’¢"'ÖÀ¢—FVÒææW‡DföÆÆ÷uWBòŠ}˜M˜]Š­Š}Š‹Š’Š}˜M˜-Š}Šı˜]Š“¢G¶FFUF–ÖTÆ&VÂ†—FVÒææW‡DföÆÆ÷uWB—Ö¢-Š}˜M˜]Š­Š}Š‹Š’Š}˜M˜-Š}Šı˜]Š“¢‹­˜­‹˜]ŠİŠıŠıŠ’ ¢ÒÀ¢7FGW3¢Æ–fV7–6ÆU7FGW2À¢Æ–fV7–6ÆU7FGW2À¢Æ–fV7–6ÆU7FGW4Æ&VÃ¢Æ–fV7–6ÆTÆ&VÂÀ¢v÷&¶fÆ÷u7FvS¢Æ–fV7–6ÆU7FGW2À¢æW‡D7F–öã¢6&CòææW‡D7F–öäÆ&VÂÓÒ-‹­˜­‹˜]ŠİŠıŠò"ò6&BææW‡D7F–öäÆ&VÂ¢-Š­˜Š}‹]˜­˜BŠ}˜M˜‹‹]Š’"À¢7F–öäÆ&VÃ¢-Š­˜Š}‹]˜­˜BŠ}˜M˜‹‹]Š’"À¢6V6öæF'”7F–öäÆ&VÃ¢-Š]ŠıŠ}‹Š’Š}˜M˜‹‹]Š’"À¢¶–æC¢—4÷væW"ò&÷væW""¢&6Æ–VçB"À¢6öçF7EG—S¢—4÷væW"ò&÷væW""¢&'W–W""À¢6öçF7DæÖS¢—FVÒæ6öçF7DæÖRÇÂ""À¢6öçF7E†öæS¢—FVÒæ6öçF7E†öæRÇÂ""À¢v†G6÷væW#¢—4÷væW"À¢v†G66Æ–VçC¢—4÷væW"À¢æW‡DföÆÆ÷uWC¢—FVÒææW‡DföÆÆ÷uWBÇÂçVÆÂÀ¢æ÷&ÖÆ—¦VE6÷W&6S¢—FVÒææ÷&ÖÆ—¦VE6÷W&6RÇÂ—FVÒç6÷W&6RÇÂ""À¢÷÷'GVæ—G”–C¢Fö2æ–BÀ¢6÷W&6U&V6÷&D–C¢—FVÒç6÷W&6U&V6÷&D–BÇÂ""À¢6÷W&6T6öÆÆV7F–öã¢—FVÒç6÷W&6T6öÆÆV7F–öâÇÂ""À¢G&ç67F–öåG—S¢—FVÒçG&ç67F–öåG—RÇÂ""À¢÷÷'GVæ—G”¶–æC¢—FVÒæ÷÷'GVæ—G”¶–æBÇÂ—FVÒæ¶–æBÇÂ†—4÷væW"ò$ôddU""¢%$UTU5B"’À¢—5FW7Df—‡GW&S¢—FVÒæ—5FW7Df—‡GW&RÓÓÒG'VRÇÂ—FVÒçÆ—fTS&RÓÓÒG'VRÀ¢FW7E'Vä–C¢—FVÒçFW7E'Vä–BÇÂ—FVÒçÆ—fU'Vä–BÇÂ""À¢7&VFVD'“¢—FVÒæ7&VFVD'’ÇÂ""À¢Æ—fTS&S¢—FVÒçÆ—fTS&RÓÓÒG'VRÀ¢6÷W&6UG—S¢—FVÒç6÷W&6UG—RÇÂ""À¢Ö÷VçC¢—FVÒç&–6RÇÂ—FVÒç&–6TÖ‚ÇÂÀ¢6ÆU&–6S¢—FVÒç6ÆU&–6Róò—FVÒç&–6RÀ¢æçVÅ&VçC¢—FVÒææçVÅ&VçBÀ¢'VFvWC¢—FVÒæ'VFvWBóò—FVÒç&–6TÖ‚À¢&–6T÷$'VFvWC¢—FVÒç&–6T÷$'VFvWBóò—FVÒç&–6Róò—FVÒæÖ÷VçBÀ¢&V¢—FVÒæ&VÇÂÀ¢&öö×3¢—FVÒç&öö×2ÇÂÀ¢6Æ÷7W&U&V6öã¢—FVÒæ6Æ÷7W&U&V6öâÇÂ" ¢Ó°¢Ğ ¢gVæ7F–öâFVGWTfVVD—FV×2†—FV×2’°¢6öç7BfÆ÷rÒv–æF÷rä”%ôõõ%ETä•E•ôDDôdÄõs°¢–b†fÆ÷rbbG—VöbfÆ÷ræFVGWT÷W&F–öç4fVVD—FV×2ÓÓÒ&gVæ7F–öâ"’°¢&WGW&âfÆ÷ræFVGWT÷W&F–öç4fVVD—FV×2†—FV×2“°¢Ğ¢&WGW&â—FV×3°¢Ğ ¢gVæ7F–öâf–ÇFW$÷÷'GVæ—G•f–Wr†—FV×2’°¢&WGW&â—FV×2æf–ÇFW"†—FVÒÓâ°¢–b†—FVÒç&V6÷&EG—RÓÓÒ'7VÖÖ'’"’&WGW&âG'VS°¢–b†—FVÒæÖ–âÓÒ&÷÷'GVæ—F–W2"’&WGW&âG'VS°¢–b†—FVÒç&V6÷&EG—RÓÓÒ&ÖF6‚"ÇÂ—FVÒç&V6÷&EG—RÓÓÒ&FVÂ"ÇÂ—FVÒç&V6÷&EG—RÓÓÒ&÷W&F–öâ"’&WGW&âG'VS°¢6öç7B7FGW2Ò—FVÒæÆ–fV7–6ÆU7FGW2ÇÂ„Ä2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2òÄ2‚’ævWD÷÷'GVæ—G”Æ–fV7–6ÆU7FGW2†—FVÒ’¢$äUr"“°¢6öç7B&6†—fVBÒ7FGW2ÓÓÒ$$4„•dTB#°¢&WGW&â÷÷'GVæ—G•f–WrÓÓÒ&&6†—fVB"ò&6†—fVB¢&6†—fVC°¢Ò“°¢Ğ  ¢òò†6Rƒ¢6Æ–VçB×6–FRÖF6†W"&VÖ÷fVB(	Bv÷&¶W"ÖF6†–ærÖVæv–æR—2WF†÷&—FF—fRà ¢7–æ2gVæ7F–öâ6†÷tÆö6ÄÖF6„æ÷F–f–6F–öâ†ÖF6„6÷VçBÂF÷ÖF6‚’°¢6öç7BF—FÆRÒÖF6„6÷VçBâòŠ­˜RŠ}˜=Š­‹MŠ}˜G¶ÖF6„6÷VçGÒ˜]‹}Š}Š˜-Š}Š¢ŠÍŠı˜­ŠıŠ–¢-Š­˜RŠ}˜=Š­‹MŠ}˜˜]‹}Š}Š˜-Š’ŠÍŠı˜­ŠıŠ’#°¢6öç7B&öG’ÒF÷ÖF6€¢òG·F÷ÖF6‚ç&÷W'G•G—RÇÂ-‹˜-Š}‹'Ò(	BG·F÷ÖF6‚æF—7G&–7BÇÂ"'Ò(	B˜m‹=ŠŠ’G·F÷ÖF6‚ç66÷&WÒV ¢¢-Š}˜Š­ŠÒ˜]‹=Š}ŠİŠ’Š}˜M‹˜]˜B˜M˜]‹Š}ŠÍ‹Š’Š}˜M˜]‹}Š}Š˜-Š’â#°¢æ÷F–g’‡F—FÆR“°¢G'’°¢–b‚$æ÷F–f–6F–öâ"–âv–æF÷rbbæ÷F–f–6F–öâçW&Ö—76–öâÓÓÒ&w&çFVB"’°¢6öç7B&Vv—7G&F–öâÒv—Bæf–vF÷"ç6W'f–6Uv÷&¶W#òç&VG’æ6F6‚‚‚’ÓâçVÆÂ“°¢–b‡&Vv—7G&F–öâbb&Vv—7G&F–öâç6†÷tæ÷F–f–6F–öâ’°¢v—B&Vv—7G&F–öâç6†÷tæ÷F–f–6F–öâ‡F—FÆRÂ²&öG’Â–6öã¢"ö–6öç2ö–"ÖFVfVÇBÖ–6öâÓ“"çær"Â&FvS¢"ö–6öç2ö–"Ö&FvRÖ–6öâçær"ÂFF¢²G—S¢&ÖF6‚"Â&V6÷&D–C¢F÷ÖF6‚bbF÷ÖF6‚æ–BÇÂ""ÒÒ“°¢ÒVÇ6R°¢æWræ÷F–f–6F–öâ‡F—FÆRÂ²&öG’Â–6öã¢"ö–6öç2ö–"ÖFVfVÇBÖ–6öâÓ“"çær"Ò“°¢Ğ¢Ğ¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%ÒÆö6Âæ÷F–f–6F–öâ"ÂW'&÷"“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ&ö6W75V&Æ–4–çF¶TFö2†Fö2’°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢6öç7BW6W"Òv–æF÷ræf—&V&6Rbbv–æF÷ræf—&V&6RæWF‚bbv–æF÷ræf—&V&6RæWF‚‚’æ7W'&VçEW6W#°¢–b‚'VçF–ÖRÇÂ'VçF–ÖRæöff–6T–BÇÂW6W"ÇÂFö2ÇÂ–çF¶U&ö6W76–æræ†2†Fö2æ–B’’&WGW&ã°¢6öç7B–çF¶RÒFö2æFF‚’ÇÂ·Ó°¢–b†–çF¶Rç7FGW2ÓÒ&æWr"’&WGW&ã°¢–çF¶U&ö6W76–æræFB†Fö2æ–B“° ¢G'’°¢6öç7B&W7öç6RÒv—BfWF6‚†G·&W6öÇfUv÷&¶W$&6R‚—Ò÷—VÆ–æR÷V&Æ–2Ö–çF¶VÂ°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢²$6öçFVçBÕG—R#¢&Æ–6F–öâö§6öâ"ÒÀ¢&öG“¢¥4ôâç7G&–æv–g’‡²öff–6T–C¢'VçF–ÖRæöff–6T–BÂ–çF¶T–C¢Fö2æ–BÒ¢Ò“°¢6öç7B–ÆöBÒv—B&W7öç6Ræ§6öâ‚’æ6F6‚‚‚’Óâ‡·Ò’“°¢–b‚&W7öç6Ræö²’F‡&÷ræWrW'&÷"‡–ÆöBæÖW76vRÇÂ-Š­‹‹‹Š­‹M‹­˜­˜BŠ}˜M˜]‹}Š}Š˜-Š’Š}˜M˜]‹˜=‹-˜­Š’"“°¢–b„çVÖ&W"‡–ÆöBæÖF6†W2ÇÂ’âbb–ÆöBæ&W7DÖF6‚’°¢v—B6†÷tÆö6ÄÖF6„æ÷F–f–6F–öâ„çVÖ&W"‡–ÆöBæÖF6†W2’Â°¢–C¢–ÆöBæ&W7DÖF6‚æÖF6„–BÀ¢66÷&S¢–ÆöBæ&W7DÖF6‚ç66÷&RÀ¢&÷W'G•G—S¢–ÆöBæ&W7DÖF6‚ç&÷W'G•G—RÀ¢F—7G&–7C¢–ÆöBæ&W7DÖF6‚æF—7G&–7@¢Ò“°¢ÒVÇ6R–b‚–ÆöBæGWÆ–6FR’°¢æ÷F–g’†–çF¶Ræ¶–æBÓÓÒ&÷væW""ò-Š­˜RŠ}‹Š­˜]Š}Šò‹‹‹bŠ}˜M˜]Š}˜M˜=ˆÂ˜˜MŠrŠ­˜ŠÍŠò˜]‹}Š}Š˜-Š’ŠİŠ}˜M˜­˜½Šr"¢-Š­˜RŠ}‹Š­˜]Š}Šò‹}˜MŠ‚Š}˜M‹˜]˜­˜MˆÂ˜˜MŠrŠ­˜ŠÍŠò˜]‹}Š}Š˜-Š’ŠİŠ}˜M˜­˜½Šr"“°¢Ğ¢Ò6F6‚†W'&÷"’°¢6öç6öÆRæW'&÷"‚%¶–%Ò6VçG&ÂV&Æ–2–çF¶RÖF6†–ær"ÂW'&÷"“°¢æ÷F–g’‚-Š­‹‹‹Š­‹M‹­˜­˜BŠ}˜M˜]‹}Š}Š˜-Š’Š}˜MŠ-˜m‰²‹=˜­‹Š}ŠòŠ­‹M‹­˜­˜M˜}ŠrŠ­˜M˜-Š}Šm˜­˜½Šr‹˜mŠòŠ­˜˜‹Š}˜MŠ}Š­‹]Š}˜B"“°¢Òf–æÆÇ’°¢–çF¶U&ö6W76–æræFVÆWFR†Fö2æ–B“°¢Ğ¢Ğ ¢gVæ7F–öâ&ö6W74æWuV&Æ–4–çF¶W2‡6æ6†÷B’°¢6æ6†÷BæFö70¢æf–ÇFW"†Fö2Óâ†Fö2æFF‚’ÇÂ·Ò’ç7FGW2ÓÓÒ&æWr"¢æf÷$V6‚†Fö2Óâ&ö6W75V&Æ–4–çF¶TFö2†Fö2’“°¢Ğ ¢gVæ7F–öâ÷4FöÖ–â‚’°¢&WGW&â‡v–æF÷rä”"bbv–æF÷rä”"æ÷W&F–öç4FöÖ–â’ÇÂçVÆÃ°¢Ğ ¢gVæ7F–öâ&ö¦V7EW'6—7FVD÷W&F–öâ†Fö2’°¢6öç7BFFÒ²–C¢Fö2æ–BÂâââ†Fö2æFF‚’ÇÂ·Ò’Ó°¢6öç7BFöÖ–âÒ÷4FöÖ–â‚“°¢–b†FöÖ–âbbG—VöbFöÖ–âç&ö¦V7D÷W&F–öåFõV”—FVÒÓÓÒ&gVæ7F–öâ"’°¢&WGW&âFöÖ–âç&ö¦V7D÷W&F–öåFõV”—FVÒ†FFÂ²&VÆF—fUF–ÖRÒ“°¢Ğ¢òòfÆÆ&6²&ö¦V7F÷"–bF†RFöÖ–âÖöGVÆR†2æ÷BÆöFVB–WBà¢6öç7B&–÷&—G”ÖÒ²U$tTåC¢Â„”tƒ¢Âäõ$ÔÃ¢"ÂÄõs¢2Ó°¢&WGW&â°¢–C¢FFæ–BÀ¢&V6÷&D–C¢FFæ–BÀ¢&V6÷&EG—S¢&÷W&F–öâ"À¢÷W&F–öåG—S¢FFçG—RÇÂ%5•5DTÕô5D”ôâ"À¢Ö–ã¢&÷÷'GVæ—F–W2"À¢&–÷&—G“¢&–÷&—G”Öµ7G&–ær†FFç&–÷&—G’ÇÂ$äõ$ÔÂ"’çFõWW$66R‚•Òóò"À¢&–÷&—G”¶W“¢FFç&–÷&—G’ÇÂ$äõ$ÔÂ"À¢—4ÆW'C¢²%U$tTåB"Â$„”t‚%Òæ–æ6ÇVFW2…7G&–ær†FFç&–÷&—G’ÇÂ""’çFõWW$66R‚’’À¢–6öã¢&’Ö6Æ—&ö&BÖÆ—7B"À¢F—FÆS¢FFçF—FÆUFW‡BÇÂ-Š]ŠÍ‹Š}Š˜]‹}˜M˜Š‚"À¢7V'F—FÆS¢FFç7VÖÖ'•FW‡BÇÂ""À¢F–ÖS¢&VÆF—fUF–ÖR†FFçWFFVDBÇÂFFæ7&VFVDB’À¢FWF–Ç4Æ–æW3¢¶FFç7VÖÖ'•FW‡BÇÂ-˜MŠrŠ­˜ŠÍŠòŠ­˜Š}‹]˜­˜BŠ]‹mŠ}˜˜­Š’â%ÒÀ¢7FGW3¢FFç7FGW2ÇÂ$õTâ"À¢7F–öäÆ&VÃ¢FFç&V6öÖÖVæFVD7F–öåFW‡BÇÂ-‹‹‹bŠ}˜MŠ­˜Š}‹]˜­˜B"À¢6V6öæF'”7F–öäÆ&VÃ¢-Š]Š­˜]Š}˜R"À¢6äF—6Ö—73¢5D•dUôõU$D”ôåõ5DEU4U2æ–æ6ÇVFW2…7G&–ær†FFç7FGW2ÇÂ""’çFõWW$66R‚’’À¢F—6Ö—74Æ&VÃ¢-‹]‹˜Š}˜M˜m‹‹"À¢ÖF6„–C¢FFæÖF6„–BÇÂ""À¢÷÷'GVæ—G”–C¢FFæ÷÷'GVæ—G”–BÇÂ""À¢6ö÷W&F–öä–C¢FFæ6ö÷W&F–öä–BÇÂ""À¢v†G6÷væW#¢fÇ6RÀ¢v†G66Æ–VçC¢fÇ6P¢Ó°¢Ğ ¢gVæ7F–öâ'VæU6fVD÷÷'GVæ—G•v÷&·76T—FV×2‚’°¢6öç7B6÷fW&VBÒæWr6WB€¢÷W&F–öä—FV×2æÖ†—FVÒÓâ7G&–ær†—FVÒæ÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚’’æf–ÇFW"„&ööÆVâ¢“°¢6fVD÷÷'GVæ—G•v÷&·76T—FV×2Ò6fVD÷÷'GVæ—G•v÷&·76T—FV×2æf–ÇFW"€¢—FVÒÓâ6÷fW&VBæ†2…7G&–ær†—FVÒæ÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚’¢“°¢Ğ ¢gVæ7F–öâ'V–ÆE6fVD÷÷'GVæ—G•v÷&·76T—FVÒ†÷÷'GVæ—G”–BÂÖF6„6÷VçBÒ’°¢6öç7B–BÒ7G&–ær†÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚“°¢–b‚–B’&WGW&âçVÆÃ°¢6öç7BÖF6†W2ÒçVÖ&W"†ÖF6„6÷VçBÇÂ“°¢&WGW&â°¢–C¢6fVBÖ÷÷'GVæ—G’ÒG¶–GÖÀ¢&V6÷&D–C¢–BÀ¢&V6÷&EG—S¢&÷÷'GVæ—G’"À¢÷W&F–öåG—S¢$õõ%ETä•E•õ4dTB"À¢Ö–ã¢&&æ²"À¢&–÷&—G“¢À¢—4ÆW'C¢fÇ6RÀ¢–6öã¢&’Ö6Æ—&ö&BÖÆ—7B"À¢F—FÆS¢-˜‹‹]Š’ŠÍŠı˜­ŠıŠ’˜]Šİ˜˜‹Š’"À¢7V'F—FÆS¢ÖF6†W2âòŠ­˜RŠ}˜M‹Š½˜‹‹˜M˜’G¶ÖF6†W7Ò˜]‹}Š}Š˜-Š–¢-Š=˜ı‹m˜­˜Š¢Š]˜M˜’Š}˜M‹‹˜‹b˜Š}˜M‹}˜MŠŠ}Š¢"À¢F–ÖS¢-Š}˜MŠ-˜b"À¢FWF–Ç4Æ–æW3¢°¢ÖF6†W2â ¢òŠ­˜RŠİ˜‹‚Š}˜M˜‹‹]Š’˜Š]˜m‹MŠ}ŠG¶ÖF6†W7Ò˜]‹}Š}Š˜-Š’ŠÍŠı˜­ŠıŠ’æ ¢¢-Š­˜RŠİ˜‹‚Š}˜M˜‹‹]Š’Š˜mŠÍŠ}ŠÒ(	B‹Š}ŠÍ‹’Š}˜MŠ­˜Š}‹]˜­˜B˜˜¢Š}˜M‹‹˜‹b˜Š}˜M‹}˜MŠŠ}Š¢â ¢ÒÀ¢7F–öäÆ&VÃ¢-˜Š­ŠÒŠ}˜M‹‹˜‹b˜Š}˜M‹}˜MŠŠ}Š¢"À¢6V6öæF'”7F–öäÆ&VÃ¢-Š]‹­˜MŠ}˜""À¢6äF—6Ö—73¢fÇ6RÀ¢÷÷'GVæ—G”–C¢–@¢Ó°¢Ğ ¢gVæ7F–öâW6…6fVD÷÷'GVæ—G•Fõv÷&·76R‡°¢÷÷'GVæ—G”–BÀ¢GWÆ–6FRÒfÇ6RÀ¢ÖF6„6÷VçBÒÀ¢GfW'F—6W%†öæRÒ""À¢&÷W'G•G—RÒ""À¢F—7G&–7BÒ""À¢Ö&¶WF–æt6öç6VçE7FGW2Ò" ¢ÒÒ·Ò’°¢6öç7B–BÒ7G&–ær†÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚“°¢–b‚–B’&WGW&ã°¢6öç7B6fVD—FVÒÒ'V–ÆE6fVD÷÷'GVæ—G•v÷&·76T—FVÒ†–BÂÖF6„6÷VçB“°¢–b‚6fVD—FVÒ’&WGW&ã°¢–b†GWÆ–6FR’°¢6fVD—FVÒçF—FÆRÒ-˜‹‹]Š’˜]˜ŠÍ˜ŠıŠ’#°¢6fVD—FVÒç7V'F—FÆRÒ-Š­˜RŠ­ŠİŠı˜­Š²Š}˜M˜‹‹]Š’Š}˜MŠİŠ}˜M˜­Š’#°¢6fVD—FVÒæFWF–Ç4Æ–æW2Ò²-Š­˜ŠÍŠò˜‹‹]Š’˜m‹M‹}Š’˜M˜}‹ŠrŠ}˜M‹˜-˜R(	BŠ­˜RŠ­ŠİŠı˜­Š²Š}˜M˜‹‹]Š’Š}˜MŠİŠ}˜M˜­Š’ŠŠı˜BŠ]˜m‹MŠ}Š˜m‹=ŠíŠ’˜]˜=‹‹Š’â%Ó°¢Ğ¢6fVD÷÷'GVæ—G•v÷&·76T—FV×2Ò°¢6fVD—FVÒÀ¢ââç6fVD÷÷'GVæ—G•v÷&·76T—FV×2æf–ÇFW"†—FVÒÓâ—FVÒç&V6÷&D–BÓÒ6fVD—FVÒç&V6÷&D–B¢Òç6Æ–6RƒÂ2“° ¢6öç7B†öæRÒ7G&–ær†GfW'F—6W%†öæRÇÂ""’çG&–Ò‚“°¢6öç7BæVVG4föÆÆ÷wWÒ†öæP¢bb²%$TÄ”Ô”ä%•õ”U2"Â%$TeU4TB%Òæ–æ6ÇVFW2…7G&–ær†Ö&¶WF–æt6öç6VçE7FGW2ÇÂ""’çFõWW$66R‚’“°¢–b†æVVG4föÆÆ÷wWbbGWÆ–6FR’°¢6öç7BÆ&VÂÒ·&÷W'G•G—RÂF—7G&–7EÒæf–ÇFW"„&ööÆVâ’æ¦ö–â‚"(	B"“°¢6öç7BföÆÆ÷wWÒ°¢–C¢GfW'F—6W"ÖföÆÆ÷wWÒG¶–GÖÀ¢&V6÷&D–C¢–BÀ¢&V6÷&EG—S¢&÷÷'GVæ—G’"À¢÷W&F–öåG—S¢$EdU%D•4U%ôdôÄÄõuU"À¢Ö–ã¢&&æ²"À¢&–÷&—G“¢À¢—4ÆW'C¢fÇ6RÀ¢–6öã¢&’×W6W"Ö6Æö6²"À¢F—FÆS¢Æ&VÂòŠ}‹=Š­˜=˜]Š}˜BŠ˜­Š}˜mŠ}Š¢˜]‹˜M˜b˜‹‹]Š’G¶Æ&VÇÖ¢-Š}‹=Š­˜=˜]Š}˜BŠ˜­Š}˜mŠ}Š¢Š}˜M˜]‹˜M˜b"À¢7V'F—FÆS¢-‹Š}ŠÍ‹’‹˜-˜RŠ}˜M˜]‹˜M˜b˜‹‹=Š}˜MŠ’Š}˜MŠ}‹=Š­˜=˜]Š}˜B"À¢F–ÖS¢-Š}˜MŠ-˜b"À¢FWF–Ç4Æ–æW3¢²-˜­˜ŠÍŠò‹˜-˜R˜]‹˜M˜b(	BŠ=˜=˜]˜BŠ}˜MŠ­˜Š}‹]˜B˜Š­ŠİŠı˜­Š²Š}˜MŠİŠ}˜MŠ’˜­Šı˜˜­˜½Šrâ%ÒÀ¢7F–öäÆ&VÃ¢-˜Š­ŠÒŠ}˜M‹‹˜‹b˜Š}˜M‹}˜MŠŠ}Š¢"À¢6V6öæF'”7F–öäÆ&VÃ¢-Š]‹­˜MŠ}˜""À¢6äF—6Ö—73¢G'VRÀ¢÷÷'GVæ—G”–C¢–@¢Ó°¢6fVD÷÷'GVæ—G•v÷&·76T—FV×2Ò°¢föÆÆ÷wWÀ¢ââç6fVD÷÷'GVæ—G•v÷&·76T—FV×2æf–ÇFW"†—FVÒÓâ—FVÒæ–BÓÒföÆÆ÷wWæ–B¢Òç6Æ–6RƒÂB“°¢Ğ¢VÖ—D÷W&F–öç2‚“°¢Ğ ¢gVæ7F–öâ—56fVD÷÷'GVæ—G•&W6VçFF–öä—FVÒ†—FVÒ’°¢6öç7BG—RÒ7G&–ær†—FVÓòæ÷W&F–öåG—RÇÂ""’çFõWW$66R‚“°¢&WGW&âG—RÓÓÒ$õõ%ETä•E•õ4dTB ¢ÇÂ7G&–ær†—FVÓòçF—FÆRÇÂ""’çG&–Ò‚’ÓÓÒ-˜‹‹]Š’˜]Šİ˜˜‹Š’˜]‹=Š˜-˜½Šr#°¢Ğ ¢gVæ7F–öâ7F—fTÖF6„÷W&F–öç2‚’°¢&WGW&âÖF6„—FV×2æf–ÇFW"‚†—FVÒ’Óâ²&6ö×ÆWFVB"Â&6Æ÷6VB%Òæ–æ6ÇVFW2…7G&–ær†—FVÒç7FGW2ÇÂ""’çFôÆ÷vW$66R‚’’“°¢Ğ ¢gVæ7F–öâ7F—fTFVÄ÷W&F–öç2‚’°¢&WGW&âFVÄ—FV×2æf–ÇFW"‚†—FVÒ’Óâ²&6Æ÷6VB"Â&Æ÷7B%Òæ–æ6ÇVFW2…7G&–ær†—FVÒç7FGW2ÇÂ""’çFôÆ÷vW$66R‚’’“°¢Ğ ¢gVæ7F–öâF–Ç•F6´÷W&F–öä'W6–æW74¶W’†—FVÒÒ·Ò’°¢6öç7BG—RÒ7G&–ær†—FVÒæ÷W&F–öåG—RÇÂ—FVÒçG—RÇÂ""’çG&–Ò‚’çFõWW$66R‚“°¢6öç7B–BÒ‡fÇVR’Óâ7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢–b…²$Ô•54”äuôDD"Â$õõ%ETä•E•õ$Ud”Ur"Â$õõ%ETä•E•ôdôÄÄõuõU%Òæ–æ6ÇVFW2‡G—R’’°¢6öç7BfÇVRÒ–B†—FVÒæ÷÷'GVæ—G”–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRò÷÷'GVæ—G“¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ$ÔD4…õ$Ud”Ur"’°¢6öç7BfÇVRÒ–B†—FVÒæÖF6„–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRòÖF6ƒ¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ$DTÅô5D”ôâ"’°¢6öç7BfÇVRÒ–B†—FVÒæFVÄ–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRòFVÃ¢G·fÇVWÖ¢"#°¢Ğ¢–b…²$4ôõU$D”ôåõ$UTU5B"Â$4ôõU$D”ôåõ$U5ôå4R"Â$4ôõU$D”ôåôÔD4‚%Òæ–æ6ÇVFW2‡G—R’’°¢6öç7BfÇVRÒ–B†—FVÒæ6ö÷W&F–öä–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRò6ö÷W&F–öã¢G·fÇVWÖ¢"#°¢Ğ¢&WGW&â"#°¢Ğ ¢gVæ7F–öâF–Ç•F6´ÆVv7”'W6–æW74¶W’†—FVÒÒ·Ò’°¢6öç7BG—RÒ7G&–ær†—FVÒç&V6÷&EG—RÇÂ""’çG&–Ò‚’çFôÆ÷vW$66R‚“°¢6öç7B–BÒ‡fÇVR’Óâ7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢–b‡G—RÓÓÒ&÷÷'GVæ—G’"’°¢6öç7BfÇVRÒ–B†—FVÒæ÷÷'GVæ—G”–BÇÂ—FVÒç&V6÷&D–BÇÂ—FVÒæ–B“°¢&WGW&âfÇVRò÷÷'GVæ—G“¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ&ÖF6‚"’°¢6öç7BfÇVRÒ–B†—FVÒæÖF6„–BÇÂ—FVÒç&V6÷&D–BÇÂ—FVÒæ–B“°¢&WGW&âfÇVRòÖF6ƒ¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ&FVÂ"’°¢6öç7BfÇVRÒ–B†—FVÒæFVÄ–BÇÂ—FVÒç&V6÷&D–BÇÂ—FVÒæ–B“°¢&WGW&âfÇVRòFVÃ¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ&6ö÷W&F–öâ"’°¢6öç7BfÇVRÒ–B†—FVÒæ6ö÷W&F–öä–BÇÂ—FVÒç&V6÷&D–BÇÂ—FVÒæ–B“°¢&WGW&âfÇVRò6ö÷W&F–öã¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ&–çF¶R"’°¢6öç7B÷÷'GVæ—G”–BÒ–B†—FVÒæ÷÷'GVæ—G”–B“°¢–b†÷÷'GVæ—G”–B’&WGW&â÷÷'GVæ—G“¢G¶÷÷'GVæ—G”–GÖ°¢6öç7BfÇVRÒ–B†—FVÒç&V6÷&D–BÇÂ—FVÒæ–B“°¢&WGW&âfÇVRò–çF¶S¢G·fÇVWÖ¢"#°¢Ğ¢&WGW&â"#°¢Ğ ¢gVæ7F–öâF–Ç•F6´6÷fW&vTVF—B†ÆVv7”—FV×2ÒµÒ’°¢F–Ç•F6µ6†F÷t7–6ÆW2³Ò°¢G'’°¢6öç7B÷W&F–öä¶W—2ÒæWr6WB‚“°¢6öç7B6VÖçF–46÷VçG2ÒæWrÖ‚“°¢f÷"†6öç7B—FVÒöb÷W&F–öä—FV×2’°¢6öç7B'W6–æW74¶W’ÒF–Ç•F6´÷W&F–öä'W6–æW74¶W’†—FVÒ“°¢–b†'W6–æW74¶W’’÷W&F–öä¶W—2æFB†'W6–æW74¶W’“°¢6öç7BG—RÒ7G&–ær†—FVÒæ÷W&F–öåG—RÇÂ—FVÒçG—RÇÂ""’çG&–Ò‚’çFõWW$66R‚“°¢–b†'W6–æW74¶W’bbG—R’°¢6öç7B6VÖçF–4¶W’ÒG·G—WÓ¢G¶'W6–æW74¶W—Ö°¢6VÖçF–46÷VçG2ç6WB‡6VÖçF–4¶W’Â‡6VÖçF–46÷VçG2ævWB‡6VÖçF–4¶W’’ÇÂ’²“°¢Ğ¢Ğ¢6öç7BÆVv7”¶W—2Ò²ââææWr6WB†ÆVv7”—FV×2æÖ†F–Ç•F6´ÆVv7”'W6–æW74¶W’’æf–ÇFW"„&ööÆVâ’•Ó°¢6öç7BVæ6÷fW&VD'W6–æW74VçF—F–W2ÒÆVv7”¶W—2æf–ÇFW"‚†¶W’’Óâ÷W&F–öä¶W—2æ†2†¶W’’“°¢6öç7B6÷fW&VBÒÆVv7”¶W—2æÆVæwF‚ÒVæ6÷fW&VD'W6–æW74VçF—F–W2æÆVæwFƒ°¢6öç7B6÷fW&vUW&6VçBÒÆVv7”¶W—2æÆVæwF‚òÖF‚ç&÷VæB‚†6÷fW&VBòÆVv7”¶W—2æÆVæwF‚’¢’¢°¢6öç7BGWÆ–6FT7F—fUF6·2Ò²ââç6VÖçF–46÷VçG2çfÇVW2‚•Òç&VGV6R‚‡7VÒÂ6÷VçB’Óâ7VÒ²ÖF‚æÖ‚ƒÂ6÷VçBÒ’Â“°¢6öç7BÆÅ6÷W&6W5&VG’Òö&¦V7BçfÇVW2†F–Ç•F6µ6†F÷u6÷W&6W5&VG’’æWfW'’„&ööÆVâ“°¢6öç7BFöÖ–åG—W2Òö&¦V7BçfÇVW2†÷4FöÖ–â‚“òäõU$D”ôåõE•U2ÇÂ·Ò“°¢6öç7B7W÷'FVEG—W2ÒæWr6WB†FöÖ–åG—W2æÆVæwF‚òFöÖ–åG—W2¢D”Å•õD4µõ$UT•$TEôõU$D”ôåõE•U2“°¢6öç7BÖ—76–æu&WV—&VD÷W&F–öåG—W2ÒD”Å•õD4µõ$UT•$TEôõU$D”ôåõE•U2æf–ÇFW"‚‡G—R’Óâ7W÷'FVEG—W2æ†2‡G—R’“°¢6öç7B&V6öç2ÒµÓ°¢–b‚ÆÅ6÷W&6W5&VG’’&V6öç2çW6‚‚'6†F÷u÷6÷W&6W5öæ÷E÷&VG’"“°¢–b†6÷fW&vUW&6VçBÂ’&V6öç2çW6‚‚&6÷fW&vUö&VÆ÷uó"“°¢–b†GWÆ–6FT7F—fUF6·2â’&V6öç2çW6‚‚&GWÆ–6FUö7F—fU÷F6·2"“°¢–b‡Væ6÷fW&VD'W6–æW74VçF—F–W2æÆVæwF‚’&V6öç2çW6‚‚'Væ6÷fW&VEö'W6–æW75öVçF—F–W2"“°¢–b†F–Ç•F6µ6†F÷tf–ÇW&W2â’&V6öç2çW6‚‚'6†F÷uöf–ÇW&W2"“°¢–b†Ö—76–æu&WV—&VD÷W&F–öåG—W2æÆVæwF‚’&V6öç2çW6‚‚&Ö—76–æu÷&WV—&VEö÷W&F–öå÷G—W2"“°¢–b†F–Ç•F6µ6†F÷t7–6ÆW2Â’&V6öç2çW6‚‚'6†F÷uö7–6ÆU÷&WV—&VB"“°¢&WGW&â°¢ÆÆ÷vVC¢&V6öç2æÆVæwF‚ÓÓÒÀ¢ÖöFS¢&V6öç2æÆVæwF‚ÓÓÒòD”Å•õD4µõ4õU$4UôÔôDRäõU$D”ôå5ôôäÅ’¢D”Å•õD4µõ4õU$4UôÔôDRäÔ•„TEõ4„DõrÀ¢&V6öç2À¢6÷fW&vUW&6VçBÀ¢6÷fW&VD'W6–æW74VçF—F–W3¢6÷fW&VBÀ¢ö'6W'fVD'W6–æW74VçF—F–W3¢ÆVv7”¶W—2æÆVæwF‚À¢GWÆ–6FT7F—fUF6·2À¢Væ6÷fW&VD'W6–æW74VçF—F–W2À¢6†F÷t7–6ÆW3¢F–Ç•F6µ6†F÷t7–6ÆW2À¢6†F÷tf–ÇW&W3¢F–Ç•F6µ6†F÷tf–ÇW&W2À¢6†F÷u6÷W&6W5&VG“¢²ââæF–Ç•F6µ6†F÷u6÷W&6W5&VG’ÒÀ¢ÆÅ6÷W&6W5&VG’À¢Ö—76–æu&WV—&VD÷W&F–öåG—W0¢Ó°¢Ò6F6‚†W'&÷"’°¢F–Ç•F6µ6†F÷tf–ÇW&W2³Ò°¢&WGW&â°¢ÆÆ÷vVC¢fÇ6RÀ¢ÖöFS¢D”Å•õD4µõ4õU$4UôÔôDRäÔ•„TEõ4„DõrÀ¢&V6öç3¢²'6†F÷uöVF—Eöf–ÆVB%ÒÀ¢6÷fW&vUW&6VçC¢À¢GWÆ–6FT7F—fUF6·3¢À¢Væ6÷fW&VD'W6–æW74VçF—F–W3¢µÒÀ¢6†F÷t7–6ÆW3¢F–Ç•F6µ6†F÷t7–6ÆW2À¢6†F÷tf–ÇW&W3¢F–Ç•F6µ6†F÷tf–ÇW&W2À¢6†F÷u6÷W&6W5&VG“¢²ââæF–Ç•F6µ6†F÷u6÷W&6W5&VG’ÒÀ¢ÆÅ6÷W&6W5&VG“¢fÇ6RÀ¢Ö—76–æu&WV—&VD÷W&F–öåG—W3¢µÒÀ¢W'&÷#¢7G&–ær†W'&÷#òæÖW76vRÇÂW'&÷"ÇÂ&VF—Eöf–ÆVB"¢Ó°¢Ğ¢Ğ ¢gVæ7F–öâF–Ç•F6´÷W&F–öä'W6–æW74¶W’†—FVÒÒ·Ò’°¢6öç7BG—RÒ7G&–ær†—FVÒæ÷W&F–öåG—RÇÂ—FVÒçG—RÇÂ""’çG&–Ò‚’çFõWW$66R‚“°¢6öç7B–BÒ‡fÇVR’Óâ7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢–b…²$Ô•54”äuôDD"Â$õõ%ETä•E•õ$Ud”Ur"Â$õõ%ETä•E•ôdôÄÄõuõU%Òæ–æ6ÇVFW2‡G—R’’°¢6öç7BfÇVRÒ–B†—FVÒæ÷÷'GVæ—G”–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRò÷÷'GVæ—G“¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ$ÔD4…õ$Ud”Ur"’°¢6öç7BfÇVRÒ–B†—FVÒæÖF6„–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRòÖF6ƒ¢G·fÇVWÖ¢"#°¢Ğ¢–b‡G—RÓÓÒ$DTÅô5D”ôâ"’°¢6öç7BfÇVRÒ–B†—FVÒæFVÄ–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRòFVÃ¢G·fÇVWÖ¢"#°¢Ğ¢–b…²$4ôõU$D”ôåõ$UTU5B"Â$4ôõU$D”ôåõ$U5ôå4R"Â$4ôõU$D”ôåôÔD4‚%Òæ–æ6ÇVFW2‡G—R’’°¢6öç7BfÇVRÒ–B†—FVÒæ6ö÷W&F–öä–BÇÂ—FVÒç6÷W&6TVçF—G”–B“°¢&WGW&âfÇVRò6ö÷W&F–öã¢G·fÇVWÖ¢"#°¢Ğ¢&WGW&â"#°¢Ğ ¢gVæ7F–öâF–Ç•F6´ÆVv7”'W6–æW74¶W’†—FVÒÒ·Ò’°¢6öç7BG—RÒ7G&–ær†—FVÒç&V6÷&EG—RÇÂ""’çG&–Ò‚’çFôÆ÷vW$66R‚“°¢6öç7B–BÒ‡fÇVR’Óâ7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢–b‡G—RÓÓÒ&÷÷'GVæ—G’"’°¢÷ß-¢G§²ÚîÆ­yÖ7–6ÆUV’‚“°¢Ğ¢Ò6F6‚†W'&÷"’°¢6VÆV7Ev÷&¶fÆ÷t6öçF7D÷WF6öÖR‡&Wf–÷W4÷WF6öÖR“°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š­‹=ŠÍ˜­˜B˜mŠ­˜­ŠÍŠ’Š}˜MŠ­˜Š}‹]˜B"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢gVæ7F–öâ–6´föÆÆ÷uWF’†F—5fÇVR’°¢6öç7BF—2ÒçVÖ&W"†F—5fÇVRÇÂ“°¢6öç7B–çWBÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$7W7FöÔföÆÆ÷uW"“°¢–b‚–çWB’&WGW&ã°¢6öç7B&6RÒæWrFFR‚“°¢&6Rç6WDFFR†&6RævWDFFR‚’²F—2“°¢6öç7BBÒ‡fÇVR’Óâ7G&–ær‡fÇVR’çE7F'Bƒ"Â#"“°¢6öç7BFFU'BÒG¶&6RævWDgVÆÅ–V"‚—ÒÒG·B†&6RævWDÖöçF‚‚’²—ÒÒG·B†&6RævWDFFR‚’—Ö°¢6öç7BW†—7F–æuF–ÖRÒ7G&–ær†–çWBçfÇVRÇÂ""’æ–æ6ÇVFW2‚%B"’ò–çWBçfÇVRç7Æ—B‚%B"•³Ò¢#£#°¢–çWBçfÇVRÒG¶FFU'GÕBG¶W†—7F–æuF–ÖWÖ°¢Ğ ¢7–æ2gVæ7F–öâ6fTföÆÆ÷uW7F–öâ†'WGFöâ’°¢6öç7B7W7FöÒÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$7W7FöÔföÆÆ÷uW"“òçfÇVRÇÂ"#°¢–b‚7W7FöÒ’&WGW&âæ÷F–g’‚-Š}ŠíŠ­‹˜]˜‹ŠòŠ}˜M˜]Š­Š}Š‹Š’"“°¢6öç7B'6VBÒdB‚“òç'6U&—–F„FFUF–ÖT–çWCòâ†7W7FöÒ’ÇÂæWrFFR†7W7FöÒ“°¢6öç7B&V6—–VçDÖöFRÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$föÆÆ÷uW&V6—–VçB"“òçfÇVRÇÂ"#°¢6öç7BFöF”6†V6²ÒdB‚“òçfÆ–FFUFöF•&WV—&W4gWGW&UF–ÖSòâ‡'6VB“°¢–b‡FöF”6†V6²bbFöF”6†V6²æö²’&WGW&âæ÷F–g’‡FöF”6†V6²æÖW76vR“°¢6WEV”'W7’†'WGFöâÂG'VR“°¢G'’°¢6öç7B–ÆöBÒv—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚'6WEöföÆÆ÷wW"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ°¢æW‡DföÆÆ÷uWC¢'6VBçFô•4õ7G&–ær‚’À¢&V6—–VçDÖöFP¢Ò“°¢v—B&VÆöD7F—fT÷÷'GVæ—G”g&öÕ6W'fW"‚“°¢7–æ5v÷&¶fÆ÷tFWF–Äg&öÔÆ–fV7–6ÆU–ÆöB‡–ÆöBÂ$‚’ä%$ô´U%ô5D”ôãòæföÆÆ÷uW66†VGVÆVBÇÂ&föÆÆ÷wW§66†VGVÆVB"“°¢–b‡–ÆöBæföÆÆ÷uW’7F—fUv÷&¶fÆ÷tFWF–ÂæföÆÆ÷uWÒ–ÆöBæföÆÆ÷uW°¢7F—fUv÷&¶fÆ÷tFWF–ÂææW‡DföÆÆ÷uWBÒ–ÆöBææW‡DföÆÆ÷uWBÇÂ'6VBçFô•4õ7G&–ær‚“°¢7F—fUv÷&¶fÆ÷tFWF–ÂæÆ–fV7–6ÆU7FGW2Ò–ÆöBæÆ–fV7–6ÆU7FGW2ÇÂ$dôÄÄõuõU#°¢7F—fUv÷&¶fÆ÷tFWF–Âç6†÷tföÆÆ÷uW6öæf—&ÖF–öâÒG'VS°¢föÆÆ÷uWVF—DÖöFRÒfÇ6S°¢æ÷F–g’‚-Š­˜RŠİ˜‹‚˜]˜‹ŠòŠ}˜M˜]Š­Š}Š‹Š’(	BŠ=‹‹=˜BŠ­Š=˜=˜­Šı˜½Šr‹Š‹˜Š}Š­‹=Š}Š‚â‹=Š­‹]˜M˜2Š­‹˜=˜­‹Š}Š¢˜-Š˜BŠ}˜M˜]˜‹ŠòŠ˜š-šB‹=Š}‹Š’˜‹=Š}‹Š’â"“°¢v—B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Fö7VÖVçBævWDVÆVÖVçD'”–B‚&–$föÆÆ÷uW6öæf—&Õ6V7F–öâ"“òç67&öÆÄ–çFõf–Wr‡²&V†f–÷#¢'6Öö÷F‚"Â&Æö6³¢&6VçFW""Ò“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Šİ˜‹‚Š}˜M˜]Š­Š}Š‹Š’"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ6æ6VÄföÆÆ÷uW7F–öâ†'WGFöâ’°¢–b‚6öæf—&Ò‚-Š]˜M‹­Š}Š˜]˜‹ŠòŠ}˜M˜]Š­Š}Š‹Š‰ò"’’&WGW&ã°¢6WEV”'W7’†'WGFöâÂG'VR“°¢G'’°¢v—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&6æ6VÅöföÆÆ÷wW"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ·Ò“°¢v—B&VÆöD7F—fT÷÷'GVæ—G”g&öÕ6W'fW"‚“°¢föÆÆ÷uWVF—DÖöFRÒfÇ6S°¢æ÷F–g’‚-Š­˜RŠ]˜M‹­Š}Š˜]˜‹ŠòŠ}˜M˜]Š­Š}Š‹Š’"“°¢v—B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š]˜M‹­Š}ŠŠ}˜M˜]˜‹Šò"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ6ö×ÆWFTföÆÆ÷uW7F–öâ†'WGFöâ’°¢6WEV”'W7’†'WGFöâÂG'VR“°¢G'’°¢6öç7B–ÆöBÒv—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&6ö×ÆWFUöföÆÆ÷wW"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ·Ò“°¢7–æ5v÷&¶fÆ÷tFWF–Äg&öÔÆ–fV7–6ÆU–ÆöB€¢–ÆöBÀ¢$‚’ä%$ô´U%ô5D”ôãòæföÆÆ÷uW6ö×ÆWFRÇÂ&föÆÆ÷wW¦6ö×ÆWFR ¢“°¢föÆÆ÷uWVF—DÖöFRÒfÇ6S°¢æ÷F–g’‚-Š­˜RŠ­‹=ŠÍ˜­˜B˜mŠ­˜­ŠÍŠ’Š}˜MŠ­˜Š}‹]˜B"“°¢v—B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š]Š­˜]Š}˜RŠ}˜M˜]Š­Š}Š‹Š’"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ&V6÷&DföÆÆ÷uW÷WF6öÖR†'WGFöâÂ÷WF6öÖR’°¢–b‚÷WF6öÖR’&WGW&ã°¢6WEV”'W7’†'WGFöâÂG'VR“°¢G'’°¢6öç7B–ÆöBÒv—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&föÆÆ÷wWö÷WF6öÖR"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ²÷WF6öÖRÒ“°¢6öç7B÷WF6öÖT¶W’Ò$‚’æföÆÆ÷uW÷WF6öÖT7F–öä¶W“òâ†÷WF6öÖR’ÇÂföÆÆ÷wW¦÷WF6öÖS¢G¶÷WF6öÖWÖ°¢7–æ5v÷&¶fÆ÷tFWF–Äg&öÔÆ–fV7–6ÆU–ÆöB‡–ÆöBÂ÷WF6öÖT¶W’Â²6öæf—&ÖF–öä÷WF6öÖS¢÷WF6öÖRÒ“°¢æ÷F–g’‚-Š­˜RŠ­‹=ŠÍ˜­˜B˜mŠ­˜­ŠÍŠ’Š}˜MŠ­˜Š}‹]˜B"“°¢–b†÷WF6öÖRÓÓÒ&6öæf—&ÖVB"’°¢v—B6ö×ÆWFTföÆÆ÷uW7F–öâ†'WGFöâ“°¢&WGW&ã°¢Ğ¢v—B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š­‹=ŠÍ˜­˜BŠ}˜M˜mŠ­˜­ŠÍŠ’"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ÷VäföÆÆ÷uW&VÖ–æFW%v†G4‡&öÆR’°¢6öç7BFWF–ÂÒv—BVç&–6„FWF–Äf÷$ÖW76v–ær†7F—fUv÷&¶fÆ÷tFWF–Â“°¢6öç7BVç&–6†VBÒ°¢ââæFWF–ÂÀ¢&V6—–VçE&öÆS¢&öÆRÀ¢÷væW$öffW$–C¢FWF–Âæ÷væW$öffW$–BÇÂföÆÆ÷uW&V6—–VçD6öçFW‡Còæ÷væW$6öçF7D–BÇÂ""À¢6Æ–VçE&WVW7D–C¢FWF–Âæ6Æ–VçE&WVW7D–BÇÂföÆÆ÷uW&V6—–VçD6öçFW‡Còæ6Æ–VçD6öçF7D–BÇÂ" ¢Ó°¢6öç7B6öçF7BÒv—B&W6öÇfUv÷&¶fÆ÷u'G”6öçF7B†Vç&–6†VBÂ&öÆR“°¢–b‚6öçF7Còç†öæR’&WGW&âæ÷F–g’†‹˜-˜RG·&öÆRÓÓÒ&÷væW""ò-Š}˜M˜]Š}˜M˜2"¢-Š}˜M‹˜]˜­˜B'Ò‹­˜­‹˜]Š­˜˜‹“°¢6öç7B†öæRÒv†G6†öæR†6öçF7Bç†öæR“°¢–b‚†öæR’&WGW&âæ÷F–g’‚-‹˜-˜RŠ}˜MŠÍ˜Š}˜B‹­˜­‹˜]˜=Š­˜]˜B"“°¢6öç7B&÷W'G’ÒÄ2‚’æ'V–ÆD÷÷'GVæ—G•7VÖÖ'’òÄ2‚’æ'V–ÆD÷÷'GVæ—G•7VÖÖ'’†FWF–Â’¢"#°¢6öç7BföÆÆ÷rÒdB‚“òæ7F—fTföÆÆ÷uWg&öÕ&V6÷&Còâ†FWF–Â“°¢6öç7Bö–çFÖVçDÆ–æRÒföÆÆ÷sòæ@¢ò„dB‚“òæf÷&ÖDföÆÆ÷uWö–çFÖVçDÆ–æSòâ†föÆÆ÷ræB’ÇÂFFUF–ÖTÆ&VÂ†föÆÆ÷ræB’¢¢"#°¢6öç7BÖW76vRÒ°¢-Š}˜M‹=˜MŠ}˜R‹˜M˜­˜=˜]ˆÂŠ­‹˜=˜­‹Š˜]˜‹ŠòŠ}˜M˜]Š­Š}Š‹Š’ŠŠí‹]˜‹RŠ}˜M‹˜-Š}‹â"À¢&÷W'G’òŠŠí‹]˜‹S¢G·&÷W'G—Ö¢""À¢ö–çFÖVçDÆ–æRòŠ}˜M˜]˜‹Šó¢G¶ö–çFÖVçDÆ–æWÖ¢""À¢-˜}˜B˜]Šr‹-Š}˜BŠ}˜M˜]˜‹Šò˜]˜mŠ}‹=Š˜½Š}‰ò ¢Òæf–ÇFW"„&ööÆVâ’æ¦ö–â‚%Æâ"“°¢÷Våv†G4†æFöfb‡²†öæRÂFW‡C¢ÖW76vRÒ“°¢æ÷F–g’‚-Š­˜R˜Š­ŠÒ˜Š}Š­‹=Š}Š‚"“°¢6öç7Bv†G6¶W’Ò$‚’æföÆÆ÷uWv†G47F–öä¶W“òâ‡&öÆR’ÇÂföÆÆ÷wW§v†G6¢G·&öÆWÖ°¢G'’°¢6öç7B–ÆöBÒv—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚'v†G6ö÷VæVB"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ°¢6öÖ×Væ–6F–öä7F–öã¢'v†G6ö÷VæVB"À¢&V6—–VçE&öÆS¢&öÆP¢Ò“°¢7–æ5v÷&¶fÆ÷tFWF–Äg&öÔÆ–fV7–6ÆU–ÆöB‡–ÆöBÂv†G6¶W’Â²v†G6&öÆS¢&öÆRÒ“°¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%ÒföÆÆ÷wWv†G6&öw&W72"ÂW'&÷"“°¢7F—fUv÷&¶fÆ÷tFWF–ÂÒÖW&vUv÷&¶fÆ÷t'&ö¶W%&öw&W72†7F—fUv÷&¶fÆ÷tFWF–ÂÂv†G6¶W’Â²v†G6&öÆS¢&öÆRÒ“°¢Ğ¢fö–B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&föÆÆ÷wWö6öæf—&ÖF–öåö÷VæVB"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ²&V6—–VçE&öÆS¢&öÆRÒ’æ6F6‚‚‚’Óâ·Ò“°¢7F—fUv÷&¶fÆ÷tFWF–ÂÒ²ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÂ6†÷tföÆÆ÷uW6öæf—&ÖF–öã¢G'VRÓ°¢v—B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ğ ¢7–æ2gVæ7F–öâ6öæf—&Ô6Æ÷6T÷÷'GVæ—G”f–æÂ†'WGFöâ’°¢6öç7B&V6öä¶W’ÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$6Æ÷6U&V6öä¶W’"“òçfÇVRÇÂ"#°¢–b‚&V6öä¶W’’&WGW&âæ÷F–g’‚-Š}ŠíŠ­‹‹=ŠŠ‚Š]˜m˜}Š}ŠŠ}˜M˜‹‹]Š’"“°¢6öç7Bf–æÄ÷WF6öÖRÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$f–æÄ÷WF6öÖR"“òçfÇVRÇÂ"#°¢–b‡&V6öä¶W’ÓÓÒ&FVÅöFöæR"bbf–æÄ÷WF6öÖR’&WGW&âæ÷F–g’‚-Š}ŠíŠ­‹˜mŠ­˜­ŠÍŠ’Š}˜M‹]˜˜-Š’"“°¢6öç7B6Æ÷7W&Tæ÷FRÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&–$6Æ÷6Tæ÷FR"“òçfÇVRÇÂ"#°¢6WEV”'W7’†'WGFöâÂG'VR“°¢G'’°¢v—B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&6Æ÷6Uö÷÷'GVæ—G’"Â7F—fUv÷&¶fÆ÷tFWF–ÂÂ°¢6Æ÷7W&U&V6öä¶W“¢&V6öä¶W’À¢f–æÄ÷WF6öÖS¢&V6öä¶W’ÓÓÒ&FVÅöFöæR"òf–æÄ÷WF6öÖR¢""À¢6Æ÷7W&Tæ÷FP¢Ò“°¢7F—fUv÷&¶fÆ÷tFWF–ÂÒ°¢ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÀ¢Æ–fV7–6ÆU7FGW3¢$$4„•dTB"À¢6Æ÷6VDC¢æWrFFR‚’çFô•4õ7G&–ær‚¢Ó°¢æ÷F–g’‚-Š­˜RŠ]˜m˜}Š}ŠŠ}˜M˜‹‹]Š’˜Š=‹‹M˜Š­˜}Šr"“°¢VÖ—D÷W&F–öç2‚“°¢&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š]˜m˜}Š}ŠŠ}˜M˜‹‹]Š’"“°¢Òf–æÆÇ’°¢6WEV”'W7’†'WGFöâÂfÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ÷VäÖF6†–æt&æ´g&öÕv÷&¶fÆ÷r‚’°¢6öç7BFWF–ÂÒ7F—fUv÷&¶fÆ÷tFWF–Ã°¢6öç7B÷–BÒ7G&–ær†FWF–Ãòæ÷÷'GVæ—G”–BÇÂFWF–Ãòç&V6÷&D–BÇÂ""’ç&WÆ6R‚õæ÷ÒòÂ""“°¢–b†÷–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢6Æ÷6Uv÷&¶fÆ÷uV’‚“°¢v—Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â†÷–B“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ†æFÆUv÷&¶fÆ÷uV”6Æ–6²†WfVçB’°¢6öç7B'WGFöâÒWfVçBçF&vWBæ6Æ÷6W7B‚%¶FF×V’Ö7F–öåÒ"“°¢–b‚'WGFöâ’&WGW&ã°¢6öç7B7F–öâÒ'WGFöâæFF6WBçV”7F–öã°¢–b†7F–öâÓÓÒ&6Æ÷6RÖ÷fW&Æ’"’&WGW&â6Æ÷6Uv÷&¶fÆ÷uV’‚“°¢–b†7F–öâÓÓÒ&&6²"’&WGW&â&VæFW%v÷&¶fÆ÷uV’‚“°¢–b†7F–öâÓÓÒ&÷Vâ×66†VGVÆR"’&WGW&â6†÷u66†VGVÆTf÷&Ò‚“°¢–b†7F–öâÓÓÒ&÷VâÖ6Æ÷6R"’&WGW&â6†÷t6Æ÷6Tf÷&Ò‚“°¢–b†7F–öâÓÓÒ&÷Vâ×&WVW7B"’&WGW&â6†÷u&WVW7Df÷&Ò‚“°¢–b†7F–öâÓÓÒ'6fR×66†VGVÆR"’&WGW&â6fUf–Wv–æu66†VGVÆR†'WGFöâ“°¢–b†7F–öâÓÓÒ'6fRÖæVv÷F–F–öâ"’&WGW&â6fTæVv÷F–F–öâ†'WGFöâ“°¢–b†7F–öâÓÓÒ&6öæf—&Ò×f–Wv–ær"’&WGW&â6öæf—&Õf–Wv–æu'G’†'WGFöâ“°¢–b†7F–öâÓÓÒ&6ö×ÆWFR"’&WGW&â6ö×ÆWFTf7DFVÂ†'WGFöâ“°¢–b†7F–öâÓÓÒ'6fRÖ6Æ÷6R"’&WGW&â6fT6Æ÷6U&V6öâ†'WGFöâ“°¢–b†7F–öâÓÓÒ'6VæB×&WVW7B"’&WGW&â6VæD÷væW%&WVW7B†'WGFöâ“°¢6öç7BÖW76vU7FvRÒ7F—fUv÷&¶fÆ÷tFWF–Âç7FGW2ÓÓÒ&6Æ÷6VB"bb7F—fUv÷&¶fÆ÷tFWF–Âçv÷&¶fÆ÷u7FvRÓÓÒ&6Æ÷6VB"ò&6ö×ÆWFVB"¢7F—fUv÷&¶fÆ÷tFWF–Âç7FGW3°¢–b†7F–öâÓÓÒ'v†G6Ö6Æ–VçB"’&WGW&â÷Våv÷&¶fÆ÷uv†G4‡²ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÂ&V6—–VçE&öÆS¢&6Æ–VçB"ÂÖW76vU7FvRÒ“°¢–b†7F–öâÓÓÒ'v†G6Ö÷væW""’&WGW&â÷Våv÷&¶fÆ÷uv†G4‡²ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÂ&V6—–VçE&öÆS¢&÷væW""ÂÖW76vU7FvRÒ“°¢–b†7F–öâÓÓÒ'FVÆVw&ÒÖ6Æ–VçB"’&WGW&â÷Våv÷&¶fÆ÷uFVÆVw&Ò‡²ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÂ&V6—–VçE&öÆS¢&6Æ–VçB"ÂÖW76vU7FvRÒ“°¢–b†7F–öâÓÓÒ'FVÆVw&ÒÖ÷væW""’&WGW&â÷Våv÷&¶fÆ÷uFVÆVw&Ò‡²ââæ7F—fUv÷&¶fÆ÷tFWF–ÂÂ&V6—–VçE&öÆS¢&÷væW""ÂÖW76vU7FvRÒ“°¢–b†7F–öâÓÓÒ'v†G6Ö6öçF7B"’&WGW&â÷Vä6öçF7Ev†G4F—&V7B‚“°¢–b†7F–öâÓÓÒ&6ÆÂÖ6öçF7B"’&WGW&â÷Vä6öçF7D6ÆÄF—&V7B‚“°¢–b†7F–öâÓÓÒ&6öçF7BÖ÷WF6öÖR"’&WGW&â&V6÷&D6öçF7D÷WF6öÖT7F–öâ†'WGFöâÂ'WGFöâæFF6WBæ÷WF6öÖR“°¢–b†7F–öâÓÓÒ'6fRÖföÆÆ÷wWÖ7W7FöÒ"’&WGW&â6fTföÆÆ÷uW7F–öâ†'WGFöâ“°¢–b†7F–öâÓÓÒ'–6²ÖföÆÆ÷wWÖF’"’&WGW&â–6´föÆÆ÷uWF’†'WGFöâæFF6WBæF—2“°¢–b†7F–öâÓÓÒ&VF—BÖföÆÆ÷wW"’°¢föÆÆ÷uWVF—DÖöFRÒG'VS°¢&WGW&âfö–B&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ğ¢–b†7F–öâÓÓÒ&6æ6VÂÖföÆÆ÷wW"’&WGW&â6æ6VÄföÆÆ÷uW7F–öâ†'WGFöâ“°¢–b†7F–öâÓÓÒ&6ö×ÆWFRÖföÆÆ÷wW"’&WGW&â6ö×ÆWFTföÆÆ÷uW7F–öâ†'WGFöâ“°¢–b†7F–öâÓÓÒ&föÆÆ÷wWÖ÷WF6öÖR"’&WGW&â&V6÷&DföÆÆ÷uW÷WF6öÖR†'WGFöâÂ'WGFöâæFF6WBæ÷WF6öÖR“°¢–b†7F–öâÓÓÒ&föÆÆ÷wW×v†G6"’&WGW&â÷VäföÆÆ÷uW&VÖ–æFW%v†G4†'WGFöâæFF6WBç&öÆR“°¢–b†7F–öâÓÓÒ&÷VâÖÆ–fV7–6ÆRÖ6Æ÷6R"’&WGW&â6†÷tÆ–fV7–6ÆT6Æ÷6Tf÷&Ò‚“°¢–b†7F–öâÓÓÒ&6öæf—&ÒÖf–æÂÖ6Æ÷6R"’&WGW&â6öæf—&Ô6Æ÷6T÷÷'GVæ—G”f–æÂ†'WGFöâ“°¢–b†7F–öâÓÓÒ&÷VâÖÖF6†–ærÖ&æ²"’&WGW&â÷VäÖF6†–æt&æ´g&öÕv÷&¶fÆ÷r‚“°¢–b†7F–öâÓÓÒ&6öæf—&ÒÖ6öçF7B"’&WGW&âæ÷F–g’‚-‹=ŠÍ™˜B˜mŠ­˜­ŠÍŠ’Š}˜MŠ­˜Š}‹]˜BŠ‹Šò˜Š}Š­‹=Š}Š‚Š=˜‚Š}Š­‹]Š}˜B"“°¢–b†7F–öâÓÓÒ'6fRÖÆ–fV7–6ÆR×7FGW2"’&WGW&âæ÷F–g’‚-Š}‹=Š­ŠíŠı˜R˜mŠ­˜­ŠÍŠ’Š}˜MŠ­˜Š}‹]˜BŠŠı˜BŠ­‹­˜­˜­‹Š}˜MŠİŠ}˜MŠ’Š}˜M‹Š}˜R"“°¢–b†7F–öâÓÓÒ&÷VâÖföÆÆ÷wW"’&WGW&â&VæFW$÷÷'GVæ—G”Æ–fV7–6ÆUV’‚“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆT÷W&F–öå&–Ö'’†FWF–Â’°¢6öç7B÷W&F–öä–BÒFWF–Âç&V6÷&D–BÇÂFWF–Âæ–C°¢v—B÷7D÷W&F–öä7F–öâ†÷W&F–öä–BÂ%5D%B"“°¢æ÷F–g’†FWF–Âæ7F–öäÆ&VÂÇÂ-Š­˜RŠ­‹=ŠÍ˜­˜BŠŠıŠŠ}˜MŠ]ŠÍ‹Š}Š"“°¢–b†FWF–Âæ÷W&F–öåG—RÓÓÒ$Ô•54”äuôDD"’°¢6öç7B÷÷'GVæ—G”–BÒ7G&–ær†FWF–Âæ÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚“°¢–b†÷÷'GVæ—G”–Bbbv–æF÷rä”#òç&VæFW$F–Ç•F6´÷÷'GVæ—G’’°¢6öç7B÷VæVBÒv—Bv–æF÷rä”"ç&VæFW$F–Ç•F6´÷÷'GVæ—G’‚&÷W&F–öç5F6µæVÂ"Â÷÷'GVæ—G”–B“°¢–b†÷VæVB’&WGW&ã°¢Ğ¢–b†÷÷'GVæ—G”–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢fö–Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â†÷÷'GVæ—G”–B“°¢ÒVÇ6R–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”&æ²’°¢v–æF÷rä”"æ÷Vä÷÷'GVæ—G”&æ²‚“°¢Ğ¢&WGW&ã°¢Ğ¢–b†FWF–Âæ÷W&F–öåG—RÓÓÒ$4ôõU$D”ôåõ$UTU5B"ÇÂFWF–Âæ÷W&F–öåG—RÓÓÒ$4ôõU$D”ôåõ$U5ôå4R"’°¢–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”&æ²’v–æF÷rä”"æ÷Vä÷÷'GVæ—G”&æ²‚“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ†æFÆT÷W&F–öå6V6öæF'’†FWF–Â’°¢6öç7B÷W&F–öä–BÒFWF–Âç&V6÷&D–BÇÂFWF–Âæ–C°¢v—B÷7D÷W&F–öä7F–öâ†÷W&F–öä–BÂ$4ôÕÄUDR"“°¢æ÷F–g’‚-Š­˜RŠ]Š­˜]Š}˜RŠ}˜MŠ]ŠÍ‹Š}Š"“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆT÷W&F–öäF—6Ö—72†FWF–Â’°¢6öç7B÷W&F–öä–BÒFWF–Âç&V6÷&D–BÇÂFWF–Âæ–C°¢v—B÷7D÷W&F–öä7F–öâ†÷W&F–öä–BÂ$D•4Ô•52"ÂFWF–ÂæF—6Ö—76Å&V6öâÇÂ""“°¢æ÷F–g’‚-Š­˜R‹]‹˜Š}˜M˜m‹‹‹˜bŠ}˜MŠ]ŠÍ‹Š}Š"“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆU&–Ö'”7F–öâ†FWF–Â’°¢–b†FWF–Âç&V6÷&EG—RÓÓÒ'7VÖÖ'’"’°¢–b†FWF–ÂçF&vWD–B’v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ÷W&F–öâ"Â²FWF–Ã¢²–C¢FWF–ÂçF&vWD–BÂÖ–ã¢FWF–ÂçF&vWDÖ–âÇÂ&÷÷'GVæ—F–W2"ÒÒ’“°¢VÇ6Ræ÷F–g’‚-˜MŠrŠ­˜ŠÍŠò˜‹‹]Š’ŠÍŠ}˜}‹-Š’Š}˜MŠ-˜b"“°¢&WGW&ã°¢Ğ¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷W&F–öâ"’°¢v—B†æFÆT÷W&F–öå&–Ö'’†FWF–Â“°¢&WGW&ã°¢Ğ¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷÷'GVæ—G’"’°¢6öç7B÷–BÒ7G&–ær†FWF–Âç&V6÷&D–BÇÂFWF–Âæ÷÷'GVæ—G”–BÇÂ""¢ç&WÆ6R‚õæ÷ÒòÂ""“°¢–b†÷–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢v—Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â†÷–B“°¢&WGW&ã°¢Ğ¢Ğ¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&–çF¶R"’°¢6öç7B÷–BÒ7G&–ær†FWF–Âæ÷÷'GVæ—G”–BÇÂ""’çG&–Ò‚“°¢–b†÷–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢v—Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â†÷–B“°¢&WGW&ã°¢Ğ¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢&WGW&ã°¢Ğ¢–b…²&ÖF6‚"Â&FVÂ%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’°¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢&WGW&ã°¢Ğ¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&–çF¶R"’°¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ†æFÆU6V6öæF'”7F–öâ†FWF–Â’°¢–b†FWF–Âç&V6÷&EG—RÓÓÒ'7VÖÖ'’"’&WGW&ã°¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷W&F–öâ"’°¢v—B†æFÆT÷W&F–öå6V6öæF'’†FWF–Â“°¢&WGW&ã°¢Ğ¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷÷'GVæ—G’"’°¢6öç7B÷–BÒ7G&–ær†FWF–Âç&V6÷&D–BÇÂFWF–Âæ÷÷'GVæ—G”–BÇÂ""’ç&WÆ6R‚õæ÷ÒòÂ""“°¢–b†÷–B’v—B÷Vä÷÷'GVæ—G”ÖævVÖVçB†÷–B“°¢&WGW&ã°¢Ğ¢–b…²&ÖF6‚"Â&FVÂ%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’°¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢&WGW&ã°¢Ğ¢–b…²&–çF¶R"Â&÷÷'GVæ—G’%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’°¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢Ğ¢Ğ ¢gVæ7F–öâ6WD÷÷'GVæ—G•f–Wr‡f–Wr’°¢÷÷'GVæ—G•f–WrÒf–WrÓÓÒ&&6†—fVB"ò&&6†—fVB"¢&7F—fR#°¢VÖ—D÷W&F–öç2‚“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆUV–6´6ÆÂ†FWF–Â’°¢–b…²&ÖF6‚"Â&FVÂ%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’°¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢&WGW&ã°¢Ğ¢6öç7B†öæT–æfòÒ&W6öÇfTÆ–fV7–6ÆU†öæR†FWF–Â“°¢–b‚†öæT–æfòçfÆ–B’&WGW&âæ÷F–g’‡†öæT–æfòæW'&÷"ÇÂ-‹˜-˜RŠ}˜MŠÍ˜Š}˜B‹­˜­‹˜]˜=Š­˜]˜B"“°¢v–æF÷ræÆö6F–öâæ‡&VbÒFVÃ¢G·†öæT–æfòæÆö6ÇÖ°¢fö–B÷÷'GVæ—G”Æ–fV7–6ÆT7F–öâ‚&6ÆÅö÷VæVB"ÂFWF–ÂÂ²6öÖ×Væ–6F–öä7F–öã¢&6ÆÅö÷VæVB"Ò’æ6F6‚‚†W'&÷"’Óâ°¢6öç6öÆRçv&â‚%¶–%Ò6ÆÂ÷VæVBÆör"ÂW'&÷"“°¢Ò“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆUV–6´föÆÆ÷wW†FWF–Â’°¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷÷'GVæ—G’"ÇÂFWF–Âæ÷÷'GVæ—G”–B’°¢6öç7B÷–BÒ7G&–ær†FWF–Âç&V6÷&D–BÇÂFWF–Âæ÷÷'GVæ—G”–BÇÂ""’ç&WÆ6R‚õæ÷ÒòÂ""“°¢–b†÷–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”ÖævVÖVçB’°¢v—Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”ÖævVÖVçB†÷–BÂ²fö7W4föÆÆ÷uW¢G'VRÒ“°¢&WGW&ã°¢Ğ¢Ğ¢v—B÷Våv÷&¶fÆ÷uV’‡²ââæFWF–ÂÂfö7W4föÆÆ÷uW&VÖ–æFW#¢G'VRÒ“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆUV–6µ66†VGVÆUf–Wv–ær†FWF–Â’°¢–b‚²&ÖF6‚"Â&FVÂ%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’°¢&WGW&â†æFÆUV–6´föÆÆ÷wW†FWF–Â“°¢Ğ¢v—B÷Våv÷&¶fÆ÷uV’†FWF–Â“°¢6†÷u66†VGVÆTf÷&Ò‚“°¢Ğ ¢7–æ2gVæ7F–öâ†æFÆT7F–öâ†WfVçB’°¢6öç7BFWF–ÂÒWfVçBæFWF–ÂÇÂ·Ó°¢G'’°¢–b†FWF–Âæ7F–öäÖöFRÓÓÒ&6ÆÂ"’v—B†æFÆUV–6´6ÆÂ†FWF–Â“°¢VÇ6R–b†FWF–Âæ7F–öäÖöFRÓÓÒ&föÆÆ÷wW"’v—B†æFÆUV–6´föÆÆ÷wW†FWF–Â“°¢VÇ6R–b†FWF–Âæ7F–öäÖöFRÓÓÒ'66†VGVÆU÷f–Wv–ær"’v—B†æFÆUV–6µ66†VGVÆUf–Wv–ær†FWF–Â“°¢VÇ6R–b†FWF–Âæ7F–öäÖöFRÓÓÒ'v†G6"ÇÂFWF–Âæ7F–öäÖöFRÓÓÒ'FVÆVw&Ò"’°¢òò†6Rs¢ÖF6‚ö6öÖ×Væ–6F–öâ÷W&F–öç2Ö’7&VFRG&gG3²æWfW"WFò×6VæBà¢6öç7B6†ææVÂÒFWF–Âæ7F–öäÖöFRÓÓÒ'FVÆVw&Ò"ÇÂFWF–Âæ6†ææVÂÓÓÒ'FVÆVw&Ò ¢ò'FVÆVw&Ò ¢¢'v†G6#°¢–b†6†ææVÂÓÓÒ'FVÆVw&Ò"’v—B÷Våv÷&¶fÆ÷uFVÆVw&Ò†FWF–Â“°¢VÇ6Rv—B÷Våv÷&¶fÆ÷uv†G4†FWF–Â“°¢ÒVÇ6R–b†FWF–Âæ7F–öäÖöFRÓÓÒ&F—6Ö—72"’v—B†æFÆT÷W&F–öäF—6Ö—72†FWF–Â“°¢VÇ6R–b†FWF–Âæ7F–öäÖöFRÓÓÒ'6V6öæF'’"’v—B†æFÆU6V6öæF'”7F–öâ†FWF–Â“°¢VÇ6Rv—B†æFÆU&–Ö'”7F–öâ†FWF–Â“°¢Ò6F6‚†W'&÷"’°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š­˜m˜˜­‹Š}˜MŠ]ŠÍ‹Š}Š"“°¢Ğ¢Ğ ¢ÆWB7W'&VçDf6Õ&Vv—7G&F–öâÒ²–C¢""ÂG—S¢""Ó°¢ÆWBf÷&Vw&÷VæDÖW76vUVç7V'67&–&RÒçVÆÃ°¢ÆWBf÷&Vw&÷VæE6WGWVæF–ærÒfÇ6S°¢6öç7B6VVåW6„FVÆ—fW&–W2ÒæWr6WB‚“°¢ÆWBFVfW'&VD–ç7FÆÅ&ö×BÒçVÆÃ° ¢gVæ7F–öâæ÷F–f–6F–öäæöFW2‚’°¢&WGW&â°¢6öçG&öÃ¢Fö7VÖVçBævWDVÆVÖVçD'”–B‚&öff–6Tæ÷F–f–6F–öä6öçG&öÂ"’À¢7FGW3¢Fö7VÖVçBævWDVÆVÖVçD'”–B‚&öff–6Tæ÷F–f–6F–öå7FGW2"¢Ó°¢Ğ ¢gVæ7F–öâ6WDæ÷F–f–6F–öå7FGW2‡FW‡B’°¢6öç7BæöFRÒæ÷F–f–6F–öäæöFW2‚’ç7FGW3°¢–b†æöFR’æöFRçFW‡D6öçFVçBÒFW‡C°¢Ğ ¢7–æ2gVæ7F–öâvWDf6Ô6öæf–r‚’°¢6öç7B&W7öç6RÒv—BfWF6‚†G·&W6öÇfUv÷&¶W$&6R‚—Òöf6Òö6öæf–vÂ²66†S¢&æò×7F÷&R"Ò“°¢–b‚&W7öç6Ræö²’F‡&÷ræWrW'&÷"‚-Š­‹‹‹˜-‹Š}ŠŠ’Š]‹ŠıŠ}ŠıŠ}Š¢Š}˜MŠ]‹M‹Š}‹Š}Š¢"“°¢&WGW&â&W7öç6Ræ§6öâ‚“°¢Ğ ¢gVæ7F–öâæ÷F–f–6F–öä–ç7FÆÆF–öä–B‚’°¢6öç7B¶W’Ò&–"ææ÷F–f–6F–öä–ç7FÆÆF–öä–B#°¢G'’°¢ÆWBfÇVRÒÆö6Å7F÷&vRævWD—FVÒ†¶W’“°¢–b‚fÇVR’°¢fÇVRÒv–æF÷ræ7'—FòbbG—Vöbv–æF÷ræ7'—Fòç&æFöÕUT”BÓÓÒ&gVæ7F–öâ ¢òv–æF÷ræ7'—Fòç&æFöÕUT”B‚¢¢vV"ÒG´FFRææ÷r‚—ÒÒG´ÖF‚ç&æFöÒ‚’çFõ7G&–ærƒ3b’ç6Æ–6Rƒ"—Ö°¢Æö6Å7F÷&vRç6WD—FVÒ†¶W’ÂfÇVR“°¢Ğ¢&WGW&âfÇVS°¢Ò6F6‚…ò’°¢&WGW&âvV"ÒG´FFRææ÷r‚—ÒÒG´ÖF‚ç&æFöÒ‚’çFõ7G&–ærƒ3b’ç6Æ–6Rƒ"—Ö°¢Ğ¢Ğ ¢gVæ7F–öâFWf–6TæÖR‚’°¢6öç7BvVçBÒæf–vF÷"çW6W$vVçBÇÂ"#°¢6öç7B'&÷w6W"ÒôVFuÂòòçFW7B†vVçB’ò$VFvR"¢ô6‡&öÖUÂòòçFW7B†vVçB’ò$6‡&öÖR"¢ôf—&Vf÷…ÂòòçFW7B†vVçB’ò$f—&Vf÷‚"¢õ6f&•ÂòòçFW7B†vVçB’ò%6f&’"¢-˜]Š­‹]˜ŠÒ#°¢6öç7BÆFf÷&ÒÒôæG&ö–Bö’çFW7B†vVçB’ò$æG&ö–B"¢ö•†öæWÆ•GÆ•öBö’çFW7B†vVçB’ò&•†öæRö•B"¢õv–æF÷w2ö’çFW7B†vVçB’ò%v–æF÷w2"¢ôÖ6–çF÷6‚ö’çFW7B†vVçB’ò$Ö2"¢-ŠÍ˜}Š}‹"#°¢&WGW&âG¶'&÷w6W'Ò(	BG·ÆFf÷&×Ö°¢Ğ ¢gVæ7F–öâæ÷F–f–6F–öåW&Â†FFÒ·Ò’°¢–b‡v–æF÷rä”#òæ'V–ÆDæ÷F–f–6F–öå&VÆF—fUW&Â’°¢&WGW&âv–æF÷rä”"æ'V–ÆDæ÷F–f–6F–öå&VÆF—fUW&Â†FF“°¢Ğ¢–b†FFçW&Âbb7G&–ær†FFçW&Â’ç7F'G5v—F‚‚"ò"’’&WGW&âFFçW&Ã°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢6öç7B&×2ÒæWrU$Å6V&6…&×2‡²öff–6T–C¢'VçF–ÖRbb'VçF–ÖRæöff–6T–BÇÂ'ÆFf÷&Ò"Ò“°¢–b†FFæFVÄ–B’&×2ç6WB‚&÷VäFVÂ"ÂFFæFVÄ–B“°¢VÇ6R–b†FFæÖF6„–BÇÂFFç&V6÷&D–B’&×2ç6WB‚&÷VäÖF6‚"ÂFFæÖF6„–BÇÂFFç&V6÷&D–B“°¢&WGW&âóòG·&×2çFõ7G&–ær‚—Ö°¢Ğ ¢gVæ7F–öâVç7W&T÷W&F–öç4†öÖR‚’°¢v–æF÷rä”#òæ†öÖUF'3òç7v—F6…Fóòâ‚&÷W&F–öç2"“°¢6öç7Bv÷&·76RÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'v÷&·76R"“°¢–b‡v÷&·76R’v÷&·76Rç67&öÆÄ–çFõf–Wr‡²&V†f–÷#¢'6Öö÷F‚"Â&Æö6³¢'7F'B"Ò“°¢Ğ ¢7–æ2gVæ7F–öâ÷Vå&V6÷&Dg&öÔæ÷F–f–6F–öâ‡&V6÷&D–B’°¢6öç7B–BÒ7G&–ær‡&V6÷&D–BÇÂ""’çG&–Ò‚“°¢–b‚–B’&WGW&â÷Väæ÷F–f–6F–öä6VçFW"‚“°¢Vç7W&T÷W&F–öç4†öÖR‚“°¢6öç7BW†—7F–ærÒ÷W&F–öä—FV×2æf–æB‚†—FVÒ’Óà¢—FVÒæ–BÓÓÒ–@¢ÇÂ—FVÒç&V6÷&D–BÓÓÒ–@¢ÇÂ—FVÒæÖF6„–BÓÓÒ–@¢ÇÂ—FVÒæFVÄ–BÓÓÒ–@¢“°¢–b†W†—7F–ær’°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ÷W&F–öâ"Â°¢FWF–Ã¢²–C¢W†—7F–æræ–BÂÖF6„–C¢W†—7F–æræÖF6„–BÇÂVæFVf–æVBĞ¢Ò’“°¢&WGW&ã°¢Ğ¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‡'VçF–ÖSòç&Vg2’°¢6öç7BÖF6…6æÒv—B'VçF–ÖRç&Vg2æÖF6†W2æFö2†–B’ævWB‚’æ6F6‚‚‚’ÓâçVÆÂ“°¢–b†ÖF6…6æòæW†—7G2’°¢v—B÷Våv÷&¶fÆ÷uV’‡²ââæÖF6…6ææFF‚’Â&V6÷&D–C¢–BÂ&V6÷&EG—S¢&ÖF6‚"Ò“°¢&WGW&ã°¢Ğ¢6öç7BFVÅ6æÒv—B'VçF–ÖRç&Vg2æFVÇ2æFö2†–B’ævWB‚’æ6F6‚‚‚’ÓâçVÆÂ“°¢–b†FVÅ6æòæW†—7G2’°¢v—B÷Våv÷&¶fÆ÷uV’‡²ââæFVÅ6ææFF‚’Â&V6÷&D–C¢–BÂ&V6÷&EG—S¢&FVÂ"ÂFVÄ–C¢–BÒ“°¢&WGW&ã°¢Ğ¢Ğ¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ÷W&F–öâ"Â²FWF–Ã¢²–BÂÖF6„–C¢–BÒÒ’“°¢Ğ ¢gVæ7F–öâ÷Väæ÷F–f–6F–öä6VçFW"‚’°¢Vç7W&T÷W&F–öç4†öÖR‚“°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ÷W&F–öâ"Â²FWF–Ã¢²–C¢çVÆÂÒÒ’“°¢Ğ ¢6öç7BTäD”äuôäõD”d”4D”ôåõD$tUEô´U’Ò&–"çVæF–ætæ÷F–f–6F–öåF&vWB#° ¢gVæ7F–öâ6fUVæF–ætæ÷F–f–6F–öåF&vWB‡F&vWB’°¢–b‚F&vWB’&WGW&ã°¢G'’°¢6W76–öå7F÷&vRç6WD—FVÒ…TäD”äuôäõD”d”4D”ôåõD$tUEô´U’Â¥4ôâç7G&–æv–g’‡F&vWB’“°¢Ò6F6‚…ò’²ò¢–væ÷&R¢òĞ¢Ğ ¢gVæ7F–öâ&VEVæF–ætæ÷F–f–6F–öåF&vWB‚’°¢G'’°¢&WGW&â¥4ôâç'6R‡6W76–öå7F÷&vRævWD—FVÒ…TäD”äuôäõD”d”4D”ôåõD$tUEô´U’’ÇÂ&çVÆÂ"“°¢Ò6F6‚…ò’°¢&WGW&âçVÆÃ°¢Ğ¢Ğ ¢gVæ7F–öâ6ÆV%VæF–ætæ÷F–f–6F–öåF&vWB‚’°¢G'’²6W76–öå7F÷&vRç&VÖ÷fT—FVÒ…TäD”äuôäõD”d”4D”ôåõD$tUEô´U’“²Ğ¢6F6‚…ò’²ò¢–væ÷&R¢òĞ¢Ğ ¢gVæ7F–öâæf–vFTæ÷F–f–6F–öåF&vWB‡F&vWB’°¢–b‚F&vWB’&WGW&â÷Väæ÷F–f–6F–öä6VçFW"‚“°¢6öç7BW6W"Òv–æF÷ræf—&V&6SòæWFƒòâ‚“òæ7W'&VçEW6W#°¢–b‚W6W"’°¢6fUVæF–ætæ÷F–f–6F–öåF&vWB‡F&vWB“°¢æ÷F–g’‚-‹=ŠÍ˜BŠıŠí˜˜BŠ}˜M˜]˜=Š­Š‚˜M‹‹‹b˜}‹ŠrŠ}˜MŠ]‹M‹Š}‹"“°¢&WGW&ã°¢Ğ¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‚'VçF–ÖSòæöff–6T–B’°¢6fUVæF–ætæ÷F–f–6F–öåF&vWB‡F&vWB“°¢&WGW&ã°¢Ğ¢6öç7B&WVW7FVDöff–6RÒ7G&–ær‡F&vWBæöff–6T–BÇÂ""’çG&–Ò‚“°¢–b‡&WVW7FVDöff–6Rbb&WVW7FVDöff–6RÓÒ'ÆFf÷&Ò"bb&WVW7FVDöff–6RÓÒ'VçF–ÖRæöff–6T–B’°¢æ÷F–g’‚-˜}‹ŠrŠ}˜MŠ]‹M‹Š}‹˜­Ší‹R˜]˜=Š­Š˜½ŠrŠ-Ší‹"“°¢&WGW&â÷Väæ÷F–f–6F–öä6VçFW"‚“°¢Ğ ¢6ÆV%VæF–ætæ÷F–f–6F–öåF&vWB‚“° ¢7v—F6‚‡F&vWBæ¶–æB’°¢66R&F–Ç’×F6²#¢°¢v–æF÷rä”#òæ†öÖUF'3òç7v—F6…Fóòâ‚&÷W&F–öç2"“°¢6öç7BFWF–ÂÒ°¢–C¢F&vWBæ–BÀ¢F6´–C¢F&vWBæ–BÀ¢ÖF6„w&÷W–C¢F&vWBæ–BÀ¢ÖF6„–C¢F&vWBæÖF6„–BÇÂ""À¢÷÷'GVæ—G”–C¢F&vWBæ÷÷'GVæ—G”–BÇÂ""À¢÷W&F–öä–C¢F&vWBæ÷W&F–öä–BÇÂ" ¢Ó°¢v–æF÷rä”"Òv–æF÷rä”"ÇÂ·Ó°¢v–æF÷rä”"çVæF–ætF–Ç•F6´÷VâÒFWF–Ã°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ÷W&F–öâ"Â²FWF–ÂÒ’“°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖF–Ç’×F6²"Â²FWF–ÂÒ’“°¢v–æF÷rç6WEF–ÖV÷WB‚‚’Óâ°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖF–Ç’×F6²"Â²FWF–ÂÒ’“°¢ÒÂ#“°¢'&V³°¢Ğ¢66R&÷÷'GVæ—G’# ¢–b‡F&vWBæ–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”ÖævVÖVçB’°¢fö–Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”ÖævVÖVçB‡F&vWBæ–BÂ²fö7W4föÆÆ÷uW¢F&vWBæfö7W4föÆÆ÷uWÒ“°¢ÒVÇ6R–b‡F&vWBæ–Bbbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢fö–Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â‡F&vWBæ–B“°¢ÒVÇ6R–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”&æ²’°¢v–æF÷rä”"æ÷Vä÷÷'GVæ—G”&æ²‚“°¢ÒVÇ6R÷Väæ÷F–f–6F–öä6VçFW"‚“°¢'&V³°¢66R&6ö÷W&F–öâ# ¢–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”&æ²’v–æF÷rä”"æ÷Vä÷÷'GVæ—G”&æ²‚“°¢6WEF–ÖV÷WB‚‚’Óâ°¢6öç7BæVÂÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&&æ´–æ6öÖ–æu&WVW7G2"“°¢–b‡æVÂ’æVÂç67&öÆÄ–çFõf–Wr‡²&V†f–÷#¢'6Öö÷F‚"Â&Æö6³¢'7F'B"Ò“°¢ÒÂc“°¢'&V³°¢66R&ÖW76vR# ¢–b‡F&vWBæ–B’°¢fö–B÷Vå&V6÷&Dg&öÔæ÷F–f–6F–öâ‡F&vWBæ–B“°¢ÒVÇ6R÷Väæ÷F–f–6F–öä6VçFW"‚“°¢'&V³°¢66R&FVÂ# ¢66R&ÖF6‚# ¢fö–B÷Vå&V6÷&Dg&öÔæ÷F–f–6F–öâ‡F&vWBæ–B“°¢'&V³°¢66R&÷W&F–öâ# ¢–b‡F&vWBæ–Còç7F'G5v—F‚‚&÷ò"’bbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”ÖævVÖVçB’°¢fö–Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”ÖævVÖVçB‡F&vWBæ–Bç&WÆ6R‚õæ÷òòÂ""’Â²fö7W4föÆÆ÷uW¢fÇ6RÒ“°¢ÒVÇ6R–b‡F&vWBæ–Còç7F'G5v—F‚‚&÷ò"’bbv–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢fö–Bv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â‡F&vWBæ–B“°¢ÒVÇ6R–b‡F&vWBæ–Còç7F'G5v—F‚‚&6ö÷ò"’’°¢–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”&æ²’v–æF÷rä”"æ÷Vä÷÷'GVæ—G”&æ²‚“°¢ÒVÇ6R°¢fö–B÷Vå&V6÷&Dg&öÔæ÷F–f–6F–öâ‡F&vWBæ–B“°¢Ğ¢'&V³°¢66R&FÖ–â# ¢6öç7B&×2ÒæWrU$Å6V&6…&×2‚“°¢&×2ç6WB‚&öff–6R"Â'ÆFf÷&Ò"“°¢&×2ç6WB‚&FÖ–äÆ–6F–öç2"Â#"“°¢–b‡F&vWBæ–B’&×2ç6WB‚&÷Vä'&ö¶W$Æ–6F–öâ"ÂF&vWBæ–B“°¢v–æF÷ræÆö6F–öâæ‡&VbÒóòG·&×2çFõ7G&–ær‚—Ö°¢'&V³°¢66R'W&Â# ¢6öç7BF‚Ò7G&–ær‡F&vWBçF‚ÇÂ""“°¢–b‡F‚bbF‚ÓÒ"ò"bbF‚æ–æ6ÇVFW2‚'f–Ws×V&Æ–2"’’°¢v–æF÷ræÆö6F–öâæ‡&VbÒF‚ç7F'G5v—F‚‚"ò"’òF‚¢òG·F‡Ö°¢ÒVÇ6R÷Väæ÷F–f–6F–öä6VçFW"‚“°¢'&V³°¢66R&6VçFW"# ¢FVfVÇC ¢÷Väæ÷F–f–6F–öä6VçFW"‚“°¢Ğ¢Ğ ¢gVæ7F–öâ&WÆ•VæF–ætæ÷F–f–6F–öåF&vWB‚’°¢6öç7BVæF–ærÒ&VEVæF–ætæ÷F–f–6F–öåF&vWB‚“°¢–b‚VæF–ær’&WGW&ã°¢v–æF÷rç6WEF–ÖV÷WB‚‚’Óâæf–vFTæ÷F–f–6F–öåF&vWB‡VæF–ær’Â3S“°¢Ğ ¢gVæ7F–öâ†æFÆTæ÷F–f–6F–öäFVWÆ–æ´g&öÔFF†FFÒ·Ò’°¢–b‡v–æF÷rä”#òæ'V–ÆDæ÷F–f–6F–öåF&vWDg&öÔFF’°¢æf–vFTæ÷F–f–6F–öåF&vWB‡v–æF÷rä”"æ'V–ÆDæ÷F–f–6F–öåF&vWDg&öÔFF†FF’“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ&VfW'&VDf6Ô'&–FvR‚’°¢–b‚v–æF÷rä”%ôd4Õõ$TE’’&WGW&âçVÆÃ°¢G'’²&WGW&âv—Bv–æF÷rä”%ôd4Õõ$TE“²Ğ¢6F6‚…ò’²&WGW&âçVÆÃ²Ğ¢Ğ ¢gVæ7F–öâ†æFÆTf÷&Vw&÷VæE–ÆöB‡–ÆöB’°¢6öç7BÖW76vRÒ–ÆöBÇÂ·Ó°¢6öç7BFFÒÖW76vRæFFÇÂ·Ó°¢6öç7BFVÆ—fW'”–BÒ7G&–ær†FFæFVÆ—fW'”–BÇÂÖW76vRæÖW76vT–BÇÂ""“°¢–b†FVÆ—fW'”–Bbb6VVåW6„FVÆ—fW&–W2æ†2†FVÆ—fW'”–B’’&WGW&ã°¢–b†FVÆ—fW'”–B’°¢6VVåW6„FVÆ—fW&–W2æFB†FVÆ—fW'”–B“°¢6WEF–ÖV÷WB‚‚’Óâ6VVåW6„FVÆ—fW&–W2æFVÆWFR†FVÆ—fW'”–B’Âc“°¢Ğ¢6öç7BF—FÆRÒÖW76vRææ÷F–f–6F–öâbbÖW76vRææ÷F–f–6F–öâçF—FÆRÇÂ-˜]˜=Š}Š­Š‚‹˜-Š}‹˜­Š’‹˜=˜­Š’#°¢6öç7B&öG’ÒÖW76vRææ÷F–f–6F–öâbbÖW76vRææ÷F–f–6F–öâæ&öG’ÇÂ-˜MŠı˜­˜2Š­˜mŠ˜­˜rŠÍŠı˜­Šò#°¢æ÷F–g’†G·F—FÆWÒ(	BG¶&öG—Ö“°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#§W6‚×&V6V—fVB"Â²FWF–Ã¢²F—FÆRÂ&öG’ÂFFÒÒ’“°¢6öç7B'&æBÒv–æF÷rä”"bbv–æF÷rä”"çÆFf÷&Ô'&æBÇÂ·Ó°¢6öç7B–6öâÒFFæ–6öåW&ÂÇÂ'&æBåÄDdõ$ÕôDTdTÅEôÄôtòÇÂ"ö–6öç2ö–"ÖFVfVÇBÖ–6öâÓ“"çær#°¢6öç7B&FvRÒFFæ&FvUW&ÂÇÂ'&æBåÄDdõ$Õô$DtUô”4ôâÇÂ"ö–6öç2ö–"Ö&FvRÖ–6öâçær#°¢–b„æ÷F–f–6F–öâçW&Ö—76–öâÓÓÒ&w&çFVB"bb'6W'f–6Uv÷&¶W""–âæf–vF÷"’°¢æf–vF÷"ç6W'f–6Uv÷&¶W"ç&VG’çF†Vâ‡&Vv—7G&F–öâÓâ°¢6öç7B÷F–öç2Ò°¢&öG’À¢–6öâÀ¢F—#¢''FÂ"À¢Ææs¢&""À¢Fs¢FFç&V6÷&D–BÇÂFFæÖF6„–BÇÂFFæFVÄ–BÇÂ&–"Öf÷&Vw&÷VæB"À¢&Væ÷F–g“¢G'VRÀ¢FF¢²W&Ã¢æ÷F–f–6F–öåW&Â†FF’Ğ¢Ó°¢–b†&FvRbb&FvRÓÒ–6öâ’÷F–öç2æ&FvRÒ&FvS°¢&WGW&â&Vv—7G&F–öâç6†÷tæ÷F–f–6F–öâ‡F—FÆRÂ÷F–öç2“°¢Ò’æ6F6‚‚‚’Óâ·Ò“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ6WGWf÷&Vw&÷VæDæ÷F–f–6F–öç2‚’°¢–b†f÷&Vw&÷VæDÖW76vUVç7V'67&–&RÇÂf÷&Vw&÷VæE6WGWVæF–ær’&WGW&ã°¢f÷&Vw&÷VæE6WGWVæF–ærÒG'VS°¢G'’°¢6öç7B'&–FvRÒv—B&VfW'&VDf6Ô'&–FvR‚“°¢–b†'&–FvRbbG—Vöb'&–FvRæöäÖW76vRÓÓÒ&gVæ7F–öâ"’°¢f÷&Vw&÷VæDÖW76vUVç7V'67&–&RÒ'&–FvRæöäÖW76vR††æFÆTf÷&Vw&÷VæE–ÆöB“°¢&WGW&ã°¢Ğ¢–b‡v–æF÷ræf—&V&6RbbG—Vöbv–æF÷ræf—&V&6RæÖW76v–ærÓÓÒ&gVæ7F–öâ"’°¢f÷&Vw&÷VæDÖW76vUVç7V'67&–&RÒv–æF÷ræf—&V&6RæÖW76v–ær‚’æöäÖW76vR††æFÆTf÷&Vw&÷VæE–ÆöB“°¢Ğ¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%Òf÷&Vw&÷VæBæ÷F–f–6F–öç2"ÂW'&÷"“°¢Òf–æÆÇ’°¢f÷&Vw&÷VæE6WGWVæF–ærÒfÇ6S°¢Ğ¢Ğ ¢gVæ7F–öâW&Ä&6ScEFõV–çC„'&’†&6ScE7G&–ær’°¢6öç7BFF–ærÒ#Ò"ç&WVB‚ƒBÒ†&6ScE7G&–æræÆVæwF‚RB’’RB“°¢6öç7B&6ScBÒ†&6ScE7G&–ær²FF–ær’ç&WÆ6R‚òÒörÂ"²"’ç&WÆ6R‚õòörÂ"ò"“°¢6öç7B&rÒFö"†&6ScB“°¢&WGW&âV–çC„'&’æg&öÒ‡&rÂ6†"Óâ6†"æ6†$6öFTBƒ’“°¢Ğ ¢7–æ2gVæ7F–öâ7&VFTf6Õ&Vv—7G&F–öâ†6öæf–rÂ6W'f–6Uv÷&¶W%&Vv—7G&F–öâ’°¢6öç7BFö¶Vä÷F–öç2Ò²6W'f–6Uv÷&¶W%&Vv—7G&F–öâÓ°¢–b†6öæf–rçf–D¶W’’Fö¶Vä÷F–öç2çf–D¶W’Ò6öæf–rçf–D¶W“°¢6öç7B'&–FvRÒv—B&VfW'&VDf6Ô'&–FvR‚“°¢–b†'&–FvRbbG—Vöb'&–FvRç&Vv—7FW"ÓÓÒ&gVæ7F–öâ"’°¢G'’°¢6öç7Bf–BÒv—B'&–FvRç&Vv—7FW"‡²f–D¶W“¢6öæf–rçf–D¶W’Â6W'f–6Uv÷&¶W%&Vv—7G&F–öâÒ“°¢–b†f–B’&WGW&â²–C¢f–BÂG—S¢&f–B"Ó°¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%Òd”B&Vv—7G&F–öâf–ÆVC²W6–ærFö¶VâfÆÆ&6²"ÂW'&÷"“°¢Ğ¢Ğ¢–b‡v–æF÷ræf—&V&6RbbG—Vöbv–æF÷ræf—&V&6RæÖW76v–ærÓÓÒ&gVæ7F–öâ"’°¢G'’°¢6öç7BFö¶VâÒv—Bv–æF÷ræf—&V&6RæÖW76v–ær‚’ævWEFö¶Vâ‡Fö¶Vä÷F–öç2“°¢–b‡Fö¶Vâ’&WGW&â²–C¢Fö¶VâÂG—S¢'Fö¶Vâ"Ó°¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%Òd4ÒFö¶Vâ&Vv—7G&F–öâf–ÆVC²W6–ærvV"W6‚fÆÆ&6²"ÂW'&÷"“°¢Ğ¢Ğ¢–b‚6öæf–rçf–D¶W’’F‡&÷ræWrW'&÷"‚-˜­˜M‹-˜R˜]˜Š­Š}ŠÒvV"W6‚˜˜¢Š}˜MŠíŠ}Šı˜R"“°¢6öç7B7V'67&—F–öâÒv—B6W'f–6Uv÷&¶W%&Vv—7G&F–öâçW6„ÖævW"ç7V'67&–&R‡°¢W6W%f—6–&ÆTöæÇ“¢G'VRÀ¢Æ–6F–öå6W'fW$¶W“¢W&Ä&6ScEFõV–çC„'&’†6öæf–rçf–D¶W’¢Ò“°¢6öç7BW6…7V'67&—F–öâÒ7V'67&—F–öâçFô¥4ôâ‚“°¢&WGW&â°¢–C¢¥4ôâç7G&–æv–g’‡W6…7V'67&—F–öâ’À¢G—S¢'vV'W6‚"À¢W6…7V'67&—F–öà¢Ó°¢Ğ ¢gVæ7F–öâ&Vv—7G&F–öå–ÆöB‡'VçF–ÖRÂ&Vv—7G&F–öâÂW&Ö—76–öâ’°¢6öç7B–ÆöBÒ°¢öff–6T–C¢'VçF–ÖRæöff–6T–BÀ¢f6Õ&Vv—7G&F–öä–C¢&Vv—7G&F–öâæ–BÀ¢&Vv—7G&F–öåG—S¢&Vv—7G&F–öâçG—RÀ¢f6ÕFö¶Vã¢&Vv—7G&F–öâçG—RÓÓÒ'Fö¶Vâ"ò&Vv—7G&F–öâæ–B¢""À¢W6W$vVçC¢æf–vF÷"çW6W$vVçBÀ¢FWf–6TæÖS¢FWf–6TæÖR‚’À¢–ç7FÆÆF–öä–C¢æ÷F–f–6F–öä–ç7FÆÆF–öä–B‚’À¢ÆæwVvS¢æf–vF÷"æÆæwVvRÇÂ&"Õ4"À¢æ÷F–f–6F–öåW&Ö—76–öã¢W&Ö—76–öâÀ¢fW'6–öã¢õdU%4”ôà¢Ó°¢–b‡&Vv—7G&F–öâçW6…7V'67&—F–öâ’–ÆöBçW6…7V'67&—F–öâÒ&Vv—7G&F–öâçW6…7V'67&—F–öã°¢&WGW&â–ÆöC°¢Ğ ¢7–æ2gVæ7F–öâ&Vv—7FW$æ÷F–f–6F–öäFWf–6R‡²&WVW7EW&Ö—76–öâÒfÇ6RÂ6VæEFW7BÒfÇ6RÂ6–ÆVçBÒfÇ6RÒÒ·Ò’°¢–b‚'VçF–ÖTöff–6U&VG’‡6–ÆVçB’’&WGW&âfÇ6S°¢–b‚‚$æ÷F–f–6F–öâ"–âv–æF÷r’ÇÂ‚'6W'f–6Uv÷&¶W""–âæf–vF÷"’’°¢6WDæ÷F–f–6F–öå7FGW2‚-‹­˜­‹˜]Š­Š}ŠİŠ’˜˜¢˜}‹ŠrŠ}˜M˜]Š­‹]˜ŠÒ"“°¢–b‚6–ÆVçB’æ÷F–g’‚-ŠíŠı˜]Š’Š}˜MŠ]‹M‹Š}‹Š}Š¢‹­˜­‹˜]Š­Š}ŠİŠ’˜˜¢˜}‹ŠrŠ}˜M˜]Š­‹]˜ŠÒ"“°¢&WGW&âfÇ6S°¢Ğ¢6öç7B6öæf–rÒv—BvWDf6Ô6öæf–r‚“°¢–b‚6öæf–rç6W'fW%&VG’’°¢6WDæ÷F–f–6F–öå7FGW2‚-ŠŠ}˜mŠ­‹Š}‹Š]‹ŠıŠ}Šòd4Ò"“°¢–b‚6–ÆVçB’æ÷F–g’‚-Š˜­Š}˜mŠ}Š¢f—&V&6R˜˜¢Š}˜MŠíŠ}Šı˜R‹­˜­‹˜]˜=Š­˜]˜MŠ’"“°¢&WGW&âfÇ6S°¢Ğ¢–b‚6öæf–rçf–D¶W’’°¢6WDæ÷F–f–6F–öå7FGW2‚-ŠŠ}˜mŠ­‹Š}‹˜]˜Š­Š}ŠÒvV"W6‚"“°¢–b‚6–ÆVçB’æ÷F–g’‚-˜­˜M‹-˜RŠ]˜=˜]Š}˜B˜]˜Š­Š}ŠÒvV"W6‚˜˜¢Š}˜MŠíŠ}Šı˜R"“°¢&WGW&âfÇ6S°¢Ğ¢ÆWBW&Ö—76–öâÒæ÷F–f–6F–öâçW&Ö—76–öã°¢–b‡&WVW7EW&Ö—76–öâbbW&Ö—76–öâÓÒ&w&çFVB"’W&Ö—76–öâÒv—Bæ÷F–f–6F–öâç&WVW7EW&Ö—76–öâ‚“°¢–b‡W&Ö—76–öâÓÒ&w&çFVB"’°¢6WDæ÷F–f–6F–öå7FGW2‡W&Ö—76–öâÓÓÒ&FVæ–VB"ò-˜]Šİ‹˜‹Š’˜]˜bŠ}˜M˜]Š­‹]˜ŠÒ"¢-‹­˜­‹˜]˜‹™˜MŠ’"“°¢–b‚6–ÆVçBbbW&Ö—76–öâÓÓÒ&FVæ–VB"’æ÷F–g’‚-Š}˜MŠ]‹M‹Š}‹Š}Š¢˜]Šİ‹˜‹Š’˜]˜bŠ]‹ŠıŠ}ŠıŠ}Š¢Š}˜M˜]Š­‹]˜ŠÒâ"“°¢&WGW&âfÇ6S°¢Ğ¢6öç7B6W'f–6Uv÷&¶W%&Vv—7G&F–öâÒv—Bæf–vF÷"ç6W'f–6Uv÷&¶W"ç&Vv—7FW"‚"öf—&V&6RÖÖW76v–ær×7ræ§2"Â²66÷S¢"ò"Ò“°¢6öç7B&Vv—7G&F–öâÒv—B7&VFTf6Õ&Vv—7G&F–öâ†6öæf–rÂ6W'f–6Uv÷&¶W%&Vv—7G&F–öâ“°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢6öç7B–ÆöBÒ&Vv—7G&F–öå–ÆöB‡'VçF–ÖRÂ&Vv—7G&F–öâÂW&Ö—76–öâ“°¢6öç7B&W7öç6RÒv—BfWF6‚†G·&W6öÇfUv÷&¶W$&6R‚—Òöf6Ò÷&Vv—7FW&Â°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢v—BWF„†VFW'2‚’À¢&öG“¢¥4ôâç7G&–æv–g’‡–ÆöB¢Ò“°¢–b‚&W7öç6Ræö²’F‡&÷ræWrW'&÷"‚-Š­‹‹‹Š­‹=ŠÍ˜­˜BŠ}˜MŠÍ˜}Š}‹""“°¢7W'&VçDf6Õ&Vv—7G&F–öâÒ&Vv—7G&F–öã°¢Æö6Å7F÷&vRç6WD—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖÂ#"“°¢6WGWf÷&Vw&÷VæDæ÷F–f–6F–öç2‚“°¢6WDæ÷F–f–6F–öå7FGW2‚-˜]˜‹™˜MŠ’˜M˜}‹ŠrŠ}˜M˜]˜=Š­Š‚"“°¢–b‡6VæEFW7B’°¢6öç7BFW7E&W7öç6RÒv—BfWF6‚†G·&W6öÇfUv÷&¶W$&6R‚—Òöf6Ò÷FW7FÂ°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢v—BWF„†VFW'2‚’À¢&öG“¢¥4ôâç7G&–æv–g’‡–ÆöB¢Ò“°¢6öç7BFW7E–ÆöBÒv—BFW7E&W7öç6Ræ§6öâ‚’æ6F6‚‚‚’Óâ‡·Ò’“°¢–b‚FW7E&W7öç6Ræö²’F‡&÷ræWrW'&÷"‡FW7E–ÆöBæÖW76vRÇÂ-Š­˜RŠ­‹=ŠÍ˜­˜BŠ}˜MŠÍ˜}Š}‹"˜M˜=˜bŠ­‹‹‹Š]‹‹=Š}˜BŠ}˜MŠ]‹M‹Š}‹Š}˜MŠ­ŠÍ‹˜­Š˜¢"“°¢–b‚6–ÆVçB’æ÷F–g’‡FW7E–ÆöBç6VçBâò-Š­˜RŠ}˜MŠ­˜‹˜­˜B˜Š]‹‹=Š}˜BŠ]‹M‹Š}‹Š­ŠÍ‹˜­Š˜¢"¢-Š­˜RŠ}˜MŠ­˜‹˜­˜MˆÂ˜‹=˜­ŠŠıŠ2Š}‹=Š­˜-ŠŠ}˜BŠ}˜MŠ]‹M‹Š}‹Š}Š¢Š}˜MŠÍŠı˜­ŠıŠ’"“°¢Ğ¢&WGW&âG'VS°¢Ğ ¢7–æ2gVæ7F–öâVæ&ÆTæ÷F–f–6F–öç2‚’°¢G'’°¢6WDæ÷F–f–6F–öå7FGW2‚-ŠÍŠ}‹˜ÒŠ}˜MŠ­˜‹˜­˜N(
+b"“°¢6öç7B7F—fFVBÒv—B&Vv—7FW$æ÷F–f–6F–öäFWf–6R‡²&WVW7EW&Ö—76–öã¢G'VRÂ6VæEFW7C¢G'VRÂ6–ÆVçC¢fÇ6RÒ“°¢–b‚7F—fFVB’&Vg&W6„æ÷F–f–6F–öå7FGW2‚“°¢Ò6F6‚†W'&÷"’°¢6WDæ÷F–f–6F–öå7FGW2‚-Š­‹‹‹Š}˜MŠ­˜‹˜­˜B"“°¢6öç7BW&Ö—76–öâÒG—Vöbæ÷F–f–6F–öâÓÒ'VæFVf–æVB"òæ÷F–f–6F–öâçW&Ö—76–öâ¢&FVfVÇB#°¢–b‡W&Ö—76–öâÓÓÒ&FVæ–VB"’°¢æ÷F–g’‚-Š}˜MŠ]‹M‹Š}‹Š}Š¢˜]Šİ‹˜‹Š’˜]˜bŠ]‹ŠıŠ}ŠıŠ}Š¢Š}˜M˜]Š­‹]˜ŠÒâ"“°¢ÒVÇ6R–b…7G&–ær†W'&÷#òæÖW76vRÇÂ""’æ–æ6ÇVFW2‚%vV"W6‚"’’°¢æ÷F–g’‚-˜­˜M‹-˜RŠ]˜=˜]Š}˜B˜]˜Š­Š}ŠÒvV"W6‚˜˜¢Š}˜MŠíŠ}Šı˜R"“°¢ÒVÇ6R–b…7G&–ær†W'&÷#òæÖW76vRÇÂ""’æ–æ6ÇVFW2‚$f—&V&6R"’ÇÂ7G&–ær†W'&÷#òæÖW76vRÇÂ""’æ–æ6ÇVFW2‚-Š]‹ŠıŠ}ŠıŠ}Š¢"’’°¢æ÷F–g’‚-Š˜­Š}˜mŠ}Š¢f—&V&6R˜˜¢Š}˜MŠíŠ}Šı˜R‹­˜­‹˜]˜=Š­˜]˜MŠ’"“°¢ÒVÇ6R°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š­˜‹˜­˜BŠ}˜MŠ]‹M‹Š}‹Š}Š¢"“°¢Ğ¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ7–æ4Væ&ÆVDæ÷F–f–6F–öç2‚’°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‚'VçF–ÖRÇÂ'VçF–ÖRæöff–6T–BÇÂ'VçF–ÖRæöff–6T–BÓÓÒ'ÆFf÷&Ò"’&WGW&ã°¢6öç7BVæ&ÆVBÒÆö6Å7F÷&vRævWD—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖ’ÓÓÒ##°¢–b‚Væ&ÆVBÇÂ‚$æ÷F–f–6F–öâ"–âv–æF÷r’ÇÂæ÷F–f–6F–öâçW&Ö—76–öâÓÒ&w&çFVB"’&WGW&ã°¢G'’°¢6öç7Bö²Òv—B&Vv—7FW$æ÷F–f–6F–öäFWf–6R‡²&WVW7EW&Ö—76–öã¢fÇ6RÂ6VæEFW7C¢fÇ6RÂ6–ÆVçC¢G'VRÒ“°¢–b‚ö²’6WDæ÷F–f–6F–öå7FGW2‚-˜]˜‹™˜MŠ’(	BŠÍŠ}‹˜ÒŠ]‹Š}ŠıŠ’Š}˜M‹Š‹r"“°¢Ğ¢6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚%¶–%Òæ÷F–f–6F–öâ&Vv—7G&F–öâ&Vg&W6‚"ÂW'&÷"“°¢6WDæ÷F–f–6F–öå7FGW2‚-˜]˜‹™˜MŠ’(	BŠ­‹‹‹Š­ŠİŠı˜­Š²Š}˜MŠ­‹=ŠÍ˜­˜B˜]ŠM˜-Š­˜½Šr"“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâF—6&ÆTæ÷F–f–6F–öç2‚’°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‚'VçF–ÖRÇÂ'VçF–ÖRæöff–6T–B’&WGW&ã°¢G'’°¢6WDæ÷F–f–6F–öå7FGW2‚-ŠÍŠ}‹˜ÒŠ}˜MŠ]˜­˜-Š}˜(
+b"“°¢ÆWB&Vv—7G&F–öâÒ7W'&VçDf6Õ&Vv—7G&F–öã°¢–b‚&Vv—7G&F–öâæ–B’°¢6öç7B6öæf–rÒv—BvWDf6Ô6öæf–r‚’æ6F6‚‚‚’ÓâçVÆÂ“°¢–b†6öæf–rbb6öæf–ræVæ&ÆVBbb6öæf–rçf–D¶W’bbæ÷F–f–6F–öâçW&Ö—76–öâÓÓÒ&w&çFVB"’°¢6öç7B6W'f–6Uv÷&¶W%&Vv—7G&F–öâÒv—Bæf–vF÷"ç6W'f–6Uv÷&¶W"ç&VG“°¢&Vv—7G&F–öâÒv—B7&VFTf6Õ&Vv—7G&F–öâ†6öæf–rÂ6W'f–6Uv÷&¶W%&Vv—7G&F–öâ’æ6F6‚‚‚’Óâ‡²–C¢""ÂG—S¢""Ò’“°¢Ğ¢Ğ¢–b‡&Vv—7G&F–öâæ–B’°¢6öç7B&W7öç6RÒv—BfWF6‚†G·&W6öÇfUv÷&¶W$&6R‚—Òöf6Ò÷Vç&Vv—7FW&Â°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢v—BWF„†VFW'2‚’À¢&öG“¢¥4ôâç7G&–æv–g’‡&Vv—7G&F–öå–ÆöB‡'VçF–ÖRÂ&Vv—7G&F–öâÂæ÷F–f–6F–öâçW&Ö—76–öâ’¢Ò“°¢–b‚&W7öç6Ræö²’F‡&÷ræWrW'&÷"‚-Š­‹‹‹Š]˜­˜-Š}˜Š­‹=ŠÍ˜­˜BŠ}˜MŠÍ˜}Š}‹""“°¢Ğ¢Æö6Å7F÷&vRç&VÖ÷fT—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖ“°¢7W'&VçDf6Õ&Vv—7G&F–öâÒ²–C¢""ÂG—S¢""Ó°¢6WDæ÷F–f–6F–öå7FGW2‚-‹­˜­‹˜]˜‹™˜MŠ’"“°¢æ÷F–g’‚-Š­˜RŠ]˜­˜-Š}˜Š]‹M‹Š}‹Š}Š¢˜}‹ŠrŠ}˜M˜]˜=Š­Š‚‹˜M˜’˜}‹ŠrŠ}˜MŠÍ˜}Š}‹""“°¢Ò6F6‚†W'&÷"’°¢6WDæ÷F–f–6F–öå7FGW2‚-Š­‹‹‹Š}˜MŠ]˜­˜-Š}˜"“°¢æ÷F–g’†W'&÷"æÖW76vRÇÂ-Š­‹‹‹Š]˜­˜-Š}˜Š}˜MŠ]‹M‹Š}‹Š}Š¢"“°¢Ğ¢Ğ ¢gVæ7F–öâ'VçF–ÖTöff–6U&VG’‡6–ÆVçBÒfÇ6R’°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‚'VçF–ÖRÇÂ'VçF–ÖRæöff–6T–BÇÂ'VçF–ÖRæöff–6T–BÓÓÒ'ÆFf÷&Ò"’°¢–b‚6–ÆVçB’æ÷F–g’‚-‹=ŠÍ™˜BŠŠİ‹=Š}Š‚Š}˜M˜]˜=Š­Š‚Š=˜˜M˜½Šr"“°¢&WGW&âfÇ6S°¢Ğ¢&WGW&âG'VS°¢Ğ ¢7–æ2gVæ7F–öâFövvÆTæ÷F–f–6F–öç2‚’°¢–b‚'VçF–ÖTöff–6U&VG’‚’’&WGW&ã°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢6öç7BVæ&ÆVBÒÆö6Å7F÷&vRævWD—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖ’ÓÓÒ##°¢–b†Væ&ÆVB’v—BF—6&ÆTæ÷F–f–6F–öç2‚“²VÇ6Rv—BVæ&ÆTæ÷F–f–6F–öç2‚“°¢Ğ ¢gVæ7F–öâ&Vg&W6„æ÷F–f–6F–öå7FGW2‚’°¢6öç7B'VçF–ÖRÒöff–6R‚“°¢–b‚'VçF–ÖRÇÂ'VçF–ÖRæöff–6T–BÇÂ'VçF–ÖRæöff–6T–BÓÓÒ'ÆFf÷&Ò"’&WGW&â6WDæ÷F–f–6F–öå7FGW2‚-‹=ŠÍ™˜BŠŠ}˜M˜]˜=Š­Š‚Š=˜˜M˜½Šr"“°¢6öç7BVæ&ÆVBÒÆö6Å7F÷&vRævWD—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖ’ÓÓÒ##°¢–b†Væ&ÆVBbb$æ÷F–f–6F–öâ"–âv–æF÷rbbæ÷F–f–6F–öâçW&Ö—76–öâÓÓÒ&FVæ–VB"’°¢Æö6Å7F÷&vRç&VÖ÷fT—FVÒ†–"æf6ÒæVæ&ÆVBâG·'VçF–ÖRæöff–6T–GÖ“°¢&WGW&â6WDæ÷F–f–6F–öå7FGW2‚-˜]‹˜˜‹mŠ’‹˜M˜’Š}˜MŠÍ˜}Š}‹""“°¢Ğ¢–b‚Væ&ÆVB’&WGW&â6WDæ÷F–f–6F–öå7FGW2‚-‹­˜­‹˜]˜‹™˜MŠ’"“°¢–b‚$æ÷F–f–6F–öâ"–âv–æF÷rbbæ÷F–f–6F–öâçW&Ö—76–öâÓÒ&w&çFVB"’°¢&WGW&â6WDæ÷F–f–6F–öå7FGW2‚-ŠŠ}˜mŠ­‹Š}‹Š]‹˜bŠ}˜MŠÍ˜}Š}‹""“°¢Ğ¢6WDæ÷F–f–6F–öå7FGW2‚-˜]˜‹™˜MŠ’˜M˜}‹ŠrŠ}˜M˜]˜=Š­Š‚"“°¢Ğ ¢gVæ7F–öâ—57FæFÆöæR‚’°¢&WGW&âv–æF÷ræÖF6„ÖVF–‚"†F—7Æ’ÖÖöFS¢7FæFÆöæR’"’æÖF6†W2ÇÂv–æF÷rææf–vF÷"ç7FæFÆöæRÓÓÒG'VS°¢Ğ ¢gVæ7F–öâ&Vg&W6„–ç7FÆÅ7FGW2‚’°¢6öç7BæöFRÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'v–ç7FÆÅ7FGW2"“°¢6öç7B'FâÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'v–ç7FÆÄ'Fâ"“°¢6öç7B–÷4†–çBÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'v–ç7FÆÄ–÷4†–çB"“°¢6öç7B—4–÷2Òö—†öæWÆ—GÆ—öBö’çFW7B†æf–vF÷"çW6W$vVçB“°¢–b†—57FæFÆöæR‚’’°¢–b†æöFR’æöFRçFW‡D6öçFVçBÒ-˜]Š½Š™Š¢‹˜M˜’Š}˜MŠÍ˜}Š}‹"#°¢–b†'Fâ’'Fâæ†–FFVâÒG'VS°¢–b†–÷4†–çB’–÷4†–çBæ†–FFVâÒG'VS°¢&WGW&ã°¢Ğ¢–b†'Fâ’'Fâæ†–FFVâÒFVfW'&VD–ç7FÆÅ&ö×C°¢–b†–÷4†–çB’–÷4†–çBæ†–FFVâÒ—4–÷3°¢–b‚æöFR’&WGW&ã°¢–b†FVfW'&VD–ç7FÆÅ&ö×B’æöFRçFW‡D6öçFVçBÒ-Š}‹m‹­‹r*½Š­Š½Š˜­Š¢Š}˜MŠ­‹}Š˜­˜,+²Š=Šı˜mŠ}˜r#°¢VÇ6R–b†—4–÷2’æöFRçFW‡D6öçFVçBÒ-Š}Š­Š‹’Š}˜MŠ­‹˜M˜­˜]Š}Š¢Š=Šı˜mŠ}˜r˜MŠ]‹mŠ}˜Š’Š}˜MŠ}ŠíŠ­‹]Š}‹#°¢VÇ6RæöFRçFW‡D6öçFVçBÒ-˜]˜b˜-Š}Šm˜]Š’Š}˜M˜]Š­‹]˜ŠÒ(iŠ­Š½Š˜­Š¢Š}˜MŠ­‹}Š˜­˜"#°¢Ğ ¢7–æ2gVæ7F–öâ–ç7FÆÄ6†÷'F7WB‚’°¢–b†—57FæFÆöæR‚’’&WGW&âæ÷F–g’‚-Š}ŠíŠ­‹]Š}‹Š}˜M˜]˜˜-‹’˜]Š½ŠŠ¢ŠŠ}˜M˜‹˜B"“°¢–b†FVfW'&VD–ç7FÆÅ&ö×B’°¢FVfW'&VD–ç7FÆÅ&ö×Bç&ö×B‚“°¢v—BFVfW'&VD–ç7FÆÅ&ö×BçW6W$6†ö–6Ræ6F6‚‚‚’ÓâçVÆÂ“°¢FVfW'&VD–ç7FÆÅ&ö×BÒçVÆÃ°¢&Vg&W6„–ç7FÆÅ7FGW2‚“°¢&WGW&ã°¢Ğ¢–b‚ö—†öæWÆ—GÆ—öBö’çFW7B†æf–vF÷"çW6W$vVçB’’æ÷F–g’‚-Š}‹m‹­‹r˜]‹MŠ}‹˜=Š’Š½˜RŠ]‹mŠ}˜Š’Š]˜M˜’Š}˜M‹MŠ}‹MŠ’Š}˜M‹Šm˜­‹=˜­Š’"“°¢VÇ6Ræ÷F–g’‚-Š}˜Š­ŠÒ˜-Š}Šm˜]Š’Š}˜M˜]Š­‹]˜ŠÒ˜Š}ŠíŠ­‹Š­Š½Š˜­Š¢Š}˜MŠ­‹}Š˜­˜"Š=˜‚Š]‹mŠ}˜Š’Š]˜M˜’Š}˜M‹MŠ}‹MŠ’Š}˜M‹Šm˜­‹=˜­Š’"“°¢Ğ ¢gVæ7F–öâ–æ—B‚’°¢Vç7W&Uv÷&¶fÆ÷uV’‚“°¢v–æF÷rä”%õtõ$´dÄõrÒ²6WD÷÷'GVæ—G•f–WrÓ°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#§v÷&¶fÆ÷rÖ7F–öâ"Â†æFÆT7F–öâ“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦÷W&F–öâÖ÷VæVB"ÂWfVçBÓâ°¢6öç7BFWF–ÂÒWfVçBæFWF–ÂÇÂ·Ó°¢–b…²&ÖF6‚"Â&FVÂ%Òæ–æ6ÇVFW2†FWF–Âç&V6÷&EG—R’’ÆöEF–ÖVÆ–æR†FWF–Âç&V6÷&EG—RÂFWF–Âç&V6÷&D–B“°¢–b†FWF–Âç&V6÷&EG—RÓÓÒ&÷W&F–öâ"bbFWF–Âç&V6÷&D–B’°¢÷7D÷W&F–öä7F–öâ†FWF–Âç&V6÷&D–BÂ$õTâ"’æ6F6‚‚†W'&÷"’Óâ°¢6öç6öÆRçv&â‚%¶–%Ò÷W&F–öâ÷Vâ"ÂW'&÷"“°¢Ò“°¢Ğ¢Ò“° ¢–b‚'6W'f–6Uv÷&¶W""–âæf–vF÷"’°¢æf–vF÷"ç6W'f–6Uv÷&¶W"ç&Vv—7FW"‚"öf—&V&6RÖÖW76v–ær×7ræ§2"’æ6F6‚†W'&÷"Óâ6öç6öÆRçv&â‚%¶–%Ò6W'f–6Rv÷&¶W"&Vv—7G&F–öâ"ÂW'&÷"’“°¢æf–vF÷"ç6W'f–6Uv÷&¶W"æFDWfVçDÆ—7FVæW"‚&ÖW76vR"ÂWfVçBÓâ°¢6öç7BÖW76vRÒWfVçBæFFÇÂ·Ó°¢–b†ÖW76vRçG—RÓÓÒ$”%ôd4Õôdõ$Tu$õTäB"’†æFÆTf÷&Vw&÷VæE–ÆöB†ÖW76vRç–ÆöBÇÂ·Ò“°¢Ò“°¢Ğ ¢6öç7Bæ÷F–f–6F–öä—FVÒÒFö7VÖVçBævWDVÆVÖVçD'”–B‚&öff–6Tæ÷F–f–6F–öä6öçG&öÂ"“°¢–b†æ÷F–f–6F–öä—FVÒ’°¢æ÷F–f–6F–öä—FVÒæFDWfVçDÆ—7FVæW"‚&6Æ–6²"ÂFövvÆTæ÷F–f–6F–öç2“°¢æ÷F–f–6F–öä—FVÒæFDWfVçDÆ—7FVæW"‚&¶W–F÷vâ"ÂWfVçBÓâ°¢–b†WfVçBæ¶W’ÓÓÒ$VçFW""ÇÂWfVçBæ¶W’ÓÓÒ""’FövvÆTæ÷F–f–6F–öç2‚“°¢Ò“°¢Ğ¢6öç7B–ç7FÆÄ'FâÒFö7VÖVçBævWDVÆVÖVçD'”–B‚'v–ç7FÆÄ'Fâ"“°¢–b†–ç7FÆÄ'Fâ’°¢–ç7FÆÄ'FâæFDWfVçDÆ—7FVæW"‚&6Æ–6²"Â–ç7FÆÄ6†÷'F7WB“°¢–ç7FÆÄ'FâæFDWfVçDÆ—7FVæW"‚&¶W–F÷vâ"ÂWfVçBÓâ°¢–b†WfVçBæ¶W’ÓÓÒ$VçFW""ÇÂWfVçBæ¶W’ÓÓÒ""’–ç7FÆÄ6†÷'F7WB‚“°¢Ò“°¢Ğ¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&&Vf÷&V–ç7FÆÇ&ö×B"ÂWfVçBÓâ°¢WfVçBç&WfVçDFVfVÇB‚“°¢FVfW'&VD–ç7FÆÅ&ö×BÒWfVçC°¢&Vg&W6„–ç7FÆÅ7FGW2‚“°¢Ò“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–ç7FÆÆVB"Â‚’Óâ°¢FVfW'&VD–ç7FÆÅ&ö×BÒçVÆÃ°¢&Vg&W6„–ç7FÆÅ7FGW2‚“°¢æ÷F–g’‚-Š­˜RŠ­Š½Š˜­Š¢Š}ŠíŠ­‹]Š}‹˜]˜=Š}Š­Š‚‹˜-Š}‹˜­Š’‹˜=˜­Š’"“°¢Ò“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#§v÷&¶fÆ÷rÖ÷fW&Æ’Ö6Æ÷6VB"Â†–FUv÷&¶fÆ÷t÷fW&Æ’“°¢&Vg&W6„æ÷F–f–6F–öå7FGW2‚“°¢&Vg&W6„–ç7FÆÅ7FGW2‚“° ¢–b‡v–æF÷ræf—&V&6Rbbv–æF÷ræf—&V&6RæWF‚’°¢v–æF÷ræf—&V&6RæWF‚‚’æöäWF…7FFT6†ævVB‡W6W"Óâ°¢–b‡W6W"’°¢7F'DÆ—fTFF‚“°¢7V&Ö—EVæF–æu6†&R‚“°¢&Vg&W6„æ÷F–f–6F–öå7FGW2‚“°¢6WGWf÷&Vw&÷VæDæ÷F–f–6F–öç2‚“°¢7–æ4Væ&ÆVDæ÷F–f–6F–öç2‚“°¢&WÆ•VæF–ætæ÷F–f–6F–öåF&vWB‚“°¢ÒVÇ6R°¢7F÷Æ—fTFF‚“°¢ÖF6„—FV×2ÒµÓ°¢FVÄ—FV×2ÒµÓ°¢–çF¶T—FV×2ÒµÓ°¢÷W&F–öä—FV×2ÒµÓ°¢÷÷'GVæ—G”—FV×2ÒµÓ°¢F–Ç•F6µ6†F÷u6÷W&6W5&VG’Ò²÷W&F–öç3¢fÇ6RÂ–çF¶S¢fÇ6RÂ÷÷'GVæ—F–W3¢fÇ6RÂÖF6†W3¢fÇ6RÂFVÇ3¢fÇ6RÓ°¢F–Ç•F6µ6†F÷t7–6ÆW2Ò°¢F–Ç•F6µ6†F÷tf–ÇW&W2Ò°¢æÇ—F–74—FVÒÒçVÆÃ°¢VÖ—D÷W&F–öç2‚“°¢Ğ¢Ò“°¢Ğ¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦f—&V&6R×&VG’"Â7F'DÆ—fTFF“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦öff–6R×&V&÷VæB"Â‚’Óâ7F'DÆ—fTFF‚’“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦66W72Öw&çFVB"Â‚’Óâ7F'DÆ—fTFF‚’“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦66W72Öw&çFVB"Â&WÆ•VæF–ætæ÷F–f–6F–öåF&vWB“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦÷W&F–öç2×&Vg&W6‚"Â&WÆ•VæF–ætæ÷F–f–6F–öåF&vWB“°¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&–#¦÷÷'GVæ—G’Ö–ævW7FVB"Â†WfVçB’Óâ°¢6öç7BFWF–ÂÒWfVçBæFWF–ÂÇÂ·Ó°¢ÆöDæÇ—F–72‚“°¢–b†FWF–Âæ÷÷'GVæ—G”–B’°¢W6…6fVD÷÷'GVæ—G•Fõv÷&·76R†FWF–Â“°¢ÒVÇ6R°¢VÖ—D÷W&F–öç2‚“°¢Ğ¢Ò“°¢–b†æWrU$Å6V&6…&×2†Æö6F–öâç6V&6‚’ævWB‚'6†&VB"’ÓÓÒ#"’6WEF–ÖV÷WB‡7V&Ö—EVæF–æu6†&RÂS“° ¢6öç7B&×2ÒæWrU$Å6V&6…&×2†Æö6F–öâç6V&6‚“°¢6öç7BFVWÆ–æ²Òv–æF÷rä”#òç'6Tæ÷F–f–6F–öå6V&6…&×3òâ‡&×2“°¢–b†FVWÆ–æ²’°¢6fUVæF–ætæ÷F–f–6F–öåF&vWB†FVWÆ–æ²“°¢6WEF–ÖV÷WB‡&WÆ•VæF–ætæ÷F–f–6F–öåF&vWBÂ““°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ÷Vä÷÷'GVæ—G”ÖævVÖVçB†÷÷'GVæ—G”–BÂ÷F–öç2Ò·Ò’°¢–b‚÷÷'GVæ—G”–B’&WGW&âfÇ6S°¢†–FUv÷&¶fÆ÷t÷fW&Æ’‚“°¢–b‡v–æF÷rä”#òæ÷Vä÷÷'GVæ—G”FWF–Â’°¢&WGW&âv–æF÷rä”"æ÷Vä÷÷'GVæ—G”FWF–Â†÷÷'GVæ—G”–BÂ÷F–öç2“°¢Ğ¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&–#¦÷VâÖ&æ²Ö÷÷'GVæ—G’"Â°¢FWF–Ã¢²÷÷'GVæ—G”–BÂââæ÷F–öç2Ğ¢Ò’“°¢&WGW&âG'VS°¢Ğ ¢gVæ7F–öâæ÷&ÖÆ—¦Töff–6T–B‡fÇVR’°¢&WGW&â7G&–ær‡fÇVRÇÂ""’çG&–Ò‚“°¢Ğ ¢v–æF÷ræFDWfVçDÆ—7FVæW"‚&&Vf÷&WVæÆöB"Â7F÷Æ—fTFF“°¢v–æF÷rä”"Òv–æF÷rä”"ÇÂ·Ó°¢v–æF÷rä”"çW6…6fVD÷÷'GVæ—G•Fõv÷&·76RÒW6…6fVD÷÷'GVæ—G•Fõv÷&·76S°¢v–æF÷rä”"æ÷Vä÷÷'GVæ—G”ÖævVÖVçBÒ÷Vä÷÷'GVæ—G”ÖævVÖVçC°¢–b†Fö7VÖVçBç&VG•7FFRÓÓÒ&ÆöF–ær"’Fö7VÖVçBæFDWfVçDÆ—7FVæW"‚$DôÔ6öçFVçDÆöFVB"Â–æ—B“°¢VÇ6R–æ—B‚“°§Ò’‚“° 

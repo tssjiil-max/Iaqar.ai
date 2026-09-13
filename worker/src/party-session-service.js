@@ -235,6 +235,13 @@ async function stampMatchLiving(helpers, {
       ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {}),
       ...(coordinationClientSummary ? { coordinationClientSummary: helpers.firestoreString(coordinationClientSummary) } : {}),
       ...(coordinationOwnerSummary ? { coordinationOwnerSummary: helpers.firestoreString(coordinationOwnerSummary) } : {}),
+      ...(patch.appointmentAt ? {
+        appointmentAt: helpers.firestoreString(String(patch.appointmentAt)),
+        viewingAt: helpers.firestoreString(String(patch.viewingAt || patch.appointmentAt)),
+        appointmentStatus: helpers.firestoreString(String(patch.appointmentStatus || "CONFIRMED_BY_BROKER")),
+        dueAt: helpers.firestoreTimestamp(new Date(patch.appointmentAt)),
+        status: helpers.firestoreString("IN_PROGRESS")
+      } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "viewingCompletedAt") ? { viewingCompletedAt: helpers.firestoreString(String(patch.viewingCompletedAt || "")) } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "viewingOutcome") ? { viewingOutcome: helpers.firestoreString(String(patch.viewingOutcome || "")) } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "seriousIntentConfirmed") ? { seriousIntentConfirmed: helpers.firestoreString(patch.seriousIntentConfirmed ? "true" : "") } : {})
@@ -972,6 +979,13 @@ export async function handleMatchLivingAction({
     });
     if (!viewingOrchestration.ok) {
       throw helpers.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق المعاينة: ${viewingOrchestration.error || "unknown"}`);
+    }
+    if (typeof helpers.sendViewingConfirmation === "function") {
+      await helpers.sendViewingConfirmation({
+        projectId, officeId, matchId, match,
+        appointmentAt: confirmation.appointmentAt,
+        accessToken, env
+      }).catch((error) => console.warn("[iaqar-viewing] confirmation push failed", error?.message || error));
     }
 
     return helpers.jsonResponse({

@@ -1,8089 +1,1067 @@
-import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
-import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
-import {
-  createPersistentCompletionSession,
-  readPersistentCompletionSession,
-  submitPersistentCompletionSession
-} from "./data-completion-runtime-service.js";
-import {
-  MATCHING_RULE_VERSION,
-  MATCH_THRESHOLD,
-  MAX_MATCH_CANDIDATES,
-  MAX_MATCH_RESULTS,
-  DEFAULT_CITY,
-  phase4BoundaryGuarantees,
-  readinessFromScore as readinessFromScoreEngine,
-  normalizeMatchStatus as normalizeMatchStatusEngine,
-  calculateClosingReadiness as calculateClosingReadinessEngine,
-  opportunityToMatchInput,
-  counterpartsEligible,
-  isActiveLifecycle,
-  canonicalPairKey,
-  relevantDataVersion,
-  buildMatchId,
-  pairRuleKey,
-  scoreMatch as scoreMatchEngine,
-  rankMatchCandidates as rankMatchCandidatesEngine
-} from "./matching-engine.js";
-import {
-  firestoreOfficeId,
-  officeAuthorizationKey,
-  officeIdsEquivalent
-} from "../../public/js/office-id-domain.js";
-import {
-  MATCH_INTEGRITY,
-  collectCandidateOpportunityIds,
-  resolveCanonicalPairFromDocs
-} from "./match-integrity-domain.js";
-import {
-  phase5BoundaryGuarantees,
-  OPERATION_TYPES,
-  OPERATION_STATUS,
-  NOTIFICATION_TYPES,
-  NOTIFICATION_STATUS,
-  ACTIVE_OPERATION_STATUSES,
-  buildMatchReviewDedupKey,
-  shouldCreateMatchReview,
-  applyOperationLifecycle
-} from "./operations-domain.js";
-import webpush from "web-push";
-import {
-  createMatchReviewBundle,
-  expireOperationsForMatchIds,
-  upsertMissingDataForOpportunity,
-  upsertCooperationOperations,
-  applyTrustedOperationAction,
-  listMissingOpportunityFields,
-  pushTypeForOperation
-} from "./operations-service.js";
-import {
-  opportunityCoverageIntent,
-  dealCoverageIntent,
-  syncOpportunityCoverage
-} from "./operations-coverage-sync.js";
-import {
-  phase6BoundaryGuarantees,
-  cooperationModeAllowsExplicitRequest
-} from "./cooperation-phase6-domain.js";
-import {
-  runCooperationLifecycle,
-  revokeBankSharingScope,
-  createExplicitCooperationRequest,
-  resolveAcceptedCooperationPair
-} from "./cooperation-phase6-service.js";
-import {
-  maybeCreateCrossOfficeCooperation,
-  runCooperationWorkflow
-} from "./cooperation-workflow-service.js";
-import { buildCooperationNearbySuggestions, resolveNearbyEmptyReason } from "./cooperation-nearby-service.js";
-import { buildSuitableOfficesResult } from "./suitable-offices-service.mjs";
-import {
-  loadOpportunityWorkspaceBundle,
-  ensureCooperationRoom
-} from "./opportunity-workspace-service.mjs";
-import {
-  sanitizeOpportunityPatch,
-  mergeOpportunityFinancialPatch,
-  readinessFieldsForRecord,
-  validateCooperationListingEnable,
-  mapPatchErrorMessage
-} from "./opportunity-patch-service.js";
-import {
-  PERMANENT_DELETE_CONFIRM,
-  applyOpportunityPurge,
-  collectOfficeWorkflowRows,
-  planOpportunityPurge,
-  validatePurgeRequest
-} from "./opportunity-purge-service.js";
-import { markNotificationRead } from "./in-app-notification-write.js";
-import {
-  BROKERAGE_CONTRACT_STATUS,
-  DEAL_STAGE_ORDER,
-  evaluateDealCreation,
-  nextDealStage,
-  planBrokerageContractUpdate,
-  planDealClosure,
-  planDealStageTransition
-} from "./deal-contract-domain.js";
-import { missingFieldLabelsArabic } from "../../public/js/opportunity-readiness-domain.js";
-import { livingTaskId } from "../../public/js/match-group-domain.js";
-import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
-import {
-  handlePublicOfficePreview,
-  handleOfficeShareCardGet,
-  handleOfficeShareCardUpload,
-  handleSavePublicSlug,
-  pickReachableHttpsIcon,
-  shareCardGetMatch
-} from "./office-public-preview.js";
-import {
-  afterPublicIntakePersisted,
-  acceptPlatformOffer,
-  declinePlatformOffer,
-  expireDuePlatformOffers,
-  submitOfficeRating
-} from "./opportunity-router-service.js";
-import {
-  assertPilotFeatureEnabled,
-  assertPilotOfficeAccess,
-  assertPilotRegistrationAllowed,
-  getPilotAccessStatus,
-  loadPilotAccessConfig
-} from "./pilot-access-service.js";
-import {
-  ORIGIN_SOURCE_TYPE,
-  originSourceFromIntake,
-  livingTaskIdForOpportunity,
-  ASSIGNMENT_REASON,
-  ROUTING_STATUS,
-  routerCompleteness
-} from "../../public/js/opportunity-router-domain.js";
-import {
-  MESSAGE_CHANNELS,
-  MESSAGE_SEND_STATE,
-  MESSAGE_DELIVERY_STATE,
-  TEMPLATE_CODES,
-  ADAPTER_STATUS,
-  phase7BoundaryGuarantees,
-  buildArabicMessageBody,
-  buildMessageDraft,
-  applyExternalHandoff,
-  whatsappAdapterContract,
-  telegramWebhookValidationFixture,
-  normalizeChannel,
-  resolveTemplateCode,
-  whatsappDigits
-} from "./messaging-domain.js";
-import {
-  handleTelegramCanonicalWebhook,
-  telegramWebhookRuntimeContract
-} from "./telegram-intake-service.js";
-import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
-import {
-  PUBLIC_RATE_LIMITS,
-  consumePublicRateLimit,
-  evaluatePublicRateLimit,
-  publicRateLimitKey,
-  resetPublicRateLimitStoreForTests
-} from "./public-rate-limit.js";
-import {
-  handlePartySessionGet,
-  handlePartySessionMint,
-  handlePartySessionPhoto,
-  handlePartySessionReply,
-  handlePartySessionBundle,
-  handleMatchLivingAction
-} from "./party-session-service.js";
-import {
-  loadCoordinationSession,
-  saveCoordinationSession,
-  syncCooperationCoordinationForOffice
-} from "./coordination-session-service.js";
-import { appendCoordinationEvent } from "../../public/js/coordination-session-domain.js";
-import {
-  analyzeVoiceWithGemini,
-  getVoiceTelemetrySnapshot,
-  resolveGeminiModel,
-  validateVoiceAudio,
-  voiceAnalyzeHttpErrorMessage
-} from "./gemini-voice-service.js";
-import {
-  extractListingFromImage,
-  mediaExtractPublicMessage
-} from "./listing-image-vision-service.mjs";
-import {
-  extractListingFromAudio,
-  AUDIO_TRANSCRIBE_ERROR_AR
-} from "./gemini-audio-intake.mjs";
-import { resolveCanonicalListingUrl } from "./canonical-listing-intake.mjs";
-import { normalizeListingFetchUrl as adapterNormalizeListingFetchUrl } from "./listing-site-adapters.mjs";
-import {
-  startCanonicalIntake,
-  handleCanonicalIntakeCallback,
-  retryCanonicalIntake,
-  extractAudioFromMediaPath,
-  extractImageTextFromMediaPath,
-  verifyCanonicalMediaAccessToken
-} from "./canonical-intake-service.js";
-import { assertPlatformAdminClaims } from "./admin-control-plane-domain.js";
-import {
-  createAdminHelpers,
-  handleAdminAuditLog,
-  handleAdminSession,
-  handleAdminLicenseUpdate,
-  handleAdminNoteAdd,
-  handleAdminOfficeActivity,
-  handleAdminOfficeDetail,
-  handleAdminOffices,
-  handleAdminOverview,
-  handleAdminReactivate,
-  handleAdminSubscriptionUpdate,
-  handleAdminSuspend
-} from "./admin-service.js";
-import { recordOfficeActivityEvent, recordOfficeLoginActivity } from "./office-activity-service.js";
-import {
-  LIFECYCLE_STATUS,
-  LIFECYCLE_STATUS_LABELS,
-  OPPORTUNITY_FINAL_CLOSE_REASONS,
-  OPPORTUNITY_FINAL_CLOSE_REASON_LABELS,
-  OPPORTUNITY_FINAL_OUTCOMES,
-  normalizeOpportunitySource,
-  getOpportunityLifecycleStatus,
-  normalizeSaudiPhoneForWhatsApp,
-  buildOpportunitySummary,
-  buildOpportunityWhatsAppMessage,
-  resolveSelectOption,
-  extractDistrictFromVoice,
-  parseVoiceOpportunityFields,
-  whatsappActionTypeForStatus,
-  isArchivedLifecycle,
-  isActiveLifecycle as isOpportunityLifecycleActive
-} from "./opportunity-lifecycle.mjs";
-import { findDuplicateOpportunity, matchesDuplicateCriteria } from "./opportunity-duplicate.mjs";
-import { resolveParsedOpportunityKind } from "./opportunity-message-classification.mjs";
-import {
-  ACTIVEPIECES_SOURCE,
-  authorizeActivepieces,
-  composeActivepiecesMessage,
-  isStagingFirebaseEnv,
-  validateActivepiecesIntakeBody
-} from "./activepieces-intake.mjs";
-import {
-  mergeBrokerActionProgress,
-  normalizeBrokerActionProgress,
-  contactOutcomeActionKey,
-  followUpOutcomeActionKey,
-  followUpWhatsAppActionKey,
-  partyActionKey,
-  BROKER_ACTION
-} from "../../public/js/broker-action-progress-domain.js";
-import {
-  FOLLOWUP_STATUSES,
-  RECIPIENT_MODES,
-  RECIPIENT_MODE_LABELS,
-  validateFutureFollowUpAt,
-  validateTodayRequiresFutureTime,
-  buildCanonicalFollowUp,
-  computeReminderAt,
-  parseFollowUpInstant,
-  resolveRecipientContext,
-  normalizeRecipientMode,
-  deriveFollowUpStatus,
-  shouldSendFollowUpReminder,
-  followUpReminderDedupKey,
-  getDueFollowUpReminder,
-  advanceFollowUpAfterReminder,
-  followUpReminderTitle,
-  isSameScheduledFollowUp,
-  formatFollowUpReminderBody,
-  formatFollowUpTimeLabel,
-  parseRiyadhDateTimeInput,
-  isOwnerOpportunity
-} from "./opportunity-followup.mjs";
-
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
-const DEFAULT_PROJECT_ID = "aqar-b5d76";
-const DEFAULT_APP_ORIGIN = "https://iaqar.ai";
-const DEFAULT_STAGING_APP_ORIGIN = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
-
-function resolveAppOrigin(env = {}) {
-  const configured = cleanText(env.APP_ORIGIN, 200);
-  if (configured) return configured.replace(/\/$/, "");
-  const deployment = String(env.DEPLOYMENT_ENV || "production").toLowerCase();
-  if (deployment === "staging") return DEFAULT_STAGING_APP_ORIGIN;
-  return DEFAULT_APP_ORIGIN;
-}
-const GRAPH_VERSION = "v25.0";
-const MAX_RAW_LENGTH = 16000;
-const DAILY_FREE_WRITES = 20000;
-const WARNING_PERCENT = 80;
-const ESTIMATED_WRITES_PER_MESSAGE = 8;
-
-async function runRuntimeOrchestration({ event, officeId, entityId, occurrenceId = "", context = {}, adapters = {}, deferredTargets = [] }) {
-  const eventId = buildOrchestratorEventId({ event, officeId, entityId, occurrenceId });
-  const result = await dispatchOrchestratorEvent({
-    event, eventId, context: { ...context, officeId, entityId }, adapters, deferredTargets
-  });
-  if (!result.ok) {
-    throw appError("orchestrator_dispatch_failed", 500, `ÙØ´Ù„ ØªÙ†Ø³ÙŠÙ‚ Ø§Ù„Ø­Ø¯Ø« ${event}: ${result.error || "unknown"}`);
-  }
-  return result;
-}
-
-const DEAL_STAGE_LABELS = Object.freeze({
-  contact: "Ø§Ù„ØªÙˆØ§ØµÙ„", viewing: "Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©", negotiation: "Ø§Ù„ØªÙØ§ÙˆØ¶",
-  agreement: "Ø§ØªÙØ§Ù‚ÙŠØ© Ø§Ù„ÙˆØ³Ø§Ø·Ø©", closing: "Ø¬Ø§Ù‡Ø²Ø© Ù„Ù„Ø¥ØºÙ„Ø§Ù‚", closed: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", lost: "Ù…ØªÙˆÙ‚ÙØ©"
-});
-const DEAL_NEXT_ACTION_LABELS = Object.freeze({
-  contact: "ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©", viewing: "Ø¨Ø¯Ø¡ Ø§Ù„ØªÙØ§ÙˆØ¶", negotiation: "ØªØ¬Ù‡ÙŠØ² Ø§ØªÙØ§Ù‚ÙŠØ© Ø§Ù„ÙˆØ³Ø§Ø·Ø©",
-  agreement: "Ø§Ø¹ØªÙ…Ø§Ø¯ Ø§Ù„Ø§ØªÙØ§Ù‚ÙŠØ©", closing: "Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØµÙÙ‚Ø©", closed: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", lost: "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø¥Ø¬Ø±Ø§Ø¡"
-});
-const MATCH_STATUS_ORDER = ["active","waiting_response","viewing","negotiation"];
-const MATCH_STATUS_LABELS = Object.freeze({
-  new: "Ù†Ø´Ø·Ø©", active: "Ù†Ø´Ø·Ø©", in_progress: "Ù†Ø´Ø·Ø©", waiting_response: "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø±Ø¯",
-  viewing: "Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©", negotiation: "ØªÙØ§ÙˆØ¶", converted: "ØªÙØ§ÙˆØ¶",
-  completed: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", closed: "Ø£ÙØºÙ„Ù‚Øª"
-});
-const MATCH_NEXT_ACTION_LABELS = Object.freeze({
-  new: "Ø¨Ø¯Ø¡ Ø§Ù„ØªÙˆØ§ØµÙ„", active: "Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø·Ø±ÙÙŠÙ†", in_progress: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙˆØ§ØµÙ„",
-  waiting_response: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ø±Ø¯", viewing: "ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©", negotiation: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙØ§ÙˆØ¶",
-  converted: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØµÙÙ‚Ø©", completed: "ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©", closed: "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø¥Ø¬Ø±Ø§Ø¡"
-});
-const READINESS_LABELS = Object.freeze({
-  very_high: "Ø¹Ø§Ù„ÙŠØ© Ø¬Ø¯Ù‹Ø§", high: "Ø¹Ø§Ù„ÙŠØ©", medium: "Ù…ØªÙˆØ³Ø·Ø©", low: "Ù…Ù†Ø®ÙØ¶Ø©"
-});
-const DEAL_HEALTH_LABELS = Object.freeze({
-  excellent: "Ù…Ù…ØªØ§Ø²Ø©", stable: "Ù…Ø³ØªÙ‚Ø±Ø©", needs_intervention: "ØªØ­ØªØ§Ø¬ ØªØ¯Ø®Ù„", at_risk: "Ù…Ø¹Ø±Ø¶Ø© Ù„Ù„ÙØ´Ù„"
-});
-function normalizeMatchStatus(value){
-  return normalizeMatchStatusEngine(cleanText(value||"active",40));
-}
-function readinessFromScore(score){
-  return readinessFromScoreEngine(score);
-}
-function calculateClosingReadiness(args){
-  return calculateClosingReadinessEngine(args);
-}
-function calculateDealHealth({stage="contact",status="open",updatedAt=null,nextFollowUpAt=null}={}){
-  if(status==="closed"||stage==="closed") return {score:100,key:"excellent",label:DEAL_HEALTH_LABELS.excellent};
-  if(status==="lost"||stage==="lost") return {score:10,key:"at_risk",label:DEAL_HEALTH_LABELS.at_risk};
-  const base={contact:66,viewing:76,negotiation:82,agreement:88,closing:95}[stage]||60;
-  const now=Date.now();
-  const updated=updatedAt?new Date(updatedAt).getTime():now;
-  const due=nextFollowUpAt?new Date(nextFollowUpAt).getTime():0;
-  let score=base;
-  if(Number.isFinite(updated)&&now-updated>7*86400000) score-=25;
-  else if(Number.isFinite(updated)&&now-updated>3*86400000) score-=12;
-  if(Number.isFinite(due)&&due>0&&due<now) score-=18;
-  score=Math.max(0,Math.min(100,Math.round(score)));
-  const key=score>=85?"excellent":score>=65?"stable":score>=40?"needs_intervention":"at_risk";
-  return {score,key,label:DEAL_HEALTH_LABELS[key]};
-}
-function defaultNextFollowUp(hours=24){ return new Date(Date.now()+hours*3600000); }
-function buildAnalyticsSummary({clients=[],owners=[],matches=[],deals=[]}={}){
-  const closed=deals.filter(d=>d.status==="closed"), open=deals.filter(d=>d.status==="open"), lost=deals.filter(d=>d.status==="lost");
-  const ranked=[...matches].filter(m=>!["completed","closed"].includes(normalizeMatchStatus(m.status))).sort((a,b)=>Number(b.closingReadinessScore||b.opportunityScore||b.score||0)-Number(a.closingReadinessScore||a.opportunityScore||a.score||0));
-  const best=ranked[0]||null;
-  const districts={}, propertyTypes={}, stages={};
-  [...clients,...owners].forEach(d=>{if(d.district)districts[d.district]=(districts[d.district]||0)+1;if(d.propertyType)propertyTypes[d.propertyType]=(propertyTypes[d.propertyType]||0)+1;});
-  deals.forEach(d=>{const st=d.workflowStage||"contact";stages[st]=(stages[st]||0)+1;});
-  const topDistrict=Object.entries(districts).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-  const topPropertyType=Object.entries(propertyTypes).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-  const commissionActual=closed.reduce((sum,d)=>sum+Number(d.commissionActual||0),0);
-  const commissionExpected=open.reduce((sum,d)=>sum+Number(d.commissionExpected||0),0);
-  const closeRate=deals.length?Math.round((closed.length/deals.length)*100):0;
-  const conversionRate=matches.length?Math.round((deals.length/matches.length)*100):0;
-  const averageMatchScore=matches.length?Math.round(matches.reduce((sum,m)=>sum+Number(m.score||0),0)/matches.length):0;
-  const now=Date.now();
-  const isDue=d=>{
-    const due=d.nextFollowUpAt?new Date(d.nextFollowUpAt).getTime():0;
-    return Number.isFinite(due)&&due>0&&due<=now;
-  };
-  const dueMatches=matches.filter(m=>!["completed","closed"].includes(normalizeMatchStatus(m.status))&&isDue(m)).length;
-  const dueDeals=deals.filter(d=>!["closed","lost"].includes(d.status)&&isDue(d)).length;
-  const veryReady=matches.filter(m=>normalizeMatchStatus(m.status)!=="closed"&&Number(m.closingReadinessScore||0)>=85).length;
-  const negotiationDeals=open.filter(d=>["negotiation","agreement","closing"].includes(d.workflowStage)).length;
-  return {
-    counts:{clients:clients.length,owners:owners.length,matches:matches.length,openDeals:open.length,closedDeals:closed.length,lostDeals:lost.length,dueFollowUps:dueMatches+dueDeals,veryReady,negotiationDeals},
-    bestOpportunity:best?{score:Number(best.opportunityScore||best.score||0),matchScore:Number(best.score||0),closingReadinessScore:Number(best.closingReadinessScore||0),closingReadinessLabel:best.closingReadinessLabel||readinessFromScore(best.closingReadinessScore||0).label,district:best.district||"",propertyType:best.propertyType||"",matchId:String(best.matchId||best.id||""),priority:best.priority||"",status:normalizeMatchStatus(best.status),nextAction:best.nextAction||MATCH_NEXT_ACTION_LABELS[normalizeMatchStatus(best.status)],reasons:parseJsonArray(best.reasonsJson||best.reasons)}:null,
-    morningSummary:{dueFollowUps:dueMatches+dueDeals,veryReady,negotiationDeals,openDeals:open.length,commissionExpected},
-    topDistrict,topPropertyType,commissionActual,commissionExpected,closeRate,conversionRate,averageMatchScore,pipeline:stages
-  };
-}
-
-let cachedGoogleToken = null;
-
-export default {
-  async fetch(request, env, executionContext) {
-    const requestId = crypto.randomUUID();
-    const url = new URL(request.url);
-
-    try {
-      if (request.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders() });
-      }
-
-      if (request.method === "GET" && (url.pathname.startsWith("/m/") || url.pathname.startsWith("/o/"))) {
-        assertFirebaseSecrets(env);
-        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-        const accessToken = await getGoogleAccessToken(env);
-        return await handlePublicOfficePreview(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
-      }
-
-      if ((request.method === "GET" || request.method === "HEAD") && shareCardGetMatch(url.pathname)) {
-        return await handleOfficeShareCardGet(request, env, publicPreviewDeps(env, requestId));
-      }
-
-      if (request.method === "POST" && url.pathname === "/media/office-share-card") {
-        return await handleOfficeShareCardUpload(request, env, publicPreviewDeps(env, requestId));
-      }
-
-      if (request.method === "POST" && url.pathname === "/office/public-slug") {
-        assertFirebaseSecrets(env);
-        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-        const accessToken = await getGoogleAccessToken(env);
-        return await handleSavePublicSlug(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
-      }
-
-      if (request.method === "GET" && url.pathname === "/platform/pilot-status") {
-        assertFirebaseSecrets(env);
-        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-        const accessToken = await getGoogleAccessToken(env);
-        const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
-        let isPlatformAdmin = false;
-        const authHeader = cleanText(request.headers.get("Authorization"), 5000);
-        const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-        if (bearer) {
-          try {
-            const claims = await verifyFirebaseIdToken(bearer, projectId);
-            isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
-          } catch (_) { /* public summary without auth */ }
-        }
-        const status = await getPilotAccessStatus(pilotAccessDeps(projectId, accessToken), {
-          officeId,
-          isPlatformAdmin
-        });
-        return jsonResponse({ ok: true, ...status, requestId });
-      }
-
-      if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
-        const deploymentEnvironment = String(env.DEPLOYMENT_ENV || "production").toLowerCase() === "staging"
-          ? "staging"
-          : "production";
-        const firebaseConfigured = hasFirebaseSecrets(env);
-        // backendReady = phone login, matching, ops, messages, auth-gated media work.
-        // UI-only staging Worker is rejected by deploy-staging smoke when this is false.
-        const backendReady = firebaseConfigured;
-        const cronEnabled = deploymentEnvironment !== "staging";
-        return jsonResponse({
-          ok: true,
-          service: "iaqar-whatsapp-official-intake",
-          mode: "inbound-only",
-          outboundMessaging: false,
-          deploymentEnvironment,
-          firebaseConfigured,
-          backendReady,
-          cronEnabled,
-          pushNotifications: Boolean(env.FCM_WEB_PUSH_VAPID_KEY && firebaseConfigured),
-          projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
-          webhook: "/meta/webhook",
-          requestId,
-          time: new Date().toISOString()
-        });
-      }
-
-      if (request.method === "GET" && url.pathname === "/meta/config") {
-        const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
-        const enabled = Boolean(env.META_APP_ID && env.META_CONFIG_ID && env.META_APP_SECRET);
-        return jsonResponse({
-          ok: true,
-          enabled,
-          appId: enabled ? env.META_APP_ID : "",
-          configId: enabled ? env.META_CONFIG_ID : "",
-          graphVersion: env.META_GRAPH_VERSION || GRAPH_VERSION,
-          trialAllowed: Boolean(officeId),
-          multiOffice: true,
-          inboundOnly: true,
-          outboundMessaging: false,
-          requestId
-        });
-      }
-
-      if (request.method === "GET" && url.pathname === "/meta/status") {
-        return handleStatus(request, url, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/meta/webhook") {
-        return verifyWebhook(url, env);
-      }
-
-      if (request.method === "POST" && url.pathname === "/meta/webhook") {
-        return receiveMetaWebhook(request, env, requestId);
-      }
-
-      if (request.method === "POST" && /^\/telegram\/webhook\/[^/]+$/.test(url.pathname)) {
-        return await handleTelegramWebhookRoute(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/meta/signup/complete") {
-        return completeEmbeddedSignup(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/preview") {
-        const body = await request.json().catch(() => ({}));
-        return jsonResponse({ ok: true, parsed: parseRealEstateMessage(cleanText(body.messageText, 12000), cleanText(body.senderPhone, 60), cleanText(body.senderName, 200)), requestId });
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/url-resolve") {
-        return await handlePipelineUrlResolve(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/media-extract") {
-        return await handlePipelineMediaExtract(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/audio-extract") {
-        return await handlePipelineAudioExtract(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/voice-analyze") {
-        return await handlePipelineVoiceAnalyze(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/public-voice-analyze") {
-        return await handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute: true });
-      }
-
-      if (request.method === "POST" && url.pathname === "/completion/sessions") {
-        return await handleCompletionSessionCreate(request, env, requestId);
-      }
-      const completionPath = url.pathname.match(/^\/completion\/([^/]+)\/([^/]+)$/);
-      if (completionPath && (request.method === "GET" || request.method === "POST")) {
-        return await handleCompletionSessionPublic(
-          request,
-          env,
-          requestId,
-          firestoreOfficeId(decodeURIComponent(completionPath[1])),
-          cleanText(decodeURIComponent(completionPath[2]), 180)
-        );
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake") {
-        return await handleCanonicalIntakeStart(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake/callback") {
-        return await handleCanonicalIntakeCallbackRoute(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/canonical-intake/retry") {
-        return await handleCanonicalIntakeRetryRoute(request, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/media/canonical-intake-access") {
-        return await handleCanonicalIntakeMediaAccess(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/matching/preview") {
-        const body = await request.json().catch(() => ({}));
-        const source = body.source || parseRealEstateMessage(cleanText(body.sourceText, 12000), "", "");
-        const candidates = Array.isArray(body.candidates) ? body.candidates : [];
-        const ranked = rankMatchCandidates(source, candidates);
-        return jsonResponse({
-          ok: true,
-          source,
-          matches: ranked,
-          bestOpportunity: ranked[0] || null,
-          matchingRuleVersion: MATCHING_RULE_VERSION,
-          threshold: MATCH_THRESHOLD,
-          boundaries: phase4BoundaryGuarantees(),
-          requestId
-        });
-      }
-
-      if (request.method === "POST" && url.pathname === "/matching/run") {
-        return await handleMatchingRun(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/operations/action") {
-        return await handleOperationsAction(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/operations/from-cooperation") {
-        return await handleOperationsFromCooperation(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/operations/missing-data") {
-        return await handleOperationsMissingData(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/nearby-suggestions") {
-        return await handleCooperationNearbySuggestions(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/suitable-offices") {
-        return await handleCooperationSuitableOffices(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/workflow") {
-        return await handleCooperationWorkflow(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/request") {
-        return await handleCooperationRequestCreate(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
-        return await handleCooperationLifecycle(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/sync-coordination") {
-        return await handleCooperationSyncCoordination(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/scope-revoke") {
-        return await handleCooperationScopeRevoke(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/messages/draft") {
-        return await handleMessagesDraft(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/messages/handoff") {
-        return await handleMessagesHandoff(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/party/sessions") {
-        return await handlePartySessionMint({
-          request,
-          env,
-          requestId,
-          helpers: partySessionHelpers()
-        });
-      }
-
-      if (request.method === "POST" && url.pathname === "/match/living-action") {
-        return await handleMatchLivingAction({
-          request,
-          env,
-          requestId,
-          helpers: partySessionHelpers()
-        });
-      }
-
-      const partyGet = url.pathname.match(/^\/party\/sessions\/([^/]+)$/);
-      if (request.method === "GET" && partyGet) {
-        return await handlePartySessionGet({
-          token: decodeURIComponent(partyGet[1] || ""),
-          env,
-          requestId,
-          helpers: partySessionHelpers(),
-          ip: request.headers.get("CF-Connecting-IP") || "unknown"
-        });
-      }
-
-      const partyPhoto = url.pathname.match(/^\/party\/sessions\/([^/]+)\/photos\/(\d+)$/);
-      if (request.method === "GET" && partyPhoto) {
-        return await handlePartySessionPhoto({
-          token: decodeURIComponent(partyPhoto[1] || ""),
-          index: Number(partyPhoto[2] || 0),
-          env,
-          helpers: partySessionHelpers(),
-          ip: request.headers.get("CF-Connecting-IP") || "unknown"
-        });
-      }
-
-      const partyReply = url.pathname.match(/^\/party\/sessions\/([^/]+)\/reply$/);
-      if (request.method === "POST" && partyReply) {
-        return await handlePartySessionReply({
-          token: decodeURIComponent(partyReply[1] || ""),
-          env,
-          request,
-          requestId,
-          helpers: partySessionHelpers(),
-          ip: request.headers.get("CF-Connecting-IP") || "unknown"
-        });
-      }
-
-      const partyBundle = url.pathname.match(/^\/party\/sessions\/([^/]+)\/bundle$/);
-      if (request.method === "POST" && partyBundle) {
-        return await handlePartySessionBundle({
-          token: decodeURIComponent(partyBundle[1] || ""),
-          env,
-          request,
-          requestId,
-          helpers: partySessionHelpers(),
-          ip: request.headers.get("CF-Connecting-IP") || "unknown",
-          executionContext
-        });
-      }
-
-      if (request.method === "GET" && url.pathname === "/messages/adapters") {
-        return jsonResponse({
-          ok: true,
-          whatsapp: whatsappAdapterContract(),
-          telegram: { ...telegramWebhookValidationFixture(), ...telegramWebhookRuntimeContract() },
-          boundaries: { ...phase7BoundaryGuarantees(), ...channelCleanupBoundaryGuarantees() },
-          requestId
-        });
-      }
-
-      if (request.method === "POST" && url.pathname === "/workflow/preview") {
-        const body = await request.json().catch(() => ({}));
-        const current = cleanText(body.currentStage || "contact", 40);
-        const next = nextDealStage(current);
-        const health = calculateDealHealth({ stage: next, status: next === "closed" ? "closed" : "open" });
-        return jsonResponse({ok:true,currentStage:current,nextStage:next,currentLabel:DEAL_STAGE_LABELS[current]||current,nextLabel:DEAL_STAGE_LABELS[next]||next,nextAction:DEAL_NEXT_ACTION_LABELS[next]||"Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØµÙÙ‚Ø©",health,closed:next==="closed",requestId});
-      }
-
-      if (request.method === "POST" && url.pathname === "/workflow/readiness/preview") {
-        const body = await request.json().catch(() => ({}));
-        const readiness = calculateClosingReadiness({
-          matchScore: Number(body.matchScore || body.score || 0),
-          source: body.source || {},
-          candidate: body.candidate || {},
-          status: body.status || "active"
-        });
-        return jsonResponse({ok:true,readiness,status:normalizeMatchStatus(body.status),statusLabel:MATCH_STATUS_LABELS[normalizeMatchStatus(body.status)],nextAction:MATCH_NEXT_ACTION_LABELS[normalizeMatchStatus(body.status)],requestId});
-      }
-
-      if (request.method === "POST" && url.pathname === "/office/analytics/preview") {
-        const body = await request.json().catch(() => ({}));
-        const summary = buildAnalyticsSummary({clients:Array.isArray(body.clients)?body.clients:[],owners:Array.isArray(body.owners)?body.owners:[],matches:Array.isArray(body.matches)?body.matches:[],deals:Array.isArray(body.deals)?body.deals:[]});
-        return jsonResponse({ok:true,...summary,requestId});
-      }
-
-      if (url.pathname === "/activepieces/intake") {
-        if (request.method === "POST") {
-          return await handleActivepiecesIntake(request, env, requestId);
-        }
-        return jsonResponse({
-          success: false,
-          duplicate: false,
-          opportunityId: "",
-          missingFields: [],
-          error: "method_not_allowed",
-          message: "Ø§Ù„Ø·Ø±ÙŠÙ‚Ø© ØºÙŠØ± Ù…Ø³Ù…ÙˆØ­Ø©",
-          requestId
-        }, 405);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/intake") {
-        return await handleSharedIntake(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/pipeline/public-intake") {
-        return await handlePublicIntakeMatching(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/opportunity-router/accept") {
-        return await handleOpportunityRouterAccept(request, env, requestId);
-      }
-      if (request.method === "POST" && url.pathname === "/opportunity-router/decline") {
-        return await handleOpportunityRouterDecline(request, env, requestId);
-      }
-      if (request.method === "POST" && url.pathname === "/opportunity-router/tick") {
-        return await handleOpportunityRouterTick(request, env, requestId);
-      }
-      if (request.method === "POST" && url.pathname === "/opportunity-router/rate") {
-        return await handleOpportunityRouterRate(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/broker/apply") {
-        return await handleBrokerApplication(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/auth/phone-login-resolve") {
-        return await handlePhoneLoginResolve(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/auth/phone-login") {
-        return await handlePhoneLogin(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/auth/forgot-password") {
-        return await handleForgotPassword(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/media/public-intake") {
-        return await uploadPublicIntakeMedia(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/media/opportunity-source") {
-        return await uploadOpportunitySourceMedia(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/media/office-cover") {
-        return await uploadOfficeImage(request, env, requestId);
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
-        return await deleteOfficeImage(request, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
-        return await servePublicOfficeCover(url, env);
-      }
-
-      if (request.method === "GET" && url.pathname === "/media/office") {
-        return await serveOfficeMedia(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/media/office-library") {
-        return await uploadOfficeLibraryMedia(request, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/broker-applications") {
-        return await listBrokerApplications(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/broker-applications/action") {
-        return await decideBrokerApplication(request, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/session") {
-        return await handleAdminSession(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/overview") {
-        return await handleAdminOverview(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/offices") {
-        return await handleAdminOffices(request, url, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/office") {
-        return await handleAdminOfficeDetail(request, url, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/office/activity") {
-        return await handleAdminOfficeActivity(request, url, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/admin/audit-log") {
-        return await handleAdminAuditLog(request, url, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/office/suspend") {
-        return await handleAdminSuspend(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/office/reactivate") {
-        return await handleAdminReactivate(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/office/subscription") {
-        return await handleAdminSubscriptionUpdate(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/office/license") {
-        return await handleAdminLicenseUpdate(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "POST" && url.pathname === "/admin/office/note") {
-        return await handleAdminNoteAdd(request, env, requestId, getAdminHelpers());
-      }
-
-      if (request.method === "GET" && url.pathname === "/fcm/config") {
-        const vapidConfigured = Boolean(env.FCM_WEB_PUSH_VAPID_KEY);
-        const serverReady = hasFirebaseSecrets(env);
-        return jsonResponse({
-          ok: true,
-          enabled: vapidConfigured && serverReady,
-          vapidConfigured,
-          serverReady,
-          vapidKey: vapidConfigured ? env.FCM_WEB_PUSH_VAPID_KEY : "",
-          projectId: env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
-          requestId
-        });
-      }
-
-      if (request.method === "GET" && url.pathname === "/fcm/status") {
-        return getFcmStatus(request, url, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/fcm/register") {
-        return registerFcmDevice(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/fcm/unregister") {
-        return unregisterFcmDevice(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/fcm/test") {
-        return sendFcmTestNotification(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/workflow/action") {
-        return handleWorkflowAction(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/opportunity/lifecycle") {
-        return handleOpportunityLifecycle(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/internal/followup-reminders/process") {
-        return handleProcessFollowupReminders(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/opportunity/patch") {
-        return handleOpportunityPatch(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/opportunity/purge") {
-        return handleOpportunityPurge(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/notifications/read") {
-        return handleNotificationRead(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/opportunity/workspace") {
-        return handleOpportunityWorkspace(request, env, requestId);
-      }
-
-      if (request.method === "POST" && url.pathname === "/cooperation/room") {
-        return handleCooperationRoom(request, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/workflow/timeline") {
-        return handleWorkflowTimeline(request, url, env, requestId);
-      }
-
-      if (request.method === "GET" && url.pathname === "/office/analytics") {
-        return await handleOfficeAnalytics(request, url, env, requestId);
-      }
-
-      if (url.pathname === "/ingest") {
-        return jsonResponse({
-          ok: false,
-          error: "macrodroid_disabled",
-          message: "ØªÙ… Ø¥ÙŠÙ‚Ø§Ù Ù…Ø³Ø§Ø± MacroDroid. Ø§Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø±Ø¨Ø· Ø§Ù„Ø±Ø³Ù…ÙŠ Ù…Ø¹ ÙˆØ§ØªØ³Ø§Ø¨ Ø£Ø¹Ù…Ø§Ù„.",
-          requestId
-        }, 410);
-      }
-
-      // Cloud API / legacy outbound remains blocked. Phase 7 draft/handoff APIs are
-      // registered above and never auto-send via Meta or Telegram Bot API.
-      const draftApi = url.pathname === "/messages/draft"
-        || url.pathname === "/messages/handoff"
-        || url.pathname === "/messages/adapters";
-      if (!draftApi && (url.pathname.includes("messages") || url.pathname.includes("send"))) {
-        return jsonResponse({
-          ok: false,
-          error: "outbound_disabled",
-          message: "Ø¥Ø±Ø³Ø§Ù„ Ø±Ø³Ø§Ø¦Ù„ ÙˆØ§ØªØ³Ø§Ø¨ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ Ù…ØªÙˆÙ‚Ù Ø¨Ø±Ù…Ø¬ÙŠÙ‹Ø§ ÙÙŠ Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ø£ÙˆÙ„Ù‰.",
-          requestId
-        }, 403);
-      }
-
-      return jsonResponse({ ok: false, error: "not_found", requestId }, 404);
-    } catch (error) {
-      console.error("[iaqar-whatsapp] request failed", {
-        requestId,
-        code: error && error.code,
-        message: error && error.message
-      });
-      return jsonResponse({
-        ok: false,
-        error: error && error.code || "internal_error",
-        message: error && error.publicMessage || "ØªØ¹Ø°Ø± ØªÙ†ÙÙŠØ° Ø§Ù„Ø·Ù„Ø¨",
-        requestId
-      }, Number(error && error.status) || 500);
-    }
-  },
-  async scheduled(event, env, ctx) {
-    const isStaging = String(env.DEPLOYMENT_ENV || "").toLowerCase() === "staging";
-    const scheduledTime = event && event.scheduledTime;
-    if (!isStaging) {
-      ctx.waitUntil(processOverdueFollowups(env, scheduledTime));
-    }
-    ctx.waitUntil(processOpportunityFollowupReminders(env, scheduledTime));
-  }
-};
-
-const PUBLIC_IMAGE_TYPES = Object.freeze({
-  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"
-});
-const PUBLIC_VIDEO_TYPES = Object.freeze({
-  "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov"
-});
-
-function requireMediaBucket(env) {
-  if (!env.IAQAR_MEDIA) throw appError("media_storage_unavailable", 503, "ØªØ®Ø²ÙŠÙ† Ø§Ù„ÙˆØ³Ø§Ø¦Ø· ØºÙŠØ± Ù…ÙØ¹Ù‘Ù„");
-  return env.IAQAR_MEDIA;
-}
-
-function requestBodyLength(request) {
-  const value = Number(request.headers.get("content-length") || 0);
-  if (!Number.isFinite(value) || value <= 0) throw appError("file_length_required", 411, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø­Ø¬Ù… Ø§Ù„Ù…Ù„Ù");
-  return value;
-}
-
-function enforcePublicRouteRateLimit(request, { route, officeId = "", limit, windowMs }) {
-  const ip = cleanText(request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown", 80);
-  const key = publicRateLimitKey({ route, ip, officeId });
-  const result = consumePublicRateLimit(key, { limit, windowMs });
-  if (!result.ok) {
-    throw appError(
-      "rate_limited",
-      429,
-      "ØªÙ… ØªØ¬Ø§ÙˆØ² Ø­Ø¯ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ù…Ø¤Ù‚ØªÙ‹Ø§. Ø­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø£Ø®Ø±Ù‰ Ø¨Ø¹Ø¯ Ù‚Ù„ÙŠÙ„."
-    );
-  }
-  return result;
-}
-
-async function uploadPublicIntakeMedia(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
-  const intakeId = cleanText(request.headers.get("x-intake-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
-  const mediaKind = cleanText(request.headers.get("x-media-kind"), 12).toLowerCase();
-  const index = Number(request.headers.get("x-media-index") || 0);
-  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
-  const size = requestBodyLength(request);
-  if (!officeId || intakeId.length < 8) throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  enforcePublicRouteRateLimit(request, {
-    route: "media/public-intake",
-    officeId,
-    ...PUBLIC_RATE_LIMITS.PUBLIC_MEDIA
-  });
-
-  let filename;
-  if (mediaKind === "image" && PUBLIC_IMAGE_TYPES[contentType] && Number.isInteger(index) && index >= 1 && index <= 5) {
-    if (size > 8 * 1024 * 1024) throw appError("image_too_large", 413, "Ø­Ø¬Ù… Ø§Ù„ØµÙˆØ±Ø© ÙŠØªØ¬Ø§ÙˆØ² 8 Ù…ÙŠØ¬Ø§Ø¨Ø§ÙŠØª");
-    filename = `image-${index}.${PUBLIC_IMAGE_TYPES[contentType]}`;
-  } else if (mediaKind === "video" && PUBLIC_VIDEO_TYPES[contentType]) {
-    if (size > 90 * 1024 * 1024) throw appError("video_too_large", 413, "Ø­Ø¬Ù… Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙŠØªØ¬Ø§ÙˆØ² 90 Ù…ÙŠØ¬Ø§Ø¨Ø§ÙŠØª");
-    filename = `video.${PUBLIC_VIDEO_TYPES[contentType]}`;
-  } else {
-    throw appError("unsupported_media", 415, "Ù†ÙˆØ¹ Ø§Ù„Ù…Ù„Ù ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…");
-  }
-
-  const key = `public-intake/${officeId}/${intakeId}/${filename}`;
-  await bucket.put(key, request.body, {
-    httpMetadata: { contentType },
-    customMetadata: { officeId, intakeId, mediaKind, uploadedAt: new Date().toISOString() }
-  });
-  return jsonResponse({ ok: true, mediaPath: key, requestId }, 201);
-}
-
-const OPPORTUNITY_SOURCE_TYPES = Object.freeze({
-  "image/jpeg": { sourceTypes: ["image", "screenshot"], ext: "jpg", max: 15 * 1024 * 1024 },
-  "image/png": { sourceTypes: ["image", "screenshot"], ext: "png", max: 15 * 1024 * 1024 },
-  "image/webp": { sourceTypes: ["image", "screenshot"], ext: "webp", max: 15 * 1024 * 1024 },
-  "application/pdf": { sourceTypes: ["pdf"], ext: "pdf", max: 15 * 1024 * 1024 },
-  "application/msword": { sourceTypes: ["word"], ext: "doc", max: 15 * 1024 * 1024 },
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { sourceTypes: ["word"], ext: "docx", max: 15 * 1024 * 1024 },
-  "application/vnd.ms-excel": { sourceTypes: ["excel"], ext: "xls", max: 15 * 1024 * 1024 },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": { sourceTypes: ["excel"], ext: "xlsx", max: 15 * 1024 * 1024 },
-  "audio/mpeg": { sourceTypes: ["audio"], ext: "mp3", max: 15 * 1024 * 1024 },
-  "audio/mp4": { sourceTypes: ["audio"], ext: "m4a", max: 15 * 1024 * 1024 },
-  "audio/wav": { sourceTypes: ["audio"], ext: "wav", max: 15 * 1024 * 1024 },
-  "audio/ogg": { sourceTypes: ["audio"], ext: "ogg", max: 15 * 1024 * 1024 },
-  "audio/webm": { sourceTypes: ["audio"], ext: "webm", max: 15 * 1024 * 1024 }
-});
-
-export function normalizeOpportunitySourceType(value) {
-  const sourceType = cleanText(value, 20).toLowerCase();
-  return ["image", "screenshot", "pdf", "word", "excel", "audio"].includes(sourceType) ? sourceType : "";
-}
-
-async function uploadOpportunitySourceMedia(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
-  const sourceId = cleanText(request.headers.get("x-source-id"), 80).replace(/[^a-zA-Z0-9_-]/g, "");
-  const sourceType = normalizeOpportunitySourceType(request.headers.get("x-source-type"));
-  const fileNameHeader = cleanText(decodeURIComponent(request.headers.get("x-file-name") || ""), 240);
-  const contentType = cleanText(request.headers.get("content-type"), 120).toLowerCase();
-  const size = requestBodyLength(request);
-
-  if (!officeId || sourceId.length < 8) throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  if (!sourceType) throw appError("unsupported_source_type", 400, "Ù†ÙˆØ¹ Ù…ØµØ¯Ø± Ø§Ù„Ù…Ø±ÙÙ‚ ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…");
-
-  await authorizeOfficeRequest(request, env, officeId, "member");
-
-  const rule = OPPORTUNITY_SOURCE_TYPES[contentType];
-  if (!rule || !rule.sourceTypes.includes(sourceType)) {
-    throw appError("unsupported_media", 415, "Ù†ÙˆØ¹ Ø§Ù„Ù…Ù„Ù ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ù„Ù…ØµØ¯Ø± Ø§Ù„ÙØ±ØµØ©");
-  }
-  if (size > rule.max) throw appError("file_too_large", 413, "Ø­Ø¬Ù… Ø§Ù„Ù…Ù„Ù ÙŠØªØ¬Ø§ÙˆØ² Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­");
-
-  const safeName = fileNameHeader.replace(/[^a-zA-Z0-9._\u0600-\u06FF-]+/g, "_").slice(0, 80) || `source.${rule.ext}`;
-  const key = `opportunity-sources/${officeId}/${sourceId}/${safeName}`;
-  await bucket.put(key, request.body, {
-    httpMetadata: { contentType },
-    customMetadata: {
-      officeId,
-      sourceId,
-      sourceType,
-      uploadedAt: new Date().toISOString(),
-      extractionMode: "simulated_fixture"
-    }
-  });
-  return jsonResponse({
-    ok: true,
-    mediaPath: key,
-    sourceType,
-    extractionMode: "simulated_fixture",
-    productionAi: false,
-    requestId
-  }, 201);
-}
-
-// Ù…ØªØºÙŠÙ‘Ø±Ø§Øª Ù‡ÙˆÙŠØ© Ø§Ù„Ù…ÙƒØªØ¨ Ø§Ù„Ø¨ØµØ±ÙŠØ©. Ø§Ù„ØªØ±ÙˆÙŠØ³Ø© ØªØ¨Ù‚Ù‰ "cover" Ù„ØªÙˆØ§ÙÙ‚ Ø§Ù„Ø±ÙˆØ§Ø¨Ø· Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø© Ø³Ø§Ø¨Ù‚Ù‹Ø§.
-export const OFFICE_IMAGE_VARIANTS = Object.freeze(["cover", "logo", "display"]);
-
-export function normalizeOfficeImageVariant(value) {
-  const variant = cleanText(value, 20).toLowerCase();
-  if (!variant) return "cover";
-  return OFFICE_IMAGE_VARIANTS.includes(variant) ? variant : "";
-}
-
-function officeImageKey(officeId, variant) {
-  return `office-covers/${officeId}/${variant}`;
-}
-
-async function resolveOfficeImageTarget(request, env) {
-  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  const variant = normalizeOfficeImageVariant(request.headers.get("x-office-image-variant"));
-  if (!variant) throw appError("unsupported_image_variant", 400, "Ù†ÙˆØ¹ ØµÙˆØ±Ø© Ø§Ù„Ù…ÙƒØªØ¨ ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…");
-  await authorizeOfficeRequest(request, env, officeId, "manage");
-  return { officeId, variant, key: officeImageKey(officeId, variant) };
-}
-
-async function uploadOfficeImage(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const { officeId, variant, key } = await resolveOfficeImageTarget(request, env);
-  const contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase();
-  const size = requestBodyLength(request);
-  if (!PUBLIC_IMAGE_TYPES[contentType]) throw appError("unsupported_media", 415, "Ø§Ø®ØªØ± ØµÙˆØ±Ø© JPG Ø£Ùˆ PNG Ø£Ùˆ WebP");
-  if (size > 10 * 1024 * 1024) throw appError("image_too_large", 413, "Ø­Ø¬Ù… ØµÙˆØ±Ø© Ø§Ù„Ù…ÙƒØªØ¨ ÙŠØªØ¬Ø§ÙˆØ² 10 Ù…ÙŠØ¬Ø§Ø¨Ø§ÙŠØª");
-  await bucket.put(key, request.body, {
-    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, variant, uploadedAt: new Date().toISOString() }
-  });
-  const origin = new URL(request.url).origin;
-  const imageUrl = `${origin}/media/public/${key}?v=${Date.now()}`;
-  // coverUrl Ù…Ø­ÙÙˆØ¸ Ù„Ù„ØªÙˆØ§ÙÙ‚ Ù…Ø¹ Ø£ÙŠ Ø¹Ù…ÙŠÙ„ Ù‚Ø¯ÙŠÙ… ÙŠÙ‚Ø±Ø£ Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø³Ø§Ø¨Ù‚.
-  return jsonResponse({ ok: true, variant, imageUrl, coverUrl: imageUrl, requestId }, 201);
-}
-
-async function deleteOfficeImage(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const { variant, key } = await resolveOfficeImageTarget(request, env);
-  if (variant === "cover") {
-    throw appError("image_not_removable", 400, "Ø§Ù„ØªØ±ÙˆÙŠØ³Ø© Ù…Ø·Ù„ÙˆØ¨Ø© Ù„Ø¨Ø·Ø§Ù‚Ø© Ø§Ù„Ù…ÙƒØªØ¨ ÙˆÙ„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø²Ø§Ù„ØªÙ‡Ø§");
-  }
-  await bucket.delete(key);
-  return jsonResponse({ ok: true, variant, removed: true, requestId });
-}
-
-async function servePublicOfficeCover(url, env) {
-  const bucket = requireMediaBucket(env);
-  const key = decodeURIComponent(url.pathname.slice("/media/public/".length));
-  if (!/^office-covers\/[a-z0-9_-]{1,80}\/(cover|logo|display)$/.test(key)) {
-    throw appError("media_not_found", 404, "Ø§Ù„ØµÙˆØ±Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  }
-  const object = await bucket.get(key);
-  if (!object) throw appError("media_not_found", 404, "Ø§Ù„ØµÙˆØ±Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  const headers = new Headers(corsHeaders());
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("cache-control", "public, max-age=3600");
-  headers.set("x-content-type-options", "nosniff");
-  return new Response(object.body, { headers });
-}
-
-const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
-
-async function serveOfficeMedia(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const url = new URL(request.url);
-  const officeId = firestoreOfficeId(url.searchParams.get("officeId") || request.headers.get("x-office-id"));
-  const mediaPath = cleanText(url.searchParams.get("path"), 500);
-  if (!officeId || !mediaPath) throw appError("media_path_required", 400, "Ù…Ø³Ø§Ø± Ø§Ù„ÙˆØ³Ø§Ø¦Ø· Ù…Ø·Ù„ÙˆØ¨");
-  if (!OFFICE_MEDIA_KEY_PATTERN.test(mediaPath) || !mediaPath.includes(`/${officeId}/`)) {
-    throw appError("media_forbidden", 403, "Ù…Ø³Ø§Ø± Ø§Ù„ÙˆØ³Ø§Ø¦Ø· ØºÙŠØ± Ù…Ø³Ù…ÙˆØ­");
-  }
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  const object = await bucket.get(mediaPath);
-  if (!object) throw appError("media_not_found", 404, "Ø§Ù„Ù…Ù„Ù ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
-  const headers = new Headers(corsHeaders());
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("cache-control", "private, max-age=300");
-  headers.set("x-content-type-options", "nosniff");
-  return new Response(object.body, { headers });
-}
-
-const OFFICE_LIBRARY_TYPES = Object.freeze({
-  "application/pdf": { ext: "pdf", max: 15 * 1024 * 1024 },
-  "image/jpeg": { ext: "jpg", max: 8 * 1024 * 1024 },
-  "image/png": { ext: "png", max: 8 * 1024 * 1024 },
-  "image/webp": { ext: "webp", max: 8 * 1024 * 1024 },
-  "application/msword": { ext: "doc", max: 15 * 1024 * 1024 },
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { ext: "docx", max: 15 * 1024 * 1024 }
-});
-
-async function uploadOfficeLibraryMedia(request, env, requestId) {
-  const bucket = requireMediaBucket(env);
-  const officeId = firestoreOfficeId(request.headers.get("x-office-id"));
-  let fileNameRaw = cleanText(request.headers.get("x-file-name"), 240) || "file";
-  try {
-    fileNameRaw = decodeURIComponent(fileNameRaw);
-  } catch (_) { /* keep raw */ }
-  const fileName = cleanText(fileNameRaw, 240) || "file";
-  let contentType = cleanText(request.headers.get("content-type"), 80).toLowerCase().split(";")[0].trim();
-  if (!contentType || contentType === "application/octet-stream") {
-    const lower = fileName.toLowerCase();
-    if (lower.endsWith(".pdf")) contentType = "application/pdf";
-    else if (lower.endsWith(".png")) contentType = "image/png";
-    else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) contentType = "image/jpeg";
-    else if (lower.endsWith(".webp")) contentType = "image/webp";
-    else if (lower.endsWith(".doc")) contentType = "application/msword";
-    else if (lower.endsWith(".docx")) {
-      contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    }
-  }
-  const size = requestBodyLength(request);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  const spec = OFFICE_LIBRARY_TYPES[contentType];
-  if (!spec) throw appError("unsupported_media", 415, "Ù†ÙˆØ¹ Ø§Ù„Ù…Ù„Ù ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… ÙÙŠ Ø§Ù„Ù…ÙƒØªØ¨Ø©");
-  if (size > spec.max) throw appError("file_too_large", 413, "Ø­Ø¬Ù… Ø§Ù„Ù…Ù„Ù ÙŠØªØ¬Ø§ÙˆØ² Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­");
-  const safeName = fileName.replace(/[^a-zA-Z0-9._\u0600-\u06FF-]+/g, "-").slice(0, 80) || `file.${spec.ext}`;
-  const itemId = `lib_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const key = `office-library/${officeId}/${itemId}/${safeName}`;
-  await bucket.put(key, request.body, {
-    httpMetadata: { contentType },
-    customMetadata: { officeId, itemId, uploadedAt: new Date().toISOString() }
-  });
-  return jsonResponse({ ok: true, mediaPath: key, itemId, fileName: safeName, contentType, requestId }, 201);
-}
-
-function evaluatePublicIntakeReadiness(intake = {}, parsed = {}) {
-  const missing = [];
-  const isOwner = intake.kind === "owner";
-  const purpose = isOwner
-    ? (String(parsed.transactionType || intake.transactionType || "sale").toLowerCase() === "rent" ? "RENT" : "SALE")
-    : (String(parsed.transactionType || intake.transactionType || "").toLowerCase() === "rent" ? "LEASE_REQUEST" : "PURCHASE");
-  if (!purpose) missing.push("purpose");
-  if (!cleanText(intake.propertyType || parsed.propertyType, 80)) missing.push("propertyType");
-  if (!cleanText(intake.city || parsed.city, 80)) missing.push("city");
-  if (!cleanText(intake.district || parsed.district, 80)) missing.push("district");
-  const amount = Number(intake.amount || parsed.price || parsed.priceMax || 0);
-  if (!(amount > 0)) missing.push("priceOrBudget");
-  if (!isOwner && intake.kind !== "client") missing.push("advertiserRole");
-  const phone = normalizeSaudiPhone(intake.phone || parsed.phone);
-  if (!phone) missing.push("contactPhone");
-  const roleOk = isOwner ? "OWNER" : "CLIENT";
-  if (!roleOk) missing.push("advertiserRole");
-  return {
-    matchingReadiness: missing.length === 0 ? "READY_FOR_MATCHING" : "NEEDS_COMPLETION",
-    matchingReadinessMissing: missing,
-    advertiserRole: roleOk,
-    purpose
-  };
-}
-
-function firestoreStringArray(values = []) {
-  const items = (Array.isArray(values) ? values : []).map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 12);
-  return { arrayValue: { values: items.map((value) => ({ stringValue: value })) } };
-}
-
-async function handleBrokerApplication(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const identity = await requirePlatformIdentity(request, env, false);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  try {
-    await assertPilotRegistrationAllowed(pilotAccessDeps(projectId, accessToken));
-  } catch (error) {
-    throw appError(error.code || "pilot_registration_closed", error.status || 403, error.message);
-  }
-  const body = await request.json().catch(() => ({}));
-  const brokerName = cleanText(body.brokerName, 80);
-  const phone = normalizeLoginPhone(body.phone);
-  const email = cleanText(body.email, 120).toLowerCase();
-  const falLicense = cleanText(body.falLicense, 20).replace(/\D/g, "");
-  const officeName = cleanText(body.officeName, 80);
-  if (brokerName.length < 4 || !phone ||
-      !email.includes("@") || falLicense.length < 6 || officeName.length < 4) {
-    throw appError("invalid_broker_application", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø·Ù„Ø¨ Ø§Ù„ÙˆØ³ÙŠØ· ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  }
-  if (!/^\d{6,20}$/.test(falLicense)) {
-    throw appError("fal_invalid", 400, "Ø±Ù‚Ù… Ø±Ø®ØµØ© ÙØ§Ù„ ØºÙŠØ± ØµØ§Ù„Ø­");
-  }
-  const phoneHash = await sha256Hex(phone);
-  const loginDirectory = await getFirestoreDocument({
-    projectId,
-    segments: ["loginDirectory", phoneHash],
-    accessToken,
-    allowMissing: true
-  });
-  if (loginDirectory) {
-    const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
-    if (existingLogin.uid && existingLogin.uid !== identity.sub) {
-      throw appError("phone_already_used", 409, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ù…Ø³ØªØ®Ø¯Ù… Ù…Ø³Ø¨Ù‚Ù‹Ø§");
-    }
-  }
-  const pendingApps = await listCollectionDocuments({
-    projectId,
-    segments: ["brokerApplications"],
-    accessToken,
-    pageSize: 200
-  });
-  for (const doc of pendingApps) {
-    const row = firestoreFieldsToJs(doc.fields || {});
-    if (row.status !== "pending") continue;
-    if (String(row.email || "").toLowerCase() === email) {
-      throw appError("email_already_used", 409, "Ø§Ù„Ø¨Ø±ÙŠØ¯ Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ Ø·Ù„Ø¨ Ù‚Ø§Ø¦Ù…");
-    }
-    if (String(row.falLicense || "").replace(/\D/g, "") === falLicense) {
-      throw appError("fal_already_used", 409, "Ø±Ù‚Ù… ÙØ§Ù„ Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ Ø·Ù„Ø¨ Ù‚Ø§Ø¦Ù…");
-    }
-    if (normalizeLoginPhone(row.phone) === phone) {
-      throw appError("phone_already_used", 409, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ Ø·Ù„Ø¨ Ù‚Ø§Ø¦Ù…");
-    }
-  }
-  const applicationId = `broker_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
-  const now = new Date();
-  await setFirestoreDocument({
-    projectId,
-    segments: ["brokerApplications", applicationId],
-    accessToken,
-    fields: {
-      brokerName: firestoreString(brokerName),
-      phone: firestoreString(phone),
-      email: firestoreString(email),
-      falLicense: firestoreString(falLicense),
-      officeName: firestoreString(officeName),
-      status: firestoreString("pending"),
-      source: firestoreString("platform_broker_registration"),
-      applicantUid: firestoreString(identity.sub),
-      createdAt: firestoreTimestamp(now),
-      updatedAt: firestoreTimestamp(now)
-    }
-  });
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", "platform", "alerts", applicationId],
-    accessToken,
-    fields: {
-      officeId: firestoreString("platform"),
-      type: firestoreString("broker_application"),
-      status: firestoreString("unread"),
-      title: firestoreString("Ø·Ù„Ø¨ ØªØ³Ø¬ÙŠÙ„ ÙˆØ³ÙŠØ· Ø¬Ø¯ÙŠØ¯"),
-      body: firestoreString(`${brokerName} â€” Ø±Ø®ØµØ© ÙØ§Ù„ ${falLicense}`),
-      recordId: firestoreString(applicationId),
-      createdAt: firestoreTimestamp(now),
-      updatedAt: firestoreTimestamp(now)
-    }
-  });
-  await sendOfficePush({
-    projectId,
-    officeId: "platform",
-    title: "Ø·Ù„Ø¨ ØªØ³Ø¬ÙŠÙ„ ÙˆØ³ÙŠØ· Ø¬Ø¯ÙŠØ¯",
-    body: `${brokerName} â€” Ø±Ø®ØµØ© ÙØ§Ù„ ${falLicense}`,
-    type: "broker_application",
-    recordId: applicationId,
-    accessToken,
-    env
-  }).catch(error => console.warn("[iaqar-broker] admin push failed", error && error.message));
-  return jsonResponse({ ok: true, applicationId, status: "pending", requestId }, 201);
-}
-
-async function requirePlatformIdentity(request, env, requireAdmin = true) {
-  const header = cleanText(request.headers.get("Authorization"), 5000);
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!token) throw appError("auth_required", 401, "ÙŠÙ„Ø²Ù… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„");
-  const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
-  if (requireAdmin) {
-    const authorization = assertPlatformAdminClaims(claims);
-    if (!authorization.ok) {
-      throw appError("admin_required", 403, "Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ© Ø®Ø§ØµØ© Ø¨Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ù†ØµØ©");
-    }
-  }
-  return claims;
-}
-
-async function listBrokerApplications(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  await requirePlatformIdentity(request, env, true);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const docs = await listCollectionDocuments({ projectId, segments: ["brokerApplications"], accessToken, pageSize: 100 });
-  const applications = docs.map(doc => {
-    const data = firestoreFieldsToJs(doc.fields || {});
-    return { id: String(doc.name || "").split("/").pop(), ...data };
-  }).filter(item => item.status === "pending");
-  return jsonResponse({ ok: true, applications, requestId });
-}
-
-async function decideBrokerApplication(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const admin = await requirePlatformIdentity(request, env, true);
-  const body = await request.json().catch(() => ({}));
-  const applicationId = cleanText(body.applicationId, 120);
-  const action = cleanText(body.action, 20);
-  const officeId = firestoreOfficeId(body.officeId);
-  if (!applicationId || !["approve", "reject"].includes(action)) {
-    throw appError("decision_invalid", 400, "Ù‚Ø±Ø§Ø± Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± ØµØ§Ù„Ø­");
-  }
-  if (action === "approve" && (!officeId || officeId === "platform")) {
-    throw appError("office_id_invalid", 400, "Ø±Ù…Ø² Ø§Ù„Ù…ÙƒØªØ¨ ØºÙŠØ± ØµØ§Ù„Ø­");
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const applicationDoc = await getFirestoreDocument({
-    projectId, segments: ["brokerApplications", applicationId], accessToken
-  });
-  const application = firestoreFieldsToJs(applicationDoc.fields || {});
-  if (application.status !== "pending") throw appError("already_decided", 409, "ØªÙ… Ø§ØªØ®Ø§Ø° Ù‚Ø±Ø§Ø± Ø³Ø§Ø¨Ù‚ Ø¹Ù„Ù‰ Ø§Ù„Ø·Ù„Ø¨");
-  const now = new Date();
-  if (action === "approve") {
-    const pilotDeps = pilotAccessDeps(projectId, accessToken);
-    try {
-      await assertPilotRegistrationAllowed(pilotDeps);
-      await assertPilotOfficeAccess(pilotDeps, { officeId, isPlatformAdmin: false });
-    } catch (error) {
-      throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
-    }
-    const normalizedPhone = normalizeLoginPhone(application.phone);
-    if (!normalizedPhone) throw appError("phone_invalid", 400, "Ø±Ù‚Ù… Ø¬ÙˆØ§Ù„ Ø§Ù„ÙˆØ³ÙŠØ· ØºÙŠØ± ØµØ§Ù„Ø­");
-    const phoneHash = await sha256Hex(normalizedPhone);
-    const loginDirectory = await getFirestoreDocument({ projectId, segments: ["loginDirectory", phoneHash], accessToken, allowMissing: true });
-    if (loginDirectory) {
-      const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
-      if (existingLogin.uid !== application.applicantUid) throw appError("phone_already_used", 409, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ù…Ø±ØªØ¨Ø· Ø¨Ø­Ø³Ø§Ø¨ Ø¢Ø®Ø±");
-    }
-    const existing = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
-    if (existing) throw appError("office_exists", 409, "Ø±Ù…Ø² Ø§Ù„Ù…ÙƒØªØ¨ Ù…Ø³ØªØ®Ø¯Ù…");
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId], accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        officeName: firestoreString(application.officeName),
-        officeNameKey: firestoreString(firestoreOfficeId(application.officeName) || officeId),
-        brokerName: firestoreString(application.brokerName),
-        phone: firestoreString(application.phone),
-        licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("Ø§Ù„Ù…Ø¯ÙŠÙ†Ø© Ø§Ù„Ù…Ù†ÙˆØ±Ø©"),
-        specialties: { arrayValue: { values: [] } },
-        ownerUid: firestoreString(application.applicantUid),
-        approvalStatus: firestoreString("approved"),
-        accountStatus: firestoreString("active"),
-        subscriptionStatus: firestoreString("trial"),
-        pilotAuthorized: firestoreBoolean(true),
-        approvedAt: firestoreTimestamp(now),
-        approvedByUid: firestoreString(admin.sub),
-        registeredAt: firestoreTimestamp(now),
-        createdAt: firestoreTimestamp(now)
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["publicOffices", officeId], accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        officeName: firestoreString(application.officeName),
-        brokerName: firestoreString(application.brokerName),
-        phone: firestoreString(application.phone),
-        licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("Ø§Ù„Ù…Ø¯ÙŠÙ†Ø© Ø§Ù„Ù…Ù†ÙˆØ±Ø©"),
-        specialties: { arrayValue: { values: [] } },
-        coverUrl: firestoreString(""),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "members", application.applicantUid], accessToken,
-      fields: {
-        uid: firestoreString(application.applicantUid),
-        role: firestoreString("owner"),
-        active: firestoreBoolean(true),
-        createdAt: firestoreTimestamp(now)
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["loginDirectory", phoneHash], accessToken,
-      fields: {
-        uid: firestoreString(application.applicantUid),
-        officeId: firestoreString(officeId),
-        email: firestoreString(application.email),
-        phone: firestoreString(normalizedPhone),
-        active: firestoreBoolean(true),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-  }
-  await setFirestoreDocument({
-    projectId, segments: ["brokerApplications", applicationId], accessToken,
-    fields: {
-      status: firestoreString(action === "approve" ? "approved" : "rejected"),
-      officeId: firestoreOptionalString(action === "approve" ? officeId : ""),
-      decidedAt: firestoreTimestamp(now),
-      decidedByUid: firestoreString(admin.sub)
-    }
-  });
-  const adminHelpers = getAdminHelpers();
-  const auditId = `aud_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
-  await setFirestoreDocument({
-    projectId,
-    segments: ["adminAuditLogs", auditId],
-    accessToken,
-    fields: {
-      officeId: firestoreString(action === "approve" ? officeId : ""),
-      action: firestoreString(action === "approve" ? "office_approved" : "office_rejected"),
-      performedBy: firestoreString(admin.sub),
-      performedAt: firestoreTimestamp(now),
-      reason: firestoreString(cleanText(body.reason, 500)),
-      beforeJson: firestoreString(JSON.stringify(application)),
-      afterJson: firestoreString(JSON.stringify({
-        applicationId,
-        status: action === "approve" ? "approved" : "rejected",
-        officeId: action === "approve" ? officeId : ""
-      }))
-    }
-  });
-  if (action === "approve") {
-    await recordOfficeActivityEvent(adminHelpers, {
-      projectId,
-      accessToken,
-      officeId,
-      eventType: "office_approved",
-      metadata: { applicationId, approvedBy: admin.sub }
-    }).catch(() => {});
-  }
-  return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
-}
-
-async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId }) {
-  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) {
-    console.warn("[iaqar-login] directory missing", { phone: maskPhone(phone), requestId });
-    return {
-      error: jsonResponse({
-        ok: false, error: "invalid_login", reason: "directory_missing",
-        message: "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©", requestId
-      }, 401)
-    };
-  }
-  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email || !directory.uid || !directory.officeId) {
-    console.warn("[iaqar-login] directory inactive or incomplete", {
-      phone: maskPhone(phone),
-      active: directory.active,
-      hasEmail: Boolean(directory.email),
-      hasUid: Boolean(directory.uid),
-      officeId: directory.officeId || "",
-      requestId
-    });
-    return {
-      error: jsonResponse({
-        ok: false, error: "invalid_login", reason: "directory_inactive",
-        message: "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©", requestId
-      }, 401)
-    };
-  }
-  return {
-    directory,
-    loginEmail: String(directory.email || "").trim().toLowerCase()
-  };
-}
-
-async function handlePhoneLoginResolve(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const phone = normalizeLoginPhone(body.phone);
-  if (!phone) {
-    return jsonResponse({
-      ok: false, error: "invalid_login", reason: "invalid_input",
-      message: "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ ØºÙŠØ± ØµØ­ÙŠØ­", requestId
-    }, 401);
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) return lookup.error;
-  return jsonResponse({
-    ok: true,
-    loginEmail: lookup.loginEmail,
-    officeId: firestoreOfficeId(lookup.directory.officeId),
-    requestId
-  });
-}
-
-async function handlePhoneLogin(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const phone = normalizeLoginPhone(body.phone);
-  const password = cleanText(body.password, 200);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
-  const rateHash = await sha256Hex(`${phone}|${ip}`);
-  const rateSegments = ["loginRateLimits", rateHash];
-  const rateDoc = await getFirestoreDocument({ projectId, segments: rateSegments, accessToken, allowMissing: true });
-  const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
-  const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
-  if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) {
-    const errorResponse = lookup.error;
-    if (typeof errorResponse.json === "function") return errorResponse;
-    throw appError("invalid_login", 401, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-  }
-  const directory = lookup.directory;
-  const loginEmail = lookup.loginEmail;
-  const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
-  });
-  if (!signInResponse.ok) {
-    const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
-    const inWindow = windowStartedAt && Date.now() - windowStartedAt < 15 * 60_000;
-    const failureCount = inWindow ? Number(rate.failureCount || 0) + 1 : 1;
-    const now = new Date();
-    await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-      failureCount: firestoreInteger(failureCount),
-      windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
-      blockedUntil: firestoreTimestamp(failureCount >= 5 ? new Date(Date.now() + 15 * 60_000) : now),
-      updatedAt: firestoreTimestamp(now)
-    }});
-    throw appError("invalid_login", 401, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-  }
-  const signedIn = await signInResponse.json();
-  if (signedIn.localId !== directory.uid) throw appError("invalid_login", 401, "Ø±Ù‚Ù… Ø§Ù„Ø¬ÙˆØ§Ù„ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-  await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
-    blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
-  }});
-  const customToken = await createFirebaseCustomToken({
-    clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
-    privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
-    uid: directory.uid, officeId: directory.officeId
-  });
-  await recordOfficeLoginActivity(getAdminHelpers(), {
-    projectId,
-    accessToken,
-    officeId: directory.officeId,
-    uid: directory.uid
-  }).catch(() => {});
-  return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
-}
-
-async function handleForgotPassword(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const phone = normalizeLoginPhone(body.phone);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  const generic = { ok: true, requestId };
-  if (!phone || !apiKey) return jsonResponse(generic);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const phoneHash = await sha256Hex(phone);
-  const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) return jsonResponse(generic);
-  const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email) return jsonResponse(generic);
-  const cooldownDoc = await getFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken, allowMissing: true });
-  const cooldown = cooldownDoc ? firestoreFieldsToJs(cooldownDoc.fields || {}) : {};
-  const previous = cooldown.lastRequestedAt ? Date.parse(cooldown.lastRequestedAt) : 0;
-  if (previous && Date.now() - previous < 60_000) return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email), cooldown: true });
-  const resetResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ requestType: "PASSWORD_RESET", email: directory.email })
-  });
-  if (!resetResponse.ok) return jsonResponse(generic);
-  await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
-    fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
-  return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email) });
-}
-
-
-async function handleTelegramWebhookRoute(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const bucket = env.IAQAR_MEDIA || null;
-  const result = await handleTelegramCanonicalWebhook({
-    request,
-    env,
-    requestId,
-    helpers: {
-      projectId,
-      accessToken,
-      bucket,
-      fetchImpl: fetch,
-      firestoreOfficeId,
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      compactFields,
-      firestoreString,
-      firestoreOptionalString,
-      firestoreInteger,
-      firestoreBoolean,
-      firestoreTimestamp,
-      ingestCanonical: (body) => startCanonicalIntake(body, buildCanonicalIntakeCtx({
-        env,
-        request: { url: request.url, headers: request.headers },
-        identity: null,
-        projectId,
-        accessToken,
-        bucket
-      }))
-    }
-  });
-  return jsonResponse({ ...result, requestId }, Number(result.status || 200));
-}
-
-async function handleSharedIntake(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const messageText = cleanText(body.messageText, 12000);
-  const senderName = cleanText(body.senderName || "Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ù† ÙˆØ§ØªØ³Ø§Ø¨", 200);
-  const senderPhone = cleanText(body.senderPhone, 60);
-  const source = cleanText(body.source || "pwa_share_target", 80);
-  const eventId = cleanText(body.eventId || body.id, 200) || crypto.randomUUID();
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!messageText) throw appError("message_required", 400, "Ù†Øµ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ù…Ø·Ù„ÙˆØ¨");
-
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
-  const safeReceivedAt = Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt;
-  const documentId = `share_${(await sha256Hex(`${officeId}|${eventId}`)).slice(0, 40)}`;
-  const now = new Date();
-
-  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
-  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: compactFields({
-      schemaVersion: firestoreInteger(2),
-      officeId: firestoreString(officeId),
-      direction: firestoreString("inbound"),
-      source: firestoreString(source),
-      channel: firestoreString("shared_to_iaqar"),
-      status: firestoreString("pending_review"),
-      processingState: firestoreString("received"),
-      isProcessed: firestoreBoolean(false),
-      outboundEnabled: firestoreBoolean(false),
-      messageId: firestoreString(eventId),
-      messageType: firestoreString("text"),
-      messageText: firestoreString(messageText),
-      senderName: firestoreOptionalString(senderName),
-      senderPhone: firestoreOptionalString(senderPhone),
-      receivedAt: firestoreTimestamp(safeReceivedAt),
-      createdAt: firestoreTimestamp(now),
-      createdByUid: firestoreOptionalString(identity.uid),
-      rawPayload: firestoreString(safeJsonStringify({ source, eventId }).slice(0, MAX_RAW_LENGTH))
-    }) })
-  });
-
-  if (response.status === 409) {
-    return jsonResponse({ ok: true, duplicate: true, documentId, requestId });
-  }
-  if (!response.ok) throw appError("firestore_write_failed", 502, "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ù…Ø´ØªØ±ÙƒØ©");
-
-  const result = await processInboundMessage({
-    projectId, officeId, inboxDocumentId: documentId, messageText, senderName, senderPhone,
-    receivedAt: safeReceivedAt, source, accessToken, env
-  });
-  return jsonResponse({
-    ok: true, duplicate: false, documentId, officeId, kind: result.kind,
-    matches: result.matches, source, requestId
-  }, 201);
-}
-
-async function handleActivepiecesIntake(request, env, requestId) {
-  if (!isStagingFirebaseEnv(env)) {
-    return jsonResponse({
-      success: false,
-      duplicate: false,
-      opportunityId: "",
-      missingFields: [],
-      error: "not_found",
-      message: "Ø§Ù„Ù…Ø³Ø§Ø± Ù…ØªØ§Ø­ ÙÙŠ Ø¨ÙŠØ¦Ø© Staging ÙÙ‚Ø·",
-      requestId
-    }, 404);
-  }
-
-  const auth = authorizeActivepieces(request, env);
-  if (!auth.ok) {
-    return jsonResponse({
-      success: false,
-      duplicate: false,
-      opportunityId: "",
-      missingFields: [],
-      error: "unauthorized",
-      message: "ØºÙŠØ± Ù…ØµØ±Ø­",
-      requestId
-    }, 401);
-  }
-
-  const body = await request.json().catch(() => ({}));
-  const parsedBody = validateActivepiecesIntakeBody(body);
-  if (!parsedBody.ok) {
-    return jsonResponse({
-      success: false,
-      duplicate: false,
-      opportunityId: "",
-      missingFields: parsedBody.missingFields,
-      error: "invalid_body",
-      message: parsedBody.message,
-      requestId
-    }, 400);
-  }
-
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const officeId = parsedBody.officeId;
-  const messageText = composeActivepiecesMessage(parsedBody);
-  const senderPhone = parsedBody.extracted.contactPhone || "";
-  const documentId = `ap_${(await sha256Hex(`${officeId}|${parsedBody.idempotencyKey}`)).slice(0, 40)}`;
-  const now = new Date();
-  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
-  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: compactFields({
-      schemaVersion: firestoreInteger(2),
-      officeId: firestoreString(officeId),
-      direction: firestoreString("inbound"),
-      source: firestoreString(ACTIVEPIECES_SOURCE),
-      channel: firestoreString("activepieces"),
-      status: firestoreString("pending_review"),
-      processingState: firestoreString("received"),
-      isProcessed: firestoreBoolean(false),
-      outboundEnabled: firestoreBoolean(false),
-      messageId: firestoreString(parsedBody.idempotencyKey),
-      messageType: firestoreString("text"),
-      messageText: firestoreString(messageText),
-      senderPhone: firestoreOptionalString(senderPhone),
-      receivedAt: firestoreTimestamp(now),
-      createdAt: firestoreTimestamp(now),
-      rawPayload: firestoreString(safeJsonStringify({
-        source: ACTIVEPIECES_SOURCE,
-        idempotencyKey: parsedBody.idempotencyKey,
-        type: parsedBody.type
-      }).slice(0, MAX_RAW_LENGTH))
-    }) })
-  });
-
-  if (response.status === 409) {
-    const existing = await getFirestoreDocument({
-      projectId, segments: ["offices", officeId, "inbox", documentId], accessToken, allowMissing: true
-    });
-    const data = existing ? firestoreFieldsToJs(existing.fields || {}) : {};
-    return jsonResponse({
-      success: true,
-      duplicate: true,
-      opportunityId: cleanText(data.opportunityId, 180),
-      missingFields: [],
-      requestId
-    });
-  }
-  if (!response.ok) throw appError("firestore_write_failed", 502, "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ù…Ø´ØªØ±ÙƒØ©");
-
-  const result = await processInboundMessage({
-    projectId,
-    officeId,
-    inboxDocumentId: documentId,
-    messageText,
-    senderName: "",
-    senderPhone,
-    receivedAt: now,
-    source: ACTIVEPIECES_SOURCE,
-    accessToken,
-    env
-  });
-  const opportunityId = result.opportunityId
-    || (result.kind === "unknown" ? "" : `opp_${documentId.replace(/^wa_/, "").slice(0, 32)}`);
-  const parsed = parseRealEstateMessage(messageText, senderPhone, "");
-  return jsonResponse({
-    success: true,
-    duplicate: Boolean(result.duplicateOpportunity),
-    opportunityId,
-    missingFields: Array.isArray(parsed.missing) ? parsed.missing : [],
-    requestId
-  }, result.duplicateOpportunity ? 200 : 201);
-}
-
-
-async function handlePublicIntakeMatching(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const intakeId = cleanText(body.intakeId, 180).replace(/[^a-zA-Z0-9_-]/g, "");
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!intakeId || intakeId.length < 8) throw appError("intake_id_required", 400, "Ø±Ù‚Ù… Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± ØµØ§Ù„Ø­");
-  // Rate-limit before secret/Firestore work so abuse is stopped cheaply (Phase 8 / risk 4).
-  enforcePublicRouteRateLimit(request, {
-    route: "pipeline/public-intake",
-    officeId,
-    ...PUBLIC_RATE_LIMITS.PUBLIC_INTAKE
-  });
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
-  assertFirebaseSecrets(env);
-
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const intakeDoc = await getFirestoreDocument({
-    projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, allowMissing: true
-  });
-  if (!intakeDoc) throw appError("intake_not_found", 404, "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø§Ù„Ø·Ù„Ø¨");
-
-  const intake = firestoreFieldsToJs(intakeDoc.fields || {});
-  if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "Ø§Ù„Ø·Ù„Ø¨ Ù„Ø§ ÙŠØªØ¨Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!["client", "owner"].includes(intake.kind)) throw appError("invalid_intake_kind", 400, "Ù†ÙˆØ¹ Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± ØµØ§Ù„Ø­");
-  if (intake.status === "processed" && intake.processedRecordId) {
-    return jsonResponse({
-      ok: true, duplicate: true, officeId, intakeId,
-      recordId: intake.processedRecordId, opportunityId: intake.opportunityId || "",
-      matches: Number(intake.matchCount || 0), requestId
-    });
-  }
-
-  const now = new Date();
-  const parsed = structuredPublicIntakeToParsed(intake);
-  const readiness = evaluatePublicIntakeReadiness(intake, parsed);
-
-  const opportunityDocs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 120
-  });
-  const duplicateHit = findDuplicateOpportunity(
-    opportunityDocs.map((doc) => ({
-      id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
-      data: firestoreFieldsToJs(doc.fields || {})
-    })),
-    {
-      officeId,
-      phone: parsed.phone || intake.phone,
-      contactType: intake.kind === "owner" ? "owner" : "buyer",
-      kind: intake.kind,
-      purpose: readiness.purpose,
-      transactionType: parsed.transactionType,
-      propertyType: parsed.propertyType || intake.propertyType,
-      city: parsed.city || intake.city,
-      district: parsed.district || intake.district,
-      priceOrBudget: intake.amount || parsed.price || 0,
-      area: intake.area || parsed.area || 0
-    }
-  );
-
-  if (duplicateHit?.opportunityId) {
-    const existingId = duplicateHit.opportunityId;
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken,
-      fields: compactFields({
-        status: firestoreString("processed"),
-        opportunityId: firestoreString(existingId),
-        processedRecordId: firestoreString(existingId),
-        duplicateOpportunity: firestoreBoolean(true),
-        updatedAt: firestoreTimestamp(now),
-        lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId: existingId, accessToken, now,
-      payload: {
-        type: "intake_link",
-        action: "duplicate_intake_linked",
-        statusBefore: getOpportunityLifecycleStatus(duplicateHit.data),
-        statusAfter: getOpportunityLifecycleStatus(duplicateHit.data),
-        createdBy: "system_public_intake"
-      }
-    });
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "opportunities", existingId], accessToken,
-      fields: compactFields({
-        updatedAt: firestoreTimestamp(now),
-        sourceIntakeId: firestoreOptionalString(intakeId),
-        lastIntakeLinkedAt: firestoreTimestamp(now)
-      })
-    });
-    return jsonResponse({
-      ok: true,
-      duplicate: true,
-      duplicateMessage: "ØªÙˆØ¬Ø¯ ÙØ±ØµØ© Ù†Ø´Ø·Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ø±Ù‚Ù… â€” ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ÙØ±ØµØ© Ø§Ù„Ø­Ø§Ù„ÙŠØ© Ø¨Ø¯Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ù†Ø³Ø®Ø© Ù…ÙƒØ±Ø±Ø©.",
-      officeId,
-      intakeId,
-      opportunityId: existingId,
-      recordId: existingId,
-      matches: 0,
-      requestId
-    });
-  }
-
-  const mediaPaths = Array.isArray(intake.mediaPaths)
-    ? intake.mediaPaths.map((value) => cleanText(value, 500)).filter(Boolean).slice(0, 6)
-    : [];
-  const targetCollection = parsed.kind === "owner_offer" ? "owners" : "clients";
-  const prefix = targetCollection === "owners" ? "own" : "cli";
-  const recordId = `${prefix}_intake_${intakeId}`.slice(0, 180);
-  const opportunityId = `opp_intake_${intakeId}`.slice(0, 180);
-  const commonFields = parsedToFirestoreFields(parsed, {
-    officeId, inboxDocumentId: `public_${intakeId}`,
-    senderName: parsed.senderName, senderPhone: parsed.phone,
-    receivedAt: now, source: intake.source || "office_public_link", now
-  });
-
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, targetCollection, recordId], accessToken, fields: {
-    ...commonFields,
-    sourceIntakeId: firestoreString(intakeId),
-    city: firestoreString(parsed.city || DEFAULT_CITY),
-    name: firestoreOptionalString(parsed.senderName),
-    phone: firestoreOptionalString(parsed.phone),
-    details: firestoreOptionalString(intake.details),
-    amount: intake.amount ? firestoreInteger(intake.amount) : null,
-    mediaMissing: firestoreBoolean(Boolean(intake.mediaMissing)),
-    imageCount: firestoreInteger(Number(intake.imageCount || 0)),
-    hasVideo: firestoreBoolean(Boolean(intake.hasVideo))
-  }});
-
-  const origin = originSourceFromIntake({
-    officeId,
-    source: intake.source || (officeId === "platform" ? "platform_public" : "office_public_link")
-  });
-  const opportunityKind = parsed.kind === "owner_offer" ? "OFFER" : "REQUEST";
-  const routingReady = routerCompleteness({
-    opportunityKind,
-    purpose: readiness.purpose,
-    propertyType: parsed.propertyType || intake.propertyType,
-    city: parsed.city || intake.city || DEFAULT_CITY
-  });
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, fields: {
-    ...commonFields,
-    city: firestoreString(parsed.city || DEFAULT_CITY),
-    sourceIntakeId: firestoreString(intakeId),
-    sourceCollection: firestoreString(targetCollection),
-    sourceRecordId: firestoreString(recordId),
-    workflowStage: firestoreString("new"),
-    priority: firestoreInteger(parsed.completeness >= 80 ? 1 : 2),
-    purpose: firestoreString(readiness.purpose),
-    advertiserRole: firestoreString(readiness.advertiserRole),
-    advertiserDisplayName: firestoreOptionalString(parsed.senderName),
-    advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
-    contactPhone: firestoreOptionalString(parsed.phone),
-    contactName: firestoreOptionalString(parsed.senderName),
-    matchingReadiness: firestoreString(readiness.matchingReadiness),
-    matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
-    opportunityKind: firestoreString(opportunityKind),
-    originSourceType: firestoreString(origin.type),
-    originSourceOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
-    assignedOfficeId: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? firestoreString(officeId) : firestoreString(""),
-    assignmentReason: origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
-      ? firestoreString(ASSIGNMENT_REASON.DIRECT_OFFICE_LINK)
-      : firestoreString(""),
-    routingStatus: firestoreString(
-      origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
-        ? ROUTING_STATUS.ASSIGNED
-        : (routingReady.ok ? ROUTING_STATUS.ROUTING : ROUTING_STATUS.NEEDS_COMPLETION)
-    ),
-    livingTaskId: firestoreString(livingTaskIdForOpportunity(opportunityId)),
-    mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
-    imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
-    hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
-  }});
-
-  const contactId = String(parsed.phone || "").replace(/\D/g, "");
-  if (contactId) {
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, "contacts", contactId], accessToken, fields: {
-      officeId: firestoreString(officeId), fullName: firestoreOptionalString(parsed.senderName),
-      name: firestoreOptionalString(parsed.senderName), phone: firestoreOptionalString(parsed.phone),
-      lastRecordId: firestoreString(recordId), lastRecordType: firestoreString(targetCollection === "owners" ? "owner" : "client"),
-      updatedAt: firestoreTimestamp(now)
-    }});
-  }
-
-  const persistedOpportunity = {
-    id: opportunityId,
-    opportunityId,
-    officeId,
-    opportunityKind,
-    purpose: readiness.purpose,
-    propertyType: parsed.propertyType || intake.propertyType,
-    city: parsed.city || intake.city || DEFAULT_CITY,
-    district: parsed.district || intake.district,
-    budget: Number(parsed.priceMax || parsed.price || intake.amount || 0),
-    salePrice: Number(parsed.price || intake.amount || 0),
-    originSourceType: origin.type,
-    contactPhone: parsed.phone,
-    contactName: parsed.senderName
-  };
-  const routerResult = await afterPublicIntakePersisted(opportunityRouterDeps(env, projectId, accessToken), {
-    officeId,
-    opportunity: persistedOpportunity,
-    source: intake.source || origin.type
-  });
-
-  let matches = [];
-  if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC) {
-    matches = await runCanonicalMatchingAfterOpportunityPersist({
-      projectId, officeId, opportunityId, accessToken, env
-    });
-  }
-
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "publicIntake", intakeId], accessToken, fields: {
-    status: firestoreString("processed"), processingState: firestoreString("processed"),
-    processedRecordId: firestoreString(recordId), opportunityId: firestoreString(opportunityId),
-    matchCount: firestoreInteger(matches.length), processedAt: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now),
-    originSourceType: firestoreString(origin.type),
-    routingStatus: firestoreString(routerResult?.routingStatus || ""),
-    ...lifecycleFieldsForIntake(intake, now),
-    lifecycleStatus: firestoreString(matches.length > 0 ? LIFECYCLE_STATUS.MATCHED : LIFECYCLE_STATUS.NEW)
-  }});
-
-  if (matches.length > 0) {
-    await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken, env });
-  }
-  return jsonResponse({
-    ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
-    kind: parsed.kind, matches: matches.length, bestMatch: matches[0] || null,
-    originSourceType: origin.type,
-    routingStatus: routerResult?.routingStatus || "",
-    assignedOfficeId: routerResult?.assignedOfficeId || (origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT ? officeId : ""),
-    currentOfferedOfficeId: routerResult?.currentOfferedOfficeId || "",
-    livingTaskId: routerResult?.livingTaskId || livingTaskIdForOpportunity(opportunityId),
-    requestId
-  }, 201);
-}
-
-function opportunityRouterDeps(env, projectId, accessToken) {
-  return {
-    projectId,
-    accessToken,
-    env,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    patchFirestoreDocument,
-    listCollectionDocuments,
-    firestoreFieldsToJs,
-    firestoreHelpers: {
-      ...operationsFirestoreHelpers(),
-      jsToFirestoreValue
-    },
-    sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
-    runCanonicalMatchingAfterOpportunityPersist: (args) => runCanonicalMatchingAfterOpportunityPersist({
-      projectId,
-      accessToken,
-      env,
-      ...args
-    })
-  };
-}
-
-async function handleOpportunityRouterAccept(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const deps = opportunityRouterDeps(env, projectId, accessToken);
-  await expireDuePlatformOffers(deps, { opportunityId });
-  const result = await acceptPlatformOffer(deps, { officeId, opportunityId });
-  if (!result.ok) {
-    const status = result.error === "lost_race" || result.error === "already_assigned" ? 409 : 400;
-    return jsonResponse({ ok: false, error: result.error, requestId }, status);
-  }
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-async function handleOpportunityRouterDecline(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  const reason = cleanText(body.reason, 40);
-  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø§Ø¹ØªØ°Ø§Ø± ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const deps = opportunityRouterDeps(env, projectId, accessToken);
-  await expireDuePlatformOffers(deps, { opportunityId });
-  const result = await declinePlatformOffer(deps, { officeId, opportunityId, reason });
-  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-async function handleOpportunityRouterTick(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await expireDuePlatformOffers(opportunityRouterDeps(env, projectId, accessToken), {
-    officeId,
-    opportunityId: cleanText(body.opportunityId, 180)
-  });
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-async function handleCooperationSyncCoordination(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await syncCooperationCoordinationForOffice(partySessionHelpers(), {
-    projectId,
-    officeId,
-    accessToken
-  });
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-async function handleOpportunityRouterRate(request, env, requestId) {
-  await ensurePilotFeatureEnabled(env, "publicOpportunityRouting");
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  const raterId = cleanText(body.raterId, 180);
-  const raterRole = cleanText(body.raterRole || "party", 40);
-  const stars = Number(body.stars);
-  if (!officeId || !opportunityId) throw appError("invalid_router_request", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªÙ‚ÙŠÙŠÙ… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await submitOfficeRating(opportunityRouterDeps(env, projectId, accessToken), {
-    officeId,
-    opportunityId,
-    raterId,
-    raterRole,
-    stars
-  });
-  if (!result.ok) return jsonResponse({ ok: false, error: result.error, requestId }, 400);
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-function structuredPublicIntakeToParsed(intake) {
-  const detailsParsed = parseRealEstateMessage(cleanText(intake.details, 12000), intake.phone, intake.name);
-  const isOwner = intake.kind === "owner";
-  const amount = Number(intake.amount || 0);
-  const propertyType = cleanText(intake.propertyType || detailsParsed.propertyType, 80);
-  const district = cleanText(intake.district || detailsParsed.district, 100);
-  const transactionType = cleanText(intake.transactionType || detailsParsed.transactionType || "sale", 20);
-  const phone = normalizeSaudiPhone(intake.phone || detailsParsed.phone);
-  const senderName = cleanText(intake.name || detailsParsed.senderName, 200);
-  const city = cleanText(intake.city || DEFAULT_CITY, 100);
-  const rawText = [isOwner ? "Ø¹Ø±Ø¶ Ù…Ø§Ù„Ùƒ" : "Ø·Ù„Ø¨ Ø¹Ù…ÙŠÙ„", propertyType, district, intake.details].filter(Boolean).join(" â€” ");
-  const extractedCount = [propertyType, district, transactionType, amount, phone, senderName].filter(Boolean).length;
-  const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 6) * 100));
-  return {
-    kind: isOwner ? "owner_offer" : "client_request",
-    rawText, normalizedText: normalizeArabicText(rawText), city, propertyType, district, transactionType,
-    price: isOwner ? amount : (detailsParsed.price || 0),
-    priceMin: isOwner ? amount : (detailsParsed.priceMin || 0),
-    priceMax: isOwner ? amount : (amount || detailsParsed.priceMax || detailsParsed.price || 0),
-    area: Number(intake.area || detailsParsed.area || 0), rooms: Number(intake.rooms || detailsParsed.rooms || 0),
-    bathrooms: Number(intake.bathrooms || detailsParsed.bathrooms || 0),
-    streetWidth: Number(intake.streetWidth || detailsParsed.streetWidth || 0), phone, senderName,
-    urgency: detailsParsed.urgency || "normal", financingReady: Boolean(intake.financingReady || detailsParsed.financingReady),
-    directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
-    completeness: Math.min(100, completeness), confidence: Math.max(70, Number(detailsParsed.confidence || 0)),
-    missing: [!propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
-      !amount && "price", !phone && "phone", !senderName && "senderName"].filter(Boolean)
-  };
-}
-
-async function handleStatus(request, url, env, requestId) {
-  const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-
-  if (!hasFirebaseSecrets(env)) {
-    return jsonResponse({
-      ok: true,
-      connected: false,
-      usage: emptyUsage(),
-      configurationPending: true,
-      requestId
-    });
-  }
-
-  await authorizeOfficeRequest(request, env, officeId, "integration");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const integration = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "integrations", "whatsapp"],
-    accessToken,
-    allowMissing: true
-  });
-
-  const dayId = utcDayId(new Date());
-  const usageDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "usage", `whatsapp_${dayId}`],
-    accessToken,
-    allowMissing: true
-  });
-
-  const integrationData = integration ? firestoreFieldsToJs(integration.fields || {}) : {};
-  const usageData = usageDoc ? firestoreFieldsToJs(usageDoc.fields || {}) : {};
-  const inboundMessages = Number(usageData.inboundMessages || 0);
-  const estimatedWrites = Number(usageData.estimatedWrites || inboundMessages * ESTIMATED_WRITES_PER_MESSAGE);
-  const percent = Math.min(100, (estimatedWrites / DAILY_FREE_WRITES) * 100);
-
-  return jsonResponse({
-    ok: true,
-    connected: integrationData.status === "connected",
-    displayPhoneNumber: maskPhone(integrationData.displayPhoneNumber || ""),
-    outboundMessaging: false,
-    usage: {
-      inboundMessages,
-      estimatedWrites,
-      percent,
-      warnAtPercent: WARNING_PERCENT,
-      warning: percent >= WARNING_PERCENT,
-      isEstimate: true
-    },
-    requestId
-  });
-}
-
-function verifyWebhook(url, env) {
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge") || "";
-
-  if (mode === "subscribe" && env.META_WEBHOOK_VERIFY_TOKEN && constantTimeEqual(token || "", env.META_WEBHOOK_VERIFY_TOKEN)) {
-    return new Response(challenge, {
-      status: 200,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
-    });
-  }
-
-  return new Response("Forbidden", { status: 403 });
-}
-
-async function receiveMetaWebhook(request, env, requestId) {
-  assertMetaWebhookSecrets(env);
-  assertFirebaseSecrets(env);
-
-  const rawBody = await request.text();
-  const signature = request.headers.get("x-hub-signature-256") || "";
-  const valid = await verifyHmacSignature(rawBody, signature, env.META_APP_SECRET);
-  if (!valid) throw appError("invalid_signature", 401, "ØªÙˆÙ‚ÙŠØ¹ Meta ØºÙŠØ± ØµØ­ÙŠØ­");
-
-  let payload;
-  try { payload = JSON.parse(rawBody); }
-  catch (_) { throw appError("invalid_json", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Webhook ØºÙŠØ± ØµØ§Ù„Ø­Ø©"); }
-
-  if (payload.object !== "whatsapp_business_account") {
-    return jsonResponse({ ok: true, ignored: true, requestId });
-  }
-
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  let received = 0;
-  let unlinked = 0;
-
-  for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
-    const wabaId = cleanText(entry && entry.id, 100);
-    for (const change of Array.isArray(entry && entry.changes) ? entry.changes : []) {
-      const value = change && change.value || {};
-      const phoneNumberId = cleanText(value.metadata && value.metadata.phone_number_id, 100);
-      const messages = Array.isArray(value.messages) ? value.messages : [];
-      if (!phoneNumberId || messages.length === 0) continue;
-
-      const mappingDoc = await getFirestoreDocument({
-        projectId,
-        segments: ["whatsapp_accounts", phoneNumberId],
-        accessToken,
-        allowMissing: true
-      });
-      const mapping = mappingDoc ? firestoreFieldsToJs(mappingDoc.fields || {}) : {};
-      const officeId = firestoreOfficeId(mapping.officeId);
-
-      if (!officeId || mapping.status !== "connected") {
-        unlinked += messages.length;
-        console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
-        continue;
-      }
-
-      const contactMap = new Map((Array.isArray(value.contacts) ? value.contacts : []).map(contact => [
-        String(contact && contact.wa_id || ""),
-        cleanText(contact && contact.profile && contact.profile.name, 200)
-      ]));
-
-      for (const message of messages) {
-        const result = await saveInboundMessage({
-          projectId,
-          officeId,
-          wabaId,
-          phoneNumberId,
-          displayPhoneNumber: cleanText(value.metadata && value.metadata.display_phone_number, 60),
-          message,
-          senderName: contactMap.get(String(message && message.from || "")) || "",
-          rawPayload: { entryId: wabaId, changeField: change.field, metadata: value.metadata, message },
-          accessToken,
-          env
-        });
-        if (!result.duplicate) {
-          received += 1;
-          await incrementUsage({ projectId, officeId, accessToken });
-        }
-      }
-    }
-  }
-
-  return jsonResponse({ ok: true, received, unlinked, requestId });
-}
-
-async function completeEmbeddedSignup(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const required = ["META_APP_ID", "META_CONFIG_ID", "META_APP_SECRET"];
-  const missing = required.filter(key => !env[key]);
-  if (missing.length) throw appError("meta_not_configured", 503, "Ø¥Ø¹Ø¯Ø§Ø¯ ØªØ·Ø¨ÙŠÙ‚ Meta ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "integration");
-
-  const code = cleanText(body.code, 2000);
-  const wabaId = cleanText(body.wabaId, 120);
-  let phoneNumberId = cleanText(body.phoneNumberId, 120);
-  if (!code || !wabaId) {
-    throw appError("signup_data_missing", 400, "Ù„Ù… ØªÙƒØªÙ…Ù„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø±Ø¨Ø· Ù…Ù† MetaØ› Ø£Ø¹Ø¯ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø©");
-  }
-
-  const graphVersion = env.META_GRAPH_VERSION || GRAPH_VERSION;
-  const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
-  tokenUrl.searchParams.set("client_id", env.META_APP_ID);
-  tokenUrl.searchParams.set("client_secret", env.META_APP_SECRET);
-  tokenUrl.searchParams.set("code", code);
-
-  const tokenResponse = await fetch(tokenUrl.toString());
-  const tokenPayload = await tokenResponse.json().catch(() => ({}));
-  if (!tokenResponse.ok || !tokenPayload.access_token) {
-    console.error("[iaqar-whatsapp] token exchange failed", tokenPayload);
-    throw appError("meta_token_exchange_failed", 502, "ØªØ¹Ø°Ø± Ø¥ÙƒÙ…Ø§Ù„ Ø§Ù„Ø±Ø¨Ø· Ù…Ø¹ Meta");
-  }
-  const accessToken = tokenPayload.access_token;
-
-  const subscribeResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}` }
-  });
-  if (!subscribeResponse.ok) {
-    const detail = await subscribeResponse.text();
-    console.error("[iaqar-whatsapp] WABA subscribe failed", detail);
-    throw appError("waba_subscribe_failed", 502, "ØªØ¹Ø°Ø± Ø§Ù„Ø§Ø´ØªØ±Ø§Ùƒ ÙÙŠ Ø±Ø³Ø§Ø¦Ù„ Ø§Ù„Ø­Ø³Ø§Ø¨");
-  }
-
-  let displayPhoneNumber = "";
-  if (!phoneNumberId) {
-    const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
-      headers: { "Authorization": `Bearer ${accessToken}` }
-    });
-    const phones = await phonesResponse.json().catch(() => ({}));
-    const first = Array.isArray(phones.data) ? phones.data[0] : null;
-    phoneNumberId = cleanText(first && first.id, 120);
-    displayPhoneNumber = cleanText(first && first.display_phone_number, 60);
-  }
-
-  if (!phoneNumberId) throw appError("phone_number_missing", 502, "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø±Ù‚Ù… ÙˆØ§ØªØ³Ø§Ø¨ Ø§Ù„Ù…Ø±ØªØ¨Ø·");
-
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const googleToken = await getGoogleAccessToken(env);
-  const now = new Date();
-
-  const existingAccount = await getFirestoreDocument({
-    projectId,
-    segments: ["whatsapp_accounts", phoneNumberId],
-    accessToken: googleToken,
-    allowMissing: true
-  });
-  if (existingAccount) {
-    const existing = firestoreFieldsToJs(existingAccount.fields || {});
-    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId)) {
-      throw appError("phone_already_linked", 409, "Ø±Ù‚Ù… ÙˆØ§ØªØ³Ø§Ø¨ Ù…Ø±ØªØ¨Ø· Ø¨Ù…ÙƒØªØ¨ Ø¢Ø®Ø±");
-    }
-  }
-
-  await setFirestoreDocument({
-    projectId,
-    segments: ["whatsapp_accounts", phoneNumberId],
-    accessToken: googleToken,
-    fields: {
-      officeId: firestoreString(officeId),
-      wabaId: firestoreString(wabaId),
-      phoneNumberId: firestoreString(phoneNumberId),
-      displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
-      status: firestoreString("connected"),
-      inboundOnly: firestoreBoolean(true),
-      outboundEnabled: firestoreBoolean(false),
-      connectedAt: firestoreTimestamp(now),
-      updatedAt: firestoreTimestamp(now),
-      connectedByUid: firestoreOptionalString(identity.uid)
-    }
-  });
-
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "integrations", "whatsapp"],
-    accessToken: googleToken,
-    fields: {
-      officeId: firestoreString(officeId),
-      wabaId: firestoreString(wabaId),
-      phoneNumberId: firestoreString(phoneNumberId),
-      displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
-      status: firestoreString("connected"),
-      inboundOnly: firestoreBoolean(true),
-      outboundEnabled: firestoreBoolean(false),
-      connectedAt: firestoreTimestamp(now),
-      updatedAt: firestoreTimestamp(now),
-      connectedByUid: firestoreOptionalString(identity.uid)
-    }
-  });
-
-  return jsonResponse({
-    ok: true,
-    connected: true,
-    officeId,
-    phoneNumberId,
-    displayPhoneNumber: maskPhone(displayPhoneNumber),
-    outboundMessaging: false,
-    requestId
-  });
-}
-
-async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, displayPhoneNumber, message, senderName, rawPayload, accessToken, env = null }) {
-  const messageId = cleanText(message && message.id, 200) || crypto.randomUUID();
-  const documentId = `wa_${(await sha256Hex(messageId)).slice(0, 40)}`;
-  const receivedAt = parseWhatsAppTimestamp(message && message.timestamp);
-  const messageType = cleanText(message && message.type, 50) || "unknown";
-  const messageText = extractMessageText(message);
-  const senderPhone = cleanText(message && message.from, 60);
-  const now = new Date();
-
-  const fields = compactFields({
-    schemaVersion: firestoreInteger(2),
-    officeId: firestoreString(officeId),
-    direction: firestoreString("inbound"),
-    source: firestoreString("whatsapp_cloud_api"),
-    channel: firestoreString("whatsapp_business"),
-    status: firestoreString("pending_review"),
-    processingState: firestoreString("received"),
-    isProcessed: firestoreBoolean(false),
-    outboundEnabled: firestoreBoolean(false),
-    messageId: firestoreString(messageId),
-    messageType: firestoreString(messageType),
-    messageText: firestoreOptionalString(messageText),
-    senderName: firestoreOptionalString(senderName),
-    senderPhone: firestoreOptionalString(senderPhone),
-    wabaId: firestoreString(wabaId),
-    phoneNumberId: firestoreString(phoneNumberId),
-    displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
-    receivedAt: firestoreTimestamp(receivedAt),
-    createdAt: firestoreTimestamp(now),
-    rawPayload: firestoreString(safeJsonStringify(rawPayload).slice(0, MAX_RAW_LENGTH))
-  });
-
-  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
-  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields })
-  });
-
-  if (response.status === 409) return { duplicate: true, documentId };
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("[iaqar-whatsapp] Firestore write failed", response.status, detail);
-    throw appError("firestore_write_failed", 502, "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø±Ø³Ø§Ù„Ø© ÙˆØ§ØªØ³Ø§Ø¨");
-  }
-
-  // Meta media messages may arrive without a text/caption. Until the official
-  // media downloader is wired, retain them for review instead of feeding an empty
-  // text part into Canonical Intake and falsely marking the channel as failed.
-  if (!messageText) {
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "inbox", documentId],
-      accessToken,
-      fields: {
-        processingState: firestoreString("needs_media_adapter"),
-        status: firestoreString("pending_review"),
-        isProcessed: firestoreBoolean(false),
-        processingError: firestoreString("channel_media_requires_adapter"),
-        canonicalIntake: firestoreBoolean(true),
-        sourceChannel: firestoreString("whatsapp"),
-        updatedAt: firestoreTimestamp(new Date())
-      }
-    });
-    return {
-      duplicate: false,
-      documentId,
-      deferred: true,
-      reason: "channel_media_requires_adapter"
-    };
-  }
-
-  try {
-    await processInboundMessage({
-      projectId, officeId, inboxDocumentId: documentId, messageText,
-      senderName, senderPhone, receivedAt, accessToken, env
-    });
-  } catch (error) {
-    console.error("[iaqar-workflow] inbound processing failed", {
-      officeId, documentId, code: error && error.code, message: error && error.message
-    });
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "inbox", documentId],
-      accessToken,
-      fields: {
-        processingState: firestoreString("failed"),
-        processingError: firestoreString(cleanText(error && error.code || "processing_failed", 120)),
-        updatedAt: firestoreTimestamp(new Date())
-      }
-    }).catch(() => {});
-  }
-  return { duplicate: false, documentId };
-}
-
-
-async function processInboundMessage({ projectId, officeId, inboxDocumentId, messageText, senderName, senderPhone, receivedAt, source = "whatsapp_cloud_api", accessToken, env = null }) {
-  const parsed = parseRealEstateMessage(messageText, senderPhone, senderName);
-  const sourceChannel = /whatsapp/i.test(String(source || "")) ? "whatsapp"
-    : /telegram/i.test(String(source || "")) ? "telegram"
-      : "web";
-  const canonicalText = [
-    cleanText(messageText, 12000),
-    senderName ? `Ø§Ø³Ù… Ø§Ù„Ù…Ø±Ø³Ù„: ${cleanText(senderName, 200)}` : "",
-    senderPhone ? `Ø±Ù‚Ù… Ø§Ù„ØªÙˆØ§ØµÙ„: ${cleanText(senderPhone, 60)}` : ""
-  ].filter(Boolean).join("\n");
-  const safeEnv = env || {};
-  const channelRequest = {
-    url: `${resolveAppOrigin(safeEnv)}/channels/${sourceChannel}/canonical-intake`,
-    headers: new Headers()
-  };
-  const ctx = buildCanonicalIntakeCtx({
-    env: safeEnv,
-    request: channelRequest,
-    identity: null,
-    projectId,
-    accessToken,
-    bucket: safeEnv.IAQAR_MEDIA || null
-  });
-  const result = await startCanonicalIntake({
-    officeId,
-    brokerId: `channel_${sourceChannel}_${officeId}`.slice(0, 120),
-    contentType: "text",
-    text: canonicalText,
-    idempotencyKey: `${source}:${officeId}:${inboxDocumentId}`,
-    sourceChannel,
-    externalEventId: inboxDocumentId,
-    senderName: cleanText(senderName, 200),
-    senderPhone: cleanText(senderPhone, 60)
-  }, ctx);
-
-  const now = new Date();
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "inbox", inboxDocumentId],
-    accessToken,
-    fields: {
-      processingState: firestoreString(result.analysisStatus === "analysis_complete" ? "processed" : "processing"),
-      status: firestoreString(result.analysisStatus === "analysis_complete" ? "processed" : "processing"),
-      isProcessed: firestoreBoolean(result.analysisStatus === "analysis_complete"),
-      classifiedAs: firestoreOptionalString(parsed.kind),
-      opportunityId: firestoreOptionalString(result.opportunityId || ""),
-      importJobId: firestoreOptionalString(result.importJobId || ""),
-      canonicalIntake: firestoreBoolean(true),
-      sourceChannel: firestoreString(sourceChannel),
-      matchCount: firestoreInteger(0),
-      processedAt: result.analysisStatus === "analysis_complete" ? firestoreTimestamp(now) : null,
-      updatedAt: firestoreTimestamp(now)
-    }
-  });
-
-  return {
-    kind: parsed.kind,
-    matches: 0,
-    duplicateOpportunity: Boolean(result.duplicate),
-    opportunityId: result.opportunityId || "",
-    importJobId: result.importJobId || "",
-    analysisStatus: result.analysisStatus || "",
-    canonicalIntake: true
-  };
-}
-
-function parseRealEstateMessage(input, fallbackPhone = "", fallbackSenderName = "") {
-  const raw = cleanText(input, 12000);
-  const text = normalizeArabicText(raw);
-
-  const { kind, offerScore, requestScore } = resolveParsedOpportunityKind(text);
-
-  // Keep the most-specific types first so "Ø£Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠØ©" is not reduced to "Ø£Ø±Ø¶".
-  const propertyTypes = [
-    ["Ø£Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠØ©", ["Ø§Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠØ©", "Ø£Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠØ©", "Ø§Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠ", "Ø£Ø±Ø¶ ØªØ¬Ø§Ø±ÙŠ"]],
-    ["Ø£Ø±Ø¶ Ø³ÙƒÙ†ÙŠØ©", ["Ø§Ø±Ø¶ Ø³ÙƒÙ†ÙŠØ©", "Ø£Ø±Ø¶ Ø³ÙƒÙ†ÙŠØ©", "Ø§Ø±Ø¶ Ø³ÙƒÙ†ÙŠ", "Ø£Ø±Ø¶ Ø³ÙƒÙ†ÙŠ"]],
-    ["Ø´Ù‚Ø©", ["Ø´Ù‚Ø©", "Ø´Ù‚Ù‚", "Ø´Ù‚Ù‡"]],
-    ["ÙÙŠÙ„Ø§", ["ÙÙŠÙ„Ø§", "ÙÙ„Ù‡", "ÙÙ„Ù„", "ÙÙŠÙ„Ø©"]],
-    ["Ø¯ÙˆØ±", ["Ø¯ÙˆØ±", "Ø¯ÙˆØ± ÙƒØ§Ù…Ù„"]],
-    ["Ø¯ÙˆØ¨Ù„ÙƒØ³", ["Ø¯ÙˆØ¨Ù„ÙƒØ³", "Ø¯ÙˆØ¨Ù„ÙŠÙƒØ³", "Ø¯ÙˆØ¨Ù„ÙƒØ³Ø§Øª"]],
-    ["Ø¹Ù…Ø§Ø±Ø©", ["Ø¹Ù…Ø§Ø±Ø©", "Ø¹Ù…Ø§Ø±Ù‡", "Ø¹Ù…Ø§ÙŠØ±"]],
-    ["Ø£Ø±Ø¶", ["Ø§Ø±Ø¶", "Ø£Ø±Ø¶"]],
-    ["Ù…Ø­Ù„", ["Ù…Ø­Ù„", "Ù…Ø¹Ø±Ø¶", "Ø¯ÙƒØ§Ù†"]],
-    ["Ù…ÙƒØªØ¨", ["Ù…ÙƒØªØ¨", "Ù…ÙƒØ§ØªØ¨"]],
-    ["Ø§Ø³ØªØ±Ø§Ø­Ø©", ["Ø§Ø³ØªØ±Ø§Ø­Ø©", "Ø§Ø³ØªØ±Ø§Ø­Ù‡"]],
-    ["Ù…Ø²Ø±Ø¹Ø©", ["Ù…Ø²Ø±Ø¹Ø©", "Ù…Ø²Ø±Ø¹Ù‡"]],
-    ["Ù…Ø³ØªÙˆØ¯Ø¹", ["Ù…Ø³ØªÙˆØ¯Ø¹", "Ù…Ø®Ø²Ù†"]],
-    ["Ù‚ØµØ±", ["Ù‚ØµØ±", "Ù‚ØµÙˆØ±"]],
-    ["Ø¨ÙŠØª Ø´Ø¹Ø¨ÙŠ", ["Ø¨ÙŠØª Ø´Ø¹Ø¨ÙŠ", "Ù…Ù†Ø²Ù„ Ø´Ø¹Ø¨ÙŠ"]],
-    ["Ù…Ø¬Ù…Ø¹ Ø³ÙƒÙ†ÙŠ", ["Ù…Ø¬Ù…Ø¹ Ø³ÙƒÙ†ÙŠ"]],
-    ["Ù…Ø¬Ù…Ø¹ ØªØ¬Ø§Ø±ÙŠ", ["Ù…Ø¬Ù…Ø¹ ØªØ¬Ø§Ø±ÙŠ"]],
-    ["ÙÙ†Ø¯Ù‚", ["ÙÙ†Ø¯Ù‚"]],
-    ["Ø´Ø§Ù„ÙŠÙ‡", ["Ø´Ø§Ù„ÙŠÙ‡", "Ø´Ø§Ù„ÙŠÙ‡Ø§Øª"]]
-  ];
-  let propertyType = "";
-  for (const [label, words] of propertyTypes) {
-    if (words.some(word => containsArabicPhrase(text, word))) { propertyType = label; break; }
-  }
-
-  const districts = [
-    "Ø£Ø¨ÙŠØ§Ø± Ø¹Ù„ÙŠ","Ø£Ø¨Ùˆ Ø¨Ø±ÙŠÙ‚Ø§Ø¡","Ø£Ø¨Ùˆ Ø³Ø¯Ø±","Ø£Ø­Ø¯","Ø§Ù„Ø¥Ø³ÙƒØ§Ù†","Ø§Ù„Ø£Ø²Ù‡Ø±ÙŠ","Ø§Ù„Ø£ØµÙŠÙØ±ÙŠÙ†","Ø§Ù„Ø¨Ø¯Ø±Ø§Ù†ÙŠ","Ø§Ù„Ø¨Ø±ÙƒØ©","Ø§Ù„Ø¨ÙŠØ¯Ø§Ø¡",
-    "Ø§Ù„Ø¬Ø§Ù…Ø¹Ø©","Ø§Ù„Ø¬Ø§Ø¨Ø±Ø©","Ø§Ù„Ø¬ØµØ©","Ø§Ù„Ø¬Ù…Ø§ÙˆØ§Øª","Ø§Ù„Ø¬Ø±Ù","Ø§Ù„Ø¬Ù…Ø¹Ø©","Ø§Ù„Ø­Ø±Ù… Ø§Ù„Ø´Ø±ÙŠÙ","Ø§Ù„Ø­Ø³Ø§Ø¡","Ø§Ù„Ø­Ø¯ÙŠÙ‚Ø©","Ø§Ù„Ø®Ø§ØªÙ…",
-    "Ø§Ù„Ø®Ø§Ù„Ø¯ÙŠØ©","Ø§Ù„Ø¯ÙØ§Ø¹","Ø§Ù„Ø¯Ø¹ÙŠØ«Ø©","Ø§Ù„Ø¯ÙˆÙŠÙ…Ø©","Ø§Ù„Ø±Ø§ÙŠØ©","Ø§Ù„Ø±Ø¨ÙˆØ©","Ø§Ù„Ø±Ø§Ù†ÙˆÙ†Ø§Ø¡","Ø§Ù„Ø±Ù…Ø§Ù†Ø©","Ø§Ù„Ø±ÙˆØ§Ø¨ÙŠ","Ø§Ù„Ø³Ø­Ù…Ø§Ù†",
-    "Ø§Ù„Ø³Ø¯","Ø§Ù„Ø³Ù„Ø§Ù…","Ø§Ù„Ø³ÙƒØ¨","Ø§Ù„Ø³ÙŠØ­","Ø§Ù„Ø´Ø±ÙŠØ¨Ø§Øª","Ø§Ù„Ø´Ù‡Ø¨Ø§Ø¡","Ø§Ù„ØµØ§Ø¯Ù‚ÙŠØ©","Ø§Ù„ØµÙˆÙŠØ¯Ø±Ø©","Ø§Ù„Ø¹Ø§Ù„ÙŠØ©","Ø§Ù„Ø¹Ø±ÙŠØ¶",
-    "Ø§Ù„Ø¹Ø²ÙŠØ²ÙŠØ©","Ø§Ù„Ø¹ØµØ¨Ø©","Ø§Ù„Ø¹Ù‡Ù†","Ø§Ù„Ø¹Ù†Ø¨Ø±ÙŠØ©","Ø§Ù„Ø¹ÙŠÙˆÙ†","Ø§Ù„ØºØ±Ø§Ø¡","Ø§Ù„ÙÙŠØµÙ„ÙŠØ©","Ø§Ù„ÙØ±ÙŠØ´","Ø§Ù„ÙØªØ­","Ø§Ù„Ù‚ØµÙˆØ§Ø¡",
-    "Ø§Ù„Ù‚Ø¨Ù„ØªÙŠÙ†","Ø§Ù„Ù…Ø¨Ø¹ÙˆØ«","Ø§Ù„Ù…Ø·Ø§Ø±","Ø§Ù„Ù…ØµØ§Ù†Ø¹","Ø§Ù„Ù…Ø³ØªØ±Ø§Ø­","Ø§Ù„Ù…ØªÙ†Ø²Ù‡","Ø§Ù„Ù…Ø²ÙŠÙŠÙ†","Ø§Ù„Ù…ØºÙŠØ³Ù„Ø©","Ø§Ù„Ù…ÙØ±Ø­Ø§Øª","Ø§Ù„Ù…Ù‡Ø¯ÙŠØ©",
-    "Ø§Ù„Ù…Ù†Ø§Ø®Ø©","Ø§Ù„Ù…Ù„Ùƒ ÙÙ‡Ø¯","Ø§Ù„Ù†Ø®ÙŠÙ„","Ø§Ù„Ù†ØµØ±","Ø§Ù„Ù†Ù‚Ø§Ø¡","Ø§Ù„Ù†Ù‚Ù…Ù‰","Ø§Ù„Ù†ÙˆØ§Ø¹Ù…","Ø§Ù„Ù‡Ø¯Ø±Ø§Ø¡","Ø§Ù„Ù‡Ø¬Ø±Ø©","Ø§Ù„ÙˆØ¨Ø±Ø©",
-    "Ø¨Ø§Ù‚Ø¯Ùˆ","Ø¨Ø¶Ø§Ø¹Ø©","Ø¨Ù†ÙŠ Ø¨ÙŠØ§Ø¶Ø©","Ø¨Ù†ÙŠ Ø­Ø§Ø±Ø«Ø©","Ø¨Ù†ÙŠ Ø¸ÙØ±","Ø¨Ù†ÙŠ Ø§Ù„Ù†Ø¬Ø§Ø±","ØªÙ„Ø¹Ø© Ø§Ù„Ù‡Ø¨ÙˆØ¨","Ø¬Ø¨Ù„ Ø£Ø­Ø¯","Ø¬Ø¨Ù„ Ø¹ÙŠØ±","Ø¬Ù…Ø§Ø¡ Ø£Ù… Ø®Ø§Ù„Ø¯",
-    "Ø¬Ø´Ù…","Ø­Ø±Ø© Ø§Ù„ÙˆØ¨Ø±Ø©","Ø­Ù…Ø±Ø§Ø¡ Ø§Ù„Ø£Ø³Ø¯","Ø­Ø²Ø±Ø© Ø§Ù„Ø¬Ù†ÙˆØ¨","Ø°Ùˆ Ø§Ù„Ø­Ù„ÙŠÙØ©","Ø±Ù‡Ø·","Ø³Ø¯ Ø§Ù„ØºØ§Ø¨Ø©","Ø³ÙƒØ© Ø§Ù„Ø­Ø¯ÙŠØ¯","Ø³ÙŠØ¯ Ø§Ù„Ø´Ù‡Ø¯Ø§Ø¡","Ø´ÙˆØ±Ø§Ù†",
-    "Ø·ÙŠØ¨Ø©","Ø¹Ø±ÙˆØ©","Ø¹ÙŠÙ† Ø§Ù„Ø®ÙŠÙ","Ù‚Ø±Ø¨Ø§Ù†","Ù†Ø¨Ù„Ø§Ø¡","ÙˆØ§Ø¯ÙŠ Ø§Ù„Ø¹Ù‚ÙŠÙ‚","ÙˆØ§Ø¯ÙŠ Ù…Ø°ÙŠÙ†Ø¨","ÙˆØ§Ø¯ÙŠ Ù…Ù‡Ø²ÙˆØ±","ÙˆØ±Ù‚Ø§Ù†","ÙˆØ¹ÙŠØ±Ø©"
-  ];
-  const district = districts.find(name => containsArabicPhrase(text, name)) || extractDistrictAfterKeyword(raw);
-
-  const rentWords = /Ø§ÙŠØ¬Ø§Ø±|Ù„Ù„Ø§ÙŠØ¬Ø§Ø±|Ø§Ø³ØªØ¦Ø¬Ø§Ø±|Ù…Ø³ØªØ§Ø¬Ø±|Ù…Ø³ØªØ£Ø¬Ø±|Ø§Ø¬Ø§Ø±/;
-  const saleWords = /Ø¨ÙŠØ¹|Ø´Ø±Ø§Ø¡|ØªÙ…Ù„ÙŠÙƒ|Ù„Ù„Ø¨ÙŠØ¹|Ù„Ù„ØªÙ…Ù„ÙŠÙƒ|Ù…Ø´ØªØ±ÙŠ/;
-  const transactionType = rentWords.test(text) ? "rent" : (saleWords.test(text) ? "sale" : "");
-
-  const priceRange = extractMoneyRange(text);
-  const price = priceRange.price || extractMoney(text);
-  const priceMin = priceRange.min || price;
-  const priceMax = priceRange.max || price;
-  const area = extractArea(text);
-  const rooms = extractNumberNear(text, ["ØºØ±Ù", "ØºØ±ÙØ©", "ØºØ±ÙÙ‡"], 1, 30);
-  const streetWidth = extractNumberNear(text, ["Ø¹Ø±Ø¶ Ø§Ù„Ø´Ø§Ø±Ø¹", "Ø´Ø§Ø±Ø¹"], 4, 100);
-  const phone = normalizeSaudiPhone(extractPhone(raw) || fallbackPhone);
-  const senderName = extractSenderName(raw) || cleanText(fallbackSenderName, 200);
-  const urgency = /Ø¹Ø§Ø¬Ù„|Ù…Ø³ØªØ¹Ø¬Ù„|Ø§Ù„ÙŠÙˆÙ…|ÙÙˆØ±Ø§|ÙÙˆØ±Ø§Ù‹|Ø¨Ø§Ø³Ø±Ø¹ ÙˆÙ‚Øª|Ø¨Ø£Ø³Ø±Ø¹ ÙˆÙ‚Øª/.test(text)
-    ? "high"
-    : (/Ù‚Ø±ÙŠØ¨|Ø®Ù„Ø§Ù„ Ø§Ø³Ø¨ÙˆØ¹|Ø®Ù„Ø§Ù„ Ø£Ø³Ø¨ÙˆØ¹|Ù‡Ø°Ø§ Ø§Ù„Ø§Ø³Ø¨ÙˆØ¹|Ù‡Ø°Ø§ Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹/.test(text) ? "medium" : "normal");
-  const financingReady = /ÙƒØ§Ø´|Ø¬Ø§Ù‡Ø²|ØªÙ…ÙˆÙŠÙ„ Ø¬Ø§Ù‡Ø²|Ù…ÙˆØ§ÙÙ‚Ù‡ Ø¨Ù†ÙƒÙŠÙ‡|Ù…ÙˆØ§ÙÙ‚Ø© Ø¨Ù†ÙƒÙŠØ©|Ù…ÙˆØ§ÙÙ‚Ø© ØªÙ…ÙˆÙŠÙ„|Ø§Ù„Ù…Ø¨Ù„Øº Ø¬Ø§Ù‡Ø²/.test(text);
-  const directOwner = /Ù…Ø§Ù„Ùƒ Ù…Ø¨Ø§Ø´Ø±|Ù…Ù† Ø§Ù„Ù…Ø§Ù„Ùƒ|Ù…Ø¨Ø§Ø´Ø± Ù…Ù† Ø§Ù„Ù…Ø§Ù„Ùƒ|ØµØ§Ø­Ø¨ Ø§Ù„Ø¹Ù‚Ø§Ø±/.test(text);
-  const furnished = /Ù…ÙØ±ÙˆØ´|Ù…Ø¤Ø«Ø«/.test(text);
-
-  const extractedCount = [propertyType, district, transactionType, price, phone, senderName].filter(Boolean).length;
-  const completeness = Math.round((extractedCount / 6) * 100);
-  const confidence = Math.min(100, Math.round((Math.max(offerScore, requestScore) * 18) + (completeness * 0.72)));
-
-  return {
-    kind, rawText: raw, normalizedText: text, city: DEFAULT_CITY, propertyType, district, transactionType,
-    price: price || 0, priceMin: priceMin || 0, priceMax: priceMax || 0, area: area || 0,
-    rooms: rooms || 0, streetWidth: streetWidth || 0, phone, senderName, urgency, financingReady,
-    directOwner, furnished, offerScore, requestScore, completeness, confidence,
-    missing: [
-      !propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
-      !price && "price", !phone && "phone", !senderName && "senderName"
-    ].filter(Boolean)
-  };
-}
-
-function normalizeArabicText(value) {
-  return String(value || "").toLowerCase()
-    .replace(/[Ø¥Ø£Ø¢Ù±]/g, "Ø§").replace(/Ù‰/g, "ÙŠ").replace(/Ø©/g, "Ù‡")
-    .replace(/[Ù‹ÙŒÙÙŽÙÙÙ‘Ù’Ù€]/g, "").replace(/[Ù -Ù©]/g, d => "Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©".indexOf(d))
-    .replace(/[,ØŒ]/g, " ").replace(/\s+/g, " ").trim();
-}
-function containsArabicPhrase(text, phrase) {
-  const normalized = normalizeArabicText(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|\\s)${normalized}(?:$|\\s)`).test(` ${text} `);
-}
-function countKeywords(text, words) { return words.reduce((n, w) => n + (text.includes(normalizeArabicText(w)) ? 1 : 0), 0); }
-function extractDistrictAfterKeyword(raw) {
-  const m = String(raw || "").match(/(?:Ø­ÙŠ|Ø­Ù‰)\s+([\u0600-\u06FF ]{2,40})/);
-  return m ? cleanText(m[1].split(/(?:Ø¨Ø³Ø¹Ø±|Ø¨Ø­Ø¯ÙˆØ¯|Ù…ÙŠØ²Ø§Ù†ÙŠØ©|Ø§Ù„Ù…ÙŠØ²Ø§Ù†ÙŠØ©|Ù…Ø³Ø§Ø­Ø©|Ù…Ø·Ù„ÙˆØ¨|Ù„Ù„Ø¨ÙŠØ¹|Ù„Ù„Ø¥ÙŠØ¬Ø§Ø±|Ù„Ù„Ø§ÙŠØ¬Ø§Ø±|Ø´Ø§Ø±Ø¹|ØºØ±Ù)/)[0], 60) : "";
-}
-function extractSenderName(raw) {
-  const source = String(raw || "");
-  const patterns = [
-    /(?:Ø§Ù„Ø§Ø³Ù…|Ø§Ø³Ù… Ø§Ù„Ù…Ø±Ø³Ù„|Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„|Ø§Ø³Ù… Ø§Ù„Ù…Ø§Ù„Ùƒ)\s*[:ï¼š-]\s*([\u0600-\u06FFa-zA-Z ]{2,60})/i,
-    /(?:ØªÙˆØ§ØµÙ„ Ù…Ø¹|Ù„Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹)\s+([\u0600-\u06FFa-zA-Z ]{2,40})(?=\s+(?:Ø¹Ù„Ù‰|Ø¬ÙˆØ§Ù„|Ø±Ù‚Ù…|05|\+966)|$)/i
-  ];
-  for (const pattern of patterns) {
-    const m = source.match(pattern);
-    if (m) return cleanText(m[1].split(/\n|ØŒ|,/)[0], 80);
-  }
-  return "";
-}
-function parseMoneyToken(numberText, unit) {
-  const n = Number(String(numberText || "").replace(/,/g, ""));
-  if (!Number.isFinite(n)) return 0;
-  if (/Ù…Ù„ÙŠÙˆÙ†|Ù…Ù„Ø§ÙŠÙŠÙ†/.test(unit || "")) return Math.round(n * 1000000);
-  if (/Ø§Ù„Ù|Ø£Ù„Ù|Ø§Ù„Ø§Ù|Ø¢Ù„Ø§Ù/.test(unit || "")) return Math.round(n * 1000);
-  return Math.round(n);
-}
-function extractMoney(text) {
-  // Handles forms such as: Ù…Ù„ÙŠÙˆÙ† Ùˆ200 Ø£Ù„Ù, 1.2 Ù…Ù„ÙŠÙˆÙ†, 650 Ø£Ù„Ù.
-  const compound = text.match(/(\d+(?:\.\d+)?)?\s*(Ù…Ù„ÙŠÙˆÙ†|Ù…Ù„Ø§ÙŠÙŠÙ†)\s*(?:Ùˆ\s*)?(\d+(?:\.\d+)?)?\s*(Ø§Ù„Ù|Ø£Ù„Ù|Ø§Ù„Ø§Ù|Ø¢Ù„Ø§Ù)?/);
-  if (compound && (compound[1] || compound[3])) {
-    return parseMoneyToken(compound[1] || "1", compound[2]) + parseMoneyToken(compound[3] || "0", compound[4]);
-  }
-  const patterns = [
-    /(\d+(?:\.\d+)?)\s*(Ù…Ù„ÙŠÙˆÙ†|Ù…Ù„Ø§ÙŠÙŠÙ†)/,
-    /(\d+(?:\.\d+)?)\s*(Ø§Ù„Ù|Ø£Ù„Ù|Ø§Ù„Ø§Ù|Ø¢Ù„Ø§Ù)/,
-    /(?:Ø¨Ø³Ø¹Ø±|Ø¨Ø­Ø¯ÙˆØ¯|Ø§Ù„Ù…ÙŠØ²Ø§Ù†ÙŠÙ‡|Ù…ÙŠØ²Ø§Ù†ÙŠÙ‡|Ø§Ù„Ø³Ø¹Ø±)\s*(?:Ø§Ù„Ù‰|Ø¥Ù„Ù‰|Ø­Ø¯ÙˆØ¯)?\s*(\d[\d,.]*)/
-  ];
-  for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (!m) continue;
-    return parseMoneyToken(m[1], m[2]);
-  }
-  const candidates = [...text.matchAll(/\b(\d{5,9})\b/g)].map(m => Number(m[1])).filter(n => n >= 20000 && n <= 100000000);
-  return candidates[0] || 0;
-}
-function extractMoneyRange(text) {
-  const m = String(text || "").match(/(\d+(?:\.\d+)?)\s*(Ø§Ù„Ù|Ø£Ù„Ù|Ø§Ù„Ø§Ù|Ø¢Ù„Ø§Ù|Ù…Ù„ÙŠÙˆÙ†|Ù…Ù„Ø§ÙŠÙŠÙ†)?\s*(?:Ø§Ù„Ù‰|Ø§Ù„ÙŠ|Ø¥Ù„Ù‰|-)\s*(\d+(?:\.\d+)?)\s*(Ø§Ù„Ù|Ø£Ù„Ù|Ø§Ù„Ø§Ù|Ø¢Ù„Ø§Ù|Ù…Ù„ÙŠÙˆÙ†|Ù…Ù„Ø§ÙŠÙŠÙ†)?/);
-  if (!m) return { min: 0, max: 0, price: 0 };
-  const a = parseMoneyToken(m[1], m[2] || m[4]);
-  const b = parseMoneyToken(m[3], m[4] || m[2]);
-  const min = Math.min(a, b), max = Math.max(a, b);
-  return { min, max, price: Math.round((min + max) / 2) };
-}
-function extractArea(text) {
-  const patterns = [
-    /(?:Ù…Ø³Ø§Ø­Ù‡|Ø§Ù„Ù…Ø³Ø§Ø­Ù‡)\s*(\d{2,6})\s*(?:Ù…ØªØ±|Ù…2|Ù…Â²)?/,
-    /(\d{2,6})\s*(?:Ù…ØªØ± Ù…Ø±Ø¨Ø¹|Ù…ØªØ±|Ù…2|Ù…Â²)/
-  ];
-  for (const p of patterns) {
-    const m = text.match(p); const n = m ? Number(m[1]) : 0;
-    if (n >= 20 && n <= 200000) return n;
-  }
-  return 0;
-}
-function extractNumberNear(text, keywords, min, max) {
-  for (const keyword of keywords) {
-    const k = normalizeArabicText(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const patterns = [new RegExp(`(\\d{1,6})\\s*${k}`), new RegExp(`${k}\\s*(\\d{1,6})`)];
-    for (const p of patterns) { const m = text.match(p); const n = m ? Number(m[1]) : 0; if (n >= min && n <= max) return n; }
-  }
-  return 0;
-}
-function extractPhone(raw) {
-  const source = String(raw || "").replace(/[\s()-]/g, "");
-  const m = source.match(/(?:\+?966|00966|0)?5\d{8}/);
-  return m ? m[0] : "";
-}
-function normalizeSaudiPhone(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (/^009665\d{8}$/.test(digits)) return `+${digits.slice(2)}`;
-  if (/^9665\d{8}$/.test(digits)) return `+${digits}`;
-  if (/^05\d{8}$/.test(digits)) return `+966${digits.slice(1)}`;
-  if (/^5\d{8}$/.test(digits)) return `+966${digits}`;
-  return cleanText(value, 60);
-}
-
-function parsedToFirestoreFields(parsed, context) {
-  const normalizedSource = normalizeOpportunitySource(context.source || "whatsapp_cloud_api");
-  const contactType = parsed.kind === "owner_offer" ? "owner" : (parsed.kind === "client_request" ? "buyer" : "unknown");
-  return compactFields({
-    schemaVersion: firestoreInteger(3), officeId: firestoreString(context.officeId),
-    source: firestoreString(context.source || "whatsapp_cloud_api"),
-    normalizedSource: firestoreString(normalizedSource),
-    sourceInboxId: firestoreString(context.inboxDocumentId),
-    recordType: firestoreString(parsed.kind), status: firestoreString("active"), workflowStage: firestoreString("new"),
-    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
-    contactType: firestoreString(contactType),
-    contactName: firestoreOptionalString(parsed.senderName || context.senderName),
-    contactPhone: firestoreOptionalString(parsed.phone || context.senderPhone),
-    lastContactAt: null,
-    nextFollowUpAt: null,
-    lastContactMethod: null,
-    lastWhatsAppAt: null,
-    lastWhatsAppOpenedAt: null,
-    closureReason: null,
-    closedAt: null,
-    archivedAt: null,
-    lifecycleUpdatedAt: firestoreTimestamp(context.now),
-    lifecycleUpdatedBy: firestoreOptionalString(context.lifecycleUpdatedBy || ""),
-    rawText: firestoreString(parsed.rawText), city: firestoreOptionalString(parsed.city || DEFAULT_CITY), propertyType: firestoreOptionalString(parsed.propertyType),
-    district: firestoreOptionalString(parsed.district), transactionType: firestoreOptionalString(parsed.transactionType),
-    price: parsed.price ? firestoreInteger(parsed.price) : null,
-    priceMin: parsed.priceMin ? firestoreInteger(parsed.priceMin) : null,
-    priceMax: parsed.priceMax ? firestoreInteger(parsed.priceMax) : null,
-    area: parsed.area ? firestoreInteger(parsed.area) : null,
-    rooms: parsed.rooms ? firestoreInteger(parsed.rooms) : null,
-    streetWidth: parsed.streetWidth ? firestoreInteger(parsed.streetWidth) : null,
-    urgency: firestoreString(parsed.urgency || "normal"), financingReady: firestoreBoolean(Boolean(parsed.financingReady)),
-    directOwner: firestoreBoolean(Boolean(parsed.directOwner)), furnished: firestoreBoolean(Boolean(parsed.furnished)),
-    confidence: firestoreInteger(parsed.confidence || 0), completeness: firestoreInteger(parsed.completeness),
-    missingFieldsJson: firestoreString(JSON.stringify(parsed.missing)), receivedAt: firestoreTimestamp(context.receivedAt),
-    createdAt: firestoreTimestamp(context.now), updatedAt: firestoreTimestamp(context.now)
-  });
-}
-
-function lifecycleFieldsForIntake(intake = {}, now = new Date()) {
-  const isOwner = intake.kind === "owner";
-  const normalizedSource = normalizeOpportunitySource(intake.source || "office_public_link");
-  return compactFields({
-    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.NEW),
-    normalizedSource: firestoreString(normalizedSource),
-    contactType: firestoreString(isOwner ? "owner" : "buyer"),
-    contactName: firestoreOptionalString(intake.name),
-    contactPhone: firestoreOptionalString(intake.phone),
-    lifecycleUpdatedAt: firestoreTimestamp(now)
-  });
-}
-
-async function findActiveOpportunityByPhone({ projectId, officeId, phone, contactType, accessToken, criteria = {} }) {
-  const digits = normalizeSaudiPhoneForWhatsApp(phone);
-  if (!digits) return null;
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: 80
-  });
-  const searchCriteria = {
-    officeId,
-    phone,
-    contactType,
-    ...criteria
-  };
-  for (const doc of docs) {
-    const data = firestoreFieldsToJs(doc.fields || {});
-    if (!officeIdsEquivalent(data.officeId, officeId)) continue;
-    const docPhone = normalizeSaudiPhoneForWhatsApp(data.contactPhone || data.phone || data.advertiserPhoneNormalized || "");
-    if (docPhone !== digits) continue;
-    if (!matchesDuplicateCriteria(data, searchCriteria)) continue;
-    const docId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    return { opportunityId: docId, data };
-  }
-  return null;
-}
-
-async function addOpportunityCommunication({ projectId, officeId, opportunityId, payload, accessToken, now = new Date() }) {
-  const communicationId = `comm_${(await sha256Hex(`${opportunityId}|${now.toISOString()}|${payload.action || "event"}`)).slice(0, 24)}`;
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId, "communications", communicationId],
-    accessToken,
-    fields: compactFields({
-      officeId: firestoreString(officeId),
-      opportunityId: firestoreString(opportunityId),
-      type: firestoreString(payload.type || "whatsapp"),
-      action: firestoreString(payload.action || "opened"),
-      result: firestoreOptionalString(payload.result || payload.contactOutcome || ""),
-      statusBefore: firestoreOptionalString(payload.statusBefore || ""),
-      statusAfter: firestoreOptionalString(payload.statusAfter || ""),
-      createdAt: firestoreTimestamp(now),
-      createdBy: firestoreOptionalString(payload.createdBy || "")
-    })
-  });
-  return communicationId;
-}
-
-async function resolveOpportunityRecord({ projectId, officeId, body, accessToken }) {
-  const recordType = cleanText(body.recordType || "opportunity", 30);
-  const recordId = cleanText(body.recordId || body.opportunityId, 180);
-  if (!recordId) throw appError("record_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-
-  if (recordType === "intake") {
-    const intakeDoc = await getFirestoreDocument({
-      projectId, segments: ["offices", officeId, "publicIntake", recordId], accessToken
-    });
-    const intake = firestoreFieldsToJs(intakeDoc.fields || {});
-    if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "Ø§Ù„Ø·Ù„Ø¨ Ù„Ø§ ÙŠØªØ¨Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-    return {
-      collection: "publicIntake",
-      recordId,
-      data: intake,
-      opportunityId: intake.opportunityId || "",
-      contactType: intake.kind === "owner" ? "owner" : "buyer"
-    };
-  }
-
-  const opportunityDoc = await getFirestoreDocument({
-    projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken
-  });
-  const data = firestoreFieldsToJs(opportunityDoc.fields || {});
-  if (!officeIdsEquivalent(data.officeId, officeId)) throw appError("office_mismatch", 403, "Ø§Ù„ÙØ±ØµØ© Ù„Ø§ ØªØªØ¨Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨");
-  return {
-    collection: "opportunities",
-    recordId,
-    data,
-    opportunityId: recordId,
-    contactType: data.contactType || (data.recordType === "owner_offer" ? "owner" : "buyer")
-  };
-}
-
-async function handleOpportunityLifecycle(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const action = cleanText(body.action, 60);
-  if (!officeId || !action) throw appError("lifecycle_data_missing", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø¯ÙˆØ±Ø© Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const now = new Date();
-  const resolved = await resolveOpportunityRecord({ projectId, officeId, body, accessToken });
-  const statusBefore = getOpportunityLifecycleStatus(resolved.data);
-  const collection = resolved.collection;
-  const recordId = resolved.recordId;
-  const opportunityId = resolved.opportunityId || recordId;
-  const fields = { officeId: firestoreString(officeId), updatedAt: firestoreTimestamp(now), lifecycleUpdatedAt: firestoreTimestamp(now), lifecycleUpdatedBy: firestoreString(identity.uid) };
-
-  if (statusBefore === LIFECYCLE_STATUS.ARCHIVED && ["close_opportunity", "close_won", "close_lost", "archive"].includes(action)) {
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      lifecycleStatus: statusBefore,
-      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[statusBefore] || statusBefore,
-      idempotent: true,
-      requestId
-    });
-  }
-
-  if (action === "update_status") {
-    const next = cleanText(body.lifecycleStatus, 40);
-    if (!LIFECYCLE_STATUS_LABELS[next]) throw appError("lifecycle_status_invalid", 400, "Ø­Ø§Ù„Ø© Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    fields.lifecycleStatus = firestoreString(next);
-    if (next === LIFECYCLE_STATUS.CONTACTED) {
-      fields.lastContactAt = firestoreTimestamp(now);
-      fields.lastContactMethod = firestoreOptionalString(body.lastContactMethod || "manual");
-    }
-    if (next === LIFECYCLE_STATUS.FOLLOW_UP && body.nextFollowUpAt) {
-      const followUp = new Date(body.nextFollowUpAt);
-      if (!Number.isNaN(followUp.getTime())) fields.nextFollowUpAt = firestoreTimestamp(followUp);
-    }
-  } else if (action === "confirm_contact") {
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
-    fields.lastContactAt = firestoreTimestamp(now);
-    fields.lastContactMethod = firestoreString(cleanText(body.lastContactMethod || "whatsapp", 30));
-  } else if (action === "set_followup") {
-    return scheduleOpportunityFollowUp({
-      projectId,
-      officeId,
-      opportunityId,
-      collection,
-      recordId,
-      opportunity: resolved.data,
-      body,
-      identity,
-      accessToken,
-      now,
-      statusBefore,
-      requestId
-    });
-  } else if (action === "cancel_followup") {
-    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
-    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…ÙˆØ¹Ø¯ Ù…ØªØ§Ø¨Ø¹Ø© Ù„Ø¥Ù„ØºØ§Ø¦Ù‡");
-    const cancelled = {
-      ...existingFollowUp,
-      status: FOLLOWUP_STATUSES.cancelled,
-      updatedBy: identity.uid,
-      updatedAt: now.toISOString()
-    };
-    const farFuture = new Date("2099-01-01T00:00:00.000Z");
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        officeId: firestoreString(officeId),
-        updatedAt: firestoreTimestamp(now),
-        lifecycleUpdatedAt: firestoreTimestamp(now),
-        lifecycleUpdatedBy: firestoreString(identity.uid),
-        followUp: jsToFirestoreValue(cancelled),
-        followUpReminderAt: firestoreTimestamp(farFuture)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "followup",
-        action: "followup_cancelled",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({ ok: true, opportunityId, followUp: cancelled, requestId });
-  } else if (action === "complete_followup") {
-    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
-    if (!existingFollowUp || !existingFollowUp.at) throw appError("followup_missing", 400, "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…ÙˆØ¹Ø¯ Ù…ØªØ§Ø¨Ø¹Ø©");
-    const completed = {
-      ...existingFollowUp,
-      status: FOLLOWUP_STATUSES.completed,
-      updatedBy: identity.uid,
-      updatedAt: now.toISOString()
-    };
-    const farFuture = new Date("2099-01-01T00:00:00.000Z");
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        officeId: firestoreString(officeId),
-        updatedAt: firestoreTimestamp(now),
-        lifecycleUpdatedAt: firestoreTimestamp(now),
-        lifecycleUpdatedBy: firestoreString(identity.uid),
-        followUp: jsToFirestoreValue(completed),
-        followUpReminderAt: firestoreTimestamp(farFuture),
-        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.followUpComplete, now)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "followup",
-        action: "followup_completed",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      followUp: completed,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.followUpComplete, now.toISOString()),
-      requestId
-    });
-  } else if (action === "followup_outcome") {
-    const outcome = cleanText(body.outcome || body.followUpOutcome, 40);
-    const allowed = new Set(["confirmed", "reschedule", "no_response"]);
-    if (!allowed.has(outcome)) throw appError("followup_outcome_invalid", 400, "Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
-    const updatedFollowUp = existingFollowUp
-      ? { ...existingFollowUp, confirmationOutcome: outcome, updatedAt: now.toISOString() }
-      : null;
-    const outcomeKey = followUpOutcomeActionKey(outcome);
-    const progressFields = brokerProgressFirestoreFields(resolved.data, outcomeKey, now);
-    if (updatedFollowUp) {
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          updatedAt: firestoreTimestamp(now),
-          followUp: jsToFirestoreValue(updatedFollowUp),
-          ...progressFields
-        })
-      });
-    } else {
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          updatedAt: firestoreTimestamp(now),
-          ...progressFields
-        })
-      });
-    }
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "followup",
-        action: "followup_outcome_recorded",
-        result: outcome,
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      outcome,
-      followUp: updatedFollowUp,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, outcomeKey, now.toISOString()),
-      requestId
-    });
-  } else if (action === "followup_confirmation_opened") {
-    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
-    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
-    const updatedFollowUp = recipientRole && existingFollowUp
-      ? mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now)
-      : existingFollowUp;
-    const whatsappKey = followUpWhatsAppActionKey(recipientRole);
-    const progressFields = whatsappKey
-      ? brokerProgressFirestoreFields(resolved.data, whatsappKey, now)
-      : {};
-    if (updatedFollowUp || whatsappKey) {
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          updatedAt: firestoreTimestamp(now),
-          ...(updatedFollowUp ? { followUp: jsToFirestoreValue(updatedFollowUp) } : {}),
-          ...progressFields
-        })
-      });
-    }
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "followup",
-        action: "followup_confirmation_opened",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid,
-        result: recipientRole || ""
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      followUp: updatedFollowUp,
-      brokerActionProgress: whatsappKey
-        ? mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString())
-        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
-      requestId
-    });
-  } else if (action === "close_won") {
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
-    fields.closedAt = firestoreTimestamp(now);
-    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || "ØªÙ…Øª Ø¨Ù†Ø¬Ø§Ø­", 200));
-  } else if (action === "close_lost") {
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
-    fields.closedAt = firestoreTimestamp(now);
-    fields.closureReason = firestoreOptionalString(cleanText(body.closureReason || body.reason || "Ù„Ù… ØªØªÙ…", 200));
-  } else if (action === "archive") {
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
-    fields.archivedAt = firestoreTimestamp(now);
-  } else if (action === "whatsapp_opened") {
-    fields.lastWhatsAppOpenedAt = firestoreTimestamp(now);
-    fields.lastWhatsAppAt = firestoreTimestamp(now);
-    const recipientRole = cleanText(body.recipientRole, 20).toLowerCase();
-    const existingFollowUp = resolved.data.followUp && typeof resolved.data.followUp === "object" ? resolved.data.followUp : null;
-    const whatsappKey = recipientRole
-      ? followUpWhatsAppActionKey(recipientRole)
-      : BROKER_ACTION.contactWhatsApp;
-    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, whatsappKey, now));
-    if (recipientRole && existingFollowUp) {
-      const updatedFollowUp = mergeFollowUpWhatsappRole(existingFollowUp, recipientRole, now);
-      fields.followUp = jsToFirestoreValue(updatedFollowUp);
-    }
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: { type: "whatsapp", action: "whatsapp_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
-    });
-    return jsonResponse({
-      ok: true,
-      lifecycleStatus: statusBefore,
-      opportunityId,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, whatsappKey, now.toISOString()),
-      requestId
-    });
-  } else if (action === "listing_shared_whatsapp") {
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        officeId: firestoreString(officeId),
-        updatedAt: firestoreTimestamp(now),
-        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "listing_share",
-        action: "listing_shared_whatsapp",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      lifecycleStatus: statusBefore,
-      opportunityId,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubShareWhatsAppListing, now.toISOString()),
-      requestId
-    });
-  } else if (action === "listing_copied") {
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        officeId: firestoreString(officeId),
-        updatedAt: firestoreTimestamp(now),
-        ...brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.hubCopyListing, now)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "listing_share",
-        action: "listing_copied",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      lifecycleStatus: statusBefore,
-      opportunityId,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.hubCopyListing, now.toISOString()),
-      requestId
-    });
-  } else if (action === "party_action") {
-    const partyAction = cleanText(body.partyAction, 40);
-    const actionKey = partyActionKey(partyAction);
-    if (actionKey) {
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          updatedAt: firestoreTimestamp(now),
-          ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
-        })
-      });
-    }
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "party",
-        action: partyAction || "party_action",
-        statusBefore,
-        statusAfter: statusBefore,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      lifecycleStatus: statusBefore,
-      opportunityId,
-      partyAction,
-      brokerActionProgress: actionKey
-        ? mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString())
-        : normalizeBrokerActionProgress(resolved.data.brokerActionProgress),
-      requestId
-    });
-  } else if (action === "call_opened") {
-    fields.lastCallOpenedAt = firestoreTimestamp(now);
-    Object.assign(fields, brokerProgressFirestoreFields(resolved.data, BROKER_ACTION.contactCall, now));
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: { type: "call", action: "call_opened", statusBefore, statusAfter: statusBefore, createdBy: identity.uid }
-    });
-    return jsonResponse({
-      ok: true,
-      lifecycleStatus: statusBefore,
-      opportunityId,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, BROKER_ACTION.contactCall, now.toISOString()),
-      requestId
-    });
-  } else if (action === "contact_outcome") {
-    const outcome = cleanText(body.contactOutcome, 40).toUpperCase();
-    fields.lastContactAt = firestoreTimestamp(now);
-    fields.lastContactOutcome = firestoreOptionalString(outcome);
-    let contactResult = outcome;
-    if (outcome === "CONTACTED") {
-      fields.advertiserContactStatus = firestoreString("RESPONDED");
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
-      contactResult = "RESPONDED";
-    } else if (outcome === "NO_RESPONSE") {
-      fields.advertiserContactStatus = firestoreString("NO_RESPONSE");
-      contactResult = "NO_RESPONSE";
-    } else if (outcome === "INTERESTED") {
-      fields.advertiserContactStatus = firestoreString("INTERESTED");
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CONTACTED);
-      contactResult = "INTERESTED";
-    } else if (outcome === "FOLLOW_UP") {
-      fields.advertiserContactStatus = firestoreString("CALL_LATER");
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.FOLLOW_UP);
-      contactResult = "CALL_LATER";
-    } else if (outcome === "REFUSED") {
-      fields.advertiserContactStatus = firestoreString("REFUSED");
-      contactResult = "REFUSED";
-    } else if (outcome === "AGREED") {
-      fields.marketingConsentStatus = firestoreString("PRELIMINARY_YES");
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.NEGOTIATION);
-      contactResult = "PRELIMINARY_YES";
-    } else {
-      throw appError("contact_outcome_invalid", 400, "Ù†ØªÙŠØ¬Ø© Ø§Ù„ØªÙˆØ§ØµÙ„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    }
-    const nextLifecycle = outcome === "CONTACTED" || outcome === "INTERESTED"
-      ? LIFECYCLE_STATUS.CONTACTED
-      : outcome === "FOLLOW_UP"
-        ? LIFECYCLE_STATUS.FOLLOW_UP
-        : outcome === "AGREED"
-          ? LIFECYCLE_STATUS.NEGOTIATION
-          : statusBefore;
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        ...fields,
-        ...brokerProgressFirestoreFields(resolved.data, contactOutcomeActionKey(outcome), now)
-      })
-    });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "contact",
-        action: outcome === "AGREED" ? "agreement_recorded" : "contact_outcome_recorded",
-        result: contactResult,
-        contactOutcome: outcome,
-        statusBefore,
-        statusAfter: contactResult,
-        createdBy: identity.uid
-      }
-    });
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      contactOutcome: outcome,
-      lastContactOutcome: outcome,
-      advertiserContactStatus: contactResult,
-      lifecycleStatus: nextLifecycle,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, contactOutcomeActionKey(outcome), now.toISOString()),
-      requestId
-    });
-  } else if (action === "broker_action_done") {
-    const actionKey = cleanText(body.actionKey, 80);
-    if (!actionKey) throw appError("broker_action_key_required", 400, "Ù…ÙØªØ§Ø­ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…Ø·Ù„ÙˆØ¨");
-    await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, collection, recordId], accessToken,
-      fields: compactFields({
-        officeId: firestoreString(officeId),
-        updatedAt: firestoreTimestamp(now),
-        ...brokerProgressFirestoreFields(resolved.data, actionKey, now)
-      })
-    });
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      actionKey,
-      brokerActionProgress: mergeBrokerActionProgress(resolved.data, actionKey, now.toISOString()),
-      requestId
-    });
-  } else if (action === "close_opportunity") {
-    const reasonKey = cleanText(body.closureReasonKey || body.reasonKey, 40);
-    if (!OPPORTUNITY_FINAL_CLOSE_REASONS.includes(reasonKey)) {
-      throw appError("closure_reason_invalid", 400, "Ø³Ø¨Ø¨ Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± ØµØ­ÙŠØ­");
-    }
-    if (resolved.data.closedAt) {
-      return jsonResponse({
-        ok: true,
-        opportunityId,
-        lifecycleStatus: statusBefore,
-        idempotent: true,
-        requestId
-      });
-    }
-    const reasonLabel = OPPORTUNITY_FINAL_CLOSE_REASON_LABELS[reasonKey] || reasonKey;
-    let finalOutcome = "";
-    if (reasonKey === "deal_done") {
-      finalOutcome = cleanText(body.finalOutcome, 30);
-      if (!OPPORTUNITY_FINAL_OUTCOMES.includes(finalOutcome)) {
-        throw appError("final_outcome_required", 400, "Ø§Ø®ØªØ± Ù†ØªÙŠØ¬Ø© Ø§Ù„ØµÙÙ‚Ø© Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠØ©");
-      }
-      fields.finalOutcome = firestoreString(finalOutcome);
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_WON);
-    } else {
-      fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.CLOSED_LOST);
-    }
-    const closureNote = cleanText(body.closureNote || body.note || "", 300);
-    fields.closureReason = firestoreOptionalString(closureNote || reasonLabel);
-    fields.closureReasonKey = firestoreString(reasonKey);
-    fields.closedAt = firestoreTimestamp(now);
-    fields.closedBy = firestoreString(identity.uid);
-    fields.archivedAt = firestoreTimestamp(now);
-    fields.lifecycleStatus = firestoreString(LIFECYCLE_STATUS.ARCHIVED);
-    await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
-    await addOpportunityCommunication({
-      projectId, officeId, opportunityId, accessToken, now,
-      payload: {
-        type: "lifecycle",
-        action: "opportunity_closed",
-        result: reasonKey,
-        finalOutcome: finalOutcome || "",
-        statusBefore,
-        statusAfter: LIFECYCLE_STATUS.ARCHIVED,
-        createdBy: identity.uid
-      }
-    });
-    if (resolved.data.sourceRecordId && collection === "opportunities") {
-      const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
-      if (["clients", "owners"].includes(sourceCollection)) {
-        await setFirestoreDocument({
-          projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
-          fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
-        }).catch(() => {});
-      }
-    }
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      lifecycleStatus: LIFECYCLE_STATUS.ARCHIVED,
-      lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.ARCHIVED],
-      closureReasonKey: reasonKey,
-      finalOutcome,
-      requestId
-    });
-  } else {
-    throw appError("lifecycle_action_invalid", 400, "Ø¥Ø¬Ø±Ø§Ø¡ Ø¯ÙˆØ±Ø© Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ");
-  }
-
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
-  const finalStatus = action === "update_status" ? cleanText(body.lifecycleStatus, 40)
-    : action === "confirm_contact" ? LIFECYCLE_STATUS.CONTACTED
-    : action === "set_followup" ? LIFECYCLE_STATUS.FOLLOW_UP
-    : action === "close_won" ? LIFECYCLE_STATUS.CLOSED_WON
-    : action === "close_lost" ? LIFECYCLE_STATUS.CLOSED_LOST
-    : action === "archive" ? LIFECYCLE_STATUS.ARCHIVED
-    : statusBefore;
-
-  await addOpportunityCommunication({
-    projectId, officeId, opportunityId, accessToken, now,
-    payload: {
-      type: cleanText(body.communicationType || "lifecycle", 30),
-      action: cleanText(
-        body.communicationAction
-          || (action === "set_followup" ? "followup_scheduled" : action),
-        40
-      ),
-      statusBefore,
-      statusAfter: finalStatus,
-      createdBy: identity.uid
-    }
-  });
-
-  if (resolved.data.sourceRecordId && collection === "opportunities") {
-    const sourceCollection = cleanText(resolved.data.sourceCollection || "", 30);
-    if (["clients", "owners"].includes(sourceCollection)) {
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, sourceCollection, resolved.data.sourceRecordId], accessToken,
-        fields: { lifecycleStatus: fields.lifecycleStatus, updatedAt: firestoreTimestamp(now) }
-      }).catch(() => {});
-    }
-  }
-
-  return jsonResponse({
-    ok: true,
-    opportunityId,
-    recordType: collection === "publicIntake" ? "intake" : "opportunity",
-    recordId,
-    lifecycleStatus: finalStatus,
-    lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[finalStatus] || finalStatus,
-    requestId
-  });
-}
-
-function opportunityPatchToFirestoreFields(patch = {}) {
-  const fields = {};
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === null || value === undefined) {
-      fields[key] = { nullValue: null };
-      continue;
-    }
-    if (typeof value === "number") {
-      fields[key] = firestoreInteger(value);
-      continue;
-    }
-    if (typeof value === "boolean") {
-      fields[key] = firestoreBoolean(value);
-      continue;
-    }
-    if (Array.isArray(value)) {
-      fields[key] = firestoreStringArray(value);
-      continue;
-    }
-    fields[key] = firestoreString(String(value));
-  }
-  return fields;
-}
-
-async function handleOpportunityPatch(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId || !opportunityId) {
-    throw appError("lifecycle_data_missing", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  }
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const now = new Date();
-
-  const opportunityDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!opportunityDoc) {
-    throw appError("opportunity_not_found", 404, mapPatchErrorMessage("opportunity_not_found"));
-  }
-  const existing = firestoreFieldsToJs(opportunityDoc.fields || {});
-  if (!officeIdsEquivalent(existing.officeId, officeId)) {
-    throw appError("office_mismatch", 403, mapPatchErrorMessage("office_mismatch"));
-  }
-
-  let sanitized = sanitizeOpportunityPatch(body.patch || {});
-  if (!Object.keys(sanitized).length) {
-    throw appError("patch_empty", 400, mapPatchErrorMessage("patch_empty"));
-  }
-
-  if (
-    String(sanitized.cooperationListing || "").toUpperCase() === "OPEN"
-    && String(existing.cooperationListing || "").toUpperCase() !== "OPEN"
-  ) {
-    const gate = validateCooperationListingEnable({ ...existing, ...sanitized });
-    if (!gate.ok) {
-      const labels = missingFieldLabelsArabic(gate.missing || []);
-      throw appError(
-        "cooperation_incomplete",
-        400,
-        labels.length ? `Ø£ÙƒÙ…Ù„: ${labels.join("ØŒ ")} Ù‚Ø¨Ù„ Ø¥ØªØ§Ø­Ø© Ø§Ù„ØªØ¹Ø§ÙˆÙ†.` : mapPatchErrorMessage("cooperation_incomplete")
-      );
-    }
-    sanitized.cooperationEnabled = true;
-    sanitized.cooperationEnabledBy = identity.uid || "";
-    sanitized.cooperationEnabledAt = now.toISOString();
-  }
-
-  const financialPatch = mergeOpportunityFinancialPatch(existing, sanitized);
-  const merged = { ...existing, ...financialPatch };
-  const readinessFields = readinessFieldsForRecord(merged);
-  const version = Number(existing.version || 1) + 1;
-  const allPatch = {
-    ...financialPatch,
-    ...readinessFields,
-    updatedBy: identity.uid || "",
-    version
-  };
-
-  const fields = opportunityPatchToFirestoreFields(allPatch);
-  fields.officeId = firestoreString(officeId);
-  fields.updatedAt = firestoreTimestamp(now);
-
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    fields
-  });
-
-  await observeOpportunityCoverageShadow({
-    projectId, officeId, opportunityId, accessToken, source: "opportunity_patch_persisted"
-  });
-
-  const finalRecord = { ...merged, ...readinessFields, version };
-  return jsonResponse({
-    ok: true,
-    opportunityId,
-    opportunity: finalRecord,
-    requestId
-  });
-}
-
-async function handleOpportunityPurge(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId || !opportunityId) {
-    throw appError("lifecycle_data_missing", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  }
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const opportunityDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    allowMissing: true
-  });
-  const existing = opportunityDoc ? firestoreFieldsToJs(opportunityDoc.fields || {}) : null;
-  const gate = validatePurgeRequest({
-    existing: existing ? { ...existing, officeId: existing.officeId || officeId } : null,
-    officeId,
-    confirm: body.confirm
-  });
-  if (!gate.ok) throw appError(gate.error, gate.status, gate.message);
-
-  const rows = await collectOfficeWorkflowRows({
-    projectId,
-    officeId,
-    accessToken,
-    listCollectionDocuments,
-    firestoreFieldsToJs
-  });
-  const [originCoop, targetCoop] = await Promise.all([
-    runFirestoreQuery({
-      projectId,
-      accessToken,
-      structuredQuery: {
-        from: [{ collectionId: "cooperationRequests" }],
-        where: { fieldFilter: { field: { fieldPath: "originatingOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
-        limit: 80
-      }
-    }).catch(() => []),
-    runFirestoreQuery({
-      projectId,
-      accessToken,
-      structuredQuery: {
-        from: [{ collectionId: "cooperationRequests" }],
-        where: { fieldFilter: { field: { fieldPath: "targetOfficeId" }, op: "EQUAL", value: { stringValue: officeId } } },
-        limit: 80
-      }
-    }).catch(() => [])
-  ]);
-  const cooperations = [...originCoop, ...targetCoop].map((doc) => ({
-    id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
-    ...(firestoreFieldsToJs(doc.fields || {}) || {})
-  }));
-  const plan = planOpportunityPurge({
-    opportunityId,
-    ...rows,
-    cooperations
-  });
-  const applied = await applyOpportunityPurge({
-    projectId,
-    officeId,
-    opportunityId,
-    plan,
-    accessToken,
-    deleteFirestoreDocument,
-    listCollectionDocuments
-  });
-  return jsonResponse({
-    ok: true,
-    opportunityId,
-    confirm: PERMANENT_DELETE_CONFIRM,
-    plan: { delete: plan.delete, skip: plan.skip, counts: plan.counts },
-    deleted: applied.deleted,
-    skipped: applied.skipped,
-    requestId
-  });
-}
-
-async function handleNotificationRead(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const notificationId = cleanText(body.notificationId, 180);
-  if (!officeId || !notificationId) {
-    throw appError("notification_data_missing", 400, "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  }
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await markNotificationRead({
-    projectId,
-    officeId,
-    notificationId,
-    accessToken,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    firestoreHelpers: {
-      firestoreFieldsToJs,
-      firestoreString,
-      firestoreTimestamp,
-      firestoreBoolean,
-      firestoreInteger
-    }
-  });
-  if (!result.ok) {
-    const status = result.error === "office_mismatch" ? 403 : 404;
-    throw appError(result.error, status, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±");
-  }
-  return jsonResponse({
-    ok: true,
-    notificationId,
-    alreadyRead: Boolean(result.alreadyRead),
-    notification: result.notification,
-    requestId
-  });
-}
-
-function rankMatchCandidates(source, candidates) {
-  return rankMatchCandidatesEngine(source, candidates);
-}
-
-function scoreMatch(source, candidate) {
-  return scoreMatchEngine(source, candidate);
-}
-
-function publicPreviewDeps(env, requestId, projectId = "", accessToken = "") {
-  return {
-    env,
-    requestId,
-    projectId,
-    accessToken,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    deleteFirestoreDocument,
-    runFirestoreQuery,
-    firestoreFieldsToJs,
-    firestoreHelpers: operationsFirestoreHelpers(),
-    authorizeOfficeRequest,
-    requireMediaBucket,
-    resolveAppOrigin,
-    firestoreOfficeId,
-    officeAuthorizationKey,
-    officeIdsEquivalent,
-    corsHeaders,
-    jsonResponse,
-    appError
-  };
-}
-
-function operationsFirestoreHelpers() {
-  return {
-    firestoreString,
-    firestoreBoolean,
-    firestoreInteger,
-    firestoreTimestamp,
-    firestoreOptionalString,
-    firestoreFieldsToJs
-  };
-}
-
-async function observeOpportunityCoverageShadow({
-  projectId, officeId, opportunityId, accessToken, source = "unknown"
-}) {
-  try {
-    const doc = await getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "opportunities", opportunityId],
-      accessToken,
-      allowMissing: true
-    });
-    if (!doc) {
-      console.warn("[iaqar-ops-shadow] opportunity missing", { officeId, opportunityId, source });
-      return { observed: false, reason: "opportunity_missing" };
-    }
-    const opportunity = { id: opportunityId, ...firestoreFieldsToJs(doc.fields || {}) };
-    const decision = opportunityCoverageIntent(opportunity);
-    console.log(JSON.stringify({
-      event: "operations_coverage_shadow",
-      entityType: "opportunity",
-      source,
-      officeId,
-      entityId: opportunityId,
-      intent: decision.intent,
-      reason: decision.reason,
-      dueAt: decision.dueAt || "",
-      missingFields: decision.missingFields || [],
-      lifecycleStatus: String(opportunity.lifecycleStatus || opportunity.internalStatus || ""),
-      workflowStage: String(opportunity.workflowStage || ""),
-      matchingReadiness: String(opportunity.matchingReadiness || "")
-    }));
-    return { observed: true, ...decision };
-  } catch (error) {
-    console.warn("[iaqar-ops-shadow] opportunity observation failed", {
-      officeId, opportunityId, source, message: error?.message || String(error)
-    });
-    return { observed: false, reason: "observer_error" };
-  }
-}
-
-async function observeDealCoverageShadow({
-  projectId, officeId, dealId, accessToken, source = "unknown"
-}) {
-  try {
-    const doc = await getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "deals", dealId],
-      accessToken,
-      allowMissing: true
-    });
-    if (!doc) {
-      console.warn("[iaqar-ops-shadow] deal missing", { officeId, dealId, source });
-      return { observed: false, reason: "deal_missing" };
-    }
-    const deal = { dealId, ...firestoreFieldsToJs(doc.fields || {}) };
-    const decision = dealCoverageIntent(deal);
-    console.log(JSON.stringify({
-      event: "operations_coverage_shadow",
-      entityType: "deal",
-      source,
-      officeId,
-      entityId: dealId,
-      intent: decision.intent,
-      reason: decision.reason,
-      dueAt: decision.dueAt || "",
-      stage: String(deal.workflowStage || deal.stage || ""),
-      status: String(deal.status || "")
-    }));
-    return { observed: true, ...decision };
-  } catch (error) {
-    console.warn("[iaqar-ops-shadow] deal observation failed", {
-      officeId, dealId, source, message: error?.message || String(error)
-    });
-    return { observed: false, reason: "observer_error" };
-  }
-}
-
-function operationsDeps(env = null) {
-  return {
-    setFirestoreDocument,
-    getFirestoreDocument,
-    listCollectionDocuments,
-    sendOfficePush: (args) => sendOfficePush({ ...args, env }),
-    firestoreHelpers: operationsFirestoreHelpers()
-  };
-}
-
-async function supersedeMatchesForPairKey({
-  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
-}) {
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
-  });
-  let superseded = 0;
-  const supersededMatchIds = [];
-  for (const doc of docs) {
-    const match = firestoreFieldsToJs(doc.fields || {});
-    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    if (!matchId || matchId === keepMatchId) continue;
-    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
-    if (match.isCurrent === false || match.status === "superseded") continue;
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "matches", matchId],
-      accessToken,
-      fields: {
-        isCurrent: firestoreBoolean(false),
-        status: firestoreString("superseded"),
-        statusLabel: firestoreString("Ø£ÙÙ„ØºÙŠØª Ø¨Ù†Ø³Ø®Ø© Ø£Ø­Ø¯Ø«"),
-        supersededAt: firestoreTimestamp(now),
-        supersededByMatchId: firestoreString(keepMatchId || ""),
-        attentionRequired: firestoreBoolean(false),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    superseded += 1;
-    supersededMatchIds.push(matchId);
-  }
-  if (supersededMatchIds.length) {
-    await expireOperationsForMatchIds({
-      projectId,
-      officeId,
-      matchIds: supersededMatchIds,
-      accessToken,
-      listCollectionDocuments,
-      setFirestoreDocument,
-      firestoreHelpers: operationsFirestoreHelpers()
-    }).catch((error) => console.warn("[iaqar-ops] expire superseded match ops", error && error.message));
-  }
-  return superseded;
-}
-
-async function loadOpportunityDocsByIds({
-  projectId, officeId, officeIds = [], ids = [], accessToken
-}) {
-  const docsById = {};
-  const unique = [...new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))];
-  const offices = [...new Set([officeId, ...officeIds].map((value) => String(value || "").trim()).filter(Boolean))];
-  for (const office of offices) {
-    for (const id of unique) {
-      if (docsById[id]) continue;
-      const doc = await getFirestoreDocument({
-        projectId,
-        segments: ["offices", office, "opportunities", id],
-        accessToken,
-        allowMissing: true
-      });
-      if (doc) docsById[id] = { id, officeId: office, ...firestoreFieldsToJs(doc.fields || {}) };
-    }
-  }
-  return docsById;
-}
-
-async function resolveCanonicalMatchForPersist({
-  projectId, officeId, accessToken,
-  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-  opportunityId, counterpartOpportunityId, requestId, offerId, clientRequestId, ownerOfferId,
-  propertyOfficeId = ""
-}) {
-  const match = {
-    officeId,
-    propertyOfficeId,
-    sourceCollection,
-    sourceRecordId,
-    counterpartCollection,
-    counterpartRecordId,
-    opportunityId,
-    counterpartOpportunityId,
-    requestId,
-    offerId,
-    clientRequestId,
-    ownerOfferId
-  };
-  const extraOffices = propertyOfficeId && propertyOfficeId !== officeId ? [propertyOfficeId] : [];
-  const docsById = await loadOpportunityDocsByIds({
-    projectId,
-    officeId,
-    officeIds: extraOffices,
-    accessToken,
-    ids: collectCandidateOpportunityIds(match)
-  });
-  return resolveCanonicalPairFromDocs(match, docsById);
-}
-
-async function writeRejectedMatchDiagnostic({
-  projectId, officeId, matchId, reason, details = {}, accessToken
-}) {
-  const now = new Date();
-  const diagnosticId = String(matchId || `rej_${now.getTime()}`).slice(0, 180);
-  console.warn("[iaqar-match] REJECTED_ACTIVE_MATCH", { officeId, matchId: diagnosticId, reason, ...details });
-  try {
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "matchDiagnostics", diagnosticId],
-      accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        matchId: firestoreString(matchId || ""),
-        integrityStatus: firestoreString(MATCH_INTEGRITY.INVALID),
-        integrityReason: firestoreString(reason || "canonical_linkage_failed"),
-        detailsJson: firestoreString(JSON.stringify(details).slice(0, 4000)),
-        createdAt: firestoreTimestamp(now),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-  } catch (error) {
-    console.warn("[iaqar-match] diagnostic write failed", error && error.message);
-  }
-}
-
-async function confirmPersistedOpportunity({ projectId, officeId, opportunityId, accessToken }) {
-  const id = String(opportunityId || "").trim();
-  if (!id) return null;
-  const doc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", id],
-    accessToken,
-    allowMissing: true
-  });
-  return doc ? { id, ...firestoreFieldsToJs(doc.fields || {}) } : null;
-}
-
-async function runCanonicalMatchingAfterOpportunityPersist({
-  projectId, officeId, opportunityId, accessToken, env = null
-}) {
-  const confirmed = await confirmPersistedOpportunity({
-    projectId, officeId, opportunityId, accessToken
-  });
-  if (!confirmed) {
-    console.warn("[iaqar-match] SKIP_MATCH_UNCONFIRMED_OPPORTUNITY", { officeId, opportunityId });
-    await writeRejectedMatchDiagnostic({
-      projectId, officeId, matchId: `unconfirmed_${opportunityId || "missing"}`.slice(0, 180),
-      reason: "opportunity_persist_unconfirmed",
-      details: { opportunityId },
-      accessToken
-    });
-    return [];
-  }
-  const result = await findAndSaveMatchesForOpportunity({
-    projectId, officeId, opportunityId, accessToken, notify: false, env
-  });
-  return (result.matches || []).filter((row) => !row.skipped);
-}
-
-function canonicalMatchFields(linkage) {
-  return {
-    requestId: firestoreString(linkage.requestId),
-    offerId: firestoreString(linkage.offerId),
-    clientRequestId: firestoreString(linkage.requestId),
-    ownerOfferId: firestoreString(linkage.offerId),
-    integrityStatus: firestoreString(MATCH_INTEGRITY.VALID),
-    integrityReason: firestoreString("")
-  };
-}
-
-async function ensurePersistedMatchReviewOperation({
-  projectId, officeId, match, assignedBrokerId = "", accessToken, env = null,
-  notifyOperation = false
-}) {
-  const bundle = await createMatchReviewBundle({
-    projectId,
-    officeId,
-    match,
-    threshold: MATCH_THRESHOLD,
-    assignedBrokerId,
-    notifyPush: notifyOperation === true,
-    accessToken,
-    deps: operationsDeps(env)
-  });
-  const operationId = String(bundle?.operation?.id || "").trim();
-  if (!operationId) throw new Error("match_review_operation_missing");
-  return { bundle, operationId };
-}
-
-async function persistScoredMatch({
-  projectId, officeId, source, candidate, sourceRef, counterpartRef,
-  sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-  opportunityId, counterpartOpportunityId, scored, rank, accessToken,
-  notifyOperation = false, assignedBrokerId = "", env = null,
-  propertyOfficeId = ""
-}) {
-  const pairKey = canonicalPairKey(sourceRef, counterpartRef);
-  const dataVersion = await relevantDataVersion(source, candidate);
-  const matchId = await buildMatchId({
-    officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
-  });
-  const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
-  const linkage = await resolveCanonicalMatchForPersist({
-    projectId, officeId, accessToken,
-    sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-    opportunityId, counterpartOpportunityId,
-    propertyOfficeId
-  });
-  if (!linkage.ok) {
-    await writeRejectedMatchDiagnostic({
-      projectId, officeId, matchId, reason: linkage.integrityReason,
-      details: {
-        sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
-        opportunityId, counterpartOpportunityId
-      },
-      accessToken
-    });
-    return {
-      matchId, skipped: true, duplicate: false,
-      integrityStatus: MATCH_INTEGRITY.INVALID,
-      integrityReason: linkage.integrityReason,
-      score: scored.score, opportunityScore: scored.opportunityScore
-    };
-  }
-  const clientRequestId = linkage.requestId;
-  const ownerOfferId = linkage.offerId;
-
-  const existingMatch = await getFirestoreDocument({
-    projectId, segments: ["offices", officeId, "matches", matchId], accessToken, allowMissing: true
-  });
-  if (existingMatch) {
-    const existing = firestoreFieldsToJs(existingMatch.fields || {});
-    if (existing.isCurrent !== false && existing.status !== "superseded") {
-      if (existing.integrityStatus !== MATCH_INTEGRITY.VALID
-        || existing.clientRequestId !== clientRequestId
-        || existing.ownerOfferId !== ownerOfferId
-        || existing.requestId !== clientRequestId
-        || existing.offerId !== ownerOfferId) {
-        await setFirestoreDocument({
-          projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-            ...canonicalMatchFields(linkage),
-            updatedAt: firestoreTimestamp(new Date())
-          }
-        });
-      }
-      const persisted = {
-        matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
-        priority: scored.priority, closingReadiness: scored.readiness, status: "active",
-        statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
-        rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
-        metrics: scored.metrics, breakdown: scored.breakdown,
-        city: source.city || candidate.city || DEFAULT_CITY,
-        district: source.district || candidate.district || "",
-        propertyType: source.propertyType || candidate.propertyType || "",
-        matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
-        opportunityId: opportunityId || existing.opportunityId || "",
-        counterpartOpportunityId: counterpartOpportunityId || existing.counterpartOpportunityId || "",
-        requestId: clientRequestId, offerId: ownerOfferId, clientRequestId, ownerOfferId,
-        matchGroupId: opportunityId || existing.matchGroupId || sourceRecordId || clientRequestId,
-        sourceCollection,
-        candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
-        candidateArea: Number(candidate.area || 0),
-        candidatePropertyType: candidate.propertyType || "",
-        candidateDistrict: candidate.district || "",
-        candidateCity: candidate.city || "",
-        candidatePurpose: candidate.purpose || candidate.transactionType || "",
-        isCurrent: true,
-        assignedBrokerId: assignedBrokerId || existing.assignedBrokerId || "",
-        integrityStatus: MATCH_INTEGRITY.VALID
-      };
-      const ensured = await ensurePersistedMatchReviewOperation({
-        projectId, officeId, match: persisted,
-        assignedBrokerId: persisted.assignedBrokerId,
-        accessToken, env, notifyOperation
-      });
-      persisted.operationId = ensured.operationId;
-      persisted.operationCreated = Boolean(ensured.bundle.created);
-      return persisted;
-    }
-  }
-
-  await supersedeMatchesForPairKey({
-    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
-  });
-
-  const now = new Date();
-  const readiness = scored.readiness;
-
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-    schemaVersion: firestoreInteger(7),
-    officeId: firestoreString(officeId),
-    matchId: firestoreString(matchId),
-    status: firestoreString("active"),
-    statusLabel: firestoreString(MATCH_STATUS_LABELS.active),
-    workflowStage: firestoreString("contact"),
-    nextAction: firestoreString(MATCH_NEXT_ACTION_LABELS.active),
-    attentionRequired: firestoreBoolean(true),
-    isCurrent: firestoreBoolean(true),
-    matchingRuleVersion: firestoreString(MATCHING_RULE_VERSION),
-    dataVersion: firestoreString(dataVersion),
-    canonicalPairKey: firestoreString(pairKey),
-    pairRuleKey: firestoreString(pairRule),
-    score: firestoreInteger(scored.score),
-    opportunityScore: firestoreInteger(scored.opportunityScore),
-    closingReadinessScore: firestoreInteger(readiness.score),
-    closingReadinessKey: firestoreString(readiness.key),
-    closingReadinessLabel: firestoreString(readiness.label),
-    priority: firestoreString(scored.priority),
-    rank: firestoreInteger(rank),
-    isBestOpportunity: firestoreBoolean(rank === 1),
-    reasonsJson: firestoreString(JSON.stringify(scored.reasons)),
-    breakdownJson: firestoreString(JSON.stringify(scored.breakdown)),
-    warningsJson: firestoreString(JSON.stringify(scored.warnings)),
-    rejectionChecksJson: firestoreString(JSON.stringify(scored.rejectionChecks || [])),
-    sourceCollection: firestoreString(sourceCollection),
-    sourceRecordId: firestoreString(sourceRecordId),
-    counterpartCollection: firestoreString(counterpartCollection),
-    counterpartRecordId: firestoreString(counterpartRecordId),
-    ...canonicalMatchFields(linkage),
-    matchGroupId: firestoreString(opportunityId || sourceRecordId || clientRequestId || pairKey),
-    opportunityId: firestoreString(opportunityId || ""),
-    counterpartOpportunityId: firestoreString(counterpartOpportunityId || ""),
-    city: firestoreOptionalString(source.city || candidate.city || DEFAULT_CITY),
-    district: firestoreOptionalString(source.district || candidate.district),
-    propertyType: firestoreOptionalString(source.propertyType || candidate.propertyType),
-    transactionType: firestoreOptionalString(source.transactionType || candidate.transactionType),
-    priceDifferencePercent: firestoreInteger(Number(scored.metrics.priceDifferencePercent || 0)),
-    areaDifferencePercent: firestoreInteger(Number(scored.metrics.areaDifferencePercent || 0)),
-    contactPhone: firestoreOptionalString(source.phone || candidate.contactPhone || candidate.phone),
-    contactName: firestoreOptionalString(source.senderName || candidate.contactName || candidate.senderName),
-    nextFollowUpAt: firestoreTimestamp(defaultNextFollowUp(24)),
-    followUpCount: firestoreInteger(0),
-    createdAt: firestoreTimestamp(now),
-    lastMatchedAt: firestoreTimestamp(now),
-    updatedAt: firestoreTimestamp(now)
-  }});
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],
-    accessToken,
-    fields: {
-      officeId: firestoreString(officeId),
-      recordType: firestoreString("match"),
-      recordId: firestoreString(matchId),
-      eventType: firestoreString("match_created"),
-      stage: firestoreString("active"),
-      note: firestoreString(`ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¨Ù†Ø³Ø¨Ø© ${scored.score}% â€” Ø¬Ø§Ù‡Ø²ÙŠØ© Ø§Ù„Ø¥ØºÙ„Ø§Ù‚ ${readiness.label}`),
-      createdAt: firestoreTimestamp(now)
-    }
-  });
-
-  const persisted = {
-    matchId, duplicate: false, score: scored.score, opportunityScore: scored.opportunityScore,
-    priority: scored.priority, closingReadiness: readiness, status: "active",
-    statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
-    rank, isBestOpportunity: rank === 1, reasons: scored.reasons, warnings: scored.warnings,
-    metrics: scored.metrics, breakdown: scored.breakdown,
-    city: source.city || candidate.city || DEFAULT_CITY,
-    district: source.district || candidate.district || "",
-    propertyType: source.propertyType || candidate.propertyType || "",
-    matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
-    opportunityId: opportunityId || "",
-    counterpartOpportunityId: counterpartOpportunityId || "",
-    isCurrent: true,
-    assignedBrokerId: assignedBrokerId || "",
-    requestId: clientRequestId,
-    offerId: ownerOfferId,
-    clientRequestId,
-    ownerOfferId,
-    integrityStatus: MATCH_INTEGRITY.VALID,
-    matchGroupId: opportunityId || sourceRecordId || clientRequestId,
-    sourceCollection,
-    candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
-    candidateArea: Number(candidate.area || 0),
-    candidatePropertyType: candidate.propertyType || "",
-    candidateDistrict: candidate.district || "",
-    candidateCity: candidate.city || "",
-    candidatePurpose: candidate.purpose || candidate.transactionType || ""
-  };
-
-  // An actionable Match is not considered successfully persisted until its
-  // MATCH_REVIEW work projection exists. A retry repairs any earlier orphan.
-  try {
-    const ensured = await ensurePersistedMatchReviewOperation({
-      projectId, officeId, match: persisted, assignedBrokerId,
-      accessToken, env, notifyOperation
-    });
-    await runRuntimeOrchestration({
-      event: ORCHESTRATOR_EVENT.MATCH_CREATED,
-      officeId, entityId: matchId, occurrenceId: "created",
-      context: { projectId, matchId, operationCreated: true },
-      adapters: {
-        [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: true, operationId: ensured.operationId })
-      },
-      deferredTargets: [ORCHESTRATOR_OWNER.NEGOTIATION]
-    });
-    persisted.operationId = ensured.operationId;
-    persisted.operationCreated = Boolean(ensured.bundle.created);
-  } catch (error) {
-    console.warn("[iaqar-ops] match review upsert failed", error && error.message);
-    throw error;
-  }
-
-  return persisted;
-}
-
-async function materializeAcceptedCooperationMatch({
-  projectId,
-  cooperation = {},
-  accessToken,
-  existingMatchId = "",
-  env = null
-}) {
-  const pair = await resolveAcceptedCooperationPair({
-    cooperation,
-    projectId,
-    accessToken,
-    getFirestoreDocument,
-    firestoreFieldsToJs
-  });
-  if (!pair.ok) {
-    if (pair.skip) return { ok: true, skipped: true, reason: pair.error };
-    return { ok: false, error: pair.error || "pair_not_resolved" };
-  }
-
-  const requestDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", pair.clientOfficeId, "opportunities", pair.requestId],
-    accessToken,
-    allowMissing: true
-  });
-  const offerDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", pair.propertyOfficeId, "opportunities", pair.offerId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!requestDoc || !offerDoc) {
-    return { ok: false, error: "opportunity_docs_missing" };
-  }
-
-  const requestRecord = {
-    id: pair.requestId,
-    officeId: pair.clientOfficeId,
-    ...firestoreFieldsToJs(requestDoc.fields || {})
-  };
-  const offerRecord = {
-    id: pair.offerId,
-    officeId: pair.propertyOfficeId,
-    ...firestoreFieldsToJs(offerDoc.fields || {})
-  };
-  const source = opportunityToMatchInput(requestRecord, { id: pair.requestId });
-  const candidate = opportunityToMatchInput(offerRecord, { id: pair.offerId });
-  const scored = scoreMatchEngine(source, candidate);
-
-  const persisted = await persistScoredMatch({
-    projectId,
-    officeId: pair.clientOfficeId,
-    source,
-    candidate,
-    sourceRef: `opportunities:${pair.requestId}`,
-    counterpartRef: `opportunities:${pair.offerId}`,
-    sourceCollection: "opportunities",
-    sourceRecordId: pair.requestId,
-    counterpartCollection: "opportunities",
-    counterpartRecordId: pair.offerId,
-    opportunityId: pair.requestId,
-    counterpartOpportunityId: pair.offerId,
-    scored,
-    rank: 1,
-    accessToken,
-    notifyOperation: false,
-    assignedBrokerId: String(
-      requestRecord.brokerId || requestRecord.originatingBrokerId || cooperation.originatingBrokerId || ""
-    ),
-    env,
-    propertyOfficeId: pair.propertyOfficeId
-  });
-
-  if (persisted?.skipped) {
-    return {
-      ok: false,
-      error: persisted.integrityReason || "match_skipped",
-      integrityStatus: persisted.integrityStatus
-    };
-  }
-
-  const matchId = String(persisted?.matchId || existingMatchId || "").trim();
-  if (!matchId) return { ok: false, error: "match_not_materialized" };
-  return {
-    ok: true,
-    matchId,
-    duplicate: Boolean(persisted?.duplicate),
-    requestId: pair.requestId,
-    offerId: pair.offerId,
-    clientOfficeId: pair.clientOfficeId,
-    propertyOfficeId: pair.propertyOfficeId
-  };
-}
-
-async function findAndSaveMatches({ projectId, officeId, parsed, sourceCollection, sourceRecordId, opportunityId, accessToken, env = null }) {
-  const counterpart = sourceCollection === "owners" ? "clients" : "owners";
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, counterpart], accessToken, pageSize: MAX_MATCH_CANDIDATES
-  });
-  const prepared = [];
-  for (const doc of docs) {
-    const candidate = firestoreFieldsToJs(doc.fields || {});
-    if (candidate.status && !["active", "new", "open"].includes(candidate.status)) continue;
-    const scored = scoreMatch(parsed, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
-    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    prepared.push({ candidate, candidateId, scored });
-  }
-  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
-
-  const results = [];
-  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
-  for (let index = 0; index < topPrepared.length; index += 1) {
-    const { candidate, candidateId, scored } = topPrepared[index];
-    const sourceRef = `${sourceCollection}:${sourceRecordId}`;
-    const counterpartRef = `${counterpart}:${candidateId}`;
-    const persisted = await persistScoredMatch({
-      projectId, officeId,
-      source: parsed, candidate,
-      sourceRef, counterpartRef,
-      sourceCollection, sourceRecordId,
-      counterpartCollection: counterpart, counterpartRecordId: candidateId,
-      opportunityId, counterpartOpportunityId: "",
-      scored, rank: index + 1, accessToken,
-      // Create MATCH_REVIEW Operation (+ in-app notification). Push is deferred to
-      // sendOfficeMatchNotifications only when operationId exists (no orphan pushes).
-      notifyOperation: false,
-      env
-    });
-    if (persisted?.skipped) continue;
-    results.push(persisted);
-  }
-  return results;
-}
-
-async function findAndSaveMatchesForOpportunity({
-  projectId, officeId, opportunityId, accessToken, notify = false, env = null
-}) {
-  const oppDoc = await getFirestoreDocument({
-    projectId, segments: ["offices", officeId, "opportunities", opportunityId], accessToken, allowMissing: true
-  });
-  if (!oppDoc) throw appError("opportunity_not_found", 404, "Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  const opportunity = {
-    id: opportunityId,
-    ...firestoreFieldsToJs(oppDoc.fields || {})
-  };
-
-  if (!isActiveLifecycle(opportunity)) {
-    const docs = await listCollectionDocuments({
-      projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
-    });
-    const now = new Date();
-    let superseded = 0;
-    const supersededMatchIds = [];
-    for (const doc of docs) {
-      const match = firestoreFieldsToJs(doc.fields || {});
-      const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-      const relates = match.opportunityId === opportunityId
-        || match.counterpartOpportunityId === opportunityId
-        || match.sourceRecordId === opportunityId
-        || match.counterpartRecordId === opportunityId;
-      if (!relates || match.isCurrent === false || match.status === "superseded") continue;
-      await setFirestoreDocument({
-        projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
-          isCurrent: firestoreBoolean(false),
-          status: firestoreString("superseded"),
-          statusLabel: firestoreString("Ø£ÙÙ„ØºÙŠØª Ù„Ø£Ù† Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù†Ø´Ø·Ø©"),
-          supersededAt: firestoreTimestamp(now),
-          attentionRequired: firestoreBoolean(false),
-          updatedAt: firestoreTimestamp(now)
-        }
-      });
-      superseded += 1;
-      supersededMatchIds.push(matchId);
-    }
-    if (supersededMatchIds.length) {
-      await expireOperationsForMatchIds({
-        projectId, officeId, matchIds: supersededMatchIds, accessToken,
-        listCollectionDocuments, setFirestoreDocument, firestoreHelpers: operationsFirestoreHelpers()
-      }).catch((error) => console.warn("[iaqar-ops] expire inactive match ops", error && error.message));
-    }
-    return {
-      matches: [], superseded, inactive: true,
-      boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() }
-    };
-  }
-
-  const source = opportunityToMatchInput(opportunity, { id: opportunityId });
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: MAX_MATCH_CANDIDATES
-  });
-  const prepared = [];
-  for (const doc of docs) {
-    const candidateId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    if (!candidateId || candidateId === opportunityId) continue;
-    const candidateRaw = { id: candidateId, ...firestoreFieldsToJs(doc.fields || {}) };
-    if (!counterpartsEligible(opportunity, candidateRaw)) continue;
-    const candidate = opportunityToMatchInput(candidateRaw, { id: candidateId });
-    const scored = scoreMatch(source, candidate);
-    if (!scored.eligible || scored.score < MATCH_THRESHOLD) continue;
-    prepared.push({ candidate, candidateRaw, candidateId, scored });
-  }
-  prepared.sort((a, b) => b.scored.opportunityScore - a.scored.opportunityScore || b.scored.score - a.scored.score);
-
-  const results = [];
-  const topPrepared = prepared.slice(0, MAX_MATCH_RESULTS);
-  for (let index = 0; index < topPrepared.length; index += 1) {
-    const { candidate, candidateId, scored } = topPrepared[index];
-    const sourceRef = `opportunities:${opportunityId}`;
-    const counterpartRef = `opportunities:${candidateId}`;
-    const persisted = await persistScoredMatch({
-      projectId, officeId,
-      source, candidate,
-      sourceRef, counterpartRef,
-      sourceCollection: "opportunities", sourceRecordId: opportunityId,
-      counterpartCollection: "opportunities", counterpartRecordId: candidateId,
-      opportunityId, counterpartOpportunityId: candidateId,
-      scored, rank: index + 1, accessToken,
-      notifyOperation: notify === true,
-      assignedBrokerId: String(opportunity.brokerId || opportunity.originatingBrokerId || ""),
-      env
-    });
-    if (persisted?.skipped) continue;
-    results.push(persisted);
-  }
-
-  // Missing required fields â†’ MISSING_DATA Operation; complete fields close it.
-  let missingData = { created: false };
-  try {
-    missingData = await upsertMissingDataForOpportunity({
-      projectId,
-      officeId,
-      opportunity,
-      opportunityId,
-      accessToken,
-      deps: operationsDeps(env)
-    });
-  } catch (error) {
-    console.warn("[iaqar-ops] missing-data upsert failed", error && error.message);
-  }
-
-  // Legacy alerts retained for older clients; Phase 5 push is lock-screen-safe via Operation bundle.
-  if (notify && results.length > 0) {
-    const fresh = results.filter((item) => !item.duplicate && item.operationCreated);
-    if (fresh.length > 0) {
-      await sendOfficeMatchNotifications({
-        projectId, officeId, matches: fresh, parsed: source, accessToken, skipPush: true, env
-      }).catch((error) => console.warn("[iaqar-ops] legacy alert write", error && error.message));
-    }
-  }
-
-  const operationsCreated = results.filter((item) => item.operationCreated).length
-    + (missingData.created ? 1 : 0);
-
-  let cooperation = { created: 0, skipped: "internal_match_exists" };
-  if (results.length === 0) {
-    try {
-      cooperation = await maybeCreateCrossOfficeCooperation({
-        projectId,
-        officeId,
-        opportunity,
-        opportunityId,
-        internalMatchCount: results.length,
-        accessToken,
-        deps: {
-          ...operationsDeps(env),
-          listCollectionDocuments,
-          firestoreFieldsToJs
-        }
-      });
-    } catch (error) {
-      console.warn("[iaqar-coop] cross-office ranking skipped", error && error.message);
-      cooperation = { created: 0, skipped: "ranking_error" };
-    }
-  }
-
-  return {
-    matches: results,
-    matchingRuleVersion: MATCHING_RULE_VERSION,
-    threshold: MATCH_THRESHOLD,
-    createsOperation: operationsCreated > 0,
-    operationsCreated,
-    missingData,
-    cooperation,
-    boundaries: { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees(), createsOperation: operationsCreated > 0 }
-  };
-}
-
-
-function completionTokenFromRequest(request) {
-  const auth = String(request.headers.get("Authorization") || "");
-  return auth.startsWith("Completion ") ? auth.slice("Completion ".length).trim() : "";
-}
-
-function completionResultError(result) {
-  const code = String(result?.error || "completion_failed");
-  const status = code === "opportunity_not_found" || code === "session_not_found" ? 404
-    : code === "office_mismatch" ? 403
-    : ["invalid_token", "session_not_active", "session_expired"].includes(code) ? 401
-    : code === "opportunity_already_complete" ? 409
-    : 400;
-  const messages = {
-    opportunity_not_found: "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø§Ù„ÙØ±ØµØ©",
-    session_not_found: "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø±Ø§Ø¨Ø· Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„",
-    office_mismatch: "Ø§Ù„Ø±Ø§Ø¨Ø· Ù„Ø§ ÙŠØªØ¨Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨",
-    invalid_token: "Ø±Ø§Ø¨Ø· Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„ ØºÙŠØ± ØµØ§Ù„Ø­",
-    session_not_active: "Ø±Ø§Ø¨Ø· Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„ Ù„Ù… ÙŠØ¹Ø¯ Ù†Ø´Ø·Ù‹Ø§",
-    session_expired: "Ø§Ù†ØªÙ‡Øª ØµÙ„Ø§Ø­ÙŠØ© Ø±Ø§Ø¨Ø· Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„",
-    opportunity_already_complete: "Ø§Ù„ÙØ±ØµØ© Ù…ÙƒØªÙ…Ù„Ø© Ø¨Ø§Ù„ÙØ¹Ù„"
-  };
-  throw appError(code, status, messages[code] || "ØªØ¹Ø°Ø± ØªÙ†ÙÙŠØ° Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„");
-}
-
-function completionRuntimeDeps(env, projectId, accessToken) {
-  const ops = operationsDeps(env);
-  return {
-    ...ops,
-    officeIdsEquivalent,
-    projectMissingData: async ({ officeId, opportunityId, opportunity }) => {
-      return upsertMissingDataForOpportunity({
-        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops
-      });
-    },
-    onOpportunityReady: async ({ officeId, opportunityId, opportunity, completionSessionId }) => {
-      await upsertMissingDataForOpportunity({
-        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops
-      });
-      await syncOpportunityCoverage({
-        projectId, officeId, opportunity, opportunityId, accessToken, deps: ops, notifyPush: false
-      });
-      // Completion must hand directly to Matching. A deferred orchestration marker
-      // alone leaves a completed opportunity stranded in the bank.
-      await findAndSaveMatchesForOpportunity({
-        projectId, officeId, opportunityId, accessToken, notify: true, env
-      });
-      await runRuntimeOrchestration({
-        event: ORCHESTRATOR_EVENT.OPPORTUNITY_COMPLETED,
-        officeId,
-        entityId: opportunityId,
-        occurrenceId: completionSessionId || "completed",
-        context: { projectId, opportunityId, matchingReadiness: "READY_FOR_MATCHING" },
-        adapters: {
-          [ORCHESTRATOR_OWNER.MATCHING]: async () => ({ ok: true, deferred: true })
-        }
-      });
-    }
-  };
-}
-
-async function handleCompletionSessionCreate(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ù…ÙƒØªØ¨ Ù…Ø·Ù„ÙˆØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "manage");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await createPersistentCompletionSession({
-    projectId, officeId, opportunityId, createdBy: identity.uid || "broker",
-    ttlMinutes: body.ttlMinutes, accessToken, appOrigin: resolveAppOrigin(env),
-    deps: completionRuntimeDeps(env, projectId, accessToken)
-  });
-  if (!result.ok) completionResultError(result);
-  return jsonResponse({ ...result, requestId }, 201);
-}
-
-async function handleCompletionSessionPublic(request, env, requestId, officeId, sessionId) {
-  assertFirebaseSecrets(env);
-  const token = completionTokenFromRequest(request);
-  if (!token) throw appError("completion_token_required", 401, "Ø±Ø§Ø¨Ø· Ø§Ù„Ø§Ø³ØªÙƒÙ…Ø§Ù„ ØºÙŠØ± ØµØ§Ù„Ø­");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const deps = completionRuntimeDeps(env, projectId, accessToken);
-  if (request.method === "GET") {
-    const result = await readPersistentCompletionSession({ projectId, officeId, sessionId, token, accessToken, deps });
-    if (!result.ok) completionResultError(result);
-    return jsonResponse({ ...result, requestId });
-  }
-  const body = await request.json().catch(() => ({}));
-  const result = await submitPersistentCompletionSession({
-    projectId, officeId, sessionId, token, patch: body.patch || {}, accessToken, deps
-  });
-  if (!result.ok) completionResultError(result);
-  return jsonResponse({ ...result, requestId });
-}
-
-async function handleMatchingRun(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  // Auth before Firestore work â€” missing Bearer token fails closed at 401.
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "matching");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const notify = body.notify === true;
-  const result = await findAndSaveMatchesForOpportunity({
-    projectId, officeId, opportunityId, accessToken, notify, env
-  });
-  return jsonResponse({
-    ok: true,
-    officeId,
-    opportunityId,
-    matchCount: result.matches.length,
-    matches: result.matches,
-    matchingRuleVersion: MATCHING_RULE_VERSION,
-    threshold: MATCH_THRESHOLD,
-    superseded: result.superseded || 0,
-    inactive: Boolean(result.inactive),
-    boundaries: result.boundaries || { ...phase4BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
-    createsOperation: Boolean(result.createsOperation),
-    operationsCreated: Number(result.operationsCreated || 0),
-    missingData: result.missingData || null,
-    requestId
-  });
-}
-
-async function handleOperationsAction(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const operationId = cleanText(body.operationId, 180);
-  const action = cleanText(body.action, 40);
-  const reason = cleanText(body.reason, 200);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!operationId) throw appError("operation_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ø¹Ù…Ù„ÙŠØ© Ù…Ø·Ù„ÙˆØ¨");
-  if (!action) throw appError("action_required", 400, "Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await applyTrustedOperationAction({
-    projectId,
-    officeId,
-    operationId,
-    action,
-    reason,
-    accessToken,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    firestoreHelpers: operationsFirestoreHelpers()
-  });
-  if (!result.ok) {
-    throw appError(result.error || "operation_action_failed", result.status || 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¹Ù…Ù„ÙŠØ©");
-  }
-  return jsonResponse({
-    ok: true,
-    officeId,
-    operationId,
-    status: result.status,
-    idempotent: Boolean(result.idempotent),
-    boundaries: phase5BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleOperationsFromCooperation(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const cooperationId = cleanText(body.cooperationId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!cooperationId) throw appError("cooperation_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ØªØ¹Ø§ÙˆÙ† Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const coopDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["cooperationRequests", cooperationId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!coopDoc) throw appError("cooperation_not_found", 404, "Ø·Ù„Ø¨ Ø§Ù„ØªØ¹Ø§ÙˆÙ† ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
-  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
-  const origin = String(cooperation.originatingOfficeId || "");
-  const target = String(cooperation.targetOfficeId || "");
-  if (officeId !== origin && officeId !== target) {
-    throw appError("cooperation_forbidden", 403, "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ù†Ø´Ø§Ø¡ Ø¹Ù…Ù„ÙŠØ© ØªØ¹Ø§ÙˆÙ† Ù„Ù…ÙƒØªØ¨ ØºÙŠØ± Ø·Ø±Ù");
-  }
-  // Never invent cooperation â€” only sync Operations from an explicit Phase 3 record.
-  const result = await upsertCooperationOperations({
-    projectId,
-    cooperation,
-    accessToken,
-    deps: operationsDeps(env)
-  });
-  return jsonResponse({
-    ok: true,
-    officeId,
-    cooperationId,
-    results: result.results,
-    boundaries: phase5BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleOperationsMissingData(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const oppDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!oppDoc) throw appError("opportunity_not_found", 404, "Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  const opportunity = { id: opportunityId, ...firestoreFieldsToJs(oppDoc.fields || {}) };
-  const result = await upsertMissingDataForOpportunity({
-    projectId,
-    officeId,
-    opportunity,
-    opportunityId,
-    accessToken,
-    deps: operationsDeps(env)
-  });
-  return jsonResponse({
-    ok: true,
-    officeId,
-    opportunityId,
-    created: Boolean(result.created),
-    closed: Number(result.closed || 0),
-    operationId: result.operation?.id || "",
-    missingFields: listMissingOpportunityFields(opportunity),
-    boundaries: phase5BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleCooperationSuitableOffices(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  const searchQuery = cleanText(body.searchQuery || body.query || "", 80);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await buildSuitableOfficesResult({
-    projectId,
-    actorOfficeId: officeId,
-    opportunityId,
-    searchQuery,
-    accessToken,
-    deps: {
-      getFirestoreDocument,
-      listCollectionDocuments,
-      firestoreFieldsToJs
-    }
-  });
-  if (!result.ok) {
-    throw appError(result.error || "suitable_offices_failed", result.status || 400, "ØªØ¹Ø°Ø± Ø¬Ù„Ø¨ Ø§Ù„Ù…ÙƒØ§ØªØ¨ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨Ø©");
-  }
-  return jsonResponse({
-    ok: true,
-    officeId,
-    opportunityId,
-    requiresCompletion: Boolean(result.requiresCompletion),
-    message: result.message || "",
-    opportunityCity: result.opportunityCity || "",
-    opportunityDistrictLabels: result.opportunityDistrictLabels || [],
-    buckets: result.buckets || {},
-    total: result.total || 0,
-    tierLabels: result.tierLabels || {},
-    sharedPreview: result.sharedPreview || null,
-    boundaries: phase6BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleCooperationNearbySuggestions(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-
-  const oppDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "opportunities", opportunityId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!oppDoc) throw appError("opportunity_not_found", 404, "Ø§Ù„ÙØ±ØµØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  const sourceOpportunity = {
-    id: opportunityId,
-    officeId,
-    ...firestoreFieldsToJs(oppDoc.fields || {})
-  };
-
-  const publicDocs = await listCollectionDocuments({
-    projectId,
-    segments: ["publicOffices"],
-    accessToken,
-    pageSize: 120
-  });
-  const publicOffices = publicDocs.map((doc) => ({
-    officeId: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
-    ...firestoreFieldsToJs(doc.fields || {})
-  }));
-
-  const officeOpportunities = [];
-  for (const office of publicOffices) {
-    const targetId = String(office.officeId || "").trim().toLowerCase();
-    if (!targetId || targetId === officeId) continue;
-    const docs = await listCollectionDocuments({
-      projectId,
-      segments: ["offices", targetId, "opportunities"],
-      accessToken,
-      pageSize: 40
-    });
-    for (const doc of docs) {
-      const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-      officeOpportunities.push({
-        id,
-        officeId: targetId,
-        ...firestoreFieldsToJs(doc.fields || {})
-      });
-    }
-  }
-
-  const suggestions = await buildCooperationNearbySuggestions({
-    sourceOpportunity,
-    ownOfficeId: officeId,
-    publicOffices,
-    officeOpportunities
-  });
-  const emptyReason = suggestions.length
-    ? ""
-    : resolveNearbyEmptyReason(sourceOpportunity, suggestions);
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    opportunityId,
-    suggestions,
-    emptyReason,
-    boundaries: {
-      ...phase6BoundaryGuarantees(),
-      usesDeviceGps: false,
-      exposesContactBeforeAcceptance: false
-    },
-    requestId
-  });
-}
-
-async function handleOpportunityWorkspace(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const opportunityId = cleanText(body.opportunityId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!opportunityId) throw appError("opportunity_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-
-  const bundle = await loadOpportunityWorkspaceBundle({
-    projectId,
-    officeId,
-    opportunityId,
-    accessToken,
-    getFirestoreDocument,
-    listCollectionDocuments,
-    firestoreFieldsToJs
-  });
-  if (!bundle.ok) {
-    throw appError(bundle.error || "workspace_load_failed", 404, "ØªØ¹Ø°Ø± ØªØ­Ù…ÙŠÙ„ Ù…Ø³Ø§Ø­Ø© Ø§Ù„Ø¹Ù…Ù„");
-  }
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    opportunityId,
-    opportunity: bundle.opportunity,
-    matches: bundle.matches,
-    suggestions: bundle.suggestions,
-    suggestionsEmptyReason: bundle.suggestionsEmptyReason,
-    cooperationRequests: bundle.cooperationRequests,
-    cooperationRoom: bundle.cooperationRoom,
-    followUp: bundle.followUp,
-    readiness: bundle.readiness,
-    boundaries: {
-      ...phase4BoundaryGuarantees(),
-      ...phase6BoundaryGuarantees(),
-      usesDeviceGps: false,
-      exposesContactBeforeAcceptance: false
-    },
-    requestId
-  });
-}
-
-async function handleCooperationRoom(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const cooperationId = cleanText(body.cooperationId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!cooperationId) throw appError("cooperation_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ØªØ¹Ø§ÙˆÙ† Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-
-  const coopDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["cooperationRequests", cooperationId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!coopDoc) throw appError("cooperation_not_found", 404, "Ø·Ù„Ø¨ Ø§Ù„ØªØ¹Ø§ÙˆÙ† ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
-  const cooperation = { id: cooperationId, ...firestoreFieldsToJs(coopDoc.fields || {}) };
-  const origin = String(cooperation.originatingOfficeId || "");
-  const target = String(cooperation.targetOfficeId || "");
-  if (officeId !== origin && officeId !== target) {
-    throw appError("cooperation_forbidden", 403, "Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ ÙØªØ­ ØºØ±ÙØ© Ø§Ù„ØªØ¹Ø§ÙˆÙ†");
-  }
-  if (String(cooperation.status || "").toUpperCase() !== "ACCEPTED") {
-    throw appError("cooperation_not_accepted", 400, "Ø§Ù„ØªØ¹Ø§ÙˆÙ† ØºÙŠØ± Ù…Ù‚Ø¨ÙˆÙ„ Ø¨Ø¹Ø¯");
-  }
-
-  const roomDoc = await getFirestoreDocument({
-    projectId,
-    segments: ["cooperationRooms", cooperationId],
-    accessToken,
-    allowMissing: true
-  });
-  const opportunityId = String(
-    cooperation.opportunityId
-      || (Array.isArray(cooperation.opportunityIds) ? cooperation.opportunityIds[0] : "")
-      || ""
-  ).trim();
-  if (!roomDoc && opportunityId) {
-    await ensureCooperationRoom({
-      projectId,
-      cooperationId,
-      originatingOfficeId: origin,
-      targetOfficeId: target,
-      opportunityId,
-      accessToken,
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      firestoreHelpers: operationsFirestoreHelpers()
-    });
-  }
-  const freshRoom = await getFirestoreDocument({
-    projectId,
-    segments: ["cooperationRooms", cooperationId],
-    accessToken,
-    allowMissing: true
-  });
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    cooperationId,
-    cooperation: {
-      id: cooperationId,
-      status: cooperation.status,
-      originatingOfficeId: origin,
-      targetOfficeId: target,
-      originatingOfficeName: cooperation.originatingOfficeName || origin,
-      targetOfficeName: cooperation.targetOfficeName || target
-    },
-    room: freshRoom ? { id: cooperationId, ...firestoreFieldsToJs(freshRoom.fields || {}) } : null,
-    boundaries: phase6BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleCooperationWorkflow(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const cooperationId = cleanText(body.cooperationId, 180);
-  const action = cleanText(body.action, 40).toUpperCase();
-  const reason = cleanText(body.reason, 200);
-  const appointmentAt = cleanText(body.appointmentAt, 80);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!cooperationId) throw appError("cooperation_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ØªØ¹Ø§ÙˆÙ† Ù…Ø·Ù„ÙˆØ¨");
-  if (!action) throw appError("action_required", 400, "Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await runCooperationWorkflow({
-    projectId,
-    actorOfficeId: officeId,
-    actorUid: identity.uid || "",
-    cooperationId,
-    action,
-    reason,
-    appointmentAt,
-    accessToken,
-    deps: operationsDeps(env)
-  });
-  if (!result.ok) {
-    throw appError(
-      result.error || "cooperation_workflow_failed",
-      result.status || 400,
-      result.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø­Ø§Ù„Ø© Ø§Ù„ØªØ¹Ø§ÙˆÙ†"
-    );
-  }
-  return jsonResponse({
-    ok: true,
-    officeId,
-    cooperationId,
-    status: result.status,
-    currentStage: result.currentStage,
-    duplicate: Boolean(result.duplicate),
-    message: result.message || "ØªÙ… Ø­ÙØ¸ Ø­Ø§Ù„Ø© Ø§Ù„ØªØ¹Ø§ÙˆÙ†.",
-    requestId
-  });
-}
-
-async function handleCooperationRequestCreate(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const targetOfficeId = firestoreOfficeId(body.targetOfficeId);
-  const scopeType = cleanText(body.scopeType || "single", 20);
-  const opportunityIds = Array.isArray(body.opportunityIds)
-    ? body.opportunityIds.map((id) => cleanText(id, 180)).filter(Boolean)
-    : [];
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!targetOfficeId) throw appError("target_office_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ù…ÙƒØªØ¨ Ø§Ù„Ù…Ø³ØªÙ‡Ø¯Ù Ù…Ø·Ù„ÙˆØ¨");
-  if (!opportunityIds.length) throw appError("opportunity_ids_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ÙØ±ØµØ© Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await createExplicitCooperationRequest({
-    projectId,
-    originatingOfficeId: officeId,
-    originatingBrokerId: identity.uid || "",
-    targetOfficeId,
-    opportunityIds,
-    scopeType,
-    message: cleanText(body.message || "", 500),
-    accessToken,
-    deps: {
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      firestoreHelpers: operationsFirestoreHelpers(),
-      upsertCooperationOperations
-    }
-  });
-  if (!result.ok) {
-    throw appError(
-      result.error || "cooperation_request_failed",
-      result.status || 400,
-      result.message || "ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø·Ù„Ø¨ Ø§Ù„ØªØ¹Ø§ÙˆÙ†"
-    );
-  }
-  return jsonResponse({
-    ok: true,
-    officeId,
-    targetOfficeId,
-    cooperationRequestId: result.requestId,
-    duplicate: Boolean(result.duplicate),
-    message: result.message || "ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø·Ù„Ø¨ Ø§Ù„ØªØ¹Ø§ÙˆÙ†",
-    boundaries: result.boundaries || phase6BoundaryGuarantees(),
-    requestId
-  }, result.duplicate ? 200 : 201);
-}
-
-async function handleCooperationLifecycle(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const cooperationId = cleanText(body.cooperationId, 180);
-  const action = cleanText(body.action, 40).toUpperCase();
-  const reason = cleanText(body.reason, 200);
-  const subcontractStatus = cleanText(body.subcontractStatus || body.contractStatus, 40).toLowerCase();
-  const subcontractReference = cleanText(body.subcontractReference || body.contractReference, 180);
-  const primaryBrokerageContractId = cleanText(body.primaryBrokerageContractId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!cooperationId) throw appError("cooperation_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„ØªØ¹Ø§ÙˆÙ† Ù…Ø·Ù„ÙˆØ¨");
-  if (!action) throw appError("action_required", 400, "Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await runCooperationLifecycle({
-    projectId,
-    actorOfficeId: officeId,
-    actorUid: identity.uid || "",
-    cooperationId,
-    action,
-    reason,
-    subcontractStatus,
-    subcontractReference,
-    primaryBrokerageContractId,
-    accessToken,
-    deps: {
-      ...operationsDeps(env),
-      deleteFirestoreDocument,
-      firestoreFieldsToJs,
-      upsertCooperationOperations,
-      materializeAcceptedCooperationMatch: (params) => materializeAcceptedCooperationMatch({
-        ...params,
-        env
-      })
-    }
-  });
-  if (!result.ok) {
-    throw appError(result.error || "cooperation_lifecycle_failed", result.status || 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªØ¹Ø§ÙˆÙ†");
-  }
-  await runRuntimeOrchestration({
-    event: ORCHESTRATOR_EVENT.COOPERATION_UPDATED,
-    officeId, entityId: cooperationId, occurrenceId: action || "updated",
-    context: { projectId, cooperationId, action },
-    adapters: {
-      [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: Boolean(result) })
-    }
-  });
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    cooperationId,
-    status: result.status,
-    subcontractStatus: result.subcontractStatus || "",
-    subcontractReference: result.subcontractReference || "",
-    primaryBrokerageContractId: result.primaryBrokerageContractId || "",
-    projectionsWritten: result.projectionsWritten,
-    projectionsRemoved: result.projectionsRemoved,
-    opportunityIds: result.opportunityIds,
-    boundaries: { ...phase6BoundaryGuarantees(), ...phase5BoundaryGuarantees() },
-    requestId
-  });
-}
-
-async function handleCooperationScopeRevoke(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const sharingScopeId = cleanText(body.sharingScopeId, 180);
-  const reason = cleanText(body.reason, 200);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!sharingScopeId) throw appError("scope_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ù†Ø·Ø§Ù‚ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ø·Ù„ÙˆØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const result = await revokeBankSharingScope({
-    projectId,
-    actorOfficeId: officeId,
-    actorUid: identity.uid || "",
-    sharingScopeId,
-    reason,
-    accessToken,
-    deps: {
-      getFirestoreDocument,
-      setFirestoreDocument,
-      firestoreFieldsToJs,
-      firestoreHelpers: operationsFirestoreHelpers()
-    }
-  });
-  if (!result.ok) {
-    throw appError(result.error || "scope_revoke_failed", result.status || 400, "ØªØ¹Ø°Ø± Ø¥Ù†Ù‡Ø§Ø¡ Ù†Ø·Ø§Ù‚ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ©");
-  }
-  return jsonResponse({
-    ok: true,
-    officeId,
-    sharingScopeId,
-    status: result.status,
-    boundaries: phase6BoundaryGuarantees(),
-    requestId
-  });
-}
-
-function messageDraftToFirestoreFields(draft) {
-  const h = operationsFirestoreHelpers();
-  return {
-    schemaVersion: h.firestoreInteger(draft.schemaVersion || 1),
-    id: h.firestoreString(draft.id),
-    officeId: h.firestoreString(draft.officeId),
-    brokerId: h.firestoreString(draft.brokerId || ""),
-    channel: h.firestoreString(draft.channel),
-    templateCode: h.firestoreString(draft.templateCode || ""),
-    body: h.firestoreString(draft.body || ""),
-    recipientRole: h.firestoreString(draft.recipientRole || ""),
-    recipientName: h.firestoreString(draft.recipientName || ""),
-    recipientPhone: h.firestoreString(draft.recipientPhone || ""),
-    operationId: h.firestoreString(draft.operationId || ""),
-    matchId: h.firestoreString(draft.matchId || ""),
-    opportunityId: h.firestoreString(draft.opportunityId || ""),
-    sendState: h.firestoreString(draft.sendState || MESSAGE_SEND_STATE.DRAFT),
-    deliveryState: h.firestoreString(draft.deliveryState || MESSAGE_DELIVERY_STATE.NOT_APPLICABLE),
-    failureReason: h.firestoreString(draft.failureReason || ""),
-    handoffUrl: h.firestoreString(draft.handoffUrl || ""),
-    adapterStatus: h.firestoreString(draft.adapterStatus || ""),
-    openedExternalAt: draft.openedExternalAt
-      ? h.firestoreTimestamp(new Date(draft.openedExternalAt))
-      : null,
-    sentAt: draft.sentAt ? h.firestoreTimestamp(new Date(draft.sentAt)) : null,
-    deliveredAt: draft.deliveredAt ? h.firestoreTimestamp(new Date(draft.deliveredAt)) : null,
-    createdAt: h.firestoreTimestamp(new Date(draft.createdAt)),
-    updatedAt: h.firestoreTimestamp(new Date(draft.updatedAt)),
-    createdBySystem: h.firestoreBoolean(Boolean(draft.createdBySystem)),
-    autoSend: h.firestoreBoolean(false),
-    providerConfirmedSend: h.firestoreBoolean(Boolean(draft.providerConfirmedSend)),
-    providerConfirmedDelivery: h.firestoreBoolean(false)
-  };
-}
-
-async function handleMessagesDraft(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const channel = normalizeChannel(body.channel);
-  const role = cleanText(body.role || "client", 20) === "owner" ? "owner" : "client";
-  const stage = cleanText(body.stage, 40) || "contact";
-  const messageMode = cleanText(body.messageMode, 40);
-  const templateCode = resolveTemplateCode({
-    templateCode: cleanText(body.templateCode, 40),
-    role,
-    stage,
-    messageMode,
-    ownerMediaMissing: body.ownerMediaMissing === true
-  });
-  const officeName = cleanText(body.officeName, 80) || "Ø§Ù„Ù…ÙƒØªØ¨ Ø§Ù„Ø¹Ù‚Ø§Ø±ÙŠ";
-  const contactPhone = cleanText(body.contactPhone, 40);
-  if (channel === MESSAGE_CHANNELS.WHATSAPP && !whatsappDigits(contactPhone)) {
-    throw appError("phone_required", 400, "Ø±Ù‚Ù… Ø§Ù„Ù…Ø³ØªÙ„Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ Ø£Ùˆ ØºÙŠØ± ØµØ­ÙŠØ­");
-  }
-  const text = cleanText(body.body, 4000) || buildArabicMessageBody({
-    templateCode,
-    role,
-    officeName,
-    contactName: cleanText(body.contactName, 120),
-    propertyType: cleanText(body.propertyType, 40),
-    district: cleanText(body.district, 80),
-    appointmentLabel: cleanText(body.appointmentLabel, 80),
-    requestedItems: Array.isArray(body.requestedItems) ? body.requestedItems : [],
-    requestNote: cleanText(body.requestNote, 400),
-    stage
-  });
-
-  const built = await buildMessageDraft({
-    officeId,
-    brokerId: identity.uid || "",
-    channel,
-    templateCode,
-    body: text,
-    recipientRole: role,
-    recipientName: cleanText(body.contactName, 120),
-    recipientPhone: contactPhone,
-    operationId: cleanText(body.operationId, 180),
-    matchId: cleanText(body.matchId, 180),
-    opportunityId: cleanText(body.opportunityId, 180)
-  });
-  if (!built.ok) throw appError(built.error || "draft_failed", 400, "ØªØ¹Ø°Ø± Ø¥Ù†Ø´Ø§Ø¡ Ù…Ø³ÙˆØ¯Ø© Ø§Ù„Ø±Ø³Ø§Ù„Ø©");
-
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "messages", built.draft.id],
-    accessToken,
-    fields: messageDraftToFirestoreFields(built.draft)
-  });
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    messageId: built.draft.id,
-    draft: {
-      ...built.draft,
-      // Never claim send/delivery from draft creation.
-      sendState: MESSAGE_SEND_STATE.DRAFT,
-      deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
-      providerConfirmedSend: false,
-      providerConfirmedDelivery: false
-    },
-    boundaries: phase7BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function handleMessagesHandoff(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const messageId = cleanText(body.messageId, 180);
-  if (!officeId) throw appError("office_id_required", 400, "ØªØ¹Ø°Ø± ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙƒØªØ¨");
-  if (!messageId) throw appError("message_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const doc = await getFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "messages", messageId],
-    accessToken,
-    allowMissing: true
-  });
-  if (!doc) throw appError("message_not_found", 404, "Ø§Ù„Ù…Ø³ÙˆØ¯Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-  const draft = { id: messageId, ...firestoreFieldsToJs(doc.fields || {}) };
-  const applied = applyExternalHandoff(draft);
-  if (!applied.ok) throw appError(applied.error || "handoff_failed", 400, "ØªØ¹Ø°Ø± ØªØ³Ø¬ÙŠÙ„ Ø§Ù„ÙØªØ­ Ø§Ù„Ø®Ø§Ø±Ø¬ÙŠ");
-
-  const h = operationsFirestoreHelpers();
-  const fields = {
-    sendState: h.firestoreString(applied.patch.sendState),
-    deliveryState: h.firestoreString(applied.patch.deliveryState),
-    openedExternalAt: h.firestoreTimestamp(new Date(applied.patch.openedExternalAt)),
-    updatedAt: h.firestoreTimestamp(new Date(applied.patch.updatedAt)),
-    providerConfirmedSend: h.firestoreBoolean(false),
-    providerConfirmedDelivery: h.firestoreBoolean(false)
-  };
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "messages", messageId],
-    accessToken,
-    fields
-  });
-
-  return jsonResponse({
-    ok: true,
-    officeId,
-    messageId,
-    sendState: MESSAGE_SEND_STATE.OPENED_EXTERNAL,
-    deliveryState: MESSAGE_DELIVERY_STATE.NOT_APPLICABLE,
-    handoffUrl: draft.handoffUrl || "",
-    // Explicit honesty: external handoff is not Cloud API send and not delivery.
-    providerConfirmedSend: false,
-    providerConfirmedDelivery: false,
-    boundaries: phase7BoundaryGuarantees(),
-    requestId
-  });
-}
-
-async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
-  const url=new URL(firestoreDocumentUrl(projectId,segments)); url.searchParams.set("pageSize",String(pageSize));
-  const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`}});
-  if(response.status===404)return[]; if(!response.ok)throw appError("firestore_read_failed",502,"ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©");
-  const payload=await response.json(); return Array.isArray(payload.documents)?payload.documents:[];
-}
-
-async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,accessToken,skipPush=false,env=null}) {
-  // Notification without a real Operations Center action is a product failure.
-  // Prefer a match that already has a MATCH_REVIEW operation id.
-  const actionable = (Array.isArray(matches) ? matches : []).filter((row) =>
-    row && row.matchId && String(row.operationId || "").trim()
-  );
-  const top = actionable[0] || null;
-  if (!top) {
-    console.warn("[iaqar-ops] match notification skipped â€” no MATCH_REVIEW operationId");
-    return { sent: false, reason: "missing_operation" };
-  }
-  const now=new Date();
-  const alertId=`alt_${top.matchId}`;
-  // Stored alert copy stays lock-screen-safe. FCM presentation (title/icon/body) is
-  // resolved separately in sendOfficePush from the office brand + listing facts.
-  const title = "Ù„Ø¯ÙŠÙƒ Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¬Ø¯ÙŠØ¯Ø© ØªØ­ØªØ§Ø¬ Ù…Ø±Ø§Ø¬Ø¹ØªÙƒ.";
-  const body = "Ù„Ø¯ÙŠÙƒ Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¬Ø¯ÙŠØ¯Ø© ØªØ­ØªØ§Ø¬ Ù…Ø±Ø§Ø¬Ø¹ØªÙƒ.";
-  const operationId = String(top.operationId || "").trim();
-  const taskId = livingTaskId(
-    top.matchGroupId || top.opportunityId || top.clientRequestId || top.requestId || top.matchId
-  );
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
-    officeId:firestoreString(officeId),type:firestoreString("match"),status:firestoreString("unread"),
-    title:firestoreString(title),body:firestoreString(body),
-    matchId:firestoreString(top.matchId),
-    operationId:firestoreString(operationId),
-    score:firestoreInteger(top.score),
-    opportunityScore:firestoreInteger(Number(top.opportunityScore || top.score || 0)),
-    isBestOpportunity:firestoreBoolean(Boolean(top.isBestOpportunity)),
-    createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-  }});
-  if (!skipPush) {
-    await sendOfficePush({
-      projectId,
-      officeId,
-      title,
-      body,
-      // Deep-link as operation so Operations Center can open the actionable item.
-      type: "operation",
-      presentationType: "match_found",
-      recordId: operationId,
-      taskId,
-      opportunityId: top.opportunityId || top.clientRequestId || top.requestId || "",
-      assignedBrokerId: top.assignedBrokerId || "",
-      accessToken,
-      env,
-      listing: {
-        propertyType: top.candidatePropertyType || top.propertyType || "",
-        purpose: top.candidatePurpose || "",
-        district: top.candidateDistrict || top.district || "",
-        city: top.candidateCity || top.city || "",
-        price: top.candidateSalePrice || top.price || 0
-      }
-    });
-  }
-  return { sent: !skipPush, reason: "ok", operationId, matchId: top.matchId };
-}
-
-function buildNotificationLink({officeId,type="match",recordId="",taskId="",opportunityId=""}) {
-  const safeOfficeId=firestoreOfficeId(officeId)||"platform";
-  const safeRecordId=cleanText(recordId,200);
-  const safeTaskId=cleanText(taskId,200);
-  const safeOpportunityId=cleanText(opportunityId,200);
-  const params=new URLSearchParams();
-  if(safeOfficeId==="platform")params.set("office","platform"); else params.set("officeId",safeOfficeId);
-  if(type==="notification_test"){
-    // Ø§Ø®ØªØ¨Ø§Ø± Ø§Ù„ØªÙØ¹ÙŠÙ„ ÙŠÙØªØ­ Ø§Ù„Ù…ÙƒØªØ¨ ÙÙ‚Ø· Ø¯ÙˆÙ† Ù…Ø­Ø§ÙˆÙ„Ø© ÙØªØ­ Ø³Ø¬Ù„ ÙˆÙ‡Ù…ÙŠ.
-  } else if(safeTaskId){
-    params.set("openDailyTask",safeTaskId);
-    if(safeRecordId)params.set("openOperation",safeRecordId);
-    if(safeOpportunityId)params.set("openOpportunity",safeOpportunityId);
-  } else if(safeOpportunityId){
-    params.set("openOpportunity",safeOpportunityId);
-  } else if(type==="opportunity_followup_reminder"){
-    if(safeRecordId)params.set("openOpportunity",safeRecordId);
-    params.set("focusFollowUp","1");
-  } else if(type==="deal"){
-    if(safeRecordId)params.set("openMatch",safeRecordId);
-  }
-  else if(type==="broker_application"){
-    params.set("adminApplications","1");
-    if(safeRecordId)params.set("openBrokerApplication",safeRecordId);
-  } else if(type==="message"||type==="conversation"){
-    if(safeRecordId)params.set("openMessage",safeRecordId);
-    else params.set("openNotifications","1");
-  } else if(safeOpportunityId || safeRecordId.startsWith("opp_")){
-    params.set("openOpportunity",safeOpportunityId || safeRecordId);
-  } else if(
-    safeRecordId.startsWith("coop_")
-    || type==="cooperation_request"
-    || type==="cooperation_response"
-  ){
-    if(safeRecordId)params.set("openCooperation",safeRecordId);
-    else params.set("openNotifications","1");
-  } else if(
-    type==="client_request"
-    || type==="owner_offer"
-    || type==="missing_data"
-    || type==="operation"
-    || type==="system"
-    || String(safeRecordId).startsWith("op_")
-  ){
-    params.set("openOperation",safeRecordId);
-  } else params.set("openMatch",safeRecordId);
-  return `/?${params.toString()}`;
-}
-
-function parseFcmFailure(payload,status) {
-  const error=payload&&payload.error||{};
-  const details=Array.isArray(error.details)?error.details:[];
-  const fcmDetail=details.find(item=>String(item&&item["@type"]||"").includes("FcmError"))||{};
-  const code=cleanText(fcmDetail.errorCode||error.status||"",80);
-  const staleToken=code==="UNREGISTERED"||code==="INVALID_ARGUMENT"||status===404;
-  return {code:code||`HTTP_${status}`,message:cleanText(error.message||`FCM HTTP ${status}`,300),staleToken};
-}
-
-async function disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason}) {
-  const now=new Date();
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields:{
-    enabled:firestoreBoolean(false),disabledReason:firestoreString(cleanText(reason,120)||"invalid_fcm_token"),
-    lastErrorAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-  }}).catch(error=>console.warn("[iaqar-fcm] stale token cleanup failed",error&&error.message));
-}
-
-// Ø®Ø±ÙŠØ·Ø© Ù†ÙˆØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± Ø¥Ù„Ù‰ ÙØ¦Ø© Ø§Ù„ØªÙØ¶ÙŠÙ„Ø§Øª. Ù†Ø³Ø®Ø© Ù…Ø·Ø§Ø¨Ù‚Ø© Ù…ÙˆØ¬ÙˆØ¯Ø© ÙÙŠ
-// public/js/office-domain.jsØŒ ÙˆØ§Ù„Ø§Ø®ØªØ¨Ø§Ø±Ø§Ù† ÙŠØªØ­Ù‚Ù‚Ø§Ù† Ù…Ù† Ø§Ù„Ø¬Ø¯ÙˆÙ„ Ù†ÙØ³Ù‡ ÙØ£ÙŠ Ø§Ø®ØªÙ„Ø§Ù ÙŠÙØ´Ù„ Ø§Ù„Ø¨Ù†Ø§Ø¡.
-// Ù„Ø§ ÙŠÙ…ÙƒÙ† Ù„Ù„Ø¹Ø§Ù…Ù„ Ø£Ù† ÙŠØ³ØªÙˆØ±Ø¯ Ù…Ù† public/ Ø¯ÙˆÙ† Ø¥Ø¶Ø§ÙØ© Ø®Ø·ÙˆØ© Ø¨Ù†Ø§Ø¡.
-export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
-  match: "matchNotifications",
-  deal: "matchNotifications",
-  client_request: "ownerCustomerNotifications",
-  owner_offer: "ownerCustomerNotifications",
-  intake: "ownerCustomerNotifications",
-  missing_data: "ownerCustomerNotifications",
-  cooperation: "cooperationNotifications",
-  cooperation_request: "cooperationNotifications",
-  cooperation_response: "cooperationNotifications",
-  message: "messageNotifications",
-  conversation: "messageNotifications",
-  appointment: "appointmentNotifications",
-  followup: "appointmentNotifications",
-  opportunity_followup_reminder: "appointmentNotifications",
-  viewing: "appointmentNotifications",
-  operation: "systemNotifications",
-  system: "systemNotifications"
-});
-
-// Ø£Ù†ÙˆØ§Ø¹ Ø·Ù„Ø¨Ù‡Ø§ Ø§Ù„ÙˆØ³ÙŠØ· Ø¨Ù†ÙØ³Ù‡ØŒ ÙÙ„Ø§ ØªÙØ­Ø¬Ø¨ Ø¨Ø£ÙŠ ØªÙØ¶ÙŠÙ„.
-export const ALWAYS_ALLOWED_PUSH_TYPES = Object.freeze(["notification_test"]);
-
-export function notificationCategoryForPushType(type) {
-  const key=String(type||"").trim().toLowerCase();
-  return PUSH_TYPE_NOTIFICATION_CATEGORIES[key]||"systemNotifications";
-}
-
-/** ØºÙŠØ§Ø¨ Ø§Ù„Ù…Ø³ØªÙ†Ø¯ ÙŠØ¹Ù†ÙŠ "ÙƒÙ„ Ø§Ù„ÙØ¦Ø§Øª Ù…ÙØ¹Ù‘Ù„Ø©"ØŒ ÙÙ„Ø§ ØªØªØºÙŠØ± Ø³Ù„ÙˆÙƒ Ø§Ù„Ù…ÙƒØ§ØªØ¨ Ø§Ù„Ù‚Ø§Ø¦Ù…Ø©. */
-export function notificationCategoryAllowed(type,preferences) {
-  if(ALWAYS_ALLOWED_PUSH_TYPES.includes(String(type||"").trim().toLowerCase()))return true;
-  const source=preferences&&typeof preferences==="object"?preferences:{};
-  const value=source[notificationCategoryForPushType(type)];
-  return value!==false;
-}
-
-async function readOfficeNotificationPreferences({projectId,officeId,accessToken}) {
-  try{
-    const document=await getFirestoreDocument({
-      projectId,segments:["offices",officeId,"officeSettings","notifications"],accessToken,allowMissing:true
-    });
-    return document?firestoreFieldsToJs(document.fields||{}):{};
-  }catch(error){
-    // ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø§Ù„ØªÙØ¶ÙŠÙ„ Ù„Ø§ ÙŠØ¬ÙˆØ² Ø£Ù† ÙŠÙØ³ÙƒØª Ø¥Ø´Ø¹Ø§Ø±Ù‹Ø§ Ù…Ø·Ù„ÙˆØ¨Ù‹Ø§.
-    console.warn("[iaqar-fcm] notification preferences read failed",error&&error.message);
-    return {};
-  }
-}
-
-async function readOfficeBrandProfile({projectId,officeId,accessToken}) {
-  const id=String(officeId||"").trim();
-  if(!id || id==="platform") return { officeId: id || "platform" };
-  try{
-    const document=await getFirestoreDocument({
-      projectId,segments:["offices",id],accessToken,allowMissing:true
-    });
-    return document?{officeId:id,...firestoreFieldsToJs(document.fields||{})}:{officeId:id};
-  }catch(error){
-    console.warn("[iaqar-fcm] office brand profile read failed",error&&error.message);
-    return { officeId: id };
-  }
-}
-
-async function sendOfficePush({projectId,officeId,title,body,type="match",recordId="",assignedBrokerId="",accessToken,env=null,followUpAt="",recipientMode="",listing=null,taskId="",opportunityId="",missingLabel="",appointmentLabel="",presentationType=""}) {
-  if (env) await ensurePilotFeatureEnabled(env, "pushNotifications");
-  const preferences=await readOfficeNotificationPreferences({projectId,officeId,accessToken});
-  if(!notificationCategoryAllowed(type,preferences)){
-    return {registered:0,sent:0,failed:0,disabled:0,skipped:true,reason:"notifications_disabled",category:notificationCategoryForPushType(type)};
-  }
-  const officeProfile=await readOfficeBrandProfile({projectId,officeId,accessToken});
-  const appOrigin=resolveAppOrigin(env||{});
-  const presentation=formatOfficePushPresentation({
-    office:officeProfile,
-    officeId,
-    type: presentationType || type,
-    title,
-    body,
-    listing,
-    missingLabel,
-    appointmentLabel,
-    appOrigin,
-    includeBadge:false
-  });
-  const workerBase = String(env?.DEPLOYMENT_ENV || "").toLowerCase() === "staging"
-    ? "https://iaqar-intake-staging.iaqar-ai.workers.dev"
-    : "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
-  const iconCandidates=officeBrandIconCandidates(officeProfile,{
-    workerBase,
-    officeId
-  }).map((url)=>toAbsoluteHttpsIcon(url,appOrigin));
-  const fallbackIcon=toAbsoluteHttpsIcon(PLATFORM_DEFAULT_LOGO,appOrigin);
-  presentation.icon=await pickReachableHttpsIcon([presentation.icon,...iconCandidates],fallbackIcon);
-  presentation.badge="";
-  const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
-  const brokerFilter=String(assignedBrokerId||"").trim();
-  const activeDevices=devices.map(doc=>{
-    const value=firestoreFieldsToJs(doc.fields||{});
-    return {
-      deviceId:decodeURIComponent(String(doc.name||"").split("/").pop()||""),
-      ...value,
-      registrationId:value.fcmRegistrationId||value.fcmToken||"",
-      registrationType:value.registrationType==="fid"?"fid":value.registrationType==="webpush"?"webpush":"token"
-    };
-  }).filter(device=>{
-    if(device.enabled===false||!device.registrationId)return false;
-    // Assigned broker: prefer devices owned by that uid; if none match, fall back to office queue.
-    return true;
-  });
-  const brokerDevices=brokerFilter
-    ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
-    : [];
-  const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
-  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
-  for(const device of targetDevices){
-    try{
-      await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:"",taskId,opportunityId});
-      summary.sent+=1;
-    }catch(error){
-      summary.failed+=1;
-      console.warn("[iaqar-fcm] send failed",error&&error.message);
-      if(error&&error.staleToken&&device.deviceId){
-        summary.disabled+=1;
-        await disableStaleFcmDevice({projectId,officeId,deviceId:device.deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
-      }
-    }
-  }
-  return summary;
-}
-
-function configureWebPushVapid(env) {
-  const publicKey = cleanText(env.FCM_WEB_PUSH_VAPID_KEY, 200);
-  const privateKey = cleanText(env.FCM_VAPID_PRIVATE_KEY, 200);
-  if (!publicKey || !privateKey) return false;
-  webpush.setVapidDetails(`mailto:staging@${env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID}.web`, publicKey, privateKey);
-  return true;
-}
-
-async function sendWebPushNotification({ env, subscriptionJson, title, body, type = "match", recordId = "", officeId = "", icon = "", badge = "", taskId = "", opportunityId = "" }) {
-  if (!configureWebPushVapid(env)) throw new Error("Web Push VAPID keys are not configured");
-  const subscription = JSON.parse(String(subscriptionJson || ""));
-  const relativeLink = buildNotificationLink({ officeId, type, recordId, taskId, opportunityId });
-  const link = new URL(relativeLink, resolveAppOrigin(env)).href;
-  const appOrigin = resolveAppOrigin(env || {});
-  const notification = { title: String(title || "Ù…ÙƒØ§ØªØ¨ Ø¹Ù‚Ø§Ø±ÙŠØ© Ø°ÙƒÙŠØ©"), body: String(body || "Ù„Ø¯ÙŠÙƒ ØªÙ†Ø¨ÙŠÙ‡ Ø¬Ø¯ÙŠØ¯") };
-  if (icon) notification.icon = icon;
-  if (badge && badge !== icon) notification.badge = badge;
-  await webpush.sendNotification(subscription, JSON.stringify({
-    notification,
-    data: { type: String(type), recordId: String(recordId || ""), taskId: String(taskId || ""), opportunityId: String(opportunityId || ""), officeId: String(officeId), url: link, iconUrl: icon || `${appOrigin}/icons/iaqar-default-icon-192.png`, badgeUrl: badge && badge !== icon ? badge : "" }
-  }));
-  return { ok: true };
-}
-
-function buildFcmTarget(registrationId,registrationType="fid") {
-  const id=cleanText(registrationId,4096);
-  if(!id)throw new Error("FCM registration ID is required");
-  if(registrationType==="webpush")return { webpush: {} };
-  return registrationType==="fid"?{fid:id}:{token:id};
-}
-
-function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,deliveryId="",followUpAt="",recipientMode="",env=null,icon="",badge="",taskId="",opportunityId=""}) {
-  const relativeLink=buildNotificationLink({officeId,type,recordId,taskId,opportunityId});
-  const appOrigin=resolveAppOrigin(env||{});
-  const link=new URL(relativeLink,appOrigin).href;
-  const finalDeliveryId=deliveryId||`push_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
-  const target=buildFcmTarget(registrationId,registrationType);
-  const resolvedIcon=String(icon||`${appOrigin}/icons/iaqar-default-icon-192.png`);
-  const resolvedBadge=String(badge||"");
-  const webNotification={icon:resolvedIcon,dir:"rtl",lang:"ar",tag:String(recordId||finalDeliveryId),renotify:true};
-  if(resolvedBadge && resolvedBadge!==resolvedIcon) webNotification.badge=resolvedBadge;
-  return {message:{
-    ...target,
-    notification:{title:String(title||"Ù…ÙƒØ§ØªØ¨ Ø¹Ù‚Ø§Ø±ÙŠØ© Ø°ÙƒÙŠØ©"),body:String(body||"Ù„Ø¯ÙŠÙƒ ØªÙ†Ø¨ÙŠÙ‡ Ø¬Ø¯ÙŠØ¯")},
-    data:{
-      type:String(type),
-      recordId:String(recordId||""),
-      taskId:String(taskId||""),
-      opportunityId:String(opportunityId||""),
-      matchId:type==="match"?String(recordId||""):"",
-      dealId:type==="deal"?String(recordId||""):"",
-      officeId:String(officeId),
-      url:link,
-      deliveryId:finalDeliveryId,
-      followUpAt:String(followUpAt||""),
-      recipientMode:String(recipientMode||""),
-      entityType:type==="opportunity_followup_reminder"?"opportunity":"",
-      entityId:String(recordId||""),
-      iconUrl:resolvedIcon,
-      badgeUrl:resolvedBadge!==resolvedIcon?resolvedBadge:""
-    },
-    webpush:{
-      headers:{Urgency:type==="match"?"high":"normal"},
-      notification:webNotification,
-      fcm_options:{link}
-    }
-  }};
-}
-
-async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge="",taskId="",opportunityId=""}) {
-  if(registrationType==="webpush"){
-    await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge,taskId,opportunityId});
-    return { name: "webpush" };
-  }
-  const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
-    method:"POST",
-    headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
-    body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge,taskId,opportunityId}))
-  });
-  const payload=await response.json().catch(()=>({}));
-  if(!response.ok){
-    const failure=parseFcmFailure(payload,response.status);
-    const error=new Error(failure.message);
-    error.fcmCode=failure.code;
-    error.staleToken=failure.staleToken;
-    throw error;
-  }
-  return payload;
-}
-
-async function getFcmStatus(request,url,env,requestId) {
-  assertFirebaseSecrets(env);
-  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
-  if(!officeId)throw appError("office_id_required",400,"officeId Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
-  const devices=await listCollectionDocuments({projectId,segments:["offices",officeId,"devices"],accessToken,pageSize:100});
-  const parsed=devices.map(doc=>firestoreFieldsToJs(doc.fields||{}));
-  return jsonResponse({ok:true,officeId,registeredDevices:parsed.length,activeDevices:parsed.filter(item=>item.enabled!==false&&(item.fcmRegistrationId||item.fcmToken)).length,requestId});
-}
-
-async function registerFcmDevice(request,env,requestId) {
-  await ensurePilotFeatureEnabled(env, "pushNotifications");
-  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=firestoreOfficeId(body.officeId);
-  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
-  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
-  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
-    registrationType="webpush";
-    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
-  }
-  if(!officeId||!registrationId)throw appError("device_data_missing",400,"Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¬Ù‡Ø§Ø² ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
-  const existing=await getFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,allowMissing:true});
-  const fields={
-    officeId:firestoreString(officeId),fcmRegistrationId:firestoreString(registrationId),registrationType:firestoreString(registrationType),fcmToken:firestoreString(registrationType==="token"?registrationId:""),platform:firestoreString("web"),enabled:firestoreBoolean(true),
-    userUid:firestoreOptionalString(identity.uid),userAgent:firestoreOptionalString(cleanText(body.userAgent,500)),
-    deviceName:firestoreOptionalString(cleanText(body.deviceName,120)),installationId:firestoreOptionalString(installationId),language:firestoreOptionalString(cleanText(body.language,40)),
-    notificationPermission:firestoreOptionalString(cleanText(body.notificationPermission,30)),appVersion:firestoreOptionalString(cleanText(body.appVersion,60)),
-    lastSeenAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),updatedByUid:firestoreOptionalString(identity.uid),disabledReason:firestoreString("")
-  };
-  if(!existing)fields.createdAt=firestoreTimestamp(now);
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields});
-  return jsonResponse({ok:true,deviceId,enabled:true,requestId});
-}
-
-async function unregisterFcmDevice(request,env,requestId) {
-  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=firestoreOfficeId(body.officeId);
-  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
-  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
-  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
-    registrationType="webpush";
-    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
-  }
-  if(!officeId||!registrationId)throw appError("device_data_missing",400,"Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¬Ù‡Ø§Ø² ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),installationId=cleanText(body.installationId,160),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`,now=new Date();
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,fields:{officeId:firestoreString(officeId),fcmRegistrationId:firestoreString(registrationId),registrationType:firestoreString(registrationType),fcmToken:firestoreString(registrationType==="token"?registrationId:""),platform:firestoreString("web"),enabled:firestoreBoolean(false),disabledReason:firestoreString("disabled_by_user"),installationId:firestoreOptionalString(installationId),userUid:firestoreOptionalString(identity.uid),updatedAt:firestoreTimestamp(now),updatedByUid:firestoreOptionalString(identity.uid)}});
-  return jsonResponse({ok:true,deviceId,enabled:false,requestId});
-}
-
-async function sendFcmTestNotification(request,env,requestId) {
-  await ensurePilotFeatureEnabled(env, "pushNotifications");
-  assertFirebaseSecrets(env); const body=await request.json().catch(()=>({}));
-  const officeId=firestoreOfficeId(body.officeId);
-  let registrationType=body.registrationType==="fid"?"fid":body.registrationType==="webpush"?"webpush":"token";
-  let registrationId=cleanText(body.fcmRegistrationId||body.fcmToken,4096);
-  if(body.pushSubscription&&typeof body.pushSubscription==="object"&&body.pushSubscription.endpoint){
-    registrationType="webpush";
-    registrationId=cleanText(JSON.stringify(body.pushSubscription),4096);
-  }
-  const installationId=cleanText(body.installationId,160);
-  if(!officeId||!registrationId)throw appError("device_data_missing",400,"Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¬Ù‡Ø§Ø² ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),deviceSeed=installationId?`${officeId}|${installationId}`:registrationId,deviceId=`web_${(await sha256Hex(deviceSeed)).slice(0,36)}`;
-  const deviceDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"devices",deviceId],accessToken,allowMissing:true});
-  const device=deviceDoc?firestoreFieldsToJs(deviceDoc.fields||{}):null;
-  const savedRegistration=device&&(device.fcmRegistrationId||device.fcmToken||"");
-  if(!device||device.enabled===false||savedRegistration!==registrationId)throw appError("device_not_registered",409,"Ø§Ù„Ø¬Ù‡Ø§Ø² ØºÙŠØ± Ù…Ø³Ø¬Ù„ Ù„Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª");
-  try{
-    const officeProfile = await readOfficeBrandProfile({ projectId, officeId, accessToken });
-    const presentation = formatOfficePushPresentation({
-      office: officeProfile,
-      officeId,
-      type: "notification_test",
-      title: "ØªÙ… ØªÙØ¹ÙŠÙ„ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø§Ù„Ù…ÙƒØªØ¨",
-      body: "Ø³ÙŠØµÙ„Ùƒ ØªÙ†Ø¨ÙŠÙ‡ Ø¹Ù†Ø¯ ÙˆØ¬ÙˆØ¯ Ù…Ø·Ø§Ø¨Ù‚Ø© Ø£Ùˆ Ù…ØªØ§Ø¨Ø¹Ø© Ø¬Ø¯ÙŠØ¯Ø©.",
-      appOrigin: resolveAppOrigin(env || {}),
-      includeBadge: false
-    });
-    const icon = await pickReachableHttpsIcon([presentation.icon], presentation.icon);
-    await sendFcmMessage({
-      projectId,
-      registrationId,
-      registrationType,
-      title: presentation.title,
-      body: presentation.body,
-      type: "notification_test",
-      recordId: `test_${Date.now()}`,
-      officeId,
-      accessToken,
-      env,
-      icon,
-      badge: ""
-    });
-  }catch(error){
-    if(error&&error.staleToken)await disableStaleFcmDevice({projectId,officeId,deviceId,accessToken,reason:error.fcmCode||"invalid_fcm_token"});
-    throw appError("fcm_test_failed",502,"ØªÙ… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¬Ù‡Ø§Ø² Ù„ÙƒÙ† ØªØ¹Ø°Ø± ÙˆØµÙˆÙ„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± Ø§Ù„ØªØ¬Ø±ÙŠØ¨ÙŠ");
-  }
-  return jsonResponse({ok:true,officeId,registered:1,sent:1,failed:0,disabled:0,requestId});
-}
-
-function workflowCollection(recordType) {
-  return recordType === "deal" ? "deals" : "matches";
-}
-
-async function addWorkflowTimeline({projectId,officeId,recordType,recordId,eventType,stage,note="",identity={},accessToken,createdAt=new Date()}) {
-  const eventId=`evt_${createdAt.getTime()}_${crypto.randomUUID().slice(0,8)}`;
-  const collection=workflowCollection(recordType);
-  await setFirestoreDocument({projectId,segments:["offices",officeId,collection,recordId,"timeline",eventId],accessToken,fields:{
-    officeId:firestoreString(officeId),recordType:firestoreString(recordType),recordId:firestoreString(recordId),
-    eventType:firestoreString(eventType),stage:firestoreString(stage),note:firestoreOptionalString(cleanText(note,1000)),
-    createdAt:firestoreTimestamp(createdAt),createdByUid:firestoreOptionalString(identity.uid)
-  }});
-  return eventId;
-}
-
-async function createDealFromMatch({projectId,officeId,matchId,matchData,identity,accessToken,now,commissionExpected=0,startStage="negotiation"}) {
-  const dealId=matchData.dealId || `deal_${matchId.replace(/^mat_/,"")}`;
-  const stage=DEAL_STAGE_ORDER.includes(startStage)?startStage:"contact";
-  const health=calculateDealHealth({stage,status:"open",updatedAt:now});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
-    schemaVersion:firestoreInteger(5),officeId:firestoreString(officeId),dealId:firestoreString(dealId),matchId:firestoreString(matchId),
-    clientRequestId:firestoreOptionalString(matchData.clientRequestId),ownerOfferId:firestoreOptionalString(matchData.ownerOfferId),matchGroupId:firestoreOptionalString(matchData.matchGroupId||matchData.clientRequestId),
-    status:firestoreString("open"),workflowStage:firestoreString(stage),stageLabel:firestoreString(DEAL_STAGE_LABELS[stage]),
-    nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS[stage]),healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),
-    score:matchData.score?firestoreInteger(matchData.score):null,closingReadinessScore:matchData.closingReadinessScore?firestoreInteger(matchData.closingReadinessScore):null,
-    priority:firestoreOptionalString(matchData.priority),district:firestoreOptionalString(matchData.district),propertyType:firestoreOptionalString(matchData.propertyType),
-    assignedToUid:firestoreOptionalString(identity.uid),commissionExpected:commissionExpected?firestoreInteger(Number(commissionExpected)):null,
-    brokerageContractRequired:firestoreBoolean(true),brokerageContractStatus:firestoreString(BROKERAGE_CONTRACT_STATUS.NOT_STARTED),brokerageContractReference:firestoreString(""),
-    nextFollowUpAt:firestoreTimestamp(defaultNextFollowUp(stage==="closing"?8:24)),followUpCount:firestoreInteger(0),
-    createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-  }});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
-    status:firestoreString("negotiation"),statusLabel:firestoreString(MATCH_STATUS_LABELS.negotiation),workflowStage:firestoreString("negotiation"),
-    nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
-  }});
-  await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØµÙÙ‚Ø© Ù…Ù† Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©",identity,accessToken,createdAt:now});
-  await runRuntimeOrchestration({
-    event: ORCHESTRATOR_EVENT.DEAL_CREATED,
-    officeId, entityId: dealId, occurrenceId: "created",
-    context: { projectId, dealId },
-    adapters: {
-      [ORCHESTRATOR_OWNER.TASKS]: async () => {
-        await observeDealCoverageShadow({ projectId, officeId, dealId, accessToken, source: "deal_created" });
-        return { ok: true };
-      }
-    }
-  });
-  return dealId;
-}
-
-async function finalizeDealAndCloseSiblings({projectId,officeId,dealId,dealData,identity,accessToken,now,note="",commissionActual=0}) {
-  const matchId=dealData.matchId || "";
-  let matchData={};
-  if(matchId){
-    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,allowMissing:true});
-    matchData=matchDoc?firestoreFieldsToJs(matchDoc.fields||{}):{};
-  }
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
-    status:firestoreString("closed"),workflowStage:firestoreString("closed"),stageLabel:firestoreString(DEAL_STAGE_LABELS.closed),
-    nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.closed),healthScore:firestoreInteger(100),healthKey:firestoreString("excellent"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.excellent),
-    commissionActual:commissionActual?firestoreInteger(Number(commissionActual)):null,closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),lastNote:firestoreOptionalString(note),attentionRequired:firestoreBoolean(false)
-  }});
-  await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_closed",stage:"closed",note:note||"ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø©",identity,accessToken,createdAt:now});
-
-  if(matchId){
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
-      status:firestoreString("completed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.completed),workflowStage:firestoreString("completed"),
-      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.completed),closingReadinessScore:firestoreInteger(100),closingReadinessKey:firestoreString("very_high"),closingReadinessLabel:firestoreString(READINESS_LABELS.very_high),
-      completedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),closeReason:firestoreString("ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø© Ù…Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ø¹Ù‚Ø§Ø±"),attentionRequired:firestoreBoolean(false)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:matchId,eventType:"match_completed",stage:"completed",note:"ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø© Ù…Ø¹ Ù‡Ø°Ø§ Ø§Ù„Ø¹Ù‚Ø§Ø±",identity,accessToken,createdAt:now});
-  }
-
-  const groupId=dealData.matchGroupId||dealData.clientRequestId||matchData.matchGroupId||matchData.clientRequestId||"";
-  let closedSiblings=0;
-  if(groupId){
-    const docs=await listCollectionDocuments({projectId,segments:["offices",officeId,"matches"],accessToken,pageSize:300});
-    for(const doc of docs){
-      const siblingId=decodeURIComponent(String(doc.name||"").split("/").pop()||"");
-      if(!siblingId||siblingId===matchId) continue;
-      const sibling=firestoreFieldsToJs(doc.fields||{});
-      const siblingGroup=sibling.matchGroupId||sibling.clientRequestId||"";
-      if(siblingGroup!==groupId) continue;
-      const siblingStatus=normalizeMatchStatus(sibling.status);
-      if(["completed","closed"].includes(siblingStatus)) continue;
-      closedSiblings+=1;
-      const reason="ØªÙ…Øª Ø§Ù„ØµÙÙ‚Ø© Ù…Ø¹ Ø¹Ù‚Ø§Ø± Ø¢Ø®Ø±";
-      await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",siblingId],accessToken,fields:{
-        status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),
-        nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),
-        closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),closedByMatchId:firestoreString(matchId),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-      }});
-      await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:siblingId,eventType:"match_auto_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
-      if(sibling.dealId){
-        await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",sibling.dealId],accessToken,fields:{
-          status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),
-          nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),
-          lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-        }});
-        await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:sibling.dealId,eventType:"deal_auto_closed",stage:"lost",note:reason,identity,accessToken,createdAt:now});
-      }
-    }
-  }
-
-  const clientRequestId=dealData.clientRequestId||matchData.clientRequestId||"";
-  const ownerOfferId=dealData.ownerOfferId||matchData.ownerOfferId||"";
-  if(clientRequestId){
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",clientRequestId],accessToken,fields:{lifecycleStatus:firestoreString("CLOSED_WON"),workflowStage:firestoreString("closed"),requestDisposition:firestoreString("FULFILLED"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"clients",clientRequestId],accessToken,fields:{status:firestoreString("fulfilled"),workflowStage:firestoreString("closed"),fulfilledAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
-  }
-  if(ownerOfferId){
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",ownerOfferId],accessToken,fields:{lifecycleStatus:firestoreString("CLOSED_WON"),workflowStage:firestoreString("closed"),offerDisposition:firestoreString("SOLD"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"owners",ownerOfferId],accessToken,fields:{status:firestoreString("closed"),workflowStage:firestoreString("sold"),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)}}).catch(()=>{});
-  }
-  return {closedSiblings,matchId};
-}
-
-async function handleWorkflowAction(request,env,requestId) {
-  assertFirebaseSecrets(env);
-  const body=await request.json().catch(()=>({}));
-  const officeId=firestoreOfficeId(body.officeId),action=cleanText(body.action,50),recordId=cleanText(body.recordId,160);
-  if(!officeId||!action||!recordId)throw appError("workflow_data_missing",400,"Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  const identity=await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env),now=new Date();
-  const note=cleanText(body.note,1000);
-  const requestedNext=body.nextFollowUpAt?new Date(body.nextFollowUpAt):null;
-  const nextFollowUpAt=requestedNext&&!Number.isNaN(requestedNext.getTime())?requestedNext:defaultNextFollowUp(24);
-
-  if(action==="start_match"||action==="advance_match"){
-    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
-    const m=firestoreFieldsToJs(matchDoc.fields||{});
-    const current=normalizeMatchStatus(m.status);
-    if(current==="completed"||current==="closed") return jsonResponse({ok:true,status:current,statusLabel:MATCH_STATUS_LABELS[current],requestId});
-    let next=current;
-    if(action==="start_match"&&["active","new"].includes(current)) next="active";
-    else if(current==="active") next="waiting_response";
-    else if(current==="waiting_response") next="viewing";
-    else if(current==="viewing") next="negotiation";
-    else if(current==="negotiation") next="negotiation";
-    const readiness=calculateClosingReadiness({matchScore:m.score,status:next});
-    const followUpCount=Number(m.followUpCount||0)+1;
-    const fields={
-      status:firestoreString(next),statusLabel:firestoreString(MATCH_STATUS_LABELS[next]),workflowStage:firestoreString(next),
-      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS[next]),closingReadinessScore:firestoreInteger(readiness.score),closingReadinessKey:firestoreString(readiness.key),closingReadinessLabel:firestoreString(readiness.label),
-      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(followUpCount),
-      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
-    };
-    if(next==="viewing") fields.viewingAt=firestoreTimestamp(nextFollowUpAt);
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`Ø§Ù†ØªÙ‚Ù„Øª Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ø¥Ù„Ù‰ ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
-    let dealId=m.dealId||"";
-    if(next==="negotiation"&&!dealId){
-      const creationGate=evaluateDealCreation({
-        match:{...m,status:next,closingReadinessScore:readiness.score},
-        coordination:{outcome:m.coordinationOutcome||""}
-      });
-      if(creationGate.allowed){
-        dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
-      }
-    }
-    return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
-  }
-
-  if(action==="add_match_followup"){
-    if(!note&&!body.nextFollowUpAt)throw appError("followup_data_required",400,"Ø§ÙƒØªØ¨ Ù…Ù„Ø§Ø­Ø¸Ø© Ø£Ùˆ Ø­Ø¯Ø¯ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
-    const m=firestoreFieldsToJs(matchDoc.fields||{});
-    const status=normalizeMatchStatus(m.status);
-    const count=Number(m.followUpCount||0)+1;
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:{
-      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
-      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false),assignedToUid:firestoreOptionalString(identity.uid)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"follow_up_added",stage:status,note:note||"ØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ù…ØªØ§Ø¨Ø¹Ø©",identity,accessToken,createdAt:now});
-    return jsonResponse({ok:true,status,nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,requestId});
-  }
-
-  if(action==="add_negotiation_note"){
-    const audience=["both","client","owner"].includes(String(body.audience||"").toLowerCase())?String(body.audience).toLowerCase():"both";
-    const message=note||cleanText(body.preset,200);
-    if(!message)throw appError("negotiation_note_required",400,"Ø§ÙƒØªØ¨ Ù…Ù„Ø§Ø­Ø¸Ø© Ø£Ùˆ Ø§Ø®ØªØ± Ø¥Ø¬Ø±Ø§Ø¡Ù‹");
-    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
-    const matchData=firestoreFieldsToJs(matchDoc.fields||{});
-    const session=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
-    const brokerNote={id:`bn_${Date.now()}`,audience,message,actor:"BROKER",createdAt:now.toISOString()};
-    const next={...session,brokerNotes:[...(session.brokerNotes||[]),brokerNote].slice(-40)};
-    next.eventLog=appendCoordinationEvent(next.eventLog||[],{type:"BROKER_NOTE",actor:"BROKER",label:message},{now});
-    await saveCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,session:next});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"broker_negotiation_note",stage:matchData.workflowStage||"negotiation",note:message,identity,accessToken,createdAt:now});
-    return jsonResponse({ok:true,matchId:recordId,audience,noteId:brokerNote.id,requestId});
-  }
-
-  if(action==="close_match"){
-    const matchDoc=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
-    const m=firestoreFieldsToJs(matchDoc.fields||{});
-    const current=normalizeMatchStatus(m.status);
-    if(current==="completed") return jsonResponse({ok:true,status:"completed",statusLabel:MATCH_STATUS_LABELS.completed,requestId});
-    if(current==="closed") return jsonResponse({ok:true,status:"closed",statusLabel:MATCH_STATUS_LABELS.closed,requestId});
-    const reason=note||"Ø£ÙØºÙ„Ù‚Øª Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© ÙŠØ¯ÙˆÙŠÙ‹Ø§";
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:{
-      status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),
-      nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),
-      closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"match_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
-    for(const opportunityId of [m.clientRequestId||m.requestId,m.ownerOfferId||m.offerId].filter(Boolean)){
-      await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",opportunityId],accessToken,fields:{
-        lifecycleStatus:firestoreString("ACTIVE"),workflowStage:firestoreString("matching"),matchingReadiness:firestoreString("READY_FOR_MATCHING"),updatedAt:firestoreTimestamp(now)
-      }});
-    }
-    await expireOperationsForMatchIds({
-      projectId,officeId,matchIds:[recordId],accessToken,listCollectionDocuments,setFirestoreDocument,firestoreHelpers:operationsFirestoreHelpers()
-    }).catch((error)=>console.warn("[iaqar-ops] close negotiation operation",error&&error.message));
-    if(m.dealId){
-      const linkedDeal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",m.dealId],accessToken,allowMissing:true});
-      const linked=linkedDeal?firestoreFieldsToJs(linkedDeal.fields||{}):{};
-      if(linkedDeal&&!['closed','lost'].includes(linked.status)){
-        await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",m.dealId],accessToken,fields:{
-          status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),
-          healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-        }});
-        await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:m.dealId,eventType:"deal_lost",stage:"lost",note:reason,identity,accessToken,createdAt:now});
-      }
-    }
-    return jsonResponse({ok:true,status:"closed",statusLabel:MATCH_STATUS_LABELS.closed,requestId});
-  }
-
-  if(action==="create_deal"){
-    const match=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken});
-    const m=firestoreFieldsToJs(match.fields||{});
-    const matchStatus=normalizeMatchStatus(m.status);
-    if(["completed","closed"].includes(matchStatus)) throw appError("match_not_open",409,"Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ù†Ø´Ø§Ø¡ ØµÙÙ‚Ø© Ù…Ù† Ù…Ø·Ø§Ø¨Ù‚Ø© Ù…ØºÙ„Ù‚Ø©");
-    if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact",requestId});
-    const creationGate=evaluateDealCreation({match:m,coordination:{outcome:m.coordinationOutcome||""}});
-    if(!creationGate.allowed) throw appError("deal_not_serious_yet",409,"Ù„Ø§ ØªÙÙ†Ø´Ø£ Ø§Ù„ØµÙÙ‚Ø© Ù‚Ø¨Ù„ Ø¸Ù‡ÙˆØ± Ø¬Ø¯ÙŠØ© ÙØ¹Ù„ÙŠØ© ÙÙŠ Ø§Ù„ØªÙØ§ÙˆØ¶ Ø£Ùˆ ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©");
-    const completedViewing=Boolean(m.viewingCompletedAt)||String(m.livingStage||"").toUpperCase()==="VIEWING_COMPLETED";
-    const startStage=matchStatus==="negotiation"||completedViewing?"negotiation":matchStatus==="viewing"?"viewing":"contact";
-    const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage});
-    return jsonResponse({ok:true,dealId,status:"open",workflowStage:startStage,requestId});
-  }
-
-  if(action==="advance_deal"||action==="set_deal_stage"){
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
-    const d=firestoreFieldsToJs(deal.fields||{});
-    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:0,requestId});
-    if(d.status==="lost"||d.workflowStage==="lost") return jsonResponse({ok:true,status:"lost",workflowStage:"lost",stageLabel:DEAL_STAGE_LABELS.lost,nextAction:DEAL_NEXT_ACTION_LABELS.lost,requestId});
-    const current=DEAL_STAGE_ORDER.includes(d.workflowStage)?d.workflowStage:"contact";
-    const requested=action==="set_deal_stage"?cleanText(body.stage,40):nextDealStage(current);
-    if(!DEAL_STAGE_ORDER.includes(requested))throw appError("deal_stage_invalid",400,"Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØµÙÙ‚Ø© ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    if(requested==="closed"){
-      const closureGate=planDealClosure({deal:d});
-      if(!closureGate.ok){
-        if(closureGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"ÙŠØ¬Ø¨ ØªÙˆÙ‚ÙŠØ¹ Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø© Ù‚Ø¨Ù„ Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØµÙÙ‚Ø©");
-        throw appError("deal_not_ready_to_close",409,"ÙŠØ¬Ø¨ Ø£Ù† ØªØµÙ„ Ø§Ù„ØµÙÙ‚Ø© Ø¥Ù„Ù‰ Ù…Ø±Ø­Ù„Ø© Ø¬Ø§Ù‡Ø²Ø© Ù„Ù„Ø¥ØºÙ„Ø§Ù‚ Ù‚Ø¨Ù„ Ø¥ØªÙ…Ø§Ù…Ù‡Ø§");
-      }
-      const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
-      return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:closed.closedSiblings,requestId});
-    }
-    const transitionGate=planDealStageTransition({deal:d,requestedStage:requested});
-    if(!transitionGate.ok){
-      if(transitionGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"ÙŠØ¬Ø¨ ØªÙˆÙ‚ÙŠØ¹ Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø© Ù‚Ø¨Ù„ Ø§Ù„Ø§Ù†ØªÙ‚Ø§Ù„ Ø¥Ù„Ù‰ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚");
-      if(transitionGate.reason==="backward_transition") throw appError("deal_backward_transition",409,"Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø±Ø¬Ø§Ø¹ Ø§Ù„ØµÙÙ‚Ø© Ø¥Ù„Ù‰ Ù…Ø±Ø­Ù„Ø© Ø³Ø§Ø¨Ù‚Ø©");
-      if(transitionGate.reason==="skipped_stage") throw appError("deal_stage_skip",409,"Ù„Ø§ ÙŠÙ…ÙƒÙ† ØªØ¬Ø§ÙˆØ² Ù…Ø±Ø§Ø­Ù„ Ø§Ù„ØµÙÙ‚Ø©");
-      throw appError("deal_stage_invalid",400,"Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØµÙÙ‚Ø© ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    }
-    const health=calculateDealHealth({stage:requested,status:"open",updatedAt:now,nextFollowUpAt});
-    const count=Number(d.followUpCount||0)+1;
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
-      status:firestoreString("open"),workflowStage:firestoreString(requested),stageLabel:firestoreString(DEAL_STAGE_LABELS[requested]),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS[requested]),
-      healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),
-      lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
-      lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"stage_changed",stage:requested,note:note||`Ø§Ù†ØªÙ‚Ù„Øª Ø§Ù„ØµÙÙ‚Ø© Ø¥Ù„Ù‰ ${DEAL_STAGE_LABELS[requested]}`,identity,accessToken,createdAt:now});
-    await runRuntimeOrchestration({
-      event: ORCHESTRATOR_EVENT.DEAL_STAGE_CHANGED,
-      officeId, entityId: recordId, occurrenceId: requested,
-      context: { projectId, dealId: recordId, workflowStage: requested },
-      adapters: {
-        [ORCHESTRATOR_OWNER.TASKS]: async () => {
-          await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_stage_changed" });
-          return { ok: true };
-        }
-      }
-    });
-    return jsonResponse({ok:true,status:"open",workflowStage:requested,stageLabel:DEAL_STAGE_LABELS[requested],nextAction:DEAL_NEXT_ACTION_LABELS[requested],health,requestId});
-  }
-
-  if(action==="add_deal_note"||action==="add_deal_followup"){
-    if(!note&&!body.nextFollowUpAt)throw appError("deal_note_required",400,"Ø§ÙƒØªØ¨ Ù…Ù„Ø§Ø­Ø¸Ø© Ø£Ùˆ Ø­Ø¯Ø¯ Ù…ÙˆØ¹Ø¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
-    const d=firestoreFieldsToJs(deal.fields||{});
-    const count=Number(d.followUpCount||0)+1;
-    const health=calculateDealHealth({stage:d.workflowStage||"contact",status:d.status||"open",updatedAt:now,nextFollowUpAt});
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
-      lastNote:firestoreOptionalString(note),lastFollowUpAt:firestoreTimestamp(now),nextFollowUpAt:firestoreTimestamp(nextFollowUpAt),followUpCount:firestoreInteger(count),
-      healthScore:firestoreInteger(health.score),healthKey:firestoreString(health.key),healthLabel:firestoreString(health.label),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"follow_up_added",stage:d.workflowStage||"follow_up",note:note||"ØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ù…ØªØ§Ø¨Ø¹Ø©",identity,accessToken,createdAt:now});
-    await observeDealCoverageShadow({ projectId, officeId, dealId: recordId, accessToken, source: "deal_followup_updated" });
-    return jsonResponse({ok:true,status:"noted",nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,health,requestId});
-  }
-
-  if(action==="set_brokerage_contract_status"){
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,allowMissing:true});
-    if(!deal) throw appError("deal_not_found",404,"Ø§Ù„ØµÙÙ‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-    const d=firestoreFieldsToJs(deal.fields||{});
-    if(d.status==="closed"||d.workflowStage==="closed"||d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"Ù„Ø§ ÙŠÙ…ÙƒÙ† ØªØ¹Ø¯ÙŠÙ„ Ø¹Ù‚Ø¯ ØµÙÙ‚Ø© Ù…Ù†ØªÙ‡ÙŠØ©");
-    const contractPlan=planBrokerageContractUpdate({
-      deal:d,
-      requestedStatus:cleanText(body.contractStatus||body.status,40),
-      reference:cleanText(body.contractReference||body.reference,180),
-      now
-    });
-    if(!contractPlan.ok){
-      if(contractPlan.reason==="signed_contract_terminal") throw appError("signed_contract_terminal",409,"Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø© Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ù„Ø§ ÙŠÙØ¹Ø§Ø¯ Ø¥Ù„Ù‰ Ø­Ø§Ù„Ø© Ø³Ø§Ø¨Ù‚Ø©");
-      throw appError("contract_status_invalid",400,"Ø­Ø§Ù„Ø© Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø© ØºÙŠØ± ØµØ­ÙŠØ­Ø©");
-    }
-    if(!contractPlan.idempotent){
-      const p=contractPlan.patch;
-      const fields={
-        brokerageContractRequired:firestoreBoolean(true),
-        brokerageContractStatus:firestoreString(p.brokerageContractStatus),
-        brokerageContractReference:firestoreOptionalString(p.brokerageContractReference),
-        brokerageContractUpdatedAt:firestoreTimestamp(new Date(p.brokerageContractUpdatedAt)),
-        updatedAt:firestoreTimestamp(now),
-        assignedToUid:firestoreOptionalString(identity.uid)
-      };
-      if(p.brokerageContractSignedAt) fields.brokerageContractSignedAt=firestoreTimestamp(new Date(p.brokerageContractSignedAt));
-      if(p.brokerageContractCancelledAt) fields.brokerageContractCancelledAt=firestoreTimestamp(new Date(p.brokerageContractCancelledAt));
-      await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields});
-      await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"brokerage_contract_updated",stage:d.workflowStage||"agreement",note:`Ø­Ø§Ù„Ø© Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø©: ${p.brokerageContractStatus}`,identity,accessToken,createdAt:now});
-      await observeDealCoverageShadow({projectId,officeId,dealId:recordId,accessToken,source:"brokerage_contract_updated"});
-    }
-    return jsonResponse({ok:true,dealId:recordId,contractStatus:contractPlan.requested,idempotent:Boolean(contractPlan.idempotent),requestId});
-  }
-
-  if(action==="mark_lost"){
-    const reason=note||"ØªØ¹Ø°Ù‘Ø± Ø¥ÙƒÙ…Ø§Ù„ Ø§Ù„ØµÙÙ‚Ø©";
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
-    const d=firestoreFieldsToJs(deal.fields||{});
-    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",requestId});
-    if(d.status==="lost"||d.workflowStage==="lost") return jsonResponse({ok:true,status:"lost",requestId});
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields:{
-      status:firestoreString("lost"),workflowStage:firestoreString("lost"),stageLabel:firestoreString(DEAL_STAGE_LABELS.lost),nextAction:firestoreString(DEAL_NEXT_ACTION_LABELS.lost),
-      healthScore:firestoreInteger(10),healthKey:firestoreString("at_risk"),healthLabel:firestoreString(DEAL_HEALTH_LABELS.at_risk),lostReason:firestoreString(reason),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-    }});
-    await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId,eventType:"deal_lost",stage:"lost",note:reason,identity,accessToken,createdAt:now});
-    if(d.matchId){
-      const linkedMatch=await getFirestoreDocument({projectId,segments:["offices",officeId,"matches",d.matchId],accessToken,allowMissing:true});
-      const linked=linkedMatch?firestoreFieldsToJs(linkedMatch.fields||{}):{};
-      const linkedStatus=normalizeMatchStatus(linked.status);
-      if(linkedMatch&&!['completed','closed'].includes(linkedStatus)){
-        await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",d.matchId],accessToken,fields:{
-          status:firestoreString("closed"),statusLabel:firestoreString(MATCH_STATUS_LABELS.closed),workflowStage:firestoreString("closed"),nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.closed),
-          closingReadinessScore:firestoreInteger(0),closingReadinessKey:firestoreString("low"),closingReadinessLabel:firestoreString(READINESS_LABELS.low),closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
-        }});
-        await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId:d.matchId,eventType:"match_closed_after_deal_lost",stage:"closed",note:reason,identity,accessToken,createdAt:now});
-      }
-    }
-    return jsonResponse({ok:true,status:"lost",matchId:d.matchId||"",requestId});
-  }
-
-  if(action==="close_deal"){
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken});
-    const d=firestoreFieldsToJs(deal.fields||{});
-    if(d.status==="closed"||d.workflowStage==="closed") return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:0,requestId});
-    if(d.status==="lost"||d.workflowStage==="lost") throw appError("deal_not_open",409,"Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥ØºÙ„Ø§Ù‚ ØµÙÙ‚Ø© Ù…ØªÙˆÙ‚ÙØ©");
-    const closureGate=planDealClosure({deal:d});
-    if(!closureGate.ok){
-      if(closureGate.reason==="brokerage_contract_required") throw appError("brokerage_contract_required",409,"ÙŠØ¬Ø¨ ØªÙˆÙ‚ÙŠØ¹ Ø¹Ù‚Ø¯ Ø§Ù„ÙˆØ³Ø§Ø·Ø© Ù‚Ø¨Ù„ Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØµÙÙ‚Ø©");
-      throw appError("deal_not_ready_to_close",409,"Ø§Ù„ØµÙÙ‚Ø© Ù„ÙŠØ³Øª ÙÙŠ Ù…Ø±Ø­Ù„Ø© Ø¬Ø§Ù‡Ø²Ø© Ù„Ù„Ø¥ØºÙ„Ø§Ù‚");
-    }
-    const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
-    return jsonResponse({ok:true,status:"closed",workflowStage:"closed",closedSiblings:closed.closedSiblings,requestId});
-  }
-
-  // Phase 8: broker-entered financial/note fields â€” Worker-trusted only (no client deal writes).
-  if(action==="update_deal_fields"){
-    const deal=await getFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,allowMissing:true});
-    if(!deal) throw appError("deal_not_found",404,"Ø§Ù„ØµÙÙ‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©");
-    const fields={ updatedAt:firestoreTimestamp(now) };
-    const finalPrice=Number(body.finalPrice);
-    const commissionActual=Number(body.commissionActual);
-    const internalNote=cleanText(body.internalNote,1000);
-    if(Number.isFinite(finalPrice) && finalPrice >= 0) fields.finalPrice=firestoreInteger(Math.round(finalPrice));
-    if(Number.isFinite(commissionActual) && commissionActual >= 0) fields.commissionActual=firestoreInteger(Math.round(commissionActual));
-    if(internalNote) fields.internalNote=firestoreString(internalNote);
-    if(Object.keys(fields).length <= 1) throw appError("deal_fields_required",400,"Ù„Ø§ ØªÙˆØ¬Ø¯ Ø­Ù‚ÙˆÙ„ Ù„ØªØ­Ø¯ÙŠØ«Ù‡Ø§");
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",recordId],accessToken,fields});
-    return jsonResponse({ok:true,dealId:recordId,updated:true,requestId});
-  }
-
-  throw appError("workflow_action_invalid",400,"Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ");
-}
-
-async function handleWorkflowTimeline(request,url,env,requestId){
-  assertFirebaseSecrets(env);
-  const officeId=firestoreOfficeId(url.searchParams.get("officeId"));
-  const recordType=cleanText(url.searchParams.get("recordType")||"match",20)==="deal"?"deal":"match";
-  const recordId=cleanText(url.searchParams.get("recordId"),160);
-  if(!officeId||!recordId)throw appError("timeline_data_missing",400,"Ø¨ÙŠØ§Ù†Ø§Øª Ø³Ø¬Ù„ Ø§Ù„Ù†Ø´Ø§Ø· ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©");
-  await authorizeOfficeRequest(request,env,officeId,"member");
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
-  const docs=await listCollectionDocuments({projectId,segments:["offices",officeId,workflowCollection(recordType),recordId,"timeline"],accessToken,pageSize:100});
-  const events=docs.map(doc=>{
-    const value=firestoreFieldsToJs(doc.fields||{});
-    return {id:decodeURIComponent(String(doc.name||"").split("/").pop()||""),eventType:value.eventType||"",stage:value.stage||"",note:value.note||"",createdAt:value.createdAt||""};
-  }).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,20);
-  return jsonResponse({ok:true,recordType,recordId,events,requestId});
-}
-
-async function runFirestoreQuery({projectId,accessToken,structuredQuery}){
-  const response=await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:runQuery`,{
-    method:"POST",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},body:JSON.stringify({structuredQuery})
-  });
-  if(!response.ok){
-    const detail=await response.text();
-    console.warn("[iaqar-followups] Firestore query failed",response.status,detail);
-    throw appError("firestore_query_failed",502,"ØªØ¹Ø°Ø± ÙØ­Øµ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø§Øª Ø§Ù„Ù…Ø³ØªØ­Ù‚Ø©");
-  }
-  const payload=await response.json();
-  return (Array.isArray(payload)?payload:[]).map(row=>row.document).filter(Boolean);
-}
-
-async function queryDueWorkflowRecords({projectId,accessToken,collectionId,now}){
-  return runFirestoreQuery({projectId,accessToken,structuredQuery:{
-    from:[{collectionId,allDescendants:true}],
-    where:{fieldFilter:{field:{fieldPath:"nextFollowUpAt"},op:"LESS_THAN_OR_EQUAL",value:{timestampValue:now.toISOString()}}},
-    orderBy:[{field:{fieldPath:"nextFollowUpAt"},direction:"ASCENDING"}],
-    limit:200
-  }});
-}
-
-async function queryDueOpportunityFollowupReminders({ projectId, accessToken, now }) {
-  return runFirestoreQuery({
-    projectId,
-    accessToken,
-    structuredQuery: {
-      from: [{ collectionId: "opportunities", allDescendants: true }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath: "followUpReminderAt" },
-          op: "LESS_THAN_OR_EQUAL",
-          value: { timestampValue: now.toISOString() }
-        }
-      },
-      orderBy: [{ field: { fieldPath: "followUpReminderAt" }, direction: "ASCENDING" }],
-      limit: 200
-    }
-  });
-}
-
-async function processOpportunityFollowupReminders(env, scheduledTime = Date.now()) {
-  if (!hasFirebaseSecrets(env)) {
-    console.warn("[iaqar-followups] Firebase server secrets are not configured");
-    return { ok: false, reason: "firebase_not_configured" };
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const now = new Date(Number(scheduledTime) || Date.now());
-  const docs = await queryDueOpportunityFollowupReminders({ projectId, accessToken, now });
-  let checked = 0;
-  let notified = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (const document of docs) {
-    checked += 1;
-    const value = firestoreFieldsToJs(document.fields || {});
-    const officeId = firestoreOfficeId(value.officeId);
-    const opportunityId = decodeURIComponent(String(document.name || "").split("/").pop() || "");
-    if (!officeId || !opportunityId) continue;
-
-    const followUp = value.followUp && typeof value.followUp === "object" ? value.followUp : null;
-    const dueReminder = followUp ? getDueFollowUpReminder(followUp, now) : null;
-    if (!followUp || !dueReminder) {
-      skipped += 1;
-      continue;
-    }
-
-    const dedupKey = followUpReminderDedupKey(opportunityId, followUp.at, dueReminder.kind);
-    const existingAlert = await getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "alerts", dedupKey],
-      accessToken,
-      allowMissing: true
-    });
-    if (existingAlert) {
-      skipped += 1;
-      continue;
-    }
-
-    const title = followUpReminderTitle(dueReminder.kind);
-    const body = formatFollowUpReminderBody(value, followUp);
-    const pushSummary = await sendOfficePush({
-      projectId,
-      officeId,
-      title,
-      body,
-      type: "opportunity_followup_reminder",
-      recordId: opportunityId,
-      accessToken,
-      env,
-      followUpAt: followUp.at,
-      recipientMode: followUp.recipientMode || ""
-    });
-
-    const dispatchAccepted = Number(pushSummary.sent || 0) > 0;
-    const activityAction = dispatchAccepted ? "followup_reminder_dispatched" : "followup_reminder_failed";
-    await addOpportunityCommunication({
-      projectId,
-      officeId,
-      opportunityId,
-      accessToken,
-      now,
-      payload: {
-        type: "followup",
-        action: activityAction,
-        result: dispatchAccepted ? "sent" : pushSummary.reason || "failed",
-        statusBefore: value.lifecycleStatus || "",
-        statusAfter: value.lifecycleStatus || "",
-        createdBy: "system"
-      }
-    });
-
-    if (dispatchAccepted) {
-      const updatedFollowUp = advanceFollowUpAfterReminder({
-        ...followUp,
-        updatedBy: "system"
-      }, dueReminder.kind, now);
-      await setFirestoreDocument({
-        projectId,
-        segments: ["offices", officeId, "opportunities", opportunityId],
-        accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          ...followUpFirestoreFields(updatedFollowUp),
-          updatedAt: firestoreTimestamp(now)
-        })
-      });
-      await setFirestoreDocument({
-        projectId,
-        segments: ["offices", officeId, "alerts", dedupKey],
-        accessToken,
-        fields: compactFields({
-          officeId: firestoreString(officeId),
-          type: firestoreString("opportunity_followup_reminder"),
-          recordType: firestoreString("opportunity"),
-          recordId: firestoreString(opportunityId),
-          status: firestoreString("sent"),
-          title: firestoreString(title),
-          body: firestoreString(body),
-          followUpAt: firestoreTimestamp(new Date(followUp.at)),
-          createdAt: firestoreTimestamp(now),
-          updatedAt: firestoreTimestamp(now)
-        })
-      });
-      notified += 1;
-    } else {
-      failed += 1;
-    }
-  }
-
-  console.info("[iaqar-opp-followups] completed", { checked, notified, skipped, failed });
-  return { ok: true, checked, notified, skipped, failed };
-}
-
-async function processOverdueFollowups(env,scheduledTime=Date.now()){
-  if(!hasFirebaseSecrets(env)){
-    console.warn("[iaqar-followups] Firebase server secrets are not configured");
-    return {ok:false,reason:"firebase_not_configured"};
-  }
-  const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID;
-  const accessToken=await getGoogleAccessToken(env);
-  const now=new Date(Number(scheduledTime)||Date.now());
-  const [matchDocs,dealDocs]=await Promise.all([
-    queryDueWorkflowRecords({projectId,accessToken,collectionId:"matches",now}),
-    queryDueWorkflowRecords({projectId,accessToken,collectionId:"deals",now})
-  ]);
-  const records=[...matchDocs.map(document=>({recordType:"match",document})),...dealDocs.map(document=>({recordType:"deal",document}))];
-  let notified=0;
-  for(const entry of records){
-    const value=firestoreFieldsToJs(entry.document.fields||{});
-    const status=cleanText(value.status,40);
-    if(entry.recordType==="match"&&["completed","closed"].includes(normalizeMatchStatus(status))) continue;
-    if(entry.recordType==="deal"&&["closed","lost"].includes(status)) continue;
-    const lastNotified=value.followUpNotifiedAt?new Date(value.followUpNotifiedAt).getTime():0;
-    if(Number.isFinite(lastNotified)&&now.getTime()-lastNotified<12*3600000) continue;
-    const officeId=firestoreOfficeId(value.officeId);
-    const recordId=decodeURIComponent(String(entry.document.name||"").split("/").pop()||"");
-    if(!officeId||!recordId) continue;
-    const collection=workflowCollection(entry.recordType);
-    const title=entry.recordType==="match"?"Ù…ØªØ§Ø¨Ø¹Ø© Ù…Ø·Ø§Ø¨Ù‚Ø© Ù…Ø³ØªØ­Ù‚Ø©":"Ù…ØªØ§Ø¨Ø¹Ø© ØµÙÙ‚Ø© Ù…Ø³ØªØ­Ù‚Ø©";
-    const stageText=entry.recordType==="match"?(value.statusLabel||MATCH_STATUS_LABELS[normalizeMatchStatus(status)]):(value.stageLabel||DEAL_STAGE_LABELS[value.workflowStage]||"Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©");
-    const actionText=value.nextAction||(entry.recordType==="match"?MATCH_NEXT_ACTION_LABELS[normalizeMatchStatus(status)]:DEAL_NEXT_ACTION_LABELS[value.workflowStage])||"Ø§ØªØ®Ø§Ø° Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ø§Ù„ØªØ§Ù„ÙŠ";
-    const body=[value.propertyType,value.district,stageText,actionText].filter(Boolean).join(" â€” ");
-    const bucket=now.toISOString().slice(0,13).replace(/[-T]/g,"");
-    const alertId=`follow_${entry.recordType}_${recordId}_${bucket}`;
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"alerts",alertId],accessToken,fields:{
-      officeId:firestoreString(officeId),type:firestoreString("follow_up"),recordType:firestoreString(entry.recordType),recordId:firestoreString(recordId),
-      status:firestoreString("unread"),title:firestoreString(title),body:firestoreString(body||"Ù„Ø¯ÙŠÙƒ Ù…ØªØ§Ø¨Ø¹Ø© Ù…Ø³ØªØ­Ù‚Ø© Ø§Ù„Ø¢Ù†"),
-      createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-    }});
-    await setFirestoreDocument({projectId,segments:["offices",officeId,collection,recordId],accessToken,fields:{
-      attentionRequired:firestoreBoolean(true),followUpNotifiedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-    }});
-    await sendOfficePush({projectId,officeId,title,body:body||"Ù„Ø¯ÙŠÙƒ Ù…ØªØ§Ø¨Ø¹Ø© Ù…Ø³ØªØ­Ù‚Ø© Ø§Ù„Ø¢Ù†",type:entry.recordType,recordId,accessToken,env});
-    notified+=1;
-  }
-  console.info("[iaqar-followups] completed",{checked:records.length,notified});
-  return {ok:true,checked:records.length,notified};
-}
-
-function parseJsonArray(value){
-  try { const parsed=JSON.parse(String(value||"[]")); return Array.isArray(parsed)?parsed:[]; } catch (_) { return []; }
-}
-
-async function handleOfficeAnalytics(request,url,env,requestId){
-  assertFirebaseSecrets(env); const officeId=firestoreOfficeId(url.searchParams.get("officeId")); if(!officeId)throw appError("office_id_required",400,"officeId Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request,env,officeId,"member"); const projectId=env.FIREBASE_PROJECT_ID||DEFAULT_PROJECT_ID,accessToken=await getGoogleAccessToken(env);
-  const [clients,owners,matches,deals]=await Promise.all([
-    listCollectionDocuments({projectId,segments:["offices",officeId,"clients"],accessToken,pageSize:200}),
-    listCollectionDocuments({projectId,segments:["offices",officeId,"owners"],accessToken,pageSize:200}),
-    listCollectionDocuments({projectId,segments:["offices",officeId,"matches"],accessToken,pageSize:200}),
-    listCollectionDocuments({projectId,segments:["offices",officeId,"deals"],accessToken,pageSize:200})
-  ]);
-  const cs=clients.map(d=>firestoreFieldsToJs(d.fields||{})), os=owners.map(d=>firestoreFieldsToJs(d.fields||{})), ms=matches.map(d=>firestoreFieldsToJs(d.fields||{})), ds=deals.map(d=>firestoreFieldsToJs(d.fields||{}));
-  return jsonResponse({ok:true,officeId,...buildAnalyticsSummary({clients:cs,owners:os,matches:ms,deals:ds}),requestId});
-}
-
-
-function pilotAccessDeps(projectId, accessToken) {
-  return {
-    projectId,
-    accessToken,
-    getFirestoreDocument,
-    listCollectionDocuments,
-    firestoreFieldsToJs
-  };
-}
-
-async function ensurePilotFeatureEnabled(env, featureKey) {
-  assertFirebaseSecrets(env);
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  try {
-    return await assertPilotFeatureEnabled(pilotAccessDeps(projectId, accessToken), featureKey);
-  } catch (error) {
-    throw appError(
-      error.code || "pilot_feature_disabled",
-      error.status || 503,
-      error.message || "Ø§Ù„Ù…ÙŠØ²Ø© Ù…ØªÙˆÙ‚ÙØ© Ù…Ø¤Ù‚ØªÙ‹Ø§ ÙÙŠ Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„ØªØ¬Ø±ÙŠØ¨ÙŠØ©."
-    );
-  }
-}
-
-async function authorizeOfficeRequest(request, env, officeId, permission = "manage") {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const trialOffice = firestoreOfficeId(env.META_TRIAL_OFFICE_ID);
-  if (!token && officeId === trialOffice && String(env.ALLOW_TRIAL_NO_AUTH || "").toLowerCase() === "true") {
-    return { uid: "trial-admin", trial: true, permission };
-  }
-  if (!token) throw appError("authentication_required", 401, "Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ù…ÙƒØªØ¨ Ø£ÙˆÙ„Ø§Ù‹");
-  const claims = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID);
-  const isPlatformAdmin = claims.platformAdmin === true || claims.admin === true;
-  if (isPlatformAdmin) {
-    return { uid: claims.sub, claims, role: "platformAdmin", permission };
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  try {
-    await assertPilotOfficeAccess(pilotAccessDeps(projectId, accessToken), { officeId, isPlatformAdmin: false });
-  } catch (error) {
-    throw appError(error.code || "pilot_access_denied", error.status || 403, error.message);
-  }
-  const officeDoc = await getFirestoreDocument({ projectId, segments:["offices",officeId], accessToken, allowMissing:true });
-  if (!officeDoc) throw appError("office_not_found",404,"Ø§Ù„Ù…ÙƒØªØ¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯");
-  const office = firestoreFieldsToJs(officeDoc.fields || {});
-  const isOwner = office.ownerUid === claims.sub;
-  const memberDoc = await getFirestoreDocument({ projectId, segments:["offices",officeId,"members",claims.sub], accessToken, allowMissing:true });
-  const member = memberDoc ? firestoreFieldsToJs(memberDoc.fields || {}) : {};
-  const isActiveMember = Boolean(memberDoc) && member.active !== false;
-  const role = String(member.role || "");
-  const isManager = isOwner || (isActiveMember && ["owner","admin","manager"].includes(role));
-  const canUseOffice = isOwner || isActiveMember;
-  const canManageIntegration = isManager || (isActiveMember && member.canManageIntegrations === true);
-  const allowed = permission === "member" ? canUseOffice : permission === "integration" ? canManageIntegration : isManager;
-  if (!allowed) {
-    const message = permission === "member" ? "Ø­Ø³Ø§Ø¨Ùƒ ØºÙŠØ± Ù…Ø±ØªØ¨Ø· Ø¨Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨" : "Ù„ÙŠØ³ Ù„Ø¯ÙŠÙƒ Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø© ÙÙŠ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒØªØ¨";
-    throw appError("office_forbidden",403,message);
-  }
-  return { uid: claims.sub, claims, role: isOwner ? "owner" : role, permission };
-}
-
-let googleJwksCache = { expiresAt:0, keys:[] };
-async function verifyFirebaseIdToken(token, projectId) {
-  const parts=String(token||"").split(".");
-  if(parts.length!==3) throw appError("invalid_auth_token",401,"Ø¬Ù„Ø³Ø© Ø§Ù„Ø¯Ø®ÙˆÙ„ ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  const header=JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
-  const claims=JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
-  const now=Math.floor(Date.now()/1000);
-  if(claims.aud!==projectId || claims.iss!==`https://securetoken.google.com/${projectId}` || !claims.sub || claims.exp<=now) throw appError("invalid_auth_token",401,"Ø¬Ù„Ø³Ø© Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù…Ù†ØªÙ‡ÙŠØ© Ø£Ùˆ ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  if(googleJwksCache.expiresAt<now){
-    const r=await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
-    if(!r.ok) throw appError("auth_verification_failed",502,"ØªØ¹Ø°Ø± Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø¬Ù„Ø³Ø© Ø§Ù„Ù…ÙƒØªØ¨");
-    googleJwksCache={expiresAt:now+3600,keys:(await r.json()).keys||[]};
-  }
-  const jwk=googleJwksCache.keys.find(k=>k.kid===header.kid);
-  if(!jwk) throw appError("invalid_auth_token",401,"ØªØ¹Ø°Ø± Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø¬Ù„Ø³Ø© Ø§Ù„Ù…ÙƒØªØ¨");
-  const key=await crypto.subtle.importKey("jwk",jwk,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
-  const ok=await crypto.subtle.verify("RSASSA-PKCS1-v1_5",key,base64UrlDecode(parts[2]),new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
-  if(!ok) throw appError("invalid_auth_token",401,"ØªÙˆÙ‚ÙŠØ¹ Ø¬Ù„Ø³Ø© Ø§Ù„Ù…ÙƒØªØ¨ ØºÙŠØ± ØµØ­ÙŠØ­");
-  return claims;
-}
-function base64UrlDecode(value){ const s=value.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((value.length+3)%4); const b=atob(s); return Uint8Array.from(b,c=>c.charCodeAt(0)); }
-
-async function incrementUsage({ projectId, officeId, accessToken }) {
-  const dayId = utcDayId(new Date());
-  const document = `projects/${projectId}/databases/(default)/documents/offices/${officeId}/usage/whatsapp_${dayId}`;
-  const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      writes: [{
-        transform: {
-          document,
-          fieldTransforms: [
-            { fieldPath: "inboundMessages", increment: { integerValue: "1" } },
-            { fieldPath: "estimatedWrites", increment: { integerValue: String(ESTIMATED_WRITES_PER_MESSAGE) } },
-            { fieldPath: "updatedAt", setToServerValue: "REQUEST_TIME" }
-          ]
-        }
-      }]
-    })
-  });
-  if (!response.ok) console.warn("[iaqar-whatsapp] usage counter failed", response.status);
-}
-
-async function getFirestoreDocument({ projectId, segments, accessToken, allowMissing = false }) {
-  const url = firestoreDocumentUrl(projectId, segments);
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const response = await fetch(url, { headers });
-  if (response.status === 404 && allowMissing) return null;
-  if (response.ok) return response.json();
-  // Staging Spark GetDocument quota can exhaust while writes still succeed.
-  // A masked no-op PATCH returns the current document without creating missing ones.
-  if (response.status === 429) {
-    const echoed = await echoFirestoreDocument({ url, headers, allowMissing });
-    if (echoed !== undefined) return echoed;
-  }
-  throw appError("firestore_read_failed", 502, "ØªØ¹Ø°Ø± Ù‚Ø±Ø§Ø¡Ø© Ø­Ø§Ù„Ø© Ø§Ù„Ø±Ø¨Ø·");
-}
-
-async function echoFirestoreDocument({ url, headers, allowMissing }) {
-  const echoUrl = new URL(url);
-  echoUrl.searchParams.set("currentDocument.exists", "true");
-  echoUrl.searchParams.append("updateMask.fieldPaths", "iaqarReadEcho");
-  const echo = await fetch(echoUrl.toString(), {
-    method: "PATCH",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: { iaqarReadEcho: { integerValue: "1" } } })
-  });
-  if (echo.ok) return echo.json();
-  const detail = await echo.text().catch(() => "");
-  const missing = echo.status === 404
-    || echo.status === 400
-    || echo.status === 409
-    || /NOT_FOUND|FAILED_PRECONDITION/.test(detail);
-  if (allowMissing && missing) return null;
-  return undefined;
-}
-
-async function setFirestoreDocument({ projectId, segments, accessToken, fields }) {
-  const compacted = compactFields(fields);
-  const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
-  for (const fieldPath of Object.keys(compacted)) {
-    endpoint.searchParams.append("updateMask.fieldPaths", fieldPath);
-  }
-  const response = await fetch(endpoint.toString(), {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: compacted })
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("[iaqar-whatsapp] Firestore set failed", response.status, detail);
-    throw appError("firestore_write_failed", 502, "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø±Ø¨Ø· ÙˆØ§ØªØ³Ø§Ø¨");
-  }
-  return response.json();
-}
-
-async function patchFirestoreDocument({ projectId, segments, accessToken, fields, updateTime = "" }) {
-  const compacted = compactFields(fields);
-  const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
-  for (const fieldPath of Object.keys(compacted)) {
-    endpoint.searchParams.append("updateMask.fieldPaths", fieldPath);
-  }
-  if (updateTime) endpoint.searchParams.set("currentDocument.updateTime", updateTime);
-  const response = await fetch(endpoint.toString(), {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields: compacted })
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    if (response.status === 400 || response.status === 409) {
-      throw appError("firestore_precondition_failed", 409, detail || "ØªØ¹Ø°Ø± ØªØ«Ø¨ÙŠØª Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù…");
-    }
-    console.error("[iaqar-whatsapp] Firestore patch failed", response.status, detail);
-    throw appError("firestore_write_failed", 502, "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ø­Ø§Ù„Ø©");
-  }
-  return response.json();
-}
-
-function partySessionHelpers() {
-  return {
-    authorizeOfficeRequest,
-    assertFirebaseSecrets,
-    getGoogleAccessToken,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    listCollectionDocuments,
-    firestoreFieldsToJs,
-    firestoreString,
-    firestoreTimestamp,
-    firestoreBoolean,
-    firestoreInteger,
-    jsToFirestoreValue,
-    firestoreOfficeId,
-    officeAuthorizationKey,
-    officeIdsEquivalent,
-    cleanText,
-    appError,
-    jsonResponse,
-    DEFAULT_PROJECT_ID,
-    sha256Hex,
-    consumePublicRateLimit,
-    publicRateLimitKey,
-    PUBLIC_RATE_LIMITS
-  };
-}
-
-function getAdminHelpers() {
-  return createAdminHelpers({
-    assertFirebaseSecrets,
-    requirePlatformIdentity,
-    getGoogleAccessToken,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    firestoreFieldsToJs,
-    firestoreString,
-    firestoreTimestamp,
-    firestoreDocumentUrl,
-    cleanText,
-    firestoreOfficeId,
-    officeAuthorizationKey,
-    officeIdsEquivalent,
-    appError,
-    jsonResponse,
-    DEFAULT_PROJECT_ID
-  });
-}
-
-function firestoreDocumentUrl(projectId, segments) {
-  const path = segments.map(segment => encodeURIComponent(String(segment))).join("/");
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${path}`;
-}
-
-function firestoreValueToJs(value) {
-  if (!value || typeof value !== "object") return null;
-  if ("stringValue" in value) return value.stringValue;
-  if ("integerValue" in value) return Number(value.integerValue);
-  if ("doubleValue" in value) return Number(value.doubleValue);
-  if ("booleanValue" in value) return Boolean(value.booleanValue);
-  if ("timestampValue" in value) return value.timestampValue;
-  if ("nullValue" in value) return null;
-  if ("arrayValue" in value) {
-    const values = Array.isArray(value.arrayValue?.values) ? value.arrayValue.values : [];
-    return values.map((item) => firestoreValueToJs(item));
-  }
-  if ("mapValue" in value) {
-    return firestoreFieldsToJs(value.mapValue?.fields || {});
-  }
-  return null;
-}
-
-function firestoreFieldsToJs(fields) {
-  const output = {};
-  for (const [key, value] of Object.entries(fields || {})) {
-    output[key] = firestoreValueToJs(value);
-  }
-  return output;
-}
-
-async function deleteFirestoreDocument({ projectId, segments, accessToken }) {
-  const response = await fetch(firestoreDocumentUrl(projectId, segments), {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  if (response.status === 404) return false;
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw appError("firestore_delete_failed", 502, detail || "ØªØ¹Ø°Ø± Ø­Ø°Ù Ø§Ù„Ù…Ø³ØªÙ†Ø¯");
-  }
-  return true;
-}
-
-
-function extractMessageText(message) {
-  if (!message || typeof message !== "object") return "";
-  if (message.text && message.text.body) return cleanText(message.text.body, 12000);
-  if (message.image && message.image.caption) return cleanText(message.image.caption, 12000);
-  if (message.video && message.video.caption) return cleanText(message.video.caption, 12000);
-  if (message.document && message.document.caption) return cleanText(message.document.caption, 12000);
-  if (message.button && message.button.text) return cleanText(message.button.text, 12000);
-  if (message.interactive && message.interactive.button_reply) return cleanText(message.interactive.button_reply.title, 12000);
-  if (message.interactive && message.interactive.list_reply) return cleanText(message.interactive.list_reply.title, 12000);
-  if (message.location) return `Ù…ÙˆÙ‚Ø¹: ${message.location.latitude}, ${message.location.longitude}`;
-  return `[Ø±Ø³Ø§Ù„Ø© ${cleanText(message.type, 50) || "ØºÙŠØ± Ù†ØµÙŠØ©"}]`;
-}
-
-function parseWhatsAppTimestamp(value) {
-  const seconds = Number(value || 0);
-  const date = seconds > 0 ? new Date(seconds * 1000) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-}
-
-async function verifyHmacSignature(rawBody, suppliedSignature, secret) {
-  if (!suppliedSignature.startsWith("sha256=")) return false;
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const expected = `sha256=${bytesToHex(new Uint8Array(signature))}`;
-  return constantTimeEqual(expected, suppliedSignature);
-}
-
-function firebaseServiceAccount(env = {}) {
-  return {
-    clientEmail: String(env.FIREBASE_CLIENT_EMAIL || "").replace(/\u0000/g, "").trim(),
-    privateKey: String(env.FIREBASE_PRIVATE_KEY || "").replace(/\u0000/g, "").trim(),
-    privateKeyId: String(env.FIREBASE_PRIVATE_KEY_ID || "").replace(/\u0000/g, "").trim()
-  };
-}
-
-function hasFirebaseSecrets(env) {
-  const { clientEmail, privateKey } = firebaseServiceAccount(env);
-  return Boolean(clientEmail && privateKey);
-}
-
-function assertFirebaseSecrets(env) {
-  if (!hasFirebaseSecrets(env)) throw appError("firebase_not_configured", 500, "Ø¥Ø¹Ø¯Ø§Ø¯ Firebase ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-}
-
-function assertMetaWebhookSecrets(env) {
-  if (!env.META_APP_SECRET || !env.META_WEBHOOK_VERIFY_TOKEN) {
-    throw appError("meta_not_configured", 503, "Ø¥Ø¹Ø¯Ø§Ø¯ Webhook Ø§Ù„Ø®Ø§Øµ Ø¨Ù€Meta ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-  }
-}
-
-async function getGoogleAccessToken(env) {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  if (cachedGoogleToken && cachedGoogleToken.expiresAt > nowSeconds + 90) return cachedGoogleToken.accessToken;
-
-  const { clientEmail, privateKey, privateKeyId } = firebaseServiceAccount(env);
-  const assertion = await createServiceAccountJwt({
-    clientEmail,
-    privateKey,
-    privateKeyId,
-    nowSeconds
-  });
-  const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion })
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    let googleError = {};
-    try { googleError = JSON.parse(responseText); } catch (_) { googleError = {}; }
-    console.error("[iaqar-firebase] Google token request rejected", {
-      status: response.status,
-      error: cleanText(googleError.error, 80),
-      description: cleanText(googleError.error_description, 240)
-    });
-    throw appError("google_auth_failed", 502, "ØªØ¹Ø°Ø± Ù…ØµØ§Ø¯Ù‚Ø© Ø§Ù„Ø®Ø§Ø¯Ù… Ù…Ø¹ Firebase");
-  }
-  const token = JSON.parse(responseText);
-  cachedGoogleToken = { accessToken: token.access_token, expiresAt: nowSeconds + Number(token.expires_in || 3600) };
-  return cachedGoogleToken.accessToken;
-}
-
-async function createServiceAccountJwt({ clientEmail, privateKey, privateKeyId, nowSeconds }) {
-  clientEmail = String(clientEmail || "").replace(/\u0000/g, "").trim();
-  privateKey = String(privateKey || "").replace(/\u0000/g, "").trim();
-  privateKeyId = String(privateKeyId || "").replace(/\u0000/g, "").trim();
-  if (!clientEmail || !privateKey) throw appError("firebase_not_configured", 500, "Ø¥Ø¹Ø¯Ø§Ø¯ Firebase ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-  const header = privateKeyId
-    ? { alg: "RS256", typ: "JWT", kid: privateKeyId }
-    : { alg: "RS256", typ: "JWT" };
-  const claims = { iss: clientEmail, scope: GOOGLE_SCOPE, aud: GOOGLE_TOKEN_URL, iat: nowSeconds, exp: nowSeconds + 3600 };
-  const unsigned = `${base64UrlJson(header)}.${base64UrlJson(claims)}`;
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToArrayBuffer(privateKey),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
-  return `${unsigned}.${base64UrlBytes(new Uint8Array(signature))}`;
-}
-
-async function createFirebaseCustomToken({ clientEmail, privateKey, privateKeyId, uid, officeId }) {
-  clientEmail = String(clientEmail || "").replace(/\u0000/g, "").trim();
-  privateKey = String(privateKey || "").replace(/\u0000/g, "").trim();
-  privateKeyId = String(privateKeyId || "").replace(/\u0000/g, "").trim();
-  if (!clientEmail || !privateKey) throw appError("firebase_not_configured", 500, "Ø¥Ø¹Ø¯Ø§Ø¯ Firebase ÙÙŠ Ø§Ù„Ø®Ø§Ø¯Ù… ØºÙŠØ± Ù…ÙƒØªÙ…Ù„");
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const header = privateKeyId
-    ? { alg: "RS256", typ: "JWT", kid: privateKeyId }
-    : { alg: "RS256", typ: "JWT" };
-  const claims = {
-    iss: clientEmail,
-    sub: clientEmail,
-    aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
-    iat: nowSeconds,
-    exp: nowSeconds + 3600,
-    uid: cleanText(uid, 128),
-    claims: { officeId: firestoreOfficeId(officeId), officeMember: true }
-  };
-  const unsigned = `${base64UrlJson(header)}.${base64UrlJson(claims)}`;
-  const key = await crypto.subtle.importKey(
-    "pkcs8", pemToArrayBuffer(privateKey),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
-  );
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
-  return `${unsigned}.${base64UrlBytes(new Uint8Array(signature))}`;
-}
-
-function pemToArrayBuffer(pem) {
-  const base64 = String(pem || "").replace(/\\n/g, "\n")
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s+/g, "");
-  if (!base64) throw appError("configuration_error", 500, "Ù…ÙØªØ§Ø­ Firebase ØºÙŠØ± ØµØ§Ù„Ø­");
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-async function sha256Hex(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
-  return bytesToHex(new Uint8Array(digest));
-}
-
-function base64UrlJson(value) { return base64UrlBytes(new TextEncoder().encode(JSON.stringify(value))); }
-function base64UrlBytes(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function bytesToHex(bytes) { return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""); }
-
-function normalizeLoginPhone(value) {
-  let digits = String(value || "").replace(/\D/g, "");
-  if (digits.startsWith("00966")) digits = digits.slice(2);
-  if (digits.startsWith("966")) digits = digits.slice(3);
-  if (digits.startsWith("0")) digits = digits.slice(1);
-  return /^5\d{8}$/.test(digits) ? `+966${digits}` : "";
-}
-function legacyLocalLoginPhone(value) {
-  const phone = normalizeLoginPhone(value);
-  return phone ? `0${phone.slice(4)}` : "";
-}
-async function resolveLoginDirectory({ projectId, phone, accessToken }) {
-  const canonicalHash = await sha256Hex(phone);
-  const canonicalDoc = await getFirestoreDocument({
-    projectId, segments: ["loginDirectory", canonicalHash], accessToken, allowMissing: true
-  });
-  if (canonicalDoc) return { directoryDoc: canonicalDoc, phoneHash: canonicalHash, migratedLegacy: false };
-
-  const legacyPhone = legacyLocalLoginPhone(phone);
-  const legacyHash = legacyPhone ? await sha256Hex(legacyPhone) : "";
-  if (!legacyHash || legacyHash === canonicalHash) {
-    return { directoryDoc: null, phoneHash: canonicalHash, migratedLegacy: false };
-  }
-  const legacyDoc = await getFirestoreDocument({
-    projectId, segments: ["loginDirectory", legacyHash], accessToken, allowMissing: true
-  });
-  if (!legacyDoc) return { directoryDoc: null, phoneHash: canonicalHash, migratedLegacy: false };
-
-  const legacyDirectory = firestoreFieldsToJs(legacyDoc.fields || {});
-  if (legacyDirectory.uid && legacyDirectory.officeId && legacyDirectory.email) {
-    try {
-      await setFirestoreDocument({
-        projectId, segments: ["loginDirectory", canonicalHash], accessToken,
-        fields: {
-          uid: firestoreString(legacyDirectory.uid),
-          officeId: firestoreString(legacyDirectory.officeId),
-          email: firestoreString(String(legacyDirectory.email).toLowerCase()),
-          phone: firestoreString(phone),
-          active: firestoreBoolean(legacyDirectory.active === true),
-          migratedFromLegacy: firestoreBoolean(true),
-          updatedAt: firestoreTimestamp(new Date())
-        }
-      });
-    } catch (error) {
-      console.warn("[iaqar] legacy phone directory migration deferred", error && error.message);
-    }
-  }
-  return { directoryDoc: legacyDoc, phoneHash: canonicalHash, migratedLegacy: true };
-}
-function maskEmail(value) {
-  const email = String(value || "");
-  const at = email.indexOf("@");
-  if (at < 1) return "Ø§Ù„Ø¨Ø±ÙŠØ¯ Ø§Ù„Ù…Ø³Ø¬Ù„";
-  const name = email.slice(0, at);
-  const visible = name.slice(0, Math.min(2, name.length));
-  return `${visible}${"*".repeat(Math.max(3, name.length - visible.length))}${email.slice(at)}`;
-}
-function cleanText(value, maxLength) { return String(value == null ? "" : value).replace(/\u0000/g, "").trim().slice(0, maxLength); }
-
-const LISTING_FETCH_MAX_BYTES = 2 * 1024 * 1024;
-const LISTING_FETCH_TIMEOUT_MS = 15000;
-const LISTING_FETCH_MAX_REDIRECTS = 4;
-
-function isPrivateOrLocalHost(hostname) {
-  const host = String(hostname || "").trim().toLowerCase();
-  if (!host) return true;
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
-  if (host === "0.0.0.0") return true;
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!ipv4) return false;
-  const parts = ipv4.slice(1).map((n) => Number(n));
-  if (parts.some((n) => n > 255)) return true;
-  if (parts[0] === 10) return true;
-  if (parts[0] === 127) return true;
-  if (parts[0] === 169 && parts[1] === 254) return true;
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  return false;
-}
-
-function normalizeListingFetchUrl(raw) {
-  const text = cleanText(raw, 2000);
-  if (!text) return "";
-  if (/^file:/i.test(text)) return "";
-  try {
-    const withProtocol = /^https?:\/\//i.test(text) ? text : `https://${text}`;
-    const parsed = new URL(withProtocol);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
-    if (isPrivateOrLocalHost(parsed.hostname)) return "";
-    parsed.hash = "";
-    return parsed.toString();
-  } catch {
-    return "";
-  }
-}
-
-function decodeHtmlEntities(value) {
-  return String(value || "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)));
-}
-
-const LISTING_JSON_LD_TYPES = new Set([
-  "product",
-  "offer",
-  "residence",
-  "realestatelisting",
-  "house",
-  "apartment",
-  "singlefamilyresidence",
-  "accommodation"
-]);
-
-function collectJsonLdNodes(parsed) {
-  if (!parsed || typeof parsed !== "object") return [];
-  if (Array.isArray(parsed)) return parsed.flatMap((item) => collectJsonLdNodes(item));
-  if (Array.isArray(parsed["@graph"])) return parsed["@graph"].flatMap((item) => collectJsonLdNodes(item));
-  return [parsed];
-}
-
-function jsonLdNodeTypes(node = {}) {
-  const raw = node["@type"];
-  if (Array.isArray(raw)) return raw.map((value) => String(value || "").toLowerCase());
-  return [String(raw || "").toLowerCase()];
-}
-
-function isListingJsonLdNode(node = {}) {
-  const types = jsonLdNodeTypes(node);
-  return types.some((type) => LISTING_JSON_LD_TYPES.has(type.replace(/\s+/g, "")));
-}
-
-function extractJsonLdAddressChunks(address) {
-  const chunks = [];
-  if (!address) return chunks;
-  if (typeof address === "string") {
-    const value = cleanText(address, 12000);
-    if (value) chunks.push(value);
-    return chunks;
-  }
-  if (Array.isArray(address)) {
-    for (const item of address) chunks.push(...extractJsonLdAddressChunks(item));
-    return chunks;
-  }
-  if (typeof address === "object") {
-    for (const key of ["streetAddress", "addressLocality", "addressRegion", "postalCode"]) {
-      const value = cleanText(address[key], 12000);
-      if (value) chunks.push(value);
-    }
-  }
-  return chunks;
-}
-
-function extractJsonLdListingText(html) {
-  const chunks = [];
-  const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let match;
-  while ((match = re.exec(html))) {
-    const raw = match[1].trim();
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw);
-      const nodes = collectJsonLdNodes(parsed);
-      for (const node of nodes) {
-        if (!node || typeof node !== "object") continue;
-        const listingNode = isListingJsonLdNode(node);
-        const keys = listingNode
-          ? ["description", "name", "headline", "articleBody", "numberOfRooms", "floorSize"]
-          : ["description", "name", "headline"];
-        for (const key of keys) {
-          const value = cleanText(node[key], 12000);
-          if (value) chunks.push(value);
-        }
-        chunks.push(...extractJsonLdAddressChunks(node.address));
-        const offers = node.offers;
-        if (offers) {
-          const offerList = Array.isArray(offers) ? offers : [offers];
-          for (const offer of offerList) {
-            if (!offer || typeof offer !== "object") continue;
-            const price = offer.price ?? offer.lowPrice ?? offer.highPrice;
-            if (price != null && String(price).trim()) chunks.push(String(price));
-            const offerDesc = cleanText(offer.description || offer.name, 12000);
-            if (offerDesc) chunks.push(offerDesc);
-          }
-        }
-      }
-    } catch {
-      /* ignore malformed JSON-LD */
-    }
-  }
-  return chunks.join("\n").trim();
-}
-
-function resolveListingSourceSite(url = "") {
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-    const labels = {
-      "haraj.com.sa": "Ø­Ø±Ø§Ø¬",
-      "sa.aqar.fm": "Ø¹Ù‚Ø§Ø±",
-      "aqar.fm": "Ø¹Ù‚Ø§Ø±",
-      "bayut.sa": "Ø¨ÙŠÙˆØª",
-      "propertyfinder.sa": "Ø¨Ø±ÙˆØ¨Ø±ØªÙŠ ÙØ§ÙŠÙ†Ø¯Ø±"
-    };
-    if (labels[host]) return labels[host];
-    if (host.includes("haraj")) return "Ø­Ø±Ø§Ø¬";
-    if (host.includes("aqar")) return "Ø¹Ù‚Ø§Ø±";
-    if (host.includes("bayut")) return "Ø¨ÙŠÙˆØª";
-    if (host.includes("propertyfinder")) return "Ø¨Ø±ÙˆØ¨Ø±ØªÙŠ ÙØ§ÙŠÙ†Ø¯Ø±";
-    return "Ø§Ù„Ù…ÙˆÙ‚Ø¹";
-  } catch {
-    return "Ø§Ù„Ù…ÙˆÙ‚Ø¹";
-  }
-}
-
-function extractListingTextFromHtml(html) {
-  let source = String(html || "");
-  const jsonLd = extractJsonLdListingText(source);
-  source = source.replace(/<script[\s\S]*?<\/script>/gi, " ");
-  source = source.replace(/<style[\s\S]*?<\/style>/gi, " ");
-  source = source.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ");
-  const titleMatch = source.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, " ")) : "";
-  const metaChunks = [];
-  for (const re of [
-    /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/gi,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/gi
-  ]) {
-    let m;
-    while ((m = re.exec(source))) metaChunks.push(decodeHtmlEntities(m[1]));
-  }
-  const bodyText = decodeHtmlEntities(source.replace(/<[^>]+>/g, " "));
-  const combined = [jsonLd, title, metaChunks.join("\n"), bodyText]
-    .map((part) => cleanText(part, 12000))
-    .filter(Boolean)
-    .join("\n");
-  return cleanText(combined.replace(/\s+/g, " "), 12000);
-}
-
-function isListingFetchBlockedText(text) {
-  const sample = cleanText(text, 4000);
-  if (/You have been blocked|ØªÙ… Ø­Ø¸Ø±Ùƒ|Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù„Ù…ÙˆÙ‚Ø¹|Ø­Ù…Ø§ÙŠØªÙ‡Ø§ Ù…Ù† Ø§Ù„Ù‡Ø¬Ù…Ø§Øª/i.test(sample)) {
-    return true;
-  }
-  // Haraj (and similar) login/shell pages without a concrete listing body.
-  if (/Ø­Ø±Ø§Ø¬|haraj/i.test(sample)
-    && /Ø¯Ø®Ù€Ù€Ù€Ù€ÙˆÙ„|ØªØ³Ø¬ÙŠÙ„ Ø­Ø³Ø§Ø¨|Ø§ØªÙØ§Ù‚ÙŠØ© Ø§Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù…|Ø³ÙŠØ§Ø³Ø© Ø§Ù„Ø®ØµÙˆØµÙŠØ©/i.test(sample)
-    && !/(Ù„Ù„Ø¨ÙŠØ¹|Ù„Ù„Ø¥ÙŠØ¬Ø§Ø±|Ø§Ù„Ø³Ø¹Ø±|Ø§Ù„Ù…Ø³Ø§Ø­Ø©|Ø­ÙŠ\s+\S+)/i.test(sample)) {
-    return true;
-  }
-  return false;
-}
-
-async function fetchListingPage(url, redirectCount = 0) {
-  if (redirectCount > LISTING_FETCH_MAX_REDIRECTS) {
-    return { ok: false, error: "too_many_redirects" };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LISTING_FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "manual",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "IAQAR-ListingResolver/1.0 (+https://iaqar.ai)",
-        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ar,en;q=0.8"
-      }
-    });
-    clearTimeout(timer);
-    const status = response.status;
-    if (status >= 300 && status < 400) {
-      const location = response.headers.get("location") || "";
-      const nextUrl = normalizeListingFetchUrl(new URL(location, url).toString());
-      if (!nextUrl) return { ok: false, error: "redirect_blocked", diagnostics: { status, redirect: location } };
-      return await fetchListingPage(nextUrl, redirectCount + 1);
-    }
-    if (!response.ok) {
-      return { ok: false, error: "fetch_failed", diagnostics: { status, redirect: null } };
-    }
-    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > LISTING_FETCH_MAX_BYTES) {
-      return {
-        ok: false,
-        error: "response_too_large",
-        diagnostics: { status, contentType, byteLength: buffer.byteLength }
-      };
-    }
-    const html = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
-    const text = extractListingTextFromHtml(html);
-    if (isListingFetchBlockedText(text)) {
-      return {
-        ok: false,
-        error: "source_blocked",
-        diagnostics: { status, contentType, byteLength: buffer.byteLength, textLength: text.length, blocked: true }
-      };
-    }
-    if (!text) {
-      return {
-        ok: false,
-        error: "empty_listing_text",
-        diagnostics: { status, contentType, byteLength: buffer.byteLength, textLength: 0 }
-      };
-    }
-    return {
-      ok: true,
-      text,
-      diagnostics: {
-        status,
-        contentType,
-        byteLength: buffer.byteLength,
-        textLength: text.length,
-        redirectCount
-      }
-    };
-  } catch (error) {
-    clearTimeout(timer);
-    const message = String(error?.cause?.message || error?.message || error);
-    const errorCode = error?.name === "AbortError"
-      ? "fetch_timeout"
-      : /ENOTFOUND|EAI_AGAIN|getaddrinfo|dns/i.test(message)
-        ? "dns_failed"
-        : "fetch_failed";
-    return {
-      ok: false,
-      error: errorCode,
-      diagnostics: { message }
-    };
-  }
-}
-
-const LLAMA_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
-let llamaVisionLicenseAccepted = false;
-
-async function ensureLlamaVisionLicenseAccepted(env) {
-  if (llamaVisionLicenseAccepted || !env.AI) return;
-  await env.AI.run(LLAMA_VISION_MODEL, { prompt: "agree" });
-  llamaVisionLicenseAccepted = true;
-}
-
-async function runLlamaVisionExtract(env, input) {
-  await ensureLlamaVisionLicenseAccepted(env);
-  try {
-    return await env.AI.run(LLAMA_VISION_MODEL, input);
-  } catch (error) {
-    if (String(error?.message || "").includes("agree")) {
-      llamaVisionLicenseAccepted = false;
-      await ensureLlamaVisionLicenseAccepted(env);
-      return await env.AI.run(LLAMA_VISION_MODEL, input);
-    }
-    throw error;
-  }
-}
-
-async function handleCanonicalIntakeStart(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const bucket = requireMediaBucket(env);
-  const ctx = buildCanonicalIntakeCtx({
-    env, request, identity, projectId, accessToken, bucket
-  });
-  const result = await startCanonicalIntake({
-    ...body,
-    officeId,
-    brokerId: cleanText(body.brokerId || identity.uid, 120)
-  }, ctx);
-  return jsonResponse({ ...result, requestId }, result.duplicate ? 200 : 201);
-}
-
-async function handleCanonicalIntakeCallbackRoute(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const ctx = buildCanonicalIntakeCtx({
-    env, request, identity: null, projectId, accessToken, bucket: null
-  });
-  const result = await handleCanonicalIntakeCallback(body, ctx);
-  return jsonResponse({ ...result, requestId });
-}
-
-async function handleCanonicalIntakeRetryRoute(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId);
-  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const bucket = requireMediaBucket(env);
-  const ctx = buildCanonicalIntakeCtx({
-    env, request, identity, projectId, accessToken, bucket
-  });
-  const result = await retryCanonicalIntake(body, ctx);
-  return jsonResponse({ ...result, requestId });
-}
-
-async function handleCanonicalIntakeMediaAccess(request, env, requestId) {
-  const url = new URL(request.url);
-  const token = cleanText(url.searchParams.get("token"), 4000);
-  const sig = cleanText(url.searchParams.get("sig"), 200);
-  const secret = String(env.CANONICAL_INTAKE_MEDIA_SECRET || env.ACTIVEPIECES_CALLBACK_SECRET || "");
-  const verified = await verifyCanonicalMediaAccessToken(token, sig, secret);
-  if (!verified.ok) {
-    return jsonResponse({ ok: false, error: verified.error, requestId }, 403);
-  }
-  const { officeId, mediaPath } = verified.data;
-  const bucket = requireMediaBucket(env);
-  const object = await bucket.get(mediaPath);
-  if (!object) return jsonResponse({ ok: false, error: "media_not_found", requestId }, 404);
-  const metadata = object.customMetadata || {};
-  if (metadata.officeId && metadata.officeId !== officeId) {
-    return jsonResponse({ ok: false, error: "media_scope_mismatch", requestId }, 403);
-  }
-  const headers = new Headers();
-  if (object.httpMetadata?.contentType) headers.set("Content-Type", object.httpMetadata.contentType);
-  headers.set("Cache-Control", "private, no-store");
-  return new Response(object.body, { status: 200, headers });
-}
-
-function buildCanonicalIntakeCtx({ env, request, identity, projectId, accessToken, bucket }) {
-  return {
-    env,
-    request,
-    identity,
-    projectId,
-    accessToken,
-    requestUrl: request.url,
-    firestoreOfficeId,
-    officeAuthorizationKey,
-    officeIdsEquivalent,
-    cleanText,
-    appError,
-    getFirestoreDocument,
-    setFirestoreDocument,
-    firestoreFieldsToJs,
-    compactFields,
-    firestoreString,
-    firestoreOptionalString,
-    firestoreInteger,
-    firestoreBoolean,
-    firestoreTimestamp,
-    parseRealEstateMessage,
-    normalizeListingFetchUrl,
-    fetchListingPage,
-    opportunityPatchToFirestoreFields,
-    LIFECYCLE_STATUS,
-    observeOpportunityCoverageShadow: ({ officeId: observedOfficeId, opportunityId: observedOpportunityId, source = "canonical_intake_complete" }) =>
-      observeOpportunityCoverageShadow({
-        projectId,
-        officeId: observedOfficeId,
-        opportunityId: observedOpportunityId,
-        accessToken,
-        source
-      }),
-    extractImageTextFromMediaPath: (mediaPath, officeId) =>
-      extractImageTextFromMediaPath(mediaPath, officeId, env, bucket, runLlamaVisionExtract, parseRealEstateMessage),
-    extractAudioFromMediaPath: (mediaPath, officeId) =>
-      extractAudioFromMediaPath(mediaPath, officeId, env, bucket, parseRealEstateMessage)
-  };
-}
-
-async function handlePipelineVoiceAnalyze(request, env, requestId, { publicRoute = false } = {}) {
-  const officeId = firestoreOfficeId(request.headers.get("X-Office-Id"));
-  const context = cleanText(request.headers.get("X-Voice-Context"), 20).toLowerCase();
-  const durationHeader = Number(request.headers.get("X-Voice-Duration-Sec") || 0);
-  const durationSec = Number.isFinite(durationHeader) && durationHeader > 0 ? durationHeader : null;
-  const contentType = cleanText(request.headers.get("Content-Type"), 120).toLowerCase();
-  const size = requestBodyLength(request);
-
-  if (!officeId) throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  if (!["office", "owner", "client"].includes(context)) {
-    throw appError("invalid_voice_context", 400, "Ø³ÙŠØ§Ù‚ Ø§Ù„ØªØ³Ø¬ÙŠÙ„ ØºÙŠØ± ØµØ§Ù„Ø­");
-  }
-
-  if (publicRoute) {
-    enforcePublicRouteRateLimit(request, {
-      route: "pipeline/public-voice-analyze",
-      officeId,
-      ...PUBLIC_RATE_LIMITS.PUBLIC_VOICE
-    });
-  } else {
-    await authorizeOfficeRequest(request, env, officeId, "member");
-  }
-
-  const validation = validateVoiceAudio({ byteSize: size, mimeType: contentType, durationSec });
-  if (!validation.ok) {
-    return jsonResponse({ ok: false, error: validation.error, requestId }, 422);
-  }
-
-  const audioBytes = await request.arrayBuffer();
-  if (audioBytes.byteLength !== size) {
-    return jsonResponse({ ok: false, error: "AUDIO_UPLOAD_FAILED", requestId }, 400);
-  }
-
-  const result = await analyzeVoiceWithGemini({
-    env,
-    audioBytes,
-    mimeType: validation.mimeType,
-    context,
-    parseRealEstateMessage,
-    requestId
-  });
-
-  if (!result.ok) {
-    const status = result.error === "GEMINI_QUOTA_EXCEEDED" ? 429 : 422;
-    return jsonResponse({
-      ok: false,
-      error: result.error,
-      publicMessage: result.publicMessage || voiceAnalyzeHttpErrorMessage(result.error),
-      retryable: Boolean(result.retryable),
-      model: result.model || resolveGeminiModel(env),
-      telemetry: getVoiceTelemetrySnapshot(),
-      requestId
-    }, status);
-  }
-
-  return jsonResponse({
-    ok: true,
-    structured: result.structured,
-    transcript: result.transcript || "",
-    brokerFields: result.brokerFields || null,
-    fieldSources: result.fieldSources || {},
-    provider: result.provider || "gemini",
-    extractionMode: result.extractionMode,
-    productionAi: result.productionAi,
-    model: result.model,
-    latencyMs: result.latencyMs,
-    confidence: result.confidence || 0,
-    telemetry: getVoiceTelemetrySnapshot(),
-    requestId
-  });
-}
-
-async function handlePipelineMediaExtract(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
-  const mediaPath = cleanText(body.mediaPath, 500);
-  const fileName = cleanText(body.fileName, 240);
-  const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
-  if (!officeId || !mediaPath) throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  if (!mediaPath.startsWith(`opportunity-sources/${officeId}/`)) {
-    throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  }
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  if (!env.AI && !String(env.GEMINI_API_KEY || "").trim()) {
-    return jsonResponse({
-      ok: false,
-      error: "media_extraction_unavailable",
-      publicMessage: mediaExtractPublicMessage("media_extraction_unavailable"),
-      requestId
-    }, 503);
-  }
-
-  const bucket = requireMediaBucket(env);
-  const object = await bucket.get(mediaPath);
-  if (!object) {
-    return jsonResponse({
-      ok: false,
-      error: "media_not_found",
-      publicMessage: mediaExtractPublicMessage("media_not_found"),
-      requestId
-    }, 404);
-  }
-  const metadata = object.customMetadata || {};
-  if (metadata.officeId && metadata.officeId !== officeId) {
-    return jsonResponse({
-      ok: false,
-      error: "media_scope_mismatch",
-      publicMessage: mediaExtractPublicMessage("media_scope_mismatch"),
-      requestId
-    }, 403);
-  }
-  if (metadata.sourceType && !["image", "screenshot"].includes(metadata.sourceType)) {
-    throw appError("unsupported_media", 415, "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³Ø§Ø± Ù…Ø®ØµØµ Ù„Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ø§Ù„ØµÙˆØ±");
-  }
-  const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
-  if (requestedContentType && storedContentType && requestedContentType !== storedContentType) {
-    return jsonResponse({
-      ok: false,
-      error: "media_type_mismatch",
-      publicMessage: mediaExtractPublicMessage("media_type_mismatch"),
-      requestId
-    }, 400);
-  }
-  const contentType = storedContentType || requestedContentType;
-  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
-    throw appError("unsupported_media", 415, "Ù†ÙˆØ¹ Ø§Ù„ØµÙˆØ±Ø© ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…");
-  }
-
-  const bytes = await object.arrayBuffer();
-  if (bytes.byteLength > LISTING_FETCH_MAX_BYTES) {
-    return jsonResponse({
-      ok: false,
-      error: "response_too_large",
-      publicMessage: mediaExtractPublicMessage("response_too_large"),
-      requestId
-    }, 422);
-  }
-
-  const vision = await extractListingFromImage({
-    env,
-    imageBytes: new Uint8Array(bytes),
-    mimeType: contentType,
-    runLlamaVisionExtract,
-    parseRealEstateMessage
-  });
-  if (!vision.ok) {
-    console.warn("[iaqar-media-extract] vision failed", {
-      error: vision.error,
-      geminiError: vision.geminiError,
-      workersError: vision.workersError
-    });
-    return jsonResponse({
-      ok: false,
-      error: vision.error || "media_ai_failed",
-      publicMessage: mediaExtractPublicMessage(vision.error, vision),
-      geminiError: vision.geminiError || "",
-      workersError: vision.workersError || "",
-      requestId
-    }, 422);
-  }
-
-  const text = cleanText(vision.text, 12000);
-  if (!text && !vision.brokerFields) {
-    return jsonResponse({
-      ok: false,
-      error: "empty_listing_text",
-      publicMessage: mediaExtractPublicMessage("empty_listing_text"),
-      requestId
-    }, 422);
-  }
-
-  return jsonResponse({
-    ok: true,
-    text,
-    textLength: text.length,
-    brokerFields: vision.brokerFields || null,
-    fieldSources: vision.fieldSources || {},
-    analyzerProvider: vision.analyzerProvider || "",
-    extractionMode: vision.extractionMode || "workers_ai_vision_adapter",
-    extractionStatus: vision.extractionStatus || "extracted",
-    confidence: Number(vision.confidence || 0),
-    productionAi: Boolean(vision.productionAi),
-    geminiAttempted: Boolean(vision.geminiAttempted),
-    geminiError: vision.geminiError || "",
-    screenshotExtraction: vision.screenshotExtraction || null,
-    mediaPath,
-    originalUrl: cleanText(body.originalUrl, 2000),
-    resolvedUrl: cleanText(body.resolvedUrl, 2000),
-    sourceSiteId: cleanText(body.sourceSiteId, 40),
-    externalListingId: cleanText(body.externalListingId, 120),
-    fileName,
-    contentType,
-    requestId
-  });
-}
-
-async function handlePipelineAudioExtract(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
-  const mediaPath = cleanText(body.mediaPath, 500);
-  const fileName = cleanText(body.fileName, 240);
-  const requestedContentType = cleanText(body.contentType, 120).toLowerCase();
-  if (!officeId || !mediaPath) throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  if (!mediaPath.startsWith(`opportunity-sources/${officeId}/`)) {
-    throw appError("invalid_media_target", 400, "ÙˆØ¬Ù‡Ø© Ø§Ù„Ù…Ù„Ù ØºÙŠØ± ØµØ§Ù„Ø­Ø©");
-  }
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  if (!env.AI && !String(env.GEMINI_API_KEY || "").trim()) {
-    return jsonResponse({
-      ok: false,
-      error: "media_extraction_unavailable",
-      publicMessage: AUDIO_TRANSCRIBE_ERROR_AR,
-      requestId
-    }, 503);
-  }
-
-  const bucket = requireMediaBucket(env);
-  const object = await bucket.get(mediaPath);
-  if (!object) {
-    return jsonResponse({ ok: false, error: "media_not_found", publicMessage: AUDIO_TRANSCRIBE_ERROR_AR, requestId }, 404);
-  }
-  const metadata = object.customMetadata || {};
-  if (metadata.officeId && metadata.officeId !== officeId) {
-    return jsonResponse({ ok: false, error: "media_scope_mismatch", publicMessage: AUDIO_TRANSCRIBE_ERROR_AR, requestId }, 403);
-  }
-  if (metadata.sourceType && metadata.sourceType !== "audio") {
-    throw appError("unsupported_media", 415, "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³Ø§Ø± Ù…Ø®ØµØµ Ù„Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ø§Ù„ØµÙˆØª");
-  }
-  const storedContentType = cleanText(object.httpMetadata?.contentType, 120).toLowerCase();
-  const contentType = storedContentType || requestedContentType;
-  const validation = validateVoiceAudio({
-    byteSize: object.size || 0,
-    mimeType: contentType
-  });
-  if (!validation.ok) {
-    return jsonResponse({
-      ok: false,
-      error: validation.error,
-      publicMessage: voiceAnalyzeHttpErrorMessage(validation.error),
-      requestId
-    }, 422);
-  }
-
-  const bytes = await object.arrayBuffer();
-  const audio = await extractListingFromAudio({
-    env,
-    audioBytes: bytes,
-    mimeType: validation.mimeType,
-    parseRealEstateMessage,
-    requestId
-  });
-  if (!audio.ok) {
-    return jsonResponse({
-      ok: false,
-      error: audio.error || "audio_transcribe_failed",
-      publicMessage: audio.publicMessage || AUDIO_TRANSCRIBE_ERROR_AR,
-      geminiError: audio.geminiError || "",
-      workersError: audio.workersError || "",
-      requestId
-    }, 422);
-  }
-
-  const transcript = cleanText(audio.transcript || audio.text, 12000);
-  return jsonResponse({
-    ok: true,
-    text: transcript,
-    transcript,
-    textLength: transcript.length,
-    brokerFields: audio.brokerFields || null,
-    fieldSources: audio.fieldSources || {},
-    analyzerProvider: audio.analyzerProvider || "",
-    extractionMode: audio.extractionMode || "gemini_audio_transcribe_adapter",
-    extractionStatus: audio.extractionStatus || "extracted",
-    confidence: Number(audio.confidence || 0),
-    productionAi: Boolean(audio.productionAi),
-    mediaPath,
-    fileName,
-    contentType: validation.mimeType,
-    requestId
-  });
-}
-
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-async function handlePipelineUrlResolve(request, env, requestId) {
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId || request.headers.get("X-Office-Id"));
-  if (!officeId) throw appError("office_id_required", 400, "Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ù…ÙƒØªØ¨ Ù…Ø·Ù„ÙˆØ¨");
-  await authorizeOfficeRequest(request, env, officeId, "member");
-  const resolved = await resolveCanonicalListingUrl({
-    originalUrl: body.url,
-    isPrivateOrLocalHost
-  });
-  if (!resolved.ok) {
-    return jsonResponse({
-      ok: false,
-      error: resolved.error || "url_resolve_failed",
-      url: resolved.originalUrl || adapterNormalizeListingFetchUrl(body.url, isPrivateOrLocalHost),
-      originalUrl: resolved.originalUrl || "",
-      resolvedUrl: resolved.resolvedUrl || "",
-      extractionStatus: "fallback_required",
-      diagnostics: resolved.diagnostics || null,
-      requestId
-    }, 422);
-  }
-  return jsonResponse({
-    ok: true,
-    url: resolved.resolvedUrl,
-    originalUrl: resolved.originalUrl,
-    resolvedUrl: resolved.resolvedUrl,
-    text: resolved.text,
-    textLength: resolved.textLength,
-    sourceSite: resolved.sourceSite,
-    sourceSiteId: resolved.sourceSiteId,
-    adapterId: resolved.adapterId,
-    externalListingId: resolved.externalListingId,
-    structured: resolved.structured,
-    brokerFields: resolved.brokerFields,
-    fieldSources: resolved.fieldSources,
-    extractionStatus: resolved.extractionStatus,
-    classificationStatus: resolved.classificationStatus,
-    listingTitle: resolved.listingTitle,
-    contentHash: resolved.contentHash,
-    diagnostics: resolved.diagnostics,
-    requestId
-  });
-}
-
-function constantTimeEqual(left, right) {
-  const a = new TextEncoder().encode(String(left));
-  const b = new TextEncoder().encode(String(right));
-  let difference = a.length ^ b.length;
-  const length = Math.max(a.length, b.length);
-  for (let i = 0; i < length; i += 1) difference |= (a[i % (a.length || 1)] || 0) ^ (b[i % (b.length || 1)] || 0);
-  return difference === 0;
-}
-function firestoreNull() { return { nullValue: null }; }
-
-function jsToFirestoreValue(value) {
-  if (value === null || value === undefined) return firestoreNull();
-  if (value instanceof Date) return firestoreTimestamp(value);
-  if (typeof value === "boolean") return firestoreBoolean(value);
-  if (typeof value === "number" && Number.isInteger(value)) return firestoreInteger(value);
-  if (typeof value === "number") return { doubleValue: value };
-  if (typeof value === "string") return firestoreString(value);
-  if (Array.isArray(value)) {
-    return { arrayValue: { values: value.map((item) => jsToFirestoreValue(item)).filter((item) => item != null) } };
-  }
-  if (typeof value === "object") {
-    const fields = {};
-    for (const [key, nested] of Object.entries(value)) {
-      const encoded = jsToFirestoreValue(nested);
-      if (encoded != null) fields[key] = encoded;
-    }
-    return { mapValue: { fields } };
-  }
-  return firestoreString(String(value));
-}
-
-function brokerProgressFirestoreFields(record = {}, actionKey = "", now = new Date()) {
-  const progress = mergeBrokerActionProgress(record, actionKey, now.toISOString());
-  return { brokerActionProgress: jsToFirestoreValue(progress) };
-}
-
-function mergeFollowUpWhatsappRole(existingFollowUp = null, role = "", now = new Date()) {
-  const follow = existingFollowUp && typeof existingFollowUp === "object" ? { ...existingFollowUp } : {};
-  const roles = new Set(Array.isArray(follow.whatsappRolesOpened) ? follow.whatsappRolesOpened : []);
-  const normalized = String(role || "").trim().toLowerCase();
-  if (normalized) roles.add(normalized);
-  follow.whatsappRolesOpened = [...roles];
-  follow.updatedAt = now.toISOString();
-  return follow;
-}
-
-function followUpFirestoreFields(followUp) {
-  const reminderInstant = parseFollowUpInstant(followUp.reminderAt)
-    || parseFollowUpInstant(followUp.reminderAt1h)
-    || parseFollowUpInstant(followUp.reminderAt24h);
-  const reminderAt = reminderInstant || new Date("2099-01-01T00:00:00.000Z");
-  return compactFields({
-    followUp: jsToFirestoreValue(followUp),
-    followUpAt: firestoreTimestamp(new Date(followUp.at)),
-    followUpReminderAt: firestoreTimestamp(reminderAt),
-    nextFollowUpAt: firestoreTimestamp(new Date(followUp.at)),
-    nextActionAt: firestoreTimestamp(new Date(followUp.at))
-  });
-}
-
-function clearFollowUpFirestoreFields(now) {
-  const farFuture = new Date("2099-01-01T00:00:00.000Z");
-  return compactFields({
-    followUp: jsToFirestoreValue({
-      status: FOLLOWUP_STATUSES.cancelled,
-      updatedAt: now.toISOString()
-    }),
-    followUpReminderAt: firestoreTimestamp(farFuture),
-    nextFollowUpAt: firestoreNull(),
-    nextActionAt: firestoreNull()
-  });
-}
-
-async function resolveMatchForOpportunity({ projectId, officeId, opportunityId, opportunity, accessToken }) {
-  const bestMatchId = cleanText(opportunity.bestMatchId || "", 180);
-  if (bestMatchId) {
-    const matchDoc = await getFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "matches", bestMatchId],
-      accessToken,
-      allowMissing: true
-    });
-    if (matchDoc) return firestoreFieldsToJs(matchDoc.fields || {});
-  }
-  const matches = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: 80
-  });
-  for (const doc of matches) {
-    const match = firestoreFieldsToJs(doc.fields || {});
-    if (!officeIdsEquivalent(match.officeId, officeId)) continue;
-    if (match.ownerOfferId && match.clientRequestId
-      && (match.opportunityId === opportunityId || match.counterpartOpportunityId === opportunityId)) {
-      return match;
-    }
-  }
-  return null;
-}
-
-async function scheduleOpportunityFollowUp({
-  projectId, officeId, opportunityId, collection, recordId, opportunity, body, identity, accessToken, now, statusBefore, requestId
-}) {
-  const rawAt = body.nextFollowUpAt || body.followUpAt || body.nextActionAt || "";
-  const parsedAt = rawAt.includes("T") && !rawAt.endsWith("Z") && !rawAt.includes("+")
-    ? parseRiyadhDateTimeInput(rawAt)
-    : new Date(rawAt);
-  const futureCheck = validateFutureFollowUpAt(parsedAt, now);
-  if (!futureCheck.ok) throw appError(futureCheck.code, 400, futureCheck.message);
-  const todayCheck = validateTodayRequiresFutureTime(parsedAt, now);
-  if (!todayCheck.ok) throw appError("followup_today_past", 400, todayCheck.message);
-
-  const match = await resolveMatchForOpportunity({
-    projectId, officeId, opportunityId, opportunity, accessToken
-  }).catch(() => null);
-
-  const recipientContext = resolveRecipientContext(opportunity, match);
-  const recipientMode = normalizeRecipientMode(body.recipientMode, recipientContext);
-  const existingFollowUp = opportunity.followUp && typeof opportunity.followUp === "object" ? opportunity.followUp : null;
-  const isReschedule = existingFollowUp
-    && ACTIVE_FOLLOWUP_STATUSES.has(String(existingFollowUp.status || ""))
-    && !isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode);
-
-  if (isSameScheduledFollowUp(existingFollowUp, parsedAt, recipientMode)) {
-    return jsonResponse({
-      ok: true,
-      opportunityId,
-      lifecycleStatus: LIFECYCLE_STATUS.FOLLOW_UP,
-      followUp: existingFollowUp,
-      idempotent: true,
-      requestId
-    });
-  }
-
-  const followUp = buildCanonicalFollowUp({
-    at: parsedAt,
-    recipientMode,
-    ownerContactId: recipientContext.ownerContactId,
-    clientContactId: recipientContext.clientContactId,
-    createdBy: identity.uid,
-    existing: isReschedule ? existingFollowUp : null,
-    now
-  });
-
-  const fields = {
-    officeId: firestoreString(officeId),
-    updatedAt: firestoreTimestamp(now),
-    lifecycleUpdatedAt: firestoreTimestamp(now),
-    lifecycleUpdatedBy: firestoreString(identity.uid),
-    lifecycleStatus: firestoreString(LIFECYCLE_STATUS.FOLLOW_UP),
-    nextActionType: firestoreOptionalString(cleanText(body.nextActionType || "follow_up", 40)),
-    nextActionNote: firestoreOptionalString(cleanText(body.nextActionNote || body.note || "", 300)),
-    ...followUpFirestoreFields(followUp),
-    ...brokerProgressFirestoreFields(opportunity, BROKER_ACTION.followUpScheduled, now)
-  };
-
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, collection, recordId], accessToken, fields });
-  if (collection === "opportunities") {
-    await observeOpportunityCoverageShadow({
-      projectId, officeId, opportunityId, accessToken,
-      source: isReschedule ? "followup_rescheduled" : "followup_scheduled"
-    });
-  }
-  const activityAction = isReschedule ? "followup_rescheduled" : "followup_scheduled";
-  await addOpportunityCommunication({
-    projectId, officeId, opportunityId, accessToken, now,
-    payload: {
-      type: "followup",
-      action: activityAction,
-      statusBefore,
-      statusAfter: LIFECYCLE_STATUS.FOLLOW_UP,
-      createdBy: identity.uid,
-      result: recipientMode
-    }
-  });
-
-  return jsonResponse({
-    ok: true,
-    opportunityId,
-    lifecycleStatus: LIFECYCLE_STATUS.FOLLOW_UP,
-    lifecycleStatusLabel: LIFECYCLE_STATUS_LABELS[LIFECYCLE_STATUS.FOLLOW_UP],
-    followUp,
-    nextFollowUpAt: followUp.at,
-    brokerActionProgress: mergeBrokerActionProgress(opportunity, BROKER_ACTION.followUpScheduled, now.toISOString()),
-    requestId
-  });
-}
-
-const ACTIVE_FOLLOWUP_STATUSES = new Set([
-  FOLLOWUP_STATUSES.scheduled,
-  FOLLOWUP_STATUSES.reminder_due,
-  FOLLOWUP_STATUSES.reminder_sent
-]);
-
-async function handleProcessFollowupReminders(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const officeId = firestoreOfficeId(body.officeId || "");
-  if (officeId) await authorizeOfficeRequest(request, env, officeId, "member");
-  else if (String(env.DEPLOYMENT_ENV || "").toLowerCase() !== "staging") {
-    throw appError("office_id_required", 400, "officeId Ù…Ø·Ù„ÙˆØ¨");
-  }
-  const scheduledTime = Number(body.scheduledTime || Date.now());
-  const result = await processOpportunityFollowupReminders(env, scheduledTime);
-  return jsonResponse({ ok: true, ...result, requestId });
-}
-
-function compactFields(fields) { return Object.fromEntries(Object.entries(fields).filter(([, value]) => value != null)); }
-function firestoreString(value) { return { stringValue: String(value) }; }
-function firestoreOptionalString(value) { return value ? firestoreString(value) : null; }
-function firestoreBoolean(value) { return { booleanValue: Boolean(value) }; }
-function firestoreInteger(value) { return { integerValue: String(value) }; }
-function firestoreTimestamp(value) { return { timestampValue: value.toISOString() }; }
-function safeJsonStringify(value) { try { return JSON.stringify(value); } catch (_) { return "{}"; } }
-function utcDayId(date) { return date.toISOString().slice(0, 10).replace(/-/g, ""); }
-function emptyUsage() { return { inboundMessages: 0, estimatedWrites: 0, percent: 0, warnAtPercent: WARNING_PERCENT, warning: false, isEstimate: true }; }
-function maskPhone(value) {
-  const phone = String(value || "");
-  if (phone.length < 7) return phone;
-  return `${phone.slice(0, 4)}****${phone.slice(-3)}`;
-}
-function appError(code, status, publicMessage) { const error = new Error(publicMessage); error.code = code; error.status = status; error.publicMessage = publicMessage; return error; }
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version",
-    "Access-Control-Max-Age": "86400"
-  };
-}
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
-  });
-}
-
-export {
-  normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, firebaseServiceAccount,
-  createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure,
-  MATCHING_RULE_VERSION, MATCH_THRESHOLD, scoreMatch, rankMatchCandidates,
-  buildMatchId, relevantDataVersion, canonicalPairKey, opportunityToMatchInput,
-  counterpartsEligible, phase4BoundaryGuarantees, findAndSaveMatchesForOpportunity,
-  phase5BoundaryGuarantees, OPERATION_TYPES, OPERATION_STATUS, NOTIFICATION_TYPES,
-  NOTIFICATION_STATUS, ACTIVE_OPERATION_STATUSES, shouldCreateMatchReview,
-  applyOperationLifecycle, listMissingOpportunityFields, pushTypeForOperation,
-  phase6BoundaryGuarantees, cooperationModeAllowsExplicitRequest,
-  phase7BoundaryGuarantees, MESSAGE_CHANNELS, MESSAGE_SEND_STATE, MESSAGE_DELIVERY_STATE,
-  TEMPLATE_CODES, ADAPTER_STATUS, buildArabicMessageBody, buildMessageDraft,
-  applyExternalHandoff, whatsappAdapterContract, telegramWebhookValidationFixture,
-  resolveTemplateCode, whatsappDigits,
-  evaluatePublicRateLimit, consumePublicRateLimit, publicRateLimitKey,
-  resetPublicRateLimitStoreForTests, PUBLIC_RATE_LIMITS,
-  extractListingTextFromHtml,
-  isPrivateOrLocalHost,
-  resolveListingSourceSite,
-  normalizeOpportunitySource, getOpportunityLifecycleStatus, normalizeSaudiPhoneForWhatsApp,
-  buildOpportunitySummary, buildOpportunityWhatsAppMessage, resolveSelectOption,
-  extractDistrictFromVoice, parseVoiceOpportunityFields, whatsappActionTypeForStatus,
-  isArchivedLifecycle, isOpportunityLifecycleActive
-};
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×nwçDèµ©hºÚn¶X§zÍZ[\ÜÈÔÒTÕUÔ—ÑU‘S•ÔÒTÕUÔ—ÓÕÓ‘TˆHœ›ÛH‹‹ØÙ[˜[[Ü˜Ú\Ý˜]Ü‹YÛXZ[‹šœÈŽÂš[\ÜÈZ[Ü˜Ú\Ý˜]Ü‘]™[Y\Ü]ÚÜ˜Ú\Ý˜]Ü‘]™[Hœ›ÛH‹‹ØÙ[˜[[Ü˜Ú\Ý˜]Ü‹\Ù\šXÙKšœÈŽÂš[\ÜÂˆÜ™X]T\œÚ\Ý[ÛÛ\][Û”Ù\ÜÚ[Û‹ˆ™XY\œÚ\Ý[ÛÛ\][Û”Ù\ÜÚ[Û‹ˆÝX›Z]\œÚ\Ý[ÛÛ\][Û”Ù\ÜÚ[Û‚ŸHœ›ÛH‹‹Ù]KXÛÛ\][Û‹\[[YK\Ù\šXÙKšœÈŽÂš[\ÜÂˆPUÒS‘×Ô•SWÕ‘T”ÒSÓ‹ˆPUÒÕ‘TÒÓˆPVÓPUÒÐÐS‘QUTËˆPVÓPUÒÔ‘TÕSËˆQUSÐÒUKˆ\ÙM›Ý[™\žQÝX\˜[Y\Ëˆ™XY[™\ÜÑœ›ÛTØÛÜ™H\È™XY[™\ÜÑœ›ÛTØÛÜ™Q[™Ú[™Kˆ›Ü›X[^™SX]ÚÝ]\È\È›Ü›X[^™SX]ÚÝ]\Ñ[™Ú[™KˆØ[Ý[]PÛÜÚ[™Ô™XY[™\ÜÈ\ÈØ[Ý[]PÛÜÚ[™Ô™XY[™\ÜÑ[™Ú[™KˆÜÜ[š]UÓX]Ú[œ]ˆÛÝ[\œ\Ñ[YÚX›Kˆ\ÐXÝ]™SY™XÞXÛKˆØ[›ÛšXØ[Z\’Ù^Kˆ™[]˜[]U™\œÚ[Û‹ˆZ[X]ÚYˆZ\”[RÙ^KˆØÛÜ™SX]Ú\ÈØÛÜ™SX]Ú[™Ú[™Kˆ˜[šÓX]ÚØ[™Y]\È\È˜[šÓX]ÚØ[™Y]\Ñ[™Ú[™BŸHœ›ÛH‹‹ÛX]Ú[™ËY[™Ú[™KšœÈŽÂš[\ÜÂˆš\™\ÝÜ™SÙ™šXÙRYˆÙ™šXÙP]]Üš^˜][Û’Ù^KˆÙ™šXÙRYÑ\]Z]˜[[ŸHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËÛÙ™šXÙKZYYÛXZ[‹šœÈŽÂš[\ÜÂˆPUÒÒS•QÔ’UKˆÛÛXÝØ[™Y]SÜÜ[š]RYËˆ™\ÛÛ™PØ[›ÛšXØ[Z\‘œ›ÛQØÜÂŸHœ›ÛH‹‹ÛX]ÚZ[YÜš]KYÛXZ[‹šœÈŽÂš[\ÜÂˆ\ÙMP›Ý[™\žQÝX\˜[Y\ËˆÔTUSÓ—ÕTTËˆÔTUSÓ—ÔÕUTËˆ“ÕQ’PÐUSÓ—ÕTTËˆ“ÕQ’PÐUSÓ—ÔÕUTËˆPÕU‘WÓÔTUSÓ—ÔÕUTÑTËˆZ[X]Ú™]šY]ÑY\Ù^KˆÚÝ[Ü™X]SX]Ú™]šY]Ëˆ\SÜ\˜][Û“Y™XÞXÛBŸHœ›ÛH‹‹ÛÜ\˜][ÛœËYÛXZ[‹šœÈŽÂš[\ÜÙXœ\Úœ›ÛHÙX‹\\ÚŽÂš[\ÜÂˆÜ™X]SX]Ú™]šY]Ð[™Kˆ^\™SÜ\˜][ÛœÑ›Ü“X]ÚYËˆ\Ù\Z\ÜÚ[™Ñ]Q›Ü“ÜÜ[š]Kˆ\Ù\ÛÛÜ\˜][Û“Ü\˜][ÛœËˆ\U\ÝYÜ\˜][ÛXÝ[Û‹ˆ\ÝZ\ÜÚ[™ÓÜÜ[š]QšY[Ëˆ\Ú\Q›Ü“Ü\˜][Û‚ŸHœ›ÛH‹‹ÛÜ\˜][ÛœË\Ù\šXÙKšœÈŽÂš[\ÜÂˆÜÜ[š]PÛÝ™\˜YÙR[[ˆX[ÛÝ™\˜YÙR[[ˆÞ[˜ÓÜÜ[š]PÛÝ™\˜YÙBŸHœ›ÛH‹‹ÛÜ\˜][ÛœËXÛÝ™\˜YÙK\Þ[˜ËšœÈŽÂš[\ÜÂˆYUšY]Ú[™Ô™[Z[™\œËˆšY]Ú[™Ô™[Z[™\ÛÜKˆšY]Ú[™Ô™[Z[™\’Yˆ’QUÒS‘×Ô‘SRS‘T—ÒÒS‘ŸHœ›ÛH‹‹ÝšY]Ú[™Ë\™[Z[™\‹YÛXZ[‹šœÈŽÂš[\ÜÂˆ\ÙM›Ý[™\žQÝX\˜[Y\ËˆÛÛÜ\˜][Û“[ÙP[ÝÜÑ^XÚ]™\]Y\ÝŸHœ›ÛH‹‹ØÛÛÜ\˜][Û‹\\ÙM‹YÛXZ[‹šœÈŽÂš[\ÜÂˆ[ÛÛÜ\˜][Û“Y™XÞXÛKˆ™]›ÚÙP˜[šÔÚ\š[™ÔØÛÜKˆÜ™X]Q^XÚ]ÛÛÜ\˜][Û”™\]Y\Ýˆ™\ÛÛ™PXØÙ\YÛÛÜ\˜][Û”Z\‚ŸHœ›ÛH‹‹ØÛÛÜ\˜][Û‹\\ÙM‹\Ù\šXÙKšœÈŽÂš[\ÜÂˆX^X™PÜ™X]PÜ›ÜÜÓÙ™šXÙPÛÛÜ\˜][Û‹ˆ[ÛÛÜ\˜][Û•ÛÜšÙ›ÝÂŸHœ›ÛH‹‹ØÛÛÜ\˜][Û‹]ÛÜšÙ›ÝË\Ù\šXÙKšœÈŽÂš[\ÜÈZ[ÛÛÜ\˜][Û“™X\˜žTÝYÙÙ\Ý[ÛœË™\ÛÛ™S™X\˜žQ[\T™X\ÛÛˆHœ›ÛH‹‹ØÛÛÜ\˜][Û‹[™X\˜žK\Ù\šXÙKšœÈŽÂš[\ÜÈZ[ÝZ]X›SÙ™šXÙ\Ô™\Ý[Hœ›ÛH‹‹ÜÝZ]X›K[Ù™šXÙ\Ë\Ù\šXÙK›ZœÈŽÂš[\ÜÂˆØYÜÜ[š]UÛÜšÜÜXÙP[™Kˆ[œÝ\™PÛÛÜ\˜][Û”›ÛÛBŸHœ›ÛH‹‹ÛÜÜ[š]K]ÛÜšÜÜXÙK\Ù\šXÙK›ZœÈŽÂš[\ÜÂˆØ[š]^™SÜÜ[š]T]ÚˆY\™ÙSÜÜ[š]Qš[˜[˜ÚX[]Úˆ™XY[™\ÜÑšY[Ñ›Ü”™XÛÜ™ˆ˜[Y]PÛÛÜ\˜][Û“\Ý[™Ñ[˜X›KˆX\]Ú\œ›Ü“Y\ÜØYÙBŸHœ›ÛH‹‹ÛÜÜ[š]K\]Ú\Ù\šXÙKšœÈŽÂš[\ÜÂˆT“PS‘S•ÑSUWÐÓÓ‘’T“Kˆ\SÜÜ[š]T\™ÙKˆÛÛXÝÙ™šXÙUÛÜšÙ›ÝÔ›ÝÜËˆ[“ÜÜ[š]T\™ÙKˆ˜[Y]T\™ÙT™\]Y\ÝŸHœ›ÛH‹‹ÛÜÜ[š]K\\™ÙK\Ù\šXÙKšœÈŽÂš[\ÜÈX\šÓ›ÝYšXØ][Û”™XYHœ›ÛH‹‹Ú[‹X\[›ÝYšXØ][Û‹]Üš]KšœÈŽÂš[\ÜÂˆ”“ÒÑTQÑWÐÓÓ•PÕÔÕUTËˆPSÔÕQÑWÓÔ‘T‹ˆ]˜[X]QX[Ü™X][Û‹ˆ™^X[ÝYÙKˆ[œ›ÚÙ\˜YÙPÛÛ˜XÝ\]Kˆ[‘X[ÛÜÝ\™Kˆ[‘X[ÝYÙU˜[œÚ][Û‚ŸHœ›ÛH‹‹ÙX[XÛÛ˜XÝYÛXZ[‹šœÈŽÂš[\ÜÈZ\ÜÚ[™ÑšY[X™[Ð\˜XšXÈHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËÛÜÜ[š]K\™XY[™\ÜËYÛXZ[‹šœÈŽÂš[\ÜÈ]š[™Õ\ÚÒYHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËÛX]ÚYÜ›Ý\YÛXZ[‹šœÈŽÂš[\ÜÈ›Ü›X]Ù™šXÙT\Ú™\Ù[][Û‹Ù™šXÙPœ˜[™XÛÛØ[™Y]\ËÐXœÛÛ]RÒXÛÛ‹U“Ô“WÑQUSÓÑÓÈHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËÜ]›Ü›KXœ˜[™YÛXZ[‹šœÈŽÂš[\ÜÂˆ[™TX›XÓÙ™šXÙT™]šY]Ëˆ[™SÙ™šXÙTÚ\™PØ\™Ù]ˆ[™SÙ™šXÙTÚ\™PØ\™\ØYˆ[™TØ]™TX›XÔÛYËˆXÚÔ™XXÚX›RÒXÛÛ‹ˆÚ\™PØ\™Ù]X]ÚŸHœ›ÛH‹‹ÛÙ™šXÙK\X›XË\™]šY]ËšœÈŽÂš[\ÜÂˆY\”X›XÒ[ZÙT\œÚ\ÝYˆXØÙ\]›Ü›SÙ™™\‹ˆXÛ[™T]›Ü›SÙ™™\‹ˆ^\™QYT]›Ü›SÙ™™\œËˆÝX›Z]Ù™šXÙT˜][™ÂŸHœ›ÛH‹‹ÛÜÜ[š]K\›Ý]\‹\Ù\šXÙKšœÈŽÂš[\ÜÂˆ\ÜÙ\[Ý™X]\™Q[˜X›Yˆ\ÜÙ\[ÝÙ™šXÙPXØÙ\ÜËˆ\ÜÙ\[Ý™YÚ\Ý˜][Û[ÝÙYˆÙ][ÝXØÙ\ÜÔÝ]\ËˆØY[ÝXØÙ\ÜÐÛÛ™šYÂŸHœ›ÛH‹‹Ü[ÝXXØÙ\ÜË\Ù\šXÙKšœÈŽÂš[\ÜÂˆÔ’QÒS—ÔÓÕTÑWÕTKˆÜšYÚ[”ÛÝ\˜ÙQœ›ÛR[ZÙKˆ]š[™Õ\ÚÒY›Ü“ÜÜ[š]KˆTÔÒQÓ“QS•Ô‘PTÓÓ‹ˆ“ÕUS‘×ÔÕUTËˆ›Ý]\ÛÛ\][™\ÜÂŸHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËÛÜÜ[š]K\›Ý]\‹YÛXZ[‹šœÈŽÂš[\ÜÂˆQTÔÐQÑWÐÒS“‘SËˆQTÔÐQÑWÔÑS‘ÔÕUKˆQTÔÐQÑWÑSU‘T–WÔÕUKˆSTUWÐÓÑTËˆQTT—ÔÕUTËˆ\ÙMÐ›Ý[™\žQÝX\˜[Y\ËˆZ[\˜XšXÓY\ÜØYÙP›ÙKˆZ[Y\ÜØYÙQ˜Yˆ\Q^\›˜[[™Ù™‹ˆÚ]Ø\Y\\ÛÛ˜XÝˆ[YÜ˜[UÙXšÛÚÕ˜[Y][Û‘š^\™Kˆ›Ü›X[^™PÚ[›™[ˆ™\ÛÛ™U[\]PÛÙKˆÚ]Ø\YÚ]ÂŸHœ›ÛH‹‹ÛY\ÜØYÚ[™ËYÛXZ[‹šœÈŽÂš[\ÜÂˆ[™U[YÜ˜[PØ[›ÛšXØ[ÙXšÛÚËˆ[YÜ˜[UÙXšÛÚÔ[[YPÛÛ˜XÝŸHœ›ÛH‹‹Ý[YÜ˜[KZ[ZÙK\Ù\šXÙKšœÈŽÂš[\ÜÈÚ[›™[ÛX[\›Ý[™\žQÝX\˜[Y\ÈHœ›ÛH‹‹ØÚ[›™[X›Ý[™\žKYÛXZ[‹šœÈŽÂš[\ÜÂˆP“P×ÔUWÓSRUËˆÛÛœÝ[YTX›XÔ˜]S[Z]ˆ]˜[X]TX›XÔ˜]S[Z]ˆX›XÔ˜]S[Z]Ù^Kˆ™\Ù]X›XÔ˜]S[Z]ÝÜ™Q›Ü•\ÝÂŸHœ›ÛH‹‹ÜX›XË\˜]K[[Z]šœÈŽÂš[\ÜÂˆ[™T\TÙ\ÜÚ[Û‘Ù]ˆ[™T\TÙ\ÜÚ[Û“Z[ˆ[™T\TÙ\ÜÚ[Û”ÝËˆ[™T\TÙ\ÜÚ[Û”™\Kˆ[™T\TÙ\ÜÚ[Û[™Kˆ[™SX]Ú]š[™ÐXÝ[Û‚ŸHœ›ÛH‹‹Ü\K\Ù\ÜÚ[Û‹\Ù\šXÙKšœÈŽÂš[\ÜÂˆØYÛÛÜ™[˜][Û”Ù\ÜÚ[Û‹ˆØ]™PÛÛÜ™[˜][Û”Ù\ÜÚ[Û‹ˆÞ[˜ÐÛÛÜ\˜][ÛÛÛÜ™[˜][Û‘›Ü“Ù™šXÙBŸHœ›ÛH‹‹ØÛÛÜ™[˜][Û‹\Ù\ÜÚ[Û‹\Ù\šXÙKšœÈŽÂš[\ÜÈ\[™ÛÛÜ™[˜][Û‘]™[Hœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËØÛÛÜ™[˜][Û‹\Ù\ÜÚ[Û‹YÛXZ[‹šœÈŽÂš[\ÜÂˆ[˜[^™U›ÚXÙUÚ]Ù[Z[šKˆÙ]›ÚXÙU[[Y]žTÛ˜\ÚÝˆ™\ÛÛ™QÙ[Z[šS[Ù[ˆ˜[Y]U›ÚXÙP]Y[Ëˆ›ÚXÙP[˜[^™R\œ›Ü“Y\ÜØYÙBŸHœ›ÛH‹‹ÙÙ[Z[šK]›ÚXÙK\Ù\šXÙKšœÈŽÂš[\ÜÂˆ^˜XÝ\Ý[™Ñœ›ÛR[XYÙKˆYYXQ^˜XÝX›XÓY\ÜØYÙBŸHœ›ÛH‹‹Û\Ý[™ËZ[XYÙK]š\Ú[Û‹\Ù\šXÙK›ZœÈŽÂš[\ÜÂˆ^˜XÝ\Ý[™Ñœ›ÛP]Y[ËˆUQS×ÕS”ÐÔ’P‘WÑT”“Ô—ÐT‚ŸHœ›ÛH‹‹ÙÙ[Z[šKX]Y[ËZ[ZÙK›ZœÈŽÂš[\ÜÈ™\ÛÛ™PØ[›ÛšXØ[\Ý[™Õ\›Hœ›ÛH‹‹ØØ[›ÛšXØ[[\Ý[™ËZ[ZÙK›ZœÈŽÂš[\ÜÈ›Ü›X[^™S\Ý[™Ñ™]Ú\›\ÈY\\“›Ü›X[^™S\Ý[™Ñ™]Ú\›Hœ›ÛH‹‹Û\Ý[™Ë\Ú]KXY\\œË›ZœÈŽÂš[\ÜÂˆÝ\Ø[›ÛšXØ[[ZÙKˆ[™PØ[›ÛšXØ[[ZÙPØ[˜XÚËˆ™]žPØ[›ÛšXØ[[ZÙKˆ^˜XÝ]Y[Ñœ›ÛSYYXT]ˆ^˜XÝ[XYÙU^œ›ÛSYYXT]ˆ™\šYžPØ[›ÛšXØ[YYXPXØÙ\ÜÕÚÙ[‚ŸHœ›ÛH‹‹ØØ[›ÛšXØ[Z[ZÙK\Ù\šXÙKšœÈŽÂš[\ÜÈ\ÜÙ\]›Ü›PYZ[ÛZ[\ÈHœ›ÛH‹‹ØYZ[‹XÛÛ›Û\[™KYÛXZ[‹šœÈŽÂš[\ÜÂˆÜ™X]PYZ[’[\œËˆ[™PYZ[]Y]ÙËˆ[™PYZ[”Ù\ÜÚ[Û‹ˆ[™PYZ[“XÙ[œÙU\]Kˆ[™PYZ[“›ÝPYˆ[™PYZ[“Ù™šXÙPXÝ]š]Kˆ[™PYZ[“Ù™šXÙQ]Z[ˆ[™PYZ[“Ù™šXÙ\Ëˆ[™PYZ[“Ý™\šY]Ëˆ[™PYZ[”™XXÝ]˜]Kˆ[™PYZ[”ÝXœØÜš\[Û•\]Kˆ[™PYZ[”Ý\Ü[™ŸHœ›ÛH‹‹ØYZ[‹\Ù\šXÙKšœÈŽÂš[\ÜÈ™XÛÜ™Ù™šXÙPXÝ]š]Q]™[™XÛÜ™Ù™šXÙSÙÚ[XÝ]š]HHœ›ÛH‹‹ÛÙ™šXÙKXXÝ]š]K\Ù\šXÙKšœÈŽÂš[\ÜÂˆQ‘PÖPÓWÔÕUTËˆQ‘PÖPÓWÔÕUT×ÓP‘SËˆÔÔ•S’UWÑ’SSÐÓÔÑWÔ‘PTÓÓ”ËˆÔÔ•S’UWÑ’SSÐÓÔÑWÔ‘PTÓÓ—ÓP‘SËˆÔÔ•S’UWÑ’SSÓÕUÓÓQTËˆ›Ü›X[^™SÜÜ[š]TÛÝ\˜ÙKˆÙ]ÜÜ[š]SY™XÞXÛTÝ]\Ëˆ›Ü›X[^™TØ]YTÛ™Q›Ü•Ú]Ð\ˆZ[ÜÜ[š]TÝ[[X\žKˆZ[ÜÜ[š]UÚ]Ð\Y\ÜØYÙKˆ™\ÛÛ™TÙ[XÝÜ[Û‹ˆ^˜XÝ\ÝšXÝœ›ÛU›ÚXÙKˆ\œÙU›ÚXÙSÜÜ[š]QšY[ËˆÚ]Ø\XÝ[Û•\Q›Ü”Ý]\Ëˆ\Ð\˜Ú]™YY™XÞXÛKˆ\ÐXÝ]™SY™XÞXÛH\È\ÓÜÜ[š]SY™XÞXÛPXÝ]™BŸHœ›ÛH‹‹ÛÜÜ[š]K[Y™XÞXÛK›ZœÈŽÂš[\ÜÈš[™\XØ]SÜÜ[š]KX]Ú\Ñ\XØ]PÜš]\šXHHœ›ÛH‹‹ÛÜÜ[š]KY\XØ]K›ZœÈŽÂš[\ÜÈ™\ÛÛ™T\œÙYÜÜ[š]RÚ[™Hœ›ÛH‹‹ÛÜÜ[š]K[Y\ÜØYÙKXÛ\ÜÚYšXØ][Û‹›ZœÈŽÂš[\ÜÂˆPÕU‘TQPÑT×ÔÓÕTÑKˆ]]Üš^™PXÝ]™\YXÙ\ËˆÛÛ\ÜÙPXÝ]™\YXÙ\ÓY\ÜØYÙKˆ\ÔÝYÚ[™Ñš\™X˜\ÙQ[‹ˆ˜[Y]PXÝ]™\YXÙ\Ò[ZÙP›ÙBŸHœ›ÛH‹‹ØXÝ]™\YXÙ\ËZ[ZÙK›ZœÈŽÂš[\ÜÂˆY\™ÙPœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜËˆ›Ü›X[^™Pœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜËˆÛÛXÝÝ]ÛÛYPXÝ[Û’Ù^Kˆ›ÛÝÕ\Ý]ÛÛYPXÝ[Û’Ù^Kˆ›ÛÝÕ\Ú]Ð\XÝ[Û’Ù^Kˆ\PXÝ[Û’Ù^Kˆ”“ÒÑT—ÐPÕSÓ‚ŸHœ›ÛH‹‹‹Ë‹‹ÜX›XËÚœËØœ›ÚÙ\‹XXÝ[Û‹\›ÙÜ™\ÜËYÛXZ[‹šœÈŽÂš[\ÜÂˆ“ÓÕÕTÔÕUTÑTËˆ‘PÒTQS•ÓSÑTËˆ‘PÒTQS•ÓSÑWÓP‘SËˆ˜[Y]Q]\™Q›ÛÝÕ\]ˆ˜[Y]UÙ^T™\]Z\™\Ñ]\™U[YKˆZ[Ø[›ÛšXØ[›ÛÝÕ\ˆÛÛ\]T™[Z[™\]ˆ\œÙQ›ÛÝÕ\[œÝ[ˆ™\ÛÛ™T™XÚ\Y[ÛÛ^ˆ›Ü›X[^™T™XÚ\Y[[ÙKˆ\š]™Q›ÛÝÕ\Ý]\ËˆÚÝ[Ù[™›ÛÝÕ\™[Z[™\‹ˆ›ÛÝÕ\™[Z[™\‘Y\Ù^KˆÙ]YQ›ÛÝÕ\™[Z[™\‹ˆY˜[˜ÙQ›ÛÝÕ\Y\”™[Z[™\‹ˆ›ÛÝÕ\™[Z[™\•]Kˆ\ÔØ[YTØÚY[Y›ÛÝÕ\ˆ›Ü›X]›ÛÝÕ\™[Z[™\›ÙKˆ›Ü›X]›ÛÝÕ\[YSX™[ˆ\œÙTš^XY]U[YR[œ]ˆ\ÓÝÛ™\“ÜÜ[š]BŸHœ›ÛH‹‹ÛÜÜ[š]KY›ÛÝÝ\›ZœÈŽÂ‚˜ÛÛœÝÓÓÑÓWÕÒÑS—ÕT“HšÎ‹ËÛØ]]‹™ÛÛÙÛX\\Ë˜ÛÛKÝÚÙ[ˆŽÂ˜ÛÛœÝÓÓÑÓWÔÐÓÔHHšÎ‹ËÝÝÝË™ÛÛÙÛX\\Ë˜ÛÛKØ]]ØÛÝY\]›Ü›HŽÂ˜ÛÛœÝQUSÔ“Ò‘PÕÒQH˜\X\‹XYÍˆŽÂ˜ÛÛœÝQUSÐTÓÔ’QÒSˆHšÎ‹ËÚX\X\‹˜ZHŽÂ˜ÛÛœÝQUSÔÕQÒS‘×ÐTÓÔ’QÒSˆHšÎ‹ËÚX\X\‹XZK\ÝYÚ[™ËK\ÝYÚ[™ËNXÍŒÍÚÙX‹˜\ŽÂ‚™[˜Ý[Ûˆ™\ÛÛ™P\ÜšYÚ[Š[ˆHßJHÂˆÛÛœÝÛÛ™šYÝ\™YHÛX[•^
+[‹TÓÔ’QÒS‹Œ
+NÂˆYˆ
+ÛÛ™šYÝ\™Y
+H™]\›ˆÛÛ™šYÝ\™Yœ™\XÙJ×ÉËˆŠNÂˆÛÛœÝ\Þ[Y[HÝš[™Ê[‹‘TÖSQS•ÑS•ˆœ›ÙXÝ[ÛˆŠKÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+\Þ[Y[OOHœÝYÚ[™ÈŠH™]\›ˆQUSÔÕQÒS‘×ÐTÓÔ’QÒSŽÂˆ™]\›ˆQUSÐTÓÔ’QÒSŽÂŸB˜ÛÛœÝÔTÕ‘T”ÒSÓˆHŒKŒŽÂ˜ÛÛœÝPVÔU×ÓS‘ÕHMŒÂ˜ÛÛœÝRSWÑ”‘QWÕÔ’UTÈHŒÂ˜ÛÛœÝÐT“’S‘×ÔTÑS•HÂ˜ÛÛœÝTÕSPUQÕÔ’UT×ÔT—ÓQTÔÐQÑHHÂ‚˜\Þ[˜È[˜Ý[Ûˆ[”[[YSÜ˜Ú\Ý˜][ÛŠÈ]™[Ù™šXÙRY[]RYØØÝ\œ™[˜ÙRYHˆ‹ÛÛ^HßKY\\œÈHßKY™\œ™Y\™Ù]ÈH×HJHÂˆÛÛœÝ]™[YHZ[Ü˜Ú\Ý˜]Ü‘]™[Y
+È]™[Ù™šXÙRY[]RYØØÝ\œ™[˜ÙRYJNÂˆÛÛœÝ™\Ý[H]ØZ]\Ü]ÚÜ˜Ú\Ý˜]Ü‘]™[
+Âˆ]™[]™[YÛÛ^ˆÈ‹‹˜ÛÛ^Ù™šXÙRY[]RYKY\\œËY™\œ™Y\™Ù]ÂˆJNÂˆYˆ
+\™\Ý[›ÚÊHÂˆ›ÝÈ\\œ›ÜŠ›Ü˜Ú\Ý˜]Ü—Ù\Ü]ÚÙ˜Z[Y‹L6`v-6a6*¶a¶,öb¶`ˆ6)öa6+v+ö*È	Ù]™[Nˆ	Ü™\Ý[™\œ›Üˆ[šÛ›ÝÛˆŸX
+NÂˆBˆ™]\›ˆ™\Ý[ÂŸB‚˜ÛÛœÝPSÔÕQÑWÓP‘SÈHØš™XÝ™œ™Y^™JÂˆÛÛXÝˆ¶)öa6*¶b6)ö-va‹šY]Ú[™Îˆ¶)öa6av.v)öb¶a¶*H‹™YÛÝX][ÛŽˆ¶)öa6*¶`v)öb6-ˆ‹ˆYÜ™Y[Y[ˆ¶)ö*¶`v)ö`¶b¶*H6)öa6b6,ö)ö-ö*H‹ÛÜÚ[™Îˆ¶+6)öaö,¶*H6a6a6)v.¶a6)ö`ˆ‹ÛÜÙYˆ¶*¶av*ˆ6)öa6-v`v`¶*H‹ÜÝˆ¶av*¶b6`¶`v*H‚ŸJNÂ˜ÛÛœÝPSÓ‘VÐPÕSÓ—ÓP‘SÈHØš™XÝ™œ™Y^™JÂˆÛÛXÝˆ¶*¶+v+öb¶+È6avb6.v+È6av.v)öb¶a¶*H‹šY]Ú[™Îˆ¶*6+ö(H6)öa6*¶`v)öb6-ˆ‹™YÛÝX][ÛŽˆ¶*¶+6aöb¶,ˆ6)ö*¶`v)ö`¶b¶*H6)öa6b6,ö)ö-ö*H‹ˆYÜ™Y[Y[ˆ¶)ö.v*¶av)ö+È6)öa6)ö*¶`v)ö`¶b¶*H‹ÛÜÚ[™Îˆ¶)v.¶a6)ö`ˆ6)öa6-v`v`¶*H‹ÛÜÙYˆ¶*¶av*ˆ6)öa6-v`v`¶*H‹ÜÝˆ¶a6)È6b¶b6+6+È6)v+6,v)ö(H‚ŸJNÂ˜ÛÛœÝPUÒÔÕUT×ÓÔ‘TˆHÈ˜XÝ]™H‹ØZ][™×Ü™\ÜÛœÙH‹šY]Ú[™È‹›™YÛÝX][Ûˆ—NÂ˜ÛÛœÝPUÒÔÕUT×ÓP‘SÈHØš™XÝ™œ™Y^™JÂˆ™]Îˆ¶a¶-6-ö*H‹XÝ]™Nˆ¶a¶-6-ö*H‹[—Ü›ÙÜ™\ÜÎˆ¶a¶-6-ö*H‹ØZ][™×Ü™\ÜÛœÙNˆ¶*6)öa¶*¶.6)ö,H6,v+È‹ˆšY]Ú[™Îˆ¶avb6.v+È6av.v)öb¶a¶*H‹™YÛÝX][ÛŽˆ¶*¶`v)öb6-ˆ‹ÛÛ™\Yˆ¶*¶`v)öb6-ˆ‹ˆÛÛ\]Yˆ¶*¶av*ˆ6)öa6-v`v`¶*H‹ÛÜÙYˆ¶(öcö.¶a6`¶*ˆ‚ŸJNÂ˜ÛÛœÝPUÒÓ‘VÐPÕSÓ—ÓP‘SÈHØš™XÝ™œ™Y^™JÂˆ™]Îˆ¶*6+ö(H6)öa6*¶b6)ö-va‹XÝ]™Nˆ¶)öa6*¶b6)ö-va6av.H6)öa6-ö,v`vb¶aˆ‹[—Ü›ÙÜ™\ÜÎˆ¶av*¶)ö*6.v*H6)öa6*¶b6)ö-va‹ˆØZ][™×Ü™\ÜÛœÙNˆ¶av*¶)ö*6.v*H6)öa6,v+È‹šY]Ú[™Îˆ¶*¶(ö`öb¶+È6)öa6av.v)öb¶a¶*H‹™YÛÝX][ÛŽˆ¶av*¶)ö*6.v*H6)öa6*¶`v)öb6-ˆ‹ˆÛÛ™\Yˆ¶av*¶)ö*6.v*H6)öa6-v`v`¶*H‹ÛÛ\]Yˆ¶*¶av*ˆ6)öa6-v`v`¶*H‹ÛÜÙYˆ¶a6)È6b¶b6+6+È6)v+6,v)ö(H‚ŸJNÂ˜ÛÛœÝ‘PQS‘TÔ×ÓP‘SÈHØš™XÝ™œ™Y^™JÂˆ™\žWÚYÚˆ¶.v)öa6b¶*H6+6+öbö)È‹YÚˆ¶.v)öa6b¶*H‹YY][Nˆ¶av*¶b6,ö-ö*H‹ÝÎˆ¶ava¶+¶`v-¶*H‚ŸJNÂ˜ÛÛœÝPSÒPSÓP‘SÈHØš™XÝ™œ™Y^™JÂˆ^Ù[[ˆ¶avav*¶)ö,¶*H‹ÝX›Nˆ¶av,ö*¶`¶,v*H‹™YY×Ú[\™[[ÛŽˆ¶*¶+v*¶)ö+6*¶+ö+¶a‹]Üš\ÚÎˆ¶av.v,v-¶*H6a6a6`v-6a‚ŸJNÂ™[˜Ý[Ûˆ›Ü›X[^™SX]ÚÝ]\Ê˜[YJ^Âˆ™]\›ˆ›Ü›X[^™SX]ÚÝ]\Ñ[™Ú[™JÛX[•^
+˜[Y_˜XÝ]™H‹
+JNÂŸB™[˜Ý[Ûˆ™XY[™\ÜÑœ›ÛTØÛÜ™JØÛÜ™J^Âˆ™]\›ˆ™XY[™\ÜÑœ›ÛTØÛÜ™Q[™Ú[™JØÛÜ™JNÂŸB™[˜Ý[ÛˆØ[Ý[]PÛÜÚ[™Ô™XY[™\ÜÊ\™ÜÊ^Âˆ™]\›ˆØ[Ý[]PÛÜÚ[™Ô™XY[™\ÜÑ[™Ú[™J\™ÜÊNÂŸB™[˜Ý[ÛˆØ[Ý[]QX[X[
+ÜÝYÙOH˜ÛÛXÝ‹Ý]\ÏH›Ü[ˆ‹\]Y][[™^›ÛÝÕ\][[O^ßJ^ÂˆYŠÝ]\ÏOOH˜ÛÜÙYŸÝYÙOOOH˜ÛÜÙYŠH™]\›ˆÜØÛÜ™NŒLÙ^Nˆ™^Ù[[‹X™[‘PSÒPSÓP‘SË™^Ù[[NÂˆYŠÝ]\ÏOOH›ÜÝŸÝYÙOOOH›ÜÝŠH™]\›ˆÜØÛÜ™NŒLÙ^Nˆ˜]Üš\ÚÈ‹X™[‘PSÒPSÓP‘SË˜]Üš\ÚßNÂˆÛÛœÝ˜\ÙO^ØÛÛXÝ‹šY]Ú[™ÎÍ‹™YÛÝX][ÛŽŽ‹YÜ™Y[Y[ŽÛÜÚ[™ÎŽM_VÜÝYÙW_ŒÂˆÛÛœÝ›ÝÏQ]K››ÝÊ
+NÂˆÛÛœÝ\]Y]\]Y]Û™]È]J\]Y]
+K™Ù][YJ
+N››ÝÎÂˆÛÛœÝYO[™^›ÛÝÕ\]Û™]È]J™^›ÛÝÕ\]
+K™Ù][YJ
+NŒÂˆ]ØÛÜ™OX˜\ÙNÂˆYŠ[X™\‹š\Ñš[š]J\]Y
+I‰››ÝË]\]YÊŽ
+HØÛÜ™KOLNÂˆ[ÙHYŠ[X™\‹š\Ñš[š]J\]Y
+I‰››ÝË]\]YŒÊŽ
+HØÛÜ™KOLLŽÂˆYŠ[X™\‹š\Ñš[š]JYJI‰™YOŒ	‰™YO›ÝÊHØÛÜ™KOLNÂˆØÛÜ™OSX]›X^
+X]›Z[ŠLX]œ›Ý[™
+ØÛÜ™JJJNÂˆÛÛœÝÙ^O\ØÛÜ™ONOÈ™^Ù[[ŽœØÛÜ™OMOÈœÝX›HŽœØÛÜ™OMÈ›™YY×Ú[\™[[ÛˆŽˆ˜]Üš\ÚÈŽÂˆ™]\›ˆÜØÛÜ™KÙ^KX™[‘PSÒPSÓP‘SÖÚÙ^W_NÂŸB™[˜Ý[ÛˆY˜][™^›ÛÝÕ\
+Ý\œÏL
+^È™]\›ˆ™]È]J]K››ÝÊ
+JÚÝ\œÊŒÍŒ
+NÈB™[˜Ý[ÛˆZ[[˜[]XÜÔÝ[[X\žJØÛY[ÏV×KÝÛ™\œÏV×KX]Ú\ÏV×KX[ÏV×_O^ßJ^ÂˆÛÛœÝÛÜÙYYX[Ë™š[\ŠO™œÝ]\ÏOOH˜ÛÜÙYŠKÜ[YX[Ë™š[\ŠO™œÝ]\ÏOOH›Ü[ˆŠKÜÝYX[Ë™š[\ŠO™œÝ]\ÏOOH›ÜÝŠNÂˆÛÛœÝ˜[šÙYVË‹‹›X]Ú\×K™š[\ŠOOˆVÈ˜ÛÛ\]Y‹˜ÛÜÙY—Kš[˜ÛY\Ê›Ü›X[^™SX]ÚÝ]\ÊKœÝ]\ÊJJKœÛÜ
+
+KŠOO“[X™\Š‹˜ÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™_‹›ÜÜ[š]TØÛÜ™_‹œØÛÜ™_
+KS[X™\ŠK˜ÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™_K›ÜÜ[š]TØÛÜ™_KœØÛÜ™_
+JNÂˆÛÛœÝ™\Ý\˜[šÙYÌ_[ÂˆÛÛœÝ\ÝšXÝÏ^ßK›Ü\U\\Ï^ßKÝYÙ\Ï^ßNÂˆË‹‹˜ÛY[Ë‹‹›ÝÛ™\œ×K™›Ü‘XXÚ
+OžÚYŠ™\ÝšXÝ
+Y\ÝšXÝÖÙ™\ÝšXÝOJ\ÝšXÝÖÙ™\ÝšXÝ_
+JÌNÚYŠœ›Ü\U\J\›Ü\U\\ÖÙœ›Ü\U\WOJ›Ü\U\\ÖÙœ›Ü\U\W_
+JÌNßJNÂˆX[Ë™›Ü‘XXÚ
+OžØÛÛœÝÝYÛÜšÙ›ÝÔÝYÙ_˜ÛÛXÝŽÜÝYÙ\ÖÜÝOJÝYÙ\ÖÜÝ_
+JÌNßJNÂˆÛÛœÝÜ\ÝšXÝSØš™XÝ™[šY\Ê\ÝšXÝÊKœÛÜ
+
+KŠOO˜–ÌWKXVÌWJVÌOË–Ì_ˆŽÂˆÛÛœÝÜ›Ü\U\OSØš™XÝ™[šY\Ê›Ü\U\\ÊKœÛÜ
+
+KŠOO˜–ÌWKXVÌWJVÌOË–Ì_ˆŽÂˆÛÛœÝÛÛ[Z\ÜÚ[ÛXÝX[XÛÜÙYœ™YXÙJ
+Ý[K
+OOœÝ[JÓ[X™\Š˜ÛÛ[Z\ÜÚ[ÛXÝX[
+K
+NÂˆÛÛœÝÛÛ[Z\ÜÚ[Û‘^XÝY[Ü[‹œ™YXÙJ
+Ý[K
+OOœÝ[JÓ[X™\Š˜ÛÛ[Z\ÜÚ[Û‘^XÝY
+K
+NÂˆÛÛœÝÛÜÙT˜]OYX[Ë›[™ÝÓX]œ›Ý[™
+
+ÛÜÙY›[™ÝÙX[Ë›[™Ý
+JŒL
+NŒÂˆÛÛœÝÛÛ™\œÚ[Û”˜]O[X]Ú\Ë›[™ÝÓX]œ›Ý[™
+
+X[Ë›[™ÝÛX]Ú\Ë›[™Ý
+JŒL
+NŒÂˆÛÛœÝ]™\˜YÙSX]ÚØÛÜ™O[X]Ú\Ë›[™ÝÓX]œ›Ý[™
+X]Ú\Ëœ™YXÙJ
+Ý[KJOOœÝ[JÓ[X™\ŠKœØÛÜ™_
+K
+KÛX]Ú\Ë›[™Ý
+NŒÂˆÛÛœÝ›ÝÏQ]K››ÝÊ
+NÂˆÛÛœÝ\ÑYOYOžÂˆÛÛœÝYOY›™^›ÛÝÕ\]Û™]È]J›™^›ÛÝÕ\]
+K™Ù][YJ
+NŒÂˆ™]\›ˆ[X™\‹š\Ñš[š]JYJI‰™YOŒ	‰™YO[›ÝÎÂˆNÂˆÛÛœÝYSX]Ú\Ï[X]Ú\Ë™š[\ŠOOˆVÈ˜ÛÛ\]Y‹˜ÛÜÙY—Kš[˜ÛY\Ê›Ü›X[^™SX]ÚÝ]\ÊKœÝ]\ÊJI‰š\ÑYJJJK›[™ÝÂˆÛÛœÝYQX[ÏYX[Ë™š[\ŠOˆVÈ˜ÛÜÙY‹›ÜÝ—Kš[˜ÛY\ÊœÝ]\ÊI‰š\ÑYJ
+JK›[™ÝÂˆÛÛœÝ™\žT™XYO[X]Ú\Ë™š[\ŠOO››Ü›X[^™SX]ÚÝ]\ÊKœÝ]\ÊHOOH˜ÛÜÙY‰‰“[X™\ŠK˜ÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™_
+ONJK›[™ÝÂˆÛÛœÝ™YÛÝX][Û‘X[Ï[Ü[‹™š[\ŠO–È›™YÛÝX][Ûˆ‹˜YÜ™Y[Y[‹˜ÛÜÚ[™È—Kš[˜ÛY\ÊÛÜšÙ›ÝÔÝYÙJJK›[™ÝÂˆ™]\›ˆÂˆÛÝ[ÎžØÛY[Î˜ÛY[Ë›[™ÝÝÛ™\œÎ›ÝÛ™\œË›[™ÝX]Ú\Î›X]Ú\Ë›[™ÝÜ[‘X[Î›Ü[‹›[™ÝÛÜÙYX[Î˜ÛÜÙY›[™ÝÜÝX[Î›ÜÝ›[™ÝYQ›ÛÝÕ\Î™YSX]Ú\ÊÙYQX[Ë™\žT™XYK™YÛÝX][Û‘X[ßKˆ™\ÝÜÜ[š]N˜™\ÝÞÜØÛÜ™N“[X™\Š™\Ý›ÜÜ[š]TØÛÜ™_™\ÝœØÛÜ™_
+KX]ÚØÛÜ™N“[X™\Š™\ÝœØÛÜ™_
+KÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™N“[X™\Š™\Ý˜ÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™_
+KÛÜÚ[™Ô™XY[™\ÜÓX™[˜™\Ý˜ÛÜÚ[™Ô™XY[™\ÜÓX™[™XY[™\ÜÑœ›ÛTØÛÜ™J™\Ý˜ÛÜÚ[™Ô™XY[™\ÜÔØÛÜ™_
+K›X™[\ÝšXÝ˜™\Ý™\ÝšXÝˆ‹›Ü\U\N˜™\Ýœ›Ü\U\_ˆ‹X]ÚY”Ýš[™Ê™\Ý›X]ÚY™\ÝšYˆŠKš[Üš]N˜™\Ýœš[Üš]_ˆ‹Ý]\Î››Ü›X[^™SX]ÚÝ]\Ê™\ÝœÝ]\ÊK™^XÝ[ÛŽ˜™\Ý›™^XÝ[ÛŸPUÒÓ‘VÐPÕSÓ—ÓP‘SÖÛ›Ü›X[^™SX]ÚÝ]\Ê™\ÝœÝ]\ÊWK™X\ÛÛœÎœ\œÙRœÛÛ\œ˜^J™\Ýœ™X\ÛÛœÒœÛÛŸ™\Ýœ™X\ÛÛœÊ_N›[ˆ[Ü›š[™ÔÝ[[X\žNžÙYQ›ÛÝÕ\Î™YSX]Ú\ÊÙYQX[Ë™\žT™XYK™YÛÝX][Û‘X[ËÜ[‘X[Î›Ü[‹›[™ÝÛÛ[Z\ÜÚ[Û‘^XÝYKˆÜ\ÝšXÝÜ›Ü\U\KÛÛ[Z\ÜÚ[ÛXÝX[ÛÛ[Z\ÜÚ[Û‘^XÝYÛÜÙT˜]KÛÛ™\œÚ[Û”˜]K]™\˜YÙSX]ÚØÛÜ™K\[[™NœÝYÙ\ÂˆNÂŸB‚›]ØXÚYÛÛÙÛUÚÙ[ˆH[Â‚™^ÜY˜][Âˆ\Þ[˜È™]Ú
+™\]Y\Ý[‹^XÝ][ÛÛÛ^
+HÂˆÛÛœÝ™\]Y\ÝYHÜž\Ëœ˜[™ÛUURQ
+
+NÂˆÛÛœÝ\›H™]ÈT“
+™\]Y\Ý\›
+NÂ‚ˆžHÂˆYˆ
+™\]Y\Ý›Y]ÙOOH“ÔSÓ”ÈŠHÂˆ™]\›ˆ™]È™\ÜÛœÙJ[ÈÝ]\ÎˆŒXY\œÎˆÛÜœÒXY\œÊ
+HJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ
+\›œ]˜[YKœÝ\ÕÚ]
+‹ÛKÈŠH\›œ]˜[YKœÝ\ÕÚ]
+‹ÛËÈŠJJHÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆ™]\›ˆ]ØZ][™TX›XÓÙ™šXÙT™]šY]Ê™\]Y\Ý[‹X›XÔ™]šY]Ñ\Ê[‹™\]Y\ÝY›Ú™XÝYXØÙ\ÜÕÚÙ[ŠJNÂˆB‚ˆYˆ
+
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ™\]Y\Ý›Y]ÙOOH’PQŠH	‰ˆÚ\™PØ\™Ù]X]Ú
+\›œ]˜[YJJHÂˆ™]\›ˆ]ØZ][™SÙ™šXÙTÚ\™PØ\™Ù]
+™\]Y\Ý[‹X›XÔ™]šY]Ñ\Ê[‹™\]Y\ÝY
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÙ™šXÙK\Ú\™KXØ\™ŠHÂˆ™]\›ˆ]ØZ][™SÙ™šXÙTÚ\™PØ\™\ØY
+™\]Y\Ý[‹X›XÔ™]šY]Ñ\Ê[‹™\]Y\ÝY
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÙ™šXÙKÜX›XË\ÛYÈŠHÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆ™]\›ˆ]ØZ][™TØ]™TX›XÔÛYÊ™\]Y\Ý[‹X›XÔ™]šY]Ñ\Ê[‹™\]Y\ÝY›Ú™XÝYXØÙ\ÜÕÚÙ[ŠJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹Ü]›Ü›KÜ[Ý\Ý]\ÈŠHÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+\›œÙX\˜Ú\˜[\Ë™Ù]
+›Ù™šXÙRYŠJNÂˆ]\Ô]›Ü›PYZ[ˆH˜[ÙNÂˆÛÛœÝ]]XY\ˆHÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+]]Üš^˜][ÛˆŠKL
+NÂˆÛÛœÝ™X\™\ˆH]]XY\‹œÝ\ÕÚ]
+™X\™\ˆŠHÈ]]XY\‹œÛXÙJÊKš[J
+HˆˆŽÂˆYˆ
+™X\™\ŠHÂˆžHÂˆÛÛœÝÛZ[\ÈH]ØZ]™\šYžQš\™X˜\ÙRYÚÙ[Š™X\™\‹›Ú™XÝY
+NÂˆ\Ô]›Ü›PYZ[ˆHÛZ[\Ëœ]›Ü›PYZ[ˆOOHYHÛZ[\Ë˜YZ[ˆOOHYNÂˆHØ]Ú
+ÊHÈÊˆX›XÈÝ[[X\žHÚ]Ý]]]
+‹ÈBˆBˆÛÛœÝÝ]\ÈH]ØZ]Ù][ÝXØÙ\ÜÔÝ]\Ê[ÝXØÙ\ÜÑ\Ê›Ú™XÝYXØÙ\ÜÕÚÙ[ŠKÂˆÙ™šXÙRYˆ\Ô]›Ü›PYZ[‚ˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆYK‹‹œÝ]\Ë™\]Y\ÝYJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ
+\›œ]˜[YHOOH‹Èˆ\›œ]˜[YHOOH‹ÚX[ŠJHÂˆÛÛœÝ\Þ[Y[[š\›Û›Y[HÝš[™Ê[‹‘TÖSQS•ÑS•ˆœ›ÙXÝ[ÛˆŠKÓÝÙ\Ø\ÙJ
+HOOHœÝYÚ[™È‚ˆÈœÝYÚ[™È‚ˆˆœ›ÙXÝ[ÛˆŽÂˆÛÛœÝš\™X˜\ÙPÛÛ™šYÝ\™YH\Ñš\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆËÈ˜XÚÙ[™™XYHHÛ™HÙÚ[‹X]Ú[™ËÜËY\ÜØYÙ\Ë]]YØ]YYYXHÛÜšË‚ˆËÈRK[Û›HÝYÚ[™ÈÛÜšÙ\ˆ\È™Z™XÝYžH\ÞK\ÝYÚ[™ÈÛ[ÚÙHÚ[ˆ\È\È˜[ÙK‚ˆÛÛœÝ˜XÚÙ[™™XYHHš\™X˜\ÙPÛÛ™šYÝ\™YÂˆÛÛœÝÜ›Û‘[˜X›YH\Þ[Y[[š\›Û›Y[OOHœÝYÚ[™ÈŽÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÙ\šXÙNˆšX\X\‹]Ú]Ø\[Ù™šXÚX[Z[ZÙH‹ˆ[ÙNˆš[˜›Ý[™[Û›H‹ˆÝ]›Ý[™Y\ÜØYÚ[™Îˆ˜[ÙKˆ\Þ[Y[[š\›Û›Y[ˆš\™X˜\ÙPÛÛ™šYÝ\™Yˆ˜XÚÙ[™™XYKˆÜ›Û‘[˜X›Yˆ\Ú›ÝYšXØ][ÛœÎˆ›ÛÛX[Š[‹‘ÓWÕÑP—ÔTÒÕTQÒÑVH	‰ˆš\™X˜\ÙPÛÛ™šYÝ\™Y
+Kˆ›Ú™XÝYˆ[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQˆÙXšÛÚÎˆ‹ÛY]KÝÙXšÛÚÈ‹ˆ™\]Y\ÝYˆ[YNˆ™]È]J
+KÒTÓÔÝš[™Ê
+BˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛY]KØÛÛ™šYÈŠHÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+\›œÙX\˜Ú\˜[\Ë™Ù]
+›Ù™šXÙRYŠJNÂˆÛÛœÝ[˜X›YH›ÛÛX[Š[‹“QUWÐTÒQ	‰ˆ[‹“QUWÐÓÓ‘’Q×ÒQ	‰ˆ[‹“QUWÐTÔÑPÔ‘U
+NÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆ[˜X›Yˆ\Yˆ[˜X›YÈ[‹“QUWÐTÒQˆˆ‹ˆÛÛ™šYÒYˆ[˜X›YÈ[‹“QUWÐÓÓ‘’Q×ÒQˆˆ‹ˆÜ˜\™\œÚ[ÛŽˆ[‹“QUWÑÔTÕ‘T”ÒSÓˆÔTÕ‘T”ÒSÓ‹ˆšX[[ÝÙYˆ›ÛÛX[ŠÙ™šXÙRY
+Kˆ][SÙ™šXÙNˆYKˆ[˜›Ý[™Û›NˆYKˆÝ]›Ý[™Y\ÜØYÚ[™Îˆ˜[ÙKˆ™\]Y\ÝYˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛY]KÜÝ]\ÈŠHÂˆ™]\›ˆ[™TÝ]\Ê™\]Y\Ý\›[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛY]KÝÙXšÛÚÈŠHÂˆ™]\›ˆ™\šYžUÙXšÛÚÊ\›[ŠNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛY]KÝÙXšÛÚÈŠHÂˆ™]\›ˆ™XÙZ]™SY]UÙXšÛÚÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ×—Ý[YÜ˜[WÝÙXšÛÚ×Ö×‹×JÉË\Ý
+\›œ]˜[YJJHÂˆ™]\›ˆ]ØZ][™U[YÜ˜[UÙXšÛÚÔ›Ý]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛY]KÜÚYÛ\ØÛÛ\]HŠHÂˆ™]\›ˆÛÛ\]Q[X™YYÚYÛ\
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÜ™]šY]ÈŠHÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆYK\œÙYˆ\œÙT™X[\Ý]SY\ÜØYÙJÛX[•^
+›ÙK›Y\ÜØYÙU^LŒ
+KÛX[•^
+›ÙKœÙ[™\”Û™KŒ
+KÛX[•^
+›ÙKœÙ[™\“˜[YKŒ
+JK™\]Y\ÝYJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÝ\›\™\ÛÛ™HŠHÂˆ™]\›ˆ]ØZ][™T\[[™U\›™\ÛÛ™J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÛYYXKY^˜XÝŠHÂˆ™]\›ˆ]ØZ][™T\[[™SYYXQ^˜XÝ
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KØ]Y[ËY^˜XÝŠHÂˆ™]\›ˆ]ØZ][™T\[[™P]Y[Ñ^˜XÝ
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÝ›ÚXÙKX[˜[^™HŠHÂˆ™]\›ˆ]ØZ][™T\[[™U›ÚXÙP[˜[^™J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÜX›XË]›ÚXÙKX[˜[^™HŠHÂˆ™]\›ˆ]ØZ][™T\[[™U›ÚXÙP[˜[^™J™\]Y\Ý[‹™\]Y\ÝYÈX›XÔ›Ý]NˆYHJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛ\][Û‹ÜÙ\ÜÚ[ÛœÈŠHÂˆ™]\›ˆ]ØZ][™PÛÛ\][Û”Ù\ÜÚ[ÛÜ™X]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆBˆÛÛœÝÛÛ\][Û”]H\›œ]˜[YK›X]Ú
+×—ØÛÛ\][Û—Ê×‹×JÊWÊ×‹×JÊIÊNÂˆYˆ
+ÛÛ\][Û”]	‰ˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ™\]Y\Ý›Y]ÙOOH”ÔÕŠJHÂˆ™]\›ˆ]ØZ][™PÛÛ\][Û”Ù\ÜÚ[Û”X›XÊˆ™\]Y\Ýˆ[‹ˆ™\]Y\ÝYˆš\™\ÝÜ™SÙ™šXÙRY
+XÛÙUT’PÛÛ\Û™[
+ÛÛ\][Û”]ÌWJJKˆÛX[•^
+XÛÙUT’PÛÛ\Û™[
+ÛÛ\][Û”]Ì—JKN
+Bˆ
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KØØ[›ÛšXØ[Z[ZÙHŠHÂˆ™]\›ˆ]ØZ][™PØ[›ÛšXØ[[ZÙTÝ\
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KØØ[›ÛšXØ[Z[ZÙKØØ[˜XÚÈŠHÂˆ™]\›ˆ]ØZ][™PØ[›ÛšXØ[[ZÙPØ[˜XÚÔ›Ý]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KØØ[›ÛšXØ[Z[ZÙKÜ™]žHŠHÂˆ™]\›ˆ]ØZ][™PØ[›ÛšXØ[[ZÙT™]žT›Ý]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKØØ[›ÛšXØ[Z[ZÙKXXØÙ\ÜÈŠHÂˆ™]\›ˆ]ØZ][™PØ[›ÛšXØ[[ZÙSYYXPXØÙ\ÜÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛX]Ú[™ËÜ™]šY]ÈŠHÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÛÝ\˜ÙHH›ÙKœÛÝ\˜ÙH\œÙT™X[\Ý]SY\ÜØYÙJÛX[•^
+›ÙKœÛÝ\˜ÙU^LŒ
+Kˆ‹ˆŠNÂˆÛÛœÝØ[™Y]\ÈH\œ˜^Kš\Ð\œ˜^J›ÙK˜Ø[™Y]\ÊHÈ›ÙK˜Ø[™Y]\Èˆ×NÂˆÛÛœÝ˜[šÙYH˜[šÓX]ÚØ[™Y]\ÊÛÝ\˜ÙKØ[™Y]\ÊNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÛÝ\˜ÙKˆX]Ú\Îˆ˜[šÙYˆ™\ÝÜÜ[š]Nˆ˜[šÙYÌH[ˆX]Ú[™Ô[U™\œÚ[ÛŽˆPUÒS‘×Ô•SWÕ‘T”ÒSÓ‹ˆ™\ÚÛˆPUÒÕ‘TÒÓˆ›Ý[™\šY\Îˆ\ÙM›Ý[™\žQÝX\˜[Y\Ê
+Kˆ™\]Y\ÝYˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛX]Ú[™ËÜ[ˆŠHÂˆ™]\›ˆ]ØZ][™SX]Ú[™Ô[Š™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜ\˜][ÛœËØXÝ[ÛˆŠHÂˆ™]\›ˆ]ØZ][™SÜ\˜][ÛœÐXÝ[ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜ\˜][ÛœËÙœ›ÛKXÛÛÜ\˜][ÛˆŠHÂˆ™]\›ˆ]ØZ][™SÜ\˜][ÛœÑœ›ÛPÛÛÜ\˜][ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜ\˜][ÛœËÛZ\ÜÚ[™ËY]HŠHÂˆ™]\›ˆ]ØZ][™SÜ\˜][ÛœÓZ\ÜÚ[™Ñ]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹Û™X\˜žK\ÝYÙÙ\Ý[ÛœÈŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û“™X\˜žTÝYÙÙ\Ý[ÛœÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹ÜÝZ]X›K[Ù™šXÙ\ÈŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û”ÝZ]X›SÙ™šXÙ\Ê™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹ÝÛÜšÙ›ÝÈŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û•ÛÜšÙ›ÝÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹Ü™\]Y\ÝŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û”™\]Y\ÝÜ™X]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹ÛY™XÞXÛHŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û“Y™XÞXÛJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹ÜÞ[˜ËXÛÛÜ™[˜][ÛˆŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û”Þ[˜ÐÛÛÜ™[˜][ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹ÜØÛÜK\™]›ÚÙHŠHÂˆ™]\›ˆ]ØZ][™PÛÛÜ\˜][Û”ØÛÜT™]›ÚÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËÙ˜YŠHÂˆ™]\›ˆ]ØZ][™SY\ÜØYÙ\Ñ˜Y
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËÚ[™Ù™ˆŠHÂˆ™]\›ˆ]ØZ][™SY\ÜØYÙ\Ò[™Ù™Š™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\KÜÙ\ÜÚ[ÛœÈŠHÂˆ™]\›ˆ]ØZ][™T\TÙ\ÜÚ[Û“Z[
+Âˆ™\]Y\Ýˆ[‹ˆ™\]Y\ÝYˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+BˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛX]ÚÛ]š[™ËXXÝ[ÛˆŠHÂˆ™]\›ˆ]ØZ][™SX]Ú]š[™ÐXÝ[ÛŠÂˆ™\]Y\Ýˆ[‹ˆ™\]Y\ÝYˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+BˆJNÂˆB‚ˆÛÛœÝ\QÙ]H\›œ]˜[YK›X]Ú
+×—Ü\WÜÙ\ÜÚ[Ûœ×Ê×‹×JÊIÊNÂˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\QÙ]
+HÂˆ™]\›ˆ]ØZ][™T\TÙ\ÜÚ[Û‘Ù]
+ÂˆÚÙ[ŽˆXÛÙUT’PÛÛ\Û™[
+\QÙ]ÌWHˆŠKˆ[‹ˆ™\]Y\ÝYˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+Kˆ\ˆ™\]Y\ÝšXY\œË™Ù]
+Ñ‹PÛÛ›™XÝ[™ËRTŠH[šÛ›ÝÛˆ‚ˆJNÂˆB‚ˆÛÛœÝ\TÝÈH\›œ]˜[YK›X]Ú
+×—Ü\WÜÙ\ÜÚ[Ûœ×Ê×‹×JÊWÜÝÜ×Ê
+ÊIÊNÂˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\TÝÊHÂˆ™]\›ˆ]ØZ][™T\TÙ\ÜÚ[Û”ÝÊÂˆÚÙ[ŽˆXÛÙUT’PÛÛ\Û™[
+\TÝÖÌWHˆŠKˆ[™^ˆ[X™\Š\TÝÖÌ—H
+Kˆ[‹ˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+Kˆ\ˆ™\]Y\ÝšXY\œË™Ù]
+Ñ‹PÛÛ›™XÝ[™ËRTŠH[šÛ›ÝÛˆ‚ˆJNÂˆB‚ˆÛÛœÝ\T™\HH\›œ]˜[YK›X]Ú
+×—Ü\WÜÙ\ÜÚ[Ûœ×Ê×‹×JÊWÜ™\IÊNÂˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\T™\JHÂˆ™]\›ˆ]ØZ][™T\TÙ\ÜÚ[Û”™\JÂˆÚÙ[ŽˆXÛÙUT’PÛÛ\Û™[
+\T™\VÌWHˆŠKˆ[‹ˆ™\]Y\Ýˆ™\]Y\ÝYˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+Kˆ\ˆ™\]Y\ÝšXY\œË™Ù]
+Ñ‹PÛÛ›™XÝ[™ËRTŠH[šÛ›ÝÛˆ‚ˆJNÂˆB‚ˆÛÛœÝ\P[™HH\›œ]˜[YK›X]Ú
+×—Ü\WÜÙ\ÜÚ[Ûœ×Ê×‹×JÊWØ[™IÊNÂˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\P[™JHÂˆ™]\›ˆ]ØZ][™T\TÙ\ÜÚ[Û[™JÂˆÚÙ[ŽˆXÛÙUT’PÛÛ\Û™[
+\P[™VÌWHˆŠKˆ[‹ˆ™\]Y\Ýˆ™\]Y\ÝYˆ[\œÎˆ\TÙ\ÜÚ[Û’[\œÊ
+Kˆ\ˆ™\]Y\ÝšXY\œË™Ù]
+Ñ‹PÛÛ›™XÝ[™ËRTŠH[šÛ›ÝÛˆ‹ˆ^XÝ][ÛÛÛ^ˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËØY\\œÈŠHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÚ]Ø\ˆÚ]Ø\Y\\ÛÛ˜XÝ
+
+Kˆ[YÜ˜[NˆÈ‹‹[YÜ˜[UÙXšÛÚÕ˜[Y][Û‘š^\™J
+K‹‹[YÜ˜[UÙXšÛÚÔ[[YPÛÛ˜XÝ
+
+HKˆ›Ý[™\šY\ÎˆÈ‹‹œ\ÙMÐ›Ý[™\žQÝX\˜[Y\Ê
+K‹‹˜Ú[›™[ÛX[\›Ý[™\žQÝX\˜[Y\Ê
+HKˆ™\]Y\ÝYˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÝÛÜšÙ›ÝËÜ™]šY]ÈŠHÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÝ\œ™[HÛX[•^
+›ÙK˜Ý\œ™[ÝYÙH˜ÛÛXÝ‹
+NÂˆÛÛœÝ™^H™^X[ÝYÙJÝ\œ™[
+NÂˆÛÛœÝX[HØ[Ý[]QX[X[
+ÈÝYÙNˆ™^Ý]\Îˆ™^OOH˜ÛÜÙYˆÈ˜ÛÜÙYˆˆ›Ü[ˆˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÛÚÎYKÝ\œ™[ÝYÙN˜Ý\œ™[™^ÝYÙN›™^Ý\œ™[X™[‘PSÔÕQÑWÓP‘SÖØÝ\œ™[_Ý\œ™[™^X™[‘PSÔÕQÑWÓP‘SÖÛ™^_™^™^XÝ[ÛŽ‘PSÓ‘VÐPÕSÓ—ÓP‘SÖÛ™^_¶av*¶)ö*6.v*H6)öa6-v`v`¶*H‹X[ÛÜÙY›™^OOH˜ÛÜÙY‹™\]Y\ÝYJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÝÛÜšÙ›ÝËÜ™XY[™\ÜËÜ™]šY]ÈŠHÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝ™XY[™\ÜÈHØ[Ý[]PÛÜÚ[™Ô™XY[™\ÜÊÂˆX]ÚØÛÜ™Nˆ[X™\Š›ÙK›X]ÚØÛÜ™H›ÙKœØÛÜ™H
+KˆÛÝ\˜ÙNˆ›ÙKœÛÝ\˜ÙHßKˆØ[™Y]Nˆ›ÙK˜Ø[™Y]HßKˆÝ]\Îˆ›ÙKœÝ]\È˜XÝ]™H‚ˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÛÚÎYK™XY[™\ÜËÝ]\Î››Ü›X[^™SX]ÚÝ]\Ê›ÙKœÝ]\ÊKÝ]\ÓX™[“PUÒÔÕUT×ÓP‘SÖÛ›Ü›X[^™SX]ÚÝ]\Ê›ÙKœÝ]\ÊWK™^XÝ[ÛŽ“PUÒÓ‘VÐPÕSÓ—ÓP‘SÖÛ›Ü›X[^™SX]ÚÝ]\Ê›ÙKœÝ]\ÊWK™\]Y\ÝYJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÙ™šXÙKØ[˜[]XÜËÜ™]šY]ÈŠHÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÝ[[X\žHHZ[[˜[]XÜÔÝ[[X\žJØÛY[Î\œ˜^Kš\Ð\œ˜^J›ÙK˜ÛY[ÊOØ›ÙK˜ÛY[Î–×KÝÛ™\œÎ\œ˜^Kš\Ð\œ˜^J›ÙK›ÝÛ™\œÊOØ›ÙK›ÝÛ™\œÎ–×KX]Ú\Î\œ˜^Kš\Ð\œ˜^J›ÙK›X]Ú\ÊOØ›ÙK›X]Ú\Î–×KX[Î\œ˜^Kš\Ð\œ˜^J›ÙK™X[ÊOØ›ÙK™X[Î–×_JNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÛÚÎYK‹‹œÝ[[X\žK™\]Y\ÝYJNÂˆB‚ˆYˆ
+\›œ]˜[YHOOH‹ØXÝ]™\YXÙ\ËÚ[ZÙHŠHÂˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕŠHÂˆ™]\›ˆ]ØZ][™PXÝ]™\YXÙ\Ò[ZÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆBˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÝXØÙ\ÜÎˆ˜[ÙKˆ\XØ]Nˆ˜[ÙKˆÜÜ[š]RYˆˆ‹ˆZ\ÜÚ[™ÑšY[Îˆ×Kˆ\œ›ÜŽˆ›Y]ÙÛ›ÝØ[ÝÙY‹ˆY\ÜØYÙNˆ¶)öa6-ö,vb¶`¶*H6.¶b¶,H6av,öavb6+v*H‹ˆ™\]Y\ÝYˆKJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÚ[ZÙHŠHÂˆ™]\›ˆ]ØZ][™TÚ\™Y[ZÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ü\[[™KÜX›XËZ[ZÙHŠHÂˆ™]\›ˆ]ØZ][™TX›XÒ[ZÙSX]Ú[™Ê™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]K\›Ý]\‹ØXØÙ\ŠHÂˆ™]\›ˆ]ØZ][™SÜÜ[š]T›Ý]\XØÙ\
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆBˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]K\›Ý]\‹ÙXÛ[™HŠHÂˆ™]\›ˆ]ØZ][™SÜÜ[š]T›Ý]\‘XÛ[™J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆBˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]K\›Ý]\‹ÝXÚÈŠHÂˆ™]\›ˆ]ØZ][™SÜÜ[š]T›Ý]\•XÚÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆBˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]K\›Ý]\‹Ü˜]HŠHÂˆ™]\›ˆ]ØZ][™SÜÜ[š]T›Ý]\”˜]J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Øœ›ÚÙ\‹Ø\HŠHÂˆ™]\›ˆ]ØZ][™Pœ›ÚÙ\\XØ][ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ø]]ÜÛ™K[ÙÚ[‹\™\ÛÛ™HŠHÂˆ™]\›ˆ]ØZ][™TÛ™SÙÚ[”™\ÛÛ™J™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ø]]ÜÛ™K[ÙÚ[ˆŠHÂˆ™]\›ˆ]ØZ][™TÛ™SÙÚ[Š™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ø]]Ù›Ü™ÛÝ\\ÜÝÛÜ™ŠHÂˆ™]\›ˆ]ØZ][™Q›Ü™ÛÝ\ÜÝÛÜ™
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÜX›XËZ[ZÙHŠHÂˆ™]\›ˆ]ØZ]\ØYX›XÒ[ZÙSYYXJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÜÜ[š]K\ÛÝ\˜ÙHŠHÂˆ™]\›ˆ]ØZ]\ØYÜÜ[š]TÛÝ\˜ÙSYYXJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÙ™šXÙKXÛÝ™\ˆŠHÂˆ™]\›ˆ]ØZ]\ØYÙ™šXÙR[XYÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘SUHˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÙ™šXÙKXÛÝ™\ˆŠHÂˆ™]\›ˆ]ØZ][]SÙ™šXÙR[XYÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YKœÝ\ÕÚ]
+‹ÛYYXKÜX›XËÛÙ™šXÙKXÛÝ™\œËÈŠJHÂˆ™]\›ˆ]ØZ]Ù\™TX›XÓÙ™šXÙPÛÝ™\Š\›[ŠNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÙ™šXÙHŠHÂˆ™]\›ˆ]ØZ]Ù\™SÙ™šXÙSYYXJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛYYXKÛÙ™šXÙK[Xœ˜\žHŠHÂˆ™]\›ˆ]ØZ]\ØYÙ™šXÙSXœ˜\žSYYXJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹Øœ›ÚÙ\‹X\XØ][ÛœÈŠHÂˆ™]\›ˆ]ØZ]\Ýœ›ÚÙ\\XØ][ÛœÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹Øœ›ÚÙ\‹X\XØ][ÛœËØXÝ[ÛˆŠHÂˆ™]\›ˆ]ØZ]XÚYPœ›ÚÙ\\XØ][ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÜÙ\ÜÚ[ÛˆŠHÂˆ™]\›ˆ]ØZ][™PYZ[”Ù\ÜÚ[ÛŠ™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÝ™\šY]ÈŠHÂˆ™]\›ˆ]ØZ][™PYZ[“Ý™\šY]Ê™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙ\ÈŠHÂˆ™]\›ˆ]ØZ][™PYZ[“Ù™šXÙ\Ê™\]Y\Ý\›[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙHŠHÂˆ™]\›ˆ]ØZ][™PYZ[“Ù™šXÙQ]Z[
+™\]Y\Ý\›[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKØXÝ]š]HŠHÂˆ™]\›ˆ]ØZ][™PYZ[“Ù™šXÙPXÝ]š]J™\]Y\Ý\›[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹Ø]Y][ÙÈŠHÂˆ™]\›ˆ]ØZ][™PYZ[]Y]ÙÊ™\]Y\Ý\›[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKÜÝ\Ü[™ŠHÂˆ™]\›ˆ]ØZ][™PYZ[”Ý\Ü[™
+™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKÜ™XXÝ]˜]HŠHÂˆ™]\›ˆ]ØZ][™PYZ[”™XXÝ]˜]J™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKÜÝXœØÜš\[ÛˆŠHÂˆ™]\›ˆ]ØZ][™PYZ[”ÝXœØÜš\[Û•\]J™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKÛXÙ[œÙHŠHÂˆ™]\›ˆ]ØZ][™PYZ[“XÙ[œÙU\]J™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØYZ[‹ÛÙ™šXÙKÛ›ÝHŠHÂˆ™]\›ˆ]ØZ][™PYZ[“›ÝPY
+™\]Y\Ý[‹™\]Y\ÝYÙ]YZ[’[\œÊ
+JNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹Ù˜ÛKØÛÛ™šYÈŠHÂˆÛÛœÝ˜\YÛÛ™šYÝ\™YH›ÛÛX[Š[‹‘ÓWÕÑP—ÔTÒÕTQÒÑVJNÂˆÛÛœÝÙ\™\”™XYHH\Ñš\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆ[˜X›Yˆ˜\YÛÛ™šYÝ\™Y	‰ˆÙ\™\”™XYKˆ˜\YÛÛ™šYÝ\™YˆÙ\™\”™XYKˆ˜\YÙ^Nˆ˜\YÛÛ™šYÝ\™YÈ[‹‘ÓWÕÑP—ÔTÒÕTQÒÑVHˆˆ‹ˆ›Ú™XÝYˆ[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQˆ™\]Y\ÝYˆJNÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹Ù˜ÛKÜÝ]\ÈŠHÂˆ™]\›ˆÙ]˜ÛTÝ]\Ê™\]Y\Ý\›[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ù˜ÛKÜ™YÚ\Ý\ˆŠHÂˆ™]\›ˆ™YÚ\Ý\‘˜ÛQ]šXÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ù˜ÛKÝ[œ™YÚ\Ý\ˆŠHÂˆ™]\›ˆ[œ™YÚ\Ý\‘˜ÛQ]šXÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ù˜ÛKÝ\ÝŠHÂˆ™]\›ˆÙ[™˜ÛU\Ý›ÝYšXØ][ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÝÛÜšÙ›ÝËØXÝ[ÛˆŠHÂˆ™]\›ˆ[™UÛÜšÙ›ÝÐXÝ[ÛŠ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]KÛY™XÞXÛHŠHÂˆ™]\›ˆ[™SÜÜ[š]SY™XÞXÛJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Ú[\›˜[Ù›ÛÝÝ\\™[Z[™\œËÜ›ØÙ\ÜÈŠHÂˆ™]\›ˆ[™T›ØÙ\ÜÑ›ÛÝÝ\™[Z[™\œÊ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]KÜ]ÚŠHÂˆ™]\›ˆ[™SÜÜ[š]T]Ú
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]KÜ\™ÙHŠHÂˆ™]\›ˆ[™SÜÜ[š]T\™ÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹Û›ÝYšXØ][ÛœËÜ™XYŠHÂˆ™]\›ˆ[™S›ÝYšXØ][Û”™XY
+™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ÛÜÜ[š]KÝÛÜšÜÜXÙHŠHÂˆ™]\›ˆ[™SÜÜ[š]UÛÜšÜÜXÙJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH”ÔÕˆ	‰ˆ\›œ]˜[YHOOH‹ØÛÛÜ\˜][Û‹Ü›ÛÛHŠHÂˆ™]\›ˆ[™PÛÛÜ\˜][Û”›ÛÛJ™\]Y\Ý[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÝÛÜšÙ›ÝËÝ[Y[[™HŠHÂˆ™]\›ˆ[™UÛÜšÙ›ÝÕ[Y[[™J™\]Y\Ý\›[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+™\]Y\Ý›Y]ÙOOH‘ÑUˆ	‰ˆ\›œ]˜[YHOOH‹ÛÙ™šXÙKØ[˜[]XÜÈŠHÂˆ™]\›ˆ]ØZ][™SÙ™šXÙP[˜[]XÜÊ™\]Y\Ý\›[‹™\]Y\ÝY
+NÂˆB‚ˆYˆ
+\›œ]˜[YHOOH‹Ú[™Ù\ÝŠHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›XXÜ›Ù›ÚYÙ\ØX›Y‹ˆY\ÜØYÙNˆ¶*¶aH6)vb¶`¶)ö`H6av,ö)ö,HXXÜ›Ñ›ÚYˆ6)ö,ö*¶+¶+öaH6)öa6,v*6-È6)öa6,v,öavbˆ6av.H6b6)ö*¶,ö)ö*6(ö.vav)öaˆ‹ˆ™\]Y\ÝYˆKL
+NÂˆB‚ˆËÈÛÝYTHÈYØXÞHÝ]›Ý[™™[XZ[œÈ›ØÚÙYˆ\ÙHÈ˜YÚ[™Ù™ˆT\È\™BˆËÈ™YÚ\Ý\™YX›Ý™H[™™]™\ˆ]]Ë\Ù[™šXHY]HÜˆ[YÜ˜[H›ÝTK‚ˆÛÛœÝ˜Y\HH\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËÙ˜Y‚ˆ\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËÚ[™Ù™ˆ‚ˆ\›œ]˜[YHOOH‹ÛY\ÜØYÙ\ËØY\\œÈŽÂˆYˆ
+Y˜Y\H	‰ˆ
+\›œ]˜[YKš[˜ÛY\Ê›Y\ÜØYÙ\ÈŠH\›œ]˜[YKš[˜ÛY\ÊœÙ[™ŠJJHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›Ý]›Ý[™Ù\ØX›Y‹ˆY\ÜØYÙNˆ¶)v,v,ö)öa6,v,ö)ö)¶a6b6)ö*¶,ö)ö*6)öa6*¶a6`¶)ö)¶bˆ6av*¶b6`¶`H6*6,vav+6b¶bö)È6`vbˆ6)öa6a¶,ö+¶*H6)öa6(öb6a6bKˆ‹ˆ™\]Y\ÝYˆKÊNÂˆB‚ˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ››ÝÙ›Ý[™‹™\]Y\ÝYK
+NÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛK™\œ›ÜŠ–ÚX\X\‹]Ú]Ø\H™\]Y\Ý˜Z[Y‹Âˆ™\]Y\ÝYˆÛÙNˆ\œ›Üˆ	‰ˆ\œ›Ü‹˜ÛÙKˆY\ÜØYÙNˆ\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙBˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ\œ›Üˆ	‰ˆ\œ›Ü‹˜ÛÙHš[\›˜[Ù\œ›Üˆ‹ˆY\ÜØYÙNˆ\œ›Üˆ	‰ˆ\œ›Ü‹œX›XÓY\ÜØYÙH¶*¶.v,6,H6*¶a¶`vb¶,6)öa6-öa6*‹ˆ™\]Y\ÝYˆK[X™\Š\œ›Üˆ	‰ˆ\œ›Ü‹œÝ]\ÊHL
+NÂˆBˆKˆ\Þ[˜ÈØÚY[Y
+]™[[‹Ý
+HÂˆÛÛœÝ\ÔÝYÚ[™ÈHÝš[™Ê[‹‘TÖSQS•ÑS•ˆˆŠKÓÝÙ\Ø\ÙJ
+HOOHœÝYÚ[™ÈŽÂˆÛÛœÝØÚY[Y[YHH]™[	‰ˆ]™[œØÚY[Y[YNÂˆYˆ
+Z\ÔÝYÚ[™ÊHÂˆÝØZ][[
+›ØÙ\ÜÓÝ™\™YQ›ÛÝÝ\Ê[‹ØÚY[Y[YJJNÂˆBˆÝØZ][[
+›ØÙ\ÜÓÜÜ[š]Q›ÛÝÝ\™[Z[™\œÊ[‹ØÚY[Y[YJJNÂˆÝØZ][[
+›ØÙ\ÜÕšY]Ú[™Ô™[Z[™\œÊ[‹ØÚY[Y[YJJNÂˆBŸNÂ‚˜ÛÛœÝP“P×ÒSPQÑWÕTTÈHØš™XÝ™œ™Y^™JÂˆš[XYÙKÚœYÈŽˆšœÈ‹š[XYÙKÜ™ÈŽˆœ™È‹š[XYÙKÝÙXœŽˆÙXœ‚ŸJNÂ˜ÛÛœÝP“P×Õ’QS×ÕTTÈHØš™XÝ™œ™Y^™JÂˆšY[ËÛ\Žˆ›\‹šY[ËÝÙX›HŽˆÙX›H‹šY[ËÜ]ZXÚÝ[YHŽˆ›[Ýˆ‚ŸJNÂ‚™[˜Ý[Ûˆ™\]Z\™SYYXPXÚÙ]
+[ŠHÂˆYˆ
+Y[‹’PTPT—ÓQQPJH›ÝÈ\\œ›ÜŠ›YYXWÜÝÜ˜YÙWÝ[˜]˜Z[X›H‹LË¶*¶+¶,¶b¶aˆ6)öa6b6,ö)ö)¶-È6.¶b¶,H6av`v.vdvaŠNÂˆ™]\›ˆ[‹’PTPT—ÓQQPNÂŸB‚™[˜Ý[Ûˆ™\]Y\Ý›ÙS[™Ý
+™\]Y\Ý
+HÂˆÛÛœÝ˜[YHH[X™\Š™\]Y\ÝšXY\œË™Ù]
+˜ÛÛ[[[™ÝŠH
+NÂˆYˆ
+S[X™\‹š\Ñš[š]J˜[YJH˜[YHH
+H›ÝÈ\\œ›ÜŠ™š[WÛ[™ÝÜ™\]Z\™Y‹LK¶*¶.v,6,H6*¶+v+öb¶+È6+v+6aH6)öa6ava6`HŠNÂˆ™]\›ˆ˜[YNÂŸB‚™[˜Ý[Ûˆ[™›Ü˜ÙTX›XÔ›Ý]T˜]S[Z]
+™\]Y\ÝÈ›Ý]KÙ™šXÙRYHˆ‹[Z]Ú[™ÝÓ\ÈJHÂˆÛÛœÝ\HÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+Ñ‹PÛÛ›™XÝ[™ËRTŠH™\]Y\ÝšXY\œË™Ù]
+–Q›ÜØ\™YQ›ÜˆŠH[šÛ›ÝÛˆ‹
+NÂˆÛÛœÝÙ^HHX›XÔ˜]S[Z]Ù^JÈ›Ý]K\Ù™šXÙRYJNÂˆÛÛœÝ™\Ý[HÛÛœÝ[YTX›XÔ˜]S[Z]
+Ù^KÈ[Z]Ú[™ÝÓ\ÈJNÂˆYˆ
+\™\Ý[›ÚÊHÂˆ›ÝÈ\\œ›ÜŠˆœ˜]WÛ[Z]Y‹ˆŽKˆ¶*¶aH6*¶+6)öb6,ˆ6+v+È6)öa6-öa6*6)ö*ˆ6av)6`¶*¶bö)Ëˆ6+v)öb6a6av,v*H6(ö+¶,vbH6*6.v+È6`¶a6b¶aˆ‚ˆ
+NÂˆBˆ™]\›ˆ™\Ý[ÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ\ØYX›XÒ[ZÙSYYXJ™\]Y\Ý[‹™\]Y\ÝY
+HÂˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+™\]Y\ÝšXY\œË™Ù]
+ž[Ù™šXÙKZYŠJNÂˆÛÛœÝ[ZÙRYHÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+žZ[ZÙKZYŠK
+Kœ™\XÙJÖ×˜K^KVŒNWËWKÙËˆŠNÂˆÛÛœÝYYXRÚ[™HÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+ž[YYXKZÚ[™ŠKLŠKÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝ[™^H[X™\Š™\]Y\ÝšXY\œË™Ù]
+ž[YYXKZ[™^ŠH
+NÂˆÛÛœÝÛÛ[\HHÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+˜ÛÛ[]\HŠK
+KÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝÚ^™HH™\]Y\Ý›ÙS[™Ý
+™\]Y\Ý
+NÂˆYˆ
+[Ù™šXÙRY[ZÙRY›[™Ý
+H›ÝÈ\\œ›ÜŠš[˜[YÛYYXWÝ\™Ù]‹¶b6+6aö*H6)öa6ava6`H6.¶b¶,H6-v)öa6+v*HŠNÂˆ[™›Ü˜ÙTX›XÔ›Ý]T˜]S[Z]
+™\]Y\ÝÂˆ›Ý]Nˆ›YYXKÜX›XËZ[ZÙH‹ˆÙ™šXÙRYˆ‹‹”P“P×ÔUWÓSRUË”P“P×ÓQQPBˆJNÂ‚ˆ]š[[˜[YNÂˆYˆ
+YYXRÚ[™OOHš[XYÙHˆ	‰ˆP“P×ÒSPQÑWÕTTÖØÛÛ[\WH	‰ˆ[X™\‹š\Ò[YÙ\Š[™^
+H	‰ˆ[™^HH	‰ˆ[™^HJHÂˆYˆ
+Ú^™Hˆ
+ˆL
+ˆL
+H›ÝÈ\\œ›ÜŠš[XYÙWÝÛ×Û\™ÙH‹LË¶+v+6aH6)öa6-vb6,v*H6b¶*¶+6)öb6,ˆ6avb¶+6)ö*6)öb¶*ˆŠNÂˆš[[˜[YHH[XYÙKIÚ[™^K‰ÔP“P×ÒSPQÑWÕTTÖØÛÛ[\W_XÂˆH[ÙHYˆ
+YYXRÚ[™OOHšY[Èˆ	‰ˆP“P×Õ’QS×ÕTTÖØÛÛ[\WJHÂˆYˆ
+Ú^™HˆL
+ˆL
+ˆL
+H›ÝÈ\\œ›ÜŠšY[×ÝÛ×Û\™ÙH‹LË¶+v+6aH6)öa6`vb¶+öb¶b6b¶*¶+6)öb6,ˆL6avb¶+6)ö*6)öb¶*ˆŠNÂˆš[[˜[YHHšY[Ë‰ÔP“P×Õ’QS×ÕTTÖØÛÛ[\W_XÂˆH[ÙHÂˆ›ÝÈ\\œ›ÜŠ[œÝ\ÜYÛYYXH‹MK¶a¶b6.H6)öa6ava6`H6.¶b¶,H6av+ö.vb6aHŠNÂˆB‚ˆÛÛœÝÙ^HHX›XËZ[ZÙKÉÛÙ™šXÙRYKÉÚ[ZÙRYKÉÙš[[˜[Y_XÂˆ]ØZ]XÚÙ]œ]
+Ù^K™\]Y\Ý˜›ÙKÂˆY]Y]NˆÈÛÛ[\HKˆÝ\ÝÛSY]Y]NˆÈÙ™šXÙRY[ZÙRYYYXRÚ[™\ØYY]ˆ™]È]J
+KÒTÓÔÝš[™Ê
+HBˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆYKYYXT]ˆÙ^K™\]Y\ÝYKŒJNÂŸB‚˜ÛÛœÝÔÔ•S’UWÔÓÕTÑWÕTTÈHØš™XÝ™œ™Y^™JÂˆš[XYÙKÚœYÈŽˆÈÛÝ\˜ÙU\\ÎˆÈš[XYÙH‹œØÜ™Y[œÚÝ—K^ˆšœÈ‹X^ˆMH
+ˆL
+ˆLKˆš[XYÙKÜ™ÈŽˆÈÛÝ\˜ÙU\\ÎˆÈš[XYÙH‹œØÜ™Y[œÚÝ—K^ˆœ™È‹X^ˆMH
+ˆL
+ˆLKˆš[XYÙKÝÙXœŽˆÈÛÝ\˜ÙU\\ÎˆÈš[XYÙH‹œØÜ™Y[œÚÝ—K^ˆÙXœ‹X^ˆMH
+ˆL
+ˆLKˆ˜\XØ][Û‹ÜˆŽˆÈÛÝ\˜ÙU\\ÎˆÈœˆ—K^ˆœˆ‹X^ˆMH
+ˆL
+ˆLKˆ˜\XØ][Û‹Û\ÝÛÜ™ŽˆÈÛÝ\˜ÙU\\ÎˆÈÛÜ™—K^ˆ™ØÈ‹X^ˆMH
+ˆL
+ˆLKˆ˜\XØ][Û‹Ý›™›Ü[ž[›Ü›X]Ë[Ù™šXÙYØÝ[Y[ÛÜ™›ØÙ\ÜÚ[™Û[™ØÝ[Y[ŽˆÈÛÝ\˜ÙU\\ÎˆÈÛÜ™—K^ˆ™ØÞ‹X^ˆMH
+ˆL
+ˆLKˆ˜\XØ][Û‹Ý½ç~t¶‰žËkºwµçH]YˆÓÓÑÓWÕÒÑS—ÕT“X]ˆ›ÝÔÙXÛÛ™Ë^ˆ›ÝÔÙXÛÛ™È
+ÈÍŒNÂˆÛÛœÝ[œÚYÛ™YH	Ø˜\ÙM\›œÛÛŠXY\Š_K‰Ø˜\ÙM\›œÛÛŠÛZ[\Ê_XÂˆÛÛœÝÙ^HH]ØZ]Üž\ËœÝXKš[\ÜÙ^JˆœØÜÎ‹ˆ[UÐ\œ˜^PY™™\Šš]˜]RÙ^JKˆÈ˜[YNˆ””ÐTÔÐKTÐÔÌK]ŒWÍH‹\Úˆ”ÒKLMˆˆKˆ˜[ÙKˆÈœÚYÛˆ—Bˆ
+NÂˆÛÛœÝÚYÛ˜]\™HH]ØZ]Üž\ËœÝXKœÚYÛŠ””ÐTÔÐKTÐÔÌK]ŒWÍH‹Ù^K™]È^[˜ÛÙ\Š
+K™[˜ÛÙJ[œÚYÛ™Y
+JNÂˆ™]\›ˆ	Ý[œÚYÛ™YK‰Ø˜\ÙM\›ž]\Ê™]ÈZ[\œ˜^JÚYÛ˜]\™JJ_XÂŸB‚˜\Þ[˜È[˜Ý[ÛˆÜ™X]Qš\™X˜\ÙPÝ\ÝÛUÚÙ[ŠÈÛY[[XZ[š]˜]RÙ^Kš]˜]RÙ^RYZYÙ™šXÙRYJHÂˆÛY[[XZ[HÝš[™ÊÛY[[XZ[ˆŠKœ™\XÙJ×LÙËˆŠKš[J
+NÂˆš]˜]RÙ^HHÝš[™Êš]˜]RÙ^HˆŠKœ™\XÙJ×LÙËˆŠKš[J
+NÂˆš]˜]RÙ^RYHÝš[™Êš]˜]RÙ^RYˆŠKœ™\XÙJ×LÙËˆŠKš[J
+NÂˆYˆ
+XÛY[[XZ[\š]˜]RÙ^JH›ÝÈ\\œ›ÜŠ™š\™X˜\ÙWÛ›ÝØÛÛ™šYÝ\™Y‹L¶)v.v+ö)ö+Èš\™X˜\ÙH6`vbˆ6)öa6+¶)ö+öaH6.¶b¶,H6av`ö*¶avaŠNÂˆÛÛœÝ›ÝÔÙXÛÛ™ÈHX]™›ÛÜŠ]K››ÝÊ
+HÈL
+NÂˆÛÛœÝXY\ˆHš]˜]RÙ^RYˆÈÈ[Îˆ””ÌMˆ‹\ˆ’•Õ‹ÚYˆš]˜]RÙ^RYBˆˆÈ[Îˆ””ÌMˆ‹\ˆ’•ÕˆNÂˆÛÛœÝÛZ[\ÈHÂˆ\ÜÎˆÛY[[XZ[ˆÝXŽˆÛY[[XZ[ˆ]YˆšÎ‹ËÚY[]]ÛÛÚ]™ÛÛÙÛX\\Ë˜ÛÛKÙÛÛÙÛKšY[]KšY[]]ÛÛÚ]ŒK’Y[]UÛÛÚ]‹ˆX]ˆ›ÝÔÙXÛÛ™Ëˆ^ˆ›ÝÔÙXÛÛ™È
+ÈÍŒˆZYˆÛX[•^
+ZYLŽ
+KˆÛZ[\ÎˆÈÙ™šXÙRYˆš\™\ÝÜ™SÙ™šXÙRY
+Ù™šXÙRY
+KÙ™šXÙSY[X™\ŽˆYHBˆNÂˆÛÛœÝ[œÚYÛ™YH	Ø˜\ÙM\›œÛÛŠXY\Š_K‰Ø˜\ÙM\›œÛÛŠÛZ[\Ê_XÂˆÛÛœÝÙ^HH]ØZ]Üž\ËœÝXKš[\ÜÙ^JˆœØÜÎ‹[UÐ\œ˜^PY™™\Šš]˜]RÙ^JKˆÈ˜[YNˆ””ÐTÔÐKTÐÔÌK]ŒWÍH‹\Úˆ”ÒKLMˆˆK˜[ÙKÈœÚYÛˆ—Bˆ
+NÂˆÛÛœÝÚYÛ˜]\™HH]ØZ]Üž\ËœÝXKœÚYÛŠ””ÐTÔÐKTÐÔÌK]ŒWÍH‹Ù^K™]È^[˜ÛÙ\Š
+K™[˜ÛÙJ[œÚYÛ™Y
+JNÂˆ™]\›ˆ	Ý[œÚYÛ™YK‰Ø˜\ÙM\›ž]\Ê™]ÈZ[\œ˜^JÚYÛ˜]\™JJ_XÂŸB‚™[˜Ý[Ûˆ[UÐ\œ˜^PY™™\Š[JHÂˆÛÛœÝ˜\ÙMHÝš[™Ê[HˆŠKœ™\XÙJ×‹ÙË—ˆŠBˆœ™\XÙJËKKKKP‘QÒSˆ’UUHÑVKKKKKKÙËˆŠBˆœ™\XÙJËKKKKQS‘’UUHÑVKKKKKKÙËˆŠBˆœ™\XÙJ×ÊËÙËˆŠNÂˆYˆ
+X˜\ÙM
+H›ÝÈ\\œ›ÜŠ˜ÛÛ™šYÝ\˜][Û—Ù\œ›Üˆ‹L¶av`v*¶)ö+Hš\™X˜\ÙH6.¶b¶,H6-v)öa6+HŠNÂˆÛÛœÝš[˜\žHH]ØŠ˜\ÙM
+NÂˆÛÛœÝž]\ÈH™]ÈZ[\œ˜^Jš[˜\žK›[™Ý
+NÂˆ›Üˆ
+]HHÈHš[˜\žK›[™ÝÈH
+ÏHJHž]\ÖÚWHHš[˜\žK˜Ú\ÛÙP]
+JNÂˆ™]\›ˆž]\Ë˜Y™™\ŽÂŸB‚˜\Þ[˜È[˜Ý[ÛˆÚLM’^
+˜[YJHÂˆÛÛœÝYÙ\ÝH]ØZ]Üž\ËœÝXK™YÙ\Ý
+”ÒKLMˆ‹™]È^[˜ÛÙ\Š
+K™[˜ÛÙJÝš[™Ê˜[YJJJNÂˆ™]\›ˆž]\ÕÒ^
+™]ÈZ[\œ˜^JYÙ\Ý
+JNÂŸB‚™[˜Ý[Ûˆ˜\ÙM\›œÛÛŠ˜[YJHÈ™]\›ˆ˜\ÙM\›ž]\Ê™]È^[˜ÛÙ\Š
+K™[˜ÛÙJ”ÓÓ‹œÝš[™ÚYžJ˜[YJJJNÈB™[˜Ý[Ûˆ˜\ÙM\›ž]\Êž]\ÊHÂˆ]š[˜\žHHˆŽÂˆ›Üˆ
+ÛÛœÝž]HÙˆž]\ÊHš[˜\žH
+ÏHÝš[™Ë™œ›ÛPÚ\ÛÙJž]JNÂˆ™]\›ˆØJš[˜\žJKœ™\XÙJ×
+ËÙË‹HŠKœ™\XÙJ×ËÙË—ÈŠKœ™\XÙJÏJÉÙËˆŠNÂŸB™[˜Ý[Ûˆž]\ÕÒ^
+ž]\ÊHÈ™]\›ˆ\œ˜^K™œ›ÛJž]\Ëž]HOˆž]KÔÝš[™ÊMŠKœYÝ\
+‹ŒŠJKš›Ú[ŠˆŠNÈB‚™[˜Ý[Ûˆ›Ü›X[^™SÙÚ[”Û™J˜[YJHÂˆ]YÚ]ÈHÝš[™Ê˜[YHˆŠKœ™\XÙJ×ÙËˆŠNÂˆYˆ
+YÚ]ËœÝ\ÕÚ]
+ŒMˆŠJHYÚ]ÈHYÚ]ËœÛXÙJŠNÂˆYˆ
+YÚ]ËœÝ\ÕÚ]
+ŽMˆŠJHYÚ]ÈHYÚ]ËœÛXÙJÊNÂˆYˆ
+YÚ]ËœÝ\ÕÚ]
+ŒŠJHYÚ]ÈHYÚ]ËœÛXÙJJNÂˆ™]\›ˆ×WÎIË\Ý
+YÚ]ÊHÈ
+ÎM‰ÙYÚ]ßXˆˆŽÂŸB™[˜Ý[ÛˆYØXÞSØØ[ÙÚ[”Û™J˜[YJHÂˆÛÛœÝÛ™HH›Ü›X[^™SÙÚ[”Û™J˜[YJNÂˆ™]\›ˆÛ™HÈ	ÜÛ™KœÛXÙJ
+_XˆˆŽÂŸB˜\Þ[˜È[˜Ý[Ûˆ™\ÛÛ™SÙÚ[‘\™XÝÜžJÈ›Ú™XÝYÛ™KXØÙ\ÜÕÚÙ[ˆJHÂˆÛÛœÝØ[›ÛšXØ[\ÚH]ØZ]ÚLM’^
+Û™JNÂˆÛÛœÝØ[›ÛšXØ[ØÈH]ØZ]Ù]š\™\ÝÜ™QØÝ[Y[
+Âˆ›Ú™XÝYÙYÛY[ÎˆÈ›ÙÚ[‘\™XÝÜžH‹Ø[›ÛšXØ[\ÚKXØÙ\ÜÕÚÙ[‹[ÝÓZ\ÜÚ[™ÎˆYBˆJNÂˆYˆ
+Ø[›ÛšXØ[ØÊH™]\›ˆÈ\™XÝÜžQØÎˆØ[›ÛšXØ[ØËÛ™R\ÚˆØ[›ÛšXØ[\ÚZYÜ˜]YYØXÞNˆ˜[ÙHNÂ‚ˆÛÛœÝYØXÞTÛ™HHYØXÞSØØ[ÙÚ[”Û™JÛ™JNÂˆÛÛœÝYØXÞR\ÚHYØXÞTÛ™HÈ]ØZ]ÚLM’^
+YØXÞTÛ™JHˆˆŽÂˆYˆ
+[YØXÞR\ÚYØXÞR\ÚOOHØ[›ÛšXØ[\Ú
+HÂˆ™]\›ˆÈ\™XÝÜžQØÎˆ[Û™R\ÚˆØ[›ÛšXØ[\ÚZYÜ˜]YYØXÞNˆ˜[ÙHNÂˆBˆÛÛœÝYØXÞQØÈH]ØZ]Ù]š\™\ÝÜ™QØÝ[Y[
+Âˆ›Ú™XÝYÙYÛY[ÎˆÈ›ÙÚ[‘\™XÝÜžH‹YØXÞR\ÚKXØÙ\ÜÕÚÙ[‹[ÝÓZ\ÜÚ[™ÎˆYBˆJNÂˆYˆ
+[YØXÞQØÊH™]\›ˆÈ\™XÝÜžQØÎˆ[Û™R\ÚˆØ[›ÛšXØ[\ÚZYÜ˜]YYØXÞNˆ˜[ÙHNÂ‚ˆÛÛœÝYØXÞQ\™XÝÜžHHš\™\ÝÜ™QšY[ÕÒœÊYØXÞQØË™šY[ÈßJNÂˆYˆ
+YØXÞQ\™XÝÜžKZY	‰ˆYØXÞQ\™XÝÜžK›Ù™šXÙRY	‰ˆYØXÞQ\™XÝÜžK™[XZ[
+HÂˆžHÂˆ]ØZ]Ù]š\™\ÝÜ™QØÝ[Y[
+Âˆ›Ú™XÝYÙYÛY[ÎˆÈ›ÙÚ[‘\™XÝÜžH‹Ø[›ÛšXØ[\ÚKXØÙ\ÜÕÚÙ[‹ˆšY[ÎˆÂˆZYˆš\™\ÝÜ™TÝš[™ÊYØXÞQ\™XÝÜžKZY
+KˆÙ™šXÙRYˆš\™\ÝÜ™TÝš[™ÊYØXÞQ\™XÝÜžK›Ù™šXÙRY
+Kˆ[XZ[ˆš\™\ÝÜ™TÝš[™ÊÝš[™ÊYØXÞQ\™XÝÜžK™[XZ[
+KÓÝÙ\Ø\ÙJ
+JKˆÛ™Nˆš\™\ÝÜ™TÝš[™ÊÛ™JKˆXÝ]™Nˆš\™\ÝÜ™P›ÛÛX[ŠYØXÞQ\™XÝÜžK˜XÝ]™HOOHYJKˆZYÜ˜]Yœ›ÛSYØXÞNˆš\™\ÝÜ™P›ÛÛX[ŠYJKˆ\]Y]ˆš\™\ÝÜ™U[Y\Ý[\
+™]È]J
+JBˆBˆJNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛKØ\›Š–ÚX\X\—HYØXÞHÛ™H\™XÝÜžHZYÜ˜][ÛˆY™\œ™Y‹\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJNÂˆBˆBˆ™]\›ˆÈ\™XÝÜžQØÎˆYØXÞQØËÛ™R\ÚˆØ[›ÛšXØ[\ÚZYÜ˜]YYØXÞNˆYHNÂŸB™[˜Ý[ÛˆX\ÚÑ[XZ[
+˜[YJHÂˆÛÛœÝ[XZ[HÝš[™Ê˜[YHˆŠNÂˆÛÛœÝ]H[XZ[š[™^ÙŠŠNÂˆYˆ
+]JH™]\›ˆ¶)öa6*6,vb¶+È6)öa6av,ö+6aŽÂˆÛÛœÝ˜[YHH[XZ[œÛXÙJ]
+NÂˆÛÛœÝš\ÚX›HH˜[YKœÛXÙJX]›Z[Š‹˜[YK›[™Ý
+JNÂˆ™]\›ˆ	Ýš\ÚX›_IÈŠˆ‹œ™\X]
+X]›X^
+Ë˜[YK›[™ÝHš\ÚX›K›[™Ý
+J_IÙ[XZ[œÛXÙJ]
+_XÂŸB™[˜Ý[ÛˆÛX[•^
+˜[YKX^[™Ý
+HÈ™]\›ˆÝš[™Ê˜[YHOH[Èˆˆˆ˜[YJKœ™\XÙJ×LÙËˆŠKš[J
+KœÛXÙJX^[™Ý
+NÈB‚˜ÛÛœÝTÕS‘×Ñ‘UÒÓPVÐ–UTÈHˆ
+ˆL
+ˆLÂ˜ÛÛœÝTÕS‘×Ñ‘UÒÕSQSÕUÓTÈHMLÂ˜ÛÛœÝTÕS‘×Ñ‘UÒÓPVÔ‘QT‘PÕÈHÂ‚™[˜Ý[Ûˆ\Ôš]˜]SÜ“ØØ[ÜÝ
+ÜÝ˜[YJHÂˆÛÛœÝÜÝHÝš[™ÊÜÝ˜[YHˆŠKš[J
+KÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+ZÜÝ
+H™]\›ˆYNÂˆYˆ
+ÜÝOOH›ØØ[ÜÝˆÜÝ™[™ÕÚ]
+‹›ØØ[ÜÝŠHÜÝ™[™ÕÚ]
+‹›ØØ[ŠJH™]\›ˆYNÂˆYˆ
+ÜÝOOHŒŒŒŒŠH™]\›ˆYNÂˆÛÛœÝ\HÜÝ›X]Ú
+×ŠÌKßJWŠÌKßJWŠÌKßJWŠÌKßJIÊNÂˆYˆ
+Z\
+H™]\›ˆ˜[ÙNÂˆÛÛœÝ\ÈH\œÛXÙJJK›X\
+
+ŠHOˆ[X™\ŠŠJNÂˆYˆ
+\ËœÛÛYJ
+ŠHOˆˆˆMJJH™]\›ˆYNÂˆYˆ
+\ÖÌHOOHL
+H™]\›ˆYNÂˆYˆ
+\ÖÌHOOHLÊH™]\›ˆYNÂˆYˆ
+\ÖÌHOOHMŽH	‰ˆ\ÖÌWHOOHM
+H™]\›ˆYNÂˆYˆ
+\ÖÌHOOHNLˆ	‰ˆ\ÖÌWHOOHMŽ
+H™]\›ˆYNÂˆYˆ
+\ÖÌHOOHMÌˆ	‰ˆ\ÖÌWHHMˆ	‰ˆ\ÖÌWHHÌJH™]\›ˆYNÂˆ™]\›ˆ˜[ÙNÂŸB‚™[˜Ý[Ûˆ›Ü›X[^™S\Ý[™Ñ™]Ú\›
+˜]ÊHÂˆÛÛœÝ^HÛX[•^
+˜]ËŒ
+NÂˆYˆ
+]^
+H™]\›ˆˆŽÂˆYˆ
+×™š[N‹ÚK\Ý
+^
+JH™]\›ˆˆŽÂˆžHÂˆÛÛœÝÚ]›ÝØÛÛH×šÏÎ—×ËÚK\Ý
+^
+HÈ^ˆÎ‹ËÉÝ^XÂˆÛÛœÝ\œÙYH™]ÈT“
+Ú]›ÝØÛÛ
+NÂˆYˆ
+\œÙYœ›ÝØÛÛOOHšˆˆ	‰ˆ\œÙYœ›ÝØÛÛOOHšÎˆŠH™]\›ˆˆŽÂˆYˆ
+\Ôš]˜]SÜ“ØØ[ÜÝ
+\œÙYšÜÝ˜[YJJH™]\›ˆˆŽÂˆ\œÙYš\ÚHˆŽÂˆ™]\›ˆ\œÙYÔÝš[™Ê
+NÂˆHØ]ÚÂˆ™]\›ˆˆŽÂˆBŸB‚™[˜Ý[ÛˆXÛÙR[[]Y\Ê˜[YJHÂˆ™]\›ˆÝš[™Ê˜[YHˆŠBˆœ™\XÙJÉ›˜œÜËÙÚKˆŠBˆœ™\XÙJÉ˜[\ËÙÚK‰ˆŠBˆœ™\XÙJÉœ][ÝËÙÚK—ˆŠBˆœ™\XÙJÉˆÌÎNËÙÚK‰ÈŠBˆœ™\XÙJÉ›ËÙÚKŠBˆœ™\XÙJÉ™ÝËÙÚKˆŠBˆœ™\XÙJÉˆÞ
+ÌNXKY—JÊNËÙÚK
+Ë^
+HOˆÝš[™Ë™œ›ÛPÚ\ÛÙJ\œÙR[
+^MŠJJBˆœ™\XÙJÉˆÊ
+ÊNËÙË
+Ë[JHOˆÝš[™Ë™œ›ÛPÚ\ÛÙJ[X™\Š[JJJNÂŸB‚˜ÛÛœÝTÕS‘×Ò”ÓÓ—ÓÕTTÈH™]ÈÙ]
+Âˆœ›ÙXÝ‹ˆ›Ù™™\ˆ‹ˆœ™\ÚY[˜ÙH‹ˆœ™X[\Ý][\Ý[™È‹ˆšÝ\ÙH‹ˆ˜\\Y[‹ˆœÚ[™ÛY˜[Z[\™\ÚY[˜ÙH‹ˆ˜XØÛÛ[[Ù][Ûˆ‚—JNÂ‚™[˜Ý[ÛˆÛÛXÝœÛÛ“›Ù\Ê\œÙY
+HÂˆYˆ
+\\œÙY\[Ùˆ\œÙYOOH›Øš™XÝŠH™]\›ˆ×NÂˆYˆ
+\œ˜^Kš\Ð\œ˜^J\œÙY
+JH™]\›ˆ\œÙY™›]X\
+
+][JHOˆÛÛXÝœÛÛ“›Ù\Ê][JJNÂˆYˆ
+\œ˜^Kš\Ð\œ˜^J\œÙYÈÜ˜\—JJH™]\›ˆ\œÙYÈÜ˜\—K™›]X\
+
+][JHOˆÛÛXÝœÛÛ“›Ù\Ê][JJNÂˆ™]\›ˆÜ\œÙYNÂŸB‚™[˜Ý[ÛˆœÛÛ“›ÙU\\Ê›ÙHHßJHÂˆÛÛœÝ˜]ÈH›ÙVÈ\H—NÂˆYˆ
+\œ˜^Kš\Ð\œ˜^J˜]ÊJH™]\›ˆ˜]Ë›X\
+
+˜[YJHOˆÝš[™Ê˜[YHˆŠKÓÝÙ\Ø\ÙJ
+JNÂˆ™]\›ˆÔÝš[™Ê˜]ÈˆŠKÓÝÙ\Ø\ÙJ
+WNÂŸB‚™[˜Ý[Ûˆ\Ó\Ý[™ÒœÛÛ“›ÙJ›ÙHHßJHÂˆÛÛœÝ\\ÈHœÛÛ“›ÙU\\Ê›ÙJNÂˆ™]\›ˆ\\ËœÛÛYJ
+\JHOˆTÕS‘×Ò”ÓÓ—ÓÕTTËš\Ê\Kœ™\XÙJ×ÊËÙËˆŠJJNÂŸB‚™[˜Ý[Ûˆ^˜XÝœÛÛ“Y™\ÜÐÚ[šÜÊY™\ÜÊHÂˆÛÛœÝÚ[šÜÈH×NÂˆYˆ
+XY™\ÜÊH™]\›ˆÚ[šÜÎÂˆYˆ
+\[ÙˆY™\ÜÈOOHœÝš[™ÈŠHÂˆÛÛœÝ˜[YHHÛX[•^
+Y™\ÜËLŒ
+NÂˆYˆ
+˜[YJHÚ[šÜËœ\Ú
+˜[YJNÂˆ™]\›ˆÚ[šÜÎÂˆBˆYˆ
+\œ˜^Kš\Ð\œ˜^JY™\ÜÊJHÂˆ›Üˆ
+ÛÛœÝ][HÙˆY™\ÜÊHÚ[šÜËœ\Ú
+‹‹™^˜XÝœÛÛ“Y™\ÜÐÚ[šÜÊ][JJNÂˆ™]\›ˆÚ[šÜÎÂˆBˆYˆ
+\[ÙˆY™\ÜÈOOH›Øš™XÝŠHÂˆ›Üˆ
+ÛÛœÝÙ^HÙˆÈœÝ™Y]Y™\ÜÈ‹˜Y™\ÜÓØØ[]H‹˜Y™\ÜÔ™YÚ[Ûˆ‹œÜÝ[ÛÙH—JHÂˆÛÛœÝ˜[YHHÛX[•^
+Y™\ÜÖÚÙ^WKLŒ
+NÂˆYˆ
+˜[YJHÚ[šÜËœ\Ú
+˜[YJNÂˆBˆBˆ™]\›ˆÚ[šÜÎÂŸB‚™[˜Ý[Ûˆ^˜XÝœÛÛ“\Ý[™Õ^
+[
+HÂˆÛÛœÝÚ[šÜÈH×NÂˆÛÛœÝ™HHÏØÜš\×—J\OVÈ‰×X\XØ][Û—Û
+ÚœÛÛ–È‰×V×—JŠ×××JÊOÜØÜš\‹ÙÚNÂˆ]X]ÚÂˆÚ[H
+
+X]ÚH™K™^XÊ[
+JJHÂˆÛÛœÝ˜]ÈHX]ÚÌWKš[J
+NÂˆYˆ
+\˜]ÊHÛÛ[YNÂˆžHÂˆÛÛœÝ\œÙYH”ÓÓ‹œ\œÙJ˜]ÊNÂˆÛÛœÝ›Ù\ÈHÛÛXÝœÛÛ“›Ù\Ê\œÙY
+NÂˆ›Üˆ
+ÛÛœÝ›ÙHÙˆ›Ù\ÊHÂˆYˆ
+[›ÙH\[Ùˆ›ÙHOOH›Øš™XÝŠHÛÛ[YNÂˆÛÛœÝ\Ý[™Ó›ÙHH\Ó\Ý[™ÒœÛÛ“›ÙJ›ÙJNÂˆÛÛœÝÙ^\ÈH\Ý[™Ó›ÙBˆÈÈ™\ØÜš\[Ûˆ‹›˜[YH‹šXY[™H‹˜\XÛP›ÙH‹›[X™\“Ù”›ÛÛ\È‹™›ÛÜ”Ú^™H—BˆˆÈ™\ØÜš\[Ûˆ‹›˜[YH‹šXY[™H—NÂˆ›Üˆ
+ÛÛœÝÙ^HÙˆÙ^\ÊHÂˆÛÛœÝ˜[YHHÛX[•^
+›ÙVÚÙ^WKLŒ
+NÂˆYˆ
+˜[YJHÚ[šÜËœ\Ú
+˜[YJNÂˆBˆÚ[šÜËœ\Ú
+‹‹™^˜XÝœÛÛ“Y™\ÜÐÚ[šÜÊ›ÙK˜Y™\ÜÊJNÂˆÛÛœÝÙ™™\œÈH›ÙK›Ù™™\œÎÂˆYˆ
+Ù™™\œÊHÂˆÛÛœÝÙ™™\“\ÝH\œ˜^Kš\Ð\œ˜^JÙ™™\œÊHÈÙ™™\œÈˆÛÙ™™\œ×NÂˆ›Üˆ
+ÛÛœÝÙ™™\ˆÙˆÙ™™\“\Ý
+HÂˆYˆ
+[Ù™™\ˆ\[ÙˆÙ™™\ˆOOH›Øš™XÝŠHÛÛ[YNÂˆÛÛœÝšXÙHHÙ™™\‹œšXÙHÏÈÙ™™\‹›ÝÔšXÙHÏÈÙ™™\‹šYÚšXÙNÂˆYˆ
+šXÙHOH[	‰ˆÝš[™ÊšXÙJKš[J
+JHÚ[šÜËœ\Ú
+Ýš[™ÊšXÙJJNÂˆÛÛœÝÙ™™\‘\ØÈHÛX[•^
+Ù™™\‹™\ØÜš\[ÛˆÙ™™\‹›˜[YKLŒ
+NÂˆYˆ
+Ù™™\‘\ØÊHÚ[šÜËœ\Ú
+Ù™™\‘\ØÊNÂˆBˆBˆBˆHØ]ÚÂˆÊˆYÛ›Ü™HX[›Ü›YY”ÓÓ‹S
+‹ÂˆBˆBˆ™]\›ˆÚ[šÜËš›Ú[Š—ˆŠKš[J
+NÂŸB‚™[˜Ý[Ûˆ™\ÛÛ™S\Ý[™ÔÛÝ\˜ÙTÚ]J\›HˆŠHÂˆžHÂˆÛÛœÝÜÝH™]ÈT“
+\›
+KšÜÝ˜[YKÓÝÙ\Ø\ÙJ
+Kœ™\XÙJ×ÝÝ×‹ËˆŠNÂˆÛÛœÝX™[ÈHÂˆš\˜Z‹˜ÛÛKœØHŽˆ¶+v,v)ö+‹ˆœØK˜\X\‹™›HŽˆ¶.v`¶)ö,H‹ˆ˜\X\‹™›HŽˆ¶.v`¶)ö,H‹ˆ˜˜^]]œØHŽˆ¶*6b¶b6*ˆ‹ˆœ›Ü\Yš[™\‹œØHŽˆ¶*6,vb6*6,v*¶bˆ6`v)öb¶a¶+ö,H‚ˆNÂˆYˆ
+X™[ÖÚÜÝJH™]\›ˆX™[ÖÚÜÝNÂˆYˆ
+ÜÝš[˜ÛY\Êš\˜ZˆŠJH™]\›ˆ¶+v,v)ö+ŽÂˆYˆ
+ÜÝš[˜ÛY\Ê˜\X\ˆŠJH™]\›ˆ¶.v`¶)ö,HŽÂˆYˆ
+ÜÝš[˜ÛY\Ê˜˜^]]ŠJH™]\›ˆ¶*6b¶b6*ˆŽÂˆYˆ
+ÜÝš[˜ÛY\Êœ›Ü\Yš[™\ˆŠJH™]\›ˆ¶*6,vb6*6,v*¶bˆ6`v)öb¶a¶+ö,HŽÂˆ™]\›ˆ¶)öa6avb6`¶.HŽÂˆHØ]ÚÂˆ™]\›ˆ¶)öa6avb6`¶.HŽÂˆBŸB‚™[˜Ý[Ûˆ^˜XÝ\Ý[™Õ^œ›ÛR[
+[
+HÂˆ]ÛÝ\˜ÙHHÝš[™Ê[ˆŠNÂˆÛÛœÝœÛÛ“H^˜XÝœÛÛ“\Ý[™Õ^
+ÛÝ\˜ÙJNÂˆÛÝ\˜ÙHHÛÝ\˜ÙKœ™\XÙJÏØÜš\×××JÏÜØÜš\‹ÙÚKˆŠNÂˆÛÝ\˜ÙHHÛÝ\˜ÙKœ™\XÙJÏÝ[V×××JÏÜÝ[O‹ÙÚKˆŠNÂˆÛÝ\˜ÙHHÛÝ\˜ÙKœ™\XÙJÏ›ÜØÜš\×××JÏÛ›ÜØÜš\‹ÙÚKˆŠNÂˆÛÛœÝ]SX]ÚHÛÝ\˜ÙK›X]Ú
+Ï]V×—JŠ×××JÊOÝ]O‹ÚJNÂˆÛÛœÝ]HH]SX]ÚÈXÛÙR[[]Y\Ê]SX]ÚÌWKœ™\XÙJÏ×—JÏ‹ÙËˆŠJHˆˆŽÂˆÛÛœÝY]PÚ[šÜÈH×NÂˆ›Üˆ
+ÛÛœÝ™HÙˆÂˆÏY]V×—JÜ›Ü\OVÈ‰×[ÙÎ™\ØÜš\[Û–È‰×V×—JØÛÛ[VÈ‰×J×ˆ‰×JÊVÈ‰×KÙÚKˆÏY]V×—JÛ˜[YOVÈ‰×Y\ØÜš\[Û–È‰×V×—JØÛÛ[VÈ‰×J×ˆ‰×JÊVÈ‰×KÙÚKˆÏY]V×—JØÛÛ[VÈ‰×J×ˆ‰×JÊVÈ‰×V×—JÜ›Ü\OVÈ‰×[ÙÎ™\ØÜš\[Û–È‰×KÙÚKˆÏY]V×—JØÛÛ[VÈ‰×J×ˆ‰×JÊVÈ‰×V×—JÛ˜[YOVÈ‰×Y\ØÜš\[Û–È‰×KÙÚBˆJHÂˆ]NÂˆÚ[H
+
+HH™K™^XÊÛÝ\˜ÙJJJHY]PÚ[šÜËœ\Ú
+XÛÙR[[]Y\ÊVÌWJJNÂˆBˆÛÛœÝ›ÙU^HXÛÙR[[]Y\ÊÛÝ\˜ÙKœ™\XÙJÏ×—JÏ‹ÙËˆŠJNÂˆÛÛœÝÛÛXš[™YHÚœÛÛ“]KY]PÚ[šÜËš›Ú[Š—ˆŠK›ÙU^Bˆ›X\
+
+\
+HOˆÛX[•^
+\LŒ
+JBˆ™š[\Š›ÛÛX[ŠBˆš›Ú[Š—ˆŠNÂˆ™]\›ˆÛX[•^
+ÛÛXš[™Yœ™\XÙJ×ÊËÙËˆŠKLŒ
+NÂŸB‚™[˜Ý[Ûˆ\Ó\Ý[™Ñ™]Ú›ØÚÙY^
+^
+HÂˆÛÛœÝØ[\HHÛX[•^
+^
+NÂˆYˆ
+Ö[ÝH]™H™Y[ˆ›ØÚÙY6*¶aH6+v.6,v`ß6a6)È6b¶av`öa¶`È6)öa6b6-vb6a6a6a6avb6`¶._6+vav)öb¶*¶aö)È6avaˆ6)öa6aö+6av)ö*‹ÚK\Ý
+Ø[\JJHÂˆ™]\›ˆYNÂˆBˆËÈ\˜Zˆ
+[™Ú[Z[\ŠHÙÚ[‹ÜÚ[YÙ\ÈÚ]Ý]HÛÛ˜Ü™]H\Ý[™È›ÙK‚ˆYˆ
+ö+v,v)ö+\˜Z‹ÚK\Ý
+Ø[\JBˆ	‰ˆö+ö+¶`6`6`6`6b6a6*¶,ö+6b¶a6+v,ö)ö*6)ö*¶`v)ö`¶b¶*H6)öa6)ö,ö*¶+¶+ö)öa_6,öb¶)ö,ö*H6)öa6+¶-vb6-vb¶*KÚK\Ý
+Ø[\JBˆ	‰ˆKÊ6a6a6*6b¶._6a6a6)vb¶+6)ö,_6)öa6,ö.v,_6)öa6av,ö)ö+v*_6+vb—Ê×ÊÊKÚK\Ý
+Ø[\JJHÂˆ™]\›ˆYNÂˆBˆ™]\›ˆ˜[ÙNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ™]Ú\Ý[™ÔYÙJ\›™Y\™XÝÛÝ[H
+HÂˆYˆ
+™Y\™XÝÛÝ[ˆTÕS‘×Ñ‘UÒÓPVÔ‘QT‘PÕÊHÂˆ™]\›ˆÈÚÎˆ˜[ÙK\œ›ÜŽˆÛ×ÛX[žWÜ™Y\™XÝÈˆNÂˆBˆÛÛœÝÛÛ›Û\ˆH™]ÈX›ÜÛÛ›Û\Š
+NÂˆÛÛœÝ[Y\ˆHÙ][Y[Ý]
+
+
+HOˆÛÛ›Û\‹˜X›Ü
+
+KTÕS‘×Ñ‘UÒÕSQSÕUÓTÊNÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+\›ÂˆY]Ùˆ‘ÑU‹ˆ™Y\™XÝˆ›X[X[‹ˆÚYÛ˜[ˆÛÛ›Û\‹œÚYÛ˜[ˆXY\œÎˆÂˆ•\Ù\‹PYÙ[Žˆ’PTPT‹S\Ý[™Ô™\ÛÛ™\‹ÌKŒ
+
+ÚÎ‹ËÚX\X\‹˜ZJH‹ˆXØÙ\ˆ^Ú[\XØ][Û‹Þ[
+Þ[ÜOLŽK
+‹ÊŽÜOLŽ‹ˆXØÙ\S[™ÝXYÙHŽˆ˜\‹[ŽÜOLŽ‚ˆBˆJNÂˆÛX\•[Y[Ý]
+[Y\ŠNÂˆÛÛœÝÝ]\ÈH™\ÜÛœÙKœÝ]\ÎÂˆYˆ
+Ý]\ÈHÌ	‰ˆÝ]\È
+HÂˆÛÛœÝØØ][ÛˆH™\ÜÛœÙKšXY\œË™Ù]
+›ØØ][ÛˆŠHˆŽÂˆÛÛœÝ™^\›H›Ü›X[^™S\Ý[™Ñ™]Ú\›
+™]ÈT“
+ØØ][Û‹\›
+KÔÝš[™Ê
+JNÂˆYˆ
+[™^\›
+H™]\›ˆÈÚÎˆ˜[ÙK\œ›ÜŽˆœ™Y\™XÝØ›ØÚÙY‹XYÛ›ÜÝXÜÎˆÈÝ]\Ë™Y\™XÝˆØØ][ÛˆHNÂˆ™]\›ˆ]ØZ]™]Ú\Ý[™ÔYÙJ™^\›™Y\™XÝÛÝ[
+ÈJNÂˆBˆYˆ
+\™\ÜÛœÙK›ÚÊHÂˆ™]\›ˆÈÚÎˆ˜[ÙK\œ›ÜŽˆ™™]ÚÙ˜Z[Y‹XYÛ›ÜÝXÜÎˆÈÝ]\Ë™Y\™XÝˆ[HNÂˆBˆÛÛœÝÛÛ[\HHÝš[™Ê™\ÜÛœÙKšXY\œË™Ù]
+˜ÛÛ[]\HŠHˆŠKÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝY™™\ˆH]ØZ]™\ÜÛœÙK˜\œ˜^PY™™\Š
+NÂˆYˆ
+Y™™\‹˜ž]S[™ÝˆTÕS‘×Ñ‘UÒÓPVÐ–UTÊHÂˆ™]\›ˆÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆœ™\ÜÛœÙWÝÛ×Û\™ÙH‹ˆXYÛ›ÜÝXÜÎˆÈÝ]\ËÛÛ[\Kž]S[™ÝˆY™™\‹˜ž]S[™ÝBˆNÂˆBˆÛÛœÝ[H™]È^XÛÙ\Š]‹N‹È˜][ˆ˜[ÙHJK™XÛÙJY™™\ŠNÂˆÛÛœÝ^H^˜XÝ\Ý[™Õ^œ›ÛR[
+[
+NÂˆYˆ
+\Ó\Ý[™Ñ™]Ú›ØÚÙY^
+^
+JHÂˆ™]\›ˆÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆœÛÝ\˜ÙWØ›ØÚÙY‹ˆXYÛ›ÜÝXÜÎˆÈÝ]\ËÛÛ[\Kž]S[™ÝˆY™™\‹˜ž]S[™Ý^[™Ýˆ^›[™Ý›ØÚÙYˆYHBˆNÂˆBˆYˆ
+]^
+HÂˆ™]\›ˆÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ™[\WÛ\Ý[™×Ý^‹ˆXYÛ›ÜÝXÜÎˆÈÝ]\ËÛÛ[\Kž]S[™ÝˆY™™\‹˜ž]S[™Ý^[™ÝˆBˆNÂˆBˆ™]\›ˆÂˆÚÎˆYKˆ^ˆXYÛ›ÜÝXÜÎˆÂˆÝ]\ËˆÛÛ[\Kˆž]S[™ÝˆY™™\‹˜ž]S[™Ýˆ^[™Ýˆ^›[™Ýˆ™Y\™XÝÛÝ[ˆBˆNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛX\•[Y[Ý]
+[Y\ŠNÂˆÛÛœÝY\ÜØYÙHHÝš[™Ê\œ›ÜË˜Ø]\ÙOË›Y\ÜØYÙH\œ›ÜË›Y\ÜØYÙH\œ›ÜŠNÂˆÛÛœÝ\œ›ÜÛÙHH\œ›ÜË›˜[YHOOHX›Ü\œ›Üˆ‚ˆÈ™™]ÚÝ[Y[Ý]‚ˆˆÑS“Õ“ÕS‘PRWÐQÐRSŸÙ]Yš[™›ßœËÚK\Ý
+Y\ÜØYÙJBˆÈ™œ×Ù˜Z[Y‚ˆˆ™™]ÚÙ˜Z[YŽÂˆ™]\›ˆÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ\œ›ÜÛÙKˆXYÛ›ÜÝXÜÎˆÈY\ÜØYÙHBˆNÂˆBŸB‚˜ÛÛœÝSPWÕ’TÒSÓ—ÓSÑSHÙ‹ÛY]KÛ[XKLËŒ‹LLX‹]š\Ú[Û‹Z[œÝXÝŽÂ›][XUš\Ú[Û“XÙ[œÙPXØÙ\YH˜[ÙNÂ‚˜\Þ[˜È[˜Ý[Ûˆ[œÝ\™S[XUš\Ú[Û“XÙ[œÙPXØÙ\Y
+[ŠHÂˆYˆ
+[XUš\Ú[Û“XÙ[œÙPXØÙ\YY[‹RJH™]\›ŽÂˆ]ØZ][‹RKœ[ŠSPWÕ’TÒSÓ—ÓSÑSÈ›Û\ˆ˜YÜ™YHˆJNÂˆ[XUš\Ú[Û“XÙ[œÙPXØÙ\YHYNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[“[XUš\Ú[Û‘^˜XÝ
+[‹[œ]
+HÂˆ]ØZ][œÝ\™S[XUš\Ú[Û“XÙ[œÙPXØÙ\Y
+[ŠNÂˆžHÂˆ™]\›ˆ]ØZ][‹RKœ[ŠSPWÕ’TÒSÓ—ÓSÑS[œ]
+NÂˆHØ]Ú
+\œ›ÜŠHÂˆYˆ
+Ýš[™Ê\œ›ÜË›Y\ÜØYÙHˆŠKš[˜ÛY\Ê˜YÜ™YHŠJHÂˆ[XUš\Ú[Û“XÙ[œÙPXØÙ\YH˜[ÙNÂˆ]ØZ][œÝ\™S[XUš\Ú[Û“XÙ[œÙPXØÙ\Y
+[ŠNÂˆ™]\›ˆ]ØZ][‹RKœ[ŠSPWÕ’TÒSÓ—ÓSÑS[œ]
+NÂˆBˆ›ÝÈ\œ›ÜŽÂˆBŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™PØ[›ÛšXØ[[ZÙTÝ\
+™\]Y\Ý[‹™\]Y\ÝY
+HÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRY
+NÂˆÛÛœÝY[]HH]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝÝHZ[Ø[›ÛšXØ[[ZÙPÝ
+Âˆ[‹™\]Y\ÝY[]K›Ú™XÝYXØÙ\ÜÕÚÙ[‹XÚÙ]ˆJNÂˆÛÛœÝ™\Ý[H]ØZ]Ý\Ø[›ÛšXØ[[ZÙJÂˆ‹‹˜›ÙKˆÙ™šXÙRYˆœ›ÚÙ\’YˆÛX[•^
+›ÙK˜œ›ÚÙ\’YY[]KZYLŒ
+BˆKÝ
+NÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈ‹‹œ™\Ý[™\]Y\ÝYK™\Ý[™\XØ]HÈŒˆŒJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™PØ[›ÛšXØ[[ZÙPØ[˜XÚÔ›Ý]J™\]Y\Ý[‹™\]Y\ÝY
+HÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆÛÛœÝÝHZ[Ø[›ÛšXØ[[ZÙPÝ
+Âˆ[‹™\]Y\ÝY[]Nˆ[›Ú™XÝYXØÙ\ÜÕÚÙ[‹XÚÙ]ˆ[ˆJNÂˆÛÛœÝ™\Ý[H]ØZ][™PØ[›ÛšXØ[[ZÙPØ[˜XÚÊ›ÙKÝ
+NÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈ‹‹œ™\Ý[™\]Y\ÝYJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™PØ[›ÛšXØ[[ZÙT™]žT›Ý]J™\]Y\Ý[‹™\]Y\ÝY
+HÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRY
+NÂˆÛÛœÝY[]HH]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆÛÛœÝ›Ú™XÝYH[‹‘’T‘PTÑWÔ“Ò‘PÕÒQQUSÔ“Ò‘PÕÒQÂˆÛÛœÝXØÙ\ÜÕÚÙ[ˆH]ØZ]Ù]ÛÛÙÛPXØÙ\ÜÕÚÙ[Š[ŠNÂˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝÝHZ[Ø[›ÛšXØ[[ZÙPÝ
+Âˆ[‹™\]Y\ÝY[]K›Ú™XÝYXØÙ\ÜÕÚÙ[‹XÚÙ]ˆJNÂˆÛÛœÝ™\Ý[H]ØZ]™]žPØ[›ÛšXØ[[ZÙJ›ÙKÝ
+NÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈ‹‹œ™\Ý[™\]Y\ÝYJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™PØ[›ÛšXØ[[ZÙSYYXPXØÙ\ÜÊ™\]Y\Ý[‹™\]Y\ÝY
+HÂˆÛÛœÝ\›H™]ÈT“
+™\]Y\Ý\›
+NÂˆÛÛœÝÚÙ[ˆHÛX[•^
+\›œÙX\˜Ú\˜[\Ë™Ù]
+ÚÙ[ˆŠK
+NÂˆÛÛœÝÚYÈHÛX[•^
+\›œÙX\˜Ú\˜[\Ë™Ù]
+œÚYÈŠKŒ
+NÂˆÛÛœÝÙXÜ™]HÝš[™Ê[‹ÐS“Ó’PÐSÒS•RÑWÓQQPWÔÑPÔ‘U[‹PÕU‘TQPÑT×ÐÐSPÒ×ÔÑPÔ‘UˆŠNÂˆÛÛœÝ™\šYšYYH]ØZ]™\šYžPØ[›ÛšXØ[YYXPXØÙ\ÜÕÚÙ[ŠÚÙ[‹ÚYËÙXÜ™]
+NÂˆYˆ
+]™\šYšYY›ÚÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ™\šYšYY™\œ›Ü‹™\]Y\ÝYKÊNÂˆBˆÛÛœÝÈÙ™šXÙRYYYXT]HH™\šYšYY™]NÂˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝØš™XÝH]ØZ]XÚÙ]™Ù]
+YYXT]
+NÂˆYˆ
+[Øš™XÝ
+H™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ›YYXWÛ›ÝÙ›Ý[™‹™\]Y\ÝYK
+NÂˆÛÛœÝY]Y]HHØš™XÝ˜Ý\ÝÛSY]Y]HßNÂˆYˆ
+Y]Y]K›Ù™šXÙRY	‰ˆY]Y]K›Ù™šXÙRYOOHÙ™šXÙRY
+HÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ›YYXWÜØÛÜWÛZ\ÛX]Ú‹™\]Y\ÝYKÊNÂˆBˆÛÛœÝXY\œÈH™]ÈXY\œÊ
+NÂˆYˆ
+Øš™XÝšY]Y]OË˜ÛÛ[\JHXY\œËœÙ]
+ÛÛ[U\H‹Øš™XÝšY]Y]K˜ÛÛ[\JNÂˆXY\œËœÙ]
+ØXÚKPÛÛ›Û‹œš]˜]K›Ë\ÝÜ™HŠNÂˆ™]\›ˆ™]È™\ÜÛœÙJØš™XÝ˜›ÙKÈÝ]\ÎˆŒXY\œÈJNÂŸB‚™[˜Ý[ÛˆZ[Ø[›ÛšXØ[[ZÙPÝ
+È[‹™\]Y\ÝY[]K›Ú™XÝYXØÙ\ÜÕÚÙ[‹XÚÙ]JHÂˆ™]\›ˆÂˆ[‹ˆ™\]Y\ÝˆY[]Kˆ›Ú™XÝYˆXØÙ\ÜÕÚÙ[‹ˆ™\]Y\Ý\›ˆ™\]Y\Ý\›ˆš\™\ÝÜ™SÙ™šXÙRYˆÙ™šXÙP]]Üš^˜][Û’Ù^KˆÙ™šXÙRYÑ\]Z]˜[[ˆÛX[•^ˆ\\œ›Ü‹ˆÙ]š\™\ÝÜ™QØÝ[Y[ˆÙ]š\™\ÝÜ™QØÝ[Y[ˆš\™\ÝÜ™QšY[ÕÒœËˆÛÛ\XÝšY[Ëˆš\™\ÝÜ™TÝš[™Ëˆš\™\ÝÜ™SÜ[Û˜[Ýš[™Ëˆš\™\ÝÜ™R[YÙ\‹ˆš\™\ÝÜ™P›ÛÛX[‹ˆš\™\ÝÜ™U[Y\Ý[\ˆ\œÙT™X[\Ý]SY\ÜØYÙKˆ›Ü›X[^™S\Ý[™Ñ™]Ú\›ˆ™]Ú\Ý[™ÔYÙKˆÜÜ[š]T]ÚÑš\™\ÝÜ™QšY[ËˆQ‘PÖPÓWÔÕUTËˆØœÙ\™SÜÜ[š]PÛÝ™\˜YÙTÚYÝÎˆ
+ÈÙ™šXÙRYˆØœÙ\™YÙ™šXÙRYÜÜ[š]RYˆØœÙ\™YÜÜ[š]RYÛÝ\˜ÙHH˜Ø[›ÛšXØ[Ú[ZÙWØÛÛ\]HˆJHO‚ˆØœÙ\™SÜÜ[š]PÛÝ™\˜YÙTÚYÝÊÂˆ›Ú™XÝYˆÙ™šXÙRYˆØœÙ\™YÙ™šXÙRYˆÜÜ[š]RYˆØœÙ\™YÜÜ[š]RYˆXØÙ\ÜÕÚÙ[‹ˆÛÝ\˜ÙBˆJKˆ^˜XÝ[XYÙU^œ›ÛSYYXT]ˆ
+YYXT]Ù™šXÙRY
+HO‚ˆ^˜XÝ[XYÙU^œ›ÛSYYXT]
+YYXT]Ù™šXÙRY[‹XÚÙ][“[XUš\Ú[Û‘^˜XÝ\œÙT™X[\Ý]SY\ÜØYÙJKˆ^˜XÝ]Y[Ñœ›ÛSYYXT]ˆ
+YYXT]Ù™šXÙRY
+HO‚ˆ^˜XÝ]Y[Ñœ›ÛSYYXT]
+YYXT]Ù™šXÙRY[‹XÚÙ]\œÙT™X[\Ý]SY\ÜØYÙJBˆNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™T\[[™U›ÚXÙP[˜[^™J™\]Y\Ý[‹™\]Y\ÝYÈX›XÔ›Ý]HH˜[ÙHHHßJHÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+™\]Y\ÝšXY\œË™Ù]
+–SÙ™šXÙKRYŠJNÂˆÛÛœÝÛÛ^HÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+–U›ÚXÙKPÛÛ^ŠKŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝ\˜][Û’XY\ˆH[X™\Š™\]Y\ÝšXY\œË™Ù]
+–U›ÚXÙKQ\˜][Û‹TÙXÈŠH
+NÂˆÛÛœÝ\˜][Û”ÙXÈH[X™\‹š\Ñš[š]J\˜][Û’XY\ŠH	‰ˆ\˜][Û’XY\ˆˆÈ\˜][Û’XY\ˆˆ[ÂˆÛÛœÝÛÛ[\HHÛX[•^
+™\]Y\ÝšXY\œË™Ù]
+ÛÛ[U\HŠKLŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝÚ^™HH™\]Y\Ý›ÙS[™Ý
+™\]Y\Ý
+NÂ‚ˆYˆ
+[Ù™šXÙRY
+H›ÝÈ\\œ›ÜŠ›Ù™šXÙWÚYÜ™\]Z\™Y‹›Ù™šXÙRY6av-öa6b6*ŠNÂˆYˆ
+VÈ›Ù™šXÙH‹›ÝÛ™\ˆ‹˜ÛY[—Kš[˜ÛY\ÊÛÛ^
+JHÂˆ›ÝÈ\\œ›ÜŠš[˜[YÝ›ÚXÙWØÛÛ^‹¶,öb¶)ö`ˆ6)öa6*¶,ö+6b¶a6.¶b¶,H6-v)öa6+HŠNÂˆB‚ˆYˆ
+X›XÔ›Ý]JHÂˆ[™›Ü˜ÙTX›XÔ›Ý]T˜]S[Z]
+™\]Y\ÝÂˆ›Ý]Nˆœ\[[™KÜX›XË]›ÚXÙKX[˜[^™H‹ˆÙ™šXÙRYˆ‹‹”P“P×ÔUWÓSRUË”P“P×Õ“ÒPÑBˆJNÂˆH[ÙHÂˆ]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆB‚ˆÛÛœÝ˜[Y][ÛˆH˜[Y]U›ÚXÙP]Y[ÊÈž]TÚ^™NˆÚ^™KZ[YU\NˆÛÛ[\K\˜][Û”ÙXÈJNÂˆYˆ
+]˜[Y][Û‹›ÚÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ˜[Y][Û‹™\œ›Ü‹™\]Y\ÝYKŒŠNÂˆB‚ˆÛÛœÝ]Y[Ðž]\ÈH]ØZ]™\]Y\Ý˜\œ˜^PY™™\Š
+NÂˆYˆ
+]Y[Ðž]\Ë˜ž]S[™ÝOOHÚ^™JHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆUQS×ÕTÐQÑRSQ‹™\]Y\ÝYK
+NÂˆB‚ˆÛÛœÝ™\Ý[H]ØZ][˜[^™U›ÚXÙUÚ]Ù[Z[šJÂˆ[‹ˆ]Y[Ðž]\ËˆZ[YU\Nˆ˜[Y][Û‹›Z[YU\KˆÛÛ^ˆ\œÙT™X[\Ý]SY\ÜØYÙKˆ™\]Y\ÝYˆJNÂ‚ˆYˆ
+\™\Ý[›ÚÊHÂˆÛÛœÝÝ]\ÈH™\Ý[™\œ›ÜˆOOH‘ÑSRS’WÔUSÕWÑVÑQQQˆÈŽHˆŒŽÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ™\Ý[™\œ›Ü‹ˆX›XÓY\ÜØYÙNˆ™\Ý[œX›XÓY\ÜØYÙH›ÚXÙP[˜[^™R\œ›Ü“Y\ÜØYÙJ™\Ý[™\œ›ÜŠKˆ™]žXX›Nˆ›ÛÛX[Š™\Ý[œ™]žXX›JKˆ[Ù[ˆ™\Ý[›[Ù[™\ÛÛ™QÙ[Z[šS[Ù[
+[ŠKˆ[[Y]žNˆÙ]›ÚXÙU[[Y]žTÛ˜\ÚÝ
+
+Kˆ™\]Y\ÝYˆKÝ]\ÊNÂˆB‚ˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÝXÝ\™Yˆ™\Ý[œÝXÝ\™Yˆ˜[œØÜš\ˆ™\Ý[˜[œØÜš\ˆ‹ˆœ›ÚÙ\‘šY[Îˆ™\Ý[˜œ›ÚÙ\‘šY[È[ˆšY[ÛÝ\˜Ù\Îˆ™\Ý[™šY[ÛÝ\˜Ù\ÈßKˆ›ÝšY\Žˆ™\Ý[œ›ÝšY\ˆ™Ù[Z[šH‹ˆ^˜XÝ[Û“[ÙNˆ™\Ý[™^˜XÝ[Û“[ÙKˆ›ÙXÝ[ÛZNˆ™\Ý[œ›ÙXÝ[ÛZKˆ[Ù[ˆ™\Ý[›[Ù[ˆ][˜ÞS\Îˆ™\Ý[›][˜ÞS\ËˆÛÛ™šY[˜ÙNˆ™\Ý[˜ÛÛ™šY[˜ÙHˆ[[Y]žNˆÙ]›ÚXÙU[[Y]žTÛ˜\ÚÝ
+
+Kˆ™\]Y\ÝYˆJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™T\[[™SYYXQ^˜XÝ
+™\]Y\Ý[‹™\]Y\ÝY
+HÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRY™\]Y\ÝšXY\œË™Ù]
+–SÙ™šXÙKRYŠJNÂˆÛÛœÝYYXT]HÛX[•^
+›ÙK›YYXT]L
+NÂˆÛÛœÝš[S˜[YHHÛX[•^
+›ÙK™š[S˜[YK
+NÂˆÛÛœÝ™\]Y\ÝYÛÛ[\HHÛX[•^
+›ÙK˜ÛÛ[\KLŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+[Ù™šXÙRY[YYXT]
+H›ÝÈ\\œ›ÜŠš[˜[YÛYYXWÝ\™Ù]‹¶b6+6aö*H6)öa6ava6`H6.¶b¶,H6-v)öa6+v*HŠNÂˆYˆ
+[YYXT]œÝ\ÕÚ]
+ÜÜ[š]K\ÛÝ\˜Ù\ËÉÛÙ™šXÙRYKØ
+JHÂˆ›ÝÈ\\œ›ÜŠš[˜[YÛYYXWÝ\™Ù]‹¶b6+6aö*H6)öa6ava6`H6.¶b¶,H6-v)öa6+v*HŠNÂˆBˆ]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆYˆ
+Y[‹RH	‰ˆTÝš[™Ê[‹‘ÑSRS’WÐTWÒÑVHˆŠKš[J
+JHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›YYXWÙ^˜XÝ[Û—Ý[˜]˜Z[X›H‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJ›YYXWÙ^˜XÝ[Û—Ý[˜]˜Z[X›HŠKˆ™\]Y\ÝYˆKLÊNÂˆB‚ˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝØš™XÝH]ØZ]XÚÙ]™Ù]
+YYXT]
+NÂˆYˆ
+[Øš™XÝ
+HÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›YYXWÛ›ÝÙ›Ý[™‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJ›YYXWÛ›ÝÙ›Ý[™ŠKˆ™\]Y\ÝYˆK
+NÂˆBˆÛÛœÝY]Y]HHØš™XÝ˜Ý\ÝÛSY]Y]HßNÂˆYˆ
+Y]Y]K›Ù™šXÙRY	‰ˆY]Y]K›Ù™šXÙRYOOHÙ™šXÙRY
+HÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›YYXWÜØÛÜWÛZ\ÛX]Ú‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJ›YYXWÜØÛÜWÛZ\ÛX]ÚŠKˆ™\]Y\ÝYˆKÊNÂˆBˆYˆ
+Y]Y]KœÛÝ\˜ÙU\H	‰ˆVÈš[XYÙH‹œØÜ™Y[œÚÝ—Kš[˜ÛY\ÊY]Y]KœÛÝ\˜ÙU\JJHÂˆ›ÝÈ\\œ›ÜŠ[œÝ\ÜYÛYYXH‹MK¶aö,6)È6)öa6av,ö)ö,H6av+¶-v-H6a6)ö,ö*¶+¶,v)ö+6)öa6-vb6,HŠNÂˆBˆÛÛœÝÝÜ™YÛÛ[\HHÛX[•^
+Øš™XÝšY]Y]OË˜ÛÛ[\KLŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+™\]Y\ÝYÛÛ[\H	‰ˆÝÜ™YÛÛ[\H	‰ˆ™\]Y\ÝYÛÛ[\HOOHÝÜ™YÛÛ[\JHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›YYXWÝ\WÛZ\ÛX]Ú‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJ›YYXWÝ\WÛZ\ÛX]ÚŠKˆ™\]Y\ÝYˆK
+NÂˆBˆÛÛœÝÛÛ[\HHÝÜ™YÛÛ[\H™\]Y\ÝYÛÛ[\NÂˆYˆ
+VÈš[XYÙKÚœYÈ‹š[XYÙKÜ™È‹š[XYÙKÝÙXœ—Kš[˜ÛY\ÊÛÛ[\JJHÂˆ›ÝÈ\\œ›ÜŠ[œÝ\ÜYÛYYXH‹MK¶a¶b6.H6)öa6-vb6,v*H6.¶b¶,H6av+ö.vb6aHŠNÂˆB‚ˆÛÛœÝž]\ÈH]ØZ]Øš™XÝ˜\œ˜^PY™™\Š
+NÂˆYˆ
+ž]\Ë˜ž]S[™ÝˆTÕS‘×Ñ‘UÒÓPVÐ–UTÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆœ™\ÜÛœÙWÝÛ×Û\™ÙH‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJœ™\ÜÛœÙWÝÛ×Û\™ÙHŠKˆ™\]Y\ÝYˆKŒŠNÂˆB‚ˆÛÛœÝš\Ú[ÛˆH]ØZ]^˜XÝ\Ý[™Ñœ›ÛR[XYÙJÂˆ[‹ˆ[XYÙPž]\Îˆ™]ÈZ[\œ˜^Jž]\ÊKˆZ[YU\NˆÛÛ[\Kˆ[“[XUš\Ú[Û‘^˜XÝˆ\œÙT™X[\Ý]SY\ÜØYÙBˆJNÂˆYˆ
+]š\Ú[Û‹›ÚÊHÂˆÛÛœÛÛKØ\›Š–ÚX\X\‹[YYXKY^˜XÝHš\Ú[Ûˆ˜Z[Y‹Âˆ\œ›ÜŽˆš\Ú[Û‹™\œ›Ü‹ˆÙ[Z[šQ\œ›ÜŽˆš\Ú[Û‹™Ù[Z[šQ\œ›Ü‹ˆÛÜšÙ\œÑ\œ›ÜŽˆš\Ú[Û‹ÛÜšÙ\œÑ\œ›Ü‚ˆJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆš\Ú[Û‹™\œ›Üˆ›YYXWØZWÙ˜Z[Y‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJš\Ú[Û‹™\œ›Ü‹š\Ú[ÛŠKˆÙ[Z[šQ\œ›ÜŽˆš\Ú[Û‹™Ù[Z[šQ\œ›Üˆˆ‹ˆÛÜšÙ\œÑ\œ›ÜŽˆš\Ú[Û‹ÛÜšÙ\œÑ\œ›Üˆˆ‹ˆ™\]Y\ÝYˆKŒŠNÂˆB‚ˆÛÛœÝ^HÛX[•^
+š\Ú[Û‹^LŒ
+NÂˆYˆ
+]^	‰ˆ]š\Ú[Û‹˜œ›ÚÙ\‘šY[ÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ™[\WÛ\Ý[™×Ý^‹ˆX›XÓY\ÜØYÙNˆYYXQ^˜XÝX›XÓY\ÜØYÙJ™[\WÛ\Ý[™×Ý^ŠKˆ™\]Y\ÝYˆKŒŠNÂˆB‚ˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆ^ˆ^[™Ýˆ^›[™Ýˆœ›ÚÙ\‘šY[Îˆš\Ú[Û‹˜œ›ÚÙ\‘šY[È[ˆšY[ÛÝ\˜Ù\Îˆš\Ú[Û‹™šY[ÛÝ\˜Ù\ÈßKˆ[˜[^™\”›ÝšY\Žˆš\Ú[Û‹˜[˜[^™\”›ÝšY\ˆˆ‹ˆ^˜XÝ[Û“[ÙNˆš\Ú[Û‹™^˜XÝ[Û“[ÙHÛÜšÙ\œ×ØZWÝš\Ú[Û—ØY\\ˆ‹ˆ^˜XÝ[Û”Ý]\Îˆš\Ú[Û‹™^˜XÝ[Û”Ý]\È™^˜XÝY‹ˆÛÛ™šY[˜ÙNˆ[X™\Šš\Ú[Û‹˜ÛÛ™šY[˜ÙH
+Kˆ›ÙXÝ[ÛZNˆ›ÛÛX[Šš\Ú[Û‹œ›ÙXÝ[ÛZJKˆÙ[Z[šP][\Yˆ›ÛÛX[Šš\Ú[Û‹™Ù[Z[šP][\Y
+KˆÙ[Z[šQ\œ›ÜŽˆš\Ú[Û‹™Ù[Z[šQ\œ›Üˆˆ‹ˆØÜ™Y[œÚÝ^˜XÝ[ÛŽˆš\Ú[Û‹œØÜ™Y[œÚÝ^˜XÝ[Ûˆ[ˆYYXT]ˆÜšYÚ[˜[\›ˆÛX[•^
+›ÙK›ÜšYÚ[˜[\›Œ
+Kˆ™\ÛÛ™Y\›ˆÛX[•^
+›ÙKœ™\ÛÛ™Y\›Œ
+KˆÛÝ\˜ÙTÚ]RYˆÛX[•^
+›ÙKœÛÝ\˜ÙTÚ]RY
+Kˆ^\›˜[\Ý[™ÒYˆÛX[•^
+›ÙK™^\›˜[\Ý[™ÒYLŒ
+Kˆš[S˜[YKˆÛÛ[\Kˆ™\]Y\ÝYˆJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™T\[[™P]Y[Ñ^˜XÝ
+™\]Y\Ý[‹™\]Y\ÝY
+HÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRY™\]Y\ÝšXY\œË™Ù]
+–SÙ™šXÙKRYŠJNÂˆÛÛœÝYYXT]HÛX[•^
+›ÙK›YYXT]L
+NÂˆÛÛœÝš[S˜[YHHÛX[•^
+›ÙK™š[S˜[YK
+NÂˆÛÛœÝ™\]Y\ÝYÛÛ[\HHÛX[•^
+›ÙK˜ÛÛ[\KLŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+[Ù™šXÙRY[YYXT]
+H›ÝÈ\\œ›ÜŠš[˜[YÛYYXWÝ\™Ù]‹¶b6+6aö*H6)öa6ava6`H6.¶b¶,H6-v)öa6+v*HŠNÂˆYˆ
+[YYXT]œÝ\ÕÚ]
+ÜÜ[š]K\ÛÝ\˜Ù\ËÉÛÙ™šXÙRYKØ
+JHÂˆ›ÝÈ\\œ›ÜŠš[˜[YÛYYXWÝ\™Ù]‹¶b6+6aö*H6)öa6ava6`H6.¶b¶,H6-v)öa6+v*HŠNÂˆBˆ]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆYˆ
+Y[‹RH	‰ˆTÝš[™Ê[‹‘ÑSRS’WÐTWÒÑVHˆŠKš[J
+JHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ›YYXWÙ^˜XÝ[Û—Ý[˜]˜Z[X›H‹ˆX›XÓY\ÜØYÙNˆUQS×ÕS”ÐÔ’P‘WÑT”“Ô—ÐT‹ˆ™\]Y\ÝYˆKLÊNÂˆB‚ˆÛÛœÝXÚÙ]H™\]Z\™SYYXPXÚÙ]
+[ŠNÂˆÛÛœÝØš™XÝH]ØZ]XÚÙ]™Ù]
+YYXT]
+NÂˆYˆ
+[Øš™XÝ
+HÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ›YYXWÛ›ÝÙ›Ý[™‹X›XÓY\ÜØYÙNˆUQS×ÕS”ÐÔ’P‘WÑT”“Ô—ÐT‹™\]Y\ÝYK
+NÂˆBˆÛÛœÝY]Y]HHØš™XÝ˜Ý\ÝÛSY]Y]HßNÂˆYˆ
+Y]Y]K›Ù™šXÙRY	‰ˆY]Y]K›Ù™šXÙRYOOHÙ™šXÙRY
+HÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆ˜[ÙK\œ›ÜŽˆ›YYXWÜØÛÜWÛZ\ÛX]Ú‹X›XÓY\ÜØYÙNˆUQS×ÕS”ÐÔ’P‘WÑT”“Ô—ÐT‹™\]Y\ÝYKÊNÂˆBˆYˆ
+Y]Y]KœÛÝ\˜ÙU\H	‰ˆY]Y]KœÛÝ\˜ÙU\HOOH˜]Y[ÈŠHÂˆ›ÝÈ\\œ›ÜŠ[œÝ\ÜYÛYYXH‹MK¶aö,6)È6)öa6av,ö)ö,H6av+¶-v-H6a6)ö,ö*¶+¶,v)ö+6)öa6-vb6*ˆŠNÂˆBˆÛÛœÝÝÜ™YÛÛ[\HHÛX[•^
+Øš™XÝšY]Y]OË˜ÛÛ[\KLŒ
+KÓÝÙ\Ø\ÙJ
+NÂˆÛÛœÝÛÛ[\HHÝÜ™YÛÛ[\H™\]Y\ÝYÛÛ[\NÂˆÛÛœÝ˜[Y][ÛˆH˜[Y]U›ÚXÙP]Y[ÊÂˆž]TÚ^™NˆØš™XÝœÚ^™HˆZ[YU\NˆÛÛ[\BˆJNÂˆYˆ
+]˜[Y][Û‹›ÚÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ˜[Y][Û‹™\œ›Ü‹ˆX›XÓY\ÜØYÙNˆ›ÚXÙP[˜[^™R\œ›Ü“Y\ÜØYÙJ˜[Y][Û‹™\œ›ÜŠKˆ™\]Y\ÝYˆKŒŠNÂˆB‚ˆÛÛœÝž]\ÈH]ØZ]Øš™XÝ˜\œ˜^PY™™\Š
+NÂˆÛÛœÝ]Y[ÈH]ØZ]^˜XÝ\Ý[™Ñœ›ÛP]Y[ÊÂˆ[‹ˆ]Y[Ðž]\Îˆž]\ËˆZ[YU\Nˆ˜[Y][Û‹›Z[YU\Kˆ\œÙT™X[\Ý]SY\ÜØYÙKˆ™\]Y\ÝYˆJNÂˆYˆ
+X]Y[Ë›ÚÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ]Y[Ë™\œ›Üˆ˜]Y[×Ý˜[œØÜšX™WÙ˜Z[Y‹ˆX›XÓY\ÜØYÙNˆ]Y[ËœX›XÓY\ÜØYÙHUQS×ÕS”ÐÔ’P‘WÑT”“Ô—ÐT‹ˆÙ[Z[šQ\œ›ÜŽˆ]Y[Ë™Ù[Z[šQ\œ›Üˆˆ‹ˆÛÜšÙ\œÑ\œ›ÜŽˆ]Y[ËÛÜšÙ\œÑ\œ›Üˆˆ‹ˆ™\]Y\ÝYˆKŒŠNÂˆB‚ˆÛÛœÝ˜[œØÜš\HÛX[•^
+]Y[Ë˜[œØÜš\]Y[Ë^LŒ
+NÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆ^ˆ˜[œØÜš\ˆ˜[œØÜš\ˆ^[™Ýˆ˜[œØÜš\›[™Ýˆœ›ÚÙ\‘šY[Îˆ]Y[Ë˜œ›ÚÙ\‘šY[È[ˆšY[ÛÝ\˜Ù\Îˆ]Y[Ë™šY[ÛÝ\˜Ù\ÈßKˆ[˜[^™\”›ÝšY\Žˆ]Y[Ë˜[˜[^™\”›ÝšY\ˆˆ‹ˆ^˜XÝ[Û“[ÙNˆ]Y[Ë™^˜XÝ[Û“[ÙH™Ù[Z[šWØ]Y[×Ý˜[œØÜšX™WØY\\ˆ‹ˆ^˜XÝ[Û”Ý]\Îˆ]Y[Ë™^˜XÝ[Û”Ý]\È™^˜XÝY‹ˆÛÛ™šY[˜ÙNˆ[X™\Š]Y[Ë˜ÛÛ™šY[˜ÙH
+Kˆ›ÙXÝ[ÛZNˆ›ÛÛX[Š]Y[Ëœ›ÙXÝ[ÛZJKˆYYXT]ˆš[S˜[YKˆÛÛ[\Nˆ˜[Y][Û‹›Z[YU\Kˆ™\]Y\ÝYˆJNÂŸB‚™[˜Ý[Ûˆž]\ÕÐ˜\ÙM
+ž]\ÊHÂˆ]š[˜\žHHˆŽÂˆ›Üˆ
+ÛÛœÝž]HÙˆž]\ÊHš[˜\žH
+ÏHÝš[™Ë™œ›ÛPÚ\ÛÙJž]JNÂˆ™]\›ˆØJš[˜\žJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ[™T\[[™U\›™\ÛÛ™J™\]Y\Ý[‹™\]Y\ÝY
+HÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRY™\]Y\ÝšXY\œË™Ù]
+–SÙ™šXÙKRYŠJNÂˆYˆ
+[Ù™šXÙRY
+H›ÝÈ\\œ›ÜŠ›Ù™šXÙWÚYÜ™\]Z\™Y‹¶av.v,vdv`H6)öa6av`ö*¶*6av-öa6b6*ŠNÂˆ]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆÛÛœÝ™\ÛÛ™YH]ØZ]™\ÛÛ™PØ[›ÛšXØ[\Ý[™Õ\›
+ÂˆÜšYÚ[˜[\›ˆ›ÙK\›ˆ\Ôš]˜]SÜ“ØØ[ÜÝˆJNÂˆYˆ
+\™\ÛÛ™Y›ÚÊHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆ˜[ÙKˆ\œ›ÜŽˆ™\ÛÛ™Y™\œ›Üˆ\›Ü™\ÛÛ™WÙ˜Z[Y‹ˆ\›ˆ™\ÛÛ™Y›ÜšYÚ[˜[\›Y\\“›Ü›X[^™S\Ý[™Ñ™]Ú\›
+›ÙK\›\Ôš]˜]SÜ“ØØ[ÜÝ
+KˆÜšYÚ[˜[\›ˆ™\ÛÛ™Y›ÜšYÚ[˜[\›ˆ‹ˆ™\ÛÛ™Y\›ˆ™\ÛÛ™Yœ™\ÛÛ™Y\›ˆ‹ˆ^˜XÝ[Û”Ý]\Îˆ™˜[˜XÚ×Ü™\]Z\™Y‹ˆXYÛ›ÜÝXÜÎˆ™\ÛÛ™Y™XYÛ›ÜÝXÜÈ[ˆ™\]Y\ÝYˆKŒŠNÂˆBˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆ\›ˆ™\ÛÛ™Yœ™\ÛÛ™Y\›ˆÜšYÚ[˜[\›ˆ™\ÛÛ™Y›ÜšYÚ[˜[\›ˆ™\ÛÛ™Y\›ˆ™\ÛÛ™Yœ™\ÛÛ™Y\›ˆ^ˆ™\ÛÛ™Y^ˆ^[™Ýˆ™\ÛÛ™Y^[™ÝˆÛÝ\˜ÙTÚ]Nˆ™\ÛÛ™YœÛÝ\˜ÙTÚ]KˆÛÝ\˜ÙTÚ]RYˆ™\ÛÛ™YœÛÝ\˜ÙTÚ]RYˆY\\’Yˆ™\ÛÛ™Y˜Y\\’Yˆ^\›˜[\Ý[™ÒYˆ™\ÛÛ™Y™^\›˜[\Ý[™ÒYˆÝXÝ\™Yˆ™\ÛÛ™YœÝXÝ\™Yˆœ›ÚÙ\‘šY[Îˆ™\ÛÛ™Y˜œ›ÚÙ\‘šY[ËˆšY[ÛÝ\˜Ù\Îˆ™\ÛÛ™Y™šY[ÛÝ\˜Ù\Ëˆ^˜XÝ[Û”Ý]\Îˆ™\ÛÛ™Y™^˜XÝ[Û”Ý]\ËˆÛ\ÜÚYšXØ][Û”Ý]\Îˆ™\ÛÛ™Y˜Û\ÜÚYšXØ][Û”Ý]\Ëˆ\Ý[™Õ]Nˆ™\ÛÛ™Y›\Ý[™Õ]KˆÛÛ[\Úˆ™\ÛÛ™Y˜ÛÛ[\ÚˆXYÛ›ÜÝXÜÎˆ™\ÛÛ™Y™XYÛ›ÜÝXÜËˆ™\]Y\ÝYˆJNÂŸB‚™[˜Ý[ÛˆÛÛœÝ[[YQ\]X[
+YšYÚ
+HÂˆÛÛœÝHH™]È^[˜ÛÙ\Š
+K™[˜ÛÙJÝš[™ÊY
+JNÂˆÛÛœÝˆH™]È^[˜ÛÙ\Š
+K™[˜ÛÙJÝš[™ÊšYÚ
+JNÂˆ]Y™™\™[˜ÙHHK›[™Ýˆ‹›[™ÝÂˆÛÛœÝ[™ÝHX]›X^
+K›[™Ý‹›[™Ý
+NÂˆ›Üˆ
+]HHÈH[™ÝÈH
+ÏHJHY™™\™[˜ÙHH
+VÚH	H
+K›[™ÝJWH
+Hˆ
+–ÚH	H
+‹›[™ÝJWH
+NÂˆ™]\›ˆY™™\™[˜ÙHOOHÂŸB™[˜Ý[Ûˆš\™\ÝÜ™S[
+
+HÈ™]\›ˆÈ[˜[YNˆ[NÈB‚™[˜Ý[ÛˆœÕÑš\™\ÝÜ™U˜[YJ˜[YJHÂˆYˆ
+˜[YHOOH[˜[YHOOH[™Yš[™Y
+H™]\›ˆš\™\ÝÜ™S[
+
+NÂˆYˆ
+˜[YH[œÝ[˜Ù[Ùˆ]JH™]\›ˆš\™\ÝÜ™U[Y\Ý[\
+˜[YJNÂˆYˆ
+\[Ùˆ˜[YHOOH˜›ÛÛX[ˆŠH™]\›ˆš\™\ÝÜ™P›ÛÛX[Š˜[YJNÂˆYˆ
+\[Ùˆ˜[YHOOH›[X™\ˆˆ	‰ˆ[X™\‹š\Ò[YÙ\Š˜[YJJH™]\›ˆš\™\ÝÜ™R[YÙ\Š˜[YJNÂˆYˆ
+\[Ùˆ˜[YHOOH›[X™\ˆŠH™]\›ˆÈÝX›U˜[YNˆ˜[YHNÂˆYˆ
+\[Ùˆ˜[YHOOHœÝš[™ÈŠH™]\›ˆš\™\ÝÜ™TÝš[™Ê˜[YJNÂˆYˆ
+\œ˜^Kš\Ð\œ˜^J˜[YJJHÂˆ™]\›ˆÈ\œ˜^U˜[YNˆÈ˜[Y\Îˆ˜[YK›X\
+
+][JHOˆœÕÑš\™\ÝÜ™U˜[YJ][JJK™š[\Š
+][JHOˆ][HOH[
+HHNÂˆBˆYˆ
+\[Ùˆ˜[YHOOH›Øš™XÝŠHÂˆÛÛœÝšY[ÈHßNÂˆ›Üˆ
+ÛÛœÝÚÙ^K™\ÝYHÙˆØš™XÝ™[šY\Ê˜[YJJHÂˆÛÛœÝ[˜ÛÙYHœÕÑš\™\ÝÜ™U˜[YJ™\ÝY
+NÂˆYˆ
+[˜ÛÙYOH[
+HšY[ÖÚÙ^WHH[˜ÛÙYÂˆBˆ™]\›ˆÈX\˜[YNˆÈšY[ÈHNÂˆBˆ™]\›ˆš\™\ÝÜ™TÝš[™ÊÝš[™Ê˜[YJJNÂŸB‚™[˜Ý[Ûˆœ›ÚÙ\”›ÙÜ™\ÜÑš\™\ÝÜ™QšY[Ê™XÛÜ™HßKXÝ[Û’Ù^HHˆ‹›ÝÈH™]È]J
+JHÂˆÛÛœÝ›ÙÜ™\ÜÈHY\™ÙPœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜÊ™XÛÜ™XÝ[Û’Ù^K›ÝËÒTÓÔÝš[™Ê
+JNÂˆ™]\›ˆÈœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜÎˆœÕÑš\™\ÝÜ™U˜[YJ›ÙÜ™\ÜÊHNÂŸB‚™[˜Ý[ÛˆY\™ÙQ›ÛÝÕ\Ú]Ø\›ÛJ^\Ý[™Ñ›ÛÝÕ\H[›ÛHHˆ‹›ÝÈH™]È]J
+JHÂˆÛÛœÝ›ÛÝÈH^\Ý[™Ñ›ÛÝÕ\	‰ˆ\[Ùˆ^\Ý[™Ñ›ÛÝÕ\OOH›Øš™XÝˆÈÈ‹‹™^\Ý[™Ñ›ÛÝÕ\HˆßNÂˆÛÛœÝ›Û\ÈH™]ÈÙ]
+\œ˜^Kš\Ð\œ˜^J›ÛÝËÚ]Ø\›Û\ÓÜ[™Y
+HÈ›ÛÝËÚ]Ø\›Û\ÓÜ[™Yˆ×JNÂˆÛÛœÝ›Ü›X[^™YHÝš[™Ê›ÛHˆŠKš[J
+KÓÝÙ\Ø\ÙJ
+NÂˆYˆ
+›Ü›X[^™Y
+H›Û\Ë˜Y
+›Ü›X[^™Y
+NÂˆ›ÛÝËÚ]Ø\›Û\ÓÜ[™YHË‹‹œ›Û\×NÂˆ›ÛÝË\]Y]H›ÝËÒTÓÔÝš[™Ê
+NÂˆ™]\›ˆ›ÛÝÎÂŸB‚™[˜Ý[Ûˆ›ÛÝÕ\š\™\ÝÜ™QšY[Ê›ÛÝÕ\
+HÂˆÛÛœÝ™[Z[™\’[œÝ[H\œÙQ›ÛÝÕ\[œÝ[
+›ÛÝÕ\œ™[Z[™\]
+Bˆ\œÙQ›ÛÝÕ\[œÝ[
+›ÛÝÕ\œ™[Z[™\]Z
+Bˆ\œÙQ›ÛÝÕ\[œÝ[
+›ÛÝÕ\œ™[Z[™\]
+NÂˆÛÛœÝ™[Z[™\]H™[Z[™\’[œÝ[™]È]JŒŒNKLKLUŒŒŒˆŠNÂˆ™]\›ˆÛÛ\XÝšY[ÊÂˆ›ÛÝÕ\ˆœÕÑš\™\ÝÜ™U˜[YJ›ÛÝÕ\
+Kˆ›ÛÝÕ\]ˆš\™\ÝÜ™U[Y\Ý[\
+™]È]J›ÛÝÕ\˜]
+JKˆ›ÛÝÕ\™[Z[™\]ˆš\™\ÝÜ™U[Y\Ý[\
+™[Z[™\]
+Kˆ™^›ÛÝÕ\]ˆš\™\ÝÜ™U[Y\Ý[\
+™]È]J›ÛÝÕ\˜]
+JKˆ™^XÝ[Û]ˆš\™\ÝÜ™U[Y\Ý[\
+™]È]J›ÛÝÕ\˜]
+JBˆJNÂŸB‚™[˜Ý[ÛˆÛX\‘›ÛÝÕ\š\™\ÝÜ™QšY[Ê›ÝÊHÂˆÛÛœÝ˜\‘]\™HH™]È]JŒŒNKLKLUŒŒŒˆŠNÂˆ™]\›ˆÛÛ\XÝšY[ÊÂˆ›ÛÝÕ\ˆœÕÑš\™\ÝÜ™U˜[YJÂˆÝ]\Îˆ“ÓÕÕTÔÕUTÑTË˜Ø[˜Ù[Yˆ\]Y]ˆ›ÝËÒTÓÔÝš[™Ê
+BˆJKˆ›ÛÝÕ\™[Z[™\]ˆš\™\ÝÜ™U[Y\Ý[\
+˜\‘]\™JKˆ™^›ÛÝÕ\]ˆš\™\ÝÜ™S[
+
+Kˆ™^XÝ[Û]ˆš\™\ÝÜ™S[
+
+BˆJNÂŸB‚˜\Þ[˜È[˜Ý[Ûˆ™\ÛÛ™SX]Ú›Ü“ÜÜ[š]JÈ›Ú™XÝYÙ™šXÙRYÜÜ[š]RYÜÜ[š]KXØÙ\ÜÕÚÙ[ˆJHÂˆÛÛœÝ™\ÝX]ÚYHÛX[•^
+ÜÜ[š]K˜™\ÝX]ÚYˆ‹N
+NÂˆYˆ
+™\ÝX]ÚY
+HÂˆÛÛœÝX]ÚØÈH]ØZ]Ù]š\™\ÝÜ™QØÝ[Y[
+Âˆ›Ú™XÝYˆÙYÛY[ÎˆÈ›Ù™šXÙ\È‹Ù™šXÙRY›X]Ú\È‹™\ÝX]ÚYKˆXØÙ\ÜÕÚÙ[‹ˆ[ÝÓZ\ÜÚ[™ÎˆYBˆJNÂˆYˆ
+X]ÚØÊH™]\›ˆš\™\ÝÜ™QšY[ÕÒœÊX]ÚØË™šY[ÈßJNÂˆBˆÛÛœÝX]Ú\ÈH]ØZ]\ÝÛÛXÝ[Û‘ØÝ[Y[ÊÂˆ›Ú™XÝYÙYÛY[ÎˆÈ›Ù™šXÙ\È‹Ù™šXÙRY›X]Ú\È—KXØÙ\ÜÕÚÙ[‹YÙTÚ^™NˆˆJNÂˆ›Üˆ
+ÛÛœÝØÈÙˆX]Ú\ÊHÂˆÛÛœÝX]ÚHš\™\ÝÜ™QšY[ÕÒœÊØË™šY[ÈßJNÂˆYˆ
+[Ù™šXÙRYÑ\]Z]˜[[
+X]Ú›Ù™šXÙRYÙ™šXÙRY
+JHÛÛ[YNÂˆYˆ
+X]Ú›ÝÛ™\“Ù™™\’Y	‰ˆX]Ú˜ÛY[™\]Y\ÝYˆ	‰ˆ
+X]Ú›ÜÜ[š]RYOOHÜÜ[š]RYX]Ú˜ÛÝ[\œ\ÜÜ[š]RYOOHÜÜ[š]RY
+JHÂˆ™]\›ˆX]ÚÂˆBˆBˆ™]\›ˆ[ÂŸB‚˜\Þ[˜È[˜Ý[ÛˆØÚY[SÜÜ[š]Q›ÛÝÕ\
+Âˆ›Ú™XÝYÙ™šXÙRYÜÜ[š]RYÛÛXÝ[Û‹™XÛÜ™YÜÜ[š]K›ÙKY[]KXØÙ\ÜÕÚÙ[‹›ÝËÝ]\Ð™Y›Ü™K™\]Y\ÝYŸJHÂˆÛÛœÝ˜]Ð]H›ÙK›™^›ÛÝÕ\]›ÙK™›ÛÝÕ\]›ÙK›™^XÝ[Û]ˆŽÂˆÛÛœÝ\œÙY]H˜]Ð]š[˜ÛY\Ê•ŠH	‰ˆ\˜]Ð]™[™ÕÚ]
+–ˆŠH	‰ˆ\˜]Ð]š[˜ÛY\ÊŠÈŠBˆÈ\œÙTš^XY]U[YR[œ]
+˜]Ð]
+Bˆˆ™]È]J˜]Ð]
+NÂˆÛÛœÝ]\™PÚXÚÈH˜[Y]Q]\™Q›ÛÝÕ\]
+\œÙY]›ÝÊNÂˆYˆ
+Y]\™PÚXÚË›ÚÊH›ÝÈ\\œ›ÜŠ]\™PÚXÚË˜ÛÙK]\™PÚXÚË›Y\ÜØYÙJNÂˆÛÛœÝÙ^PÚXÚÈH˜[Y]UÙ^T™\]Z\™\Ñ]\™U[YJ\œÙY]›ÝÊNÂˆYˆ
+]Ù^PÚXÚË›ÚÊH›ÝÈ\\œ›ÜŠ™›ÛÝÝ\ÝÙ^WÜ\Ý‹Ù^PÚXÚË›Y\ÜØYÙJNÂ‚ˆÛÛœÝX]ÚH]ØZ]™\ÛÛ™SX]Ú›Ü“ÜÜ[š]JÂˆ›Ú™XÝYÙ™šXÙRYÜÜ[š]RYÜÜ[š]KXØÙ\ÜÕÚÙ[‚ˆJK˜Ø]Ú
+
+
+HOˆ[
+NÂ‚ˆÛÛœÝ™XÚ\Y[ÛÛ^H™\ÛÛ™T™XÚ\Y[ÛÛ^
+ÜÜ[š]KX]Ú
+NÂˆÛÛœÝ™XÚ\Y[[ÙHH›Ü›X[^™T™XÚ\Y[[ÙJ›ÙKœ™XÚ\Y[[ÙK™XÚ\Y[ÛÛ^
+NÂˆÛÛœÝ^\Ý[™Ñ›ÛÝÕ\HÜÜ[š]K™›ÛÝÕ\	‰ˆ\[ÙˆÜÜ[š]K™›ÛÝÕ\OOH›Øš™XÝˆÈÜÜ[š]K™›ÛÝÕ\ˆ[ÂˆÛÛœÝ\Ô™\ØÚY[HH^\Ý[™Ñ›ÛÝÕ\ˆ	‰ˆPÕU‘WÑ“ÓÕÕTÔÕUTÑTËš\ÊÝš[™Ê^\Ý[™Ñ›ÛÝÕ\œÝ]\ÈˆŠJBˆ	‰ˆZ\ÔØ[YTØÚY[Y›ÛÝÕ\
+^\Ý[™Ñ›ÛÝÕ\\œÙY]™XÚ\Y[[ÙJNÂ‚ˆYˆ
+\ÔØ[YTØÚY[Y›ÛÝÕ\
+^\Ý[™Ñ›ÛÝÕ\\œÙY]™XÚ\Y[[ÙJJHÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÜÜ[š]RYˆY™XÞXÛTÝ]\ÎˆQ‘PÖPÓWÔÕUTË‘“ÓÕ×ÕTˆ›ÛÝÕ\ˆ^\Ý[™Ñ›ÛÝÕ\ˆY[\Ý[ˆYKˆ™\]Y\ÝYˆJNÂˆB‚ˆÛÛœÝ›ÛÝÕ\HZ[Ø[›ÛšXØ[›ÛÝÕ\
+Âˆ]ˆ\œÙY]ˆ™XÚ\Y[[ÙKˆÝÛ™\ÛÛXÝYˆ™XÚ\Y[ÛÛ^›ÝÛ™\ÛÛXÝYˆÛY[ÛÛXÝYˆ™XÚ\Y[ÛÛ^˜ÛY[ÛÛXÝYˆÜ™X]YžNˆY[]KZYˆ^\Ý[™Îˆ\Ô™\ØÚY[HÈ^\Ý[™Ñ›ÛÝÕ\ˆ[ˆ›ÝÂˆJNÂ‚ˆÛÛœÝšY[ÈHÂˆÙ™šXÙRYˆš\™\ÝÜ™TÝš[™ÊÙ™šXÙRY
+Kˆ\]Y]ˆš\™\ÝÜ™U[Y\Ý[\
+›ÝÊKˆY™XÞXÛU\]Y]ˆš\™\ÝÜ™U[Y\Ý[\
+›ÝÊKˆY™XÞXÛU\]YžNˆš\™\ÝÜ™TÝš[™ÊY[]KZY
+KˆY™XÞXÛTÝ]\Îˆš\™\ÝÜ™TÝš[™ÊQ‘PÖPÓWÔÕUTË‘“ÓÕ×ÕT
+Kˆ™^XÝ[Û•\Nˆš\™\ÝÜ™SÜ[Û˜[Ýš[™ÊÛX[•^
+›ÙK›™^XÝ[Û•\H™›ÛÝ×Ý\‹
+JKˆ™^XÝ[Û“›ÝNˆš\™\ÝÜ™SÜ[Û˜[Ýš[™ÊÛX[•^
+›ÙK›™^XÝ[Û“›ÝH›ÙK››ÝHˆ‹Ì
+JKˆ‹‹™›ÛÝÕ\š\™\ÝÜ™QšY[Ê›ÛÝÕ\
+Kˆ‹‹˜œ›ÚÙ\”›ÙÜ™\ÜÑš\™\ÝÜ™QšY[ÊÜÜ[š]K”“ÒÑT—ÐPÕSÓ‹™›ÛÝÕ\ØÚY[Y›ÝÊBˆNÂ‚ˆ]ØZ]Ù]š\™\ÝÜ™QØÝ[Y[
+È›Ú™XÝYÙYÛY[ÎˆÈ›Ù™šXÙ\È‹Ù™šXÙRYÛÛXÝ[Û‹™XÛÜ™YKXØÙ\ÜÕÚÙ[‹šY[ÈJNÂˆYˆ
+ÛÛXÝ[ÛˆOOH›ÜÜ[š]Y\ÈŠHÂˆ]ØZ]ØœÙ\™SÜÜ[š]PÛÝ™\˜YÙTÚYÝÊÂˆ›Ú™XÝYÙ™šXÙRYÜÜ[š]RYXØÙ\ÜÕÚÙ[‹ˆÛÝ\˜ÙNˆ\Ô™\ØÚY[HÈ™›ÛÝÝ\Ü™\ØÚY[Yˆˆ™›ÛÝÝ\ÜØÚY[Y‚ˆJNÂˆBˆÛÛœÝXÝ]š]PXÝ[ÛˆH\Ô™\ØÚY[HÈ™›ÛÝÝ\Ü™\ØÚY[Yˆˆ™›ÛÝÝ\ÜØÚY[YŽÂˆ]ØZ]YÜÜ[š]PÛÛ[][šXØ][ÛŠÂˆ›Ú™XÝYÙ™šXÙRYÜÜ[š]RYXØÙ\ÜÕÚÙ[‹›ÝËˆ^[ØYˆÂˆ\Nˆ™›ÛÝÝ\‹ˆXÝ[ÛŽˆXÝ]š]PXÝ[Û‹ˆÝ]\Ð™Y›Ü™KˆÝ]\ÐY\ŽˆQ‘PÖPÓWÔÕUTË‘“ÓÕ×ÕTˆÜ™X]YžNˆY[]KZYˆ™\Ý[ˆ™XÚ\Y[[ÙBˆBˆJNÂ‚ˆ™]\›ˆœÛÛ”™\ÜÛœÙJÂˆÚÎˆYKˆÜÜ[š]RYˆY™XÞXÛTÝ]\ÎˆQ‘PÖPÓWÔÕUTË‘“ÓÕ×ÕTˆY™XÞXÛTÝ]\ÓX™[ˆQ‘PÖPÓWÔÕUT×ÓP‘SÖÓQ‘PÖPÓWÔÕUTË‘“ÓÕ×ÕTKˆ›ÛÝÕ\ˆ™^›ÛÝÕ\]ˆ›ÛÝÕ\˜]ˆœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜÎˆY\™ÙPœ›ÚÙ\XÝ[Û”›ÙÜ™\ÜÊÜÜ[š]K”“ÒÑT—ÐPÕSÓ‹™›ÛÝÕ\ØÚY[Y›ÝËÒTÓÔÝš[™Ê
+JKˆ™\]Y\ÝYˆJNÂŸB‚˜ÛÛœÝPÕU‘WÑ“ÓÕÕTÔÕUTÑTÈH™]ÈÙ]
+Âˆ“ÓÕÕTÔÕUTÑTËœØÚY[Yˆ“ÓÕÕTÔÕUTÑTËœ™[Z[™\—ÙYKˆ“ÓÕÕTÔÕUTÑTËœ™[Z[™\—ÜÙ[—JNÂ‚˜\Þ[˜È[˜Ý[Ûˆ[™T›ØÙ\ÜÑ›ÛÝÝ\™[Z[™\œÊ™\]Y\Ý[‹™\]Y\ÝY
+HÂˆ\ÜÙ\š\™X˜\ÙTÙXÜ™]Ê[ŠNÂˆÛÛœÝ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆÛÛœÝÙ™šXÙRYHš\™\ÝÜ™SÙ™šXÙRY
+›ÙK›Ù™šXÙRYˆŠNÂˆYˆ
+Ù™šXÙRY
+H]ØZ]]]Üš^™SÙ™šXÙT™\]Y\Ý
+™\]Y\Ý[‹Ù™šXÙRY›Y[X™\ˆŠNÂˆ[ÙHYˆ
+Ýš[™Ê[‹‘TÖSQS•ÑS•ˆˆŠKÓÝÙ\Ø\ÙJ
+HOOHœÝYÚ[™ÈŠHÂˆ›ÝÈ\\œ›ÜŠ›Ù™šXÙWÚYÜ™\]Z\™Y‹›Ù™šXÙRY6av-öa6b6*ŠNÂˆBˆÛÛœÝØÚY[Y[YHH[X™\Š›ÙKœØÚY[Y[YH]K››ÝÊ
+JNÂˆÛÛœÝ™\Ý[H]ØZ]›ØÙ\ÜÓÜÜ[š]Q›ÛÝÝ\™[Z[™\œÊ[‹ØÚY[Y[YJNÂˆ™]\›ˆœÛÛ”™\ÜÛœÙJÈÚÎˆYK‹‹œ™\Ý[™\]Y\ÝYJNÂŸB‚™[˜Ý[ÛˆÛÛ\XÝšY[ÊšY[ÊHÈ™]\›ˆØš™XÝ™œ›ÛQ[šY\ÊØš™XÝ™[šY\ÊšY[ÊK™š[\Š
+Ë˜[YWJHOˆ˜[YHOH[
+JNÈB™[˜Ý[Ûˆš\™\ÝÜ™TÝš[™Ê˜[YJHÈ™]\›ˆÈÝš[™Õ˜[YNˆÝš[™Ê˜[YJHNÈB™[˜Ý[Ûˆš\™\ÝÜ™SÜ[Û˜[Ýš[™Ê˜[YJHÈ™]\›ˆ˜[YHÈš\™\ÝÜ™TÝš[™Ê˜[YJHˆ[ÈB™[˜Ý[Ûˆš\™\ÝÜ™P›ÛÛX[Š˜[YJHÈ™]\›ˆÈ›ÛÛX[•˜[YNˆ›ÛÛX[Š˜[YJHNÈB™[˜Ý[Ûˆš\™\ÝÜ™R[YÙ\Š˜[YJHÈ™]\›ˆÈ[YÙ\•˜[YNˆÝš[™Ê˜[YJHNÈB™[˜Ý[Ûˆš\™\ÝÜ™U[Y\Ý[\
+˜[YJHÈ™]\›ˆÈ[Y\Ý[\˜[YNˆ˜[YKÒTÓÔÝš[™Ê
+HNÈB™[˜Ý[ÛˆØY™RœÛÛ”Ýš[™ÚYžJ˜[YJHÈžHÈ™]\›ˆ”ÓÓ‹œÝš[™ÚYžJ˜[YJNÈHØ]Ú
+ÊHÈ™]\›ˆžßHŽÈHB™[˜Ý[Ûˆ]Ñ^RY
+]JHÈ™]\›ˆ]KÒTÓÔÝš[™Ê
+KœÛXÙJL
+Kœ™\XÙJËKÙËˆŠNÈB™[˜Ý[Ûˆ[\U\ØYÙJ
+HÈ™]\›ˆÈ[˜›Ý[™Y\ÜØYÙ\Îˆ\Ý[X]YÜš]\Îˆ\˜Ù[ˆØ\›]\˜Ù[ˆÐT“’S‘×ÔTÑS•Ø\›š[™Îˆ˜[ÙK\Ñ\Ý[X]NˆYHNÈB™[˜Ý[ÛˆX\ÚÔÛ™J˜[YJHÂˆÛÛœÝÛ™HHÝš[™Ê˜[YHˆŠNÂˆYˆ
+Û™K›[™ÝÊH™]\›ˆÛ™NÂˆ™]\›ˆ	ÜÛ™KœÛXÙJ
+_JŠŠŠ‰ÜÛ™KœÛXÙJLÊ_XÂŸB™[˜Ý[Ûˆ\\œ›ÜŠÛÙKÝ]\ËX›XÓY\ÜØYÙJHÈÛÛœÝ\œ›ÜˆH™]È\œ›ÜŠX›XÓY\ÜØYÙJNÈ\œ›Ü‹˜ÛÙHHÛÙNÈ\œ›Ü‹œÝ]\ÈHÝ]\ÎÈ\œ›Ü‹œX›XÓY\ÜØYÙHHX›XÓY\ÜØYÙNÈ™]\›ˆ\œ›ÜŽÈB™[˜Ý[ÛˆÛÜœÒXY\œÊ
+HÂˆ™]\›ˆÂˆXØÙ\ÜËPÛÛ›ÛP[ÝËSÜšYÚ[ˆŽˆŠˆ‹ˆXØÙ\ÜËPÛÛ›ÛP[ÝËSY]ÙÈŽˆ‘ÑUÔÕSUKÔSÓ”È‹ˆXØÙ\ÜËPÛÛ›ÛP[ÝËRXY\œÈŽˆÛÛ[U\K]]Üš^˜][Û‹RX‹TÚYÛ˜]\™KLM‹SÙ™šXÙKRYR[ZÙKRYSYYXKRÚ[™SYYXKR[™^SÙ™šXÙKR[XYÙKU˜\šX[TÛÝ\˜ÙKRYTÛÝ\˜ÙKU\KQš[KS˜[YKU›ÚXÙKPÛÛ^U›ÚXÙKQ\˜][Û‹TÙXËTÚ\™KPØ\™U™\œÚ[Ûˆ‹ˆXØÙ\ÜËPÛÛ›ÛSX^PYÙHŽˆŽ‚ˆNÂŸB™[˜Ý[ÛˆœÛÛ”™\ÜÛœÙJ›ÙKÝ]\ÈHŒ
+HÂˆ™]\›ˆ™]È™\ÜÛœÙJ”ÓÓ‹œÝš[™ÚYžJ›ÙJKÂˆÝ]\ËˆXY\œÎˆÈ‹‹˜ÛÜœÒXY\œÊ
+KÛÛ[U\HŽˆ˜\XØ][Û‹ÚœÛÛŽÈÚ\œÙ]]]‹N‹ØXÚKPÛÛ›ÛŽˆ››Ë\ÝÜ™HˆBˆJNÂŸB‚™^ÜÂˆ›Ü›X[^™SÙÚ[”Û™KYØXÞSØØ[ÙÚ[”Û™K™\ÛÛ™SÙÚ[‘\™XÝÜžKš\™X˜\ÙTÙ\šXÙPXØÛÝ[ˆÜ™X]TÙ\šXÙPXØÛÝ[ÝZ[›ÝYšXØ][Û“[šËZ[˜ÛU\™Ù]Z[˜ÛRY\ÜØYÙK\œÙQ˜ÛQ˜Z[\™KˆPUÒS‘×Ô•SWÕ‘T”ÒSÓ‹PUÒÕ‘TÒÓØÛÜ™SX]Ú˜[šÓX]ÚØ[™Y]\ËˆZ[X]ÚY™[]˜[]U™\œÚ[Û‹Ø[›ÛšXØ[Z\’Ù^KÜÜ[š]UÓX]Ú[œ]ˆÛÝ[\œ\Ñ[YÚX›K\ÙM›Ý[™\žQÝX\˜[Y\Ëš[™[™Ø]™SX]Ú\Ñ›Ü“ÜÜ[š]Kˆ\ÙMP›Ý[™\žQÝX\˜[Y\ËÔTUSÓ—ÕTTËÔTUSÓ—ÔÕUTË“ÕQ’PÐUSÓ—ÕTTËˆ“ÕQ’PÐUSÓ—ÔÕUTËPÕU‘WÓÔTUSÓ—ÔÕUTÑTËÚÝ[Ü™X]SX]Ú™]šY]Ëˆ\SÜ\˜][Û“Y™XÞXÛK\ÝZ\ÜÚ[™ÓÜÜ[š]QšY[Ë\Ú\Q›Ü“Ü\˜][Û‹ˆ\ÙM›Ý[™\žQÝX\˜[Y\ËÛÛÜ\˜][Û“[ÙP[ÝÜÑ^XÚ]™\]Y\Ýˆ\ÙMÐ›Ý[™\žQÝX\˜[Y\ËQTÔÐQÑWÐÒS“‘SËQTÔÐQÑWÔÑS‘ÔÕUKQTÔÐQÑWÑSU‘T–WÔÕUKˆSTUWÐÓÑTËQTT—ÔÕUTËZ[\˜XšXÓY\ÜØYÙP›ÙKZ[Y\ÜØYÙQ˜Yˆ\Q^\›˜[[™Ù™‹Ú]Ø\Y\\ÛÛ˜XÝ[YÜ˜[UÙXšÛÚÕ˜[Y][Û‘š^\™Kˆ™\ÛÛ™U[\]PÛÙKÚ]Ø\YÚ]Ëˆ]˜[X]TX›XÔ˜]S[Z]ÛÛœÝ[YTX›XÔ˜]S[Z]X›XÔ˜]S[Z]Ù^Kˆ™\Ù]X›XÔ˜]S[Z]ÝÜ™Q›Ü•\ÝËP“P×ÔUWÓSRUËˆ^˜XÝ\Ý[™Õ^œ›ÛR[ˆ\Ôš]˜]SÜ“ØØ[ÜÝˆ™\ÛÛ™S\Ý[™ÔÛÝ\˜ÙTÚ]Kˆ›Ü›X[^™SÜÜ[š]TÛÝ\˜ÙKÙ]ÜÜ[š]SY™XÞXÛTÝ]\Ë›Ü›X[^™TØ]YTÛ™Q›Ü•Ú]Ð\ˆZ[ÜÜ[š]TÝ[[X\žKZ[ÜÜ[š]UÚ]Ð\Y\ÜØYÙK™\ÛÛ™TÙ[XÝÜ[Û‹ˆ^˜XÝ\ÝšXÝœ›ÛU›ÚXÙK\œÙU›ÚXÙSÜÜ[š]QšY[ËÚ]Ø\XÝ[Û•\Q›Ü”Ý]\Ëˆ\Ð\˜Ú]™YY™XÞXÛK\ÓÜÜ[š]SY™XÞXÛPXÝ]™BŸNÂ

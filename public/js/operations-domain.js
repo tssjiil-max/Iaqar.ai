@@ -228,6 +228,7 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
 
   return {
     id: String(op.id || ""),
+    officeId: String(op.officeId || ""),
     recordId: String(op.id || ""),
     recordType: "operation",
     operationType: type,

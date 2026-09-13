@@ -73,9 +73,23 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
   const archived = Boolean(vm.archived);
   if (archived) return buildArchiveInboxRowHtml(record, context.now);
   const archiveLabel = archiveActionLabel(record);
+  const action = context.action || null;
+  const actionStrip = action ? `
+      <section class="bank-card-action bank-card-action--${esc(action.tone)}" data-opportunity-action-state="${esc(action.category)}">
+        <div class="bank-card-action-head">
+          <span class="bank-card-action-badge">${esc(action.badge)}</span>
+          <strong>${esc(action.reason)}</strong>
+        </div>
+        ${action.detail ? `<p class="bank-card-action-detail">${esc(action.detail)}</p>` : ""}
+        ${action.primaryAction ? `<div class="bank-card-action-row">
+          <span><small>الإجراء التالي:</small> ${esc(action.primaryAction)}</span>
+          <button type="button" class="bank-card-primary-action" data-opportunity-primary-action="${esc(action.actionCode)}"
+            data-operation-id="${esc(action.operationId)}" data-match-id="${esc(action.matchId)}">${esc(action.primaryAction)}</button>
+        </div>` : ""}
+      </section>` : "";
   return `
     <article
-      class="cv2-details"
+      class="cv2-details${action ? ` has-bank-action is-${esc(action.tone)}` : ""}"
       data-cv2-inbox-item
       data-testid="inbox-row"
       data-opportunity-id="${esc(opportunityId)}"
@@ -86,6 +100,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
         extraId: extraIdFor(opportunityId),
         statusLine: inboxStatusLine(record, context, vm)
       })}
+      ${actionStrip}
       ${buildCompleteMissingButtonV2(vm)}
       <div class="opp-archive-actions">
         <button type="button" class="opp-archive-link" data-inbox-archive="${esc(opportunityId)}">${esc(archiveLabel)}</button>
