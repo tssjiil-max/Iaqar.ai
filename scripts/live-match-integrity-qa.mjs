@@ -311,9 +311,11 @@ async function captureUi({ customToken, matchId }) {
     localStorage.setItem("iaqar.officeId", officeId);
   }, { customToken, officeId: OFFICE_ID });
   await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
-  await page.locator("[data-cv2-exec-task]").first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
-  const card = page.locator(`[data-cv2-exec-task][data-match-id="${matchId}"]`).first();
-  const cardCount = await page.locator("[data-cv2-exec-task]").count();
+  await page.locator("[data-cv2-inbox-item]").first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${REQUEST_ID}"]`)
+    .filter({ has: page.locator(`[data-match-id="${matchId}"]`) })
+    .first();
+  const cardCount = await page.locator("[data-cv2-inbox-item]").count();
   const matchedCardCount = await card.count();
   mkdirSync(OUT, { recursive: true });
   const shots = {};
@@ -322,12 +324,12 @@ async function captureUi({ customToken, matchId }) {
   if (await card.count()) {
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({ path: shots.task, fullPage: false });
-    const reveal = card.locator("[data-cv2-exec-reveal], [data-testid='match-open']").first();
+    const reveal = card.locator("[data-opportunity-primary-action], [data-inbox-open]").first();
     if (await reveal.count()) await reveal.click();
     await page.waitForTimeout(800);
     shots.data = path.join(OUT, "match_integrity_view_data.png");
     await page.screenshot({ path: shots.data, fullPage: false });
-    const details = card.locator("[data-testid='match-details'], [data-cv2-exec-secondary='open_offer']").first();
+    const details = card.locator("[data-inbox-open]").first();
     if (await details.count()) {
       await details.click();
       await page.waitForTimeout(1200);
