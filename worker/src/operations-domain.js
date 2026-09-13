@@ -506,6 +506,8 @@ export async function buildMatchReviewOperation({
       reasonPreview: reasonText,
       clientRequestId: String(clientRequestId || ""),
       ownerOfferId: String(ownerOfferId || ""),
+      integrityStatus: "valid",
+      matchIntegrityStatus: "valid",
       matchGroupId: String(matchGroupId || opportunityId || ""),
       sourceCollection: String(sourceCollection || ""),
       candidateSalePrice: Number(candidateSalePrice || 0),
