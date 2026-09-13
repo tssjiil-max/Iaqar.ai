@@ -5298,15 +5298,14 @@
     background:#fff;
   }
   .bank-action-filters {
-    display:flex;
+    display:grid;
+    grid-template-columns:repeat(6,minmax(0,1fr));
     gap:6px;
-    overflow-x:auto;
-    padding-bottom:2px;
-    scrollbar-width:none;
+    width:100%;
   }
-  .bank-action-filters::-webkit-scrollbar { display:none; }
   .bank-action-filter {
-    flex:0 0 auto;
+    grid-column:span 2;
+    min-width:0;
     border:1px solid var(--line);
     border-radius:999px;
     background:#fff;
@@ -5315,6 +5314,7 @@
     font:700 12px Tajawal;
     cursor:pointer;
   }
+  .bank-action-filter:nth-last-child(-n+2) { grid-column:span 3; }
   .bank-action-filter.is-active {
     border-color:rgba(0,92,75,.28);
     background:var(--green-soft);
