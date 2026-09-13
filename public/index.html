@@ -274,15 +274,19 @@
       font-weight:700;
     }
     .opp-v2-more-item.is-danger, .bank-action.danger { color:#b42318; }
-    .opp-archive-actions { display:flex; justify-content:flex-start; margin-top:8px; }
+    .opp-archive-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:8px 12px 12px; }
     .opp-archive-link {
-      background:none;
-      border:0;
-      color:var(--muted);
+      min-height:38px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#fff;
+      color:var(--green);
       font-size:12px;
-      text-decoration:underline;
-      padding:0;
+      font-weight:800;
+      text-decoration:none;
+      padding:7px 8px;
     }
+    .opp-archive-link.is-muted { color:var(--muted); }
     .archive-row {
       display:grid;
       gap:10px;
@@ -5925,7 +5929,7 @@
     </section>
 
     <div class="app-content-shell" id="appContentShell">
-    <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية">
+    <nav class="main-tabs" id="mainTabs" role="tablist" aria-label="الأقسام الرئيسية" hidden>
       <button type="button" class="main-tab is-active" id="mainTabOperations" role="tab"
         aria-selected="true" aria-controls="contentV2" aria-label="المهام اليومية">المهام اليومية</button>
       <button type="button" class="main-tab" id="mainTabOpportunities" role="tab"

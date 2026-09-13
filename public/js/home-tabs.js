@@ -5,7 +5,7 @@
   "use strict";
 
   const state = {
-    main: "operations",
+    main: "opportunities",
     opp: "bank"
   };
 
@@ -132,7 +132,7 @@
       setOppTab("bank");
     });
 
-    setMainTab("operations");
+    setMainTab("opportunities");
     setOppTab("bank", { skipBankPause: true, skipBankOpen: true });
   }
 

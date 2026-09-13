@@ -103,7 +103,9 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       ${actionStrip}
       ${buildCompleteMissingButtonV2(vm)}
       <div class="opp-archive-actions">
-        <button type="button" class="opp-archive-link" data-inbox-archive="${esc(opportunityId)}">${esc(archiveLabel)}</button>
+        <button type="button" class="opp-archive-link" data-inbox-open="${esc(opportunityId)}">فتح</button>
+        <button type="button" class="opp-archive-link" data-inbox-edit="${esc(opportunityId)}">تعديل</button>
+        <button type="button" class="opp-archive-link is-muted" data-inbox-archive="${esc(opportunityId)}">${esc(archiveLabel)}</button>
       </div>
     </article>`;
 }

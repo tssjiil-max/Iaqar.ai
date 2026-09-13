@@ -3755,6 +3755,14 @@ function bindListClicks() {
       if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "", editorBtn);
       return;
     }
+    const openBtn = event.target.closest("[data-inbox-open], [data-inbox-edit]");
+    if (openBtn && list.contains(openBtn)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = openBtn.getAttribute("data-inbox-open") || openBtn.getAttribute("data-inbox-edit");
+      if (id) void openOpportunity(id);
+      return;
+    }
     const archiveBtn = event.target.closest("[data-inbox-archive]");
     if (archiveBtn && list.contains(archiveBtn)) {
       event.preventDefault();
