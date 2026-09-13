@@ -26,7 +26,7 @@ jobs:
       - name: Inspect target operation read-only
         run: |
           cat > scripts/.inspect-match-review.mjs <<'EOF'
-          import admin from "firebase-admin";
+          import * as admin from "firebase-admin";
           import { getFirestore } from "firebase-admin/firestore";
           import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
           const PROJECT_ID = "iaqar-ai-staging";
@@ -35,8 +35,8 @@ jobs:
           const OP_ID = `op_match_${MATCH_ID}`;
           const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
           if (!parsed.serviceAccount) throw new Error("STAGING_READ_ACCESS_UNAVAILABLE");
-          admin.initializeApp({ credential: admin.credential.cert(parsed.serviceAccount), projectId: PROJECT_ID });
-          const db = getFirestore();
+          const app = admin.initializeApp({ credential: admin.cert(parsed.serviceAccount), projectId: PROJECT_ID });
+          const db = getFirestore(app);
           const [opSnap, matchSnap] = await Promise.all([
             db.doc(`offices/${OFFICE_ID}/operations/${OP_ID}`).get(),
             db.doc(`offices/${OFFICE_ID}/matches/${MATCH_ID}`).get()
