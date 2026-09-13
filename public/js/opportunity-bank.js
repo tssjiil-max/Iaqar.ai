@@ -3623,6 +3623,7 @@ function toggleInboxDataCard(toggle) {
   const expanded = card.classList.contains("is-collapsed");
   card.classList.toggle("is-expanded", expanded);
   card.classList.toggle("is-collapsed", !expanded);
+  article?.classList.toggle("is-card-expanded", expanded);
   toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
   const label = toggle.querySelector("[data-cv2-toggle-label]");
   if (label) label.textContent = expanded ? "إخفاء التفاصيل" : "عرض التفاصيل";
@@ -3637,6 +3638,22 @@ function showInboxEditorError(root, message) {
   if (!node) return;
   node.hidden = false;
   node.textContent = message;
+}
+
+function toggleInboxEditMenu(article) {
+  const existing = article?.querySelector("[data-inbox-edit-menu]");
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  article?.insertAdjacentHTML("beforeend", `<div class="opp-inline-edit-menu" data-inbox-edit-menu aria-label="اختر البيانات المراد تعديلها">
+    <button type="button" data-cv2-editor="propertyPurpose">العقار والغرض</button>
+    <button type="button" data-cv2-editor="location">الموقع</button>
+    <button type="button" data-cv2-editor="price">السعر</button>
+    <button type="button" data-cv2-editor="area">المساحة</button>
+    <button type="button" data-cv2-editor="contactNumber">رقم التواصل</button>
+    <button type="button" data-cv2-editor="advertiserRole">صفة المعلن</button>
+  </div>`);
 }
 
 async function runInboxDeviceContactSave(article, fromEditor) {
@@ -3755,12 +3772,12 @@ function bindListClicks() {
       if (article) openInboxEditor(article, editorBtn.getAttribute("data-cv2-editor") || "", editorBtn);
       return;
     }
-    const openBtn = event.target.closest("[data-inbox-open], [data-inbox-edit]");
-    if (openBtn && list.contains(openBtn)) {
+    const editBtn = event.target.closest("[data-inbox-edit]");
+    if (editBtn && list.contains(editBtn)) {
       event.preventDefault();
       event.stopPropagation();
-      const id = openBtn.getAttribute("data-inbox-open") || openBtn.getAttribute("data-inbox-edit");
-      if (id) void openOpportunity(id);
+      const article = editBtn.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      if (article) toggleInboxEditMenu(article);
       return;
     }
     const archiveBtn = event.target.closest("[data-inbox-archive]");
@@ -3790,7 +3807,12 @@ function bindListClicks() {
       const article = primaryAction.closest("[data-cv2-inbox-item][data-opportunity-id]");
       const id = resolveBankRowOpportunityId(article);
       if (id) void openOpportunity(id);
+      return;
     }
+    if (event.target.closest("button, a, input, select, textarea, [role='button']")) return;
+    const article = event.target.closest("[data-cv2-inbox-item][data-opportunity-id]");
+    const cardToggle = article?.querySelector("[data-cv2-toggle-details]");
+    if (article && cardToggle) toggleInboxDataCard(cardToggle);
   });
 }
 

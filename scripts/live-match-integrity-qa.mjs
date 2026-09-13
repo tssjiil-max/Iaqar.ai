@@ -324,12 +324,12 @@ async function captureUi({ customToken, matchId }) {
   if (await card.count()) {
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({ path: shots.task, fullPage: false });
-    const reveal = card.locator("[data-opportunity-primary-action], [data-inbox-open]").first();
+    const reveal = card.locator("[data-opportunity-primary-action], [data-cv2-toggle-details]").first();
     if (await reveal.count()) await reveal.click();
     await page.waitForTimeout(800);
     shots.data = path.join(OUT, "match_integrity_view_data.png");
     await page.screenshot({ path: shots.data, fullPage: false });
-    const details = card.locator("[data-inbox-open]").first();
+    const details = card.locator("[data-cv2-toggle-details]").first();
     if (await details.count()) {
       await details.click();
       await page.waitForTimeout(1200);

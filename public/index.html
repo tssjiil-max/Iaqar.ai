@@ -274,7 +274,8 @@
       font-weight:700;
     }
     .opp-v2-more-item.is-danger, .bank-action.danger { color:#b42318; }
-    .opp-archive-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:8px 12px 12px; }
+    .opp-archive-actions { display:none; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:8px 12px 12px; }
+    .cv2-details.is-card-expanded > .opp-archive-actions { display:grid; }
     .opp-archive-link {
       min-height:38px;
       border:1px solid var(--line);
@@ -287,6 +288,8 @@
       padding:7px 8px;
     }
     .opp-archive-link.is-muted { color:var(--muted); }
+    .opp-inline-edit-menu { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:0 12px 12px; }
+    .opp-inline-edit-menu button { min-height:38px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); font:800 12px Tajawal; }
     .archive-row {
       display:grid;
       gap:10px;

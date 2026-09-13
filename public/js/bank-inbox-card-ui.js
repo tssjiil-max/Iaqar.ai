@@ -89,7 +89,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       </section>` : "";
   return `
     <article
-      class="cv2-details${action ? ` has-bank-action is-${esc(action.tone)}` : ""}"
+      class="cv2-details${context.dataCardExpanded ? " is-card-expanded" : ""}${action ? ` has-bank-action is-${esc(action.tone)}` : ""}"
       data-cv2-inbox-item
       data-testid="inbox-row"
       data-opportunity-id="${esc(opportunityId)}"
@@ -103,7 +103,6 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       ${actionStrip}
       ${buildCompleteMissingButtonV2(vm)}
       <div class="opp-archive-actions">
-        <button type="button" class="opp-archive-link" data-inbox-open="${esc(opportunityId)}">فتح</button>
         <button type="button" class="opp-archive-link" data-inbox-edit="${esc(opportunityId)}">تعديل</button>
         <button type="button" class="opp-archive-link is-muted" data-inbox-archive="${esc(opportunityId)}">${esc(archiveLabel)}</button>
       </div>

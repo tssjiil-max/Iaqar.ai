@@ -170,8 +170,9 @@ test("UI contract keeps one primary card and local action accents", () => {
   const shell = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
   assert.match(ui, /data-cv2-inbox-item/);
   assert.doesNotMatch(ui, /data-daily-task-card/);
-  assert.match(ui, /data-inbox-open/);
+  assert.doesNotMatch(ui, /data-inbox-open/);
   assert.match(ui, /data-inbox-edit/);
+  assert.match(bank, /toggleInboxEditMenu/);
   assert.match(bank, /buildOpportunityActionIndex/);
   assert.match(shell, /data-bank-action-filter="needs_action"/);
   assert.match(shell, /bank-card-action--overdue/);
