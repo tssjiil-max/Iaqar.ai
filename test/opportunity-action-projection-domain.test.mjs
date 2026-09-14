@@ -1,0 +1,110 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  OPPORTUNITY_ACTION_FILTER,
+  buildOpportunityActionIndex,
+  opportunityMatchesActionFilter,
+  projectOpportunityAction
+} from "../public/js/opportunity-action-projection-domain.js";
+
+const OFFICE = "thamer";
+const NOW = new Date("2026-09-14T08:00:00.000Z");
+
+function operation(overrides = {}) {
+  return {
+    id: "op-1",
+    officeId: OFFICE,
+    opportunityId: "opp-1",
+    operationType: "MATCH_REVIEW",
+    status: "OPEN",
+    livingStage: "MATCH_REVIEW",
+    matchId: "match-1",
+    createdAt: "2026-09-14T07:00:00.000Z",
+    updatedAt: "2026-09-14T07:00:00.000Z",
+    ...overrides
+  };
+}
+
+test("plain active MATCH_REVIEW is a matches action", () => {
+  const action = projectOpportunityAction(operation(), NOW);
+  assert.equal(action?.category, OPPORTUNITY_ACTION_FILTER.MATCHES);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+});
+
+test("future appointment keeps MATCHES membership while appointment is primary", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ appointmentAt: "2026-09-14T12:00:00.000Z" })
+  ], { officeId: OFFICE, now: NOW });
+  const action = index.get("opp-1");
+  assert.equal(action?.category, OPPORTUNITY_ACTION_FILTER.APPOINTMENTS);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.APPOINTMENTS), true);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  assert.equal(action?.matchCount, 1);
+});
+
+test("negotiation MATCH_REVIEW remains visible in matches", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ livingStage: "NEGOTIATION_ACTIVE" })
+  ], { officeId: OFFICE, now: NOW });
+  const action = index.get("opp-1");
+  assert.equal(action?.actionCode, "open_negotiation");
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+});
+
+test("follow-up operation is visible in follow-up filter", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      id: "follow-1",
+      operationType: "OPPORTUNITY_FOLLOW_UP",
+      matchId: "",
+      livingStage: "FOLLOW_UP",
+      followUpAt: "2026-09-15T08:00:00.000Z"
+    })
+  ], { officeId: OFFICE, now: NOW });
+  const action = index.get("opp-1");
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.FOLLOW_UP), true);
+});
+
+test("overdue appointment is action required and also remains a match", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ appointmentAt: "2026-09-14T07:00:00.000Z" })
+  ], { officeId: OFFICE, now: NOW });
+  const action = index.get("opp-1");
+  assert.equal(action?.category, OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION), true);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+});
+
+test("multiple active operations preserve every filter membership while keeping one primary action", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ id: "match-activity", appointmentAt: "2026-09-14T13:00:00.000Z" }),
+    operation({
+      id: "follow-activity",
+      operationType: "OPPORTUNITY_FOLLOW_UP",
+      matchId: "",
+      livingStage: "FOLLOW_UP",
+      followUpAt: "2026-09-15T08:00:00.000Z"
+    })
+  ], { officeId: OFFICE, now: NOW });
+  const action = index.get("opp-1");
+  assert.equal(action?.category, OPPORTUNITY_ACTION_FILTER.APPOINTMENTS);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.APPOINTMENTS), true);
+  assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.FOLLOW_UP), true);
+});
+
+test("office isolation excludes active operations from another office", () => {
+  const index = buildOpportunityActionIndex([
+    operation(),
+    operation({ id: "foreign", officeId: "office-b", opportunityId: "opp-b", matchId: "match-b" })
+  ], { officeId: OFFICE, now: NOW });
+  assert.equal(index.has("opp-1"), true);
+  assert.equal(index.has("opp-b"), false);
+});
+
+test("inactive operations do not create action-filter membership", () => {
+  const index = buildOpportunityActionIndex([
+    operation({ status: "COMPLETED" })
+  ], { officeId: OFFICE, now: NOW });
+  assert.equal(index.has("opp-1"), false);
+});

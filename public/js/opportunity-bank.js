@@ -72,7 +72,6 @@ import {
 } from "./opportunity-readiness-domain.js";
 import {
   canonicalFirestoreOfficeId,
-  indexOpportunityRecordsFromFeed,
   shouldShowBankLoadMore
 } from "./opportunity-data-flow-domain.js";
 import {
@@ -401,9 +400,12 @@ function syncFilterInputsFromState() {
   if (search) search.value = state.queryFilters.search || "";
 }
 
-function passesListFilters(record) {
-  if (!isVisibleForFilter(record) || !matchesBankQueryFilters(record, state.queryFilters)) return false;
-  return opportunityMatchesActionFilter(actionForOpportunity(record.id || record.opportunityId), state.actionFilter);
+function hasActiveOpportunityActionFilter() {
+  return state.actionFilter !== OPPORTUNITY_ACTION_FILTER.ALL;
+}
+
+function hasActiveListFilter() {
+  return hasActiveBankQuery(state.queryFilters) || hasActiveOpportunityActionFilter();
 }
 
 function actionIndex() {
@@ -412,6 +414,17 @@ function actionIndex() {
 
 function actionForOpportunity(opportunityId) {
   return actionIndex().get(String(opportunityId || "")) || null;
+}
+
+function recordMatchesCurrentFilters(record, actions = null) {
+  if (!isVisibleForFilter(record) || !matchesBankQueryFilters(record, state.queryFilters)) return false;
+  const opportunityId = String(record.id || record.opportunityId || "");
+  const action = actions ? (actions.get(opportunityId) || null) : actionForOpportunity(opportunityId);
+  return opportunityMatchesActionFilter(action, state.actionFilter);
+}
+
+function passesListFilters(record) {
+  return recordMatchesCurrentFilters(record);
 }
 
 function mediaServeUrl(mediaPath) {
@@ -830,7 +843,7 @@ function renderList() {
     visibleCount,
     scanExhausted: state.scanExhausted
   });
-  if (!rows.length && !hasActiveBankQuery(state.queryFilters)) {
+  if (!rows.length && !hasActiveListFilter()) {
     bodyHtml = state.filter === "archived"
       ? `<p class="bank-query-hint">لا توجد عناصر مؤرشفة.</p>`
       : `<p class="bank-query-hint">لا توجد عروض أو طلبات بعد. أضفها من الحقل أعلاه.</p>`;
@@ -2298,7 +2311,7 @@ async function openCooperationRoom(opportunityId, cooperationId) {
 }
 
 function rowsCountLabel() {
-  if (!hasActiveBankQuery(state.queryFilters)) {
+  if (!hasActiveListFilter()) {
     const summary = state.summary || emptyBankSummary();
     if (state.filter === "archived") {
       return `${summary.archived} فرصة مؤرشفة`;
@@ -2318,7 +2331,7 @@ function rowsCountLabel() {
 }
 
 function bankStatusAfterListRender() {
-  if (!hasActiveBankQuery(state.queryFilters) && state.filter !== "archived") return "";
+  if (!hasActiveListFilter() && state.filter !== "archived") return "";
   return rowsCountLabel();
 }
 
@@ -4105,15 +4118,21 @@ async function loadBankPage({ reset = false } = {}) {
 
   try {
     if (reset) {
-      await refreshBankFacetMeta(runtime);
+      // Clear canonical rows before any awaited hydration. This prevents stale rows,
+      // including previously projected operations, from flashing during refresh.
       state.records.clear();
+      state.facetMeta = [];
+      state.summary = emptyBankSummary();
       state.lastDoc = null;
       state.hasMore = false;
       state.resultTotal = 0;
       state.scanExhausted = false;
+      renderList();
+      await refreshBankFacetMeta(runtime);
     }
 
-    if (!hasActiveBankQuery(state.queryFilters)) {
+    const scanForListFilter = hasActiveListFilter();
+    if (!scanForListFilter) {
       let query = baseOpportunityQuery(runtime.db).limit(BANK_PAGE_SIZE);
       if (state.lastDoc) {
         query = baseOpportunityQuery(runtime.db).startAfter(state.lastDoc).limit(BANK_PAGE_SIZE);
@@ -4142,12 +4161,13 @@ async function loadBankPage({ reset = false } = {}) {
       return;
     }
 
+    // Filters are applied to the projected active state, not just the currently
+    // loaded raw page. Scan canonical opportunity pages until one visible page is
+    // filled or Firestore is exhausted, so Load More never becomes a no-op.
+    const actions = actionIndex();
     let matchedThisPass = 0;
-    let scans = 0;
-    const maxScans = 25;
 
-    while (matchedThisPass < BANK_PAGE_SIZE && scans < maxScans && !state.scanExhausted) {
-      scans += 1;
+    while (matchedThisPass < BANK_PAGE_SIZE && !state.scanExhausted) {
       let query = baseOpportunityQuery(runtime.db).limit(BANK_PAGE_SIZE);
       if (state.lastDoc) {
         query = baseOpportunityQuery(runtime.db).startAfter(state.lastDoc).limit(BANK_PAGE_SIZE);
@@ -4155,18 +4175,14 @@ async function loadBankPage({ reset = false } = {}) {
       const snapshot = await query.get();
       if (!snapshot.docs.length) {
         state.scanExhausted = true;
-        state.hasMore = false;
         break;
       }
       state.lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      if (snapshot.docs.length < BANK_PAGE_SIZE) {
-        state.scanExhausted = true;
-      }
+      if (snapshot.docs.length < BANK_PAGE_SIZE) state.scanExhausted = true;
 
       for (const docSnap of snapshot.docs) {
         const record = { id: docSnap.id, ...(docSnap.data() || {}) };
-        if (!isVisibleForFilter(record)) continue;
-        if (!matchesBankQueryFilters(record, state.queryFilters)) continue;
+        if (!recordMatchesCurrentFilters(record, actions)) continue;
         if (state.records.has(docSnap.id)) continue;
         state.records.set(docSnap.id, record);
         matchedThisPass += 1;
@@ -4175,16 +4191,8 @@ async function loadBankPage({ reset = false } = {}) {
     }
 
     state.hasMore = !state.scanExhausted;
-    state.resultTotal = state.records.size + (state.hasMore ? 0 : 0);
-    // Approximate visible total: exact when exhausted, otherwise "at least N".
-    if (state.scanExhausted) {
-      state.resultTotal = [...state.records.values()].filter(passesListFilters).length;
-    } else {
-      state.resultTotal = Math.max(
-        [...state.records.values()].filter(passesListFilters).length,
-        state.records.size
-      );
-    }
+    const visibleCount = [...state.records.values()].filter(passesListFilters).length;
+    state.resultTotal = visibleCount;
 
     await syncOpportunityCooperationFromRequests();
     renderList();
@@ -4378,19 +4386,6 @@ export function closeOpportunityBank(options = {}) {
   window.dispatchEvent(new CustomEvent("iaqar:opportunity-bank-closed"));
 }
 
-function mergeOpportunityFeedRecords(items = []) {
-  const feedRecords = indexOpportunityRecordsFromFeed(items);
-  if (!feedRecords.size) return false;
-  let changed = false;
-  for (const [id, record] of feedRecords.entries()) {
-    if (!state.records.has(id)) {
-      state.records.set(id, record);
-      changed = true;
-    }
-  }
-  return changed;
-}
-
 function updateBankLoadMoreButton() {
   const loadMoreBtn = $("bankLoadMoreBtn");
   if (!loadMoreBtn) return;
@@ -4421,8 +4416,7 @@ function boot() {
   $("opportunityBankRetry")?.addEventListener("click", () => {
     const retry = $("opportunityBankRetry");
     if (retry) retry.hidden = true;
-    if (hasActiveBankQuery(state.queryFilters)) void loadBankPage({ reset: true });
-    else void loadBankSummary();
+    void loadBankPage({ reset: true });
   });
   $("bankLoadMoreBtn")?.addEventListener("click", () => void loadBankPage({ reset: false }));
   $("bankFilterActive")?.addEventListener("click", () => {
@@ -4454,7 +4448,7 @@ function boot() {
       item.classList.toggle("is-active", item === button);
       item.setAttribute("aria-pressed", item === button ? "true" : "false");
     });
-    renderList();
+    scheduleBankQueryRefresh();
   });
   $("bankIncomingList")?.addEventListener("click", (event) => {
     const acceptId = event.target.closest?.("[data-accept-request]")?.getAttribute("data-accept-request");
@@ -4472,10 +4466,17 @@ function boot() {
   bindOpportunityDeepLink();
 
   window.addEventListener("iaqar:operations-data", (event) => {
+    const currentOfficeId = officeId();
+    const eventOfficeId = canonicalFirestoreOfficeId(event.detail?.officeId || "");
+    if (eventOfficeId && currentOfficeId && eventOfficeId !== currentOfficeId) return;
     const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
-    state.operations = items.filter((item) => String(item?.recordType || "").toLowerCase() === "operation");
-    mergeOpportunityFeedRecords(items);
-    renderList();
+    state.operations = items.filter((item) => {
+      if (String(item?.recordType || "").toLowerCase() !== "operation") return false;
+      const itemOfficeId = canonicalFirestoreOfficeId(item?.officeId || "");
+      return !itemOfficeId || !currentOfficeId || itemOfficeId === currentOfficeId;
+    });
+    if (hasActiveOpportunityActionFilter()) scheduleBankQueryRefresh();
+    else renderList();
   });
   window.addEventListener("iaqar:bank-refresh", () => {
     if (officeRuntime()?.db && officeId() && authUser()) {

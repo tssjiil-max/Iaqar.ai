@@ -191,6 +191,33 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
   return null;
 }
 
+function operationFilterMemberships(operation = {}, action = null) {
+  const memberships = new Set();
+  if (!isActiveOpportunityOperation(operation)) return memberships;
+
+  if (action?.category && action.category !== OPPORTUNITY_ACTION_FILTER.ALL) {
+    memberships.add(action.category);
+  }
+
+  const type = upper(operation.operationType || operation.type);
+  const livingStage = upper(operation.livingStage || operation.metadata?.livingStage);
+  const viewingOutcome = upper(operation.viewingOutcome || operation.metadata?.viewingOutcome);
+
+  // A persisted active MATCH_REVIEW is always a real match membership even when
+  // another projected action (appointment / overdue / negotiation) has higher priority.
+  if (type === "MATCH_REVIEW") memberships.add(OPPORTUNITY_ACTION_FILTER.MATCHES);
+
+  if (
+    type === "OPPORTUNITY_FOLLOW_UP"
+    || viewingOutcome === "FOLLOW_UP"
+    || /FOLLOW_UP|FOLLOWUP/.test(livingStage)
+  ) {
+    memberships.add(OPPORTUNITY_ACTION_FILTER.FOLLOW_UP);
+  }
+
+  return memberships;
+}
+
 export function buildOpportunityActionIndex(operations = [], { officeId = "", now = new Date() } = {}) {
   const expectedOfficeId = text(officeId);
   const deduped = new Map();
@@ -209,25 +236,38 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
   }
 
   const byOpportunity = new Map();
-  const newMatchCounts = new Map();
+  const filterMembershipsByOpportunity = new Map();
+  const matchCounts = new Map();
   for (const operation of deduped.values()) {
     const opportunityId = operationOpportunityId(operation);
     const action = projectOpportunityAction(operation, now);
-    if (!action) continue;
-    if (action.category === OPPORTUNITY_ACTION_FILTER.MATCHES) {
-      newMatchCounts.set(opportunityId, (newMatchCounts.get(opportunityId) || 0) + 1);
+    const memberships = operationFilterMemberships(operation, action);
+    if (memberships.size) {
+      const combined = filterMembershipsByOpportunity.get(opportunityId) || new Set();
+      for (const membership of memberships) combined.add(membership);
+      filterMembershipsByOpportunity.set(opportunityId, combined);
     }
+
+    const type = upper(operation.operationType || operation.type);
+    if (type === "MATCH_REVIEW") {
+      matchCounts.set(opportunityId, (matchCounts.get(opportunityId) || 0) + 1);
+    }
+
+    if (!action) continue;
     const candidate = { ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId) };
     const current = byOpportunity.get(opportunityId);
     if (!current || candidate.rank < current.rank || (candidate.rank === current.rank && instant(candidate.dueAt) < instant(current.dueAt))) {
       byOpportunity.set(opportunityId, candidate);
     }
   }
-  for (const [opportunityId, count] of newMatchCounts) {
-    const action = byOpportunity.get(opportunityId);
-    if (action?.category === OPPORTUNITY_ACTION_FILTER.MATCHES) {
-      byOpportunity.set(opportunityId, { ...action, matchCount: count });
-    }
+
+  for (const [opportunityId, action] of byOpportunity.entries()) {
+    const memberships = [...(filterMembershipsByOpportunity.get(opportunityId) || new Set())];
+    byOpportunity.set(opportunityId, {
+      ...action,
+      filterMemberships: memberships,
+      matchCount: matchCounts.get(opportunityId) || action.matchCount || 0
+    });
   }
   return byOpportunity;
 }
@@ -235,6 +275,8 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
 export function opportunityMatchesActionFilter(action, filter = OPPORTUNITY_ACTION_FILTER.ALL) {
   if (filter === OPPORTUNITY_ACTION_FILTER.ALL) return true;
   if (!action) return false;
+  const memberships = Array.isArray(action.filterMemberships) ? action.filterMemberships : [];
+  if (memberships.includes(filter)) return true;
   if (filter === OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION) return action.rank === 1 || action.category === OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION;
   return action.category === filter;
 }
