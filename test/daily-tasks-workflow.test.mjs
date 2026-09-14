@@ -203,6 +203,35 @@ test("TEST 5b want_viewing on match record exposes send_to_owner", () => {
   assert.match(html, /إرسال طلب المعاينة للمالك/);
 });
 
+test("latest client coordination response wins over a stale MATCH_REVIEW copy for the same matchId", () => {
+  const grouped = groupMatchItems([
+    {
+      ...matchItem,
+      id: "op_stale",
+      recordType: "operation",
+      livingStage: "WAITING_CLIENT",
+      coordinationOutcome: "AWAITING_OTHER_PARTY",
+      livingUpdatedAt: "2026-09-14T09:00:00.000Z"
+    },
+    {
+      ...matchItem,
+      id: matchItem.matchId,
+      recordType: "match",
+      livingStage: "APPOINTMENT_COORDINATION",
+      coordinationOutcome: "VIEWING_READY",
+      coordinationClientSummary: "مهتم — نهاية الأسبوع — مساءً",
+      coordinationOwnerSummary: "العقار متاح — نهاية الأسبوع — مساءً مناسب",
+      livingUpdatedAt: "2026-09-14T09:01:00.000Z"
+    }
+  ]);
+  const task = buildMatchGroupDailyTask(grouped[0], new Date("2026-09-14T09:02:00.000Z"));
+  assert.equal(grouped[0].members.length, 1);
+  assert.equal(task.livingStage, "APPOINTMENT_COORDINATION");
+  assert.equal(task.coordinationOutcome, "VIEWING_READY");
+  assert.match(task.coordinationClientSummary, /مهتم/);
+  assert.notEqual(task.statusLabel, "بانتظار العميل");
+});
+
 test("TEST 6 owner available updates the same task", () => {
   const living = livingStageAfterPartyAction({ party: "owner", action: "property_available" });
   const grouped = groupMatchItems([{

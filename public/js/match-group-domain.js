@@ -328,14 +328,20 @@ export function groupMatchItems(items = [], { officeId = "" } = {}) {
     groups.get(key).push(item);
   }
   return [...groups.entries()].map(([groupKey, members]) => {
-    const unique = [];
-    const seen = new Set();
+    const byMatchId = new Map();
     for (const member of members) {
       const id = text(member.matchId || member.recordId || member.id);
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      unique.push(member);
+      if (!id) continue;
+      const current = byMatchId.get(id);
+      if (!current) {
+        byMatchId.set(id, member);
+        continue;
+      }
+      const currentUpdatedAt = livingFromItem(current).updatedAt;
+      const candidateUpdatedAt = livingFromItem(member).updatedAt;
+      if (String(candidateUpdatedAt) > String(currentUpdatedAt)) byMatchId.set(id, member);
     }
+    const unique = [...byMatchId.values()];
     const living = mergeMatchGroupLivingState(unique);
     return {
       groupKey,
