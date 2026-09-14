@@ -354,11 +354,18 @@ async function captureUi({ customToken, matchId }) {
       shareMenuClosed = await card.locator("[data-bank-share-menu]:visible").count() === 0;
       await shareToggle.click();
       await card.locator('[data-bank-share-action="copy_text"]').click();
-      copiedOfferValid = await page.evaluate((privatePhone) => (
-        window.__qaCopiedShare.includes("عبر مكتب:\nQA E2E Dedicated")
-        && window.__qaCopiedShare.includes("رابط المكتب:")
-        && !window.__qaCopiedShare.includes(privatePhone)
-      ), "0501111842");
+      copiedOfferValid = await page.evaluate(({ localPhone, normalizedPhone }) => {
+        const office = window.IAQAR?.office || {};
+        const officeName = String(office.officeName || office.displayName || "").trim();
+        return Boolean(
+          officeName
+          && window.__qaCopiedShare.includes("عبر مكتب:")
+          && window.__qaCopiedShare.includes(officeName)
+          && window.__qaCopiedShare.includes("رابط المكتب:")
+          && !window.__qaCopiedShare.includes(localPhone)
+          && !window.__qaCopiedShare.includes(normalizedPhone)
+        );
+      }, { localPhone: "0501111842", normalizedPhone: "+966501111842" });
       await shareToggle.click();
       await card.locator('[data-bank-share-action="copy_link"]').click();
       copiedLinkValid = await page.evaluate(() => /^https:\/\/iaqar-ai-staging--staging-9c4b0k7h\.web\.app\//.test(window.__qaCopiedShare));
