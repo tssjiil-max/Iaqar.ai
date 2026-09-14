@@ -19,6 +19,14 @@ import {
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
 import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
 
+const DAILY_TASK_ACTION_CODES = new Set([
+  "review_match",
+  "record_viewing_result",
+  "view_appointment",
+  "open_follow_up",
+  "view_waiting"
+]);
+
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -30,7 +38,14 @@ function extraIdFor(opportunityId) {
   return `cv2DataExtra-${safe || "x"}`;
 }
 
-function inboxStatusLine(record, context, vm) {
+export function bankInboxStatusLine(record = {}, context = {}, vm = {}) {
+  const action = context.action || null;
+  if (action?.badge) {
+    const count = Number(action.matchCount || 0);
+    return action.category === "matches" && count > 1
+      ? `${action.badge} — ${count}`
+      : String(action.badge);
+  }
   const key = bankInboxStatusKey(record, context);
   const label = bankInboxStatusLabel(key);
   if (key === BANK_INBOX_STATUS.NEEDS_COMPLETION) {
@@ -38,6 +53,43 @@ function inboxStatusLine(record, context, vm) {
     if (missing && missing !== label) return `${label} · ${missing}`;
   }
   return label;
+}
+
+export function bankOperationalNavigationDetail(button) {
+  const actionCode = String(button?.getAttribute?.("data-opportunity-primary-action") || "").trim();
+  if (!DAILY_TASK_ACTION_CODES.has(actionCode)) return null;
+  const article = button?.closest?.("[data-cv2-inbox-item][data-opportunity-id]");
+  const opportunityId = String(article?.getAttribute?.("data-opportunity-id") || "").trim();
+  const matchId = String(button?.getAttribute?.("data-match-id") || "").trim();
+  const operationId = String(button?.getAttribute?.("data-operation-id") || "").trim();
+  if (!opportunityId) return null;
+  if (actionCode !== "open_follow_up" && !matchId && !operationId) return null;
+  return { opportunityId, matchId, operationId, actionCode };
+}
+
+export function installBankOperationalActionBridge(doc = globalThis.document, win = globalThis.window) {
+  if (!doc?.addEventListener || !win) return false;
+  if (doc.__iaqarBankOperationalActionBridgeBound) return true;
+  doc.__iaqarBankOperationalActionBridgeBound = true;
+  doc.addEventListener("click", (event) => {
+    const button = event.target?.closest?.("[data-opportunity-primary-action]");
+    if (!button) return;
+    const detail = bankOperationalNavigationDetail(button);
+    if (!detail) return;
+    const switchTo = win.IAQAR?.homeTabs?.switchTo;
+    if (typeof switchTo !== "function") return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    win.IAQAR.pendingDailyTaskOpen = detail;
+    switchTo.call(win.IAQAR.homeTabs, "operations");
+    win.dispatchEvent(new win.CustomEvent("iaqar:open-daily-task", { detail }));
+  }, true);
+  return true;
+}
+
+if (typeof document !== "undefined" && typeof window !== "undefined") {
+  installBankOperationalActionBridge(document, window);
 }
 
 export function buildArchiveInboxRowHtml(record = {}, now = new Date()) {
@@ -104,7 +156,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       ${buildOpportunityDataCardV2(vm, {
         dataCardExpanded: Boolean(context.dataCardExpanded),
         extraId: extraIdFor(opportunityId),
-        statusLine: inboxStatusLine(record, context, vm)
+        statusLine: bankInboxStatusLine(record, context, vm)
       })}
       ${compactMeta.length ? `<p class="bank-card-compact-meta">${compactMeta.map((item) => `<span>${esc(item)}</span>`).join("")}</p>` : ""}
       <div class="bank-card-share-wrap">
