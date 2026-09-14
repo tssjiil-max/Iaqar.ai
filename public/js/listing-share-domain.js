@@ -4,24 +4,46 @@
  */
 
 import { safeText } from "./opportunity-intake-domain.js";
-import { advertiserRoleLabel } from "./advertiser-phone-domain.js";
 import { bankOpportunityKindDisplayLabel } from "./opportunity-bank-domain.js";
 import { officeLinkFor } from "./office-domain.js";
 
+const PURPOSE_LABELS = Object.freeze({
+  SALE: "للبيع", SELL: "للبيع", PURCHASE: "للشراء", BUY: "للشراء",
+  RENT: "للإيجار", LEASE: "للإيجار", RENT_REQUEST: "للاستئجار", LEASE_REQUEST: "للاستئجار"
+});
+
+function isRequest(record = {}) {
+  const kind = String(record.opportunityKind || record.kind || record.recordType || "").toUpperCase();
+  return record.contactType === "client" || kind.includes("REQUEST") || kind === "CLIENT";
+}
+
+export function listingOfficeLink(officeProfile = {}, origin = "") {
+  if (!officeProfile.publicSlug && !officeProfile.officeId) return "";
+  return officeLinkFor({
+    origin: origin || officeProfile.origin || (typeof window !== "undefined" ? window.location?.origin : ""),
+    publicSlug: officeProfile.publicSlug || "",
+    officeId: officeProfile.officeId || ""
+  });
+}
+
 export function buildListingShareMessage(record = {}, officeProfile = {}, { includeContactPhone = false } = {}) {
   const kindLabel = bankOpportunityKindDisplayLabel(record) || safeText(record.opportunityKind, 30);
+  const propertyType = safeText(record.propertyType, 60);
+  const purposeKey = String(record.purpose || "").toUpperCase();
+  const purposeLabel = isRequest(record) && ["RENT", "LEASE"].includes(purposeKey)
+    ? "للاستئجار"
+    : (PURPOSE_LABELS[purposeKey] || (isRequest(record) ? "مطلوب" : "متاح"));
+  const price = record.priceOrBudget ?? record.salePrice ?? record.budget ?? record.annualRent;
+  const rawReference = safeText(record.referenceCode || record.referenceId || record.id || record.opportunityId, 80);
+  const reference = rawReference.length > 14 ? rawReference.slice(-8) : rawReference;
   const lines = [
-    kindLabel || "فرصة عقارية",
-    record.propertyType ? `نوع العقار: ${record.propertyType}` : "",
-    record.city ? `المدينة: ${record.city}` : "",
-    record.district ? `الحي: ${record.district}` : "",
-    record.priceOrBudget != null && record.priceOrBudget !== ""
-      ? `السعر / الميزانية: ${record.priceOrBudget} ريال`
+    [propertyType || kindLabel || "فرصة عقارية", purposeLabel].filter(Boolean).join(" "),
+    record.district ? `الحي: ${safeText(record.district, 80)}` : "",
+    price != null && price !== ""
+      ? `${isRequest(record) ? "الميزانية" : "السعر"}: ${price} ريال`
       : "",
     record.area ? `المساحة: ${record.area} م²` : "",
-    record.rooms ? `الغرف: ${record.rooms}` : "",
-    record.bathrooms ? `الحمامات: ${record.bathrooms}` : "",
-    record.advertiserRole ? `صفة المعلن: ${advertiserRoleLabel(record.advertiserRole)}` : ""
+    reference ? `المرجع: ${reference}` : ""
   ].filter(Boolean);
 
   if (includeContactPhone) {
@@ -29,17 +51,13 @@ export function buildListingShareMessage(record = {}, officeProfile = {}, { incl
     if (phone) lines.push(`للتواصل: ${phone}`);
   }
 
-  lines.push("", "—", officeProfile.officeName || "مكتب عقاري");
-  if (officeProfile.brokerName) lines.push(`الوسيط: ${officeProfile.brokerName}`);
-  if (officeProfile.licenseNumber) lines.push(`رخصة فال: ${officeProfile.licenseNumber}`);
-  const link = officeProfile.publicSlug || officeProfile.officeId
-    ? officeLinkFor({
-      origin: typeof window !== "undefined" ? window.location?.origin : "",
-      publicSlug: officeProfile.publicSlug || "",
-      officeId: officeProfile.officeId || ""
-    })
-    : "";
-  if (link) lines.push(link);
+  lines.push("", "عبر مكتب:", safeText(officeProfile.officeName, 120) || "مكتب عقاري");
+  const link = listingOfficeLink(officeProfile);
+  if (link) lines.push("", "رابط المكتب:", link);
+  const registrationLink = safeText(officeProfile.registrationLink, 300);
+  if (/^https:\/\//i.test(registrationLink)) {
+    lines.push("", "للتعاون والتسجيل مع المكتب:", registrationLink);
+  }
 
   return lines.join("\n");
 }

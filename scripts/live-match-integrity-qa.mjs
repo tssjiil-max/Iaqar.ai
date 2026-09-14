@@ -320,6 +320,9 @@ async function captureUi({ customToken, matchId }) {
   const matchedCardCount = await card.count();
   let cardExpanded = false;
   let editMenuOpened = false;
+  let shareMenuOpened = false;
+  let shareMenuClosed = false;
+  let mobileOverflow = true;
   mkdirSync(OUT, { recursive: true });
   const shots = {};
   shots.task = path.join(OUT, "match_integrity_new_task.png");
@@ -327,6 +330,14 @@ async function captureUi({ customToken, matchId }) {
   if (await card.count()) {
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({ path: shots.task, fullPage: false });
+    const shareToggle = card.locator("[data-bank-share-toggle]").first();
+    if (await shareToggle.count()) {
+      await shareToggle.click();
+      shareMenuOpened = await card.locator("[data-bank-share-menu]:visible").count() === 1;
+      await shareToggle.click();
+      shareMenuClosed = await card.locator("[data-bank-share-menu]:visible").count() === 0;
+    }
+    mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     await card.locator(".cv2-card-head").click();
     await page.waitForTimeout(800);
     cardExpanded = await card.evaluate((node) => node.classList.contains("is-card-expanded"));
@@ -349,6 +360,9 @@ async function captureUi({ customToken, matchId }) {
     matchedCardCount,
     cardExpanded,
     editMenuOpened,
+    shareMenuOpened,
+    shareMenuClosed,
+    mobileOverflow,
     origin,
     url,
     bodyPreview
@@ -463,6 +477,9 @@ async function main() {
     matchedCardCount: ui.matchedCardCount,
     cardExpanded: ui.cardExpanded,
     editMenuOpened: ui.editMenuOpened,
+    shareMenuOpened: ui.shareMenuOpened,
+    shareMenuClosed: ui.shareMenuClosed,
+    mobileOverflow: ui.mobileOverflow,
     uiUrl: ui.url || "",
     uiBodyPreview: ui.bodyPreview || ""
   }, null, 2));
@@ -484,6 +501,9 @@ async function main() {
     && report.ui.matchedCardCount === 1
     && report.ui.cardExpanded === true
     && report.ui.editMenuOpened === true
+    && report.ui.shareMenuOpened === true
+    && report.ui.shareMenuClosed === true
+    && report.ui.mobileOverflow === false
   );
   if (!verified) {
     console.error("MATCH INTEGRITY NOT VERIFIED");

@@ -12,6 +12,7 @@ import {
 } from "./v2/opportunity-details/data-card.js";
 import {
   BANK_INBOX_STATUS,
+  bankInboxSourceLabel,
   bankInboxStatusKey,
   bankInboxStatusLabel
 } from "./bank-inbox-card-domain.js";
@@ -74,6 +75,8 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
   if (archived) return buildArchiveInboxRowHtml(record, context.now);
   const archiveLabel = archiveActionLabel(record);
   const action = context.action || null;
+  const sourceLabel = bankInboxSourceLabel(record);
+  const compactMeta = [vm.area, sourceLabel].filter(Boolean);
   const statusText = action
     ? `${action.badge}${action.category === "matches" && action.matchCount > 1 ? ` — ${action.matchCount}` : ""}`
     : "لا إجراء حالي";
@@ -103,6 +106,19 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
         extraId: extraIdFor(opportunityId),
         statusLine: inboxStatusLine(record, context, vm)
       })}
+      ${compactMeta.length ? `<p class="bank-card-compact-meta">${compactMeta.map((item) => `<span>${esc(item)}</span>`).join("")}</p>` : ""}
+      <div class="bank-card-share-wrap">
+        <button type="button" class="bank-card-share-toggle" data-bank-share-toggle="${esc(opportunityId)}" aria-label="مشاركة الفرصة" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a3 3 0 1 0-2.83-4A3 3 0 0 0 15 5c0 .18.02.35.05.52L8.91 9.1A3 3 0 1 0 9 14.9l6.05 3.58A3 3 0 0 0 15 19a3 3 0 1 0 .83-2.07l-6.06-3.58c.15-.44.15-1.26 0-1.7l6.06-3.58A3 3 0 0 0 18 8Z"/></svg>
+        </button>
+        <div class="bank-card-share-menu" data-bank-share-menu="${esc(opportunityId)}" hidden>
+          <button type="button" data-bank-share-action="whatsapp">إرسال عبر واتساب</button>
+          <button type="button" data-bank-share-action="telegram">إرسال عبر تيليجرام</button>
+          <button type="button" data-bank-share-action="copy_text">نسخ العرض كنص</button>
+          <button type="button" data-bank-share-action="copy_link">نسخ رابط المكتب</button>
+          <button type="button" data-bank-share-action="native" data-bank-native-share>مشاركة عامة</button>
+        </div>
+      </div>
       ${actionStrip}
       ${buildCompleteMissingButtonV2(vm)}
       <div class="opp-archive-actions">

@@ -87,6 +87,7 @@ import {
 } from "./opportunity-followup-domain.js";
 import {
   buildListingShareMessage,
+  listingOfficeLink,
   telegramShareUrl
 } from "./listing-share-domain.js";
 import { buildOpportunityCardView, contactLineMarkup } from "./opportunity-card-domain.js";
@@ -478,8 +479,44 @@ function officeProfileForShare() {
     licenseNumber: office.licenseNumber || office.falLicense || "",
     publicSlug: office.publicSlug || "",
     officeId: office.officeId || officeId(),
+    origin: window.location.origin,
     phone: office.phone || office.mobile || ""
   };
+}
+
+async function copyBankShareValue(value, successMessage) {
+  const text = String(value || "").trim();
+  if (!text) {
+    toast("الرابط غير متاح");
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const input = document.createElement("textarea");
+    input.value = text;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    const copied = document.execCommand?.("copy");
+    input.remove();
+    if (!copied) {
+      toast("تعذر النسخ");
+      return false;
+    }
+  }
+  toast(successMessage);
+  return true;
+}
+
+function closeBankShareMenus(exceptId = "") {
+  document.querySelectorAll("[data-bank-share-menu]").forEach((menu) => {
+    if (exceptId && menu.getAttribute("data-bank-share-menu") === exceptId) return;
+    menu.hidden = true;
+    menu.closest(".bank-card-share-wrap")?.querySelector("[data-bank-share-toggle]")?.setAttribute("aria-expanded", "false");
+  });
 }
 
 function stopListener() {
@@ -3740,7 +3777,7 @@ function bindListClicks() {
   const list = $("opportunityBankList");
   if (!list || list.dataset.bound === "1") return;
   list.dataset.bound = "1";
-  list.addEventListener("click", (event) => {
+  list.addEventListener("click", async (event) => {
     const toggle = event.target.closest("[data-cv2-toggle-details]");
     if (toggle && list.contains(toggle)) {
       event.preventDefault();
@@ -3809,11 +3846,53 @@ function bindListClicks() {
       if (id) void openOpportunity(id);
       return;
     }
+    const shareToggle = event.target.closest("[data-bank-share-toggle]");
+    if (shareToggle && list.contains(shareToggle)) {
+      event.preventDefault();
+      const id = shareToggle.getAttribute("data-bank-share-toggle") || "";
+      const menu = shareToggle.closest(".bank-card-share-wrap")?.querySelector("[data-bank-share-menu]");
+      const willOpen = Boolean(menu?.hidden);
+      closeBankShareMenus(willOpen ? id : "");
+      if (menu) menu.hidden = !willOpen;
+      shareToggle.setAttribute("aria-expanded", willOpen ? "true" : "false");
+      const nativeButton = menu?.querySelector("[data-bank-native-share]");
+      if (nativeButton) nativeButton.hidden = !navigator.share;
+      return;
+    }
+    const shareAction = event.target.closest("[data-bank-share-action]");
+    if (shareAction && list.contains(shareAction)) {
+      event.preventDefault();
+      const article = shareAction.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      const id = resolveBankRowOpportunityId(article);
+      const record = state.records.get(id) || {};
+      const officeProfile = officeProfileForShare();
+      const message = buildListingShareMessage({ ...record, id }, officeProfile);
+      const link = listingOfficeLink(officeProfile);
+      const action = shareAction.getAttribute("data-bank-share-action");
+      closeBankShareMenus();
+      if (action === "copy_text") await copyBankShareValue(message, "تم نسخ العرض");
+      else if (action === "copy_link") await copyBankShareValue(link, "تم نسخ رابط المكتب");
+      else if (action === "whatsapp") openWhatsApp({ text: message });
+      else if (action === "telegram") window.open(telegramShareUrl(message), "_blank", "noopener,noreferrer");
+      else if (action === "native" && navigator.share) {
+        try { await navigator.share({ title: record.propertyType || "فرصة عقارية", text: message, url: link || undefined }); } catch (_) { /* user cancelled */ }
+      }
+      return;
+    }
     if (event.target.closest("button, a, input, select, textarea, [role='button']")) return;
     const article = event.target.closest("[data-cv2-inbox-item][data-opportunity-id]");
     const cardToggle = article?.querySelector("[data-cv2-toggle-details]");
     if (article && cardToggle) toggleInboxDataCard(cardToggle);
   });
+  if (document.body.dataset.bankShareDismissBound !== "1") {
+    document.body.dataset.bankShareDismissBound = "1";
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest?.(".bank-card-share-wrap")) closeBankShareMenus();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeBankShareMenus();
+    });
+  }
 }
 
 async function revokeCooperation(opportunityId, record) {

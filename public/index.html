@@ -290,6 +290,17 @@
     .opp-archive-link.is-muted { color:var(--muted); }
     .opp-inline-edit-menu { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:0 12px 12px; }
     .opp-inline-edit-menu button { min-height:38px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); font:800 12px Tajawal; }
+    .cv2-details[data-cv2-inbox-item] { position:relative; }
+    .cv2-details[data-cv2-inbox-item] .cv2-card.is-collapsed [data-cv2-row="contact"] { display:none; }
+    .bank-card-compact-meta { display:flex; flex-wrap:wrap; gap:6px; margin:7px 12px; color:var(--muted); font-size:11px; font-weight:700; }
+    .bank-card-compact-meta span { padding:3px 7px; border-radius:999px; background:#f4f7f6; }
+    .bank-card-share-wrap { position:absolute; left:10px; top:9px; z-index:4; }
+    .bank-card-share-toggle { width:36px; height:36px; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); display:grid; place-items:center; }
+    .bank-card-share-toggle svg { width:18px; height:18px; fill:currentColor; }
+    .bank-card-share-menu { position:absolute; left:0; top:42px; width:min(210px,calc(100vw - 48px)); padding:6px; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:0 10px 28px rgba(0,63,52,.15); }
+    .bank-card-share-menu[hidden] { display:none; }
+    .bank-card-share-menu button { display:block; width:100%; min-height:42px; padding:8px 10px; border:0; border-radius:8px; background:#fff; color:var(--text); text-align:right; font:700 12px Tajawal; }
+    .bank-card-share-menu button:active { background:var(--green-soft); }
     .archive-row {
       display:grid;
       gap:10px;
@@ -5367,6 +5378,7 @@
     font:800 11px Tajawal;
     cursor:pointer;
   }
+  .cv2-details[data-cv2-inbox-item].has-bank-action { overflow:visible; }
   input[type="datetime-local"],
   .bank-followup-quick input[type="datetime-local"] {
     width:100%;
