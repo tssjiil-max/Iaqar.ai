@@ -414,6 +414,30 @@ async function persistedSessions(matchId) {
   });
 }
 
+async function handoffState(matchId) {
+  const [matchSnap, operationSnap, coordinationSnap] = await Promise.all([
+    office.collection("matches").doc(matchId).get(),
+    office.collection("operations").where("matchId", "==", matchId).limit(5).get(),
+    office.collection("coordinationSessions").doc(matchId).get()
+  ]);
+  const match = matchSnap.data() || {};
+  const operation = operationSnap.docs.map((doc) => doc.data() || {})
+    .find((row) => String(row.operationType || row.type || "").toUpperCase() === "MATCH_REVIEW") || {};
+  const coordinationDoc = coordinationSnap.data() || {};
+  const coordination = coordinationDoc.coordinationJson
+    ? JSON.parse(String(coordinationDoc.coordinationJson || "{}"))
+    : coordinationDoc;
+  return {
+    matchId: String(match.matchId || matchSnap.id || ""),
+    livingStage: String(match.livingStage || ""),
+    operationStatus: String(operation.status || ""),
+    operationLivingStage: String(operation.livingStage || ""),
+    coordinationMatchId: String(coordination.matchId || ""),
+    clientSessionId: String(coordination.clientSessionId || ""),
+    ownerSessionId: String(coordination.ownerSessionId || "")
+  };
+}
+
 async function cleanup() {
   if (activeMatchId) {
     for (const name of ["partySessions", "partySessionKeys", "coordinationSessions", "operations", "notifications"]) {
@@ -438,6 +462,10 @@ async function main() {
     const client1 = await mint(token, "client", matching.matchId);
     const client2 = await mint(token, "client", matching.matchId);
     if (client1.token !== client2.token || client2.reused !== true) throw new Error("client token not stable before reply");
+    const afterFirstSend = await handoffState(matching.matchId);
+    if (afterFirstSend.livingStage !== "WAITING_CLIENT" || afterFirstSend.operationStatus !== "OPEN") {
+      throw new Error(`match closed or moved after first send: ${JSON.stringify(afterFirstSend)}`);
+    }
 
     browser = await chromium.launch({ headless: true });
     const clientUi = await clientJourney(browser, client1.token);
@@ -450,6 +478,15 @@ async function main() {
     const owner1 = await mint(token, "owner", matching.matchId);
     const owner2 = await mint(token, "owner", matching.matchId);
     if (owner1.token !== owner2.token || owner2.reused !== true) throw new Error("owner token not stable before reply");
+    const afterBothSends = await handoffState(matching.matchId);
+    if (afterBothSends.livingStage !== "NEGOTIATION"
+      || afterBothSends.operationLivingStage !== "NEGOTIATION"
+      || afterBothSends.operationStatus !== "OPEN"
+      || afterBothSends.coordinationMatchId !== matching.matchId
+      || !afterBothSends.clientSessionId
+      || !afterBothSends.ownerSessionId) {
+      throw new Error(`negotiation handoff incomplete: ${JSON.stringify(afterBothSends)}`);
+    }
     const ownerUi = await ownerJourney(browser, owner1.token);
     const ownerView = await readPublic(owner1.token);
     const owner3 = await mint(token, "owner", matching.matchId);
@@ -469,6 +506,9 @@ async function main() {
       && parties.has("client") && parties.has("owner")
       && client1.token === client2.token && client1.token === client3.token
       && owner1.token === owner2.token && owner1.token === owner3.token
+      && afterFirstSend.operationStatus === "OPEN"
+      && afterBothSends.livingStage === "NEGOTIATION"
+      && afterBothSends.coordinationMatchId === matching.matchId
     );
 
     const report = {
@@ -479,6 +519,8 @@ async function main() {
       matchingStatus: matching.status,
       client: { reusedBeforeReply: client2.reused === true, reusedAfterReply: client3.reused === true, publicSubmitted: clientSubmitted, ...clientUi },
       owner: { reusedBeforeReply: owner2.reused === true, reusedAfterReply: owner3.reused === true, publicSubmitted: ownerSubmitted, ...ownerUi },
+      afterFirstSend,
+      afterBothSends,
       afterClient,
       sessionCount: sessions.length,
       stableTokenCount: uniqueTokens.size,
