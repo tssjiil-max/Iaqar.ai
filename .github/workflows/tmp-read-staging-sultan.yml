@@ -20,13 +20,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Find today's staging office
-        run: node scripts/tmp-find-today-office.mjs | tee "$RUNNER_TEMP/today-office-report.json"
+      - name: Inspect latest live match shape
+        run: node scripts/tmp-inspect-latest-match-shape.mjs | tee "$RUNNER_TEMP/latest-match-shape.json"
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: today-office-readonly-${{ github.run_id }}
-          path: ${{ runner.temp }}/today-office-report.json
+          name: latest-match-shape-${{ github.run_id }}
+          path: ${{ runner.temp }}/latest-match-shape.json
           if-no-files-found: warn
           retention-days: 2
