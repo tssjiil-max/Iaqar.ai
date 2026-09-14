@@ -1,0 +1,20 @@
+import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+const PROJECT_ID="iaqar-ai-staging";
+const parsed=parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON,PROJECT_ID);
+if(!parsed.serviceAccount){console.error("STAGING_READ_ACCESS_UNAVAILABLE");process.exit(1);}
+const app=admin.initializeApp({credential:admin.cert(parsed.serviceAccount),projectId:PROJECT_ID});
+const db=getFirestore(app);
+const cutoff=Date.parse("2026-09-14T00:00:00+03:00");
+const ms=v=>{if(!v)return 0;if(typeof v.toMillis==="function")return v.toMillis();if(v.seconds!=null)return Number(v.seconds)*1000;const n=Date.parse(v);return Number.isFinite(n)?n:0;};
+const officeFromDoc=d=>d.ref.parent.parent?.id||"";
+const safeGet=async name=>{try{return (await db.collectionGroup(name).get()).docs;}catch(e){console.error("COLLECTION_GROUP_FAILED",name,e.code||e.message);return[];}};
+const [oppDocs,matchDocs,opDocs]=await Promise.all([safeGet("opportunities"),safeGet("matches"),safeGet("operations")]);
+const recentOpps=oppDocs.filter(d=>Math.max(ms(d.data()?.updatedAt),ms(d.data()?.createdAt))>=cutoff).map(d=>({officeId:officeFromDoc(d),opportunityId:d.id,kind:String(d.data()?.opportunityKind||d.data()?.kind||""),status:String(d.data()?.lifecycleStatus||d.data()?.status||""),createdAt:ms(d.data()?.createdAt),updatedAt:ms(d.data()?.updatedAt)}));
+const recentMatches=matchDocs.filter(d=>Math.max(ms(d.data()?.updatedAt),ms(d.data()?.createdAt))>=cutoff).map(d=>({officeId:officeFromDoc(d),matchId:d.id,status:String(d.data()?.status||""),operationId:String(d.data()?.operationId||""),createdAt:ms(d.data()?.createdAt),updatedAt:ms(d.data()?.updatedAt)}));
+const recentOps=opDocs.filter(d=>String(d.data()?.type||d.data()?.operationType||"").toUpperCase()==="MATCH_REVIEW"&&Math.max(ms(d.data()?.updatedAt),ms(d.data()?.createdAt))>=cutoff).map(d=>({officeId:officeFromDoc(d),operationId:d.id,matchId:String(d.data()?.matchId||d.data()?.metadata?.matchId||""),status:String(d.data()?.status||""),livingStage:String(d.data()?.livingStage||d.data()?.metadata?.livingStage||""),opportunityId:String(d.data()?.opportunityId||d.data()?.originOpportunityId||d.data()?.metadata?.originOpportunityId||""),clientRequestId:String(d.data()?.clientRequestId||d.data()?.requestId||d.data()?.metadata?.clientRequestId||d.data()?.metadata?.requestId||""),ownerOfferId:String(d.data()?.ownerOfferId||d.data()?.offerId||d.data()?.metadata?.ownerOfferId||d.data()?.metadata?.offerId||""),createdAt:ms(d.data()?.createdAt),updatedAt:ms(d.data()?.updatedAt)}));
+const officeIds=[...new Set([...recentOpps,...recentMatches,...recentOps].map(x=>x.officeId).filter(Boolean))];
+const offices=officeIds.map(officeId=>({officeId,opportunities:recentOpps.filter(x=>x.officeId===officeId).sort((a,b)=>b.updatedAt-a.updatedAt),matches:recentMatches.filter(x=>x.officeId===officeId).sort((a,b)=>b.updatedAt-a.updatedAt),matchReviewOperations:recentOps.filter(x=>x.officeId===officeId).sort((a,b)=>b.updatedAt-a.updatedAt)})).sort((a,b)=>(b.matches.length+b.matchReviewOperations.length)-(a.matches.length+a.matchReviewOperations.length));
+console.log(JSON.stringify({projectId:PROJECT_ID,cutoff,officeCount:offices.length,offices},null,2));
+await app.delete();
