@@ -201,6 +201,13 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     <div class="party-chip-grid">${chipOptions(pkg.dayOptions, "viewingDays")}</div>
     <p class="party-muted">الفترة</p>
     <div class="party-chip-grid">${chipOptions(pkg.periodOptions, "viewingPeriods")}</div>`;
+  const ownerAvailabilityChoices = () => `<div class="party-package-section" data-package-section="availability">
+    <p class="party-section-label">هل العقار متاح؟</p>
+    <div class="party-chip-grid party-chip-grid--single">${chipOptions([
+      { value: "available", label: "العقار متاح" },
+      { value: "not_available", label: "العقار غير متاح" }
+    ], "propertyAvailability", "single")}</div>
+  </div>`;
   if (party === "client" && pkg.workflowStep === "client_viewing") {
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="client_viewing">
       <p class="party-section-label">إدارة المفاوضات</p>
@@ -318,6 +325,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
   if (pkg.workflowStep === "owner_details") {
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_details">
       <p class="party-section-label">إدارة المفاوضات</p>
+      ${ownerAvailabilityChoices()}
       <p class="party-section-label">التفاصيل المطلوبة من العميل</p>${(pkg.ownerDetailFields || []).map((field) => `<div class="party-package-field" data-owner-detail="${escapeHtml(field.key)}">
         <p class="party-row"><span>${escapeHtml(field.label)}</span><strong>${escapeHtml(field.hasValue ? field.currentValue : "غير متوفر حاليًا")}</strong></p>
         <div class="party-chip-grid party-chip-grid--single">${chipOptions([
@@ -338,6 +346,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
     ];
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_price">
       <p class="party-section-label">إدارة المفاوضات</p>
+      ${ownerAvailabilityChoices()}
       <p class="party-row"><span>السعر الحالي</span><strong>${Number(pkg.canonicalPrice || 0).toLocaleString("en-US")} ر.س</strong></p>
       ${request.proposedPrice ? `<p class="party-row"><span>طلب العميل</span><strong>${Number(request.proposedPrice).toLocaleString("en-US")} ر.س</strong></p>` : ""}
       <div class="party-chip-grid">${chipOptions(options, "ownerPriceDecision", "single")}</div>
@@ -347,6 +356,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
   if (pkg.workflowStep === "owner_viewing") {
     return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-workflow-step="owner_viewing">
       <p class="party-section-label">إدارة المفاوضات</p>
+      ${ownerAvailabilityChoices()}
       <p class="party-section-label">المعاينة</p><div class="party-chip-grid party-chip-grid--single">${chipOptions([
         { value: "yes", label: "ممكنة" }, { value: "needs_coordination", label: "تحتاج تنسيق مسبق" }, { value: "no", label: "غير ممكنة" }
       ], "viewingAllowed", "single")}</div><div data-package-section="ownerAvailability" hidden>${viewingChoices()}</div>
@@ -391,6 +401,7 @@ function decisionPackageBlock(pkg = {}, view = {}) {
   }).join("");
   return `<div class="party-coordination" data-party-decision-package data-party-coordination-form data-question-set="${escapeHtml(pkg.questionSetVersion || "")}">
     <p class="party-section-label">إدارة المفاوضات</p>
+    ${ownerAvailabilityChoices()}
     <div class="party-package-section" data-package-section="price">
       <p class="party-section-label">السعر</p>
       ${priceBlock}

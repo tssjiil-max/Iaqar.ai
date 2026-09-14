@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { JSDOM } from "jsdom";
 import { normalizeOwnerBundle } from "../public/js/coordination-bundle-domain.js";
+import { buildPartyShellHtml } from "../public/js/party-shell-ui.js";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 
@@ -52,4 +53,26 @@ test("owner viewing bundle requires owner availability semantics and then normal
   assert.equal(normalized.viewingAllowed, "yes");
   assert.deepEqual(normalized.viewingDays, ["tomorrow"]);
   assert.deepEqual(normalized.viewingPeriods, ["morning"]);
+});
+
+test("every active owner negotiation form exposes availability and a real submit button", () => {
+  for (const workflowStep of ["complete", "owner_details", "owner_price", "owner_viewing"]) {
+    const html = buildPartyShellHtml({
+      party: "owner",
+      property: { propertyType: "شقة" },
+      decisionPackage: {
+        mode: "decision_package_v1",
+        party: "owner",
+        workflowStep,
+        ownerDetailFields: [],
+        dayOptions: [],
+        periodOptions: [],
+        hasCanonicalPrice: true,
+        canonicalPrice: 500000
+      }
+    });
+    assert.match(html, /data-package-field="propertyAvailability" value="available"/);
+    assert.match(html, /data-package-field="propertyAvailability" value="not_available"/);
+    assert.match(html, /data-party-bundle-submit/);
+  }
 });

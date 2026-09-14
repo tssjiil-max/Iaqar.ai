@@ -799,25 +799,16 @@ export async function handlePartySessionBundle({ token, env, request, requestId,
     return await submitPartyBundle({ token, env, request, requestId, helpers, ip, executionContext });
   } catch (error) {
     if (error && (error.status === 429 || error.status === 400)) throw error;
-    const coordinationOrchestration = await dispatchOrchestratorEvent({
-    event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
-    eventId: buildOrchestratorEventId({
-      event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
-      officeId: loaded.officeId,
-      entityId: matchId,
-      occurrenceId: `${party}:${coordinationSession.outcome || "updated"}`
-    }),
-    context: { officeId: loaded.officeId, entityId: matchId, party, outcome: coordinationSession.outcome || "" },
-    adapters: {
-      [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: Boolean(coordinationSession) })
-    },
-    deferredTargets: [ORCHESTRATOR_OWNER.VIEWING]
-  });
-  if (!coordinationOrchestration.ok) {
-    throw helpers.appError("orchestrator_dispatch_failed", 500, `فشل تنسيق التفاوض: ${coordinationOrchestration.error || "unknown"}`);
-  }
-
-  return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+    console.error("[iaqar] owner/client bundle submit failed", {
+      requestId,
+      code: String(error?.code || "party_bundle_failed")
+    });
+    return helpers.jsonResponse({
+      ok: false,
+      error: String(error?.code || "party_bundle_failed"),
+      message: "تعذر تسجيل الرد. تحقق من الاتصال ثم حاول مرة أخرى.",
+      requestId
+    }, 500);
   }
 }
 

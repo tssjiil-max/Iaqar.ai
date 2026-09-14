@@ -359,6 +359,28 @@ test("owner bundle POST accepts available and confirmed without viewing selectio
   assert.match(JSON.stringify(coordination), /ownerBundle/);
 });
 
+test("party bundle handler returns a stable retryable response when persistence fails", async () => {
+  const helpers = mockHelpers({});
+  helpers.consumePublicRateLimit = () => ({ ok: true });
+  helpers.getFirestoreDocument = async () => {
+    const error = new Error("firestore down");
+    error.code = "firestore_unavailable";
+    throw error;
+  };
+  const response = await handlePartySessionBundle({
+    token: "a".repeat(64),
+    env: { DEPLOYMENT_ENV: "staging" },
+    request: { json: async () => ({ bundle: { propertyAvailability: "available" } }) },
+    requestId: "req-owner-failure",
+    helpers,
+    ip: "7.7.7.7"
+  });
+  assert.equal(response.status, 500);
+  assert.equal(response.body.ok, false);
+  assert.equal(response.body.error, "firestore_unavailable");
+  assert.match(response.body.message, /تعذر تسجيل الرد/);
+});
+
 test("owner bundle advances the client session to the next review action", async () => {
   const store = {
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
