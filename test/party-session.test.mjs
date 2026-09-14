@@ -177,6 +177,12 @@ function mockHelpers(store) {
     async getFirestoreDocument({ segments }) {
       return store[segments.join("/")] || null;
     },
+    async listCollectionDocuments({ segments }) {
+      const prefix = `${segments.join("/")}/`;
+      return Object.entries(store)
+        .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes("/"))
+        .map(([key, value]) => ({ name: key, fields: value.fields || {} }));
+    },
     async setFirestoreDocument({ segments, fields }) {
       const key = segments.join("/");
       const current = store[key]?.fields || {};
@@ -603,6 +609,40 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     ip: "3.3.3.3"
   });
   assert.match(again.body.view.replyLabel, /مهتم|غير مناسب/);
+});
+
+test("party handoff finds the existing MATCH_REVIEW by matchId when legacy match lacks operationId", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "مكتب النور" } },
+    "offices/office-1/matches/match_without_operation_id": { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_1",
+      clientRequestId: "request_1"
+    } },
+    "offices/office-1/operations/op_linked_by_match": { fields: {
+      officeId: "office-1",
+      type: "MATCH_REVIEW",
+      status: "OPEN",
+      matchId: "match_without_operation_id"
+    } },
+    "offices/office-1/opportunities/offer_1": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "أرض",
+      purpose: "SALE"
+    } }
+  };
+  const helpers = mockHelpers(store);
+  await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_without_operation_id", party: "client", offerId: "offer_1", requestId: "request_1" }),
+    env: { DEPLOYMENT_ENV: "staging" }, requestId: "req-fallback-client", helpers
+  });
+  await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_without_operation_id", party: "owner", offerId: "offer_1", requestId: "request_1" }),
+    env: { DEPLOYMENT_ENV: "staging" }, requestId: "req-fallback-owner", helpers
+  });
+  assert.equal(store["offices/office-1/matches/match_without_operation_id"].fields.livingStage, "NEGOTIATION");
+  assert.equal(store["offices/office-1/operations/op_linked_by_match"].fields.livingStage, "NEGOTIATION");
+  assert.equal(store["offices/office-1/operations/op_linked_by_match"].fields.status, "OPEN");
 });
 
 test("firestore rules deny client reads of party sessions and token hashes", () => {

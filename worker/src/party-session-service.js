@@ -254,7 +254,21 @@ async function stampMatchLiving(helpers, {
     accessToken,
     fields
   });
-  const operationId = String(match.operationId || "").trim();
+  let operationId = String(match.operationId || "").trim();
+  if (!operationId && typeof helpers.listCollectionDocuments === "function") {
+    const operationDocs = await helpers.listCollectionDocuments({
+      projectId,
+      segments: ["offices", officeId, "operations"],
+      accessToken,
+      pageSize: 100
+    });
+    const linkedOperation = operationDocs.find((doc) => {
+      const operation = js(doc, helpers);
+      const operationType = String(operation.type || operation.operationType || "").toUpperCase();
+      return operationType === "MATCH_REVIEW" && String(operation.matchId || "") === id;
+    });
+    operationId = decodeURIComponent(String(linkedOperation?.name || "").split("/").pop() || "");
+  }
   if (!operationId) return;
   await helpers.setFirestoreDocument({
     projectId,
