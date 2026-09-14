@@ -334,7 +334,7 @@ async function captureUi({ customToken, matchId }) {
     if (await shareToggle.count()) {
       await shareToggle.click();
       shareMenuOpened = await card.locator("[data-bank-share-menu]:visible").count() === 1;
-      await shareToggle.click();
+      await page.keyboard.press("Escape");
       shareMenuClosed = await card.locator("[data-bank-share-menu]:visible").count() === 0;
     }
     mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
