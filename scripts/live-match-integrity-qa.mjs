@@ -355,15 +355,15 @@ async function captureUi({ customToken, matchId }) {
       await shareToggle.click({ force: true });
       await card.locator('[data-bank-share-action="copy_text"]').click({ force: true });
       copiedOfferValid = await page.evaluate(({ localPhone, normalizedPhone }) => {
-        const office = window.IAQAR?.office || {};
-        const officeName = String(office.officeName || office.displayName || "").trim();
+        const copied = String(window.__qaCopiedShare || "");
+        const officeName = copied.match(/عبر مكتب:\s*\n([^\n]+)/)?.[1]?.trim() || "";
         return Boolean(
           officeName
-          && window.__qaCopiedShare.includes("عبر مكتب:")
-          && window.__qaCopiedShare.includes(officeName)
-          && window.__qaCopiedShare.includes("رابط المكتب:")
-          && !window.__qaCopiedShare.includes(localPhone)
-          && !window.__qaCopiedShare.includes(normalizedPhone)
+          && copied.includes("عبر مكتب:")
+          && copied.includes("رابط المكتب:")
+          && copied.includes(officeName)
+          && !copied.includes(localPhone)
+          && !copied.includes(normalizedPhone)
         );
       }, { localPhone: "0501111842", normalizedPhone: "+966501111842" });
       await shareToggle.click({ force: true });
