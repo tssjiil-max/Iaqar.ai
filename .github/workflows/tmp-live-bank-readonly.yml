@@ -19,12 +19,12 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Read live Staging runtime state only
-        run: LIVE_DIAG_OUT="$RUNNER_TEMP/live-bank-runtime" node scripts/tmp-live-bank-runtime.mjs
+        run: LIVE_DIAG_OUT="$RUNNER_TEMP/live-runtime2" node scripts/tmp-live-runtime2.mjs
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-bank-runtime-${{ github.run_id }}
-          path: ${{ runner.temp }}/live-bank-runtime/report.json
+          name: live-runtime2-${{ github.run_id }}
+          path: ${{ runner.temp }}/live-runtime2/report.json
           if-no-files-found: warn
           retention-days: 2
