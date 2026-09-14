@@ -1,4 +1,4 @@
-name: Temporary staging office read-only diagnostic
+name: Temporary staging patch verification
 on:
   push:
     branches:
@@ -7,12 +7,9 @@ on:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-latest
-    environment: staging
     timeout-minutes: 8
-    env:
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,13 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Inspect latest live match shape
-        run: node scripts/tmp-inspect-latest-match-shape.mjs | tee "$RUNNER_TEMP/latest-match-shape.json"
-      - name: Upload diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: latest-match-shape-${{ github.run_id }}
-          path: ${{ runner.temp }}/latest-match-shape.json
-          if-no-files-found: warn
-          retention-days: 2
+      - name: Syntax check
+        run: node --check public/js/opportunity-action-projection-domain.js
+      - name: Focused regression tests
+        run: node --test test/opportunity-action-projection-domain.test.mjs test/opportunity-bank-stability.test.mjs
