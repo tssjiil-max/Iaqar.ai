@@ -42,7 +42,11 @@ export function operationOpportunityId(operation = {}) {
   return text(
     operation.opportunityId
       || operation.originOpportunityId
+      || operation.requestOpportunityId
+      || operation.offerOpportunityId
       || operation.metadata?.originOpportunityId
+      || operation.metadata?.requestOpportunityId
+      || operation.metadata?.offerOpportunityId
       || operation.clientRequestId
       || operation.requestId
       || operation.ownerOfferId
@@ -57,11 +61,15 @@ function operationOpportunityIds(operation = {}) {
 
   return [...new Set([
     primary,
+    operation.requestOpportunityId,
+    operation.offerOpportunityId,
     operation.clientRequestId,
     operation.requestId,
     operation.ownerOfferId,
     operation.offerId,
     operation.metadata?.originOpportunityId,
+    operation.metadata?.requestOpportunityId,
+    operation.metadata?.offerOpportunityId,
     operation.metadata?.clientRequestId,
     operation.metadata?.requestId,
     operation.metadata?.ownerOfferId,
