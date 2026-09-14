@@ -1,0 +1,38 @@
+import { chromium } from 'playwright';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+const STAGING='https://iaqar-ai-staging--staging-9c4b0k7h.web.app';
+const MATCH_ID='mat_b9449d9f46168139f50aa6e8af8b43c48ff4';
+const REQUEST_ID='opp_intake_9zvgxdfVOamf0YN3Qa7x';
+const OFFER_ID='opp_intake_sPl1BiHYbsFC8IcuTNxy';
+const OUT=process.env.LIVE_DIAG_OUT||'/tmp/live-latest-match-ui'; mkdirSync(OUT,{recursive:true});
+const src=readFileSync('scripts/staging-bank-card-click-verify.mjs','utf8');
+const phone=src.match(/const PHONE = process\.env\.STAGING_PHONE \|\| "([^"]+)";/)?.[1]||'';
+const password=src.match(/const PASSWORD = process\.env\.STAGING_PASSWORD \|\| "([^"]+)";/)?.[1]||'';
+const browser=await chromium.launch({headless:true});
+const context=await browser.newContext({viewport:{width:390,height:844},locale:'ar-SA',timezoneId:'Asia/Riyadh'}); const page=await context.newPage();
+await page.goto(STAGING,{waitUntil:'domcontentloaded',timeout:60000}); await page.waitForTimeout(1500);
+const login=page.locator('button[data-go="login"]:visible').first(); if(await login.count()) await login.click();
+await page.locator('#loginForm input[name="phone"]:visible').fill(phone); await page.locator('#loginForm input[name="password"]:visible').fill(password); await page.locator('#loginForm button[type="submit"]:visible').click();
+await page.waitForTimeout(7000);
+const clickVisible=async sel=>page.evaluate((s)=>{const el=[...document.querySelectorAll(s)].find(x=>x.getClientRects().length&&getComputedStyle(x).visibility!=='hidden'); if(el){el.click();return true;}return false;},sel);
+await clickVisible('#mainTabOpportunities'); await page.waitForTimeout(800); await clickVisible('#oppTabBank'); await page.waitForTimeout(3000);
+const snap=async label=>page.evaluate(({label,MATCH_ID,REQUEST_ID,OFFER_ID})=>{
+ const ops=Array.isArray(window.IAQAR?.operationsItems)?window.IAQAR.operationsItems:[];
+ const op=ops.find(o=>String(o.matchId||'')===MATCH_ID)||null;
+ const cards=[...document.querySelectorAll('[data-cv2-inbox-item][data-opportunity-id]')].filter(el=>el.getClientRects().length).map(el=>({id:String(el.getAttribute('data-opportunity-id')||''),text:String(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,180)}));
+ const filters=[...document.querySelectorAll('[data-bank-action-filter]')].filter(el=>el.getClientRects().length).map(el=>({filter:String(el.getAttribute('data-bank-action-filter')||''),pressed:String(el.getAttribute('aria-pressed')||''),text:String(el.textContent||'').replace(/\s+/g,' ').trim()}));
+ const status=[...document.querySelectorAll('#opportunityBankStatus')].find(el=>el.getClientRects().length)?.textContent||'';
+ return {label,officeId:String(window.IAQAR?.office?.officeId||''),operationsCount:ops.length,latestOperation:op?{id:String(op.id||op.recordId||''),matchId:String(op.matchId||''),status:String(op.status||''),livingStage:String(op.livingStage||''),opportunityId:String(op.opportunityId||''),clientRequestId:String(op.clientRequestId||''),ownerOfferId:String(op.ownerOfferId||'')}:null,cards,hasRequest:cards.some(x=>x.id===REQUEST_ID),hasOffer:cards.some(x=>x.id===OFFER_ID),filters,status:String(status).replace(/\s+/g,' ').trim()};
+},{label,MATCH_ID,REQUEST_ID,OFFER_ID});
+const before=await snap('all');
+await clickVisible('[data-bank-action-filter="matches"]'); await page.waitForTimeout(4500);
+const matches=await snap('matches');
+const moduleCheck=await page.evaluate(async ({REQUEST_ID,OFFER_ID,MATCH_ID})=>{
+ const m=await import('/js/opportunity-action-projection-domain.js?diag='+Date.now());
+ const ops=Array.isArray(window.IAQAR?.operationsItems)?window.IAQAR.operationsItems:[];
+ const idx=m.buildOpportunityActionIndex(ops,{officeId:String(window.IAQAR?.office?.officeId||''),now:new Date()});
+ const pack=id=>{const a=idx.get(id);return a?{category:a.category,matchId:a.matchId,operationId:a.operationId,filterMemberships:a.filterMemberships,matchCount:a.matchCount,actionCode:a.actionCode}:null;};
+ return {request:pack(REQUEST_ID),offer:pack(OFFER_ID),operationPresent:ops.some(o=>String(o.matchId||'')===MATCH_ID)};
+},{REQUEST_ID,OFFER_ID,MATCH_ID});
+const report={before,matches,moduleCheck}; writeFileSync(`${OUT}/report.json`,JSON.stringify(report,null,2)); console.log(JSON.stringify(report,null,2));
+await page.screenshot({path:`${OUT}/matches.png`,fullPage:true}); await browser.close();
