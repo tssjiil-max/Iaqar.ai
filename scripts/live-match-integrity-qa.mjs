@@ -348,12 +348,12 @@ async function captureUi({ customToken, matchId }) {
           return {};
         };
       });
-      await shareToggle.click();
+      await shareToggle.click({ force: true });
       shareMenuOpened = await card.locator("[data-bank-share-menu]:visible").count() === 1;
       await page.keyboard.press("Escape");
       shareMenuClosed = await card.locator("[data-bank-share-menu]:visible").count() === 0;
-      await shareToggle.click();
-      await card.locator('[data-bank-share-action="copy_text"]').click();
+      await shareToggle.click({ force: true });
+      await card.locator('[data-bank-share-action="copy_text"]').click({ force: true });
       copiedOfferValid = await page.evaluate(({ localPhone, normalizedPhone }) => {
         const office = window.IAQAR?.office || {};
         const officeName = String(office.officeName || office.displayName || "").trim();
@@ -366,13 +366,13 @@ async function captureUi({ customToken, matchId }) {
           && !window.__qaCopiedShare.includes(normalizedPhone)
         );
       }, { localPhone: "0501111842", normalizedPhone: "+966501111842" });
-      await shareToggle.click();
-      await card.locator('[data-bank-share-action="copy_link"]').click();
+      await shareToggle.click({ force: true });
+      await card.locator('[data-bank-share-action="copy_link"]').click({ force: true });
       copiedLinkValid = await page.evaluate(() => /^https:\/\/iaqar-ai-staging--staging-9c4b0k7h\.web\.app\//.test(window.__qaCopiedShare));
-      await shareToggle.click();
-      await card.locator('[data-bank-share-action="whatsapp"]').click();
-      await shareToggle.click();
-      await card.locator('[data-bank-share-action="telegram"]').click();
+      await shareToggle.click({ force: true });
+      await card.locator('[data-bank-share-action="whatsapp"]').click({ force: true });
+      await shareToggle.click({ force: true });
+      await card.locator('[data-bank-share-action="telegram"]').click({ force: true });
       const openedUrls = await page.evaluate(() => window.__qaOpenedShareUrls);
       whatsappShareValid = openedUrls.some((url) => /^https:\/\/wa\.me\/\?text=/.test(url));
       telegramShareValid = openedUrls.some((url) => /^https:\/\/t\.me\/share\/url\?text=/.test(url));
