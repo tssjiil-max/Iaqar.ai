@@ -1,0 +1,30 @@
+name: Temporary live bank readonly diagnostic
+on:
+  push:
+    branches:
+      - tmp/diag-thamer-match-2026-09-14
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Read live Staging bank state only
+        run: LIVE_DIAG_OUT="$RUNNER_TEMP/live-bank-diagnostic" node scripts/tmp-live-bank-readonly.mjs
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-bank-readonly-${{ github.run_id }}
+          path: ${{ runner.temp }}/live-bank-diagnostic/report.json
+          if-no-files-found: warn
+          retention-days: 2
