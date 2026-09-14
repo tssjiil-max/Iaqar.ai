@@ -323,6 +323,10 @@ async function captureUi({ customToken, matchId }) {
   let shareMenuOpened = false;
   let shareMenuClosed = false;
   let mobileOverflow = true;
+  let copiedOfferValid = false;
+  let copiedLinkValid = false;
+  let whatsappShareValid = false;
+  let telegramShareValid = false;
   mkdirSync(OUT, { recursive: true });
   const shots = {};
   shots.task = path.join(OUT, "match_integrity_new_task.png");
@@ -332,10 +336,39 @@ async function captureUi({ customToken, matchId }) {
     await page.screenshot({ path: shots.task, fullPage: false });
     const shareToggle = card.locator("[data-bank-share-toggle]").first();
     if (await shareToggle.count()) {
+      await page.evaluate(() => {
+        window.__qaCopiedShare = "";
+        window.__qaOpenedShareUrls = [];
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { writeText: async (value) => { window.__qaCopiedShare = String(value || ""); } }
+        });
+        window.open = (url) => {
+          window.__qaOpenedShareUrls.push(String(url || ""));
+          return {};
+        };
+      });
       await shareToggle.click();
       shareMenuOpened = await card.locator("[data-bank-share-menu]:visible").count() === 1;
       await page.keyboard.press("Escape");
       shareMenuClosed = await card.locator("[data-bank-share-menu]:visible").count() === 0;
+      await shareToggle.click();
+      await card.locator('[data-bank-share-action="copy_text"]').click();
+      copiedOfferValid = await page.evaluate((privatePhone) => (
+        window.__qaCopiedShare.includes("عبر مكتب:\nQA E2E Dedicated")
+        && window.__qaCopiedShare.includes("رابط المكتب:")
+        && !window.__qaCopiedShare.includes(privatePhone)
+      ), "0501111842");
+      await shareToggle.click();
+      await card.locator('[data-bank-share-action="copy_link"]').click();
+      copiedLinkValid = await page.evaluate(() => /^https:\/\/iaqar-ai-staging--staging-9c4b0k7h\.web\.app\//.test(window.__qaCopiedShare));
+      await shareToggle.click();
+      await card.locator('[data-bank-share-action="whatsapp"]').click();
+      await shareToggle.click();
+      await card.locator('[data-bank-share-action="telegram"]').click();
+      const openedUrls = await page.evaluate(() => window.__qaOpenedShareUrls);
+      whatsappShareValid = openedUrls.some((url) => /^https:\/\/wa\.me\/\?text=/.test(url));
+      telegramShareValid = openedUrls.some((url) => /^https:\/\/t\.me\/share\/url\?text=/.test(url));
     }
     mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     await card.locator(".cv2-card-head").click();
@@ -363,6 +396,10 @@ async function captureUi({ customToken, matchId }) {
     shareMenuOpened,
     shareMenuClosed,
     mobileOverflow,
+    copiedOfferValid,
+    copiedLinkValid,
+    whatsappShareValid,
+    telegramShareValid,
     origin,
     url,
     bodyPreview
@@ -480,6 +517,10 @@ async function main() {
     shareMenuOpened: ui.shareMenuOpened,
     shareMenuClosed: ui.shareMenuClosed,
     mobileOverflow: ui.mobileOverflow,
+    copiedOfferValid: ui.copiedOfferValid,
+    copiedLinkValid: ui.copiedLinkValid,
+    whatsappShareValid: ui.whatsappShareValid,
+    telegramShareValid: ui.telegramShareValid,
     uiUrl: ui.url || "",
     uiBodyPreview: ui.bodyPreview || ""
   }, null, 2));
@@ -504,6 +545,10 @@ async function main() {
     && report.ui.shareMenuOpened === true
     && report.ui.shareMenuClosed === true
     && report.ui.mobileOverflow === false
+    && report.ui.copiedOfferValid === true
+    && report.ui.copiedLinkValid === true
+    && report.ui.whatsappShareValid === true
+    && report.ui.telegramShareValid === true
   );
   if (!verified) {
     console.error("MATCH INTEGRITY NOT VERIFIED");
