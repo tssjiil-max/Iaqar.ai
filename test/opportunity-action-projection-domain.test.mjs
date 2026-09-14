@@ -51,6 +51,60 @@ test("negotiation MATCH_REVIEW remains visible in matches", () => {
   assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
 });
 
+test("active MATCH_REVIEW projects the same match onto request and offer opportunities", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      opportunityId: "request-1",
+      clientRequestId: "request-1",
+      ownerOfferId: "offer-1"
+    })
+  ], { officeId: OFFICE, now: NOW });
+
+  const requestAction = index.get("request-1");
+  const offerAction = index.get("offer-1");
+  assert.equal(requestAction?.matchId, "match-1");
+  assert.equal(offerAction?.matchId, "match-1");
+  assert.equal(requestAction?.operationId, "op-1");
+  assert.equal(offerAction?.operationId, "op-1");
+  assert.equal(opportunityMatchesActionFilter(requestAction, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  assert.equal(opportunityMatchesActionFilter(offerAction, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  assert.equal(requestAction?.matchCount, 1);
+  assert.equal(offerAction?.matchCount, 1);
+});
+
+test("negotiation MATCH_REVIEW remains a match on both linked opportunities", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      opportunityId: "request-1",
+      clientRequestId: "request-1",
+      ownerOfferId: "offer-1",
+      livingStage: "NEGOTIATION_ACTIVE"
+    })
+  ], { officeId: OFFICE, now: NOW });
+
+  for (const id of ["request-1", "offer-1"]) {
+    const action = index.get(id);
+    assert.equal(action?.actionCode, "open_negotiation");
+    assert.equal(action?.matchId, "match-1");
+    assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+    assert.equal(action?.matchCount, 1);
+  }
+});
+
+test("repeated request id fields do not double count a MATCH_REVIEW", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      opportunityId: "request-1",
+      clientRequestId: "request-1",
+      requestId: "request-1",
+      ownerOfferId: "offer-1",
+      offerId: "offer-1"
+    })
+  ], { officeId: OFFICE, now: NOW });
+  assert.equal(index.get("request-1")?.matchCount, 1);
+  assert.equal(index.get("offer-1")?.matchCount, 1);
+});
+
 test("follow-up operation is visible in follow-up filter", () => {
   const index = buildOpportunityActionIndex([
     operation({

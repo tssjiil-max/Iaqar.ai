@@ -50,6 +50,25 @@ export function operationOpportunityId(operation = {}) {
   );
 }
 
+function operationOpportunityIds(operation = {}) {
+  const primary = operationOpportunityId(operation);
+  const type = upper(operation.operationType || operation.type);
+  if (type !== "MATCH_REVIEW") return primary ? [primary] : [];
+
+  return [...new Set([
+    primary,
+    operation.clientRequestId,
+    operation.requestId,
+    operation.ownerOfferId,
+    operation.offerId,
+    operation.metadata?.originOpportunityId,
+    operation.metadata?.clientRequestId,
+    operation.metadata?.requestId,
+    operation.metadata?.ownerOfferId,
+    operation.metadata?.offerId
+  ].map(text).filter(Boolean))];
+}
+
 function appointmentCopy(appointmentAt, now) {
   const at = new Date(appointmentAt);
   const formatter = new Intl.DateTimeFormat("ar-SA", {
@@ -224,22 +243,24 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
   for (const operation of operations || []) {
     if (!isActiveOpportunityOperation(operation)) continue;
     if (expectedOfficeId && text(operation.officeId) !== expectedOfficeId) continue;
-    const opportunityId = operationOpportunityId(operation);
-    if (!opportunityId) continue;
+    const opportunityIds = operationOpportunityIds(operation);
+    if (!opportunityIds.length) continue;
     const matchId = text(operation.matchId);
     const type = upper(operation.operationType || operation.type);
-    const dedupKey = `${expectedOfficeId}|${opportunityId}|${type}|${matchId}`;
-    const existing = deduped.get(dedupKey);
-    if (!existing || instant(operation.updatedAt || operation.createdAt) > instant(existing.updatedAt || existing.createdAt)) {
-      deduped.set(dedupKey, operation);
+    for (const opportunityId of opportunityIds) {
+      const dedupKey = `${expectedOfficeId}|${opportunityId}|${type}|${matchId}`;
+      const existing = deduped.get(dedupKey);
+      const existingOperation = existing?.operation;
+      if (!existingOperation || instant(operation.updatedAt || operation.createdAt) > instant(existingOperation.updatedAt || existingOperation.createdAt)) {
+        deduped.set(dedupKey, { operation, opportunityId });
+      }
     }
   }
 
   const byOpportunity = new Map();
   const filterMembershipsByOpportunity = new Map();
   const matchCounts = new Map();
-  for (const operation of deduped.values()) {
-    const opportunityId = operationOpportunityId(operation);
+  for (const { operation, opportunityId } of deduped.values()) {
     const action = projectOpportunityAction(operation, now);
     const memberships = operationFilterMemberships(operation, action);
     if (memberships.size) {
