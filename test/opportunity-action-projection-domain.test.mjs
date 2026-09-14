@@ -51,6 +51,22 @@ test("negotiation MATCH_REVIEW remains visible in matches", () => {
   assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
 });
 
+test("opening property-available status does not remove عرض الحالة from the opportunity card", () => {
+  const beforeOpen = projectOpportunityAction(operation({
+    status: "WAITING_EXTERNAL_RESPONSE",
+    livingStage: "PROPERTY_AVAILABLE"
+  }), NOW);
+  const afterOpen = projectOpportunityAction(operation({
+    status: "IN_PROGRESS",
+    livingStage: "PROPERTY_AVAILABLE",
+    openedAt: "2026-09-14T07:30:00.000Z"
+  }), NOW);
+
+  assert.equal(beforeOpen?.actionCode, "view_waiting");
+  assert.equal(afterOpen?.actionCode, "view_waiting");
+  assert.equal(afterOpen?.primaryAction, "عرض الحالة");
+});
+
 test("active MATCH_REVIEW projects the same match onto request and offer opportunities", () => {
   const index = buildOpportunityActionIndex([
     operation({

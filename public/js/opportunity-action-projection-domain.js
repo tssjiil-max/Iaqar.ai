@@ -177,7 +177,8 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
     };
   }
 
-  if (status === "WAITING_EXTERNAL_RESPONSE" || /^WAITING_|AWAITING_/.test(livingStage)) {
+  const persistentWaitingStage = livingStage === "PROPERTY_AVAILABLE";
+  if (status === "WAITING_EXTERNAL_RESPONSE" || /^WAITING_|AWAITING_/.test(livingStage) || persistentWaitingStage) {
     const since = instant(operation.livingUpdatedAt || operation.updatedAt || operation.createdAt);
     const hours = since ? Math.max(1, Math.floor((nowMs - since) / 3600000)) : 0;
     return {
