@@ -1,0 +1,27 @@
+import { chromium } from 'playwright';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+const STAGING='https://iaqar-ai-staging--staging-9c4b0k7h.web.app';
+const OUT=process.env.LIVE_DIAG_OUT||'/tmp/live-runtime2';
+mkdirSync(OUT,{recursive:true});
+const src=readFileSync('scripts/staging-bank-card-click-verify.mjs','utf8');
+const phone=src.match(/const PHONE = process\.env\.STAGING_PHONE \|\| "([^"]+)";/)?.[1]||'';
+const password=src.match(/const PASSWORD = process\.env\.STAGING_PASSWORD \|\| "([^"]+)";/)?.[1]||'';
+const browser=await chromium.launch({headless:true});
+const context=await browser.newContext({viewport:{width:390,height:844},locale:'ar-SA',timezoneId:'Asia/Riyadh'});
+const page=await context.newPage();
+await page.goto(STAGING,{waitUntil:'domcontentloaded',timeout:60000});
+await page.waitForTimeout(2000);
+const login=page.locator('button[data-go="login"]'); if(await login.count()) await login.click();
+await page.locator('#loginForm input[name="phone"]').fill(phone);
+await page.locator('#loginForm input[name="password"]').fill(password);
+await page.locator('#loginForm button[type="submit"]').click();
+await page.waitForTimeout(9000);
+const report=await page.evaluate(()=>{
+ const officeId=String(window.IAQAR?.office?.officeId||'');
+ const ops=Array.isArray(window.IAQAR?.operationsItems)?window.IAQAR.operationsItems:[];
+ const matchOps=ops.filter(o=>String(o.operationType||o.type||'').toUpperCase()==='MATCH_REVIEW').map(o=>({operationId:String(o.id||o.recordId||''),matchId:String(o.matchId||''),status:String(o.status||''),livingStage:String(o.livingStage||''),opportunityId:String(o.opportunityId||o.originOpportunityId||''),clientRequestId:String(o.clientRequestId||o.requestId||''),ownerOfferId:String(o.ownerOfferId||o.offerId||'')}));
+ return {officeId,operationsCount:ops.length,matchOps,locationHash:String(location.hash||''),bodyHasBank:Boolean(document.querySelector('#opportunityBankList'))};
+});
+writeFileSync(`${OUT}/report.json`,JSON.stringify(report,null,2));
+console.log(JSON.stringify(report,null,2));
+await browser.close();
