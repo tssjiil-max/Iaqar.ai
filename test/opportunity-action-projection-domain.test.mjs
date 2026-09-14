@@ -88,6 +88,24 @@ test("active MATCH_REVIEW projects the same match onto request and offer opportu
   assert.equal(offerAction?.matchCount, 1);
 });
 
+test("live MATCH_REVIEW canonical requestOpportunityId and offerOpportunityId project onto both opportunities", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      opportunityId: "",
+      requestOpportunityId: "request-live",
+      offerOpportunityId: "offer-live"
+    })
+  ], { officeId: OFFICE, now: NOW });
+
+  for (const id of ["request-live", "offer-live"]) {
+    const action = index.get(id);
+    assert.equal(action?.matchId, "match-1");
+    assert.equal(action?.operationId, "op-1");
+    assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+    assert.equal(action?.matchCount, 1);
+  }
+});
+
 test("negotiation MATCH_REVIEW remains a match on both linked opportunities", () => {
   const index = buildOpportunityActionIndex([
     operation({
