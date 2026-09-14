@@ -345,7 +345,6 @@ function refreshPackageSections(root) {
 function bindDecisionPackage(root, token) {
   const form = root.querySelector("[data-party-decision-package]");
   if (!form) return;
-  const party = form.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
   form.querySelectorAll("input").forEach((input) => {
     input.addEventListener("change", () => {
       refreshPackageSections(form);
@@ -370,16 +369,26 @@ function bindDecisionPackage(root, token) {
       });
     });
   }
-  const submit = form.querySelector("[data-party-bundle-submit]");
-  if (submit) {
-    submit.addEventListener("click", () => {
-      if (submit.disabled) return;
-      const bundle = collectPackageFromForm(form, party);
-      const photos = fileInput && !fileInput.hidden ? Array.from(fileInput.files || []) : [];
-      void submitBundle(token, bundle, submit, photos);
-    });
-  }
   refreshPackageSections(form);
+}
+
+function bindBundleSubmit(root, token) {
+  if (root.dataset.partyBundleSubmitBound === "1") return;
+  root.dataset.partyBundleSubmitBound = "1";
+  root.addEventListener("click", (event) => {
+    const target = event.target;
+    const submit = target && typeof target.closest === "function"
+      ? target.closest("[data-party-bundle-submit]")
+      : null;
+    if (!submit || !root.contains(submit) || submit.disabled) return;
+    const form = submit.closest("[data-party-decision-package]");
+    if (!form) return;
+    const party = form.closest("[data-party-shell]")?.getAttribute("data-party") || "client";
+    const fileInput = form.querySelector("[data-package-photos]");
+    const bundle = collectPackageFromForm(form, party);
+    const photos = fileInput && !fileInput.hidden ? Array.from(fileInput.files || []) : [];
+    void submitBundle(token, bundle, submit, photos);
+  });
 }
 
 function bindCoordinationForm(root, token) {
@@ -387,6 +396,7 @@ function bindCoordinationForm(root, token) {
 }
 
 function bindActions(root, token) {
+  bindBundleSubmit(root, token);
   bindCoordinationForm(root, token);
   root.querySelectorAll("[data-party-action]").forEach((button) => {
     button.addEventListener("click", () => {

@@ -19,6 +19,19 @@ test("decision-package submit resolves party from the form shell, not the outer 
   assert.doesNotMatch(binding, /const party = root\.closest\("\[data-party-shell\]"\)/);
 });
 
+test("owner bundle submit stays delegated on the persistent party root after rerender", () => {
+  const source = readFileSync(path.join(rootDir, "public", "js", "party-entry.js"), "utf8");
+  const start = source.indexOf("function bindBundleSubmit");
+  const end = source.indexOf("function bindCoordinationForm", start);
+  assert.ok(start >= 0 && end > start, "bindBundleSubmit must exist");
+  const binding = source.slice(start, end);
+
+  assert.match(binding, /root\.dataset\.partyBundleSubmitBound === "1"/);
+  assert.match(binding, /root\.addEventListener\("click"/);
+  assert.match(binding, /closest\("\[data-party-bundle-submit\]"\)/);
+  assert.match(binding, /submit\.closest\("\[data-party-decision-package\]"\)/);
+});
+
 test("owner decision form is inside the owner shell while partyRoot is outside it", () => {
   const dom = new JSDOM(`<!doctype html><body>
     <div id="partyRoot">
@@ -53,6 +66,23 @@ test("owner viewing bundle requires owner availability semantics and then normal
   assert.equal(normalized.viewingAllowed, "yes");
   assert.deepEqual(normalized.viewingDays, ["tomorrow"]);
   assert.deepEqual(normalized.viewingPeriods, ["morning"]);
+});
+
+test("owner screenshot combination normalizes without extra viewing slots", () => {
+  const normalized = normalizeOwnerBundle({
+    propertyAvailability: "available",
+    priceConfirmation: "confirmed",
+    locationShare: true,
+    viewingAllowed: "needs_coordination"
+  });
+
+  assert.ok(normalized);
+  assert.equal(normalized.propertyAvailability, "available");
+  assert.equal(normalized.priceConfirmation, "confirmed");
+  assert.equal(normalized.locationShare, true);
+  assert.equal(normalized.viewingAllowed, "needs_coordination");
+  assert.deepEqual(normalized.viewingDays, []);
+  assert.deepEqual(normalized.viewingPeriods, []);
 });
 
 test("every active owner negotiation form exposes availability and a real submit button", () => {
