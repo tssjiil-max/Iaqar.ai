@@ -1,0 +1,32 @@
+name: Temporary staging-sultan read-only diagnostic
+on:
+  push:
+    branches:
+      - tmp/diag-thamer-match-2026-09-14
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Read staging-sultan only
+        run: node scripts/tmp-read-staging-sultan.mjs | tee "$RUNNER_TEMP/staging-sultan-report.json"
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-sultan-readonly-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-sultan-report.json
+          if-no-files-found: warn
+          retention-days: 2
