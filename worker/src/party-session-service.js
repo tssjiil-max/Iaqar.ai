@@ -898,6 +898,28 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
     });
   };
   await finalizeBrokerState();
+  const coordinationOrchestration = await dispatchOrchestratorEvent({
+    event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
+    eventId: buildOrchestratorEventId({
+      event: ORCHESTRATOR_EVENT.COORDINATION_UPDATED,
+      officeId: loaded.officeId,
+      entityId: matchId,
+      occurrenceId: `${party}:${coordinationSession.outcome || "updated"}`
+    }),
+    context: {
+      officeId: loaded.officeId,
+      entityId: matchId,
+      party,
+      outcome: coordinationSession.outcome || ""
+    },
+    adapters: {
+      [ORCHESTRATOR_OWNER.TASKS]: async () => ({ ok: true })
+    },
+    deferredTargets: [ORCHESTRATOR_OWNER.VIEWING]
+  });
+  if (!coordinationOrchestration.ok) {
+    throw helpers.appError("orchestrator_dispatch_failed", 500, "تعذر تحديث حالة التفاوض.");
+  }
   const next = await loadPartyPublicView({ token, env, helpers });
   return helpers.jsonResponse({ ok: true, view: next?.view || loaded.view, requestId });
 }

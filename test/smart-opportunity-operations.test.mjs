@@ -42,9 +42,10 @@ test("TEST 1: persisted Match creates one MATCH_REVIEW and raises its primary ca
   });
   const projected = projectOperationToUiItem({ ...built, metadataJson: JSON.stringify(built.metadata) });
   const index = buildOpportunityActionIndex([projected], { officeId: "office-a", now: NOW });
-  assert.equal(index.size, 1);
+  assert.equal(index.size, 2);
   assert.equal(index.get("request-1").badge, "تطابق جديد");
   assert.equal(index.get("request-1").rank, 5);
+  assert.equal(index.get("offer-1").badge, "تطابق جديد");
 });
 
 test("TEST 2: officeId isolates operations between offices", () => {
