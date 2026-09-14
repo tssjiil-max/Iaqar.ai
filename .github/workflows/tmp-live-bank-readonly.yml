@@ -18,13 +18,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Read live Staging runtime state only
-        run: LIVE_DIAG_OUT="$RUNNER_TEMP/live-runtime2" node scripts/tmp-live-runtime2.mjs
+      - name: Test latest live match UI read-only
+        run: LIVE_DIAG_OUT="$RUNNER_TEMP/live-latest-match-ui" node scripts/tmp-live-latest-match-ui.mjs
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-runtime2-${{ github.run_id }}
-          path: ${{ runner.temp }}/live-runtime2/report.json
+          name: live-latest-match-ui-${{ github.run_id }}
+          path: ${{ runner.temp }}/live-latest-match-ui
           if-no-files-found: warn
           retention-days: 2
