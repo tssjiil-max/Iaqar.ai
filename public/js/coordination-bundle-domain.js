@@ -845,6 +845,7 @@ export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
   const key = text(outcome);
   const clientBundle = session?.clientBundle || null;
   const ownerBundle = session?.ownerBundle || null;
+  const bothPartiesLinked = Boolean(text(session?.clientSessionId) && text(session?.ownerSessionId));
   if (key === COORDINATION_OUTCOME.CLIENT_NOT_INTERESTED) {
     return { stage: LIVING_TASK_STAGE.CLIENT_REJECTED, ownerContactNeeded: false };
   }
@@ -853,7 +854,7 @@ export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
   }
   if (key === COORDINATION_OUTCOME.NEGOTIATION_ACCEPTED
     || key === COORDINATION_OUTCOME.NEGOTIATION_COUNTERED) {
-    return { stage: LIVING_TASK_STAGE.MATCH_FOUND, ownerContactNeeded: false };
+    return { stage: LIVING_TASK_STAGE.NEGOTIATION, ownerContactNeeded: false };
   }
   if (key === COORDINATION_OUTCOME.NEGOTIATION_REJECTED) {
     return { stage: LIVING_TASK_STAGE.CLIENT_REJECTED, ownerContactNeeded: false };
@@ -875,11 +876,14 @@ export function livingStageForCoordinationOutcome(outcome = "", session = {}) {
     return { stage: LIVING_TASK_STAGE.WAITING_PROPERTY_CONFIRMATION, ownerContactNeeded: true };
   }
   if (key === COORDINATION_OUTCOME.AWAITING_BOTH_PARTIES) {
-    return { stage: LIVING_TASK_STAGE.MATCH_FOUND, ownerContactNeeded: false };
+    return {
+      stage: bothPartiesLinked ? LIVING_TASK_STAGE.NEGOTIATION : LIVING_TASK_STAGE.MATCH_FOUND,
+      ownerContactNeeded: false
+    };
   }
   if (key === COORDINATION_OUTCOME.AWAITING_OTHER_PARTY) {
     return {
-      stage: LIVING_TASK_STAGE.MATCH_FOUND,
+      stage: bothPartiesLinked ? LIVING_TASK_STAGE.NEGOTIATION : LIVING_TASK_STAGE.MATCH_FOUND,
       // The missing side is the next actor: an owner response hands the turn
       // to the client, while a client response hands it to the owner.
       ownerContactNeeded: Boolean(clientBundle && !ownerBundle)

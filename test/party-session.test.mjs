@@ -518,8 +518,15 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
     "offices/office-1/matches/match_new_1": { fields: {
       livingStage: "MATCH_FOUND",
+      operationId: "op_match_new_1",
       ownerOfferId: "offer_1",
       clientRequestId: "request_1"
+    } },
+    "offices/office-1/operations/op_match_new_1": { fields: {
+      officeId: "office-1",
+      operationType: "MATCH_REVIEW",
+      status: "OPEN",
+      matchId: "match_new_1"
     } },
     "offices/office-1/opportunities/offer_1": { fields: {
       opportunityKind: "OFFER",
@@ -535,12 +542,21 @@ test("client and owner sessions stay distinct and replies persist", async () => 
     requestId: "req-6",
     helpers
   });
+  assert.equal(store["offices/office-1/matches/match_new_1"].fields.livingStage, "WAITING_CLIENT");
+  assert.equal(store["offices/office-1/operations/op_match_new_1"].fields.status, "OPEN");
   const owner = await handlePartySessionMint({
     request: mintRequest({ officeId: "office-1", matchId: "match_new_1", party: "owner", offerId: "offer_1", requestId: "request_1" }),
     env: { DEPLOYMENT_ENV: "staging" },
     requestId: "req-7",
     helpers
   });
+  assert.equal(store["offices/office-1/matches/match_new_1"].fields.livingStage, "NEGOTIATION");
+  assert.equal(store["offices/office-1/operations/op_match_new_1"].fields.livingStage, "NEGOTIATION");
+  assert.equal(store["offices/office-1/operations/op_match_new_1"].fields.status, "OPEN");
+  const handoffSession = JSON.parse(store["offices/office-1/coordinationSessions/match_new_1"].fields.coordinationJson);
+  assert.equal(handoffSession.matchId, "match_new_1");
+  assert.ok(handoffSession.clientSessionId);
+  assert.ok(handoffSession.ownerSessionId);
   assert.notEqual(client.body.token, owner.body.token);
   const ownerView = await handlePartySessionGet({
     token: owner.body.token,

@@ -924,7 +924,10 @@ function renderList() {
 function onOperationsData(event) {
   if (useDemoFixtures()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
-  state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), { officeId: currentOfficeId() });
+  state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), {
+    officeId: currentOfficeId(),
+    requireOpportunityRecords: true
+  });
   const invalid = consumeDailyTaskDiagnostics();
   if (invalid.length && typeof window !== "undefined") window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
   if (state.openTaskId && !state.tasks.some((task) => task.id === state.openTaskId)) {
@@ -987,7 +990,10 @@ export function mountDailyTasksContentV2(root) {
   if (!useDemoFixtures()) {
     const existing = window.IAQAR?.operationsItems;
     if (Array.isArray(existing)) {
-      state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), { officeId: currentOfficeId() });
+      state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), {
+        officeId: currentOfficeId(),
+        requireOpportunityRecords: true
+      });
       const invalid = consumeDailyTaskDiagnostics();
       if (invalid.length) window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
     }

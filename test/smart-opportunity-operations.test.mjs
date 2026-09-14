@@ -62,6 +62,8 @@ test("TEST 3: display-name changes do not affect ownership", () => {
 test("TEST 4: processed match no longer carries new-match state", () => {
   const action = projectOpportunityAction(operation({ livingStage: "NEGOTIATION" }), NOW);
   assert.equal(action.badge, "تفاوض جارٍ");
+  assert.equal(action.primaryAction, "متابعة التفاوض");
+  assert.equal(action.actionCode, "open_negotiation");
   assert.notEqual(action.badge, "تطابق جديد");
 });
 

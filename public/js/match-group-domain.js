@@ -14,6 +14,7 @@ export const LIVING_TASK_STAGE = Object.freeze({
   CLIENT_INTERESTED: "CLIENT_INTERESTED",
   CLIENT_REJECTED: "CLIENT_REJECTED",
   WAITING_PROPERTY_CONFIRMATION: "WAITING_PROPERTY_CONFIRMATION",
+  NEGOTIATION: "NEGOTIATION",
   PROPERTY_AVAILABLE: "PROPERTY_AVAILABLE",
   PROPERTY_UNAVAILABLE: "PROPERTY_UNAVAILABLE",
   VIEWING_DECISION: "VIEWING_DECISION",
@@ -162,6 +163,7 @@ export function partyReplyTimelineLabel(party, action) {
 
 export function livingStatusLabel(stage) {
   const key = upper(stage);
+  if (key === LIVING_TASK_STAGE.NEGOTIATION) return "تفاوض جارٍ";
   if (key === LIVING_TASK_STAGE.WAITING_CLIENT || key === LIVING_TASK_STAGE.CLIENT_SENT) {
     return "بانتظار العميل";
   }
@@ -355,6 +357,7 @@ export function sortGroupForLivingStage(stage, {
   }
   if (overdue) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   const key = upper(stage);
+  if (key === LIVING_TASK_STAGE.NEGOTIATION) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   if (ownerContactNeeded) return TASK_SORT_GROUP.NEEDS_BROKER_ACTION;
   if (
     key === LIVING_TASK_STAGE.MATCH_FOUND
@@ -391,6 +394,18 @@ export function livingCopy(stage, {
 } = {}) {
   const key = upper(stage);
   const reveal = { revealClosedLabel: "عرض البيانات", revealOpenLabel: "إخفاء البيانات" };
+  if (key === LIVING_TASK_STAGE.NEGOTIATION) {
+    return {
+      kindLabel: "تفاوض جارٍ",
+      statusLabel: "تفاوض جارٍ",
+      happenedLine: "تم إرسال المطابقة للطرفين",
+      turnLine: "دورك الآن",
+      yourTurnLine: "متابعة التفاوض",
+      nextActionLine: "متابعة التفاوض",
+      waiting: false,
+      ...reveal
+    };
+  }
   if (key === LIVING_TASK_STAGE.CLIENT_NEEDS_MISSING_INFO) {
     const label = missingInfoLabel(missingInfoKey);
     return {

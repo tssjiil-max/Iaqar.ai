@@ -55,3 +55,54 @@ test("legacy READY MATCH_REVIEW operations are included by the live operations l
   const source = readFileSync(new URL("../public/js/workflow-office.js", import.meta.url), "utf8");
   assert.match(source, /ACTIVE_OPERATION_STATUSES = Object\.freeze\(\["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE", "READY"\]\)/);
 });
+
+function opportunity(id, opportunityKind) {
+  return {
+    id,
+    recordId: id,
+    recordType: "opportunity",
+    opportunityKind,
+    propertyType: "شقة",
+    purpose: opportunityKind === "OFFER" ? "SALE" : "PURCHASE",
+    city: "المدينة المنورة",
+    district: "البورة"
+  };
+}
+
+function linkedOperation() {
+  return {
+    id: "op_regression",
+    recordType: "operation",
+    operationType: "MATCH_REVIEW",
+    status: "OPEN",
+    officeId: "office-regression",
+    matchId: "match-regression",
+    clientRequestId: "request-regression",
+    ownerOfferId: "offer-regression",
+    opportunityId: "request-regression",
+    propertyType: "شقة",
+    district: "البورة",
+    livingStage: "MATCH_FOUND"
+  };
+}
+
+test("orphan MATCH_REVIEW is hidden when the live opportunity projection is authoritative", () => {
+  const tasks = mapOperationsItemsToDailyTasks([linkedOperation()], new Date(), {
+    officeId: "office-regression",
+    requireOpportunityRecords: true
+  });
+  assert.equal(tasks.length, 0);
+});
+
+test("valid MATCH_REVIEW remains visible when both linked opportunities exist", () => {
+  const tasks = mapOperationsItemsToDailyTasks([
+    opportunity("request-regression", "REQUEST"),
+    opportunity("offer-regression", "OFFER"),
+    linkedOperation()
+  ], new Date(), {
+    officeId: "office-regression",
+    requireOpportunityRecords: true
+  });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].matchId, "match-regression");
+});

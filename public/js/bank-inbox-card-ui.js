@@ -24,7 +24,8 @@ const DAILY_TASK_ACTION_CODES = new Set([
   "record_viewing_result",
   "view_appointment",
   "open_follow_up",
-  "view_waiting"
+  "view_waiting",
+  "open_negotiation"
 ]);
 
 function esc(text = "") {

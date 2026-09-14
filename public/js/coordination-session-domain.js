@@ -62,6 +62,8 @@ export function parseCoordinationSession(raw = {}, { canonicalOffer = {} } = {})
     id: coordinationSessionId(matchId),
     matchId,
     officeId: text(raw.officeId),
+    clientSessionId: text(raw.clientSessionId),
+    ownerSessionId: text(raw.ownerSessionId),
     clientQuestionSet: text(raw.clientQuestionSet) || QUESTION_SET_VERSIONS.CLIENT_V1,
     ownerQuestionSet: text(raw.ownerQuestionSet) || QUESTION_SET_VERSIONS.OWNER_V1,
     clientBundle,

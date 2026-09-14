@@ -180,10 +180,10 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
       rank: 8,
       tone: "waiting",
       badge: "تفاوض جارٍ",
-      reason: "لا إجراء حالي",
+      reason: "تم إرسال المطابقة للطرفين",
       detail: "",
-      primaryAction: "",
-      actionCode: "",
+      primaryAction: "متابعة التفاوض",
+      actionCode: "open_negotiation",
       dueAt: operation.updatedAt || operation.createdAt || ""
     };
   }

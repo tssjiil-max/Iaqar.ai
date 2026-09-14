@@ -55,6 +55,43 @@ function js(doc, helpers) {
   return helpers.firestoreFieldsToJs(fields(doc) || {});
 }
 
+export function livingStageAfterPartySessionHandoff(session = {}, party = "client") {
+  if (String(session.clientSessionId || "").trim() && String(session.ownerSessionId || "").trim()) {
+    return "NEGOTIATION";
+  }
+  return party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT";
+}
+
+async function stampPartySessionHandoff(helpers, {
+  projectId, officeId, matchId, accessToken, party, session
+}) {
+  const livingStage = livingStageAfterPartySessionHandoff(session, party);
+  const negotiationActive = livingStage === "NEGOTIATION";
+  await stampMatchLiving(helpers, {
+    projectId,
+    officeId,
+    matchId,
+    accessToken,
+    patch: {
+      livingStage,
+      activeMatchId: matchId,
+      ownerContactNeeded: false,
+      hasNewResponse: false,
+      nextActor: negotiationActive ? "BROKER" : (party === "owner" ? "OWNER" : "CLIENT"),
+      timelineEvent: {
+        type: negotiationActive
+          ? "negotiation_activated"
+          : (party === "owner" ? "whatsapp_owner_opened" : "whatsapp_client_opened"),
+        actor: "BROKER",
+        label: negotiationActive
+          ? "تم إرسال المطابقة للطرفين وبدأ التفاوض"
+          : (party === "owner" ? "تم فتح واتساب للمالك" : "تم فتح واتساب للعميل")
+      }
+    }
+  });
+  return livingStage;
+}
+
 const OFFICE_MEDIA_KEY_PATTERN = /^(?:public-intake|office-library|opportunity-sources)\/[a-z0-9_-]{1,80}\//i;
 const PARTY_IMAGE_TYPES = Object.freeze({
   "image/jpeg": "jpg",
@@ -288,6 +325,17 @@ export async function handlePartySessionMint({
       && keyData.party === party
       && keyData.matchId === matchId;
     if (identityMatches && session.status !== PARTY_SESSION_STATUS.REVOKED && session.token && isOpaquePartyToken(session.token)) {
+      const coordination = await ensureCoordinationSession(helpers, {
+        projectId,
+        officeId,
+        matchId,
+        accessToken,
+        clientSessionId: party === "client" ? String(keyData.sessionId || "") : "",
+        ownerSessionId: party === "owner" ? String(keyData.sessionId || "") : ""
+      });
+      await stampPartySessionHandoff(helpers, {
+        projectId, officeId, matchId, accessToken, party, session: coordination
+      });
       return helpers.jsonResponse({
         ok: true,
         token: session.token,
@@ -424,31 +472,16 @@ export async function handlePartySessionMint({
       createdAt: now.toISOString()
     }).mapValue.fields
   });
-  await stampMatchLiving(helpers, {
-    projectId,
-    officeId,
-    matchId,
-    accessToken,
-    patch: {
-      livingStage: party === "owner" ? "WAITING_PROPERTY_CONFIRMATION" : "WAITING_CLIENT",
-      activeMatchId: matchId,
-      ownerContactNeeded: false,
-      hasNewResponse: false,
-      nextActor: party === "owner" ? "OWNER" : "CLIENT",
-      timelineEvent: {
-        type: party === "owner" ? "whatsapp_owner_opened" : "whatsapp_client_opened",
-        actor: "BROKER",
-        label: party === "owner" ? "تم فتح واتساب للمالك" : "تم فتح واتساب للعميل"
-      }
-    }
-  });
-  await ensureCoordinationSession(helpers, {
+  const coordination = await ensureCoordinationSession(helpers, {
     projectId,
     officeId,
     matchId,
     accessToken,
     clientSessionId: party === "client" ? sessionId : "",
     ownerSessionId: party === "owner" ? sessionId : ""
+  });
+  await stampPartySessionHandoff(helpers, {
+    projectId, officeId, matchId, accessToken, party, session: coordination
   });
   return helpers.jsonResponse({
     ok: true,

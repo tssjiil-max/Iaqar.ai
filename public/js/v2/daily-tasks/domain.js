@@ -922,6 +922,7 @@ function liveStateKey(item = {}, now = new Date()) {
 
 function stateKeyFromLivingStage(stage = "") {
   const key = upper(stage);
+  if (key === LIVING_TASK_STAGE.NEGOTIATION) return DAILY_TASK_STATE.CLIENT_INTERESTED;
   if (key === LIVING_TASK_STAGE.WAITING_CLIENT || key === LIVING_TASK_STAGE.CLIENT_SENT) {
     return DAILY_TASK_STATE.AWAITING_CLIENT;
   }
@@ -1463,7 +1464,8 @@ export function mapOperationsItemToDailyTask(item = {}, now = new Date(), { offi
 
 export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
   officeId = "",
-  showTestFixtures = false
+  showTestFixtures = false,
+  requireOpportunityRecords = false
 } = {}) {
   const views = [];
   const seen = new Set();
@@ -1540,6 +1542,15 @@ export function mapOperationsItemsToDailyTasks(items = [], now = new Date(), {
   const valid = [];
   for (const item of unique) {
     const diagnosis = diagnoseMatchLinkage(item, opportunities);
+    if (requireOpportunityRecords) {
+      if (diagnosis.requestId && !diagnosis.request && !diagnosis.reasons.includes("unresolved_request")) {
+        diagnosis.reasons.push("unresolved_request");
+      }
+      if (diagnosis.offerId && !diagnosis.offer && !diagnosis.reasons.includes("unresolved_offer")) {
+        diagnosis.reasons.push("unresolved_offer");
+      }
+      diagnosis.ok = diagnosis.reasons.length === 0;
+    }
     if (!diagnosis.ok) {
       pushDailyTaskDiagnostic({
         code: TASK_DATA_INTEGRITY.INVALID_TASK_DATA,
