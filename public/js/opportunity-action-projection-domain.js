@@ -61,6 +61,7 @@ function operationOpportunityIds(operation = {}) {
 
   return [...new Set([
     primary,
+    operation.counterpartOpportunityId,
     operation.requestOpportunityId,
     operation.offerOpportunityId,
     operation.clientRequestId,
@@ -68,6 +69,7 @@ function operationOpportunityIds(operation = {}) {
     operation.ownerOfferId,
     operation.offerId,
     operation.metadata?.originOpportunityId,
+    operation.metadata?.counterpartOpportunityId,
     operation.metadata?.requestOpportunityId,
     operation.metadata?.offerOpportunityId,
     operation.metadata?.clientRequestId,
