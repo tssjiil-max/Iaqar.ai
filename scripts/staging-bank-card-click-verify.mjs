@@ -43,7 +43,7 @@ async function openBankTab(page) {
   const bankTab = page.locator("#mainTabOpportunities:visible, button:visible:has-text('العروض والطلبات')").first();
   if (await bankTab.count()) await bankTab.click();
   await page.waitForTimeout(500);
-  const bankSub = page.locator("#oppTabBank, button:has-text('القائمة')").first();
+  const bankSub = page.locator("#oppTabBank:visible, button:visible:has-text('القائمة')").first();
   if (await bankSub.count()) await bankSub.click();
   await page.waitForTimeout(1500);
 }
