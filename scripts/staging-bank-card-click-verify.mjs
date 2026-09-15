@@ -84,7 +84,8 @@ async function inspectTargetCard(page, target) {
     });
     throw new Error(`Target Bank card is hidden for ${target.reference}: ${JSON.stringify(hiddenTrace)}`);
   }
-  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
+  const expectedMatchId = target.matchId || TARGET_MATCH_ID;
+  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${expectedMatchId}"]`).first();
   await action.waitFor({ state: "visible", timeout: 30000 });
   return action.evaluate((button, expected) => {
     const article = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
