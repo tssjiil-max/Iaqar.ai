@@ -84,7 +84,7 @@ async function inspectTargetCard(page, target) {
     });
     throw new Error(`Target Bank card is hidden for ${target.reference}: ${JSON.stringify(hiddenTrace)}`);
   }
-  const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
+  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.waitFor({ state: "visible", timeout: 30000 });
   return action.evaluate((button, expected) => {
     const article = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
@@ -101,7 +101,7 @@ async function inspectTargetCard(page, target) {
 
 async function clickAndVerify(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
-  const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
+  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.scrollIntoViewIfNeeded();
   await action.screenshot({ path: path.join(OUT, `bank_${target.side}_match_action.png`) });
   await action.click();
@@ -184,6 +184,7 @@ async function main() {
       operationId: button.getAttribute("data-operation-id") || "",
       matchId: button.getAttribute("data-match-id") || ""
     }));
+    await page.waitForTimeout(1500);
     const differentMatch = await clickAndVerify(page, differentTarget);
 
     markStage("refresh");
