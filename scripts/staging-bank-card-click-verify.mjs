@@ -61,7 +61,7 @@ async function installEventBridge(page) {
 }
 
 async function inspectTargetCard(page, target) {
-  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`).first();
+  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   await card.waitFor({ state: "visible", timeout: 30000 });
   const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
   await action.waitFor({ state: "visible", timeout: 30000 });
@@ -79,7 +79,7 @@ async function inspectTargetCard(page, target) {
 }
 
 async function clickAndVerify(page, target) {
-  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`).first();
+  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
   await action.scrollIntoViewIfNeeded();
   await action.screenshot({ path: path.join(OUT, `bank_${target.side}_match_action.png`) });
