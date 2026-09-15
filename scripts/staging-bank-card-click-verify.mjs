@@ -129,7 +129,14 @@ async function main() {
     await openBankTab(page);
 
     markStage("wait-bank-card");
-    await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
+    try {
+      await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
+    } catch {
+      markStage("retry-login");
+      await login(page);
+      await openBankTab(page);
+      await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
+    }
 
     markStage("inspect-both-cards");
     await installEventBridge(page);
