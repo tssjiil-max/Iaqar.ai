@@ -706,17 +706,17 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
       render();
       return;
     }
-    const item = data.find((entry) =>
-      entry.id === requested.id
-      || (requested.matchId && entry.matchId === requested.matchId)
-      || entry.matchId === requested.id
-      || (detail.matchGroupId && (entry.matchGroupId === detail.matchGroupId || entry.id === detail.matchGroupId))
-      || (detail.opportunityId && (
-        entry.opportunityId === detail.opportunityId
-        || entry.requestId === detail.opportunityId
-        || entry.offerId === detail.opportunityId
-      ))
-    );
+    const item = data.find((entry) => entry.id === requested.id)
+      || data.find((entry) =>
+        (requested.matchId && entry.matchId === requested.matchId)
+        || entry.matchId === requested.id
+        || (detail.matchGroupId && (entry.matchGroupId === detail.matchGroupId || entry.id === detail.matchGroupId))
+        || (detail.opportunityId && (
+          entry.opportunityId === detail.opportunityId
+          || entry.requestId === detail.opportunityId
+          || entry.offerId === detail.opportunityId
+        ))
+      );
     if (!item) {
       state.pendingOpen = requested;
       render();
