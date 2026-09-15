@@ -15,6 +15,12 @@ const PHONE = process.env.STAGING_PHONE || "0511123456";
 const PASSWORD = process.env.STAGING_PASSWORD || "StagingLogo9";
 const OUT = process.env.SCREENSHOT_DIR || "/opt/cursor/artifacts";
 const COMMIT_SHA = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+let currentStage = "startup";
+
+function markStage(stage) {
+  currentStage = stage;
+  console.log(`BANK_CARD_CLICK_VERIFY_STAGE ${stage}`);
+}
 
 async function login(page) {
   await page.goto(STAGING, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -39,16 +45,21 @@ async function openBankTab(page) {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
+  markStage("launch-browser");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: "ar-SA" });
   const page = await context.newPage();
 
   try {
+    markStage("login");
     await login(page);
+    markStage("open-bank-tab");
     await openBankTab(page);
 
+    markStage("wait-bank-card");
     await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
 
+    markStage("install-event-bridge");
     await page.evaluate(() => {
       window.__qaBankOperationalBridge = { openRequests: [], opened: [] };
       window.addEventListener("iaqar:open-operation", (event) => {
@@ -59,6 +70,7 @@ async function main() {
       });
     });
 
+    markStage("find-linked-action");
     const linkedActions = page.locator(
       '[data-opportunity-primary-action][data-operation-id]:not([data-operation-id=""]), '
       + '[data-opportunity-primary-action][data-match-id]:not([data-match-id=""])'
@@ -91,6 +103,7 @@ async function main() {
       };
     });
 
+    markStage("resolve-expected-operation");
     const expected = await page.evaluate(({ operationId, matchId }) => {
       const items = Array.isArray(window.IAQAR?.operationsItems) ? window.IAQAR.operationsItems : [];
       const item = items.find((entry) =>
@@ -105,13 +118,17 @@ async function main() {
       } : null;
     }, target);
 
+    markStage("click-linked-action");
     await action.scrollIntoViewIfNeeded();
     await action.screenshot({ path: path.join(OUT, "bank_operational_action_before_click.png") });
     await action.click();
 
+    markStage("wait-open-operation-event");
     await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
+    markStage("wait-operation-opened-event");
     await page.waitForFunction(() => window.__qaBankOperationalBridge?.opened?.length > 0, null, { timeout: 15000 });
 
+    markStage("validate-result");
     const events = await page.evaluate(() => ({
       openRequests: window.__qaBankOperationalBridge?.openRequests || [],
       opened: window.__qaBankOperationalBridge?.opened || []
@@ -162,7 +179,19 @@ async function main() {
       throw new Error(`Operations Center did not become visible: ${JSON.stringify(report)}`);
     }
 
+    markStage("verified");
     console.log("BANK OPERATIONAL ACTION VERIFIED");
+  } catch (err) {
+    const failure = {
+      ok: false,
+      commitSha: COMMIT_SHA,
+      stage: currentStage,
+      error: String(err?.message || err),
+      stack: err?.stack || null
+    };
+    writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(failure, null, 2));
+    console.error("BANK_CARD_CLICK_VERIFY_FAILED", JSON.stringify(failure, null, 2));
+    throw err;
   } finally {
     await browser.close();
   }
