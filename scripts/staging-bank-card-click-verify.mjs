@@ -129,7 +129,7 @@ async function clickAndVerify(page, target) {
     && events.workflowVisible
     && !events.opportunityDetailsVisible;
   if (!ok) throw new Error(`Wrong Match opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
-  await page.locator("#appNavBack:visible").click();
+  await page.goBack();
   await overlay.waitFor({ state: "hidden", timeout: 10000 });
   await page.waitForFunction(() => document.querySelector('[data-bank-action-filter="matches"]')?.getAttribute("aria-pressed") === "true", null, { timeout: 10000 });
   await page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first().waitFor({ state: "visible", timeout: 10000 });
