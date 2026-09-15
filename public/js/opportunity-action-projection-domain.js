@@ -125,9 +125,226 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
     const hours = (appointmentMs - nowMs) / 3600000;
     const rank = hours <= 6 ? 2 : (dayDelta === 0 ? 3 : (dayDelta === 1 ? 4 : 4));
     const reason = hours <= 6
-      ? `Ù…ÙˆØ¯+È6*6.v+È	ÓX]›X^
-KX]˜ÙZ[
-Ý\œÊJ_H	ÓX]˜ÙZ[
-Ý\œÊHOOHHÈ¶,ö)ö.v*Hˆˆ¶,ö)ö.v)ö*ˆŸXˆˆ
-^Q[HOOHÈ¶avb6.v+È6)öa6b¶b6aHˆˆ
-^Q[HOOHHÈ¶avb6.v+È6)öa6.¶+Èˆˆ¶avb6+Êò˜]‹Š}˜­˜mŠ’"’“°¢&WGW&â°¢6FVv÷'“¢õõ%ETä•E•ô5D”ôåôd”ÅDU"äô”åDÔTåE2À¢&æ²À¢FöæS¢&ö–çFÖVçB"À¢&FvS¢-˜]˜‹Šò˜]‹Š}˜­˜mŠ’"À¢&V6öâÀ¢FWF–Ã¢ö–çFÖVçD6÷’†ö–çFÖVçDBÂæ÷r’À¢&–Ö'”7F–öã¢-‹‹‹bŠ}˜M˜]˜Šò¼ˆ°(€€€€€…Ñ¥½¹½‘”è€‰Ù¥•Ý}…ÁÁ½¥¹Ñµ•¹Ðˆ°(€€€€€‘Õ•Ðè…ÁÁ½¥¹Ñµ•¹ÑÐ(€€€ôì(€ô((€¥˜€¡Ù¥•Ý¥¹½µÁ±•Ñ•‘Ð€˜˜€…Ù¥•Ý¥¹=ÕÑ½µ”¤ì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹9M}Q%=8°(€€€€€É…¹¬è€Ä°(€€€€€Ñ½¹”è€‰½Ù•É‘Õ”ˆ°(€€€€€‰…‘”è€‹f+b·b«bŸb°ƒb—b³bÇbŸb„ˆ°(€€€€€É•…Í½¸è€‹b«fb¨ƒbŸffbçbŸf+fb¤ƒf#ffƒb«f?bÏb³fƒbŸffb«f+b³b¤ˆ°(€€€€€‘•Ñ…¥°è€‹bŸb»b«bÄƒfb«f+b³b¤ƒbŸffbçbŸf+fb¤ˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹bÏb³fGfƒfb«f+b³b¤ƒbŸffbçbŸf+fb¤ˆ°(€€€€€…Ñ¥½¹½‘”è€‰É•½É‘}Ù¥•Ý¥¹}É•ÍÕ±Ðˆ°(€€€€€‘Õ•ÐèÙ¥•Ý¥¹½µÁ±•Ñ•‘Ð(€€€ôì(€ô((€¥˜€¡ÑåÁ”€ôôô€‰5Q!}IY%\ˆ€˜˜5Q!}9]}MQL¹¡…Ì¡±¥Ù¥¹MÑ…”¤¤ì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹5Q!L°(€€€€€É…¹¬è€Ô°(€€€€€Ñ½¹”è€‰µ…Ñ ˆ°(€€€€€‰…‘”è€‹b«bßbŸb£fƒb³b¿f+b¼ˆ°(€€€€€É•…Í½¸è€‹f+f#b³b¼ƒb«bßbŸb£fƒffbŸbÏb ƒffbÃbœƒbŸfbßfb ˆ°(€€€€€‘•Ñ…¥°è€ˆˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹fbÇbŸb³bçb¤ƒbŸfb«bßbŸb£fˆ°(€€€€€…Ñ¥½¹½‘”è€‰É•Ù¥•Ý}µ…Ñ ˆ°(€€€€€‘Õ•Ðè½Á•É…Ñ¥½¸¹É•…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð€ˆˆ(€€€ôì(€ô((€½¹ÍÐ™½±±½ÝUÀ€ôÑåÁ”€ôôô€‰=AA=IQU9%Qe}=11=]}U@ˆ(€€€ñðÙ¥•Ý¥¹=ÕÑ½µ”€ôôô€‰=11=]}U@ˆ(€€€ñð€½=11=]}UAñ=11=]U@¼¹Ñ•ÍÐ¡±¥Ù¥¹MÑ…”¤ì(€¥˜€¡™½±±½ÝUÀ¤ì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹=11=]}U@°(€€€€€É…¹¬è€Ø°(€€€€€Ñ½¹”è€‰™½±±½ÝÕÀˆ°(€€€€€‰…‘”è€‹fb«bŸb£bçb¤ƒfbßff#b£b¤ˆ°(€€€€€É•…Í½¸èÑ•áÐ¡½Á•É…Ñ¥½¸¹½½É‘¥¹…Ñ¥½¹	É½­•É1¥¹”ñð½Á•É…Ñ¥½¸¹ÍÕµµ…ÉåQ•áÐ¤ñð€‹fb«bŸb£bçb¤ƒb£bçb¼ƒbŸffbçbŸf+fb¤ˆ°(€€€€€‘•Ñ…¥°è€ˆˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹fb«b´ƒbŸffb«bŸb£bçb¤ˆ°(€€€€€…Ñ¥½¹½‘”è€‰½Á•¹}™½±±½Ý}ÕÀˆ°(€€€€€‘Õ•Ðè½Á•É…Ñ¥½¸¹™½±±½ÝUÁÐñð½Á•É…Ñ¥½¸¹‘Õ•Ðñð½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð€ˆˆ(€€€ôì(€ô((€½¹ÍÐÁ•ÉÍ¥ÍÑ•¹Ñ]…¥Ñ¥¹MÑ…”€ô±¥Ù¥¹MÑ…”€ôôô€‰AI=AIQe}Y%1	1ˆì(€¥˜€¡ÍÑ…ÑÕÌ€ôôô€‰]%Q%9}aQI91}IMA=9Mˆñð€½y]%Q%9}ñ]%Q%9|¼¹Ñ•ÍÐ¡±¥Ù¥¹MÑ…”¤ñðÁ•ÉÍ¥ÍÑ•¹Ñ]…¥Ñ¥¹MÑ…”¤ì(€€€½¹ÍÐÍ¥¹”€ô¥¹ÍÑ…¹Ð¡½Á•É…Ñ¥½¸¹±¥Ù¥¹UÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹É•…Ñ•‘Ð¤ì(€€€½¹ÍÐ¡½ÕÉÌ€ôÍ¥¹”€ü5…Ñ ¹µ…à Ä°5…Ñ ¹™±½½È ¡¹½Ý5Ì€´Í¥¹”¤€¼€ÌØÀÀÀÀÀ¤¤€è€Àì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹9M}Q%=8°(€€€€€É…¹¬è€Ü°(€€€€€Ñ½¹”è€‰Ý…¥Ñ¥¹œˆ°(€€€€€‰…‘”è€‹b£bŸfb«bãbŸbÄƒbÇb¼ˆ°(€€€€€É•…Í½¸è¡½ÕÉÌ€üƒb£bŸfb«bãbŸbÄƒbÇb¼ƒffbÀ€‘í¡½ÕÉÍôƒbÏbŸbçb¥€€è€‹b£bŸfb«bãbŸbÄƒbÇb¼ˆ°(€€€€€‘•Ñ…¥°è€ˆˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹bçbÇbØƒbŸfb·bŸfb¤ˆ°(€€€€€…Ñ¥½¹½‘”è€‰Ù¥•Ý}Ý…¥Ñ¥¹œˆ°(€€€€€‘Õ•Ðè½Á•É…Ñ¥½¸¹±¥Ù¥¹UÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð€ˆˆ(€€€ôì(€ô((€¥˜€¡ÑåÁ”€ôôô€‰5Q!}IY%\ˆ€˜˜€½9=Q%Q%=9ñ==I%9Q%=9ñ1%9Q}%9QIMQñ=]9I}IA1%¼¹Ñ•ÍÐ¡±¥Ù¥¹MÑ…”¤¤ì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹10°(€€€€€É…¹¬è€à°(€€€€€Ñ½¹”è€‰Ý…¥Ñ¥¹œˆ°(€€€€€‰…‘”è€‹b«fbŸf#bØƒb³bŸbÇf4ˆ°(€€€€€É•…Í½¸è€‹b«fƒb—bÇbÏbŸfƒbŸffbßbŸb£fb¤ƒffbßbÇff+fˆ°(€€€€€‘•Ñ…¥°è€ˆˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹fb«bŸb£bçb¤ƒbŸfb«fbŸf#bØˆ°(€€€€€…Ñ¥½¹½‘”è€‰½Á•¹}¹•½Ñ¥…Ñ¥½¸ˆ°(€€€€€‘Õ•Ðè½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹É•…Ñ•‘Ðñð€ˆˆ(€€€ôì(€ô((€€¼¼¸…Ñ¥Ù”Á•ÉÍ¥ÍÑ•5Q!}IY%\¥ÌÑ¡”Ý½É¬ÁÉ½©•Ñ¥½¸™½È½¹”É•…°5…Ñ ¸(€€¼¼9•Ù•È‘É½ÀÑ¡…Ð±¥¹¬µ•É•±ä‰•…ÕÍ”¥ÑÌ±¥Ù¥¹œÍÑ…”¡…Ì¹¼ÍÁ•¥…±¥é•…É(€€¼¼½Áäå•Ðì‘½¥¹œÍ¼µ…­•ÌÑ¡”Í…µ”µ…Ñ ‘¥Í…ÁÁ•…È™É½´Ñ¡”	…¹¬½™¥±Ñ•ÈÝ¡¥±”(€€¼¼Ñ¡”5…Ñ …¹=Á•É…Ñ¥½¸ÍÑ¥±°•á¥ÍÐ¸-••ÀÑ¡”•á…Ðµ…Ñ¡%½½Á•É…Ñ¥½¹%…¹(€€¼¼±•ÐÑ¡”=Á•É…Ñ¥½¹ÌÝ½É­™±½ÜÉ•¹‘•ÈÑ¡”…ÕÑ¡½É¥Ñ…Ñ¥Ù”ÕÉÉ•¹ÐÍÑ…”¸(€¥˜€¡ÑåÁ”€ôôô€‰5Q!}IY%\ˆ¤ì(€€€É•ÑÕÉ¸ì(€€€€€…Ñ•½Éäè=AA=IQU9%Qe}Q%=9}%1QH¹5Q!L°(€€€€€É…¹¬è€à°(€€€€€Ñ½¹”è€‰Ý…¥Ñ¥¹œˆ°(€€€€€‰…‘”è€‹fbßbŸb£fb¤ƒfbŸb›fb¤ˆ°(€€€€€É•…Í½¸èÑ•áÐ¡½Á•É…Ñ¥½¸¹½½É‘¥¹…Ñ¥½¹	É½­•É1¥¹”ñð½Á•É…Ñ¥½¸¹ÍÕµµ…ÉåQ•áÐ¤ñð€‹bŸffbßbŸb£fb¤ƒfbœƒbËbŸfb¨ƒb«b·b«bŸb°ƒfb«bŸb£bçb¤ˆ°(€€€€€‘•Ñ…¥°è€ˆˆ°(€€€€€ÁÉ¥µ…ÉåÑ¥½¸è€‹bçbÇbØƒb·bŸfb¤ƒbŸffbßbŸb£fb¤ˆ°(€€€€€…Ñ¥½¹½‘”è€‰É•Ù¥•Ý}µ…Ñ ˆ°(€€€€€‘Õ•Ðè½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹É•…Ñ•‘Ðñð€ˆˆ(€€€ôì(€ô((€É•ÑÕÉ¸¹Õ±°ì)ô()™Õ¹Ñ¥½¸½Á•É…Ñ¥½¹¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÌ¡½Á•É…Ñ¥½¸€ôíô°…Ñ¥½¸€ô¹Õ±°¤ì(€½¹ÍÐµ•µ‰•ÉÍ¡¥ÁÌ€ô¹•ÜM•Ð ¤ì(€¥˜€ …¥ÍÑ¥Ù•=ÁÁ½ÉÑÕ¹¥Ñå=Á•É…Ñ¥½¸¡½Á•É…Ñ¥½¸¤¤É•ÑÕÉ¸µ•µ‰•ÉÍ¡¥ÁÌì((€¥˜€¡…Ñ¥½¸ü¹…Ñ•½Éä€˜˜…Ñ¥½¸¹…Ñ•½Éä€„ôô=AA=IQU9%Qe}Q%=9}%1QH¹10¤ì(€€€µ•µ‰•ÉÍ¡¥ÁÌ¹…‘¡…Ñ¥½¸¹…Ñ•½Éä¤ì(€ô((€½¹ÍÐÑåÁ”€ôÕÁÁ•È¡½Á•É…Ñ¥½¸¹½Á•É…Ñ¥½¹QåÁ”ñð½Á•É…Ñ¥½¸¹ÑåÁ”¤ì(€½¹ÍÐ±¥Ù¥¹MÑ…”€ôÕÁÁ•È¡½Á•É…Ñ¥½¸¹±¥Ù¥¹MÑ…”ñð½Á•É…Ñ¥½¸¹µ•Ñ…‘…Ñ„ü¹±¥Ù¥¹MÑ…”¤ì(€½¹ÍÐÙ¥•Ý¥¹=ÕÑ½µ”€ôÕÁÁ•È¡½Á•É…Ñ¥½¸¹Ù¥•Ý¥¹=ÕÑ½µ”ñð½Á•É…Ñ¥½¸¹µ•Ñ…‘…Ñ„ü¹Ù¥•Ý¥¹=ÕÑ½µ”¤ì((€¥˜€¡ÑåÁ”€ôôô€‰5Q!}IY%\ˆ¤µ•µ‰•ÉÍ¡¥ÁÌ¹…‘¡=AA=IQU9%Qe}Q%=9}%1QH¹5Q!L¤ì((€¥˜€ (€€€ÑåÁ”€ôôô€‰=AA=IQU9%Qe}=11=]}U@ˆ(€€€ñðÙ¥•Ý¥¹=ÕÑ½µ”€ôôô€‰=11=]}U@ˆ(€€€ñð€½=11=]}UAñ=11=]U@¼¹Ñ•ÍÐ¡±¥Ù¥¹MÑ…”¤(€€¤ì(€€€µ•µ‰•ÉÍ¡¥ÁÌ¹…‘¡=AA=IQU9%Qe}Q%=9}%1QH¹=11=]}U@¤ì(€ô((€É•ÑÕÉ¸µ•µ‰•ÉÍ¡¥ÁÌì)ô()•áÁ½ÉÐ™Õ¹Ñ¥½¸‰Õ¥±‘=ÁÁ½ÉÑÕ¹¥ÑåÑ¥½¹%¹‘•à¡½Á•É…Ñ¥½¹Ì€ômt°ì½™™¥•%€ô€ˆˆ°¹½Ü€ô¹•Ü…Ñ” ¤ô€ôíô¤ì(€½¹ÍÐ•áÁ•Ñ•‘=™™¥•%€ôÑ•áÐ¡½™™¥•%¤ì(€½¹ÍÐ‘•‘ÕÁ•€ô¹•Ü5…À ¤ì(€™½È€¡½¹ÍÐ½Á•É…Ñ¥½¸½˜½Á•É…Ñ¥½¹Ìñðmt¤ì(€€€¥˜€ …¥ÍÑ¥Ù•=ÁÁ½ÉÑÕ¹¥Ñå=Á•É…Ñ¥½¸¡½Á•É…Ñ¥½¸¤¤½¹Ñ¥¹Õ”ì(€€€¥˜€¡•áÁ•Ñ•‘=™™¥•%€˜˜Ñ•áÐ¡½Á•É…Ñ¥½¸¹½™™¥•%¤€„ôô•áÁ•Ñ•‘=™™¥•%¤½¹Ñ¥¹Õ”ì(€€€½¹ÍÐ½ÁÁ½ÉÑÕ¹¥Ñå%‘Ì€ô½Á•É…Ñ¥½¹=ÁÁ½ÉÑÕ¹¥Ñå%‘Ì¡½Á•É…Ñ¥½¸¤ì(€€€¥˜€ …½ÁÁ½ÉÑÕ¹¥Ñå%‘Ì¹±•¹Ñ ¤½¹Ñ¥¹Õ”ì(€€€½¹ÍÐµ…Ñ¡%€ôÑ•áÐ¡½Á•É…Ñ¥½¸¹µ…Ñ¡%¤ì(€€€½¹ÍÐÑåÁ”€ôÕÁÁ•È¡½Á•É…Ñ¥½¸¹½Á•É…Ñ¥½¹QåÁ”ñð½Á•É…Ñ¥½¸¹ÑåÁ”¤ì(€€€™½È€¡½¹ÍÐ½ÁÁ½ÉÑÕ¹¥Ñå%½˜½ÁÁ½ÉÑÕ¹¥Ñå%‘Ì¤ì(€€€€€½¹ÍÐ‘•‘ÕÁ-•ä€ô€‘í•áÁ•Ñ•‘=™™¥•%‘õð‘í½ÁÁ½ÉÑÕ¹¥Ñå%‘õð‘íÑåÁ•õð‘íµ…Ñ¡%‘õ€ì(€€€€€½¹ÍÐ•á¥ÍÑ¥¹œ€ô‘•‘ÕÁ•¹•Ð¡‘•‘ÕÁ-•ä¤ì(€€€€€½¹ÍÐ•á¥ÍÑ¥¹=Á•É…Ñ¥½¸€ô•á¥ÍÑ¥¹œü¹½Á•É…Ñ¥½¸ì(€€€€€¥˜€ …•á¥ÍÑ¥¹=Á•É…Ñ¥½¸ñð¥¹ÍÑ…¹Ð¡½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð½Á•É…Ñ¥½¸¹É•…Ñ•‘Ð¤€ø¥¹ÍÑ…¹Ð¡•á¥ÍÑ¥¹=Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ðñð•á¥ÍÑ¥¹=Á•É…Ñ¥½¸¹É•…Ñ•‘Ð¤¤ì(€€€€€€€‘•‘ÕÁ•¹Í•Ð¡‘•‘ÕÁ-•ä°ì½Á•É…Ñ¥½¸°½ÁÁ½ÉÑÕ¹¥Ñå%ô¤ì(€€€€€ô(€€€ô(€ô((€½¹ÍÐ‰å=ÁÁ½ÉÑÕ¹¥Ñä€ô¹•Ü5…À ¤ì(€½¹ÍÐ™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÍ	å=ÁÁ½ÉÑÕ¹¥Ñä€ô¹•Ü5…À ¤ì(€½¹ÍÐµ…Ñ¡½Õ¹ÑÌ€ô¹•Ü5…À ¤ì(€™½È€¡½¹ÍÐì½Á•É…Ñ¥½¸°½ÁÁ½ÉÑÕ¹¥Ñå%ô½˜‘•‘ÕÁ•¹Ù…±Õ•Ì ¤¤ì(€€€½¹ÍÐ…Ñ¥½¸€ôÁÉ½©•Ñ=ÁÁ½ÉÑÕ¹¥ÑåÑ¥½¸¡½Á•É…Ñ¥½¸°¹½Ü¤ì(€€€½¹ÍÐµ•µ‰•ÉÍ¡¥ÁÌ€ô½Á•É…Ñ¥½¹¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÌ¡½Á•É…Ñ¥½¸°…Ñ¥½¸¤ì(€€€¥˜€¡µ•µ‰•ÉÍ¡¥ÁÌ¹Í¥é”¤ì(€€€€€½¹ÍÐ½µ‰¥¹•€ô™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÍ	å=ÁÁ½ÉÑÕ¹¥Ñä¹•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%¤ñð¹•ÜM•Ð ¤ì(€€€€€™½È€¡½¹ÍÐµ•µ‰•ÉÍ¡¥À½˜µ•µ‰•ÉÍ¡¥ÁÌ¤½µ‰¥¹•¹…‘¡µ•µ‰•ÉÍ¡¥À¤ì(€€€€€™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÍ	å=ÁÁ½ÉÑÕ¹¥Ñä¹Í•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%°½µ‰¥¹•¤ì(€€€ô((€€€½¹ÍÐÑåÁ”€ôÕÁÁ•È¡½Á•É…Ñ¥½¸¹½Á•É…Ñ¥½¹QåÁ”ñð½Á•É…Ñ¥½¸¹ÑåÁ”¤ì(€€€¥˜€¡ÑåÁ”€ôôô€‰5Q!}IY%\ˆ¤ì(€€€€€µ…Ñ¡½Õ¹ÑÌ¹Í•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%°€¡µ…Ñ¡½Õ¹ÑÌ¹•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%¤ñð€À¤€¬€Ä¤ì(€€€ô((€€€¥˜€ ……Ñ¥½¸¤½¹Ñ¥¹Õ”ì(€€€½¹ÍÐ…¹‘¥‘…Ñ”€ôì€¸¸¹…Ñ¥½¸°½Á•É…Ñ¥½¸°½Á•É…Ñ¥½¹%èÑ•áÐ¡½Á•É…Ñ¥½¸¹¥ñð½Á•É…Ñ¥½¸¹É•½É‘%¤°µ…Ñ¡%èÑ•áÐ¡½Á•É…Ñ¥½¸¹µ…Ñ¡%¤ôì(€€€½¹ÍÐÕÉÉ•¹Ð€ô‰å=ÁÁ½ÉÑÕ¹¥Ñä¹•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%¤ì(€€€½¹ÍÐµ…Ñ¡Q¥”€ôÕÉÉ•¹Ð(€€€€€€˜˜…¹‘¥‘…Ñ”¹É…¹¬€ôôôÕÉÉ•¹Ð¹É…¹¬(€€€€€€˜˜…¹‘¥‘…Ñ”¹…Ñ¥½¹½‘”€ôôô€‰É•Ù¥•Ý}µ…Ñ ˆ(€€€€€€˜˜ÕÉÉ•¹Ð¹…Ñ¥½¹½‘”€ôôô€‰É•Ù¥•Ý}µ…Ñ ˆì(€€€½¹ÍÐÝ¥¹ÍQ¥”€ôÕÉÉ•¹Ð€˜˜…¹‘¥‘…Ñ”¹É…¹¬€ôôôÕÉÉ•¹Ð¹É…¹¬€˜˜€¡µ…Ñ¡Q¥”(€€€€€€ü¥¹ÍÑ…¹Ð¡…¹‘¥‘…Ñ”¹‘Õ•Ð¤€ø¥¹ÍÑ…¹Ð¡ÕÉÉ•¹Ð¹‘Õ•Ð¤(€€€€€€è¥¹ÍÑ…¹Ð¡…¹‘¥‘…Ñ”¹‘Õ•Ð¤€ð¥¹ÍÑ…¹Ð¡ÕÉÉ•¹Ð¹‘Õ•Ð¤¤ì(€€€¥˜€ …ÕÉÉ•¹Ðñð…¹‘¥‘…Ñ”¹É…¹¬€ðÕÉÉ•¹Ð¹É…¹¬ñðÝ¥¹ÍQ¥”¤ì(€€€€€‰å=ÁÁ½ÉÑÕ¹¥Ñä¹Í•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%°…¹‘¥‘…Ñ”¤ì(€€€ô(€ô((€™½È€¡½¹ÍÐm½ÁÁ½ÉÑÕ¹¥Ñå%°…Ñ¥½¹t½˜‰å=ÁÁ½ÉÑÕ¹¥Ñä¹•¹ÑÉ¥•Ì ¤¤ì(€€€½¹ÍÐµ•µ‰•ÉÍ¡¥ÁÌ€ôl¸¸¸¡™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÍ	å=ÁÁ½ÉÑÕ¹¥Ñä¹•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%¤ñð¹•ÜM•Ð ¤¥tì(€€€‰å=ÁÁ½ÉÑÕ¹¥Ñä¹Í•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%°ì(€€€€€€¸¸¹…Ñ¥½¸°(€€€€€™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÌèµ•µ‰•ÉÍ¡¥ÁÌ°(€€€€€µ…Ñ¡½Õ¹Ðèµ…Ñ¡½Õ¹ÑÌ¹•Ð¡½ÁÁ½ÉÑÕ¹¥Ñå%¤ñð…Ñ¥½¸¹µ…Ñ¡½Õ¹Ðñð€À(€€€ô¤ì(€ô(€É•ÑÕÉ¸‰å=ÁÁ½ÉÑÕ¹¥Ñäì)ô()•áÁ½ÉÐ™Õ¹Ñ¥½¸½ÁÁ½ÉÑÕ¹¥Ñå5…Ñ¡•ÍÑ¥½¹¥±Ñ•È¡…Ñ¥½¸°™¥±Ñ•È€ô=AA=IQU9%Qe}Q%=9}%1QH¹10¤ì(€¥˜€¡™¥±Ñ•È€ôôô=AA=IQU9%Qe}Q%=9}%1QH¹10¤É•ÑÕÉ¸ÑÉÕ”ì(€¥˜€ ……Ñ¥½¸¤É•ÑÕÉ¸™…±Í”ì(€½¹ÍÐµ•µ‰•ÉÍ¡¥ÁÌ€ôÉÉ…ä¹¥ÍÉÉ…ä¡…Ñ¥½¸¹™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÌ¤€ü…Ñ¥½¸¹™¥±Ñ•É5•µ‰•ÉÍ¡¥ÁÌ€èmtì(€¥˜€¡µ•µ‰•ÉÍ¡¥ÁÌ¹¥¹±Õ‘•Ì¡™¥±Ñ•È¤¤É•ÑÕÉ¸ÑÉÕ”ì(€¥˜€¡™¥±Ñ•È€ôôô=AA=IQU9%Qe}Q%=9}%1QH¹9M}Q%=8¤É•ÑÕÉ¸…Ñ¥½¸¹É…¹¬€ôôô€Äñð…Ñ¥½¸¹…Ñ•½Éä€ôôô=AA=IQU9%Qe}Q%=9}%1QH¹9M}Q%=8ì(€É•ÑÕÉ¸…Ñ¥½¸¹…Ñ•½Éä€ôôô™¥±Ñ•Èì)ô()•áÁ½ÉÐ™Õ¹Ñ¥½¸½µÁ…É•=ÁÁ½ÉÑÕ¹¥ÑåAÉ¥½É¥Ñä¡±•™Ð€ôíô°É¥¡Ð€ôíô°…Ñ¥½¹½È€ô€ ¤€ôø¹Õ±°¤ì(€½¹ÍÐ±•™ÑÑ¥½¸€ô…Ñ¥½¹½È¡±•™Ð¤ì(€½¹ÍÐÉ¥¡ÑÑ¥½¸€ô…Ñ¥½¹½È¡É¥¡Ð¤ì(€½¹ÍÐÉ…¹­•±Ñ„€ô9Õµ‰•È¡±•™ÑÑ¥½¸ü¹É…¹¬ñð€à¤€´9Õµ‰•È¡É¥¡ÑÑ¥½¸ü¹É…¹¬ñð€à¤ì(€¥˜€¡É…¹­•±Ñ„¤É•ÑÕÉ¸É…¹­•±Ñ„ì(€¥˜€ …±•™ÑÑ¥½¸€˜˜€…É¥¡ÑÑ¥½¸¤É•ÑÕÉ¸€Àì(€½¹ÍÐ±•™ÑÕ”€ô¥¹ÍÑ…¹Ð¡±•™ÑÑ¥½¸ü¹‘Õ•Ð¤ì(€½¹ÍÐÉ¥¡ÑÕ”€ô¥¹ÍÑ…¹Ð¡É¥¡ÑÑ¥½¸ü¹‘Õ•Ð¤ì(€¥˜€ …±•™ÑÕ”ñð€…É¥¡ÑÕ”¤É•ÑÕÉ¸€Àì(€É•ÑÕÉ¸±•™ÑÕ”€´É¥¡ÑÕ”ì)ô
+      ? `Ù…ÙˆØ¹Ø¯ Ø¨Ø¹Ø¯ ${Math.max(1, Math.ceil(hours))} ${Math.ceil(hours) === 1 ? "Ø³Ø§Ø¹Ø©" : "Ø³Ø§Ø¹Ø§Øª"}`
+      : (dayDelta === 0 ? "Ù…ÙˆØ¹Ø¯ Ø§Ù„ÙŠÙˆÙ…" : (dayDelta === 1 ? "Ù…ÙˆØ¹Ø¯ Ø§Ù„ØºØ¯" : "Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©"));
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.APPOINTMENTS,
+      rank,
+      tone: "appointment",
+      badge: "Ù…ÙˆØ¹Ø¯ Ù…Ø¹Ø§ÙŠÙ†Ø©",
+      reason,
+      detail: appointmentCopy(appointmentAt, now),
+      primaryAction: "Ø¹Ø±Ø¶ Ø§Ù„Ù…ÙˆØ¹Ø¯",
+      actionCode: "view_appointment",
+      dueAt: appointmentAt
+    };
+  }
+
+  if (viewingCompletedAt && !viewingOutcome) {
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION,
+      rank: 1,
+      tone: "overdue",
+      badge: "ÙŠØ­ØªØ§Ø¬ Ø¥Ø¬Ø±Ø§Ø¡",
+      reason: "ØªÙ…Øª Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø© ÙˆÙ„Ù… ØªÙØ³Ø¬Ù„ Ø§Ù„Ù†ØªÙŠØ¬Ø©",
+      detail: "Ø§Ø®ØªØ± Ù†ØªÙŠØ¬Ø© Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©",
+      primaryAction: "Ø³Ø¬Ù‘Ù„ Ù†ØªÙŠØ¬Ø© Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©",
+      actionCode: "record_viewing_result",
+      dueAt: viewingCompletedAt
+    };
+  }
+
+  if (type === "MATCH_REVIEW" && MATCH_NEW_STAGES.has(livingStage)) {
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.MATCHES,
+      rank: 5,
+      tone: "match",
+      badge: "ØªØ·Ø§Ø¨Ù‚ Ø¬Ø¯ÙŠØ¯",
+      reason: "ÙŠÙˆØ¬Ø¯ ØªØ·Ø§Ø¨Ù‚ Ù…Ù†Ø§Ø³Ø¨ Ù„Ù‡Ø°Ø§ Ø§Ù„Ø·Ù„Ø¨",
+      detail: "",
+      primaryAction: "Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„ØªØ·Ø§Ø¨Ù‚",
+      actionCode: "review_match",
+      dueAt: operation.createdAt || operation.updatedAt || ""
+    };
+  }
+
+  const followUp = type === "OPPORTUNITY_FOLLOW_UP"
+    || viewingOutcome === "FOLLOW_UP"
+    || /FOLLOW_UP|FOLLOWUP/.test(livingStage);
+  if (followUp) {
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.FOLLOW_UP,
+      rank: 6,
+      tone: "followup",
+      badge: "Ù…ØªØ§Ø¨Ø¹Ø© Ù…Ø·Ù„ÙˆØ¨Ø©",
+      reason: text(operation.coordinationBrokerLine || operation.summaryText) || "Ù…ØªØ§Ø¨Ø¹Ø© Ø¨Ø¹Ø¯ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©",
+      detail: "",
+      primaryAction: "ÙØªØ­ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©",
+      actionCode: "open_follow_up",
+      dueAt: operation.followUpAt || operation.dueAt || operation.updatedAt || ""
+    };
+  }
+
+  const persistentWaitingStage = livingStage === "PROPERTY_AVAILABLE";
+  if (status === "WAITING_EXTERNAL_RESPONSE" || /^WAITING_|AWAITING_/.test(livingStage) || persistentWaitingStage) {
+    const since = instant(operation.livingUpdatedAt || operation.updatedAt || operation.createdAt);
+    const hours = since ? Math.max(1, Math.floor((nowMs - since) / 3600000)) : 0;
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION,
+      rank: 7,
+      tone: "waiting",
+      badge: "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø±Ø¯",
+      reason: hours ? `Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø±Ø¯ Ù…Ù†Ø° ${hours} Ø³Ø§Ø¹Ø©` : "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø±Ø¯",
+      detail: "",
+      primaryAction: "Ø¹Ø±Ø¶ Ø§Ù„Ø­Ø§Ù„Ø©",
+      actionCode: "view_waiting",
+      dueAt: operation.livingUpdatedAt || operation.updatedAt || ""
+    };
+  }
+
+  if (type === "MATCH_REVIEW" && /NEGOTIATION|COORDINATION|CLIENT_INTERESTED|OWNER_REPLIED/.test(livingStage)) {
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.ALL,
+      rank: 8,
+      tone: "waiting",
+      badge: "ØªÙØ§ÙˆØ¶ Ø¬Ø§Ø±Ù",
+      reason: "ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ù„Ù„Ø·Ø±ÙÙŠÙ†",
+      detail: "",
+      primaryAction: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙØ§ÙˆØ¶",
+      actionCode: "open_negotiation",
+      dueAt: operation.updatedAt || operation.createdAt || ""
+    };
+  }
+
+  // An active persisted MATCH_REVIEW is the work projection for one real Match.
+  // Never drop that link merely because its living stage has no specialized card
+  // copy yet; doing so makes the same match disappear from the Bank/filter while
+  // the Match and Operation still exist. Keep the exact matchId/operationId and
+  // let the Operations workflow render the authoritative current stage.
+  if (type === "MATCH_REVIEW") {
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.MATCHES,
+      rank: 8,
+      tone: "waiting",
+      badge: "Ù…Ø·Ø§Ø¨Ù‚Ø© Ù‚Ø§Ø¦Ù…Ø©",
+      reason: text(operation.coordinationBrokerLine || operation.summaryText) || "Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø© Ù…Ø§ Ø²Ø§Ù„Øª ØªØ­ØªØ§Ø¬ Ù…ØªØ§Ø¨Ø¹Ø©",
+      detail: "",
+      primaryAction: "Ø¹Ø±Ø¶ Ø­Ø§Ù„Ø© Ø§Ù„Ù…Ø·Ø§Ø¨Ù‚Ø©",
+      actionCode: "review_match",
+      dueAt: operation.updatedAt || operation.createdAt || ""
+    };
+  }
+
+  return null;
+}
+
+function operationFilterMemberships(operation = {}, action = null) {
+  const memberships = new Set();
+  if (!isActiveOpportunityOperation(operation)) return memberships;
+
+  if (action?.category && action.category !== OPPORTUNITY_ACTION_FILTER.ALL) {
+    memberships.add(action.category);
+  }
+
+  const type = upper(operation.operationType || operation.type);
+  const livingStage = upper(operation.livingStage || operation.metadata?.livingStage);
+  const viewingOutcome = upper(operation.viewingOutcome || operation.metadata?.viewingOutcome);
+
+  // A persisted active MATCH_REVIEW is always a real match membership even when
+  // another projected action (appointment / overdue / negotiation) has higher priority.
+  if (type === "MATCH_REVIEW") memberships.add(OPPORTUNITY_ACTION_FILTER.MATCHES);
+
+  if (
+    type === "OPPORTUNITY_FOLLOW_UP"
+    || viewingOutcome === "FOLLOW_UP"
+    || /FOLLOW_UP|FOLLOWUP/.test(livingStage)
+  ) {
+    memberships.add(OPPORTUNITY_ACTION_FILTER.FOLLOW_UP);
+  }
+
+  return memberships;
+}
+
+export function buildOpportunityActionIndex(operations = [], { officeId = "", now = new Date() } = {}) {
+  const expectedOfficeId = text(officeId);
+  const deduped = new Map();
+  for (const operation of operations || []) {
+    if (!isActiveOpportunityOperation(operation)) continue;
+    if (expectedOfficeId && text(operation.officeId) !== expectedOfficeId) continue;
+    const opportunityIds = operationOpportunityIds(operation);
+    if (!opportunityIds.length) continue;
+    const matchId = text(operation.matchId);
+    const type = upper(operation.operationType || operation.type);
+    for (const opportunityId of opportunityIds) {
+      const dedupKey = `${expectedOfficeId}|${opportunityId}|${type}|${matchId}`;
+      const existing = deduped.get(dedupKey);
+      const existingOperation = existing?.operation;
+      if (!existingOperation || instant(operation.updatedAt || operation.createdAt) > instant(existingOperation.updatedAt || existingOperation.createdAt)) {
+        deduped.set(dedupKey, { operation, opportunityId });
+      }
+    }
+  }
+
+  const byOpportunity = new Map();
+  const filterMembershipsByOpportunity = new Map();
+  const matchCounts = new Map();
+  for (const { operation, opportunityId } of deduped.values()) {
+    const action = projectOpportunityAction(operation, now);
+    const memberships = operationFilterMemberships(operation, action);
+    if (memberships.size) {
+      const combined = filterMembershipsByOpportunity.get(opportunityId) || new Set();
+      for (const membership of memberships) combined.add(membership);
+      filterMembershipsByOpportunity.set(opportunityId, combined);
+    }
+
+    const type = upper(operation.operationType || operation.type);
+    if (type === "MATCH_REVIEW") {
+      matchCounts.set(opportunityId, (matchCounts.get(opportunityId) || 0) + 1);
+    }
+
+    if (!action) continue;
+    const candidate = { ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId) };
+    const current = byOpportunity.get(opportunityId);
+    const matchTie = current
+      && candidate.rank === current.rank
+      && candidate.actionCode === "review_match"
+      && current.actionCode === "review_match";
+    const winsTie = current && candidate.rank === current.rank && (matchTie
+      ? instant(candidate.dueAt) > instant(current.dueAt)
+      : instant(candidate.dueAt) < instant(current.dueAt));
+    if (!current || candidate.rank < current.rank || winsTie) {
+      byOpportunity.set(opportunityId, candidate);
+    }
+  }
+
+  for (const [opportunityId, action] of byOpportunity.entries()) {
+    const memberships = [...(filterMembershipsByOpportunity.get(opportunityId) || new Set())];
+    byOpportunity.set(opportunityId, {
+      ...action,
+      filterMemberships: memberships,
+      matchCount: matchCounts.get(opportunityId) || action.matchCount || 0
+    });
+  }
+  return byOpportunity;
+}
+
+export function opportunityMatchesActionFilter(action, filter = OPPORTUNITY_ACTION_FILTER.ALL) {
+  if (filter === OPPORTUNITY_ACTION_FILTER.ALL) return true;
+  if (!action) return false;
+  const memberships = Array.isArray(action.filterMemberships) ? action.filterMemberships : [];
+  if (memberships.includes(filter)) return true;
+  if (filter === OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION) return action.rank === 1 || action.category === OPPORTUNITY_ACTION_FILTER.NEEDS_ACTION;
+  return action.category === filter;
+}
+
+export function compareOpportunityPriority(left = {}, right = {}, actionFor = () => null) {
+  const leftAction = actionFor(left);
+  const rightAction = actionFor(right);
+  const rankDelta = Number(leftAction?.rank || 8) - Number(rightAction?.rank || 8);
+  if (rankDelta) return rankDelta;
+  if (!leftAction && !rightAction) return 0;
+  const leftDue = instant(leftAction?.dueAt);
+  const rightDue = instant(rightAction?.dueAt);
+  if (!leftDue || !rightDue) return 0;
+  return leftDue - rightDue;
+}
