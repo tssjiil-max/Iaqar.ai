@@ -2,11 +2,13 @@
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+import { formatOpportunityReference } from "../public/js/reference-code-domain.js";
+import { projectOperationToUiItem } from "../public/js/operations-domain.js";
+import { buildOpportunityActionIndex } from "../public/js/opportunity-action-projection-domain.js";
 
 const PROJECT_ID = "iaqar-ai-staging";
 const EXPECTED_OFFICE_ID = "thamer";
-const TARGET_PHONE = "0552019909";
-const TARGET_BUDGET = 123;
+const TARGET_REFERENCES = new Set(["A-4228", "A-4542"]);
 
 const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
 if (!parsed.serviceAccount) {
@@ -35,29 +37,13 @@ function digits(value) {
 function matchIds(data = {}) {
   const metadata = data.metadata || {};
   return {
-    requestId: String(data.clientRequestId || data.requestId || metadata.clientRequestId || metadata.requestId || ""),
-    offerId: String(data.ownerOfferId || data.offerId || metadata.ownerOfferId || metadata.offerId || "")
+    requestId: String(data.requestOpportunityId || data.clientRequestId || data.requestId || metadata.requestOpportunityId || metadata.clientRequestId || metadata.requestId || ""),
+    offerId: String(data.offerOpportunityId || data.ownerOfferId || data.offerId || metadata.offerOpportunityId || metadata.ownerOfferId || metadata.offerId || "")
   };
 }
 
-function opportunityMatchesScreenshot(data = {}) {
-  const phones = [
-    data.contactPhone,
-    data.phone,
-    data.advertiserPhone,
-    data.advertiserPhoneNormalized,
-    data.contactPhoneNormalized,
-    data.contact?.phone,
-    data.advertiser?.phone
-  ];
-  const targetDigits = digits(TARGET_PHONE);
-  const phoneHit = phones.some((value) => {
-    const candidate = digits(value);
-    return candidate && (candidate.endsWith(targetDigits) || targetDigits.endsWith(candidate));
-  });
-  const budgetValues = [data.budget, data.priceMax, data.priceOrBudget, data.maxPrice, data.salePrice, data.price];
-  const budgetHit = budgetValues.some((value) => Number(value) === TARGET_BUDGET);
-  return phoneHit || budgetHit;
+function opportunityMatchesTarget(doc) {
+  return TARGET_REFERENCES.has(formatOpportunityReference(doc.id).replace(/^#/, ""));
 }
 
 function describeOpportunity(doc) {
@@ -65,6 +51,7 @@ function describeOpportunity(doc) {
   const officeRef = doc.ref.parent.parent;
   return {
     id: doc.id,
+    reference: formatOpportunityReference(doc.id).replace(/^#/, ""),
     path: doc.ref.path,
     officeId: officeRef?.id || "",
     officePath: officeRef?.path || "",
@@ -100,6 +87,8 @@ async function inspectOffice(officeRef, targetOpportunityIds) {
       createdAt: iso(match.createdAt),
       updatedAt: iso(match.updatedAt),
       status: String(match.status || ""),
+      active: match.active !== false,
+      score: Number(match.score || match.opportunityScore || 0),
       integrityStatus: String(match.integrityStatus || ""),
       requestId: pair.requestId,
       offerId: pair.offerId,
@@ -108,6 +97,12 @@ async function inspectOffice(officeRef, targetOpportunityIds) {
         operationId: op.id,
         type: String(op.type || op.operationType || ""),
         status: String(op.status || ""),
+        matchId: String(op.matchId || op.metadata?.matchId || ""),
+        opportunityId: String(op.opportunityId || ""),
+        requestOpportunityId: String(op.requestOpportunityId || ""),
+        offerOpportunityId: String(op.offerOpportunityId || ""),
+        clientRequestId: String(op.clientRequestId || op.metadata?.clientRequestId || ""),
+        ownerOfferId: String(op.ownerOfferId || op.metadata?.ownerOfferId || ""),
         assignedBrokerId: String(op.assignedBrokerId || op.brokerId || op.ownerId || ""),
         createdAt: iso(op.createdAt),
         updatedAt: iso(op.updatedAt)
@@ -135,11 +130,30 @@ async function inspectOffice(officeRef, targetOpportunityIds) {
     type: String(op.type || op.operationType || ""),
     status: String(op.status || ""),
     assignedBrokerId: String(op.assignedBrokerId || op.brokerId || op.ownerId || ""),
+    opportunityId: String(op.opportunityId || ""),
+    requestOpportunityId: String(op.requestOpportunityId || ""),
+    offerOpportunityId: String(op.offerOpportunityId || ""),
     requestId: String(op.clientRequestId || op.requestId || op.metadata?.clientRequestId || op.metadata?.requestId || ""),
     offerId: String(op.ownerOfferId || op.offerId || op.metadata?.ownerOfferId || op.metadata?.offerId || ""),
     createdAt: iso(op.createdAt),
     updatedAt: iso(op.updatedAt)
   }));
+
+  const projectedOperations = operations.map((operation) => projectOperationToUiItem(operation));
+  const actionIndex = buildOpportunityActionIndex(projectedOperations, { officeId: officeRef.id });
+  const targetProjection = [...targetOpportunityIds].map((opportunityId) => {
+    const action = actionIndex.get(opportunityId) || null;
+    return {
+      opportunityId,
+      action: action ? {
+        badge: action.badge,
+        actionCode: action.actionCode,
+        matchId: action.matchId,
+        operationId: action.operationId,
+        matchCount: action.matchCount
+      } : null
+    };
+  });
 
   return {
     officeId: officeRef.id,
@@ -151,7 +165,8 @@ async function inspectOffice(officeRef, targetOpportunityIds) {
       matchReviewOperations: operations.filter((op) => String(op.type || op.operationType || "").toUpperCase() === "MATCH_REVIEW").length
     },
     linkedMatches,
-    targetMatchReviewOperations
+    targetMatchReviewOperations,
+    targetProjection
   };
 }
 
@@ -160,7 +175,7 @@ async function main() {
   // the opportunity visible in Staging before any product code is changed.
   const allOpportunitiesSnap = await db.collectionGroup("opportunities").get();
   const allOpportunityDocs = allOpportunitiesSnap.docs;
-  const targetDocs = allOpportunityDocs.filter((doc) => opportunityMatchesScreenshot(doc.data() || {}));
+  const targetDocs = allOpportunityDocs.filter(opportunityMatchesTarget);
   const targetOpportunities = targetDocs.map(describeOpportunity);
 
   const officeCounts = new Map();
