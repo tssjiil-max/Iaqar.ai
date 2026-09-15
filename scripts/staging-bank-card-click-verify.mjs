@@ -44,7 +44,12 @@ async function openBankTab(page) {
   if (await bankTab.count()) {
     await bankTab.click();
   } else {
-    await page.evaluate(() => window.IAQAR?.homeTabs?.switchTo?.("opportunities"));
+    await page.evaluate(() => {
+      if (/^#\/opportunities(?:-v2)?\//.test(String(location.hash || ""))) {
+        history.replaceState(history.state, "", `${location.pathname}${location.search}`);
+      }
+      window.IAQAR?.homeTabs?.switchTo?.("opportunities");
+    });
   }
   await page.waitForTimeout(500);
   const bankSub = page.locator("#oppTabBank:visible, button:visible:has-text('القائمة')").first();
