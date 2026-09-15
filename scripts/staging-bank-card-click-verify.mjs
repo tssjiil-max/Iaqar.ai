@@ -103,8 +103,6 @@ async function inspectTargetCard(page, target) {
 async function clickAndVerify(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
-  await action.scrollIntoViewIfNeeded();
-  await action.screenshot({ path: path.join(OUT, `bank_${target.side}_match_action.png`) });
   await action.click();
   await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
   await page.waitForFunction(() => window.__qaBankOperationalBridge?.workflowActions?.length > 0, null, { timeout: 15000 });
