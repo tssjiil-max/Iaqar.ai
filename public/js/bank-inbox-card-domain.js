@@ -1,6 +1,7 @@
 /**
  * العروض والطلبات inbox card — display projection only.
- * Reads matching readiness and stored match counts; does not run Matching Engine.
+ * Reads matching readiness and canonical Operations projection when provided;
+ * stored match counters remain a legacy fallback outside the Bank controller.
  */
 
 import { evaluateMatchingReadiness, missingFieldLabelsArabic } from "./opportunity-readiness-domain.js";
@@ -62,6 +63,29 @@ function normalizeBankText(value = "") {
 }
 
 function matchContext(record = {}, context = {}) {
+  // The Bank controller always supplies `action`, including explicit null.
+  // In that path an active persisted Operation projection is authoritative for
+  // whether the UI may claim a match. Stored counters can update earlier than
+  // MATCH_REVIEW and previously caused a transient "match found" badge that
+  // disappeared from the Matches filter. Keep counters only as legacy fallback
+  // for callers that do not provide an action projection at all.
+  const actionProjectionProvided = Object.prototype.hasOwnProperty.call(context, "action");
+  if (actionProjectionProvided) {
+    const action = context.action && typeof context.action === "object" ? context.action : null;
+    const memberships = Array.isArray(action?.filterMemberships) ? action.filterMemberships : [];
+    const projectedMatchCount = Number(action?.matchCount || 0);
+    const hasProjectedMatch = Boolean(action) && (
+      projectedMatchCount > 0
+      || Boolean(action.matchId)
+      || memberships.includes("matches")
+    );
+    return {
+      matchCount: hasProjectedMatch ? Math.max(1, projectedMatchCount) : 0,
+      bestMatchScore: 0,
+      bestMatchComputed: Boolean(action),
+      needsReview: hasProjectedMatch && action?.actionCode === "review_match"
+    };
+  }
   return {
     matchCount: Number(context.matchCount ?? record.activeMatchCount ?? record.matchCount ?? 0),
     bestMatchScore: Number(context.bestMatchScore ?? record.bestMatchScore ?? 0),
