@@ -106,6 +106,43 @@ test("live MATCH_REVIEW canonical requestOpportunityId and offerOpportunityId pr
   }
 });
 
+test("canonical counterpartOpportunityId keeps one match linked on both sides through review and negotiation", () => {
+  const linked = {
+    opportunityId: "request-canonical",
+    clientRequestId: "",
+    ownerOfferId: "",
+    requestOpportunityId: "",
+    offerOpportunityId: "",
+    counterpartOpportunityId: "offer-canonical"
+  };
+
+  const reviewIndex = buildOpportunityActionIndex([
+    operation({ ...linked, livingStage: "MATCH_REVIEW" })
+  ], { officeId: OFFICE, now: NOW });
+
+  for (const id of ["request-canonical", "offer-canonical"]) {
+    const action = reviewIndex.get(id);
+    assert.equal(action?.actionCode, "review_match");
+    assert.equal(action?.matchId, "match-1");
+    assert.equal(action?.operationId, "op-1");
+    assert.equal(action?.matchCount, 1);
+    assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  }
+
+  const negotiationIndex = buildOpportunityActionIndex([
+    operation({ ...linked, livingStage: "NEGOTIATION" })
+  ], { officeId: OFFICE, now: NOW });
+
+  for (const id of ["request-canonical", "offer-canonical"]) {
+    const action = negotiationIndex.get(id);
+    assert.equal(action?.actionCode, "open_negotiation");
+    assert.equal(action?.matchId, "match-1");
+    assert.equal(action?.operationId, "op-1");
+    assert.equal(action?.matchCount, 1);
+    assert.equal(opportunityMatchesActionFilter(action, OPPORTUNITY_ACTION_FILTER.MATCHES), true);
+  }
+});
+
 test("new MATCH_REVIEW projects the same match onto both sides when the offer has an older match", () => {
   const index = buildOpportunityActionIndex([
     operation({
