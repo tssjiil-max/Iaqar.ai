@@ -34,6 +34,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     opened: null,
     activeTaskId: null,
     pendingOpen: null,
+    returnTarget: null,
     listScrollTop: 0
   };
 
@@ -514,6 +515,18 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     state.listOrigin = state.viewMode === VIEW_MODES.TODAY_LIST ? "today" : "category";
     state.activeTaskId = item.id;
     const oppId = extractOpportunityId(item);
+    const operationType = String(item.operationType || item.type || "").toUpperCase();
+
+    if (operationType === "MATCH_REVIEW" && item.matchId) {
+      dispatchWorkflowPrimary({
+        ...item,
+        id: item.matchId,
+        recordId: item.matchId,
+        recordType: "match",
+        returnTarget: state.returnTarget
+      });
+      return;
+    }
 
     if (oppId && rootWindow.IAQAR?.renderDailyTaskOpportunity) {
       state.viewMode = VIEW_MODES.OPPORTUNITY_DETAIL;
@@ -699,6 +712,7 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
   rootWindow.addEventListener("iaqar:open-operation", (event) => {
     rootWindow.IAQAR?.homeTabs?.switchTo?.("operations");
     const detail = event.detail || {};
+    state.returnTarget = detail.returnTarget || null;
     const requested = { id: detail.id || null, matchId: detail.matchId || null };
     state.opened = requested.id;
     if (!requested.id && !requested.matchId) {
@@ -731,6 +745,13 @@ export function bootDailyTasksUi(rootDocument = typeof document !== "undefined" 
     state.pendingOpen = null;
     render();
     void openDailyTaskItem(item);
+  });
+
+  rootWindow.addEventListener("iaqar:workflow-overlay-closed", () => {
+    if (state.returnTarget !== "bank_matches") return;
+    state.returnTarget = null;
+    rootWindow.IAQAR?.homeTabs?.switchTo?.("opportunities", "bank");
+    rootDocument.querySelector('[data-bank-action-filter="matches"]')?.click();
   });
 
   rootWindow.addEventListener("iaqar:open-operations-category", (event) => {

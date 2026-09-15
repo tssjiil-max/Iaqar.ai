@@ -42,7 +42,9 @@ test("review and negotiation actions open the exact living task without legacy b
   assert.equal(openedDetail.id, "operation-1");
   assert.equal(openedDetail.matchId, "match-1");
   assert.equal(openedDetail.operationId, "operation-1");
+  assert.equal(openedDetail.returnTarget, "bank_matches");
   assert.equal(window.IAQAR.pendingDailyTaskOpen.id, "operation-1");
   assert.equal(window.IAQAR.pendingDailyTaskOpen.actionCode, "open_negotiation");
+  assert.equal(window.IAQAR.pendingDailyTaskOpen.returnTarget, "bank_matches");
   assert.equal(legacyBubbleHandlerRan, false);
 });

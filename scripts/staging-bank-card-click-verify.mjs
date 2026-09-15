@@ -59,12 +59,12 @@ async function openBankTab(page) {
 
 async function installEventBridge(page) {
   await page.evaluate(() => {
-    window.__qaBankOperationalBridge = { openRequests: [], opened: [] };
+    window.__qaBankOperationalBridge = { openRequests: [], workflowActions: [] };
     window.addEventListener("iaqar:open-operation", (event) => {
       window.__qaBankOperationalBridge.openRequests.push({ ...(event.detail || {}) });
     });
-    window.addEventListener("iaqar:operation-opened", (event) => {
-      window.__qaBankOperationalBridge.opened.push({ ...(event.detail || {}) });
+    window.addEventListener("iaqar:workflow-action", (event) => {
+      window.__qaBankOperationalBridge.workflowActions.push({ ...(event.detail || {}) });
     });
   });
 }
@@ -106,18 +106,34 @@ async function clickAndVerify(page, target) {
   await action.screenshot({ path: path.join(OUT, `bank_${target.side}_match_action.png`) });
   await action.click();
   await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
-  await page.waitForFunction(() => window.__qaBankOperationalBridge?.opened?.length > 0, null, { timeout: 15000 });
+  await page.waitForFunction(() => window.__qaBankOperationalBridge?.workflowActions?.length > 0, null, { timeout: 15000 });
+  const overlay = page.locator("#iaqarWorkflowOverlay:not([hidden])");
+  await overlay.waitFor({ state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const body = document.getElementById("iaqarWorkflowBody");
+    return body && !body.textContent.includes("جارٍ تحميل بيانات العميل والمالك");
+  }, null, { timeout: 15000 });
   const events = await page.evaluate(() => ({
     openRequest: window.__qaBankOperationalBridge?.openRequests?.at(-1) || {},
-    opened: window.__qaBankOperationalBridge?.opened?.at(-1) || {}
+    workflowAction: window.__qaBankOperationalBridge?.workflowActions?.at(-1) || {},
+    opportunityDetailsVisible: Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')),
+    workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])"))
   }));
-  const expectedId = target.operationId || target.matchId;
   const ok = String(events.openRequest.opportunityId || "") === target.opportunityId
-    && String(events.openRequest.matchId || "") === TARGET_MATCH_ID
+    && String(events.openRequest.matchId || "") === target.matchId
     && String(events.openRequest.operationId || "") === target.operationId
-    && String(events.opened.recordId || "") === expectedId;
+    && String(events.openRequest.returnTarget || "") === "bank_matches"
+    && String(events.workflowAction.recordType || "") === "match"
+    && String(events.workflowAction.recordId || "") === target.matchId
+    && String(events.workflowAction.matchId || "") === target.matchId
+    && events.workflowVisible
+    && !events.opportunityDetailsVisible;
   if (!ok) throw new Error(`Wrong Match opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
-  return events;
+  await page.locator("#appNavBack:visible").click();
+  await overlay.waitFor({ state: "hidden", timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('[data-bank-action-filter="matches"]')?.getAttribute("aria-pressed") === "true", null, { timeout: 10000 });
+  await page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first().waitFor({ state: "visible", timeout: 10000 });
+  return { ...events, backReturnedToMatches: true };
 }
 
 async function main() {
@@ -147,7 +163,7 @@ async function main() {
     await installEventBridge(page);
     const beforeRefresh = [];
     const openResults = [];
-    for (const [index, expected] of TARGETS.entries()) {
+    for (const expected of TARGETS) {
       const target = await inspectTargetCard(page, expected);
       if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
         throw new Error(`Match not reflected on ${expected.reference}: ${JSON.stringify(target)}`);
@@ -155,19 +171,26 @@ async function main() {
       beforeRefresh.push(target);
       markStage(`open-${expected.side}-match`);
       openResults.push({ side: expected.side, ...(await clickAndVerify(page, target)) });
-      if (index < TARGETS.length - 1) {
-        markStage("return-to-bank");
-        await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
-        await page.waitForTimeout(5000);
-        await openBankTab(page);
-        await installEventBridge(page);
-      }
+      await installEventBridge(page);
     }
+
+    markStage("open-different-match");
+    const differentAction = page.locator(`[data-opportunity-primary-action="review_match"][data-match-id]:not([data-match-id="${TARGET_MATCH_ID}"]):visible`).first();
+    await differentAction.waitFor({ state: "visible", timeout: 30000 });
+    const differentTarget = await differentAction.evaluate((button) => ({
+      side: "different",
+      reference: "different-match",
+      opportunityId: button.closest("[data-opportunity-id]")?.getAttribute("data-opportunity-id") || "",
+      operationId: button.getAttribute("data-operation-id") || "",
+      matchId: button.getAttribute("data-match-id") || ""
+    }));
+    const differentMatch = await clickAndVerify(page, differentTarget);
 
     markStage("refresh");
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(5000);
     await openBankTab(page);
+    await page.locator('[data-bank-action-filter="matches"]').click();
     const afterRefresh = [];
     for (const expected of TARGETS) {
       const target = await inspectTargetCard(page, expected);
@@ -176,9 +199,11 @@ async function main() {
       }
       afterRefresh.push(target);
     }
+    await installEventBridge(page);
+    const refreshOpen = await clickAndVerify(page, afterRefresh[0]);
 
     await page.screenshot({ path: path.join(OUT, "bank_match_both_cards_after_refresh.png"), fullPage: true });
-    const report = { commitSha: COMMIT_SHA, viewport: { width: 390, height: 900 }, targetMatchId: TARGET_MATCH_ID, beforeRefresh, openResults, afterRefresh };
+    const report = { commitSha: COMMIT_SHA, viewport: { width: 390, height: 900 }, targetMatchId: TARGET_MATCH_ID, beforeRefresh, openResults, differentTarget, differentMatch, afterRefresh, refreshOpen };
     writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
     console.log("BANK_OPERATIONAL_ACTION_REPORT", JSON.stringify(report, null, 2));
 

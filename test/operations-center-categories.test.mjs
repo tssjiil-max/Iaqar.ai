@@ -277,6 +277,61 @@ const readyOpItem = {
   matchingReadiness: "READY_FOR_MATCHING"
 };
 
+test("Bank MATCH_REVIEW opens its exact Match and returns to the Matches filter", async () => {
+  const context = await loadShell({ bootSettingsModule: false });
+  try {
+    const { document, window } = context;
+    let opportunityDetailCalls = 0;
+    let workflowDetail = null;
+    let matchesClicked = false;
+    window.IAQAR.renderDailyTaskOpportunity = async () => {
+      opportunityDetailCalls += 1;
+      return true;
+    };
+    window.addEventListener("iaqar:workflow-action", (event) => {
+      workflowDetail = event.detail;
+    });
+    document.querySelector('[data-bank-action-filter="matches"]').addEventListener("click", () => {
+      matchesClicked = true;
+    });
+    const item = {
+      id: "operation-match-1",
+      recordId: "operation-match-1",
+      recordType: "operation",
+      operationType: "MATCH_REVIEW",
+      opportunityId: "offer-1",
+      matchId: "match-1",
+      clientRequestId: "request-1",
+      ownerOfferId: "offer-1",
+      clientPhone: "0511111111",
+      ownerPhone: "0522222222"
+    };
+    dispatchOpsData(window, [item]);
+    window.dispatchEvent(new window.CustomEvent("iaqar:open-operation", {
+      detail: {
+        id: item.id,
+        operationId: item.id,
+        opportunityId: item.opportunityId,
+        matchId: item.matchId,
+        actionCode: "review_match",
+        returnTarget: "bank_matches"
+      }
+    }));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    assert.equal(opportunityDetailCalls, 0);
+    assert.equal(workflowDetail?.recordType, "match");
+    assert.equal(workflowDetail?.recordId, "match-1");
+    assert.equal(workflowDetail?.matchId, "match-1");
+
+    window.dispatchEvent(new window.CustomEvent("iaqar:workflow-overlay-closed"));
+    assert.equal(window.IAQAR.homeTabs.getState().main, "opportunities");
+    assert.equal(matchesClicked, true);
+  } finally {
+    context.close();
+  }
+});
+
 test("daily task stage navigation hides categories when list is open", async () => {
   const context = await loadShell({ bootSettingsModule: false });
   try {
