@@ -286,7 +286,14 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
     if (!action) continue;
     const candidate = { ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId) };
     const current = byOpportunity.get(opportunityId);
-    if (!current || candidate.rank < current.rank || (candidate.rank === current.rank && instant(candidate.dueAt) < instant(current.dueAt))) {
+    const matchTie = current
+      && candidate.rank === current.rank
+      && candidate.actionCode === "review_match"
+      && current.actionCode === "review_match";
+    const winsTie = current && candidate.rank === current.rank && (matchTie
+      ? instant(candidate.dueAt) > instant(current.dueAt)
+      : instant(candidate.dueAt) < instant(current.dueAt));
+    if (!current || candidate.rank < current.rank || winsTie) {
       byOpportunity.set(opportunityId, candidate);
     }
   }

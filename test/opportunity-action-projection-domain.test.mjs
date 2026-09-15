@@ -106,6 +106,32 @@ test("live MATCH_REVIEW canonical requestOpportunityId and offerOpportunityId pr
   }
 });
 
+test("new MATCH_REVIEW projects the same match onto both sides when the offer has an older match", () => {
+  const index = buildOpportunityActionIndex([
+    operation({
+      id: "operation-old",
+      matchId: "match-old",
+      opportunityId: "request-old",
+      clientRequestId: "request-old",
+      ownerOfferId: "offer-1",
+      createdAt: "2026-09-14T06:00:00.000Z",
+      updatedAt: "2026-09-14T06:00:00.000Z"
+    }),
+    operation({
+      id: "operation-new",
+      matchId: "match-new",
+      opportunityId: "request-new",
+      clientRequestId: "request-new",
+      ownerOfferId: "offer-1",
+      createdAt: "2026-09-14T07:00:00.000Z",
+      updatedAt: "2026-09-14T07:00:00.000Z"
+    })
+  ], { officeId: OFFICE, now: NOW });
+
+  assert.equal(index.get("request-new")?.matchId, "match-new");
+  assert.equal(index.get("offer-1")?.matchId, "match-new");
+});
+
 test("negotiation MATCH_REVIEW remains a match on both linked opportunities", () => {
   const index = buildOpportunityActionIndex([
     operation({

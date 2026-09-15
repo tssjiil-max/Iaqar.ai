@@ -15,6 +15,11 @@ const PHONE = process.env.STAGING_PHONE || "0511123456";
 const PASSWORD = process.env.STAGING_PASSWORD || "StagingLogo9";
 const OUT = process.env.SCREENSHOT_DIR || "/opt/cursor/artifacts";
 const COMMIT_SHA = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+const TARGET_MATCH_ID = "mat_c4f36c3f799dc8f4b159caee5fc2eece8c95";
+const TARGETS = [
+  { side: "offer", reference: "A-4542", opportunityId: "opp_intake_Pqa99R4ghA54O2zrhmNq" },
+  { side: "request", reference: "A-4228", opportunityId: "opp_intake_4dhm2NxhJBblRLR28hKi" }
+];
 let currentStage = "startup";
 
 function markStage(stage) {
@@ -43,6 +48,57 @@ async function openBankTab(page) {
   await page.waitForTimeout(1500);
 }
 
+async function installEventBridge(page) {
+  await page.evaluate(() => {
+    window.__qaBankOperationalBridge = { openRequests: [], opened: [] };
+    window.addEventListener("iaqar:open-operation", (event) => {
+      window.__qaBankOperationalBridge.openRequests.push({ ...(event.detail || {}) });
+    });
+    window.addEventListener("iaqar:operation-opened", (event) => {
+      window.__qaBankOperationalBridge.opened.push({ ...(event.detail || {}) });
+    });
+  });
+}
+
+async function inspectTargetCard(page, target) {
+  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`).first();
+  await card.waitFor({ state: "visible", timeout: 30000 });
+  const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
+  await action.waitFor({ state: "visible", timeout: 30000 });
+  return action.evaluate((button, expected) => {
+    const article = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
+    return {
+      ...expected,
+      statusLine: article?.querySelector(".cv2-card-meta")?.textContent?.trim()
+        || article?.textContent?.trim() || "",
+      actionCode: button.getAttribute("data-opportunity-primary-action") || "",
+      operationId: button.getAttribute("data-operation-id") || "",
+      matchId: button.getAttribute("data-match-id") || ""
+    };
+  }, target);
+}
+
+async function clickAndVerify(page, target) {
+  const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`).first();
+  const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
+  await action.scrollIntoViewIfNeeded();
+  await action.screenshot({ path: path.join(OUT, `bank_${target.side}_match_action.png`) });
+  await action.click();
+  await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__qaBankOperationalBridge?.opened?.length > 0, null, { timeout: 15000 });
+  const events = await page.evaluate(() => ({
+    openRequest: window.__qaBankOperationalBridge?.openRequests?.at(-1) || {},
+    opened: window.__qaBankOperationalBridge?.opened?.at(-1) || {}
+  }));
+  const expectedId = target.operationId || target.matchId;
+  const ok = String(events.openRequest.opportunityId || "") === target.opportunityId
+    && String(events.openRequest.matchId || "") === TARGET_MATCH_ID
+    && String(events.openRequest.operationId || "") === target.operationId
+    && String(events.opened.recordId || "") === expectedId;
+  if (!ok) throw new Error(`Wrong Match opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
+  return events;
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   markStage("launch-browser");
@@ -59,125 +115,39 @@ async function main() {
     markStage("wait-bank-card");
     await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
 
-    markStage("install-event-bridge");
-    await page.evaluate(() => {
-      window.__qaBankOperationalBridge = { openRequests: [], opened: [] };
-      window.addEventListener("iaqar:open-operation", (event) => {
-        window.__qaBankOperationalBridge.openRequests.push({ ...(event.detail || {}) });
-      });
-      window.addEventListener("iaqar:operation-opened", (event) => {
-        window.__qaBankOperationalBridge.opened.push({ ...(event.detail || {}) });
-      });
-    });
-
-    markStage("find-linked-action");
-    const linkedActions = page.locator(
-      '[data-opportunity-primary-action][data-operation-id]:not([data-operation-id=""]), '
-      + '[data-opportunity-primary-action][data-match-id]:not([data-match-id=""])'
-    );
-    const actionCount = await linkedActions.count();
-    if (!actionCount) {
-      const diagnostics = await page.locator("[data-opportunity-primary-action]").evaluateAll((buttons) => buttons.map((button) => ({
-        actionCode: button.getAttribute("data-opportunity-primary-action") || "",
-        operationId: button.getAttribute("data-operation-id") || "",
-        matchId: button.getAttribute("data-match-id") || "",
-        opportunityId: button.closest("[data-opportunity-id]")?.getAttribute("data-opportunity-id") || ""
-      })));
-      throw new Error(`No linked Bank operational action found on Staging: ${JSON.stringify(diagnostics)}`);
+    markStage("inspect-both-cards");
+    await installEventBridge(page);
+    const beforeRefresh = [];
+    const openResults = [];
+    for (const expected of TARGETS) {
+      const target = await inspectTargetCard(page, expected);
+      if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
+        throw new Error(`Match not reflected on ${expected.reference}: ${JSON.stringify(target)}`);
+      }
+      beforeRefresh.push(target);
+      markStage(`open-${expected.side}-match`);
+      openResults.push({ side: expected.side, ...(await clickAndVerify(page, target)) });
+      await openBankTab(page);
+      await installEventBridge(page);
     }
 
-    let action = linkedActions.first();
-    const reviewMatch = page.locator(
-      '[data-opportunity-primary-action="review_match"][data-operation-id]:not([data-operation-id=""]), '
-      + '[data-opportunity-primary-action="review_match"][data-match-id]:not([data-match-id=""])'
-    ).first();
-    if (await reviewMatch.count()) action = reviewMatch;
+    markStage("refresh");
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(5000);
+    await openBankTab(page);
+    const afterRefresh = [];
+    for (const expected of TARGETS) {
+      const target = await inspectTargetCard(page, expected);
+      if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
+        throw new Error(`Match lost after refresh on ${expected.reference}: ${JSON.stringify(target)}`);
+      }
+      afterRefresh.push(target);
+    }
 
-    const target = await action.evaluate((button) => {
-      const card = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
-      return {
-        actionCode: button.getAttribute("data-opportunity-primary-action") || "",
-        operationId: button.getAttribute("data-operation-id") || "",
-        matchId: button.getAttribute("data-match-id") || "",
-        opportunityId: card?.getAttribute("data-opportunity-id") || ""
-      };
-    });
-
-    markStage("resolve-expected-operation");
-    const expected = await page.evaluate(({ operationId, matchId }) => {
-      const items = Array.isArray(window.IAQAR?.operationsItems) ? window.IAQAR.operationsItems : [];
-      const item = items.find((entry) =>
-        (operationId && (entry?.id === operationId || entry?.recordId === operationId))
-        || (matchId && entry?.matchId === matchId)
-      );
-      return item ? {
-        id: String(item.id || ""),
-        recordId: String(item.recordId || item.id || ""),
-        recordType: String(item.recordType || ""),
-        matchId: String(item.matchId || "")
-      } : null;
-    }, target);
-
-    markStage("click-linked-action");
-    await action.scrollIntoViewIfNeeded();
-    await action.screenshot({ path: path.join(OUT, "bank_operational_action_before_click.png") });
-    await action.click();
-
-    markStage("wait-open-operation-event");
-    await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
-    markStage("wait-operation-opened-event");
-    await page.waitForFunction(() => window.__qaBankOperationalBridge?.opened?.length > 0, null, { timeout: 15000 });
-
-    markStage("validate-result");
-    const events = await page.evaluate(() => ({
-      openRequests: window.__qaBankOperationalBridge?.openRequests || [],
-      opened: window.__qaBankOperationalBridge?.opened || []
-    }));
-    const openRequest = events.openRequests.at(-1) || {};
-    const opened = events.opened.at(-1) || {};
-
-    const requestMatches = (
-      String(openRequest.operationId || "") === target.operationId
-      && String(openRequest.matchId || "") === target.matchId
-      && String(openRequest.opportunityId || "") === target.opportunityId
-      && String(openRequest.id || "") === target.operationId
-    );
-
-    const expectedOpenedId = String(expected?.recordId || target.operationId || target.matchId || "");
-    const openedMatches = Boolean(expectedOpenedId)
-      && String(opened.recordId || "") === expectedOpenedId;
-
-    const operationsVisible = await page.evaluate(() => {
-      const panel = document.getElementById("mainPanelOperations");
-      if (!panel) return false;
-      const style = window.getComputedStyle(panel);
-      return !panel.hidden && style.display !== "none" && style.visibility !== "hidden";
-    });
-
-    await page.screenshot({ path: path.join(OUT, "bank_operational_action_after_click.png"), fullPage: false });
-
-    const report = {
-      commitSha: COMMIT_SHA,
-      target,
-      expected,
-      openRequest,
-      opened,
-      requestMatches,
-      openedMatches,
-      operationsVisible
-    };
+    await page.screenshot({ path: path.join(OUT, "bank_match_both_cards_after_refresh.png"), fullPage: true });
+    const report = { commitSha: COMMIT_SHA, viewport: { width: 390, height: 900 }, targetMatchId: TARGET_MATCH_ID, beforeRefresh, openResults, afterRefresh };
     writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
     console.log("BANK_OPERATIONAL_ACTION_REPORT", JSON.stringify(report, null, 2));
-
-    if (!requestMatches) {
-      throw new Error(`Bank action emitted the wrong open-operation payload: ${JSON.stringify(report)}`);
-    }
-    if (!openedMatches) {
-      throw new Error(`Operations Center did not open the linked operation: ${JSON.stringify(report)}`);
-    }
-    if (!operationsVisible) {
-      throw new Error(`Operations Center did not become visible: ${JSON.stringify(report)}`);
-    }
 
     markStage("verified");
     console.log("BANK OPERATIONAL ACTION VERIFIED");
