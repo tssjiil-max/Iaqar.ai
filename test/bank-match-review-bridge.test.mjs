@@ -29,7 +29,7 @@ test("review and negotiation actions open the exact living task without legacy b
   let openedDetail = null;
   let legacyBubbleHandlerRan = false;
   window.IAQAR = { homeTabs: { switchTo(tab) { switchedTo = tab; } } };
-  window.addEventListener("iaqar:open-daily-task", (event) => { openedDetail = event.detail; });
+  window.addEventListener("iaqar:open-operation", (event) => { openedDetail = event.detail; });
   window.document.getElementById("bank").addEventListener("click", () => { legacyBubbleHandlerRan = true; });
   assert.equal(installBankOperationalActionBridge(window.document, window), true);
 
@@ -39,8 +39,10 @@ test("review and negotiation actions open the exact living task without legacy b
   buttons[1].click();
 
   assert.equal(switchedTo, "operations");
+  assert.equal(openedDetail.id, "operation-1");
   assert.equal(openedDetail.matchId, "match-1");
   assert.equal(openedDetail.operationId, "operation-1");
+  assert.equal(window.IAQAR.pendingDailyTaskOpen.id, "operation-1");
   assert.equal(window.IAQAR.pendingDailyTaskOpen.actionCode, "open_negotiation");
   assert.equal(legacyBubbleHandlerRan, false);
 });

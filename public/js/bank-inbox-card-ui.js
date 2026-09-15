@@ -82,9 +82,10 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    win.IAQAR.pendingDailyTaskOpen = detail;
+    const operationDetail = { ...detail, id: detail.operationId || "" };
+    win.IAQAR.pendingDailyTaskOpen = operationDetail;
     switchTo.call(win.IAQAR.homeTabs, "operations");
-    win.dispatchEvent(new win.CustomEvent("iaqar:open-daily-task", { detail }));
+    win.dispatchEvent(new win.CustomEvent("iaqar:open-operation", { detail: operationDetail }));
   }, true);
   return true;
 }
