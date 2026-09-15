@@ -64,6 +64,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Verify Bank operational action opens Operations Center
+        run: |
+          npx playwright install --with-deps chromium
+          SCREENSHOT_DIR="$RUNNER_TEMP/bank-operation-live-qa" node scripts/staging-bank-card-click-verify.mjs
+
+      - name: Upload Bank operational navigation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bank-operation-live-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/bank-operation-live-qa
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify live Match to Daily Tasks path
         run: |
           npx playwright install --with-deps chromium
