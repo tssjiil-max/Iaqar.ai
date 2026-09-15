@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Staging E2E: full bank card click opens correct opportunity detail.
+ * Staging E2E: a Bank operational action must open the same linked item
+ * in Operations Center. This intentionally tests the operational button,
+ * not the card detail modal.
  */
 import { chromium } from "playwright";
 import path from "node:path";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
 const STAGING = process.env.STAGING_HOSTING_URL
@@ -36,61 +38,134 @@ async function openBankTab(page) {
 }
 
 async function main() {
+  mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: "ar-SA" });
   const page = await context.newPage();
-  await login(page);
-  await openBankTab(page);
 
-  await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
-  const cards = page.locator("[data-cv2-inbox-item][data-opportunity-id]");
-  const count = await cards.count();
-  console.log("bank cards", count);
+  try {
+    await login(page);
+    await openBankTab(page);
 
-  let incompleteId = "";
-  let readyId = "";
-  for (let i = 0; i < Math.min(count, 20); i++) {
-    const card = cards.nth(i);
-    const id = await card.getAttribute("data-opportunity-id");
-    const badge = await card.locator(".bank-readiness-badge").textContent();
-    if (!incompleteId && badge?.includes("تحتاج")) incompleteId = id;
-    if (!readyId && badge?.includes("جاهزة")) readyId = id;
-  }
-  console.log("incompleteId", incompleteId, "readyId", readyId);
+    await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
 
-  if (incompleteId) {
-    const card = page.locator(`[data-opportunity-id="${incompleteId}"]`);
-    await card.screenshot({ path: path.join(OUT, "bank_card_incomplete_before_click.png") });
-    await card.click({ position: { x: 20, y: 20 } });
-    await page.waitForTimeout(2000);
-    const detailOpen = await page.locator("#opportunityBankDetail:not([hidden])").count();
-    const activeId = await page.evaluate(() => window.IAQAR?.bankTestHooks ? true : true);
-    const focused = await page.evaluate(() => {
-      const el = document.activeElement;
-      return el ? `${el.tagName}:${el.name || el.id}` : "";
+    await page.evaluate(() => {
+      window.__qaBankOperationalBridge = { openRequests: [], opened: [] };
+      window.addEventListener("iaqar:open-operation", (event) => {
+        window.__qaBankOperationalBridge.openRequests.push({ ...(event.detail || {}) });
+      });
+      window.addEventListener("iaqar:operation-opened", (event) => {
+        window.__qaBankOperationalBridge.opened.push({ ...(event.detail || {}) });
+      });
     });
-    const missingBanner = await page.locator(".bank-missing-banner").textContent();
-    await page.screenshot({ path: path.join(OUT, "bank_incomplete_detail_open.png"), fullPage: false });
-    console.log("incomplete detail open", detailOpen, "focus", focused, "banner", missingBanner?.slice(0, 80));
-  }
 
-  if (readyId) {
-    await page.locator("#bankDetailClose").click().catch(() => {});
-    await page.waitForTimeout(500);
-    const card = page.locator(`[data-opportunity-id="${readyId}"]`);
-    await card.screenshot({ path: path.join(OUT, "bank_card_ready_before_click.png") });
-    await card.click({ position: { x: 30, y: 30 } });
-    await page.waitForTimeout(2000);
-    const lifecycle = await page.locator("#bankContactOutcomes, .bank-contact-section").count();
-    await page.screenshot({ path: path.join(OUT, "bank_ready_detail_open.png"), fullPage: false });
-    console.log("ready lifecycle sections", lifecycle);
-  }
+    const linkedActions = page.locator(
+      '[data-opportunity-primary-action][data-operation-id]:not([data-operation-id=""]), '
+      + '[data-opportunity-primary-action][data-match-id]:not([data-match-id=""])'
+    );
+    const actionCount = await linkedActions.count();
+    if (!actionCount) {
+      const diagnostics = await page.locator("[data-opportunity-primary-action]").evaluateAll((buttons) => buttons.map((button) => ({
+        actionCode: button.getAttribute("data-opportunity-primary-action") || "",
+        operationId: button.getAttribute("data-operation-id") || "",
+        matchId: button.getAttribute("data-match-id") || "",
+        opportunityId: button.closest("[data-opportunity-id]")?.getAttribute("data-opportunity-id") || ""
+      })));
+      throw new Error(`No linked Bank operational action found on Staging: ${JSON.stringify(diagnostics)}`);
+    }
 
-  const overflow = await page.evaluate(() => document.body.scrollWidth > window.innerWidth);
-  const report = { commitSha: COMMIT_SHA, incompleteId, readyId, overflow };
-  writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
-  console.log("report", report);
-  await browser.close();
+    let action = linkedActions.first();
+    const reviewMatch = page.locator(
+      '[data-opportunity-primary-action="review_match"][data-operation-id]:not([data-operation-id=""]), '
+      + '[data-opportunity-primary-action="review_match"][data-match-id]:not([data-match-id=""])'
+    ).first();
+    if (await reviewMatch.count()) action = reviewMatch;
+
+    const target = await action.evaluate((button) => {
+      const card = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
+      return {
+        actionCode: button.getAttribute("data-opportunity-primary-action") || "",
+        operationId: button.getAttribute("data-operation-id") || "",
+        matchId: button.getAttribute("data-match-id") || "",
+        opportunityId: card?.getAttribute("data-opportunity-id") || ""
+      };
+    });
+
+    const expected = await page.evaluate(({ operationId, matchId }) => {
+      const items = Array.isArray(window.IAQAR?.operationsItems) ? window.IAQAR.operationsItems : [];
+      const item = items.find((entry) =>
+        (operationId && (entry?.id === operationId || entry?.recordId === operationId))
+        || (matchId && entry?.matchId === matchId)
+      );
+      return item ? {
+        id: String(item.id || ""),
+        recordId: String(item.recordId || item.id || ""),
+        recordType: String(item.recordType || ""),
+        matchId: String(item.matchId || "")
+      } : null;
+    }, target);
+
+    await action.scrollIntoViewIfNeeded();
+    await action.screenshot({ path: path.join(OUT, "bank_operational_action_before_click.png") });
+    await action.click();
+
+    await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
+    await page.waitForFunction(() => window.__qaBankOperationalBridge?.opened?.length > 0, null, { timeout: 15000 });
+
+    const events = await page.evaluate(() => ({
+      openRequests: window.__qaBankOperationalBridge?.openRequests || [],
+      opened: window.__qaBankOperationalBridge?.opened || []
+    }));
+    const openRequest = events.openRequests.at(-1) || {};
+    const opened = events.opened.at(-1) || {};
+
+    const requestMatches = (
+      String(openRequest.operationId || "") === target.operationId
+      && String(openRequest.matchId || "") === target.matchId
+      && String(openRequest.opportunityId || "") === target.opportunityId
+      && String(openRequest.id || "") === target.operationId
+    );
+
+    const expectedOpenedId = String(expected?.recordId || target.operationId || target.matchId || "");
+    const openedMatches = Boolean(expectedOpenedId)
+      && String(opened.recordId || "") === expectedOpenedId;
+
+    const operationsVisible = await page.evaluate(() => {
+      const panel = document.getElementById("mainPanelOperations");
+      if (!panel) return false;
+      const style = window.getComputedStyle(panel);
+      return !panel.hidden && style.display !== "none" && style.visibility !== "hidden";
+    });
+
+    await page.screenshot({ path: path.join(OUT, "bank_operational_action_after_click.png"), fullPage: false });
+
+    const report = {
+      commitSha: COMMIT_SHA,
+      target,
+      expected,
+      openRequest,
+      opened,
+      requestMatches,
+      openedMatches,
+      operationsVisible
+    };
+    writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
+    console.log("BANK_OPERATIONAL_ACTION_REPORT", JSON.stringify(report, null, 2));
+
+    if (!requestMatches) {
+      throw new Error(`Bank action emitted the wrong open-operation payload: ${JSON.stringify(report)}`);
+    }
+    if (!openedMatches) {
+      throw new Error(`Operations Center did not open the linked operation: ${JSON.stringify(report)}`);
+    }
+    if (!operationsVisible) {
+      throw new Error(`Operations Center did not become visible: ${JSON.stringify(report)}`);
+    }
+
+    console.log("BANK OPERATIONAL ACTION VERIFIED");
+  } finally {
+    await browser.close();
+  }
 }
 
 main().catch((err) => {
