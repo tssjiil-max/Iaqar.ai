@@ -119,7 +119,7 @@ async function main() {
     await installEventBridge(page);
     const beforeRefresh = [];
     const openResults = [];
-    for (const expected of TARGETS) {
+    for (const [index, expected] of TARGETS.entries()) {
       const target = await inspectTargetCard(page, expected);
       if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
         throw new Error(`Match not reflected on ${expected.reference}: ${JSON.stringify(target)}`);
@@ -127,8 +127,13 @@ async function main() {
       beforeRefresh.push(target);
       markStage(`open-${expected.side}-match`);
       openResults.push({ side: expected.side, ...(await clickAndVerify(page, target)) });
-      await openBankTab(page);
-      await installEventBridge(page);
+      if (index < TARGETS.length - 1) {
+        markStage("return-to-bank");
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.waitForTimeout(5000);
+        await openBankTab(page);
+        await installEventBridge(page);
+      }
     }
 
     markStage("refresh");
