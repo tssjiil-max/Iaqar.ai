@@ -65,8 +65,20 @@ async function installEventBridge(page) {
 }
 
 async function inspectTargetCard(page, target) {
+  const allCards = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`);
+  await allCards.first().waitFor({ state: "attached", timeout: 30000 });
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
-  await card.waitFor({ state: "visible", timeout: 30000 });
+  if (!await card.count()) {
+    const hiddenTrace = await allCards.first().evaluate((node) => {
+      const trace = [];
+      for (let current = node; current; current = current.parentElement) {
+        const style = getComputedStyle(current);
+        trace.push({ tag: current.tagName, id: current.id, className: current.className, hidden: current.hidden, display: style.display, visibility: style.visibility });
+      }
+      return trace;
+    });
+    throw new Error(`Target Bank card is hidden for ${target.reference}: ${JSON.stringify(hiddenTrace)}`);
+  }
   const action = card.locator('[data-opportunity-primary-action="review_match"]').first();
   await action.waitFor({ state: "visible", timeout: 30000 });
   return action.evaluate((button, expected) => {
