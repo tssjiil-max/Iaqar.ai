@@ -51,7 +51,12 @@ node scripts/staging-release-guard.mjs "$@"
 
 echo "--- Test gate ---"
 CURRENT_STAGE="npm-test"
-npm test
+if [[ -n "$DIAGNOSTIC_FILE" ]]; then
+  mkdir -p "$(dirname "$DIAGNOSTIC_FILE")"
+  npm test 2>&1 | tee -a "$DIAGNOSTIC_FILE"
+else
+  npm test
+fi
 CURRENT_STAGE="npm-check"
 npm run check
 
