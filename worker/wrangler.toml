@@ -1,5 +1,5 @@
 name = "iaqar-macrodroid-intake"
-main = "src/index.js"
+main = "src/staging-entry.js"
 compatibility_date = "2026-07-29"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
