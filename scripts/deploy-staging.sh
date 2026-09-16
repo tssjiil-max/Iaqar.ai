@@ -2,7 +2,7 @@
 # Phase 9A — full-functional staging-only deploy. Refuses production targets.
 # Auth: Google service account via temporary GOOGLE_APPLICATION_CREDENTIALS (no FIREBASE_TOKEN).
 # Firebase project: iaqar-ai-staging
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -12,8 +12,26 @@ STAGING_WORKER_NAME="iaqar-intake-staging"
 STAGING_WORKER_URL="https://${STAGING_WORKER_NAME}.iaqar-ai.workers.dev"
 GAC_FILE=""
 NORMALIZED_SECRET_DIR=""
+CURRENT_STAGE="bootstrap"
+DIAGNOSTIC_FILE="${IAQAR_DEPLOY_DIAGNOSTIC_FILE:-}"
 
-die() { echo "ERROR: $*" >&2; exit 1; }
+diag_failure() {
+  local rc="${1:-1}"
+  local line="stage=${CURRENT_STAGE} exit_code=${rc}"
+  echo "::error title=Staging deploy internal diagnostic::${line}" >&2
+  if [[ -n "$DIAGNOSTIC_FILE" ]]; then
+    mkdir -p "$(dirname "$DIAGNOSTIC_FILE")"
+    printf '%s\n' "$line" >> "$DIAGNOSTIC_FILE"
+  fi
+}
+
+die() {
+  local message="$1"
+  local rc="${2:-1}"
+  echo "ERROR: ${message}" >&2
+  diag_failure "$rc"
+  exit "$rc"
+}
 
 cleanup() {
   if [[ -n "${NORMALIZED_SECRET_DIR:-}" && -d "$NORMALIZED_SECRET_DIR" ]]; then
@@ -25,9 +43,11 @@ cleanup() {
   unset GOOGLE_APPLICATION_CREDENTIALS || true
 }
 trap cleanup EXIT
+trap 'rc=$?; diag_failure "$rc"' ERR
 
 echo "=== IAQAR Phase 9A staging deploy (full-functional, project ${STAGING_FIREBASE_PROJECT}) ==="
 
+CURRENT_STAGE="validate-staging-target"
 if [[ "${IAQAR_DEPLOY_TARGET:-staging}" != "staging" ]]; then
   die "IAQAR_DEPLOY_TARGET must be 'staging' (got '${IAQAR_DEPLOY_TARGET:-}'). Refusing."
 fi
@@ -35,6 +55,7 @@ if [[ "${1:-}" == "--production" || "${1:-}" == "production" ]]; then
   die "This script cannot deploy production. Use owner-run deploy-all on a trusted machine."
 fi
 
+CURRENT_STAGE="validate-required-secrets"
 [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] || die "CLOUDFLARE_API_TOKEN is required"
 [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || die "CLOUDFLARE_ACCOUNT_ID is required"
 [[ -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ]] || die "FIREBASE_SERVICE_ACCOUNT_JSON is required"
@@ -44,11 +65,13 @@ if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
   echo "NOTE: FIREBASE_TOKEN is set but ignored; staging deploy uses service-account GAC."
 fi
 
+CURRENT_STAGE="validate-cli"
 command -v node >/dev/null || die "node is required"
 command -v npm >/dev/null || die "npm is required"
 command -v npx >/dev/null || die "npx is required"
 
 echo "--- Parse + validate Firebase service-account JSON (no secret output) ---"
+CURRENT_STAGE="normalize-firebase-credentials"
 GAC_FILE="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-gac.XXXXXX")"
 NORMALIZED_SECRET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/iaqar-staging-secrets.XXXXXX")"
 export FIREBASE_STAGING_PROJECT_ID="$STAGING_FIREBASE_PROJECT"
@@ -57,17 +80,20 @@ export GOOGLE_APPLICATION_CREDENTIALS="$GAC_FILE"
 chmod 600 "$GAC_FILE"
 
 echo "--- Staging credential + permission preflight ---"
+CURRENT_STAGE="staging-permission-preflight"
 node scripts/preflight-staging.mjs "$GAC_FILE"
 
 if [[ "${IAQAR_SKIP_INNER_TESTS:-}" == "1" ]]; then
   echo "--- Full Phase 9A test gate skipped (already run by deploy:staging:safe) ---"
 else
   echo "--- Full Phase 9A test gate ---"
+  CURRENT_STAGE="phase9a-tests"
   npm run test:phase9a
 fi
 
 echo "--- Cloudflare Worker (staging env only) ---"
 (
+  CURRENT_STAGE="wrangler-worker-deploy"
   cd worker
   npx wrangler deploy --env staging
 )
@@ -76,10 +102,14 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
 (
   cd worker
   # Wrangler reads normalized values from private temp files. Values never reach logs.
+  CURRENT_STAGE="wrangler-secret-firebase-client-email"
   npx wrangler secret put FIREBASE_CLIENT_EMAIL --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_CLIENT_EMAIL" # // pragma: allowlist secret
+  CURRENT_STAGE="wrangler-secret-firebase-private-key"
   npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY" # // pragma: allowlist secret
+  CURRENT_STAGE="wrangler-secret-firebase-private-key-id"
   npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY_ID" # // pragma: allowlist secret
   if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+    CURRENT_STAGE="wrangler-secret-gemini-api-key"
     printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --env staging # // pragma: allowlist secret
     echo "GEMINI_API_KEY synced to staging Worker (value not printed)."
   else
@@ -88,13 +118,16 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
 )
 
 echo "--- Generate public/version.json from current Git commit ---"
+CURRENT_STAGE="write-staging-version"
 node scripts/write-staging-version.mjs
 
 echo "--- Firebase Hosting channel 'staging' on ${STAGING_FIREBASE_PROJECT} ---"
+CURRENT_STAGE="prepare-firebase-hosting"
 FIREBASE_JSON_BACKUP="$(mktemp "${TMPDIR:-/tmp}/iaqar-firebase-json.XXXXXX")"
 cp firebase.json "$FIREBASE_JSON_BACKUP"
 node scripts/patch-firebase-office-link-redirect.mjs "$STAGING_WORKER_URL"
 CHANNEL_LOG="$(mktemp "${TMPDIR:-/tmp}/iaqar-staging-channel.XXXXXX")"
+CURRENT_STAGE="firebase-hosting-channel-deploy"
 set +e
 npx firebase-tools hosting:channel:deploy staging \
   --project "$STAGING_FIREBASE_PROJECT" \
@@ -102,9 +135,11 @@ npx firebase-tools hosting:channel:deploy staging \
   --non-interactive 2>&1 | tee "$CHANNEL_LOG"
 CHANNEL_RC=${PIPESTATUS[0]}
 set -e
-[[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed for ${STAGING_FIREBASE_PROJECT}"
+[[ "$CHANNEL_RC" -eq 0 ]] || die "Firebase hosting:channel:deploy staging failed for ${STAGING_FIREBASE_PROJECT}" "$CHANNEL_RC"
+CURRENT_STAGE="restore-firebase-config"
 mv "$FIREBASE_JSON_BACKUP" firebase.json
 
+CURRENT_STAGE="inspect-hosting-output"
 if grep -qiE "Unable to add channel domain|authorized domain" "$CHANNEL_LOG"; then
   echo "WARNING: Auth authorized-domain sync may have failed." >&2
   echo "Grant the staging service account Firebase Auth Admin (or add the channel domain manually)." >&2
@@ -120,11 +155,13 @@ fi
 rm -f "$CHANNEL_LOG"
 
 echo "--- Smoke: staging Worker /health (must be backendReady) ---"
+CURRENT_STAGE="worker-health-fetch"
 HEALTH_JSON="$(curl -fsS --max-time 30 "${STAGING_WORKER_URL}/health" || true)"
 if [[ -z "$HEALTH_JSON" ]]; then
   die "Staging Worker health check failed at ${STAGING_WORKER_URL}/health"
 fi
 echo "$HEALTH_JSON"
+CURRENT_STAGE="worker-health-assert"
 echo "$HEALTH_JSON" | node -e '
 const fs = require("fs");
 const body = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -160,8 +197,10 @@ if [[ -n "${STAGING_HOSTING_URL:-}" ]]; then
 else
   echo "WARNING: could not parse Hosting channel URL from firebase-tools output; hosting smoke skipped" >&2
 fi
+CURRENT_STAGE="smoke-staging"
 node scripts/smoke-staging.mjs
 
+CURRENT_STAGE="complete"
 echo ""
 echo "=== Phase 9A full-functional staging deploy complete ==="
 echo "Firebase project: ${STAGING_FIREBASE_PROJECT}"
