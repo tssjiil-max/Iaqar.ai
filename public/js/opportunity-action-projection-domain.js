@@ -221,9 +221,9 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
   // An active persisted MATCH_REVIEW is the work projection for one real Match.
   // Never drop that link merely because its living stage has no specialized card
   // copy yet; doing so makes the same match disappear from the Bank/filter while
-  // the Match and Operation still exist. Keep the exact matchId/operationId and
-  // let the Operations workflow render the authoritative current stage.
-  if (type === "MATCH_REVIEW") {
+  // the Match and Operation still exist. Terminal viewing outcomes are excluded:
+  // they intentionally close the previous active card action.
+  if (type === "MATCH_REVIEW" && !TERMINAL_OUTCOMES.has(viewingOutcome)) {
     return {
       category: OPPORTUNITY_ACTION_FILTER.MATCHES,
       rank: 8,
