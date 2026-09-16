@@ -106,3 +106,16 @@ jobs:
           path: ${{ runner.temp }}/negotiation-live-qa
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Verify one fresh Match lineage end to end
+        run: |
+          LIVE_E2E_OUT="$RUNNER_TEMP/fresh-match-lineage-qa" node scripts/staging-fresh-match-lineage-verify.mjs
+
+      - name: Upload fresh Match lineage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-match-lineage-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/fresh-match-lineage-qa
+          if-no-files-found: warn
+          retention-days: 7
