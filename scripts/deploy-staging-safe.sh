@@ -9,10 +9,16 @@ REQUIRED_BRANCH="codex/unified-staging-lineage-2026-08-29"
 STAGING_FIREBASE_PROJECT="iaqar-ai-staging"
 APPROVED_HOSTING="https://iaqar-ai-staging--staging-9c4b0k7h.web.app"
 CURRENT_STAGE="bootstrap"
+DIAGNOSTIC_FILE="${IAQAR_DEPLOY_DIAGNOSTIC_FILE:-}"
 
 diag_failure() {
   local rc="${1:-1}"
-  echo "::error title=Staging deploy diagnostic::stage=${CURRENT_STAGE} exit_code=${rc}" >&2
+  local line="stage=${CURRENT_STAGE} exit_code=${rc}"
+  echo "::error title=Staging deploy diagnostic::${line}" >&2
+  if [[ -n "$DIAGNOSTIC_FILE" ]]; then
+    mkdir -p "$(dirname "$DIAGNOSTIC_FILE")"
+    printf '%s\n' "$line" >> "$DIAGNOSTIC_FILE"
+  fi
 }
 
 trap 'rc=$?; diag_failure "$rc"' ERR
