@@ -1,0 +1,60 @@
+name: TEMP deal-match atomicity fix
+
+on:
+  push:
+    branches:
+      - fix/deal-match-atomicity-20260918
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/deal-match-atomicity-20260918
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Worker dependencies
+        run: npm install --prefix worker --ignore-scripts
+
+      - name: RED - prove sequential Deal Match writes are rejected
+        shell: bash
+        run: |
+          set +e
+          node worker/test/deal-match-atomicity.test.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "Regression test unexpectedly passed before the fix"
+            exit 1
+          fi
+          echo "RED confirmed: regression test fails on the old sequential implementation"
+
+      - name: Apply isolated atomic commit fix
+        run: node scripts/tmp-apply-deal-match-atomicity-fix.mjs
+
+      - name: GREEN - run isolated atomicity regression test
+        run: node worker/test/deal-match-atomicity.test.mjs
+
+      - name: Verify Worker test suite
+        run: npm test --prefix worker
+
+      - name: Commit verified fix and remove temporary machinery
+        shell: bash
+        run: |
+          rm -f scripts/tmp-apply-deal-match-atomicity-fix.mjs
+          rm -f .github/workflows/tmp-deal-match-atomicity-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: atomically create deal and link match"
+          git push origin HEAD:fix/deal-match-atomicity-20260918
