@@ -1,0 +1,24 @@
+name: Verify baseline free-text DOM
+
+on:
+  push:
+    branches:
+      - verify/baseline-free-text-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Run baseline failing test
+        run: node --test test/free-text-forms-dom.test.mjs
