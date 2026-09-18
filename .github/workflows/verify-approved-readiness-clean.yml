@@ -1,0 +1,56 @@
+name: Verify approved readiness clean
+
+on:
+  push:
+    branches:
+      - verify/approved-readiness-clean-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact verification commit
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Focused approved-readiness regressions
+        run: node --test test/simplified-review-advertiser-role.test.mjs test/add-opportunity-approved-readiness.test.mjs
+      - name: Full root and worker tests
+        run: npm test
+      - name: Static check
+        run: npm run check
+      - name: Matching gate
+        run: npm run test:matching:gate
+      - name: Post-match gate
+        run: npm run test:post-match:gate
+      - name: Negotiation gate
+        run: npm run test:negotiation:gate
+      - name: Viewing gate
+        run: npm run test:viewing:gate
+      - name: Deal gate
+        run: npm run test:deal:gate
+      - name: Cooperation gate
+        run: npm run test:cooperation:gate
+      - name: Channels gate
+        run: npm run test:channels:gate
+      - name: Orchestrator gate
+        run: npm run test:orchestrator:gate
+      - name: Notifications gate
+        run: npm run test:notifications:gate
+      - name: Admin gate
+        run: npm run test:admin:gate
+      - name: Completion gate
+        run: npm run test:completion:gate
+      - name: Daily tasks gate
+        run: npm run test:daily-tasks:gate
