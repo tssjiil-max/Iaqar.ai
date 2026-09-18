@@ -109,7 +109,7 @@ jobs:
 
       - name: Verify one fresh Match lineage end to end
         run: |
-          LIVE_E2E_OUT="$RUNNER_TEMP/fresh-match-lineage-qa" node scripts/staging-fresh-match-lineage-verify.mjs
+          LIVE_E2E_OUT="$RUNNER_TEMP/fresh-match-lineage-qa" node scripts/run-staging-fresh-match-lineage-verify.mjs
 
       - name: Upload fresh Match lineage evidence
         if: always()
