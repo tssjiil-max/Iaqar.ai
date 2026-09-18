@@ -6114,18 +6114,29 @@ async function handleWorkflowAction(request,env,requestId) {
       lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
     };
     if(next==="viewing") fields.viewingAt=firestoreTimestamp(nextFollowUpAt);
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
     let dealId=m.dealId||"";
-    if(next==="negotiation"&&!dealId){
+    const enteringNegotiation=next==="negotiation"&&!dealId;
+    if(enteringNegotiation){
+      const coordination=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
       const creationGate=evaluateDealCreation({
         match:{...m,status:next,closingReadinessScore:readiness.score},
-        coordination:{outcome:m.coordinationOutcome||""}
+        coordination
       });
-      if(creationGate.allowed){
-        dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      if(!creationGate.allowed){
+        throw appError("deal_not_serious_yet",409,"لا تُنقل المطابقة إلى التفاوض قبل ظهور جدية فعلية في جلسة التنسيق أو تأكيد المعاينة");
       }
+      dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      const postDealFields={...fields};
+      delete postDealFields.status;
+      delete postDealFields.statusLabel;
+      delete postDealFields.workflowStage;
+      delete postDealFields.nextAction;
+      await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:postDealFields});
+      await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
+      return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
     }
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
     return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
   }
 
