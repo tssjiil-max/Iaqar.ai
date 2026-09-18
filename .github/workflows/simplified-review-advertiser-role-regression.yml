@@ -11,7 +11,7 @@ permissions:
 jobs:
   regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,5 +19,17 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Run focused unified-review regressions
+      - name: Focused regressions
         run: node --test test/simplified-review-advertiser-role.test.mjs test/add-opportunity-approved-readiness.test.mjs
+      - name: Full test suite
+        run: npm test
+      - name: Matching gate
+        run: npm run test:matching:gate
+      - name: Post-match gate
+        run: npm run test:post-match:gate
+      - name: Daily tasks gate
+        run: npm run test:daily-tasks:gate
+      - name: Completion gate
+        run: npm run test:completion:gate
+      - name: Static checks
+        run: npm run check
