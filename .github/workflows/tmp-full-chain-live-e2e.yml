@@ -29,7 +29,15 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Patch existing fresh-lineage verifier for full chain
-        run: node scripts/tmp-patch-full-chain-live-e2e.mjs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/tmp-patch-full-chain-live-e2e.mjs')
+          s = p.read_text()
+          s = s.replace('contractReference: `QA-${RUN_ID}`', 'contractReference: "QA-" + RUN_ID')
+          p.write_text(s)
+          PY
+          node scripts/tmp-patch-full-chain-live-e2e.mjs
       - name: Run live concurrent Match to closed Deal and orphan audit
         env:
           LIVE_E2E_OUT: ${{ runner.temp }}/full-chain-live-qa
