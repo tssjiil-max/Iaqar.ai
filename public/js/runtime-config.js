@@ -37,6 +37,8 @@
     // Explicit override for local smoke of staging wiring.
     if (env === "staging") return "staging";
     if (env === "production" || env === "prod") return "production";
+    // Netlify Staging and its branch/deploy-preview hosts must fail closed to Staging.
+    if (host === "iaqar-one-staging.netlify.app" || host.endsWith("--iaqar-one-staging.netlify.app")) return "staging";
     // Firebase default site for project iaqar-ai-staging (not only preview channels).
     if (host.includes("iaqar-ai-staging")) return "staging";
     // Firebase Hosting preview channels: {project}--{channel}-{hash}.web.app
