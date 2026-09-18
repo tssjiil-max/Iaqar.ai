@@ -1,0 +1,37 @@
+name: Apply unified advertiser-role fix
+
+on:
+  push:
+    branches:
+      - fix/simplified-review-advertiser-role-20260918
+    paths:
+      - .github/run-apply-unified-advertiser-role-fix.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/simplified-review-advertiser-role-20260918
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Apply minimal unified role patch
+        run: python .github/scripts/apply_unified_advertiser_role_fix.py
+      - name: Verify focused regression
+        run: node --test test/simplified-review-advertiser-role.test.mjs
+      - name: Commit verified production change
+        run: |
+          git config user.name 'tssjiil-max'
+          git config user.email 'tssjiil@gmail.com'
+          git add public/js/opportunity-review.js
+          git commit -m 'fix: keep advertiser role in unified opportunity review'
+          git push origin HEAD:fix/simplified-review-advertiser-role-20260918
