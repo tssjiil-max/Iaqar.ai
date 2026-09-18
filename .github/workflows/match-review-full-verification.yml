@@ -1,0 +1,43 @@
+name: MATCH_REVIEW full verification
+
+on:
+  push:
+    branches:
+      - fix/match-review-reconcile-20260918
+    paths:
+      - .github/run-match-review-verify.trigger
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Focused regression
+        run: node worker/test/match-review-reconcile.test.mjs
+      - name: Matching release gate
+        run: npm run test:matching:gate
+      - name: Post-match release gate
+        run: npm run test:post-match:gate
+      - name: Daily tasks release gate
+        run: npm run test:daily-tasks:gate
+      - name: Worker test suite
+        run: npm test --prefix worker
+      - name: Static checks
+        run: npm run check
