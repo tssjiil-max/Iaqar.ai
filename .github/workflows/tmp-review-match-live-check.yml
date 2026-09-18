@@ -1,0 +1,43 @@
+name: Temporary review_match live check
+
+on:
+  push:
+    branches:
+      - diag/review-match-live-20260919
+
+permissions:
+  contents: read
+
+jobs:
+  review-match-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run existing Staging review_match click test only
+        env:
+          STAGING_HOSTING_URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
+          SCREENSHOT_DIR: ${{ runner.temp }}/review-match-live
+        run: node scripts/staging-bank-card-click-verify.mjs
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-match-live-${{ github.run_id }}
+          path: ${{ runner.temp }}/review-match-live
+          if-no-files-found: warn
+          retention-days: 3
