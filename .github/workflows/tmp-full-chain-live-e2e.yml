@@ -1,0 +1,44 @@
+name: TEMP full chain live E2E
+
+on:
+  push:
+    branches:
+      - qa/full-chain-live-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  full-chain-live:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v4
+        with:
+          ref: qa/full-chain-live-20260918
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Patch existing fresh-lineage verifier for full chain
+        run: node scripts/tmp-patch-full-chain-live-e2e.mjs
+      - name: Run live concurrent Match to closed Deal and orphan audit
+        env:
+          LIVE_E2E_OUT: ${{ runner.temp }}/full-chain-live-qa
+        run: node scripts/staging-fresh-match-lineage-verify.mjs
+      - name: Upload full-chain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-chain-live-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/full-chain-live-qa
+          if-no-files-found: warn
+          retention-days: 7
