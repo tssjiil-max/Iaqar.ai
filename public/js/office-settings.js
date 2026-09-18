@@ -1722,13 +1722,34 @@ async function shareOfficeLinkCard() {
     return;
   }
   const originalText = el.shareLinkCard?.textContent || "مشاركة رابط المكتب";
-  if (el.shareLinkCard) {
-    el.shareLinkCard.disabled = true;
-    el.shareLinkCard.textContent = "جارٍ تجهيز الرابط...";
-  }
+  const requestedSlug = normalizePublicSlug(el.publicSlug?.value || current.publicSlug);
+  const persistedSlug = normalizePublicSlug(current.publicSlug);
+  if (el.shareLinkCard) el.shareLinkCard.disabled = true;
+
   try {
+    if (requestedSlug && requestedSlug === persistedSlug && navigator.share) {
+      const text = officeShareMessage({
+        officeName: current.officeName,
+        origin: window.location.origin,
+        publicSlug: current.publicSlug,
+        officeId: officeId()
+      });
+      // Invoke Web Share before any await so the click keeps transient user activation.
+      const sharePromise = navigator.share({ title: current.officeName, text });
+      void (async () => {
+        try {
+          const blob = await createOfficeSharePreviewBlob();
+          if (blob) await uploadOfficeSharePreview(blob);
+        } catch (cardError) {
+          console.warn("[iaqar] office share card upload", cardError);
+        }
+      })();
+      await sharePromise;
+      setStatus(el.linkStatus, "تمت مشاركة رابط المكتب", "is-done");
+      return;
+    }
+
     await ensurePublicSlug();
-    const link = officeLink();
     const text = officeShareMessage({
       officeName: current.officeName,
       origin: window.location.origin,
@@ -1741,16 +1762,29 @@ async function shareOfficeLinkCard() {
     } catch (cardError) {
       console.warn("[iaqar] office share card upload", cardError);
     }
-    if (navigator.share) {
-      await navigator.share({ title: current.officeName, text });
-      setStatus(el.linkStatus, "تمت مشاركة رابط المكتب", "is-done");
-      return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      if (el.link) {
+        el.link.select();
+        document.execCommand("copy");
+      }
     }
-    await navigator.clipboard.writeText(text);
-    setStatus(el.linkStatus, "تم نسخ رسالة الرابط القصير", "is-done");
+    setStatus(
+      el.linkStatus,
+      requestedSlug !== persistedSlug
+        ? "تم حفظ الرابط ونسخه. اضغط مشاركة رابط المكتب مرة أخرى لفتح خيارات المشاركة."
+        : "تم نسخ رسالة الرابط القصير",
+      "is-done"
+    );
     toast("تم نسخ رابط المكتب");
   } catch (error) {
     if (error && error.name === "AbortError") return;
+    if (error && error.name === "NotAllowedError") {
+      await copyLink();
+      setStatus(el.linkStatus, "تعذر فتح المشاركة في هذا المتصفح، ونُسخ الرابط بدلًا منها.", "is-done");
+      return;
+    }
     setStatus(el.linkStatus, error?.message || "تعذر مشاركة رابط المكتب", "is-error");
   } finally {
     if (el.shareLinkCard) {
