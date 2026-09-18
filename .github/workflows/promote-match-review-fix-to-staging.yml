@@ -1,0 +1,65 @@
+name: Promote MATCH_REVIEW fix to staging
+
+on:
+  push:
+    branches:
+      - promote/match-review-reconcile-staging-20260918
+    paths:
+      - .github/run-promote-match-review-fix.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout promotion branch
+        uses: actions/checkout@v4
+        with:
+          ref: promote/match-review-reconcile-staging-20260918
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+      - name: Cherry-pick verified fix only
+        run: |
+          git config user.name 'tssjiil-max'
+          git config user.email 'tssjiil@gmail.com'
+          git cherry-pick b596fb5fcb74266242bb01bd5866b90ae0f2b3f4
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
+      - name: Matching release gate
+        run: npm run test:matching:gate
+      - name: Post-match release gate
+        run: npm run test:post-match:gate
+      - name: Daily tasks release gate
+        run: npm run test:daily-tasks:gate
+      - name: Worker test suite
+        run: npm test --prefix worker
+      - name: Static checks
+        run: npm run check
+      - name: Confirm duplicate path reconciles MATCH_REVIEW
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const source = readFileSync('worker/src/index.js', 'utf8');
+          const start = source.indexOf('if (existingMatch) {');
+          const end = source.indexOf('await supersedeMatchesForPairKey', start);
+          if (start < 0 || end <= start) throw new Error('duplicate match branch not found');
+          const branch = source.slice(start, end);
+          const reconcile = branch.indexOf('createMatchReviewBundle(');
+          const ret = branch.indexOf('return persisted;', reconcile);
+          if (reconcile < 0 || ret <= reconcile) throw new Error('MATCH_REVIEW reconciliation is not before duplicate return');
+          console.log('MATCH_REVIEW duplicate reconciliation verified');
+          NODE
+      - name: Promote exact verified commit to staging branch
+        run: git push origin HEAD:codex/unified-staging-lineage-2026-08-29
