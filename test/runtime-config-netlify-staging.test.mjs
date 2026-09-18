@@ -22,11 +22,20 @@ function runRuntimeConfig(hostname, search = "") {
   return { window, events };
 }
 
-test("Netlify iaqar-one staging hostname is fail-closed to staging services", () => {
-  const { window } = runRuntimeConfig("iaqar-one-staging.netlify.app");
+function assertStagingRuntime(hostname) {
+  const { window } = runRuntimeConfig(hostname);
   assert.equal(window.IAQAR.deploymentEnvironment, "staging");
   assert.equal(window.IAQAR.workerBase, "https://iaqar-intake-staging.iaqar-ai.workers.dev");
   assert.equal(window.IAQAR.firebaseProjectId, "iaqar-ai-staging");
+}
+
+test("Netlify iaqar-one staging hostname is fail-closed to staging services", () => {
+  assertStagingRuntime("iaqar-one-staging.netlify.app");
+});
+
+test("Netlify deploy previews for iaqar-one staging stay on staging services", () => {
+  assertStagingRuntime("deploy-preview-42--iaqar-one-staging.netlify.app");
+  assertStagingRuntime("feature-match-review--iaqar-one-staging.netlify.app");
 });
 
 test("production hostname remains production", () => {
