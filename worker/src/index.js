@@ -6210,7 +6210,8 @@ async function handleWorkflowAction(request,env,requestId) {
     const matchStatus=normalizeMatchStatus(m.status);
     if(["completed","closed"].includes(matchStatus)) throw appError("match_not_open",409,"لا يمكن إنشاء صفقة من مطابقة مغلقة");
     if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact",requestId});
-    const creationGate=evaluateDealCreation({match:m,coordination:{outcome:m.coordinationOutcome||""}});
+    const coordination=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
+    const creationGate=evaluateDealCreation({match:m,coordination});
     if(!creationGate.allowed) throw appError("deal_not_serious_yet",409,"لا تُنشأ الصفقة قبل ظهور جدية فعلية في التفاوض أو تأكيد المعاينة");
     const completedViewing=Boolean(m.viewingCompletedAt)||String(m.livingStage||"").toUpperCase()==="VIEWING_COMPLETED";
     const startStage=matchStatus==="negotiation"||completedViewing?"negotiation":matchStatus==="viewing"?"viewing":"contact";
