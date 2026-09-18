@@ -1,0 +1,37 @@
+name: Apply MATCH_REVIEW reconciliation fix v2
+
+on:
+  push:
+    branches:
+      - fix/match-review-reconcile-20260918
+    paths:
+      - .github/run-match-review-fix.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/match-review-reconcile-20260918
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply deterministic patch
+        run: python .github/scripts/apply_match_review_reconcile_fix.py
+      - name: Verify focused regression
+        run: node worker/test/match-review-reconcile.test.mjs
+      - name: Commit verified fix
+        run: |
+          git config user.name 'tssjiil-max'
+          git config user.email 'tssjiil@gmail.com'
+          git add worker/src/index.js
+          git commit -m 'fix: reconcile MATCH_REVIEW for existing matches'
+          git push origin HEAD:fix/match-review-reconcile-20260918
