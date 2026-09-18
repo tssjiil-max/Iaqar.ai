@@ -1,0 +1,26 @@
+name: TEMP live E2E integration verify
+
+on:
+  push:
+    branches:
+      - staging/live-e2e-integration-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  verify-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: staging/live-e2e-integration-20260918
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker
+      - name: Verify Worker suite
+        run: npm test --prefix worker
