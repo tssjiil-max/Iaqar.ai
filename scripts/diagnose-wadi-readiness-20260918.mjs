@@ -17,28 +17,41 @@ const iso = (v) => {
   if (v.seconds != null) return new Date(Number(v.seconds) * 1000).toISOString();
   const d = new Date(v); return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 };
+const present = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 const snap = await db.collection('offices').doc(OFFICE_ID).collection('opportunities').get();
 const rows = snap.docs.map((doc) => {
   const data = doc.data() || {};
   const readiness = evaluateOpportunityCoreReadiness(data);
+  const approvalSignals = {
+    autoSavedAt: present(data.autoSavedAt),
+    reviewOperationTypeId: present(data.reviewOperationTypeId),
+    reviewPropertyTypeId: present(data.reviewPropertyTypeId),
+    reviewCityId: present(data.reviewCityId),
+    reviewDistrictId: present(data.reviewDistrictId),
+    extractedSnapshot: Boolean(data.extractedSnapshot && typeof data.extractedSnapshot === 'object'),
+    advertiserContactStatus: present(data.advertiserContactStatus),
+    marketingConsentStatus: present(data.marketingConsentStatus),
+    advertiserPhoneNormalized: present(data.advertiserPhoneNormalized),
+    approvedAt: present(data.approvedAt),
+    reviewedAt: present(data.reviewedAt)
+  };
   return {
     opportunityId: doc.id,
     opportunityKind: String(data.opportunityKind || data.kind || ''),
     advertiserRole: String(data.advertiserRole || data.ownerRole || ''),
     sourceType: String(data.sourceType || ''),
     sourceChannel: String(data.sourceChannel || ''),
-    internalStatus: String(data.internalStatus || ''),
-    lifecycleStatus: String(data.lifecycleStatus || data.status || ''),
     persistedMatchingReadiness: String(data.matchingReadiness || ''),
     computedMatchingReadiness: readiness.matchingReadiness,
     dataCompleteness: readiness.dataCompleteness,
     missingFields: readiness.completionMissingFields,
     contactPhonePresent: Boolean(String(data.advertiserPhoneNormalized || data.contactPhone || data.phone || data.advertiserPhoneRaw || '').trim()),
     areaPresent: Number(data.area || 0) > 0,
+    approvalSignals,
     createdAt: iso(data.createdAt),
     updatedAt: iso(data.updatedAt)
   };
 });
-console.log('WADI_READINESS_SOURCE_DIAGNOSTIC');
+console.log('WADI_DRAFT_APPROVAL_DIAGNOSTIC');
 console.log(JSON.stringify({ projectId: PROJECT_ID, officeId: OFFICE_ID, readOnly: true, rows }, null, 2));
 await app.delete();
