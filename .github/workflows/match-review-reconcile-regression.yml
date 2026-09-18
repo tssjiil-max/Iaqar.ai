@@ -1,0 +1,21 @@
+name: MATCH_REVIEW reconciliation regression
+
+on:
+  push:
+    branches:
+      - fix/match-review-reconcile-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run duplicate-match reconciliation regression
+        run: node worker/test/match-review-reconcile.test.mjs
