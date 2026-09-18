@@ -52,12 +52,16 @@ test("client intake markup uses plain text fields without suggest lists", async 
   assert.match(gateSource, /name="district"/);
 });
 
-test("import simplified review markup has no hybrid search fields", async () => {
+test("import simplified review markup keeps location fields plain without hybrid search", async () => {
   const reviewSource = (await import("node:fs")).readFileSync(new URL("../public/js/opportunity-review.js", import.meta.url), "utf8");
   const start = reviewSource.indexOf("function renderImportSimplifiedReviewForm");
   const end = reviewSource.indexOf("function renderReviewForm", start);
   const section = reviewSource.slice(start, end);
   assert.doesNotMatch(section, /searchField\(/);
-  assert.doesNotMatch(section, /<select/);
+  assert.doesNotMatch(section, /<select[^>]*name="rawPropertyTypeText"/);
+  assert.doesNotMatch(section, /<select[^>]*name="rawCityText"/);
+  assert.doesNotMatch(section, /<select[^>]*name="rawNeighborhoodText"/);
   assert.match(section, /plainTextField\(\s*"rawPropertyTypeText"/);
+  assert.match(section, /plainTextField\(\s*"rawCityText"/);
+  assert.match(section, /plainTextField\(\s*"rawNeighborhoodText"/);
 });
