@@ -11,11 +11,23 @@ permissions:
 jobs:
   runtime-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install worker dependencies
+        run: npm ci --prefix worker
       - name: Verify Netlify staging runtime classification
         run: node --test test/runtime-config-netlify-staging.test.mjs
+      - name: Run full test suite
+        run: npm test
+      - name: Run static checks
+        run: npm run check
