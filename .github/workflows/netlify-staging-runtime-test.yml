@@ -1,0 +1,21 @@
+name: Netlify staging runtime guard
+
+on:
+  push:
+    branches:
+      - fix/netlify-staging-runtime-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Netlify staging runtime classification
+        run: node --test test/runtime-config-netlify-staging.test.mjs
