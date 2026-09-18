@@ -1080,6 +1080,29 @@ async function startVoiceIntake(structured) {
   }
 }
 
+function buildApprovedAdvertiserReviewPatch(baseOpportunity = {}, advertiser = {}) {
+  const merged = mergeAdvertiserFieldsIntoOpportunity(baseOpportunity, advertiser);
+  const keys = [
+    "advertiserDisplayName",
+    "advertiserPhoneRaw",
+    "advertiserPhoneNormalized",
+    "advertiserPhoneSource",
+    "advertiserPhoneEvidence",
+    "advertiserRole",
+    "advertiserContactStatus",
+    "marketingConsentStatus",
+    "lastContactAt",
+    "contactNotes",
+    "contactPhone",
+    "matchingReadiness",
+    "matchingReadinessMissing"
+  ];
+  return Object.fromEntries(
+    keys.filter((key) => Object.prototype.hasOwnProperty.call(merged, key))
+      .map((key) => [key, merged[key]])
+  );
+}
+
 async function approveFromReview(brokerExtras, review, advertiser = {}) {
   if (executing) throw new Error("save_in_progress");
   executing = true;
@@ -1129,13 +1152,21 @@ async function approveFromReview(brokerExtras, review, advertiser = {}) {
     if (!prepared.ok) throw new Error(prepared.error || "prepare_failed");
     if (intakeContext.mediaPath) prepared.source.mediaPath = intakeContext.mediaPath;
 
+    const approvedAdvertiserPatch = buildApprovedAdvertiserReviewPatch({
+      ...prepared.opportunity,
+      ...brokerFields,
+      sourceText: intakeContext.listingText || intakeContext.inputText || prepared.opportunity?.sourceText || "",
+      rawText: prepared.opportunity?.rawText || intakeContext.listingText || intakeContext.inputText || "",
+      directOwner: prepared.opportunity?.directOwner ?? prepared.fields?.directOwner
+    }, advertiser);
+
     const reviewMeta = {
       reviewOperationTypeId: brokerExtras.reviewOperationTypeId || "",
       reviewPropertyTypeId: brokerExtras.reviewPropertyTypeId || "",
       reviewCityId: brokerExtras.reviewCityId || "",
       reviewDistrictId: brokerExtras.reviewDistrictId || "",
       extractedSnapshot: brokerExtras.extractedSnapshot || null,
-      ...mergeAdvertiserFieldsIntoOpportunity({}, advertiser)
+      ...approvedAdvertiserPatch
     };
 
     const saved = await persistIntake(prepared, reviewMeta, {
@@ -1332,6 +1363,7 @@ export const __test = {
   requestOpportunityExtraction,
   resetForNewIntake,
   buildOpportunityPersistPayload,
+  buildApprovedAdvertiserReviewPatch,
   sanitizeFirestoreWrite,
   setExtractionTimeoutMs(value) {
     extractionTimeoutMs = Number(value) > 0
