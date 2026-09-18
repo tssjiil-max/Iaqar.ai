@@ -185,6 +185,8 @@ import {
   saveCoordinationSession,
   syncCooperationCoordinationForOffice
 } from "./coordination-session-service.js";
+import { buildFirestoreUpdateWrite, commitFirestoreWrites } from "./firestore-atomic-write-service.js";
+import { claimCurrentMatchForPairRule } from "./match-current-claim-service.js";
 import { appendCoordinationEvent } from "../../public/js/coordination-session-domain.js";
 import {
   analyzeVoiceWithGemini,
@@ -3941,51 +3943,6 @@ function operationsDeps(env = null) {
   };
 }
 
-async function supersedeMatchesForPairKey({
-  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
-}) {
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
-  });
-  let superseded = 0;
-  const supersededMatchIds = [];
-  for (const doc of docs) {
-    const match = firestoreFieldsToJs(doc.fields || {});
-    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    if (!matchId || matchId === keepMatchId) continue;
-    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
-    if (match.isCurrent === false || match.status === "superseded") continue;
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "matches", matchId],
-      accessToken,
-      fields: {
-        isCurrent: firestoreBoolean(false),
-        status: firestoreString("superseded"),
-        statusLabel: firestoreString("أُلغيت بنسخة أحدث"),
-        supersededAt: firestoreTimestamp(now),
-        supersededByMatchId: firestoreString(keepMatchId || ""),
-        attentionRequired: firestoreBoolean(false),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    superseded += 1;
-    supersededMatchIds.push(matchId);
-  }
-  if (supersededMatchIds.length) {
-    await expireOperationsForMatchIds({
-      projectId,
-      officeId,
-      matchIds: supersededMatchIds,
-      accessToken,
-      listCollectionDocuments,
-      setFirestoreDocument,
-      firestoreHelpers: operationsFirestoreHelpers()
-    }).catch((error) => console.warn("[iaqar-ops] expire superseded match ops", error && error.message));
-  }
-  return superseded;
-}
-
 async function loadOpportunityDocsByIds({
   projectId, officeId, officeIds = [], ids = [], accessToken
 }) {
@@ -4220,14 +4177,10 @@ async function persistScoredMatch({
     }
   }
 
-  await supersedeMatchesForPairKey({
-    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
-  });
-
   const now = new Date();
   const readiness = scored.readiness;
 
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+  const matchFields={
     schemaVersion: firestoreInteger(7),
     officeId: firestoreString(officeId),
     matchId: firestoreString(matchId),
@@ -4274,7 +4227,77 @@ async function persistScoredMatch({
     createdAt: firestoreTimestamp(now),
     lastMatchedAt: firestoreTimestamp(now),
     updatedAt: firestoreTimestamp(now)
-  }});
+  };
+  const claim=await claimCurrentMatchForPairRule({
+    pairRuleKey: pairRule,
+    targetMatchId: matchId,
+    maxAttempts: 5,
+    loadSnapshot: async () => {
+      const pointerDoc=await getFirestoreDocument({
+        projectId, segments:["offices",officeId,"matchCurrentPointers",pairRule], accessToken, allowMissing:true
+      });
+      if(pointerDoc && !pointerDoc.updateTime) throw new Error("current match pointer is missing updateTime");
+      const pointerData=pointerDoc?firestoreFieldsToJs(pointerDoc.fields||{}):null;
+      const docs=await listCollectionDocuments({
+        projectId, segments:["offices",officeId,"matches"], accessToken, pageSize:MAX_MATCH_CANDIDATES
+      });
+      const currentMatches=docs.map(doc=>{
+        const data=firestoreFieldsToJs(doc.fields||{});
+        const currentMatchId=decodeURIComponent(String(doc.name||"").split("/").pop()||"");
+        return {...data,matchId:currentMatchId};
+      });
+      return {
+        pointer:pointerDoc?{currentMatchId:String(pointerData?.currentMatchId||""),updateTime:pointerDoc.updateTime}:null,
+        currentMatches
+      };
+    },
+    commitClaim: async ({targetMatchId,supersededMatchIds,pointer}) => {
+      const writes=[];
+      for(const supersededMatchId of supersededMatchIds){
+        writes.push(buildFirestoreUpdateWrite({
+          projectId,
+          segments:["offices",officeId,"matches",supersededMatchId],
+          fields:{
+            isCurrent:firestoreBoolean(false),
+            status:firestoreString("superseded"),
+            statusLabel:firestoreString("أُلغيت بنسخة أحدث"),
+            supersededAt:firestoreTimestamp(now),
+            supersededByMatchId:firestoreString(targetMatchId),
+            attentionRequired:firestoreBoolean(false),
+            updatedAt:firestoreTimestamp(now)
+          }
+        }));
+      }
+      writes.push(buildFirestoreUpdateWrite({
+        projectId, segments:["offices",officeId,"matches",targetMatchId], fields:matchFields
+      }));
+      writes.push(buildFirestoreUpdateWrite({
+        projectId,
+        segments:["offices",officeId,"matchCurrentPointers",pairRule],
+        fields:{
+          schemaVersion:firestoreInteger(1),
+          officeId:firestoreString(officeId),
+          pairRuleKey:firestoreString(pairRule),
+          currentMatchId:firestoreString(targetMatchId),
+          matchingRuleVersion:firestoreString(MATCHING_RULE_VERSION),
+          updatedAt:firestoreTimestamp(now)
+        },
+        precondition:pointer?{updateTime:pointer.updateTime}:{exists:false}
+      }));
+      await commitFirestoreWrites({projectId,accessToken,writes});
+    }
+  });
+  if(claim.supersededMatchIds.length){
+    await expireOperationsForMatchIds({
+      projectId,
+      officeId,
+      matchIds:claim.supersededMatchIds,
+      accessToken,
+      listCollectionDocuments,
+      setFirestoreDocument,
+      firestoreHelpers:operationsFirestoreHelpers()
+    }).catch((error)=>console.warn("[iaqar-ops] expire superseded match ops",error&&error.message));
+  }
   await setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],
@@ -5985,7 +6008,7 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
   const dealId=matchData.dealId || `deal_${matchId.replace(/^mat_/,"")}`;
   const stage=DEAL_STAGE_ORDER.includes(startStage)?startStage:"contact";
   const health=calculateDealHealth({stage,status:"open",updatedAt:now});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
+  const dealFields={
     schemaVersion:firestoreInteger(5),officeId:firestoreString(officeId),dealId:firestoreString(dealId),matchId:firestoreString(matchId),
     clientRequestId:firestoreOptionalString(matchData.clientRequestId),ownerOfferId:firestoreOptionalString(matchData.ownerOfferId),matchGroupId:firestoreOptionalString(matchData.matchGroupId||matchData.clientRequestId),
     status:firestoreString("open"),workflowStage:firestoreString(stage),stageLabel:firestoreString(DEAL_STAGE_LABELS[stage]),
@@ -5996,11 +6019,15 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
     brokerageContractRequired:firestoreBoolean(true),brokerageContractStatus:firestoreString(BROKERAGE_CONTRACT_STATUS.NOT_STARTED),brokerageContractReference:firestoreString(""),
     nextFollowUpAt:firestoreTimestamp(defaultNextFollowUp(stage==="closing"?8:24)),followUpCount:firestoreInteger(0),
     createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-  }});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
+  };
+  const matchFields={
     status:firestoreString("negotiation"),statusLabel:firestoreString(MATCH_STATUS_LABELS.negotiation),workflowStage:firestoreString("negotiation"),
     nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
-  }});
+  };
+  await commitFirestoreWrites({projectId,accessToken,writes:[
+    buildFirestoreUpdateWrite({projectId,segments:["offices",officeId,"deals",dealId],fields:dealFields}),
+    buildFirestoreUpdateWrite({projectId,segments:["offices",officeId,"matches",matchId],fields:matchFields})
+  ]});
   await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"تم إنشاء الصفقة من المطابقة",identity,accessToken,createdAt:now});
   await runRuntimeOrchestration({
     event: ORCHESTRATOR_EVENT.DEAL_CREATED,
@@ -6114,18 +6141,29 @@ async function handleWorkflowAction(request,env,requestId) {
       lastNote:firestoreOptionalString(note),updatedAt:firestoreTimestamp(now),assignedToUid:firestoreOptionalString(identity.uid),attentionRequired:firestoreBoolean(false)
     };
     if(next==="viewing") fields.viewingAt=firestoreTimestamp(nextFollowUpAt);
-    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
-    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
     let dealId=m.dealId||"";
-    if(next==="negotiation"&&!dealId){
+    const enteringNegotiation=next==="negotiation"&&!dealId;
+    if(enteringNegotiation){
+      const coordination=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
       const creationGate=evaluateDealCreation({
         match:{...m,status:next,closingReadinessScore:readiness.score},
-        coordination:{outcome:m.coordinationOutcome||""}
+        coordination
       });
-      if(creationGate.allowed){
-        dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      if(!creationGate.allowed){
+        throw appError("deal_not_serious_yet",409,"لا تُنقل المطابقة إلى التفاوض قبل ظهور جدية فعلية في جلسة التنسيق أو تأكيد المعاينة");
       }
+      dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
+      const postDealFields={...fields};
+      delete postDealFields.status;
+      delete postDealFields.statusLabel;
+      delete postDealFields.workflowStage;
+      delete postDealFields.nextAction;
+      await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields:postDealFields});
+      await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
+      return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
     }
+    await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
+    await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
     return jsonResponse({ok:true,status:next,statusLabel:MATCH_STATUS_LABELS[next],nextAction:MATCH_NEXT_ACTION_LABELS[next],readiness,dealId,requestId});
   }
 
@@ -6199,7 +6237,8 @@ async function handleWorkflowAction(request,env,requestId) {
     const matchStatus=normalizeMatchStatus(m.status);
     if(["completed","closed"].includes(matchStatus)) throw appError("match_not_open",409,"لا يمكن إنشاء صفقة من مطابقة مغلقة");
     if(m.dealId) return jsonResponse({ok:true,dealId:m.dealId,status:"open",workflowStage:matchStatus==="negotiation"?"negotiation":matchStatus==="viewing"?"viewing":"contact",requestId});
-    const creationGate=evaluateDealCreation({match:m,coordination:{outcome:m.coordinationOutcome||""}});
+    const coordination=await loadCoordinationSession(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken});
+    const creationGate=evaluateDealCreation({match:m,coordination});
     if(!creationGate.allowed) throw appError("deal_not_serious_yet",409,"لا تُنشأ الصفقة قبل ظهور جدية فعلية في التفاوض أو تأكيد المعاينة");
     const completedViewing=Boolean(m.viewingCompletedAt)||String(m.livingStage||"").toUpperCase()==="VIEWING_COMPLETED";
     const startStage=matchStatus==="negotiation"||completedViewing?"negotiation":matchStatus==="viewing"?"viewing":"contact";
