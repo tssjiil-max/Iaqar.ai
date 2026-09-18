@@ -1,0 +1,13 @@
+[build]
+  publish = "public"
+
+[[headers]]
+  for = "/js/runtime-config.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[redirects]]
+  from = "/o/*"
+  to = "/index.html"
+  status = 200
+  force = false
