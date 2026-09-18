@@ -22,6 +22,34 @@ const docOfficeId = (doc) => doc.ref.parent.parent?.id || '';
 const opType = (op = {}) => String(op.type || op.operationType || '').toUpperCase();
 const opMatchId = (op = {}) => String(op.matchId || op.metadata?.matchId || '');
 const matchStatusCurrent = (m = {}) => m.isCurrent !== false && String(m.status || '').toLowerCase() !== 'superseded';
+const num = (...values) => {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+};
+
+function publicMatchingView(o = {}) {
+  return {
+    id:o.id,
+    kind:String(o.opportunityKind || o.kind || o.recordType || ''),
+    purpose:String(o.purpose || o.transactionType || ''),
+    city:String(o.city || ''),
+    district:String(o.district || ''),
+    propertyType:String(o.propertyType || o.type || ''),
+    price:num(o.price, o.priceOrBudget, o.salePrice, o.annualRent, o.budget),
+    priceMin:num(o.priceMin),
+    priceMax:num(o.priceMax, o.budget),
+    area:num(o.area),
+    rooms:num(o.rooms),
+    completeness:num(o.dataCompleteness, o.completeness),
+    matchingReadiness:String(o.matchingReadiness || ''),
+    lifecycleStatus:String(o.lifecycleStatus || o.status || ''),
+    version:Number(o.version || 0),
+    updatedAt:iso(o.updatedAt || o.createdAt)
+  };
+}
 
 async function collectionGroupDocs(name) {
   const snap = await db.collectionGroup(name).get();
@@ -55,10 +83,9 @@ async function inspectExpectedOffice(officeId) {
       matchReviews: ops.filter(o => opType(o) === 'MATCH_REVIEW').length
     },
     opportunityKinds: kinds,
-    latestOpportunityIds: opportunities
+    opportunitiesForMatching: opportunities
       .sort((a,b) => iso(b.updatedAt || b.createdAt).localeCompare(iso(a.updatedAt || a.createdAt)))
-      .slice(0,10)
-      .map(o => ({ id:o.id, kind:String(o.opportunityKind || o.kind || ''), status:String(o.lifecycleStatus || o.status || ''), updatedAt:iso(o.updatedAt || o.createdAt) })),
+      .map(publicMatchingView),
     latestCurrentMatches: currentMatches.slice(0,10).map(m => ({
       matchId:m.id, status:String(m.status || ''), score:Number(m.score || m.opportunityScore || 0),
       requestId:String(m.clientRequestId || m.requestId || ''), offerId:String(m.ownerOfferId || m.offerId || ''),
@@ -115,7 +142,7 @@ for (const officeId of EXPECTED_OFFICE_IDS) {
   catch (error) { expectedOffices.push({ officeId, error:String(error?.message || error) }); }
 }
 
-console.log('LIVE_MATCH_REVIEW_GLOBAL_DIAGNOSTIC');
+console.log('LIVE_MATCH_REVIEW_MATCHING_FIELDS_DIAGNOSTIC');
 console.log(JSON.stringify({
   projectId:PROJECT_ID,
   readOnly:true,
