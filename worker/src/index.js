@@ -185,6 +185,7 @@ import {
   saveCoordinationSession,
   syncCooperationCoordinationForOffice
 } from "./coordination-session-service.js";
+import { buildFirestoreUpdateWrite, commitFirestoreWrites } from "./firestore-atomic-write-service.js";
 import { appendCoordinationEvent } from "../../public/js/coordination-session-domain.js";
 import {
   analyzeVoiceWithGemini,
@@ -5985,7 +5986,7 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
   const dealId=matchData.dealId || `deal_${matchId.replace(/^mat_/,"")}`;
   const stage=DEAL_STAGE_ORDER.includes(startStage)?startStage:"contact";
   const health=calculateDealHealth({stage,status:"open",updatedAt:now});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"deals",dealId],accessToken,fields:{
+  const dealFields={
     schemaVersion:firestoreInteger(5),officeId:firestoreString(officeId),dealId:firestoreString(dealId),matchId:firestoreString(matchId),
     clientRequestId:firestoreOptionalString(matchData.clientRequestId),ownerOfferId:firestoreOptionalString(matchData.ownerOfferId),matchGroupId:firestoreOptionalString(matchData.matchGroupId||matchData.clientRequestId),
     status:firestoreString("open"),workflowStage:firestoreString(stage),stageLabel:firestoreString(DEAL_STAGE_LABELS[stage]),
@@ -5996,11 +5997,15 @@ async function createDealFromMatch({projectId,officeId,matchId,matchData,identit
     brokerageContractRequired:firestoreBoolean(true),brokerageContractStatus:firestoreString(BROKERAGE_CONTRACT_STATUS.NOT_STARTED),brokerageContractReference:firestoreString(""),
     nextFollowUpAt:firestoreTimestamp(defaultNextFollowUp(stage==="closing"?8:24)),followUpCount:firestoreInteger(0),
     createdAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now)
-  }});
-  await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",matchId],accessToken,fields:{
+  };
+  const matchFields={
     status:firestoreString("negotiation"),statusLabel:firestoreString(MATCH_STATUS_LABELS.negotiation),workflowStage:firestoreString("negotiation"),
     nextAction:firestoreString(MATCH_NEXT_ACTION_LABELS.negotiation),dealId:firestoreString(dealId),updatedAt:firestoreTimestamp(now)
-  }});
+  };
+  await commitFirestoreWrites({projectId,accessToken,writes:[
+    buildFirestoreUpdateWrite({projectId,segments:["offices",officeId,"deals",dealId],fields:dealFields}),
+    buildFirestoreUpdateWrite({projectId,segments:["offices",officeId,"matches",matchId],fields:matchFields})
+  ]});
   await addWorkflowTimeline({projectId,officeId,recordType:"deal",recordId:dealId,eventType:"deal_created",stage,note:"تم إنشاء الصفقة من المطابقة",identity,accessToken,createdAt:now});
   await runRuntimeOrchestration({
     event: ORCHESTRATOR_EVENT.DEAL_CREATED,
