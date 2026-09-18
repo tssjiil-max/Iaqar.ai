@@ -19,5 +19,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Run focused unified-review regression
-        run: node --test test/simplified-review-advertiser-role.test.mjs
+      - name: Run focused unified-review regressions
+        run: node --test test/simplified-review-advertiser-role.test.mjs test/add-opportunity-approved-readiness.test.mjs
