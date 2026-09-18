@@ -1,0 +1,28 @@
+name: Wadi matching readiness diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/live-match-review-20260918
+    paths:
+      - .github/run-wadi-readiness-diagnostic.trigger
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Identify missing readiness fields
+        run: node scripts/diagnose-wadi-readiness-20260918.mjs
