@@ -186,6 +186,7 @@ import {
   syncCooperationCoordinationForOffice
 } from "./coordination-session-service.js";
 import { buildFirestoreUpdateWrite, commitFirestoreWrites } from "./firestore-atomic-write-service.js";
+import { claimCurrentMatchForPairRule } from "./match-current-claim-service.js";
 import { appendCoordinationEvent } from "../../public/js/coordination-session-domain.js";
 import {
   analyzeVoiceWithGemini,
@@ -3942,51 +3943,6 @@ function operationsDeps(env = null) {
   };
 }
 
-async function supersedeMatchesForPairKey({
-  projectId, officeId, pairRule, keepMatchId, accessToken, now = new Date()
-}) {
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
-  });
-  let superseded = 0;
-  const supersededMatchIds = [];
-  for (const doc of docs) {
-    const match = firestoreFieldsToJs(doc.fields || {});
-    const matchId = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
-    if (!matchId || matchId === keepMatchId) continue;
-    if (String(match.pairRuleKey || "") !== String(pairRule || "")) continue;
-    if (match.isCurrent === false || match.status === "superseded") continue;
-    await setFirestoreDocument({
-      projectId,
-      segments: ["offices", officeId, "matches", matchId],
-      accessToken,
-      fields: {
-        isCurrent: firestoreBoolean(false),
-        status: firestoreString("superseded"),
-        statusLabel: firestoreString("أُلغيت بنسخة أحدث"),
-        supersededAt: firestoreTimestamp(now),
-        supersededByMatchId: firestoreString(keepMatchId || ""),
-        attentionRequired: firestoreBoolean(false),
-        updatedAt: firestoreTimestamp(now)
-      }
-    });
-    superseded += 1;
-    supersededMatchIds.push(matchId);
-  }
-  if (supersededMatchIds.length) {
-    await expireOperationsForMatchIds({
-      projectId,
-      officeId,
-      matchIds: supersededMatchIds,
-      accessToken,
-      listCollectionDocuments,
-      setFirestoreDocument,
-      firestoreHelpers: operationsFirestoreHelpers()
-    }).catch((error) => console.warn("[iaqar-ops] expire superseded match ops", error && error.message));
-  }
-  return superseded;
-}
-
 async function loadOpportunityDocsByIds({
   projectId, officeId, officeIds = [], ids = [], accessToken
 }) {
@@ -4221,14 +4177,10 @@ async function persistScoredMatch({
     }
   }
 
-  await supersedeMatchesForPairKey({
-    projectId, officeId, pairRule, keepMatchId: matchId, accessToken
-  });
-
   const now = new Date();
   const readiness = scored.readiness;
 
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId], accessToken, fields: {
+  const matchFields={
     schemaVersion: firestoreInteger(7),
     officeId: firestoreString(officeId),
     matchId: firestoreString(matchId),
@@ -4275,7 +4227,77 @@ async function persistScoredMatch({
     createdAt: firestoreTimestamp(now),
     lastMatchedAt: firestoreTimestamp(now),
     updatedAt: firestoreTimestamp(now)
-  }});
+  };
+  const claim=await claimCurrentMatchForPairRule({
+    pairRuleKey: pairRule,
+    targetMatchId: matchId,
+    maxAttempts: 5,
+    loadSnapshot: async () => {
+      const pointerDoc=await getFirestoreDocument({
+        projectId, segments:["offices",officeId,"matchCurrentPointers",pairRule], accessToken, allowMissing:true
+      });
+      if(pointerDoc && !pointerDoc.updateTime) throw new Error("current match pointer is missing updateTime");
+      const pointerData=pointerDoc?firestoreFieldsToJs(pointerDoc.fields||{}):null;
+      const docs=await listCollectionDocuments({
+        projectId, segments:["offices",officeId,"matches"], accessToken, pageSize:MAX_MATCH_CANDIDATES
+      });
+      const currentMatches=docs.map(doc=>{
+        const data=firestoreFieldsToJs(doc.fields||{});
+        const currentMatchId=decodeURIComponent(String(doc.name||"").split("/").pop()||"");
+        return {...data,matchId:currentMatchId};
+      });
+      return {
+        pointer:pointerDoc?{currentMatchId:String(pointerData?.currentMatchId||""),updateTime:pointerDoc.updateTime}:null,
+        currentMatches
+      };
+    },
+    commitClaim: async ({targetMatchId,supersededMatchIds,pointer}) => {
+      const writes=[];
+      for(const supersededMatchId of supersededMatchIds){
+        writes.push(buildFirestoreUpdateWrite({
+          projectId,
+          segments:["offices",officeId,"matches",supersededMatchId],
+          fields:{
+            isCurrent:firestoreBoolean(false),
+            status:firestoreString("superseded"),
+            statusLabel:firestoreString("أُلغيت بنسخة أحدث"),
+            supersededAt:firestoreTimestamp(now),
+            supersededByMatchId:firestoreString(targetMatchId),
+            attentionRequired:firestoreBoolean(false),
+            updatedAt:firestoreTimestamp(now)
+          }
+        }));
+      }
+      writes.push(buildFirestoreUpdateWrite({
+        projectId, segments:["offices",officeId,"matches",targetMatchId], fields:matchFields
+      }));
+      writes.push(buildFirestoreUpdateWrite({
+        projectId,
+        segments:["offices",officeId,"matchCurrentPointers",pairRule],
+        fields:{
+          schemaVersion:firestoreInteger(1),
+          officeId:firestoreString(officeId),
+          pairRuleKey:firestoreString(pairRule),
+          currentMatchId:firestoreString(targetMatchId),
+          matchingRuleVersion:firestoreString(MATCHING_RULE_VERSION),
+          updatedAt:firestoreTimestamp(now)
+        },
+        precondition:pointer?{updateTime:pointer.updateTime}:{exists:false}
+      }));
+      await commitFirestoreWrites({projectId,accessToken,writes});
+    }
+  });
+  if(claim.supersededMatchIds.length){
+    await expireOperationsForMatchIds({
+      projectId,
+      officeId,
+      matchIds:claim.supersededMatchIds,
+      accessToken,
+      listCollectionDocuments,
+      setFirestoreDocument,
+      firestoreHelpers:operationsFirestoreHelpers()
+    }).catch((error)=>console.warn("[iaqar-ops] expire superseded match ops",error&&error.message));
+  }
   await setFirestoreDocument({
     projectId,
     segments: ["offices", officeId, "matches", matchId, "timeline", "evt_match_created"],

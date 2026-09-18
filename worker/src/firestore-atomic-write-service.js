@@ -7,19 +7,29 @@ function firestoreDocumentName(projectId, segments) {
   return `projects/${projectId}/databases/(default)/documents/${documentPath}`;
 }
 
-export function buildFirestoreUpdateWrite({ projectId, segments, fields }) {
+export function buildFirestoreUpdateWrite({ projectId, segments, fields, precondition = null }) {
   if (!projectId) throw new Error("Firestore projectId is required");
   if (!Array.isArray(segments) || segments.length === 0) throw new Error("Firestore document path is required");
   const compacted = compactFields(fields);
   const fieldPaths = Object.keys(compacted);
   if (fieldPaths.length === 0) throw new Error("Firestore update fields are required");
-  return {
+  const write = {
     update: {
       name: firestoreDocumentName(projectId, segments),
       fields: compacted
     },
     updateMask: { fieldPaths }
   };
+  if (precondition) {
+    if (typeof precondition.updateTime === "string" && precondition.updateTime) {
+      write.currentDocument = { updateTime: precondition.updateTime };
+    } else if (typeof precondition.exists === "boolean") {
+      write.currentDocument = { exists: precondition.exists };
+    } else {
+      throw new Error("Firestore write precondition must use updateTime or exists");
+    }
+  }
+  return write;
 }
 
 export async function commitFirestoreWrites({ projectId, accessToken, writes, fetchImpl = fetch }) {
@@ -34,7 +44,15 @@ export async function commitFirestoreWrites({ projectId, accessToken, writes, fe
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Firestore atomic commit failed (${response.status}): ${detail}`);
+    let firestoreCode = "";
+    try {
+      firestoreCode = String(JSON.parse(detail)?.error?.status || "");
+    } catch {}
+    const error = new Error(`Firestore atomic commit failed (${response.status}): ${detail}`);
+    error.status = response.status;
+    error.firestoreCode = firestoreCode;
+    error.code = firestoreCode || String(response.status || "");
+    throw error;
   }
   return response.json().catch(() => ({}));
 }
