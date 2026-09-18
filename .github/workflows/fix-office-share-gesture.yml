@@ -1,0 +1,145 @@
+name: Fix office share gesture
+
+on:
+  push:
+    branches:
+      - fix/staging-office-share-gesture-20260918
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/staging-office-share-gesture-20260918
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Patch share handler
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('public/js/office-settings.js')
+          s = p.read_text()
+          replacement = r'''async function shareOfficeLinkCard() {
+  const missing = officeShareCardRequiredFields();
+  if (missing.length) {
+    setStatus(el.linkStatus, `أكمل بيانات المكتب أولًا: ${missing.join("، ")}`, "is-error");
+    return;
+  }
+  const originalText = el.shareLinkCard?.textContent || "مشاركة رابط المكتب";
+  const requestedSlug = normalizePublicSlug(el.publicSlug?.value || current.publicSlug);
+  const persistedSlug = normalizePublicSlug(current.publicSlug);
+  if (el.shareLinkCard) {
+    el.shareLinkCard.disabled = true;
+  }
+
+  try {
+    if (requestedSlug && requestedSlug === persistedSlug && navigator.share) {
+      const text = officeShareMessage({
+        officeName: current.officeName,
+        origin: window.location.origin,
+        publicSlug: current.publicSlug,
+        officeId: officeId()
+      });
+      // Web Share must be invoked while the click still owns transient user activation.
+      const sharePromise = navigator.share({ title: current.officeName, text });
+      void (async () => {
+        try {
+          const blob = await createOfficeSharePreviewBlob();
+          if (blob) await uploadOfficeSharePreview(blob);
+        } catch (cardError) {
+          console.warn("[iaqar] office share card upload", cardError);
+        }
+      })();
+      await sharePromise;
+      setStatus(el.linkStatus, "تمت مشاركة رابط المكتب", "is-done");
+      return;
+    }
+
+    await ensurePublicSlug();
+    const text = officeShareMessage({
+      officeName: current.officeName,
+      origin: window.location.origin,
+      publicSlug: current.publicSlug,
+      officeId: officeId()
+    });
+    try {
+      const blob = await createOfficeSharePreviewBlob();
+      if (blob) await uploadOfficeSharePreview(blob);
+    } catch (cardError) {
+      console.warn("[iaqar] office share card upload", cardError);
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      if (el.link) {
+        el.link.select();
+        document.execCommand("copy");
+      }
+    }
+    setStatus(
+      el.linkStatus,
+      requestedSlug !== persistedSlug
+        ? "تم حفظ الرابط ونسخه. اضغط مشاركة رابط المكتب مرة أخرى لفتح خيارات المشاركة."
+        : "تم نسخ رسالة الرابط القصير",
+      "is-done"
+    );
+    toast("تم نسخ رابط المكتب");
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (error && error.name === "NotAllowedError") {
+      await copyLink();
+      setStatus(el.linkStatus, "تعذر فتح المشاركة في هذا المتصفح، ونُسخ الرابط بدلًا منها.", "is-done");
+      return;
+    }
+    setStatus(el.linkStatus, error?.message || "تعذر مشاركة رابط المكتب", "is-error");
+  } finally {
+    if (el.shareLinkCard) {
+      el.shareLinkCard.disabled = false;
+      el.shareLinkCard.textContent = originalText;
+    }
+  }
+}
+
+async function shareOfficeCard()'''
+          pattern = r'async function shareOfficeLinkCard\(\) \{.*?\n\}\n\nasync function shareOfficeCard\(\)'
+          out, n = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if n == 0:
+            if 'const sharePromise = navigator.share({ title: current.officeName, text });' in s:
+              print('already patched')
+            else:
+              raise SystemExit('shareOfficeLinkCard block not found')
+          else:
+            p.write_text(out)
+          PY
+      - name: Verify source contract
+        run: |
+          node --check public/js/office-settings.js
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('public/js/office-settings.js').read_text()
+          a = s.index('async function shareOfficeLinkCard()')
+          b = s.index('async function shareOfficeCard()', a)
+          block = s[a:b]
+          assert 'const sharePromise = navigator.share({ title: current.officeName, text });' in block
+          assert block.index('navigator.share') < block.index('await ensurePublicSlug()')
+          assert 'NotAllowedError' in block
+          print('office share gesture regression check passed')
+          PY
+      - name: Commit patch when needed
+        run: |
+          if git diff --quiet -- public/js/office-settings.js; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/js/office-settings.js
+          git commit -m "fix(staging): preserve user gesture for office link sharing"
+          git push origin HEAD:fix/staging-office-share-gesture-20260918
