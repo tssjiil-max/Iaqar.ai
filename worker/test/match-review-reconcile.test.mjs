@@ -11,11 +11,11 @@ test("an existing current match reconciles MATCH_REVIEW before returning duplica
 
   const duplicateBranch = workerSource.slice(start, end);
   const reconcileIndex = duplicateBranch.indexOf("createMatchReviewBundle(");
-  const duplicateReturnIndex = duplicateBranch.lastIndexOf("return {");
+  const persistedReturnIndex = duplicateBranch.indexOf("return persisted;", reconcileIndex);
 
   assert.ok(reconcileIndex >= 0, "existing current matches must reconcile MATCH_REVIEW");
   assert.ok(
-    reconcileIndex < duplicateReturnIndex,
+    persistedReturnIndex > reconcileIndex,
     "MATCH_REVIEW reconciliation must happen before the duplicate result returns"
   );
   assert.match(duplicateBranch, /operationId/);
