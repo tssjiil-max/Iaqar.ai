@@ -1,0 +1,62 @@
+name: TEMP create_deal coordination gate fix
+
+on:
+  push:
+    branches:
+      - fix/create-deal-coordination-gate-20260918
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/create-deal-coordination-gate-20260918
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: RED - prove create_deal regression test catches stale projection
+        shell: bash
+        run: |
+          set +e
+          node worker/test/create-deal-coordination-gate.test.mjs > /tmp/create-deal-red.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/create-deal-red.log
+          if [ "$code" -eq 0 ]; then
+            echo "Expected regression test to fail before the fix, but it passed."
+            exit 1
+          fi
+          grep -q "create_deal must load authoritative coordinationSessions" /tmp/create-deal-red.log
+
+      - name: Apply isolated coordinationSessions source fix
+        run: node scripts/repair-create-deal-coordination-gate.mjs
+
+      - name: GREEN - run isolated regression test
+        run: node worker/test/create-deal-coordination-gate.test.mjs
+
+      - name: Verify Worker test suite
+        working-directory: worker
+        run: npm test
+
+      - name: Commit verified fix and remove temporary machinery
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-create-deal-coordination-fix.yml scripts/repair-create-deal-coordination-gate.mjs
+          git add worker/src/index.js worker/package.json worker/test/create-deal-coordination-gate.test.mjs
+          git commit -m "fix: source create_deal gate from coordination session"
+          git push origin HEAD:fix/create-deal-coordination-gate-20260918
