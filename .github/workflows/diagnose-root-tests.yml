@@ -1,0 +1,52 @@
+name: Diagnose root tests
+
+on:
+  push:
+    branches:
+      - verify/approved-readiness-clean-20260918
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install root dependencies
+        run: npm ci
+      - name: Diagnose root test files
+        shell: bash
+        run: |
+          set +e
+          : > failed-tests.txt
+          : > diagnosis.txt
+          for f in test/*.test.mjs; do
+            echo "===== RUN $f =====" | tee -a diagnosis.txt
+            node --test "$f" >> diagnosis.txt 2>&1
+            rc=$?
+            if [ $rc -ne 0 ]; then
+              echo "$f" | tee -a failed-tests.txt
+              echo "FAIL $f rc=$rc" >> diagnosis.txt
+            else
+              echo "PASS $f" >> diagnosis.txt
+            fi
+          done
+          echo "===== FAILED FILES =====" >> diagnosis.txt
+          cat failed-tests.txt >> diagnosis.txt
+          exit 0
+      - name: Upload diagnosis
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-test-diagnosis
+          path: |
+            failed-tests.txt
+            diagnosis.txt
+          if-no-files-found: error
