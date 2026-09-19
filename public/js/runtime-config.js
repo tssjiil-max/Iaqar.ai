@@ -14,6 +14,7 @@
   const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
   const PRODUCTION_FIREBASE_PROJECT = "aqar-b5d76";
   const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";
+  const STAGING_PARTY_HANDOFF_APP = "https://iaqar-one-staging-9nakf9j63-tssjiil-2953.vercel.app/";
 
   function hostname() {
     try {
@@ -59,6 +60,45 @@
     return PRODUCTION_WORKER;
   }
 
+  function buildMatchPartyHandoffUrl(detail = {}) {
+    const runtimeOfficeId = String(window.IAQAR?.office?.officeId || "").trim();
+    const queryOfficeId = (() => {
+      try {
+        return String(new URLSearchParams(window.location.search).get("officeId") || "").trim();
+      } catch (_) {
+        return "";
+      }
+    })();
+    const officeId = String(detail.officeId || runtimeOfficeId || queryOfficeId || "").trim();
+    const matchId = String(
+      detail.matchId
+      || (String(detail.recordType || "").toLowerCase() === "match" ? detail.recordId : "")
+      || detail.id
+      || ""
+    ).trim();
+    if (!matchId) return "";
+
+    const url = new URL(STAGING_PARTY_HANDOFF_APP);
+    if (officeId) url.searchParams.set("officeId", officeId);
+    url.searchParams.set("matchId", matchId);
+    return url.toString();
+  }
+
+  function openMatchPartyHandoff(detail = {}) {
+    const target = buildMatchPartyHandoffUrl(detail);
+    if (!target) return false;
+    const opened = window.open(target, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = target;
+    return true;
+  }
+
+  function shouldRouteMatchToPartyHandoff(detail = {}) {
+    if (deploymentEnvironment !== "staging") return false;
+    if (String(detail.recordType || "").toLowerCase() !== "match") return false;
+    const mode = String(detail.actionMode || "").toLowerCase();
+    return mode === "" || mode === "primary" || mode === "secondary";
+  }
+
   const deploymentEnvironment = detectEnvironment();
   const workerBase = deploymentEnvironment === "staging" ? STAGING_WORKER : PRODUCTION_WORKER;
   const firebaseProjectId = deploymentEnvironment === "staging"
@@ -73,8 +113,24 @@
   window.IAQAR.STAGING_WORKER = STAGING_WORKER;
   window.IAQAR.PRODUCTION_FIREBASE_PROJECT = PRODUCTION_FIREBASE_PROJECT;
   window.IAQAR.STAGING_FIREBASE_PROJECT = STAGING_FIREBASE_PROJECT;
+  window.IAQAR.STAGING_PARTY_HANDOFF_APP = STAGING_PARTY_HANDOFF_APP;
   window.IAQAR.resolveWorkerBase = resolveWorkerBase;
   window.IAQAR.detectEnvironment = detectEnvironment;
+  window.IAQAR.buildMatchPartyHandoffUrl = buildMatchPartyHandoffUrl;
+  window.IAQAR.openMatchPartyHandoff = openMatchPartyHandoff;
+
+  // Staging-only bridge: the legacy workspace still dispatches iaqar:workflow-action
+  // for MATCH cards. Capture only primary/secondary match actions and route them to
+  // the unified one-section handoff screen. Deals and production remain untouched.
+  window.addEventListener("iaqar:workflow-action", (event) => {
+    const detail = event?.detail || {};
+    if (!shouldRouteMatchToPartyHandoff(detail)) return;
+    const target = buildMatchPartyHandoffUrl(detail);
+    if (!target) return;
+    event.stopImmediatePropagation();
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    openMatchPartyHandoff(detail);
+  }, true);
 
   window.dispatchEvent(new CustomEvent("iaqar:runtime-config-ready", {
     detail: { deploymentEnvironment, workerBase, firebaseProjectId }
