@@ -795,9 +795,10 @@
   async function openWorkflowUi(detail) {
     ensureWorkflowUi();
     activeWorkflowDetail = { ...detail };
+    activeWorkflowContacts = { owner: null, client: null };
     const overlay = document.getElementById("iaqarWorkflowOverlay");
     overlay.hidden = false;
-    workflowBody().innerHTML = `<div class="iaqar-workflow-summary">جارٍ تحميل بيانات العميل والمالك...</div>`;
+    renderWorkflowUi();
     const [owner, client] = await Promise.all([
       workflowContact(activeWorkflowDetail, "owner").catch(() => null),
       workflowContact(activeWorkflowDetail, "client").catch(() => null)
@@ -810,6 +811,10 @@
     const contact = activeWorkflowContacts[role];
     const label = role === "owner" ? "المالك" : "العميل";
     return contact && contact.name ? `واتساب ${label}: ${contact.name}` : `واتساب ${label}`;
+  }
+
+  function matchCommunicationActions() {
+    return `<div class="iaqar-workflow-step"><h3>إرسال المطابقة للطرفين</h3><p>أرسل تفاصيل الفرصة للعميل والمالك مباشرة عبر واتساب.</p><div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div></div>`;
   }
 
   function renderWorkflowUi() {
@@ -841,9 +846,10 @@
     }
 
     body.innerHTML = `${summary}<div class="iaqar-workflow-steps">
+      ${matchCommunicationActions()}
       <article class="iaqar-workflow-step ${hasAppointment ? "is-done" : ""}"><h3>1. تحديد المعاينة</h3><p>${hasAppointment ? `الموعد: ${escapeUi(appointmentText(detail))}` : "اختر التاريخ والوقت ثم احفظ الموعد."}</p><button class="iaqar-workflow-btn secondary" data-ui-action="open-schedule">${hasAppointment ? "تغيير الموعد" : "تحديد المعاينة"}</button></article>
       <article class="iaqar-workflow-step"><h3>2. إنهاء الفرصة</h3><p>${hasAppointment ? "بعد المعاينة اختر النتيجة مباشرة." : "يتاح إتمام الصفقة بعد حفظ موعد المعاينة."}</p><div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn success" data-ui-action="complete" ${hasAppointment ? "" : "disabled"}>تمت الصفقة</button><button class="iaqar-workflow-btn danger" data-ui-action="open-close">لم تتم الصفقة</button></div></article>
-    </div>${hasAppointment ? `<div class="iaqar-whatsapp-grid"><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-client">${escapeUi(contactButtonLabel("client"))}</button><button class="iaqar-workflow-btn whatsapp" data-ui-action="whatsapp-owner">${escapeUi(contactButtonLabel("owner"))}</button></div>` : ""}
+    </div>
     <div class="iaqar-workflow-actions"><button class="iaqar-workflow-btn secondary" data-ui-action="open-request">طلب الصور أو الموقع أو رابط العقار</button></div>${internalDealFields()}`;
   }
 
