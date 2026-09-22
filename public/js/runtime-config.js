@@ -14,7 +14,7 @@
   const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
   const PRODUCTION_FIREBASE_PROJECT = "aqar-b5d76";
   const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";
-  const STAGING_PARTY_HANDOFF_APP = "https://iaqar-one-staging-em1hyywev-tssjiil-2953.vercel.app/";
+  const STAGING_PARTY_HANDOFF_APP = "https://iaqar-one-staging-a40k5mfgq-tssjiil-2953.vercel.app/";
 
   function hostname() {
     try {
