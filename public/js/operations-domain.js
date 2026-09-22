@@ -266,6 +266,9 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
     coordinationBrokerLine: String(op.coordinationBrokerLine || metadata.coordinationBrokerLine || ""),
     coordinationClientSummary: String(op.coordinationClientSummary || metadata.coordinationClientSummary || ""),
     coordinationOwnerSummary: String(op.coordinationOwnerSummary || metadata.coordinationOwnerSummary || ""),
+    negotiationStatus: String(op.negotiationStatus || metadata.negotiationStatus || ""),
+    lastNegotiationActivityAt: String(op.lastNegotiationActivityAt || metadata.lastNegotiationActivityAt || ""),
+    lastNegotiationEvent: String(op.lastNegotiationEvent || metadata.lastNegotiationEvent || ""),
     livingStage: String(op.livingStage || metadata.livingStage || ""),
     livingTimeline: (() => {
       const raw = op.livingTimeline || op.livingTimelineJson || metadata.livingTimeline || metadata.livingTimelineJson;

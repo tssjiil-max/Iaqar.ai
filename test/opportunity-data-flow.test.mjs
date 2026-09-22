@@ -58,7 +58,7 @@ test("dedupeOperationsFeedItems keeps MATCH_REVIEW over legacy match doc", () =>
 test("dedupeOperationsFeedItems carries live negotiation state from match into MATCH_REVIEW", () => {
   const items = [
     { id: "op-1", operationType: "MATCH_REVIEW", matchId: "m1", recordType: "operation", status: "OPEN", clientRequestId: "req-1", ownerOfferId: "off-1" },
-    { id: "m1", recordId: "m1", recordType: "match", matchId: "m1", status: "active", livingStage: "APPOINTMENT_COORDINATION", nextActor: "OWNER", hasNewResponse: "true", coordinationOutcome: "SCHEDULE_CONFLICT", coordinationBrokerLine: "تعارض في مواعيد المعاينة", clientRequestId: "req-1", ownerOfferId: "off-1" }
+    { id: "m1", recordId: "m1", recordType: "match", matchId: "m1", status: "active", livingStage: "APPOINTMENT_COORDINATION", nextActor: "OWNER", hasNewResponse: "true", coordinationOutcome: "SCHEDULE_CONFLICT", coordinationBrokerLine: "تعارض في مواعيد المعاينة", negotiationStatus: "VIEWING_REQUESTED", lastNegotiationActivityAt: "2026-09-22T10:00:00.000Z", lastNegotiationEvent: "طلب العميل معاينة", clientRequestId: "req-1", ownerOfferId: "off-1" }
   ];
   const [out] = dedupeOperationsFeedItems(items);
   assert.equal(out.id, "op-1");
@@ -67,6 +67,9 @@ test("dedupeOperationsFeedItems carries live negotiation state from match into M
   assert.equal(out.nextActor, "OWNER");
   assert.equal(out.hasNewResponse, "true");
   assert.equal(out.coordinationOutcome, "SCHEDULE_CONFLICT");
+  assert.equal(out.negotiationStatus, "VIEWING_REQUESTED");
+  assert.equal(out.lastNegotiationActivityAt, "2026-09-22T10:00:00.000Z");
+  assert.equal(out.lastNegotiationEvent, "طلب العميل معاينة");
 });
 
 test("shouldShowBankLoadMore hides when exhausted with zero visible rows", () => {

@@ -43,3 +43,13 @@ test("collapsed match does not expose negotiation details", () => {
   const html = buildDailyTaskCardHtml(matchTask({ livingStage: "PROPERTY_AVAILABLE" }), { open: false });
   assert.doesNotMatch(html, /data-negotiation-assistant/);
 });
+
+test("collapsed match shows the latest negotiation activity without opening details", () => {
+  const html = buildDailyTaskCardHtml(matchTask({
+    negotiationStatus: "WAITING_OWNER",
+    lastNegotiationEvent: "العميل قدم عرضًا جديدًا",
+    lastNegotiationActivityAt: "2026-09-22T10:00:00.000Z"
+  }), { open: false });
+  assert.match(html, /التفاوض: بانتظار المالك/);
+  assert.match(html, /آخر نشاط:<\/strong> العميل قدم عرضًا جديدًا/);
+});

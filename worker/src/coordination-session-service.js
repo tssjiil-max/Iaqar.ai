@@ -57,6 +57,27 @@ function uniqueList(values = []) {
   return [...new Set((Array.isArray(values) ? values : []).map((v) => text(v)).filter(Boolean))];
 }
 
+function negotiationProjection(session = {}, nextActor = "") {
+  const outcome = text(session.outcome).toUpperCase();
+  let status = "NEGOTIATING";
+  if (outcome === "AWAITING_BOTH_PARTIES") status = "STARTED";
+  else if (outcome === "AWAITING_OTHER_PARTY" || outcome === "NEGOTIATION_PENDING_OWNER") {
+    status = String(nextActor).toUpperCase() === "OWNER" ? "WAITING_OWNER" : "WAITING_CLIENT";
+  } else if (["VIEWING_READY", "SCHEDULE_CONFLICT", "OWNER_VIEWING_BLOCKED"].includes(outcome)) status = "VIEWING_REQUESTED";
+  else if (outcome === "NEGOTIATION_ACCEPTED") status = "PRELIMINARY_AGREEMENT";
+  else if (["CLIENT_NOT_INTERESTED", "PROPERTY_NOT_AVAILABLE", "NEGOTIATION_REJECTED"].includes(outcome)) status = "CLOSED";
+  const events = Array.isArray(session.eventLog) ? session.eventLog : [];
+  const event = [...events].reverse().find((item) => item?.actor === "OWNER" || item?.actor === "CLIENT")
+    || events.at(-1);
+  const actor = event?.actor === "OWNER" ? "المالك" : event?.actor === "CLIENT" ? "العميل" : "النظام";
+  const label = text(event?.label || session.brokerLine || outcome);
+  return {
+    negotiationStatus: status,
+    lastNegotiationActivityAt: text(event?.createdAt || session.updatedAt) || new Date().toISOString(),
+    lastNegotiationEvent: label ? `${actor}: ${label}` : actor
+  };
+}
+
 export async function loadCoordinationSession(helpers, {
   projectId,
   officeId,
@@ -407,6 +428,7 @@ export async function applyCoordinationToMatch(helpers, {
     : nextActorForLivingStage(living.stage, {
       ownerContactNeeded: Boolean(ownerContactNeeded)
     });
+  const negotiation = negotiationProjection(session, nextActor);
   const patch = {
     livingStage: living.stage,
     ownerContactNeeded: Boolean(ownerContactNeeded),
@@ -416,6 +438,7 @@ export async function applyCoordinationToMatch(helpers, {
     coordinationBrokerLine: brokerLine,
     coordinationClientSummary: clientSummary,
     coordinationOwnerSummary: ownerSummary,
+    ...negotiation,
     nextActor,
     timelineEvent: {
       type: `coordination_${String(session.outcome || "").toLowerCase()}`,

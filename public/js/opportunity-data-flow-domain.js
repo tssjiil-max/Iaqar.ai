@@ -181,6 +181,7 @@ function feedItemKey(item = {}) {
 const MATCH_LIVING_STATE_FIELDS = Object.freeze([
   "livingStage", "nextActor", "livingUpdatedAt", "livingTimeline", "livingTimelineJson",
   "hasNewResponse", "coordinationOutcome", "coordinationBrokerLine",
+  "negotiationStatus", "lastNegotiationActivityAt", "lastNegotiationEvent",
   "coordinationClientSummary", "coordinationOwnerSummary", "ownerContactNeeded",
   "missingInfoKey", "activeMatchId", "rejectedMatchIds", "viewingCandidateAt",
   "appointmentAt", "viewingAt", "appointmentStatus", "viewingCompletedAt",

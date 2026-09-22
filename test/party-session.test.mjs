@@ -476,8 +476,14 @@ test("owner bundle advances the client session to the next review action", async
     "offices/office-1": { fields: { officeName: "مكتب النور" } },
     "offices/office-1/matches/match_owner_next": { fields: {
       livingStage: "MATCH_FOUND",
+      operationId: "operation_owner_next",
       ownerOfferId: "offer_owner_next",
       clientRequestId: "request_owner_next"
+    } },
+    "offices/office-1/operations/operation_owner_next": { fields: {
+      operationType: "MATCH_REVIEW",
+      matchId: "match_owner_next",
+      status: "OPEN"
     } },
     "offices/office-1/opportunities/offer_owner_next": { fields: {
       opportunityKind: "OFFER",
@@ -516,6 +522,12 @@ test("owner bundle advances the client session to the next review action", async
   assert.equal(ownerReply.body.ok, true);
   assert.equal(store["offices/office-1/matches/match_owner_next"].fields.nextActor, "CLIENT");
   assert.equal(store["offices/office-1/matches/match_owner_next"].fields.hasNewResponse, "true");
+  assert.equal(store["offices/office-1/matches/match_owner_next"].fields.negotiationStatus, "WAITING_CLIENT");
+  assert.match(store["offices/office-1/matches/match_owner_next"].fields.lastNegotiationActivityAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(store["offices/office-1/matches/match_owner_next"].fields.lastNegotiationEvent, /المالك/);
+  assert.equal(store["offices/office-1/operations/operation_owner_next"].fields.negotiationStatus, "WAITING_CLIENT");
+  assert.equal(store["offices/office-1/operations/operation_owner_next"].fields.lastNegotiationActivityAt, store["offices/office-1/matches/match_owner_next"].fields.lastNegotiationActivityAt);
+  assert.equal(store["offices/office-1/operations/operation_owner_next"].fields.lastNegotiationEvent, store["offices/office-1/matches/match_owner_next"].fields.lastNegotiationEvent);
   const firstCoordinationJson = store["offices/office-1/coordinationSessions/match_owner_next"].fields.coordinationJson;
   await handlePartySessionBundle({
     token: owner.body.token,
@@ -539,6 +551,21 @@ test("owner bundle advances the client session to the next review action", async
   });
   assert.equal(clientView.body.view.decisionPackage?.workflowStep, "client_review");
   assert.equal(clientView.body.view.decisionPackage?.requiresResponse, true);
+});
+
+test("opening or minting a party link does not create a broker notification", async () => {
+  const store = {
+    "offices/office-1": { fields: { officeName: "مكتب النور" } },
+    "offices/office-1/matches/match_no_click_notice": { fields: { livingStage: "MATCH_FOUND", ownerOfferId: "offer_no_click_notice", clientRequestId: "request_no_click_notice" } },
+    "offices/office-1/opportunities/offer_no_click_notice": { fields: { opportunityKind: "OFFER", propertyType: "شقة", purpose: "SALE", salePrice: 700000 } }
+  };
+  const helpers = mockHelpers(store);
+  const minted = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId: "match_no_click_notice", party: "client", offerId: "offer_no_click_notice", requestId: "request_no_click_notice" }),
+    env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" }, requestId: "req-no-click-notice-mint", helpers
+  });
+  await handlePartySessionGet({ token: minted.body.token, env: { DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "iaqar-ai-staging" }, requestId: "req-no-click-notice-get", helpers, ip: "6.6.6.6" });
+  assert.equal(Object.keys(store).some((key) => key.includes("/notifications/")), false);
 });
 
 test("owner bundle completes broker sync before responding when waitUntil is available", async () => {

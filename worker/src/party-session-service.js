@@ -254,6 +254,9 @@ async function stampMatchLiving(helpers, {
   const coordinationBrokerLine = String(patch.coordinationBrokerLine || "");
   const coordinationClientSummary = String(patch.coordinationClientSummary || "");
   const coordinationOwnerSummary = String(patch.coordinationOwnerSummary || "");
+  const negotiationStatus = String(patch.negotiationStatus || "");
+  const lastNegotiationActivityAt = String(patch.lastNegotiationActivityAt || "");
+  const lastNegotiationEvent = String(patch.lastNegotiationEvent || "");
   const fields = {
     livingStage: helpers.firestoreString(livingStage),
     missingInfoKey: helpers.firestoreString(missingInfoKey),
@@ -269,6 +272,9 @@ async function stampMatchLiving(helpers, {
   if (coordinationBrokerLine) fields.coordinationBrokerLine = helpers.firestoreString(coordinationBrokerLine);
   if (coordinationClientSummary) fields.coordinationClientSummary = helpers.firestoreString(coordinationClientSummary);
   if (coordinationOwnerSummary) fields.coordinationOwnerSummary = helpers.firestoreString(coordinationOwnerSummary);
+  if (negotiationStatus) fields.negotiationStatus = helpers.firestoreString(negotiationStatus);
+  if (lastNegotiationActivityAt) fields.lastNegotiationActivityAt = helpers.firestoreString(lastNegotiationActivityAt);
+  if (lastNegotiationEvent) fields.lastNegotiationEvent = helpers.firestoreString(lastNegotiationEvent);
   if (patch.viewingCandidateAt) fields.viewingCandidateAt = helpers.firestoreString(String(patch.viewingCandidateAt));
   if (patch.appointmentAt) fields.appointmentAt = helpers.firestoreString(String(patch.appointmentAt));
   if (patch.viewingAt) fields.viewingAt = helpers.firestoreString(String(patch.viewingAt));
@@ -314,6 +320,9 @@ async function stampMatchLiving(helpers, {
       ...(coordinationBrokerLine ? { coordinationBrokerLine: helpers.firestoreString(coordinationBrokerLine) } : {}),
       ...(coordinationClientSummary ? { coordinationClientSummary: helpers.firestoreString(coordinationClientSummary) } : {}),
       ...(coordinationOwnerSummary ? { coordinationOwnerSummary: helpers.firestoreString(coordinationOwnerSummary) } : {}),
+      ...(negotiationStatus ? { negotiationStatus: helpers.firestoreString(negotiationStatus) } : {}),
+      ...(lastNegotiationActivityAt ? { lastNegotiationActivityAt: helpers.firestoreString(lastNegotiationActivityAt) } : {}),
+      ...(lastNegotiationEvent ? { lastNegotiationEvent: helpers.firestoreString(lastNegotiationEvent) } : {}),
       ...(patch.appointmentAt ? {
         appointmentAt: helpers.firestoreString(String(patch.appointmentAt)),
         viewingAt: helpers.firestoreString(String(patch.viewingAt || patch.appointmentAt)),

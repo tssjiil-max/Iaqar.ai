@@ -58,7 +58,12 @@ function summaryHtml(task = {}) {
   const reasons = task.taskKind === "platform_opportunity" && Array.isArray(task.reasonLabels) && task.reasonLabels.length ? `<div class="cv2-exec-reasons" data-testid="router-reasons"><strong>${escapeContentHtml(task.reasonTitle || "سبب ترشيح مكتبك")}</strong><ul>${task.reasonLabels.map((label) => `<li>${escapeContentHtml(label)}</li>`).join("")}</ul></div>` : "";
   const statusText = String(task.statusLabel || "").trim(); const status = statusText && statusText !== String(task.kindLabel || "").trim() ? `<p class="cv2-exec-status">${escapeContentHtml(statusText)}</p>` : "";
   const nextAction = String(task.nextActionLine || "").trim(); const next = nextAction && nextAction !== statusText ? `<p class="cv2-exec-next"><strong>${task.requiresAction ? "المطلوب الآن:" : "الحالة الآن:"}</strong> ${escapeContentHtml(nextAction)}</p>` : "";
-  return `<header class="cv2-exec-head"><p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p><span class="cv2-exec-head-meta">${badge}</span></header>${identity}${city}${count}${partner}${proximity}${reasons}${money}${reference}${status}${next}`;
+  const negotiationLabels = { NOT_STARTED: "لم يبدأ", STARTED: "بدأ", WAITING_OWNER: "بانتظار المالك", WAITING_CLIENT: "بانتظار العميل", NEGOTIATING: "جاري", VIEWING_REQUESTED: "طلب معاينة", PRELIMINARY_AGREEMENT: "اتفاق مبدئي", AGREED: "متفق", CLOSED: "مغلق" };
+  const negotiationStatus = negotiationLabels[String(task.negotiationStatus || "").toUpperCase()] || "";
+  const negotiation = negotiationStatus ? `<p class="cv2-exec-status">التفاوض: ${escapeContentHtml(negotiationStatus)}</p>` : "";
+  const lastActivity = String(task.lastNegotiationEvent || "").trim();
+  const activity = lastActivity ? `<p class="cv2-exec-next"><strong>آخر نشاط:</strong> ${escapeContentHtml(lastActivity.replace(/^(?:المالك|العميل|النظام):\s*/u, ""))}</p>` : "";
+  return `<header class="cv2-exec-head"><p class="cv2-exec-kind">${escapeContentHtml(task.kindLabel || "")}</p><span class="cv2-exec-head-meta">${badge}</span></header>${identity}${city}${count}${partner}${proximity}${reasons}${money}${reference}${status}${negotiation}${activity}${next}`;
 }
 
 function listingFacts(listing = {}, { moneyLabel = "", money = "" } = {}) {
