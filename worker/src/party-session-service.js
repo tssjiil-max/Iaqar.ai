@@ -99,6 +99,34 @@ const PARTY_IMAGE_TYPES = Object.freeze({
   "image/webp": "webp"
 });
 
+const CLIENT_FORBIDDEN_BUNDLE_FIELDS = new Set([
+  "propertyAvailability", "priceConfirmation", "updatedPrice", "locationShare",
+  "mediaPaths", "mediaAdded", "specValues", "detailValues", "detailConfirmations",
+  "detailNeedsUpdate", "viewingAllowed", "coordinationRequired", "negotiationDecision",
+  "counterPrice", "counterPreference", "ownerStatus", "ownerAccepted", "ownerDecision",
+  "agreementStatus"
+]);
+
+const OWNER_FORBIDDEN_BUNDLE_FIELDS = new Set([
+  "interestStatus", "infoNeeds", "specNeeds", "requestedDetailKeys", "interestAction",
+  "rejectionReason", "rejectionDisposition", "proposedPrice", "negotiationPreference",
+  "negotiationResponse", "wantsViewing", "nextAction", "clientStatus", "clientAccepted",
+  "clientDecision", "agreementStatus"
+]);
+
+function assertPartyBundleRole(party, bundle, helpers) {
+  const forbidden = party === "owner"
+    ? OWNER_FORBIDDEN_BUNDLE_FIELDS
+    : CLIENT_FORBIDDEN_BUNDLE_FIELDS;
+  const field = Object.keys(bundle || {}).find((key) => forbidden.has(key));
+  if (!field) return;
+  throw helpers.appError(
+    "party_role_field_forbidden",
+    403,
+    "لا يمكن لهذا الطرف تعديل بيانات الطرف الآخر."
+  );
+}
+
 async function parseBundleRequest(request) {
   const contentType = String(request.headers?.get?.("content-type") || "").toLowerCase();
   if (contentType.includes("multipart/form-data")) {
@@ -798,7 +826,7 @@ export async function handlePartySessionBundle({ token, env, request, requestId,
   try {
     return await submitPartyBundle({ token, env, request, requestId, helpers, ip, executionContext });
   } catch (error) {
-    if (error && (error.status === 429 || error.status === 400)) throw error;
+    if (error && (error.status === 429 || error.status === 403 || error.status === 400)) throw error;
     console.error("[iaqar] owner/client bundle submit failed", {
       requestId,
       code: String(error?.code || "party_bundle_failed")
@@ -829,6 +857,7 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
   const accessToken = await helpers.getGoogleAccessToken(env);
   const matchId = String(loaded.session.matchId || "").trim();
   const party = loaded.session.party === "owner" ? "owner" : "client";
+  assertPartyBundleRole(party, bundle, helpers);
   const offerId = String(loaded.session.offerId || loaded.canonicalOffer?.id || "").trim();
   const canonicalOffer = loaded.canonicalOffer || {};
   if (party === "owner" && photos.length) {

@@ -359,6 +359,96 @@ test("owner bundle POST accepts available and confirmed without viewing selectio
   assert.match(JSON.stringify(coordination), /ownerBundle/);
 });
 
+function roleBoundaryStore(matchId) {
+  return {
+    "offices/office-1": { fields: { officeName: "مكتب النور" } },
+    [`offices/office-1/matches/${matchId}`]: { fields: {
+      livingStage: "MATCH_FOUND",
+      ownerOfferId: "offer_role_boundary",
+      clientRequestId: "request_role_boundary"
+    } },
+    "offices/office-1/opportunities/offer_role_boundary": { fields: {
+      opportunityKind: "OFFER",
+      propertyType: "شقة",
+      purpose: "SALE",
+      salePrice: 700000
+    } }
+  };
+}
+
+test("client bundle is rejected before persistence when it contains owner fields", async () => {
+  const matchId = "match_client_cross_role";
+  const store = roleBoundaryStore(matchId);
+  const helpers = mockHelpers(store);
+  const client = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId, party: "client", offerId: "offer_role_boundary", requestId: "request_role_boundary" }),
+    env: { DEPLOYMENT_ENV: "staging" }, requestId: "mint-client-cross-role", helpers
+  });
+  const coordinationBefore = store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson;
+
+  await assert.rejects(() => handlePartySessionBundle({
+    token: client.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    request: { json: async () => ({ bundle: {
+      interestStatus: "interested",
+      interestAction: "interest_only",
+      propertyAvailability: "available"
+    } }) },
+    requestId: "submit-client-cross-role",
+    helpers,
+    ip: "8.8.8.1"
+  }), (error) => error?.status === 403 && error?.code === "party_role_field_forbidden");
+  assert.equal(store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson, coordinationBefore);
+});
+
+test("owner bundle is rejected before persistence when it contains client fields", async () => {
+  const matchId = "match_owner_cross_role";
+  const store = roleBoundaryStore(matchId);
+  const helpers = mockHelpers(store);
+  const owner = await handlePartySessionMint({
+    request: mintRequest({ officeId: "office-1", matchId, party: "owner", offerId: "offer_role_boundary", requestId: "request_role_boundary" }),
+    env: { DEPLOYMENT_ENV: "staging" }, requestId: "mint-owner-cross-role", helpers
+  });
+  const coordinationBefore = store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson;
+
+  await assert.rejects(() => handlePartySessionBundle({
+    token: owner.body.token,
+    env: { DEPLOYMENT_ENV: "staging" },
+    request: { json: async () => ({ bundle: {
+      propertyAvailability: "available",
+      priceConfirmation: "confirmed",
+      interestStatus: "interested"
+    } }) },
+    requestId: "submit-owner-cross-role",
+    helpers,
+    ip: "8.8.8.2"
+  }), (error) => error?.status === 403 && error?.code === "party_role_field_forbidden");
+  assert.equal(store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson, coordinationBefore);
+});
+
+test("neither party can assert the counterparty acceptance status", async () => {
+  for (const [party, forbiddenField, validBundle] of [
+    ["client", "ownerStatus", { interestStatus: "interested", interestAction: "interest_only" }],
+    ["owner", "clientStatus", { propertyAvailability: "available", priceConfirmation: "confirmed" }]
+  ]) {
+    const matchId = `match_${party}_counterparty_acceptance`;
+    const store = roleBoundaryStore(matchId);
+    const helpers = mockHelpers(store);
+    const minted = await handlePartySessionMint({
+      request: mintRequest({ officeId: "office-1", matchId, party, offerId: "offer_role_boundary", requestId: "request_role_boundary" }),
+      env: { DEPLOYMENT_ENV: "staging" }, requestId: `mint-${party}-counterparty`, helpers
+    });
+    const coordinationBefore = store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson;
+    await assert.rejects(() => handlePartySessionBundle({
+      token: minted.body.token,
+      env: { DEPLOYMENT_ENV: "staging" },
+      request: { json: async () => ({ bundle: { ...validBundle, [forbiddenField]: "accepted" } }) },
+      requestId: `submit-${party}-counterparty`, helpers, ip: `8.8.8.${party === "client" ? 3 : 4}`
+    }), (error) => error?.status === 403 && error?.code === "party_role_field_forbidden");
+    assert.equal(store[`offices/office-1/coordinationSessions/${matchId}`].fields.coordinationJson, coordinationBefore);
+  }
+});
+
 test("party bundle handler returns a stable retryable response when persistence fails", async () => {
   const helpers = mockHelpers({});
   helpers.consumePublicRateLimit = () => ({ ok: true });
