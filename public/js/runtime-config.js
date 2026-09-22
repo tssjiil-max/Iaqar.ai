@@ -122,15 +122,17 @@
   // Staging-only bridge: the legacy workspace still dispatches iaqar:workflow-action
   // for MATCH cards. Capture only primary/secondary match actions and route them to
   // the unified one-section handoff screen. Deals and production remain untouched.
-  window.addEventListener("iaqar:workflow-action", (event) => {
-    const detail = event?.detail || {};
-    if (!shouldRouteMatchToPartyHandoff(detail)) return;
-    const target = buildMatchPartyHandoffUrl(detail);
-    if (!target) return;
-    event.stopImmediatePropagation();
-    if (typeof event.preventDefault === "function") event.preventDefault();
-    openMatchPartyHandoff(detail);
-  }, true);
+  if (typeof window.addEventListener === "function") {
+    window.addEventListener("iaqar:workflow-action", (event) => {
+      const detail = event?.detail || {};
+      if (!shouldRouteMatchToPartyHandoff(detail)) return;
+      const target = buildMatchPartyHandoffUrl(detail);
+      if (!target) return;
+      event.stopImmediatePropagation();
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      openMatchPartyHandoff(detail);
+    }, true);
+  }
 
   window.dispatchEvent(new CustomEvent("iaqar:runtime-config-ready", {
     detail: { deploymentEnvironment, workerBase, firebaseProjectId }
