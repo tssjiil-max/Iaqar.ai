@@ -95,6 +95,7 @@
   function shouldRouteMatchToPartyHandoff(detail = {}) {
     if (deploymentEnvironment !== "staging") return false;
     if (String(detail.recordType || "").toLowerCase() !== "match") return false;
+    if (detail.returnTarget === "bank_matches") return false;
     const mode = String(detail.actionMode || "").toLowerCase();
     return mode === "" || mode === "primary" || mode === "secondary";
   }
