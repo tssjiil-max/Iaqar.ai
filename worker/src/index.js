@@ -5574,6 +5574,7 @@ async function sendOfficeMatchNotifications({projectId,officeId,matches,parsed,a
       recordId: operationId,
       taskId,
       opportunityId: top.opportunityId || top.clientRequestId || top.requestId || "",
+      matchId: top.matchId,
       assignedBrokerId: top.assignedBrokerId || "",
       accessToken,
       env,
