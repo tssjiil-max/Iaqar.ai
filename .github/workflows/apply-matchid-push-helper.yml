@@ -1,0 +1,59 @@
+name: Apply validated matchId push patch
+
+on:
+  push:
+    branches:
+      - codex/apply-matchid-push-helper-20260924
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-staging-lineage-2026-08-29
+          fetch-depth: 0
+
+      - name: Guard exact target commit
+        run: |
+          test "$(git rev-parse HEAD)" = "e9d41d7c7c6e3d1c604d299e16fc3702bf44c6f4"
+
+      - name: Apply exact validated patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+
+          worker = Path('worker/src/index.js')
+          text = worker.read_text(encoding='utf-8')
+          needle = '      opportunityId: top.opportunityId || top.clientRequestId || top.requestId || "",\n      assignedBrokerId: top.assignedBrokerId || "",\n'
+          replacement = '      opportunityId: top.opportunityId || top.clientRequestId || top.requestId || "",\n      matchId: top.matchId,\n      assignedBrokerId: top.assignedBrokerId || "",\n'
+          if text.count(needle) != 1:
+              raise SystemExit(f'expected exactly one worker patch location, got {text.count(needle)}')
+          worker.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+
+          test_b64 = 'aW1wb3J0IHRlc3QgZnJvbSAibm9kZTp0ZXN0IjsKaW1wb3J0IGFzc2VydCBmcm9tICJub2RlOmFzc2VydC9zdHJpY3QiOwppbXBvcnQgeyByZWFkRmlsZVN5bmMgfSBmcm9tICJub2RlOmZzIjsKaW1wb3J0IHsgcnVuSW5OZXdDb250ZXh0IH0gZnJvbSAibm9kZTp2bSI7CmltcG9ydCB7IGJ1aWxkTm90aWZpY2F0aW9uTGluayB9IGZyb20gIi4uL3dvcmtlci9zcmMvaW5kZXguanMiOwoKdGVzdCgiTUFUQ0hfUkVWSUVXIHB1c2ggcHJlc2VydmVzIGl0cyBleGFjdCBtYXRjaCBpbiB0aGUgZ2VuZXJhdGVkIGRlZXAgbGluayIsIGFzeW5jICgpID0+IHsKICBjb25zdCBzb3VyY2UgPSByZWFkRmlsZVN5bmMobmV3IFVSTCgiLi4vd29ya2VyL3NyYy9pbmRleC5qcyIsIGltcG9ydC5tZXRhLnVybCksICJ1dGY4Iik7CiAgY29uc3Qgc3RhcnQgPSBzb3VyY2UuaW5kZXhPZigiYXN5bmMgZnVuY3Rpb24gc2VuZE9mZmljZU1hdGNoTm90aWZpY2F0aW9ucygiKTsKICBjb25zdCBlbmQgPSBzb3VyY2UuaW5kZXhPZigiXG5mdW5jdGlvbiBidWlsZE5vdGlmaWNhdGlvbkxpbmsoIiwgc3RhcnQpOwogIGFzc2VydC5vayhzdGFydCA+PSAwICYmIGVuZCA+IHN0YXJ0KTsKICBjb25zdCBsaW5rcyA9IFtdOwogIGNvbnN0IGNvbnRleHQgPSB7CiAgICBjb25zb2xlLAogICAgRGF0ZSwKICAgIGxpdmluZ1Rhc2tJZDogKGlkKSA9PiBgbWdfJHtpZH1gLAogICAgc2V0RmlyZXN0b3JlRG9jdW1lbnQ6IGFzeW5jICgpID0+IHt9LAogICAgZmlyZXN0b3JlU3RyaW5nOiBTdHJpbmcsCiAgICBmaXJlc3RvcmVJbnRlZ2VyOiBOdW1iZXIsCiAgICBmaXJlc3RvcmVCb29sZWFuOiBCb29sZWFuLAogICAgZmlyZXN0b3JlVGltZXN0YW1wOiAodmFsdWUpID0+IHZhbHVlLAogICAgc2VuZE9mZmljZVB1c2g6IGFzeW5jIChhcmdzKSA9PiB7CiAgICAgIGxpbmtzLnB1c2goYnVpbGROb3RpZmljYXRpb25MaW5rKGFyZ3MpKTsKICAgIH0KICB9OwogIGNvbnN0IHNlbmQgPSBydW5Jbk5ld0NvbnRleHQoYCR7c291cmNlLnNsaWNlKHN0YXJ0LCBlbmQpfVxuc2VuZE9mZmljZU1hdGNoTm90aWZpY2F0aW9uc2AsIGNvbnRleHQpOwogIGF3YWl0IHNlbmQoewogICAgcHJvamVjdElkOiAiaWFxYXItYWktc3RhZ2luZyIsCiAgICBvZmZpY2VJZDogIm9mZmljZS1zdGFnaW5nIiwKICAgIGFjY2Vzc1Rva2VuOiAidGVzdC10b2tlbiIsCiAgICBtYXRjaGVzOiBbewogICAgICBtYXRjaElkOiAibWF0X2V4YWN0XzEiLAogICAgICBvcGVyYXRpb25JZDogIm9wX2V4YWN0XzEiLAogICAgICBtYXRjaEdyb3VwSWQ6ICJvcHBfZXhhY3RfMSIsCiAgICAgIG9wcG9ydHVuaXR5SWQ6ICJvcHBfZXhhY3RfMSIKICAgIH1dCiAgfSk7CiAgYXNzZXJ0LmVxdWFsKGxpbmtzLmxlbmd0aCwgMSk7CiAgY29uc3QgcGFyYW1zID0gbmV3IFVSTChsaW5rc1swXSwgImh0dHBzOi8vZXhhbXBsZS50ZXN0Iikuc2VhcmNoUGFyYW1zOwogIGFzc2VydC5lcXVhbChwYXJhbXMuZ2V0KCJvZmZpY2VJZCIpLCAib2ZmaWNlLXN0YWdpbmciKTsKICBhc3NlcnQuZXF1YWwocGFyYW1zLmdldCgib3BlbkRhaWx5VGFzayIpLCAibWdfb3BwX2V4YWN0XzEiKTsKICBhc3NlcnQuZXF1YWwocGFyYW1zLmdldCgib3Blbk9wZXJhdGlvbiIpLCAib3BfZXhhY3RfMSIpOwogIGFzc2VydC5lcXVhbChwYXJhbXMuZ2V0KCJvcGVuT3Bwb3J0dW5pdHkiKSwgIm9wcF9leGFjdF8xIik7CiAgYXNzZXJ0LmVxdWFsKHBhcmFtcy5nZXQoIm9wZW5NYXRjaCIpLCAibWF0X2V4YWN0XzEiKTsKfSk7Cg=='
+          Path('test/match-push-deep-link.test.mjs').write_bytes(base64.b64decode(test_b64))
+          PY
+
+      - name: Verify exact blobs and regression test
+        run: |
+          WORKER_SHA="$(git hash-object worker/src/index.js)"
+          TEST_SHA="$(git hash-object test/match-push-deep-link.test.mjs)"
+          case "$WORKER_SHA" in 4de8f7a*) ;; *) echo "unexpected worker blob: $WORKER_SHA"; exit 1;; esac
+          test "$TEST_SHA" = "f64aeffada07fbb591ce76ae17a519b9c925c980"
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "test/match-push-deep-link.test.mjs worker/src/index.js "
+          git diff --check
+          node --test test/match-push-deep-link.test.mjs
+
+      - name: Commit exact patch to target branch without triggering deployment
+        run: |
+          git config user.name "Codex"
+          git config user.email "codex@openai.com"
+          git add worker/src/index.js test/match-push-deep-link.test.mjs
+          git commit -m "Preserve match ID in staging match push deep links [skip ci]"
+          git push origin HEAD:codex/unified-staging-lineage-2026-08-29
