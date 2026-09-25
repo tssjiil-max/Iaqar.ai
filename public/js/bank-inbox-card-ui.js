@@ -77,11 +77,25 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
     if (!button) return;
     const detail = bankOperationalNavigationDetail(button);
     if (!detail) return;
-    const switchTo = win.IAQAR?.homeTabs?.switchTo;
-    if (typeof switchTo !== "function") return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
+
+    if (detail.actionCode === "review_match" && detail.matchId) {
+      const matchDetail = {
+        ...detail,
+        id: detail.matchId,
+        recordId: detail.matchId,
+        recordType: "match",
+        actionMode: "primary",
+        returnTarget: "bank_matches"
+      };
+      win.dispatchEvent(new win.CustomEvent("iaqar:workflow-action", { detail: matchDetail }));
+      return;
+    }
+
+    const switchTo = win.IAQAR?.homeTabs?.switchTo;
+    if (typeof switchTo !== "function") return;
     const operationDetail = { ...detail, id: detail.operationId || "", returnTarget: "bank_matches" };
     win.IAQAR.pendingDailyTaskOpen = operationDetail;
     switchTo.call(win.IAQAR.homeTabs, "operations");
