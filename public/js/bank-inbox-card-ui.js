@@ -66,7 +66,55 @@ export function bankOperationalNavigationDetail(button) {
   const operationId = String(button?.getAttribute?.("data-operation-id") || "").trim();
   if (!opportunityId) return null;
   if (actionCode !== "open_follow_up" && !matchId && !operationId) return null;
-  return { opportunityId, matchId, operationId, actionCode };
+  return {
+    opportunityId,
+    matchId,
+    operationId,
+    actionCode,
+    clientRequestId: String(button?.getAttribute?.("data-client-request-id") || "").trim(),
+    ownerOfferId: String(button?.getAttribute?.("data-owner-offer-id") || "").trim(),
+    propertyType: String(button?.getAttribute?.("data-property-type") || "").trim(),
+    district: String(button?.getAttribute?.("data-district") || "").trim()
+  };
+}
+
+export async function hydrateBankMatchReviewDetail(detail = {}, win = globalThis.window) {
+  const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+  const base = {
+    ...detail,
+    id: matchId || detail.id || "",
+    recordId: matchId || detail.recordId || "",
+    recordType: "match",
+    matchId,
+    actionMode: "primary",
+    returnTarget: "bank_matches"
+  };
+  if (!matchId) return base;
+
+  const matches = win?.IAQAR?.office?.refs?.matches;
+  if (!matches?.doc) return base;
+
+  try {
+    const snapshot = await matches.doc(matchId).get();
+    if (!snapshot?.exists) return base;
+    const data = snapshot.data?.() || {};
+    return {
+      ...base,
+      propertyType: data.propertyType || data.candidatePropertyType || base.propertyType || "",
+      district: data.district || data.candidateDistrict || base.district || "",
+      clientRequestId: data.clientRequestId || data.requestId || data.requestOpportunityId || base.clientRequestId || "",
+      ownerOfferId: data.ownerOfferId || data.offerId || data.offerOpportunityId || base.ownerOfferId || "",
+      status: data.status || base.status || "",
+      workflowStage: data.workflowStage || base.workflowStage || "",
+      appointmentAt: data.viewingAt || base.appointmentAt || null,
+      viewingAt: data.viewingAt || base.viewingAt || null,
+      nextFollowUpAt: data.nextFollowUpAt || base.nextFollowUpAt || null,
+      ownerMediaMissing: data.ownerMediaMissing ?? base.ownerMediaMissing
+    };
+  } catch (error) {
+    console.warn("[iaqar] exact bank match hydration failed", error);
+    return base;
+  }
 }
 
 function showOperationalNavigationError(doc, message) {
@@ -83,7 +131,7 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
   if (!doc?.addEventListener || !win) return false;
   if (doc.__iaqarBankOperationalActionBridgeBound) return true;
   doc.__iaqarBankOperationalActionBridgeBound = true;
-  doc.addEventListener("click", (event) => {
+  doc.addEventListener("click", async (event) => {
     const button = event.target?.closest?.("[data-opportunity-primary-action]");
     if (!button) return;
     const detail = bankOperationalNavigationDetail(button);
@@ -106,12 +154,20 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
     const operationDetail = open.detail;
 
     if (detail.actionCode === "review_match" && detail.matchId) {
-      const matchDetail = {
+      const matchDetail = await hydrateBankMatchReviewDetail({
         ...operationDetail,
+        ...detail,
         recordId: detail.matchId,
         recordType: "match",
         actionMode: "primary"
-      };
+      }, win);
+      if (!matchDetail.clientRequestId || !matchDetail.ownerOfferId) {
+        showOperationalNavigationError(
+          doc,
+          "تعذر تحميل طرفي المطابقة. حدّث الصفحة وحاول مرة أخرى."
+        );
+        return;
+      }
       win.dispatchEvent(new win.CustomEvent("iaqar:workflow-action", { detail: matchDetail }));
       return;
     }
@@ -169,6 +225,11 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
   const statusText = action
     ? `${action.badge}${action.category === "matches" && action.matchCount > 1 ? ` — ${action.matchCount}` : ""}`
     : "لا إجراء حالي";
+  const actionOperation = action?.operation || {};
+  const clientRequestId = actionOperation.clientRequestId || actionOperation.requestId || actionOperation.requestOpportunityId || "";
+  const ownerOfferId = actionOperation.ownerOfferId || actionOperation.offerId || actionOperation.offerOpportunityId || "";
+  const actionPropertyType = actionOperation.propertyType || actionOperation.candidatePropertyType || record.propertyType || vm.type || "";
+  const actionDistrict = actionOperation.district || actionOperation.candidateDistrict || record.district || vm.district || "";
   const actionStrip = `
       <section class="bank-card-action bank-card-action--${esc(action?.tone || "quiet")}" data-opportunity-action-state="${esc(action?.category || "none")}">
         <div class="bank-card-action-head">
@@ -179,7 +240,9 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
         ${action?.primaryAction ? `<div class="bank-card-action-row">
           <span><small>الإجراء التالي:</small> ${esc(action.primaryAction)}</span>
           <button type="button" class="bank-card-primary-action" data-opportunity-primary-action="${esc(action.actionCode)}"
-            data-operation-id="${esc(action.operationId)}" data-match-id="${esc(action.matchId)}">${esc(action.primaryAction)}</button>
+            data-operation-id="${esc(action.operationId)}" data-match-id="${esc(action.matchId)}"
+            data-client-request-id="${esc(clientRequestId)}" data-owner-offer-id="${esc(ownerOfferId)}"
+            data-property-type="${esc(actionPropertyType)}" data-district="${esc(actionDistrict)}">${esc(action.primaryAction)}</button>
         </div>` : ""}
       </section>`;
   return `
