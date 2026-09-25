@@ -18,6 +18,7 @@ import {
 } from "./bank-inbox-card-domain.js";
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
 import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
+import { buildBankOperationalOpenDetail } from "./opportunity-navigation-domain.js";
 
 const DAILY_TASK_ACTION_CODES = new Set([
   "review_match",
@@ -68,6 +69,16 @@ export function bankOperationalNavigationDetail(button) {
   return { opportunityId, matchId, operationId, actionCode };
 }
 
+function showOperationalNavigationError(doc, message) {
+  const toast = doc?.getElementById?.("toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("show");
+  const timerHost = doc.defaultView || globalThis;
+  timerHost.clearTimeout?.(showOperationalNavigationError.timer);
+  showOperationalNavigationError.timer = timerHost.setTimeout?.(() => toast.classList.remove("show"), 2800);
+}
+
 export function installBankOperationalActionBridge(doc = globalThis.document, win = globalThis.window) {
   if (!doc?.addEventListener || !win) return false;
   if (doc.__iaqarBankOperationalActionBridgeBound) return true;
@@ -77,12 +88,24 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
     if (!button) return;
     const detail = bankOperationalNavigationDetail(button);
     if (!detail) return;
+    const open = buildBankOperationalOpenDetail(detail);
+    if (!open.ok) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showOperationalNavigationError(
+        doc,
+        open.error === "match_required"
+          ? "تعذر فتح المطابقة: رقم المطابقة غير متوفر. حدّث الصفحة وحاول مرة أخرى."
+          : "تعذر فتح الإجراء الآن. حدّث الصفحة وحاول مرة أخرى."
+      );
+      return;
+    }
     const switchTo = win.IAQAR?.homeTabs?.switchTo;
     if (typeof switchTo !== "function") return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    const operationDetail = { ...detail, id: detail.operationId || "", returnTarget: "bank_matches" };
+    const operationDetail = open.detail;
     win.IAQAR.pendingDailyTaskOpen = operationDetail;
     switchTo.call(win.IAQAR.homeTabs, "operations");
     win.dispatchEvent(new win.CustomEvent("iaqar:open-operation", { detail: operationDetail }));
