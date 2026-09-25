@@ -59,6 +59,30 @@ export function stripOpportunityDeepLinkHref(locationLike = {}) {
   return `${pathname}${search}`;
 }
 
+export function buildBankOperationalOpenDetail(detail = {}) {
+  const opportunityId = String(detail.opportunityId || "").trim();
+  const matchId = String(detail.matchId || "").trim();
+  const operationId = String(detail.operationId || "").trim();
+  const actionCode = String(detail.actionCode || "").trim();
+
+  if (!opportunityId) return { ok: false, error: "opportunity_required" };
+  if (actionCode === "review_match" && !matchId) {
+    return { ok: false, error: "match_required" };
+  }
+
+  return {
+    ok: true,
+    detail: {
+      opportunityId,
+      matchId,
+      operationId,
+      actionCode,
+      id: actionCode === "review_match" ? matchId : operationId,
+      returnTarget: "bank_matches"
+    }
+  };
+}
+
 /**
  * Nested controls that already have their own action.
  * Do not treat a bare `<a>` without href as a separate action.
@@ -81,6 +105,7 @@ if (typeof window !== "undefined") {
     parseOpportunityIdFromLocation,
     opportunityDeepLinkHref,
     stripOpportunityDeepLinkHref,
+    buildBankOperationalOpenDetail,
     isBankCardActionControl
   });
 }
