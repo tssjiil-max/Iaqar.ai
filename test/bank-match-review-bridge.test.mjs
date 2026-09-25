@@ -15,7 +15,7 @@ test("matched opportunity status line replaces pending-matching copy", () => {
   assert.doesNotMatch(line, /قيد المطابقة/);
 });
 
-test("review_match opens the exact match directly without resolving through a possibly stale operation", () => {
+test("review_match opens the exact hydrated match instead of a generic opportunity shell", async () => {
   const dom = new JSDOM(`
     <main id="bank">
       <article data-cv2-inbox-item data-opportunity-id="request-1">
@@ -28,7 +28,34 @@ test("review_match opens the exact match directly without resolving through a po
   let openedOperation = null;
   let workflowDetail = null;
   let legacyBubbleHandlerRan = false;
-  window.IAQAR = { homeTabs: { switchTo(tab) { switchedTo = tab; } } };
+  const requestedMatchIds = [];
+  window.IAQAR = {
+    homeTabs: { switchTo(tab) { switchedTo = tab; } },
+    office: {
+      refs: {
+        matches: {
+          doc(id) {
+            requestedMatchIds.push(id);
+            return {
+              async get() {
+                return {
+                  exists: true,
+                  id,
+                  data: () => ({
+                    propertyType: "أرض",
+                    district: "عروة",
+                    clientRequestId: "request-1",
+                    ownerOfferId: "offer-1",
+                    status: "new"
+                  })
+                };
+              }
+            };
+          }
+        }
+      }
+    }
+  };
   window.addEventListener("iaqar:open-operation", (event) => { openedOperation = event.detail; });
   window.addEventListener("iaqar:workflow-action", (event) => { workflowDetail = event.detail; });
   window.document.getElementById("bank").addEventListener("click", () => { legacyBubbleHandlerRan = true; });
@@ -37,15 +64,22 @@ test("review_match opens the exact match directly without resolving through a po
   const button = window.document.querySelector("button");
   assert.equal(bankOperationalNavigationDetail(button).actionCode, "review_match");
   button.click();
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
 
   assert.equal(switchedTo, "");
   assert.equal(openedOperation, null);
+  assert.deepEqual(requestedMatchIds, ["match-1"]);
   assert.equal(workflowDetail.id, "match-1");
   assert.equal(workflowDetail.recordId, "match-1");
   assert.equal(workflowDetail.recordType, "match");
   assert.equal(workflowDetail.matchId, "match-1");
   assert.equal(workflowDetail.operationId, "operation-1");
   assert.equal(workflowDetail.opportunityId, "request-1");
+  assert.equal(workflowDetail.propertyType, "أرض");
+  assert.equal(workflowDetail.district, "عروة");
+  assert.equal(workflowDetail.clientRequestId, "request-1");
+  assert.equal(workflowDetail.ownerOfferId, "offer-1");
+  assert.equal(workflowDetail.status, "new");
   assert.equal(workflowDetail.actionMode, "primary");
   assert.equal(workflowDetail.returnTarget, "bank_matches");
   assert.equal(legacyBubbleHandlerRan, false);
