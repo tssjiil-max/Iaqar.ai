@@ -100,12 +100,24 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
       );
       return;
     }
-    const switchTo = win.IAQAR?.homeTabs?.switchTo;
-    if (typeof switchTo !== "function") return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
     const operationDetail = open.detail;
+
+    if (detail.actionCode === "review_match" && detail.matchId) {
+      const matchDetail = {
+        ...operationDetail,
+        recordId: detail.matchId,
+        recordType: "match",
+        actionMode: "primary"
+      };
+      win.dispatchEvent(new win.CustomEvent("iaqar:workflow-action", { detail: matchDetail }));
+      return;
+    }
+
+    const switchTo = win.IAQAR?.homeTabs?.switchTo;
+    if (typeof switchTo !== "function") return;
     win.IAQAR.pendingDailyTaskOpen = operationDetail;
     switchTo.call(win.IAQAR.homeTabs, "operations");
     win.dispatchEvent(new win.CustomEvent("iaqar:open-operation", { detail: operationDetail }));
