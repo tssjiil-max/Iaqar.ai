@@ -18,7 +18,6 @@ import {
 } from "./bank-inbox-card-domain.js";
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
 import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
-import { buildBankOperationalOpenDetail } from "./opportunity-navigation-domain.js";
 
 const DAILY_TASK_ACTION_CODES = new Set([
   "review_match",
@@ -31,7 +30,7 @@ const DAILY_TASK_ACTION_CODES = new Set([
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#39;"
   }[character]));
 }
 
@@ -65,7 +64,6 @@ export function bankOperationalNavigationDetail(button) {
   const matchId = String(button?.getAttribute?.("data-match-id") || "").trim();
   const operationId = String(button?.getAttribute?.("data-operation-id") || "").trim();
   if (!opportunityId) return null;
-  if (actionCode !== "open_follow_up" && !matchId && !operationId) return null;
   return {
     opportunityId,
     matchId,
@@ -127,8 +125,59 @@ function showOperationalNavigationError(doc, message) {
   showOperationalNavigationError.timer = timerHost.setTimeout?.(() => toast.classList.remove("show"), 2800);
 }
 
+function removeLegacyOpportunityOverlay(doc) {
+  const overlay = doc?.getElementById?.("iaqarWorkflowOverlay");
+  const title = doc?.getElementById?.("iaqarWorkflowTitle");
+  if (!overlay || String(title?.textContent || "").trim() !== "إدارة الفرصة") return false;
+  overlay.hidden = true;
+  overlay.remove();
+  return true;
+}
+
+export function installLegacyOpportunityWorkflowRetirement(doc = globalThis.document, win = globalThis.window) {
+  if (!doc || !win?.addEventListener) return false;
+  if (win.__iaqarLegacyOpportunityWorkflowRetired) return true;
+  win.__iaqarLegacyOpportunityWorkflowRetired = true;
+
+  win.addEventListener("iaqar:workflow-action", async (event) => {
+    const detail = event.detail || {};
+    if (String(detail.recordType || "") !== "match") return;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+
+    let linkedOpportunityId = String(
+      detail.opportunityId || detail.clientRequestId || detail.ownerOfferId || ""
+    ).trim();
+    if (!linkedOpportunityId) {
+      const hydrated = await hydrateBankMatchReviewDetail(detail, win);
+      linkedOpportunityId = String(
+        hydrated.opportunityId || hydrated.clientRequestId || hydrated.ownerOfferId || ""
+      ).trim();
+    }
+
+    const openOpportunityDetail = win.IAQAR?.openOpportunityDetail;
+    if (linkedOpportunityId && typeof openOpportunityDetail === "function") {
+      await openOpportunityDetail(linkedOpportunityId);
+      return;
+    }
+    showOperationalNavigationError(
+      doc,
+      "تعذر فتح الفرصة المرتبطة بهذه المطابقة. حدّث الصفحة وحاول مرة أخرى."
+    );
+  }, true);
+
+  removeLegacyOpportunityOverlay(doc);
+  if (typeof win.MutationObserver === "function" && doc.documentElement) {
+    const observer = new win.MutationObserver(() => removeLegacyOpportunityOverlay(doc));
+    observer.observe(doc.documentElement, { childList: true, subtree: true, characterData: true });
+    win.__iaqarLegacyOpportunityOverlayObserver = observer;
+  }
+  return true;
+}
+
 export function installBankOperationalActionBridge(doc = globalThis.document, win = globalThis.window) {
   if (!doc?.addEventListener || !win) return false;
+  installLegacyOpportunityWorkflowRetirement(doc, win);
   if (doc.__iaqarBankOperationalActionBridgeBound) return true;
   doc.__iaqarBankOperationalActionBridgeBound = true;
   doc.addEventListener("click", async (event) => {
@@ -136,41 +185,19 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
     if (!button) return;
     const detail = bankOperationalNavigationDetail(button);
     if (!detail) return;
-    const open = buildBankOperationalOpenDetail(detail);
-    if (!open.ok) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      showOperationalNavigationError(
-        doc,
-        open.error === "match_required"
-          ? "تعذر فتح المطابقة: رقم المطابقة غير متوفر. حدّث الصفحة وحاول مرة أخرى."
-          : "تعذر فتح الإجراء الآن. حدّث الصفحة وحاول مرة أخرى."
-      );
-      return;
-    }
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    const operationDetail = open.detail;
 
-    if (detail.actionCode === "review_match" && detail.matchId) {
-      const openOpportunityDetail = win.IAQAR?.openOpportunityDetail;
-      if (typeof openOpportunityDetail !== "function") {
-        showOperationalNavigationError(
-          doc,
-          "تعذر فتح تفاصيل الفرصة الآن. حدّث الصفحة وحاول مرة أخرى."
-        );
-        return;
-      }
-      await openOpportunityDetail(detail.opportunityId);
+    const openOpportunityDetail = win.IAQAR?.openOpportunityDetail;
+    if (typeof openOpportunityDetail !== "function") {
+      showOperationalNavigationError(
+        doc,
+        "تعذر فتح تفاصيل الفرصة الآن. حدّث الصفحة وحاول مرة أخرى."
+      );
       return;
     }
-
-    const switchTo = win.IAQAR?.homeTabs?.switchTo;
-    if (typeof switchTo !== "function") return;
-    win.IAQAR.pendingDailyTaskOpen = operationDetail;
-    switchTo.call(win.IAQAR.homeTabs, "operations");
-    win.dispatchEvent(new win.CustomEvent("iaqar:open-operation", { detail: operationDetail }));
+    await openOpportunityDetail(detail.opportunityId);
   }, true);
   return true;
 }
