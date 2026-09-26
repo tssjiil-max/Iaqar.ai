@@ -278,7 +278,7 @@
       workflowStage: item.workflowStage || status.key,
       nextAction: item.nextAction || status.next,
       actionLabel,
-      secondaryActionLabel: ["completed", "closed"].includes(status.key) ? "عرض النشاط" : "إدارة الفرصة",
+      secondaryActionLabel: ["completed", "closed"].includes(status.key) ? "عرض النشاط" : "تفاصيل الفرصة",
       dealId: item.dealId || "",
       clientRequestId: item.clientRequestId || "",
       ownerOfferId: item.ownerOfferId || "",
@@ -556,7 +556,7 @@
       workflowStage: lifecycleStatus,
       nextAction: card?.nextActionLabel !== "غير محدد" ? card.nextActionLabel : "تفاصيل الفرصة",
       actionLabel: "تفاصيل الفرصة",
-      secondaryActionLabel: "إدارة الفرصة",
+      secondaryActionLabel: "تفاصيل الفرصة",
       kind: isOwner ? "owner" : "client",
       contactType: isOwner ? "owner" : "buyer",
       contactName: item.contactName || "",
@@ -2072,7 +2072,7 @@
     if (document.getElementById("iaqarWorkflowOverlay")) return;
     document.body.insertAdjacentHTML("beforeend", `<div class="iaqar-workflow-overlay" id="iaqarWorkflowOverlay" hidden>
       <section class="iaqar-workflow-panel" role="dialog" aria-modal="true" aria-labelledby="iaqarWorkflowTitle">
-        <header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">إدارة الفرصة</h2><button class="iaqar-workflow-close" type="button" data-ui-action="close-overlay" aria-label="إغلاق">×</button></header>
+        <header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">إدارة الصفقة</h2><button class="iaqar-workflow-close" type="button" data-ui-action="close-overlay" aria-label="إغلاق">×</button></header>
         <div class="iaqar-workflow-body" id="iaqarWorkflowBody"></div>
       </section></div>`);
     const overlay = document.getElementById("iaqarWorkflowOverlay");
@@ -2119,12 +2119,18 @@
   }
 
   async function openWorkflowUi(detail) {
-    if (["intake", "opportunity"].includes(detail.recordType)) {
+    if (["intake", "opportunity", "match"].includes(detail.recordType)) {
       hideWorkflowOverlay();
-      const opportunityId = detail.opportunityId || detail.recordId || detail.id;
+      const routedDetail = detail.recordType === "match"
+        ? await enrichDetailForMessaging(detail)
+        : detail;
+      const opportunityId = detail.recordType === "match"
+        ? (detail.opportunityId || routedDetail.clientRequestId || routedDetail.ownerOfferId || "")
+        : (detail.opportunityId || detail.recordId || detail.id);
       if (opportunityId && window.IAQAR?.openOpportunityDetail) {
         return window.IAQAR.openOpportunityDetail(opportunityId);
       }
+      notify("تعذر فتح تفاصيل الفرصة المرتبطة");
       return false;
     }
     ensureWorkflowUi();
@@ -2153,16 +2159,12 @@
   function renderWorkflowUi() {
     const detail = activeWorkflowDetail;
     if (!detail) return;
-    if (["intake", "opportunity"].includes(detail.recordType)) {
-      document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الفرصة";
-      return renderOpportunityLifecycleUi();
-    }
     const body = workflowBody();
     const isMatch = detail.recordType === "match";
     const isCompleted = detail.status === "completed" || (detail.recordType === "deal" && detail.status === "closed");
     const isClosed = detail.status === "closed" || detail.status === "lost";
     const hasAppointment = Boolean(appointmentValue(detail));
-    document.getElementById("iaqarWorkflowTitle").textContent = isMatch ? "إدارة الفرصة" : "إدارة الصفقة";
+    document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الصفقة";
 
     const summary = `<div class="iaqar-workflow-summary"><strong>${escapeUi(detail.propertyType || "عقار")}</strong>${detail.district ? ` — ${escapeUi(detail.district)}` : ""}<br>العميل: ${escapeUi(activeWorkflowContacts.client?.name || "غير محدد")} — المالك: ${escapeUi(activeWorkflowContacts.owner?.name || "غير محدد")}</div>`;
 
