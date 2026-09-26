@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Staging E2E: a Bank operational action must open the same linked item
- * in Operations Center. This intentionally tests the operational button,
- * not the card detail modal.
+ * Staging E2E: Bank operational actions stay inside the opportunity workspace.
+ * The retired legacy "إدارة الفرصة" overlay must never open.
  */
 import { chromium } from "playwright";
 import path from "node:path";
@@ -49,6 +48,7 @@ async function openBankTab(page) {
         history.replaceState(history.state, "", `${location.pathname}${location.search}`);
       }
       window.IAQAR?.homeTabs?.switchTo?.("opportunities");
+      window.IAQAR?.openOpportunityBank?.();
     });
   }
   await page.waitForTimeout(500);
@@ -104,35 +104,31 @@ async function clickAndVerify(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.click();
-  await page.waitForFunction(() => window.__qaBankOperationalBridge?.openRequests?.length > 0, null, { timeout: 5000 });
-  await page.waitForFunction(() => window.__qaBankOperationalBridge?.workflowActions?.length > 0, null, { timeout: 15000 });
-  const overlay = page.locator("#iaqarWorkflowOverlay:not([hidden])");
-  await overlay.waitFor({ state: "visible", timeout: 15000 });
-  await page.waitForFunction(() => {
-    const body = document.getElementById("iaqarWorkflowBody");
-    return body && !body.textContent.includes("جارٍ تحميل بيانات العميل والمالك");
-  }, null, { timeout: 15000 });
+  await page.waitForFunction((opportunityId) => {
+    const detailsVisible = Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])'));
+    return detailsVisible && String(location.hash || "").includes(opportunityId);
+  }, target.opportunityId, { timeout: 15000 });
+  await page.waitForTimeout(300);
+
   const events = await page.evaluate(() => ({
-    openRequest: window.__qaBankOperationalBridge?.openRequests?.at(-1) || {},
-    workflowAction: window.__qaBankOperationalBridge?.workflowActions?.at(-1) || {},
+    openRequests: window.__qaBankOperationalBridge?.openRequests || [],
+    workflowActions: window.__qaBankOperationalBridge?.workflowActions || [],
     opportunityDetailsVisible: Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')),
-    workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])"))
+    workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])")),
+    workflowTitle: document.getElementById("iaqarWorkflowTitle")?.textContent?.trim() || "",
+    hash: String(location.hash || "")
   }));
-  const ok = String(events.openRequest.opportunityId || "") === target.opportunityId
-    && String(events.openRequest.matchId || "") === target.matchId
-    && String(events.openRequest.operationId || "") === target.operationId
-    && String(events.openRequest.returnTarget || "") === "bank_matches"
-    && String(events.workflowAction.recordType || "") === "match"
-    && String(events.workflowAction.recordId || "") === target.matchId
-    && String(events.workflowAction.matchId || "") === target.matchId
-    && events.workflowVisible
-    && !events.opportunityDetailsVisible;
-  if (!ok) throw new Error(`Wrong Match opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
-  await page.goBack();
-  await overlay.waitFor({ state: "hidden", timeout: 10000 });
-  await page.waitForFunction(() => document.querySelector('[data-bank-action-filter="matches"]')?.getAttribute("aria-pressed") === "true", null, { timeout: 10000 });
+  const ok = events.opportunityDetailsVisible
+    && events.hash.includes(target.opportunityId)
+    && !events.workflowVisible
+    && events.workflowTitle !== "إدارة الفرصة"
+    && events.openRequests.length === 0
+    && events.workflowActions.length === 0;
+  if (!ok) throw new Error(`Legacy opportunity manager opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
+
+  await openBankTab(page);
   await page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first().waitFor({ state: "visible", timeout: 10000 });
-  return { ...events, backReturnedToMatches: true };
+  return { ...events, returnedToBank: true };
 }
 
 async function main() {
@@ -168,7 +164,7 @@ async function main() {
         throw new Error(`Match not reflected on ${expected.reference}: ${JSON.stringify(target)}`);
       }
       beforeRefresh.push(target);
-      markStage(`open-${expected.side}-match`);
+      markStage(`open-${expected.side}-opportunity`);
       openResults.push({ side: expected.side, ...(await clickAndVerify(page, target)) });
       await installEventBridge(page);
     }
@@ -208,7 +204,7 @@ async function main() {
     console.log("BANK_OPERATIONAL_ACTION_REPORT", JSON.stringify(report, null, 2));
 
     markStage("verified");
-    console.log("BANK OPERATIONAL ACTION VERIFIED");
+    console.log("BANK LEGACY OPPORTUNITY MANAGER RETIREMENT VERIFIED");
   } catch (err) {
     const failure = {
       ok: false,
