@@ -154,21 +154,15 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
     const operationDetail = open.detail;
 
     if (detail.actionCode === "review_match" && detail.matchId) {
-      const matchDetail = await hydrateBankMatchReviewDetail({
-        ...operationDetail,
-        ...detail,
-        recordId: detail.matchId,
-        recordType: "match",
-        actionMode: "primary"
-      }, win);
-      if (!matchDetail.clientRequestId || !matchDetail.ownerOfferId) {
+      const openOpportunityDetail = win.IAQAR?.openOpportunityDetail;
+      if (typeof openOpportunityDetail !== "function") {
         showOperationalNavigationError(
           doc,
-          "تعذر تحميل طرفي المطابقة. حدّث الصفحة وحاول مرة أخرى."
+          "تعذر فتح تفاصيل الفرصة الآن. حدّث الصفحة وحاول مرة أخرى."
         );
         return;
       }
-      win.dispatchEvent(new win.CustomEvent("iaqar:workflow-action", { detail: matchDetail }));
+      await openOpportunityDetail(detail.opportunityId);
       return;
     }
 
