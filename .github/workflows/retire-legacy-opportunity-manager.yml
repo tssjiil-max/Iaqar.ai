@@ -1,0 +1,150 @@
+name: Retire legacy opportunity manager
+
+on:
+  push:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
+    paths:
+      - .github/workflows/retire-legacy-opportunity-manager.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iaqar-unified-staging
+  cancel-in-progress: false
+
+jobs:
+  retire-and-deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IAQAR_DEPLOY_TARGET: staging
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-staging-lineage-2026-08-29
+          fetch-depth: 0
+
+      - name: Remove legacy opportunity manager source path
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('public/js/workflow-office.js')
+          text = path.read_text(encoding='utf-8')
+          original = text
+
+          old_open = '''  async function openWorkflowUi(detail) {
+            if (["intake", "opportunity"].includes(detail.recordType)) {
+              hideWorkflowOverlay();
+              const opportunityId = detail.opportunityId || detail.recordId || detail.id;
+              if (opportunityId && window.IAQAR?.openOpportunityDetail) {
+                return window.IAQAR.openOpportunityDetail(opportunityId);
+              }
+              return false;
+            }
+          '''
+          new_open = '''  async function openWorkflowUi(detail) {
+            if (["intake", "opportunity", "match"].includes(detail.recordType)) {
+              hideWorkflowOverlay();
+              const routedDetail = detail.recordType === "match"
+                ? await enrichDetailForMessaging(detail)
+                : detail;
+              const opportunityId = detail.recordType === "match"
+                ? (detail.opportunityId || routedDetail.clientRequestId || routedDetail.ownerOfferId || "")
+                : (detail.opportunityId || detail.recordId || detail.id);
+              if (opportunityId && window.IAQAR?.openOpportunityDetail) {
+                return window.IAQAR.openOpportunityDetail(opportunityId);
+              }
+              notify("تعذر فتح تفاصيل الفرصة المرتبطة");
+              return false;
+            }
+          '''
+
+          if old_open in text:
+              text = text.replace(old_open, new_open, 1)
+          elif new_open not in text:
+              raise SystemExit('openWorkflowUi shape changed; refusing unsafe edit')
+
+          old_render = '''    if (["intake", "opportunity"].includes(detail.recordType)) {
+              document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الفرصة";
+              return renderOpportunityLifecycleUi();
+            }
+          '''
+          if old_render in text:
+              text = text.replace(old_render, '', 1)
+
+          text = text.replace(
+              '<header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">إدارة الفرصة</h2>',
+              '<header class="iaqar-workflow-head"><h2 id="iaqarWorkflowTitle">إدارة الصفقة</h2>'
+          )
+          text = text.replace(
+              'document.getElementById("iaqarWorkflowTitle").textContent = isMatch ? "إدارة الفرصة" : "إدارة الصفقة";',
+              'document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الصفقة";'
+          )
+          text = text.replace('secondaryActionLabel: "إدارة الفرصة"', 'secondaryActionLabel: "تفاصيل الفرصة"')
+          text = text.replace('"إدارة الفرصة"', '"تفاصيل الفرصة"')
+
+          if 'إدارة الفرصة' in text:
+              raise SystemExit('legacy opportunity-manager label still exists')
+          if '["intake", "opportunity", "match"].includes(detail.recordType)' not in text:
+              raise SystemExit('match is not routed away from legacy overlay')
+          if text != original:
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          node --check public/js/workflow-office.js
+          if grep -n 'إدارة الفرصة' public/js/workflow-office.js; then
+            echo 'legacy opportunity manager still present' >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Commit source deletion
+        shell: bash
+        run: |
+          if git diff --quiet -- public/js/workflow-office.js; then
+            echo "Source already retired"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/js/workflow-office.js
+          git commit -m "Remove legacy opportunity manager source path"
+          git push origin HEAD:codex/unified-staging-lineage-2026-08-29
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker
+
+      - name: Deploy and verify staging only
+        env:
+          IAQAR_DEPLOY_DIAGNOSTIC_FILE: ${{ runner.temp }}/iaqar-staging-deploy-diagnostic.txt
+        shell: bash
+        run: |
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          npm run deploy:staging:safe
+
+      - name: Verify legacy manager cannot open
+        shell: bash
+        run: |
+          npx playwright install --with-deps chromium
+          SCREENSHOT_DIR="$RUNNER_TEMP/bank-operation-live-qa" node scripts/staging-bank-card-click-verify.mjs
