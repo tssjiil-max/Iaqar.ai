@@ -43,43 +43,46 @@ jobs:
           text = path.read_text(encoding='utf-8')
           original = text
 
-          old_open = '''  async function openWorkflowUi(detail) {
-            if (["intake", "opportunity"].includes(detail.recordType)) {
-              hideWorkflowOverlay();
-              const opportunityId = detail.opportunityId || detail.recordId || detail.id;
-              if (opportunityId && window.IAQAR?.openOpportunityDetail) {
-                return window.IAQAR.openOpportunityDetail(opportunityId);
-              }
-              return false;
-            }
-          '''
-          new_open = '''  async function openWorkflowUi(detail) {
-            if (["intake", "opportunity", "match"].includes(detail.recordType)) {
-              hideWorkflowOverlay();
-              const routedDetail = detail.recordType === "match"
-                ? await enrichDetailForMessaging(detail)
-                : detail;
-              const opportunityId = detail.recordType === "match"
-                ? (detail.opportunityId || routedDetail.clientRequestId || routedDetail.ownerOfferId || "")
-                : (detail.opportunityId || detail.recordId || detail.id);
-              if (opportunityId && window.IAQAR?.openOpportunityDetail) {
-                return window.IAQAR.openOpportunityDetail(opportunityId);
-              }
-              notify("تعذر فتح تفاصيل الفرصة المرتبطة");
-              return false;
-            }
-          '''
+          old_open = (
+              '  async function openWorkflowUi(detail) {\n'
+              '    if (["intake", "opportunity"].includes(detail.recordType)) {\n'
+              '      hideWorkflowOverlay();\n'
+              '      const opportunityId = detail.opportunityId || detail.recordId || detail.id;\n'
+              '      if (opportunityId && window.IAQAR?.openOpportunityDetail) {\n'
+              '        return window.IAQAR.openOpportunityDetail(opportunityId);\n'
+              '      }\n'
+              '      return false;\n'
+              '    }\n'
+          )
+          new_open = (
+              '  async function openWorkflowUi(detail) {\n'
+              '    if (["intake", "opportunity", "match"].includes(detail.recordType)) {\n'
+              '      hideWorkflowOverlay();\n'
+              '      const routedDetail = detail.recordType === "match"\n'
+              '        ? await enrichDetailForMessaging(detail)\n'
+              '        : detail;\n'
+              '      const opportunityId = detail.recordType === "match"\n'
+              '        ? (detail.opportunityId || routedDetail.clientRequestId || routedDetail.ownerOfferId || "")\n'
+              '        : (detail.opportunityId || detail.recordId || detail.id);\n'
+              '      if (opportunityId && window.IAQAR?.openOpportunityDetail) {\n'
+              '        return window.IAQAR.openOpportunityDetail(opportunityId);\n'
+              '      }\n'
+              '      notify("تعذر فتح تفاصيل الفرصة المرتبطة");\n'
+              '      return false;\n'
+              '    }\n'
+          )
 
           if old_open in text:
               text = text.replace(old_open, new_open, 1)
           elif new_open not in text:
               raise SystemExit('openWorkflowUi shape changed; refusing unsafe edit')
 
-          old_render = '''    if (["intake", "opportunity"].includes(detail.recordType)) {
-              document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الفرصة";
-              return renderOpportunityLifecycleUi();
-            }
-          '''
+          old_render = (
+              '    if (["intake", "opportunity"].includes(detail.recordType)) {\n'
+              '      document.getElementById("iaqarWorkflowTitle").textContent = "إدارة الفرصة";\n'
+              '      return renderOpportunityLifecycleUi();\n'
+              '    }\n'
+          )
           if old_render in text:
               text = text.replace(old_render, '', 1)
 
