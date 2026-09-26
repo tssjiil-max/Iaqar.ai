@@ -4,7 +4,8 @@ import { JSDOM } from "jsdom";
 import {
   bankInboxStatusLine,
   bankOperationalNavigationDetail,
-  installBankOperationalActionBridge
+  installBankOperationalActionBridge,
+  installLegacyOpportunityWorkflowRetirement
 } from "../public/js/bank-inbox-card-ui.js";
 
 test("matched opportunity status line replaces pending-matching copy", () => {
@@ -50,34 +51,59 @@ test("review_match opens the source opportunity detail and never enters legacy w
   assert.equal(legacyBubbleHandlerRan, false);
 });
 
-test("negotiation still opens its exact living task without legacy bubbling", () => {
-  const dom = new JSDOM(`
-    <main id="bank">
-      <article data-cv2-inbox-item data-opportunity-id="request-1">
-        <button data-opportunity-primary-action="open_negotiation" data-operation-id="operation-1" data-match-id="match-1"></button>
-      </article>
-    </main>
-  `, { url: "https://staging.example/" });
+test("all bank operational actions open the source opportunity instead of the retired opportunity manager", async () => {
+  for (const actionCode of ["record_viewing_result", "view_appointment", "open_follow_up", "view_waiting", "open_negotiation"]) {
+    const dom = new JSDOM(`
+      <main id="bank">
+        <article data-cv2-inbox-item data-opportunity-id="request-1">
+          <button data-opportunity-primary-action="${actionCode}" data-operation-id="operation-1" data-match-id="match-1"></button>
+        </article>
+      </main>
+    `, { url: "https://staging.example/" });
+    const { window } = dom;
+    let switchedTo = "";
+    let openedOperation = null;
+    let openedOpportunityId = "";
+    let legacyBubbleHandlerRan = false;
+    window.IAQAR = {
+      homeTabs: { switchTo(tab) { switchedTo = tab; } },
+      async openOpportunityDetail(id) { openedOpportunityId = id; }
+    };
+    window.addEventListener("iaqar:open-operation", (event) => { openedOperation = event.detail; });
+    window.document.getElementById("bank").addEventListener("click", () => { legacyBubbleHandlerRan = true; });
+    assert.equal(installBankOperationalActionBridge(window.document, window), true);
+
+    window.document.querySelector("button").click();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    assert.equal(openedOpportunityId, "request-1", actionCode);
+    assert.equal(openedOperation, null, actionCode);
+    assert.equal(switchedTo, "", actionCode);
+    assert.equal(legacyBubbleHandlerRan, false, actionCode);
+  }
+});
+
+test("legacy match workflow event is intercepted and redirected to its linked opportunity", async () => {
+  const dom = new JSDOM(`<div id="toast"></div>`, { url: "https://staging.example/" });
   const { window } = dom;
-  let switchedTo = "";
-  let openedDetail = null;
-  let legacyBubbleHandlerRan = false;
-  window.IAQAR = { homeTabs: { switchTo(tab) { switchedTo = tab; } } };
-  window.addEventListener("iaqar:open-operation", (event) => { openedDetail = event.detail; });
-  window.document.getElementById("bank").addEventListener("click", () => { legacyBubbleHandlerRan = true; });
-  assert.equal(installBankOperationalActionBridge(window.document, window), true);
+  let openedOpportunityId = "";
+  let legacyHandlerRan = false;
+  window.IAQAR = {
+    async openOpportunityDetail(id) { openedOpportunityId = id; }
+  };
+  assert.equal(installLegacyOpportunityWorkflowRetirement(window.document, window), true);
+  window.addEventListener("iaqar:workflow-action", () => { legacyHandlerRan = true; });
 
-  const button = window.document.querySelector("button");
-  assert.equal(bankOperationalNavigationDetail(button).actionCode, "open_negotiation");
-  button.click();
+  window.dispatchEvent(new window.CustomEvent("iaqar:workflow-action", {
+    detail: {
+      recordType: "match",
+      matchId: "match-1",
+      clientRequestId: "request-1",
+      ownerOfferId: "offer-1"
+    }
+  }));
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-  assert.equal(switchedTo, "operations");
-  assert.equal(openedDetail.id, "operation-1");
-  assert.equal(openedDetail.matchId, "match-1");
-  assert.equal(openedDetail.operationId, "operation-1");
-  assert.equal(openedDetail.returnTarget, "bank_matches");
-  assert.equal(window.IAQAR.pendingDailyTaskOpen.id, "operation-1");
-  assert.equal(window.IAQAR.pendingDailyTaskOpen.actionCode, "open_negotiation");
-  assert.equal(window.IAQAR.pendingDailyTaskOpen.returnTarget, "bank_matches");
-  assert.equal(legacyBubbleHandlerRan, false);
+  assert.equal(openedOpportunityId, "request-1");
+  assert.equal(legacyHandlerRan, false);
 });
