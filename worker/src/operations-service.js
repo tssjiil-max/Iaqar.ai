@@ -155,7 +155,8 @@ export async function upsertOperationDocument({
   accessToken,
   setFirestoreDocument,
   getFirestoreDocument,
-  firestoreHelpers
+  firestoreHelpers,
+  reopenTerminalStatuses = []
 }) {
   const existingDoc = await getFirestoreDocument({
     projectId,
@@ -165,7 +166,30 @@ export async function upsertOperationDocument({
   });
   if (existingDoc) {
     const existing = firestoreHelpers.firestoreFieldsToJs(existingDoc.fields || {});
-    if (isTerminalStatus(existing.status)) {
+    const existingStatus = String(existing.status || "").toUpperCase();
+    if (isTerminalStatus(existingStatus) && reopenTerminalStatuses.includes(existingStatus)) {
+      // A system-expired projection whose source entity is actionable again is
+      // reopened in place (same deterministic id), never duplicated.
+      const now = new Date().toISOString();
+      const reopened = {
+        ...operation,
+        createdAt: existing.createdAt || operation.createdAt,
+        openedAt: null,
+        completedAt: null,
+        dismissedAt: null,
+        status: operation.status || OPERATION_STATUS.OPEN,
+        updatedAt: now,
+        operationVersion: Number(existing.operationVersion || 1) + 1
+      };
+      await setFirestoreDocument({
+        projectId,
+        segments: ["offices", officeId, "operations", operation.id],
+        accessToken,
+        fields: operationToFirestoreFields(reopened, firestoreHelpers)
+      });
+      return { operation: reopened, created: false, reopened: true, skippedTerminal: false };
+    }
+    if (isTerminalStatus(existingStatus)) {
       return { operation: { ...existing, id: operation.id }, created: false, skippedTerminal: true };
     }
     const now = new Date().toISOString();
@@ -466,7 +490,14 @@ export async function createMatchReviewBundle({
     candidatePurpose: match.candidatePurpose || ""
   });
 
-  const opResult = await upsertOperationDocument({ projectId, officeId, operation, accessToken, ...deps });
+  // EXPIRED is written only by the system when a Match is superseded or its
+  // opportunity goes inactive. Reaching this point means the exact same Match is
+  // current and actionable again, so its review must return to Daily Tasks.
+  // Broker decisions (DISMISSED / COMPLETED) stay terminal.
+  const opResult = await upsertOperationDocument({
+    projectId, officeId, operation, accessToken, ...deps,
+    reopenTerminalStatuses: [OPERATION_STATUS.EXPIRED]
+  });
   if (opResult.skippedTerminal) {
     return { created: false, reason: "terminal_exists", operation: opResult.operation, boundaries: phase5BoundaryGuarantees() };
   }
