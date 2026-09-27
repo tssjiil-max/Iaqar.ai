@@ -202,47 +202,64 @@ async function inspectFreshCard(page, side, opportunityId, matchId, operationId)
   return { side, opportunityId, ...actual };
 }
 
+function freshBankUrl() {
+  return `${STAGING_URL}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}&contentV2=1`;
+}
+
+// Current CTA contract (legacy opportunity manager retired 2026-09-26): review_match
+// opens the card's own opportunity in the Content V2 details view via
+// #/opportunities/<id>; it must not emit the legacy iaqar:open-operation /
+// iaqar:workflow-action events or open #iaqarWorkflowOverlay.
 async function clickFreshMatch(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
-  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
-  await action.click();
-  await page.waitForFunction(() => window.__qaFreshLineageBridge?.openRequests?.length > 0, null, { timeout: 7000 });
-  await page.waitForFunction(() => window.__qaFreshLineageBridge?.workflowActions?.length > 0, null, { timeout: 15000 });
-  const overlay = page.locator("#iaqarWorkflowOverlay:not([hidden])");
-  await overlay.waitFor({ state: "visible", timeout: 15000 });
-  await page.waitForFunction(() => {
-    const body = document.getElementById("iaqarWorkflowBody");
-    return body && !body.textContent.includes("جارٍ تحميل بيانات العميل والمالك");
-  }, null, { timeout: 15000 });
-  const events = await page.evaluate(() => ({
-    openRequest: window.__qaFreshLineageBridge?.openRequests?.at(-1) || {},
-    workflowAction: window.__qaFreshLineageBridge?.workflowActions?.at(-1) || {},
-    opportunityDetailsVisible: Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')),
-    workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])"))
+  const action = card.locator(
+    `[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"][data-operation-id="${target.operationId}"]`
+  ).first();
+  await action.waitFor({ state: "visible", timeout: 30000 });
+  const clicked = await action.evaluate((button) => ({
+    matchId: button.getAttribute("data-match-id") || "",
+    operationId: button.getAttribute("data-operation-id") || "",
+    opportunityId: button.closest("[data-cv2-inbox-item][data-opportunity-id]")?.getAttribute("data-opportunity-id") || ""
   }));
-  const ok = String(events.openRequest.opportunityId || "") === target.opportunityId
-    && String(events.openRequest.matchId || "") === target.matchId
-    && String(events.openRequest.operationId || "") === target.operationId
-    && String(events.workflowAction.recordType || "") === "match"
-    && String(events.workflowAction.recordId || "") === target.matchId
-    && String(events.workflowAction.matchId || "") === target.matchId
-    && events.workflowVisible && !events.opportunityDetailsVisible;
-  if (!ok) throw new Error(`${target.side} CTA opened wrong record ${JSON.stringify({ target, events })}`);
-  // The workflow overlay changes SPA history/state. A plain goBack can leave the
-  // second Bank card outside the active rendered list even though it existed before
-  // opening the first CTA. Reload the deployed Bank deterministically before the
-  // second-side assertion, then re-open the Matches filter.
-  await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
+  await action.click();
+  await page.waitForFunction((opportunityId) => {
+    const host = document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])');
+    return Boolean(host) && host.dataset.opportunityId === opportunityId
+      && decodeURIComponent(String(location.hash || "")).includes(`/opportunities/${opportunityId}`);
+  }, target.opportunityId, { timeout: 15000 });
+  const events = await page.evaluate(() => ({
+    openRequests: window.__qaFreshLineageBridge?.openRequests || [],
+    workflowActions: window.__qaFreshLineageBridge?.workflowActions || [],
+    detailsOpportunityId: document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')?.dataset?.opportunityId || "",
+    hash: decodeURIComponent(String(location.hash || "")),
+    workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])")),
+    workflowTitle: document.getElementById("iaqarWorkflowTitle")?.textContent?.trim() || ""
+  }));
+  const ok = clicked.matchId === target.matchId
+    && clicked.operationId === target.operationId
+    && clicked.opportunityId === target.opportunityId
+    && events.detailsOpportunityId === target.opportunityId
+    && events.hash.includes(`/opportunities/${target.opportunityId}`)
+    && !events.workflowVisible
+    && events.workflowTitle !== "إدارة الفرصة"
+    && events.openRequests.length === 0
+    && events.workflowActions.length === 0;
+  if (!ok) throw new Error(`${target.side} CTA opened wrong record ${JSON.stringify({ target, clicked, events })}`);
+
+  // Return to the Bank without the details hash, then prove the same card still
+  // carries the exact matchId/operationId after the round trip.
+  await page.goto(freshBankUrl(), { waitUntil: "domcontentloaded", timeout: 90000 });
   await openBankTab(page);
   await selectMatchesFilter(page);
-  return { side: target.side, exactMatchOpened: true };
+  const returned = await inspectFreshCard(page, target.side, target.opportunityId, target.matchId, target.operationId);
+  return { side: target.side, exactMatchOpened: true, clicked, detailsOpportunityId: events.detailsOpportunityId, returned };
 }
 
 async function verifyFreshBank(browser, customToken, matchId, operationId) {
   const context = await browser.newContext({ locale: "ar-SA", viewport: { width: 390, height: 900 } });
   const page = await context.newPage();
   try {
-    await page.goto(`${STAGING_URL}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}&contentV2=1`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await page.goto(freshBankUrl(), { waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForFunction(() => window.firebase?.apps?.length > 0, { timeout: 30000 });
     await page.evaluate(async ({ token, officeId }) => {
       await window.firebase.auth().signInWithCustomToken(token);
