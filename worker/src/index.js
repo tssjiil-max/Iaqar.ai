@@ -3899,6 +3899,29 @@ function canonicalMatchFields(linkage) {
   };
 }
 
+// A persisted, actionable Match must have its MATCH_REVIEW projection. Failures
+// propagate to the caller instead of leaving a Match without a task silently.
+async function ensurePersistedMatchReviewOperation({
+  projectId, officeId, match, assignedBrokerId = "", accessToken, env = null,
+  notifyOperation = false
+}) {
+  const bundle = await createMatchReviewBundle({
+    projectId,
+    officeId,
+    match,
+    threshold: MATCH_THRESHOLD,
+    assignedBrokerId,
+    notifyPush: notifyOperation === true,
+    accessToken,
+    deps: operationsDeps(env)
+  });
+  const operationId = String(bundle?.operation?.id || "").trim();
+  if (!operationId) {
+    throw new Error(`match_review_operation_missing:${bundle?.reason || "no_operation"}`);
+  }
+  return { bundle, operationId };
+}
+
 async function persistScoredMatch({
   projectId, officeId, source, candidate, sourceRef, counterpartRef,
   sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
@@ -3953,7 +3976,7 @@ async function persistScoredMatch({
           }
         });
       }
-      return {
+      const persisted = {
         matchId, duplicate: true, score: scored.score, opportunityScore: scored.opportunityScore,
         priority: scored.priority, closingReadiness: scored.readiness, status: "active",
         statusLabel: MATCH_STATUS_LABELS.active, nextAction: MATCH_NEXT_ACTION_LABELS.active,
@@ -3963,9 +3986,31 @@ async function persistScoredMatch({
         district: source.district || candidate.district || "",
         propertyType: source.propertyType || candidate.propertyType || "",
         matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion, pairKey,
+        opportunityId: opportunityId || existing.opportunityId || "",
+        counterpartOpportunityId: counterpartOpportunityId || existing.counterpartOpportunityId || "",
         requestId: clientRequestId, offerId: ownerOfferId, clientRequestId, ownerOfferId,
+        matchGroupId: opportunityId || existing.matchGroupId || sourceRecordId || clientRequestId,
+        sourceCollection,
+        candidateSalePrice: Number(candidate.salePrice || candidate.price || 0),
+        candidateArea: Number(candidate.area || 0),
+        candidatePropertyType: candidate.propertyType || "",
+        candidateDistrict: candidate.district || "",
+        candidateCity: candidate.city || "",
+        candidatePurpose: candidate.purpose || candidate.transactionType || "",
+        isCurrent: true,
+        assignedBrokerId: assignedBrokerId || existing.assignedBrokerId || "",
         integrityStatus: MATCH_INTEGRITY.VALID
       };
+      // Repair: an existing current Match may lack its MATCH_REVIEW (earlier
+      // silent failure, or created before the operation existed).
+      const ensured = await ensurePersistedMatchReviewOperation({
+        projectId, officeId, match: persisted,
+        assignedBrokerId: persisted.assignedBrokerId,
+        accessToken, env, notifyOperation
+      });
+      persisted.operationId = ensured.operationId;
+      persisted.operationCreated = Boolean(ensured.bundle.created);
+      return persisted;
     }
   }
 
@@ -4069,22 +4114,18 @@ async function persistScoredMatch({
   };
 
   // Phase 5: actionable Match → exactly one MATCH_REVIEW Operation (+ in-app Notification).
+  // Not swallowed: a Match persisted without its review is a failure the caller must
+  // see; re-running matching repairs it through the existing-Match path above.
   try {
-    const bundle = await createMatchReviewBundle({
-      projectId,
-      officeId,
-      match: persisted,
-      threshold: MATCH_THRESHOLD,
-      assignedBrokerId,
-      notifyPush: notifyOperation === true,
-      accessToken,
-      deps: operationsDeps(env)
+    const ensured = await ensurePersistedMatchReviewOperation({
+      projectId, officeId, match: persisted, assignedBrokerId,
+      accessToken, env, notifyOperation
     });
-    persisted.operationId = bundle.operation?.id || "";
-    persisted.operationCreated = Boolean(bundle.created);
+    persisted.operationId = ensured.operationId;
+    persisted.operationCreated = Boolean(ensured.bundle.created);
   } catch (error) {
-    console.warn("[iaqar-ops] match review upsert failed", error && error.message);
-    persisted.operationCreated = false;
+    console.error("[iaqar-ops] match review upsert failed", { officeId, matchId, error: error && error.message });
+    throw error;
   }
 
   return persisted;
