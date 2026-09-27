@@ -8,6 +8,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as admin from "firebase-admin";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
@@ -20,10 +21,9 @@ import {
 const PROJECT_ID = "iaqar-ai-staging";
 const STAGING_URL = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
-const NORMAL_OFFICE_ID = "staging-logo-live-20260807";
 const OFFICE_ID = "qa-e2e-dedicated";
-const PHONE = "0511123456";
-const PASSWORD = "StagingLogo9";
+const OFFICE_PATH = `offices/${OFFICE_ID}`;
+const QA_UID = "qa-e2e-match-integrity";
 const OUT = process.env.LIVE_E2E_OUT || "/opt/cursor/artifacts";
 const RUN_ID = `livee2e_matchint_${Date.now().toString(36)}`;
 const REQUEST_ID = `opp_${RUN_ID}_req`;
@@ -62,36 +62,36 @@ function stamp() {
   };
 }
 
+function assertQaPath(ref) {
+  const refPath = String(ref?.path || "");
+  if (!refPath.startsWith(`${OFFICE_PATH}/`)) throw new Error(`QA_GUARD_REFUSED: path outside ${OFFICE_PATH}: ${refPath}`);
+}
+
 async function ensureQaOffice() {
-  const source = db.collection("offices").doc(NORMAL_OFFICE_ID);
-  const [sourceSnap, membersSnap] = await Promise.all([source.get(), source.collection("members").get()]);
-  const sourceData = sourceSnap.data() || {};
+  const snap = await office.get();
+  if (snap.exists && (snap.data() || {}).isTestFixture !== true) {
+    throw new Error(`QA_GUARD_REFUSED: ${OFFICE_PATH} exists but is not marked isTestFixture`);
+  }
   await office.set({
     officeName: "QA E2E Dedicated",
     displayName: "QA E2E Dedicated",
     isTestFixture: true,
     createdBy: "E2E",
-    ownerUid: sourceData.ownerUid || "",
     platformOpportunityOnboardingAckAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
-  await Promise.all(membersSnap.docs.map((doc) => office.collection("members").doc(doc.id).set({
-    ...doc.data(),
+  // Dedicated QA identity for this run only; no real office owner/members are copied.
+  const memberRef = office.collection("members").doc(QA_UID);
+  assertQaPath(memberRef);
+  await memberRef.set({
+    uid: QA_UID,
+    role: "manager",
+    active: true,
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E",
     updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true })));
-}
-
-async function cleanupStaleQaFixtures() {
-  for (const name of ["matches", "opportunities", "operations"]) {
-    const col = office.collection(name);
-    const [fixtureSnap, runSnap] = await Promise.all([
-      col.where("isTestFixture", "==", true).limit(200).get(),
-      col.where("createdBy", "==", "E2E").limit(200).get()
-    ]);
-    const refs = new Map();
-    for (const doc of [...fixtureSnap.docs, ...runSnap.docs]) refs.set(doc.id, doc.ref);
-    await Promise.all([...refs.values()].map((ref) => ref.delete()));
-  }
+  });
 }
 
 async function persistCanonicalPair() {
@@ -133,28 +133,27 @@ async function persistCanonicalPair() {
 }
 
 async function idToken() {
-  const initRes = await fetch(`${STAGING_URL}/__/firebase/init.json`);
-  const { apiKey } = await initRes.json();
-  const loginRes = await fetch(`${STAGING_WORKER}/auth/phone-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone: PHONE, password: PASSWORD, apiKey })
-  });
-  const loginBody = await loginRes.json().catch(() => ({}));
-  if (!loginRes.ok || !loginBody.customToken) {
-    throw new Error(`phone-login failed ${loginRes.status} ${JSON.stringify(loginBody)}`);
+  const initRes = await fetch(`${STAGING_URL}/__/firebase/init.json`, { cache: "no-store" });
+  const initBody = await initRes.json().catch(() => ({}));
+  const apiKey = initBody.apiKey;
+  if (!initRes.ok || !apiKey) throw new Error(`firebase init failed ${initRes.status}`);
+  if (initBody.projectId && initBody.projectId !== PROJECT_ID) {
+    throw new Error(`QA_GUARD_REFUSED: hosting project is ${initBody.projectId}`);
   }
+  // Same auth pattern as staging-bank-card-click-verify.mjs: Admin custom token,
+  // no phone login and no loginDirectory dependency.
+  const customToken = await getAuth(app).createCustomToken(QA_UID, { qaFixture: true });
   const signRes = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: loginBody.customToken, returnSecureToken: true })
+      body: JSON.stringify({ token: customToken, returnSecureToken: true })
     }
   );
   const signBody = await signRes.json().catch(() => ({}));
   if (!signRes.ok || !signBody.idToken) throw new Error(`signIn failed ${signRes.status}`);
-  return { idToken: signBody.idToken, customToken: loginBody.customToken, apiKey };
+  return { idToken: signBody.idToken, customToken, apiKey };
 }
 
 async function runMatching(token) {
@@ -263,6 +262,10 @@ async function cleanup() {
   }
   await office.collection("opportunities").doc(REQUEST_ID).delete().catch(() => {});
   await office.collection("opportunities").doc(OFFER_ID).delete().catch(() => {});
+  const memberRef = office.collection("members").doc(QA_UID);
+  assertQaPath(memberRef);
+  const member = await memberRef.get();
+  if (member.exists && (member.data() || {}).testRunId === RUN_ID) await memberRef.delete();
 }
 
 function startLocalServer() {
@@ -415,7 +418,6 @@ async function captureUi({ customToken, matchId }) {
 
 async function main() {
   await ensureQaOffice();
-  await cleanupStaleQaFixtures();
   const persisted = await persistCanonicalPair();
   const auth = await idToken();
   const matching = await runMatching(auth.idToken);
@@ -559,6 +561,7 @@ async function main() {
   );
   if (!verified) {
     console.error("MATCH INTEGRITY NOT VERIFIED");
+    try { await cleanup(); } catch (error) { console.error("cleanup failed", error); }
     await app.delete();
     process.exit(2);
   }
