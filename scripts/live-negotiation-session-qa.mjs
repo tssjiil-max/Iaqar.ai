@@ -11,8 +11,9 @@ import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 const PROJECT_ID = "iaqar-ai-staging";
 const STAGING_URL = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
-const NORMAL_OFFICE_ID = "staging-logo-live-20260807";
 const OFFICE_ID = "qa-e2e-dedicated";
+const OFFICE_PATH = `offices/${OFFICE_ID}`;
+const QA_UID = "qa-e2e-negotiation";
 const OUT = process.env.LIVE_E2E_OUT || "/opt/cursor/artifacts";
 const RUN_ID = `livee2e_neg_${Date.now().toString(36)}`;
 const REQUEST_ID = `opp_${RUN_ID}_req`;
@@ -48,30 +49,36 @@ function stamp() {
   };
 }
 
+function assertQaPath(ref) {
+  const refPath = String(ref?.path || "");
+  if (!refPath.startsWith(`${OFFICE_PATH}/`)) throw new Error(`QA_GUARD_REFUSED: path outside ${OFFICE_PATH}: ${refPath}`);
+}
+
+// Dedicated QA identity for this run only; no real office owner/members are copied.
 async function ensureQaOffice() {
-  const source = db.collection("offices").doc(NORMAL_OFFICE_ID);
-  const [sourceSnap, membersSnap] = await Promise.all([source.get(), source.collection("members").get()]);
-  if (membersSnap.empty) throw new Error("QA source office has no member to authenticate");
-  const sourceData = sourceSnap.data() || {};
+  const snap = await office.get();
+  if (snap.exists && (snap.data() || {}).isTestFixture !== true) {
+    throw new Error(`QA_GUARD_REFUSED: ${OFFICE_PATH} exists but is not marked isTestFixture`);
+  }
   await office.set({
     officeName: "QA E2E Dedicated",
     displayName: "QA E2E Dedicated",
     isTestFixture: true,
     createdBy: "E2E",
-    ownerUid: sourceData.ownerUid || "",
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
-  await Promise.all(membersSnap.docs.map((doc) => office.collection("members").doc(doc.id).set({
-    ...doc.data(), updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true })));
-  return membersSnap.docs[0].id;
-}
-
-async function cleanupStaleQaFixtures() {
-  for (const name of ["matches", "opportunities", "operations"]) {
-    const snap = await office.collection(name).where("isTestFixture", "==", true).limit(200).get();
-    await Promise.all(snap.docs.map((doc) => doc.ref.delete().catch(() => {})));
-  }
+  const memberRef = office.collection("members").doc(QA_UID);
+  assertQaPath(memberRef);
+  await memberRef.set({
+    uid: QA_UID,
+    role: "manager",
+    active: true,
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E",
+    updatedAt: FieldValue.serverTimestamp()
+  });
+  return QA_UID;
 }
 
 async function persistPair() {
@@ -109,7 +116,10 @@ async function idToken(uid) {
   const initRes = await fetch(`${STAGING_URL}/__/firebase/init.json`, { cache: "no-store" });
   const initBody = await initRes.json().catch(() => ({}));
   if (!initRes.ok || !initBody.apiKey) throw new Error(`firebase init failed ${initRes.status}`);
-  const customToken = await getAuth(app).createCustomToken(uid);
+  if (initBody.projectId && initBody.projectId !== PROJECT_ID) {
+    throw new Error(`QA_GUARD_REFUSED: hosting project is ${initBody.projectId}`);
+  }
+  const customToken = await getAuth(app).createCustomToken(uid, { qaFixture: true });
   const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${initBody.apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -448,13 +458,16 @@ async function cleanup() {
   }
   await office.collection("opportunities").doc(REQUEST_ID).delete().catch(() => {});
   await office.collection("opportunities").doc(OFFER_ID).delete().catch(() => {});
+  const memberRef = office.collection("members").doc(QA_UID);
+  assertQaPath(memberRef);
+  const member = await memberRef.get().catch(() => null);
+  if (member?.exists && (member.data() || {}).testRunId === RUN_ID) await memberRef.delete().catch(() => {});
 }
 
 async function main() {
   let browser;
   try {
     const uid = await ensureQaOffice();
-    await cleanupStaleQaFixtures();
     await persistPair();
     const token = await idToken(uid);
     const matching = await runMatching(token);
