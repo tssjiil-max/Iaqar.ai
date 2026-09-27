@@ -300,9 +300,26 @@ async function openBankTab(page) {
     });
   }
   await page.waitForTimeout(500);
-  const bankSub = page.locator("#oppTabBank:visible, button:visible:has-text('القائمة')").first();
-  if (await bankSub.count()) await bankSub.click();
-  await page.waitForTimeout(1500);
+  // A new office sees the platform onboarding modal, which covers the tabs.
+  // Dismiss it through its own button, exactly as a broker would.
+  const onboarding = page.locator("#platformOpportunityOnboarding");
+  if (await onboarding.isVisible()) {
+    await page.locator("#platformOnboardingAckBtn").click();
+    await onboarding.waitFor({ state: "hidden", timeout: 10000 });
+  }
+  const bankSub = page.locator("#oppTabBank");
+  await bankSub.waitFor({ state: "visible", timeout: 30000 });
+  await page.waitForFunction(() => {
+    const tab = document.getElementById("oppTabBank");
+    return Boolean(tab) && !tab.disabled;
+  }, null, { timeout: 30000 });
+  await bankSub.click();
+  await page.waitForFunction(() => {
+    const tab = document.getElementById("oppTabBank");
+    const panel = document.getElementById("oppPanelBank");
+    return tab?.getAttribute("aria-selected") === "true"
+      && Boolean(panel) && !panel.hidden && panel.getClientRects().length > 0;
+  }, null, { timeout: 30000 });
 }
 
 async function installEventBridge(page) {
