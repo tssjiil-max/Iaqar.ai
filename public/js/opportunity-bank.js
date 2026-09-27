@@ -4501,6 +4501,18 @@ function boot() {
   window.IAQAR.openOpportunityDetail = async function openOpportunityDetail(opportunityId) {
     const id = normalizeOpportunityDocumentId(opportunityId);
     if (!id) return false;
+    if (isContentResetEnabled()) {
+      // Content V2 renders opportunity details from the hash; pushState fires no
+      // hashchange, so render explicitly (same as renderDailyTaskOpportunity).
+      const hash = buildOpportunityDeepLinkHash(id);
+      if (hash && window.history?.pushState) {
+        window.history.pushState(window.history.state, "", `${window.location.pathname}${window.location.search}${hash}`);
+      } else if (hash) {
+        window.location.hash = hash;
+      }
+      window.IAQAR?.contentV2?.render?.();
+      return true;
+    }
     openOpportunityBank();
     return openOpportunity(id);
   };
