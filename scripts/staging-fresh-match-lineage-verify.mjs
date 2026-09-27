@@ -12,22 +12,33 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+import {
+  QA_OFFICE_ID,
+  STAGING_PROJECT_ID,
+  assertStagingServiceAccount,
+  ensureQaOfficeMember,
+  qaRunUid,
+  removeQaIdentity,
+  signInQaUser
+} from "./staging-qa-identity.mjs";
 
-const PROJECT_ID = "iaqar-ai-staging";
+const PROJECT_ID = STAGING_PROJECT_ID;
 const STAGING_URL = "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
-const NORMAL_OFFICE_ID = "staging-logo-live-20260807";
-const OFFICE_ID = "qa-e2e-dedicated";
+const OFFICE_ID = QA_OFFICE_ID;
 const OUT = process.env.LIVE_E2E_OUT || "/opt/cursor/artifacts";
 const RUN_ID = `fresh_lineage_${Date.now().toString(36)}`;
 const REQUEST_ID = `opp_${RUN_ID}_req`;
 const OFFER_ID = `opp_${RUN_ID}_offer`;
+const QA_UID = qaRunUid("fresh-lineage", RUN_ID);
 
 mkdirSync(OUT, { recursive: true });
 const parsedSa = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
 if (!parsedSa.serviceAccount) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON missing");
+assertStagingServiceAccount(parsedSa.serviceAccount);
 const app = admin.initializeApp({ credential: admin.cert(parsedSa.serviceAccount), projectId: PROJECT_ID });
 const db = getFirestore(app);
+const auth = getAuth(app);
 const office = db.collection("offices").doc(OFFICE_ID);
 let activeMatchId = "";
 let currentStage = "startup";
@@ -59,23 +70,10 @@ function stamp() {
   };
 }
 
+// Per-run QA identity in the dedicated QA office; no real office owner/members are used.
 async function ensureQaOffice() {
-  const source = db.collection("offices").doc(NORMAL_OFFICE_ID);
-  const [sourceSnap, membersSnap] = await Promise.all([source.get(), source.collection("members").get()]);
-  if (membersSnap.empty) throw new Error("QA source office has no member to authenticate");
-  const sourceData = sourceSnap.data() || {};
-  await office.set({
-    officeName: "QA E2E Dedicated",
-    displayName: "QA E2E Dedicated",
-    isTestFixture: true,
-    createdBy: "E2E",
-    ownerUid: sourceData.ownerUid || "",
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  await Promise.all(membersSnap.docs.map((doc) => office.collection("members").doc(doc.id).set({
-    ...doc.data(), updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true })));
-  return membersSnap.docs[0].id;
+  await ensureQaOfficeMember({ db, FieldValue, runId: RUN_ID, uid: QA_UID });
+  return QA_UID;
 }
 
 async function persistPair() {
@@ -101,17 +99,8 @@ async function persistPair() {
 }
 
 async function authTokens(uid) {
-  const initRes = await fetch(`${STAGING_URL}/__/firebase/init.json`, { cache: "no-store" });
-  const initBody = await initRes.json().catch(() => ({}));
-  if (!initRes.ok || !initBody.apiKey) throw new Error(`firebase init failed ${initRes.status}`);
-  const customToken = await getAuth(app).createCustomToken(uid);
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${initBody.apiKey}`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: customToken, returnSecureToken: true })
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || !body.idToken) throw new Error(`custom-token sign-in failed ${response.status}`);
-  return { idToken: body.idToken, customToken };
+  const { idToken, customToken } = await signInQaUser({ auth, stagingUrl: STAGING_URL, uid });
+  return { idToken, customToken };
 }
 
 async function runMatching(idToken) {
@@ -239,8 +228,12 @@ async function clickFreshMatch(page, target) {
     && String(events.workflowAction.matchId || "") === target.matchId
     && events.workflowVisible && !events.opportunityDetailsVisible;
   if (!ok) throw new Error(`${target.side} CTA opened wrong record ${JSON.stringify({ target, events })}`);
-  await page.goBack();
-  await overlay.waitFor({ state: "hidden", timeout: 10000 });
+  // The workflow overlay changes SPA history/state. A plain goBack can leave the
+  // second Bank card outside the active rendered list even though it existed before
+  // opening the first CTA. Reload the deployed Bank deterministically before the
+  // second-side assertion, then re-open the Matches filter.
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
+  await openBankTab(page);
   await selectMatchesFilter(page);
   return { side: target.side, exactMatchOpened: true };
 }
@@ -483,6 +476,7 @@ async function cleanup() {
   }
   await office.collection("opportunities").doc(REQUEST_ID).delete().catch(() => {});
   await office.collection("opportunities").doc(OFFER_ID).delete().catch(() => {});
+  await removeQaIdentity({ db, auth, runId: RUN_ID, uid: QA_UID });
 }
 
 async function main() {

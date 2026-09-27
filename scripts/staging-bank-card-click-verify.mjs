@@ -16,11 +16,18 @@ import * as admin from "firebase-admin";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+import {
+  QA_OFFICE_ID as SHARED_QA_OFFICE_ID,
+  assertStagingServiceAccount,
+  ensureQaOfficeMember,
+  qaRunUid,
+  removeQaIdentity,
+  signInQaUser
+} from "./staging-qa-identity.mjs";
 
 const PROJECT_ID = "iaqar-ai-staging";
-const QA_OFFICE_ID = "qa-e2e-dedicated";
+const QA_OFFICE_ID = SHARED_QA_OFFICE_ID;
 const QA_OFFICE_PATH = `offices/${QA_OFFICE_ID}`;
-const QA_UID = "qa-e2e-bank-verifier";
 const STAGING = process.env.STAGING_HOSTING_URL
   || "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
 const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
@@ -32,6 +39,7 @@ const REQUEST_ID = `opp_${RUN_ID}_req`;
 const OFFER_A_ID = `opp_${RUN_ID}_offer_a`;
 const OFFER_B_ID = `opp_${RUN_ID}_offer_b`;
 const RUN_OPPORTUNITY_IDS = [REQUEST_ID, OFFER_A_ID, OFFER_B_ID];
+const QA_UID = qaRunUid("bank", RUN_ID);
 let currentStage = "startup";
 
 // ---------------------------------------------------------------------------
@@ -46,11 +54,10 @@ if (!new URL(STAGING).hostname.startsWith(`${PROJECT_ID}--`)) {
 }
 const parsedSa = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
 if (!parsedSa.serviceAccount) refuse("FIREBASE_SERVICE_ACCOUNT_JSON missing or invalid");
-if (parsedSa.serviceAccount.project_id !== PROJECT_ID) {
-  refuse(`service account project ${parsedSa.serviceAccount.project_id} is not ${PROJECT_ID}`);
-}
+assertStagingServiceAccount(parsedSa.serviceAccount);
 const app = admin.initializeApp({ credential: admin.cert(parsedSa.serviceAccount), projectId: PROJECT_ID });
 const db = getFirestore(app);
+const auth = getAuth(app);
 const office = db.collection("offices").doc(QA_OFFICE_ID);
 
 function assertQaPath(ref) {
@@ -104,31 +111,7 @@ function fixtureStamp() {
 }
 
 async function ensureQaOfficeAndMembership() {
-  const officeSnap = await office.get();
-  if (!officeSnap.exists) {
-    await office.set({
-      officeName: "QA E2E Dedicated",
-      displayName: "QA E2E Dedicated",
-      ownerUid: "",
-      isTestFixture: true,
-      createdBy: "E2E",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    });
-  } else if ((officeSnap.data() || {}).isTestFixture !== true) {
-    refuse(`${QA_OFFICE_PATH} exists but is not marked isTestFixture`);
-  }
-  const memberRef = office.collection("members").doc(QA_UID);
-  assertQaPath(memberRef);
-  await memberRef.set({
-    uid: QA_UID,
-    role: "manager",
-    active: true,
-    isTestFixture: true,
-    testRunId: RUN_ID,
-    createdBy: "E2E",
-    updatedAt: FieldValue.serverTimestamp()
-  });
+  await ensureQaOfficeMember({ db, FieldValue, runId: RUN_ID, uid: QA_UID });
 }
 
 async function persistFixtures() {
@@ -181,19 +164,8 @@ async function persistFixtures() {
 }
 
 async function createQaSession() {
-  const initRes = await fetch(`${STAGING}/__/firebase/init.json`, { cache: "no-store" });
-  const initBody = await initRes.json().catch(() => ({}));
-  if (!initRes.ok || !initBody.apiKey) throw new Error(`firebase init failed ${initRes.status}`);
-  if (initBody.projectId && initBody.projectId !== PROJECT_ID) refuse(`hosting project is ${initBody.projectId}`);
-  const customToken = await getAuth(app).createCustomToken(QA_UID, { qaFixture: true });
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${initBody.apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: customToken, returnSecureToken: true })
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || !body.idToken) throw new Error(`custom-token sign-in failed ${response.status}`);
-  return { customToken, idToken: body.idToken };
+  const { customToken, idToken } = await signInQaUser({ auth, stagingUrl: STAGING, uid: QA_UID });
+  return { customToken, idToken };
 }
 
 async function runMatching(idToken) {
@@ -264,7 +236,9 @@ async function cleanup(matches = []) {
     const snap = await office.collection(name).where("testRunId", "==", RUN_ID).get();
     for (const doc of snap.docs) count(name, await deleteRunDoc(doc.ref));
   }
-  count("members", await deleteRunDoc(office.collection("members").doc(QA_UID)));
+  const identity = await removeQaIdentity({ db, auth, runId: RUN_ID, uid: QA_UID });
+  count("members", identity.member);
+  count("authUsers", identity.authUser);
   console.log("BANK_QA_CLEANUP", JSON.stringify({ runId: RUN_ID, office: QA_OFFICE_PATH, deleted }));
   return deleted;
 }
