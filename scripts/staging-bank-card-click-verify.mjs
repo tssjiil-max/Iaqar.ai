@@ -2,39 +2,287 @@
 /**
  * Staging E2E: Bank operational actions stay inside the opportunity workspace.
  * The retired legacy "إدارة الفرصة" overlay must never open.
+ *
+ * Self-contained: every record this verifier reads is created by this run inside
+ * the dedicated QA office, tagged with its testRunId, and removed in `finally`.
+ * It never signs in as a real account, never touches loginDirectory, and never
+ * reads or writes any office other than QA_OFFICE_ID.
  */
 import { chromium } from "playwright";
 import path from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import * as admin from "firebase-admin";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 
+const PROJECT_ID = "iaqar-ai-staging";
+const QA_OFFICE_ID = "qa-e2e-dedicated";
+const QA_OFFICE_PATH = `offices/${QA_OFFICE_ID}`;
+const QA_UID = "qa-e2e-bank-verifier";
 const STAGING = process.env.STAGING_HOSTING_URL
   || "https://iaqar-ai-staging--staging-9c4b0k7h.web.app";
-const PHONE = process.env.STAGING_PHONE || "0511123456";
-const PASSWORD = process.env.STAGING_PASSWORD || "StagingLogo9";
+const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
 const OUT = process.env.SCREENSHOT_DIR || "/opt/cursor/artifacts";
+const KEEP_FIXTURES = process.argv.includes("--keep") || process.env.KEEP_FIXTURES === "1";
 const COMMIT_SHA = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
-const TARGET_MATCH_ID = "mat_c4f36c3f799dc8f4b159caee5fc2eece8c95";
-const TARGETS = [
-  { side: "offer", reference: "A-4542", opportunityId: "opp_intake_Pqa99R4ghA54O2zrhmNq" },
-  { side: "request", reference: "A-4228", opportunityId: "opp_intake_4dhm2NxhJBblRLR28hKi" }
-];
+const RUN_ID = `bankqa_${Date.now().toString(36)}`;
+const REQUEST_ID = `opp_${RUN_ID}_req`;
+const OFFER_A_ID = `opp_${RUN_ID}_offer_a`;
+const OFFER_B_ID = `opp_${RUN_ID}_offer_b`;
+const RUN_OPPORTUNITY_IDS = [REQUEST_ID, OFFER_A_ID, OFFER_B_ID];
 let currentStage = "startup";
+
+// ---------------------------------------------------------------------------
+// Guards: Staging project + dedicated QA office only.
+// ---------------------------------------------------------------------------
+function refuse(reason) {
+  throw new Error(`BANK_QA_GUARD_REFUSED: ${reason}`);
+}
+
+if (!new URL(STAGING).hostname.startsWith(`${PROJECT_ID}--`)) {
+  refuse(`hosting URL is not an ${PROJECT_ID} channel: ${STAGING}`);
+}
+const parsedSa = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT_ID);
+if (!parsedSa.serviceAccount) refuse("FIREBASE_SERVICE_ACCOUNT_JSON missing or invalid");
+if (parsedSa.serviceAccount.project_id !== PROJECT_ID) {
+  refuse(`service account project ${parsedSa.serviceAccount.project_id} is not ${PROJECT_ID}`);
+}
+const app = admin.initializeApp({ credential: admin.cert(parsedSa.serviceAccount), projectId: PROJECT_ID });
+const db = getFirestore(app);
+const office = db.collection("offices").doc(QA_OFFICE_ID);
+
+function assertQaPath(ref) {
+  const refPath = String(ref?.path || "");
+  if (!refPath.startsWith(`${QA_OFFICE_PATH}/`)) refuse(`path outside ${QA_OFFICE_PATH}: ${refPath}`);
+}
+
+async function tagRunDoc(ref) {
+  assertQaPath(ref);
+  await ref.set({ testRunId: RUN_ID, isTestFixture: true, createdBy: "E2E" }, { merge: true });
+}
+
+async function deleteRunDoc(ref) {
+  assertQaPath(ref);
+  const snap = await ref.get();
+  if (!snap.exists) return false;
+  if ((snap.data() || {}).testRunId !== RUN_ID) {
+    refuse(`document does not belong to ${RUN_ID}: ${ref.path}`);
+  }
+  await db.recursiveDelete(ref);
+  return true;
+}
 
 function markStage(stage) {
   currentStage = stage;
   console.log(`BANK_CARD_CLICK_VERIFY_STAGE ${stage}`);
 }
 
-async function login(page) {
-  await page.goto(STAGING, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(2000);
-  const loginBtn = page.locator('button[data-go="login"]');
-  if (await loginBtn.count()) await loginBtn.click();
-  await page.waitForTimeout(500);
-  await page.locator('#loginForm input[name="phone"]').fill(PHONE);
-  await page.locator('#loginForm input[name="password"]').fill(PASSWORD);
-  await page.locator('#loginForm button[type="submit"]').click();
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+function fixtureStamp() {
+  // `area` is deliberately absent: it is OPTIONAL for completeness and matching.
+  return {
+    officeId: QA_OFFICE_ID,
+    lifecycleStatus: "ACTIVE",
+    status: "active",
+    matchingReadiness: "READY_FOR_MATCHING",
+    dataCompleteness: 100,
+    completeness: 100,
+    city: "المدينة المنورة",
+    district: "العزيزية",
+    propertyType: "شقة",
+    version: 1,
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E",
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+}
+
+async function ensureQaOfficeAndMembership() {
+  const officeSnap = await office.get();
+  if (!officeSnap.exists) {
+    await office.set({
+      officeName: "QA E2E Dedicated",
+      displayName: "QA E2E Dedicated",
+      ownerUid: "",
+      isTestFixture: true,
+      createdBy: "E2E",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+  } else if ((officeSnap.data() || {}).isTestFixture !== true) {
+    refuse(`${QA_OFFICE_PATH} exists but is not marked isTestFixture`);
+  }
+  const memberRef = office.collection("members").doc(QA_UID);
+  assertQaPath(memberRef);
+  await memberRef.set({
+    uid: QA_UID,
+    role: "manager",
+    active: true,
+    isTestFixture: true,
+    testRunId: RUN_ID,
+    createdBy: "E2E",
+    updatedAt: FieldValue.serverTimestamp()
+  });
+}
+
+async function persistFixtures() {
+  const opportunities = office.collection("opportunities");
+  const request = opportunities.doc(REQUEST_ID);
+  const offerA = opportunities.doc(OFFER_A_ID);
+  const offerB = opportunities.doc(OFFER_B_ID);
+  [request, offerA, offerB].forEach(assertQaPath);
+  await request.set({
+    ...fixtureStamp(),
+    opportunityKind: "REQUEST",
+    kind: "client_request",
+    purpose: "PURCHASE",
+    advertiserRole: "CLIENT",
+    budget: 900000,
+    priceOrBudget: 900000,
+    priceMax: 900000,
+    contactPhone: "0501119301",
+    advertiserPhoneNormalized: "+966501119301",
+    contactName: `عميل QA ${RUN_ID}`
+  });
+  await offerA.set({
+    ...fixtureStamp(),
+    opportunityKind: "OFFER",
+    kind: "owner_offer",
+    purpose: "SALE",
+    advertiserRole: "OWNER",
+    salePrice: 895000,
+    priceOrBudget: 895000,
+    contactPhone: "0501119302",
+    advertiserPhoneNormalized: "+966501119302",
+    contactName: `مالك QA أ ${RUN_ID}`
+  });
+  // A second, weaker offer gives the request a genuinely different Match to open.
+  await offerB.set({
+    ...fixtureStamp(),
+    opportunityKind: "OFFER",
+    kind: "owner_offer",
+    purpose: "SALE",
+    advertiserRole: "OWNER",
+    salePrice: 840000,
+    priceOrBudget: 840000,
+    contactPhone: "0501119303",
+    advertiserPhoneNormalized: "+966501119303",
+    contactName: `مالك QA ب ${RUN_ID}`
+  });
+  const snaps = await Promise.all([request.get(), offerA.get(), offerB.get()]);
+  if (!snaps.every((snap) => snap.exists)) throw new Error("fixture persist confirmation failed");
+  if (snaps.some((snap) => "area" in (snap.data() || {}))) throw new Error("fixtures must not carry area");
+}
+
+async function createQaSession() {
+  const initRes = await fetch(`${STAGING}/__/firebase/init.json`, { cache: "no-store" });
+  const initBody = await initRes.json().catch(() => ({}));
+  if (!initRes.ok || !initBody.apiKey) throw new Error(`firebase init failed ${initRes.status}`);
+  if (initBody.projectId && initBody.projectId !== PROJECT_ID) refuse(`hosting project is ${initBody.projectId}`);
+  const customToken = await getAuth(app).createCustomToken(QA_UID, { qaFixture: true });
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${initBody.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: customToken, returnSecureToken: true })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.idToken) throw new Error(`custom-token sign-in failed ${response.status}`);
+  return { customToken, idToken: body.idToken };
+}
+
+async function runMatching(idToken) {
+  const response = await fetch(`${STAGING_WORKER}/matching/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ officeId: QA_OFFICE_ID, opportunityId: REQUEST_ID, notify: false })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (String(body.error || "").includes("pilot")) {
+      throw new Error(`matching blocked by pilot access for ${QA_OFFICE_ID} (${body.error}); platform pilot config is not changed by this verifier`);
+    }
+    throw new Error(`matching failed ${response.status} ${JSON.stringify(body)}`);
+  }
+  const rows = (Array.isArray(body.matches) ? body.matches : [])
+    .filter((row) => (row.requestId || row.clientRequestId) === REQUEST_ID
+      && [OFFER_A_ID, OFFER_B_ID].includes(row.offerId || row.ownerOfferId));
+  const matches = rows.map((row) => ({
+    matchId: String(row.matchId || ""),
+    operationId: String(row.operationId || ""),
+    offerId: String(row.offerId || row.ownerOfferId || "")
+  }));
+  if (matches.length !== 2 || matches.some((m) => !m.matchId || !m.operationId)) {
+    throw new Error(`expected two QA matches with MATCH_REVIEW operations: ${JSON.stringify(body)}`);
+  }
+  for (const match of matches) {
+    await tagRunDoc(office.collection("matches").doc(match.matchId));
+    await tagRunDoc(office.collection("operations").doc(match.operationId));
+    const op = (await office.collection("operations").doc(match.operationId).get()).data() || {};
+    if (op.type !== "MATCH_REVIEW" || op.matchId !== match.matchId || op.status !== "OPEN") {
+      throw new Error(`MATCH_REVIEW not persisted for ${match.matchId}: ${JSON.stringify({ type: op.type, status: op.status })}`);
+    }
+  }
+  return matches;
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup: only documents of this run, only inside the QA office.
+// ---------------------------------------------------------------------------
+async function cleanup(matches = []) {
+  const deleted = {};
+  const matchIds = matches.map((m) => m.matchId).filter(Boolean);
+  const operationIds = matches.map((m) => m.operationId).filter(Boolean);
+  const count = (name, done) => { if (done) deleted[name] = (deleted[name] || 0) + 1; };
+
+  // Worker-created documents linked to this run's opportunities/matches get this
+  // run's testRunId first, so every delete below is a testRunId-scoped delete.
+  const linked = [
+    ["matches", "requestId", RUN_OPPORTUNITY_IDS],
+    ["matches", "offerId", RUN_OPPORTUNITY_IDS],
+    ["operations", "opportunityId", RUN_OPPORTUNITY_IDS],
+    ["operations", "matchId", matchIds],
+    ["notifications", "matchId", matchIds],
+    ["notifications", "operationId", operationIds],
+    ["matchCurrentPointers", "currentMatchId", matchIds]
+  ];
+  for (const [name, field, values] of linked) {
+    if (!values.length) continue;
+    const snap = await office.collection(name).where(field, "in", values).get();
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      if (data.testRunId && data.testRunId !== RUN_ID) continue;
+      await tagRunDoc(doc.ref);
+    }
+  }
+  for (const name of ["matches", "operations", "notifications", "matchCurrentPointers", "opportunities"]) {
+    const snap = await office.collection(name).where("testRunId", "==", RUN_ID).get();
+    for (const doc of snap.docs) count(name, await deleteRunDoc(doc.ref));
+  }
+  count("members", await deleteRunDoc(office.collection("members").doc(QA_UID)));
+  console.log("BANK_QA_CLEANUP", JSON.stringify({ runId: RUN_ID, office: QA_OFFICE_PATH, deleted }));
+  return deleted;
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+async function signInBrowser(page, customToken) {
+  await page.goto(`${STAGING}/?env=staging&officeId=${encodeURIComponent(QA_OFFICE_ID)}&contentV2=1`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90000
+  });
+  await page.waitForFunction(() => window.firebase?.apps?.length > 0, { timeout: 30000 });
+  await page.evaluate(async ({ token, officeId }) => {
+    await window.firebase.auth().signInWithCustomToken(token);
+    localStorage.setItem("iaqar.officeId", officeId);
+  }, { token: customToken, officeId: QA_OFFICE_ID });
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
   await page.waitForTimeout(5000);
 }
 
@@ -69,9 +317,17 @@ async function installEventBridge(page) {
   });
 }
 
+async function readCardMatchId(page, opportunityId) {
+  const action = page.locator(
+    `[data-cv2-inbox-item][data-opportunity-id="${opportunityId}"]:visible [data-opportunity-primary-action="review_match"][data-match-id]`
+  ).first();
+  await action.waitFor({ state: "visible", timeout: 45000 });
+  return String(await action.getAttribute("data-match-id") || "");
+}
+
 async function inspectTargetCard(page, target) {
   const allCards = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]`);
-  await allCards.first().waitFor({ state: "attached", timeout: 30000 });
+  await allCards.first().waitFor({ state: "attached", timeout: 45000 });
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   if (!await card.count()) {
     const hiddenTrace = await allCards.first().evaluate((node) => {
@@ -84,8 +340,7 @@ async function inspectTargetCard(page, target) {
     });
     throw new Error(`Target Bank card is hidden for ${target.reference}: ${JSON.stringify(hiddenTrace)}`);
   }
-  const expectedMatchId = target.matchId || TARGET_MATCH_ID;
-  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${expectedMatchId}"]`).first();
+  const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.waitFor({ state: "visible", timeout: 30000 });
   return action.evaluate((button, expected) => {
     const article = button.closest("[data-cv2-inbox-item][data-opportunity-id]");
@@ -131,38 +386,56 @@ async function clickAndVerify(page, target) {
   return { ...events, returnedToBank: true };
 }
 
+function assertReflected(target, targetMatch, label) {
+  if (target.matchId !== targetMatch.matchId
+    || target.operationId !== targetMatch.operationId
+    || target.statusLine.includes("قيد المطابقة")) {
+    throw new Error(`${label} on ${target.reference}: ${JSON.stringify({ target, expected: targetMatch })}`);
+  }
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  markStage("launch-browser");
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: "ar-SA" });
-  const page = await context.newPage();
-
+  let matches = [];
+  let browser = null;
+  let failure = null;
   try {
+    markStage("seed-fixtures");
+    await ensureQaOfficeAndMembership();
+    await persistFixtures();
+    markStage("qa-session");
+    const session = await createQaSession();
+    markStage("run-matching");
+    matches = await runMatching(session.idToken);
+
+    markStage("launch-browser");
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: "ar-SA" });
+    const page = await context.newPage();
     markStage("login");
-    await login(page);
+    await signInBrowser(page, session.customToken);
     markStage("open-bank-tab");
     await openBankTab(page);
 
-    markStage("wait-bank-card");
-    try {
-      await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
-    } catch {
-      markStage("retry-login");
-      await login(page);
-      await openBankTab(page);
-      await page.waitForSelector("[data-cv2-inbox-item][data-opportunity-id]", { timeout: 30000 });
-    }
+    // The request card shows one of this run's matches; that match and its offer
+    // are the targets. The other run match is the "different" match.
+    markStage("resolve-run-targets");
+    const shownMatchId = await readCardMatchId(page, REQUEST_ID);
+    const targetMatch = matches.find((m) => m.matchId === shownMatchId);
+    if (!targetMatch) throw new Error(`Request card shows a match outside this run: ${shownMatchId}`);
+    const otherMatch = matches.find((m) => m.matchId !== targetMatch.matchId);
+    const targets = [
+      { side: "offer", reference: targetMatch.offerId, opportunityId: targetMatch.offerId, matchId: targetMatch.matchId },
+      { side: "request", reference: REQUEST_ID, opportunityId: REQUEST_ID, matchId: targetMatch.matchId }
+    ];
 
     markStage("inspect-both-cards");
     await installEventBridge(page);
     const beforeRefresh = [];
     const openResults = [];
-    for (const expected of TARGETS) {
+    for (const expected of targets) {
       const target = await inspectTargetCard(page, expected);
-      if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
-        throw new Error(`Match not reflected on ${expected.reference}: ${JSON.stringify(target)}`);
-      }
+      assertReflected(target, targetMatch, "Match not reflected");
       beforeRefresh.push(target);
       markStage(`open-${expected.side}-opportunity`);
       openResults.push({ side: expected.side, ...(await clickAndVerify(page, target)) });
@@ -170,15 +443,13 @@ async function main() {
     }
 
     markStage("open-different-match");
-    const differentAction = page.locator(`[data-opportunity-primary-action="review_match"][data-match-id]:not([data-match-id="${TARGET_MATCH_ID}"]):visible`).first();
-    await differentAction.waitFor({ state: "visible", timeout: 30000 });
-    const differentTarget = await differentAction.evaluate((button) => ({
+    const differentTarget = await inspectTargetCard(page, {
       side: "different",
-      reference: "different-match",
-      opportunityId: button.closest("[data-opportunity-id]")?.getAttribute("data-opportunity-id") || "",
-      operationId: button.getAttribute("data-operation-id") || "",
-      matchId: button.getAttribute("data-match-id") || ""
-    }));
+      reference: otherMatch.offerId,
+      opportunityId: otherMatch.offerId,
+      matchId: otherMatch.matchId
+    });
+    assertReflected(differentTarget, otherMatch, "Different match not reflected");
     await page.waitForTimeout(1500);
     const differentMatch = await clickAndVerify(page, differentTarget);
 
@@ -188,37 +459,63 @@ async function main() {
     await openBankTab(page);
     await page.locator('[data-bank-action-filter="matches"]').click();
     const afterRefresh = [];
-    for (const expected of TARGETS) {
+    for (const expected of targets) {
       const target = await inspectTargetCard(page, expected);
-      if (target.matchId !== TARGET_MATCH_ID || !target.operationId || target.statusLine.includes("قيد المطابقة")) {
-        throw new Error(`Match lost after refresh on ${expected.reference}: ${JSON.stringify(target)}`);
-      }
+      assertReflected(target, targetMatch, "Match lost after refresh");
       afterRefresh.push(target);
     }
     await installEventBridge(page);
     const refreshOpen = await clickAndVerify(page, afterRefresh[0]);
 
     await page.screenshot({ path: path.join(OUT, "bank_match_both_cards_after_refresh.png"), fullPage: true });
-    const report = { commitSha: COMMIT_SHA, viewport: { width: 390, height: 900 }, targetMatchId: TARGET_MATCH_ID, beforeRefresh, openResults, differentTarget, differentMatch, afterRefresh, refreshOpen };
+    const report = {
+      commitSha: COMMIT_SHA,
+      runId: RUN_ID,
+      officeId: QA_OFFICE_ID,
+      viewport: { width: 390, height: 900 },
+      targetMatchId: targetMatch.matchId,
+      runMatches: matches,
+      beforeRefresh,
+      openResults,
+      differentTarget,
+      differentMatch,
+      afterRefresh,
+      refreshOpen
+    };
     writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
     console.log("BANK_OPERATIONAL_ACTION_REPORT", JSON.stringify(report, null, 2));
 
     markStage("verified");
     console.log("BANK LEGACY OPPORTUNITY MANAGER RETIREMENT VERIFIED");
   } catch (err) {
-    const failure = {
+    failure = err;
+    const report = {
       ok: false,
       commitSha: COMMIT_SHA,
+      runId: RUN_ID,
+      officeId: QA_OFFICE_ID,
       stage: currentStage,
+      runMatches: matches,
       error: String(err?.message || err),
       stack: err?.stack || null
     };
-    writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(failure, null, 2));
-    console.error("BANK_CARD_CLICK_VERIFY_FAILED", JSON.stringify(failure, null, 2));
-    throw err;
+    writeFileSync(path.join(OUT, "bank_card_click_staging_report.json"), JSON.stringify(report, null, 2));
+    console.error("BANK_CARD_CLICK_VERIFY_FAILED", JSON.stringify(report, null, 2));
   } finally {
-    await browser.close();
+    if (browser) await browser.close().catch(() => {});
+    if (KEEP_FIXTURES) {
+      console.log("BANK_QA_CLEANUP skipped (--keep)", JSON.stringify({ runId: RUN_ID, office: QA_OFFICE_PATH }));
+    } else {
+      try {
+        await cleanup(matches);
+      } catch (cleanupError) {
+        console.error("BANK_QA_CLEANUP_FAILED", cleanupError?.message || cleanupError);
+        failure = failure || cleanupError;
+      }
+    }
+    await app.delete().catch(() => {});
   }
+  if (failure) throw failure;
 }
 
 main().catch((err) => {
