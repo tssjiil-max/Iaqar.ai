@@ -139,7 +139,7 @@ test("open match-found card shows separate client and owner sends with offer det
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
   assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
-  assert.match(html, />إرسال للمالك</);
+  assert.match(html, /data-party="owner" disabled>بانتظار موافقة العميل</);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);
@@ -148,7 +148,7 @@ test("open match-found card shows separate client and owner sends with offer det
   assert.equal(task.secondaryActions[0].id, EXEC_ACTION.OPEN_OFFER);
   const chrome = forbiddenBrokerChrome(html);
   assert.equal(chrome.hasAppointment, false);
-  assert.equal(chrome.hasNegotiate, false);
+  assert.equal(chrome.hasNegotiate, true);
   assert.equal(chrome.hasClose, false);
   assert.equal(chrome.hasArchive, false);
   assert.equal(chrome.hasStartMatch, false);
@@ -194,7 +194,7 @@ test("client interested keeps both party sends and future replies off the broker
   const no = visibleText(buildDailyTaskCardHtml(byId.task_unsuitable, { open: true }));
   assert.match(no, /المطابقة غير مناسبة/);
   assert.equal(no.includes("إتمام صفقة"), false);
-  assert.equal(no.includes("تفاوض"), false);
+  assert.match(no, /إنهاء المطابقة دون اتفاق/);
   assert.equal(no.includes("ابدأ المطابقة"), false);
   assert.equal(byId.task_unsuitable.endsThisMatchOnly, true);
 });
@@ -521,15 +521,15 @@ test("area-only legacy missing data does not create a completion task", () => {
   assert.equal(tasks.length, 0);
 });
 
-test("client and owner replies render together in compact vertical rows", () => {
+test("client and owner replies render in their respective columns", () => {
   const html = buildDailyTaskCardHtml({
     id: "responses", taskKind: "match_group", matchId: "m", offerId: "o", requestId: "r",
     coordinationClientSummary: "مهتم بالعقار",
     coordinationOwnerSummary: "العقار متاح",
     sourceListing: {}, proposedListing: {}
   }, { open: true });
-  assert.match(html, /رد العميل[\s\S]*مهتم بالعقار[\s\S]*رد المالك[\s\S]*العقار متاح/);
-  assert.equal((html.match(/cv2-party-responses/g) || []).length, 1);
+  assert.match(html, /data-party-side="owner"[\s\S]*العقار متاح[\s\S]*data-party-side="client"[\s\S]*مهتم بالعقار/);
+  assert.equal((html.match(/data-party-side=/g) || []).length, 2);
 });
 
 test("appointment today maps from viewing date without copying listing fields", () => {
