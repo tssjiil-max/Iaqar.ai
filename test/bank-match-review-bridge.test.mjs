@@ -16,7 +16,7 @@ test("matched opportunity status line replaces pending-matching copy", () => {
   assert.doesNotMatch(line, /قيد المطابقة/);
 });
 
-test("review_match opens the source opportunity detail and never enters legacy workflow overlay", async () => {
+test("review_match opens its match workspace instead of the source opportunity", async () => {
   const dom = new JSDOM(`
     <main id="bank">
       <article data-cv2-inbox-item data-opportunity-id="request-1">
@@ -29,10 +29,12 @@ test("review_match opens the source opportunity detail and never enters legacy w
   let openedOperation = null;
   let workflowDetail = null;
   let openedOpportunityId = "";
+  let openedMatchId = "";
   let legacyBubbleHandlerRan = false;
   window.IAQAR = {
     homeTabs: { switchTo(tab) { switchedTo = tab; } },
-    async openOpportunityDetail(id) { openedOpportunityId = id; }
+    async openOpportunityDetail(id) { openedOpportunityId = id; },
+    async openMatchWorkspace(id) { openedMatchId = id; }
   };
   window.addEventListener("iaqar:open-operation", (event) => { openedOperation = event.detail; });
   window.addEventListener("iaqar:workflow-action", (event) => { workflowDetail = event.detail; });
@@ -44,14 +46,15 @@ test("review_match opens the source opportunity detail and never enters legacy w
   button.click();
   await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-  assert.equal(openedOpportunityId, "request-1");
+  assert.equal(openedOpportunityId, "");
+  assert.equal(openedMatchId, "match-1");
   assert.equal(workflowDetail, null);
   assert.equal(openedOperation, null);
   assert.equal(switchedTo, "");
   assert.equal(legacyBubbleHandlerRan, false);
 });
 
-test("all bank operational actions open the source opportunity instead of the retired opportunity manager", async () => {
+test("match-linked bank actions open the match workspace", async () => {
   for (const actionCode of ["record_viewing_result", "view_appointment", "open_follow_up", "view_waiting", "open_negotiation"]) {
     const dom = new JSDOM(`
       <main id="bank">
@@ -64,10 +67,12 @@ test("all bank operational actions open the source opportunity instead of the re
     let switchedTo = "";
     let openedOperation = null;
     let openedOpportunityId = "";
+    let openedMatchId = "";
     let legacyBubbleHandlerRan = false;
     window.IAQAR = {
       homeTabs: { switchTo(tab) { switchedTo = tab; } },
-      async openOpportunityDetail(id) { openedOpportunityId = id; }
+      async openOpportunityDetail(id) { openedOpportunityId = id; },
+      async openMatchWorkspace(id) { openedMatchId = id; }
     };
     window.addEventListener("iaqar:open-operation", (event) => { openedOperation = event.detail; });
     window.document.getElementById("bank").addEventListener("click", () => { legacyBubbleHandlerRan = true; });
@@ -76,20 +81,23 @@ test("all bank operational actions open the source opportunity instead of the re
     window.document.querySelector("button").click();
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    assert.equal(openedOpportunityId, "request-1", actionCode);
+    assert.equal(openedOpportunityId, "", actionCode);
+    assert.equal(openedMatchId, "match-1", actionCode);
     assert.equal(openedOperation, null, actionCode);
     assert.equal(switchedTo, "", actionCode);
     assert.equal(legacyBubbleHandlerRan, false, actionCode);
   }
 });
 
-test("legacy match workflow event is intercepted and redirected to its linked opportunity", async () => {
+test("legacy match workflow event opens the same match workspace", async () => {
   const dom = new JSDOM(`<div id="toast"></div>`, { url: "https://staging.example/" });
   const { window } = dom;
   let openedOpportunityId = "";
+  let openedMatchId = "";
   let legacyHandlerRan = false;
   window.IAQAR = {
-    async openOpportunityDetail(id) { openedOpportunityId = id; }
+    async openOpportunityDetail(id) { openedOpportunityId = id; },
+    async openMatchWorkspace(id) { openedMatchId = id; }
   };
   assert.equal(installLegacyOpportunityWorkflowRetirement(window.document, window), true);
   window.addEventListener("iaqar:workflow-action", () => { legacyHandlerRan = true; });
@@ -104,6 +112,7 @@ test("legacy match workflow event is intercepted and redirected to its linked op
   }));
   await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-  assert.equal(openedOpportunityId, "request-1");
+  assert.equal(openedOpportunityId, "");
+  assert.equal(openedMatchId, "match-1");
   assert.equal(legacyHandlerRan, false);
 });
