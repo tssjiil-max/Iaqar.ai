@@ -28,6 +28,16 @@ const DAILY_TASK_ACTION_CODES = new Set([
   "open_negotiation"
 ]);
 
+// A matchId is never an operation id. Operation ids (op_…) are rejected so a
+// fallback can never open or write the wrong record.
+function exactMatchIdFrom(...values) {
+  for (const value of values) {
+    const id = String(value || "").trim();
+    if (id && !/^op_/i.test(id)) return id;
+  }
+  return "";
+}
+
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#39;"
@@ -61,7 +71,7 @@ export function bankOperationalNavigationDetail(button) {
   if (!DAILY_TASK_ACTION_CODES.has(actionCode)) return null;
   const article = button?.closest?.("[data-cv2-inbox-item][data-opportunity-id]");
   const opportunityId = String(article?.getAttribute?.("data-opportunity-id") || "").trim();
-  const matchId = String(button?.getAttribute?.("data-match-id") || "").trim();
+  const matchId = exactMatchIdFrom(button?.getAttribute?.("data-match-id"));
   const operationId = String(button?.getAttribute?.("data-operation-id") || "").trim();
   if (!opportunityId) return null;
   return {
@@ -77,7 +87,7 @@ export function bankOperationalNavigationDetail(button) {
 }
 
 export async function hydrateBankMatchReviewDetail(detail = {}, win = globalThis.window) {
-  const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+  const matchId = exactMatchIdFrom(detail.matchId, detail.recordId);
   const base = {
     ...detail,
     id: matchId || detail.id || "",
@@ -145,7 +155,7 @@ export function installLegacyOpportunityWorkflowRetirement(doc = globalThis.docu
     event.preventDefault?.();
     event.stopImmediatePropagation?.();
 
-    const matchId = String(detail.matchId || detail.recordId || "").trim();
+    const matchId = exactMatchIdFrom(detail.matchId, detail.recordId);
     if (matchId && typeof win.IAQAR?.openMatchWorkspace === "function") {
       await win.IAQAR.openMatchWorkspace(matchId);
       return;

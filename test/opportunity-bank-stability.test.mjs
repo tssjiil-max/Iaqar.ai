@@ -49,5 +49,6 @@ test("operations event is office-scoped and refreshes active action-filter proje
   assert.match(eventSource, /eventOfficeId !== currentOfficeId/);
   assert.match(eventSource, /itemOfficeId === currentOfficeId/);
   assert.match(eventSource, /hasActiveOpportunityActionFilter\(\)/);
-  assert.match(eventSource, /scheduleBankQueryRefresh\(\)/);
+  // Live updates re-query the active filter without blanking the visible rows.
+  assert.match(eventSource, /scheduleBankQueryRefresh\(\{ keepVisible: true \}\)/);
 });

@@ -178,7 +178,8 @@ import {
   handlePartySessionPhoto,
   handlePartySessionReply,
   handlePartySessionBundle,
-  handleMatchLivingAction
+  handleMatchLivingAction,
+  recordNegotiationActivity
 } from "./party-session-service.js";
 import {
   loadCoordinationSession,
@@ -905,7 +906,8 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/workflow/action") {
-        return handleWorkflowAction(request, env, requestId);
+        // Awaited so validation errors return their JSON message instead of escaping the handler.
+        return await handleWorkflowAction(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/opportunity/lifecycle") {
@@ -6180,6 +6182,14 @@ async function handleWorkflowAction(request,env,requestId) {
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"follow_up_added",stage:status,note:note||"تم تحديد موعد متابعة",identity,accessToken,createdAt:now});
     return jsonResponse({ok:true,status,nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,requestId});
+  }
+
+  if(action==="record_negotiation_activity"){
+    const recorded=await recordNegotiationActivity(partySessionHelpers(),{
+      projectId,officeId,matchId:recordId,accessToken,now,
+      input:{kind:body.kind,party:body.party||body.audience,choiceId:body.choiceId,message:body.message||body.note}
+    });
+    return jsonResponse({ok:true,matchId:recordId,entry:recorded.entry,summary:recorded.summary,operationId:recorded.operationId,requestId});
   }
 
   if(action==="add_negotiation_note"){

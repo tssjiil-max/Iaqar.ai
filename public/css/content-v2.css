@@ -1548,3 +1548,21 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
 .cv2-match-workspace .cv2-broker-panel { padding: 0; }
 .cv2-match-workspace .cv2-broker-panel h3 { margin: 0; padding: 12px; }
 @media (max-width: 520px) { .cv2-party-columns { gap: 6px; } .cv2-party-side { padding: 8px; } .cv2-party-step { font-size: 9px; } }
+
+/* Match workspace — party choices, resend count, broker message vs internal note, activity log */
+.cv2-party-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0; }
+.cv2-party-choice { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 5px 10px; border: 1px solid #d9e8dc; border-radius: 999px; background: #fff; color: #315b45; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.cv2-party-choice.is-selected { border-color: #1a5319; background: #1a5319; color: #fff; }
+.cv2-party-choice[data-cv2-exec-state="working"] { opacity: .6; }
+.cv2-party-choice-current, .cv2-party-status { margin: 4px 0 8px; font-size: 12px; color: #315b45; }
+.cv2-party-status { color: #8a5a00; }
+.cv2-party-send-count { display: block; margin-top: 4px; font-size: 11px; color: #5f7a68; text-align: center; }
+.cv2-broker-block { display: grid; gap: 8px; padding: 10px; border: 1px solid #d9e8dc; border-radius: 12px; background: #fff; }
+.cv2-broker-block h4 { margin: 0; font-size: 14px; color: #1a5319; }
+.cv2-broker-block small { color: #5f7a68; font-size: 11px; }
+.cv2-broker-block.is-internal { border-style: dashed; background: #f8faf8; }
+.cv2-neg-log ol { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.cv2-neg-log li { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid #e3ece5; border-radius: 10px; }
+.cv2-neg-log-title { font-weight: 800; color: #1f3a2b; }
+.cv2-neg-log-message { color: #315b45; white-space: normal; overflow-wrap: anywhere; }
+.cv2-neg-log-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #5f7a68; }

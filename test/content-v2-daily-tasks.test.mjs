@@ -139,7 +139,10 @@ test("open match-found card shows separate client and owner sends with offer det
   assert.match(html, /data-cv2-exec-primary="send_to_client"/);
   assert.match(html, />إرسال للعميل</);
   assert.match(html, /data-cv2-exec-secondary="send_to_owner"/);
-  assert.match(html, /data-party="owner" disabled>بانتظار موافقة العميل</);
+  // The owner send is always an action; waiting for the client is status text only.
+  assert.match(html, /data-cv2-exec-secondary="send_to_owner" data-party="owner"[^>]*>إرسال للمالك</);
+  assert.doesNotMatch(html, /data-party="owner"[^>]*disabled/);
+  assert.match(html, /data-party-status="owner">الحالة: بانتظار موافقة العميل/);
   assert.match(html, /data-cv2-exec-secondary="open_offer"/);
   assert.match(html, />عرض التفاصيل الكاملة</);
   assert.equal(countPrimary(html), 1);

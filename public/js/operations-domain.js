@@ -284,6 +284,8 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
       return [];
     })(),
     livingUpdatedAt: String(op.livingUpdatedAt || metadata.livingUpdatedAt || op.updatedAt || ""),
+    negotiationActivityJson: String(op.negotiationActivityJson || metadata.negotiationActivityJson || ""),
+    lastBrokerActivityAt: String(op.lastBrokerActivityAt || metadata.lastBrokerActivityAt || ""),
     nextActor: String(op.nextActor || metadata.nextActor || ""),
     rejectedMatchIds: metadata.rejectedMatchIds || [],
     missingInfoKey: String(metadata.missingInfoKey || ""),

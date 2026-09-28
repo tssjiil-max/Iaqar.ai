@@ -4,7 +4,11 @@
  */
 
 import { buildNegotiationAssistant } from "./negotiation-assistant-domain.js";
-import { postViewingNegotiationTopics } from "../../../../public/js/negotiation-management-domain.js";
+import {
+  negotiationActivityLogRow,
+  partyNegotiationChoices,
+  summarizeNegotiationActivity
+} from "../../../../public/js/negotiation-activity-domain.js";
 
 function escapeContentHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
@@ -85,24 +89,47 @@ function partyProgress(task = {}, party = "client") {
   const summary = party === "owner" ? task.coordinationOwnerSummary : task.coordinationClientSummary; const replied = Boolean(String(summary || "").trim()) || labels.some((label) => label.startsWith(`${name} `) && !label.includes("فتح")); return { openedWhatsApp, openedLink, replied };
 }
 function progressStep(label, done) { return `<span class="cv2-party-step${done ? " is-done" : ""}"><span aria-hidden="true">${done ? "✓" : "○"}</span>${escapeContentHtml(label)}</span>`; }
-function partyControlButton(task, party, progress) {
-  const isOwner = party === "owner"; const hasContext = Boolean(task.matchId && task.offerId && task.requestId);
-  const clientInterested = /CLIENT_INTERESTED|CLIENT_NEEDS_DETAILS|VIEWING|NEGOTIATION|AGREED/.test(`${task.livingStage || ""} ${task.stateKey || ""}`.toUpperCase())
+function clientShowedInterest(task = {}, activity = summarizeNegotiationActivity(task.negotiationActivity)) {
+  if (activity.clientChoice?.id === "interested") return true;
+  return /CLIENT_INTERESTED|CLIENT_NEEDS_DETAILS|VIEWING|NEGOTIATION|AGREED/.test(`${task.livingStage || ""} ${task.stateKey || ""}`.toUpperCase())
     || /مهتم|معاينة|معلومات|موافق|تخفيض|تفاوض|شرط/.test(String(task.coordinationClientSummary || ""));
-  const waitingForClient = isOwner && !clientInterested;
-  const disabled = task.dataIntegrity === "INVALID_TASK_DATA" || !hasContext || waitingForClient;
-  const action = isOwner ? "send_to_owner" : "send_to_client"; const attr = isOwner ? "data-cv2-exec-secondary" : "data-cv2-exec-primary"; const label = progress.openedWhatsApp ? `إعادة الإرسال لل${isOwner ? "مالك" : "عميل"}` : `إرسال لل${isOwner ? "مالك" : "عميل"}`;
-  return `<button type="button" class="cv2-party-control${disabled ? " is-disabled" : ""}" ${attr}="${action}" data-party="${party}"${disabled ? " disabled" : ""}>${escapeContentHtml(waitingForClient ? "بانتظار موافقة العميل" : disabled ? "تعذر ربط جلسة التفاوض" : label)}</button>`;
+}
+// Sending never locks: the button is always an action (send / resend). Waiting for
+// the other party is shown as status text only.
+function partyControlButton(task, party, progress, activity) {
+  const isOwner = party === "owner";
+  const hasContext = Boolean(task.matchId && task.offerId && task.requestId);
+  const disabled = task.dataIntegrity === "INVALID_TASK_DATA" || !hasContext;
+  const sendCount = isOwner ? activity.ownerSendCount : activity.clientSendCount;
+  const sent = sendCount > 0 || progress.openedWhatsApp;
+  const action = isOwner ? "send_to_owner" : "send_to_client"; const attr = isOwner ? "data-cv2-exec-secondary" : "data-cv2-exec-primary";
+  const label = disabled ? "تعذر ربط جلسة التفاوض" : sent ? `إعادة الإرسال لل${isOwner ? "مالك" : "عميل"}` : `إرسال لل${isOwner ? "مالك" : "عميل"}`;
+  const times = sendCount === 1 ? "مرة واحدة" : sendCount === 2 ? "مرتين" : `${sendCount} مرات`;
+  const count = sendCount > 0 ? `<small class="cv2-party-send-count" data-party-send-count="${party}">أُرسل ${isOwner ? "للمالك" : "للعميل"} ${escapeContentHtml(times)}</small>` : "";
+  return `<button type="button" class="cv2-party-control${disabled ? " is-disabled" : ""}" ${attr}="${action}" data-party="${party}" data-party-send="${party}" data-testid="party-send-${party}"${disabled ? " disabled" : ""}>${escapeContentHtml(label)}</button>${count}`;
+}
+function partyChoicesHtml(task = {}, party = "client", activity) {
+  const listing = task.proposedListing || {};
+  const choices = partyNegotiationChoices({ propertyType: listing.propertyType || task.propertyType || "", purpose: listing.purpose || task.purpose || "" });
+  const current = party === "owner" ? activity.ownerChoice : activity.clientChoice;
+  const icon = (id) => (id === "interested" ? "✓" : id === "not_interested" ? "✕" : "◇");
+  const buttons = choices.map((choice) => {
+    const selected = current?.id === choice.id;
+    return `<button type="button" class="cv2-party-choice${selected ? " is-selected" : ""}" data-party-choice="${escapeContentHtml(choice.id)}" data-party="${party}" aria-pressed="${selected ? "true" : "false"}"><span aria-hidden="true">${icon(choice.id)}</span>${escapeContentHtml(choice.label)}</button>`;
+  }).join("");
+  const name = party === "owner" ? "المالك" : "العميل";
+  const currentLine = current ? `<p class="cv2-party-choice-current" data-party-choice-current="${party}">خيار ${escapeContentHtml(name)} الحالي: <strong>${escapeContentHtml(current.label)}</strong></p>` : "";
+  return `<div class="cv2-party-choices" role="group" aria-label="خيارات ${escapeContentHtml(name)}" data-party-choices="${party}">${buttons}</div>${currentLine}`;
 }
 function partyProgressHtml(task = {}) {
-  const propertyType = task.proposedListing?.propertyType || task.propertyType || "";
-  const topics = postViewingNegotiationTopics({ propertyType }).map((topic) => `<span class="cv2-party-topic"><span aria-hidden="true">◇</span>${escapeContentHtml(topic.label)}</span>`).join("");
+  const activity = summarizeNegotiationActivity(task.negotiationActivity);
   const side = (party, label) => {
     const progress = partyProgress(task, party);
     const summary = party === "owner" ? task.coordinationOwnerSummary : task.coordinationClientSummary;
-    return `<div class="cv2-party-side" data-party-side="${party}"><h4>${label}</h4><div class="cv2-party-steps">${progressStep("واتساب", progress.openedWhatsApp)}${progressStep("فتح الرابط", progress.openedLink)}${progressStep("رد", progress.replied)}</div><p>${escapeContentHtml(summary || "بانتظار الرد")}</p><div class="cv2-party-topics" aria-label="مواضيع التفاوض بحسب نوع العقار">${topics}</div>${partyControlButton(task, party, progress)}</div>`;
+    const waiting = party === "owner" && !clientShowedInterest(task, activity) ? `<p class="cv2-party-status" data-party-status="owner">الحالة: بانتظار موافقة العميل — يمكنك الإرسال للمالك في أي وقت</p>` : "";
+    return `<div class="cv2-party-side" data-party-side="${party}"><h4>${label}</h4><div class="cv2-party-steps">${progressStep("واتساب", progress.openedWhatsApp || (party === "owner" ? activity.ownerSendCount : activity.clientSendCount) > 0)}${progressStep("فتح الرابط", progress.openedLink)}${progressStep("رد", progress.replied)}</div><p>${escapeContentHtml(summary || "بانتظار الرد")}</p>${waiting}${partyChoicesHtml(task, party, activity)}${partyControlButton(task, party, progress, activity)}</div>`;
   };
-  return `<section class="cv2-party-progress" aria-label="تبادل قرارات الطرفين"><h3>ردود المالك والعميل</h3><div class="cv2-party-columns">${side("owner", "المالك")}${side("client", "العميل")}</div><p class="cv2-party-progress-note">الاختيارات والردود عبر رابط كل طرف. فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد.</p></section>`;
+  return `<section class="cv2-party-progress" aria-label="تبادل قرارات الطرفين"><h3>ردود المالك والعميل</h3><div class="cv2-party-columns">${side("owner", "المالك")}${side("client", "العميل")}</div><p class="cv2-party-progress-note">اختيارات كل طرف تُحفظ وتُسجَّل في سجل الإجراءات. فتح واتساب لا يعني أن الرابط وصل أو أن الطرف رد.</p></section>`;
 }
 function partyResponsesHtml(task = {}) { const rows = [["رد العميل", task.coordinationClientSummary], ["رد المالك", task.coordinationOwnerSummary]].filter(([, summary]) => String(summary || "").trim()); if (!rows.length) return ""; return `<section class="cv2-party-responses" aria-label="ردود الأطراف">${rows.map(([label, summary]) => `<div><strong>${escapeContentHtml(label)}</strong><p>${nl(summary)}</p></div>`).join("")}</section>`; }
 function reasonItems(reasons = []) { return reasons.map((line) => { const value = String(line || "").trim(); if (!value) return ""; return `<li>${escapeContentHtml(value.startsWith("✓") ? value : `✓ ${value}`)}</li>`; }).join(""); }
@@ -138,13 +165,23 @@ function matchCandidatesHtml(task = {}) {
   return `<section class="cv2-match-candidates" aria-label="المطابقات المرتبة"><h4>المطابقات حسب درجة الملاءمة</h4><ol>${candidates.map((candidate, index) => `<li${candidate.matchId === task.matchId ? ' class="is-current"' : ""}><strong>مرشح ${index + 1}</strong> ${escapeContentHtml(candidate.propertyLine || "")}${candidate.moneyLine ? ` · ${escapeContentHtml(candidate.moneyLine)}` : ""}${candidate.score > 0 ? ` · ${escapeContentHtml(Math.round(candidate.score))}%` : ""}</li>`).join("")}</ol></section>`;
 }
 
+function negotiationActivityLogHtml(task = {}) {
+  const rows = (Array.isArray(task.negotiationActivity) ? task.negotiationActivity : [])
+    .map(negotiationActivityLogRow).filter(Boolean).reverse();
+  if (!rows.length) return "";
+  return `<div class="cv2-coop-block cv2-neg-log" data-negotiation-log><strong>سجل الإجراءات</strong><ol>${rows.map((row) => { const time = clockLabel(row.createdAt); return `<li data-negotiation-log-kind="${escapeContentHtml(row.kind)}"><span class="cv2-neg-log-title">${escapeContentHtml(row.title)}</span>${row.message ? `<span class="cv2-neg-log-message">${nl(row.message)}</span>` : ""}<span class="cv2-neg-log-meta">${row.recipient ? `<span data-log-recipient>المستلم: ${escapeContentHtml(row.recipient)}</span>` : ""}${time ? `<span class="cv2-exec-time" data-log-time>${escapeContentHtml(time)}</span>` : ""}<span data-log-status>${escapeContentHtml(row.statusLabel)}</span></span></li>`; }).join("")}</ol></div>`;
+}
+// Broker section: a message that is sent to a party is separate from an internal
+// note that stays with the broker.
 function brokerNegotiationPanelHtml(task = {}) {
   const vm = buildNegotiationAssistant(task);
   const serious = task.seriousIntentConfirmed === true || String(task.viewingOutcome || "").toUpperCase() === "SERIOUS";
-  return `<section class="cv2-broker-panel" data-broker-panel><h3>الوسيط</h3><div class="cv2-broker-panel-body"><p class="cv2-neg-intervention-line">${escapeContentHtml(vm.interventionLine)}</p><label>رسالة أو ملاحظة الوسيط<textarea data-broker-note maxlength="1000" rows="3" placeholder="اكتب اقتراحك للطرفين"></textarea></label><label>الموجّه إليه<select data-broker-audience><option value="both">الطرفان</option><option value="client">العميل</option><option value="owner">المالك</option></select></label><button type="button" class="cv2-exec-secondary" data-broker-action="note">حفظ ملاحظة الوسيط</button><div class="cv2-broker-decisions">${serious ? `<button type="button" class="cv2-exec-primary" data-broker-action="continue">بدء دورة الصفقة</button>` : ""}<button type="button" class="cv2-exec-secondary" data-broker-action="no_agreement">إنهاء المطابقة دون اتفاق</button></div></div></section>`;
+  const message = `<div class="cv2-broker-block" data-broker-message-block><h4>رسالة الوسيط</h4><label>نص الرسالة<textarea data-broker-message maxlength="1000" rows="3" placeholder="اكتب رسالتك للطرف"></textarea></label><label>الموجّه إليه<select data-broker-audience><option value="client">العميل</option><option value="owner">المالك</option><option value="both">الطرفان</option></select></label><button type="button" class="cv2-exec-primary" data-broker-action="send_message">إرسال</button><small>تظهر الرسالة في رابط الطرف المختار وتُسجَّل في سجل الإجراءات.</small></div>`;
+  const note = `<div class="cv2-broker-block is-internal" data-broker-note-block><h4>ملاحظة داخلية</h4><label>ملاحظة خاصة بالوسيط فقط — لا تُرسل لأي طرف<textarea data-broker-internal-note maxlength="1000" rows="2" placeholder="ملاحظة داخلية"></textarea></label><button type="button" class="cv2-exec-secondary" data-broker-action="save_internal_note">حفظ الملاحظة</button></div>`;
+  return `<section class="cv2-broker-panel" data-broker-panel><h3>الوسيط</h3><div class="cv2-broker-panel-body">${vm.interventionLine ? `<p class="cv2-neg-intervention-line">${escapeContentHtml(vm.interventionLine)}</p>` : ""}${message}${note}<div class="cv2-broker-decisions">${serious ? `<button type="button" class="cv2-exec-primary" data-broker-action="continue">بدء دورة الصفقة</button>` : ""}<button type="button" class="cv2-exec-secondary" data-broker-action="no_agreement">إنهاء المطابقة دون اتفاق</button></div></div></section>`;
 }
 function matchGroupBodyHtml(task = {}) {
-  return `<div class="cv2-coop-expanded cv2-match-expanded" data-match-negotiation-page><section data-match-section="property"><h3>بيانات العقار</h3>${matchHeroHtml(task)}${matchDetailsHtml(task)}${matchCandidatesHtml(task)}</section><section data-match-section="agreement"><h3>ما تم الاتفاق عليه</h3>${negotiationAssistantHtml(task)}${matchActionHtml(task)}</section><section data-match-section="parties">${partyProgressHtml(task)}</section><section data-match-section="broker">${brokerNegotiationPanelHtml(task)}</section>${timelineHtml(task)}</div>`;
+  return `<div class="cv2-coop-expanded cv2-match-expanded" data-match-negotiation-page><section data-match-section="property"><h3>بيانات العقار</h3>${matchHeroHtml(task)}${matchDetailsHtml(task)}${matchCandidatesHtml(task)}</section><section data-match-section="agreement"><h3>ما تم الاتفاق عليه</h3>${negotiationAssistantHtml(task)}${matchActionHtml(task)}</section><section data-match-section="parties">${partyProgressHtml(task)}</section><section data-match-section="broker">${brokerNegotiationPanelHtml(task)}</section>${negotiationActivityLogHtml(task)}${timelineHtml(task)}</div>`;
 }
 
 function cooperationBodyHtml(task = {}) { const reasons = reasonItems(task.matchReasons || []), partnerTitle = task.partnerOfficeName || ""; return `<div class="cv2-coop-expanded">${listingBlock("مكتبك", task.ownListing, task.ownMoney, task.ownListing?.opportunityKind === "REQUEST" ? "الميزانية" : "السعر")}${partnerTitle ? listingBlock(partnerTitle, task.partnerListing, task.partnerMoney, "السعر") : ""}${task.viewerRoleLabel ? `<div class="cv2-coop-block"><strong>${escapeContentHtml(task.viewerRoleLabel)}</strong></div>` : ""}${reasons ? `<div class="cv2-coop-block"><strong>سبب التعاون</strong><ul>${reasons}</ul></div>` : ""}${yourTurnHtml(task)}${timelineHtml(task)}</div>`; }

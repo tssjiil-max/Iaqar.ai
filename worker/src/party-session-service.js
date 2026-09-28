@@ -33,9 +33,18 @@ import {
   applyCoordinationToMatch,
   ensureCoordinationSession,
   loadCoordinationSession,
+  saveCoordinationSession,
   submitCoordinationBundle
 } from "./coordination-session-service.js";
 import { upsertNotificationDocument } from "./operations-service.js";
+import { buildMatchReviewDedupKey, operationDocumentId } from "./operations-domain.js";
+import {
+  NEGOTIATION_ACTIVITY_KIND,
+  appendNegotiationActivity,
+  buildNegotiationActivityEntry,
+  parseNegotiationActivity,
+  summarizeNegotiationActivity
+} from "../../public/js/negotiation-activity-domain.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
 function publicWorkerOrigin(env = {}) {
@@ -221,6 +230,99 @@ async function loadCanonicalOfferListing(helpers, {
   return fallback;
 }
 
+// The MATCH_REVIEW operation id is deterministic (op_ + sha256 of its dedup key),
+// so it is resolved directly instead of scanning the first page of operations.
+// A page scan silently missed the operation in offices with more than one page of
+// operations, leaving the Bank/Daily Tasks projection stuck on "تطابق جديد".
+export async function resolveMatchReviewOperationId(helpers, {
+  projectId, officeId, matchId, match = {}, accessToken
+}) {
+  const id = String(matchId || "").trim();
+  if (!id) return "";
+  const isLinked = (operation = {}) => String(operation.type || operation.operationType || "").toUpperCase() === "MATCH_REVIEW"
+    && String(operation.matchId || "") === id;
+  const explicit = String(match.operationId || "").trim();
+  if (explicit) return explicit;
+  const deterministicId = await operationDocumentId(buildMatchReviewDedupKey({
+    officeId, matchId: id, dataVersion: String(match.dataVersion || "")
+  }));
+  const deterministic = await readOfficeDoc(helpers, {
+    projectId, officeId, collection: "operations", id: deterministicId, accessToken
+  });
+  if (deterministic && isLinked(deterministic)) return deterministicId;
+  if (typeof helpers.listCollectionDocuments !== "function") return "";
+  const operationDocs = await helpers.listCollectionDocuments({
+    projectId,
+    segments: ["offices", officeId, "operations"],
+    accessToken,
+    pageSize: 300
+  });
+  const linkedOperation = operationDocs.find((doc) => isLinked(js(doc, helpers)));
+  return decodeURIComponent(String(linkedOperation?.name || "").split("/").pop() || "");
+}
+
+const NEGOTIATION_ACTIVITY_ERRORS = Object.freeze({
+  party_invalid: "حدد الطرف: العميل أو المالك.",
+  audience_invalid: "حدد المستلم: العميل أو المالك أو الطرفان.",
+  choice_invalid: "الخيار غير متاح لهذا الطرف.",
+  message_required: "اكتب نص الرسالة أو الملاحظة.",
+  kind_invalid: "نوع الإجراء غير معروف."
+});
+
+/**
+ * Appends one broker negotiation entry for an exact Match and projects the log onto
+ * the Match and its MATCH_REVIEW operation. Never changes livingStage, never locks
+ * further sends. Broker messages also reach the chosen party's review link;
+ * internal notes are stored only in this log.
+ */
+export async function recordNegotiationActivity(helpers, {
+  projectId, officeId, matchId, accessToken, input = {}, now = new Date()
+}) {
+  const id = String(matchId || "").trim();
+  if (!id) throw helpers.appError("match_id_required", 400, "معرّف المطابقة مطلوب.");
+  const match = await readOfficeDoc(helpers, { projectId, officeId, collection: "matches", id, accessToken });
+  if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
+  const status = String(match.status || "").toLowerCase();
+  if (status === "closed" || status === "completed") {
+    throw helpers.appError("match_not_open", 409, "المطابقة مغلقة.");
+  }
+  const built = buildNegotiationActivityEntry(input, {
+    propertyType: match.candidatePropertyType || match.propertyType || "",
+    purpose: match.candidatePurpose || match.purpose || "",
+    now
+  });
+  if (!built.ok) {
+    throw helpers.appError(`negotiation_${built.error}`, 400, NEGOTIATION_ACTIVITY_ERRORS[built.error] || "تعذر حفظ الإجراء.");
+  }
+  const entry = built.entry;
+  if (entry.kind === NEGOTIATION_ACTIVITY_KIND.BROKER_MESSAGE) {
+    const session = await loadCoordinationSession(helpers, { projectId, officeId, matchId: id, accessToken });
+    const note = { id: entry.id, audience: entry.party, message: entry.message, actor: "BROKER", createdAt: entry.createdAt };
+    await saveCoordinationSession(helpers, {
+      projectId, officeId, matchId: id, accessToken,
+      session: { ...session, brokerNotes: [...(session.brokerNotes || []), note].slice(-40) }
+    });
+  }
+  const activity = appendNegotiationActivity(parseNegotiationActivity(match.negotiationActivityJson), entry);
+  const summary = summarizeNegotiationActivity(activity);
+  const projection = {
+    negotiationActivityJson: helpers.firestoreString(JSON.stringify(activity)),
+    lastBrokerActivityAt: helpers.firestoreString(entry.createdAt)
+  };
+  await helpers.setFirestoreDocument({
+    projectId, segments: ["offices", officeId, "matches", id], accessToken, fields: projection
+  });
+  const operationId = await resolveMatchReviewOperationId(helpers, {
+    projectId, officeId, matchId: id, match, accessToken
+  });
+  if (operationId) {
+    await helpers.setFirestoreDocument({
+      projectId, segments: ["offices", officeId, "operations", operationId], accessToken, fields: projection
+    });
+  }
+  return { entry, summary, activity, operationId };
+}
+
 async function stampMatchLiving(helpers, {
   projectId,
   officeId,
@@ -288,21 +390,9 @@ async function stampMatchLiving(helpers, {
     accessToken,
     fields
   });
-  let operationId = String(match.operationId || "").trim();
-  if (!operationId && typeof helpers.listCollectionDocuments === "function") {
-    const operationDocs = await helpers.listCollectionDocuments({
-      projectId,
-      segments: ["offices", officeId, "operations"],
-      accessToken,
-      pageSize: 100
-    });
-    const linkedOperation = operationDocs.find((doc) => {
-      const operation = js(doc, helpers);
-      const operationType = String(operation.type || operation.operationType || "").toUpperCase();
-      return operationType === "MATCH_REVIEW" && String(operation.matchId || "") === id;
-    });
-    operationId = decodeURIComponent(String(linkedOperation?.name || "").split("/").pop() || "");
-  }
+  const operationId = await resolveMatchReviewOperationId(helpers, {
+    projectId, officeId, matchId: id, match, accessToken
+  });
   if (!operationId) return;
   await helpers.setFirestoreDocument({
     projectId,

@@ -42,7 +42,10 @@ test("match workspace keeps the broker section available throughout negotiation"
   assert.match(html, /data-match-section="parties"/);
   assert.match(html, /data-match-section="broker"/);
   assert.ok(html.indexOf('data-party-side="owner"') < html.indexOf('data-party-side="client"'));
-  assert.equal((html.match(/<textarea/g) || []).length, 1);
+  // One message to a party and one separate internal note.
+  assert.equal((html.match(/<textarea data-broker-message/g) || []).length, 1);
+  assert.equal((html.match(/<textarea data-broker-internal-note/g) || []).length, 1);
+  assert.equal((html.match(/<textarea/g) || []).length, 2);
 });
 
 test("negotiation topics follow the property type", () => {
@@ -54,11 +57,14 @@ test("negotiation topics follow the property type", () => {
   assert.doesNotMatch(land, /التجهيزات/);
 });
 
-test("owner WhatsApp becomes available after the client's interested response", () => {
+test("owner WhatsApp is never locked; waiting for the client is status only", () => {
   const pending = buildDailyTaskCardHtml(matchTask(), { open: true });
-  assert.match(pending, /data-party="owner" disabled[^>]*>بانتظار موافقة العميل/);
+  assert.match(pending, /data-party="owner" data-party-send="owner"[^>]*>إرسال للمالك</);
+  assert.doesNotMatch(pending, /data-party="owner"[^>]*disabled/);
+  assert.match(pending, /data-party-status="owner">الحالة: بانتظار موافقة العميل/);
   const interested = buildDailyTaskCardHtml(matchTask({ livingStage: "CLIENT_INTERESTED" }), { open: true });
-  assert.match(interested, /data-party="owner">إرسال للمالك/);
+  assert.match(interested, /data-party="owner" data-party-send="owner"[^>]*>إرسال للمالك</);
+  assert.doesNotMatch(interested, /data-party-status="owner"/);
 });
 
 test("collapsed match does not expose negotiation details", () => {

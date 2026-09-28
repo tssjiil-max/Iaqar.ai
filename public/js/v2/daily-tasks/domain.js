@@ -37,6 +37,7 @@ import {
   platformOpportunityMoneyLine
 } from "../../opportunity-router-domain.js";
 import { missingFieldLabelsArabic } from "../../opportunity-readiness-domain.js";
+import { parseNegotiationActivity } from "../../negotiation-activity-domain.js";
 import {
   isNewReview,
   isReadyToClose,
@@ -852,6 +853,8 @@ export function buildDailyTaskView(record = {}) {
     yourTurnLine: text(record.yourTurnLine),
     waiting: Boolean(record.waiting),
     timeline: parseLivingTimeline(record.timeline || record.livingTimeline),
+    negotiationActivity: parseNegotiationActivity(record.negotiationActivity || record.negotiationActivityJson),
+    lastBrokerActivityAt: text(record.lastBrokerActivityAt),
     coordinationClientSummary: text(record.coordinationClientSummary),
     coordinationOwnerSummary: text(record.coordinationOwnerSummary),
     revealClosedLabel: text(record.revealClosedLabel)
@@ -1123,6 +1126,8 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     viewingOutcome: item.viewingOutcome || item.metadata?.viewingOutcome,
     seriousIntentConfirmed: item.seriousIntentConfirmed || item.metadata?.seriousIntentConfirmed,
     livingTimeline: item.livingTimeline || item.livingTimelineJson || item.metadata?.livingTimeline,
+    negotiationActivityJson: item.negotiationActivityJson || item.metadata?.negotiationActivityJson || "",
+    lastBrokerActivityAt: item.lastBrokerActivityAt || item.metadata?.lastBrokerActivityAt || "",
     hasNewResponse: item.hasNewResponse || item.metadata?.hasNewResponse,
     nextActor: item.nextActor || item.metadata?.nextActor,
     livingUpdatedAt: item.livingUpdatedAt || item.metadata?.livingUpdatedAt || item.updatedAt,

@@ -22,9 +22,10 @@ function workerBase() {
 export async function ensurePartyReviewLink(task = {}, party = "client") {
   const side = party === "owner" ? "owner" : "client";
   const officeId = currentOfficeId();
-  const matchId = String(task.matchId || task.id || "").trim();
+  // Exact matchId only — a task id or an operation id is never a match id.
+  const matchId = String(task.matchId || "").trim();
   const user = window.firebase?.auth?.()?.currentUser;
-  if (!officeId || !matchId || !user?.getIdToken || !workerBase()) return null;
+  if (!officeId || !matchId || /^op_/i.test(matchId) || !user?.getIdToken || !workerBase()) return null;
   try {
     const idToken = await user.getIdToken();
     const response = await fetch(`${workerBase()}/party/sessions`, {

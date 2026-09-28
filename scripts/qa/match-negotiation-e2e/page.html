@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E2E harness</title>
+<link rel="stylesheet" href="/public/css/opportunity-details-v2.css">
+<link rel="stylesheet" href="/public/css/content-v2.css">
+<style>
+  body { font-family: sans-serif; margin: 0; background: #f4f7f5; }
+  .toast { position: fixed; bottom: 8px; left: 8px; right: 8px; padding: 8px; background: #123; color: #fff; }
+  .toast:not(.show) { opacity: .15; }
+  .cv2-match-workspace { position: fixed; inset: 0; z-index: 50; overflow: auto; background: rgba(0,0,0,.35); }
+  .cv2-match-workspace-shell { background: #fff; margin: 12px; padding: 12px; border-radius: 12px; }
+</style>
+</head>
+<body>
+<section class="card opportunity-bank-panel" id="opportunityBank" data-inline-bank="1">
+  <h2 id="opportunityBankTitle">العروض والطلبات</h2>
+  <div class="bank-toolbar">
+    <button type="button" class="bank-filter is-active" id="bankFilterActive">النشطة</button>
+    <button type="button" class="bank-filter" id="bankFilterArchived">الأرشيف</button>
+  </div>
+  <div class="bank-filters" id="bankFiltersBar">
+    <input type="search" id="bankFilterSearch" autocomplete="off">
+    <div class="bank-action-filters" id="bankActionFilters">
+      <button type="button" class="bank-action-filter is-active" data-bank-action-filter="all" aria-pressed="true">الكل</button>
+      <button type="button" class="bank-action-filter" data-bank-action-filter="needs_action" aria-pressed="false">يحتاج إجراء</button>
+      <button type="button" class="bank-action-filter" data-bank-action-filter="matches" aria-pressed="false">تطابقات</button>
+      <button type="button" class="bank-action-filter" data-bank-action-filter="appointments" aria-pressed="false">مواعيد</button>
+      <button type="button" class="bank-action-filter" data-bank-action-filter="follow_up" aria-pressed="false">متابعة</button>
+    </div>
+  </div>
+  <p class="section-status" id="opportunityBankStatus" role="status"></p>
+  <button type="button" class="bank-retry" id="opportunityBankRetry" hidden>إعادة المحاولة</button>
+  <div class="bank-list" id="opportunityBankList"></div>
+  <button type="button" class="bank-action" id="bankLoadMoreBtn" hidden>تحميل المزيد</button>
+  <div class="bank-incoming" id="bankIncomingRequests" hidden><div id="bankIncomingList"></div></div>
+  <div class="bank-incoming" id="bankSharedWithUs" hidden></div>
+  <div class="bank-incoming" id="bankOutgoingScopes" hidden></div>
+  <div class="bank-detail" id="opportunityBankDetail" hidden></div>
+</section>
+<div class="toast" id="toast" role="status"></div>
+<script type="module">
+const OFFICE = "office-e2e";
+const token = await (await fetch("/token")).text();
+const whatsapp = [];
+window.__e2e = { whatsapp, feedEmits: 0, snapshots: [] };
+
+function cmp(a, b) { return a === b ? 0 : (a > b ? 1 : -1); }
+function matches(row, [field, op, value]) {
+  const v = row[field];
+  if (op === "==") return v === value;
+  if (op === "!=") return v !== value;
+  if (op === "in") return Array.isArray(value) && value.includes(v);
+  if (op === "not-in") return Array.isArray(value) && !value.includes(v);
+  if (op === "array-contains") return Array.isArray(v) && v.includes(value);
+  if (op === ">=") return v >= value;
+  if (op === "<=") return v <= value;
+  if (op === ">") return v > value;
+  if (op === "<") return v < value;
+  return true;
+}
+function snap(path, row) {
+  const id = path.split("/").pop();
+  const data = row ? Object.fromEntries(Object.entries(row).filter(([k]) => k !== "id")) : null;
+  return { id, exists: Boolean(row), ref: docRef(path), data: () => (data ? { ...data } : undefined), get: (f) => data?.[f] };
+}
+function docRef(path) {
+  return {
+    id: path.split("/").pop(), path,
+    async get() { return snap(path, await (await fetch(`/store/get?path=${encodeURIComponent(path)}`)).json()); },
+    collection(name) { return query(`${path}/${name}`); },
+    async set() {}, async update() {}, onSnapshot() { return () => {}; }
+  };
+}
+function query(path, filters = [], orders = [], lim = null, after = null) {
+  return {
+    path,
+    doc(id) { return docRef(`${path}/${id}`); },
+    where(f, op, v) { return query(path, [...filters, [f, op, v]], orders, lim, after); },
+    orderBy(f, dir = "asc") { return query(path, filters, [...orders, [f, dir]], lim, after); },
+    limit(n) { return query(path, filters, orders, n, after); },
+    startAfter(s) { return query(path, filters, orders, lim, s); },
+    onSnapshot() { return () => {}; },
+    async get() {
+      let rows = await (await fetch(`/store/list?path=${encodeURIComponent(path)}`)).json();
+      rows = rows.filter((row) => filters.every((f) => matches(row, f)));
+      for (const [f, dir] of [...orders].reverse()) rows.sort((a, b) => (dir === "desc" ? -1 : 1) * cmp(String(a[f] ?? ""), String(b[f] ?? "")));
+      if (after) { const i = rows.findIndex((r) => r.id === after.id); rows = rows.slice(i + 1); }
+      if (lim) rows = rows.slice(0, lim);
+      const docs = rows.map((row) => snap(`${path}/${row.id}`, row));
+      return { docs, empty: !docs.length, size: docs.length, forEach: (fn) => docs.forEach(fn) };
+    }
+  };
+}
+const db = { collection: (name) => query(name), doc: (p) => docRef(p) };
+const officeBase = `offices/${OFFICE}`;
+window.firebase = {
+  auth: () => ({ currentUser: { uid: "broker-e2e", getIdToken: async () => token } }),
+  firestore: Object.assign(() => db, { FieldValue: { serverTimestamp: () => new Date().toISOString() } })
+};
+window.IAQAR = {
+  office: {
+    officeId: OFFICE, officeName: "مكتب اختبار المسار", db, workerBase: `${location.origin}/worker`,
+    refs: Object.fromEntries(["matches", "opportunities", "clients", "owners", "operations", "deals"].map((c) => [c, query(`${officeBase}/${c}`)]))
+  },
+  workerBase: `${location.origin}/worker`,
+  resolveWorkerBase: () => `${location.origin}/worker`,
+  whatsappHandoff: { openWhatsApp({ phone, text }) { whatsapp.push({ phone, text, at: Date.now() }); return { ok: true }; } }
+};
+
+const ops = await import("/public/js/operations-domain.js");
+window.IAQAR.operationsDomain = ops;
+let lastFeed = "";
+async function emitFeed() {
+  const [operations, opportunities] = await Promise.all([
+    fetch(`/store/list?path=${encodeURIComponent(`${officeBase}/operations`)}`).then((r) => r.json()),
+    fetch(`/store/list?path=${encodeURIComponent(`${officeBase}/opportunities`)}`).then((r) => r.json())
+  ]);
+  const active = operations.filter((op) => ops.ACTIVE_OPERATION_STATUSES.includes(String(op.status || "").toUpperCase()));
+  const items = [
+    ...active.map((op) => ops.projectOperationToUiItem({ ...op }, { relativeTime: () => "" })),
+    ...opportunities.map((o) => ({ ...o, recordId: o.id, opportunityId: o.id, recordType: "opportunity", main: "opportunities" }))
+  ];
+  const key = JSON.stringify(items);
+  if (key === lastFeed) return;
+  lastFeed = key;
+  window.IAQAR.operationsItems = items;
+  window.__e2e.feedEmits += 1;
+  window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items, authoritative: true } }));
+}
+window.__e2e.emitFeed = emitFeed;
+await emitFeed();
+setInterval(() => { void emitFeed(); }, 400);
+
+await import("/public/js/v2/daily-tasks/controller.js");
+const bank = await import("/public/js/opportunity-bank.js");
+bank.activateOpportunityBankInline();
+window.__e2e.ready = true;
+</script>
+</body>
+</html>

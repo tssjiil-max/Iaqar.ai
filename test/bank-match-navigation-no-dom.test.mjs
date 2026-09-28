@@ -36,3 +36,36 @@ test("matched bank action opens the match workspace before the opportunity detai
   assert.equal(stopped, true);
   assert.deepEqual(opened, [["match", "match-1"]]);
 });
+
+test("bank action never treats an operation id as the matchId", async () => {
+  const handlers = new Map();
+  const doc = {
+    addEventListener(name, handler) { handlers.set(name, handler); },
+    getElementById() { return null; },
+    querySelector() { return null; }
+  };
+  const opened = [];
+  const win = {
+    addEventListener() {},
+    IAQAR: {
+      async openMatchWorkspace(id) { opened.push(["match", id]); },
+      async openOpportunityDetail(id) { opened.push(["opportunity", id]); }
+    }
+  };
+  installBankOperationalActionBridge(doc, win);
+  const article = { getAttribute(name) { return name === "data-opportunity-id" ? "request-1" : ""; } };
+  const button = {
+    getAttribute(name) {
+      return { "data-opportunity-primary-action": "review_match", "data-match-id": "op_0123abcd", "data-operation-id": "op_0123abcd" }[name] || "";
+    },
+    closest(selector) {
+      return selector.startsWith("[data-cv2-inbox-item]") ? article : button;
+    }
+  };
+  await handlers.get("click")({
+    target: { closest() { return button; } },
+    preventDefault() {},
+    stopImmediatePropagation() {}
+  });
+  assert.deepEqual(opened, [["opportunity", "request-1"]]);
+});

@@ -28,6 +28,7 @@ import {
 import { ensurePartyReviewLink, resolvePartyPhone } from "./party-link.js";
 import { resolveDetailsOpportunityId } from "../../../../public/js/opportunity-data-flow-domain.js";
 import { topHomeDailyTasks } from "../../../../public/js/daily-tasks-source-policy.js";
+import { appendNegotiationActivity, negotiationPartyLabel } from "../../../../public/js/negotiation-activity-domain.js";
 
 const state = {
   root: null,
@@ -38,7 +39,11 @@ const state = {
   scrollTop: 0,
   focusMatchId: "",
   workspace: null,
-  mainRoot: null
+  mainRoot: null,
+  // Entries the Worker accepted that the live feed has not delivered yet, per matchId.
+  localActivity: new Map(),
+  // Unsent broker text survives re-renders (feed updates, choices, sends).
+  drafts: new Map()
 };
 
 function useDemoFixtures() {
@@ -53,6 +58,49 @@ function currentTasks() {
   if (useDemoFixtures()) return dailyTasksDemoFixtures();
   if (state.focusMatchId) return state.tasks.filter((task) => task.matchId === state.focusMatchId);
   return topHomeDailyTasks(state.tasks);
+}
+
+function isOperationId(value) {
+  return /^op_/i.test(String(value || "").trim());
+}
+
+// The exact matchId for every write. Inside the workspace it is the match the
+// broker opened; an operation id is never accepted as a matchId.
+function exactMatchId(task = {}) {
+  const id = String(state.focusMatchId || task.matchId || "").trim();
+  return id && !isOperationId(id) ? id : "";
+}
+
+function rememberLocalActivity(matchId, entry) {
+  if (!matchId || !entry?.id) return;
+  const pending = state.localActivity.get(matchId) || [];
+  state.localActivity.set(matchId, [...pending.filter((item) => item.id !== entry.id), entry]);
+}
+
+function withLocalActivity(tasks = []) {
+  if (!state.localActivity.size) return tasks;
+  return tasks.map((task) => {
+    const pending = state.localActivity.get(task.matchId);
+    if (!pending?.length) return task;
+    const delivered = new Set((task.negotiationActivity || []).map((entry) => entry.id));
+    const remaining = pending.filter((entry) => !delivered.has(entry.id));
+    if (!remaining.length) {
+      state.localActivity.delete(task.matchId);
+      return task;
+    }
+    state.localActivity.set(task.matchId, remaining);
+    let merged = task.negotiationActivity || [];
+    for (const entry of remaining) merged = appendNegotiationActivity(merged, entry);
+    merged = [...merged].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    return { ...task, negotiationActivity: merged };
+  });
+}
+
+function mapTasksFromItems(items = []) {
+  return withLocalActivity(mapOperationsItemsToDailyTasks(workspaceItems(items), new Date(), {
+    officeId: currentOfficeId(),
+    requireOpportunityRecords: !state.focusMatchId
+  }));
 }
 
 function workspaceItems(items) {
@@ -288,7 +336,7 @@ function taskFromCard(card) {
     opportunityId: card.getAttribute("data-opportunity-id") || listed.opportunityId,
     offerId: card.getAttribute("data-offer-id") || listed.offerId,
     requestId: card.getAttribute("data-request-id") || listed.requestId,
-    matchId: card.getAttribute("data-match-id") || listed.matchId,
+    matchId: state.focusMatchId || card.getAttribute("data-match-id") || listed.matchId,
     cooperationId: card.getAttribute("data-cooperation-id") || listed.cooperationId,
     counterpartOpportunityId: card.getAttribute("data-counterpart-id") || listed.counterpartOpportunityId,
     targetOfficeId: card.getAttribute("data-target-office") || listed.targetOfficeId,
@@ -460,7 +508,9 @@ async function recordOpenedExternal(task, party, phone, body) {
 
 export async function runDailyTaskPartySend(task, party, button) {
   if (button?.dataset?.cv2ExecState === "working") return { ok: false, error: "busy" };
-  if (!task?.matchId || !task?.offerId || !task?.requestId || task.dataIntegrity === "INVALID_TASK_DATA") {
+  const matchId = exactMatchId(task);
+  if (matchId) task = { ...task, matchId };
+  if (!matchId || !task?.offerId || !task?.requestId || task.dataIntegrity === "INVALID_TASK_DATA") {
     notify(PARTY_SEND_COPY.detailsFailed);
     return { ok: false, integrity: "INVALID_TASK_DATA" };
   }
@@ -495,6 +545,8 @@ export async function runDailyTaskPartySend(task, party, button) {
     void recordOpenedExternal(task, side, contact.digits, text);
     notify(whatsappOpenedMessage(side));
     setExecState(button, "success");
+    // Log every send; sending again later is always allowed.
+    if (!useDemoFixtures()) await recordNegotiation(task, { kind: "party_send", party: side }).catch(() => {});
     return { ok: true, phone: contact.digits, url: link.url, text, opened };
   } catch {
     notify(PARTY_SEND_COPY.sendFailed);
@@ -660,8 +712,62 @@ async function createDealFromViewing(task, button) {
   }
 }
 
+async function recordNegotiation(task, input = {}) {
+  const matchId = exactMatchId(task);
+  if (!matchId) throw new Error("تعذر تحديد المطابقة — حدّث الصفحة وحاول مجددًا");
+  const response = await fetch(`${workerBase()}/workflow/action`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
+    body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "record_negotiation_activity", ...input })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false || !payload.entry) throw new Error(payload.message || "تعذر حفظ الإجراء");
+  rememberLocalActivity(matchId, payload.entry);
+  state.tasks = withLocalActivity(state.tasks);
+  renderList();
+  return payload;
+}
+
+async function recordPartyChoice(task, button) {
+  if (button?.dataset?.cv2ExecState === "working") return;
+  const party = button.getAttribute("data-party") === "owner" ? "owner" : "client";
+  setExecState(button, "working");
+  try {
+    const payload = await recordNegotiation(task, { kind: "party_choice", party, choiceId: button.getAttribute("data-party-choice") });
+    notify(`تم تسجيل خيار ${negotiationPartyLabel(party)}: ${payload.entry.label}`);
+  } catch (error) {
+    setExecState(button, "error");
+    notify(error.message || "تعذر حفظ الخيار");
+  }
+}
+
+async function sendBrokerMessageOrNote(task, panel, action, button) {
+  const isMessage = action === "send_message";
+  const field = panel?.querySelector(isMessage ? "[data-broker-message]" : "[data-broker-internal-note]");
+  const message = String(field?.value || "").trim();
+  if (!message) {
+    notify(isMessage ? "اكتب نص الرسالة أولًا" : "اكتب الملاحظة أولًا");
+    return;
+  }
+  const audience = isMessage ? String(panel?.querySelector("[data-broker-audience]")?.value || "client") : "internal";
+  setExecState(button, "working");
+  try {
+    if (field) field.value = "";
+    await recordNegotiation(task, { kind: isMessage ? "broker_message" : "internal_note", party: audience, message });
+    notify(isMessage ? `أُضيفت رسالتك إلى رابط ${negotiationPartyLabel(audience)}` : "تم حفظ الملاحظة الداخلية — لم تُرسل لأي طرف");
+  } catch (error) {
+    if (field && !field.value) field.value = message;
+    setExecState(button, "error");
+    notify(error.message || (isMessage ? "تعذر إرسال الرسالة" : "تعذر حفظ الملاحظة"));
+  }
+}
+
 async function runBrokerNegotiationAction(task, panel, action, button) {
   if (button?.dataset?.cv2ExecState === "working") return;
+  if (action === "send_message" || action === "save_internal_note") {
+    await sendBrokerMessageOrNote(task, panel, action, button);
+    return;
+  }
   if (action === "no_agreement" && !window.confirm("إنهاء هذه المطابقة دون اتفاق؟ سيبقى العرض والطلب متاحين لمطابقات أخرى.")) return;
   setExecState(button, "working");
   const preset = String(panel?.querySelector("[data-broker-preset]")?.value || "").trim();
@@ -765,6 +871,12 @@ function onListClick(event) {
   const card = event.target.closest("[data-cv2-exec-task]");
   if (!card || !root.contains(card)) return;
   const task = taskFromCard(card);
+  const partyChoice = event.target.closest("[data-party-choice]");
+  if (partyChoice) {
+    event.preventDefault(); event.stopPropagation();
+    void recordPartyChoice(task, partyChoice);
+    return;
+  }
   const brokerAction = event.target.closest("[data-broker-action]");
   if (brokerAction) {
     event.preventDefault(); event.stopPropagation();
@@ -925,8 +1037,35 @@ function consumePendingDailyTaskOpen() {
   }
 }
 
+const DRAFT_FIELDS = ["data-broker-message", "data-broker-audience", "data-broker-internal-note"];
+
+function captureDrafts() {
+  state.root?.querySelectorAll("[data-cv2-exec-task]").forEach((card) => {
+    const taskId = card.getAttribute("data-task-id");
+    if (!taskId) return;
+    const values = {};
+    for (const attr of DRAFT_FIELDS) {
+      const field = card.querySelector(`[${attr}]`);
+      if (field) values[attr] = field.value;
+    }
+    if (Object.keys(values).length) state.drafts.set(taskId, values);
+  });
+}
+
+function restoreDrafts() {
+  state.root?.querySelectorAll("[data-cv2-exec-task]").forEach((card) => {
+    const values = state.drafts.get(card.getAttribute("data-task-id"));
+    if (!values) return;
+    for (const attr of DRAFT_FIELDS) {
+      const field = card.querySelector(`[${attr}]`);
+      if (field && values[attr] != null) field.value = values[attr];
+    }
+  });
+}
+
 function renderList() {
   if (!state.root) return;
+  captureDrafts();
   if (state.focusMatchId && !currentTasks().length) {
     state.root.innerHTML = '<p class="cv2-exec-empty">تعذر تحميل بيانات المطابقة. حدّث الصفحة وحاول مجددًا.</p>';
     return;
@@ -935,6 +1074,7 @@ function renderList() {
     openTaskId: state.openTaskId,
     detailsTaskId: state.detailsTaskId
   });
+  restoreDrafts();
   restoreScroll();
   consumePendingDailyTaskOpen();
 }
@@ -944,10 +1084,7 @@ function onOperationsData(event) {
   const eventOfficeId = String(event.detail?.officeId || "").trim();
   if (eventOfficeId && currentOfficeId() && eventOfficeId !== currentOfficeId()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
-  state.tasks = mapOperationsItemsToDailyTasks(workspaceItems(items), new Date(), {
-    officeId: currentOfficeId(),
-    requireOpportunityRecords: !state.focusMatchId
-  });
+  state.tasks = mapTasksFromItems(items);
   const invalid = consumeDailyTaskDiagnostics();
   if (invalid.length && typeof window !== "undefined") window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
   if (state.focusMatchId && !state.openTaskId) {
@@ -1012,10 +1149,7 @@ function attachDailyTasksRoot(root) {
   if (!useDemoFixtures()) {
     const existing = window.IAQAR?.operationsItems;
     if (Array.isArray(existing)) {
-      state.tasks = mapOperationsItemsToDailyTasks(workspaceItems(existing), new Date(), {
-        officeId: currentOfficeId(),
-        requireOpportunityRecords: !state.focusMatchId
-      });
+      state.tasks = mapTasksFromItems(existing);
       const invalid = consumeDailyTaskDiagnostics();
       if (invalid.length) window.__IAQAR_INVALID_DAILY_TASKS__ = invalid;
     }
