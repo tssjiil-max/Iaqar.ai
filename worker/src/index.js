@@ -22,7 +22,7 @@ import {
   firestoreOfficeId,
   officeAuthorizationKey,
   officeIdsEquivalent
-} from "../../public/js/office-id-domain.js";
+} from "./office-id-domain.js";
 import {
   MATCH_INTEGRITY,
   collectCandidateOpportunityIds,
@@ -696,7 +696,7 @@ export default {
         return await handleBrokerApplication(request, env, requestId);
       }
 
-      if (request.method === "POST" && url.pathname === "/auth/phone-login-resolve") {
+      if (request.method === "POST" && (url.pathname === "/auth/phone-login-lookup" || url.pathname === "/auth/phone-login-resolve" || url.pathname === "/auth/login-resolve")) {
         return await handlePhoneLoginResolve(request, env, requestId);
       }
 
@@ -1570,7 +1570,12 @@ async function handlePhoneLogin(request, env, requestId) {
     officeId: directory.officeId,
     uid: directory.uid
   }).catch(() => {});
-  return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
+  return jsonResponse({
+    ok: true,
+    customToken,
+    officeId: firestoreOfficeId(directory.officeId),
+    requestId
+  });
 }
 
 async function handleForgotPassword(request, env, requestId) {
