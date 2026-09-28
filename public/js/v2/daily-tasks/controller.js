@@ -37,7 +37,8 @@ const state = {
   detailsTaskId: null,
   scrollTop: 0,
   focusMatchId: "",
-  workspace: null
+  workspace: null,
+  mainRoot: null
 };
 
 function useDemoFixtures() {
@@ -982,7 +983,7 @@ function onOpenDailyTask(event) {
   });
 }
 
-export function unmountDailyTasksContentV2() {
+function detachDailyTasksRoot() {
   window.removeEventListener("iaqar:operations-data", onOperationsData);
   window.removeEventListener("iaqar:open-daily-task", onOpenDailyTask);
   closeOfferDetailsSheet();
@@ -996,56 +997,8 @@ export function unmountDailyTasksContentV2() {
   state.detailsTaskId = null;
 }
 
-export function closeMatchWorkspace() {
-  const workspace = state.workspace;
-  if (!workspace) return;
-  document.removeEventListener("keydown", workspace.closeOnEscape);
-  unmountDailyTasksContentV2();
-  workspace.remove();
-  state.workspace = null;
-  state.focusMatchId = "";
-  document.body.style.overflow = workspace.dataset.previousOverflow || "";
-}
-
-export function openMatchWorkspace(matchId) {
-  const id = String(matchId || "").trim();
-  if (!id) return false;
-  if (state.workspace) closeMatchWorkspace();
-  const workspace = document.createElement("section");
-  workspace.className = "cv2-match-workspace";
-  workspace.dataset.previousOverflow = document.body.style.overflow;
-  workspace.setAttribute("role", "dialog");
-  workspace.setAttribute("aria-modal", "true");
-  workspace.setAttribute("aria-label", "مسار المطابقة والتفاوض");
-  workspace.innerHTML = '<div class="cv2-match-workspace-shell"><header><h2>مسار المطابقة والتفاوض</h2><button type="button" data-close-match-workspace aria-label="إغلاق">إغلاق</button></header><div data-match-workspace-content></div></div>';
-  workspace.querySelector("[data-close-match-workspace]").addEventListener("click", closeMatchWorkspace);
-  workspace.closeOnEscape = (event) => {
-    if (event.key === "Escape") closeMatchWorkspace();
-  };
-  document.addEventListener("keydown", workspace.closeOnEscape);
-  workspace.addEventListener("click", (event) => {
-    if (event.target === workspace) closeMatchWorkspace();
-  });
-  document.body.append(workspace);
-  document.body.style.overflow = "hidden";
-  state.workspace = workspace;
-  state.focusMatchId = id;
-  mountDailyTasksContentV2(workspace.querySelector("[data-match-workspace-content]"));
-  const task = state.tasks.find((item) => item.matchId === id);
-  if (task) {
-    state.openTaskId = task.id;
-    renderList();
-  } else {
-    state.root.innerHTML = '<p class="cv2-exec-empty">جارٍ تحميل بيانات المطابقة…</p>';
-    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
-  }
-  workspace.querySelector("[data-close-match-workspace]").focus();
-  return true;
-}
-
-export function mountDailyTasksContentV2(root) {
-  if (!root) return;
-  if (state.root && state.root !== root) unmountDailyTasksContentV2();
+function attachDailyTasksRoot(root) {
+  if (state.root && state.root !== root) detachDailyTasksRoot();
   const alreadyMounted = state.root === root && state.bound;
   state.root = root;
   window.removeEventListener("iaqar:operations-data", onOperationsData);
@@ -1069,6 +1022,96 @@ export function mountDailyTasksContentV2(root) {
     void tickPlatformOpportunityExpiry();
   }
   renderList();
+}
+
+// While the Match workspace is open it owns the shared list state. Content V2
+// re-renders (hashchange, navigation-changed, firebase-status) must not empty it;
+// the main Daily Tasks root they ask for is remembered and restored on close.
+export function unmountDailyTasksContentV2() {
+  if (state.workspace) {
+    state.mainRoot = null;
+    return;
+  }
+  detachDailyTasksRoot();
+}
+
+const MATCH_WORKSPACE_LOAD_TIMEOUT_MS = 10000;
+
+export function closeMatchWorkspace({ popHistory = true } = {}) {
+  const workspace = state.workspace;
+  if (!workspace) return;
+  document.removeEventListener("keydown", workspace.closeOnEscape);
+  window.removeEventListener("popstate", workspace.closeOnPop);
+  clearTimeout(workspace.loadTimer);
+  detachDailyTasksRoot();
+  workspace.remove();
+  state.workspace = null;
+  state.focusMatchId = "";
+  document.body.style.overflow = workspace.dataset.previousOverflow || "";
+  if (popHistory && window.history?.state?.iaqarMatchWorkspace) {
+    try { window.history.back(); } catch (_) { /* ignore */ }
+  }
+  const mainRoot = state.mainRoot;
+  state.mainRoot = null;
+  if (mainRoot?.isConnected) attachDailyTasksRoot(mainRoot);
+}
+
+export function openMatchWorkspace(matchId) {
+  const id = String(matchId || "").trim();
+  if (!id) return false;
+  if (state.workspace) closeMatchWorkspace();
+  const mainRoot = state.root;
+  if (mainRoot) detachDailyTasksRoot();
+  const workspace = document.createElement("section");
+  workspace.className = "cv2-match-workspace";
+  workspace.dataset.previousOverflow = document.body.style.overflow;
+  workspace.setAttribute("role", "dialog");
+  workspace.setAttribute("aria-modal", "true");
+  workspace.setAttribute("aria-label", "مسار المطابقة والتفاوض");
+  workspace.innerHTML = '<div class="cv2-match-workspace-shell"><header><h2>مسار المطابقة والتفاوض</h2><button type="button" data-close-match-workspace aria-label="إغلاق">إغلاق</button></header><div data-match-workspace-content></div></div>';
+  workspace.querySelector("[data-close-match-workspace]").addEventListener("click", () => closeMatchWorkspace());
+  workspace.closeOnEscape = (event) => {
+    if (event.key === "Escape") closeMatchWorkspace();
+  };
+  workspace.closeOnPop = () => closeMatchWorkspace({ popHistory: false });
+  document.addEventListener("keydown", workspace.closeOnEscape);
+  workspace.addEventListener("click", (event) => {
+    if (event.target === workspace) closeMatchWorkspace();
+  });
+  document.body.append(workspace);
+  document.body.style.overflow = "hidden";
+  state.workspace = workspace;
+  state.mainRoot = mainRoot;
+  state.focusMatchId = id;
+  try {
+    window.history.pushState({ ...(window.history.state || {}), iaqarMatchWorkspace: 1 }, "", window.location.href);
+    window.addEventListener("popstate", workspace.closeOnPop);
+  } catch (_) { /* ignore */ }
+  attachDailyTasksRoot(workspace.querySelector("[data-match-workspace-content]"));
+  const task = state.tasks.find((item) => item.matchId === id);
+  if (task) {
+    state.openTaskId = task.id;
+    renderList();
+  } else {
+    state.root.innerHTML = '<p class="cv2-exec-empty">جارٍ تحميل بيانات المطابقة…</p>';
+    // Operations arrive from a live listener; if no item for this match shows up,
+    // stop the spinner and show the explicit load error instead of waiting forever.
+    workspace.loadTimer = setTimeout(() => {
+      if (state.workspace === workspace && !state.tasks.some((item) => item.matchId === id)) renderList();
+    }, MATCH_WORKSPACE_LOAD_TIMEOUT_MS);
+    window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
+  }
+  workspace.querySelector("[data-close-match-workspace]").focus();
+  return true;
+}
+
+export function mountDailyTasksContentV2(root) {
+  if (!root) return;
+  if (state.workspace && !state.workspace.contains(root)) {
+    state.mainRoot = root;
+    return;
+  }
+  attachDailyTasksRoot(root);
 }
 
 if (typeof window !== "undefined") {

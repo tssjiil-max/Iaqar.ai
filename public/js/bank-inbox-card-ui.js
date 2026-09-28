@@ -145,7 +145,7 @@ export function installLegacyOpportunityWorkflowRetirement(doc = globalThis.docu
     event.preventDefault?.();
     event.stopImmediatePropagation?.();
 
-    const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+    const matchId = String(detail.matchId || detail.recordId || "").trim();
     if (matchId && typeof win.IAQAR?.openMatchWorkspace === "function") {
       await win.IAQAR.openMatchWorkspace(matchId);
       return;
