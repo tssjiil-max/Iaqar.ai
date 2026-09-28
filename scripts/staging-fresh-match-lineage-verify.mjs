@@ -206,10 +206,8 @@ function freshBankUrl() {
   return `${STAGING_URL}/?env=staging&officeId=${encodeURIComponent(OFFICE_ID)}&contentV2=1`;
 }
 
-// Current CTA contract (legacy opportunity manager retired 2026-09-26): review_match
-// opens the card's own opportunity in the Content V2 details view via
-// #/opportunities/<id>; it must not emit the legacy iaqar:open-operation /
-// iaqar:workflow-action events or open #iaqarWorkflowOverlay.
+// review_match opens the exact Match negotiation workspace. It must preserve
+// both offer and request IDs without routing through opportunity details.
 async function clickFreshMatch(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   const action = card.locator(
@@ -222,37 +220,34 @@ async function clickFreshMatch(page, target) {
     opportunityId: button.closest("[data-cv2-inbox-item][data-opportunity-id]")?.getAttribute("data-opportunity-id") || ""
   }));
   await action.click();
-  await page.waitForFunction((opportunityId) => {
-    const host = document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])');
-    return Boolean(host) && host.dataset.opportunityId === opportunityId
-      && decodeURIComponent(String(location.hash || "")).includes(`/opportunities/${opportunityId}`);
-  }, target.opportunityId, { timeout: 15000 });
+  await page.locator(`.cv2-match-workspace [data-cv2-exec-task][data-match-id="${target.matchId}"] [data-match-negotiation-page]`).waitFor({ state: "visible", timeout: 15000 });
   const events = await page.evaluate(() => ({
     openRequests: window.__qaFreshLineageBridge?.openRequests || [],
     workflowActions: window.__qaFreshLineageBridge?.workflowActions || [],
-    detailsOpportunityId: document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')?.dataset?.opportunityId || "",
-    hash: decodeURIComponent(String(location.hash || "")),
+    workspaceMatchId: document.querySelector(".cv2-match-workspace [data-cv2-exec-task]")?.getAttribute("data-match-id") || "",
+    sections: [...document.querySelectorAll(".cv2-match-workspace [data-match-section]")].map((node) => node.dataset.matchSection),
     workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])")),
     workflowTitle: document.getElementById("iaqarWorkflowTitle")?.textContent?.trim() || ""
   }));
   const ok = clicked.matchId === target.matchId
     && clicked.operationId === target.operationId
     && clicked.opportunityId === target.opportunityId
-    && events.detailsOpportunityId === target.opportunityId
-    && events.hash.includes(`/opportunities/${target.opportunityId}`)
+    && events.workspaceMatchId === target.matchId
+    && ["property", "agreement", "parties", "broker"].every((section) => events.sections.includes(section))
     && !events.workflowVisible
     && events.workflowTitle !== "إدارة الفرصة"
     && events.openRequests.length === 0
     && events.workflowActions.length === 0;
   if (!ok) throw new Error(`${target.side} CTA opened wrong record ${JSON.stringify({ target, clicked, events })}`);
 
-  // Return to the Bank without the details hash, then prove the same card still
+  // Return to the Bank, then prove the same card still
   // carries the exact matchId/operationId after the round trip.
+  await page.locator(".cv2-match-workspace [data-close-match-workspace]").click();
   await page.goto(freshBankUrl(), { waitUntil: "domcontentloaded", timeout: 90000 });
   await openBankTab(page);
   await selectMatchesFilter(page);
   const returned = await inspectFreshCard(page, target.side, target.opportunityId, target.matchId, target.operationId);
-  return { side: target.side, exactMatchOpened: true, clicked, detailsOpportunityId: events.detailsOpportunityId, returned };
+  return { side: target.side, exactMatchOpened: true, clicked, workspaceMatchId: events.workspaceMatchId, returned };
 }
 
 async function verifyFreshBank(browser, customToken, matchId, operationId) {

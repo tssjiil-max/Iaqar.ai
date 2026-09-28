@@ -29,14 +29,36 @@ test("open match card renders the broker negotiation assistant", () => {
   assert.match(html, /الاتفاق/);
   assert.match(html, /فجوة السعر:<\/strong> 3%/);
   assert.match(html, /الفجوة المتبقية 3%/);
-  assert.match(html, /data-broker-panel open/);
+  assert.match(html, /data-broker-panel/);
 });
 
-test("routine match keeps assistant visible but hides broker intervention panel", () => {
+test("match workspace keeps the broker section available throughout negotiation", () => {
   const html = buildDailyTaskCardHtml(matchTask({ livingStage: "WAITING_CLIENT" }), { open: true });
   assert.match(html, /data-negotiation-assistant/);
   assert.match(html, /لا يحتاج تدخلًا الآن/);
-  assert.doesNotMatch(html, /data-broker-panel/);
+  assert.match(html, /data-broker-panel/);
+  assert.match(html, /data-match-section="property"/);
+  assert.match(html, /data-match-section="agreement"/);
+  assert.match(html, /data-match-section="parties"/);
+  assert.match(html, /data-match-section="broker"/);
+  assert.ok(html.indexOf('data-party-side="owner"') < html.indexOf('data-party-side="client"'));
+  assert.equal((html.match(/<textarea/g) || []).length, 1);
+});
+
+test("negotiation topics follow the property type", () => {
+  const land = buildDailyTaskCardHtml(matchTask({
+    propertyType: "أرض",
+    proposedListing: { propertyType: "أرض" }
+  }), { open: true });
+  assert.match(land, /شروط الصفقة/);
+  assert.doesNotMatch(land, /التجهيزات/);
+});
+
+test("owner WhatsApp becomes available after the client's interested response", () => {
+  const pending = buildDailyTaskCardHtml(matchTask(), { open: true });
+  assert.match(pending, /data-party="owner" disabled[^>]*>بانتظار موافقة العميل/);
+  const interested = buildDailyTaskCardHtml(matchTask({ livingStage: "CLIENT_INTERESTED" }), { open: true });
+  assert.match(interested, /data-party="owner">إرسال للمالك/);
 });
 
 test("collapsed match does not expose negotiation details", () => {

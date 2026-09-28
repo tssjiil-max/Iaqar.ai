@@ -145,6 +145,12 @@ export function installLegacyOpportunityWorkflowRetirement(doc = globalThis.docu
     event.preventDefault?.();
     event.stopImmediatePropagation?.();
 
+    const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+    if (matchId && typeof win.IAQAR?.openMatchWorkspace === "function") {
+      await win.IAQAR.openMatchWorkspace(matchId);
+      return;
+    }
+
     let linkedOpportunityId = String(
       detail.opportunityId || detail.clientRequestId || detail.ownerOfferId || ""
     ).trim();
@@ -188,6 +194,11 @@ export function installBankOperationalActionBridge(doc = globalThis.document, wi
 
     event.preventDefault();
     event.stopImmediatePropagation();
+
+    if (detail.matchId && typeof win.IAQAR?.openMatchWorkspace === "function") {
+      await win.IAQAR.openMatchWorkspace(detail.matchId);
+      return;
+    }
 
     const openOpportunityDetail = win.IAQAR?.openOpportunityDetail;
     if (typeof openOpportunityDetail !== "function") {

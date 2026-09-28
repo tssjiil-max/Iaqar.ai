@@ -350,28 +350,29 @@ async function clickAndVerify(page, target) {
   const card = page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first();
   const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.click();
-  await page.waitForFunction((opportunityId) => {
-    const detailsVisible = Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])'));
-    return detailsVisible && String(location.hash || "").includes(opportunityId);
-  }, target.opportunityId, { timeout: 15000 });
+  await page.locator(`.cv2-match-workspace [data-cv2-exec-task][data-match-id="${target.matchId}"] [data-match-negotiation-page]`).waitFor({ state: "visible", timeout: 15000 });
   await page.waitForTimeout(300);
 
   const events = await page.evaluate(() => ({
     openRequests: window.__qaBankOperationalBridge?.openRequests || [],
     workflowActions: window.__qaBankOperationalBridge?.workflowActions || [],
-    opportunityDetailsVisible: Boolean(document.querySelector('#contentV2[data-content-view="opportunity"]:not([hidden])')),
+    matchWorkspaceVisible: Boolean(document.querySelector(".cv2-match-workspace [data-match-negotiation-page]")),
+    sections: [...document.querySelectorAll(".cv2-match-workspace [data-match-section]")].map((node) => node.dataset.matchSection),
+    matchId: document.querySelector(".cv2-match-workspace [data-cv2-exec-task]")?.getAttribute("data-match-id") || "",
     workflowVisible: Boolean(document.querySelector("#iaqarWorkflowOverlay:not([hidden])")),
     workflowTitle: document.getElementById("iaqarWorkflowTitle")?.textContent?.trim() || "",
     hash: String(location.hash || "")
   }));
-  const ok = events.opportunityDetailsVisible
-    && events.hash.includes(target.opportunityId)
+  const ok = events.matchWorkspaceVisible
+    && events.matchId === target.matchId
+    && ["property", "agreement", "parties", "broker"].every((section) => events.sections.includes(section))
     && !events.workflowVisible
     && events.workflowTitle !== "إدارة الفرصة"
     && events.openRequests.length === 0
     && events.workflowActions.length === 0;
-  if (!ok) throw new Error(`Legacy opportunity manager opened from ${target.reference}: ${JSON.stringify({ target, events })}`);
+  if (!ok) throw new Error(`Match workspace did not open for ${target.reference}: ${JSON.stringify({ target, events })}`);
 
+  await page.locator(".cv2-match-workspace [data-close-match-workspace]").click();
   await openBankTab(page);
   await page.locator(`[data-cv2-inbox-item][data-opportunity-id="${target.opportunityId}"]:visible`).first().waitFor({ state: "visible", timeout: 10000 });
   return { ...events, returnedToBank: true };
