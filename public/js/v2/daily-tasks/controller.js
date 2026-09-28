@@ -54,6 +54,15 @@ function currentTasks() {
   return topHomeDailyTasks(state.tasks);
 }
 
+function workspaceItems(items) {
+  if (!state.focusMatchId) return items;
+  // Match groups choose their highest ranked candidate as the active match.
+  // The Bank CTA can target another candidate in that same group. Preserve
+  // canonical opportunity records for hydration while isolating that match.
+  return items.filter((item) => String(item?.recordType || "").toLowerCase() === "opportunity"
+    || String(item?.matchId || item?.recordId || "") === state.focusMatchId);
+}
+
 async function sendCompletionRequest(task, button) {
   if (button?.dataset?.cv2ExecState === "working") return;
   setExecState(button, "working");
@@ -934,7 +943,7 @@ function onOperationsData(event) {
   const eventOfficeId = String(event.detail?.officeId || "").trim();
   if (eventOfficeId && currentOfficeId() && eventOfficeId !== currentOfficeId()) return;
   const items = Array.isArray(event.detail?.items) ? event.detail.items : [];
-  state.tasks = mapOperationsItemsToDailyTasks(items, new Date(), {
+  state.tasks = mapOperationsItemsToDailyTasks(workspaceItems(items), new Date(), {
     officeId: currentOfficeId(),
     requireOpportunityRecords: !state.focusMatchId
   });
@@ -1050,7 +1059,7 @@ export function mountDailyTasksContentV2(root) {
   if (!useDemoFixtures()) {
     const existing = window.IAQAR?.operationsItems;
     if (Array.isArray(existing)) {
-      state.tasks = mapOperationsItemsToDailyTasks(existing, new Date(), {
+      state.tasks = mapOperationsItemsToDailyTasks(workspaceItems(existing), new Date(), {
         officeId: currentOfficeId(),
         requireOpportunityRecords: !state.focusMatchId
       });
