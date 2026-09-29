@@ -46,7 +46,9 @@ const state = {
   drafts: new Map(),
   // Broker "seen" marks applied locally until the feed carries them, per matchId.
   localSeen: new Map(),
-  seenInFlight: new Set()
+  seenInFlight: new Set(),
+  // clientEventId of a failed broker action, replayed when the same action is retried.
+  retryEventIds: new Map()
 };
 
 function useDemoFixtures() {
@@ -753,13 +755,23 @@ async function createDealFromViewing(task, button) {
 async function recordNegotiation(task, input = {}) {
   const matchId = exactMatchId(task);
   if (!matchId) throw new Error("تعذر تحديد المطابقة — حدّث الصفحة وحاول مجددًا");
-  const response = await fetch(`${workerBase()}/workflow/action`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
-    body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "record_negotiation_activity", clientEventId: newClientEventId(), ...input })
-  });
+  const retryKey = `${matchId}|${JSON.stringify(input)}`;
+  const clientEventId = state.retryEventIds.get(retryKey) || newClientEventId();
+  let response;
+  try {
+    response = await fetch(`${workerBase()}/workflow/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
+      body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "record_negotiation_activity", clientEventId, ...input })
+    });
+  } catch (error) {
+    state.retryEventIds.set(retryKey, clientEventId);
+    throw error;
+  }
   const payload = await response.json().catch(() => ({}));
+  if (response.status >= 500) state.retryEventIds.set(retryKey, clientEventId);
   if (!response.ok || payload.ok === false || !payload.entry) throw new Error(payload.message || "تعذر حفظ الإجراء");
+  state.retryEventIds.delete(retryKey);
   rememberLocalActivity(matchId, payload.entry);
   state.tasks = withLocalActivity(state.tasks);
   renderList();

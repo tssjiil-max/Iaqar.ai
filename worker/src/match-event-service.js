@@ -120,9 +120,84 @@ async function partyPhone(helpers, { projectId, officeId, match, side, accessTok
   }, "client") || "";
 }
 
-async function dispatchNotifications(helpers, { projectId, officeId, matchId, accessToken, match, event, env }) {
+// FCM dispatch state machine (one record per matchId|eventId|recipient|channel):
+//   PENDING ─claim→ SENDING ─→ DISPATCHED | NO_DEVICES | DISABLED   (terminal)
+//                            └→ FAILED ─claim on retry→ SENDING …   (retryable)
+// A claim is an updateTime-conditioned write, so two concurrent retries cannot
+// both send; a SENDING claim older than the lease can be taken over after a crash.
+export const DISPATCH_STATUS = Object.freeze({
+  PENDING: "PENDING", SENDING: "SENDING", DISPATCHED: "DISPATCHED",
+  NO_DEVICES: "NO_DEVICES", DISABLED: "DISABLED", FAILED: "FAILED"
+});
+const TERMINAL_FCM = new Set([DISPATCH_STATUS.DISPATCHED, DISPATCH_STATUS.NO_DEVICES, DISPATCH_STATUS.DISABLED]);
+const SENDING_LEASE_MS = 60_000;
+
+function stringFields(helpers, values = {}) {
+  return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, helpers.firestoreString(String(v ?? ""))]));
+}
+
+async function readDispatch(helpers, { projectId, officeId, dispatchId, accessToken }) {
+  const doc = await helpers.getFirestoreDocument({ projectId, segments: ["offices", officeId, "notificationDispatches", dispatchId], accessToken, allowMissing: true });
+  return doc ? { data: { id: dispatchId, ...js(doc, helpers) }, updateTime: doc.updateTime || "" } : null;
+}
+
+async function claimFcmDispatch(helpers, { projectId, officeId, dispatchId, accessToken, now }) {
+  const current = await readDispatch(helpers, { projectId, officeId, dispatchId, accessToken });
+  if (!current) return null;
+  const status = String(current.data.status || "");
+  if (TERMINAL_FCM.has(status)) return null;
+  if (status === DISPATCH_STATUS.SENDING && now.getTime() - Date.parse(current.data.leaseAt || 0) < SENDING_LEASE_MS) return null;
+  if (![DISPATCH_STATUS.PENDING, DISPATCH_STATUS.FAILED, DISPATCH_STATUS.SENDING].includes(status)) return null;
+  const attempts = Number(current.data.attempts || 0) + 1;
+  try {
+    await helpers.patchFirestoreDocument({
+      projectId, segments: ["offices", officeId, "notificationDispatches", dispatchId], accessToken,
+      updateTime: current.updateTime,
+      fields: stringFields(helpers, { status: DISPATCH_STATUS.SENDING, leaseAt: now.toISOString(), attempts })
+    });
+  } catch (error) {
+    if (error?.status === 409) return null; // another request claimed it
+    throw error;
+  }
+  return { ...current.data, attempts };
+}
+
+async function sendFcmDispatch(helpers, { projectId, officeId, matchId, accessToken, env, match, dispatch, now }) {
+  const claimed = await claimFcmDispatch(helpers, { projectId, officeId, dispatchId: dispatch.dispatchId, accessToken, now });
+  if (!claimed) return (await readDispatch(helpers, { projectId, officeId, dispatchId: dispatch.dispatchId, accessToken }))?.data || dispatch;
+  let status = DISPATCH_STATUS.FAILED;
+  let sent = 0;
+  let lastError = "";
+  try {
+    const summary = await helpers.sendBrokerPush({
+      projectId, officeId, accessToken, env, title: claimed.title, body: claimed.body,
+      matchId, assignedBrokerId: match.assignedBrokerId || ""
+    });
+    sent = Number(summary?.sent || 0);
+    if (summary?.skipped) status = DISPATCH_STATUS.DISABLED;
+    else if (sent > 0) status = DISPATCH_STATUS.DISPATCHED;
+    else if (Number(summary?.registered || 0) === 0) status = DISPATCH_STATUS.NO_DEVICES;
+    else lastError = `all_devices_failed:${Number(summary?.failed || 0)}`;
+  } catch (error) {
+    lastError = String(error?.message || error || "push_failed").slice(0, 200);
+    console.warn("[iaqar-events] broker push failed", lastError);
+  }
+  const fields = { status, devicesSent: sent, lastError, finishedAt: new Date().toISOString() };
+  await helpers.setFirestoreDocument({
+    projectId, segments: ["offices", officeId, "notificationDispatches", dispatch.dispatchId], accessToken,
+    fields: stringFields(helpers, fields)
+  });
+  return { ...claimed, ...fields };
+}
+
+/**
+ * Creates each route's dispatch record once and drives FCM to a terminal state.
+ * Safe to call again for the same event: terminal records are left alone, FAILED
+ * ones are retried, WhatsApp handoffs are returned as they are.
+ */
+async function dispatchNotifications(helpers, { projectId, officeId, matchId, accessToken, match, event, env, now = new Date() }) {
   const results = [];
-  const office = await readDoc(helpers, { projectId, segments: ["offices", officeId], accessToken }) || {};
+  let office = null;
   for (const route of notificationRoutes(event)) {
     const key = notificationDedupeKey({ matchId, eventId: event.eventId, recipient: route.recipient, channel: route.channel });
     const dispatchId = `nd_${(await helpers.sha256Hex(key)).slice(0, 40)}`;
@@ -130,58 +205,72 @@ async function dispatchNotifications(helpers, { projectId, officeId, matchId, ac
       dispatchId, dedupeKey: key, matchId, eventId: event.eventId, eventType: event.eventType,
       recipient: route.recipient, channel: route.channel, createdAt: event.createdAt
     };
-    let payload;
-    if (route.channel === NOTIFICATION_CHANNEL.FCM) {
-      payload = { ...base, title: "تحديث في المطابقة", body: brokerNotificationText(event), status: "CREATED" };
-    } else {
-      const [phone, reviewUrl] = await Promise.all([
-        partyPhone(helpers, { projectId, officeId, match, side: route.recipient, accessToken }),
-        partyReviewUrl(helpers, { projectId, officeId, matchId, side: route.recipient, accessToken, env })
-      ]);
-      payload = {
-        ...base,
-        phone,
-        reviewUrl,
-        text: partyWhatsAppText(event, route.recipient, { officeName: office.officeName || office.name || "", reviewUrl }),
-        status: phone ? "PENDING_BROKER_HANDOFF" : "MISSING_PHONE"
-      };
-    }
-    const created = await helpers.createFirestoreDocumentIfAbsent({
-      projectId,
-      segments: ["offices", officeId, "notificationDispatches", dispatchId],
-      accessToken,
-      fields: Object.fromEntries(Object.entries(payload).map(([k, v]) => [k, helpers.firestoreString(String(v ?? ""))]))
-    });
-    if (!created) {
-      results.push({ ...payload, duplicate: true });
-      continue;
-    }
-    if (route.channel === NOTIFICATION_CHANNEL.FCM && typeof helpers.sendBrokerPush === "function") {
-      let status = "FCM_FAILED";
-      let sent = 0;
-      try {
-        const summary = await helpers.sendBrokerPush({
-          projectId, officeId, accessToken, env, title: payload.title, body: payload.body,
-          matchId, assignedBrokerId: match.assignedBrokerId || ""
-        });
-        sent = Number(summary?.sent || 0);
-        status = summary?.skipped ? "FCM_DISABLED_BY_PREFERENCES" : sent > 0 ? "FCM_DISPATCHED" : "FCM_NO_DEVICES";
-      } catch (error) {
-        console.warn("[iaqar-events] broker push failed", error?.message || error);
+    const existing = await readDispatch(helpers, { projectId, officeId, dispatchId, accessToken });
+    let record = existing?.data || null;
+    if (!record) {
+      let payload;
+      if (route.channel === NOTIFICATION_CHANNEL.FCM) {
+        payload = { ...base, title: "تحديث في المطابقة", body: brokerNotificationText(event), status: DISPATCH_STATUS.PENDING, attempts: 0 };
+      } else {
+        office = office || await readDoc(helpers, { projectId, segments: ["offices", officeId], accessToken }) || {};
+        const [phone, reviewUrl] = await Promise.all([
+          partyPhone(helpers, { projectId, officeId, match, side: route.recipient, accessToken }),
+          partyReviewUrl(helpers, { projectId, officeId, matchId, side: route.recipient, accessToken, env })
+        ]);
+        payload = {
+          ...base, phone, reviewUrl,
+          text: partyWhatsAppText(event, route.recipient, { officeName: office.officeName || office.name || "", reviewUrl }),
+          status: phone ? "PENDING_BROKER_HANDOFF" : "MISSING_PHONE"
+        };
       }
-      await helpers.setFirestoreDocument({
+      await helpers.createFirestoreDocumentIfAbsent({
         projectId, segments: ["offices", officeId, "notificationDispatches", dispatchId], accessToken,
-        fields: { status: helpers.firestoreString(status), devicesSent: helpers.firestoreString(String(sent)) }
+        fields: stringFields(helpers, payload)
       });
-      payload.status = status;
+      record = (await readDispatch(helpers, { projectId, officeId, dispatchId, accessToken }))?.data || payload;
     }
-    results.push(payload);
+    if (route.channel === NOTIFICATION_CHANNEL.FCM && typeof helpers.sendBrokerPush === "function" && !TERMINAL_FCM.has(String(record.status || ""))) {
+      record = await sendFcmDispatch(helpers, { projectId, officeId, matchId, accessToken, env, match, dispatch: { ...base, ...record }, now });
+    }
+    results.push({ ...base, ...record, dispatchId });
   }
   return results;
 }
 
+function projectEventFields(helpers, current, event) {
+  const history = parseMatchEvents(current.negotiationActivityJson);
+  const already = history.some((item) => item.eventId === event.eventId);
+  const previous = parseMatchState(current.matchStateJson) || projectMatchEvents(history, { matchStatus: current.status });
+  const state = already ? previous : applyMatchEventToState(previous, event);
+  const latest = (value) => (String(current[value] || "") > event.createdAt ? String(current[value]) : event.createdAt);
+  const fields = {
+    negotiationActivityJson: helpers.firestoreString(JSON.stringify(appendMatchEvent(history, event))),
+    matchStateJson: helpers.firestoreString(JSON.stringify({ ...state, lastEvent: null, lastPartyEvent: null })),
+    matchLifecycle: helpers.firestoreString(state.lifecycle),
+    lastEventAt: helpers.firestoreString(latest("lastEventAt"))
+  };
+  if (event.actorType === MATCH_EVENT_ACTOR.BROKER) fields.lastBrokerActivityAt = helpers.firestoreString(latest("lastBrokerActivityAt"));
+  return { fields, state };
+}
+
+async function readStoredEvent(helpers, { projectId, officeId, matchId, eventId, accessToken }) {
+  const doc = await helpers.getFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId, "events", eventId], accessToken, allowMissing: true });
+  if (!doc) return null;
+  const data = js(doc, helpers);
+  let payload = {};
+  try { payload = JSON.parse(data.payloadJson || "{}"); } catch { payload = {}; }
+  const built = buildMatchEvent({ ...data, payload });
+  return built.ok ? built.event : null;
+}
+
 /**
- * The one way to record match activity. Idempotent on eventId.
+ * The one way to record match activity. Idempotent and recoverable on eventId:
+ *   1. event document (create-only) — the source of truth;
+ *   2. Match + MATCH_REVIEW projection — only then
+ *   3. notifications — then the pending WhatsApp handoffs on the projection.
+ * Replaying the same eventId re-runs 2 and 3, completing whatever a failed
+ * attempt left undone, without applying the event twice or re-sending a
+ * notification that already reached a terminal state.
  * Throws 404 for an unknown match and 409 once the match is agreed/closed
  * (unless allowWhenClosed, used for the closing events themselves).
  */
@@ -193,50 +282,44 @@ export async function appendMatchEventRecord(helpers, {
   const loaded = id ? await loadMatchWithVersion(helpers, { projectId, officeId, matchId: id, accessToken }) : null;
   if (!loaded) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
   const match = loaded.match;
-  if (!allowWhenClosed && isLifecycleReadOnly(matchLifecycleOf(match))) {
-    throw helpers.appError("match_read_only", 409, "المطابقة مغلقة — لا يمكن إضافة تعديل جديد.");
-  }
   const built = buildMatchEvent({ ...input, matchId: id, officeId, createdAt: now.toISOString() });
   if (!built.ok) throw helpers.appError(`event_${built.error}`, 400, "بيانات الحدث غير صحيحة.");
-  const event = built.event;
+  let event = built.event;
+  if (!allowWhenClosed && isLifecycleReadOnly(matchLifecycleOf(match))) {
+    // Only a replay of an event stored before the match closed may still complete.
+    const stored = await readStoredEvent(helpers, { projectId, officeId, matchId: id, eventId: event.eventId, accessToken });
+    if (!stored) throw helpers.appError("match_read_only", 409, "المطابقة مغلقة — لا يمكن إضافة تعديل جديد.");
+  }
   const { payload, ...flat } = event;
   const created = await helpers.createFirestoreDocumentIfAbsent({
     projectId,
     segments: ["offices", officeId, "matches", id, "events", event.eventId],
     accessToken,
-    fields: {
-      ...Object.fromEntries(Object.entries(flat).map(([k, v]) => [k, helpers.firestoreString(String(v ?? ""))])),
-      payloadJson: helpers.firestoreString(JSON.stringify(payload || {}))
-    }
+    fields: { ...stringFields(helpers, flat), payloadJson: helpers.firestoreString(JSON.stringify(payload || {})) }
   });
-  if (!created) {
-    const events = parseMatchEvents(match.negotiationActivityJson);
-    return { event: events.find((item) => item.eventId === event.eventId) || event, duplicate: true, state: parseMatchState(match.matchStateJson) || projectMatchEvents(events, { matchStatus: match.status }), dispatches: [] };
+  const duplicate = !created;
+  if (duplicate) {
+    // Replay of a stored event: finish its projection/notifications with the stored copy.
+    event = await readStoredEvent(helpers, { projectId, officeId, matchId: id, eventId: event.eventId, accessToken }) || event;
   }
-  const dispatches = await dispatchNotifications(helpers, { projectId, officeId, matchId: id, accessToken, match, event, env });
-  const pending = dispatches.filter((d) => d.channel === NOTIFICATION_CHANNEL.WHATSAPP && !d.duplicate)
-    .map((d) => ({ dispatchId: d.dispatchId, eventId: d.eventId, recipient: d.recipient, phone: d.phone, text: d.text, status: d.status, createdAt: d.createdAt }));
   let state = null;
   const projected = await updateMatchProjection(helpers, { projectId, officeId, matchId: id, accessToken, resolveOperationId, loaded }, (current) => {
-    const history = parseMatchEvents(current.negotiationActivityJson);
-    const already = history.some((item) => item.eventId === event.eventId);
-    const previous = parseMatchState(current.matchStateJson) || projectMatchEvents(history, { matchStatus: current.status });
-    state = already ? previous : applyMatchEventToState(previous, event);
-    const fields = {
-      negotiationActivityJson: helpers.firestoreString(JSON.stringify(appendMatchEvent(history, event))),
-      matchStateJson: helpers.firestoreString(JSON.stringify({ ...state, lastEvent: null, lastPartyEvent: null })),
-      matchLifecycle: helpers.firestoreString(state.lifecycle),
-      lastEventAt: helpers.firestoreString(event.createdAt)
-    };
-    if (event.actorType === MATCH_EVENT_ACTOR.BROKER) fields.lastBrokerActivityAt = helpers.firestoreString(event.createdAt);
-    if (pending.length) {
+    const result = projectEventFields(helpers, current, event);
+    state = result.state;
+    return result.fields;
+  });
+  const dispatches = await dispatchNotifications(helpers, { projectId, officeId, matchId: id, accessToken, match: projected.match || match, event, env, now });
+  const pending = dispatches.filter((d) => d.channel === NOTIFICATION_CHANNEL.WHATSAPP && d.status !== "WHATSAPP_OPENED")
+    .map((d) => ({ dispatchId: d.dispatchId, eventId: d.eventId, recipient: d.recipient, phone: d.phone, text: d.text, status: d.status, createdAt: d.createdAt }));
+  if (pending.length) {
+    await updateMatchProjection(helpers, { projectId, officeId, matchId: id, accessToken, resolveOperationId }, (current) => {
       const outbox = parseOutbox(current.whatsappOutboxJson);
       const known = new Set(outbox.map((item) => item.dispatchId));
-      fields.whatsappOutboxJson = helpers.firestoreString(JSON.stringify([...outbox, ...pending.filter((item) => !known.has(item.dispatchId))].slice(-OUTBOX_LIMIT)));
-    }
-    return fields;
-  });
-  return { event, duplicate: false, state, dispatches, operationId: projected.operationId };
+      const additions = pending.filter((item) => !known.has(item.dispatchId));
+      return { whatsappOutboxJson: helpers.firestoreString(JSON.stringify([...outbox, ...additions].slice(-OUTBOX_LIMIT))) };
+    });
+  }
+  return { event, duplicate, state, dispatches, operationId: projected.operationId };
 }
 
 /** Broker opened WhatsApp for one pending handoff: WHATSAPP_OPENED, never "sent". */

@@ -41,6 +41,9 @@ const jwk = { ...publicKey.export({ format: "jwk" }), kid: "neg-kid", alg: "RS25
 function setup() {
   const docs = new Map();
   const fcmCalls = [];
+  const fcmAttempts = [];
+  // One-shot injected failures: { host, method, pathIncludes, maskIncludes }.
+  const failures = [];
   let clock = 0;
   const base = `/v1/projects/${PROJECT}/databases/(default)/documents/`;
   const write = (p, fields, mask) => {
@@ -59,6 +62,15 @@ function setup() {
     const method = String(init.method || "GET").toUpperCase();
     if (url.hostname === "oauth2.googleapis.com") return Response.json({ access_token: "neg-access", expires_in: 3600 });
     if (url.hostname === "www.googleapis.com") return Response.json({ keys: [jwk] });
+    const failureIndex = failures.findIndex((f) => url.hostname.startsWith(f.host)
+      && (!f.method || f.method === method)
+      && (!f.pathIncludes || decodeURIComponent(url.pathname).includes(f.pathIncludes))
+      && (!f.maskIncludes || url.searchParams.getAll("updateMask.fieldPaths").includes(f.maskIncludes)));
+    if (url.hostname === "fcm.googleapis.com") fcmAttempts.push(Date.now());
+    if (failureIndex >= 0) {
+      failures.splice(failureIndex, 1);
+      return Response.json({ error: { status: "UNAVAILABLE", message: "injected failure" } }, { status: 503 });
+    }
     if (url.hostname === "fcm.googleapis.com") { fcmCalls.push(JSON.parse(init.body || "{}")); return Response.json({ name: `projects/x/messages/${fcmCalls.length}` }); }
     if (url.hostname !== "firestore.googleapis.com") return Response.json({ ok: true });
     const pathname = decodeURIComponent(url.pathname);
@@ -117,7 +129,7 @@ function setup() {
     }), env, { waitUntil() {} });
     return { status: response.status, body: await response.json() };
   };
-  return { env, get, list, call, party, fcmCalls, restore() { globalThis.fetch = originalFetch; } };
+  return { env, get, list, call, party, fcmCalls, fcmAttempts, failNext: (failure) => failures.push(failure), restore() { globalThis.fetch = originalFetch; } };
 }
 
 async function withMatch(fn) {
@@ -261,7 +273,7 @@ test("FCM to the broker and WhatsApp payload to the other party are created exac
     const dispatches = h.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.eventId === first.body.event.eventId);
     assert.deepEqual(dispatches.map((d) => `${d.recipient}:${d.channel}`).sort(), ["broker:fcm", "owner:whatsapp"]);
     assert.equal(h.fcmCalls.length, 1, "one FCM send for one event");
-    assert.equal(dispatches.find((d) => d.channel === "fcm").status, "FCM_DISPATCHED");
+    assert.equal(dispatches.find((d) => d.channel === "fcm").status, "DISPATCHED");
     const whatsapp = dispatches.find((d) => d.channel === "whatsapp");
     assert.equal(whatsapp.status, "PENDING_BROKER_HANDOFF");
     assert.equal(whatsapp.phone, "966552220002");
@@ -405,5 +417,85 @@ test("broker-recorded party options persist, can change, and are marked as recor
     assert.equal((await record({ kind: "party_choice", party: "owner", choiceId: "drop_table" })).status, 400);
     const choices = activityOf(op()).filter((entry) => /^(CLIENT|OWNER)_/.test(entry.eventType));
     assert.deepEqual(choices.map((entry) => entry.payload.choiceId), ["interested", "not_interested", "equipment"]);
+  });
+});
+
+test("event created + projection fails once + retry → projection completes exactly once, then notifications", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const eventPath = `/party/sessions/${encodeURIComponent(tokens.client)}/event`;
+    // 1) The Match projection write fails once, after the event document is stored.
+    h.failNext({ host: "firestore", method: "PATCH", pathIncludes: `/matches/${h.match.id}`, maskIncludes: "negotiationActivityJson" });
+    const failed = await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "proj-1" });
+    assert.ok(failed.status >= 500, `first attempt must fail: ${failed.status}`);
+    const stored = h.list(`offices/${OFFICE}/matches/${h.match.id}/events`).filter((e) => e.eventType === "CLIENT_INTERESTED");
+    assert.equal(stored.length, 1, "event document is stored");
+    assert.equal(activityOf(h.matchDoc()).some((e) => e.eventType === "CLIENT_INTERESTED"), false, "projection not applied yet");
+    assert.equal(h.list(`offices/${OFFICE}/notificationDispatches`).length, 0, "no notification before the projection");
+    assert.equal(h.fcmCalls.length, 0);
+    // 2) Retry with the same client event id completes the projection once.
+    const retry = await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "proj-1" });
+    assert.equal(retry.status, 200, JSON.stringify(retry.body));
+    assert.equal(retry.body.duplicate, true);
+    assert.equal(retry.body.event.eventId, stored[0].eventId);
+    for (const doc of [h.matchDoc(), h.op()]) {
+      assert.equal(activityOf(doc).filter((e) => e.eventId === stored[0].eventId).length, 1);
+      assert.equal(stateOf(doc).client.choiceId, "interested");
+    }
+    assert.equal(h.fcmCalls.length, 1, "notification sent once, after the projection");
+    // 3) Replaying again changes nothing and sends nothing.
+    const before = h.matchDoc().negotiationActivityJson;
+    await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "proj-1" });
+    assert.equal(h.matchDoc().negotiationActivityJson, before);
+    assert.equal(h.fcmCalls.length, 1);
+    assert.equal(stateOf(h.matchDoc()).eventCount, activityOf(h.matchDoc()).length, "state applied the event exactly once");
+
+    // Same recovery when the MATCH_REVIEW operation mirror write fails.
+    h.failNext({ host: "firestore", method: "PATCH", pathIncludes: `/operations/${h.operation.id}`, maskIncludes: "negotiationActivityJson" });
+    const opFail = await h.party("POST", eventPath, { choiceId: "needs_time", clientEventId: "proj-2" });
+    assert.ok(opFail.status >= 500);
+    assert.equal(stateOf(h.op()).client.choiceId, "interested", "operation still stale");
+    assert.equal((await h.party("POST", eventPath, { choiceId: "needs_time", clientEventId: "proj-2" })).status, 200);
+    assert.equal(stateOf(h.op()).client.choiceId, "needs_time");
+    assert.equal(activityOf(h.op()).filter((e) => e.eventType === "CLIENT_NEEDS_TIME").length, 1);
+    assert.equal(stateOf(h.matchDoc()).eventCount, activityOf(h.matchDoc()).length);
+  });
+});
+
+test("FCM fails once + retry → one successful delivery, never two", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const eventPath = `/party/sessions/${encodeURIComponent(tokens.client)}/event`;
+    h.failNext({ host: "fcm" });
+    const first = await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "fcm-1" });
+    assert.equal(first.status, 200, "the event itself succeeds");
+    const fcmRecord = () => h.list(`offices/${OFFICE}/notificationDispatches`).find((d) => d.channel === "fcm" && d.eventId === first.body.event.eventId);
+    assert.equal(fcmRecord().status, "FAILED");
+    assert.equal(fcmRecord().attempts, "1");
+    assert.equal(h.fcmCalls.length, 0);
+    // Retry the same event: FAILED is retried once and succeeds.
+    await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "fcm-1" });
+    assert.equal(fcmRecord().status, "DISPATCHED");
+    assert.equal(fcmRecord().attempts, "2");
+    assert.equal(h.fcmCalls.length, 1);
+    // Further retries never send again.
+    await h.party("POST", eventPath, { choiceId: "interested", clientEventId: "fcm-1" });
+    assert.equal(h.fcmCalls.length, 1);
+    assert.equal(h.fcmAttempts.length, 2);
+    // Two concurrent retries of a FAILED dispatch: one claim, one send.
+    h.failNext({ host: "fcm" });
+    const second = await h.party("POST", eventPath, { choiceId: "needs_time", clientEventId: "fcm-2" });
+    const secondRecord = () => h.list(`offices/${OFFICE}/notificationDispatches`).find((d) => d.channel === "fcm" && d.eventId === second.body.event.eventId);
+    assert.equal(secondRecord().status, "FAILED");
+    await Promise.all([
+      h.party("POST", eventPath, { choiceId: "needs_time", clientEventId: "fcm-2" }),
+      h.party("POST", eventPath, { choiceId: "needs_time", clientEventId: "fcm-2" })
+    ]);
+    assert.equal(secondRecord().status, "DISPATCHED");
+    assert.equal(h.fcmCalls.length, 2, "one success per event");
+    // The WhatsApp handoff stays as it was: created once, pending the broker.
+    const whatsapp = h.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.channel === "whatsapp" && d.eventId === first.body.event.eventId);
+    assert.equal(whatsapp.length, 1);
+    assert.equal(whatsapp[0].status, "PENDING_BROKER_HANDOFF");
   });
 });

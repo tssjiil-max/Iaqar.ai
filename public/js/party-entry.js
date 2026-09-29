@@ -81,7 +81,7 @@ function attachPhotos(view, token) {
 }
 
 const LIVE_POLL_MS = 3000;
-const liveState = { token: "", stateVersion: "", timer: null, busy: false };
+const liveState = { token: "", stateVersion: "", timer: null, busy: false, retry: null };
 
 function captureLiveInputs() {
   const values = {};
@@ -118,15 +118,27 @@ function newClientEventId() {
 async function submitLiveEvent(token, body, button) {
   if (button) button.disabled = true;
   showStatus("");
+  // Retrying the same choice after a failure replays the same event id, so the
+  // Worker completes that event instead of storing a second one.
+  const key = JSON.stringify(body);
+  const clientEventId = liveState.retry?.key === key ? liveState.retry.id : newClientEventId();
   try {
-    const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/event`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({ ...body, clientEventId: newClientEventId() })
-    });
+    let response;
+    try {
+      response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ ...body, clientEventId })
+      });
+    } catch (networkError) {
+      liveState.retry = { key, id: clientEventId };
+      throw networkError;
+    }
     const payload = await response.json().catch(() => ({}));
+    if (response.status >= 500) liveState.retry = { key, id: clientEventId };
     if (!response.ok || !payload.ok) throw Object.assign(new Error(payload.message || "تعذر حفظ اختيارك."), { status: response.status });
+    liveState.retry = null;
     const fresh = await loadSession(token);
     renderView(fresh, token);
     showStatus("وصل تحديثك للوسيط.");
