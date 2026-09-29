@@ -1,0 +1,66 @@
+name: Office OS preview (Staging project, isolated)
+
+# Pre-merge preview of PR #131. Deploys ONLY:
+#   - Firebase Hosting channel "office-os-preview" on iaqar-ai-staging (not the "staging" channel)
+#   - Cloudflare Worker "iaqar-intake-os-preview" (wrangler --env preview, not --env staging)
+# Production (aqar-b5d76, production Worker) and the shared Staging channel/Worker are untouched.
+on:
+  push:
+    branches:
+      - claude/office-os-rebuild-20260930
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: office-os-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Deploy preview + live journey
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IAQAR_DEPLOY_TARGET: preview
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - name: Deploy preview (channel + preview Worker)
+        run: |
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          PREVIEW_OUTPUT_FILE="$GITHUB_ENV" bash scripts/deploy-office-os-preview.sh
+      - name: Preview links
+        run: |
+          echo "### Office OS preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Public office page (QA office): ${PREVIEW_URL}/?office=qa-office-os-preview&view=public" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Worker: ${PREVIEW_WORKER_URL}/health" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+      - run: npx playwright install --with-deps chromium
+      - name: Live journey on the preview (isolated QA office)
+        run: OUT_DIR="$RUNNER_TEMP/office-os-live" node scripts/qa/office-os/live-preview.e2e.mjs
+      - name: Live results summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/office-os-live/live-report.json" ]; then
+            node -e 'const r=require(process.argv[1]);const ok=r.checks.filter(c=>c.ok).length;console.log(`- Live checks: ${ok}/${r.checks.length}`);for(const c of r.checks.filter(c=>!c.ok))console.log(`  - FAIL: ${c.name} — ${c.detail}`);console.log(`- FCM: ${JSON.stringify(r.fcm)}`);console.log(`- Gemini: ${JSON.stringify(r.gemini)}`)' "$RUNNER_TEMP/office-os-live/live-report.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload live screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-os-live-${{ github.run_id }}
+          path: ${{ runner.temp }}/office-os-live
+          retention-days: 14

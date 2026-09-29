@@ -77,7 +77,7 @@ a { color: var(--blue); }
 .os-share-link svg { width: 20px; height: 20px; }
 
 /* ---------- Main sections ---------- */
-.os-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.os-sections { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 14px; }
 .os-section-tab { min-height: 58px; border-radius: 16px; border: 0; background: var(--tint); color: var(--navy); font-weight: 800; font-size: clamp(.9rem, 3.9vw, 1.05rem); display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px; white-space: nowrap; }
 .os-section-tab svg { width: 24px; height: 24px; color: var(--blue); flex: none; }
 .os-section-tab .n { font-weight: 600; opacity: .85; }
@@ -323,3 +323,13 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--blue); t
 .os-page-head .os-ref { font-size: .78rem; padding: 3px 8px; }
 .os-btn-row > .os-btn.whatsapp.block { flex-basis: 100%; }
 .os-party .os-btn-row > .os-btn { flex: 1 1 100%; min-height: 40px; font-size: .92rem; padding: 6px 10px; }
+
+/* Narrow phones: section tabs shrink and wrap instead of pushing the page sideways. */
+.os-section-tab { min-width: 0; }
+@media (max-width: 399px) {
+  .os-section-tab { white-space: normal; line-height: 1.25; font-size: .92rem; gap: 6px; padding: 8px 6px; text-align: center; }
+  .os-section-tab svg { width: 22px; height: 22px; }
+  .os-header { grid-template-columns: 48px 1fr 44px; gap: 6px; }
+  .os-avatar { width: 46px; height: 46px; }
+  .os-office-name { font-size: 1.2rem; }
+}
