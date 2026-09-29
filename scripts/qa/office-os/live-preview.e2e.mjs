@@ -32,8 +32,12 @@ const checks = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: Boolean(ok), detail: String(detail).slice(0, 300) }); console.log(`${ok ? "✔" : "✘"} ${name}${detail ? ` — ${String(detail).slice(0, 200)}` : ""}`); };
 const report = { at: new Date().toISOString(), previewUrl: PREVIEW_URL, workerUrl: WORKER_URL, run: RUN, checks, fcm: null, gemini: null };
 
-if (!new URL(PREVIEW_URL).hostname.startsWith(`${PROJECT}--office-os-preview`)) throw new Error(`refusing: ${PREVIEW_URL} is not the office-os-preview channel`);
-if (!/^https:\/\/iaqar-intake-os-preview\./.test(WORKER_URL)) throw new Error("refusing: not the preview Worker");
+// Allowed targets: the office-os-preview channel + preview Worker, or the shared Staging
+// channel + Staging Worker (post-merge). Anything else (incl. Production) is refused.
+const HOST = new URL(PREVIEW_URL).hostname;
+const onPreview = HOST.startsWith(`${PROJECT}--office-os-preview`) && /^https:\/\/iaqar-intake-os-preview\./.test(WORKER_URL);
+const onStaging = HOST === `${PROJECT}--staging-9c4b0k7h.web.app` && /^https:\/\/iaqar-intake-staging\./.test(WORKER_URL);
+if (!onPreview && !onStaging) throw new Error(`refusing: ${PREVIEW_URL} + ${WORKER_URL} is not preview or Staging`);
 const { serviceAccount } = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT);
 if (serviceAccount?.project_id !== PROJECT) throw new Error("refusing: service account is not Staging");
 initializeApp({ credential: cert(serviceAccount), projectId: PROJECT });
