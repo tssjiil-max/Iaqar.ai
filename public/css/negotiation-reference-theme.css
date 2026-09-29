@@ -1,0 +1,294 @@
+/* Visual reference: 1000848294.png. Remove this link to disable the theme. */
+:root {
+  --color-primary: #17589c;
+  --color-primary-dark: #014188;
+  --color-primary-soft: #ecf5fc;
+  --color-secondary: #006643;
+  --color-background: #eef5fd;
+  --color-surface: #fcfdff;
+  --color-surface-soft: #edf6ff;
+  --color-text: #0c1244;
+  --color-text-muted: #6f7b93;
+  --color-border: #e8f2fc;
+  --color-success: #056647;
+  --color-warning: #1f3c68;
+  --color-danger: #af2535;
+  --color-info: #014188;
+  --color-success-soft: #d9f5e9;
+  --color-danger-soft: #ffe2e6;
+  --color-warning-soft: #e2e9f3;
+  --shadow-card: 0 8px 24px rgba(23, 88, 156, .08);
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --spacing-xs: 6px;
+  --spacing-sm: 10px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+}
+
+/* Color identity for the rest of the site; its layout stays in its own CSS. */
+html.is-content-v2 {
+  --green: var(--color-primary);
+  --green-dark: var(--color-primary-dark);
+  --green-2: var(--color-primary);
+  --green-soft: var(--color-primary-soft);
+  --green-pale: var(--color-surface-soft);
+  --bg: var(--color-background);
+  --card: var(--color-surface);
+  --text: var(--color-text);
+  --muted: var(--color-text-muted);
+  --line: var(--color-border);
+  --success: var(--color-success);
+  --shadow: var(--shadow-card);
+  --opp-primary: var(--color-primary);
+  --opp-primary-dark: var(--color-primary-dark);
+  --opp-primary-soft: var(--color-primary-soft);
+  --opp-success: var(--color-success);
+}
+html.is-content-v2 .cv2-details,
+html.is-content-v2 .opp-v2-page {
+  --cv2-green: var(--color-primary);
+  --cv2-green-soft: var(--color-primary-soft);
+  --cv2-green-text: var(--color-primary-dark);
+  --cv2-border: var(--color-border);
+  --cv2-text: var(--color-text);
+  --cv2-muted: var(--color-text-muted);
+  --opp-v2-green: var(--color-primary);
+  --opp-v2-green-soft: var(--color-primary-soft);
+  --opp-v2-green-text: var(--color-primary-dark);
+  --opp-v2-page-bg: var(--color-background);
+  --opp-v2-text: var(--color-text);
+  --opp-v2-muted: var(--color-text-muted);
+  --opp-v2-border: var(--color-border);
+  --opp-v2-icon: var(--color-primary);
+}
+html.is-content-v2 .content-v2-surface,
+html.is-content-v2 .card,
+html.is-content-v2 .opp-v2-card { border-color: var(--color-border); }
+html.is-content-v2 input:focus-visible,
+html.is-content-v2 select:focus-visible,
+html.is-content-v2 textarea:focus-visible,
+html.is-content-v2 button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+html.is-party-mode body { background: var(--color-background); }
+html.is-party-mode .party-shell { color: var(--color-text); }
+html.is-party-mode .party-card { background: var(--color-surface); border-color: var(--color-border); box-shadow: var(--shadow-card); }
+html.is-party-mode .party-card h1,
+html.is-party-mode .party-card h2,
+html.is-party-mode .party-office,
+html.is-party-mode .party-section-label { color: var(--color-primary-dark); }
+html.is-party-mode .party-action,
+html.is-party-mode .party-chip,
+html.is-party-mode .party-input,
+html.is-party-mode .party-choice { border-color: var(--color-border); }
+html.is-party-mode .party-action:first-child { background: var(--color-primary-dark); color: var(--color-surface); border-color: var(--color-primary-dark); }
+html.is-party-mode .party-action:focus-visible,
+html.is-party-mode .party-chip:focus-within,
+html.is-party-mode .party-input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+html.is-party-mode .party-status,
+html.is-party-mode .party-row span { color: var(--color-text-muted); }
+
+/* Negotiation workspace. All selectors are scoped to this one overlay. */
+.cv2-match-workspace,
+.cv2-match-workspace * { box-sizing: border-box; }
+.cv2-match-workspace {
+  background: var(--color-background);
+  color: var(--color-text);
+  padding: 0 0 calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+}
+.cv2-match-workspace-shell { width: 100%; max-width: 1024px; }
+.cv2-match-workspace-shell > header {
+  min-height: calc(82px + env(safe-area-inset-top, 0px));
+  padding: calc(12px + env(safe-area-inset-top, 0px)) var(--spacing-md) 12px;
+  background: var(--color-primary);
+  color: var(--color-surface);
+  margin: 0;
+  direction: ltr;
+}
+.cv2-match-workspace-shell > header h2 {
+  color: inherit;
+  font-size: clamp(20px, 4vw, 27px);
+  text-align: center;
+  flex: 1;
+  line-height: 1.35;
+}
+.cv2-match-workspace-shell > header button {
+  min-width: 48px;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px;
+  font-size: 14px;
+}
+.cv2-match-workspace [data-match-workspace-content] { padding: 0 var(--spacing-sm); }
+.cv2-match-workspace .cv2-exec-list,
+.cv2-match-workspace .cv2-exec-card { min-width: 0; max-width: none; background: transparent; border: 0; box-shadow: none; padding: 0; }
+.cv2-match-workspace [data-match-negotiation-page] { gap: var(--spacing-sm); }
+.cv2-match-workspace [data-match-section],
+.cv2-match-workspace .cv2-neg-log,
+.cv2-match-workspace .cv2-exec-timeline {
+  min-width: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.cv2-match-workspace [data-match-section] > h3,
+.cv2-match-workspace .cv2-party-progress > h3,
+.cv2-match-workspace .cv2-broker-panel h3,
+.cv2-match-workspace .cv2-neg-log > strong,
+.cv2-match-workspace .cv2-exec-timeline > strong {
+  margin: 0 0 var(--spacing-sm);
+  padding: 0;
+  color: var(--color-text);
+  font-size: clamp(16px, 3vw, 21px);
+  font-weight: 800;
+}
+.cv2-match-workspace .cv2-match-hero {
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  gap: var(--spacing-sm);
+}
+.cv2-match-workspace .cv2-match-title-row { grid-template-columns: minmax(0, 1fr) auto; }
+.cv2-match-workspace .cv2-match-property-icon { display: none; }
+.cv2-match-workspace .cv2-match-title-row h3 { color: var(--color-text); font-size: clamp(18px, 4vw, 24px); }
+.cv2-match-workspace .cv2-match-title-row p,
+.cv2-match-workspace .cv2-match-reference { color: var(--color-text-muted); font-size: 13px; }
+.cv2-match-workspace .cv2-match-badge {
+  min-height: 32px;
+  border-color: var(--color-success);
+  background: var(--color-success);
+  color: var(--color-surface);
+  font-size: 12px;
+}
+.cv2-match-workspace .cv2-match-badge.is-party { background: var(--color-surface-soft); color: var(--color-primary-dark); border-color: var(--color-border); }
+.cv2-match-workspace .cv2-match-clock { background: var(--color-surface-soft); color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); border: 0; background: transparent; }
+.cv2-match-workspace .cv2-match-facts > div { border-color: var(--color-border); padding: var(--spacing-sm); }
+.cv2-match-workspace .cv2-match-facts span { color: var(--color-primary); }
+.cv2-match-workspace .cv2-match-facts strong { color: var(--color-text); font-size: 14px; }
+.cv2-match-workspace .cv2-match-facts small { color: var(--color-text-muted); font-size: 12px; }
+.cv2-match-workspace .cv2-match-score { background: var(--color-surface-soft); }
+.cv2-match-workspace .cv2-match-score-count { color: var(--color-primary-dark); border-color: var(--color-primary); }
+.cv2-match-workspace .cv2-match-score li span { background: var(--color-success); }
+.cv2-match-workspace .cv2-match-fold,
+.cv2-match-workspace .cv2-match-candidates { background: var(--color-surface-soft); border-color: var(--color-border); }
+.cv2-match-workspace .cv2-match-fold > summary { min-height: 48px; color: var(--color-primary-dark); }
+
+/* Agreement values remain sourced from the existing state projection. */
+.cv2-match-workspace .cv2-neg-assistant,
+.cv2-match-workspace .cv2-agreement { border: 0; padding: 0; margin: var(--spacing-sm) 0; background: transparent; }
+.cv2-match-workspace .cv2-agreement h4 { color: var(--color-text); }
+.cv2-match-workspace .cv2-agreement-current { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--spacing-sm); }
+.cv2-match-workspace .cv2-agreement-current > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: center;
+  min-height: 92px;
+  padding: var(--spacing-sm);
+  text-align: center;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+  overflow-wrap: anywhere;
+}
+.cv2-match-workspace .cv2-agreement-current dt { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-agreement-current dd { color: var(--color-text); font-weight: 800; }
+.cv2-match-workspace .cv2-neg-stages,
+.cv2-match-workspace .cv2-neg-summary,
+.cv2-match-workspace .cv2-neg-parties,
+.cv2-match-workspace .cv2-neg-auto,
+.cv2-match-workspace .cv2-neg-last-update { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-agreement-form { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--spacing-sm); }
+.cv2-match-workspace .cv2-match-action { border-color: var(--color-border); background: var(--color-surface-soft); }
+
+/* Owner on the right and client on the left in RTL, as in the reference. */
+.cv2-match-workspace .cv2-party-columns { gap: var(--spacing-xs); direction: rtl; }
+.cv2-match-workspace .cv2-party-side { border-color: var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); padding: var(--spacing-sm); }
+.cv2-match-workspace .cv2-party-side[data-party-side="owner"] { background: var(--color-success-soft); }
+.cv2-match-workspace .cv2-party-side[data-party-side="client"] { background: var(--color-surface-soft); }
+.cv2-match-workspace .cv2-party-side h4 { color: var(--color-text); font-size: clamp(15px, 3vw, 20px); text-align: right; }
+.cv2-match-workspace .cv2-party-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cv2-match-workspace .cv2-party-choice {
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 8px 3px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-size: clamp(11px, 2.7vw, 15px);
+  line-height: 1.35;
+  white-space: normal;
+}
+.cv2-match-workspace .cv2-party-choice span { font-size: 19px; line-height: 1; }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="interested"] { background: var(--color-success-soft); color: var(--color-success); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="not_interested"] { background: var(--color-danger-soft); color: var(--color-danger); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="needs_time"] { background: var(--color-warning-soft); color: var(--color-warning); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="viewing"] { background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.cv2-match-workspace .cv2-party-choice.is-selected { border-color: currentColor; box-shadow: inset 0 0 0 2px currentColor; }
+.cv2-match-workspace .cv2-party-step { border-color: var(--color-border); color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-party-step.is-done { background: var(--color-success-soft); color: var(--color-success); }
+.cv2-match-workspace .cv2-party-control,
+.cv2-match-workspace .cv2-exec-primary { min-height: 48px; border-radius: var(--radius-control); border-color: var(--color-primary-dark); background: var(--color-primary-dark); color: var(--color-surface); }
+.cv2-match-workspace .cv2-exec-reveal { min-height: 48px; }
+.cv2-match-workspace .cv2-party-status,
+.cv2-match-workspace .cv2-party-send-count,
+.cv2-match-workspace .cv2-party-progress-note { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-exec-secondary { min-height: 48px; border-radius: var(--radius-control); border-color: var(--color-primary-dark); background: var(--color-surface); color: var(--color-primary-dark); }
+
+/* Broker message and its own contextual replies remain separate from notes. */
+.cv2-match-workspace .cv2-broker-panel,
+.cv2-match-workspace .cv2-broker-block { border: 0; background: transparent; margin: 0; padding: 0; }
+.cv2-match-workspace .cv2-broker-panel-body { padding: 0; gap: var(--spacing-md); }
+.cv2-match-workspace .cv2-broker-block { gap: var(--spacing-sm); }
+.cv2-match-workspace .cv2-broker-block h4 { color: var(--color-text); font-size: 16px; }
+.cv2-match-workspace .cv2-broker-block label { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-broker-block textarea,
+.cv2-match-workspace .cv2-broker-block select,
+.cv2-match-workspace .cv2-agreement-form input,
+.cv2-match-workspace .cv2-agreement-form select {
+  width: 100%; min-width: 0; min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font: inherit;
+}
+.cv2-match-workspace .cv2-broker-block textarea { min-height: 88px; resize: vertical; }
+.cv2-match-workspace .cv2-broker-block.is-internal { border-top: 1px solid var(--color-border); padding-top: var(--spacing-md); }
+.cv2-match-workspace .cv2-broker-block small { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-broker-check input { min-width: 20px; min-height: 20px; accent-color: var(--color-primary); }
+.cv2-match-workspace .cv2-neg-log ol,
+.cv2-match-workspace .cv2-exec-timeline ol { gap: 8px; }
+.cv2-match-workspace .cv2-neg-log li,
+.cv2-match-workspace .cv2-exec-timeline li { min-width: 0; padding: var(--spacing-sm); background: var(--color-surface-soft); border-color: var(--color-border); border-radius: var(--radius-control); }
+.cv2-match-workspace .cv2-neg-log-title,
+.cv2-match-workspace .cv2-neg-log-message { color: var(--color-text); }
+.cv2-match-workspace .cv2-neg-log-meta,
+.cv2-match-workspace .cv2-exec-time { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-neg-msg-replies { padding: var(--spacing-sm); border-inline-start: 2px solid var(--color-primary); background: var(--color-primary-soft); border-radius: var(--radius-control); }
+.cv2-match-workspace .cv2-neg-msg-kind { background: var(--color-primary-soft); color: var(--color-primary-dark); }
+
+@media (max-width: 430px) {
+  .cv2-match-workspace [data-match-workspace-content] { padding-inline: var(--spacing-xs); }
+  .cv2-match-workspace [data-match-section],
+  .cv2-match-workspace .cv2-neg-log,
+  .cv2-match-workspace .cv2-exec-timeline { padding: var(--spacing-sm); }
+  .cv2-match-workspace .cv2-party-side { padding: var(--spacing-xs); }
+  .cv2-match-workspace .cv2-party-steps { gap: 3px; }
+  .cv2-match-workspace .cv2-party-step { font-size: 9px; padding: 3px; }
+  .cv2-match-workspace .cv2-match-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cv2-match-workspace .cv2-match-facts > div { border: 0; }
+}
+@media (max-width: 360px) {
+  .cv2-match-workspace .cv2-party-side h4 { font-size: 14px; }
+  .cv2-match-workspace .cv2-party-choice { font-size: 11px; }
+}
