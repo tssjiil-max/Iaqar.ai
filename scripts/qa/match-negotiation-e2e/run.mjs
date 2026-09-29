@@ -111,13 +111,12 @@ await step("B", "العروض والطلبات → تطابقات → مراجع
 });
 
 const sendParty = async (party) => {
+  const sendsFor = () => h.server.workerCalls.filter((c) => c.path === "/worker/workflow/action" && c.body.includes('"eventType":"WHATSAPP_OPENED"') && c.body.includes(`"recipient":"${party}"`)).length;
+  const sendsBefore = sendsFor();
   const before = await page.evaluate(() => window.__e2e.whatsapp.length);
   await page.click(ws(`[data-party-send="${party}"]`));
   await waitFor(() => page.evaluate((n) => window.__e2e.whatsapp.length > n, before), "whatsapp opened");
-  await waitFor(async () => {
-    const calls = h.server.workerCalls.filter((c) => c.path === "/worker/workflow/action" && c.body.includes('"kind":"party_send"') && c.body.includes(`"party":"${party}"`));
-    return calls.length > 0 ? calls : null;
-  }, "party_send recorded");
+  await waitFor(async () => (sendsFor() > sendsBefore ? true : null), "WHATSAPP_OPENED recorded");
   await page.waitForTimeout(400);
   return page.evaluate(() => window.__e2e.whatsapp.at(-1));
 };
@@ -194,7 +193,7 @@ await step("H", "رسائل الوسيط: عميل ×2، مالك، الطرفا
   await sendMessage("owner", "رسالة للمالك");
   await sendMessage("both", "رسالة للطرفين");
   const s = await workspaceState();
-  const messages = s.log.filter((r) => r.kind === "broker_message");
+  const messages = s.log.filter((r) => r.kind === "BROKER_MESSAGE");
   assert(messages.length === 4, `messages ${messages.length}`);
   for (const row of messages) assert(row.recipient && row.time && row.status, `incomplete row ${JSON.stringify(row)}`);
   const notes = coordination().brokerNotes || [];
@@ -206,11 +205,11 @@ await step("H", "رسائل الوسيط: عميل ×2، مالك، الطرفا
 await step("I", "ملاحظة داخلية لا تُرسل للطرفين", async () => {
   await page.fill(ws("[data-broker-internal-note]"), "ملاحظة داخلية سرية");
   await page.click(ws('[data-broker-action="save_internal_note"]'));
-  await waitFor(async () => (await workspaceState()).log.some((r) => r.kind === "internal_note"), "internal note logged");
+  await waitFor(async () => (await workspaceState()).log.some((r) => r.kind === "BROKER_INTERNAL_NOTE"), "internal note logged");
   const s = await workspaceState();
   const notes = coordination().brokerNotes || [];
   assert(!notes.some((n) => n.message.includes("ملاحظة داخلية سرية")), "internal note leaked to party notes");
-  const internal = s.log.find((r) => r.kind === "internal_note");
+  const internal = s.log.find((r) => r.kind === "BROKER_INTERNAL_NOTE");
   return { row: internal, partyNotes: notes.length, leaked: false };
 });
 

@@ -28,7 +28,7 @@ import {
 import { ensurePartyReviewLink, resolvePartyPhone } from "./party-link.js";
 import { resolveDetailsOpportunityId } from "../../opportunity-data-flow-domain.js";
 import { topHomeDailyTasks } from "../../daily-tasks-source-policy.js";
-import { appendNegotiationActivity, negotiationPartyLabel } from "../../negotiation-activity-domain.js";
+import { appendMatchEvent, brokerUnreadCount, matchPartyName } from "../../match-event-domain.js";
 
 const state = {
   root: null,
@@ -43,7 +43,10 @@ const state = {
   // Entries the Worker accepted that the live feed has not delivered yet, per matchId.
   localActivity: new Map(),
   // Unsent broker text survives re-renders (feed updates, choices, sends).
-  drafts: new Map()
+  drafts: new Map(),
+  // Broker "seen" marks applied locally until the feed carries them, per matchId.
+  localSeen: new Map(),
+  seenInFlight: new Set()
 };
 
 function useDemoFixtures() {
@@ -72,28 +75,63 @@ function exactMatchId(task = {}) {
 }
 
 function rememberLocalActivity(matchId, entry) {
-  if (!matchId || !entry?.id) return;
+  if (!matchId || !entry?.eventId) return;
   const pending = state.localActivity.get(matchId) || [];
-  state.localActivity.set(matchId, [...pending.filter((item) => item.id !== entry.id), entry]);
+  state.localActivity.set(matchId, [...pending.filter((item) => item.eventId !== entry.eventId), entry]);
 }
 
 function withLocalActivity(tasks = []) {
-  if (!state.localActivity.size) return tasks;
+  if (!state.localActivity.size && !state.localSeen.size) return tasks;
   return tasks.map((task) => {
+    let next = task;
+    const seen = state.localSeen.get(task.matchId);
+    if (seen) {
+      if (String(task.brokerSeenAt || "") >= seen) state.localSeen.delete(task.matchId);
+      else next = { ...next, brokerSeenAt: seen };
+    }
     const pending = state.localActivity.get(task.matchId);
-    if (!pending?.length) return task;
-    const delivered = new Set((task.negotiationActivity || []).map((entry) => entry.id));
-    const remaining = pending.filter((entry) => !delivered.has(entry.id));
+    if (!pending?.length) return next;
+    const delivered = new Set((task.negotiationActivity || []).map((entry) => entry.eventId));
+    const remaining = pending.filter((entry) => !delivered.has(entry.eventId));
     if (!remaining.length) {
       state.localActivity.delete(task.matchId);
-      return task;
+      return next;
     }
     state.localActivity.set(task.matchId, remaining);
     let merged = task.negotiationActivity || [];
-    for (const entry of remaining) merged = appendNegotiationActivity(merged, entry);
-    merged = [...merged].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-    return { ...task, negotiationActivity: merged };
+    for (const entry of remaining) merged = appendMatchEvent(merged, entry);
+    return { ...next, negotiationActivity: merged };
   });
+}
+
+function newClientEventId() {
+  try { return globalThis.crypto?.randomUUID?.() || `ce_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; } catch { return `ce_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
+}
+
+// While the broker is looking at a match, its updates are read: clear unread for
+// this match only (the Worker keeps every event).
+function markFocusedMatchSeen() {
+  const matchId = state.focusMatchId;
+  if (!matchId || state.seenInFlight.has(matchId)) return;
+  const task = state.tasks.find((item) => item.matchId === matchId);
+  if (!task || brokerUnreadCount(task.negotiationActivity || [], task.brokerSeenAt || "") === 0) return;
+  const latest = (task.negotiationActivity || []).reduce((max, event) => (event.createdAt > max ? event.createdAt : max), "");
+  state.localSeen.set(matchId, latest || new Date().toISOString());
+  state.tasks = withLocalActivity(state.tasks);
+  state.seenInFlight.add(matchId);
+  void (async () => {
+    try {
+      await fetch(`${workerBase()}/workflow/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
+        body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "mark_match_seen" })
+      });
+    } catch {
+      /* unread stays until the next successful mark */
+    } finally {
+      state.seenInFlight.delete(matchId);
+    }
+  })();
 }
 
 function mapTasksFromItems(items = []) {
@@ -718,7 +756,7 @@ async function recordNegotiation(task, input = {}) {
   const response = await fetch(`${workerBase()}/workflow/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
-    body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "record_negotiation_activity", ...input })
+    body: JSON.stringify({ officeId: currentOfficeId(), recordId: matchId, action: "record_negotiation_activity", clientEventId: newClientEventId(), ...input })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.ok === false || !payload.entry) throw new Error(payload.message || "تعذر حفظ الإجراء");
@@ -734,7 +772,7 @@ async function recordPartyChoice(task, button) {
   setExecState(button, "working");
   try {
     const payload = await recordNegotiation(task, { kind: "party_choice", party, choiceId: button.getAttribute("data-party-choice") });
-    notify(`تم تسجيل خيار ${negotiationPartyLabel(party)}: ${payload.entry.label}`);
+    notify(`تم تسجيل خيار ${matchPartyName(party)}: ${payload.entry.payload?.label || ""}`);
   } catch (error) {
     setExecState(button, "error");
     notify(error.message || "تعذر حفظ الخيار");
@@ -754,7 +792,7 @@ async function sendBrokerMessageOrNote(task, panel, action, button) {
   try {
     if (field) field.value = "";
     await recordNegotiation(task, { kind: isMessage ? "broker_message" : "internal_note", party: audience, message });
-    notify(isMessage ? `أُضيفت رسالتك إلى رابط ${negotiationPartyLabel(audience)}` : "تم حفظ الملاحظة الداخلية — لم تُرسل لأي طرف");
+    notify(isMessage ? `أُضيفت رسالتك إلى رابط ${matchPartyName(audience)}` : "تم حفظ الملاحظة الداخلية — لم تُرسل لأي طرف");
   } catch (error) {
     if (field && !field.value) field.value = message;
     setExecState(button, "error");
@@ -762,10 +800,68 @@ async function sendBrokerMessageOrNote(task, panel, action, button) {
   }
 }
 
+async function updateAgreement(task, card, button) {
+  const field = String(card?.querySelector("[data-agreement-field]")?.value || "").trim();
+  const input = card?.querySelector("[data-agreement-value]");
+  const value = String(input?.value || "").trim();
+  if (!field || !value) {
+    notify("اختر البند واكتب القيمة");
+    return;
+  }
+  setExecState(button, "working");
+  try {
+    if (input) input.value = "";
+    await recordNegotiation(task, { kind: "agreement_update", field, value });
+    notify("تم تحديث الاتفاق");
+  } catch (error) {
+    if (input && !input.value) input.value = value;
+    setExecState(button, "error");
+    notify(error.message || "تعذر تحديث الاتفاق");
+  }
+}
+
+// WhatsApp for a party notification is a wa.me handoff: record WHATSAPP_OPENED only.
+async function openPartyNotificationWhatsApp(task, button) {
+  const dispatchId = String(button.getAttribute("data-whatsapp-handoff") || "").trim();
+  const item = (task.whatsappOutbox || []).find((entry) => entry.dispatchId === dispatchId);
+  if (!item?.phone) {
+    notify("رقم التواصل غير متوفر");
+    return;
+  }
+  const opened = openWhatsAppHandoff({ phone: item.phone, text: item.text || "" });
+  if (!opened?.ok) {
+    notify(PARTY_SEND_COPY.whatsappFailed);
+    return;
+  }
+  setExecState(button, "working");
+  try {
+    const response = await fetch(`${workerBase()}/workflow/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await idToken()}` },
+      body: JSON.stringify({ officeId: currentOfficeId(), recordId: exactMatchId(task), action: "whatsapp_handoff_opened", dispatchId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) throw new Error(payload.message || "تعذر تسجيل فتح واتساب");
+    if (payload.entry) rememberLocalActivity(exactMatchId(task), payload.entry);
+    state.tasks = withLocalActivity(state.tasks).map((entry) => (entry.matchId === exactMatchId(task)
+      ? { ...entry, whatsappOutbox: (entry.whatsappOutbox || []).filter((outbox) => outbox.dispatchId !== dispatchId) }
+      : entry));
+    notify(`تم فتح واتساب ل${item.recipient === "owner" ? "لمالك" : "لعميل"}`);
+    renderList();
+  } catch (error) {
+    setExecState(button, "error");
+    notify(error.message || "تعذر تسجيل فتح واتساب");
+  }
+}
+
 async function runBrokerNegotiationAction(task, panel, action, button) {
   if (button?.dataset?.cv2ExecState === "working") return;
   if (action === "send_message" || action === "save_internal_note") {
     await sendBrokerMessageOrNote(task, panel, action, button);
+    return;
+  }
+  if (action === "agreement_update") {
+    await updateAgreement(task, button.closest("[data-cv2-exec-task]"), button);
     return;
   }
   if (action === "no_agreement" && !window.confirm("إنهاء هذه المطابقة دون اتفاق؟ سيبقى العرض والطلب متاحين لمطابقات أخرى.")) return;
@@ -875,6 +971,12 @@ function onListClick(event) {
   if (partyChoice) {
     event.preventDefault(); event.stopPropagation();
     void recordPartyChoice(task, partyChoice);
+    return;
+  }
+  const handoff = event.target.closest("[data-whatsapp-handoff]");
+  if (handoff) {
+    event.preventDefault(); event.stopPropagation();
+    void openPartyNotificationWhatsApp(task, handoff);
     return;
   }
   const brokerAction = event.target.closest("[data-broker-action]");
@@ -1037,7 +1139,7 @@ function consumePendingDailyTaskOpen() {
   }
 }
 
-const DRAFT_FIELDS = ["data-broker-message", "data-broker-audience", "data-broker-internal-note"];
+const DRAFT_FIELDS = ["data-broker-message", "data-broker-audience", "data-broker-internal-note", "data-agreement-field", "data-agreement-value"];
 
 function captureDrafts() {
   state.root?.querySelectorAll("[data-cv2-exec-task]").forEach((card) => {
@@ -1076,6 +1178,7 @@ function renderList() {
   });
   restoreDrafts();
   restoreScroll();
+  markFocusedMatchSeen();
   consumePendingDailyTaskOpen();
 }
 

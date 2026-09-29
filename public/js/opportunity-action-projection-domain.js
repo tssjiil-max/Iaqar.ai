@@ -3,10 +3,7 @@
  * Opportunities remain the only list rows; Operations only decorate/sort them.
  */
 
-import {
-  negotiationActivityLogRow,
-  parseNegotiationActivity
-} from "./negotiation-activity-domain.js";
+import { matchEventLogRow, parseMatchEvents } from "./match-event-domain.js";
 
 export const OPPORTUNITY_ACTION_FILTER = Object.freeze({
   ALL: "all",
@@ -34,7 +31,7 @@ function upper(value) {
 const ENGAGED_MATCH_STAGES = /^(CLIENT_SENT|WAITING_|AWAITING_|CLIENT_NEEDS|CLIENT_INTERESTED|NEGOTIATION|PROPERTY_AVAILABLE|WAITING_PROPERTY|OWNER_|VIEWING_DECISION|APPOINTMENT_|VIEWING_COMPLETED|FOLLOW_UP)/;
 
 function negotiationActivityOf(operation = {}) {
-  return parseNegotiationActivity(operation.negotiationActivityJson || operation.metadata?.negotiationActivityJson || operation.negotiationActivity);
+  return parseMatchEvents(operation.negotiationActivityJson || operation.metadata?.negotiationActivityJson || operation.negotiationActivity);
 }
 
 export function isBrokerEngagedMatchOperation(operation = {}) {
@@ -179,7 +176,7 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
   }
 
   if (type === "MATCH_REVIEW" && MATCH_NEW_STAGES.has(livingStage) && isBrokerEngagedMatchOperation(operation)) {
-    const last = negotiationActivityOf(operation).map(negotiationActivityLogRow).filter(Boolean).pop();
+    const last = negotiationActivityOf(operation).filter((event) => event.eventType !== "BROKER_INTERNAL_NOTE").map(matchEventLogRow).filter(Boolean).pop();
     return {
       category: OPPORTUNITY_ACTION_FILTER.FOLLOW_UP,
       rank: 6,

@@ -39,12 +39,28 @@ import {
 import { upsertNotificationDocument } from "./operations-service.js";
 import { buildMatchReviewDedupKey, operationDocumentId } from "./operations-domain.js";
 import {
-  NEGOTIATION_ACTIVITY_KIND,
-  appendNegotiationActivity,
-  buildNegotiationActivityEntry,
-  parseNegotiationActivity,
-  summarizeNegotiationActivity
-} from "../../public/js/negotiation-activity-domain.js";
+  AGREEMENT_FIELDS,
+  MATCH_EVENT_ACTOR,
+  MATCH_EVENT_SOURCE,
+  MATCH_EVENT_TYPE,
+  brokerPartyChoices,
+  choiceEventType,
+  isLifecycleReadOnly,
+  lastUpdateLine,
+  lifecycleLabel,
+  partyEventLabel,
+  partyLinkChoices,
+  partyVisibleEvents,
+  projectMatchEvents,
+  parseMatchState
+} from "../../public/js/match-event-domain.js";
+import {
+  appendMatchEventRecord,
+  markMatchSeenByBroker,
+  markWhatsAppHandoffOpened,
+  matchEventId,
+  matchLifecycleOf
+} from "./match-event-service.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
 function publicWorkerOrigin(env = {}) {
@@ -261,66 +277,104 @@ export async function resolveMatchReviewOperationId(helpers, {
   return decodeURIComponent(String(linkedOperation?.name || "").split("/").pop() || "");
 }
 
-const NEGOTIATION_ACTIVITY_ERRORS = Object.freeze({
+function brokerEventFromInput(input = {}, match = {}) {
+  const kind = text(input.kind).toLowerCase();
+  const side = text(input.party || input.audience).toLowerCase();
+  if (kind === "party_send") {
+    if (!["client", "owner"].includes(side)) return { error: "party_invalid" };
+    return { event: { eventType: MATCH_EVENT_TYPE.WHATSAPP_OPENED, recipient: side, payload: { handoff: "link" } } };
+  }
+  if (kind === "party_choice") {
+    if (!["client", "owner"].includes(side)) return { error: "party_invalid" };
+    const choice = brokerPartyChoices({
+      propertyType: match.candidatePropertyType || match.propertyType || "",
+      purpose: match.candidatePurpose || match.purpose || ""
+    }).find((item) => item.id === text(input.choiceId));
+    if (!choice) return { error: "choice_invalid" };
+    return { event: { eventType: choiceEventType(side, choice.id), recipient: "", payload: { choiceId: choice.id, label: choice.label, onBehalf: true } } };
+  }
+  if (kind === "broker_message") {
+    if (!["client", "owner", "both"].includes(side)) return { error: "audience_invalid" };
+    const message = String(input.message || "").trim().slice(0, 1000);
+    if (!message) return { error: "message_required" };
+    return { event: { eventType: MATCH_EVENT_TYPE.BROKER_MESSAGE, recipient: side, payload: { message } } };
+  }
+  if (kind === "internal_note") {
+    const message = String(input.message || "").trim().slice(0, 1000);
+    if (!message) return { error: "message_required" };
+    return { event: { eventType: MATCH_EVENT_TYPE.BROKER_INTERNAL_NOTE, recipient: "internal", payload: { message } } };
+  }
+  if (kind === "agreement_update") {
+    const field = AGREEMENT_FIELDS.find((item) => item.id === text(input.field));
+    const value = String(input.value || "").trim().slice(0, 300);
+    if (!field) return { error: "agreement_field_invalid" };
+    if (!value) return { error: "agreement_value_required" };
+    return { event: { eventType: MATCH_EVENT_TYPE.AGREEMENT_UPDATED, recipient: "both", payload: { field: field.id, fieldLabel: field.label, value } } };
+  }
+  return { error: "kind_invalid" };
+}
+
+const BROKER_EVENT_ERRORS = Object.freeze({
   party_invalid: "حدد الطرف: العميل أو المالك.",
   audience_invalid: "حدد المستلم: العميل أو المالك أو الطرفان.",
   choice_invalid: "الخيار غير متاح لهذا الطرف.",
   message_required: "اكتب نص الرسالة أو الملاحظة.",
+  agreement_field_invalid: "بند الاتفاق غير معروف.",
+  agreement_value_required: "اكتب قيمة بند الاتفاق.",
   kind_invalid: "نوع الإجراء غير معروف."
 });
 
 /**
- * Appends one broker negotiation entry for an exact Match and projects the log onto
- * the Match and its MATCH_REVIEW operation. Never changes livingStage, never locks
- * further sends. Broker messages also reach the chosen party's review link;
- * internal notes are stored only in this log.
+ * Broker actions in the Match workspace become real events on the exact matchId.
+ * Messages also reach the chosen party's review link; internal notes never do.
  */
 export async function recordNegotiationActivity(helpers, {
-  projectId, officeId, matchId, accessToken, input = {}, now = new Date()
+  projectId, officeId, matchId, accessToken, input = {}, now = new Date(), env = null, actorId = ""
 }) {
   const id = String(matchId || "").trim();
-  if (!id) throw helpers.appError("match_id_required", 400, "معرّف المطابقة مطلوب.");
-  const match = await readOfficeDoc(helpers, { projectId, officeId, collection: "matches", id, accessToken });
+  const match = id ? await readOfficeDoc(helpers, { projectId, officeId, collection: "matches", id, accessToken }) : null;
   if (!match) throw helpers.appError("match_not_found", 404, "المطابقة غير موجودة.");
-  const status = String(match.status || "").toLowerCase();
-  if (status === "closed" || status === "completed") {
-    throw helpers.appError("match_not_open", 409, "المطابقة مغلقة.");
-  }
-  const built = buildNegotiationActivityEntry(input, {
-    propertyType: match.candidatePropertyType || match.propertyType || "",
-    purpose: match.candidatePurpose || match.purpose || "",
-    now
+  const mapped = brokerEventFromInput(input, match);
+  if (mapped.error) throw helpers.appError(`negotiation_${mapped.error}`, 400, BROKER_EVENT_ERRORS[mapped.error] || "تعذر حفظ الإجراء.");
+  const clientEventId = text(input.clientEventId);
+  const result = await appendMatchEventRecord(helpers, {
+    projectId, officeId, matchId: id, accessToken, env, now, resolveOperationId: resolveMatchReviewOperationId,
+    event: {
+      ...mapped.event,
+      eventId: clientEventId ? await matchEventId(helpers, [id, "broker", clientEventId]) : "",
+      actorType: MATCH_EVENT_ACTOR.BROKER,
+      actorId,
+      source: MATCH_EVENT_SOURCE.BROKER_WORKSPACE
+    }
   });
-  if (!built.ok) {
-    throw helpers.appError(`negotiation_${built.error}`, 400, NEGOTIATION_ACTIVITY_ERRORS[built.error] || "تعذر حفظ الإجراء.");
-  }
-  const entry = built.entry;
-  if (entry.kind === NEGOTIATION_ACTIVITY_KIND.BROKER_MESSAGE) {
+  if (!result.duplicate && result.event.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE) {
     const session = await loadCoordinationSession(helpers, { projectId, officeId, matchId: id, accessToken });
-    const note = { id: entry.id, audience: entry.party, message: entry.message, actor: "BROKER", createdAt: entry.createdAt };
+    const note = { id: result.event.eventId, audience: result.event.recipient, message: result.event.payload.message, actor: "BROKER", createdAt: result.event.createdAt };
     await saveCoordinationSession(helpers, {
       projectId, officeId, matchId: id, accessToken,
       session: { ...session, brokerNotes: [...(session.brokerNotes || []), note].slice(-40) }
     });
   }
-  const activity = appendNegotiationActivity(parseNegotiationActivity(match.negotiationActivityJson), entry);
-  const summary = summarizeNegotiationActivity(activity);
-  const projection = {
-    negotiationActivityJson: helpers.firestoreString(JSON.stringify(activity)),
-    lastBrokerActivityAt: helpers.firestoreString(entry.createdAt)
-  };
-  await helpers.setFirestoreDocument({
-    projectId, segments: ["offices", officeId, "matches", id], accessToken, fields: projection
+  return { entry: result.event, summary: result.state, duplicate: result.duplicate, dispatches: result.dispatches, operationId: result.operationId };
+}
+
+export async function recordMatchLifecycleEvent(helpers, { projectId, officeId, matchId, accessToken, eventType, now = new Date(), env = null, actorId = "", payload = {} }) {
+  return appendMatchEventRecord(helpers, {
+    projectId, officeId, matchId, accessToken, env, now, allowWhenClosed: true, resolveOperationId: resolveMatchReviewOperationId,
+    event: {
+      eventId: await matchEventId(helpers, [matchId, eventType]),
+      actorType: MATCH_EVENT_ACTOR.BROKER, actorId, eventType, recipient: "both",
+      source: MATCH_EVENT_SOURCE.BROKER_WORKSPACE, payload
+    }
   });
-  const operationId = await resolveMatchReviewOperationId(helpers, {
-    projectId, officeId, matchId: id, match, accessToken
-  });
-  if (operationId) {
-    await helpers.setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "operations", operationId], accessToken, fields: projection
-    });
-  }
-  return { entry, summary, activity, operationId };
+}
+
+export async function markBrokerSeen(helpers, { projectId, officeId, matchId, accessToken, now = new Date() }) {
+  return markMatchSeenByBroker(helpers, { projectId, officeId, matchId, accessToken, now, resolveOperationId: resolveMatchReviewOperationId });
+}
+
+export async function openWhatsAppHandoff(helpers, { projectId, officeId, matchId, accessToken, dispatchId, now = new Date(), actorId = "" }) {
+  return markWhatsAppHandoffOpened(helpers, { projectId, officeId, matchId, accessToken, dispatchId, now, actorId, resolveOperationId: resolveMatchReviewOperationId });
 }
 
 async function stampMatchLiving(helpers, {
@@ -705,7 +759,7 @@ export async function loadPartyPublicView({ token, env, helpers }) {
     officeId,
     sessionId,
     canonicalOffer,
-    view: sanitizePartyPublicView({
+    view: withPartyNegotiation(sanitizePartyPublicView({
       party: session.party,
       status: session.status,
       snapshot,
@@ -719,8 +773,155 @@ export async function loadPartyPublicView({ token, env, helpers }) {
       coordination,
       canonicalOffer,
       matchRecord: matchRecord || {}
-    })
+    }), matchRecord || {}, session.party)
   };
+}
+
+/**
+ * The live negotiation panel for a party link: its current choice, what it may see
+ * of the history, the agreement, and whether the link is still ACTIVE.
+ */
+export function buildPartyNegotiationView(matchRecord = {}, side = "client", now = new Date()) {
+  const party = side === "owner" ? "owner" : "client";
+  const history = matchRecord.negotiationActivityJson || "[]";
+  const state = parseMatchState(matchRecord.matchStateJson) || projectMatchEvents(history, { matchStatus: matchRecord.status });
+  const lifecycle = matchLifecycleOf(matchRecord);
+  const visible = partyVisibleEvents(history, party);
+  return {
+    party,
+    lifecycle,
+    lifecycleLabel: lifecycleLabel(lifecycle),
+    readOnly: isLifecycleReadOnly(lifecycle),
+    choices: partyLinkChoices(party).map(({ id, label }) => ({ id, label })),
+    current: state[party] ? { choiceId: state[party].choiceId, label: state[party].label, createdAt: state[party].createdAt } : null,
+    agreementFields: AGREEMENT_FIELDS.map(({ id, label }) => ({ id, label })),
+    agreement: state.agreement || {},
+    events: visible.slice(-30).reverse().map((event) => ({
+      eventId: event.eventId,
+      eventType: event.eventType,
+      label: partyEventLabel(event, party),
+      message: String(event.payload?.message || event.payload?.condition || (event.eventType === MATCH_EVENT_TYPE.AGREEMENT_UPDATED ? event.payload?.value : "") || ""),
+      createdAt: event.createdAt
+    })),
+    lastUpdate: lastUpdateLine(visible, now),
+    stateVersion: `${matchRecord.lastEventAt || ""}|${lifecycle}`
+  };
+}
+
+function withPartyNegotiation(view = {}, matchRecord = {}, side = "client") {
+  const negotiation = buildPartyNegotiationView(matchRecord, side);
+  if (!negotiation.readOnly) return { ...view, negotiation };
+  // Final state: no legacy reply/decision actions either.
+  return { ...view, negotiation, actions: [], followUpActions: [], decisionPackage: null, coordinationForm: null };
+}
+
+async function resolvePartyContext({ token, env, helpers }) {
+  if (!isOpaquePartyToken(token)) return null;
+  helpers.assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const tokenHash = await hashPartyToken(token, helpers.sha256Hex);
+  const pointer = await helpers.getFirestoreDocument({ projectId, segments: ["partySessionTokens", tokenHash], accessToken, allowMissing: true });
+  if (!pointer) return null;
+  const pointerData = js(pointer, helpers);
+  const officeId = helpers.firestoreOfficeId(pointerData.officeId);
+  const sessionId = String(pointerData.sessionId || "").trim();
+  if (!officeId || !sessionId) return null;
+  const sessionDoc = await helpers.getFirestoreDocument({ projectId, segments: ["offices", officeId, "partySessions", sessionId], accessToken, allowMissing: true });
+  if (!sessionDoc) return null;
+  const session = js(sessionDoc, helpers);
+  if (pointerData.officeId !== officeId || pointerData.sessionId !== sessionId || pointerData.party !== session.party || session.officeId !== officeId) return null;
+  if (session.revoked === true || session.status === PARTY_SESSION_STATUS.REVOKED) return null;
+  if (session.tokenHash && session.tokenHash !== tokenHash) return null;
+  if (!String(session.matchId || "").trim()) return null;
+  return { projectId, accessToken, officeId, sessionId, session, party: session.party === "owner" ? "owner" : "client", matchId: String(session.matchId).trim() };
+}
+
+function partyRateLimited(helpers, route, ip) {
+  const limited = helpers.consumePublicRateLimit(helpers.publicRateLimitKey({ route, ip }), helpers.PUBLIC_RATE_LIMITS.PUBLIC_PARTY);
+  return !limited.ok;
+}
+
+function partyInvalid(helpers, requestId) {
+  return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+}
+
+function partyEventError(helpers, error, requestId) {
+  const status = Number(error?.status || 500);
+  if (status === 409 || status === 400) {
+    return helpers.jsonResponse({ ok: false, error: error.code || "invalid_party_event", message: error.message, requestId }, status);
+  }
+  throw error;
+}
+
+/** A party's own choice / condition / agreement change from its link: actor = that party. */
+export async function handlePartySessionEvent({ token, env, request, requestId, helpers, ip }) {
+  if (partyRateLimited(helpers, "party-event", ip)) throw helpers.appError("rate_limited", 429, "محاولات كثيرة. حاول بعد قليل.");
+  const ctx = await resolvePartyContext({ token, env, helpers }).catch(() => null);
+  if (!ctx) return partyInvalid(helpers, requestId);
+  const body = await request.json().catch(() => ({}));
+  let event;
+  if (body.agreement && typeof body.agreement === "object") {
+    const field = AGREEMENT_FIELDS.find((item) => item.id === String(body.agreement.field || "").trim());
+    const value = String(body.agreement.value || "").trim().slice(0, 300);
+    if (!field || !value) return helpers.jsonResponse({ ok: false, error: "agreement_invalid", message: "اختر بند الاتفاق واكتب قيمته.", requestId }, 400);
+    event = { eventType: MATCH_EVENT_TYPE.AGREEMENT_UPDATED, payload: { field: field.id, fieldLabel: field.label, value } };
+  } else {
+    const choice = partyLinkChoices(ctx.party).find((item) => item.id === String(body.choiceId || "").trim());
+    if (!choice) return helpers.jsonResponse({ ok: false, error: "choice_invalid", message: "هذا الخيار غير متاح.", requestId }, 400);
+    const condition = String(body.condition || "").trim().slice(0, 500);
+    event = { eventType: choice.eventType, payload: { choiceId: choice.id, label: choice.label, ...(condition ? { condition } : {}) } };
+  }
+  const clientEventId = String(body.clientEventId || "").trim().slice(0, 80);
+  try {
+    const result = await appendMatchEventRecord(helpers, {
+      projectId: ctx.projectId, officeId: ctx.officeId, matchId: ctx.matchId, accessToken: ctx.accessToken, env,
+      resolveOperationId: resolveMatchReviewOperationId,
+      event: {
+        ...event,
+        eventId: clientEventId ? await matchEventId(helpers, [ctx.matchId, ctx.party, ctx.sessionId, clientEventId]) : "",
+        actorType: ctx.party === "owner" ? MATCH_EVENT_ACTOR.OWNER : MATCH_EVENT_ACTOR.CLIENT,
+        actorId: ctx.sessionId,
+        source: MATCH_EVENT_SOURCE.PARTY_LINK
+      }
+    });
+    return helpers.jsonResponse({ ok: true, event: result.event, duplicate: result.duplicate, requestId });
+  } catch (error) {
+    return partyEventError(helpers, error, requestId);
+  }
+}
+
+/** LINK_OPENED: the link was opened. Not read, not approved, not delivered. */
+export async function handlePartySessionOpened({ token, env, request, requestId, helpers, ip }) {
+  if (partyRateLimited(helpers, "party-opened", ip)) throw helpers.appError("rate_limited", 429, "محاولات كثيرة. حاول بعد قليل.");
+  const ctx = await resolvePartyContext({ token, env, helpers }).catch(() => null);
+  if (!ctx) return partyInvalid(helpers, requestId);
+  const body = await request.json().catch(() => ({}));
+  const openId = String(body.openId || "").trim().slice(0, 80) || new Date().toISOString().slice(0, 16);
+  const result = await appendMatchEventRecord(helpers, {
+    projectId: ctx.projectId, officeId: ctx.officeId, matchId: ctx.matchId, accessToken: ctx.accessToken, env,
+    allowWhenClosed: true, resolveOperationId: resolveMatchReviewOperationId,
+    event: {
+      eventId: await matchEventId(helpers, [ctx.matchId, ctx.party, "LINK_OPENED", ctx.sessionId, openId]),
+      eventType: MATCH_EVENT_TYPE.LINK_OPENED,
+      actorType: ctx.party === "owner" ? MATCH_EVENT_ACTOR.OWNER : MATCH_EVENT_ACTOR.CLIENT,
+      actorId: ctx.sessionId,
+      source: MATCH_EVENT_SOURCE.PARTY_LINK,
+      payload: { partyType: ctx.party }
+    }
+  });
+  return helpers.jsonResponse({ ok: true, eventId: result.event.eventId, duplicate: result.duplicate, requestId });
+}
+
+/** Cheap poll for an open party page: changes whenever a new event or lifecycle lands. */
+export async function handlePartySessionState({ token, env, requestId, helpers, ip }) {
+  if (partyRateLimited(helpers, "party-state", ip)) throw helpers.appError("rate_limited", 429, "محاولات كثيرة. حاول بعد قليل.");
+  const ctx = await resolvePartyContext({ token, env, helpers }).catch(() => null);
+  if (!ctx) return partyInvalid(helpers, requestId);
+  const match = await readOfficeDoc(helpers, { projectId: ctx.projectId, officeId: ctx.officeId, collection: "matches", id: ctx.matchId, accessToken: ctx.accessToken });
+  if (!match) return partyInvalid(helpers, requestId);
+  const lifecycle = matchLifecycleOf(match);
+  return helpers.jsonResponse({ ok: true, stateVersion: `${match.lastEventAt || ""}|${lifecycle}`, lifecycle, requestId });
 }
 
 export async function handlePartySessionGet({ token, env, requestId, helpers, ip }) {
@@ -796,6 +997,9 @@ async function replyPartySession({ token, env, request, requestId, helpers, ip }
   const loaded = await loadPartyPublicView({ token, env, helpers });
   if (!loaded) {
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+  if (loaded.view?.negotiation?.readOnly) {
+    return helpers.jsonResponse({ ok: false, error: "match_read_only", message: "المطابقة مغلقة — لا يمكن إضافة تعديل جديد.", view: loaded.view, requestId }, 409);
   }
   if (!isAllowedPartyAction(loaded.session.party, action, loaded.session.replyAction || "")) {
     throw helpers.appError("invalid_party_action", 400, "هذا الرد غير متاح.");
@@ -950,6 +1154,9 @@ export async function submitPartyBundle({ token, env, request, requestId, helper
   const loaded = await loadPartyPublicView({ token, env, helpers });
   if (!loaded) {
     return helpers.jsonResponse({ ok: false, error: "invalid_party_link", message: PARTY_INVALID_COPY, requestId }, 404);
+  }
+  if (loaded.view?.negotiation?.readOnly) {
+    return helpers.jsonResponse({ ok: false, error: "match_read_only", message: "المطابقة مغلقة — لا يمكن إضافة تعديل جديد.", view: loaded.view, requestId }, 409);
   }
   const { bundle, photos } = await parseBundleRequest(request);
   const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;

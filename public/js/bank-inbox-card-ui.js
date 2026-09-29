@@ -18,6 +18,7 @@ import {
 } from "./bank-inbox-card-domain.js";
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
 import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
+import { brokerUnreadCount, unreadUpdatesLabel } from "./match-event-domain.js";
 
 const DAILY_TASK_ACTION_CODES = new Set([
   "review_match",
@@ -268,6 +269,11 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
     ? `${action.badge}${action.category === "matches" && action.matchCount > 1 ? ` — ${action.matchCount}` : ""}`
     : "لا إجراء حالي";
   const actionOperation = action?.operation || {};
+  // Unread = party events after the broker last opened this match. Events are never deleted.
+  const unreadCount = brokerUnreadCount(actionOperation.negotiationActivityJson, actionOperation.brokerSeenAt);
+  const unreadBadge = unreadCount > 0
+    ? `<span class="bank-card-unread" data-unread-updates="${esc(String(unreadCount))}" data-unread-match-id="${esc(action?.matchId || "")}">${esc(unreadUpdatesLabel(unreadCount))}</span>`
+    : "";
   const clientRequestId = actionOperation.clientRequestId || actionOperation.requestId || actionOperation.requestOpportunityId || "";
   const ownerOfferId = actionOperation.ownerOfferId || actionOperation.offerId || actionOperation.offerOpportunityId || "";
   const actionPropertyType = actionOperation.propertyType || actionOperation.candidatePropertyType || record.propertyType || vm.type || "";
@@ -276,6 +282,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       <section class="bank-card-action bank-card-action--${esc(action?.tone || "quiet")}" data-opportunity-action-state="${esc(action?.category || "none")}">
         <div class="bank-card-action-head">
           <span class="bank-card-action-badge"><i class="bank-card-status-dot" aria-hidden="true"></i>${esc(statusText)}</span>
+          ${unreadBadge}
           ${action?.reason && action.reason !== statusText ? `<strong>${esc(action.reason)}</strong>` : ""}
         </div>
         ${action?.detail ? `<p class="bank-card-action-detail">${esc(action.detail)}</p>` : ""}

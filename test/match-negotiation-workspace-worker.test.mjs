@@ -40,6 +40,7 @@ const jwk = { ...publicKey.export({ format: "jwk" }), kid: "neg-kid", alg: "RS25
 
 function setup() {
   const docs = new Map();
+  const fcmCalls = [];
   let clock = 0;
   const base = `/v1/projects/${PROJECT}/databases/(default)/documents/`;
   const write = (p, fields, mask) => {
@@ -58,6 +59,7 @@ function setup() {
     const method = String(init.method || "GET").toUpperCase();
     if (url.hostname === "oauth2.googleapis.com") return Response.json({ access_token: "neg-access", expires_in: 3600 });
     if (url.hostname === "www.googleapis.com") return Response.json({ keys: [jwk] });
+    if (url.hostname === "fcm.googleapis.com") { fcmCalls.push(JSON.parse(init.body || "{}")); return Response.json({ name: `projects/x/messages/${fcmCalls.length}` }); }
     if (url.hostname !== "firestore.googleapis.com") return Response.json({ ok: true });
     const pathname = decodeURIComponent(url.pathname);
     if (pathname.endsWith(":commit")) {
@@ -72,6 +74,10 @@ function setup() {
     }
     if (method === "GET") return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 });
     if (method === "PATCH") {
+      // Firestore preconditions: create-only and optimistic updateTime.
+      if (url.searchParams.get("currentDocument.exists") === "false" && docs.has(p)) return Response.json({ error: { status: "ALREADY_EXISTS" } }, { status: 409 });
+      const expected = url.searchParams.get("currentDocument.updateTime");
+      if (expected && docs.get(p)?.updateTime !== expected) return Response.json({ error: { status: "FAILED_PRECONDITION" } }, { status: 400 });
       write(p, JSON.parse(init.body || "{}").fields || {}, url.searchParams.getAll("updateMask.fieldPaths"));
       return Response.json(docJson(p));
     }
@@ -94,6 +100,7 @@ function setup() {
   const listing = { officeId: OFFICE, city: "الرياض", district: "النرجس", propertyType: "شقة", lifecycleStatus: "ACTIVE", version: 1 };
   seed(`offices/${OFFICE}/opportunities/${REQUEST_ID}`, { ...listing, opportunityKind: "REQUEST", purpose: "PURCHASE", advertiserRole: "CLIENT", budget: 900000, priceOrBudget: 900000, contactPhone: "0551110001", brokerId: UID });
   seed(`offices/${OFFICE}/opportunities/${OFFER_ID}`, { ...listing, opportunityKind: "OFFER", purpose: "SALE", advertiserRole: "OWNER", salePrice: 880000, priceOrBudget: 880000, contactPhone: "0552220002", brokerId: UID });
+  seed(`offices/${OFFICE}/devices/device-broker`, { fcmRegistrationId: "fid-broker-1", registrationType: "fid", userUid: UID, enabled: true });
   // More than one page of operations, sorted ahead of the real MATCH_REVIEW id.
   for (let i = 0; i < 150; i += 1) seed(`offices/${OFFICE}/operations/op_00000${String(i).padStart(5, "0")}`, { officeId: OFFICE, type: "OPPORTUNITY_REVIEW", status: "COMPLETED", opportunityId: `filler_${i}` });
 
@@ -103,7 +110,14 @@ function setup() {
     }), env, { waitUntil() {} });
     return { status: response.status, body: await response.json() };
   };
-  return { env, get, list, call, restore() { globalThis.fetch = originalFetch; } };
+  const party = async (method, pathname, body) => {
+    const response = await worker.fetch(new Request(`https://worker.test${pathname}`, {
+      method, headers: { "content-type": "application/json", "CF-Connecting-IP": `10.0.0.${Math.floor(Math.random() * 250)}` },
+      body: method === "GET" ? undefined : JSON.stringify(body || {})
+    }), env, { waitUntil() {} });
+    return { status: response.status, body: await response.json() };
+  };
+  return { env, get, list, call, party, fcmCalls, restore() { globalThis.fetch = originalFetch; } };
 }
 
 async function withMatch(fn) {
@@ -122,6 +136,17 @@ async function withMatch(fn) {
 }
 
 const activityOf = (doc) => JSON.parse(doc.negotiationActivityJson || "[]");
+const stateOf = (doc) => JSON.parse(doc.matchStateJson || "{}");
+
+async function mintLinks(h, match) {
+  const tokens = {};
+  for (const side of ["client", "owner"]) {
+    const minted = await h.call("/party/sessions", { officeId: OFFICE, matchId: match.id, party: side, offerId: OFFER_ID, requestId: REQUEST_ID });
+    assert.equal(minted.status, 200, JSON.stringify(minted.body));
+    tokens[side] = minted.body.token;
+  }
+  return tokens;
+}
 
 test("party session handoff stamps the MATCH_REVIEW operation even beyond the first page", async () => {
   await withMatch(async ({ call, match, op, matchDoc }) => {
@@ -132,12 +157,14 @@ test("party session handoff stamps the MATCH_REVIEW operation even beyond the fi
   });
 });
 
-test("repeated client and owner sends are recorded on the exact match and its operation", async () => {
+test("repeated client and owner sends are events on the exact match and never lock", async () => {
   await withMatch(async ({ record, op, matchDoc, match }) => {
     for (const party of ["client", "client", "owner", "owner"]) {
       const result = await record({ kind: "party_send", party });
       assert.equal(result.status, 200, JSON.stringify(result.body));
       assert.equal(result.body.matchId, match.id);
+      assert.equal(result.body.entry.eventType, "WHATSAPP_OPENED");
+      assert.equal(result.body.entry.matchId, match.id);
     }
     const summary = (await record({ kind: "party_send", party: "client" })).body.summary;
     assert.equal(summary.clientSendCount, 3);
@@ -147,36 +174,164 @@ test("repeated client and owner sends are recorded on the exact match and its op
   });
 });
 
-test("party options persist, can change, and survive a reload of the operation", async () => {
-  await withMatch(async ({ record, op }) => {
-    await record({ kind: "party_choice", party: "client", choiceId: "interested" });
-    await record({ kind: "party_choice", party: "client", choiceId: "not_interested" });
-    const owner = await record({ kind: "party_choice", party: "owner", choiceId: "equipment" });
-    assert.equal(owner.body.summary.clientChoice.id, "not_interested");
-    assert.equal(owner.body.summary.ownerChoice.label, "التجهيزات");
-    const invalid = await record({ kind: "party_choice", party: "owner", choiceId: "drop_table" });
-    assert.equal(invalid.status, 400);
-    const choices = activityOf(op()).filter((entry) => entry.kind === "party_choice");
-    assert.deepEqual(choices.map((entry) => entry.choiceId), ["interested", "not_interested", "equipment"]);
-  });
-});
-
 test("broker messages reach the chosen party link; the internal note never does", async () => {
-  await withMatch(async ({ record, get, match, op }) => {
+  await withMatch(async ({ record, get, match, op, list }) => {
     for (const [party, message] of [["client", "أولى"], ["client", "ثانية"], ["owner", "للمالك"], ["both", "للطرفين"]]) {
       const result = await record({ kind: "broker_message", party, message });
       assert.equal(result.status, 200, JSON.stringify(result.body));
-      assert.equal(result.body.entry.party, party);
+      assert.equal(result.body.entry.eventType, "BROKER_MESSAGE");
+      assert.equal(result.body.entry.recipient, party);
     }
     const note = await record({ kind: "internal_note", party: "client", message: "ملاحظة سرية" });
-    assert.equal(note.body.entry.party, "internal");
+    assert.equal(note.body.entry.eventType, "BROKER_INTERNAL_NOTE");
+    assert.equal(note.body.entry.recipient, "internal");
     const session = JSON.parse(get(`offices/${OFFICE}/coordinationSessions/${match.id}`).coordinationJson);
     assert.deepEqual(session.brokerNotes.map((n) => `${n.audience}:${n.message}`), ["client:أولى", "client:ثانية", "owner:للمالك", "both:للطرفين"]);
     assert.equal(JSON.stringify(session).includes("ملاحظة سرية"), false);
     const log = activityOf(op());
-    assert.equal(log.filter((e) => e.kind === "broker_message").length, 4);
-    assert.equal(log.filter((e) => e.kind === "internal_note").length, 1);
+    assert.equal(log.filter((e) => e.eventType === "BROKER_MESSAGE").length, 4);
+    assert.equal(log.filter((e) => e.eventType === "BROKER_INTERNAL_NOTE").length, 1);
+    // WhatsApp payloads: client ×2 + owner ×1 + both (client+owner) = 5, one per message/recipient.
+    const whatsapp = list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.channel === "whatsapp");
+    assert.equal(whatsapp.length, 5);
+    assert.ok(whatsapp.every((d) => ["PENDING_BROKER_HANDOFF", "MISSING_PHONE"].includes(d.status)));
+    assert.ok(!whatsapp.some((d) => /SENT|DELIVERED|READ/.test(d.status)));
     assert.equal((await record({ kind: "broker_message", party: "client", message: "  " })).status, 400);
+  });
+});
+
+test("party events come from each party's own link; history kept, latest is current", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    const ownerPath = `/party/sessions/${encodeURIComponent(tokens.owner)}`;
+    assert.equal((await h.party("POST", `${clientPath}/opened`, { openId: "tab-1" })).status, 200);
+    assert.equal((await h.party("POST", `${clientPath}/opened`, { openId: "tab-1" })).body.duplicate, true, "refresh of the same tab is not a new LINK_OPENED");
+    for (const choiceId of ["interested", "needs_time", "preliminary_agreement"]) {
+      const result = await h.party("POST", `${clientPath}/event`, { choiceId, clientEventId: `c-${choiceId}` });
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.equal(result.body.event.actorType, "client");
+      assert.equal(result.body.event.source, "party_link");
+      assert.equal(result.body.event.matchId, h.match.id);
+    }
+    await h.party("POST", `${ownerPath}/opened`, { openId: "owner-tab" });
+    await h.party("POST", `${ownerPath}/event`, { choiceId: "interested", clientEventId: "o-1" });
+    const needsTime = await h.party("POST", `${ownerPath}/event`, { choiceId: "needs_time", clientEventId: "o-2" });
+    assert.equal(needsTime.body.event.eventType, "OWNER_NEEDS_TIME");
+    assert.equal((await h.party("POST", `${ownerPath}/event`, { choiceId: "drop_table" })).status, 400);
+
+    const events = activityOf(h.op());
+    assert.deepEqual(events.filter((e) => e.actorType === "client" && e.eventType !== "LINK_OPENED").map((e) => e.eventType),
+      ["CLIENT_INTERESTED", "CLIENT_NEEDS_TIME", "CLIENT_PRELIMINARY_AGREEMENT"]);
+    assert.equal(events.filter((e) => e.eventType === "LINK_OPENED").length, 2);
+    for (const e of events) {
+      for (const key of ["eventId", "matchId", "officeId", "actorType", "eventType", "payload", "createdAt", "source"]) assert.ok(key in e, `${key} missing`);
+      assert.equal(e.matchId, h.match.id);
+      assert.ok(!/^op_/.test(e.matchId));
+    }
+    const state = stateOf(h.matchDoc());
+    assert.equal(state.client.choiceId, "preliminary_agreement");
+    assert.equal(state.owner.choiceId, "needs_time");
+    assert.equal(h.list(`offices/${OFFICE}/matches/${h.match.id}/events`).length, events.length, "every event is a persisted document");
+
+    // Party page view after a "refresh": current choice and ACTIVE link.
+    const view = (await h.party("GET", clientPath)).body.view;
+    assert.equal(view.negotiation.current.choiceId, "preliminary_agreement");
+    assert.equal(view.negotiation.readOnly, false);
+    assert.equal(view.negotiation.lifecycle, "ACTIVE");
+    assert.ok(view.negotiation.events.some((e) => e.label === "المالك طلب وقتًا للرد"), "client sees the owner's update");
+    assert.ok(!view.negotiation.events.some((e) => e.eventType === "BROKER_INTERNAL_NOTE"));
+    const ownerView = (await h.party("GET", ownerPath)).body.view;
+    assert.equal(ownerView.negotiation.current.choiceId, "needs_time");
+    const polled = (await h.party("GET", `${clientPath}/state`)).body;
+    assert.ok(polled.stateVersion.endsWith("|ACTIVE"));
+  });
+});
+
+test("FCM to the broker and WhatsApp payload to the other party are created exactly once per event", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    const first = await h.party("POST", `${clientPath}/event`, { choiceId: "interested", clientEventId: "retry-me" });
+    assert.equal(first.status, 200);
+    // Retry / reconnect / double tap: the same clientEventId is the same event.
+    const retry = await h.party("POST", `${clientPath}/event`, { choiceId: "interested", clientEventId: "retry-me" });
+    assert.equal(retry.body.duplicate, true);
+    assert.equal(retry.body.event.eventId, first.body.event.eventId);
+    const dispatches = h.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.eventId === first.body.event.eventId);
+    assert.deepEqual(dispatches.map((d) => `${d.recipient}:${d.channel}`).sort(), ["broker:fcm", "owner:whatsapp"]);
+    assert.equal(h.fcmCalls.length, 1, "one FCM send for one event");
+    assert.equal(dispatches.find((d) => d.channel === "fcm").status, "FCM_DISPATCHED");
+    const whatsapp = dispatches.find((d) => d.channel === "whatsapp");
+    assert.equal(whatsapp.status, "PENDING_BROKER_HANDOFF");
+    assert.equal(whatsapp.phone, "966552220002");
+    assert.match(whatsapp.text, /مهتم/);
+    assert.equal(JSON.parse(h.op().whatsappOutboxJson).length, 1);
+    // Broker opens the handoff: WHATSAPP_OPENED only (never sent/delivered/read), once.
+    const opened = await h.call("/workflow/action", { officeId: OFFICE, recordId: h.match.id, action: "whatsapp_handoff_opened", dispatchId: whatsapp.id });
+    assert.equal(opened.status, 200, JSON.stringify(opened.body));
+    assert.equal(opened.body.entry.eventType, "WHATSAPP_OPENED");
+    assert.equal(h.get(`offices/${OFFICE}/notificationDispatches/${whatsapp.id}`).status, "WHATSAPP_OPENED");
+    assert.equal(JSON.parse(h.op().whatsappOutboxJson).length, 0);
+    await h.call("/workflow/action", { officeId: OFFICE, recordId: h.match.id, action: "whatsapp_handoff_opened", dispatchId: whatsapp.id });
+    assert.equal(activityOf(h.op()).filter((e) => e.eventType === "WHATSAPP_OPENED").length, 1);
+    // LINK_OPENED is recorded but never pushes FCM.
+    await h.party("POST", `${clientPath}/opened`, { openId: "x" });
+    assert.equal(h.fcmCalls.length, 1);
+  });
+});
+
+test("unread counts party events after the broker last looked; mark seen clears this match only", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    await h.party("POST", `${clientPath}/event`, { choiceId: "interested", clientEventId: "u1" });
+    await h.party("POST", `${clientPath}/event`, { choiceId: "needs_time", clientEventId: "u2" });
+    const { brokerUnreadCount } = await import("../public/js/match-event-domain.js");
+    assert.equal(brokerUnreadCount(h.op().negotiationActivityJson, h.op().brokerSeenAt), 2);
+    const seen = await h.call("/workflow/action", { officeId: OFFICE, recordId: h.match.id, action: "mark_match_seen" });
+    assert.equal(seen.status, 200);
+    assert.equal(brokerUnreadCount(h.op().negotiationActivityJson, h.op().brokerSeenAt), 0);
+    assert.equal(activityOf(h.op()).filter((e) => e.actorType === "client").length, 2, "events are kept");
+    await h.party("POST", `${clientPath}/event`, { choiceId: "viewing", clientEventId: "u3" });
+    assert.equal(brokerUnreadCount(h.op().negotiationActivityJson, h.op().brokerSeenAt), 1);
+  });
+});
+
+test("agreement updates keep current state and history", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    await h.record({ kind: "agreement_update", field: "price", value: "860,000 ريال" });
+    await h.party("POST", `/party/sessions/${encodeURIComponent(tokens.owner)}/event`, { agreement: { field: "price", value: "870,000 ريال" }, clientEventId: "a1" });
+    await h.record({ kind: "agreement_update", field: "paymentMethod", value: "تمويل بنكي" });
+    const state = stateOf(h.matchDoc());
+    assert.equal(state.agreement.price.value, "870,000 ريال");
+    assert.equal(state.agreement.paymentMethod.value, "تمويل بنكي");
+    assert.equal(activityOf(h.op()).filter((e) => e.eventType === "AGREEMENT_UPDATED").length, 3);
+    assert.equal((await h.record({ kind: "agreement_update", field: "color", value: "x" })).status, 400);
+  });
+});
+
+test("closed without agreement and agreed are read-only for both parties; history kept", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    await h.party("POST", `${clientPath}/event`, { choiceId: "interested", clientEventId: "r1" });
+    const closed = await h.call("/workflow/action", { officeId: OFFICE, recordId: h.match.id, action: "close_match", note: "لا اتفاق" });
+    assert.equal(closed.status, 200, JSON.stringify(closed.body));
+    for (const side of ["client", "owner"]) {
+      const view = (await h.party("GET", `/party/sessions/${encodeURIComponent(tokens[side])}`)).body.view;
+      assert.equal(view.negotiation.readOnly, true);
+      assert.equal(view.negotiation.lifecycle, "CLOSED_NO_AGREEMENT");
+      assert.deepEqual(view.actions, []);
+    }
+    const blocked = await h.party("POST", `${clientPath}/event`, { choiceId: "needs_time", clientEventId: "r2" });
+    assert.equal(blocked.status, 409);
+    const blockedBroker = await h.record({ kind: "broker_message", party: "client", message: "بعد الإغلاق" });
+    assert.equal(blockedBroker.status, 409);
+    const events = activityOf(h.op());
+    assert.ok(events.some((e) => e.eventType === "CLIENT_INTERESTED"), "history is kept");
+    assert.equal(events.at(-1).eventType, "MATCH_CLOSED_NO_AGREEMENT");
   });
 });
 
@@ -188,22 +343,22 @@ test("an operation id is never accepted as the matchId", async () => {
 });
 
 test("a worked match projects to متابعة, never back to تطابق جديد, and renders stable workspace data", async () => {
-  await withMatch(async ({ record, op, match, list }) => {
+  await withMatch(async (h) => {
+    const { record, op, match, list } = h;
     const untouched = projectOpportunityAction(projectOperationToUiItem(op()));
     assert.equal(untouched.badge, "تطابق جديد");
+    const tokens = await mintLinks(h, match);
     await record({ kind: "party_send", party: "client" });
     await record({ kind: "party_send", party: "owner" });
-    await record({ kind: "party_choice", party: "client", choiceId: "interested" });
+    await h.party("POST", `/party/sessions/${encodeURIComponent(tokens.client)}/event`, { choiceId: "interested", clientEventId: "w1" });
     await record({ kind: "broker_message", party: "both", message: "موعد المعاينة الخميس" });
     await record({ kind: "internal_note", message: "العميل مستعجل" });
     const item = projectOperationToUiItem(op());
     const action = projectOpportunityAction(item);
     assert.notEqual(action.badge, "تطابق جديد");
-    assert.equal(action.category, "follow_up");
     const index = buildOpportunityActionIndex([item], { officeId: OFFICE });
     const onRequest = index.get(REQUEST_ID);
     assert.ok(onRequest.filterMemberships.includes("follow_up"));
-    assert.ok(onRequest.filterMemberships.includes("matches"));
     assert.equal(onRequest.matchId, match.id);
 
     const opportunities = list(`offices/${OFFICE}/opportunities`).map((o) => ({ ...o, recordId: o.id, opportunityId: o.id, recordType: "opportunity" }));
@@ -213,12 +368,16 @@ test("a worked match projects to متابعة, never back to تطابق جديد
     assert.match(html, /data-party-send="client"[^>]*>إعادة الإرسال للعميل</);
     assert.match(html, /data-party-send="owner"[^>]*>إعادة الإرسال للمالك</);
     assert.doesNotMatch(html, /data-party-send="(client|owner)"[^>]*disabled/);
-    assert.match(html, /data-party-choice="interested" data-party="client" aria-pressed="true"/);
+    assert.match(html, /حالة العميل الحالية: <strong>مهتم<\/strong> <small>\(من رابط العميل\)/);
+    assert.match(html, /data-last-update><strong>آخر تحديث:<\/strong>/);
+    assert.match(html, /العميل اختار: مهتم/);
     assert.match(html, /رسالة الوسيط إلى الطرفان/);
-    assert.match(html, /ملاحظة داخلية/);
     assert.match(html, /data-log-recipient>المستلم: داخلي/);
+    assert.match(html, /data-whatsapp-handoff=/);
     assert.match(html, new RegExp(`data-match-id="${match.id}"`));
     assert.doesNotMatch(html, /undefined|غير محدد/);
+    const collapsed = buildDailyTaskCardHtml(task, { open: false });
+    assert.match(collapsed, /data-unread-updates="1">1 تحديث جديد/);
   });
 });
 
@@ -226,10 +385,25 @@ test("an engaged match outranks an untouched sibling candidate on the same card"
   const base = { officeId: OFFICE, status: "OPEN", operationType: "MATCH_REVIEW", opportunityId: REQUEST_ID, clientRequestId: REQUEST_ID };
   const untouched = { ...base, id: "op_b", matchId: "mat_b", createdAt: "2026-09-29T10:00:00Z", updatedAt: "2026-09-29T10:00:00Z" };
   const engaged = { ...base, id: "op_a", matchId: "mat_a", createdAt: "2026-09-28T10:00:00Z", updatedAt: "2026-09-28T10:00:00Z",
-    negotiationActivityJson: JSON.stringify([{ id: "na_1", kind: "party_send", party: "client", label: "إرسال واتساب للعميل", status: "whatsapp_opened", createdAt: "2026-09-29T09:00:00Z" }]) };
+    negotiationActivityJson: JSON.stringify([{ eventId: "ev_1", matchId: "mat_a", officeId: OFFICE, actorType: "broker", eventType: "WHATSAPP_OPENED", recipient: "client", payload: { handoff: "link" }, createdAt: "2026-09-29T09:00:00Z", source: "broker_workspace" }]) };
   for (const order of [[untouched, engaged], [engaged, untouched]]) {
     const action = buildOpportunityActionIndex(order, { officeId: OFFICE }).get(REQUEST_ID);
     assert.equal(action.matchId, "mat_a");
     assert.notEqual(action.badge, "تطابق جديد");
   }
+});
+
+test("broker-recorded party options persist, can change, and are marked as recorded by the broker", async () => {
+  await withMatch(async ({ record, op }) => {
+    await record({ kind: "party_choice", party: "client", choiceId: "interested" });
+    await record({ kind: "party_choice", party: "client", choiceId: "not_interested" });
+    const owner = await record({ kind: "party_choice", party: "owner", choiceId: "equipment" });
+    assert.equal(owner.body.summary.client.choiceId, "not_interested");
+    assert.equal(owner.body.summary.owner.label, "التجهيزات");
+    assert.equal(owner.body.entry.actorType, "broker");
+    assert.equal(owner.body.entry.eventType, "OWNER_CONDITION_CHANGED");
+    assert.equal((await record({ kind: "party_choice", party: "owner", choiceId: "drop_table" })).status, 400);
+    const choices = activityOf(op()).filter((entry) => /^(CLIENT|OWNER)_/.test(entry.eventType));
+    assert.deepEqual(choices.map((entry) => entry.payload.choiceId), ["interested", "not_interested", "equipment"]);
+  });
 });

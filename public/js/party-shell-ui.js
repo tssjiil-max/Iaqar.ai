@@ -450,6 +450,58 @@ function coordinationFormBlock(form = {}) {
   return decisionPackageBlock(form, {});
 }
 
+function partyTimeLabel(value = "") {
+  const at = new Date(value);
+  if (!Number.isFinite(at.getTime())) return "";
+  return at.toLocaleString("ar-SA", { timeZone: "Asia/Riyadh", hour: "numeric", minute: "2-digit", day: "numeric", month: "short" });
+}
+
+/**
+ * The live negotiation panel on a party link. Choices stay available and can change
+ * while the match is ACTIVE; once agreed/closed the page is read-only history.
+ */
+export function partyNegotiationHtml(negotiation = null) {
+  if (!negotiation || typeof negotiation !== "object") return "";
+  const current = negotiation.current
+    ? `<p class="party-live-current" data-party-live-current>اختيارك الحالي: <strong>${escapeHtml(negotiation.current.label)}</strong></p>`
+    : `<p class="party-live-current" data-party-live-current>لم تختر بعد</p>`;
+  const last = negotiation.lastUpdate ? `<p class="party-live-last" data-party-live-last>آخر تحديث: ${escapeHtml(negotiation.lastUpdate)}</p>` : "";
+  const agreementRows = (negotiation.agreementFields || [])
+    .map((field) => ({ ...field, current: negotiation.agreement?.[field.id] }))
+    .filter((row) => row.current?.value);
+  const agreement = `<div class="party-live-agreement" data-party-live-agreement><h3>بنود الاتفاق</h3>${agreementRows.length
+    ? `<dl>${agreementRows.map((row) => `<div data-party-agreement-current="${escapeHtml(row.id)}"><dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.current.value)}</dd></div>`).join("")}</dl>`
+    : "<p>لم تُحدد بعد.</p>"}</div>`;
+  const history = (negotiation.events || []).length
+    ? `<ol class="party-live-history" data-party-live-history>${negotiation.events.map((event) => `<li data-party-event="${escapeHtml(event.eventType)}"><strong>${escapeHtml(event.label)}</strong>${event.message ? `<span>${escapeHtml(event.message)}</span>` : ""}<small>${escapeHtml(partyTimeLabel(event.createdAt))}</small></li>`).join("")}</ol>`
+    : "";
+  if (negotiation.readOnly) {
+    return `<section class="party-card party-live" data-party-live data-party-readonly="${escapeHtml(negotiation.lifecycle || "")}">
+      <h2>حالة المطابقة</h2>
+      <p class="party-live-final" data-party-live-final><strong>${escapeHtml(negotiation.lifecycleLabel || "")}</strong></p>
+      <p class="party-live-note">هذه الصفحة للعرض فقط الآن.</p>
+      ${current}${agreement}${history}
+    </section>`;
+  }
+  const choices = (negotiation.choices || []).map((choice) => {
+    const selected = negotiation.current?.choiceId === choice.id;
+    return `<button type="button" class="party-live-choice${selected ? " is-selected" : ""}" data-party-live-choice="${escapeHtml(choice.id)}" aria-pressed="${selected ? "true" : "false"}">${escapeHtml(choice.label)}</button>`;
+  }).join("");
+  const agreementForm = `<div class="party-live-agreement-form" data-party-agreement-form>
+      <label>اقترح تعديلًا<select data-party-agreement-field>${(negotiation.agreementFields || []).map((field) => `<option value="${escapeHtml(field.id)}">${escapeHtml(field.label)}</option>`).join("")}</select></label>
+      <input type="text" data-party-agreement-value maxlength="300" placeholder="القيمة المقترحة">
+      <button type="button" class="party-action" data-party-agreement-submit>إرسال التعديل</button>
+    </div>`;
+  return `<section class="party-card party-live" data-party-live data-party-lifecycle="ACTIVE">
+    <h2>ردك على المطابقة</h2>
+    ${current}${last}
+    <div class="party-live-choices" role="group" aria-label="خياراتك">${choices}</div>
+    <label class="party-live-condition">الشرط (عند اختيار شرط آخر)<input type="text" data-party-live-condition maxlength="500" placeholder="اكتب الشرط"></label>
+    <p class="party-live-note">يمكنك تغيير اختيارك في أي وقت، ويصل للوسيط مباشرة.</p>
+    ${agreement}${agreementForm}${history}
+  </section>`;
+}
+
 export function buildPartyShellHtml(view = {}) {
   const property = view.property || {};
   const details = propertyRows(property);
@@ -515,6 +567,7 @@ export function buildPartyShellHtml(view = {}) {
       ${locationButtonHtml(property)}
     </section>
     ${agreementSummaryHtml(view.agreementSummary || [])}
+    ${partyNegotiationHtml(view.negotiation)}
     <section class="party-card party-reply-card">
       <h2>التفاوض</h2>
       ${brokerNotesHtml(view.brokerNotes || [])}

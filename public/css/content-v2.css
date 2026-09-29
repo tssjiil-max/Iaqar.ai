@@ -1566,3 +1566,16 @@ html.is-content-v2:has(.content-v2.is-details) .cv2-office-toggle {
 .cv2-neg-log-title { font-weight: 800; color: #1f3a2b; }
 .cv2-neg-log-message { color: #315b45; white-space: normal; overflow-wrap: anywhere; }
 .cv2-neg-log-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #5f7a68; }
+.cv2-unread-badge, .bank-card-unread { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: #b42318; color: #fff; font-size: 11px; font-weight: 800; }
+.cv2-neg-last-update { margin: 6px 0; font-size: 13px; color: #1f3a2b; }
+.cv2-agreement { display: grid; gap: 8px; margin: 10px 0; padding: 10px; border: 1px solid #d9e8dc; border-radius: 12px; }
+.cv2-agreement h4 { margin: 0; }
+.cv2-agreement-current { display: grid; gap: 4px; margin: 0; }
+.cv2-agreement-current div { display: flex; justify-content: space-between; gap: 8px; }
+.cv2-agreement-form { display: grid; gap: 6px; }
+.cv2-agreement-form select, .cv2-agreement-form input { box-sizing: border-box; width: 100%; padding: 9px; border: 1px solid #cbded2; border-radius: 10px; font: inherit; }
+.cv2-wa-outbox { margin-top: 10px; padding: 10px; border: 1px dashed #cbded2; border-radius: 12px; }
+.cv2-wa-outbox ul { display: grid; gap: 8px; margin: 6px 0 0; padding: 0; list-style: none; }
+.cv2-wa-outbox li { display: grid; gap: 6px; }
+.cv2-wa-outbox-note { margin: 4px 0; font-size: 11px; color: #5f7a68; }
+.cv2-match-readonly { margin: 8px 0; padding: 10px; border-radius: 12px; background: #f3f5f4; border: 1px solid #d0d8d3; }

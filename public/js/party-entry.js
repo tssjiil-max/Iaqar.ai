@@ -80,11 +80,133 @@ function attachPhotos(view, token) {
   };
 }
 
+const LIVE_POLL_MS = 3000;
+const liveState = { token: "", stateVersion: "", timer: null, busy: false };
+
+function captureLiveInputs() {
+  const values = {};
+  document.querySelectorAll("[data-party-live-condition], [data-party-agreement-field], [data-party-agreement-value]").forEach((field) => {
+    const key = [...field.attributes].map((attr) => attr.name).find((name) => name.startsWith("data-party-"));
+    if (key) values[key] = field.value;
+  });
+  return values;
+}
+
+function restoreLiveInputs(values = {}) {
+  for (const [key, value] of Object.entries(values)) {
+    const field = document.querySelector(`[${key}]`);
+    if (field && value != null) field.value = value;
+  }
+}
+
 function renderView(view, token) {
+  const inputs = captureLiveInputs();
   const next = attachPhotos(view, token);
   const root = mount(buildPartyShellHtml(next));
+  restoreLiveInputs(inputs);
+  liveState.stateVersion = String(view?.negotiation?.stateVersion || "");
   bindActions(root, token);
+  bindLiveNegotiation(root, token);
   return root;
+}
+
+function newClientEventId() {
+  try { return globalThis.crypto?.randomUUID?.() || `ce_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; } catch { return `ce_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
+}
+
+// A party's own choice / agreement proposal: a real event from this party's link.
+async function submitLiveEvent(token, body, button) {
+  if (button) button.disabled = true;
+  showStatus("");
+  try {
+    const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ ...body, clientEventId: newClientEventId() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw Object.assign(new Error(payload.message || "تعذر حفظ اختيارك."), { status: response.status });
+    const fresh = await loadSession(token);
+    renderView(fresh, token);
+    showStatus("وصل تحديثك للوسيط.");
+  } catch (error) {
+    if (error.status === 409) {
+      const fresh = await loadSession(token).catch(() => null);
+      if (fresh) renderView(fresh, token);
+    }
+    if (button) button.disabled = false;
+    showStatus(error.message || "تعذر حفظ اختيارك.", true);
+  }
+}
+
+function bindLiveNegotiation(root, token) {
+  root.querySelectorAll("[data-party-live-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      const choiceId = button.getAttribute("data-party-live-choice");
+      const condition = choiceId === "condition" ? String(root.querySelector("[data-party-live-condition]")?.value || "").trim() : "";
+      if (choiceId === "condition" && !condition) {
+        showStatus("اكتب الشرط أولًا.", true);
+        return;
+      }
+      void submitLiveEvent(token, { choiceId, condition }, button);
+    });
+  });
+  root.querySelector("[data-party-agreement-submit]")?.addEventListener("click", (event) => {
+    const field = String(root.querySelector("[data-party-agreement-field]")?.value || "").trim();
+    const input = root.querySelector("[data-party-agreement-value]");
+    const value = String(input?.value || "").trim();
+    if (!field || !value) {
+      showStatus("اختر البند واكتب القيمة.", true);
+      return;
+    }
+    if (input) input.value = "";
+    void submitLiveEvent(token, { agreement: { field, value } }, event.currentTarget);
+  });
+}
+
+// LINK_OPENED once per page visit (a refresh of the same tab is not a new open).
+async function recordLinkOpened(token) {
+  let openId = "";
+  const key = `iaqar.partyOpen.${String(token).slice(0, 16)}`;
+  try {
+    openId = sessionStorage.getItem(key) || "";
+    if (!openId) {
+      openId = newClientEventId();
+      sessionStorage.setItem(key, openId);
+    }
+  } catch {
+    openId = newClientEventId();
+  }
+  await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/opened`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ openId })
+  }).catch(() => {});
+}
+
+// Live updates while the link is open: re-render when a new event lands.
+function startLivePolling(token) {
+  liveState.token = token;
+  clearInterval(liveState.timer);
+  liveState.timer = setInterval(async () => {
+    if (liveState.busy || document.hidden) return;
+    liveState.busy = true;
+    try {
+      const response = await fetch(`${workerBase()}/party/sessions/${encodeURIComponent(token)}/state`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload.ok && String(payload.stateVersion || "") !== liveState.stateVersion) {
+        const fresh = await loadSession(token);
+        renderView(fresh, token);
+      }
+    } catch {
+      /* next tick retries */
+    } finally {
+      liveState.busy = false;
+    }
+  }, LIVE_POLL_MS);
 }
 
 function showStatus(message, isError) {
@@ -464,10 +586,12 @@ export async function bootPartyEntry(locationLike = window.location) {
   }
   const root = mount(buildPartyLoadingHtml());
   try {
+    await recordLinkOpened(token);
     const view = await loadSession(token);
     partyDiag("PARTY_SESSION_RESOLVED", { party: view.party || "" });
     renderView(view, token);
     partyDiag("PARTY_VIEW_RENDERED", { party: view.party || "" });
+    startLivePolling(token);
   } catch {
     mount(buildPartyErrorHtml(PARTY_INVALID_COPY));
     partyDiag("PARTY_VIEW_RENDERED", { invalid: true });
