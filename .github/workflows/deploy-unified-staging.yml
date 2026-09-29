@@ -119,3 +119,19 @@ jobs:
           path: ${{ runner.temp }}/fresh-match-lineage-qa
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Office OS live journey on Staging (isolated QA offices)
+        env:
+          PREVIEW_URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
+          PREVIEW_WORKER_URL: https://iaqar-intake-staging.iaqar-ai.workers.dev
+          OUT_DIR: ${{ runner.temp }}/office-os-staging-live
+        run: node scripts/qa/office-os/live-preview.e2e.mjs
+
+      - name: Upload Office OS Staging live evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-os-staging-live-${{ github.run_id }}
+          path: ${{ runner.temp }}/office-os-staging-live
+          if-no-files-found: warn
+          retention-days: 14
