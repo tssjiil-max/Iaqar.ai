@@ -1,0 +1,192 @@
+{
+  "at": "2026-09-29T23:27:45.477Z",
+  "previewUrl": "https://iaqar-ai-staging--office-os-preview-xox5a40q.web.app",
+  "workerUrl": "https://iaqar-intake-os-preview.iaqar-ai.workers.dev",
+  "run": "36645218642",
+  "checks": [
+    {
+      "name": "preview Worker healthy on Staging project",
+      "ok": true,
+      "detail": "{\"projectId\":\"iaqar-ai-staging\",\"env\":\"staging\"}"
+    },
+    {
+      "name": "live: no horizontal scroll 01-public-office",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 02-public-submitted",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: office link offer stored in the QA office, assigned to its owner, area optional",
+      "ok": true,
+      "detail": "opp_intake_BbXP6lyvRKXs7hY4axzy"
+    },
+    {
+      "name": "live: real «دخول المكتب» login (phone → Worker resolve → Firebase Auth → membership)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 03-record-with-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: exactly one review task for the new match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: MATCH_REVIEW carries office/match/offer/request/assigned broker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 04-daily-tasks-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 05-match-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 06-workspace-negotiation",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 07-composer-prepared",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: WhatsApp opens with the client number and the prepared text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: handoff stored as OPENED_EXTERNAL only",
+      "ok": true,
+      "detail": "https://iaqar-ai-staging--office-os-preview-xox5a40q.web.app/r#…"
+    },
+    {
+      "name": "live: reply page hides the other party",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 08-reply-page",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 09-reply-saved",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: double press + reload → one reply event",
+      "ok": true,
+      "detail": "events=1"
+    },
+    {
+      "name": "live: broker in-app notification created for the reply",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: reply notification reached FCM and the provider answer was recorded",
+      "ok": true,
+      "detail": "{\"push\":\"PROVIDER_REJECTED\",\"detail\":\"{\\\"registered\\\":1,\\\"sent\\\":0,\\\"failed\\\":1}\",\"at\":\"2026-09-29T23:29:02.436Z\"}"
+    },
+    {
+      "name": "live: no horizontal scroll 10-daily-tasks-reply",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 11-reply-old-link-updated",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: old link after replacement says it was updated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: accepted viewing is not confirmed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 12-daily-tasks-confirm",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 13-workspace-viewing",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 14-workspace-agreement",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: assist returns a suggestion (AI or rule-based fallback, labelled)",
+      "ok": true,
+      "detail": "rules / GEMINI_NOT_CONFIGURED"
+    },
+    {
+      "name": "live: no horizontal scroll 15-workspace-closed",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: deal completed explicitly and archived; one journey",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no open tasks remain for the closed opportunity",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 16-repository",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: office B is denied office A journeys/proposals/opportunities by Staging rules",
+      "ok": true,
+      "detail": "{\"journey\":\"permission-denied\",\"proposals\":\"permission-denied\",\"opportunities\":\"permission-denied\"}"
+    },
+    {
+      "name": "live: preview Worker refuses office B acting on office A",
+      "ok": true,
+      "detail": "403"
+    }
+  ],
+  "fcm": {
+    "providerState": {
+      "push": "PROVIDER_REJECTED",
+      "detail": "{\"registered\":1,\"sent\":0,\"failed\":1}",
+      "at": "2026-09-29T23:29:02.436Z"
+    },
+    "note": "Invalid test device registered on purpose: proves the Worker calls FCM HTTP v1 and records the provider answer. Real delivery to a phone is not verifiable here."
+  },
+  "gemini": {
+    "uiSource": "rules",
+    "apiSource": "rules",
+    "fallbackReason": "GEMINI_NOT_CONFIGURED",
+    "text": "تابع خطوات الاتفاق (العربون، العقد، الإفراغ) ثم أتمم الصفقة عند اكتمالها."
+  }
+}
