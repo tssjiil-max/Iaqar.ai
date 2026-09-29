@@ -1,0 +1,44 @@
+name: Deploy Staging Firestore rules
+
+# Approved for PR #131: publishes firestore.rules to iaqar-ai-staging only, after the
+# emulator suites pass. Never touches Production (aqar-b5d76).
+on:
+  push:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
+    paths:
+      - firestore.rules
+      - .github/workflows/deploy-staging-rules.yml
+      - scripts/deploy-staging-rules.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iaqar-staging-rules
+  cancel-in-progress: false
+
+jobs:
+  rules:
+    if: github.ref == 'refs/heads/codex/unified-staging-lineage-2026-08-29'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IAQAR_DEPLOY_TARGET: staging-rules
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Rules must pass the emulator suites first
+        run: npm run test:rules
+      - name: Deploy rules to iaqar-ai-staging
+        run: bash scripts/deploy-staging-rules.sh
