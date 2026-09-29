@@ -431,24 +431,64 @@
     node.textContent = message;
     node.className = `access-status show ${ok ? "ok" : "err"}`;
   }
+  // Journey visuals: presentation only. Every card routes to the existing
+  // owner/client intake, office login or broker application handlers.
+  const GATE_ICONS = Object.freeze({
+    offer: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M12 12.5v5M9.5 15h5"/>',
+    request: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M7.8 11 10.5 8.7 13.2 11v2.6H7.8z"/>',
+    office: '<rect x="3" y="7.5" width="18" height="12.5" rx="2.5"/><path d="M8.5 7.5V5.8A1.8 1.8 0 0 1 10.3 4h3.4a1.8 1.8 0 0 1 1.8 1.8v1.7"/><path d="M3 12.5h18"/>',
+    send: '<path d="M4 12 20 4l-4 16-4-6.5z"/><path d="m12 13.5 8-9.5"/>',
+    match: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h3"/><path d="m10 16 1.8 1.8 3.4-3.6"/>',
+    negotiate: '<path d="M4 4.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"/><path d="M19 8.5h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1v3l-4-3h-4"/><path d="M7 9h5"/>',
+    section: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/>',
+    details: '<path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M9 11.5h6M9 15h6"/>',
+    contact: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>'
+  });
+  function gateIcon(name, extraClass = "") {
+    return `<span class="access-icon${extraClass ? ` ${extraClass}` : ""}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GATE_ICONS[name] || ""}</svg></span>`;
+  }
+  function journeyHeroHtml(subtitle) {
+    return `<section class="access-hero"><h2>عقارك يبدأ من هنا</h2><p>${subtitle}</p></section>`;
+  }
+  function roleChoiceCardsHtml({ testIds = false } = {}) {
+    const card = (kind, title, action, sub, icon) => `<button type="button" class="access-choice" data-go="${kind}"
+        ${testIds ? `data-testid="${kind === "owner" ? "add-offer" : "add-request"}"` : `data-testid="choice-${kind}"`}>
+        ${gateIcon(icon, "access-choice-icon")}
+        <span class="access-choice-title">${title}</span>
+        <span class="access-choice-sub">${sub}</span>
+        <span class="access-choice-action"><span class="access-btn-main">${action}</span><svg class="access-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 6-6 6 6 6"/></svg></span>
+      </button>`;
+    return `<div class="access-choice-grid">
+      ${card("owner", "لدي عقار", "عرض عقار", "مالك العقار", "offer")}
+      ${card("client", "أبحث عن عقار", "اطلب عقار", "باحث عن عقار", "request")}
+    </div>`;
+  }
+  function journeyStepsHtml() {
+    const step = (index, label, icon) => `<li class="access-step">${gateIcon(icon, "access-step-icon")}<span class="access-step-index">${index}</span><span class="access-step-label">${label}</span></li>`;
+    return `<section class="access-card access-steps-card" aria-label="مراحل الخدمة"><ol class="access-steps">
+      ${step(1, "إرسال الطلب", "send")}${step(2, "المطابقة", "match")}${step(3, "التفاوض", "negotiate")}
+    </ol></section>`;
+  }
   function home() {
     if (isPlatformAddRoute) {
       platformAddChoice();
       return;
     }
-    frame(`<section class="access-card"><h2>اختر الخدمة</h2>
-      <p>رفع الطلب مباشر للعميل والمالك، وتسجيل الوسيط يخضع لمراجعة رخصة فال واعتماد الإدارة.</p>
-      <div class="access-options">
-        <button class="access-btn" data-go="owner"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
-        <button class="access-btn secondary" data-go="client"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
-        <button class="access-btn secondary" data-go="login">دخول مكتب مسجل</button>
-      </div>
-      <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>
-      <div class="access-options" style="margin-top:12px">
-        <button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button>
-      </div>
-      <div class="access-note">للاستفسار عن تسجيل الوسيط:
-        <a href="https://wa.me/966552019909" target="_blank" rel="noopener noreferrer">واتساب 0552019909</a></div></section>`);
+    frame(`${journeyHeroHtml("أرسل عرضك أو طلبك إلى المكاتب العقارية دون إنشاء حساب.")}
+      ${roleChoiceCardsHtml()}
+      <section class="access-card access-office-entry">
+        ${gateIcon("office", "access-office-entry-icon")}
+        <div class="access-office-entry-text"><h3>دخول المكتب</h3><p>للوسطاء والمكاتب العقارية المعتمدة فقط.</p></div>
+        <button type="button" class="access-btn light access-office-entry-btn" data-go="login">دخول المكتب <svg class="access-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 6-6 6 6 6"/></svg></button>
+      </section>
+      ${journeyStepsHtml()}
+      <section class="access-card access-broker-apply">
+        <p>تسجيل الوسيط يخضع لمراجعة رخصة فال واعتماد الإدارة.</p>
+        <div class="access-options"><button class="access-btn light" data-go="broker">تسجيل وسيط عقاري</button></div>
+        <div class="access-note">للاستفسار عن تسجيل الوسيط:
+          <a href="https://wa.me/966552019909" target="_blank" rel="noopener noreferrer">واتساب 0552019909</a></div>
+      </section>
+      <div class="access-note">الصفحة العامة لا تعرض بيانات أي مكتب أو إعداداته.</div>`);
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => {
       if (button.dataset.go === "broker") brokerForm();
       else if (button.dataset.go === "login") loginForm();
@@ -457,15 +497,13 @@
     gate.dataset.activeScreen = "home";
   }
   function platformAddChoice() {
-    frame(`<section class="access-card" data-testid="platform-add">
+    frame(`<section class="access-hero" data-testid="platform-add">
       <h2>إضافة فرصة للمنصة</h2>
       <p>أرسل عرضك أو طلبك، والمنصة ترشّح المكتب الأنسب.</p>
-      <div class="access-options">
-        <button class="access-btn" data-go="owner" data-testid="add-offer"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
-        <button class="access-btn secondary" data-go="client" data-testid="add-request"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
-      </div>
-      <div class="access-note">لا يحتاج هذا النموذج إلى إنشاء حساب.</div>
-    </section>`);
+    </section>
+    ${roleChoiceCardsHtml({ testIds: true })}
+    ${journeyStepsHtml()}
+    <div class="access-note">لا يحتاج هذا النموذج إلى إنشاء حساب.</div>`);
     gate.querySelectorAll("[data-go]").forEach(button => {
       button.onclick = () => intakeForm(button.dataset.go, "platform");
     });
@@ -503,12 +541,12 @@
   }
 
   async function publicOffice() {
-    frame(`<section class="access-card"><h2>خدمات المكتب</h2>
-      <p>ارفع طلبك مباشرة دون تسجيل، ولا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.</p>
-      <div id="publicOfficeProfile"></div>
-      <div class="access-options"><button class="access-btn" data-go="owner"><span class="access-btn-main">عرض عقار</span><span class="access-btn-sub">مالك العقار</span></button>
-      <button class="access-btn secondary" data-go="client"><span class="access-btn-main">اطلب عقار</span><span class="access-btn-sub">باحث عن عقار</span></button>
-      <button class="access-btn light" id="publicHome">المنصة العامة</button></div></section>`, "public-office");
+    frame(`<section class="access-card access-office-profile" aria-label="بيانات المكتب">
+      <div id="publicOfficeProfile"><p class="access-muted">جارٍ تحميل بيانات المكتب…</p></div></section>
+      ${journeyHeroHtml("ارفع عرضك أو طلبك مباشرة لهذا المكتب دون تسجيل. لا يمكن للزائر الوصول إلى مساحة المكتب أو إعداداته.")}
+      ${roleChoiceCardsHtml()}
+      ${journeyStepsHtml()}
+      <div class="access-options"><button type="button" class="access-btn light access-public-home" id="publicHome">المنصة العامة</button></div>`, "public-office");
     gate.dataset.activeScreen = "public-office";
     gate.querySelectorAll("[data-go]").forEach(button => button.onclick = () => intakeForm(button.dataset.go, officeId));
     gate.querySelector("#publicHome").onclick = () => location.assign("/");
@@ -535,18 +573,21 @@
           ? `<p data-testid="office-rating">${ratingAverage.toFixed(1)} ★ · ${ratingCount} تقييمًا</p>`
           : "";
         const imgTag = primary
-          ? `<img src="${escapeHtml(primary)}" alt="صورة المكتب" data-fallback="${escapeHtml(fallback)}"
-              style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:10px"
+          ? `<img class="access-office-avatar" src="${escapeHtml(primary)}" alt="صورة المكتب" data-fallback="${escapeHtml(fallback)}"
               onerror="if(this.dataset.fallback){this.src=this.dataset.fallback;this.dataset.fallback='';}else{this.remove();}">`
           : "";
         gate.querySelector("#publicOfficeProfile").innerHTML = `
-          ${imgTag}
-          <h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
+          <div class="access-office-head">${imgTag}
+          <div class="access-office-meta"><h2>${escapeHtml(data.officeName || "مكتب عقاري")}</h2>
           <p>${escapeHtml(data.brokerName || "وسيط عقاري")} — رخصة فال ${escapeHtml(data.licenseNumber || "—")}
           <br>${escapeHtml(data.city || "")}${phoneHtml}${whatsappHtml}</p>
-          ${ratingHtml}`;
+          ${ratingHtml}</div></div>`;
+        return;
       }
     } catch (_) {}
+    // No public profile: keep the page usable without an empty loading card.
+    const profileCard = gate.querySelector(".access-office-profile");
+    if (profileCard) profileCard.hidden = true;
   }
   async function resolveIntakeDefaultCity(targetOffice) {
     const target = firestoreOfficeId(targetOffice);
@@ -862,10 +903,12 @@
   async function intakeForm(kind, targetOffice) {
     const owner = kind === "owner";
     const defaultCity = await resolveIntakeDefaultCity(targetOffice);
-    frame(`<section class="access-card"><button class="access-back">← رجوع</button>
-      <h2>${owner ? "عرض عقار" : "طلب عقار"}</h2>
+    frame(`<section class="access-card access-intake-card"><button class="access-back">← رجوع</button>
+      <h2>${owner ? "إضافة عرض عقاري" : "إضافة طلب عقاري"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
       <form class="access-form" id="intakeForm" novalidate>
+        <section class="access-form-section full" aria-label="${owner ? "بيانات العقار" : "العقار المطلوب"}">
+        <h3 class="access-section-title">${gateIcon("section")}${owner ? "بيانات العقار" : "العقار المطلوب"}</h3>
         <div class="access-chip-section full">
           ${accessRequiredLabel("الغرض")}
           <div class="access-chip-row access-chip-row--purpose">${intakePurposeChipHtml(owner)}</div>
@@ -885,29 +928,38 @@
         </div>
         <label>${accessRequiredLabel("المدينة")}<input name="city" id="intakeCityInput" maxlength="80" required
           value="${escapeHtml(defaultCity)}"></label>
-        <label class="full">${accessRequiredLabel("الحي")}
+        <label>${accessRequiredLabel("الحي")}
           <input name="district" id="districtInput" maxlength="80" required autocomplete="off"
             placeholder="اكتب اسم الحي"></label>
-        <label class="full">
+        <label>
           <span id="intakePriceLabel" class="access-field-label">السعر <span class="access-required-mark" aria-hidden="true">*</span></span>
           <input name="priceOrBudget" data-testid="${owner ? "owner-price" : "client-price"}" inputmode="numeric" maxlength="12" required autocomplete="off"
             placeholder="مثال: 500000"></label>
+        <label><span class="access-field-label">${owner ? "المساحة (م²)" : "المساحة المطلوبة (م²)"} <span class="access-optional-mark">(اختياري)</span></span>
+          <input name="area" data-testid="${owner ? "owner-area" : "client-area"}" inputmode="decimal" maxlength="10" autocomplete="off"
+            placeholder="مثال: 120"></label>
+        </section>
         <div id="publicVoiceIntakePanel" class="full access-voice-slot"></div>
         <div hidden aria-hidden="true">
-          <input name="area"><input name="rooms"><input name="bathrooms">
+          <input name="rooms"><input name="bathrooms">
           <input name="streetWidth"><input name="facing"><input name="furnished">
         </div>
-        <details class="access-optional-details"><summary>تفاصيل اختيارية</summary><div class="access-optional-body">
-        <label class="full">${accessOptionalLabel("تفاصيل إضافية")}<textarea name="details" maxlength="1000"></textarea></label>
-        ${owner ? `<label class="full">${accessOptionalLabel("صور العقار (حتى 5 صور)")}
+        <section class="access-form-section full" aria-label="${owner ? "تفاصيل العرض" : "تفاصيل الطلب"}">
+        <h3 class="access-section-title">${gateIcon("details")}${owner ? "تفاصيل العرض" : "تفاصيل الطلب"} <span class="access-optional-mark">(اختياري)</span></h3>
+        <label class="full">${accessOptionalLabel(owner ? "وصف العقار" : "تفاصيل إضافية")}<textarea name="details" maxlength="1000"
+          placeholder="${owner ? "اكتب تفاصيل ومميزات العقار" : "اكتب أي تفاصيل تساعد المكتب في البحث"}"></textarea></label>
+        ${owner ? `<label class="full access-upload">${accessOptionalLabel("صور العقار (حتى 5 صور)")}
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
           <p class="file-help">يمكن إرسال العرض دون صور، ويطلبها الوسيط لاحقًا عبر واتساب. بحد أقصى 8 ميجابايت للصورة.</p></label>
-          <label class="full">${accessOptionalLabel("فيديو العقار")}
+          <label class="full access-upload">${accessOptionalLabel("فيديو العقار")}
           <input name="video" type="file" accept="video/mp4,video/webm,video/quicktime">
           <p class="file-help">فيديو واحد بحد أقصى 90 ميجابايت.</p></label>` : ""}
-        </div></details>
-        <label>${accessOptionalLabel("الاسم")}<input name="name" maxlength="80"></label>
-        <label>${accessRequiredLabel("رقم الجوال")}<input name="phone" inputmode="tel" maxlength="20" required></label>
+        </section>
+        <section class="access-form-section full" aria-label="بيانات التواصل">
+        <h3 class="access-section-title">${gateIcon("contact")}بيانات التواصل</h3>
+        <label>${accessOptionalLabel("الاسم")}<input name="name" maxlength="80" autocomplete="name"></label>
+        <label>${accessRequiredLabel("رقم الجوال")}<input name="phone" inputmode="tel" maxlength="20" required placeholder="05xxxxxxxx"></label>
+        </section>
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`, kind === "owner" ? "owner-intake" : "client-intake");
     bindAccessBack(() => (isPublicOfficeLink ? publicOffice() : (isPlatformAddRoute ? platformAddChoice() : home())));
@@ -1220,8 +1272,9 @@
       authDiag("REDIRECT_REASON", { reason: "skip_login_form_already_granted" });
       return;
     }
-    frame(`<section class="access-card"><button class="access-back">← رجوع</button>
-      <h2>دخول المكتب</h2><p>مساحة العمل والإعدادات للحسابات المعتمدة والمصرح لها فقط.</p>
+    frame(`<section class="access-card access-login-card"><button class="access-back">← رجوع</button>
+      <div class="access-login-head">${gateIcon("office", "access-office-entry-icon")}<div><h2>دخول المكتب</h2>
+      <p>للوسطاء والمكاتب المعتمدة فقط — مساحة العمل والإعدادات للحسابات المصرح لها.</p></div></div>
       <form class="access-form" id="loginForm">
         <label class="full"><span>رقم الجوال</span><input name="phone" inputmode="tel" autocomplete="username" required></label>
         <label class="full"><span>كلمة المرور</span><input name="password" type="password" autocomplete="current-password" required></label>

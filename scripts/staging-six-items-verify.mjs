@@ -55,7 +55,7 @@ async function main() {
       fail("platform_broker_and_whatsapp", "missing broker or whatsapp on home");
     }
     const brokerIdx = homeHtml.indexOf("تسجيل وسيط عقاري");
-    const loginIdx = homeHtml.indexOf("دخول مكتب مسجل");
+    const loginIdx = homeHtml.indexOf("دخول المكتب");
     if (brokerIdx > loginIdx) pass("broker_after_login_on_home");
     else fail("broker_after_login_on_home", `brokerIdx=${brokerIdx} loginIdx=${loginIdx}`);
     await page.screenshot({ path: `${OUT}/staging_platform_home.png`, fullPage: true });

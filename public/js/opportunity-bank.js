@@ -3504,7 +3504,7 @@ function nearbyEmptyMessage(emptyReason = {}) {
     const labels = Array.isArray(emptyReason.missingLabels)
       ? emptyReason.missingLabels
       : missingFieldLabelsArabic(emptyReason.missing || []);
-    const fields = labels.length ? labels.join("، ") : "الميزانية، المساحة";
+    const fields = labels.length ? labels.join("، ") : "البيانات الأساسية";
     return `أكمل بيانات الفرصة لتشغيل البحث عن المكاتب القريبة: ${fields}.`;
   }
   if (code === "not_enabled") return "لم تُتح هذه الفرصة للتعاون بعد.";
