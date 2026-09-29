@@ -9,7 +9,7 @@ on:
     paths:
       - firestore.rules
       - .github/workflows/deploy-staging-rules.yml
-      - scripts/deploy-staging-rules.sh
+      - scripts/deploy-staging-rules.mjs
   workflow_dispatch:
 
 permissions:
@@ -41,4 +41,4 @@ jobs:
       - name: Rules must pass the emulator suites first
         run: npm run test:rules
       - name: Deploy rules to iaqar-ai-staging
-        run: bash scripts/deploy-staging-rules.sh
+        run: node scripts/deploy-staging-rules.mjs
