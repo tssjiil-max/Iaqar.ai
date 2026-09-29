@@ -7,8 +7,8 @@
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#003F34",
-  "theme_color": "#005C4B",
+  "background_color": "#eef5fd",
+  "theme_color": "#17589c",
   "icons": [
     {
       "src": "/icons/iaqar-default-icon-192.png",

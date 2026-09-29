@@ -41,6 +41,7 @@ import { cooperationSettingsExtras } from "./cooperation-workflow-domain.js";
 import {
   PLATFORM_BADGE_ICON,
   PLATFORM_DEFAULT_LOGO,
+  PLATFORM_UI_LOGO,
   isPlatformDefaultLogo,
   officeBrandIconCandidates
 } from "./platform-brand-domain.js";
@@ -501,10 +502,10 @@ function applyOfficeCardImages() {
     workerBase: resolveWorkerBase(),
     officeId: officeId()
   }).map((url) => (
-    isPlatformDefaultLogo(url) ? url : withOfficeImageCacheBust(url, stamp)
+    isPlatformDefaultLogo(url) ? PLATFORM_UI_LOGO : withOfficeImageCacheBust(url, stamp)
   ));
   const applySrc = (index) => {
-    const src = candidates[index] || PLATFORM_DEFAULT_LOGO;
+    const src = candidates[index] || PLATFORM_UI_LOGO;
     const platform = isPlatformDefaultLogo(src);
     logo.classList.toggle("is-platform-fallback", platform);
     logo.hidden = false;
@@ -515,7 +516,7 @@ function applyOfficeCardImages() {
       }
       logo.classList.add("is-platform-fallback");
       logo.hidden = false;
-      if (logo.src !== PLATFORM_DEFAULT_LOGO) logo.src = PLATFORM_DEFAULT_LOGO;
+      if (!isPlatformDefaultLogo(logo.src)) logo.src = PLATFORM_UI_LOGO;
     };
     logo.onload = () => { logo.hidden = false; };
     if (logo.src !== src) logo.src = src;
