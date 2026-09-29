@@ -75,7 +75,7 @@ function officeFrom(req, body = {}) {
 
 function serveStatic(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
-  if (pathname === "/") pathname = "/index.html";
+  if (pathname === "/") pathname = "/legacy.html"; // legacy UI suites target the preserved shell
   if (pathname.endsWith("/")) pathname += "index.html";
   const filePath = path.normalize(path.join(publicDir, pathname));
   if (!filePath.startsWith(publicDir)) {

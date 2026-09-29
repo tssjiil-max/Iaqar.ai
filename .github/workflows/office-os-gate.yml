@@ -29,7 +29,12 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix worker
       - name: Web + Worker tests (includes office-os domain, journey, security suites)
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
+      - name: Report failing tests as annotations
+        if: always()
+        run: node scripts/qa/office-os/annotate-tap.mjs "$RUNNER_TEMP/npm-test.log"
       - run: npm run check
 
   firestore-rules:
@@ -47,7 +52,12 @@ jobs:
           java-version: 21
       - run: npm ci
       - name: Rules emulator suites (existing + office-os)
-        run: npm run test:rules
+        run: |
+          set -o pipefail
+          npm run test:rules 2>&1 | tee "$RUNNER_TEMP/rules.log"
+      - name: Report rules results as annotations
+        if: always()
+        run: node scripts/qa/office-os/annotate-tap.mjs "$RUNNER_TEMP/rules.log"
 
   new-app-browser:
     name: New app in a real browser (journey, widths, deep links)

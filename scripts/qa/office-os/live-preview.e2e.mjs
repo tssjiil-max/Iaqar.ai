@@ -9,10 +9,15 @@ import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 import { parseFirebaseServiceAccountJson } from "../../staging-credentials.mjs";
+import { initializeApp, cert } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 
+for (const event of ["uncaughtException", "unhandledRejection"]) {
+  process.on(event, (error) => { console.log(`::error title=live script crashed::${String(error?.stack || error).split("\n").slice(0, 3).join(" | ").replace(/%/g, "%25")}`); process.exit(1); });
+}
 const require = createRequire(import.meta.url);
 const { chromium } = (() => { try { return require("playwright"); } catch (_) { return require(path.join(execSync("npm root -g").toString().trim(), "playwright")); } })();
-const admin = require("firebase-admin");
 
 const PREVIEW_URL = String(process.env.PREVIEW_URL || "").replace(/\/+$/, "");
 const WORKER_URL = String(process.env.PREVIEW_WORKER_URL || "").replace(/\/+$/, "");
@@ -31,10 +36,9 @@ if (!new URL(PREVIEW_URL).hostname.startsWith(`${PROJECT}--office-os-preview`)) 
 if (!/^https:\/\/iaqar-intake-os-preview\./.test(WORKER_URL)) throw new Error("refusing: not the preview Worker");
 const { serviceAccount } = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT);
 if (serviceAccount?.project_id !== PROJECT) throw new Error("refusing: service account is not Staging");
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: PROJECT });
-const db = admin.firestore();
-const auth = admin.auth();
-const FieldValue = admin.firestore.FieldValue;
+initializeApp({ credential: cert(serviceAccount), projectId: PROJECT });
+const db = getFirestore();
+const auth = getAuth();
 
 const sha = (v) => crypto.createHash("sha256").update(v).digest("hex");
 const phoneFor = () => `05999${String(crypto.randomInt(0, 99999)).padStart(5, "0")}`;
@@ -303,6 +307,12 @@ try {
   fs.writeFileSync(path.join(OUT, "live-report.json"), JSON.stringify(report, null, 2));
   const failed = checks.filter((c) => !c.ok);
   console.log(`\n${checks.length - failed.length}/${checks.length} live checks passed`);
+  if (process.env.GITHUB_ACTIONS) {
+    const esc = (t) => String(t).replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A");
+    for (const c of failed.slice(0, 9)) console.log(`::error title=live check failed::${esc(`${c.name} — ${c.detail}`)}`);
+    const lines = [`preview: ${PREVIEW_URL}`, `passed ${checks.length - failed.length}/${checks.length}`, ...checks.map((c) => `${c.ok ? "PASS" : "FAIL"} ${c.name}${c.detail ? ` (${c.detail})` : ""}`), `FCM: ${JSON.stringify(report.fcm)}`, `Gemini: ${JSON.stringify(report.gemini)}`];
+    console.log(`::notice title=live preview results::${esc(lines.join("\n")).slice(0, 7000)}`);
+  }
   console.log(`FCM: ${JSON.stringify(report.fcm)}`);
   console.log(`Gemini: ${JSON.stringify(report.gemini)}`);
   process.exitCode = failed.length ? 1 : 0;
