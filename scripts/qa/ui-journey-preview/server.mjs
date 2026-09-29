@@ -44,7 +44,7 @@ export async function startPreview({ port = 0 } = {}) {
   const matchOperation = store.list(`offices/${OFFICE}/operations`).find((op) => String(op.type).toUpperCase() === "MATCH_REVIEW");
 
   const deal = { recordType: "deal", recordId: "deal_preview_1", dealId: "deal_preview_1", id: "deal_preview_1", status: "negotiation", stage: "negotiation",
-    propertyType: "شقة", district: "العزيزية", matchId: match?.id || "", clientRequestId: REQUEST_ID, ownerOfferId: OFFER_ID, officeId: OFFICE,
+    propertyType: "شقة", district: "العزيزية", matchId: "", officeId: OFFICE,
     createdAt: "2026-09-28T10:00:00.000Z" };
   store.seed(`offices/${OFFICE}/deals/${deal.id}`, deal);
   const stub = fs.readFileSync(new URL("./firebase-stub.js", import.meta.url), "utf8");

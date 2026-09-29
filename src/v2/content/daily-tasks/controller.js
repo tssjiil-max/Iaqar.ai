@@ -995,6 +995,14 @@ function onListClick(event) {
     void openPartyNotificationWhatsApp(task, handoff);
     return;
   }
+  const audiencePick = event.target.closest("[data-broker-audience-pick]");
+  if (audiencePick) {
+    event.preventDefault(); event.stopPropagation();
+    const select = audiencePick.closest("[data-broker-panel]")?.querySelector("[data-broker-audience]");
+    if (select) select.value = audiencePick.dataset.brokerAudiencePick;
+    syncBrokerAudience(card);
+    return;
+  }
   const brokerAction = event.target.closest("[data-broker-action]");
   if (brokerAction) {
     event.preventDefault(); event.stopPropagation();
@@ -1170,6 +1178,16 @@ function captureDrafts() {
   });
 }
 
+// Segmented recipient buttons mirror the recipient <select>, which stays the value source.
+function syncBrokerAudience(scope) {
+  scope?.querySelectorAll("[data-broker-panel]").forEach((panel) => {
+    const value = panel.querySelector("[data-broker-audience]")?.value || "client";
+    panel.querySelectorAll("[data-broker-audience-pick]").forEach((button) => {
+      button.setAttribute("aria-checked", button.dataset.brokerAudiencePick === value ? "true" : "false");
+    });
+  });
+}
+
 function restoreDrafts() {
   state.root?.querySelectorAll("[data-cv2-exec-task]").forEach((card) => {
     const values = state.drafts.get(card.getAttribute("data-task-id"));
@@ -1196,6 +1214,7 @@ function renderList() {
     detailsTaskId: state.detailsTaskId
   });
   restoreDrafts();
+  syncBrokerAudience(state.root);
   restoreScroll();
   markFocusedMatchSeen();
   consumePendingDailyTaskOpen();
@@ -1324,7 +1343,7 @@ export function openMatchWorkspace(matchId) {
   workspace.setAttribute("role", "dialog");
   workspace.setAttribute("aria-modal", "true");
   workspace.setAttribute("aria-label", "مسار المطابقة والتفاوض");
-  workspace.innerHTML = '<div class="cv2-match-workspace-shell"><header><h2>مسار المطابقة والتفاوض</h2><button type="button" data-close-match-workspace aria-label="إغلاق">إغلاق</button></header><div data-match-workspace-content></div></div>';
+  workspace.innerHTML = '<div class="cv2-match-workspace-shell"><header><h2>التفاوض</h2><button type="button" data-close-match-workspace aria-label="إغلاق">إغلاق</button></header><div data-match-workspace-content></div></div>';
   workspace.querySelector("[data-close-match-workspace]").addEventListener("click", () => closeMatchWorkspace());
   workspace.closeOnEscape = (event) => {
     if (event.key === "Escape") closeMatchWorkspace();

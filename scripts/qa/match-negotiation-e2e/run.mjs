@@ -182,7 +182,7 @@ await step("G", "اختيار خيار للطرف ثم تغييره واستمر
 
 const sendMessage = async (audience, message) => {
   await page.fill(ws("[data-broker-message]"), message);
-  await page.selectOption(ws("[data-broker-audience]"), audience);
+  await page.click(ws(`[data-broker-audience-pick="${audience}"]`));
   await page.click(ws('[data-broker-action="send_message"]'));
   await waitFor(async () => (await workspaceState()).log.some((row) => row.message === message), `log has ${message}`);
 };

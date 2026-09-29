@@ -177,7 +177,7 @@ const partyMessages = (page) => page.evaluate(() => [...document.querySelectorAl
 await step("BROKER", "msg", "رسالة الوسيط تصل صفحة العميل فورًا", async () => {
   await openWorkspace();
   await broker.fill(ws("[data-broker-message]"), "موعد المعاينة الخميس 5 مساءً");
-  await broker.selectOption(ws("[data-broker-audience]"), "client");
+  await broker.click(ws(`[data-broker-audience-pick="client"]`));
   await broker.selectOption(ws("[data-broker-message-kind]"), "general");
   await broker.uncheck(ws("[data-broker-requires-reply]"));
   await broker.click(ws('[data-broker-action="send_message"]'));
@@ -193,7 +193,7 @@ await step("BROKER", "msg", "رسالة الوسيط تصل صفحة العمي�
 await step("REPLY", "1", "الوسيط يكتب «المعاينة غدًا بعد العشاء» (موعد معاينة) → العميل يرى الردود السياقية", async () => {
   await openWorkspace();
   await broker.fill(ws("[data-broker-message]"), "المعاينة غدًا بعد العشاء");
-  await broker.selectOption(ws("[data-broker-audience]"), "client");
+  await broker.click(ws(`[data-broker-audience-pick="client"]`));
   await broker.selectOption(ws("[data-broker-message-kind]"), "viewing");
   await broker.check(ws("[data-broker-requires-reply]"));
   await broker.click(ws('[data-broker-action="send_message"]'));
