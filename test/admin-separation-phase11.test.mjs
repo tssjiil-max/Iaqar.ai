@@ -71,7 +71,7 @@ test("admin browser asks the Worker for session authorization instead of trustin
 
 test("platform admin UI stays isolated from the office application shell", () => {
   const adminHtml = readRepo("public/admin/index.html");
-  const officeHtml = readRepo("public/index.html");
+  const officeHtml = readRepo("public/legacy.html");
   assert.match(adminHtml, /\/js\/admin-console\.js/);
   assert.doesNotMatch(officeHtml, /\/js\/admin-console\.js/);
   assert.doesNotMatch(officeHtml, /id="adminUserLine"/);

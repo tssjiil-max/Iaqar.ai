@@ -50,7 +50,7 @@ test("worker Firestore GET falls back to a masked PATCH when GetDocument quota i
 });
 
 test("index.html skips Access Gate scripts when cv2Party is present", () => {
-  const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const index = readFileSync(path.join(root, "public", "legacy.html"), "utf8");
   const headDetect = index.indexOf('URLSearchParams(location.search).get("cv2Party")');
   const skipLog = index.indexOf('ACCESS_GATE_SKIPPED');
   const writeGate = index.indexOf('document.write(\'<script src="js/access-gate.js');
@@ -62,7 +62,7 @@ test("index.html skips Access Gate scripts when cv2Party is present", () => {
 });
 
 test("existing App Shell, voice slot, and matching engine stay in place", () => {
-  const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const index = readFileSync(path.join(root, "public", "legacy.html"), "utf8");
   assert.match(index, /مكاتب عقارية ذكية/);
   assert.match(index, /id="shellVoice"/);
   assert.match(index, /id="addOpportunityVoicePanel"/);
@@ -124,7 +124,7 @@ test("offers and requests still reuse the approved data card", () => {
 });
 
 test("content-v2 shell applies isolation class without removing header markup", () => {
-  const index = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const index = readFileSync(path.join(root, "public", "legacy.html"), "utf8");
   assert.match(index, /class="card header"/);
   assert.match(index, /class="card license"/);
   assert.match(index, /id="workspace"/);

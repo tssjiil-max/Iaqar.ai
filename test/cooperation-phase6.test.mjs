@@ -216,7 +216,7 @@ test("client lifecycle helper posts to Worker /cooperation/lifecycle", async () 
 test("Worker and bank wire Phase 6 lifecycle without Deals or messaging", () => {
   const worker = readRepositoryFile("worker", "src", "index.js");
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(worker.includes("/cooperation/lifecycle"));
   assert.ok(worker.includes("/cooperation/scope-revoke"));
   assert.ok(worker.includes("runCooperationLifecycle"));

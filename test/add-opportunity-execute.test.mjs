@@ -28,12 +28,12 @@ test("add-opportunity.js wires syncExecuteButton on input", () => {
 });
 
 test("index.html uses single-row grid for add opportunity", () => {
-  const html = readRepositoryFile("public", "index.html");
+  const html = readRepositoryFile("public", "legacy.html");
   assert.ok(html.includes("grid-template-columns:minmax(0, 1fr) 96px"));
 });
 
 test("approved modern shell keeps إرسال, Workspace, and no old FAL banner", () => {
-  const html = readRepositoryFile("public", "index.html");
+  const html = readRepositoryFile("public", "legacy.html");
   assert.equal(html.includes("license-banner"), false);
   assert.equal(html.includes("الهيئة العامة للعقار"), false);
   assert.match(html, /id="addOpportunitySubmit"[^>]*>إرسال<\/button>/);

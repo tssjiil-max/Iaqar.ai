@@ -31,7 +31,7 @@ import {
 } from "../worker/src/index.js";
 import { buildWorkspaceActivity } from "../public/js/opportunity-workspace-domain.js";
 
-const html = readRepositoryFile("public", "index.html");
+const html = readRepositoryFile("public", "legacy.html");
 const importUi = readRepositoryFile("public", "js", "opportunity-import-advert-ui.js");
 const importDomain = readRepositoryFile("public", "js", "opportunity-import-advert-domain.js");
 const canonicalDomain = readRepositoryFile("public", "js", "canonical-listing-intake-domain.js");

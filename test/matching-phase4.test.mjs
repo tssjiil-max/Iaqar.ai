@@ -221,7 +221,7 @@ test("shell and worker wire Phase 4 rematch without Deals page or bottom nav", (
   const intake = readRepositoryFile("public", "js", "add-opportunity.js");
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
   const worker = readRepositoryFile("worker", "src", "index.js");
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(intake.includes("requestOpportunityRematch"));
   assert.ok(bank.includes("rematchOpportunity"));
   assert.ok(worker.includes("/matching/run"));

@@ -21,7 +21,7 @@ import {
 } from "../public/js/daily-tasks-domain.js";
 import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 
 test("five today task sections exist in priority order", () => {
   assert.equal(TODAY_TASK_SECTIONS.length, 5);

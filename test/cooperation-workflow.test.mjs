@@ -307,7 +307,7 @@ test("TEST 15 Completion leaves active daily tasks and stays in history identity
 
 test("TEST 16 Old operational page title is no longer rendered", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.equal(bank.includes("مشاركات نشطة مع مكاتب أخرى"), false);
   assert.equal(shell.includes("مشاركات نشطة مع مكاتب أخرى"), false);
   assert.ok(shell.includes("التعاون بين المكاتب"));

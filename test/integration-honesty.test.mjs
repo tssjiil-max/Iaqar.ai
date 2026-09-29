@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import worker from "../worker/src/index.js";
 import { readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 const workerSource = readRepositoryFile("worker", "src", "index.js");
 const wranglerSource = readRepositoryFile("worker", "wrangler.toml");
 const whatsappClient = readRepositoryFile("public", "js", "whatsapp-office.js");
@@ -88,7 +88,7 @@ test("only a real Meta signup response may report a linked account", () => {
 
 test("no shipped file claims a delivered or read WhatsApp/Telegram message", () => {
   const files = {
-    "public/index.html": shellSource,
+    "public/legacy.html": shellSource,
     "public/js/whatsapp-office.js": whatsappClient,
     "public/js/workflow-office.js": readRepositoryFile("public", "js", "workflow-office.js"),
     "public/js/office-settings.js": readRepositoryFile("public", "js", "office-settings.js"),

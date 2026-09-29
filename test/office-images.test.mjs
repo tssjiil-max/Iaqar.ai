@@ -76,7 +76,7 @@ test("the cover ratio is documented as our default, not as a verified WhatsApp r
   for (const [name, source] of Object.entries({
     "office-domain.js": domain,
     "office-settings.js": readRepositoryFile("public", "js", "office-settings.js"),
-    "index.html": readRepositoryFile("public", "index.html")
+    "index.html": readRepositoryFile("public", "legacy.html")
   })) {
     const lowered = source.toLowerCase();
     for (const claim of claims) {

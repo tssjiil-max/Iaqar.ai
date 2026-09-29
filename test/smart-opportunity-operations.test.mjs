@@ -198,7 +198,7 @@ test("REGRESSION: live active-operation projection has no arbitrary Firestore li
 test("UI contract keeps one primary card and local action accents", () => {
   const ui = readFileSync(new URL("../public/js/bank-inbox-card-ui.js", import.meta.url), "utf8");
   const bank = readFileSync(new URL("../public/js/opportunity-bank.js", import.meta.url), "utf8");
-  const shell = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const shell = readFileSync(new URL("../public/legacy.html", import.meta.url), "utf8");
   assert.match(ui, /data-cv2-inbox-item/);
   assert.doesNotMatch(ui, /data-daily-task-card/);
   assert.doesNotMatch(ui, /data-inbox-open/);

@@ -145,7 +145,7 @@ test("service worker cache bumped with network-first navigation", () => {
 });
 
 test("header CSS reduced to ~72% of prior bundle height", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("min-height:29px"));
   assert.ok(html.includes("min-height:24px"));
 });

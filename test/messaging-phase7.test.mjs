@@ -325,7 +325,7 @@ test("Worker message routes require auth; outbound Cloud API still blocked", asy
 });
 
 test("Phase 7 wiring: shell loads messaging bridge; workflow persists drafts", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   const opsUi = readRepositoryFile("public", "js", "operations-center-ui.js");
   assert.ok(shell.includes("js/messaging-domain-bridge.js"));
   assert.ok(shell.includes("js/operations-center-ui.js"));

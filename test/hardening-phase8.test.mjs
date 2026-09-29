@@ -117,7 +117,7 @@ test("Phase 8 PWA: manifest has no deals shortcut; icons and SW cache are curren
 });
 
 test("Phase 8 shell: logos are file assets, not duplicated base64; public-intake dead code gone", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.equal(shell.includes("data:image/png;base64,"), false);
   assert.ok(shell.includes('/icons/iaqar-default-icon-192.png'));
   assert.equal(existsSync(path.join(root, "public/js/public-intake.js")), false);

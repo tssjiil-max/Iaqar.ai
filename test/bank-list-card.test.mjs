@@ -19,7 +19,7 @@ test("offers and requests list reuses the opportunity data card", () => {
   assert.ok(inbox.includes("buildOpportunityDataCardV2"));
   assert.ok(inbox.includes("buildCompleteMissingButtonV2"));
   assert.equal(inbox.includes("bank-inbox-head"), false);
-  const shell = readRepo("public", "index.html");
+  const shell = readRepo("public", "legacy.html");
   assert.equal(shell.includes(".bank-inbox-head"), false);
 });
 

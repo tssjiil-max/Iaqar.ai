@@ -75,14 +75,14 @@ test("an unknown cooperation status reads as not shared rather than inventing a 
 });
 
 test("the settings sheet offers the approved heading and exactly three radio choices", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(shell.includes("التعاون بين المكاتب"), "the approved Arabic heading must be present");
   const values = [...shell.matchAll(/name="cooperationMode"\s+value="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(values, ["DISABLED", "APPROVAL_REQUIRED", "SMART_AUTOMATIC"]);
 });
 
 test("approval required is the pre-selected choice in the shell", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   const checked = [...shell.matchAll(/name="cooperationMode"\s+value="([^"]+)"\s+checked/g)].map(m => m[1]);
   assert.deepEqual(checked, ["APPROVAL_REQUIRED"]);
 });

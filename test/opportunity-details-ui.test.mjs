@@ -12,7 +12,7 @@ import {
 } from "../public/js/opportunity-details-ui.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const indexHtml = readFileSync(path.join(root, "..", "public", "index.html"), "utf8");
+const indexHtml = readFileSync(path.join(root, "..", "public", "legacy.html"), "utf8");
 
 const referenceRecord = {
   opportunityKind: "OFFER",

@@ -102,6 +102,11 @@ export function operationToFirestoreFields(operation, {
     matchId: firestoreString(operation.matchId || ""),
     dealId: firestoreString(operation.dealId || operation.metadata?.dealId || ""),
     cooperationId: firestoreString(operation.cooperationId || ""),
+    // Office OS linkage (additive). Empty values are omitted so a replayed upsert
+    // never clears fields written by broker actions (e.g. a postponement).
+    offerId: (operation.offerId || operation.metadata?.ownerOfferId) ? firestoreString(operation.offerId || operation.metadata.ownerOfferId) : null,
+    requestId: (operation.requestId || operation.metadata?.clientRequestId) ? firestoreString(operation.requestId || operation.metadata.clientRequestId) : null,
+    journeyId: operation.journeyId ? firestoreString(operation.journeyId) : null,
     currentStage: firestoreString(operation.currentStage || ""),
     propertyType: firestoreString(operation.propertyType || ""),
     purpose: firestoreString(operation.purpose || ""),

@@ -47,6 +47,9 @@ import {
   applyOperationLifecycle
 } from "./operations-domain.js";
 import webpush from "web-push";
+import { handleOfficeOs, isOfficeOsPath } from "./office-os/routes.js";
+import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
+import { journeyIdForPair } from "./office-os/journey-service.js";
 import {
   createMatchReviewBundle,
   expireOperationsForMatchIds,
@@ -417,6 +420,12 @@ export default {
     try {
       if (request.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+
+      // Office OS (new office experience). Registered before the outbound-send guard
+      // below, which blocks any path containing "send"/"messages".
+      if (isOfficeOsPath(url.pathname)) {
+        return await handleOfficeOs(request, env, officeOsDeps(), { requestId });
       }
 
       if (request.method === "GET" && (url.pathname.startsWith("/m/") || url.pathname.startsWith("/o/"))) {
@@ -2070,6 +2079,11 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     source: intake.source || (officeId === "platform" ? "platform_public" : "office_public_link")
   });
   const opportunityKind = parsed.kind === "owner_offer" ? "OFFER" : "REQUEST";
+  // Assignment rule: office-link submissions go to the office's configured default
+  // broker, else the office owner. Never taken from visitor input.
+  const responsibleBrokerId = origin.type === ORIGIN_SOURCE_TYPE.OFFICE_DIRECT
+    ? await resolveDefaultBrokerId({ projectId, officeId, accessToken })
+    : "";
   const routingReady = routerCompleteness({
     opportunityKind,
     purpose: readiness.purpose,
@@ -2105,6 +2119,9 @@ async function handlePublicIntakeMatching(request, env, requestId) {
         : (routingReady.ok ? ROUTING_STATUS.ROUTING : ROUTING_STATUS.NEEDS_COMPLETION)
     ),
     livingTaskId: firestoreString(livingTaskIdForOpportunity(opportunityId)),
+    brokerId: firestoreString(responsibleBrokerId),
+    originatingBrokerId: firestoreString(responsibleBrokerId),
+    assignedBrokerId: firestoreString(responsibleBrokerId),
     mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
@@ -2171,6 +2188,23 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     livingTaskId: routerResult?.livingTaskId || livingTaskIdForOpportunity(opportunityId),
     requestId
   }, 201);
+}
+
+async function resolveDefaultBrokerId({ projectId, officeId, accessToken }) {
+  try {
+    const settingDoc = await getFirestoreDocument({ projectId, segments: ["offices", officeId, "officeSettings", "assignment"], accessToken, allowMissing: true });
+    const configured = cleanText(settingDoc ? firestoreFieldsToJs(settingDoc.fields || {}).defaultBrokerId : "", 128);
+    if (configured) {
+      const memberDoc = await getFirestoreDocument({ projectId, segments: ["offices", officeId, "members", configured], accessToken, allowMissing: true });
+      const member = memberDoc ? firestoreFieldsToJs(memberDoc.fields || {}) : null;
+      if (member && member.active !== false) return configured;
+    }
+    const officeDoc = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
+    return cleanText(officeDoc ? firestoreFieldsToJs(officeDoc.fields || {}).ownerUid : "", 128);
+  } catch (error) {
+    console.warn("[iaqar-intake] default broker lookup failed", error && error.message);
+    return "";
+  }
 }
 
 function opportunityRouterDeps(env, projectId, accessToken) {
@@ -4121,6 +4155,18 @@ async function persistScoredMatch({
     officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION, dataVersion
   });
   const pairRule = await pairRuleKey({ officeId, pairKey, matchingRuleVersion: MATCHING_RULE_VERSION });
+  // A pair the broker already approved lives in its opportunity workspace: record
+  // edits must not raise a second review for it while that opportunity is open.
+  const openJourneyId = await journeyIdForPair({ sha256Hex }, officeId, pairKey);
+  const openJourneyDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", officeId, "journeys", openJourneyId], accessToken, allowMissing: true
+  });
+  if (openJourneyDoc) {
+    const journeyStatus = String(firestoreFieldsToJs(openJourneyDoc.fields || {}).status || "").toUpperCase();
+    if (journeyStatus === "ACTIVE" || journeyStatus === "PAUSED") {
+      return { matchId, skipped: true, reason: "journey_active", journeyId: openJourneyId, score: scored.score, opportunityScore: scored.opportunityScore };
+    }
+  }
   const linkage = await resolveCanonicalMatchForPersist({
     projectId, officeId, accessToken,
     sourceCollection, sourceRecordId, counterpartCollection, counterpartRecordId,
@@ -6983,6 +7029,71 @@ async function patchFirestoreDocument({ projectId, segments, accessToken, fields
     throw appError("firestore_write_failed", 502, "تعذر حفظ الحالة");
   }
   return response.json();
+}
+
+function officeOsDeps() {
+  const base = partySessionHelpers();
+  return {
+    ...base,
+    listCollectionDocuments,
+    firestoreFieldsToJs,
+    jsToFirestoreValue,
+    resolveAppOrigin,
+    // Env-bound capabilities, resolved per request once the access token exists.
+    bind: ({ env, projectId, accessToken }) => ({
+      ...base,
+      listCollectionDocuments,
+      firestoreFieldsToJs,
+      jsToFirestoreValue,
+      resolveAppOrigin,
+      runMatching: ({ officeId, opportunityId, notify = true }) =>
+        findAndSaveMatchesForOpportunity({ projectId, officeId, opportunityId, accessToken, notify, env }),
+      persistManualPair: ({ officeId, recordId, counterpartId }) =>
+        persistManualOfficePair({ projectId, officeId, recordId, counterpartId, accessToken, env }),
+      ensureMatchReview: ({ officeId, match }) => ensurePersistedMatchReviewOperation({
+        projectId, officeId, accessToken, env, notifyOperation: false,
+        assignedBrokerId: String(match.assignedBrokerId || ""),
+        match: {
+          ...match,
+          matchId: match.matchId || match.id,
+          reasons: parseJsonArray(match.reasonsJson || match.reasons),
+          isCurrent: match.isCurrent !== false
+        }
+      }),
+      sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+      callGemini: (args) => callGeminiGenerateContent({
+        env,
+        model: String(env.GEMINI_MODEL || "gemini-3.1-flash-lite"),
+        sourceType: "office_os_assist",
+        ...args
+      })
+    })
+  };
+}
+
+// Broker-selected pair from the manual search: same persistence and review task as
+// an automatic match, scored by the same engine.
+async function persistManualOfficePair({ projectId, officeId, recordId, counterpartId, accessToken, env }) {
+  const [aDoc, bDoc] = await Promise.all([
+    getFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken, allowMissing: true }),
+    getFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", counterpartId], accessToken, allowMissing: true })
+  ]);
+  if (!aDoc || !bDoc) throw appError("opportunity_not_found", 404, "السجل غير موجود");
+  const a = { id: recordId, ...firestoreFieldsToJs(aDoc.fields || {}) };
+  const b = { id: counterpartId, ...firestoreFieldsToJs(bDoc.fields || {}) };
+  if (!counterpartsEligible(a, b)) return { skipped: true, reason: "ineligible" };
+  const source = opportunityToMatchInput(a, { id: recordId });
+  const candidate = opportunityToMatchInput(b, { id: counterpartId });
+  const scored = scoreMatch(source, candidate);
+  return persistScoredMatch({
+    projectId, officeId, source, candidate,
+    sourceRef: `opportunities:${recordId}`, counterpartRef: `opportunities:${counterpartId}`,
+    sourceCollection: "opportunities", sourceRecordId: recordId,
+    counterpartCollection: "opportunities", counterpartRecordId: counterpartId,
+    opportunityId: recordId, counterpartOpportunityId: counterpartId,
+    scored, rank: 1, accessToken, notifyOperation: false,
+    assignedBrokerId: String(a.brokerId || a.originatingBrokerId || ""), env
+  });
 }
 
 function partySessionHelpers() {

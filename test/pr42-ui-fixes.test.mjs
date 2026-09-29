@@ -28,7 +28,7 @@ test("legacy English labels map to Arabic display only", () => {
 });
 
 test("shell does not expose removed bank filter dropdown ids", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.equal(html.includes("id=\"bankFilterCity\""), false);
   assert.equal(html.includes("id=\"bankFilterDistrict\""), false);
   assert.equal(html.includes("id=\"bankFilterPurpose\""), false);
@@ -38,7 +38,7 @@ test("shell does not expose removed bank filter dropdown ids", () => {
 });
 
 test("shell removes legacy office link buttons", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("shareOfficeLinkCardBtn"));
   assert.equal(html.includes("copyOfficeLinkBtn"), false);
   assert.equal(html.includes("toggleOfficeQrBtn"), false);
