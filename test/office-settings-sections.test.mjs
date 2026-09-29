@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { firebaseStub, loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 
 async function shell() {
   return loadShell({ firebase: firebaseStub(), officeRuntime: { officeId: "office-alqiq" } });

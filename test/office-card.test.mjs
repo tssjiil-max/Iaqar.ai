@@ -1,5 +1,5 @@
 // ACCEPTANCE TESTS 1, 2, 14 and 15 (shell half), asserted against the real
-// public/index.html document loaded in jsdom.
+// public/legacy.html document loaded in jsdom.
 //
 //   Test 1  — clicking the office logo or the office cover opens Office Settings, and no
 //             separate visible Settings button exists.
@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { firebaseStub, loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 
 async function shell() {
   return loadShell({ firebase: firebaseStub(), officeRuntime: { officeId: "office-alqiq" } });

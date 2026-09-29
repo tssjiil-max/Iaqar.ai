@@ -172,7 +172,7 @@ test("the worker consults the preference document before it lists devices", () =
 });
 
 test("the shell exposes a control for each category and nothing extra", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   const values = [...shell.matchAll(/name="notificationPreference"\s+value="([^"]+)"/g)].map(m => m[1]);
   assert.deepEqual(values.sort(), [...DIRECTIVE_CATEGORIES].sort());
 });

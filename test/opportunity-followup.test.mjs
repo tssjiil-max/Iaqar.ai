@@ -236,14 +236,14 @@ test("WhatsApp open does not mark message sent", () => {
 });
 
 test("toast does not obscure appointment control", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("max-width:min(calc(100% - 32px), 320px)"));
   assert.ok(html.includes("background:#087064"));
   assert.ok(html.includes("aria-live=\"polite\""));
 });
 
 test("Operations icon never overlaps Arabic title via grid cells", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("grid-template-columns:72px minmax(0, 1fr) 68px"));
   assert.ok(html.includes("-webkit-line-clamp:2"));
 });

@@ -27,7 +27,7 @@ const workflow = sw.text.includes("iaqar-shell-followup-v1")
 if (workflow) {
   report.checks.push({ name: "appointment_card", ok: workflow.includes("الموعد القادم") });
   report.checks.push({ name: "recipient_select", ok: workflow.includes("التأكيد مع") });
-  report.checks.push({ name: "ops_grid", ok: readFileSync(new URL("../public/index.html", import.meta.url), "utf8").includes("grid-template-columns:72px minmax(0, 1fr) 68px") });
+  report.checks.push({ name: "ops_grid", ok: readFileSync(new URL("../public/legacy.html", import.meta.url), "utf8").includes("grid-template-columns:72px minmax(0, 1fr) 68px") });
 }
 
 const health = await fetchText(`${WORKER}/health`);

@@ -40,7 +40,8 @@ service cloud.firestore {
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
-        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'coordinationSessions', 'officeRatings'
+        'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'coordinationSessions', 'officeRatings',
+        'journeys', 'proposals', 'osFailures'
       ];
     }
     function validOfficeProfile() {
@@ -62,6 +63,11 @@ service cloud.firestore {
           && request.resource.data.serviceNeighborhoodIds.size() >= 1
           && request.resource.data.serviceNeighborhoodIds.size() <= 5
         );
+    }
+
+    // روابط الرد الخفيفة: تُحفظ ببصمة الرمز فقط ولا تُقرأ من أي عميل.
+    match /replyLinks/{linkHash} {
+      allow read, write: if false;
     }
 
     match /offices/{officeId} {
@@ -281,6 +287,27 @@ service cloud.firestore {
       match /operations/{operationId} {
         allow read: if isOfficeMember(officeId);
         allow create, update, delete: if false;
+      }
+
+      // مساحة الفرصة (Office OS): قراءة لأعضاء المكتب — الكتابة عبر Worker فقط.
+      match /journeys/{journeyId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+        match /events/{eventId} {
+          allow read: if isOfficeMember(officeId);
+          allow create, update, delete: if false;
+        }
+      }
+
+      // المقترحات وحالة فتح واتساب — لا يستطيع العميل تزوير حالة أو رد.
+      match /proposals/{proposalId} {
+        allow read: if isOfficeMember(officeId);
+        allow create, update, delete: if false;
+      }
+
+      // سجل إخفاقات قابلة لإعادة المحاولة — داخلي للخادم فقط.
+      match /osFailures/{failureId} {
+        allow read, write: if false;
       }
 
       match /officeRatings/{ratingId} {

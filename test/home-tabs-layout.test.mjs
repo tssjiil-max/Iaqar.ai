@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 
 test("broker workspace defaults to Opportunities while the legacy Operations route remains available", async () => {
   const context = await loadShell({ bootSettingsModule: false });

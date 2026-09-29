@@ -1,0 +1,88 @@
+name: Office OS gate
+
+on:
+  push:
+    branches:
+      - claude/office-os-rebuild-20260930
+  pull_request:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: office-os-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-check:
+    name: Unit + Worker tests + syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - name: Web + Worker tests (includes office-os domain, journey, security suites)
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
+      - name: Report failing tests as annotations
+        if: always()
+        run: node scripts/qa/office-os/annotate-tap.mjs "$RUNNER_TEMP/npm-test.log"
+      - run: npm run check
+
+  firestore-rules:
+    name: Firestore rules (emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Rules emulator suites (existing + office-os)
+        run: |
+          set -o pipefail
+          npm run test:rules 2>&1 | tee "$RUNNER_TEMP/rules.log"
+      - name: Report rules results as annotations
+        if: always()
+        run: node scripts/qa/office-os/annotate-tap.mjs "$RUNNER_TEMP/rules.log"
+
+  new-app-browser:
+    name: New app in a real browser (journey, widths, deep links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: npx playwright install --with-deps chromium
+      - name: Full journey on public/index.html + r.html
+        run: OUT_DIR="$RUNNER_TEMP/office-os/journey" node scripts/qa/office-os/journey.e2e.mjs
+      - name: Phone widths 320/360/375/390/412/430
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/widths" node scripts/qa/office-os/mobile-widths.e2e.mjs
+      - name: Legacy links and deep links
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/links" node scripts/qa/office-os/deep-links.e2e.mjs
+      - name: Upload screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-os-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/office-os
+          retention-days: 14

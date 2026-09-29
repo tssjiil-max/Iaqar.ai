@@ -139,7 +139,7 @@ test("appNavBack binds only one click handler", async () => {
 });
 
 test("shell includes canonical navigation modules", () => {
-  const html = readRepositoryFile("public", "index.html");
+  const html = readRepositoryFile("public", "legacy.html");
   assert.ok(html.includes("js/app-navigation-domain.js"));
   assert.ok(html.includes('id="appNavBack"'));
 });

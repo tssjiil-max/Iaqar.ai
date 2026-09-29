@@ -20,7 +20,7 @@ import {
   resolveLibraryCategory
 } from "../public/js/office-library-domain.js";
 
-const html = readRepositoryFile("public", "index.html");
+const html = readRepositoryFile("public", "legacy.html");
 
 function libraryCss() {
   const start = html.indexOf("#officeSettings .settings-sheet.is-library-open");

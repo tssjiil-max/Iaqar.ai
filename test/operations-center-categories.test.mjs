@@ -19,7 +19,7 @@ import {
 } from "../public/js/operations-center-domain.js";
 import { loadShell, readRepositoryFile } from "./helpers/shell.mjs";
 
-const shellSource = readRepositoryFile("public", "index.html");
+const shellSource = readRepositoryFile("public", "legacy.html");
 
 test("shell shows المهام اليومية and not مركز العمليات in visible UI", () => {
   assert.ok(shellSource.includes("المهام اليومية"));

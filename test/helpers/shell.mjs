@@ -1,4 +1,4 @@
-// Loads the real public/index.html shell into jsdom and boots the office-settings module
+// Loads the real legacy shell (public/legacy.html) into jsdom and boots the office-settings module
 // against it, so DOM-level acceptance scenarios are asserted on the shipped document
 // rather than on a regex over its source.
 
@@ -14,7 +14,7 @@ export function readRepositoryFile(...segments) {
 }
 
 export function shellHtml() {
-  return readRepositoryFile("public", "index.html");
+  return readRepositoryFile("public", "legacy.html");
 }
 
 /** Every `<style>` block in the shell, concatenated. */

@@ -35,7 +35,7 @@ test("dropdown renders selectable office rows and empty query hint", () => {
 });
 
 test("shell CSS centers suitable-office empty states", () => {
-  const shell = readRepo("public", "index.html");
+  const shell = readRepo("public", "legacy.html");
   assert.ok(shell.includes(".bank-suitable-empty"));
   assert.ok(shell.includes("text-align:center"));
   assert.ok(shell.includes(".bank-suitable-dropdown"));

@@ -129,7 +129,7 @@ test("wrong office guard blocks opening foreign opportunity", () => {
 });
 
 test("shell CSS includes pressed state for bank cards", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes(".bank-row.bank-row-card:active"));
   assert.ok(html.includes("cursor:pointer"));
 });

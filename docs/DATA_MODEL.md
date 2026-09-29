@@ -514,3 +514,24 @@ PLATFORM_PUBLIC routing when false. OFFICE_DIRECT links still work.
 `platformRouterStats` stores real response/follow-up/load samples used by scoring.
 `platformOpportunityOnboardingAckAt` records the broker onboarding acknowledgement.
 
+
+## 13. Office OS (new office experience) — additive collections
+
+Written only by the Worker (`worker/src/office-os/*`); rules deny all client writes.
+Plan and behaviour: `docs/OFFICE_OS_REBUILD_PLAN.md`.
+
+| Path | Purpose / key fields |
+| --- | --- |
+| `offices/{o}/journeys/{jr_*}` | Opportunity workspace per approved match pair. id = `jr_` + sha256(`journey|office|canonicalPairKey`)[0..40] → one per pair. `stage` (`NEGOTIATION`/`VIEWING`/`AGREEMENT`/`CLOSED`), `status` (`ACTIVE`/`PAUSED`/`CLOSED_WON`/`CLOSED_LOST`), `openTasks` (taskId → spec, source of truth for repair), `currentAction`, `activeProposals` (`role:KIND` → proposalId), `lastReplies`, `viewing` (`PROPOSED`→`ACCEPTED`→`CONFIRMED`→`DONE`), `outcome`, `offerSummary`/`requestSummary`, `approvalSnapshotJson` (history only). Members read. |
+| `offices/{o}/journeys/{j}/events/{ev_*}` | Append-only timeline; deterministic ids from an idempotency key. `type`, `text`, `source` (`BROKER`, `REPLY_LINK`, `BROKER_NOTE`, `SYSTEM`), `actorUid`/`actorRole`, `at`. |
+| `offices/{o}/proposals/{pr_*}` | One proposal per recipient: `kind` (template), `fields`, `messageText` (+ reply link), `whatsappUrl`, `status` (`ACTIVE`/`ANSWERED`/`SUPERSEDED`/`EXPIRED`/`CANCELLED`), `sendState` (`READY`/`OPENED_EXTERNAL` only — never sent/delivered/read), `reply` (+ `replyHistoryJson`, `lockedAt` once the broker acts), `expiresAt`, `linkHash`. `contextType` `journey` or `match` (review "طلب معلومات"). |
+| `replyLinks/{rl_sha256(token)}` | Global, **no client access**. Maps a 256-bit random token (never stored raw here) to `officeId` + `proposalId` + `recipientRole`, `status`, `expiresAt`. |
+| `offices/{o}/osFailures/{fl_*}` | Retryable failure log (e.g. matching run failed after a record was saved). No client access. |
+| `operations` (existing) | New types `SEND_PROPOSAL`, `AWAITING_REPLY`, `PROPOSAL_REPLY`, `VIEWING_CONFIRM`, `VIEWING_RESULT`, `JOURNEY_FOLLOW_UP` (+ existing `MATCH_REVIEW`, `DEAL_ACTION`, `MISSING_DATA`). Dedup key `JOURNEY|office|journey|TYPE|ref`. New top-level fields on all tasks when known: `offerId`, `requestId`, `journeyId`; `snoozedUntil` for postponed reviews. |
+| `matches` (existing) | Added `brokerDecision` (`APPROVED`/`REJECTED`/`POSTPONED`), `journeyId`, `brokerDecisionAt/By`, `postponedUntil`, `infoReply_client/owner`. |
+| `opportunities` (existing) | Office-link submissions now carry `brokerId`/`assignedBrokerId` from `officeSettings/assignment.defaultBrokerId` (active member) or the office owner. |
+| `officeSettings/assignment`, `officeSettings/deals` | Manager-written: `defaultBrokerId`; `brokerMayClose` (default false → deal completion needs a manager). |
+
+Migration: none. Journeys are created on approval; legacy data is untouched and still
+reachable through `public/legacy.html`. Rollback = redeploy the previous Staging commit;
+the old shell ignores the new collections.

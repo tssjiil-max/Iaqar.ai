@@ -131,7 +131,7 @@ test("service worker source uses versioned cache and one-shot skipWaiting", () =
 });
 
 test("shell shows version footer and update prompt without inventing a SHA", () => {
-  const html = read("public", "index.html");
+  const html = read("public", "legacy.html");
   const ui = read("public", "js", "release-version-ui.js");
   assert.ok(html.includes("js/release-version-ui.js"));
   assert.ok(html.includes(".release-version"));

@@ -384,7 +384,7 @@ test("31-35. UI: empty state, active card, no completed in active projector", as
 });
 
 test("36-42. Phase 5 UI boundaries: no bottom nav or deals page; Phase 7 draft actions only", async () => {
-  const shellSource = readRepositoryFile("public", "index.html");
+  const shellSource = readRepositoryFile("public", "legacy.html");
   assert.equal(shellSource.includes('data-main="deals"'), false);
   assert.equal(/bottom-nav|bottom_nav|bottomNav/.test(shellSource), false);
 

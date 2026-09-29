@@ -376,7 +376,7 @@ test("Add Opportunity card exists on the home page with the approved compact row
 });
 
 test("shell source wires the Phase 2 module and keeps extraction honesty copy", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(shell.includes("js/add-opportunity.js"));
   assert.ok(shell.includes("js/opportunity-review.js"));
   assert.ok(shell.includes("id=\"addOpportunity\""));

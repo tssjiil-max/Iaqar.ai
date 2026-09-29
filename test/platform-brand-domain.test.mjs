@@ -207,7 +207,7 @@ test("PWA identity is Arabic and points at the approved icon files", () => {
   assert.ok(srcs.includes(PLATFORM_DEFAULT_LOGO));
   assert.ok(srcs.includes(PLATFORM_DEFAULT_LOGO_512));
   assert.ok(srcs.includes(PLATFORM_MASKABLE_512));
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(shell.includes(`src="${PLATFORM_UI_LOGO}"`));
   assert.ok(shell.includes(`href="${PLATFORM_APPLE_TOUCH}"`));
   assert.ok(shell.includes("<h1>مكاتب عقارية ذكية</h1>"));

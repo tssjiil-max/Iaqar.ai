@@ -151,7 +151,7 @@ test("incomplete save button label is canonical", () => {
 });
 
 test("desktop workspace side panel CSS exists", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes(".bank-workspace-side"));
   assert.ok(html.includes("min-height:52px"));
 });

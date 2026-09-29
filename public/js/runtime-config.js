@@ -12,6 +12,9 @@
 
   const PRODUCTION_WORKER = "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
   const STAGING_WORKER = "https://iaqar-intake-staging.iaqar-ai.workers.dev";
+  // Pre-merge review of the Office OS rebuild: its own Hosting channel on the Staging
+  // Firebase project talks to its own Worker, so the shared Staging Worker is untouched.
+  const OFFICE_OS_PREVIEW_WORKER = "https://iaqar-intake-os-preview.iaqar-ai.workers.dev";
   const PRODUCTION_FIREBASE_PROJECT = "aqar-b5d76";
   const STAGING_FIREBASE_PROJECT = "iaqar-ai-staging";
   const STAGING_PARTY_HANDOFF_APP = "https://iaqar-one-staging-1nrft0gfg-tssjiil-2953.vercel.app/";
@@ -56,7 +59,7 @@
       return String(window.IAQAR.workerBase).replace(/\/$/, "");
     }
     // Fail closed: staging hosts never fall back to the production Worker.
-    if (env === "staging") return STAGING_WORKER;
+    if (env === "staging") return hostname().includes("iaqar-ai-staging--office-os-preview") ? OFFICE_OS_PREVIEW_WORKER : STAGING_WORKER;
     return PRODUCTION_WORKER;
   }
 
@@ -101,7 +104,9 @@
   }
 
   const deploymentEnvironment = detectEnvironment();
-  const workerBase = deploymentEnvironment === "staging" ? STAGING_WORKER : PRODUCTION_WORKER;
+  const isOfficeOsPreview = deploymentEnvironment === "staging" && hostname().includes("iaqar-ai-staging--office-os-preview");
+  const workerBase = isOfficeOsPreview ? OFFICE_OS_PREVIEW_WORKER
+    : deploymentEnvironment === "staging" ? STAGING_WORKER : PRODUCTION_WORKER;
   const firebaseProjectId = deploymentEnvironment === "staging"
     ? STAGING_FIREBASE_PROJECT
     : PRODUCTION_FIREBASE_PROJECT;

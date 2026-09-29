@@ -268,7 +268,7 @@ test("Phase 3 boundaries: no match, operations, messaging, or matching engine", 
 });
 
 test("shell wires opportunity-bank module and main Opportunities tabs", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(shell.includes("js/opportunity-bank.js"));
   assert.ok(shell.includes("js/home-tabs.js"));
   assert.ok(shell.includes("id=\"mainTabOperations\""));
@@ -283,7 +283,7 @@ test("shell wires opportunity-bank module and main Opportunities tabs", () => {
 
 test("delete requires an explicit confirmation step in the bank UI", () => {
   const bank = readRepositoryFile("public", "js", "opportunity-bank.js");
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   assert.ok(bank.includes("permanentDeleteOverlay") || shell.includes("id=\"permanentDeleteOverlay\""));
   assert.ok(bank.includes("permanentDeleteCopy") || bank.includes("سيتم حذف هذه الفرصة والبيانات التشغيلية المرتبطة بها نهائيًا"));
   assert.ok(bank.includes("permanentDeleteConfirm"));
@@ -293,7 +293,7 @@ test("delete requires an explicit confirmation step in the bank UI", () => {
 });
 
 test("in-app notifications keep listening without a header bell", () => {
-  const shell = readRepositoryFile("public", "index.html");
+  const shell = readRepositoryFile("public", "legacy.html");
   const module = readRepositoryFile("public", "js", "in-app-notifications.js");
   assert.equal(/id="inAppNotifBell"/.test(shell), false);
   assert.equal(/class="header-bell"/.test(shell), false);

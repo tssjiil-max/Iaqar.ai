@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readRepositoryFile } from "./helpers/shell.mjs";
 
-const html = readRepositoryFile("public", "index.html");
+const html = readRepositoryFile("public", "legacy.html");
 const sw = readRepositoryFile("public", "firebase-messaging-sw.js");
 
 function extractOfficeCardCss() {

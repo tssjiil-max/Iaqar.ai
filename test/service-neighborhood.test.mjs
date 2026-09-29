@@ -136,7 +136,7 @@ test("cooperation ranking prefers specialized neighborhood offices", () => {
 });
 
 test("office card HTML exposes neighborhood chips region inside card", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("id=\"officeDisplayNeighborhoods\""));
   assert.ok(html.includes("أحياء التخصص"));
   const cardStart = html.indexOf("<section class=\"card license\">");
@@ -147,7 +147,7 @@ test("office card HTML exposes neighborhood chips region inside card", () => {
 });
 
 test("office image CSS targets real #officeSettingsBtn logo with enlarged clamp", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes(".card.license .office-logo"));
   assert.ok(html.includes("clamp(112px,29vw,124px)"));
   assert.ok(html.includes("clamp(132px,34vw,148px)"));
@@ -175,7 +175,7 @@ test("firestore rules require 1-5 serviceNeighborhoodIds when field present", ()
 });
 
 test("settings UI includes searchable neighborhood multi-select", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes("الأحياء التي يخدمها"));
   assert.ok(html.includes("id=\"officeNeighborhoodSearch\""));
   assert.ok(html.includes("id=\"officeNeighborhoodChips\""));

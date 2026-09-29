@@ -65,8 +65,8 @@
       ]
     },
     {
-      "name": "إضافة فرصة",
-      "short_name": "فرصة",
+      "name": "إضافة عرض أو طلب",
+      "short_name": "إضافة",
       "url": "/?source=pwa&open=add-opportunity",
       "icons": [
         {

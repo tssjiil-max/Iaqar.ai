@@ -151,7 +151,7 @@ test("bank saves via inline panel button; AGREED auto-saves on tap", () => {
 });
 
 test("selected outcome style works outside bank-detail panel", () => {
-  const html = readRepo("public", "index.html");
+  const html = readRepo("public", "legacy.html");
   assert.ok(html.includes(".bank-contact-outcome-btn.is-selected"));
   assert.ok(html.includes(".ops-task-panel .bank-contact-outcome-btn.is-selected"));
   assert.ok(html.includes(".bank-contact-outcome-selected-badge"));
