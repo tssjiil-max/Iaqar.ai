@@ -26,8 +26,10 @@
   --spacing-lg: 24px;
 }
 
-/* Color identity for the rest of the site; its layout stays in its own CSS. */
-html.is-content-v2 {
+/* Color identity for the rest of the site; its layout stays in its own CSS.
+   Scoped to html:root (same specificity as the old html.is-content-v2) so the
+   identity never depends on when/whether runtime code toggles is-content-v2. */
+html:root {
   --green: var(--color-primary);
   --green-dark: var(--color-primary-dark);
   --green-2: var(--color-primary);
@@ -44,9 +46,24 @@ html.is-content-v2 {
   --opp-primary-dark: var(--color-primary-dark);
   --opp-primary-soft: var(--color-primary-soft);
   --opp-success: var(--color-success);
+  /* Content V2 component tokens are also consumed outside .cv2-details (task
+     cards, match workspace) where they previously fell back to legacy green. */
+  --cv2-green: var(--color-primary);
+  --cv2-green-soft: var(--color-primary-soft);
+  --cv2-green-text: var(--color-primary-dark);
+  --cv2-border: var(--color-border);
+  --cv2-text: var(--color-text);
+  --cv2-muted: var(--color-text-muted);
+  --opp-v2-green: var(--color-primary);
+  --opp-v2-green-soft: var(--color-primary-soft);
+  --opp-v2-green-text: var(--color-primary-dark);
+  --opp-v2-border: var(--color-border);
+  --opp-v2-text: var(--color-text);
+  --opp-v2-muted: var(--color-text-muted);
+  --opp-v2-icon: var(--color-primary);
 }
-html.is-content-v2 .cv2-details,
-html.is-content-v2 .opp-v2-page {
+html:root .cv2-details,
+html:root .opp-v2-page {
   --cv2-green: var(--color-primary);
   --cv2-green-soft: var(--color-primary-soft);
   --cv2-green-text: var(--color-primary-dark);
@@ -62,13 +79,13 @@ html.is-content-v2 .opp-v2-page {
   --opp-v2-border: var(--color-border);
   --opp-v2-icon: var(--color-primary);
 }
-html.is-content-v2 .content-v2-surface,
-html.is-content-v2 .card,
-html.is-content-v2 .opp-v2-card { border-color: var(--color-border); }
-html.is-content-v2 input:focus-visible,
-html.is-content-v2 select:focus-visible,
-html.is-content-v2 textarea:focus-visible,
-html.is-content-v2 button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+html:root .content-v2-surface,
+html:root .card,
+html:root .opp-v2-card { border-color: var(--color-border); }
+html:root input:focus-visible,
+html:root select:focus-visible,
+html:root textarea:focus-visible,
+html:root button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 html.is-party-mode body { background: var(--color-background); }
 html.is-party-mode .party-shell { color: var(--color-text); }
 html.is-party-mode .party-card { background: var(--color-surface); border-color: var(--color-border); box-shadow: var(--shadow-card); }

@@ -130,7 +130,7 @@ test("access-gate exposes login performance tracing in development", () => {
 
 test("access-gate brand header uses compact proportional sizing", () => {
   assert.ok(accessGate.includes(".access-brand img{width:52px;height:52px"));
-  assert.ok(accessGate.includes(".access-brand h1{margin:4px 0 2px;color:#087064;font-size:17px"));
+  assert.ok(accessGate.includes(".access-brand h1{margin:4px 0 2px;color:var(--color-primary-dark);font-size:17px"));
   assert.ok(accessGate.includes("@media (max-width:320px)"));
 });
 

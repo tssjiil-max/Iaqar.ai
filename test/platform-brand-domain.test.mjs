@@ -11,6 +11,7 @@ import {
   PLATFORM_DEFAULT_LOGO_512,
   PLATFORM_MASKABLE_512,
   PLATFORM_APPLE_TOUCH,
+  PLATFORM_UI_LOGO,
   formatEventNotificationBody,
   formatListingPrice,
   formatMatchNotificationBody,
@@ -207,18 +208,19 @@ test("PWA identity is Arabic and points at the approved icon files", () => {
   assert.ok(srcs.includes(PLATFORM_DEFAULT_LOGO_512));
   assert.ok(srcs.includes(PLATFORM_MASKABLE_512));
   const shell = readRepositoryFile("public", "index.html");
-  assert.ok(shell.includes(`src="${PLATFORM_DEFAULT_LOGO}"`));
+  assert.ok(shell.includes(`src="${PLATFORM_UI_LOGO}"`));
   assert.ok(shell.includes(`href="${PLATFORM_APPLE_TOUCH}"`));
   assert.ok(shell.includes("<h1>مكاتب عقارية ذكية</h1>"));
   assert.ok(shell.includes("<p>منصة الفرص العقارية</p>"));
   assert.equal(shell.includes("النسخة التجريبية المعتمدة"), false);
   const gate = readRepositoryFile("public", "js", "access-gate.js");
-  assert.ok(gate.includes(PLATFORM_DEFAULT_LOGO));
+  assert.ok(gate.includes(PLATFORM_UI_LOGO));
   assert.equal(gate.includes(".office-logo img"), false);
 });
 
 test("brand icons are network-first so the old gold pin cannot stick in the SW cache", () => {
   assert.equal(isBrandIconPath(PLATFORM_DEFAULT_LOGO), true);
+  assert.equal(fetchStrategyFor(PLATFORM_UI_LOGO), "network-first");
   assert.equal(isLongCacheAssetPath(PLATFORM_DEFAULT_LOGO), false);
   assert.equal(fetchStrategyFor(PLATFORM_DEFAULT_LOGO), "network-first");
   assert.equal(fetchStrategyFor("/icons/icon-192.png"), "network-first");
