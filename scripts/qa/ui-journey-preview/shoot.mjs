@@ -1,6 +1,6 @@
 // Screenshots of the real app (public/) at mobile width for UI review.
 // Usage: PLAYWRIGHT_MODULE=<path to playwright/index.mjs> OUT=./shots WIDTH=390 node scripts/qa/ui-journey-preview/shoot.mjs
-// Every non-local host is blocked; the Staging Worker URL is answered by the local Worker copy
+// Every non-local host is blocked; Worker URLs are answered by the local Worker copy
 // on an in-memory Firestore double, so nothing reaches Staging or Production.
 import path from "node:path";
 import fs from "node:fs";
@@ -15,6 +15,7 @@ const p = await startPreview();
 const base = `http://127.0.0.1:${p.port}`;
 const browser = await chromium.launch();
 const blocked = new Set();
+const handoffs = [];
 const report = [];
 
 async function newPage() {
@@ -22,13 +23,14 @@ async function newPage() {
   await ctx.route("**/*", (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === "127.0.0.1") return route.continue();
-    if (u.hostname === "iaqar-intake-staging.iaqar-ai.workers.dev") {
-      // Staging Worker URL is answered by the local Worker copy; never reaches the network.
+    if (u.hostname.endsWith(".iaqar-ai.workers.dev")) {
+      // Worker URLs are answered by the local Worker copy; nothing reaches Staging or Production.
       const r = route.request();
       return fetch(`${base}/worker${u.pathname}${u.search}`, { method: r.method(), headers: r.headers(), body: r.postDataBuffer() || undefined })
         .then(async (res) => route.fulfill({ status: res.status, headers: { "content-type": res.headers.get("content-type") || "application/json", "access-control-allow-origin": "*" }, body: Buffer.from(await res.arrayBuffer()) }))
         .catch(() => route.abort());
     }
+    if (/wa\.me|whatsapp/.test(u.hostname)) handoffs.push(u.href);
     blocked.add(u.hostname);
     return route.abort();
   });
@@ -107,16 +109,59 @@ try {
     await shot(page, "07-offers-requests");
     const action = page.locator("[data-opportunity-primary-action]").first();
     {
-      if (await action.count()) await action.click().catch(() => {});
-      else await page.evaluate((id) => window.IAQAR?.openMatchWorkspace?.(id), p.match?.id);
+      // Same feed shape as the match-negotiation E2E harness: operations plus the
+      // canonical opportunity records the workspace hydrates from.
+      await page.evaluate(async (office) => {
+        const ops = await import("/js/operations-domain.js");
+        const list = async (name) => (await fetch(`/store/list?path=${encodeURIComponent(`offices/${office}/${name}`)}`)).json();
+        const load = async () => {
+          const [opRows, rows] = await Promise.all([list("operations"), list("opportunities")]);
+          const operations = opRows.filter((op) => ops.ACTIVE_OPERATION_STATUSES.includes(String(op.status || "").toUpperCase()))
+            .map((op) => ops.projectOperationToUiItem({ ...op }, { relativeTime: () => "" }));
+          return [...operations, ...rows.map((o) => ({ ...o, recordId: o.id, opportunityId: o.id, recordType: "opportunity", main: "opportunities" }))];
+        };
+        let latest = await load();
+        const emit = () => window.dispatchEvent(new CustomEvent("iaqar:operations-data", { detail: { items: latest, authoritative: true, preview: true } }));
+        window.addEventListener("iaqar:operations-data", (event) => { if (!event.detail?.preview) emit(); });
+        window.__previewFeed = async () => { latest = await load(); emit(); };
+        setInterval(() => { void window.__previewFeed(); }, 1000);
+      }, p.OFFICE);
+      await page.evaluate(async (id) => { window.IAQAR?.openMatchWorkspace?.(id); await window.__previewFeed(); }, p.match?.id);
       await page.waitForSelector(".cv2-match-workspace", { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(1500);
+      if (await page.locator(".cv2-match-workspace [data-broker-panel]").count()) {
+        // Record a few real actions through the local Worker so the actions log renders.
+        const ws = (sel) => `.cv2-match-workspace ${sel}`;
+        await page.click(ws('[data-party-choices="client"] [data-party-choice="interested"]')).catch(() => {});
+        await page.waitForTimeout(1500);
+        await page.click(ws('[data-broker-audience-pick="both"]')).catch(() => {});
+        await page.fill(ws("[data-broker-message]"), "رسالة معاينة محلية للطرفين").catch(() => {});
+        await page.click(ws('[data-broker-action="send_message"]')).catch(() => {});
+        await page.waitForTimeout(1500);
+        await page.fill(ws("[data-broker-internal-note]"), "ملاحظة داخلية للمعاينة").catch(() => {});
+        await page.click(ws('[data-broker-action="save_internal_note"]')).catch(() => {});
+        await page.waitForTimeout(2000);
+        await page.evaluate(async () => { await window.__previewFeed?.(); });
+        await page.waitForTimeout(1200);
+      }
       if (await page.locator(".cv2-match-workspace").count()) {
-        await page.evaluate(() => { const el = document.querySelector(".cv2-match-workspace"); if (el) { el.style.position = "static"; el.style.overflow = "visible"; } });
+        await page.evaluate(() => { const el = document.querySelector(".cv2-match-workspace"); if (el) { el.style.position = "static"; el.style.overflow = "visible"; } document.querySelector(".app")?.setAttribute("style", "display:none"); document.body.style.overflow = "visible"; });
         await shot(page, "08-match-negotiation");
+        await page.evaluate(() => { document.querySelector(".app")?.removeAttribute("style"); const el = document.querySelector(".cv2-match-workspace"); if (el) el.removeAttribute("style"); });
+        await page.click('.cv2-match-workspace [data-party-send="client"]').catch(() => {});
+        await page.waitForTimeout(2500);
       } else report.push("match workspace not opened");
     }
     await ctx.close();
+    const partyUrl = handoffs.map((h) => decodeURIComponent(h)).join(" ").match(/https?:\/\/[^\s]*cv2Party=[A-Za-z0-9._~-]+/);
+    if (partyUrl) {
+      const token = new URL(partyUrl[0]).searchParams.get("cv2Party");
+      const party = await newPage();
+      await party.page.goto(`${base}/?cv2Party=${encodeURIComponent(token)}&env=staging`);
+      await party.page.waitForTimeout(4000);
+      await shot(party.page, "10-party-link");
+      await party.ctx.close();
+    } else report.push(`no party link captured (${handoffs.length} handoffs)`);
   }
   if (want("deal")) {
     const { ctx, page } = await newPage();

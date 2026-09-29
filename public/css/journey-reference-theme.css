@@ -437,3 +437,499 @@ html:root .access-login-card #forgotPassword { min-height: 44px; font-size: 14px
 html:root .access-voice-slot { margin-bottom: 0; }
 html:root .access-form-section > label { align-content: end; }
 html:root .access-voice-slot .voice-intake-status:empty { display: none; }
+
+/* =====================================================================
+   Negotiation workspace («التفاوض») — layout from the approved reference.
+   Loaded after negotiation-reference-theme.css; same data and actions.
+   ===================================================================== */
+html:root .cv2-visually-hidden {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important; min-width: 0 !important; min-height: 0 !important;
+  margin: -1px !important; padding: 0 !important; overflow: hidden !important;
+  clip: rect(0 0 0 0) !important; white-space: nowrap !important; border: 0 !important;
+}
+html:root .cv2-match-workspace { background: linear-gradient(180deg, #f7fbff 0%, var(--color-background) 100%); }
+html:root .cv2-match-workspace-shell { margin: 0 auto; }
+html:root .cv2-match-workspace-shell > header {
+  position: relative;
+  min-height: calc(64px + env(safe-area-inset-top, 0px));
+  padding: calc(10px + env(safe-area-inset-top, 0px)) var(--spacing-md) 6px;
+  background: transparent;
+  color: var(--color-text);
+  direction: rtl;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html:root .cv2-match-workspace-shell > header h2 { color: var(--color-text); font-size: clamp(24px, 6.5vw, 30px); font-weight: 800; margin: 0; }
+html:root .cv2-match-workspace-shell > header button:focus-visible { outline-offset: 1px; }
+html:root .cv2-match-workspace-shell > header button {
+  position: absolute;
+  inset-inline-end: var(--spacing-md);
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  min-width: 44px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font: 700 14px Tajawal, Arial, sans-serif;
+}
+html:root .cv2-match-workspace [data-match-workspace-content] { padding: 0 12px; }
+html:root .cv2-match-workspace [data-match-negotiation-page] { display: grid; gap: 12px; }
+html:root .cv2-match-workspace [data-match-section],
+html:root .cv2-match-workspace .cv2-neg-log,
+html:root .cv2-match-workspace .cv2-exec-timeline {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+}
+html:root .cv2-match-workspace [data-match-section="parties"] { padding: 0; border: 0; background: transparent; box-shadow: none; }
+
+/* Section titles with a leading icon and a hairline under them. */
+html:root .cv2-match-workspace [data-match-section] > h3,
+html:root .cv2-match-workspace .cv2-neg-log > strong,
+html:root .cv2-match-workspace .cv2-exec-timeline > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 800;
+}
+html:root .cv2-match-workspace .cv2-title-icon { width: 26px; height: 26px; flex: 0 0 auto; color: var(--color-primary); }
+html:root .cv2-match-workspace .cv2-neg-icon svg,
+html:root .cv2-match-workspace .cv2-title-icon svg,
+html:root .cv2-match-workspace .cv2-fact-icon svg,
+html:root .cv2-match-workspace .cv2-choice-icon svg,
+html:root .cv2-match-workspace .cv2-party-avatar svg,
+html:root .cv2-match-workspace .cv2-log-icon svg,
+html:root .cv2-match-workspace .cv2-btn-icon svg { width: 100%; height: 100%; display: block; }
+
+/* Property data («بيانات العقار») */
+html:root .cv2-match-workspace .cv2-match-hero { display: grid; gap: 10px; }
+html:root .cv2-match-workspace .cv2-match-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+html:root .cv2-match-workspace .cv2-match-badge,
+html:root .cv2-match-workspace .cv2-match-badge.is-party,
+html:root .cv2-match-workspace .cv2-match-clock {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+}
+html:root .cv2-match-workspace .cv2-match-badge:first-child { background: var(--color-primary); color: var(--color-surface); }
+html:root .cv2-match-workspace .cv2-match-title-row { display: block; }
+html:root .cv2-match-workspace .cv2-match-title-row h3 { margin: 0 0 2px; color: var(--color-text); font-size: 21px; font-weight: 800; }
+html:root .cv2-match-workspace .cv2-match-title-row p { margin: 0; color: var(--color-text-muted); font-size: 14px; }
+html:root .cv2-match-workspace .cv2-match-refs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html:root .cv2-match-workspace .cv2-match-refs > div {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  min-width: 0; min-height: 44px; padding: 8px 12px;
+  border-radius: 12px; background: var(--journey-sky-soft);
+}
+html:root .cv2-match-workspace .cv2-match-refs small { color: var(--color-text-muted); font-size: 13px; }
+html:root .cv2-match-workspace .cv2-match-refs strong { color: var(--color-text); font-size: 14px; direction: ltr; }
+html:root .cv2-match-workspace .cv2-match-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+  border: 0;
+  background: transparent;
+}
+html:root .cv2-match-workspace .cv2-match-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label icon" "value icon";
+  align-items: center;
+  column-gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+html:root .cv2-match-workspace .cv2-match-facts .cv2-fact-icon { grid-area: icon; }
+html:root .cv2-match-workspace .cv2-match-facts small { grid-area: label; color: var(--color-text); font-size: 15px; font-weight: 800; }
+html:root .cv2-match-workspace .cv2-match-facts strong { grid-area: value; color: var(--color-text-muted); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+html:root .cv2-match-workspace .cv2-fact-icon {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--journey-sky-soft);
+  color: var(--color-primary);
+}
+html:root .cv2-match-workspace .cv2-match-score { border-radius: 16px; background: var(--journey-sky-soft); }
+html:root .cv2-match-workspace .cv2-match-score-count { border-color: var(--color-primary); color: var(--color-primary-dark); }
+html:root .cv2-match-workspace .cv2-match-score li span { background: var(--color-primary); color: var(--color-surface); }
+html:root .cv2-match-workspace .cv2-match-score li.is-warning span { background: var(--color-warning); }
+html:root .cv2-match-workspace .cv2-match-fold,
+html:root .cv2-match-workspace .cv2-match-candidates { border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+html:root .cv2-match-workspace .cv2-match-fold > summary { color: var(--color-primary-dark); font-weight: 800; }
+html:root .cv2-match-workspace .cv2-match-fold-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html:root .cv2-match-workspace .cv2-match-fold-body .cv2-coop-block { min-width: 0; padding: 10px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--journey-sky-soft); }
+
+/* Agreement («ما تم الاتفاق عليه») */
+html:root .cv2-match-workspace .cv2-agreement { margin: 0; }
+html:root .cv2-match-workspace .cv2-agreement-current { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+html:root .cv2-match-workspace .cv2-agreement-current > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "icon label" "icon value";
+  align-items: center;
+  column-gap: 10px;
+  min-height: 72px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--journey-sky-soft);
+  text-align: right;
+}
+html:root .cv2-match-workspace .cv2-agreement-current .cv2-fact-icon { width: 40px; height: 40px; padding: 10px; }
+html:root .cv2-match-workspace .cv2-agreement-current .cv2-fact-icon { grid-area: icon; background: var(--color-surface); }
+html:root .cv2-match-workspace .cv2-agreement-current dt { grid-area: label; margin: 0; color: var(--color-text); font-size: 14px; font-weight: 800; line-height: 1.35; }
+html:root .cv2-match-workspace .cv2-agreement-current dd { grid-area: value; margin: 0; color: var(--color-text-muted); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+html:root .cv2-match-workspace .cv2-agreement-current > div[data-agreement-field-value] dd { color: var(--color-primary-dark); font-weight: 800; }
+html:root .cv2-match-workspace .cv2-agreement-empty { margin: 8px 0 0; color: var(--color-text-muted); font-size: 13px; }
+html:root .cv2-match-workspace .cv2-agreement-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-border);
+}
+html:root .cv2-match-workspace .cv2-agreement-form label { display: grid; gap: 4px; color: var(--color-text); font-size: 13px; font-weight: 700; min-width: 0; }
+html:root .cv2-match-workspace .cv2-agreement-form > button { grid-column: 1 / -1; }
+html:root .cv2-match-workspace .cv2-neg-assistant { margin: 12px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--journey-sky-soft); }
+html:root .cv2-match-workspace .cv2-neg-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; }
+html:root .cv2-match-workspace .cv2-neg-stage { color: var(--color-text-muted); }
+html:root .cv2-match-workspace .cv2-neg-stage.is-done,
+html:root .cv2-match-workspace .cv2-neg-stage.is-current { color: var(--color-primary-dark); font-weight: 800; }
+html:root .cv2-match-workspace .cv2-neg-arrow { color: var(--journey-sky); }
+html:root .cv2-match-workspace .cv2-neg-summary,
+html:root .cv2-match-workspace .cv2-neg-parties,
+html:root .cv2-match-workspace .cv2-neg-auto,
+html:root .cv2-match-workspace .cv2-neg-gap,
+html:root .cv2-match-workspace .cv2-neg-last-update { margin: 6px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.6; }
+html:root .cv2-match-workspace .cv2-neg-parties { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+html:root .cv2-match-workspace .cv2-neg-summary strong,
+html:root .cv2-match-workspace .cv2-neg-parties strong,
+html:root .cv2-match-workspace .cv2-neg-last-update strong { color: var(--color-text); }
+html:root .cv2-match-workspace .cv2-neg-intervention { border-radius: 12px; background: var(--color-surface); border: 1px solid var(--journey-field-border); padding: 8px 10px; }
+html:root .cv2-match-workspace .cv2-match-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+html:root .cv2-match-workspace .cv2-match-action-icon { background: var(--journey-sky-soft); color: var(--color-primary); }
+html:root .cv2-match-workspace .cv2-match-action strong { color: var(--color-primary); font-size: 13px; }
+html:root .cv2-match-workspace .cv2-match-action p { color: var(--color-text); font-weight: 800; }
+
+/* Parties («المالك» / «العميل») */
+html:root .cv2-match-workspace .cv2-party-progress { margin: 0; padding: 0; border: 0; background: transparent; }
+html:root .cv2-match-workspace .cv2-party-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; direction: rtl; }
+html:root .cv2-match-workspace .cv2-party-side,
+html:root .cv2-match-workspace .cv2-party-side[data-party-side="owner"],
+html:root .cv2-match-workspace .cv2-party-side[data-party-side="client"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+}
+html:root .cv2-match-workspace .cv2-party-side > :not(.cv2-party-head) { margin-inline: 8px; }
+html:root .cv2-match-workspace .cv2-party-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--journey-sky-soft);
+}
+html:root .cv2-match-workspace .cv2-party-head h4 { margin: 0; color: var(--color-text); font-size: clamp(17px, 4.6vw, 21px); font-weight: 800; }
+html:root .cv2-match-workspace .cv2-party-avatar {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border-radius: 50%;
+  background: var(--journey-gradient);
+  color: var(--color-surface);
+}
+html:root .cv2-match-workspace .cv2-party-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+html:root .cv2-match-workspace .cv2-party-step {
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+}
+html:root .cv2-match-workspace .cv2-party-step.is-done { border-color: transparent; background: var(--journey-sky-soft); color: var(--color-primary-dark); font-weight: 700; }
+html:root .cv2-match-workspace .cv2-party-side > p { margin-block: 0; color: var(--color-text); font-size: 13px; font-weight: 700; line-height: 1.5; }
+html:root .cv2-match-workspace .cv2-party-side > p.cv2-party-status,
+html:root .cv2-match-workspace .cv2-party-choice-current { color: var(--color-text-muted); font-size: 12px; font-weight: 500; line-height: 1.5; margin-block: 0; }
+html:root .cv2-match-workspace .cv2-party-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+@media (min-width: 560px) {
+  html:root .cv2-match-workspace .cv2-party-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+html:root .cv2-match-workspace .cv2-party-choice,
+html:root .cv2-match-workspace .cv2-party-choice[data-party-choice] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 8px 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: clamp(11.5px, 3.1vw, 13.5px);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  box-shadow: 0 2px 6px rgba(23, 88, 156, .05);
+}
+html:root .cv2-match-workspace .cv2-choice-icon { display: block; width: 26px; height: 26px; color: var(--color-primary); }
+html:root .cv2-match-workspace .cv2-party-choice[data-party-choice="not_interested"] .cv2-choice-icon { color: var(--color-primary); }
+html:root .cv2-match-workspace .cv2-party-choice.is-selected {
+  border-color: var(--color-primary);
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+  box-shadow: inset 0 0 0 1.5px var(--color-primary);
+}
+html:root .cv2-match-workspace .cv2-party-control,
+html:root .cv2-match-workspace .cv2-party-side .cv2-exec-primary,
+html:root .cv2-match-workspace .cv2-party-side .cv2-exec-secondary {
+  width: auto;
+  align-self: stretch;
+  margin-top: auto;
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--journey-gradient);
+  color: var(--color-surface);
+  font-size: 14px;
+  font-weight: 800;
+}
+html:root .cv2-match-workspace .cv2-party-send-count { color: var(--color-text-muted); font-size: 11.5px; text-align: center; }
+html:root .cv2-match-workspace .cv2-party-progress-note { margin: 8px 4px 0; color: var(--color-text-muted); font-size: 12px; line-height: 1.6; }
+html:root .cv2-match-workspace .cv2-wa-outbox { margin-top: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+
+/* Broker («الوسيط») */
+html:root .cv2-match-workspace [data-match-section="broker"] { padding: 14px; }
+html:root .cv2-match-workspace .cv2-broker-panel { margin: 0; padding: 0; border: 0; background: transparent; }
+html:root .cv2-match-workspace .cv2-broker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+html:root .cv2-match-workspace .cv2-broker-head .cv2-party-avatar { width: 40px; height: 40px; padding: 9px; }
+html:root .cv2-match-workspace .cv2-broker-head h3 { margin: 0; color: var(--color-text); font-size: 18px; font-weight: 800; }
+html:root .cv2-match-workspace .cv2-broker-head p { margin: 2px 0 0; color: var(--color-text-muted); font-size: 13px; }
+html:root .cv2-match-workspace .cv2-broker-panel-body { display: grid; gap: 14px; padding: 0; }
+html:root .cv2-match-workspace .cv2-broker-block { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; background: transparent; }
+html:root .cv2-match-workspace .cv2-broker-block.is-internal { padding-top: 14px; border-top: 1px solid var(--color-border); }
+html:root .cv2-match-workspace .cv2-broker-audience { display: grid; gap: 6px; }
+html:root .cv2-match-workspace .cv2-broker-label,
+html:root .cv2-match-workspace .cv2-broker-text,
+html:root .cv2-match-workspace .cv2-broker-options label { color: var(--color-text); font-size: 14px; font-weight: 800; }
+html:root .cv2-match-workspace .cv2-broker-text { display: grid; gap: 6px; }
+html:root .cv2-match-workspace .cv2-audience-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--journey-sky-soft);
+}
+html:root .cv2-match-workspace .cv2-audience-seg button {
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--color-primary-dark);
+  font: 700 14px Tajawal, Arial, sans-serif;
+  cursor: pointer;
+}
+html:root .cv2-match-workspace .cv2-audience-seg button[aria-checked="true"] { background: var(--journey-gradient); color: var(--color-surface); box-shadow: 0 4px 10px rgba(1, 65, 136, .2); }
+html:root .cv2-match-workspace .cv2-broker-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+html:root .cv2-match-workspace .cv2-broker-options label { display: grid; gap: 4px; min-width: 0; }
+html:root .cv2-match-workspace .cv2-broker-options .cv2-broker-check { display: flex; align-items: center; gap: 6px; min-height: 48px; font-size: 13px; font-weight: 700; }
+html:root .cv2-match-workspace .cv2-broker-block textarea,
+html:root .cv2-match-workspace .cv2-broker-block select,
+html:root .cv2-match-workspace .cv2-agreement-form input,
+html:root .cv2-match-workspace .cv2-agreement-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--journey-field-bg);
+  color: var(--color-text);
+  font: 500 15px Tajawal, Arial, sans-serif;
+}
+html:root .cv2-match-workspace .cv2-broker-block textarea { min-height: 96px; resize: vertical; }
+html:root .cv2-match-workspace .cv2-broker-block.is-internal textarea { min-height: 72px; }
+html:root .cv2-match-workspace .cv2-broker-block > small { color: var(--color-text-muted); font-size: 12px; }
+html:root .cv2-match-workspace .cv2-broker-block > .cv2-exec-primary,
+html:root .cv2-match-workspace .cv2-broker-block > .cv2-exec-secondary,
+html:root .cv2-match-workspace .cv2-broker-decisions > button,
+html:root .cv2-match-workspace .cv2-agreement-form > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  border-radius: 14px;
+  font: 800 16px Tajawal, Arial, sans-serif;
+}
+html:root .cv2-match-workspace .cv2-exec-primary { border: 0; background: var(--journey-gradient); color: var(--color-surface); }
+html:root .cv2-match-workspace .cv2-exec-secondary { border: 1.5px solid var(--color-primary); background: var(--color-surface); color: var(--color-primary-dark); }
+html:root .cv2-match-workspace .cv2-btn-icon { display: inline-block; width: 20px; height: 20px; }
+html:root .cv2-match-workspace .cv2-broker-decisions { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+html:root .cv2-match-workspace .cv2-broker-decisions [data-broker-action="no_agreement"] { border-color: var(--color-danger-soft); background: var(--color-danger-soft); color: var(--color-danger); }
+
+/* Actions log («الإجراءات التي تمت») */
+html:root .cv2-match-workspace .cv2-neg-log ol,
+html:root .cv2-match-workspace .cv2-exec-timeline ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+html:root .cv2-match-workspace .cv2-neg-log li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--journey-sky-soft);
+}
+html:root .cv2-match-workspace .cv2-log-icon {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  padding: 9px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-primary);
+}
+html:root .cv2-match-workspace .cv2-neg-log-body { display: grid; gap: 2px; min-width: 0; }
+html:root .cv2-match-workspace .cv2-neg-log-title { color: var(--color-text); font-size: 14px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+html:root .cv2-match-workspace .cv2-neg-log-message { color: var(--color-text); font-size: 13px; overflow-wrap: anywhere; }
+html:root .cv2-match-workspace .cv2-neg-log-meta { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--color-text-muted); font-size: 11.5px; }
+html:root .cv2-match-workspace .cv2-neg-log-when { display: grid; justify-items: end; gap: 2px; color: var(--color-text-muted); font-size: 12px; white-space: nowrap; }
+html:root .cv2-match-workspace .cv2-neg-log-when .cv2-exec-time { color: var(--color-text-muted); font-size: 12px; }
+html:root .cv2-match-workspace .cv2-exec-timeline li { padding: 10px; border-radius: 14px; background: var(--journey-sky-soft); border: 0; }
+html:root .cv2-match-workspace .cv2-neg-msg-replies { display: grid; gap: 4px; margin: 4px 0; padding: 6px 8px; border-inline-start: 2px solid var(--color-primary); border-radius: 10px; background: var(--color-surface); list-style: none; }
+html:root .cv2-match-workspace .cv2-neg-msg-replies li { padding: 2px 0; border: 0; background: transparent; color: var(--color-text); font-size: 12.5px; }
+html:root .cv2-match-workspace .cv2-neg-msg-kind { justify-self: start; padding: 1px 8px; border-radius: 999px; background: var(--color-surface); color: var(--color-primary-dark); font-size: 11px; }
+html:root .cv2-match-workspace .cv2-match-readonly { border-radius: 14px; background: var(--journey-sky-soft); color: var(--color-primary-dark); padding: 10px 12px; }
+
+@media (max-width: 380px) {
+  html:root .cv2-match-workspace [data-match-workspace-content] { padding: 0 8px; }
+  html:root .cv2-match-workspace .cv2-party-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html:root .cv2-match-workspace .cv2-fact-icon { width: 40px; height: 40px; padding: 10px; }
+}
+
+/* ---------- Palette fixes reported on live Staging ---------- */
+/* «دورك الآن» label was amber; bank action cards used the legacy green. */
+html:root .cv2-match-action strong,
+html:root .cv2-coop-turn strong { color: var(--color-primary); }
+html:root .bank-card-action { border-radius: 16px; }
+html:root .bank-card-action--match { background: var(--journey-sky-soft); border-color: var(--journey-field-border); color: var(--color-primary-dark); }
+html:root .bank-card-action--appointment { background: #eaf2ff; border-color: #cddffa; color: var(--color-primary-dark); }
+html:root .bank-card-action--followup { background: #eef1fb; border-color: #d6dcf2; color: var(--color-text); }
+html:root .bank-card-action--waiting,
+html:root .bank-card-action--quiet { background: #f4f7fb; border-color: var(--color-border); color: var(--color-text-muted); }
+html:root .bank-card-action-badge { background: var(--color-surface); color: inherit; }
+html:root .bank-card-primary-action { border: 0; background: var(--journey-gradient); color: var(--color-surface); }
+/* Party link page: waiting icons were amber. */
+html.is-party-mode .party-agreement-row.is-waiting > span,
+html.is-party-mode .party-agreement-row > span { color: var(--color-primary); }
+
+/* ---------- Party link page (owner / client) ---------- */
+html.is-party-mode .party-card { border-radius: var(--journey-radius); box-shadow: var(--journey-shadow); }
+html.is-party-mode .party-card h1,
+html.is-party-mode .party-card h2 { color: var(--color-text); font-weight: 800; }
+html.is-party-mode .party-live-choices,
+html.is-party-mode .party-msg-replies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html.is-party-mode .party-live-choice {
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font-size: 15px;
+  font-weight: 800;
+}
+html.is-party-mode .party-live-choice.is-selected { border-color: transparent; background: var(--journey-gradient); color: var(--color-surface); }
+html.is-party-mode .party-live-agreement-form select,
+html.is-party-mode .party-live-agreement-form input,
+html.is-party-mode .party-live-condition input,
+html.is-party-mode .party-msg-text,
+html.is-party-mode .party-input {
+  min-height: 48px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--journey-field-bg);
+  color: var(--color-text);
+}
+html.is-party-mode .party-action[data-party-agreement-submit],
+html.is-party-mode .party-package-submit {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--journey-gradient);
+  color: var(--color-surface);
+  font-weight: 800;
+}
+html.is-party-mode .party-agreement-row > span { color: var(--color-primary); }
+
+/* ---------- Offers & requests cards ---------- */
+/* The card head was capped at 52px while the title + reference + status need
+   ~57px, so the card's overflow clipped «بيانات الفرصة» at the top. */
+html:root .bank-list .cv2-details .cv2-card-head { max-height: none; min-height: 52px; padding-block: 8px; }
+html:root .bank-list .cv2-details .cv2-card-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; line-height: 1.4; }
+html:root .bank-list .cv2-details .cv2-card-title .cv2-exec-ref { display: inline-block; margin: 0; direction: ltr; color: var(--color-text-muted); }
+html:root .bank-list .cv2-details .cv2-card { border-radius: var(--journey-radius); }
+html:root .bank-list .bank-card-compact-meta { display: flex; justify-content: flex-start; gap: 6px; margin: 6px 14px 0; }
+html:root .bank-list .bank-card-compact-meta span { background: var(--journey-sky-soft); color: var(--color-primary-dark); }
+html:root .bank-results-count { color: var(--color-text); }
+html:root .bank-summary-card { border-color: var(--color-border); background: var(--journey-sky-soft); color: var(--color-primary-dark); }
+/* One page background below the fold as well (the body only covered 100vh). */
+html:root, html:root body { background-color: var(--color-background); }
+html:root .cv2-match-workspace .cv2-match-score small { display: block; }
+html:root .cv2-match-workspace .cv2-match-score li { color: var(--color-text); }
+html:root .cv2-match-workspace .cv2-match-score li.is-warning { color: var(--color-warning); }
