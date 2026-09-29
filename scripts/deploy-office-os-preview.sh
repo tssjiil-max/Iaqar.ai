@@ -60,8 +60,10 @@ echo "--- Preview Worker ${WORKER_NAME} (links point at the preview channel) ---
   if [[ -n "${GEMINI_API_KEY:-}" ]]; then
     printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --env preview # // pragma: allowlist secret
     echo "GEMINI_API_KEY set on preview Worker (value not printed)"
+    echo "::notice title=Gemini key::GEMINI_API_KEY is present in the staging environment and was set on the preview Worker"
   else
     echo "NOTE: GEMINI_API_KEY not provided — assist falls back to rule-based suggestions"
+    echo "::warning title=Gemini key::GEMINI_API_KEY is not available to this workflow; AI suggestions fall back to rules"
   fi
 )
 

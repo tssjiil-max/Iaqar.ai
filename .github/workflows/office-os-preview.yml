@@ -22,6 +22,8 @@ jobs:
     name: Deploy preview + live journey
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      contents: write   # only to push the per-run evidence branch qa/office-os-preview-<run>
     env:
       IAQAR_DEPLOY_TARGET: preview
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -65,3 +67,19 @@ jobs:
           name: office-os-live-${{ github.run_id }}
           path: ${{ runner.temp }}/office-os-live
           retention-days: 14
+      - name: Publish live evidence to a per-run QA branch
+        if: always()
+        run: |
+          D="$RUNNER_TEMP/office-os-live"
+          [ -d "$D" ] || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan office-os-evidence
+          git rm -rq --cached .
+          mkdir -p evidence
+          cp "$D"/* evidence/
+          printf 'commit %s\nrun %s\npreview %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "${PREVIEW_URL:-}" > evidence/RUN.txt
+          git add -f evidence
+          git commit -qm "Office OS live preview evidence for ${GITHUB_SHA} (run ${GITHUB_RUN_ID})"
+          git push -q origin "HEAD:refs/heads/qa/office-os-preview-${GITHUB_RUN_ID}"
+          echo "::notice title=live evidence branch::qa/office-os-preview-${GITHUB_RUN_ID}"

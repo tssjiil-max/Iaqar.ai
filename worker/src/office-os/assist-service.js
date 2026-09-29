@@ -35,16 +35,19 @@ export async function suggestForJourney(ctx, { actor, officeId, journeyId }) {
   const journey = await loadJourney(ctx, officeId, journeyId);
   assertCanActOn(ctx.deps, actor, journey);
   const rules = suggestNextStep(journey, { now: ctx.now() });
-  if (typeof ctx.deps.callGemini !== "function") return { ok: true, source: "rules", suggestion: rules, summary: "" };
+  if (typeof ctx.deps.callGemini !== "function") return { ok: true, source: "rules", suggestion: rules, summary: "", fallbackReason: "AI_NOT_WIRED" };
   const result = await Promise.race([
     ctx.deps.callGemini({
       systemInstruction: SYSTEM,
       userParts: [{ text: factsOf(journey) }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 220, responseMimeType: "application/json" }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 800, responseMimeType: "application/json" }
     }),
     new Promise((resolve) => setTimeout(() => resolve({ ok: false, error: "TIMEOUT" }), 8000))
   ]).catch(() => ({ ok: false }));
   const suggestion = cleanText(result?.parsed?.suggestion, 280);
-  if (!result?.ok || suggestion.length < 8) return { ok: true, source: "rules", suggestion: rules, summary: "" };
+  if (!result?.ok || suggestion.length < 8) {
+    // Diagnostic only (e.g. GEMINI_NOT_CONFIGURED, GEMINI_QUOTA_EXCEEDED, TIMEOUT): the broker still gets the rule-based suggestion.
+    return { ok: true, source: "rules", suggestion: rules, summary: "", fallbackReason: String(result?.error || (result?.ok ? "EMPTY_SUGGESTION" : "AI_FAILED")).slice(0, 40) };
+  }
   return { ok: true, source: "ai", suggestion, summary: cleanText(result.parsed.summary, 200), fallback: rules };
 }

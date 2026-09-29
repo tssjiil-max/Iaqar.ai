@@ -49,7 +49,7 @@ async function resetOffice(officeId, ownerUid, name, slug) {
   const office = assertQa(db.collection("offices").doc(officeId));
   const snap = await office.get();
   if (snap.exists && snap.data().isTestFixture !== true) throw new Error(`refusing: ${officeId} exists and is not a test fixture`);
-  for (const sub of ["opportunities", "matches", "operations", "journeys", "proposals", "notifications", "publicIntake", "matchCurrentPointers", "osFailures", "contacts", "clients", "owners", "members", "officeSettings", "notificationDispatches"]) {
+  for (const sub of ["opportunities", "matches", "operations", "journeys", "proposals", "notifications", "publicIntake", "matchCurrentPointers", "osFailures", "contacts", "clients", "owners", "members", "officeSettings", "notificationDispatches", "devices"]) {
     await db.recursiveDelete(assertQa(office.collection(sub)));
   }
   const links = await db.collection("replyLinks").where("officeId", "==", officeId).get();
@@ -180,6 +180,10 @@ try {
   const clientProposal = await until(async () => (await office.collection("proposals").where("recipientRole", "==", "client").get()).docs.map((d) => d.data()).find((p) => p.sendState === "OPENED_EXTERNAL"), "handoff");
   check("live: handoff stored as OPENED_EXTERNAL only", !clientProposal.sentAt && !clientProposal.deliveredAt && clientProposal.replyUrl.startsWith(`${PREVIEW_URL}/r#`), clientProposal.replyUrl.replace(/#.*/, "#…"));
 
+  // FCM probe: a deliberately invalid device for the QA broker, so the reply notification
+  // exercises the real FCM HTTP v1 call and records the provider's answer.
+  await office.collection("devices").doc(`qa-invalid-${RUN}`).set({ fcmRegistrationId: `qa-invalid-fid-${RUN}`, registrationType: "fid", userUid: owner.uid, enabled: true, isTestFixture: true });
+
   // 5 client replies on the light page (no account), double press + reload
   const clientCtx = await browser.newContext(mobile);
   const client = await clientCtx.newPage();
@@ -198,7 +202,9 @@ try {
   check("live: double press + reload → one reply event", replies === 1, `events=${replies}`);
   const notif = await until(async () => (await office.collection("notifications").where("type", "==", "JOURNEY_UPDATE").get()).docs.map((d) => d.data())[0], "broker notification");
   check("live: broker in-app notification created for the reply", notif.brokerId === owner.uid);
-  report.fcm = { providerState: JSON.parse(notif.providerStateJson || "{}"), note: "QA broker has no registered device; push path executed, delivery not verifiable" };
+  const providerState = JSON.parse(notif.providerStateJson || "{}");
+  report.fcm = { providerState, note: "Invalid test device registered on purpose: proves the Worker calls FCM HTTP v1 and records the provider answer. Real delivery to a phone is not verifiable here." };
+  check("live: reply notification reached FCM and the provider answer was recorded", ["PROVIDER_REJECTED", "ACCEPTED_BY_PROVIDER"].includes(providerState.push), JSON.stringify(providerState));
 
   // 6 replaced proposal retires the old link
   await page.goto(`${PREVIEW_URL}/#/tasks`);
@@ -251,10 +257,15 @@ try {
 
   // 8 Gemini assist through the preview Worker
   await page.getByRole("button", { name: "اقتراح المساعد" }).click();
-  await page.waitForTimeout(9000);
+  await page.getByRole("button", { name: "اقتراح المساعد" }).waitFor({ state: "hidden", timeout: 20000 }).catch(() => {});
   const assistText = await page.locator(".os-ai").innerText();
-  report.gemini = { source: assistText.includes("المساعد الذكي") ? "ai" : "rules", text: assistText.slice(0, 300) };
-  check("live: assist returns a suggestion (AI or rule-based fallback, labelled)", assistText.length > 20, report.gemini.source);
+  const assistApi = await page.evaluate(async ([w, o, j]) => {
+    const token = await firebase.auth().currentUser.getIdToken();
+    const r = await fetch(`${w}/os/assist/suggest`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ officeId: o, journeyId: j }) });
+    return r.json();
+  }, [WORKER_URL, OFFICE, journeyDoc.id]);
+  report.gemini = { uiSource: assistText.includes("المساعد الذكي") ? "ai" : "rules", apiSource: assistApi.source, fallbackReason: assistApi.fallbackReason || "", text: String(assistApi.suggestion || assistText).slice(0, 300) };
+  check("live: assist returns a suggestion (AI or rule-based fallback, labelled)", assistText.length > 20, `${report.gemini.apiSource}${report.gemini.fallbackReason ? ` / ${report.gemini.fallbackReason}` : ""}`);
 
   // 9 explicit completion
   await page.locator("#now").getByRole("button", { name: "إتمام الصفقة" }).click();
@@ -304,6 +315,7 @@ try {
     await auth.deleteUser(u.uid).catch(() => {});
     await db.collection("offices").doc(u === users[0] ? OFFICE : OFFICE_B).collection("members").doc(u.uid).delete().catch(() => {});
   }
+  await db.collection("offices").doc(OFFICE).collection("devices").doc(`qa-invalid-${RUN}`).delete().catch(() => {});
   fs.writeFileSync(path.join(OUT, "live-report.json"), JSON.stringify(report, null, 2));
   const failed = checks.filter((c) => !c.ok);
   console.log(`\n${checks.length - failed.length}/${checks.length} live checks passed`);

@@ -157,7 +157,12 @@ export async function notifyBroker(store, deps, {
       operationId: taskId, opportunityId: journey.requestId || "", matchId: journey.matchId || "",
       assignedBrokerId: journey.assignedBrokerId || ""
     });
-    push = result?.skipped ? `SKIPPED_${String(result.reason || "").toUpperCase()}` : Number(result?.sent || 0) > 0 ? "SENT_TO_PROVIDER" : "NO_DEVICES";
+    // Honest provider state: accepted by FCM ≠ delivered to the phone.
+    push = result?.skipped ? `SKIPPED_${String(result.reason || "").toUpperCase()}`
+      : Number(result?.sent || 0) > 0 ? "ACCEPTED_BY_PROVIDER"
+        : Number(result?.failed || 0) > 0 ? "PROVIDER_REJECTED"
+          : "NO_DEVICES";
+    detail = JSON.stringify({ registered: Number(result?.registered || 0), sent: Number(result?.sent || 0), failed: Number(result?.failed || 0) });
   } catch (error) {
     detail = String(error?.message || error).slice(0, 160);
   }
