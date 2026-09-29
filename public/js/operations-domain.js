@@ -284,6 +284,13 @@ export function projectOperationToUiItem(op, { relativeTime = () => "الآن" }
       return [];
     })(),
     livingUpdatedAt: String(op.livingUpdatedAt || metadata.livingUpdatedAt || op.updatedAt || ""),
+    negotiationActivityJson: String(op.negotiationActivityJson || metadata.negotiationActivityJson || ""),
+    lastBrokerActivityAt: String(op.lastBrokerActivityAt || metadata.lastBrokerActivityAt || ""),
+    matchStateJson: String(op.matchStateJson || ""),
+    matchLifecycle: String(op.matchLifecycle || ""),
+    lastEventAt: String(op.lastEventAt || ""),
+    brokerSeenAt: String(op.brokerSeenAt || ""),
+    whatsappOutboxJson: String(op.whatsappOutboxJson || ""),
     nextActor: String(op.nextActor || metadata.nextActor || ""),
     rejectedMatchIds: metadata.rejectedMatchIds || [],
     missingInfoKey: String(metadata.missingInfoKey || ""),

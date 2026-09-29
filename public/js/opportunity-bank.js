@@ -235,6 +235,9 @@ const state = {
   hasMore: false,
   busy: false,
   pendingQueryRefresh: false,
+  pendingKeepVisible: true,
+  // Rows kept on screen while a data-driven refresh re-queries the same filter.
+  loadingSnapshot: null,
   resultTotal: 0,
   scanExhausted: false,
   inboxExpandedIds: new Set(),
@@ -827,6 +830,7 @@ function renderList() {
 
   const summary = state.summary || emptyBankSummary();
 
+  if (state.loadingSnapshot && state.busy) return;
   const records = [...state.records.entries()]
     .filter(([, record]) => passesListFilters(record))
     .map(([id, record]) => ({ ...record, id }));
@@ -4101,7 +4105,7 @@ async function loadBankSummary() {
  * Query-driven page load: scan office-scoped pages until BANK_PAGE_SIZE matches
  * the active search/filters (or the cursor is exhausted). Never dumps the full bank into DOM.
  */
-async function loadBankPage({ reset = false } = {}) {
+async function loadBankPage({ reset = false, keepVisible = false } = {}) {
   const runtime = officeRuntime();
   const user = authUser();
   const loadMoreBtn = $("bankLoadMoreBtn");
@@ -4120,6 +4124,9 @@ async function loadBankPage({ reset = false } = {}) {
     if (reset) {
       // Clear canonical rows before any awaited hydration. This prevents stale rows,
       // including previously projected operations, from flashing during refresh.
+      // A data-driven refresh (same filter, new operations) keeps the current rows
+      // on screen and swaps once the new result is ready: no empty/partial frame.
+      state.loadingSnapshot = keepVisible && state.records.size ? new Map(state.records) : null;
       state.records.clear();
       state.facetMeta = [];
       state.summary = emptyBankSummary();
@@ -4211,10 +4218,16 @@ async function loadBankPage({ reset = false } = {}) {
     if (retry) retry.hidden = false;
   } finally {
     state.busy = false;
+    if (state.loadingSnapshot) {
+      state.loadingSnapshot = null;
+      renderList();
+    }
     updateBankLoadMoreButton();
     if (state.pendingQueryRefresh) {
+      const keep = state.pendingKeepVisible;
       state.pendingQueryRefresh = false;
-      scheduleBankQueryRefresh();
+      state.pendingKeepVisible = true;
+      scheduleBankQueryRefresh({ keepVisible: keep });
     }
   }
 }
@@ -4231,12 +4244,13 @@ function startListener() {
   void loadOutgoingScopes();
 }
 
-function scheduleBankQueryRefresh() {
+function scheduleBankQueryRefresh({ keepVisible = false } = {}) {
   if (state.busy) {
+    state.pendingKeepVisible = state.pendingQueryRefresh ? (state.pendingKeepVisible && keepVisible) : keepVisible;
     state.pendingQueryRefresh = true;
     return;
   }
-  void loadBankPage({ reset: true });
+  void loadBankPage({ reset: true, keepVisible });
 }
 
 function isInlineBankRoot() {
@@ -4475,17 +4489,17 @@ function boot() {
       const itemOfficeId = canonicalFirestoreOfficeId(item?.officeId || "");
       return !itemOfficeId || !currentOfficeId || itemOfficeId === currentOfficeId;
     });
-    if (hasActiveOpportunityActionFilter()) scheduleBankQueryRefresh();
+    if (hasActiveOpportunityActionFilter()) scheduleBankQueryRefresh({ keepVisible: true });
     else renderList();
   });
   window.addEventListener("iaqar:bank-refresh", () => {
     if (officeRuntime()?.db && officeId() && authUser()) {
-      scheduleBankQueryRefresh();
+      scheduleBankQueryRefresh({ keepVisible: true });
     }
   });
   window.addEventListener("iaqar:operations-refresh", () => {
     if (officeRuntime()?.db && officeId() && authUser()) {
-      scheduleBankQueryRefresh();
+      scheduleBankQueryRefresh({ keepVisible: true });
     }
   });
 

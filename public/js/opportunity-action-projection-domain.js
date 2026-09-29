@@ -3,6 +3,8 @@
  * Opportunities remain the only list rows; Operations only decorate/sort them.
  */
 
+import { matchEventLogRow, parseMatchEvents } from "./match-event-domain.js";
+
 export const OPPORTUNITY_ACTION_FILTER = Object.freeze({
   ALL: "all",
   NEEDS_ACTION: "needs_action",
@@ -22,6 +24,23 @@ function text(value) {
 
 function upper(value) {
   return text(value).toUpperCase();
+}
+
+// Stages the broker reaches only after working the match (sending, replies,
+// negotiation). Such a match is never "تطابق جديد" again and belongs to متابعة.
+const ENGAGED_MATCH_STAGES = /^(CLIENT_SENT|WAITING_|AWAITING_|CLIENT_NEEDS|CLIENT_INTERESTED|NEGOTIATION|PROPERTY_AVAILABLE|WAITING_PROPERTY|OWNER_|VIEWING_DECISION|APPOINTMENT_|VIEWING_COMPLETED|FOLLOW_UP)/;
+
+function negotiationActivityOf(operation = {}) {
+  return parseMatchEvents(operation.negotiationActivityJson || operation.metadata?.negotiationActivityJson || operation.negotiationActivity);
+}
+
+export function isBrokerEngagedMatchOperation(operation = {}) {
+  const type = upper(operation.operationType || operation.type);
+  if (type !== "MATCH_REVIEW") return false;
+  const livingStage = upper(operation.livingStage || operation.metadata?.livingStage);
+  return ENGAGED_MATCH_STAGES.test(livingStage)
+    || negotiationActivityOf(operation).length > 0
+    || Boolean(text(operation.lastBrokerActivityAt || operation.metadata?.lastBrokerActivityAt));
 }
 
 function instant(value) {
@@ -156,6 +175,21 @@ export function projectOpportunityAction(operation = {}, now = new Date()) {
     };
   }
 
+  if (type === "MATCH_REVIEW" && MATCH_NEW_STAGES.has(livingStage) && isBrokerEngagedMatchOperation(operation)) {
+    const last = negotiationActivityOf(operation).filter((event) => event.eventType !== "BROKER_INTERNAL_NOTE").map(matchEventLogRow).filter(Boolean).pop();
+    return {
+      category: OPPORTUNITY_ACTION_FILTER.FOLLOW_UP,
+      rank: 6,
+      tone: "followup",
+      badge: "متابعة التفاوض",
+      reason: last ? `آخر إجراء: ${last.title}` : "بدأ الوسيط التواصل مع الأطراف",
+      detail: "",
+      primaryAction: "متابعة التفاوض",
+      actionCode: "open_negotiation",
+      dueAt: operation.lastBrokerActivityAt || operation.updatedAt || operation.createdAt || ""
+    };
+  }
+
   if (type === "MATCH_REVIEW" && MATCH_NEW_STAGES.has(livingStage)) {
     return {
       category: OPPORTUNITY_ACTION_FILTER.MATCHES,
@@ -255,6 +289,10 @@ function operationFilterMemberships(operation = {}, action = null) {
   // A persisted active MATCH_REVIEW is always a real match membership even when
   // another projected action (appointment / overdue / negotiation) has higher priority.
   if (type === "MATCH_REVIEW") memberships.add(OPPORTUNITY_ACTION_FILTER.MATCHES);
+  // A match the broker is already working stays visible under متابعة.
+  if (isBrokerEngagedMatchOperation(operation) && !TERMINAL_OUTCOMES.has(viewingOutcome)) {
+    memberships.add(OPPORTUNITY_ACTION_FILTER.FOLLOW_UP);
+  }
 
   if (
     type === "OPPORTUNITY_FOLLOW_UP"
@@ -305,8 +343,19 @@ export function buildOpportunityActionIndex(operations = [], { officeId = "", no
     }
 
     if (!action) continue;
-    const candidate = { ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId) };
+    const candidate = {
+      ...action, operation, operationId: text(operation.id || operation.recordId), matchId: text(operation.matchId),
+      brokerEngaged: isBrokerEngagedMatchOperation(operation)
+    };
     const current = byOpportunity.get(opportunityId);
+    // A match the broker is working outranks an untouched sibling candidate that
+    // would otherwise put the card back on "تطابق جديد".
+    const isUntouchedNewMatch = (entry) => entry && !entry.brokerEngaged && entry.actionCode === "review_match" && entry.rank === 5;
+    if (current && candidate.brokerEngaged && isUntouchedNewMatch(current)) {
+      byOpportunity.set(opportunityId, candidate);
+      continue;
+    }
+    if (current && current.brokerEngaged && isUntouchedNewMatch(candidate)) continue;
     const matchTie = current
       && candidate.rank === current.rank
       && candidate.actionCode === "review_match"

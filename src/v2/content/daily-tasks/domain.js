@@ -37,6 +37,7 @@ import {
   platformOpportunityMoneyLine
 } from "../../../../public/js/opportunity-router-domain.js";
 import { missingFieldLabelsArabic } from "../../../../public/js/opportunity-readiness-domain.js";
+import { parseMatchEvents, parseMatchState } from "../../../../public/js/match-event-domain.js";
 import {
   isNewReview,
   isReadyToClose,
@@ -852,6 +853,13 @@ export function buildDailyTaskView(record = {}) {
     yourTurnLine: text(record.yourTurnLine),
     waiting: Boolean(record.waiting),
     timeline: parseLivingTimeline(record.timeline || record.livingTimeline),
+    negotiationActivity: parseMatchEvents(record.negotiationActivity || record.negotiationActivityJson),
+    matchState: parseMatchState(record.matchState || record.matchStateJson),
+    matchLifecycle: text(record.matchLifecycle),
+    lastEventAt: text(record.lastEventAt),
+    brokerSeenAt: text(record.brokerSeenAt),
+    whatsappOutbox: (() => { try { const list = typeof record.whatsappOutbox === "object" ? record.whatsappOutbox : JSON.parse(record.whatsappOutboxJson || "[]"); return Array.isArray(list) ? list : []; } catch { return []; } })(),
+    lastBrokerActivityAt: text(record.lastBrokerActivityAt),
     coordinationClientSummary: text(record.coordinationClientSummary),
     coordinationOwnerSummary: text(record.coordinationOwnerSummary),
     revealClosedLabel: text(record.revealClosedLabel)
@@ -1119,6 +1127,13 @@ function matchRecordFromItem(item = {}, now = new Date()) {
     viewingOutcome: item.viewingOutcome || item.metadata?.viewingOutcome,
     seriousIntentConfirmed: item.seriousIntentConfirmed || item.metadata?.seriousIntentConfirmed,
     livingTimeline: item.livingTimeline || item.livingTimelineJson || item.metadata?.livingTimeline,
+    negotiationActivityJson: item.negotiationActivityJson || item.metadata?.negotiationActivityJson || "",
+    lastBrokerActivityAt: item.lastBrokerActivityAt || item.metadata?.lastBrokerActivityAt || "",
+    matchStateJson: item.matchStateJson || "",
+    matchLifecycle: item.matchLifecycle || "",
+    lastEventAt: item.lastEventAt || "",
+    brokerSeenAt: item.brokerSeenAt || "",
+    whatsappOutboxJson: item.whatsappOutboxJson || "",
     hasNewResponse: item.hasNewResponse || item.metadata?.hasNewResponse,
     nextActor: item.nextActor || item.metadata?.nextActor,
     livingUpdatedAt: item.livingUpdatedAt || item.metadata?.livingUpdatedAt || item.updatedAt,

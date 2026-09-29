@@ -178,7 +178,14 @@ import {
   handlePartySessionPhoto,
   handlePartySessionReply,
   handlePartySessionBundle,
-  handleMatchLivingAction
+  handleMatchLivingAction,
+  handlePartySessionEvent,
+  handlePartySessionOpened,
+  handlePartySessionState,
+  markBrokerSeen,
+  openWhatsAppHandoff,
+  recordMatchLifecycleEvent,
+  recordNegotiationActivity
 } from "./party-session-service.js";
 import {
   loadCoordinationSession,
@@ -694,6 +701,21 @@ export default {
         });
       }
 
+      const partyLive = url.pathname.match(/^\/party\/sessions\/([^/]+)\/(event|opened|state)$/);
+      if (partyLive && ((partyLive[2] === "state" && request.method === "GET") || (partyLive[2] !== "state" && request.method === "POST"))) {
+        const args = {
+          token: decodeURIComponent(partyLive[1] || ""),
+          env,
+          request,
+          requestId,
+          helpers: partySessionHelpers(),
+          ip: request.headers.get("CF-Connecting-IP") || "unknown"
+        };
+        if (partyLive[2] === "event") return await handlePartySessionEvent(args);
+        if (partyLive[2] === "opened") return await handlePartySessionOpened(args);
+        return await handlePartySessionState(args);
+      }
+
       const partyBundle = url.pathname.match(/^\/party\/sessions\/([^/]+)\/bundle$/);
       if (request.method === "POST" && partyBundle) {
         return await handlePartySessionBundle({
@@ -905,7 +927,8 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/workflow/action") {
-        return handleWorkflowAction(request, env, requestId);
+        // Awaited so validation errors return their JSON message instead of escaping the handler.
+        return await handleWorkflowAction(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/opportunity/lifecycle") {
@@ -6182,6 +6205,24 @@ async function handleWorkflowAction(request,env,requestId) {
     return jsonResponse({ok:true,status,nextFollowUpAt:nextFollowUpAt.toISOString(),followUpCount:count,requestId});
   }
 
+  if(action==="record_negotiation_activity"){
+    const recorded=await recordNegotiationActivity(partySessionHelpers(),{
+      projectId,officeId,matchId:recordId,accessToken,now,env,actorId:identity.uid||"",
+      input:{kind:body.kind,party:body.party||body.audience,choiceId:body.choiceId,message:body.message||body.note,field:body.field,value:body.value,clientEventId:body.clientEventId}
+    });
+    return jsonResponse({ok:true,matchId:recordId,entry:recorded.entry,summary:recorded.summary,duplicate:recorded.duplicate,operationId:recorded.operationId,requestId});
+  }
+
+  if(action==="mark_match_seen"){
+    const seen=await markBrokerSeen(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,now});
+    return jsonResponse({ok:true,matchId:recordId,brokerSeenAt:seen.seenAt,requestId});
+  }
+
+  if(action==="whatsapp_handoff_opened"){
+    const opened=await openWhatsAppHandoff(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,now,actorId:identity.uid||"",dispatchId:cleanText(body.dispatchId,80)});
+    return jsonResponse({ok:true,matchId:recordId,entry:opened.event,dispatch:{dispatchId:opened.dispatch.id,status:opened.dispatch.status},requestId});
+  }
+
   if(action==="add_negotiation_note"){
     const audience=["both","client","owner"].includes(String(body.audience||"").toLowerCase())?String(body.audience).toLowerCase():"both";
     const message=note||cleanText(body.preset,200);
@@ -6210,6 +6251,7 @@ async function handleWorkflowAction(request,env,requestId) {
       closeReason:firestoreString(reason),closedAt:firestoreTimestamp(now),updatedAt:firestoreTimestamp(now),attentionRequired:firestoreBoolean(false)
     }});
     await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:"match_closed",stage:"closed",note:reason,identity,accessToken,createdAt:now});
+    await recordMatchLifecycleEvent(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,env,now,actorId:identity.uid||"",eventType:"MATCH_CLOSED_NO_AGREEMENT",payload:{reason}});
     for(const opportunityId of [m.clientRequestId||m.requestId,m.ownerOfferId||m.offerId].filter(Boolean)){
       await setFirestoreDocument({projectId,segments:["offices",officeId,"opportunities",opportunityId],accessToken,fields:{
         lifecycleStatus:firestoreString("ACTIVE"),workflowStage:firestoreString("matching"),matchingReadiness:firestoreString("READY_FOR_MATCHING"),updatedAt:firestoreTimestamp(now)
@@ -6244,6 +6286,7 @@ async function handleWorkflowAction(request,env,requestId) {
     const completedViewing=Boolean(m.viewingCompletedAt)||String(m.livingStage||"").toUpperCase()==="VIEWING_COMPLETED";
     const startStage=matchStatus==="negotiation"||completedViewing?"negotiation":matchStatus==="viewing"?"viewing":"contact";
     const dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:m,identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage});
+    await recordMatchLifecycleEvent(partySessionHelpers(),{projectId,officeId,matchId:recordId,accessToken,env,now,actorId:identity.uid||"",eventType:"MATCH_AGREED",payload:{dealId,startStage}});
     return jsonResponse({ok:true,dealId,status:"open",workflowStage:startStage,requestId});
   }
 
@@ -6901,6 +6944,24 @@ async function setFirestoreDocument({ projectId, segments, accessToken, fields }
   return response.json();
 }
 
+// Create-only write (precondition: the document must not exist). Returns false when
+// it already exists, so callers get exactly-once semantics for events/notifications.
+async function createFirestoreDocumentIfAbsent({ projectId, segments, accessToken, fields }) {
+  const compacted = compactFields(fields);
+  const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
+  endpoint.searchParams.set("currentDocument.exists", "false");
+  const response = await fetch(endpoint.toString(), {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: compacted })
+  });
+  if (response.ok) return true;
+  if ([400, 404, 409, 412].includes(response.status)) return false;
+  const detail = await response.text().catch(() => "");
+  console.error("[iaqar-events] create-if-absent failed", response.status, detail.slice(0, 200));
+  throw appError("firestore_write_failed", 502, "تعذر حفظ الحدث");
+}
+
 async function patchFirestoreDocument({ projectId, segments, accessToken, fields, updateTime = "" }) {
   const compacted = compactFields(fields);
   const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
@@ -6949,7 +7010,12 @@ function partySessionHelpers() {
     consumePublicRateLimit,
     publicRateLimitKey,
     PUBLIC_RATE_LIMITS,
-    sendViewingConfirmation: (args) => sendViewingConfirmationNotification(args)
+    sendViewingConfirmation: (args) => sendViewingConfirmationNotification(args),
+    createFirestoreDocumentIfAbsent,
+    patchFirestoreDocument,
+    // Broker FCM through the existing office push pipeline (devices + preferences).
+    sendBrokerPush: ({ projectId, officeId, accessToken, env, title, body, matchId, assignedBrokerId = "" }) =>
+      sendOfficePush({ projectId, officeId, title, body, type: "match", recordId: matchId, matchId, assignedBrokerId, accessToken, env })
   };
 }
 

@@ -18,6 +18,7 @@ import {
 } from "./bank-inbox-card-domain.js";
 import { formatDailyTaskClock } from "./v2/daily-tasks/domain.js";
 import { archiveActionLabel } from "./opportunity-delete-plan-domain.js";
+import { brokerUnreadCount, unreadUpdatesLabel } from "./match-event-domain.js";
 
 const DAILY_TASK_ACTION_CODES = new Set([
   "review_match",
@@ -27,6 +28,16 @@ const DAILY_TASK_ACTION_CODES = new Set([
   "view_waiting",
   "open_negotiation"
 ]);
+
+// A matchId is never an operation id. Operation ids (op_…) are rejected so a
+// fallback can never open or write the wrong record.
+function exactMatchIdFrom(...values) {
+  for (const value of values) {
+    const id = String(value || "").trim();
+    if (id && !/^op_/i.test(id)) return id;
+  }
+  return "";
+}
 
 function esc(text = "") {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (character) => ({
@@ -61,7 +72,7 @@ export function bankOperationalNavigationDetail(button) {
   if (!DAILY_TASK_ACTION_CODES.has(actionCode)) return null;
   const article = button?.closest?.("[data-cv2-inbox-item][data-opportunity-id]");
   const opportunityId = String(article?.getAttribute?.("data-opportunity-id") || "").trim();
-  const matchId = String(button?.getAttribute?.("data-match-id") || "").trim();
+  const matchId = exactMatchIdFrom(button?.getAttribute?.("data-match-id"));
   const operationId = String(button?.getAttribute?.("data-operation-id") || "").trim();
   if (!opportunityId) return null;
   return {
@@ -77,7 +88,7 @@ export function bankOperationalNavigationDetail(button) {
 }
 
 export async function hydrateBankMatchReviewDetail(detail = {}, win = globalThis.window) {
-  const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+  const matchId = exactMatchIdFrom(detail.matchId, detail.recordId);
   const base = {
     ...detail,
     id: matchId || detail.id || "",
@@ -145,7 +156,7 @@ export function installLegacyOpportunityWorkflowRetirement(doc = globalThis.docu
     event.preventDefault?.();
     event.stopImmediatePropagation?.();
 
-    const matchId = String(detail.matchId || detail.recordId || detail.id || "").trim();
+    const matchId = exactMatchIdFrom(detail.matchId, detail.recordId);
     if (matchId && typeof win.IAQAR?.openMatchWorkspace === "function") {
       await win.IAQAR.openMatchWorkspace(matchId);
       return;
@@ -258,6 +269,11 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
     ? `${action.badge}${action.category === "matches" && action.matchCount > 1 ? ` — ${action.matchCount}` : ""}`
     : "لا إجراء حالي";
   const actionOperation = action?.operation || {};
+  // Unread = party events after the broker last opened this match. Events are never deleted.
+  const unreadCount = brokerUnreadCount(actionOperation.negotiationActivityJson, actionOperation.brokerSeenAt);
+  const unreadBadge = unreadCount > 0
+    ? `<span class="bank-card-unread" data-unread-updates="${esc(String(unreadCount))}" data-unread-match-id="${esc(action?.matchId || "")}">${esc(unreadUpdatesLabel(unreadCount))}</span>`
+    : "";
   const clientRequestId = actionOperation.clientRequestId || actionOperation.requestId || actionOperation.requestOpportunityId || "";
   const ownerOfferId = actionOperation.ownerOfferId || actionOperation.offerId || actionOperation.offerOpportunityId || "";
   const actionPropertyType = actionOperation.propertyType || actionOperation.candidatePropertyType || record.propertyType || vm.type || "";
@@ -266,6 +282,7 @@ export function buildBankInboxCardHtml(record = {}, context = {}) {
       <section class="bank-card-action bank-card-action--${esc(action?.tone || "quiet")}" data-opportunity-action-state="${esc(action?.category || "none")}">
         <div class="bank-card-action-head">
           <span class="bank-card-action-badge"><i class="bank-card-status-dot" aria-hidden="true"></i>${esc(statusText)}</span>
+          ${unreadBadge}
           ${action?.reason && action.reason !== statusText ? `<strong>${esc(action.reason)}</strong>` : ""}
         </div>
         ${action?.detail ? `<p class="bank-card-action-detail">${esc(action.detail)}</p>` : ""}

@@ -173,3 +173,16 @@ html.is-party-mode .toast {
 @media (prefers-reduced-motion: reduce) {
   .party-action, .party-chip { transition: none; }
 }
+
+/* Live negotiation panel on the party link */
+.party-live-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.party-live-choice { min-height: 40px; padding: 8px 14px; border: 1px solid #cfe0d4; border-radius: 999px; background: #fff; color: #1f3a2b; font: inherit; font-weight: 700; cursor: pointer; }
+.party-live-choice.is-selected { border-color: #1a5319; background: #1a5319; color: #fff; }
+.party-live-condition, .party-live-agreement-form label { display: grid; gap: 6px; margin: 8px 0; font-size: 14px; }
+.party-live-condition input, .party-live-agreement-form input, .party-live-agreement-form select { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #cfe0d4; border-radius: 10px; font: inherit; }
+.party-live-agreement dl { display: grid; gap: 6px; margin: 6px 0; }
+.party-live-agreement dl div { display: flex; justify-content: space-between; gap: 8px; }
+.party-live-history { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.party-live-history li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid #e3ece5; border-radius: 10px; }
+.party-live-history small, .party-live-note, .party-live-last { color: #5f7a68; font-size: 12px; }
+.party-live-final { font-size: 16px; }

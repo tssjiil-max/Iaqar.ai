@@ -60,9 +60,14 @@ test("broker controls have contextual actions and persist note/audience wiring",
   const card = readFileSync(new URL("../src/v2/content/daily-tasks/card.js", import.meta.url), "utf8");
   const controller = readFileSync(new URL("../src/v2/content/daily-tasks/controller.js", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../worker/src/index.js", import.meta.url), "utf8");
-  assert.match(card, /data-broker-action="note"/);
+  // A message sent to a party and an internal note are separate actions.
+  assert.match(card, /data-broker-action="send_message"/);
+  assert.match(card, /data-broker-action="save_internal_note"/);
   assert.match(card, /data-broker-audience/);
-  assert.match(controller, /add_negotiation_note/);
+  assert.match(controller, /record_negotiation_activity/);
+  assert.match(controller, /broker_message/);
+  assert.match(controller, /internal_note/);
+  assert.match(worker, /record_negotiation_activity/);
   assert.match(worker, /brokerNotes/);
   assert.match(worker, /BROKER_NOTE/);
 });
