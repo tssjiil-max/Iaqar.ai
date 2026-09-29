@@ -166,16 +166,77 @@ await step("BROKER", "5", "سجل الإجراءات يحتوي أحداث ال�
   return { logLines: log.length, lastUpdate, liveEvent: "العميل طلب معاينة", unreadAfter: unread.count };
 }, broker);
 
+const partyMessages = (page) => page.evaluate(() => [...document.querySelectorAll("[data-party-message]")].map((li) => ({
+  eventId: li.getAttribute("data-party-message"),
+  kind: li.getAttribute("data-message-kind"),
+  text: li.querySelector(".party-msg-text-body")?.textContent.trim() || "",
+  replies: [...li.querySelectorAll("[data-party-reply]")].map((b) => b.textContent.trim()),
+  mine: li.querySelector("[data-party-msg-response]")?.textContent.trim() || ""
+})));
+
 await step("BROKER", "msg", "رسالة الوسيط تصل صفحة العميل فورًا", async () => {
   await openWorkspace();
   await broker.fill(ws("[data-broker-message]"), "موعد المعاينة الخميس 5 مساءً");
   await broker.selectOption(ws("[data-broker-audience]"), "client");
+  await broker.selectOption(ws("[data-broker-message-kind]"), "general");
+  await broker.uncheck(ws("[data-broker-requires-reply]"));
   await broker.click(ws('[data-broker-action="send_message"]'));
-  await waitFor(async () => (await partyHistory(client)).includes("رسالة من الوسيط"), "broker message on client page", 10000);
-  const ownerHas = (await partyHistory(owner)).includes("رسالة من الوسيط");
+  await waitFor(async () => (await partyMessages(client)).some((m) => m.text === "موعد المعاينة الخميس 5 مساءً"), "broker message on client page", 10000);
+  const info = (await partyMessages(client)).find((m) => m.text === "موعد المعاينة الخميس 5 مساءً");
+  assert(info.replies.length === 0, "a message without requiresReply has no reply controls");
+  const ownerHas = (await partyMessages(owner)).some((m) => m.text === "موعد المعاينة الخميس 5 مساءً");
   assert(!ownerHas, "owner must not see a client-only message");
   await closeWorkspace();
   return { clientSees: true, ownerSees: ownerHas };
+}, client);
+
+await step("REPLY", "1", "الوسيط يكتب «المعاينة غدًا بعد العشاء» (موعد معاينة) → العميل يرى الردود السياقية", async () => {
+  await openWorkspace();
+  await broker.fill(ws("[data-broker-message]"), "المعاينة غدًا بعد العشاء");
+  await broker.selectOption(ws("[data-broker-audience]"), "client");
+  await broker.selectOption(ws("[data-broker-message-kind]"), "viewing");
+  await broker.check(ws("[data-broker-requires-reply]"));
+  await broker.click(ws('[data-broker-action="send_message"]'));
+  const thread = await waitFor(async () => (await partyMessages(client)).find((m) => m.text === "المعاينة غدًا بعد العشاء"), "viewing message on client page", 10000);
+  assert(thread.replies.join("/") === "موافق/الوقت غير مناسب/اقترح موعدًا آخر/سأتواصل واتساب", thread.replies.join("/"));
+  assert(!(await partyMessages(owner)).some((m) => m.eventId === thread.eventId), "owner sees the client-only message");
+  const pending = await broker.evaluate((id) => document.querySelector(`.cv2-match-workspace [data-message-thread="${id}"] [data-message-response="client"]`)?.textContent.trim() || "", thread.eventId);
+  assert(pending === "بانتظار رد العميل", `broker pending line: ${pending}`);
+  return { messageEventId: thread.eventId, kind: thread.kind, replies: thread.replies, brokerShows: pending };
+}, client);
+
+await step("REPLY", "2", "العميل يضغط «موافق» → الوسيط يراه حيًا تحت الرسالة + FCM مرة واحدة", async () => {
+  const thread = (await partyMessages(client)).find((m) => m.text === "المعاينة غدًا بعد العشاء");
+  const fcmBefore = h.store.fcm.length;
+  await client.click(`[data-party-reply="${thread.eventId}"][data-response-id="accept"]`);
+  await waitFor(async () => (await partyMessages(client)).find((m) => m.eventId === thread.eventId)?.mine.includes("موافق"), "client sees own reply");
+  const live = await waitFor(() => broker.evaluate((id) => {
+    const line = document.querySelector(`.cv2-match-workspace [data-message-thread="${id}"] [data-message-response="client"]`);
+    return line?.getAttribute("data-response-id") === "accept" ? line.textContent.trim() : null;
+  }, thread.eventId), "broker sees the reply under the message (live)", 10000);
+  const responses = events().filter((e) => e.eventType === "CLIENT_MESSAGE_RESPONSE" && e.payload.replyToEventId === thread.eventId);
+  assert(responses.length === 1, `responses ${responses.length}`);
+  const fcm = h.store.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.channel === "fcm" && d.eventId === responses[0].eventId);
+  assert(fcm.length === 1 && fcm[0].status === "DISPATCHED", JSON.stringify(fcm.map((d) => d.status)));
+  assert(h.store.fcm.length === fcmBefore + 1, `fcm sends ${h.store.fcm.length - fcmBefore}`);
+  await closeWorkspace();
+  return { brokerLine: live, responseEventId: responses[0].eventId, replyToEventId: responses[0].payload.replyToEventId, fcmDispatch: fcm[0].status };
+}, broker);
+
+await step("REPLY", "3", "Refresh → الرد باقٍ بلا تكرار", async () => {
+  const thread = (await partyMessages(client)).find((m) => m.text === "المعاينة غدًا بعد العشاء");
+  const fcmBefore = h.store.fcm.length;
+  await client.reload();
+  await client.locator("[data-party-live]").waitFor({ state: "visible", timeout: 15000 });
+  await broker.reload();
+  await broker.waitForFunction(() => window.__e2e?.ready, null, { timeout: 20000 });
+  await sleep(1500);
+  const after = (await partyMessages(client)).find((m) => m.eventId === thread.eventId);
+  assert(after.mine.includes("موافق"), `after refresh: ${after.mine}`);
+  const responses = events().filter((e) => e.eventType === "CLIENT_MESSAGE_RESPONSE" && e.payload.replyToEventId === thread.eventId);
+  assert(responses.length === 1, `responses after refresh ${responses.length}`);
+  assert(h.store.fcm.length === fcmBefore, "refresh sent FCM");
+  return { mine: after.mine, responses: responses.length };
 }, client);
 
 await step("AGREEMENT", "1", "تعديل الاتفاق من الوسيط ومن العميل: AGREEMENT_UPDATED + الحالة الحالية", async () => {

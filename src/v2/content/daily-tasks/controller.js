@@ -800,10 +800,14 @@ async function sendBrokerMessageOrNote(task, panel, action, button) {
     return;
   }
   const audience = isMessage ? String(panel?.querySelector("[data-broker-audience]")?.value || "client") : "internal";
+  const messageKind = isMessage ? String(panel?.querySelector("[data-broker-message-kind]")?.value || "general") : "";
+  const requiresReply = isMessage ? Boolean(panel?.querySelector("[data-broker-requires-reply]")?.checked) : false;
   setExecState(button, "working");
   try {
     if (field) field.value = "";
-    await recordNegotiation(task, { kind: isMessage ? "broker_message" : "internal_note", party: audience, message });
+    await recordNegotiation(task, isMessage
+      ? { kind: "broker_message", party: audience, message, messageKind, requiresReply }
+      : { kind: "internal_note", party: audience, message });
     notify(isMessage ? `أُضيفت رسالتك إلى رابط ${matchPartyName(audience)}` : "تم حفظ الملاحظة الداخلية — لم تُرسل لأي طرف");
   } catch (error) {
     if (field && !field.value) field.value = message;
@@ -1151,7 +1155,7 @@ function consumePendingDailyTaskOpen() {
   }
 }
 
-const DRAFT_FIELDS = ["data-broker-message", "data-broker-audience", "data-broker-internal-note", "data-agreement-field", "data-agreement-value"];
+const DRAFT_FIELDS = ["data-broker-message", "data-broker-audience", "data-broker-message-kind", "data-broker-requires-reply", "data-broker-internal-note", "data-agreement-field", "data-agreement-value"];
 
 function captureDrafts() {
   state.root?.querySelectorAll("[data-cv2-exec-task]").forEach((card) => {
@@ -1160,7 +1164,7 @@ function captureDrafts() {
     const values = {};
     for (const attr of DRAFT_FIELDS) {
       const field = card.querySelector(`[${attr}]`);
-      if (field) values[attr] = field.value;
+      if (field) values[attr] = field.type === "checkbox" ? field.checked : field.value;
     }
     if (Object.keys(values).length) state.drafts.set(taskId, values);
   });
@@ -1172,7 +1176,10 @@ function restoreDrafts() {
     if (!values) return;
     for (const attr of DRAFT_FIELDS) {
       const field = card.querySelector(`[${attr}]`);
-      if (field && values[attr] != null) field.value = values[attr];
+      if (field && values[attr] != null) {
+        if (field.type === "checkbox") field.checked = Boolean(values[attr]);
+        else field.value = values[attr];
+      }
     }
   });
 }

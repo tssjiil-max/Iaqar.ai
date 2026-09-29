@@ -499,3 +499,100 @@ test("FCM fails once + retry → one successful delivery, never two", async () =
     assert.equal(whatsapp[0].status, "PENDING_BROKER_HANDOFF");
   });
 });
+
+test("replyable broker message: viewing message → client contextual replies → linked response, broker FCM once", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    const ownerPath = `/party/sessions/${encodeURIComponent(tokens.owner)}`;
+    const sent = await h.record({ kind: "broker_message", party: "client", message: "المعاينة غدًا بعد العشاء", messageKind: "viewing", requiresReply: true, clientEventId: "m-1" });
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    const messageEventId = sent.body.entry.eventId;
+    assert.equal(sent.body.entry.payload.messageKind, "viewing");
+    assert.equal(sent.body.entry.payload.requiresReply, true);
+    assert.deepEqual(sent.body.entry.payload.replyOptions.map((o) => o.id), ["accept", "time_not_suitable", "propose_other_time", "will_whatsapp"]);
+
+    // Client sees the contextual replies under that exact message.
+    const clientView = (await h.party("GET", clientPath)).body.view.negotiation;
+    const thread = clientView.messages.find((m) => m.eventId === messageEventId);
+    assert.ok(thread, "message on the client link");
+    assert.equal(thread.canReply, true);
+    assert.deepEqual(thread.replyOptions.map((o) => o.label), ["موافق", "الوقت غير مناسب", "اقترح موعدًا آخر", "سأتواصل واتساب"]);
+    // Owner does not see a client-only message and cannot reply to it.
+    const ownerView = (await h.party("GET", ownerPath)).body.view.negotiation;
+    assert.equal(ownerView.messages.some((m) => m.eventId === messageEventId), false);
+    const ownerReply = await h.party("POST", `${ownerPath}/event`, { replyToEventId: messageEventId, responseId: "accept", clientEventId: "o-r1" });
+    assert.equal(ownerReply.status, 403);
+
+    // Client replies "موافق".
+    const fcmBefore = h.fcmCalls.length;
+    const reply = await h.party("POST", `${clientPath}/event`, { replyToEventId: messageEventId, responseId: "accept", clientEventId: "c-r1" });
+    assert.equal(reply.status, 200, JSON.stringify(reply.body));
+    const response = reply.body.event;
+    assert.equal(response.eventType, "CLIENT_MESSAGE_RESPONSE");
+    assert.equal(response.actorType, "client");
+    assert.deepEqual([response.payload.replyToEventId, response.payload.responseId, response.payload.responseLabel], [messageEventId, "accept", "موافق"]);
+    // Broker side: the response is on the operation (live feed) and linked to the message.
+    const onOp = activityOf(h.op()).filter((e) => e.eventType === "CLIENT_MESSAGE_RESPONSE");
+    assert.equal(onOp.length, 1);
+    assert.equal(onOp[0].payload.replyToEventId, messageEventId);
+    const fcm = h.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.channel === "fcm" && d.eventId === response.eventId);
+    assert.equal(fcm.length, 1);
+    assert.equal(fcm[0].status, "DISPATCHED");
+    assert.equal(h.fcmCalls.length, fcmBefore + 1);
+    assert.equal(h.list(`offices/${OFFICE}/notificationDispatches`).filter((d) => d.channel === "whatsapp" && d.eventId === response.eventId).length, 0, "no automatic WhatsApp for a reply");
+    // Not a match-level choice: global state untouched.
+    assert.equal(stateOf(h.matchDoc()).client, null);
+
+    // Retry (same clientEventId) and refresh: no duplicate.
+    const retry = await h.party("POST", `${clientPath}/event`, { replyToEventId: messageEventId, responseId: "accept", clientEventId: "c-r1" });
+    assert.equal(retry.body.duplicate, true);
+    assert.equal(retry.body.event.eventId, response.eventId);
+    for (let i = 0; i < 2; i += 1) {
+      const refreshed = (await h.party("GET", clientPath)).body.view.negotiation.messages.find((m) => m.eventId === messageEventId);
+      assert.equal(refreshed.myResponse.responseId, "accept");
+    }
+    assert.equal(activityOf(h.op()).filter((e) => e.eventType === "CLIENT_MESSAGE_RESPONSE").length, 1);
+    assert.equal(h.fcmCalls.length, fcmBefore + 1);
+
+    // Invalid replies are rejected.
+    assert.equal((await h.party("POST", `${clientPath}/event`, { replyToEventId: messageEventId, responseId: "have_other_offer" })).status, 400, "price reply on a viewing message");
+    assert.equal((await h.party("POST", `${clientPath}/event`, { replyToEventId: "ev_missing", responseId: "accept" })).status, 400);
+  });
+});
+
+test("replies stay attached to their own message; both-party messages show each side's reply", async () => {
+  await withMatch(async (h) => {
+    const tokens = await mintLinks(h, h.match);
+    const clientPath = `/party/sessions/${encodeURIComponent(tokens.client)}`;
+    const ownerPath = `/party/sessions/${encodeURIComponent(tokens.owner)}`;
+    const price = (await h.record({ kind: "broker_message", party: "both", message: "السعر النهائي 860 ألف", messageKind: "price", requiresReply: true })).body.entry.eventId;
+    const general = (await h.record({ kind: "broker_message", party: "client", message: "هل الموعد مناسب؟", messageKind: "general", requiresReply: true })).body.entry.eventId;
+    const info = (await h.record({ kind: "broker_message", party: "client", message: "للعلم فقط", messageKind: "general", requiresReply: false })).body.entry.eventId;
+    await h.party("POST", `${clientPath}/event`, { replyToEventId: price, responseId: "need_time", clientEventId: "p1" });
+    await h.party("POST", `${ownerPath}/event`, { replyToEventId: price, responseId: "accept", clientEventId: "p2" });
+    await h.party("POST", `${clientPath}/event`, { replyToEventId: general, responseId: "need_clarification", responseText: "أي موعد؟", clientEventId: "g1" });
+    assert.equal((await h.party("POST", `${clientPath}/event`, { replyToEventId: info, responseId: "accept" })).status, 400, "no reply to a message that does not require one");
+    const responses = activityOf(h.op()).filter((e) => /_MESSAGE_RESPONSE$/.test(e.eventType));
+    assert.deepEqual(responses.map((e) => `${e.actorType}:${e.payload.replyToEventId === price ? "price" : "general"}:${e.payload.responseId}`),
+      ["client:price:need_time", "owner:price:accept", "client:general:need_clarification"]);
+    const clientThreads = (await h.party("GET", clientPath)).body.view.negotiation.messages;
+    const clientPrice = clientThreads.find((m) => m.eventId === price);
+    assert.equal(clientPrice.myResponse.responseId, "need_time");
+    assert.deepEqual(clientPrice.otherResponses.map((r) => `${r.party}:${r.responseId}`), ["owner:accept"]);
+    assert.equal(clientThreads.find((m) => m.eventId === general).myResponse.responseText, "أي موعد؟");
+    assert.equal(clientThreads.find((m) => m.eventId === info).canReply, false);
+    const ownerThreads = (await h.party("GET", ownerPath)).body.view.negotiation.messages;
+    assert.deepEqual(ownerThreads.map((m) => m.eventId), [price], "owner sees only the both-party message");
+
+    // Broker workspace renders each reply under its own message.
+    const opportunities = h.list(`offices/${OFFICE}/opportunities`).map((o) => ({ ...o, recordId: o.id, opportunityId: o.id, recordType: "opportunity" }));
+    const [task] = mapOperationsItemsToDailyTasks([projectOperationToUiItem(h.op()), ...opportunities], new Date(), { officeId: OFFICE });
+    const html = buildDailyTaskCardHtml(task, { open: true });
+    const priceBlock = html.slice(html.indexOf(`data-message-thread="${price}"`), html.indexOf("</li>", html.indexOf(`data-message-response="owner"`, html.indexOf(`data-message-thread="${price}"`))));
+    assert.match(priceBlock, /ردّ العميل: أحتاج وقت/);
+    assert.match(priceBlock, /ردّ المالك: موافق/);
+    assert.match(html, /data-broker-message-kind/);
+    assert.doesNotMatch(html, /data-negotiation-log-kind="CLIENT_MESSAGE_RESPONSE"/, "replies are nested, not separate rows");
+  });
+});

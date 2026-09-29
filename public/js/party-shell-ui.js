@@ -460,6 +460,30 @@ function partyTimeLabel(value = "") {
  * The live negotiation panel on a party link. Choices stay available and can change
  * while the match is ACTIVE; once agreed/closed the page is read-only history.
  */
+// Broker messages addressed to this party, each with its own reply controls and replies.
+export function partyMessagesHtml(messages = []) {
+  if (!Array.isArray(messages) || !messages.length) return "";
+  const items = messages.map((thread) => {
+    const mine = thread.myResponse
+      ? `<p class="party-msg-response" data-party-msg-response="${escapeHtml(thread.myResponse.responseId)}">ردك: <strong>${escapeHtml(thread.myResponse.responseLabel)}</strong>${thread.myResponse.responseText ? ` — ${escapeHtml(thread.myResponse.responseText)}` : ""}</p>`
+      : "";
+    const others = (thread.otherResponses || []).map((response) => `<p class="party-msg-other" data-party-msg-other="${escapeHtml(response.party)}">ردّ ${response.party === "owner" ? "المالك" : "العميل"}: <strong>${escapeHtml(response.responseLabel)}</strong></p>`).join("");
+    const controls = thread.canReply
+      ? `<div class="party-msg-replies" role="group" aria-label="ردك على الرسالة">${(thread.replyOptions || []).map((option) => {
+        const selected = thread.myResponse?.responseId === option.id;
+        return `<button type="button" class="party-live-choice${selected ? " is-selected" : ""}" data-party-reply="${escapeHtml(thread.eventId)}" data-response-id="${escapeHtml(option.id)}" aria-pressed="${selected ? "true" : "false"}">${escapeHtml(option.label)}</button>`;
+      }).join("")}</div><input type="text" class="party-msg-text" data-party-reply-text="${escapeHtml(thread.eventId)}" maxlength="500" placeholder="تفاصيل اختيارية (مثل الموعد المقترح)">`
+      : "";
+    return `<li class="party-msg" data-party-message="${escapeHtml(thread.eventId)}" data-message-kind="${escapeHtml(thread.messageKind)}">
+      <span class="party-msg-kind">${escapeHtml(thread.kindLabel)}</span>
+      <p class="party-msg-text-body">${escapeHtml(thread.message)}</p>
+      <small>${escapeHtml(partyTimeLabel(thread.createdAt))}</small>
+      ${mine}${others}${controls}
+    </li>`;
+  }).join("");
+  return `<div class="party-messages" data-party-messages><h3>رسائل الوسيط</h3><ol>${items}</ol></div>`;
+}
+
 export function partyNegotiationHtml(negotiation = null) {
   if (!negotiation || typeof negotiation !== "object") return "";
   const current = negotiation.current
@@ -480,7 +504,7 @@ export function partyNegotiationHtml(negotiation = null) {
       <h2>حالة المطابقة</h2>
       <p class="party-live-final" data-party-live-final><strong>${escapeHtml(negotiation.lifecycleLabel || "")}</strong></p>
       <p class="party-live-note">هذه الصفحة للعرض فقط الآن.</p>
-      ${current}${agreement}${history}
+      ${current}${partyMessagesHtml(negotiation.messages)}${agreement}${history}
     </section>`;
   }
   const choices = (negotiation.choices || []).map((choice) => {
@@ -498,6 +522,7 @@ export function partyNegotiationHtml(negotiation = null) {
     <div class="party-live-choices" role="group" aria-label="خياراتك">${choices}</div>
     <label class="party-live-condition">الشرط (عند اختيار شرط آخر)<input type="text" data-party-live-condition maxlength="500" placeholder="اكتب الشرط"></label>
     <p class="party-live-note">يمكنك تغيير اختيارك في أي وقت، ويصل للوسيط مباشرة.</p>
+    ${partyMessagesHtml(negotiation.messages)}
     ${agreement}${agreementForm}${history}
   </section>`;
 }
