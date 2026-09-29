@@ -13,7 +13,7 @@ export const PLATFORM_MASKABLE_512 = "/icons/iaqar-default-maskable-512.png";
 export const PLATFORM_APPLE_TOUCH = "/icons/iaqar-apple-touch-icon-180.png";
 export const PLATFORM_BADGE_ICON = "/icons/iaqar-badge-icon.png";
 /** Approved transparent platform logo for in-page UI (header, gate, office-card fallback). App icons above stay unchanged. */
-export const PLATFORM_UI_LOGO = "/assets/brand/iaqar-logo.png";
+export const PLATFORM_UI_LOGO = "/icons/iaqar-logo-transparent.png";
 
 const BRAND_FILE_RE = /^\/icons\/iaqar-/;
 const LEGACY_BRAND_FILES = new Set([
