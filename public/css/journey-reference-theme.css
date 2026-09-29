@@ -1,0 +1,439 @@
+/* User-journey visual pass (Staging): public entry, office link, intake forms,
+   office login, office dashboard shell and deal follow-up overlay.
+   Presentation only — no data, routing or workflow behaviour lives here.
+   Negotiation / match workspace and bank cards are styled in
+   negotiation-reference-theme.css and are intentionally not touched here.
+   Remove this link from index.html to disable the pass. */
+:root {
+  --journey-sky: #1f9fe0;
+  --journey-sky-soft: #e8f4fd;
+  --journey-field-bg: #f7fbff;
+  --journey-field-border: #d6e5f5;
+  --journey-gradient: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 55%, var(--journey-sky) 100%);
+  --journey-shadow: 0 10px 28px rgba(23, 88, 156, .09);
+  --journey-radius: 20px;
+}
+
+/* ---------- Public gate: shared ---------- */
+html:root .access-gate {
+  background: linear-gradient(180deg, #f7fbff 0%, var(--color-background) 60%);
+  padding: 14px 16px calc(36px + env(safe-area-inset-bottom));
+}
+html:root .access-shell { width: min(100%, 480px); }
+html:root .access-brand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  text-align: right;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+html:root .access-brand img { grid-row: span 2; width: 40px; height: 40px; margin: 0; }
+html:root .access-brand h1 { margin: 0; font-size: 16px; }
+html:root .access-brand p { font-size: 12px; }
+html:root .access-card {
+  border-radius: var(--journey-radius);
+  box-shadow: var(--journey-shadow);
+  padding: 18px 16px;
+}
+html:root .access-card h2 { color: var(--color-text); font-size: 22px; font-weight: 800; line-height: 1.35; }
+html:root .access-btn {
+  min-height: 52px;
+  border-radius: 16px;
+  background: var(--journey-gradient);
+  box-shadow: 0 8px 18px rgba(1, 65, 136, .18);
+}
+html:root .access-btn.secondary {
+  background: var(--color-surface);
+  box-shadow: none;
+}
+html:root .access-btn.light {
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+  box-shadow: none;
+  font-size: 16px;
+}
+html:root .access-back { color: var(--color-primary); font-size: 14px; min-height: 36px; padding: 0; }
+html:root .access-note { color: var(--color-text-muted); }
+html:root .access-note a { color: var(--color-primary); font-weight: 700; }
+html:root .access-muted { color: var(--color-text-muted); font-size: 14px; margin: 0; }
+html:root .access-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  color: var(--color-primary);
+}
+html:root .access-icon svg { width: 100%; height: 100%; display: block; }
+
+/* ---------- Hero + role cards ---------- */
+html:root .access-hero { text-align: center; margin: 6px 0 14px; }
+html:root .access-hero h2 { margin: 0 0 6px; color: var(--color-text); font-size: clamp(24px, 7vw, 30px); font-weight: 800; line-height: 1.3; }
+html:root .access-hero p { margin: 0 auto; max-width: 34ch; color: var(--color-text-muted); font-size: 14px; line-height: 1.7; }
+html:root .access-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+html:root .access-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+  color: var(--color-text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+html:root .access-choice:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+html:root .access-choice-icon {
+  width: 64px;
+  height: 64px;
+  padding: 15px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--journey-sky-soft), var(--color-primary-soft));
+  color: var(--color-primary);
+}
+html:root .access-choice-title { font-size: clamp(16px, 4.6vw, 19px); font-weight: 800; line-height: 1.3; }
+html:root .access-choice-sub { color: var(--color-text-muted); font-size: 12px; font-weight: 700; }
+html:root .access-choice-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: var(--journey-gradient);
+  color: var(--color-surface);
+}
+html:root .access-choice-action .access-btn-main { font-size: 15px; font-weight: 800; line-height: 1.3; }
+html:root .access-chevron { width: 18px; height: 18px; flex: 0 0 auto; vertical-align: middle; }
+
+/* ---------- Office login entry (brokers only) ---------- */
+html:root .access-office-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+html:root .access-office-entry-icon {
+  width: 48px;
+  height: 48px;
+  padding: 11px;
+  border-radius: 16px;
+  background: var(--journey-sky-soft);
+}
+html:root .access-office-entry-text { flex: 1 1 150px; min-width: 0; }
+html:root .access-office-entry-text h3 { margin: 0 0 2px; color: var(--color-text); font-size: 18px; font-weight: 800; }
+html:root .access-office-entry-text p { margin: 0; font-size: 13px; line-height: 1.6; }
+html:root .access-office-entry-btn { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 100%; min-height: 46px; }
+
+/* ---------- 3-step strip ---------- */
+html:root .access-steps-card { padding: 14px 10px; }
+html:root .access-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+html:root .access-step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; text-align: center; }
+html:root .access-step + .access-step::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -8px;
+  top: 15px;
+  width: 16px;
+  height: 18px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f9fe0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m14.5 6-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+html:root .access-step-icon { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--journey-sky-soft); }
+html:root .access-step-index {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -14px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-surface);
+  font-size: 11px;
+  font-weight: 800;
+}
+html:root .access-step-label { color: var(--color-text); font-size: 13px; font-weight: 800; line-height: 1.35; }
+
+html:root .access-broker-apply p { font-size: 13px; margin-bottom: 10px; text-align: center; }
+html:root .access-broker-apply .access-note { margin-top: 10px; }
+html:root .access-public-home { min-height: 46px; }
+
+/* ---------- Office link: real office profile ---------- */
+html:root .access-office-profile { padding: 14px; }
+html:root .access-office-head { display: flex; align-items: center; gap: 12px; }
+html:root .access-office-avatar {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface-soft);
+}
+html:root .access-office-meta { min-width: 0; }
+html:root .access-office-meta h2 { margin: 0 0 2px; font-size: 19px; overflow-wrap: anywhere; }
+html:root .access-office-meta p { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+
+/* ---------- Intake forms (offer / request) ---------- */
+html:root .access-intake-card { background: transparent; border: 0; box-shadow: none; padding: 4px 0 0; }
+html:root .access-intake-card > h2 { text-align: center; margin-bottom: 4px; font-size: 24px; }
+html:root .access-intake-card > p { text-align: center; margin-bottom: 12px; }
+html:root .access-intake-card .access-back { margin-bottom: 4px; }
+html:root .access-form-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+}
+html:root .access-form-section > .full,
+html:root .access-form-section > .access-chip-section,
+html:root .access-form-section > .access-section-title { grid-column: 1 / -1; }
+html:root .access-form-section > label { min-width: 0; }
+html:root .access-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: 800;
+}
+html:root .access-section-title .access-icon { width: 24px; height: 24px; }
+html:root .access-optional-mark { color: var(--color-text-muted); font-size: 12px; font-weight: 600; }
+html:root .access-form input,
+html:root .access-form select,
+html:root .access-form textarea {
+  min-height: 48px;
+  border-color: var(--journey-field-border);
+  background: var(--journey-field-bg);
+  color: var(--color-text);
+}
+html:root .access-form input[type="checkbox"] { min-height: 0; }
+html:root .access-form input:focus,
+html:root .access-form textarea:focus { border-color: var(--color-primary); background: var(--color-surface); }
+html:root .access-chip { border-color: var(--journey-field-border); background: var(--journey-field-bg); color: var(--color-primary-dark); }
+html:root .access-chip.is-selected { border-color: transparent; background: var(--journey-gradient); color: var(--color-surface); }
+html:root .access-upload input[type="file"] {
+  min-height: 56px;
+  padding: 10px;
+  border: 1.5px dashed var(--journey-field-border);
+  background: var(--journey-sky-soft);
+  font-size: 13px;
+}
+html:root .access-upload input[type="file"]::file-selector-button {
+  margin-inline-end: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font: 700 13px Tajawal, Arial, sans-serif;
+}
+html:root .access-voice-slot .voice-intake-start { border-color: var(--journey-field-border); background: var(--color-surface); }
+html:root #intakeForm > label.full > button[type="submit"] { min-height: 56px; font-size: 18px; }
+
+/* ---------- Office login ---------- */
+html:root .access-login-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+html:root .access-login-head h2 { margin: 0 0 4px; }
+html:root .access-login-head p { margin: 0; }
+
+@media (max-width: 420px) {
+  html:root .access-form-section { padding: 12px; }
+}
+@media (max-width: 340px) {
+  html:root .access-choice-grid,
+  html:root .access-form-section { grid-template-columns: 1fr; }
+  html:root .access-step-label { font-size: 12px; }
+}
+
+/* ---------- Office dashboard shell ---------- */
+html:root .brand p { color: var(--color-primary); font-weight: 700; }
+html:root .card.license {
+  border-color: var(--color-border);
+  border-radius: var(--journey-radius);
+  box-shadow: var(--journey-shadow);
+}
+html:root .office-link-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+html:root .office-link-action {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--journey-gradient);
+  color: var(--color-surface);
+  font: 800 14px Tajawal, Arial, sans-serif;
+  line-height: 1.3;
+  cursor: pointer;
+}
+html:root .office-link-action.is-secondary {
+  border: 1px solid var(--journey-field-border);
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+}
+html:root .office-link-action:disabled { opacity: .55; cursor: wait; }
+html:root .tab-panel-title { color: var(--color-text); font-size: 20px; font-weight: 800; }
+html:root .sub-tab {
+  min-height: 44px;
+  height: auto;
+  border-color: var(--journey-field-border);
+  border-radius: 14px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+html:root .sub-tab.is-active,
+html:root .sub-tab[aria-selected="true"] {
+  border-color: var(--color-primary);
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+}
+html:root .opportunity-bank-panel {
+  border-color: var(--color-border);
+  border-radius: var(--journey-radius);
+  box-shadow: var(--journey-shadow);
+}
+/* The tab intro above already titles this panel; keep the heading for
+   assistive tech (aria-labelledby) without repeating it visually. */
+html:root .opportunity-bank-panel > .section-title-bar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+html:root .bank-toolbar { gap: 8px; }
+html:root .bank-filter {
+  min-height: 38px;
+  padding: 7px 16px;
+  border-color: var(--journey-field-border);
+  color: var(--color-primary-dark);
+  font-size: 13px;
+}
+html:root .bank-filter.is-active { border-color: transparent; background: var(--journey-gradient); color: var(--color-surface); }
+html:root .bank-filter-search input {
+  min-height: 48px;
+  border-color: var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--journey-field-bg);
+  color: var(--color-text);
+}
+html:root .bank-action-filter {
+  min-height: 40px;
+  border-color: var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+html:root .bank-action-filter.is-active { border-color: transparent; background: var(--journey-gradient); color: var(--color-surface); }
+html:root #bankLoadMoreBtn {
+  min-height: 46px;
+  border: 1px solid var(--journey-field-border);
+  border-radius: 14px;
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+}
+
+/* ---------- Deal follow-up («إدارة الصفقة») overlay ---------- */
+html:root .iaqar-workflow-overlay { background: rgba(12, 18, 68, .45); }
+html:root .iaqar-workflow-panel { background: var(--color-background); color: var(--color-text); }
+html:root .iaqar-workflow-head { background: var(--color-surface); border-bottom-color: var(--color-border); }
+html:root .iaqar-workflow-head h2,
+html:root .iaqar-workflow-head h3 { color: var(--color-text); font-weight: 800; }
+html:root .iaqar-workflow-close { background: var(--journey-sky-soft); color: var(--color-primary-dark); }
+html:root .iaqar-workflow-summary {
+  border-color: var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+  color: var(--color-text);
+}
+html:root .iaqar-workflow-step {
+  border-color: var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+  box-shadow: var(--journey-shadow);
+}
+html:root .iaqar-workflow-step + .iaqar-workflow-step { margin-top: 10px; }
+html:root .iaqar-workflow-step.is-done { border-color: var(--journey-field-border); background: var(--journey-sky-soft); }
+html:root .iaqar-workflow-step h3,
+html:root .iaqar-workflow-step h4 { color: var(--color-text); font-weight: 800; }
+html:root .iaqar-workflow-step p,
+html:root .iaqar-workflow-note { color: var(--color-text-muted); }
+html:root .iaqar-workflow-form label { color: var(--color-text); }
+html:root .iaqar-workflow-form input,
+html:root .iaqar-workflow-form select,
+html:root .iaqar-workflow-form textarea,
+html:root .iaqar-workflow-step input:not([type=checkbox]):not([type=radio]),
+html:root .iaqar-workflow-step select,
+html:root .iaqar-workflow-step textarea {
+  border-color: var(--journey-field-border);
+  background-color: var(--journey-field-bg);
+  color: var(--color-text);
+}
+html:root .iaqar-workflow-form select,
+html:root .iaqar-workflow-step select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%23014188' stroke-width='1.8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+}
+html:root .iaqar-workflow-btn { background: var(--journey-gradient); color: var(--color-surface); }
+html:root .iaqar-workflow-btn.success { background: var(--journey-gradient); color: var(--color-surface); }
+html:root .iaqar-workflow-btn.whatsapp { background: var(--color-primary-dark); color: var(--color-surface); }
+html:root .iaqar-workflow-btn.secondary,
+html:root .iaqar-workflow-btn.call {
+  border-color: var(--journey-field-border);
+  background: var(--journey-sky-soft);
+  color: var(--color-primary-dark);
+}
+html:root .iaqar-workflow-btn.danger {
+  border-color: var(--color-danger-soft);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+html:root .iaqar-outcome-actions .iaqar-workflow-btn.secondary.is-selected {
+  border-color: var(--color-primary-dark);
+  background: var(--color-primary-dark);
+  color: var(--color-surface);
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-primary-dark);
+}
+html:root .iaqar-workflow-result.success { background: var(--journey-sky-soft); color: var(--color-primary-dark); }
+html:root .iaqar-workflow-result.closed { background: var(--color-danger-soft); color: var(--color-danger); }
+html:root .iaqar-internal-details {
+  border-color: var(--color-border);
+  border-radius: var(--journey-radius);
+  background: var(--color-surface);
+}
+html:root .iaqar-internal-details summary { color: var(--color-primary-dark); }
+
+@media (max-width: 340px) {
+  html:root .office-link-actions { grid-template-columns: 1fr; }
+}
+
+/* Office login secondary actions stay compact. */
+html:root .access-login-card #togglePassword,
+html:root .access-login-card #forgotPassword { min-height: 44px; font-size: 14px; }
+html:root .access-voice-slot { margin-bottom: 0; }
+html:root .access-form-section > label { align-content: end; }
+html:root .access-voice-slot .voice-intake-status:empty { display: none; }

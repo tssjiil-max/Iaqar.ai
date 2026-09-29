@@ -102,7 +102,23 @@ test("intake forms unify purpose label and compact voice button", () => {
   assert.ok(accessGate.includes("🎙️ أدخل طلبك بالصوت"));
   assert.ok(accessGate.includes("access-voice-slot"));
   assert.ok(accessGate.includes('id="intakeForm" novalidate'));
-  assert.ok(accessGate.includes('<input name="area"><input name="rooms"><input name="bathrooms">'));
+  assert.ok(accessGate.includes('<input name="rooms"><input name="bathrooms">'));
+});
+
+test("intake area is a visible optional field and never a completeness requirement", () => {
+  const formSlice = accessGate.slice(
+    accessGate.indexOf("id=\"intakeForm\""),
+    accessGate.indexOf("id=\"accessStatus\"")
+  );
+  const areaIdx = formSlice.indexOf('<input name="area"');
+  assert.ok(areaIdx > 0, "area input must be rendered in the form");
+  assert.equal(/<input name="area"[^>]*\brequired\b/.test(formSlice), false);
+  const areaLabel = formSlice.slice(formSlice.lastIndexOf("<label", areaIdx), areaIdx);
+  assert.ok(areaLabel.includes("(اختياري)"));
+  assert.equal(areaLabel.includes("access-required-mark"), false);
+  const submitBlock = accessGate.slice(accessGate.indexOf("const missing = [];"), accessGate.indexOf("if (missing.length)"));
+  assert.equal(submitBlock.includes("area"), false);
+  assert.equal(submitBlock.includes("المساحة"), false);
 });
 
 test("intake form order places contact fields before submit", () => {

@@ -2265,6 +2265,14 @@ function init() {
   }
   el.form.addEventListener("submit", onSave);
   if (el.shareLinkCard) el.shareLinkCard.addEventListener("click", shareOfficeLinkCard);
+  // Office card shortcuts reuse the existing share/copy handlers of the settings sheet.
+  // Their status line lives inside the closed sheet, so errors are mirrored to the toast.
+  const runOfficeCardLinkAction = async (action) => {
+    await action();
+    if (el.linkStatus?.classList.contains("is-error") && el.linkStatus.textContent) toast(el.linkStatus.textContent);
+  };
+  document.getElementById("officeCardShareLinkBtn")?.addEventListener("click", () => void runOfficeCardLinkAction(shareOfficeLinkCard));
+  document.getElementById("officeCardCopyLinkBtn")?.addEventListener("click", () => void runOfficeCardLinkAction(copyLink));
   el.logout.addEventListener("click", onLogout);
 
   Array.from(el.notificationInputs || []).forEach(input => {
