@@ -48,6 +48,9 @@ import {
   isLifecycleReadOnly,
   lastUpdateLine,
   lifecycleLabel,
+  messageKindOf,
+  messageThreads,
+  replyOptionsFor,
   partyEventLabel,
   partyLinkChoices,
   partyVisibleEvents,
@@ -59,7 +62,8 @@ import {
   markMatchSeenByBroker,
   markWhatsAppHandoffOpened,
   matchEventId,
-  matchLifecycleOf
+  matchLifecycleOf,
+  readStoredEvent
 } from "./match-event-service.js";
 import { buildLivingEventNotification } from "./in-app-notification-write.js";
 
@@ -297,7 +301,12 @@ function brokerEventFromInput(input = {}, match = {}) {
     if (!["client", "owner", "both"].includes(side)) return { error: "audience_invalid" };
     const message = String(input.message || "").trim().slice(0, 1000);
     if (!message) return { error: "message_required" };
-    return { event: { eventType: MATCH_EVENT_TYPE.BROKER_MESSAGE, recipient: side, payload: { message } } };
+    // The broker picks the kind; the reply set is derived from it, never guessed.
+    const messageKind = messageKindOf(input.messageKind);
+    const requiresReply = messageKind === "response_required" || input.requiresReply === true || String(input.requiresReply) === "true";
+    return { event: { eventType: MATCH_EVENT_TYPE.BROKER_MESSAGE, recipient: side, payload: {
+      message, messageKind, requiresReply, replyOptions: requiresReply ? replyOptionsFor(messageKind) : []
+    } } };
   }
   if (kind === "internal_note") {
     const message = String(input.message || "").trim().slice(0, 1000);
@@ -796,7 +805,24 @@ export function buildPartyNegotiationView(matchRecord = {}, side = "client", now
     current: state[party] ? { choiceId: state[party].choiceId, label: state[party].label, createdAt: state[party].createdAt } : null,
     agreementFields: AGREEMENT_FIELDS.map(({ id, label }) => ({ id, label })),
     agreement: state.agreement || {},
-    events: visible.slice(-30).reverse().map((event) => ({
+    messages: messageThreads(history, { viewer: party }).map((thread) => ({
+      eventId: thread.eventId,
+      message: thread.message,
+      messageKind: thread.messageKind,
+      kindLabel: thread.kindLabel,
+      requiresReply: thread.requiresReply,
+      canReply: thread.canReply && !isLifecycleReadOnly(lifecycle),
+      replyOptions: thread.canReply ? thread.replyOptions : [],
+      createdAt: thread.createdAt,
+      myResponse: thread.myResponse,
+      // The other party's reply is shown only when the message went to both.
+      otherResponses: thread.recipient === "both"
+        ? Object.values(thread.latestByParty).filter((response) => response.party !== party)
+        : []
+    })).reverse(),
+    events: visible.filter((event) => event.eventType !== MATCH_EVENT_TYPE.BROKER_MESSAGE
+      && event.eventType !== MATCH_EVENT_TYPE.CLIENT_MESSAGE_RESPONSE
+      && event.eventType !== MATCH_EVENT_TYPE.OWNER_MESSAGE_RESPONSE).slice(-30).reverse().map((event) => ({
       eventId: event.eventId,
       eventType: event.eventType,
       label: partyEventLabel(event, party),
@@ -861,7 +887,28 @@ export async function handlePartySessionEvent({ token, env, request, requestId, 
   if (!ctx) return partyInvalid(helpers, requestId);
   const body = await request.json().catch(() => ({}));
   let event;
-  if (body.agreement && typeof body.agreement === "object") {
+  if (String(body.replyToEventId || "").trim()) {
+    // Contextual reply to one exact broker message addressed to this party.
+    const replyToEventId = String(body.replyToEventId).trim().slice(0, 80);
+    const message = await readStoredEvent(helpers, { projectId: ctx.projectId, officeId: ctx.officeId, matchId: ctx.matchId, eventId: replyToEventId, accessToken: ctx.accessToken });
+    if (!message || message.eventType !== MATCH_EVENT_TYPE.BROKER_MESSAGE) {
+      return helpers.jsonResponse({ ok: false, error: "reply_target_invalid", message: "الرسالة غير موجودة.", requestId }, 400);
+    }
+    if (message.recipient !== ctx.party && message.recipient !== "both") {
+      return helpers.jsonResponse({ ok: false, error: "reply_not_allowed", message: "هذه الرسالة ليست موجهة لك.", requestId }, 403);
+    }
+    if (message.payload?.requiresReply !== true) {
+      return helpers.jsonResponse({ ok: false, error: "reply_not_required", message: "هذه الرسالة لا تتطلب ردًا.", requestId }, 400);
+    }
+    const option = replyOptionsFor(message.payload?.messageKind).find((item) => item.id === String(body.responseId || "").trim());
+    if (!option) return helpers.jsonResponse({ ok: false, error: "response_invalid", message: "هذا الرد غير متاح لهذه الرسالة.", requestId }, 400);
+    const responseText = String(body.responseText || "").trim().slice(0, 500);
+    event = {
+      eventType: ctx.party === "owner" ? MATCH_EVENT_TYPE.OWNER_MESSAGE_RESPONSE : MATCH_EVENT_TYPE.CLIENT_MESSAGE_RESPONSE,
+      recipient: "broker",
+      payload: { replyToEventId, responseId: option.id, responseLabel: option.label, ...(responseText ? { responseText } : {}) }
+    };
+  } else if (body.agreement && typeof body.agreement === "object") {
     const field = AGREEMENT_FIELDS.find((item) => item.id === String(body.agreement.field || "").trim());
     const value = String(body.agreement.value || "").trim().slice(0, 300);
     if (!field || !value) return helpers.jsonResponse({ ok: false, error: "agreement_invalid", message: "اختر بند الاتفاق واكتب قيمته.", requestId }, 400);

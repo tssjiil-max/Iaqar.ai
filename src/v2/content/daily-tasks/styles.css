@@ -910,3 +910,6 @@
 .cv2-wa-outbox li { display: grid; gap: 6px; }
 .cv2-wa-outbox-note { margin: 4px 0; font-size: 11px; color: #5f7a68; }
 .cv2-match-readonly { margin: 8px 0; padding: 10px; border-radius: 12px; background: #f3f5f4; border: 1px solid #d0d8d3; }
+.cv2-neg-msg-kind { justify-self: start; padding: 1px 8px; border-radius: 999px; background: #eef5f0; color: #1a5319; font-size: 11px; font-weight: 700; }
+.cv2-neg-msg-replies { display: grid; gap: 3px; margin: 4px 0 0; padding: 0 12px 0 0; font-size: 12px; }
+.cv2-broker-check { display: flex !important; align-items: center; gap: 6px; }

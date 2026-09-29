@@ -85,9 +85,11 @@ const liveState = { token: "", stateVersion: "", timer: null, busy: false, retry
 
 function captureLiveInputs() {
   const values = {};
-  document.querySelectorAll("[data-party-live-condition], [data-party-agreement-field], [data-party-agreement-value]").forEach((field) => {
-    const key = [...field.attributes].map((attr) => attr.name).find((name) => name.startsWith("data-party-"));
-    if (key) values[key] = field.value;
+  document.querySelectorAll("[data-party-live-condition], [data-party-agreement-field], [data-party-agreement-value], [data-party-reply-text]").forEach((field) => {
+    const name = [...field.attributes].map((attr) => attr.name).find((attr) => attr.startsWith("data-party-"));
+    if (!name) return;
+    const value = field.getAttribute(name);
+    values[value ? `${name}="${value}"` : name] = field.value;
   });
   return values;
 }
@@ -163,6 +165,18 @@ function bindLiveNegotiation(root, token) {
         return;
       }
       void submitLiveEvent(token, { choiceId, condition }, button);
+    });
+  });
+  root.querySelectorAll("[data-party-reply]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      const replyToEventId = button.getAttribute("data-party-reply");
+      const text = [...root.querySelectorAll("[data-party-reply-text]")].find((input) => input.getAttribute("data-party-reply-text") === replyToEventId);
+      void submitLiveEvent(token, {
+        replyToEventId,
+        responseId: button.getAttribute("data-response-id"),
+        responseText: String(text?.value || "").trim()
+      }, button);
     });
   });
   root.querySelector("[data-party-agreement-submit]")?.addEventListener("click", (event) => {

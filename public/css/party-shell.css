@@ -186,3 +186,9 @@ html.is-party-mode .toast {
 .party-live-history li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid #e3ece5; border-radius: 10px; }
 .party-live-history small, .party-live-note, .party-live-last { color: #5f7a68; font-size: 12px; }
 .party-live-final { font-size: 16px; }
+.party-messages ol { display: grid; gap: 10px; margin: 8px 0 0; padding: 0; list-style: none; }
+.party-msg { display: grid; gap: 6px; padding: 10px; border: 1px solid #e3ece5; border-radius: 12px; }
+.party-msg-kind { justify-self: start; padding: 2px 8px; border-radius: 999px; background: #eef5f0; color: #1a5319; font-size: 12px; font-weight: 700; }
+.party-msg-replies { display: flex; flex-wrap: wrap; gap: 6px; }
+.party-msg-text { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid #cfe0d4; border-radius: 10px; font: inherit; }
+.party-msg-response, .party-msg-other { margin: 0; font-size: 14px; }

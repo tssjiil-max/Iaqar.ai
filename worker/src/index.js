@@ -6208,7 +6208,7 @@ async function handleWorkflowAction(request,env,requestId) {
   if(action==="record_negotiation_activity"){
     const recorded=await recordNegotiationActivity(partySessionHelpers(),{
       projectId,officeId,matchId:recordId,accessToken,now,env,actorId:identity.uid||"",
-      input:{kind:body.kind,party:body.party||body.audience,choiceId:body.choiceId,message:body.message||body.note,field:body.field,value:body.value,clientEventId:body.clientEventId}
+      input:{kind:body.kind,party:body.party||body.audience,choiceId:body.choiceId,message:body.message||body.note,messageKind:body.messageKind,requiresReply:body.requiresReply,field:body.field,value:body.value,clientEventId:body.clientEventId}
     });
     return jsonResponse({ok:true,matchId:recordId,entry:recorded.entry,summary:recorded.summary,duplicate:recorded.duplicate,operationId:recorded.operationId,requestId});
   }

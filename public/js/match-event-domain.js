@@ -30,8 +30,58 @@ export const MATCH_EVENT_TYPE = Object.freeze({
   AGREEMENT_UPDATED: "AGREEMENT_UPDATED",
   MATCH_AGREED: "MATCH_AGREED",
   MATCH_CLOSED_NO_AGREEMENT: "MATCH_CLOSED_NO_AGREEMENT",
-  MATCH_CLOSED: "MATCH_CLOSED"
+  MATCH_CLOSED: "MATCH_CLOSED",
+  // Contextual reply to one exact broker message (conversation), not match-level state.
+  CLIENT_MESSAGE_RESPONSE: "CLIENT_MESSAGE_RESPONSE",
+  OWNER_MESSAGE_RESPONSE: "OWNER_MESSAGE_RESPONSE"
 });
+
+/** Kind the broker picks when sending; the reply set follows from it (no guessing). */
+export const MESSAGE_KINDS = Object.freeze([
+  Object.freeze({ id: "general", label: "عامة" }),
+  Object.freeze({ id: "viewing", label: "موعد معاينة" }),
+  Object.freeze({ id: "price", label: "سعر" }),
+  Object.freeze({ id: "condition", label: "شرط" }),
+  Object.freeze({ id: "response_required", label: "طلب رد" })
+]);
+
+const REPLY = Object.freeze({
+  accept: "موافق",
+  reject: "غير موافق",
+  time_not_suitable: "الوقت غير مناسب",
+  propose_other_time: "اقترح موعدًا آخر",
+  will_whatsapp: "سأتواصل واتساب",
+  need_time: "أحتاج وقت",
+  have_other_offer: "لدي عرض آخر",
+  need_clarification: "أحتاج توضيح",
+  propose_change: "اقترح تعديلًا"
+});
+
+const REPLY_SETS = Object.freeze({
+  viewing: ["accept", "time_not_suitable", "propose_other_time", "will_whatsapp"],
+  price: ["accept", "reject", "need_time", "have_other_offer"],
+  condition: ["accept", "reject", "need_clarification", "propose_change"],
+  general: ["accept", "reject", "need_clarification", "will_whatsapp"],
+  response_required: ["accept", "reject", "need_clarification", "will_whatsapp"]
+});
+
+export function messageKindOf(value = "") {
+  const id = String(value ?? "").trim();
+  return MESSAGE_KINDS.some((kind) => kind.id === id) ? id : "general";
+}
+
+export function messageKindLabel(value = "") {
+  return MESSAGE_KINDS.find((kind) => kind.id === messageKindOf(value))?.label || "عامة";
+}
+
+/** Stable reply option ids + Arabic labels for one message kind. */
+export function replyOptionsFor(kind = "general") {
+  return REPLY_SETS[messageKindOf(kind)].map((id) => ({ id, label: REPLY[id] }));
+}
+
+export function isMessageResponseEvent(eventType = "") {
+  return eventType === "CLIENT_MESSAGE_RESPONSE" || eventType === "OWNER_MESSAGE_RESPONSE";
+}
 
 export const MATCH_EVENT_ACTOR = Object.freeze({ CLIENT: "client", OWNER: "owner", BROKER: "broker", SYSTEM: "system" });
 export const MATCH_EVENT_SOURCE = Object.freeze({ PARTY_LINK: "party_link", BROKER_WORKSPACE: "broker_workspace", WORKER: "worker" });
@@ -125,12 +175,15 @@ export function choiceEventType(side, choiceId) {
   return `${prefix}_CONDITION_CHANGED`;
 }
 
+// Match-level party choices only; contextual message replies are conversation events.
 export function isPartyChoiceEvent(eventType = "") {
-  return /^(CLIENT|OWNER)_/.test(text(eventType));
+  const type = text(eventType);
+  return /^(CLIENT|OWNER)_/.test(type) && !isMessageResponseEvent(type);
 }
 
 function eventParty(eventType = "") {
   const type = text(eventType);
+  if (isMessageResponseEvent(type)) return "";
   if (type.startsWith("CLIENT_")) return "client";
   if (type.startsWith("OWNER_")) return "owner";
   return "";
@@ -238,6 +291,9 @@ export function matchEventLabel(event = {}) {
     case MATCH_EVENT_TYPE.MATCH_AGREED: return "تم الاتفاق";
     case MATCH_EVENT_TYPE.MATCH_CLOSED_NO_AGREEMENT: return "أُغلقت المطابقة دون اتفاق";
     case MATCH_EVENT_TYPE.MATCH_CLOSED: return "أُغلقت المطابقة";
+    case MATCH_EVENT_TYPE.CLIENT_MESSAGE_RESPONSE:
+    case MATCH_EVENT_TYPE.OWNER_MESSAGE_RESPONSE:
+      return `ردّ ${matchPartyName(e.actorType)} على رسالة الوسيط: ${text(e.payload.responseLabel)}`;
     default: break;
   }
   if (!isPartyChoiceEvent(e.eventType)) return "";
@@ -273,7 +329,10 @@ export function matchEventLogRow(event = {}) {
     eventType: e.eventType,
     actorType: e.actorType,
     title: matchEventLabel(e),
-    message: text(e.payload.message || e.payload.condition || (e.eventType === MATCH_EVENT_TYPE.AGREEMENT_UPDATED ? e.payload.value : "")),
+    message: text(e.payload.message || e.payload.condition || e.payload.responseText || (e.eventType === MATCH_EVENT_TYPE.AGREEMENT_UPDATED ? e.payload.value : "")),
+    messageKind: e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE ? messageKindOf(e.payload.messageKind) : "",
+    requiresReply: e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE && e.payload.requiresReply === true,
+    replyToEventId: text(e.payload.replyToEventId),
     recipient,
     statusLabel: matchEventStatusLabel(e),
     createdAt: e.createdAt
@@ -379,12 +438,52 @@ export function lastUpdateLine(raw = [], now = new Date()) {
 /** What a party may see on its own link: never internal notes or the other party's link activity. */
 export function partyVisibleEvents(raw = [], side = "client") {
   const who = party(side) || "client";
-  return parseMatchEvents(raw).filter((e) => {
+  const events = parseMatchEvents(raw);
+  const messages = new Map(events.filter((e) => e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE).map((e) => [e.eventId, e]));
+  const messageVisible = (message) => Boolean(message) && (message.recipient === who || message.recipient === "both");
+  return events.filter((e) => {
     if (e.eventType === MATCH_EVENT_TYPE.BROKER_INTERNAL_NOTE) return false;
     if (e.eventType === MATCH_EVENT_TYPE.WHATSAPP_OPENED || e.eventType === MATCH_EVENT_TYPE.LINK_OPENED) return false;
-    if (e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE) return e.recipient === who || e.recipient === "both";
+    if (e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE) return messageVisible(e);
+    // A reply is visible to its author and to whoever can see the message it answers.
+    if (isMessageResponseEvent(e.eventType)) return e.actorType === who || messageVisible(messages.get(text(e.payload.replyToEventId)));
     return true;
   });
+}
+
+/**
+ * Broker messages as a conversation: each message with its reply options and the
+ * replies attached to it (latest reply per party is that party's current answer).
+ */
+export function messageThreads(raw = [], { viewer = "broker" } = {}) {
+  const events = parseMatchEvents(raw);
+  const who = viewer === "client" || viewer === "owner" ? viewer : "broker";
+  const threads = events.filter((e) => e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE)
+    .filter((e) => who === "broker" || e.recipient === who || e.recipient === "both")
+    .map((e) => {
+      const recipients = e.recipient === "both" ? ["client", "owner"] : [e.recipient];
+      const responses = events.filter((r) => isMessageResponseEvent(r.eventType) && text(r.payload.replyToEventId) === e.eventId)
+        .map((r) => ({ eventId: r.eventId, party: r.actorType, responseId: text(r.payload.responseId), responseLabel: text(r.payload.responseLabel), responseText: text(r.payload.responseText), createdAt: r.createdAt }));
+      const latest = {};
+      for (const response of responses) latest[response.party] = response;
+      const requiresReply = e.payload.requiresReply === true;
+      return {
+        eventId: e.eventId,
+        message: text(e.payload.message),
+        messageKind: messageKindOf(e.payload.messageKind),
+        kindLabel: messageKindLabel(e.payload.messageKind),
+        recipient: e.recipient,
+        recipients,
+        requiresReply,
+        replyOptions: requiresReply ? replyOptionsFor(e.payload.messageKind) : [],
+        createdAt: e.createdAt,
+        responses,
+        latestByParty: latest,
+        canReply: requiresReply && who !== "broker" && recipients.includes(who),
+        myResponse: who !== "broker" ? latest[who] || null : null
+      };
+    });
+  return threads;
 }
 
 export function partyEventLabel(event = {}, side = "client") {
@@ -393,6 +492,7 @@ export function partyEventLabel(event = {}, side = "client") {
   const who = party(side) || "client";
   const other = eventParty(e.eventType);
   if (e.eventType === MATCH_EVENT_TYPE.BROKER_MESSAGE) return "رسالة من الوسيط";
+  if (isMessageResponseEvent(e.eventType)) return e.actorType === who ? `ردك: ${text(e.payload.responseLabel)}` : matchEventLabel(e);
   if (isPartyChoiceEvent(e.eventType) && other === who && e.actorType === who) return `اخترت: ${text(e.payload.label)}`;
   return matchEventLabel(e);
 }

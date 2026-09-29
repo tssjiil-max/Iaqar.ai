@@ -108,3 +108,23 @@ test("lifecycle: agreed and closed are final; closed status without event is CLO
   assert.equal(lifecycleForEvents([], "closed"), "CLOSED");
   assert.equal(lifecycleForEvents([]), "ACTIVE");
 });
+
+test("replyable messages: fixed reply sets per kind, replies are not match-level choices", async () => {
+  const { replyOptionsFor, isPartyChoiceEvent, messageThreads, MESSAGE_KINDS } = await import("../public/js/match-event-domain.js");
+  assert.deepEqual(MESSAGE_KINDS.map((k) => k.id), ["general", "viewing", "price", "condition", "response_required"]);
+  assert.deepEqual(replyOptionsFor("viewing").map((o) => o.label), ["موافق", "الوقت غير مناسب", "اقترح موعدًا آخر", "سأتواصل واتساب"]);
+  assert.deepEqual(replyOptionsFor("price").map((o) => o.label), ["موافق", "غير موافق", "أحتاج وقت", "لدي عرض آخر"]);
+  assert.deepEqual(replyOptionsFor("condition").map((o) => o.label), ["موافق", "غير موافق", "أحتاج توضيح", "اقترح تعديلًا"]);
+  assert.deepEqual(replyOptionsFor("general").map((o) => o.label), ["موافق", "غير موافق", "أحتاج توضيح", "سأتواصل واتساب"]);
+  assert.deepEqual(replyOptionsFor("response_required"), replyOptionsFor("general"));
+  assert.equal(isPartyChoiceEvent("CLIENT_MESSAGE_RESPONSE"), false);
+  const message = ev({ actorType: "broker", eventType: "BROKER_MESSAGE", recipient: "client", payload: { message: "المعاينة غدًا", messageKind: "viewing", requiresReply: true } }, 1);
+  const reply = ev({ actorType: "client", eventType: "CLIENT_MESSAGE_RESPONSE", recipient: "broker", payload: { replyToEventId: message.eventId, responseId: "accept", responseLabel: "موافق" } }, 2);
+  assert.equal(projectMatchEvents([message, reply]).client, null, "a reply does not change match-level state");
+  assert.equal(matchEventLabel(reply), "ردّ العميل على رسالة الوسيط: موافق");
+  assert.deepEqual(partyVisibleEvents([message, reply], "owner").map((e) => e.eventId), [], "owner sees neither the client-only message nor its reply");
+  const [thread] = messageThreads([message, reply], { viewer: "client" });
+  assert.equal(thread.canReply, true);
+  assert.equal(thread.myResponse.responseId, "accept");
+  assert.deepEqual(messageThreads([message, reply], { viewer: "owner" }), []);
+});

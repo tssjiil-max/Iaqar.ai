@@ -253,7 +253,7 @@ function projectEventFields(helpers, current, event) {
   return { fields, state };
 }
 
-async function readStoredEvent(helpers, { projectId, officeId, matchId, eventId, accessToken }) {
+export async function readStoredEvent(helpers, { projectId, officeId, matchId, eventId, accessToken }) {
   const doc = await helpers.getFirestoreDocument({ projectId, segments: ["offices", officeId, "matches", matchId, "events", eventId], accessToken, allowMissing: true });
   if (!doc) return null;
   const data = js(doc, helpers);

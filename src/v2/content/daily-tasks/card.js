@@ -11,8 +11,11 @@ import {
   isLifecycleReadOnly,
   lastUpdateLine,
   lifecycleLabel,
+  MESSAGE_KINDS,
+  isMessageResponseEvent,
   matchEventLogRow,
   matchPartyName,
+  messageThreads,
   projectMatchEvents,
   unreadUpdatesLabel
 } from "../../../../public/js/match-event-domain.js";
@@ -210,11 +213,27 @@ function matchCandidatesHtml(task = {}) {
   return `<section class="cv2-match-candidates" aria-label="المطابقات المرتبة"><h4>المطابقات حسب درجة الملاءمة</h4><ol>${candidates.map((candidate, index) => `<li${candidate.matchId === task.matchId ? ' class="is-current"' : ""}><strong>مرشح ${index + 1}</strong> ${escapeContentHtml(candidate.propertyLine || "")}${candidate.moneyLine ? ` · ${escapeContentHtml(candidate.moneyLine)}` : ""}${candidate.score > 0 ? ` · ${escapeContentHtml(Math.round(candidate.score))}%` : ""}</li>`).join("")}</ol></section>`;
 }
 
+// Replies are shown under the exact broker message they answer.
+function messageRepliesHtml(thread = null) {
+  if (!thread) return "";
+  const kind = `<span class="cv2-neg-msg-kind" data-message-kind="${escapeContentHtml(thread.messageKind)}">${escapeContentHtml(thread.kindLabel)}</span>`;
+  if (!thread.requiresReply) return kind;
+  const replies = thread.recipients.map((party) => {
+    const response = thread.latestByParty[party];
+    const name = matchPartyName(party);
+    if (!response) return `<li data-message-response="${escapeContentHtml(party)}" data-response-id="">بانتظار رد ${escapeContentHtml(name)}</li>`;
+    const time = clockLabel(response.createdAt);
+    return `<li data-message-response="${escapeContentHtml(party)}" data-response-id="${escapeContentHtml(response.responseId)}"><strong>ردّ ${escapeContentHtml(name)}: ${escapeContentHtml(response.responseLabel)}</strong>${response.responseText ? ` — ${escapeContentHtml(response.responseText)}` : ""}${time ? ` <span class="cv2-exec-time">${escapeContentHtml(time)}</span>` : ""}</li>`;
+  }).join("");
+  return `${kind}<ul class="cv2-neg-msg-replies" data-message-replies>${replies}</ul>`;
+}
 function negotiationActivityLogHtml(task = {}) {
-  const rows = (Array.isArray(task.negotiationActivity) ? task.negotiationActivity : [])
+  const events = Array.isArray(task.negotiationActivity) ? task.negotiationActivity : [];
+  const threads = new Map(messageThreads(events, { viewer: "broker" }).map((thread) => [thread.eventId, thread]));
+  const rows = events.filter((event) => !isMessageResponseEvent(event.eventType))
     .map(matchEventLogRow).filter(Boolean).reverse();
   if (!rows.length) return "";
-  return `<div class="cv2-coop-block cv2-neg-log" data-negotiation-log><strong>سجل الإجراءات</strong><ol>${rows.map((row) => { const time = clockLabel(row.createdAt); return `<li data-negotiation-log-kind="${escapeContentHtml(row.eventType)}" data-log-actor="${escapeContentHtml(row.actorType)}"><span class="cv2-neg-log-title">${escapeContentHtml(row.title)}</span>${row.message ? `<span class="cv2-neg-log-message">${nl(row.message)}</span>` : ""}<span class="cv2-neg-log-meta">${row.recipient ? `<span data-log-recipient>المستلم: ${escapeContentHtml(row.recipient)}</span>` : ""}${time ? `<span class="cv2-exec-time" data-log-time>${escapeContentHtml(time)}</span>` : ""}<span data-log-status>${escapeContentHtml(row.statusLabel)}</span></span></li>`; }).join("")}</ol></div>`;
+  return `<div class="cv2-coop-block cv2-neg-log" data-negotiation-log><strong>سجل الإجراءات</strong><ol>${rows.map((row) => { const time = clockLabel(row.createdAt); const thread = threads.get(row.eventId); return `<li data-negotiation-log-kind="${escapeContentHtml(row.eventType)}" data-log-actor="${escapeContentHtml(row.actorType)}"${thread ? ` data-message-thread="${escapeContentHtml(row.eventId)}"` : ""}><span class="cv2-neg-log-title">${escapeContentHtml(row.title)}</span>${row.message ? `<span class="cv2-neg-log-message">${nl(row.message)}</span>` : ""}${messageRepliesHtml(thread)}<span class="cv2-neg-log-meta">${row.recipient ? `<span data-log-recipient>المستلم: ${escapeContentHtml(row.recipient)}</span>` : ""}${time ? `<span class="cv2-exec-time" data-log-time>${escapeContentHtml(time)}</span>` : ""}<span data-log-status>${escapeContentHtml(row.statusLabel)}</span></span></li>`; }).join("")}</ol></div>`;
 }
 function lastUpdateHtml(task = {}) {
   const line = lastUpdateLine(task.negotiationActivity || []);
@@ -239,7 +258,7 @@ function brokerNegotiationPanelHtml(task = {}) {
   if (isLifecycleReadOnly(matchStateOf(task).lifecycle)) return "";
   const vm = buildNegotiationAssistant(task);
   const serious = task.seriousIntentConfirmed === true || String(task.viewingOutcome || "").toUpperCase() === "SERIOUS";
-  const message = `<div class="cv2-broker-block" data-broker-message-block><h4>رسالة الوسيط</h4><label>نص الرسالة<textarea data-broker-message maxlength="1000" rows="3" placeholder="اكتب رسالتك للطرف"></textarea></label><label>الموجّه إليه<select data-broker-audience><option value="client">العميل</option><option value="owner">المالك</option><option value="both">الطرفان</option></select></label><button type="button" class="cv2-exec-primary" data-broker-action="send_message">إرسال</button><small>تظهر الرسالة في رابط الطرف المختار وتُسجَّل في سجل الإجراءات.</small></div>`;
+  const message = `<div class="cv2-broker-block" data-broker-message-block><h4>رسالة الوسيط</h4><label>نص الرسالة<textarea data-broker-message maxlength="1000" rows="3" placeholder="اكتب رسالتك للطرف"></textarea></label><label>الموجّه إليه<select data-broker-audience><option value="client">العميل</option><option value="owner">المالك</option><option value="both">الطرفان</option></select></label><label>نوع الرسالة<select data-broker-message-kind>${MESSAGE_KINDS.map((kind) => `<option value="${escapeContentHtml(kind.id)}">${escapeContentHtml(kind.label)}</option>`).join("")}</select></label><label class="cv2-broker-check"><input type="checkbox" data-broker-requires-reply checked> يطلب ردًا من الطرف</label><button type="button" class="cv2-exec-primary" data-broker-action="send_message">إرسال</button><small>تظهر الرسالة في رابط الطرف المختار وتُسجَّل في سجل الإجراءات.</small></div>`;
   const note = `<div class="cv2-broker-block is-internal" data-broker-note-block><h4>ملاحظة داخلية</h4><label>ملاحظة خاصة بالوسيط فقط — لا تُرسل لأي طرف<textarea data-broker-internal-note maxlength="1000" rows="2" placeholder="ملاحظة داخلية"></textarea></label><button type="button" class="cv2-exec-secondary" data-broker-action="save_internal_note">حفظ الملاحظة</button></div>`;
   return `<section class="cv2-broker-panel" data-broker-panel><h3>الوسيط</h3><div class="cv2-broker-panel-body">${vm.interventionLine ? `<p class="cv2-neg-intervention-line">${escapeContentHtml(vm.interventionLine)}</p>` : ""}${message}${note}<div class="cv2-broker-decisions">${serious ? `<button type="button" class="cv2-exec-primary" data-broker-action="continue">بدء دورة الصفقة</button>` : ""}<button type="button" class="cv2-exec-secondary" data-broker-action="no_agreement">إنهاء المطابقة دون اتفاق</button></div></div></section>`;
 }
