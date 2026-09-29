@@ -309,3 +309,206 @@ html.is-party-mode .party-row span { color: var(--color-text-muted); }
   .cv2-match-workspace .cv2-party-side h4 { font-size: 14px; }
   .cv2-match-workspace .cv2-party-choice { font-size: 11px; }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Visual consistency pass (presentation only). Uses the tokens above; no new
+   palette. Large cards 18px (--radius-card), controls 12px (--radius-control),
+   pills 999px. Green is reserved for semantic success/match states only.
+   ─────────────────────────────────────────────────────────────────────────── */
+html:root {
+  --cv2-green-soft-border: var(--color-border);
+  --cv2-split: var(--color-border);
+  --success-quiet: color-mix(in srgb, var(--color-success-soft) 45%, var(--color-surface));
+  --shadow-soft: 0 2px 10px rgba(23, 88, 156, .06);
+}
+html:root .cv2-details { --cv2-split: var(--color-border); --cv2-row: var(--color-border); }
+
+/* Offers & requests list: one surface card per opportunity (data + state + action). */
+.bank-list .cv2-details.has-bank-action,
+.bank-list .cv2-details[data-cv2-inbox-item] {
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+.bank-list .cv2-details[data-cv2-inbox-item] > .cv2-card,
+.bank-list .cv2-details.has-bank-action > .cv2-card { border: 0; border-radius: var(--radius-card) var(--radius-card) 0 0; background: transparent; box-shadow: none; }
+.bank-list .cv2-details .cv2-row { border-top-color: var(--color-border); }
+.bank-list .cv2-details .cv2-card-title { color: var(--color-primary); }
+.bank-list .cv2-details .cv2-details-toggle { min-height: 48px; border-color: var(--color-border); background: transparent; color: var(--color-primary); }
+.bank-card-compact-meta span { background: var(--color-primary-soft); color: var(--color-text-muted); }
+.bank-card-share-toggle { width: 48px; height: 48px; padding: 14px; border-color: var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-primary); }
+.bank-summary-card { background: var(--color-surface-soft); border-color: var(--color-border); border-radius: var(--radius-control); }
+.bank-results-count { color: var(--color-text); }
+
+/* Card status block: quiet tone, semantic tint only, one primary action. */
+.bank-card-action {
+  margin: 0 var(--spacing-sm) var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+}
+.bank-card-action--match { background: var(--success-quiet); border-color: var(--color-success-soft); color: var(--color-success); }
+.bank-card-action--waiting,
+.bank-card-action--appointment { background: var(--color-primary-soft); border-color: var(--color-border); color: var(--color-primary-dark); }
+.bank-card-action--quiet { background: var(--color-background); border-color: var(--color-border); color: var(--color-text-muted); }
+.bank-card-action--overdue { background: var(--color-danger-soft); border-color: var(--color-danger-soft); color: var(--color-danger); }
+.bank-card-action-head strong { color: var(--color-text); font-weight: 800; }
+.bank-card-action-badge { background: var(--color-surface); color: inherit; }
+.bank-card-action-row { border-top-color: var(--color-border); }
+.bank-card-action-row span { color: var(--color-text); }
+.bank-card-action-row small { color: var(--color-text-muted); opacity: 1; }
+.bank-card-primary-action {
+  min-height: 48px;
+  padding: 0 var(--spacing-md);
+  border-radius: var(--radius-control);
+  background: var(--color-primary-dark);
+  color: var(--color-surface);
+  font-size: 13px;
+}
+.bank-card-unread { background: var(--color-danger); color: var(--color-surface); font-size: 10px; padding: 2px 7px; }
+
+/* Daily tasks list cards. */
+.cv2-exec-card { border-color: var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-soft); padding: var(--spacing-sm) var(--spacing-md); }
+.cv2-exec-badge { background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.cv2-exec-kind, .cv2-exec-turn, .cv2-exec-next strong { color: var(--color-primary); }
+.cv2-exec-reveal { min-height: 48px; height: auto; padding: 0 var(--spacing-sm); color: var(--color-primary); }
+.cv2-exec-primary { min-height: 48px; height: auto; padding: 0 var(--spacing-md); border-radius: var(--radius-control); background: var(--color-primary-dark); color: var(--color-surface); }
+.cv2-exec-secondary { min-height: 48px; height: auto; padding: 0 var(--spacing-md); border: 1px solid var(--color-primary-dark); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-primary-dark); }
+.cv2-coop-block, .cv2-coop-turn, .cv2-match-details, .cv2-party-responses > div { border-color: var(--color-border); border-radius: var(--radius-control); background: var(--color-surface-soft); }
+.cv2-party-responses strong, .cv2-match-details summary { color: var(--color-primary-dark); }
+
+/* Negotiation workspace — property data. */
+.cv2-match-workspace .cv2-match-badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-xs); }
+.cv2-match-workspace .cv2-match-badge {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--color-success-soft);
+  border-radius: 999px;
+  background: var(--success-quiet);
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: 800;
+}
+.cv2-match-workspace .cv2-match-badge.is-party { border-color: var(--color-border); background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.cv2-match-workspace .cv2-match-clock { margin-inline-start: auto; padding: 3px 10px; border-radius: 999px; background: var(--color-background); color: var(--color-text-muted); font-size: 12px; }
+.cv2-match-workspace .cv2-match-facts { gap: var(--spacing-xs); }
+.cv2-match-workspace .cv2-match-facts > div { border: 0; border-radius: var(--radius-control); background: var(--color-surface-soft); }
+.cv2-glyph-icon {
+  width: 18px; height: 18px; display: inline-block; vertical-align: -3px;
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.cv2-match-workspace .cv2-match-title-row p .cv2-glyph-icon { width: 14px; height: 14px; margin-inline-end: 2px; color: var(--color-primary); }
+@media (max-width: 430px) { .cv2-match-workspace .cv2-match-facts > div:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+.cv2-match-workspace .cv2-match-score small { display: block; color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-score strong { display: block; color: var(--color-text); }
+.cv2-match-workspace .cv2-agreement-form > button { grid-column: 1 / -1; }
+.cv2-match-workspace .cv2-match-score { border-radius: var(--radius-control); background: var(--color-surface-soft); }
+.cv2-match-workspace .cv2-match-score-count { border-width: 2px; color: var(--color-primary-dark); }
+.cv2-match-workspace .cv2-match-score li { color: var(--color-text); }
+.cv2-match-workspace .cv2-match-score li span { background: var(--color-success); color: var(--color-surface); }
+.cv2-match-workspace .cv2-match-score li.is-warning { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-score li.is-warning span { background: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-fold { border-radius: var(--radius-control); background: var(--color-surface-soft); }
+
+/* Agreement: stage flow, then a soft summary panel with separated lines. */
+.cv2-match-workspace .cv2-neg-assistant {
+  display: grid;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+}
+.cv2-match-workspace .cv2-neg-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; }
+.cv2-match-workspace .cv2-neg-stage { display: inline-flex; align-items: center; gap: 3px; }
+.cv2-match-workspace .cv2-neg-stage.is-done,
+.cv2-match-workspace .cv2-neg-stage.is-current { color: var(--color-primary-dark); font-weight: 800; }
+.cv2-match-workspace .cv2-neg-arrow { color: var(--color-text-muted); opacity: .6; }
+.cv2-match-workspace .cv2-neg-summary,
+.cv2-match-workspace .cv2-neg-auto { margin: 0; line-height: 1.7; font-size: 14px; }
+.cv2-match-workspace .cv2-neg-parties { display: flex; flex-wrap: wrap; gap: 4px var(--spacing-md); font-size: 14px; }
+.cv2-match-workspace .cv2-neg-summary strong,
+.cv2-match-workspace .cv2-neg-parties strong { color: var(--color-text); margin-inline-end: 4px; }
+.cv2-match-workspace .cv2-agreement h4 { margin: var(--spacing-sm) 0 var(--spacing-xs); font-size: 15px; }
+.cv2-match-workspace .cv2-agreement-empty { margin: 0 0 var(--spacing-sm); color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-agreement-form label { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-action { border-radius: var(--radius-control); background: var(--color-primary-soft); border-color: var(--color-border); }
+.cv2-match-workspace .cv2-match-action p { color: var(--color-text); }
+.cv2-match-workspace .cv2-match-action small { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-match-action-icon { width: 40px; height: 40px; border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-primary); }
+
+/* Owner / client columns: equal, soft neutral, compact 48px choices. */
+.cv2-match-workspace .cv2-party-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-sm); }
+.cv2-match-workspace .cv2-party-side,
+.cv2-match-workspace .cv2-party-side[data-party-side="owner"],
+.cv2-match-workspace .cv2-party-side[data-party-side="client"] {
+  display: flex; flex-direction: column; gap: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+}
+.cv2-match-workspace .cv2-party-side h4 { margin: 0; }
+.cv2-match-workspace .cv2-party-side > p { margin: 0; color: var(--color-text); font-size: 14px; }
+.cv2-match-workspace .cv2-party-choice-current,
+.cv2-match-workspace .cv2-party-status { margin: 0; color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-party-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv2-match-workspace .cv2-party-step { border-radius: 999px; background: var(--color-surface); }
+.cv2-match-workspace .cv2-party-step.is-done { background: var(--success-quiet); color: var(--color-success); }
+.cv2-match-workspace .cv2-party-choices { gap: var(--spacing-xs); }
+.cv2-match-workspace .cv2-party-choice {
+  min-height: 48px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: clamp(12px, 3.2vw, 14px);
+  font-weight: 700;
+}
+.cv2-match-workspace .cv2-party-choice span { font-size: 15px; }
+/* Options without a semantic mark show text only (no placeholder diamond). */
+.cv2-match-workspace .cv2-party-choice:not([data-party-choice="interested"]):not([data-party-choice="not_interested"]):not([data-party-choice="needs_time"]) > span[aria-hidden="true"] { display: none; }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="interested"] { background: var(--success-quiet); border-color: var(--color-success-soft); color: var(--color-success); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="not_interested"] { background: var(--color-danger-soft); border-color: var(--color-danger-soft); color: var(--color-danger); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="needs_time"] { background: var(--color-warning-soft); border-color: var(--color-warning-soft); color: var(--color-warning); }
+.cv2-match-workspace .cv2-party-choice[data-party-choice="viewing"] { background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.cv2-match-workspace .cv2-party-choice.is-selected { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
+.cv2-match-workspace .cv2-party-control { margin-top: auto; }
+
+/* Broker: two separate quiet blocks (message / internal note). */
+.cv2-match-workspace .cv2-broker-block,
+.cv2-match-workspace .cv2-broker-block.is-internal {
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-soft);
+}
+.cv2-match-workspace .cv2-broker-block h4 { margin: 0; }
+.cv2-match-workspace .cv2-broker-block label,
+.cv2-match-workspace .cv2-broker-panel-body label { color: var(--color-text-muted); }
+.cv2-match-workspace .cv2-broker-block textarea,
+.cv2-match-workspace .cv2-broker-block select,
+.cv2-match-workspace .cv2-agreement-form input,
+.cv2-match-workspace .cv2-agreement-form select { background: var(--color-surface); padding: 10px 12px; }
+.cv2-match-workspace .cv2-broker-decisions { display: grid; }
+
+/* Timeline. */
+.cv2-match-workspace .cv2-coop-block { background: var(--color-surface); }
+.cv2-match-workspace .cv2-exec-timeline ol { display: grid; margin: 0; padding: 0; list-style: none; }
+.cv2-match-workspace .cv2-exec-timeline li { display: flex; gap: var(--spacing-sm); align-items: baseline; }
+.cv2-match-workspace .cv2-exec-reveal { color: var(--color-primary); }
+
+@media (max-width: 360px) {
+  .cv2-match-workspace .cv2-party-columns { gap: var(--spacing-xs); }
+  .cv2-match-workspace .cv2-party-choice { font-size: 12px; padding: 4px; }
+  .cv2-match-workspace .cv2-broker-block,
+  .cv2-match-workspace .cv2-broker-block.is-internal { padding: var(--spacing-sm); }
+}
