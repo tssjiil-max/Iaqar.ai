@@ -518,3 +518,6 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--blue); t
 /* Party page: the current actions sit at the bottom of the screen even when the log is short. */
 .os-session-app { min-height: 100dvh; display: flex; flex-direction: column; }
 .os-session-app > .os-session-actions { margin-top: auto; }
+
+/* Site logo (iAqar.ai) where an office has no logo of its own: whole mark visible, never cropped. */
+.os-public-logo img.os-site-logo, .os-session-office .logo img.os-site-logo { object-fit: contain; padding: 10%; background: #fff; }

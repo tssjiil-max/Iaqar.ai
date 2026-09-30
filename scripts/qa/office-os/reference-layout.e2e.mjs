@@ -26,8 +26,9 @@ try{
    if(width===390)await page.screenshot({path:out+'/'+name+'.png',fullPage:name==='detail'});
   }
  }
- await page.goto(h.origin+'/#/task/'+seed.reviewTaskId);await page.getByRole('button',{name:'معلومات العقار',exact:true}).click();await page.locator('.ref-detail-info').waitFor({state:'visible'});
- await page.getByRole('button',{name:'خطوات الصفقة',exact:true}).click();await page.getByRole('button',{name:'متابعة',exact:true}).click();await page.waitForURL('**/#/review/**');checks.push({name:'Task follow opens existing match review',ok:true});
+ await page.goto(h.origin+'/#/task/'+seed.reviewTaskId);for(const label of ['نوع المهمة','حالة المهمة','المرحلة الحالية','المطلوب منك الآن'])await page.locator('.ref-detail-facts').getByText(label,{exact:true}).waitFor();
+ if(await page.locator('.ref-detail-facts ~ button, .ref-follow').count()!==1)throw Error('task detail must have exactly one main button');
+ await page.getByRole('button',{name:'مراجعة المطابقة',exact:true}).click();await page.waitForURL('**/#/review/**');checks.push({name:'Task follow opens existing match review',ok:true});
  await page.goto(h.origin+'/#/repo');await page.getByRole('button',{name:'إضافة سجل جديد',exact:true}).click();
  await page.getByRole('button',{name:'إضافة عرض',exact:true}).click();await page.waitForURL('**/#/record/new?kind=OFFER');await page.locator('.os-sheet').waitFor({state:'hidden'});
  checks.push({name:'Add offer opens working form and closes chooser',ok:true});

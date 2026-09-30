@@ -36,7 +36,7 @@ async function resolveOffice(target) {
 }
 
 function officeHeader(office) {
-  const logo = /^https:\/\//.test(String(office.logoUrl || "")) ? h("img", { src: office.logoUrl, alt: `شعار ${office.officeName || "المكتب"}` }) : ic("building");
+  const logo = /^https:\/\//.test(String(office.logoUrl || "")) ? h("img", { src: office.logoUrl, alt: `شعار ${office.officeName || "المكتب"}` }) : h("img", { src: "/icons/iaqar-logo.png", alt: "iAqar.ai", class: "os-site-logo" });
   return h("div", { class: "os-public-hero" },
     h("div", { class: "os-public-logo" }, logo),
     h("h1", { class: "os-public-title", text: office.officeName || "المكتب العقاري" }),
