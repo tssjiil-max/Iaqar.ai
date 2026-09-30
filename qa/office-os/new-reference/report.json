@@ -1,0 +1,137 @@
+{
+  "checks": [
+    {
+      "name": "office",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "name": "office",
+      "width": 360,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 360,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 360,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 360,
+      "overflow": false
+    },
+    {
+      "name": "office",
+      "width": 375,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 375,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 375,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 375,
+      "overflow": false
+    },
+    {
+      "name": "office",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "office",
+      "width": 412,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 412,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 412,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 412,
+      "overflow": false
+    },
+    {
+      "name": "office",
+      "width": 430,
+      "overflow": false
+    },
+    {
+      "name": "tasks",
+      "width": 430,
+      "overflow": false
+    },
+    {
+      "name": "records",
+      "width": 430,
+      "overflow": false
+    },
+    {
+      "name": "detail",
+      "width": 430,
+      "overflow": false
+    },
+    {
+      "name": "Task follow opens existing match review",
+      "ok": true
+    },
+    {
+      "name": "Add offer opens working form and closes chooser",
+      "ok": true
+    },
+    {
+      "name": "Repository add opens record type chooser",
+      "ok": true
+    }
+  ],
+  "errors": []
+}

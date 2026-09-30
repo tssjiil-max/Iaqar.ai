@@ -2,7 +2,7 @@
  * Office OS entry point.
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
  *   everything else                                → «دخول المكتب» + office app
- * Office app routes (hash): #/tasks (default) · #/repo · #/record/<id> · #/record/new ·
+ * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
  *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/settings
  */
 
@@ -12,7 +12,8 @@ import { ACCESS_MESSAGES, loadOfficeAccess, preferredOfficeId, session, signOutO
 import { startOfficeData, state, subscribe } from "./core/state.js";
 import { toast } from "./core/ui.js";
 import { renderLogin } from "./views/login.js";
-import { renderShellHeader } from "./views/shell.js";
+import { renderShellHeader, renderBottomNav } from "./views/shell.js";
+import { renderOffice, renderTaskDetail } from "./views/reference-layout.js";
 import { renderTasks } from "./views/tasks.js";
 import { renderRepository } from "./views/repository.js";
 import { renderRecordDetail } from "./views/record-detail.js";
@@ -35,7 +36,9 @@ function parseHash() {
 
 function view() {
   const { parts, query } = parseHash();
-  const [section = "tasks", id = "", sub = ""] = parts;
+  const [section = "office", id = "", sub = ""] = parts;
+  if (section === "office") return { name: "office", main: true, run: renderOffice };
+  if (section === "task" && id) return { name: "task", run: (el) => renderTaskDetail(el, { taskId: id }) };
   if (section === "repo") return { name: "repo", main: true, run: (el) => renderRepository(el, { query }) };
   if (section === "record" && id === "new") return { name: "form", run: (el) => renderRecordForm(el, { kind: query.get("kind") || "OFFER" }) };
   if (section === "record" && sub === "edit") return { name: "form", run: (el) => renderRecordForm(el, { recordId: id }) };
@@ -57,6 +60,7 @@ function render() {
   const body = h("section", { class: "os-view" });
   append(page, body);
   cleanup = current.run(body) || null;
+  if (current.main) append(page, renderBottomNav(current.name));
   window.scrollTo({ top: 0 });
 }
 

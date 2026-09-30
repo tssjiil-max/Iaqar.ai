@@ -83,9 +83,10 @@ try {
   await owner.fill('input[name="phone"]', "0501111111");
   await owner.fill('input[name="password"]', "pass-a");
   await owner.getByRole("button", { name: "دخول المكتب" }).click();
-  await owner.getByText("شغلك اليوم").waitFor();
-  await owner.getByRole("tab", { name: /العروض والطلبات/ }).click();
-  await owner.getByRole("button", { name: "إضافة طلب" }).click();
+  await owner.locator(".ref-today").waitFor();
+  await owner.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await owner.getByRole("button", { name: "إضافة سجل جديد" }).click();
+  await owner.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await owner.getByRole("button", { name: "شراء" }).click();
   await owner.fill('input[name="propertyType"]', "شقة");
   await owner.fill('input[name="district"]', "الملقا");
@@ -105,7 +106,8 @@ try {
   await owner.goto(`${h.origin}/#/tasks`);
   const reviewCard = owner.locator('[data-type="MATCH_REVIEW"]');
   await reviewCard.waitFor();
-  check("review card shows opportunity summary", /طلب شراء ↔ شقة في حي الملقا/.test(await reviewCard.innerText()));
+  const reviewText = await reviewCard.innerText();
+  check("review card shows property, location and client", ["شقة", "الملقا", "أحمد المطيري"].every((text) => (reviewText.includes(text))));
   check("one review task", await reviewCard.count() === 1);
   await shot(owner, "07-daily-tasks-review");
   await reviewCard.getByRole("button", { name: "مراجعة المطابقة" }).click();
@@ -237,7 +239,7 @@ try {
   await desk.fill('input[name="phone"]', "0501111111");
   await desk.fill('input[name="password"]', "pass-a");
   await desk.getByRole("button", { name: "دخول المكتب" }).click();
-  await desk.getByText("شغلك اليوم").waitFor();
+  await desk.locator(".ref-today").waitFor();
   await desk.goto(`${h.origin}/#/journey/${journey.id}`);
   await desk.getByText("سجل الإجراءات").waitFor();
   await shot(desk, "21-desktop-workspace");
@@ -251,10 +253,10 @@ try {
   await other.fill('input[name="password"]', "pass-b");
   await other.getByRole("button", { name: "دخول المكتب" }).click();
   await other.getByText("مكتب الأفق للعقار").first().waitFor();
-  await other.getByRole("tab", { name: /العروض والطلبات/ }).click();
+  await other.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await other.locator("[data-record]").first().waitFor();
   const otherText = await other.content();
-  check("office B repository contains only its own records", !otherText.includes("المطيري") && !otherText.includes("السبيعي") && otherText.includes("مالك مكتب آخر"));
+  check("office B repository contains only its own records", !otherText.includes("المطيري") && !otherText.includes("السبيعي") && await other.locator('[data-record="opp_b_offer"]').count() === 1 && await other.locator("[data-record]").count() === 1);
 } catch (error) {
   let i = 0;
   for (const p of browser.contexts().flatMap((c) => c.pages())) {

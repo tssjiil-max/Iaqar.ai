@@ -1,0 +1,231 @@
+{
+  "at": "2026-09-30T08:11:39.645Z",
+  "checks": [
+    {
+      "name": "no horizontal scroll: 01-public-office",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 02-public-offer-form",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 03-public-submitted",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "office link submission stored in the right office with assigned broker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 04-office-login",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 05-add-request-form",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 06-request-saved-detail",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "request saved without area",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review card shows property, location and client",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one review task",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 07-daily-tasks-review",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 08-match-review",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 09-workspace-start",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "one journey for the approved match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 10-composer",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 11-composer-prepared",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "WhatsApp opened with the client's number and message",
+      "ok": true,
+      "detail": "https://wa.me/966551234567?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%"
+    },
+    {
+      "name": "handoff recorded as opened only (no sent/delivered)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "other-app share includes the same reply link",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "other-app share updates waiting task automatically",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "cancelled share does not change the task or handoff count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reply page shows no owner data",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 12-reply-page",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 13-reply-saved",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "double press + reload → one saved reply",
+      "ok": true,
+      "detail": "events=1"
+    },
+    {
+      "name": "no horizontal scroll: 14-daily-tasks-reply",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 15-workspace-reply",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 16-daily-tasks-confirm-viewing",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "accepted viewing is not confirmed or done",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "viewing results start with no preselection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 17-workspace-viewing-result",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "interest after viewing moves to agreement, deal not completed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 18-workspace-agreement",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 19-workspace-closed",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "deal completed explicitly and archived",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "closed opportunity links stop accepting replies",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 20-repository",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "no horizontal scroll: 21-desktop-workspace",
+      "ok": true,
+      "detail": "overflow=0px"
+    },
+    {
+      "name": "office B repository contains only its own records",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no browser console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "consoleErrors": [],
+  "workerCalls": [
+    "/worker/pipeline/public-intake 201",
+    "/worker/auth/phone-login-resolve 200",
+    "/worker/os/reconcile 200",
+    "/worker/os/records/save 200",
+    "/worker/os/review/decide 200",
+    "/worker/os/proposals/create 200",
+    "/worker/os/proposals/handoff 200",
+    "/worker/os/proposals/handoff 200",
+    "/worker/os/reply/view 200",
+    "/worker/os/reply/submit 200",
+    "/worker/os/reply/view 200",
+    "/worker/os/proposals/create 200",
+    "/worker/os/proposals/handoff 200",
+    "/worker/os/reply/view 200",
+    "/worker/os/reply/submit 200",
+    "/worker/os/journeys/viewing/confirm 200",
+    "/worker/os/journeys/viewing/result 200",
+    "/worker/os/journeys/close 200",
+    "/worker/os/reply/view 200",
+    "/worker/auth/phone-login-resolve 200",
+    "/worker/os/reconcile 200",
+    "/worker/auth/phone-login-resolve 200",
+    "/worker/os/reconcile 200"
+  ]
+}
