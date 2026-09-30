@@ -1,8 +1,7 @@
 /**
- * جلسة التفاوض — broker view (#/session/<journeyId>).
- * Same layout as the party page: fixed deal card, the session log (everything,
- * including prices sent to the broker only), and at the bottom the broker's own
- * free-text message with an explicit recipient.
+ * Broker negotiation workspace. The page has one stable hierarchy:
+ * 1) property data, 2) agreed items, 3) owner/client, then secondary links/log,
+ * with the broker's single message composer at the bottom.
  */
 
 import { h, ic, clear, append } from "../core/dom.js";
@@ -12,7 +11,8 @@ import { session } from "../core/session.js";
 import { watchDoc, watchJourneyEvents } from "../core/live.js";
 import { newRequestKey, openWhatsApp, runAction, toast } from "../core/ui.js";
 import { ROLE_LABEL, parsePayload, sessionEventCard, sessionPrices, sessionStageLabel, isOpenJourney } from "../domain/session-domain.js";
-import { formatPrice } from "../domain/format-domain.js";
+import { formatDateTime, formatPrice } from "../domain/format-domain.js";
+import { priceStatusLabel } from "../domain/flow-domain.js";
 import { sessionEventList, sessionSummary } from "./session-parts.js";
 
 function isSessionEvent(event) {
@@ -31,50 +31,85 @@ function brokerCard(event) {
 
 function linksCard(journey, state) {
   const jid = journey.journeyId || journey.id;
-  const card = h("section", { class: "os-card", "aria-label": "روابط الجلسة" },
-    h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("link"), "روابط الطرفين"));
+  const body = h("div", {});
   if (!state.links) {
-    const load = h("button", { type: "button", class: "os-btn primary block" }, ic("link"), "تجهيز رابطي المالك والعميل");
+    const load = h("button", { type: "button", class: "os-btn secondary block" }, ic("link"), "تجهيز روابط الطرفين");
     load.addEventListener("click", () => runAction(load, async () => {
       const res = await api("/os/session/links", { officeId: session.officeId, journeyId: jid });
       state.links = res.links;
       state.redraw();
     }));
-    append(card, h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: "لكل طرف رابط خاص بدوره، بلا تسجيل دخول، ويبقى صالحًا طوال الصفقة." }), load);
-    return card;
+    append(body, h("p", { class: "os-sub", text: "لكل طرف رابط خاص بدوره، بلا تسجيل دخول." }), load);
+  } else {
+    const row = (role) => {
+      const link = state.links[role];
+      const copy = h("button", { type: "button", class: "os-btn secondary", "aria-label": `نسخ رابط ${ROLE_LABEL[role]}` }, ic("link"), "نسخ");
+      copy.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(link.url); toast(`تم نسخ رابط ${ROLE_LABEL[role]}`, "ok"); } catch (_) { toast(link.url); }
+      });
+      const wa = h("button", { type: "button", class: "os-btn primary", disabled: !link.whatsappUrl, "aria-label": `إرسال رابط ${ROLE_LABEL[role]} عبر واتساب` }, ic("whatsapp"), "واتساب");
+      wa.addEventListener("click", () => {
+        openWhatsApp(link.whatsappUrl);
+        api("/os/session/handoff", { officeId: session.officeId, journeyId: jid, role }).catch(() => {});
+      });
+      const replace = h("button", { type: "button", class: "os-btn ghost", "aria-label": `استبدال رابط ${ROLE_LABEL[role]}` }, ic("refresh"));
+      replace.addEventListener("click", () => runAction(replace, async () => {
+        const res = await api("/os/session/links", { officeId: session.officeId, journeyId: jid, replace: role });
+        state.links = res.links;
+        state.redraw();
+      }, { success: `تم استبدال رابط ${ROLE_LABEL[role]}` }));
+      return h("div", { class: "os-session-link" },
+        h("div", {}, h("b", { text: ROLE_LABEL[role] }), h("small", { text: link.opened ? "فتح الرابط" : link.hasPhone ? "لم يُفتح بعد" : "لا يوجد رقم جوال" })),
+        h("div", { class: "os-btn-row" }, wa, copy, replace));
+    };
+    append(body, h("div", { class: "os-session-links" }, row("owner"), row("client")));
   }
-  const row = (role) => {
-    const link = state.links[role];
-    const copy = h("button", { type: "button", class: "os-btn secondary", "aria-label": `نسخ رابط ${ROLE_LABEL[role]}` }, ic("link"), "نسخ");
-    copy.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(link.url); toast(`تم نسخ رابط ${ROLE_LABEL[role]}`, "ok"); } catch (_) { toast(link.url); }
-    });
-    const wa = h("button", { type: "button", class: "os-btn primary", disabled: !link.whatsappUrl, "aria-label": `إرسال رابط ${ROLE_LABEL[role]} عبر واتساب` }, ic("whatsapp"), "واتساب");
-    wa.addEventListener("click", () => {
-      openWhatsApp(link.whatsappUrl);
-      api("/os/session/handoff", { officeId: session.officeId, journeyId: jid, role }).catch(() => {});
-    });
-    const replace = h("button", { type: "button", class: "os-btn ghost", "aria-label": `استبدال رابط ${ROLE_LABEL[role]}` }, ic("refresh"));
-    replace.addEventListener("click", () => runAction(replace, async () => {
-      const res = await api("/os/session/links", { officeId: session.officeId, journeyId: jid, replace: role });
-      state.links = res.links;
-      state.redraw();
-    }, { success: `تم استبدال رابط ${ROLE_LABEL[role]} — الرابط السابق لم يعد يعمل` }));
-    return h("div", { class: "os-session-link" },
-      h("div", {}, h("b", { text: `رابط ${ROLE_LABEL[role]}` }), h("small", { text: link.opened ? "فتح الطرف الرابط" : link.hasPhone ? "لم يُفتح بعد" : "لا يوجد رقم جوال — انسخ الرابط" })),
-      h("div", { class: "os-btn-row" }, wa, copy, replace));
-  };
-  append(card, h("div", { class: "os-session-links" }, row("owner"), row("client")));
-  return card;
+  return h("details", { class: "os-card", "aria-label": "روابط الطرفين" },
+    h("summary", { class: "os-h2" }, ic("link"), "روابط الطرفين"),
+    h("div", { style: { marginTop: "10px" } }, body));
 }
 
-function pricesCard(journey) {
+function propertyCard(journey) {
   const prices = sessionPrices(journey);
-  const priv = journey.session?.privatePrices || {};
-  const line = (role) => h("div", { class: "os-meta-row" }, ic(role === "owner" ? "home" : "user"),
-    h("span", {}, `آخر سعر ${ROLE_LABEL[role]}: `, h("b", { text: formatPrice(prices[role]) || "—" }),
-      priv[role]?.price ? ` · للوسيط فقط: ${formatPrice(priv[role].price)}` : ""));
-  return h("section", { class: "os-card", "aria-label": "أسعار الطرفين" }, h("div", { style: { display: "grid", gap: "6px" } }, line("owner"), line("client")));
+  const offer = journey.offerSummary || {};
+  return h("section", { class: "os-card", "aria-label": "بيانات العقار" },
+    h("h2", { class: "os-h2" }, ic("home"), "بيانات العقار"),
+    sessionSummary({ propertyType: offer.propertyType, district: offer.district, currentPrice: prices.current, agreedPrice: prices.agreed, stageLabel: sessionStageLabel(journey), intervention: false }),
+    h("div", { class: "os-meta-row" }, ic("price"), h("span", {}, "حالة السعر: ", h("b", { text: priceStatusLabel(offer) }))));
+}
+
+function agreedCard(journey) {
+  const rows = [];
+  for (const item of Array.isArray(journey.agreedItems) ? journey.agreedItems : []) {
+    if (!item || item.value === undefined || item.value === null || item.value === "") continue;
+    let value = item.value;
+    if (item.key === "price") value = formatPrice(item.value);
+    if (item.key === "viewing") value = formatDateTime(item.value);
+    rows.push(h("div", { class: "os-meta-row" }, ic("check-circle"), h("span", {}, `${item.label || "تم الاتفاق"}: `, h("b", { text: value }))));
+  }
+  return h("section", { class: "os-card", "aria-label": "تم الاتفاق عليه" },
+    h("h2", { class: "os-h2" }, ic("check-circle"), "تم الاتفاق عليه"),
+    rows.length ? h("div", { style: { display: "grid", gap: "8px" } }, rows) : h("p", { class: "os-sub", text: "لم يُعتمد بند بعد." }));
+}
+
+function partiesCard(journey) {
+  const prices = sessionPrices(journey);
+  const sessionState = journey.session || {};
+  const privatePrices = sessionState.privatePrices || {};
+  const last = sessionState.lastMove || {};
+  const side = (role) => {
+    const title = role === "owner" ? "المالك" : "العميل";
+    const price = prices[role];
+    const lastText = last.role === role ? "آخر حركة منه" : "بانتظار دوره";
+    return h("div", { class: "os-card os-session-party", "data-party": role },
+      h("div", { class: "os-h2" }, ic(role === "owner" ? "owner" : "client"), title),
+      h("div", { class: "os-meta-row" }, ic("price"), h("span", {}, "السعر الحالي: ", h("b", { text: formatPrice(price) || "—" }))),
+      privatePrices[role]?.price ? h("div", { class: "os-meta-row" }, ic("lock"), h("span", {}, "للوسيط فقط: ", h("b", { text: formatPrice(privatePrices[role].price) }))) : null,
+      h("small", { class: "os-sub", text: lastText }));
+  };
+  return h("section", { class: "os-card", "aria-label": "المالك والعميل" },
+    h("h2", { class: "os-h2" }, ic("handshake"), "التفاوض الحالي"),
+    h("div", { class: "os-session-parties" }, side("owner"), side("client")));
 }
 
 function interventionCard(journey) {
@@ -83,8 +118,7 @@ function interventionCard(journey) {
   const done = h("button", { type: "button", class: "os-btn primary" }, ic("check"), "تم التدخل");
   done.addEventListener("click", () => runAction(done, () => api("/os/session/resolve", { officeId: session.officeId, journeyId: journey.journeyId || journey.id }), { success: "أُزيل تمييز التدخل" }));
   return h("section", { class: "os-card", "aria-label": "تدخل مطلوب" },
-    h("div", { class: "os-alert warn", style: { marginBottom: "8px" } }, h("b", { text: `طلب ${ROLE_LABEL[flag.by] || "الطرف"} تدخل الوسيط. ` }), "تواصل معه ثم اضغط «تم التدخل»."),
-    done);
+    h("div", { class: "os-alert warn", style: { marginBottom: "8px" } }, h("b", { text: `طلب ${ROLE_LABEL[flag.by] || "الطرف"} تدخل الوسيط. ` }), "تواصل معه ثم سجّل انتهاء التدخل."), done);
 }
 
 function composer(journey, draft) {
@@ -96,7 +130,7 @@ function composer(journey, draft) {
     b.addEventListener("click", () => { draft.audience = value; seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
     append(seg, b);
   }
-  const text = h("textarea", { class: "os-textarea", maxlength: "500", placeholder: "اكتب رسالتك للطرف…", "aria-label": "رسالة الوسيط" });
+  const text = h("textarea", { class: "os-textarea", maxlength: "500", placeholder: "اكتب توجيهًا عند الحاجة…", "aria-label": "رسالة الوسيط" });
   text.value = draft.text || "";
   text.addEventListener("input", () => { draft.text = text.value; });
   const key = newRequestKey();
@@ -108,9 +142,17 @@ function composer(journey, draft) {
     draft.text = "";
     text.value = "";
   }, { success: "أُرسلت الرسالة إلى الجلسة" }));
-  return h("section", { class: "os-session-actions os-session-composer", "aria-label": "رسالة الوسيط" },
+  return h("section", { class: "os-session-actions os-session-composer", "aria-label": "توجيه الوسيط" },
+    h("h2", { class: "os-h2" }, ic("broker"), "توجيه الوسيط"),
     seg, h("div", { class: "os-session-typed" }, text, send),
-    h("small", { class: "os-sub", style: { fontSize: ".78rem" }, text: "إذا اخترت طرفًا واحدًا فلن يرى الطرف الآخر الرسالة." }));
+    h("small", { class: "os-sub", text: "استخدمه فقط عند الحاجة؛ بقية الرحلة يقودها النظام." }));
+}
+
+function historyCard(events) {
+  const cards = events.filter(isSessionEvent).map(brokerCard);
+  return h("details", { class: "os-card os-session-history", "aria-label": "سجل التفاوض" },
+    h("summary", { class: "os-h2" }, ic("clock"), "السجل"),
+    h("div", { style: { marginTop: "10px" } }, sessionEventList(cards, { emptyText: "لا توجد حركات بعد." })));
 }
 
 export function renderSession(container, { journeyId }) {
@@ -121,7 +163,6 @@ export function renderSession(container, { journeyId }) {
   api("/os/session/links", { officeId: session.officeId, journeyId }).then((res) => { state.links = res.links; draw(); }).catch(() => {});
   let deferred = false;
   const draw = () => {
-    // Never rebuild under the broker's cursor: a live update waits until typing stops.
     const active = document.activeElement;
     if (active && active.tagName === "TEXTAREA" && container.contains(active)) {
       if (!deferred) { deferred = true; active.addEventListener("blur", () => { deferred = false; draw(); }, { once: true }); }
@@ -135,18 +176,14 @@ export function renderSession(container, { journeyId }) {
       h("button", { type: "button", class: "os-ref", onClick: () => go(`journey/${journeyId}`), text: "الفرصة" })));
     if (journey === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
     if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
-    const prices = sessionPrices(journey);
-    const offer = journey.offerSummary || {};
-    const cards = events.filter(isSessionEvent).map(brokerCard);
     append(container,
-      sessionSummary({ propertyType: offer.propertyType, district: offer.district, currentPrice: prices.current, agreedPrice: prices.agreed, stageLabel: sessionStageLabel(journey), intervention: Boolean(journey.session?.intervention?.required) }),
+      propertyCard(journey),
+      agreedCard(journey),
       interventionCard(journey),
-      pricesCard(journey),
+      partiesCard(journey),
       isOpenJourney(journey) ? linksCard(journey, state) : null,
-      h("section", { class: "os-card os-session-history", "aria-label": "سجل الجلسة" },
-        h("h2", { class: "os-h2" }, ic("clock"), "سجل الجلسة"),
-        sessionEventList(cards, { emptyText: "لا توجد حركات بعد — أرسل الروابط للطرفين." })),
-      isOpenJourney(journey) ? composer(journey, draft) : h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الجلسة. السجل محفوظ." })));
+      historyCard(events),
+      isOpenJourney(journey) ? composer(journey, draft) : h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: "أُغلقت هذه الرحلة. السجل محفوظ." })));
     window.scrollTo({ top: y });
   };
   const offs = [
