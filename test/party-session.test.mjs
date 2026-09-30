@@ -260,7 +260,10 @@ test("tampered or unknown tokens never reveal another session", async () => {
     requestId: "req-3",
     helpers
   });
-  const tampered = `${minted.body.token.slice(0, -2)}ff`;
+  // Always change the token; a random token can already end in "ff".
+  const replacement = minted.body.token.endsWith("0") ? "1" : "0";
+  const tampered = `${minted.body.token.slice(0, -1)}${replacement}`;
+  assert.notEqual(tampered, minted.body.token);
   const missing = await handlePartySessionGet({
     token: tampered,
     env: { DEPLOYMENT_ENV: "staging" },
