@@ -4,6 +4,7 @@
  */
 
 import { h, ic, clear, append } from "../core/dom.js";
+import { propertyTypeIcon } from "../core/icons.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -302,7 +303,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     const rawImage = [offer.coverUrl, offer.coverImageUrl, ...[].concat(offer.images || [], offer.photos || [], offer.imageUrls || [], offer.mediaUrls || [])]
       .find((value) => typeof value === "string" && /^https:\/\//i.test(value));
     const image = rawImage ? h("img", { src: rawImage, alt: offerView.title, loading: "lazy" }) : null;
-    const cover = h("div", { class: "os-property-cover" }, ic("home"), image,
+    const cover = h("div", { class: "os-property-cover" }, ic(propertyTypeIcon(offerView.propertyType || offer.propertyType)), image,
       h("span", { text: image ? offerView.propertyType : "لا توجد صورة" }));
     image?.addEventListener("error", () => { image.remove(); cover.lastChild.textContent = "الصورة غير متاحة"; });
     const summary = h("div", { class: "os-card os-property-summary" },

@@ -13,26 +13,26 @@ export const ACTIVE_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EX
  * inline: action code the card can complete directly (no page change)
  */
 export const TASK_TYPES = Object.freeze({
-  MATCH_REVIEW: { badge: "مطابقة تحتاج مراجعة", button: "مراجعة المطابقة", icon: "doc-check", opens: "review", needsBroker: true },
-  PROPOSAL_REPLY: { badge: "رد يحتاج مراجعة", button: "مراجعة الرد", icon: "reply", opens: "workspace", needsBroker: true },
+  MATCH_REVIEW: { badge: "مطابقة تحتاج مراجعة", button: "مراجعة المطابقة", icon: "match", opens: "review", needsBroker: true },
+  PROPOSAL_REPLY: { badge: "رد يحتاج مراجعة", button: "مراجعة الرد", icon: "mail", opens: "workspace", needsBroker: true },
   SEND_PROPOSAL: { badge: "تفاوض", button: "تجهيز المقترح", icon: "handshake", opens: "workspace", needsBroker: true },
-  AWAITING_REPLY: { badge: "بانتظار رد", button: "إرسال تذكير", icon: "hourglass", opens: "workspace", needsBroker: false, waiting: true },
+  AWAITING_REPLY: { badge: "بانتظار رد", button: "إرسال تذكير", icon: "bell", opens: "workspace", needsBroker: false, waiting: true },
   VIEWING_CONFIRM: { badge: "معاينة", button: "تأكيد الموعد", icon: "calendar", opens: "workspace", needsBroker: true, inline: "CONFIRM_VIEWING" },
   VIEWING_RESULT: { badge: "معاينة", button: "نتيجة المعاينة", icon: "eye", opens: "workspace", needsBroker: true },
-  JOURNEY_FOLLOW_UP: { badge: "متابعة", button: "متابعة الآن", icon: "clock", opens: "workspace", needsBroker: true },
-  DEAL_ACTION: { badge: "إتمام الصفقة", button: "متابعة الاتفاق", icon: "clipboard", opens: "workspace", needsBroker: true },
+  JOURNEY_FOLLOW_UP: { badge: "متابعة", button: "متابعة الآن", icon: "chart-up", opens: "workspace", needsBroker: true },
+  DEAL_ACTION: { badge: "إتمام الصفقة", button: "متابعة الاتفاق", icon: "contract", opens: "workspace", needsBroker: true },
   SESSION_INTERVENTION: { badge: "تدخل مطلوب", button: "فتح جلسة التفاوض", icon: "alert", opens: "session", needsBroker: true },
   SESSION_AGREED: { badge: "تفاوض", button: "فتح جلسة التفاوض", icon: "handshake", opens: "session", needsBroker: true },
   SESSION_PRIVATE_PRICE: { badge: "تفاوض", button: "فتح جلسة التفاوض", icon: "coins", opens: "session", needsBroker: true },
   SESSION_VIEWING_COUNTER: { badge: "معاينة", button: "فتح جلسة التفاوض", icon: "calendar", opens: "session", needsBroker: true },
   MISSING_DATA: { badge: "استكمال بيانات", button: "استكمال البيانات", icon: "edit", opens: "record", needsBroker: true },
-  OPPORTUNITY_REVIEW: { badge: "سجل جديد", button: "مراجعة السجل", icon: "inbox", opens: "record", needsBroker: true },
+  OPPORTUNITY_REVIEW: { badge: "سجل جديد", button: "مراجعة السجل", icon: "inbox-in", opens: "record", needsBroker: true },
   OPPORTUNITY_FOLLOW_UP: { badge: "متابعة", button: "متابعة السجل", icon: "clock", opens: "record", needsBroker: true },
   COOPERATION_REQUEST: { badge: "تعاون", button: "مراجعة طلب التعاون", icon: "users", opens: "legacy", needsBroker: true },
   COOPERATION_RESPONSE: { badge: "تعاون", button: "عرض حالة التعاون", icon: "users", opens: "legacy", needsBroker: false },
   COOPERATION_MATCH: { badge: "تعاون", button: "فتح التعاون", icon: "users", opens: "legacy", needsBroker: true },
-  PLATFORM_OPPORTUNITY_OFFER: { badge: "فرصة من المنصة", button: "استلام الفرصة", icon: "inbox", opens: "legacy", needsBroker: true },
-  EXTERNAL_RESPONSE: { badge: "رد", button: "مراجعة الرد", icon: "reply", opens: "legacy", needsBroker: true },
+  PLATFORM_OPPORTUNITY_OFFER: { badge: "فرصة من المنصة", button: "استلام الفرصة", icon: "inbox-in", opens: "legacy", needsBroker: true },
+  EXTERNAL_RESPONSE: { badge: "رد", button: "مراجعة الرد", icon: "mail", opens: "legacy", needsBroker: true },
   SYSTEM_ACTION: { badge: "إجراء", button: "عرض التفاصيل", icon: "info", opens: "legacy", needsBroker: false }
 });
 

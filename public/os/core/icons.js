@@ -69,8 +69,40 @@ const P = {
   alert: '<path fill-rule="evenodd" d="M10.3 3.3a2 2 0 0 1 3.4 0l8.4 14.6a2 2 0 0 1-1.7 3H3.6a2 2 0 0 1-1.7-3Zm.5 5.7.3 6.2h1.8l.3-6.2Zm1.2 7.5a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z"/>',
   tag: '<path fill-rule="evenodd" d="M3.8 2.5h7.1a2 2 0 0 1 1.4.6l8.9 8.9a2 2 0 0 1 0 2.8l-6.6 6.6a2 2 0 0 1-2.8 0L3 12.5a2 2 0 0 1-.6-1.4V3.9a1.4 1.4 0 0 1 1.4-1.4Zm4.2 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/>',
   link: '<path ' + S + ' stroke-width="2.6" d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path ' + S + ' stroke-width="2.6" d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3A4.5 4.5 0 0 0 11 19.4l1-1"/>',
+  // — Sheet: التنقل والواجهة / المطابقة / العملاء والأطراف / العقود / المواعيد —
+  dashboard: '<rect x="3" y="3" width="8" height="8" rx="2.2"/><rect ' + T2 + ' x="13" y="3" width="8" height="8" rx="2.2"/><rect ' + T2 + ' x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/>',
+  "tasks-check": '<path fill-rule="evenodd" d="M7 3.5h1.5V5a1.5 1.5 0 0 0 1.5 1.5h4A1.5 1.5 0 0 0 15.5 5V3.5H17A2.5 2.5 0 0 1 19.5 6v13.5A2.5 2.5 0 0 1 17 22H7a2.5 2.5 0 0 1-2.5-2.5V6A2.5 2.5 0 0 1 7 3.5Zm-.5 3v13h11v-13Z"/><rect x="9.5" y="1.8" width="5" height="3.4" rx="1.2"/><path ' + S + ' stroke-width="1.8" d="m8.3 11 1.2 1.2 2-2.1M8.3 15.6l1.2 1.2 2-2.1"/><rect x="12.8" y="10.4" width="3.2" height="1.7" rx=".8"/><rect x="12.8" y="15" width="3.2" height="1.7" rx=".8"/>',
+  offers: '<path fill-rule="evenodd" d="M6.5 2A2.5 2.5 0 0 0 4 4.5v15A2.5 2.5 0 0 0 6.5 22h11a2.5 2.5 0 0 0 2.5-2.5V8.2L13.8 2ZM13 3.5V8a1 1 0 0 0 1 1h4.5ZM8 12.2h8v1.8H8Zm0 3.8h8v1.8H8Z"/>',
+  match: '<circle ' + T2 + ' cx="16.5" cy="7" r="3.7"/><path ' + T2 + ' d="M13.7 12.9a7 7 0 0 1 9.3 6.6 1 1 0 0 1-1 1h-3.3a9.4 9.4 0 0 0-5-7.6Z"/><circle cx="8.5" cy="7.2" r="4.2"/><path d="M1 19.5a7.5 7.5 0 0 1 12.6-5.5 4.6 4.6 0 0 0-2.3 6.8H2.3A1.3 1.3 0 0 1 1 19.5Z"/><path ' + S + ' stroke-width="1.7" d="m16.3 17.9 1.6-1.6a1.5 1.5 0 0 1 2.1 2.1l-1.6 1.6a1.5 1.5 0 0 1-2.1 0M17.4 20.6l-1.6 1.6a1.5 1.5 0 0 1-2.1-2.1l1.6-1.6a1.5 1.5 0 0 1 2.1 0"/>',
+  owner: '<circle cx="9" cy="7" r="4.3"/><path d="M1.5 19.5a7.5 7.5 0 0 1 12-6v7.3H2.8a1.3 1.3 0 0 1-1.3-1.3Z"/><path ' + T2 + ' d="M18.5 11.3a.8.8 0 0 0-1 0l-4.2 3.6a.6.6 0 0 0 .4 1h.8v4.6a.8.8 0 0 0 .8.8h1.7v-2.8h1.9v2.8h1.7a.8.8 0 0 0 .8-.8v-4.6h.8a.6.6 0 0 0 .4-1Z"/>',
+  client: '<circle cx="12" cy="6.8" r="4.5"/><path fill-rule="evenodd" d="M3.5 20a8.5 8.5 0 0 1 17 0 1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 20Zm7.4-7.3 1.1 1.2 1.1-1.2Zm.3 2 -.9 5h3.4l-.9-5Z"/>',
+  broker: '<circle cx="10" cy="7" r="4.5"/><path d="M1.5 19.7a8.5 8.5 0 0 1 12.8-7.3 6 6 0 0 0-1.1 9.1H3.3a1.8 1.8 0 0 1-1.8-1.8Z"/><path fill-rule="evenodd" d="M18.5 13a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 1.6-.8 1.7-1.9.2 1.4 1.3-.4 1.8 1.7-.9 1.7.9-.4-1.8 1.4-1.3-1.9-.2Z"/>',
+  contract: '<path fill-rule="evenodd" d="M6.5 2A2.5 2.5 0 0 0 4 4.5v15A2.5 2.5 0 0 0 6.5 22h6.2l.4-2H6.5a.5.5 0 0 1-.5-.5v-15a.5.5 0 0 1 .5-.5H13v3.5a1.5 1.5 0 0 0 1.5 1.5H18v2.2l2 -2V8.2L13.8 2ZM8 11h7v1.8H8Zm0 3.6h4.5v1.8H8Z"/><path d="M19.6 12.4a1.6 1.6 0 0 1 2.3 2.3l-5.7 5.7-3 .7.7-3Z"/>',
+  mail: '<path fill-rule="evenodd" d="M4.5 4.5h15A2.5 2.5 0 0 1 22 7v10a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17V7a2.5 2.5 0 0 1 2.5-2.5Zm-.1 2.8L12 12.6l7.6-5.3v2.3L12 14.9 4.4 9.6Z"/>',
+  "inbox-in": '<path d="M2.5 13h5.2l1.6 2.6h5.4l1.6-2.6h5.2v6a2.5 2.5 0 0 1-2.5 2.5h-14A2.5 2.5 0 0 1 2.5 19Z"/><path ' + T2 + ' d="M4.8 11.5 6.2 5a2 2 0 0 1 2-1.5h.8v2H8.2l-1.3 6Zm14.4 0L17.8 5a2 2 0 0 0-2-1.5H15v2h.8l1.3 6Z"/><rect x="10.9" y="2" width="2.2" height="8" rx="1.1"/><path d="M8 8.6a1 1 0 0 1 1.5-1.2l2.5 2.2 2.5-2.2A1 1 0 0 1 16 8.6l-4 3.9Z"/>',
+  "chart-up": '<rect ' + T2 + ' x="3" y="14" width="4" height="7" rx="1.2"/><rect ' + T2 + ' x="10" y="10.5" width="4" height="10.5" rx="1.2"/><rect x="17" y="7" width="4" height="14" rx="1.2"/><path ' + S + ' stroke-width="2" d="M3.5 10.5 9 5.5l3.5 2.5 5.5-5"/><path d="M15.2 2.2h4.6v4.6Z"/>',
+  // — Sheet: العقارات (الأنواع) —
+  apartment: '<path ' + T2 + ' d="M15.5 8.5h4a1.5 1.5 0 0 1 1.5 1.5v11h-5.5Z"/><path fill-rule="evenodd" d="M5.5 2.5h8a1.5 1.5 0 0 1 1.5 1.5v17H10v-3.5H9V21H4V4a1.5 1.5 0 0 1 1.5-1.5ZM7 6v2h2V6Zm3.5 0v2h2V6ZM7 10v2h2v-2Zm3.5 0v2h2v-2ZM7 14v2h2v-2Zm3.5 0v2h2v-2Z"/><rect x="2.5" y="20.5" width="19" height="1.5" rx=".75"/>',
+  tower: '<path ' + T2 + ' d="M2.5 11h3.5v10H2.5Zm15.5 0h3.5v10H18Z"/><path fill-rule="evenodd" d="M7.5 2h9A1.5 1.5 0 0 1 18 3.5V21h-4.5v-3h-3v3H6V3.5A1.5 1.5 0 0 1 7.5 2ZM8.3 4.6v1.8h1.8V4.6Zm2.8 0v1.8h1.8V4.6Zm2.8 0v1.8h1.8V4.6ZM8.3 8v1.8h1.8V8Zm2.8 0v1.8h1.8V8Zm2.8 0v1.8h1.8V8ZM8.3 11.4v1.8h1.8v-1.8Zm2.8 0v1.8h1.8v-1.8Zm2.8 0v1.8h1.8v-1.8ZM8.3 14.8v1.8h1.8v-1.8Zm5.6 0v1.8h1.8v-1.8Z"/><rect x="1.5" y="20.8" width="21" height="1.4" rx=".7"/>',
+  office: '<path ' + T2 + ' d="M2.5 9.5h4v11.5h-4Z"/><path fill-rule="evenodd" d="M8 3h11.5A1.5 1.5 0 0 1 21 4.5V21h-5v-3.5h-3.5V21H6.5V4.5A1.5 1.5 0 0 1 8 3Zm1.2 3v2.2h2.4V6Zm4 0v2.2h2.4V6ZM9.2 10v2.2h2.4V10Zm4 0v2.2h2.4V10Zm4-4v2.2h2.4V6Zm0 4v2.2h2.4V10Zm-8 4v2.2h2.4V14Zm8 0v2.2h2.4V14Z"/><rect x="1.5" y="20.8" width="21" height="1.4" rx=".7"/>',
+  villa: '<path fill-rule="evenodd" d="M9.2 4.3a1 1 0 0 1 1.3 0l6.9 6.2a.8.8 0 0 1-.5 1.4h-1.4V21H3.4v-9.1H2a.8.8 0 0 1-.5-1.4ZM8 16v5h3.7v-5Z"/><path ' + T2 + ' d="M19 21.5c-.4-2.7-.4-5.6.2-8.6h1.3c-.6 3-.7 5.9-.3 8.6Z"/><path d="M19.8 12.6c-.4-1.9-2.2-2.8-4-2.3 1.3-1.4 3.5-1.3 4.6.1.4-1.7 2.2-2.6 3.6-1.8-1.7.1-2.9 1.3-3 2.6 1-.4 2.2 0 2.7.9-1.3-.5-2.8-.2-3.9.5Z"/>',
+  floor: '<path fill-rule="evenodd" d="M12.9 2.9a1.3 1.3 0 0 0-1.8 0L2.6 10.6A1.1 1.1 0 0 0 3.4 12.5H5V20a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 20v-7.5h1.6a1.1 1.1 0 0 0 .8-1.9ZM10 21.5v-5.2a.8.8 0 0 1 .8-.8h2.4a.8.8 0 0 1 .8.8v5.2Z"/>',
+  duplex: '<path fill-rule="evenodd" d="M12.8 2.3a1.2 1.2 0 0 0-1.6 0L2.4 9.6a.9.9 0 0 0 .6 1.6h1.2v9.3a1 1 0 0 0 1 1h13.6a1 1 0 0 0 1-1v-9.3H21a.9.9 0 0 0 .6-1.6ZM7 11.5v3h3v-3Zm7 0v3h3v-3Zm-3.5 5v5h3v-5Z"/><rect ' + T2 + ' x="11" y="6.5" width="2" height="2.6" rx=".6"/>',
+  land: '<path ' + T2 + ' d="M5.6 14.5h12.8a1 1 0 0 1 .9.6l2.5 5.5a1 1 0 0 1-.9 1.4H3.1a1 1 0 0 1-.9-1.4l2.5-5.5a1 1 0 0 1 .9-.6Z"/><path fill-rule="evenodd" d="M12 1.5a5.8 5.8 0 0 1 5.8 5.8c0 3.9-4.6 8.5-5.1 9a1 1 0 0 1-1.4 0c-.5-.5-5.1-5.1-5.1-9A5.8 5.8 0 0 1 12 1.5Zm0 3.6a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z"/>',
+  shop: '<path d="M3.5 3h17l1.5 5.3a2.6 2.6 0 0 1-4.9 1.2 2.6 2.6 0 0 1-4.6 0 2.6 2.6 0 0 1-4.6 0A2.6 2.6 0 0 1 2 8.3Z"/><path ' + T2 + ' d="M4 12h16v9H4Z"/><path d="M9.3 14.5h5.4V21H9.3Z"/><rect x="2.5" y="20.6" width="19" height="1.4" rx=".7"/>',
+  warehouse: '<path fill-rule="evenodd" d="M11.3 2.3a1.6 1.6 0 0 1 1.4 0l8.4 4.2a1.6 1.6 0 0 1 .9 1.4V20a1.5 1.5 0 0 1-1.5 1.5h-2V11a1 1 0 0 0-1-1H6.5a1 1 0 0 0-1 1v10.5h-2A1.5 1.5 0 0 1 2 20V7.9a1.6 1.6 0 0 1 .9-1.4Z"/><path ' + T2 + ' d="M7 11.5h10v10H7Z"/><rect x="7" y="13" width="10" height="1.3" rx=".4"/><rect x="7" y="15.8" width="10" height="1.3" rx=".4"/><rect x="7" y="18.6" width="10" height="1.3" rx=".4"/>',
   gear: '<path fill-rule="evenodd" d="M10.3 1.8h3.4l.6 2.7a8 8 0 0 1 2 1.2l2.6-.9 1.7 3-2 1.8a8 8 0 0 1 0 2.4l2 1.8-1.7 3-2.6-.9a8 8 0 0 1-2 1.2l-.6 2.7h-3.4l-.6-2.7a8 8 0 0 1-2-1.2l-2.6.9-1.7-3 2-1.8a8 8 0 0 1 0-2.4l-2-1.8 1.7-3 2.6.9a8 8 0 0 1 2-1.2ZM12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Z"/>'
 };
+
+/** Project property types (records-domain PROPERTY_TYPES) → sheet icon. Unknown types keep the house. */
+export const PROPERTY_TYPE_ICON = Object.freeze({
+  "شقة": "apartment", "فيلا": "villa", "دور": "floor", "دوبلكس": "duplex", "أرض": "land", "عمارة": "tower",
+  "محل تجاري": "shop", "مكتب": "office", "استراحة": "villa", "مستودع": "warehouse", "غرفة": "bed"
+});
+export function propertyTypeIcon(type) {
+  const key = String(type || "").trim();
+  return PROPERTY_TYPE_ICON[key] || (/محل/.test(key) ? "shop" : /أرض/.test(key) ? "land" : "home");
+}
 
 export function iconMarkup(name) {
   return P[name] || P.info;

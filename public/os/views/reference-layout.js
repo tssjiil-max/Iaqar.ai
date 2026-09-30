@@ -1,4 +1,5 @@
 import { h, ic, clear, append } from "../core/dom.js";
+import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe, recordById } from "../core/state.js";
@@ -6,7 +7,7 @@ import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta } from
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
 
-export const STEPS = [["تطابق","link","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
+export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){const t=String(task.type||"");return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
 function openTask(task,model){if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else location.href="/legacy.html?officeId="+encodeURIComponent(session.officeId)+"&openOperation="+encodeURIComponent(task.id);}
 export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager})),"all"));}
@@ -14,7 +15,7 @@ export function taskRecord(task){const meta=parseMeta(task);return recordById(ta
 export function photo(record={},extra=""){
  const raw=record.coverUrl||record.coverImageUrl||record.images?.[0]||record.photos?.[0]||record.imageUrls?.[0];const url=typeof raw==="string"?raw:raw?.url;
  const box=h("div",{class:"ref-photo "+extra});
- if(/^https?:\/\//.test(url||"")){const img=h("img",{src:url,alt:record.propertyType||"العقار",loading:"lazy"});img.addEventListener("error",()=>{img.remove();box.append(ic("home"));},{once:true});box.append(img);}else box.append(ic("home"));
+ if(/^https?:\/\//.test(url||"")){const img=h("img",{src:url,alt:record.propertyType||"العقار",loading:"lazy"});img.addEventListener("error",()=>{img.remove();box.append(ic(propertyTypeIcon(record.propertyType)));},{once:true});box.append(img);}else box.append(ic(propertyTypeIcon(record.propertyType)));
  return box;
 }
 export function stepStrip(){return h("section",{class:"ref-path os-card"},h("div",{class:"ref-path-heading"},h("h2",{text:"مسار الصفقة"}),h("span",{text:"تتابع المهام من التطابق حتى إغلاق الصفقة"})),h("div",{class:"ref-steps"},STEPS.map(([name,icon],i)=>h("div",{class:i===0?"active":""},h("span",{},ic(icon)),h("small",{text:name})))));}

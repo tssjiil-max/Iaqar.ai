@@ -4,9 +4,10 @@
  */
 
 import { h, ic } from "../core/dom.js";
+import { propertyTypeIcon } from "../core/icons.js";
 import { formatPrice, relativeAgo } from "../domain/format-domain.js";
 
-const EVENT_ICON = { owner: "home", client: "user", broker: "users" };
+const EVENT_ICON = { owner: "owner", client: "client", broker: "broker" };
 
 /** Fixed card: نوع العقار · الحي · السعر الحالي · مرحلة الصفقة. */
 export function sessionSummary({ propertyType, district, currentPrice, agreedPrice, stageLabel, intervention }) {
@@ -15,7 +16,7 @@ export function sessionSummary({ propertyType, district, currentPrice, agreedPri
     h("div", {}, h("small", { text: label }), h(strong ? "b" : "span", { text: value || "—" })));
   return h("section", { class: "os-card os-session-summary", "aria-label": "ملخص الصفقة" },
     h("div", { class: "os-session-grid" },
-      cell("home", "نوع العقار", propertyType),
+      cell(propertyTypeIcon(propertyType), "نوع العقار", propertyType),
       cell("pin", "الحي", district),
       cell("coins", agreedPrice ? "السعر المتفق عليه" : "السعر الحالي", formatPrice(agreedPrice || currentPrice), true),
       cell("flag", "مرحلة الصفقة", stageLabel)),

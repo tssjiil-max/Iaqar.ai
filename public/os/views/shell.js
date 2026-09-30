@@ -66,6 +66,6 @@ export function renderShellHeader({ active = "office" } = {}) {
  return h("header",{class:"ref-shell-header"},h("div",{class:"ref-brand"},logo),h("div",{class:"ref-shell-title"},h("h1",{text:active==="tasks"?"المهام اليومية":active==="repo"?"العروض والطلبات":office.officeName||"المكتب"}),active==="tasks"?h("p",{text:"أنجز مهامك بسهولة كل يوم"}):active==="office"&&(office.brokerName||session.member?.displayName)?h("p",{class:"ref-hello",text:"مرحبًا "+String(office.brokerName||session.member?.displayName).split(" ")[0]}):null),active!=="repo"?h("button",{type:"button",class:"ref-bell","aria-label":"التنبيهات",onClick:openMenu},ic("bell")):null,h("button",{type:"button",class:"os-icon-btn ref-menu","aria-label":"القائمة والإعدادات",onClick:active==="repo"?()=>go("office"):openMenu},active==="repo"?ic("chev-left"):ic("gear")));
 }
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.
-export const BOTTOM_NAV = Object.freeze([["office", "المكتب", "home"], ["tasks", "المهام اليومية", "clipboard"], ["repo", "العروض والطلبات", "note"]]);
+export const BOTTOM_NAV = Object.freeze([["office", "المكتب", "dashboard"], ["tasks", "المهام اليومية", "tasks-check"], ["repo", "العروض والطلبات", "offers"]]);
 export function renderBottomNav(active="office") {return h("nav",{class:"ref-bottom","aria-label":"أقسام المكتب"},BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","aria-current":active===route?"page":null,onClick:()=>go(route)},ic(icon),h("span",{text:label}))));}
 export { btn };
