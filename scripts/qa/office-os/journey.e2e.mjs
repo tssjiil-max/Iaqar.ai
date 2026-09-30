@@ -271,6 +271,7 @@ try {
   await browser.close();
   h.server.close();
   const failed = checks.filter((c) => !c.ok);
+  if (process.env.GITHUB_ACTIONS) for (const c of failed) console.log(`::error title=journey::${JSON.stringify(c).replace(/[\r\n]/g, " ").slice(0, 600)}`);
   console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`);
   process.exitCode = failed.length ? 1 : 0;
 }

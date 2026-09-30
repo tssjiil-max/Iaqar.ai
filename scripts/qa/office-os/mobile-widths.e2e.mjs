@@ -133,6 +133,9 @@ for (const width of WIDTHS) {
 await browser.close();
 h.server.close();
 const failed = results.filter((r) => r.issues.length);
+// In CI, surface each failure as an annotation (job logs are not always reachable).
+if (process.env.GITHUB_ACTIONS) for (const r of failed) console.log(`::error title=widths ${r.width}px ${r.screen}::${r.issues.slice(0, 3).join(" | ").replace(/[\r\n]/g, " ")}`);
+if (process.env.GITHUB_ACTIONS) for (const e of consoleErrors.slice(0, 5)) console.log(`::error title=widths console::${String(e).replace(/[\r\n]/g, " ")}`);
 fs.writeFileSync(path.join(OUT, "widths-report.json"), JSON.stringify({ at: new Date().toISOString(), widths: WIDTHS, screens: SCREENS.map((x) => x.name), results, consoleErrors }, null, 2));
 console.log(`\n${results.length - failed.length}/${results.length} width×screen checks passed; console errors: ${consoleErrors.length}`);
 process.exitCode = failed.length || consoleErrors.length ? 1 : 0;
