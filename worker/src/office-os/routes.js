@@ -18,9 +18,10 @@ import { suggestForJourney } from "./assist-service.js";
 import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks } from "./session-service.js";
 import { viewPublicSession, submitPublicSessionAction } from "./session-action-service.js";
 import { decideMatchReviewWithPublicPrice } from "./review-flow-service.js";
+import { recordViewingResultAfterStart } from "./viewing-result-service.js";
 import {
   acceptNegotiatedPrice, confirmViewingSafe, fixedPriceDecision,
-  recordViewingResultSafe, rejectSession, submitViewingAcceptanceSafe, submitViewingCounterSafe
+  rejectSession, submitViewingAcceptanceSafe, submitViewingCounterSafe
 } from "./simplified-flow-service.js";
 
 const sessionArgs = (body, meta) => ({
@@ -60,7 +61,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/journeys/note": (ctx, b, actor) => addBrokerNote(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), text: b.text, party: text(b.party), optionLabel: b.optionLabel, requestKey: text(b.requestKey) }),
   "/os/journeys/ack-reply": (ctx, b, actor) => acknowledgeReply(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), proposalId: text(b.proposalId) }),
   "/os/journeys/viewing/confirm": (ctx, b, actor) => confirmViewingSafe(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
-  "/os/journeys/viewing/result": (ctx, b, actor) => recordViewingResultSafe(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), result: text(b.result), note: b.note }),
+  "/os/journeys/viewing/result": (ctx, b, actor) => recordViewingResultAfterStart(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), result: text(b.result), note: b.note }),
   "/os/journeys/stage": (ctx, b, actor) => moveStage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), stage: text(b.stage) }),
   "/os/journeys/pause": (ctx, b, actor) => pauseJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), resumeInDays: b.resumeInDays, reason: b.reason }),
   "/os/journeys/resume": (ctx, b, actor) => resumeJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
