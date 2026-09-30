@@ -169,7 +169,7 @@ try {
   const journeyDoc = await until(async () => (await office.collection("journeys").get()).docs[0], "journey");
 
   // 4 proposal → WhatsApp handoff
-  await page.locator("#now").getByRole("button", { name: "تجهيز المقترح" }).click();
+  await page.locator("#now").getByRole("button", { name: "اقتراح سعر" }).click();
   const sheet = page.locator(".os-sheet");
   await sheet.locator('input[name="price"]').fill("1,200,000");
   await sheet.getByRole("button", { name: "تجهيز المقترح والرابط" }).click();
@@ -230,7 +230,8 @@ try {
 
   // 7 viewing: propose → accept → confirm → result
   await page.goto(`${PREVIEW_URL}/#/journey/${journeyDoc.id}`);
-  await page.getByRole("button", { name: "مقترح جديد عبر واتساب" }).click();
+  await page.locator('[data-panel="communication"] > summary').click();
+  await page.locator('[data-panel="communication"]').getByRole("button", { name: "إرسال مقترح", exact: true }).click();
   await sheet.getByRole("button", { name: "تحديد أو تعديل معاينة" }).click();
   await sheet.getByRole("button", { name: "العميل" }).click();
   await sheet.getByRole("button", { name: "تجهيز المقترح والرابط" }).click();
@@ -260,6 +261,7 @@ try {
   await shot(page, "14-workspace-agreement");
 
   // 8 Gemini assist through the preview Worker
+  await page.locator('[data-panel="assistant"] > summary').click();
   await page.getByRole("button", { name: "اقتراح المساعد" }).click();
   await page.getByRole("button", { name: "اقتراح المساعد" }).waitFor({ state: "hidden", timeout: 20000 }).catch(() => {});
   const assistText = await page.locator(".os-ai").innerText();
