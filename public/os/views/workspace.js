@@ -9,18 +9,18 @@ import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { recordById, subscribe } from "../core/state.js";
 import { officeSetting, watchDoc, watchJourneyEvents, watchJourneyProposals } from "../core/live.js";
-import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
+import { confirmDialog, newRequestKey, openSheet, runAction, toast } from "../core/ui.js";
 import {
   CLOSE_REASONS_LOST, EVENT_SOURCE, JOURNEY_STATUS, JOURNEY_STATUS_LABEL, STAGE, STAGE_LABEL, VIEWING_RESULTS,
   VIEWING_STATE, VIEWING_STATE_LABEL, allowedStageMoves, effectOfViewingResult, isJourneyOpen, stageProgress, suggestNextStep
 } from "../domain/journey-domain.js";
-import { PROPOSAL_STATUS, RECIPIENT, RECIPIENT_LABEL, SEND_STATE_LABEL, replyLabel, replyOptionsFor } from "../domain/proposal-domain.js";
+import { PROPOSAL_STATUS, RECIPIENT, RECIPIENT_LABEL, sendStateLabel, replyLabel } from "../domain/proposal-domain.js";
 import { recordView, recordTitle } from "../domain/records-domain.js";
 import { formatDateTime, formatPrice, relativeAgo, toNumber } from "../domain/format-domain.js";
-import { openComposer } from "./composer.js";
+import { openComposer, proposalPreparedPanel } from "./composer.js";
 
 const EVENT_ICON = {
-  MATCH_APPROVED: "doc-check", PROPOSAL_CREATED: "note", WHATSAPP_OPENED: "whatsapp", PARTY_REPLY: "reply",
+  MATCH_APPROVED: "doc-check", PROPOSAL_CREATED: "note", WHATSAPP_OPENED: "whatsapp", MESSAGE_SHARED: "send", PARTY_REPLY: "reply",
   BROKER_NOTE: "edit3", CALL_OUTCOME: "phone", VIEWING_CONFIRMED: "calendar", VIEWING_RESULT: "eye",
   STAGE_CHANGED: "flag", PAUSED: "pause", RESUMED: "play", CLOSED_WON: "handshake", CLOSED_LOST: "x-circle",
   PROPOSAL_SUPERSEDED: "refresh", FOLLOW_UP_DONE: "check"
@@ -34,8 +34,8 @@ function defaultKindFor(journey) {
 }
 
 function stagePath(journey) {
-  return h("div", { class: "os-card" },
-    h("div", { class: "os-card-head" },
+  return h("details", { class: "os-card os-stage-panel", "data-panel": "stages", open: !isJourneyOpen(journey) },
+    h("summary", { class: "os-card-head" },
       h("h2", { class: "os-h2" }, ic("flag"), "مسار الفرصة"),
       h("span", { class: "os-ref" }, "المرحلة الحالية: ", h("b", { text: isJourneyOpen(journey) ? STAGE_LABEL[journey.stage] || "" : JOURNEY_STATUS_LABEL[journey.status] }))),
     h("div", { class: "os-path", role: "list" }, stageProgress(journey).map((s) => h("div", { class: `os-step ${s.state}`, role: "listitem", "aria-current": s.state === "current" ? "step" : null },
@@ -47,38 +47,20 @@ function stagePath(journey) {
 function partyCard(role, record, journey) {
   const view = record ? recordView(record) : null;
   const reply = journey.lastReplies?.[role];
-  const noteBtn = h("button", { type: "button", class: "os-btn ghost" }, ic("edit3"), "تسجيل رد بعد اتصال");
-  noteBtn.addEventListener("click", () => openCallOutcome(journey, role));
+  const sendBtn = h("button", { type: "button", class: "os-btn soft os-party-send", "aria-label": `إرسال مقترح إلى ${RECIPIENT_LABEL[role]}` }, ic("send"), "إرسال مقترح");
+  sendBtn.addEventListener("click", () => openComposer(journey, {
+    offer: recordById(journey.offerId) || journey.offerSummary,
+    request: recordById(journey.requestId) || journey.requestSummary,
+    defaultKind: defaultKindFor(journey), defaultRecipients: [role]
+  }));
   return h("div", { class: "os-party" },
     h("div", { class: "os-party-head" }, h("div", { class: "av" }, ic("user")),
       h("div", {}, h("b", { text: RECIPIENT_LABEL[role] }), h("span", { text: view?.contactName || "—" }))),
     h("div", { class: "os-party-reply" },
       reply ? h("span", {}, h("b", { text: "آخر رد: " }), reply.label) : h("span", { class: "os-sub", text: "لا يوجد رد بعد" }),
       reply ? h("small", { text: `${relativeAgo(reply.at)} · ${SOURCE_LABEL[reply.source] || ""}` }) : null),
-    view?.contactPhone && isJourneyOpen(journey) ? h("div", { class: "os-btn-row", style: { marginTop: "6px" } },
-      h("a", { class: "os-btn secondary", href: `tel:${view.contactPhone}`, "aria-label": `اتصال بـ${RECIPIENT_LABEL[role]}` }, ic("phone"), "اتصال"), noteBtn) : null
+    isJourneyOpen(journey) ? sendBtn : null
   );
-}
-
-function openCallOutcome(journey, role) {
-  const text = h("textarea", { class: "os-textarea", maxlength: "500", placeholder: "ماذا قال الطرف؟" });
-  const kind = journey.lastProposal?.kind || "INTEREST_FOLLOWUP";
-  let chosen = "";
-  const options = h("div", { class: "os-options" });
-  for (const option of replyOptionsFor(kind)) {
-    const b = h("button", { type: "button", class: `os-option ${option.tone || ""}`, "aria-pressed": "false" }, option.label);
-    b.addEventListener("click", () => { chosen = option.label; options.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
-    append(options, b);
-  }
-  const key = newRequestKey();
-  const save = h("button", { type: "button", class: "os-btn primary block" }, ic("check"), "حفظ الرد");
-  save.addEventListener("click", () => runAction(save, async () => {
-    if (!chosen && text.value.trim().length < 2) throw new Error("اختر الرد أو اكتب ملاحظة");
-    await api("/os/journeys/note", { officeId: session.officeId, journeyId: journey.journeyId || journey.id, party: role, optionLabel: chosen, text: text.value, requestKey: key });
-    sheet.close();
-  }, { success: "تم تسجيل الرد كملاحظة من الوسيط" }));
-  const sheet = openSheet(`رد ${RECIPIENT_LABEL[role]} بعد اتصال`, h("div", { class: "os-form" },
-    h("p", { class: "os-sub", text: "يُحفظ كملاحظة سجّلها الوسيط، ويتميّز عن ردود رابط واتساب." }), options, text, save));
 }
 
 function viewingResultAction(journey, draft) {
@@ -114,7 +96,7 @@ function viewingResultAction(journey, draft) {
 }
 
 function nowAction(journey, proposals, offer, request, draft) {
-  const card = h("div", { class: "os-card", id: "now" });
+  const card = h("div", { class: "os-card os-now-card", id: "now" });
   const action = journey.currentAction;
   const jid = journey.journeyId || journey.id;
   const composer = (kind, recips) => openComposer(journey, { offer, request, defaultKind: kind || defaultKindFor(journey), defaultRecipients: recips });
@@ -135,7 +117,7 @@ function nowAction(journey, proposals, offer, request, draft) {
   }
   const type = action?.type || "";
   if (type === "VIEWING_RESULT") {
-    append(card, title("تسجيل نتيجة المعاينة"),
+    append(card, title("نتيجة المعاينة"),
       h("div", { class: "os-meta-row", style: { marginBottom: "8px" } }, ic("calendar"), h("span", { text: `${VIEWING_STATE_LABEL[journey.viewing?.state] || ""} · ${formatDateTime(journey.viewing?.at)}` })),
       ...viewingResultAction(journey, draft));
     return card;
@@ -166,12 +148,9 @@ function nowAction(journey, proposals, offer, request, draft) {
   if (type === "AWAITING_REPLY") {
     const spec = journey.openTasks?.[action.taskId] || {};
     const proposal = proposals.find((p) => p.id === spec.proposalId);
-    const follow = proposal?.whatsappUrl ? h("a", { class: "os-btn whatsapp", href: proposal.whatsappUrl, target: "_blank", rel: "noopener" }, ic("whatsapp"), "متابعة عبر واتساب") : null;
-    follow?.addEventListener("click", (e) => { e.preventDefault(); openWhatsApp(proposal.whatsappUrl); api("/os/proposals/handoff", { officeId: session.officeId, proposalId: proposal.id }, { keepalive: true }).catch(() => {}); });
     append(card, title(`بانتظار رد ${proposal ? RECIPIENT_LABEL[proposal.recipientRole] : ""}`),
       h("p", { class: "os-sub", text: `${action.reason}${action.dueAt ? ` · موعد المتابعة ${formatDateTime(action.dueAt)}` : ""}` }),
-      h("div", { class: "os-btn-row", style: { marginTop: "10px" } }, follow,
-        proposal ? h("button", { type: "button", class: "os-btn secondary", onClick: () => openCallOutcome(journey, proposal.recipientRole) }, ic("phone"), "تسجيل رد بعد اتصال") : null));
+      proposal ? h("button", { type: "button", class: "os-btn primary block", onClick: () => openSheet("إرسال تذكير", proposalPreparedPanel({ ...proposal, proposalId: proposal.id })) }, ic("send"), "إرسال تذكير") : null);
     return card;
   }
   if (type === "DEAL_ACTION") {
@@ -192,28 +171,32 @@ function nowAction(journey, proposals, offer, request, draft) {
   // SEND_PROPOSAL or nothing pending
   append(card, title(type === "SEND_PROPOSAL" ? "إرسال مقترح" : "لا يوجد إجراء عاجل"),
     h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: action?.reason || "تابع الطرفين وأرسل المقترح التالي عند الحاجة." }),
-    h("button", { type: "button", class: "os-btn primary block", onClick: () => composer() }, ic("send"), "تجهيز المقترح"));
+    h("div", { class: "os-proposal-shortcuts" },
+      h("button", { type: "button", class: "os-btn primary", onClick: () => composer("PRICE") }, ic("coins"), "اقتراح سعر"),
+      h("button", { type: "button", class: "os-btn secondary", onClick: () => composer("VIEWING") }, ic("calendar"), "تحديد معاينة"),
+      h("button", { type: "button", class: "os-btn secondary", onClick: () => composer("INFO_REQUEST") }, ic("question"), "طلب معلومات")));
   return card;
 }
 
 function proposalsCard(journey, proposals) {
   const active = Object.values(journey.activeProposals || {});
-  const current = proposals.filter((p) => active.includes(p.id));
+  const current = proposals.filter((p) => active.includes(p.id)).sort((a, b) => Number(a.recipientRole !== RECIPIENT.OWNER) - Number(b.recipientRole !== RECIPIENT.OWNER));
   if (!current.length) return null;
   return h("div", { class: "os-card" },
     h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("clipboard"), "المقترح الحالي"),
-    current.map((p) => {
+    h("div", { class: "os-current-proposals" }, current.map((p) => {
       const lines = [p.fields?.price ? `السعر المقترح ${formatPrice(p.fields.price)}` : "", p.fields?.viewingAt ? `المعاينة ${formatDateTime(p.fields.viewingAt)}` : "", p.fields?.question || p.fields?.actionText || p.fields?.stepText || ""].filter(Boolean);
-      const status = p.status === PROPOSAL_STATUS.ANSWERED ? `وصل رد: ${replyLabel(p.kind, p.reply || {})}` : SEND_STATE_LABEL[p.sendState] || "";
-      return h("div", { class: "os-meta-row", style: { marginBottom: "6px", flexWrap: "wrap" } }, ic(p.kind === "VIEWING" ? "calendar" : "coins"),
-        h("span", {}, h("b", { text: `${p.label} — ${RECIPIENT_LABEL[p.recipientRole]}` }), lines.length ? ` · ${lines.join(" · ")}` : ""),
-        h("span", { class: `os-badge${p.status === PROPOSAL_STATUS.ANSWERED ? " ok" : " muted"}`, style: { marginInlineStart: "auto" }, text: status }));
-    }));
+      const status = p.status === PROPOSAL_STATUS.ANSWERED ? `وصل رد: ${replyLabel(p.kind, p.reply || {})}` : sendStateLabel(p);
+      return h("div", { class: "os-proposal-preview" },
+        h("b", {}, ic(p.kind === "VIEWING" ? "calendar" : "coins"), `${p.label} · ${RECIPIENT_LABEL[p.recipientRole]}`),
+        h("span", { text: lines.join(" · ") }),
+        h("small", { class: `os-badge${p.status === PROPOSAL_STATUS.ANSWERED ? " ok" : " muted"}`, text: status }));
+    })));
 }
 
 function timelineCard(events) {
-  return h("div", { class: "os-card" },
-    h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("clock"), "سجل الإجراءات"),
+  return h("details", { class: "os-card os-history", "data-panel": "history" },
+    h("summary", { class: "os-h2" }, ic("clock"), "سجل الإجراءات", h("span", { class: "os-count", text: String(events.length) }), ic("chev-down")),
     events.length ? h("ol", { class: "os-timeline" }, events.map((e) => h("li", {},
       h("span", { class: `ic${e.type === "WHATSAPP_OPENED" ? " wa" : ""}` }, ic(EVENT_ICON[e.type] || "info")),
       h("span", {}, e.text, h("span", { class: "src", text: SOURCE_LABEL[e.source] || "" })),
@@ -292,9 +275,11 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
   let dealSettings = {};
   officeSetting(session.officeId, "deals").then((s) => { dealSettings = s || {}; }).catch(() => {});
   let focused = false;
+  const disclosureState = new Map();
   const draft = { note: "", result: "", resultNote: "" };
   const draw = () => {
     const y = window.scrollY;
+    container.querySelectorAll("details[data-panel]").forEach((panel) => disclosureState.set(panel.dataset.panel, panel.open));
     clear(container);
     const refChip = journey ? h("span", { class: "os-ref", text: `فرصة #${String(journeyId).slice(3, 9).toUpperCase()}` }) : h("span");
     append(container, h("div", { class: "os-page-head" },
@@ -307,35 +292,48 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     const offerView = recordView({ ...offer, id: journey.offerId });
     const requestView = recordView({ ...request, id: journey.requestId });
     const requestLabel = String(request.purpose || "").toUpperCase() === "LEASE_REQUEST" ? "طلب استئجار" : "طلب شراء";
-    const summary = h("div", { class: "os-card" },
-      h("div", { class: "os-card-head", style: { alignItems: "flex-start" } },
-        h("div", { style: { minWidth: 0 } },
-          h("h2", { class: "os-task-title", style: { marginTop: 0 }, text: `${requestLabel} ↔ ${recordTitle(offer).replace(/ للبيع| للإيجار/, "")}` }),
-          h("p", { class: "os-sub", text: `عرض #${offerView.reference} · طلب #${requestView.reference}${journey.compatibility?.label ? ` · ${journey.compatibility.label}` : ""}` })),
+    const rawImage = [offer.coverUrl, offer.coverImageUrl, ...[].concat(offer.images || [], offer.photos || [], offer.imageUrls || [], offer.mediaUrls || [])]
+      .find((value) => typeof value === "string" && /^https:\/\//i.test(value));
+    const image = rawImage ? h("img", { src: rawImage, alt: offerView.title, loading: "lazy" }) : null;
+    const cover = h("div", { class: "os-property-cover" }, ic("home"), image,
+      h("span", { text: image ? offerView.propertyType : "لا توجد صورة" }));
+    image?.addEventListener("error", () => { image.remove(); cover.lastChild.textContent = "الصورة غير متاحة"; });
+    const summary = h("div", { class: "os-card os-property-summary" },
+      h("div", { class: "os-card-head" },
+        h("h2", { class: "os-h2" }, ic("home"), "معلومات العقار"),
         isJourneyOpen(journey) ? h("button", { type: "button", class: "os-icon-btn", "aria-label": "إجراءات الفرصة", onClick: () => openStageMenu(journey) }, ic("more")) : null),
-      h("div", { class: "os-meta-row" }, ic("coins"), h("span", {}, "السعر المطلوب: ", h("b", { text: formatPrice(offerView.price) || "—" }), " · الميزانية: ", h("b", { text: formatPrice(requestView.price) || "—" }))),
-      h("details", { class: "os-more", style: { marginTop: "10px" } }, h("summary", {}, "عرض التفاصيل", ic("chev-down")),
-        h("div", { class: "os-facts", style: { marginTop: "10px" } },
-          fact("building", "نوع العقار", offerView.propertyType),
-          fact("pin", "الموقع", offerView.location),
-          fact("area", "المساحة", offerView.areaLabel || "غير محددة"),
-          fact("search", "احتياج العميل", [requestView.propertyType, requestView.location, requestView.areaLabel].filter(Boolean).join(" · "))),
-        h("div", { class: "os-btn-row", style: { marginTop: "8px" } },
+      h("div", { class: "os-property-layout" }, cover,
+        h("div", { class: "os-property-info" },
+          h("h3", { class: "os-task-title", text: recordTitle(offer).replace(/ للبيع| للإيجار/, "") }),
+          h("p", { class: "os-sub", text: offerView.location }),
+          h("div", { class: "os-facts" },
+            fact("coins", "السعر", formatPrice(offerView.price)),
+            fact("area", "المساحة", offerView.areaLabel || "غير محددة")),
+          h("p", { class: "os-property-refs", text: `عرض #${offerView.reference} · طلب #${requestView.reference}` }))),
+      h("details", { class: "os-more os-property-details", "data-panel": "property" }, h("summary", {}, "تفاصيل العرض والطلب", ic("chev-down")),
+        h("div", { class: "os-facts", style: { marginTop: "8px" } },
+          fact("search", "احتياج العميل", [requestLabel, requestView.propertyType, requestView.location, requestView.areaLabel].filter(Boolean).join(" · ")),
+          fact("coins", "ميزانية العميل", formatPrice(requestView.price))),
+        h("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`record/${journey.offerId}`) }, "سجل العرض"),
           h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`record/${journey.requestId}`) }, "سجل الطلب")))
     );
     const communication = isJourneyOpen(journey) ? communicationCard(journey, offer, request, draft) : null;
     append(container, 
       summary,
-      stagePath(journey),
-      nowAction(journey, proposals, offer, request, draft),
-      isJourneyOpen(journey) ? assistBox(journey) : null,
-      h("div", { class: "os-card" }, h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("users"), "الأطراف"),
-        h("div", { class: "os-parties" }, partyCard(RECIPIENT.CLIENT, recordById(journey.requestId), journey), partyCard(RECIPIENT.OWNER, recordById(journey.offerId), journey))),
       proposalsCard(journey, proposals),
+      h("div", { class: "os-card os-parties-card" },
+        h("div", { class: "os-parties" }, partyCard(RECIPIENT.OWNER, recordById(journey.offerId), journey), partyCard(RECIPIENT.CLIENT, recordById(journey.requestId), journey))),
+      nowAction(journey, proposals, offer, request, draft),
+      stagePath(journey),
       communication,
-      timelineCard(events)
+      timelineCard(events),
+      isJourneyOpen(journey) ? h("details", { class: "os-card os-assistant-panel", "data-panel": "assistant" },
+        h("summary", { class: "os-h2" }, ic("sparkles"), "اقتراح المساعد", ic("chev-down")), assistBox(journey)) : null
     );
+    container.querySelectorAll("details[data-panel]").forEach((panel) => {
+      if (disclosureState.has(panel.dataset.panel)) panel.open = disclosureState.get(panel.dataset.panel);
+    });
     if (!focused && focus) { focused = true; document.getElementById("now")?.scrollIntoView({ block: "start" }); }
     else window.scrollTo({ top: y });
   };
@@ -367,10 +365,10 @@ function communicationCard(journey, offer, request, draft) {
     draft.note = "";
     counter.textContent = "0/500";
   }, { success: "تم حفظ الملاحظة" }));
-  return h("div", { class: "os-card" },
-    h("h2", { class: "os-h2", style: { marginBottom: "4px" } }, ic("send"), "التواصل"),
-    h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "أرسل مقترحًا جاهزًا عبر واتساب برابط رد، أو وثّق ملاحظة." }),
-    h("button", { type: "button", class: "os-btn primary block", onClick: () => openComposer(journey, { offer, request, defaultKind: defaultKindFor(journey) }) }, ic("whatsapp"), "مقترح جديد عبر واتساب"),
+  return h("details", { class: "os-card os-communication", "data-panel": "communication" },
+    h("summary", { class: "os-h2" }, ic("send"), "التواصل والملاحظات", ic("chev-down")),
+    h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "أرسل المقترح عبر واتساب أو تطبيق آخر. رد الطرف يعود تلقائيًا إلى هذه المهمة." }),
+    h("button", { type: "button", class: "os-btn primary block", onClick: () => openComposer(journey, { offer, request, defaultKind: defaultKindFor(journey) }) }, ic("whatsapp"), "إرسال مقترح"),
     h("div", { style: { marginTop: "10px" } }, note, counter),
     h("div", { class: "os-btn-row" }, saveNote));
 }

@@ -1,0 +1,52 @@
+{
+  "base": "e4ef13f76ce4d1da136f5ec719f94c048e16002c",
+  "results": {
+    "before": {
+      "tasks": {
+        "pageHeight": 2829,
+        "firstTaskHeight": 287.046875,
+        "overflow": 0
+      },
+      "negotiation": {
+        "pageHeight": 2256,
+        "overflow": 0
+      },
+      "viewing": {
+        "pageHeight": 2876,
+        "overflow": 0
+      },
+      "review": {
+        "pageHeight": 1090,
+        "overflow": 0
+      },
+      "repository": {
+        "pageHeight": 2326,
+        "overflow": 0
+      }
+    },
+    "after": {
+      "tasks": {
+        "pageHeight": 2128,
+        "firstTaskHeight": 199.21875,
+        "overflow": 0
+      },
+      "negotiation": {
+        "pageHeight": 1287,
+        "overflow": 0
+      },
+      "viewing": {
+        "pageHeight": 1599,
+        "overflow": 0
+      },
+      "review": {
+        "pageHeight": 981,
+        "overflow": 0
+      },
+      "repository": {
+        "pageHeight": 2146,
+        "overflow": 0
+      }
+    }
+  },
+  "errors": []
+}

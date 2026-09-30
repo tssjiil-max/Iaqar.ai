@@ -31,7 +31,7 @@ const OFFICE_ROUTES = Object.freeze({
     actor, officeId: ctx.officeId, journeyId: text(b.journeyId), matchId: text(b.matchId), kind: text(b.kind),
     recipients: Array.isArray(b.recipients) ? b.recipients : [], fields: b.fields || {}, messages: b.messages || {}, requestKey: text(b.requestKey)
   }).then((proposals) => ({ ok: true, proposals })),
-  "/os/proposals/handoff": (ctx, b, actor) => recordHandoff(ctx, { actor, officeId: ctx.officeId, proposalId: text(b.proposalId) }),
+  "/os/proposals/handoff": (ctx, b, actor) => recordHandoff(ctx, { actor, officeId: ctx.officeId, proposalId: text(b.proposalId), channel: text(b.channel) || "WHATSAPP" }),
   "/os/proposals/cancel": (ctx, b, actor) => cancelProposal(ctx, { actor, officeId: ctx.officeId, proposalId: text(b.proposalId) }),
   "/os/journeys/note": (ctx, b, actor) => addBrokerNote(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), text: b.text, party: text(b.party), optionLabel: b.optionLabel, requestKey: text(b.requestKey) }),
   "/os/journeys/ack-reply": (ctx, b, actor) => acknowledgeReply(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), proposalId: text(b.proposalId) }),

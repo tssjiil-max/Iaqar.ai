@@ -277,7 +277,7 @@ export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
     mutate: (j) => (j.viewing?.state === VIEWING_STATE.ACCEPTED
       ? { stage: STAGE.VIEWING, viewing: { ...j.viewing, state: VIEWING_STATE.CONFIRMED, confirmedAt: ctx.now().toISOString(), confirmedBy: actor.uid } }
       : null),
-    add: [{ type: "VIEWING_RESULT", ref: `viewing:${viewing.at}`, dueAt: at, reason: `معاينة مؤكدة ${formatDateTime(at, ctx.now())}`, actionLabel: "تسجيل النتيجة" }],
+    add: [{ type: "VIEWING_RESULT", ref: `viewing:${viewing.at}`, dueAt: at, reason: `معاينة مؤكدة ${formatDateTime(at, ctx.now())}`, actionLabel: "نتيجة المعاينة" }],
     event: { type: "VIEWING_CONFIRMED", key: [viewing.at], text: `تم تأكيد موعد المعاينة ${formatDateTime(at, ctx.now())}` }
   });
 }

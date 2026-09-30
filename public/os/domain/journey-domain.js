@@ -101,7 +101,7 @@ export const ACTION = Object.freeze({
   AWAIT_REPLY: { code: "AWAIT_REPLY", taskType: "AWAITING_REPLY", label: "بانتظار رد", button: "متابعة الرد", inline: false, waiting: true },
   REVIEW_REPLY: { code: "REVIEW_REPLY", taskType: "PROPOSAL_REPLY", label: "مراجعة الرد", button: "مراجعة الرد", inline: false },
   CONFIRM_VIEWING: { code: "CONFIRM_VIEWING", taskType: "VIEWING_CONFIRM", label: "تأكيد موعد المعاينة", button: "تأكيد الموعد", inline: true },
-  RECORD_VIEWING_RESULT: { code: "RECORD_VIEWING_RESULT", taskType: "VIEWING_RESULT", label: "تسجيل نتيجة المعاينة", button: "تسجيل النتيجة", inline: false },
+  RECORD_VIEWING_RESULT: { code: "RECORD_VIEWING_RESULT", taskType: "VIEWING_RESULT", label: "نتيجة المعاينة", button: "نتيجة المعاينة", inline: false },
   FOLLOW_UP: { code: "FOLLOW_UP", taskType: "JOURNEY_FOLLOW_UP", label: "متابعة الفرصة", button: "متابعة الآن", inline: false },
   AGREEMENT_FOLLOW_UP: { code: "AGREEMENT_FOLLOW_UP", taskType: "DEAL_ACTION", label: "متابعة إجراءات الاتفاق", button: "متابعة الاتفاق", inline: false }
 });
@@ -198,6 +198,7 @@ export const EVENT_TEXT = Object.freeze({
   MATCH_APPROVED: "تم اعتماد المطابقة وبدء التفاوض",
   PROPOSAL_CREATED: "تم تجهيز مقترح",
   WHATSAPP_OPENED: "تم فتح واتساب",
+  MESSAGE_SHARED: "تم فتح المشاركة",
   PARTY_REPLY: "وصل رد",
   BROKER_NOTE: "ملاحظة الوسيط",
   CALL_OUTCOME: "رد مسجّل بعد اتصال",

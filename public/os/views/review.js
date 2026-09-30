@@ -48,7 +48,7 @@ function openInfoRequest(match) {
       fields: { question: question.value }, requestKey: `${match.id}-${role}-${question.value.length}-${Date.now().toString(36)}`
     });
     clear(result);
-    append(result, proposalPreparedPanel(res.proposals[0], { onOpened: () => { sheet.close(); toast("تم فتح واتساب — ستعود المهمة عند وصول الرد", "ok"); } }));
+    append(result, proposalPreparedPanel(res.proposals[0], { onOpened: () => { sheet.close(); toast("ستعود المهمة تلقائيًا عند وصول الرد", "ok"); } }));
     prepareBtn.hidden = true;
   }));
   append(body, 
@@ -118,12 +118,15 @@ export function renderReview(container, { matchId }) {
       h("button", { type: "button", class: "os-btn danger", onClick: (e) => reject(match, e.currentTarget) }, ic("x-circle"), "رفض"));
 
     append(container, 
-      h("div", { class: "os-card" },
+      h("div", { class: "os-card os-review-card" },
+        h("div", { class: "os-review-heading" },
+          h("div", {},
         h("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
-          h("span", { class: "os-badge", text: `${level.label} · ${level.score} من 100` }),
+          h("span", { class: "os-badge", text: level.label }),
           h("span", { class: "os-sub", style: { fontSize: ".82rem" }, text: "درجة محسوبة من محرك المطابقة" })),
         h("h2", { class: "os-task-title", text: `${String(request.purpose).toUpperCase() === "LEASE_REQUEST" ? "طلب استئجار" : "طلب شراء"} ↔ ${recordTitle(offer).replace(/ للبيع| للإيجار/, "")}` }),
-        h("p", { class: "os-sub", text: `العرض: ${offer.contactName || "المالك"} · الطلب: ${request.contactName || "العميل"}` }),
+        h("p", { class: "os-sub", text: `العرض: ${offer.contactName || "المالك"} · الطلب: ${request.contactName || "العميل"}` })),
+          h("div", { class: "os-score", style: { background: `conic-gradient(var(--blue) ${Math.min(100, Math.max(0, level.score))}%, var(--tint) 0)` }, "aria-label": `نسبة التوافق ${level.score}%` }, h("b", { text: `${level.score}%` }))),
         h("div", { style: { marginTop: "10px" } }, compareTable(offer, request))
       ),
       h("div", { class: "os-grid-2" },

@@ -238,7 +238,8 @@ export async function supersedeProposal(ctx, officeId, proposalId, byProposalId 
  * The broker pressed «إرسال عبر واتساب». This proves only that WhatsApp was opened
  * with the prepared message — never that it was sent, delivered or read.
  */
-export async function recordHandoff(ctx, { actor, officeId, proposalId }) {
+export async function recordHandoff(ctx, { actor, officeId, proposalId, channel = "WHATSAPP" }) {
+  if (!["WHATSAPP", "SHARE"].includes(channel)) throw ctx.deps.appError("invalid_channel", 400, "قناة المشاركة غير صالحة");
   const segments = ["offices", officeId, "proposals", proposalId];
   const proposal = await ctx.store.get(segments);
   if (!proposal || proposal.officeId !== officeId) throw ctx.deps.appError("proposal_not_found", 404, "المقترح غير موجود");
@@ -250,6 +251,7 @@ export async function recordHandoff(ctx, { actor, officeId, proposalId }) {
   const count = Number(proposal.handoffCount || 0) + 1;
   await ctx.store.set(segments, {
     sendState: SEND_STATE.OPENED_EXTERNAL,
+    handoffChannel: channel,
     handoffCount: count,
     firstOpenedAt: first ? now : proposal.firstOpenedAt || now,
     lastOpenedAt: now,
@@ -274,12 +276,12 @@ export async function recordHandoff(ctx, { actor, officeId, proposalId }) {
     mutate: () => ({}),
     add: [{
       type: "AWAITING_REPLY", ref: proposalId, status: "WAITING_EXTERNAL_RESPONSE", dueAt: followUpAt,
-      reason: `${proposal.label} — بانتظار رد ${who}`, actionLabel: "متابعة عبر واتساب", proposalId
+      reason: `${proposal.label} — بانتظار رد ${who}`, actionLabel: "إرسال تذكير", proposalId
     }],
     event: {
-      type: "WHATSAPP_OPENED", key: [proposalId, count],
-      text: first ? `تم فتح واتساب لـ${who} بالمقترح` : `أعيد فتح واتساب لـ${who} للمتابعة`,
-      payload: { proposalId, handoffCount: count }
+      type: channel === "SHARE" ? "MESSAGE_SHARED" : "WHATSAPP_OPENED", key: [proposalId, count],
+      text: channel === "SHARE" ? `تم فتح مشاركة المقترح لـ${who} عبر تطبيق آخر` : first ? `تم فتح واتساب لـ${who} بالمقترح` : `أعيد فتح واتساب لـ${who} للمتابعة`,
+      payload: { proposalId, handoffCount: count, channel }
     }
   });
   // The broker acted on earlier replies by sending the next proposal: lock those replies.

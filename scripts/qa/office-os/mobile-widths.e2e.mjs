@@ -31,9 +31,10 @@ const SCREENS = [
   { name: "record-form", url: `/#/record/${s.review.requestId}/edit`, wait: 'input[name="district"]' },
   { name: "review", url: `/#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "journey-negotiation", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن" },
-  { name: "composer-sheet", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن", act: async (p) => { await p.getByRole("button", { name: "مقترح جديد عبر واتساب" }).click(); await p.locator(".os-sheet").waitFor(); } },
+  { name: "party-proposal", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن", act: async (p) => { await p.getByRole("button", { name: "إرسال مقترح إلى المالك", exact: true }).click(); await p.locator(".os-sheet").waitFor(); } },
+  { name: "composer-sheet", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن", act: async (p) => { await p.locator(".os-communication > summary").click(); await p.locator(".os-communication").getByRole("button", { name: "إرسال مقترح", exact: true }).click(); await p.locator(".os-sheet").waitFor(); } },
   { name: "journey-viewing-confirm", url: `/#/journey/${s.viewingConfirm.journeyId}`, wait: "text=تأكيد موعد المعاينة" },
-  { name: "journey-viewing-result", url: `/#/journey/${s.viewingResult.journeyId}`, wait: "text=تسجيل نتيجة المعاينة" },
+  { name: "journey-viewing-result", url: `/#/journey/${s.viewingResult.journeyId}`, wait: "text=نتيجة المعاينة" },
   { name: "journey-closed", url: `/#/journey/${s.closed.journeyId}`, wait: "text=تمت الصفقة" },
   { name: "settings", url: "/#/settings", wait: "text=إتمام الصفقات" },
   { name: "reply-page", url: `/r#${s.negotiation.ownerReplyToken}`, wait: "text=اختر ردك", auth: false },
@@ -74,7 +75,7 @@ function layoutIssues() {
   return issues;
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const results = [];
 const consoleErrors = [];
 for (const width of WIDTHS) {
