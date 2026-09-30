@@ -1,8 +1,7 @@
 /**
- * جلسة التفاوض — the page behind /s#<token> for the owner or the client.
- * No account: the token (URL fragment, never sent to Hosting) is the key. Only fixed
- * buttons; the only typed value is a price in digits (or a viewing time).
- * The page refreshes itself while open, so moves from the other side appear directly.
+ * جلسة التفاوض — /s#<token> for owner/client. One issue at a time, one compact
+ * decision surface. The detailed pricing helpers remain available only behind
+ * «تعديل العرض» so the page never becomes a wall of buttons.
  */
 
 import { h, ic, clear, append } from "./core/dom.js";
@@ -17,7 +16,7 @@ const POLL_MS = 5000;
 
 let current = null;
 let version = "";
-let open = { typed: "", value: "" };
+let open = { typed: "", value: "", modify: false };
 let busy = false;
 let seq = 0;
 
@@ -44,10 +43,14 @@ function head(office = {}, session = {}) {
     h("span", { class: "os-ref", text: `أنت: ${session.roleLabel || ""}` }));
 }
 
-const ICON = { accept: "check-circle", minus2: "chev-down", minus5: "chev-down", plus2: "chev-up", plus5: "chev-up", compromise: "swap", manual: "edit", to_broker: "send", intervention: "alert", viewing_ok: "check-circle", viewing_other: "calendar" };
+const ICON = {
+  accept: "check-circle", reject: "close", minus2: "chev-down", minus5: "chev-down",
+  plus2: "chev-up", plus5: "chev-up", compromise: "swap", manual: "edit",
+  to_broker: "send", intervention: "alert", viewing_ok: "check-circle", viewing_other: "calendar"
+};
 
-function actionButton(action, onPick) {
-  const b = h("button", { type: "button", class: `os-option os-session-act${action.id === "intervention" ? " alert" : ""}`, "data-session-action": action.id },
+function actionButton(action, onPick, className = "") {
+  const b = h("button", { type: "button", class: `os-option os-session-act ${className}`.trim(), "data-session-action": action.id },
     ic(ICON[action.id] || action.icon || "check"),
     h("span", { text: action.label }),
     action.price ? h("small", { text: formatPrice(action.price) }) : null);
@@ -58,7 +61,7 @@ function actionButton(action, onPick) {
 function typedPanel(action, onSend) {
   const isDate = action.id === "viewing_other";
   const input = isDate
-    ? h("input", { class: "os-input", type: "datetime-local", name: "viewingAt", "aria-label": "الموعد المناسب لك" })
+    ? h("input", { class: "os-input", type: "datetime-local", name: "viewingAt", "aria-label": "موعد آخر" })
     : h("input", { class: "os-input", type: "text", inputmode: "numeric", name: "price", maxlength: "15", autocomplete: "off", placeholder: "مثال: 1,150,000", "aria-label": "السعر بالأرقام" });
   input.value = open.typed === action.id ? open.value : "";
   input.addEventListener("input", () => {
@@ -69,34 +72,83 @@ function typedPanel(action, onSend) {
   const send = h("button", { type: "button", class: "os-btn primary", "data-session-send": action.id }, ic("send"), action.id === "to_broker" ? "إرسال للوسيط" : "إرسال");
   send.addEventListener("click", () => onSend(action, input.value));
   return h("div", { class: `os-session-typed${isDate ? " is-date" : ""}` },
-    h("label", { class: "os-field" }, h("span", { text: isDate ? "الموعد المناسب لك" : action.id === "to_broker" ? "السعر (يراه الوسيط فقط)" : "السعر بالأرقام فقط" }), input),
+    h("label", { class: "os-field" }, h("span", { text: isDate ? "اختر الموعد المقترح" : action.id === "to_broker" ? "السعر (يراه الوسيط فقط)" : "السعر بالأرقام فقط" }), input),
     send);
 }
 
+function agreedCard(session) {
+  const rows = [];
+  const agreed = Array.isArray(session.agreedItems) ? session.agreedItems : [];
+  for (const item of agreed) {
+    if (!item || item.value === undefined || item.value === null || item.value === "") continue;
+    let value = item.value;
+    if (item.key === "price") value = formatPrice(item.value);
+    if (item.key === "viewing") value = formatDateTime(item.value);
+    rows.push(h("div", { class: "os-meta-row" }, ic("check-circle"), h("span", {}, `${item.label || "تم الاتفاق"}: `, h("b", { text: value }))));
+  }
+  if (!rows.length && session.agreedPrice) {
+    rows.push(h("div", { class: "os-meta-row" }, ic("check-circle"), h("span", {}, "السعر المتفق عليه: ", h("b", { text: formatPrice(session.agreedPrice) }))));
+  }
+  return h("section", { class: "os-card", "aria-label": "تم الاتفاق عليه" },
+    h("h2", { class: "os-h2" }, ic("check-circle"), "تم الاتفاق عليه"),
+    rows.length ? h("div", { style: { display: "grid", gap: "8px" } }, rows) : h("p", { class: "os-sub", text: "لم يُعتمد بند بعد." }));
+}
+
+function modificationPanel(actions, pick) {
+  if (!open.modify) return null;
+  const buttons = actions.map((action) => {
+    if (action.typed) {
+      const b = h("button", { type: "button", class: "os-btn soft", "aria-expanded": String(open.typed === action.id), "data-session-action": action.id }, ic(ICON[action.id]), action.label);
+      b.addEventListener("click", () => pick(action));
+      return b;
+    }
+    return actionButton(action, pick, "modify-choice");
+  });
+  return h("div", { class: "os-session-modify", "aria-label": "خيارات تعديل العرض" },
+    h("p", { class: "os-sub", text: "اختر تعديلًا واحدًا فقط:" }),
+    h("div", { class: "os-session-buttons" }, buttons));
+}
+
 function actionsBar(session) {
-  const bar = h("section", { class: "os-session-actions", "aria-label": "الإجراءات المتاحة الآن" });
+  const bar = h("section", { class: "os-session-actions", "aria-label": "المطلوب الآن" });
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
   const pick = async (action) => {
     if (action.typed) {
-      open = { typed: open.typed === action.id ? "" : action.id, value: "" };
+      open = { ...open, typed: open.typed === action.id ? "" : action.id, value: "", modify: true };
       render();
       return;
     }
     await submit(action, "", status);
   };
-  const primary = session.actions.filter((a) => !a.secondary);
-  const secondary = session.actions.filter((a) => a.secondary);
+
+  const actions = Array.isArray(session.actions) ? session.actions : [];
+  const byId = Object.fromEntries(actions.map((a) => [a.id, a]));
+  const priceMods = actions.filter((a) => ["minus2", "minus5", "plus2", "plus5", "compromise", "manual", "to_broker"].includes(a.id));
+  const viewing = actions.filter((a) => a.id === "viewing_ok" || a.id === "viewing_other");
+
+  append(bar, h("h2", { class: "os-h2" }, ic("target"), "المطلوب الآن"));
   if (session.note) append(bar, h("p", { class: "os-session-note", text: session.note }));
-  if (session.phase === "VIEWING" && session.viewingAt) append(bar, h("div", { class: "os-meta-row" }, ic("calendar"), h("span", {}, "الموعد المقترح: ", h("b", { text: formatDateTime(session.viewingAt) }))));
-  if (primary.length) append(bar, h("div", { class: `os-session-buttons n${Math.min(primary.length, 5)}` }, primary.map((a) => actionButton(a, pick))));
-  if (secondary.length) {
-    append(bar, h("div", { class: "os-session-secondary" }, secondary.map((a) => {
-      const b = h("button", { type: "button", class: "os-btn soft", "aria-expanded": String(open.typed === a.id), "data-session-action": a.id }, ic(ICON[a.id]), a.label);
-      b.addEventListener("click", () => pick(a));
-      return b;
-    })));
+  if (session.priceStatusLabel) append(bar, h("div", { class: "os-meta-row" }, ic("price"), h("b", { text: session.priceStatusLabel })));
+  if (session.phase === "VIEWING" && session.viewingAt) {
+    append(bar, h("div", { class: "os-meta-row" }, ic("calendar"), h("span", {}, "الموعد المقترح: ", h("b", { text: formatDateTime(session.viewingAt) }))));
   }
-  const typed = session.actions.find((a) => a.id === open.typed && a.typed);
+
+  if (viewing.length) {
+    append(bar, h("div", { class: "os-session-buttons n2" }, viewing.map((a) => actionButton(a, pick))));
+  } else if (byId.accept || byId.reject || priceMods.length) {
+    const top = [];
+    if (byId.accept) top.push(actionButton(byId.accept, pick, "accept"));
+    if (priceMods.length) {
+      const modify = h("button", { type: "button", class: "os-option os-session-act", "aria-expanded": String(open.modify), "data-session-action": "modify" }, ic("edit"), h("span", { text: "تعديل العرض" }));
+      modify.addEventListener("click", () => { open = { ...open, modify: !open.modify, typed: "", value: "" }; render(); });
+      top.push(modify);
+    }
+    if (byId.reject) top.push(actionButton(byId.reject, pick, "reject"));
+    append(bar, h("div", { class: `os-session-buttons n${top.length}` }, top));
+    append(bar, modificationPanel(priceMods, pick));
+  }
+
+  const typed = actions.find((a) => a.id === open.typed && a.typed);
   if (typed) append(bar, typedPanel(typed, (action, value) => submit(action, value, status)));
   append(bar, status);
   return bar;
@@ -114,7 +166,7 @@ async function submit(action, value, status) {
     else if (action.typed) body.price = value;
     const { status: code, payload } = await call("/os/session/act", body);
     if (payload.ok) {
-      open = { typed: "", value: "" };
+      open = { typed: "", value: "", modify: false };
       await refresh(true);
       return;
     }
@@ -131,6 +183,15 @@ async function submit(action, value, status) {
   }
 }
 
+function historyCard(session) {
+  const details = h("details", { class: "os-card os-session-history", "aria-label": "سجل التفاوض" },
+    h("summary", { class: "os-h2" }, ic("clock"), "السجل"),
+    h("div", { style: { marginTop: "10px" } },
+      sessionEventList(session.events, { emptyText: "لا توجد حركات بعد." }),
+      h("p", { class: "os-sub os-session-privacy", text: "لا تظهر بيانات التواصل أو الأسماء بين الطرفين." })));
+  return details;
+}
+
 function render() {
   if (!current) return;
   const { office, session } = current;
@@ -142,13 +203,11 @@ function render() {
       propertyType: session.property.propertyType, district: session.property.district,
       currentPrice: session.currentPrice, agreedPrice: session.agreedPrice, stageLabel: session.stageLabel, intervention: session.intervention
     }),
-    h("section", { class: "os-card os-session-history", "aria-label": "سجل الجلسة" },
-      h("h2", { class: "os-h2" }, ic("clock"), "سجل الجلسة"),
-      sessionEventList(session.events, { emptyText: "لا توجد حركات بعد — ابدأ بالرد على السعر." }),
-      h("p", { class: "os-sub os-session-privacy", text: "لا تظهر بيانات التواصل أو الأسماء بين الطرفين. ردودك مبدئية ويؤكدها الوسيط." })),
+    agreedCard(session),
     current.state === "CLOSED"
-      ? h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: current.message || "انتهت جلسة التفاوض." }))
-      : actionsBar(session));
+      ? h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: current.message || "انتهت هذه الرحلة." }))
+      : actionsBar(session),
+    historyCard(session));
   append(root, main);
   window.scrollTo({ top: y });
 }
@@ -156,7 +215,7 @@ function render() {
 async function refresh(force = false) {
   const { payload } = await call("/os/session/view", { token });
   if (!payload.ok) { stateView(payload.message || "هذا الرابط غير صالح.", payload.state === "REPLACED" ? "info" : "warn"); return false; }
-  const next = `${payload.state}|${payload.session?.version}|${JSON.stringify(payload.session?.actions || [])}`;
+  const next = `${payload.state}|${payload.session?.version}|${JSON.stringify(payload.session?.actions || [])}|${JSON.stringify(payload.session?.agreedItems || [])}`;
   if (force || next !== version) {
     version = next;
     current = payload;
@@ -176,7 +235,6 @@ async function start() {
       h("button", { type: "button", class: "os-btn secondary block", style: { marginTop: "10px" }, onClick: start }, ic("refresh"), "إعادة المحاولة"))));
     return;
   }
-  // Live: the other side's moves appear without reloading (only while the page is visible).
   setInterval(() => {
     if (document.visibilityState === "visible" && !busy && !open.typed && current?.state === "ACTIVE") refresh().catch(() => {});
   }, POLL_MS);
