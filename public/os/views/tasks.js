@@ -13,7 +13,7 @@ import { getDoc } from "../core/live.js";
 import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
-import { photo, taskRecord, taskStep, timeLabel, stepStrip, STEPS } from "./reference-layout.js";
+import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
 import { proposalPreparedPanel } from "./composer.js";
 import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
 
@@ -94,7 +94,9 @@ function taskCard(task, now) {
   const meta=parseMeta(task),client=recordById(task.requestId||meta.clientRequestId),contactName=client?.contactName||view.contactName;
   const actionTitle=model.type==="MATCH_REVIEW"?"تطابق جديد":model.type==="VIEWING_CONFIRM"?"تأكيد موعد المعاينة":model.type==="SEND_PROPOSAL"?"متابعة عرض سعر":model.button;
   button.classList.remove("block");button.lastChild.remove();button.append(ic(model.icon));
-  return h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitle}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),h("span",{class:"ref-time"},ic("clock"),timeLabel(task))),h("div",{},button,h("button",{type:"button",class:"os-icon-btn","aria-label":"تفاصيل المهمة",onClick:()=>go("task/"+task.id)},ic("chev-left")))));
+  // One main button per card; tapping the card itself opens «تفاصيل المهمة» (no second arrow).
+  const card=h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitle}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
+  return card;
 }
 
 export function renderTasks(container, { filter = "all" } = {}) {

@@ -26,7 +26,7 @@ export function renderLogin(root, { onSignedIn, message = "" } = {}) {
   });
   append(root, h("main", { class: "os-app", style: { maxWidth: "460px" } },
     h("div", { class: "os-public-hero" },
-      h("div", { class: "os-public-logo" }, ic("building")),
+      h("div", { class: "os-public-logo" }, h("img", { src: "/icons/iaqar-logo.png", alt: "iAqar.ai", class: "os-site-logo" })),
       h("h1", { class: "os-public-title", text: "دخول المكتب" }),
       h("div", { class: "os-public-rule" }),
       h("p", { class: "os-sub", text: "للمكاتب والوسطاء المعتمدين فقط. العملاء والملاك يرسلون بياناتهم من رابط المكتب دون حساب." })),

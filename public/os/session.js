@@ -37,7 +37,7 @@ function stateView(message, tone = "warn") {
 }
 
 function head(office = {}, session = {}) {
-  const logo = office.logoUrl ? h("img", { src: office.logoUrl, alt: "" }) : ic("building");
+  const logo = office.logoUrl ? h("img", { src: office.logoUrl, alt: "" }) : h("img", { src: "/icons/iaqar-logo.png", alt: "iAqar.ai", class: "os-site-logo" });
   return h("header", { class: "os-session-head" },
     h("div", { class: "os-session-office" }, h("span", { class: "logo" }, logo), h("span", { text: office.officeName || "المكتب العقاري" })),
     h("h1", { class: "os-page-title", text: "جلسة التفاوض" }),

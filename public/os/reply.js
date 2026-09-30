@@ -21,7 +21,7 @@ async function call(path, body) {
 }
 
 function officeCard(office = {}) {
-  const logo = office.logoUrl ? h("img", { src: office.logoUrl, alt: "" }) : ic("building");
+  const logo = office.logoUrl ? h("img", { src: office.logoUrl, alt: "" }) : h("img", { src: "/icons/iaqar-logo.png", alt: "iAqar.ai", class: "os-site-logo" });
   return h("div", { class: "os-public-hero", style: { paddingTop: "8px" } },
     h("div", { class: "os-public-logo", style: { width: "72px", height: "72px" } }, logo),
     h("h1", { class: "os-public-title", style: { fontSize: "1.35rem" }, text: office.officeName || "المكتب العقاري" }),
