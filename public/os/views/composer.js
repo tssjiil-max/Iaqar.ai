@@ -10,14 +10,14 @@ import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
 import {
-  RECIPIENT, RECIPIENT_LABEL, SEND_STATE_LABEL, TEMPLATE_ORDER, buildProposalMessage, replyOptionsFor, templateOf, validateProposalFields
+  RECIPIENT, RECIPIENT_LABEL, SEND_STATE_LABEL, sendStateLabel, TEMPLATE_ORDER, buildProposalMessage, replyOptionsFor, templateOf, validateProposalFields
 } from "../domain/proposal-domain.js";
 import { formatNumber, parseRiyadhLocal, toRiyadhLocalInput } from "../domain/format-domain.js";
 
 /** Card for one prepared proposal: open WhatsApp synchronously inside the click. */
 export function proposalPreparedPanel(proposal, { onOpened } = {}) {
   const who = RECIPIENT_LABEL[proposal.recipientRole] || "";
-  const status = h("span", { class: "os-badge muted", text: SEND_STATE_LABEL[proposal.sendState] || SEND_STATE_LABEL.READY });
+  const status = h("span", { class: "os-badge muted", text: sendStateLabel(proposal) });
   const textArea = h("textarea", { class: "os-textarea", readonly: true, rows: "5", text: proposal.messageText, "aria-label": `رسالة ${who}` });
   const copyBtn = h("button", { type: "button", class: "os-btn secondary" }, ic("clipboard"), "نسخ الرسالة");
   copyBtn.addEventListener("click", async () => {
@@ -33,17 +33,34 @@ export function proposalPreparedPanel(proposal, { onOpened } = {}) {
       openWhatsApp(proposal.whatsappUrl);
       status.textContent = SEND_STATE_LABEL.OPENED_EXTERNAL;
       status.className = "os-badge";
-      api("/os/proposals/handoff", { officeId: session.officeId, proposalId: proposal.proposalId }, { keepalive: true })
+      api("/os/proposals/handoff", { officeId: session.officeId, proposalId: proposal.proposalId, channel: "WHATSAPP" }, { keepalive: true })
         .then(() => onOpened?.(proposal))
         .catch((error) => toast(error.message, "bad"));
     });
   }
+  const shareBtn = h("button", { type: "button", class: "os-btn secondary", "aria-label": `مشاركة المقترح إلى ${who} عبر تطبيق آخر` }, ic("send"), "تطبيق آخر");
+  shareBtn.addEventListener("click", async () => {
+    try {
+      if (!navigator.share) {
+        await navigator.clipboard.writeText(proposal.messageText);
+        toast("تم نسخ الرسالة ورابط الرد — ألصقها في التطبيق المناسب", "ok");
+        return;
+      }
+      await navigator.share({ text: proposal.messageText });
+      await api("/os/proposals/handoff", { officeId: session.officeId, proposalId: proposal.proposalId, channel: "SHARE" });
+      status.textContent = "تم فتح المشاركة";
+      status.className = "os-badge";
+      onOpened?.({ ...proposal, handoffChannel: "SHARE" });
+    } catch (error) {
+      if (error?.name !== "AbortError") toast(error.message || "تعذّرت المشاركة — يمكنك نسخ الرسالة", "bad");
+    }
+  });
   return h("div", { class: "os-party", style: { marginTop: "8px" }, "data-proposal": proposal.proposalId },
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "6px" } },
       h("b", { style: { color: "var(--navy)" }, text: `إلى ${who}${proposal.recipientName ? ` — ${proposal.recipientName}` : ""}` }), status),
     textArea,
-    h("div", { class: "os-btn-row", style: { marginTop: "8px" } }, sendEl, copyBtn),
-    h("p", { class: "os-sub", style: { fontSize: ".82rem", marginTop: "6px" }, text: "يحفظ النظام فتح واتساب فقط. تأكد من إرسال الرسالة من واتساب." })
+    h("div", { class: "os-btn-row", style: { marginTop: "8px" } }, sendEl, shareBtn, copyBtn),
+    h("p", { class: "os-sub", style: { fontSize: ".82rem", marginTop: "6px" }, text: "رد الطرف من الرابط يحدّث المهمة تلقائيًا. فتح التطبيق لا يؤكد تسليم الرسالة." })
   );
 }
 
@@ -150,7 +167,7 @@ export function openComposer(journey, { offer = {}, request = {}, defaultKind = 
       officeId: session.officeId, journeyId: journey.journeyId || journey.id, kind, recipients, fields: fieldValues(), messages, requestKey: `${requestKey}-${kind}-${recipients.join("")}`
     });
     clear(result);
-    append(result, h("div", { class: "os-alert ok", text: "تم تجهيز المقترح. اضغط «إرسال عبر واتساب» لكل طرف." }));
+    append(result, h("div", { class: "os-alert ok", text: "تم تجهيز المقترح. أرسله عبر واتساب أو شاركه مع تطبيق آخر." }));
     for (const p of res.proposals) append(result, proposalPreparedPanel(p));
     prepareBtn.hidden = true;
     body.querySelectorAll("input, textarea:not([readonly]), .os-chip, .os-seg button").forEach((el) => { if (!result.contains(el)) el.disabled = true; });

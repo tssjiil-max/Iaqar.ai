@@ -19,7 +19,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const { startOfficeOsHarness, OFFICE_A } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
 
 const h = await startOfficeOsHarness();
-const browser = await chromium.launch();
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const mobile = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "ar-SA", hasTouch: true };
 const checks = [];
 const errors = [];
@@ -31,10 +31,14 @@ function watch(page, label) {
   page.on("pageerror", (e) => errors.push(`${label} pageerror: ${e.message}`));
 }
 async function shot(page, name) {
+  if (name === "09-workspace-start") await page.locator(".os-toast").waitFor({ state: "hidden" });
   await page.waitForTimeout(700);
   const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth);
   check(`no horizontal scroll: ${name}`, overflow <= 1, `overflow=${overflow}px`);
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
+  if (["07-daily-tasks-review", "09-workspace-start", "17-workspace-viewing-result"].includes(name)) {
+    await page.screenshot({ path: path.join(OUT, `${name}-mobile.png`) });
+  }
 }
 const until = async (fn, { timeout = 8000, label = "condition" } = {}) => {
   const start = Date.now();
@@ -116,9 +120,8 @@ try {
 
   // 4 — price proposal to both parties via WhatsApp
   step = "4: price proposal to both parties via WhatsApp";
-  await owner.locator("#now").getByRole("button", { name: "تجهيز المقترح" }).click();
+  await owner.locator("#now").getByRole("button", { name: "اقتراح سعر" }).click();
   const sheet = owner.locator(".os-sheet");
-  await sheet.getByRole("button", { name: "اقتراح سعر" }).click();
   await sheet.locator('input[name="price"]').fill("1,200,000");
   await shot(owner, "10-composer");
   await sheet.getByRole("button", { name: "تجهيز المقترح والرابط" }).click();
@@ -133,6 +136,17 @@ try {
   await sheet.getByText("تم فتح واتساب").first().waitFor();
   const clientProposal = await until(() => h.store.list(`offices/${OFFICE_A}/proposals`).find((p) => p.recipientRole === "client" && p.sendState === "OPENED_EXTERNAL"), { label: "handoff recorded" });
   check("handoff recorded as opened only (no sent/delivered)", !clientProposal.sentAt && !clientProposal.deliveredAt);
+  const ownerProposal = h.store.list(`offices/${OFFICE_A}/proposals`).find((p) => p.recipientRole === "owner" && p.status === "ACTIVE");
+  await owner.evaluate(() => { Object.defineProperty(navigator, "share", { configurable: true, writable: true, value: async (data) => { window.sharedProposalText = data.text; } }); });
+  await sheet.locator(`[data-proposal="${ownerProposal.id}"]`).getByRole("button", { name: "مشاركة المقترح إلى المالك عبر تطبيق آخر", exact: true }).click();
+  await until(() => h.store.list(`offices/${OFFICE_A}/operations`).some((op) => op.type === "AWAITING_REPLY" && JSON.parse(op.metadataJson || "{}").proposalId === ownerProposal.id && op.status === "WAITING_EXTERNAL_RESPONSE"));
+  check("other-app share includes the same reply link", (await owner.evaluate(() => window.sharedProposalText)).includes(ownerProposal.replyUrl));
+  check("other-app share updates waiting task automatically", h.store.list(`offices/${OFFICE_A}/operations`).some((op) => op.type === "AWAITING_REPLY" && JSON.parse(op.metadataJson || "{}").proposalId === ownerProposal.id && op.status === "WAITING_EXTERNAL_RESPONSE"));
+  const shareCount = h.store.get(`offices/${OFFICE_A}/proposals/${ownerProposal.id}`).handoffCount;
+  await owner.evaluate(() => { navigator.share = async () => { throw new DOMException("Cancelled", "AbortError"); }; });
+  await sheet.locator(`[data-proposal="${ownerProposal.id}"]`).getByRole("button", { name: "مشاركة المقترح إلى المالك عبر تطبيق آخر", exact: true }).click();
+  await owner.waitForTimeout(100);
+  check("cancelled share does not change the task or handoff count", h.store.get(`offices/${OFFICE_A}/proposals/${ownerProposal.id}`).handoffCount === shareCount);
   await owner.locator(".os-sheet .os-icon-btn").click();
 
   // 5 — client replies from the lightweight page
@@ -187,7 +201,7 @@ try {
   await confirmCard.getByRole("button", { name: "تأكيد الموعد" }).click();
   await until(() => h.store.get(`offices/${OFFICE_A}/journeys/${journey.id}`).viewing.state === "CONFIRMED", { label: "viewing confirmed" });
   await owner.goto(`${h.origin}/#/journey/${journey.id}`);
-  await owner.getByText("المطلوب الآن: تسجيل نتيجة المعاينة").waitFor();
+  await owner.getByText("المطلوب الآن: نتيجة المعاينة").waitFor();
   const pressed = await owner.locator('#now .os-option[aria-pressed="true"]').count();
   check("viewing results start with no preselection", pressed === 0);
   await owner.locator('#now [data-result="interested"]').click();

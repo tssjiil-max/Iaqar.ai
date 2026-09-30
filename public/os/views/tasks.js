@@ -8,12 +8,13 @@ import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
-import { runAction, openWhatsApp, toast } from "../core/ui.js";
+import { runAction, openSheet } from "../core/ui.js";
 import { getDoc } from "../core/live.js";
 import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
-import { recordTitle, kindOf } from "../domain/records-domain.js";
+import { proposalPreparedPanel } from "./composer.js";
+import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
 
 export function countLabel(n) {
   if (n === 0) return "لا مهام";
@@ -77,15 +78,11 @@ function taskCard(task, now) {
   if (model.inline === "CONFIRM_VIEWING" && model.journeyId) {
     button.addEventListener("click", () => runAction(button, () => api("/os/journeys/viewing/confirm", { officeId: session.officeId, journeyId: model.journeyId }), { success: "تم تأكيد موعد المعاينة" }));
   } else if (model.type === "AWAITING_REPLY" && model.proposalId) {
-    // Pre-load the prepared message so the click opens WhatsApp synchronously.
-    let url = "";
-    getDoc(session.officeId, "proposals", model.proposalId).then((p) => { url = p?.whatsappUrl || ""; }).catch(() => {});
+    let proposal;
+    getDoc(session.officeId, "proposals", model.proposalId).then((p) => { proposal = p; }).catch(() => {});
     button.addEventListener("click", () => {
-      if (!url) { go(`journey/${model.journeyId}?focus=AWAITING_REPLY`); return; }
-      openWhatsApp(url);
-      api("/os/proposals/handoff", { officeId: session.officeId, proposalId: model.proposalId }, { keepalive: true })
-        .then(() => toast("تم فتح واتساب — تأكد من إرسال الرسالة", "ok"))
-        .catch((error) => toast(error.message, "bad"));
+      if (!proposal) { go(`journey/${model.journeyId}?focus=AWAITING_REPLY`); return; }
+      openSheet("إرسال تذكير", proposalPreparedPanel({ ...proposal, proposalId: model.proposalId }));
     });
   } else {
     button.addEventListener("click", primaryAction(task, model));
@@ -98,15 +95,33 @@ function taskCard(task, now) {
     ? h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`journey/${model.journeyId}`) }, "فتح مساحة الفرصة")
     : null;
 
-  return h("article", { class: "os-card", "data-task": task.id, "data-type": model.type },
+  const meta = parseMeta(task);
+  const offer = recordById(task.offerId || meta.ownerOfferId);
+  const request = recordById(task.requestId || meta.clientRequestId);
+  const comparison = model.type === "MATCH_REVIEW" && offer && request
+    ? h("div", { class: "os-task-pair" }, [offer, request].map((record) => {
+      const view = recordView(record);
+      return h("div", { class: `os-pair-side ${view.kind.toLowerCase()}` },
+        h("b", {}, ic(view.kind === "OFFER" ? "home" : "user"), view.kind === "OFFER" ? "عرض المالك" : "طلب العميل"),
+        h("span", { text: view.priceLabel || "السعر غير محدد" }),
+        view.areaLabel ? h("small", { text: view.areaLabel }) : null);
+    })) : null;
+  return h("article", { class: "os-card os-work-card", "data-task": task.id, "data-type": model.type },
     h("div", { class: "os-task" },
       h("div", { class: "os-task-body" },
         h("span", { class: `os-badge${model.overdue ? " late" : model.waiting ? " muted" : ""}`, text: model.badge }),
         h("h3", { class: "os-task-title", text: model.title }),
         model.reason ? h("p", { class: "os-task-reason", text: model.reason }) : null
       ),
-      h("div", { class: "os-task-icon", "aria-hidden": "true" }, ic(model.icon)),
-      h("div", { class: "os-task-foot" }, button, dueRow, lastRow, nextRow, secondary)
+      model.type === "MATCH_REVIEW" && Number(meta.score) > 0
+        ? h("div", { class: "os-score", style: { background: `conic-gradient(var(--blue) ${Math.min(100, Math.max(0, Number(meta.score)))}%, var(--tint) 0)` }, "aria-label": `نسبة التوافق ${meta.score}%` }, h("b", { text: `${Math.round(Number(meta.score))}%` }))
+        : h("div", { class: "os-task-icon", "aria-hidden": "true" }, ic(model.icon)),
+      comparison,
+      h("div", { class: "os-task-foot" },
+        dueRow,
+        h("div", { class: "os-task-action" }, button, secondary),
+        lastRow,
+        nextRow ? h("span", { class: "os-task-next", text: model.nextStep }) : null)
     )
   );
 }

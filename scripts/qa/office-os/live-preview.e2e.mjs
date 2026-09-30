@@ -252,7 +252,7 @@ try {
   await confirmCard.getByRole("button", { name: "تأكيد الموعد" }).click();
   await until(async () => (await journeyDoc.ref.get()).data().viewing.state === "CONFIRMED", "viewing confirmed");
   await page.goto(`${PREVIEW_URL}/#/journey/${journeyDoc.id}`);
-  await page.getByText("المطلوب الآن: تسجيل نتيجة المعاينة").waitFor();
+  await page.getByText("المطلوب الآن: نتيجة المعاينة").waitFor();
   await shot(page, "13-workspace-viewing");
   await page.locator('#now [data-result="interested"]').click();
   await page.getByRole("button", { name: "حفظ النتيجة ومتابعة الصفقة" }).click();

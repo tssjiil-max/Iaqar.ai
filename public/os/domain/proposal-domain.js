@@ -31,6 +31,11 @@ export const SEND_STATE_LABEL = Object.freeze({
   OPENED_EXTERNAL: "تم فتح واتساب"
 });
 
+export function sendStateLabel(proposal = {}) {
+  if (proposal.sendState === SEND_STATE.OPENED_EXTERNAL && proposal.handoffChannel === "SHARE") return "تم فتح المشاركة";
+  return SEND_STATE_LABEL[proposal.sendState] || SEND_STATE_LABEL.READY;
+}
+
 const DAY = 24 * 3600 * 1000;
 export const DEFAULT_LINK_TTL_MS = 7 * DAY;
 

@@ -124,6 +124,17 @@ test("price proposal → WhatsApp handoff (opened only) → reply via link, no d
   assert.equal(waiting.length, 1);
   assert.equal(waiting[0].status, "WAITING_EXTERNAL_RESPONSE");
 
+  const invalidChannel = await call("/os/proposals/handoff", { officeId: OFFICE_A, proposalId: client.proposalId, channel: "UNKNOWN" }, OWNER_A);
+  assert.equal(invalidChannel.status, 400);
+  const shared = await call("/os/proposals/handoff", { officeId: OFFICE_A, proposalId: client.proposalId, channel: "SHARE" }, OWNER_A);
+  assert.equal(shared.status, 200);
+  assert.equal(shared.body.first, false);
+  const sharedProposal = h.store.get(`offices/${OFFICE_A}/proposals/${client.proposalId}`);
+  assert.equal(sharedProposal.handoffChannel, "SHARE");
+  assert.ok(!sharedProposal.sentAt && !sharedProposal.deliveredAt);
+  assert.equal(ops().filter((op) => op.type === "AWAITING_REPLY" && active(op)).length, 1, "switching apps must not duplicate tasks");
+  assert.ok(list(`offices/${OFFICE_A}/journeys/${ctx.journeyId}/events`).some((e) => e.type === "MESSAGE_SHARED"));
+
   const view = await call("/os/reply/view", { token: ctx.clientToken });
   assert.equal(view.body.state, "ACTIVE");
   assert.equal(view.body.office.officeName, "مكتب سلطان العقاري");
