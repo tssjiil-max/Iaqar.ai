@@ -51,7 +51,7 @@ export function primaryActionForStage(stage) {
     [FLOW_STAGE.PRICE_DECISION]: { label: "مراجعة السعر", href: "session" },
     [FLOW_STAGE.PRICE_NEGOTIATION]: { label: "فتح التفاوض", href: "session" },
     [FLOW_STAGE.VIEWING_SCHEDULING]: { label: "تحديد موعد", href: "session" },
-    [FLOW_STAGE.VIEWING]: { label: "تفاصيل المعاينة", href: "journey" },
+    [FLOW_STAGE.VIEWING]: { label: "تفاصيل المعاينة", href: "session" },
     [FLOW_STAGE.VIEWING_RESULT]: { label: "تسجيل النتيجة", href: "journey" },
     [FLOW_STAGE.FINAL_AGREEMENT]: { label: "إنهاء الصفقة", href: "journey" },
     [FLOW_STAGE.CLOSED]: { label: "", href: "" }
@@ -63,7 +63,7 @@ export function routeForStage(journeyId, stage, { matchId = "" } = {}) {
   const id = encodeURIComponent(String(journeyId || ""));
   if (!id) return "tasks";
   if (stage === FLOW_STAGE.MATCHED && matchId) return `review/${encodeURIComponent(matchId)}`;
-  if ([FLOW_STAGE.PRICE_DECISION, FLOW_STAGE.PRICE_NEGOTIATION, FLOW_STAGE.VIEWING_SCHEDULING].includes(stage)) return `session/${id}`;
+  if ([FLOW_STAGE.PRICE_DECISION, FLOW_STAGE.PRICE_NEGOTIATION, FLOW_STAGE.VIEWING_SCHEDULING, FLOW_STAGE.VIEWING].includes(stage)) return `session/${id}`;
   if (stage === FLOW_STAGE.CLOSED) return "tasks";
   return `journey/${id}?focus=${encodeURIComponent(stage)}`;
 }
