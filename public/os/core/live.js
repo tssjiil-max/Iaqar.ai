@@ -1,6 +1,7 @@
 /**
  * Live data — Firestore listeners scoped to the signed-in office. All reads are
- * member-only by rules; all writes go through the Worker.
+ * member-only by rules; all writes go through the Worker except manager-owned
+ * office profile/settings fields explicitly allowed by Firestore rules.
  */
 
 import { db, docData } from "./runtime.js";
@@ -72,4 +73,9 @@ export async function officeSetting(officeId, id) {
 /** officeSettings writes are allowed for managers by rules (officeId must match). */
 export async function saveOfficeSetting(officeId, id, data) {
   await office(officeId).collection("officeSettings").doc(id).set({ ...data, officeId, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
+/** Core office profile fields are manager-owned and remain on the office document. */
+export async function saveOfficeProfile(officeId, data) {
+  await office(officeId).set({ ...data, updatedAt: new Date().toISOString() }, { merge: true });
 }
