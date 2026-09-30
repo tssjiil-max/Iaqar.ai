@@ -64,6 +64,7 @@ function modelFor(task, now) {
 function primaryAction(task, model) {
   if (model.opens === "review") return () => go(`review/${task.matchId}`);
   if (model.opens === "workspace" && model.journeyId) return () => go(`journey/${model.journeyId}?focus=${model.type}`);
+  if (model.opens === "session" && model.journeyId) return () => go(`session/${model.journeyId}`);
   if (model.opens === "record" && task.opportunityId) {
     return () => go(model.type === "MISSING_DATA" ? `record/${task.opportunityId}/edit` : `record/${task.opportunityId}`);
   }

@@ -105,5 +105,6 @@ await browser.close();
 h.server.close();
 fs.writeFileSync(path.join(OUT, "deep-links-report.json"), JSON.stringify({ at: new Date().toISOString(), checks }, null, 2));
 const failed = checks.filter((c) => !c.ok);
+if (process.env.GITHUB_ACTIONS) for (const c of failed) console.log(`::error title=deep-links::${JSON.stringify(c).replace(/[\r\n]/g, " ").slice(0, 600)}`);
 console.log(`\n${checks.length - failed.length}/${checks.length} link checks passed`);
 process.exitCode = failed.length ? 1 : 0;

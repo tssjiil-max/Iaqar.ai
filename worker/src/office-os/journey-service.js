@@ -420,6 +420,11 @@ export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, r
     if (proposal.linkHash) await ctx.store.set(["replyLinks", proposal.linkHash], { status: "CANCELLED", updatedAt: now });
   }
   await ctx.store.set(["offices", officeId, "matches", journey.matchId], { status: won ? "completed" : "closed", updatedAt: now }).catch(() => {});
+  // Negotiation session links stop with the deal.
+  for (const role of ["owner", "client"]) {
+    const hash = journey.sessionLinks?.[role]?.hash;
+    if (hash) await ctx.store.set(["sessionLinks", hash], { status: "CLOSED", updatedAt: now }).catch(() => {});
+  }
   return res;
 }
 

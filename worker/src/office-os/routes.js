@@ -14,10 +14,13 @@ import {
 import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
+import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
-  "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip })
+  "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip }),
+  "/os/session/view": (ctx, body, meta) => viewSession(ctx, { token: body.token, ip: meta.ip }),
+  "/os/session/act": (ctx, body, meta) => submitSessionAction(ctx, { token: body.token, action: body.action, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip })
 });
 
 const OFFICE_ROUTES = Object.freeze({
@@ -43,7 +46,11 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/journeys/close": (ctx, b, actor) => closeJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), outcome: text(b.outcome), reason: b.reason, finalPrice: b.finalPrice }),
   "/os/tasks/done": (ctx, b, actor) => completeFollowUp(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), taskId: text(b.taskId), note: b.note }),
   "/os/assist/suggest": (ctx, b, actor) => suggestForJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
-  "/os/reconcile": (ctx) => reconcileOffice(ctx, { officeId: ctx.officeId })
+  "/os/reconcile": (ctx) => reconcileOffice(ctx, { officeId: ctx.officeId }),
+  "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
+  "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
+  "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
+  "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) })
 });
 
 function text(value) {

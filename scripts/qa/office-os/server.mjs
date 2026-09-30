@@ -124,11 +124,12 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
       // Mirrors firebase.json rewrites: /o/**, /m/**, /add, /add/** → index.html
       if (file === "/" || /^\/(o|m)\//.test(file) || /^\/add(\/|$)/.test(file)) file = "/index.html";
       if (file === "/r") file = "/r.html";
+      if (file === "/s") file = "/s.html";
       const full = path.join(ROOT, "public", file);
       if (!full.startsWith(path.join(ROOT, "public")) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) return send(404, "text/plain", "not found");
       const ext = path.extname(full);
       let body = fs.readFileSync(full);
-      if (file === "/index.html" || file === "/r.html") body = injectShell(body.toString("utf8"));
+      if (file === "/index.html" || file === "/r.html" || file === "/s.html") body = injectShell(body.toString("utf8"));
       send(200, `${TYPES[ext] || "application/octet-stream"}; charset=utf-8`, body);
     } catch (error) {
       res.writeHead(500); res.end(String(error?.stack || error));

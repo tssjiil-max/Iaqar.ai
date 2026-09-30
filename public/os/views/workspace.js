@@ -23,7 +23,8 @@ const EVENT_ICON = {
   MATCH_APPROVED: "doc-check", PROPOSAL_CREATED: "note", WHATSAPP_OPENED: "whatsapp", MESSAGE_SHARED: "send", PARTY_REPLY: "reply",
   BROKER_NOTE: "edit3", CALL_OUTCOME: "phone", VIEWING_CONFIRMED: "calendar", VIEWING_RESULT: "eye",
   STAGE_CHANGED: "flag", PAUSED: "pause", RESUMED: "play", CLOSED_WON: "handshake", CLOSED_LOST: "x-circle",
-  PROPOSAL_SUPERSEDED: "refresh", FOLLOW_UP_DONE: "check"
+  PROPOSAL_SUPERSEDED: "refresh", FOLLOW_UP_DONE: "check",
+  SESSION_MOVE: "handshake", SESSION_BROKER_MESSAGE: "send", SESSION_OPENED: "link", SESSION_LINK: "link", SESSION_RESOLVED: "check"
 };
 const SOURCE_LABEL = { [EVENT_SOURCE.REPLY_LINK]: "عبر رابط الرد", [EVENT_SOURCE.BROKER_NOTE]: "سجّله الوسيط", [EVENT_SOURCE.SYSTEM]: "النظام", [EVENT_SOURCE.BROKER]: "الوسيط" };
 
@@ -116,6 +117,12 @@ function nowAction(journey, proposals, offer, request, draft) {
     return card;
   }
   const type = action?.type || "";
+  if (type.startsWith("SESSION_")) {
+    append(card, title(action.label && action.label !== "فتح جلسة التفاوض" ? action.label : type === "SESSION_INTERVENTION" ? "تدخل مطلوب" : "متابعة جلسة التفاوض"),
+      h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: action.reason }),
+      h("button", { type: "button", class: "os-btn primary block", onClick: () => go(`session/${jid}`) }, ic("handshake"), "فتح جلسة التفاوض"));
+    return card;
+  }
   if (type === "VIEWING_RESULT") {
     append(card, title("نتيجة المعاينة"),
       h("div", { class: "os-meta-row", style: { marginBottom: "8px" } }, ic("calendar"), h("span", { text: `${VIEWING_STATE_LABEL[journey.viewing?.state] || ""} · ${formatDateTime(journey.viewing?.at)}` })),
@@ -319,8 +326,11 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
           h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`record/${journey.requestId}`) }, "سجل الطلب")))
     );
     const communication = isJourneyOpen(journey) ? communicationCard(journey, offer, request, draft) : null;
+    const sessionEntry = h("button", { type: "button", class: "os-btn secondary block os-session-entry", onClick: () => go(`session/${journeyId}`) },
+      ic("handshake"), "جلسة التفاوض", journey.session?.intervention?.required ? h("span", { class: "os-badge late", text: "تدخل مطلوب" }) : null);
     append(container, 
       summary,
+      sessionEntry,
       proposalsCard(journey, proposals),
       h("div", { class: "os-card os-parties-card" },
         h("div", { class: "os-parties" }, partyCard(RECIPIENT.OWNER, recordById(journey.offerId), journey), partyCard(RECIPIENT.CLIENT, recordById(journey.requestId), journey))),
