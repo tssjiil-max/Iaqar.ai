@@ -154,6 +154,14 @@ function actionsBar(session) {
   return bar;
 }
 
+function routeForAction(action) {
+  if (action.id === "reject") return "/os/session/reject";
+  if (action.id === "accept") return current?.session?.phase === "FIXED_PRICE" ? "/os/session/fixed-decision" : "/os/session/accept";
+  if (action.id === "viewing_ok") return "/os/session/viewing-accept";
+  if (action.id === "viewing_other") return "/os/session/viewing-counter";
+  return "/os/session/act";
+}
+
 async function submit(action, value, status) {
   if (busy) return;
   busy = true;
@@ -162,9 +170,10 @@ async function submit(action, value, status) {
   try {
     seq += 1;
     const body = { token, action: action.id, submissionId: `${pageSession}${seq}${action.id.replace(/[^a-z0-9]/gi, "")}`.slice(0, 64) };
+    if (action.id === "accept" && current?.session?.phase === "FIXED_PRICE") body.accepted = true;
     if (action.id === "viewing_other") body.viewingAt = value;
     else if (action.typed) body.price = value;
-    const { status: code, payload } = await call("/os/session/act", body);
+    const { status: code, payload } = await call(routeForAction(action), body);
     if (payload.ok) {
       open = { typed: "", value: "", modify: false };
       await refresh(true);
@@ -184,12 +193,11 @@ async function submit(action, value, status) {
 }
 
 function historyCard(session) {
-  const details = h("details", { class: "os-card os-session-history", "aria-label": "سجل التفاوض" },
+  return h("details", { class: "os-card os-session-history", "aria-label": "سجل التفاوض" },
     h("summary", { class: "os-h2" }, ic("clock"), "السجل"),
     h("div", { style: { marginTop: "10px" } },
       sessionEventList(session.events, { emptyText: "لا توجد حركات بعد." }),
       h("p", { class: "os-sub os-session-privacy", text: "لا تظهر بيانات التواصل أو الأسماء بين الطرفين." })));
-  return details;
 }
 
 function render() {
