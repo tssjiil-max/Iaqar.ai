@@ -15,10 +15,12 @@ import { cancelProposal, recordHandoff } from "./proposal-service.js";
 import { createProposalsSafe } from "./proposal-flow-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
-import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks } from "./session-service.js";
+import { recordSessionHandoff, resolveIntervention, sendBrokerMessage } from "./session-service.js";
+import { sessionLinksSimplified } from "./session-links-service.js";
 import { viewPublicSession, submitPublicSessionAction } from "./session-action-service.js";
 import { decideMatchReviewWithPublicPrice } from "./review-flow-service.js";
 import { recordViewingResultAfterStart } from "./viewing-result-service.js";
+import { proposeViewingTime } from "./viewing-schedule-service.js";
 import {
   acceptNegotiatedPrice, confirmViewingSafe, fixedPriceDecision,
   rejectSession, submitViewingAcceptanceSafe, submitViewingCounterSafe
@@ -60,6 +62,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/proposals/cancel": (ctx, b, actor) => cancelProposal(ctx, { actor, officeId: ctx.officeId, proposalId: text(b.proposalId) }),
   "/os/journeys/note": (ctx, b, actor) => addBrokerNote(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), text: b.text, party: text(b.party), optionLabel: b.optionLabel, requestKey: text(b.requestKey) }),
   "/os/journeys/ack-reply": (ctx, b, actor) => acknowledgeReply(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), proposalId: text(b.proposalId) }),
+  "/os/journeys/viewing/propose": (ctx, b, actor) => proposeViewingTime(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), viewingAt: b.viewingAt, viewingEndAt: b.viewingEndAt }),
   "/os/journeys/viewing/confirm": (ctx, b, actor) => confirmViewingSafe(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/journeys/viewing/result": (ctx, b, actor) => recordViewingResultAfterStart(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), result: text(b.result), note: b.note }),
   "/os/journeys/stage": (ctx, b, actor) => moveStage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), stage: text(b.stage) }),
@@ -69,7 +72,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/tasks/done": (ctx, b, actor) => completeFollowUp(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), taskId: text(b.taskId), note: b.note }),
   "/os/assist/suggest": (ctx, b, actor) => suggestForJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/reconcile": (ctx) => reconcileOffice(ctx, { officeId: ctx.officeId }),
-  "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
+  "/os/session/links": (ctx, b, actor) => sessionLinksSimplified(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) })
