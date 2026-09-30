@@ -9,13 +9,10 @@ import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { watchDoc, watchJourneyEvents } from "../core/live.js";
-import { recordById } from "../core/state.js";
 import { newRequestKey, openWhatsApp, runAction, toast } from "../core/ui.js";
 import { ROLE_LABEL, parsePayload, sessionEventCard, sessionPrices, sessionStageLabel, isOpenJourney } from "../domain/session-domain.js";
-import { formatDateTime, formatPrice } from "../domain/format-domain.js";
+import { formatDateTime, formatPrice, parseRiyadhLocal, toRiyadhLocalInput } from "../domain/format-domain.js";
 import { FLOW_STAGE, priceStatusLabel } from "../domain/flow-domain.js";
-import { RECIPIENT } from "../domain/proposal-domain.js";
-import { openComposer } from "./composer.js";
 import { sessionEventList, sessionSummary } from "./session-parts.js";
 
 function isSessionEvent(event) {
@@ -37,11 +34,7 @@ function linksCard(journey, state) {
   const body = h("div", {});
   if (!state.links) {
     const load = h("button", { type: "button", class: "os-btn secondary block" }, ic("link"), "تجهيز روابط الطرفين");
-    load.addEventListener("click", () => runAction(load, async () => {
-      const res = await api("/os/session/links", { officeId: session.officeId, journeyId: jid });
-      state.links = res.links;
-      state.redraw();
-    }));
+    load.addEventListener("click", () => runAction(load, () => state.reloadLinks(), { success: "تم تجهيز روابط الطرفين" }));
     append(body, h("p", { class: "os-sub", text: "لكل طرف رابط خاص بدوره، بلا تسجيل دخول." }), load);
   } else {
     const row = (role) => {
@@ -59,6 +52,7 @@ function linksCard(journey, state) {
       replace.addEventListener("click", () => runAction(replace, async () => {
         const res = await api("/os/session/links", { officeId: session.officeId, journeyId: jid, replace: role });
         state.links = res.links;
+        state.linksStage = String(journey.flowStage || "");
         state.redraw();
       }, { success: `تم استبدال رابط ${ROLE_LABEL[role]}` }));
       return h("div", { class: "os-session-link" },
@@ -67,7 +61,8 @@ function linksCard(journey, state) {
     };
     append(body, h("div", { class: "os-session-links" }, row("owner"), row("client")));
   }
-  return h("details", { class: "os-card", "aria-label": "روابط الطرفين" },
+  const viewingOpen = [FLOW_STAGE.VIEWING_SCHEDULING, FLOW_STAGE.VIEWING].includes(String(journey.flowStage || "")) && Boolean(journey.viewing?.at);
+  return h("details", { class: "os-card", "aria-label": "روابط الطرفين", open: viewingOpen },
     h("summary", { class: "os-h2" }, ic("link"), "روابط الطرفين"),
     h("div", { style: { marginTop: "10px" } }, body));
 }
@@ -100,40 +95,55 @@ function partiesCard(journey) {
   const sessionState = journey.session || {};
   const privatePrices = sessionState.privatePrices || {};
   const last = sessionState.lastMove || {};
+  const inViewing = [FLOW_STAGE.VIEWING_SCHEDULING, FLOW_STAGE.VIEWING].includes(String(journey.flowStage || ""));
   const side = (role) => {
     const title = role === "owner" ? "المالك" : "العميل";
     const price = prices[role];
-    const lastText = last.role === role ? "آخر حركة منه" : "بانتظار دوره";
+    const accepted = Boolean(journey.viewing?.acceptedBy?.[role]);
+    const lastText = inViewing ? (accepted ? "وافق على الموعد" : "بانتظار رد الموعد") : last.role === role ? "آخر حركة منه" : "بانتظار دوره";
     return h("div", { class: "os-card os-session-party", "data-party": role },
       h("div", { class: "os-h2" }, ic(role === "owner" ? "owner" : "client"), title),
-      h("div", { class: "os-meta-row" }, ic("price"), h("span", {}, "السعر الحالي: ", h("b", { text: formatPrice(price) || "—" }))),
-      privatePrices[role]?.price ? h("div", { class: "os-meta-row" }, ic("lock"), h("span", {}, "للوسيط فقط: ", h("b", { text: formatPrice(privatePrices[role].price) }))) : null,
+      inViewing ? null : h("div", { class: "os-meta-row" }, ic("price"), h("span", {}, "السعر الحالي: ", h("b", { text: formatPrice(price) || "—" }))),
+      !inViewing && privatePrices[role]?.price ? h("div", { class: "os-meta-row" }, ic("lock"), h("span", {}, "للوسيط فقط: ", h("b", { text: formatPrice(privatePrices[role].price) }))) : null,
       h("small", { class: "os-sub", text: lastText }));
   };
   return h("section", { class: "os-card", "aria-label": "المالك والعميل" },
-    h("h2", { class: "os-h2" }, ic("handshake"), "التفاوض الحالي"),
+    h("h2", { class: "os-h2" }, ic("handshake"), inViewing ? "رد الطرفين على الموعد" : "التفاوض الحالي"),
     h("div", { class: "os-row2 os-session-parties" }, side("owner"), side("client")));
 }
 
-function viewingScheduleCard(journey) {
+function viewingScheduleCard(journey, state) {
   if (!isOpenJourney(journey) || String(journey.flowStage || "") !== FLOW_STAGE.VIEWING_SCHEDULING) return null;
   const viewing = journey.viewing || {};
-  const offer = recordById(journey.offerId) || { ...(journey.offerSummary || {}), opportunityKind: "OFFER" };
-  const request = recordById(journey.requestId) || { ...(journey.requestSummary || {}), opportunityKind: "REQUEST" };
-  const openViewing = () => openComposer(journey, { offer, request, defaultKind: "VIEWING", defaultRecipients: [RECIPIENT.OWNER, RECIPIENT.CLIENT] });
-  if (viewing.at) {
-    const confirmed = String(viewing.state || "") === "CONFIRMED";
-    const button = confirmed ? null : h("button", { type: "button", class: "os-btn secondary block", onClick: openViewing }, ic("calendar"), "تعديل الموعد");
+  const confirmed = String(viewing.state || "") === "CONFIRMED";
+  if (confirmed && viewing.at) {
     return h("section", { class: "os-card", "aria-label": "موعد المعاينة" },
       h("h2", { class: "os-h2" }, ic("calendar"), "موعد المعاينة"),
       h("div", { class: "os-meta-row" }, ic("clock"), h("b", { text: formatDateTime(viewing.at) })),
-      h("p", { class: "os-sub", text: confirmed ? "تم اعتماد الموعد." : "تم اقتراح الموعد — بانتظار موافقة الطرفين." }),
-      button);
+      h("p", { class: "os-sub", text: "تم اعتماد الموعد من الطرفين." }));
   }
+
+  const input = h("input", {
+    class: "os-input",
+    type: "datetime-local",
+    name: "viewingAt",
+    "aria-label": "موعد المعاينة",
+    min: toRiyadhLocalInput(new Date(Date.now() + 30 * 60 * 1000)),
+    value: viewing.at ? toRiyadhLocalInput(viewing.at) : ""
+  });
+  const save = h("button", { type: "button", class: "os-btn primary block" }, ic("calendar"), viewing.at ? "تعديل الموعد" : "اقتراح الموعد");
+  save.addEventListener("click", () => runAction(save, async () => {
+    const at = parseRiyadhLocal(input.value);
+    if (!at) throw new Error("اختر موعد المعاينة");
+    await api("/os/journeys/viewing/propose", { officeId: session.officeId, journeyId: journey.journeyId || journey.id, viewingAt: at.toISOString() });
+    await state.reloadLinks(true);
+  }, { success: "تم اقتراح الموعد — أرسله للطرفين من روابط الجلسة" }));
+
   return h("section", { class: "os-card", "aria-label": "تحديد موعد المعاينة" },
     h("h2", { class: "os-h2" }, ic("calendar"), "تحديد موعد المعاينة"),
-    h("p", { class: "os-sub", text: "حدد موعدًا واحدًا وأرسله للطرفين. النظام يمنع اعتماد موعد متعارض مع معاينة مؤكدة أخرى للوسيط." }),
-    h("button", { type: "button", class: "os-btn primary block", onClick: openViewing }, ic("calendar"), "تحديد موعد"));
+    viewing.at ? h("p", { class: "os-sub", text: `الموعد الحالي: ${formatDateTime(viewing.at)} — بانتظار موافقة الطرفين.` }) : h("p", { class: "os-sub", text: "اختر موعدًا واحدًا. النظام يرفض تلقائيًا أي وقت يتعارض مع معاينة مؤكدة أخرى للوسيط." }),
+    h("label", { class: "os-field" }, h("span", { text: "التاريخ والوقت" }), input),
+    save);
 }
 
 function interventionCard(journey) {
@@ -183,12 +193,31 @@ export function renderSession(container, { journeyId }) {
   let journey;
   let events = [];
   const draft = { audience: "", text: "" };
-  const state = { links: null, redraw: () => draw() };
-  api("/os/session/links", { officeId: session.officeId, journeyId }).then((res) => { state.links = res.links; draw(); }).catch(() => {});
+  const state = {
+    links: null,
+    linksStage: "",
+    linksLoading: false,
+    redraw: () => draw(),
+    reloadLinks: async (force = false) => {
+      if (state.linksLoading) return state.links;
+      const stage = String(journey?.flowStage || "");
+      if (!force && state.links && state.linksStage === stage) return state.links;
+      state.linksLoading = true;
+      try {
+        const res = await api("/os/session/links", { officeId: session.officeId, journeyId });
+        state.links = res.links;
+        state.linksStage = stage;
+        draw();
+        return state.links;
+      } finally {
+        state.linksLoading = false;
+      }
+    }
+  };
   let deferred = false;
   const draw = () => {
     const active = document.activeElement;
-    if (active && active.tagName === "TEXTAREA" && container.contains(active)) {
+    if (active && ["TEXTAREA", "INPUT"].includes(active.tagName) && container.contains(active)) {
       if (!deferred) { deferred = true; active.addEventListener("blur", () => { deferred = false; draw(); }, { once: true }); }
       return;
     }
@@ -203,7 +232,7 @@ export function renderSession(container, { journeyId }) {
     append(container,
       propertyCard(journey),
       agreedCard(journey),
-      viewingScheduleCard(journey),
+      viewingScheduleCard(journey, state),
       interventionCard(journey),
       partiesCard(journey),
       isOpenJourney(journey) ? linksCard(journey, state) : null,
@@ -212,7 +241,11 @@ export function renderSession(container, { journeyId }) {
     window.scrollTo({ top: y });
   };
   const offs = [
-    watchDoc(session.officeId, "journeys", journeyId, (doc) => { journey = doc; draw(); }, () => { journey = null; draw(); }),
+    watchDoc(session.officeId, "journeys", journeyId, (doc) => {
+      journey = doc;
+      draw();
+      if (!state.links || state.linksStage !== String(doc?.flowStage || "")) state.reloadLinks().catch(() => {});
+    }, () => { journey = null; draw(); }),
     watchJourneyEvents(session.officeId, journeyId, (rows) => { events = rows; if (journey) draw(); })
   ];
   draw();
