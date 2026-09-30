@@ -6,42 +6,21 @@
 import { h, ic, clear, emptyState, append } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { state, subscribe } from "../core/state.js";
-import { openSheet } from "../core/ui.js";
+import { openSheet, closeAllSheets } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, filterRecords, recordView, sortRecords, RECORD_KIND } from "../domain/records-domain.js";
+import { photo } from "./reference-layout.js";
 import { relativeAgo } from "../domain/format-domain.js";
 import { removeRecordFlow } from "./record-actions.js";
 
 const KIND_TABS = [
-  { id: "", label: "الكل" },
+  { id: "", label: "جميع السجلات" },
   { id: RECORD_KIND.OFFER, label: "العروض" },
   { id: RECORD_KIND.REQUEST, label: "الطلبات" }
 ];
 
 function recordCard(record) {
-  const view = recordView(record);
-  const isRequest = view.kind === RECORD_KIND.REQUEST;
-  const facts = [
-    view.priceLabel ? h("span", {}, ic("coins"), view.priceLabel) : null,
-    view.location ? h("span", {}, ic("pin"), view.location) : null,
-    view.areaLabel ? h("span", {}, ic("area"), view.areaLabel) : null,
-    view.rooms ? h("span", {}, ic("bed"), `${view.rooms} غرف`) : null
-  ];
-  const menuBtn = h("button", { type: "button", class: "os-icon-btn", "aria-label": `إجراءات ${view.title}`, onClick: () => openRecordMenu(record) }, ic("more"));
-  return h("article", { class: "os-card tight", "data-record": view.id },
-    h("div", { class: "os-record" },
-      h("button", { type: "button", class: "os-record-open", onClick: () => go(`record/${view.id}`) },
-        h("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" } },
-          h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel || "—"}` }),
-          view.lifecycle !== "ACTIVE" ? h("span", { class: "os-badge muted", text: view.lifecycleLabel }) : null,
-          view.missing.length ? h("span", { class: "os-badge late", text: "بيانات ناقصة" }) : null
-        ),
-        h("h3", { class: "os-record-title", text: view.title }),
-        h("div", { class: "os-record-facts" }, facts),
-        h("p", { class: "os-sub", style: { marginTop: "4px", fontSize: ".85rem" }, text: [view.contactName, relativeAgo(record.updatedAt || record.createdAt)].filter(Boolean).join(" · ") })
-      ),
-      menuBtn
-    )
-  );
+ const view=recordView(record);const when=record.createdAt?.toDate?record.createdAt.toDate():new Date(record.createdAt||"");
+ return h("article",{class:"os-card ref-record-card","data-record":view.id},h("button",{type:"button",class:"ref-record-open",onClick:()=>go(`record/${view.id}`)},photo(record),h("div",{class:"ref-record-copy"},h("h3",{text:view.propertyType||view.title}),h("p",{},ic("pin"),view.location),h("b",{text:view.priceLabel.replace(/^(السعر|الميزانية)\s*/,"")})),h("span",{class:"ref-status "+(view.kind==="OFFER"?"step-0":"ref-request"),text:view.kindLabel}),h("div",{class:"ref-record-meta"},h("span",{text:Number.isNaN(when.getTime())?"":when.toLocaleDateString("en-CA")}),view.rooms?h("span",{},ic("bed"),view.rooms+" غرف"):null,view.areaLabel?h("span",{},ic("area"),view.areaLabel):null)));
 }
 
 export function openRecordMenu(record) {
@@ -69,7 +48,7 @@ export function renderRepository(container, { query } = {}) {
   const tabs = h("div", { class: "os-seg", role: "group", "aria-label": "نوع السجلات" });
   const list = h("div", { class: "os-record-list", "aria-live": "polite" });
   const summary = h("span", { class: "os-count" });
-  const search = h("input", { class: "os-input", type: "search", name: "q", placeholder: "ابحث بالحي أو النوع أو الاسم أو رقم الجوال", value: filters.query, "aria-label": "بحث" });
+  const search = h("input", { class: "os-input", type: "search", name: "q", placeholder: "ابحث في العروض والطلبات ...", value: filters.query, "aria-label": "بحث" });
   search.addEventListener("input", () => { filters.query = search.value; draw(); });
 
   const purposeSelect = h("select", { class: "os-select", name: "purpose", "aria-label": "الغرض" });
@@ -134,15 +113,7 @@ export function renderRepository(container, { query } = {}) {
 
   fillPurposes();
   drawTabs();
-  append(container, 
-    h("div", { class: "os-title-row" }, h("h2", { class: "os-h1", text: "العروض والطلبات" }), summary),
-    h("div", { class: "os-btn-row", style: { marginBottom: "10px" } },
-      h("button", { type: "button", class: "os-btn primary", onClick: () => go("record/new?kind=OFFER") }, ic("home-plus"), "إضافة عرض"),
-      h("button", { type: "button", class: "os-btn secondary", onClick: () => go("record/new?kind=REQUEST") }, ic("search"), "إضافة طلب")
-    ),
-    h("div", { class: "os-card tight" }, h("div", { class: "os-search" }, ic("search"), search), h("div", { style: { marginTop: "10px" } }, tabs), filterPanel),
-    list
-  );
+  append(container,h("div",{class:"ref-repo-tools"},h("div",{class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),tabs,h("details",{class:"ref-filters"},h("summary",{},"خيارات البحث",summary),filterPanel)),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",h("div",{class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus"),"إضافة سجل جديد"));
   draw();
   const off = subscribe((kind) => { if (kind === "records") draw(); });
   return () => off();

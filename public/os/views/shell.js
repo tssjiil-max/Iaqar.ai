@@ -44,7 +44,9 @@ export async function shareOfficeLink() {
 
 function openMenu() {
   const legacyUrl = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
+  const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
+    filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
     h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),
     h("button", { type: "button", onClick: async () => {
       const result = await enableNotifications();
@@ -58,41 +60,10 @@ function openMenu() {
   const sheet = openSheet("القائمة", h("nav", { class: "os-menu" }, items));
 }
 
-export function renderShellHeader({ active = "tasks" } = {}) {
-  const office = session.office || {};
-  const logo = /^https:\/\//.test(String(office.logoUrl || "")) ? h("img", { src: office.logoUrl, alt: "" }) : ic("user");
-  const roleLabel = session.isManager ? (session.role === "owner" ? "وسيط عقاري مرخّص" : "مدير المكتب") : "وسيط عقاري";
-  const brokerName = session.role === "owner" ? (office.brokerName || "") : (session.member?.displayName || session.member?.name || "");
-
-  const tasksCount = h("span", { class: "n" });
-  const updateCount = () => {
-    const mine = state.tasks.filter((t) => visibleToActor(t, { uid: session.user?.uid, isManager: session.isManager }));
-    const n = filterTasks(mine, "all").length;
-    tasksCount.textContent = n ? `(${n})` : "";
-  };
-  updateCount();
-  const off = subscribe((kind) => { if (kind === "tasks") updateCount(); });
-
-  const header = h("div", {},
-    h("header", { class: "os-header" },
-      h("div", { class: "os-avatar", "aria-hidden": "true" }, logo),
-      h("div", { class: "os-header-text" },
-        h("h1", { class: "os-office-name", text: office.officeName || "المكتب" }),
-        h("p", { class: "os-broker-line" }, brokerName || "", h("small", { text: roleLabel }))
-      ),
-      h("button", { type: "button", class: "os-icon-btn", "aria-label": "القائمة والإعدادات", onClick: openMenu }, ic("gear"))
-    ),
-    h("button", { type: "button", class: "os-share-link", onClick: shareOfficeLink }, ic("link"), "مشاركة رابط المكتب"),
-    h("nav", { class: "os-sections", role: "tablist", "aria-label": "أقسام المكتب" },
-      h("button", { type: "button", role: "tab", class: "os-section-tab", "aria-selected": String(active === "tasks"), onClick: () => go("tasks") }, ic("calendar-clock"), h("span", {}, "المهام اليومية", " ", tasksCount)),
-      h("button", { type: "button", role: "tab", class: "os-section-tab", "aria-selected": String(active === "repo"), onClick: () => go("repo") }, ic("home-plus"), "العروض والطلبات")
-    )
-  );
-  header.addEventListener("os:detach", off);
-  // Remove the listener when the header leaves the DOM.
-  const observer = new MutationObserver(() => { if (!header.isConnected) { off(); observer.disconnect(); } });
-  queueMicrotask(() => header.parentNode && observer.observe(document.getElementById("app"), { childList: true, subtree: true }));
-  return header;
+export function renderShellHeader({ active = "office" } = {}) {
+ const office=session.office||{};
+ const logo=/^https:\/\//.test(String(office.logoUrl||""))?h("img",{src:office.logoUrl,alt:""}):h("span",{class:"ref-logo"});
+ return h("header",{class:"ref-shell-header"},h("div",{class:"ref-brand"},logo),h("div",{class:"ref-shell-title"},h("h1",{text:active==="tasks"?"المهام اليومية":active==="repo"?"العروض والطلبات":office.officeName||"المكتب"}),active==="tasks"?h("p",{text:"أنجز مهامك بسهولة كل يوم"}):null),active!=="repo"?h("button",{type:"button",class:"ref-bell","aria-label":"التنبيهات",onClick:openMenu},ic("bell")):null,h("button",{type:"button",class:"os-icon-btn ref-menu","aria-label":"القائمة والإعدادات",onClick:active==="repo"?()=>go("office"):openMenu},active==="repo"?ic("chev-left"):h("span",{text:"☰"})));
 }
-
+export function renderBottomNav(active="office") {return h("nav",{class:"ref-bottom","aria-label":"أقسام المكتب"},(active==="repo"?[["repo","العروض والطلبات","note"],["tasks","المهام اليومية","clipboard"],["office","المكتب","home"]]:[["tasks","المهام","clipboard"],["repo","العروض والطلبات","note"],["office","المكتب","home"]]).map(([route,label,icon])=>h("button",{type:"button","aria-current":active===route?"page":null,onClick:()=>go(route)},ic(icon),h("span",{text:label}))));}
 export { btn };

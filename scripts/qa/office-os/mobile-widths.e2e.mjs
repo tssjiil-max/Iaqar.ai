@@ -23,10 +23,12 @@ const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
   { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
+  { name: "office", url: "/#/office", wait: ".ref-today" },
+  { name: "task-detail", url: `/#/task/${s.reviewTaskId}`, wait: ".ref-detail-step" },
   { name: "tasks", url: "/#/tasks", wait: "[data-task]" },
   { name: "menu-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.getByRole("button", { name: "القائمة والإعدادات" }).click(); await p.locator(".os-sheet").waitFor(); } },
   { name: "repository", url: "/#/repo", wait: "[data-record]" },
-  { name: "repository-filters", url: "/#/repo", wait: "[data-record]", act: async (p) => { await p.locator("details.os-more summary").click(); } },
+  { name: "repository-filters", url: "/#/repo", wait: "[data-record]", act: async (p) => { await p.locator(".ref-filters > summary").click(); await p.locator("details.os-more summary").click(); } },
   { name: "record-detail", url: `/#/record/${s.review.offerId}`, wait: "text=تفاصيل السجل" },
   { name: "record-form", url: `/#/record/${s.review.requestId}/edit`, wait: 'input[name="district"]' },
   { name: "review", url: `/#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
@@ -56,7 +58,20 @@ function layoutIssues() {
     const insideClosedDetails = Boolean(el.closest("details:not([open])")) && !el.closest("summary");
     return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none" && el.type !== "hidden" && !el.closest(".os-toast") && !insideClosedDetails;
   };
-  const controls = [...scope.querySelectorAll("button, a[href], input, select, textarea")].filter(visible);
+  // Compare visible rectangles inside scroll regions. Offscreen content is not
+  // a rendered control and must not be compared to the navigation outside it.
+  const clippedRect = (el) => {
+    const r = el.getBoundingClientRect();
+    const box = {left:r.left,right:r.right,top:r.top,bottom:r.bottom};
+    for (let p=el.parentElement; p; p=p.parentElement) {
+      const css=getComputedStyle(p), pr=p.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(css.overflowY)) {box.top=Math.max(box.top,pr.top);box.bottom=Math.min(box.bottom,pr.bottom);}
+      if (/auto|scroll|hidden|clip/.test(css.overflowX)) {box.left=Math.max(box.left,pr.left);box.right=Math.min(box.right,pr.right);}
+    }
+    box.top=Math.max(box.top,0);box.bottom=Math.min(box.bottom,innerHeight);
+    return box;
+  };
+  const controls = [...scope.querySelectorAll("button, a[href], input, select, textarea")].filter(visible).filter(el => {const r=clippedRect(el);return r.right>r.left && r.bottom>r.top;});
   for (const el of controls) {
     const r = el.getBoundingClientRect();
     if (r.left < -1 || r.right > W + 1) issues.push(`outside-viewport "${label(el)}" ${Math.round(r.left)}..${Math.round(r.right)}`);
@@ -66,7 +81,7 @@ function layoutIssues() {
     for (let j = i + 1; j < controls.length; j += 1) {
       const a = controls[i]; const b = controls[j];
       if (a.contains(b) || b.contains(a)) continue;
-      const ra = a.getBoundingClientRect(); const rb = b.getBoundingClientRect();
+      const ra = clippedRect(a); const rb = clippedRect(b);
       const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
       const hgt = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
       if (w > 2 && hgt > 2 && w * hgt > 16) issues.push(`overlap "${label(a)}" × "${label(b)}"`);

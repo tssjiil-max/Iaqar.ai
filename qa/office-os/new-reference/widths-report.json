@@ -1,0 +1,698 @@
+{
+  "at": "2026-09-30T08:28:18.579Z",
+  "widths": [
+    320,
+    360,
+    375,
+    390,
+    412,
+    430
+  ],
+  "screens": [
+    "public-office",
+    "public-form",
+    "login",
+    "office",
+    "task-detail",
+    "tasks",
+    "menu-sheet",
+    "repository",
+    "repository-filters",
+    "record-detail",
+    "record-form",
+    "review",
+    "journey-negotiation",
+    "party-proposal",
+    "composer-sheet",
+    "journey-viewing-confirm",
+    "journey-viewing-result",
+    "journey-closed",
+    "settings",
+    "reply-page",
+    "reply-counter-field",
+    "reply-saved-state"
+  ],
+  "results": [
+    {
+      "width": 320,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "reply-saved-state",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}

@@ -13,6 +13,7 @@ import { getDoc } from "../core/live.js";
 import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
+import { photo, taskRecord, taskStep, timeLabel, stepStrip, STEPS } from "./reference-layout.js";
 import { proposalPreparedPanel } from "./composer.js";
 import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
 
@@ -88,42 +89,11 @@ function taskCard(task, now) {
     button.addEventListener("click", primaryAction(task, model));
   }
 
-  const dueRow = model.due ? h("div", { class: "os-meta-row" }, ic("calendar"), h("span", {}, model.overdue ? "كان مستحقًا " : "الموعد ", h("b", { text: formatDateTime(model.due, now) }))) : null;
-  const lastRow = model.lastEvent ? h("div", { class: "os-meta-row" }, ic("clock"), h("span", { text: model.lastEvent })) : null;
-  const nextRow = model.nextStep ? h("div", { class: "os-meta-row" }, ic("chev-left"), h("span", { text: model.nextStep })) : null;
-  const secondary = model.opens === "workspace" && model.journeyId && (model.inline || model.type === "AWAITING_REPLY")
-    ? h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`journey/${model.journeyId}`) }, "فتح مساحة الفرصة")
-    : null;
-
-  const meta = parseMeta(task);
-  const offer = recordById(task.offerId || meta.ownerOfferId);
-  const request = recordById(task.requestId || meta.clientRequestId);
-  const comparison = model.type === "MATCH_REVIEW" && offer && request
-    ? h("div", { class: "os-task-pair" }, [offer, request].map((record) => {
-      const view = recordView(record);
-      return h("div", { class: `os-pair-side ${view.kind.toLowerCase()}` },
-        h("b", {}, ic(view.kind === "OFFER" ? "home" : "user"), view.kind === "OFFER" ? "عرض المالك" : "طلب العميل"),
-        h("span", { text: view.priceLabel || "السعر غير محدد" }),
-        view.areaLabel ? h("small", { text: view.areaLabel }) : null);
-    })) : null;
-  return h("article", { class: "os-card os-work-card", "data-task": task.id, "data-type": model.type },
-    h("div", { class: "os-task" },
-      h("div", { class: "os-task-body" },
-        h("span", { class: `os-badge${model.overdue ? " late" : model.waiting ? " muted" : ""}`, text: model.badge }),
-        h("h3", { class: "os-task-title", text: model.title }),
-        model.reason ? h("p", { class: "os-task-reason", text: model.reason }) : null
-      ),
-      model.type === "MATCH_REVIEW" && Number(meta.score) > 0
-        ? h("div", { class: "os-score", style: { background: `conic-gradient(var(--blue) ${Math.min(100, Math.max(0, Number(meta.score)))}%, var(--tint) 0)` }, "aria-label": `نسبة التوافق ${meta.score}%` }, h("b", { text: `${Math.round(Number(meta.score))}%` }))
-        : h("div", { class: "os-task-icon", "aria-hidden": "true" }, ic(model.icon)),
-      comparison,
-      h("div", { class: "os-task-foot" },
-        dueRow,
-        h("div", { class: "os-task-action" }, button, secondary),
-        lastRow,
-        nextRow ? h("span", { class: "os-task-next", text: model.nextStep }) : null)
-    )
-  );
+  const record=taskRecord(task)||{},view=recordView(record),step=taskStep(task);
+  const meta=parseMeta(task),client=recordById(task.requestId||meta.clientRequestId),contactName=client?.contactName||view.contactName;
+  const actionTitle=model.type==="MATCH_REVIEW"?"تطابق جديد":model.type==="VIEWING_CONFIRM"?"تأكيد موعد المعاينة":model.type==="SEND_PROPOSAL"?"متابعة عرض سعر":model.button;
+  button.classList.remove("block");button.lastChild.remove();button.append(ic(model.icon));
+  return h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitle}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),h("span",{class:"ref-time"},ic("clock"),timeLabel(task))),h("div",{},button,h("button",{type:"button",class:"os-icon-btn","aria-label":"تفاصيل المهمة",onClick:()=>go("task/"+task.id)},ic("chev-left")))));
 }
 
 export function renderTasks(container, { filter = "all" } = {}) {
@@ -160,12 +130,7 @@ export function renderTasks(container, { filter = "all" } = {}) {
     for (const task of shown) append(list, taskCard(task, now));
   };
 
-  append(container, 
-    h("div", { class: "os-title-row" }, h("h2", { class: "os-h1", text: "شغلك اليوم" }), countPill),
-    chipsRow,
-    list,
-    h("div", { class: "os-note" }, ic("database"), h("div", {}, h("b", { text: "العروض والطلبات محفوظة في المستودع" }), h("p", { text: "عند وجود مطابقة، تظهر مهمة جديدة هنا." })))
-  );
+  append(container, stepStrip(),h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow),list);
   draw();
   const off = subscribe((kind) => { if (kind === "tasks" || kind === "records") draw(); });
   const timer = setInterval(draw, 60_000);
