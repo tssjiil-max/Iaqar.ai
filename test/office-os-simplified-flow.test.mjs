@@ -70,6 +70,11 @@ test("8 each journey stage exposes one primary action", () => {
   assert.deepEqual(primaryActionForStage(FLOW_STAGE.CLOSED), { label: "", href: "" });
 });
 
+test("9 existing standalone task behavior is not consumed by journey grouping", () => {
+  const grouped = groupTasksByJourney([{ id: "legacy", type: "MISSING_DATA", status: "OPEN" }]);
+  assert.deepEqual(grouped, []);
+});
+
 test("10 daily tasks dedupe open operations by journey", () => {
   const grouped = groupTasksByJourney([
     { id: "a", journeyId: "j1", type: "PROPOSAL_REPLY", status: "OPEN", updatedAt: "2026-10-01T10:00:00Z" },
@@ -82,11 +87,13 @@ test("10 daily tasks dedupe open operations by journey", () => {
 
 test("11 card route goes directly to current stage", () => {
   assert.equal(routeForStage("j1", FLOW_STAGE.PRICE_NEGOTIATION), "session/j1");
-  assert.equal(routeForStage("j1", FLOW_STAGE.VIEWING_SCHEDULING), "journey/j1?focus=VIEWING_SCHEDULING");
+  assert.equal(routeForStage("j1", FLOW_STAGE.VIEWING_SCHEDULING), "session/j1");
+  assert.equal(routeForStage("j1", FLOW_STAGE.VIEWING_RESULT), "journey/j1?focus=VIEWING_RESULT");
 });
 
 test("12 legacy offer without price status remains legacy, never silently fixed", () => {
   assert.equal(normalizePriceStatus({}), PRICE_STATUS.LEGACY);
+  assert.equal(normalizePriceStatus({ priceStatus: "LEGACY", priceNegotiable: false }), PRICE_STATUS.LEGACY);
   assert.equal(normalizePriceStatus({ priceStatus: "fixed" }), PRICE_STATUS.FIXED);
   assert.equal(normalizePriceStatus({ priceNegotiable: true }), PRICE_STATUS.NEGOTIABLE);
 });
@@ -117,6 +124,12 @@ test("16 closed tasks do not appear in active journey groups", () => {
     { id: "y", journeyId: "j2", type: "VIEWING_RESULT", status: "OPEN" }
   ]);
   assert.deepEqual(grouped.map((x) => x.journeyId), ["j2"]);
+});
+
+test("future viewing result task stays in viewing until its due time", () => {
+  const task = { type: "VIEWING_RESULT", dueAt: "2026-10-03T18:00:00.000Z" };
+  assert.equal(inferStageFromTasks([task], new Date("2026-10-03T17:00:00.000Z")), FLOW_STAGE.VIEWING);
+  assert.equal(inferStageFromTasks([task], new Date("2026-10-03T18:01:00.000Z")), FLOW_STAGE.VIEWING_RESULT);
 });
 
 test("stage inference prefers the furthest current journey action", () => {
