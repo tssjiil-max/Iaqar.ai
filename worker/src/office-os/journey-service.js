@@ -123,7 +123,7 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
   }
   if (notify) {
     const taskId = additions[0]?.id || journey.currentAction?.taskId || "";
-    await notifyBroker(ctx.store, ctx.deps, { officeId, journey, taskId, dedupKey: notify.key, title: notify.title, body: notify.body, pushType: notify.pushType || "message", now })
+    await notifyBroker(ctx.store, ctx.deps, { officeId, journey, taskId, dedupKey: notify.key, title: notify.title, body: notify.body, pushType: notify.pushType || "message", openSession: Boolean(notify.openSession), now })
       .catch((error) => console.warn("[office-os] notify failed", error?.message));
   }
   return { journey, changed: true, finishedIds, addedIds: additions.map((t) => t.id) };

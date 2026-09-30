@@ -25,7 +25,7 @@
 /* One page scroll: only the bottom navigation stays fixed. */
 .os-app[data-view="office"],.os-app[data-view="tasks"],.os-app[data-view="repo"]{height:auto;min-height:100dvh;padding-bottom:calc(100px + env(safe-area-inset-bottom))}
 .os-app[data-view="office"]>.os-view,.os-app[data-view="tasks"]>.os-view,.os-app[data-view="repo"]>.os-view{overflow:visible}
-.ref-bottom{border-radius:22px;bottom:max(8px,env(safe-area-inset-bottom))}
+.ref-bottom{border-radius:22px;bottom:max(8px,env(safe-area-inset-bottom));background:#fff}
 .ref-add-record{position:static;bottom:auto}
 /* Repository cards use the same compact scale as daily task cards. */
 .ref-record-card{padding:10px;min-height:88px;border-radius:16px;margin-bottom:8px}
