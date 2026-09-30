@@ -260,7 +260,7 @@ a { color: var(--blue); }
 .os-alert.warn { background: var(--warn-tint); color: #7a4700; }
 .os-alert.bad { background: var(--bad-tint); color: #8c1f22; }
 .os-alert.ok { background: var(--ok-tint); color: #0c5d39; }
-.os-ai { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 10px 12px; background: #fbfdff; font-size: .93rem; }
+.os-ai { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 10px 12px; background: var(--brand-tint-2); font-size: .93rem; }
 .os-ai b { color: var(--blue); }
 
 /* ---------- Page header (sub pages) ---------- */
