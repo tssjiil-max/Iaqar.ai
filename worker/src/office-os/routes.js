@@ -14,7 +14,8 @@ import {
 import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
-import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
+import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction } from "./session-service.js";
+import { viewSessionSimplified } from "./session-view-service.js";
 import {
   acceptNegotiatedPrice, confirmViewingSafe, decideMatchReviewSimplified, fixedPriceDecision,
   recordViewingResultSafe, rejectSession, submitViewingAcceptanceSafe, submitViewingCounterSafe
@@ -23,7 +24,7 @@ import {
 const PUBLIC_ROUTES = Object.freeze({
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
   "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/view": (ctx, body, meta) => viewSession(ctx, { token: body.token, ip: meta.ip }),
+  "/os/session/view": (ctx, body, meta) => viewSessionSimplified(ctx, { token: body.token, ip: meta.ip }),
   "/os/session/act": (ctx, body, meta) => submitSessionAction(ctx, { token: body.token, action: body.action, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip }),
   "/os/session/accept": (ctx, body, meta) => acceptNegotiatedPrice(ctx, { token: body.token, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip }),
   "/os/session/reject": (ctx, body, meta) => rejectSession(ctx, { token: body.token, submissionId: body.submissionId, ip: meta.ip }),
