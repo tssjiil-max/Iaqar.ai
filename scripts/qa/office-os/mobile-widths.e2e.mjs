@@ -82,7 +82,27 @@ function layoutIssues() {
     box.top=Math.max(box.top,0);box.bottom=Math.min(box.bottom,innerHeight);
     return box;
   };
+  // Page-scroll screens keep only the bottom navigation fixed. Content that scrolls
+  // under an opaque fixed bar is hidden, not overlapping; instead every control must be
+  // reachable fully above the bar at the end of the scroll (checked below). A bar that
+  // is not fully opaque does not hide anything, so overlaps with it still fail.
+  const opaque = (el) => { const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/); if (!m) return false; const parts = m[1].split(",").map(Number); return parts.length < 4 || parts[3] >= 1; };
+  const fixedBar = (el) => { for (let p = el; p && p !== document.body; p = p.parentElement) { if (getComputedStyle(p).position === "fixed") return p; } return null; };
+  const bars = overlay ? [] : [...document.querySelectorAll(".ref-bottom")].filter((el) => getComputedStyle(el).position === "fixed");
+  for (const bar of bars) if (!opaque(bar)) issues.push(`fixed-bar-not-opaque "${label(bar).slice(0, 20)}" ${getComputedStyle(bar).backgroundColor}`);
   const controls = [...scope.querySelectorAll("button, a[href], input, select, textarea")].filter(visible).filter(el => {const r=clippedRect(el);return r.right>r.left && r.bottom>r.top;});
+  if (bars.length) {
+    const inFlow = [...scope.querySelectorAll("button, a[href], input, select, textarea")].filter(visible).filter((el) => !fixedBar(el));
+    const lowest = inFlow.reduce((best, el) => (!best || el.getBoundingClientRect().bottom + scrollY > best.getBoundingClientRect().bottom + scrollY ? el : best), null);
+    const y0 = scrollY;
+    window.scrollTo(0, document.scrollingElement.scrollHeight);
+    if (lowest) {
+      const barTop = Math.min(...bars.map((b) => b.getBoundingClientRect().top));
+      const lb = lowest.getBoundingClientRect().bottom;
+      if (lb > barTop + 1) issues.push(`unreachable-under-bar "${label(lowest)}" bottom ${Math.round(lb)} > bar ${Math.round(barTop)}`);
+    }
+    window.scrollTo(0, y0);
+  }
   for (const el of controls) {
     const r = el.getBoundingClientRect();
     if (r.left < -1 || r.right > W + 1) issues.push(`outside-viewport "${label(el)}" ${Math.round(r.left)}..${Math.round(r.right)}`);
@@ -92,6 +112,8 @@ function layoutIssues() {
     for (let j = i + 1; j < controls.length; j += 1) {
       const a = controls[i]; const b = controls[j];
       if (a.contains(b) || b.contains(a)) continue;
+      const fa = fixedBar(a); const fb = fixedBar(b);
+      if (fa !== fb && bars.includes(fa || fb) && opaque(fa || fb)) continue;
       const ra = clippedRect(a); const rb = clippedRect(b);
       const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
       const hgt = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);

@@ -119,8 +119,11 @@ export async function finishTasks(store, { officeId, taskIds = [], status = "COM
  * effect and must not undo the saved action.
  */
 export async function notifyBroker(store, deps, {
-  officeId, journey, taskId, dedupKey, title, body, pushType = "message", now = new Date()
+  officeId, journey, taskId, dedupKey, title, body, pushType = "message", openSession = false, now = new Date()
 }) {
+  // Session notifications open the negotiation session itself (#/session/<journeyId>),
+  // not the home page or the deal's current task.
+  const openOperation = openSession ? `session:${journey.journeyId}` : taskId || "";
   const hex = await deps.sha256Hex(`notif|${dedupKey}`);
   const id = `nt_${hex.slice(0, 40)}`;
   const created = await store.create(["offices", officeId, "notifications", id], {
@@ -133,6 +136,7 @@ export async function notifyBroker(store, deps, {
     opportunityId: journey.requestId || "",
     taskId: taskId || "",
     workflowId: journey.journeyId,
+    route: openSession ? `session/${journey.journeyId}` : "",
     entityType: "journey",
     entityId: journey.journeyId,
     type: "JOURNEY_UPDATE",
@@ -154,7 +158,7 @@ export async function notifyBroker(store, deps, {
   try {
     const result = await deps.sendOfficePush({
       officeId, title, body, type: pushType, recordId: taskId, taskId: journey.journeyId,
-      operationId: taskId, opportunityId: journey.requestId || "", matchId: journey.matchId || "",
+      operationId: openOperation, opportunityId: journey.requestId || "", matchId: journey.matchId || "",
       assignedBrokerId: journey.assignedBrokerId || ""
     });
     // Honest provider state: accepted by FCM ≠ delivered to the phone.

@@ -508,3 +508,13 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--blue); t
 .os-session-typed .os-field { min-width: 0; }
 .os-session-typed .os-input { min-width: 0; width: 100%; }
 .os-session-typed.is-date { grid-template-columns: 1fr; }
+/* Five current actions: 3 + 2 in equal full-width rows (no empty slot). Secondary price buttons stay on one line. */
+.os-session-buttons.n5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.os-session-buttons.n5 > * { grid-column: span 2; }
+.os-session-buttons.n5 > :nth-child(n + 4) { grid-column: span 3; }
+.os-session-secondary .os-btn { white-space: nowrap; gap: 6px; font-size: clamp(.78rem, 3.4vw, .88rem); }
+.os-session-act small { white-space: nowrap; }
+@media (max-width: 360px) { .os-session-act small { font-size: clamp(.6rem, 3.25vw, .68rem); letter-spacing: -.1px; } .os-session-buttons { gap: 6px; } }
+/* Party page: the current actions sit at the bottom of the screen even when the log is short. */
+.os-session-app { min-height: 100dvh; display: flex; flex-direction: column; }
+.os-session-app > .os-session-actions { margin-top: auto; }

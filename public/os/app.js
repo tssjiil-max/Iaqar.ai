@@ -84,6 +84,10 @@ function applyDeepLink() {
   const clean = new URL(location.href);
   ["openOperation", "openOpportunity", "openMatch", "openDailyTask", "openAppointment", "focusFollowUp"].forEach((k) => clean.searchParams.delete(k));
   history.replaceState({}, "", `${clean.pathname}${clean.search}`);
+  if (operationId && operationId.startsWith("session:")) {
+    const journeyId = operationId.slice("session:".length);
+    if (journeyId) { go(`session/${journeyId}`); return; }
+  }
   if (operationId) {
     const openTask = () => {
       const task = state.tasks.find((t) => t.id === operationId);

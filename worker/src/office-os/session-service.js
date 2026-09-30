@@ -346,7 +346,8 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
       key: `session|${journeyId}|${role}|${subId}`,
       title: applied.move === "intervention" ? `تدخل مطلوب — ${who}` : `جلسة التفاوض — ${who}`,
       body: `${card.text}${card.detail ? `: ${card.detail}` : ""}`,
-      pushType: applied.move.startsWith("viewing") ? "appointment" : "message"
+      pushType: applied.move.startsWith("viewing") ? "appointment" : "message",
+      openSession: true
     }
   });
   if (!result.changed) return { ok: true, state: "SAVED", duplicate: true };

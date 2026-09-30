@@ -37,6 +37,7 @@ test("setup: approved deal between an owner at 1,200,000 and a client at 1,100,0
   const approved = await call("/os/review/decide", { officeId: OFFICE_A, matchId: match.id, decision: "approve" }, OWNER_A);
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
   ctx.journeyId = approved.body.journeyId;
+  h.store.seed(`offices/${OFFICE_A}/devices/session-test-phone`, { fcmRegistrationId: "fid-session-test", registrationType: "fid", userUid: OWNER_A, enabled: true });
   ctx.recordIds = [offer.body.recordId, request.body.recordId, match.id];
 });
 
@@ -98,6 +99,11 @@ test("client −5% → owner sees the new price and only fitting buttons; duplic
   assert.equal(ownerView.events[0].text, "اقترح سعرًا أقل بـ 5%");
   const notes = h.store.list(`offices/${OFFICE_A}/notifications`).filter((n) => n.workflowId === ctx.journeyId);
   assert.ok(notes.some((n) => /أقل بـ 5%/.test(n.body)), "broker notified in-app");
+  const priceNote = notes.find((n) => /أقل بـ 5%/.test(n.body));
+  assert.equal(priceNote.route, `session/${ctx.journeyId}`, "in-app notification opens the session itself");
+  const pushes = h.store.fcm.map((f) => JSON.stringify(f.body)).filter((b) => b.includes("أقل بـ 5%"));
+  assert.equal(pushes.length, 1, "one push for one move");
+  assert.ok(pushes[0].includes(`openOperation=${encodeURIComponent(`session:${ctx.journeyId}`)}`), `push opens the session directly: ${pushes[0].slice(0, 400)}`);
   const stale = await act(ctx.clientToken, "minus2");
   assert.equal(stale.status, 409, "a move that is no longer offered is refused");
 });
