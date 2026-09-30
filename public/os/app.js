@@ -3,7 +3,7 @@
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
- *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/settings
+ *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/settings
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -20,6 +20,7 @@ import { renderRecordDetail } from "./views/record-detail.js";
 import { renderRecordForm } from "./views/record-form.js";
 import { renderReview } from "./views/review.js";
 import { renderWorkspace } from "./views/workspace.js";
+import { renderSession } from "./views/session-view.js";
 import { renderSettings } from "./views/settings.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
@@ -45,6 +46,7 @@ function view() {
   if (section === "record" && id) return { name: "record", run: (el) => renderRecordDetail(el, { recordId: id }) };
   if (section === "review" && id) return { name: "review", run: (el) => renderReview(el, { matchId: id }) };
   if (section === "journey" && id) return { name: "journey", run: (el) => renderWorkspace(el, { journeyId: id, focus: query.get("focus") || "" }) };
+  if (section === "session" && id) return { name: "session", run: (el) => renderSession(el, { journeyId: id }) };
   if (section === "settings") return { name: "settings", run: (el) => renderSettings(el) };
   return { name: "tasks", main: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all" }) };
 }
@@ -88,6 +90,7 @@ function applyDeepLink() {
       if (!task) return false;
       const type = String(task.type || "").toUpperCase();
       if (type === "MATCH_REVIEW" && task.matchId) go(`review/${task.matchId}`);
+      else if (type.startsWith("SESSION_") && task.journeyId) go(`session/${task.journeyId}`);
       else if (task.journeyId) go(`journey/${task.journeyId}`);
       else if (task.opportunityId) go(`record/${task.opportunityId}`);
       return true;

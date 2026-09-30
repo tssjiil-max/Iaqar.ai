@@ -19,6 +19,7 @@ const P = {
   "chev-left": '<path d="m15 18-6-6 6-6"/>',
   "chev-right": '<path d="m9 18 6-6-6-6"/>',
   "chev-down": '<path d="m6 9 6 6 6-6"/>',
+  "chev-up": '<path d="m6 15 6-6 6 6"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.7 2.7L16 9.6"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',

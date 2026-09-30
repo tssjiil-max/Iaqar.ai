@@ -18,6 +18,12 @@ const { seedStates } = await import(path.join(ROOT, "scripts/qa/office-os/seed.m
 const WIDTHS = [320, 360, 375, 390, 412, 430];
 const h = await startOfficeOsHarness();
 const s = await seedStates(h);
+const { callWorker } = await import(path.join(ROOT, "scripts/qa/office-os/seed.mjs"));
+const linkToken = (url) => String(url).split("#")[1];
+const negLinks = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: s.negotiation.journeyId })).links;
+const viewLinks = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: s.viewingConfirm.journeyId })).links;
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "minus5", submissionId: "widths-client-minus5" }, "");
+await callWorker(h, "/os/session/message", { officeId: OFFICE_A, journeyId: s.negotiation.journeyId, audience: "both", text: "يمكنكما الرد على الأسعار مباشرة من هنا.", requestKey: "widths-m1" });
 
 const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
@@ -41,7 +47,12 @@ const SCREENS = [
   { name: "settings", url: "/#/settings", wait: "text=إتمام الصفقات" },
   { name: "reply-page", url: `/r#${s.negotiation.ownerReplyToken}`, wait: "text=اختر ردك", auth: false },
   { name: "reply-counter-field", url: `/r#${s.negotiation.ownerReplyToken}`, wait: "text=اختر ردك", auth: false, act: async (p) => { await p.locator('[data-option="counter"]').click(); await p.locator('input[name="text"]').waitFor(); } },
-  { name: "reply-saved-state", url: `/r#${s.negotiation.clientReplyToken}`, wait: "text=عدّل ردك", auth: false }
+  { name: "reply-saved-state", url: `/r#${s.negotiation.clientReplyToken}`, wait: "text=عدّل ردك", auth: false },
+  { name: "session-owner-price", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false },
+  { name: "session-owner-typed", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="manual"]').click(); await p.locator('input[name="price"]').waitFor(); } },
+  { name: "session-client-waiting", url: `/s#${linkToken(negLinks.client.url)}`, wait: ".os-session-actions", auth: false },
+  { name: "session-owner-viewing", url: `/s#${linkToken(viewLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="viewing_other"]').click(); await p.locator('input[name="viewingAt"]').waitFor(); } },
+  { name: "session-broker", url: `/#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" }
 ];
 
 function layoutIssues() {
