@@ -16,7 +16,7 @@ const h = await startOfficeOsHarness();
 const s = await seedStates(h);
 const journeyTask = h.store.list(`offices/${OFFICE_A}/operations`).find((op) => op.journeyId === s.negotiation.journeyId && ["OPEN", "WAITING_EXTERNAL_RESPONSE"].includes(op.status));
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const checks = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "✔" : "✘"} ${name}${detail ? ` — ${detail}` : ""}`); };
 
@@ -55,7 +55,7 @@ const NEW = [
   { name: "?openOpportunity → record page", url: `/?officeId=${OFFICE_A}&openOpportunity=${s.review.offerId}`, expect: `#/record/${s.review.offerId}`, wait: "text=تفاصيل السجل" },
   { name: "?openMatch → review page", url: `/?officeId=${OFFICE_A}&openMatch=${s.review.matchId}`, expect: `#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "PWA shortcut ?open=add-opportunity → add form", url: "/?source=pwa&open=add-opportunity", expect: "#/record/new", wait: 'input[name="district"]' },
-  { name: "PWA shortcut ?open=operations → daily tasks", url: "/?source=pwa&open=operations", expect: "#/tasks", wait: "text=شغلك اليوم" }
+  { name: "PWA shortcut ?open=operations → daily tasks", url: "/?source=pwa&open=operations", expect: "#/tasks", wait: ".ref-path" }
 ];
 for (const t of NEW) {
   const { page, ctx } = await open(t.url, { auth: true });

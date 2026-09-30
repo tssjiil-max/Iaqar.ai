@@ -22,3 +22,15 @@
 .os-app[data-view="tasks"] .step-0,.os-app[data-view="tasks"] .step-1{color:#0872ee;background:#eaf4ff}
 .ref-task-actions{gap:9px}
 @media(max-width:350px){.ref-task-meta .ref-status{font-size:9px;padding:3px 5px}.ref-task-meta .ref-time{font-size:9px}.ref-task-meta .ref-time svg{width:12px;height:12px}}
+/* Keep navigation and record creation outside the scrolling work area. */
+.os-app[data-view="office"],.os-app[data-view="tasks"],.os-app[data-view="repo"]{height:100dvh;min-height:0;display:flex;flex-direction:column;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+.os-app[data-view="office"]>.os-view,.os-app[data-view="tasks"]>.os-view,.os-app[data-view="repo"]>.os-view{flex:1;min-height:0;overflow:auto;scrollbar-width:none}
+.ref-shell-header{flex-shrink:0}
+.ref-bottom{position:static;transform:none;width:100%;max-width:none;flex-shrink:0;margin-top:8px;border-radius:22px}
+.os-app[data-view="tasks"]>.os-view,.os-app[data-view="repo"]>.os-view{display:flex;flex-direction:column;overflow:hidden}
+.ref-path,.ref-filters,.ref-repo-tools{flex-shrink:0}
+.os-app[data-view="tasks"] .os-task-list,.os-app[data-view="repo"] .os-record-list{flex:1;min-height:0;overflow:auto;scrollbar-width:none}
+.ref-repo-tools{max-height:60%;overflow:auto}
+.ref-add-record{position:static;flex-shrink:0;bottom:auto}
+.ref-stats small{white-space:normal}
+.os-app[data-view="tasks"] .ref-filters:not([open]){display:none}

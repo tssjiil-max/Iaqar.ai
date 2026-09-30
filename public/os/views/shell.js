@@ -44,7 +44,9 @@ export async function shareOfficeLink() {
 
 function openMenu() {
   const legacyUrl = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
+  const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
+    filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
     h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),
     h("button", { type: "button", onClick: async () => {
       const result = await enableNotifications();

@@ -1,0 +1,140 @@
+{
+  "at": "2026-09-30T08:23:35.230Z",
+  "checks": [
+    {
+      "name": "legacy link → legacy.html with its query: /?cv2Party=PARTYTOKEN123",
+      "ok": true,
+      "detail": "/legacy.html?cv2Party=PARTYTOKEN123"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /?adminApplications=1&openBrokerApplication=app1",
+      "ok": true,
+      "detail": "/legacy.html?adminApplications=1&openBrokerApplication=app1"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /?officeId=office-alpha&openCooperation=coop_1",
+      "ok": true,
+      "detail": "/legacy.html?officeId=office-alpha&openCooperation=coop_1"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /?officeId=office-alpha&openDeal=deal_1",
+      "ok": true,
+      "detail": "/legacy.html?officeId=office-alpha&openDeal=deal_1"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /?officeId=office-alpha&shared=1",
+      "ok": true,
+      "detail": "/legacy.html?officeId=office-alpha&shared=1"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /?office=platform",
+      "ok": true,
+      "detail": "/legacy.html?office=platform"
+    },
+    {
+      "name": "legacy link → legacy.html with its query: /add?kind=owner",
+      "ok": true,
+      "detail": "/legacy.html?kind=owner"
+    },
+    {
+      "name": "push link ?openOperation (match review) → review page",
+      "ok": true,
+      "detail": "/?officeId=office-alpha#/review/mat_027a221df3d3d950c0fb2cc17d9bb42d424e"
+    },
+    {
+      "name": "push link ?openOperation (journey task) → opportunity workspace",
+      "ok": true,
+      "detail": "/?officeId=office-alpha#/journey/jr_3ccfa5c1a7b19c3366b407374b886750d5547b93"
+    },
+    {
+      "name": "?openOpportunity → record page",
+      "ok": true,
+      "detail": "/?officeId=office-alpha#/record/opp_os_a4eb88eb812d8a960a284c85f92e"
+    },
+    {
+      "name": "?openMatch → review page",
+      "ok": true,
+      "detail": "/?officeId=office-alpha#/review/mat_027a221df3d3d950c0fb2cc17d9bb42d424e"
+    },
+    {
+      "name": "PWA shortcut ?open=add-opportunity → add form",
+      "ok": true,
+      "detail": "/?source=pwa#/record/new?kind=OFFER"
+    },
+    {
+      "name": "PWA shortcut ?open=operations → daily tasks",
+      "ok": true,
+      "detail": "/?source=pwa#/tasks"
+    },
+    {
+      "name": "/o/<slug> public office page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "?office=<id>&view=public public office page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unknown office slug shows a clear message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "signed-out office link asks for «دخول المكتب»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reply link without token → invalid message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "malformed reply token → invalid message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "well-formed unknown token → invalid message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "still served: /legacy.html",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "still served: /complete.html",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "still served: /share-target.html",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "still served: /firebase-messaging-sw.js",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "still served: /manifest.webmanifest",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "still served: /admin/index.html",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "service worker still precaches the app root",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
