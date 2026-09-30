@@ -30,6 +30,7 @@ export const FLOW_STAGE_LABEL = Object.freeze({
 
 export function normalizePriceStatus(record = {}) {
   const raw = String(record.priceStatus || record.priceNegotiability || "").trim().toUpperCase();
+  if (["LEGACY", "UNKNOWN"].includes(raw)) return PRICE_STATUS.LEGACY;
   if (["FIXED", "ثابت", "PRICE_FIXED"].includes(raw)) return PRICE_STATUS.FIXED;
   if (["NEGOTIABLE", "قابل للتفاوض", "FLEXIBLE", "PRICE_NEGOTIABLE"].includes(raw)) return PRICE_STATUS.NEGOTIABLE;
   if (record.priceNegotiable === false) return PRICE_STATUS.FIXED;
@@ -67,10 +68,24 @@ export function routeForStage(journeyId, stage, { matchId = "" } = {}) {
   return `journey/${id}?focus=${encodeURIComponent(stage)}`;
 }
 
-export function inferStageFromTasks(tasks = []) {
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000 + Math.floor(Number(value.nanoseconds || 0) / 1_000_000);
+  const n = new Date(value).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function inferStageFromTasks(tasks = [], now = new Date()) {
   const types = new Set(tasks.map((t) => String(t?.type || "").toUpperCase()));
   if (types.has("DEAL_ACTION") || types.has("AGREEMENT_FOLLOW_UP")) return FLOW_STAGE.FINAL_AGREEMENT;
-  if (types.has("VIEWING_RESULT")) return FLOW_STAGE.VIEWING_RESULT;
+  if (types.has("VIEWING_RESULT")) {
+    const resultTask = tasks.find((t) => String(t?.type || "").toUpperCase() === "VIEWING_RESULT");
+    const due = millis(resultTask?.dueAt);
+    const current = now instanceof Date ? now.getTime() : millis(now);
+    if (due > 0 && current > 0 && due > current) return FLOW_STAGE.VIEWING;
+    return FLOW_STAGE.VIEWING_RESULT;
+  }
   if (types.has("VIEWING_CONFIRM") || types.has("VIEWING_SCHEDULE") || types.has("VIEWING_PROPOSAL")) return FLOW_STAGE.VIEWING_SCHEDULING;
   if (types.has("VIEWING_REMINDER") || types.has("VIEWING")) return FLOW_STAGE.VIEWING;
   if (types.has("PROPOSAL_REPLY") || types.has("SESSION_INTERVENTION") || types.has("SEND_PROPOSAL") || types.has("AWAITING_REPLY")) return FLOW_STAGE.PRICE_NEGOTIATION;
@@ -80,13 +95,10 @@ export function inferStageFromTasks(tasks = []) {
 }
 
 function taskTime(task = {}) {
-  const raw = task.updatedAt || task.createdAt || task.dueAt || 0;
-  if (raw && typeof raw.toMillis === "function") return raw.toMillis();
-  const n = new Date(raw || 0).getTime();
-  return Number.isFinite(n) ? n : 0;
+  return millis(task.updatedAt || task.createdAt || task.dueAt || 0);
 }
 
-export function groupTasksByJourney(tasks = []) {
+export function groupTasksByJourney(tasks = [], now = new Date()) {
   const active = tasks.filter((task) => !CLOSED_STATUSES.has(String(task?.status || "OPEN").toUpperCase()));
   const grouped = new Map();
   for (const task of active) {
@@ -97,7 +109,7 @@ export function groupTasksByJourney(tasks = []) {
   }
   return [...grouped.entries()].map(([journeyId, list]) => {
     list.sort((a, b) => taskTime(b) - taskTime(a));
-    const stage = inferStageFromTasks(list);
+    const stage = inferStageFromTasks(list, now);
     const action = primaryActionForStage(stage);
     return {
       journeyId,
