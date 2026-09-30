@@ -14,23 +14,33 @@ import {
 import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
-import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction } from "./session-service.js";
-import { viewSessionSimplified } from "./session-view-service.js";
+import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks } from "./session-service.js";
+import { viewPublicSession, submitPublicSessionAction } from "./session-action-service.js";
+import { decideMatchReviewWithPublicPrice } from "./review-flow-service.js";
 import {
-  acceptNegotiatedPrice, confirmViewingSafe, decideMatchReviewSimplified, fixedPriceDecision,
+  acceptNegotiatedPrice, confirmViewingSafe, fixedPriceDecision,
   recordViewingResultSafe, rejectSession, submitViewingAcceptanceSafe, submitViewingCounterSafe
 } from "./simplified-flow-service.js";
+
+const sessionArgs = (body, meta) => ({
+  token: body.token,
+  action: body.action,
+  price: body.price,
+  viewingAt: body.viewingAt,
+  submissionId: body.submissionId,
+  ip: meta.ip
+});
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
   "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/view": (ctx, body, meta) => viewSessionSimplified(ctx, { token: body.token, ip: meta.ip }),
-  "/os/session/act": (ctx, body, meta) => submitSessionAction(ctx, { token: body.token, action: body.action, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/accept": (ctx, body, meta) => acceptNegotiatedPrice(ctx, { token: body.token, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/reject": (ctx, body, meta) => rejectSession(ctx, { token: body.token, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/fixed-decision": (ctx, body, meta) => fixedPriceDecision(ctx, { token: body.token, accepted: Boolean(body.accepted), submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/viewing-accept": (ctx, body, meta) => submitViewingAcceptanceSafe(ctx, { token: body.token, submissionId: body.submissionId, ip: meta.ip }),
-  "/os/session/viewing-counter": (ctx, body, meta) => submitViewingCounterSafe(ctx, { token: body.token, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip })
+  "/os/session/view": (ctx, body, meta) => viewPublicSession(ctx, { token: body.token, ip: meta.ip }),
+  "/os/session/act": (ctx, body, meta) => submitPublicSessionAction(ctx, sessionArgs(body, meta)),
+  "/os/session/accept": (ctx, body, meta) => acceptNegotiatedPrice(ctx, sessionArgs(body, meta)),
+  "/os/session/reject": (ctx, body, meta) => rejectSession(ctx, sessionArgs(body, meta)),
+  "/os/session/fixed-decision": (ctx, body, meta) => fixedPriceDecision(ctx, { ...sessionArgs(body, meta), accepted: Boolean(body.accepted) }),
+  "/os/session/viewing-accept": (ctx, body, meta) => submitViewingAcceptanceSafe(ctx, sessionArgs(body, meta)),
+  "/os/session/viewing-counter": (ctx, body, meta) => submitViewingCounterSafe(ctx, sessionArgs(body, meta))
 });
 
 const OFFICE_ROUTES = Object.freeze({
@@ -39,7 +49,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
-  "/os/review/decide": (ctx, b, actor) => decideMatchReviewSimplified(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
+  "/os/review/decide": (ctx, b, actor) => decideMatchReviewWithPublicPrice(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
   "/os/proposals/create": (ctx, b, actor) => createProposals(ctx, {
     actor, officeId: ctx.officeId, journeyId: text(b.journeyId), matchId: text(b.matchId), kind: text(b.kind),
     recipients: Array.isArray(b.recipients) ? b.recipients : [], fields: b.fields || {}, messages: b.messages || {}, requestKey: text(b.requestKey)
