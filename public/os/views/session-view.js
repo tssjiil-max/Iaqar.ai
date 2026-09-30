@@ -9,10 +9,13 @@ import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { watchDoc, watchJourneyEvents } from "../core/live.js";
+import { recordById } from "../core/state.js";
 import { newRequestKey, openWhatsApp, runAction, toast } from "../core/ui.js";
 import { ROLE_LABEL, parsePayload, sessionEventCard, sessionPrices, sessionStageLabel, isOpenJourney } from "../domain/session-domain.js";
 import { formatDateTime, formatPrice } from "../domain/format-domain.js";
-import { priceStatusLabel } from "../domain/flow-domain.js";
+import { FLOW_STAGE, priceStatusLabel } from "../domain/flow-domain.js";
+import { RECIPIENT } from "../domain/proposal-domain.js";
+import { openComposer } from "./composer.js";
 import { sessionEventList, sessionSummary } from "./session-parts.js";
 
 function isSessionEvent(event) {
@@ -109,7 +112,28 @@ function partiesCard(journey) {
   };
   return h("section", { class: "os-card", "aria-label": "المالك والعميل" },
     h("h2", { class: "os-h2" }, ic("handshake"), "التفاوض الحالي"),
-    h("div", { class: "os-session-parties" }, side("owner"), side("client")));
+    h("div", { class: "os-row2 os-session-parties" }, side("owner"), side("client")));
+}
+
+function viewingScheduleCard(journey) {
+  if (!isOpenJourney(journey) || String(journey.flowStage || "") !== FLOW_STAGE.VIEWING_SCHEDULING) return null;
+  const viewing = journey.viewing || {};
+  const offer = recordById(journey.offerId) || { ...(journey.offerSummary || {}), opportunityKind: "OFFER" };
+  const request = recordById(journey.requestId) || { ...(journey.requestSummary || {}), opportunityKind: "REQUEST" };
+  const openViewing = () => openComposer(journey, { offer, request, defaultKind: "VIEWING", defaultRecipients: [RECIPIENT.OWNER, RECIPIENT.CLIENT] });
+  if (viewing.at) {
+    const confirmed = String(viewing.state || "") === "CONFIRMED";
+    const button = confirmed ? null : h("button", { type: "button", class: "os-btn secondary block", onClick: openViewing }, ic("calendar"), "تعديل الموعد");
+    return h("section", { class: "os-card", "aria-label": "موعد المعاينة" },
+      h("h2", { class: "os-h2" }, ic("calendar"), "موعد المعاينة"),
+      h("div", { class: "os-meta-row" }, ic("clock"), h("b", { text: formatDateTime(viewing.at) })),
+      h("p", { class: "os-sub", text: confirmed ? "تم اعتماد الموعد." : "تم اقتراح الموعد — بانتظار موافقة الطرفين." }),
+      button);
+  }
+  return h("section", { class: "os-card", "aria-label": "تحديد موعد المعاينة" },
+    h("h2", { class: "os-h2" }, ic("calendar"), "تحديد موعد المعاينة"),
+    h("p", { class: "os-sub", text: "حدد موعدًا واحدًا وأرسله للطرفين. النظام يمنع اعتماد موعد متعارض مع معاينة مؤكدة أخرى للوسيط." }),
+    h("button", { type: "button", class: "os-btn primary block", onClick: openViewing }, ic("calendar"), "تحديد موعد"));
 }
 
 function interventionCard(journey) {
@@ -179,6 +203,7 @@ export function renderSession(container, { journeyId }) {
     append(container,
       propertyCard(journey),
       agreedCard(journey),
+      viewingScheduleCard(journey),
       interventionCard(journey),
       partiesCard(journey),
       isOpenJourney(journey) ? linksCard(journey, state) : null,
