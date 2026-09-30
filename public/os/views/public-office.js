@@ -8,6 +8,7 @@ import { h, ic, clear, field, setFieldError, clearFieldErrors, append } from "..
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
+import { PRICE_STATUS } from "../domain/flow-domain.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
 
 export function publicOfficeTarget() {
@@ -62,6 +63,7 @@ function successView(root, office, kind) {
 function intakeForm(root, office, kind) {
   const recordKind = kind === "owner" ? RECORD_KIND.OFFER : RECORD_KIND.REQUEST;
   let purpose = "";
+  let priceStatus = "";
   const purposeSeg = h("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
   const hidden = h("input", { type: "hidden", name: "purpose" });
   const drawPurpose = () => {
@@ -69,10 +71,33 @@ function intakeForm(root, office, kind) {
     for (const p of PURPOSES[recordKind]) purposeSeg.append(h("button", { type: "button", "aria-pressed": String(purpose === p.id), onClick: () => { purpose = p.id; hidden.value = p.id; drawPurpose(); } }, p.label));
   };
   drawPurpose();
+
+  const priceStatusSeg = h("div", { class: "os-seg", role: "group", "aria-label": "حالة السعر" });
+  const hiddenPriceStatus = h("input", { type: "hidden", name: "priceStatus" });
+  const drawPriceStatus = () => {
+    clear(priceStatusSeg);
+    if (kind !== "owner") return;
+    for (const option of [
+      { id: PRICE_STATUS.FIXED, label: "السعر ثابت" },
+      { id: PRICE_STATUS.NEGOTIABLE, label: "قابل للتفاوض" }
+    ]) {
+      priceStatusSeg.append(h("button", {
+        type: "button",
+        "aria-pressed": String(priceStatus === option.id),
+        onClick: () => { priceStatus = option.id; hiddenPriceStatus.value = option.id; drawPriceStatus(); setFieldError(form, "priceStatus", ""); }
+      }, option.label));
+    }
+  };
+
   const price = h("input", { class: "os-input", name: "price", inputmode: "numeric", placeholder: "مثال: 850,000" });
   price.addEventListener("blur", () => { if (price.value) price.value = formatNumber(price.value) || price.value; });
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
+  const priceStatusField = kind === "owner" ? h("div", { class: "os-field", "data-price-status-field": "true" },
+    h("span", { text: "حالة السعر" }), priceStatusSeg, hiddenPriceStatus,
+    h("small", { class: "os-hint", text: "إذا كان السعر ثابتًا لن يفتح النظام تفاوضًا على السعر." }),
+    h("span", { class: "os-error", role: "alert" })) : null;
+
   const form = h("form", { class: "os-card", novalidate: true },
     h("div", { class: "os-form" },
       h("div", { class: "os-field" }, h("span", { text: kind === "owner" ? "ماذا تريد لعقارك؟" : "ماذا تبحث عنه؟" }), purposeSeg, hidden, h("span", { class: "os-error", role: "alert" })),
@@ -81,6 +106,7 @@ function intakeForm(root, office, kind) {
         field("المدينة", h("input", { class: "os-input", name: "city", value: office.city || "" })),
         field("الحي", h("input", { class: "os-input", name: "district" }))),
       field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
+      priceStatusField,
       h("div", { class: "os-row2" },
         field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric" }), { optional: true }),
         field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true })),
@@ -89,12 +115,19 @@ function intakeForm(root, office, kind) {
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
       status, submit,
       h("p", { class: "os-sub", style: { fontSize: ".84rem", textAlign: "center" }, text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط." })));
+  drawPriceStatus();
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     status.hidden = true;
     clearFieldErrors(form);
     const value = (name) => form.querySelector(`[name="${name}"]`)?.value ?? "";
-    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
+    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), priceStatus: kind === "owner" ? value("priceStatus") : "", area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
+    if (kind === "owner" && !input.priceStatus) {
+      setFieldError(form, "priceStatus", "اختر: السعر ثابت أو قابل للتفاوض");
+      form.querySelector("[data-price-status-field]")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     const check = validateRecordInput(input, { requireName: true });
     const name = cleanText(input.contactName, 80);
     if (!/\S+\s+\S+/.test(name)) check.errors.contactName = "اكتب الاسم الأول واسم العائلة";
@@ -117,6 +150,8 @@ function intakeForm(root, office, kind) {
         purpose: v.purpose,
         transactionType: transactionTypeFor(v.purpose),
         amount: toNumber(v.price),
+        priceStatus: kind === "owner" ? v.priceStatus : null,
+        priceNegotiable: kind === "owner" ? v.priceStatus === PRICE_STATUS.NEGOTIABLE : null,
         area: v.area || 0,
         rooms: v.rooms || 0,
         details: v.notes || "",
@@ -127,7 +162,6 @@ function intakeForm(root, office, kind) {
         status: "new",
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
       });
-      // Processing is retry-safe server side (already-processed intakes return duplicate).
       const response = await fetch(`${workerBase()}/pipeline/public-intake`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, intakeId: ref.id })
       }).catch(() => null);
@@ -157,7 +191,7 @@ export async function renderPublicOffice(root, target) {
   document.title = office.officeName || "المكتب العقاري";
   const choose = (kind) => {
     clear(main);
-    append(main, 
+    append(main,
       h("div", { class: "os-page-head" },
         h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"),
         h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), h("span")),
@@ -166,7 +200,7 @@ export async function renderPublicOffice(root, target) {
     window.scrollTo({ top: 0 });
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
-  append(main, 
+  append(main,
     officeHeader(office),
     h("p", { class: "os-sub", style: { textAlign: "center" }, text: "سجّل عقارك أو طلبك مباشرة، وسيتواصل معك الوسيط المرخّص." }),
     h("div", { class: "os-paths" },
