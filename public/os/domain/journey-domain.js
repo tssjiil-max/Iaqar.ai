@@ -1,12 +1,7 @@
 /**
  * Opportunity journey (مساحة الفرصة) domain.
- *
- * Stage = where the opportunity is (مراجعة المطابقة ← التفاوض ← المعاينة ← إتمام).
- * Action = what is required now. They are deliberately separate: a journey in
- * NEGOTIATION may require "مراجعة الرد" or "إرسال مقترح" or nothing (waiting).
- *
- * The path is not rigid: any open stage may move back to negotiation, skip viewing,
- * pause/resume, or close without a deal. Only an explicit close action completes a deal.
+ * Stage is kept for backward compatibility; the simplified flow may additionally
+ * carry a finer `flowStage` without replacing this proven model.
  */
 
 export const STAGE = Object.freeze({
@@ -51,7 +46,6 @@ export function isJourneyOpen(journey = {}) {
   return status === JOURNEY_STATUS.ACTIVE || status === JOURNEY_STATUS.PAUSED;
 }
 
-/** Stage moves the broker may make by hand. */
 export function allowedStageMoves(journey = {}) {
   if (!isJourneyOpen(journey)) return [];
   const current = String(journey.stage || STAGE.NEGOTIATION);
@@ -62,7 +56,6 @@ export function canMoveStage(journey, to) {
   return allowedStageMoves(journey).includes(to);
 }
 
-/** Viewing lifecycle. Accepting a time never means the viewing happened. */
 export const VIEWING_STATE = Object.freeze({
   NONE: "NONE",
   PROPOSED: "PROPOSED",
@@ -75,45 +68,38 @@ export const VIEWING_STATE = Object.freeze({
 export const VIEWING_STATE_LABEL = Object.freeze({
   NONE: "لا يوجد موعد",
   PROPOSED: "موعد مقترح",
-  ACCEPTED: "قُبل الموعد — بانتظار التأكيد",
+  ACCEPTED: "قُبل الموعد — بانتظار الطرف الآخر",
   CONFIRMED: "موعد مؤكد",
   DONE: "تمت المعاينة",
   CANCELLED: "أُلغي الموعد"
 });
 
+/** Exactly the three outcomes approved for the simplified journey. */
 export const VIEWING_RESULTS = Object.freeze([
-  { id: "interested", label: "مهتم", icon: "heart", next: "AGREEMENT" },
-  { id: "needs_negotiation", label: "يحتاج تفاوضًا", icon: "clock", next: "NEGOTIATION" },
-  { id: "not_suitable", label: "غير مناسب", icon: "x-circle", next: "CLOSE_SUGGESTED" },
-  { id: "follow_later", label: "متابعة لاحقة", icon: "calendar", next: "FOLLOW_UP" }
+  { id: "suitable", label: "مناسب", icon: "check-circle", next: "AGREEMENT" },
+  { id: "needs_negotiation", label: "يحتاج تفاوض", icon: "handshake", next: "NEGOTIATION" },
+  { id: "not_suitable", label: "غير مناسب", icon: "x-circle", next: "CLOSE_JOURNEY" }
 ]);
 
 export function viewingResultOf(id) {
-  return VIEWING_RESULTS.find((item) => item.id === id) || null;
+  const normalized = id === "interested" ? "suitable" : id;
+  return VIEWING_RESULTS.find((item) => item.id === normalized) || null;
 }
 
-/**
- * Task/action registry used both for the journey's "المطلوب الآن" and for Daily
- * Tasks cards. `inline` = the card can finish it without opening the workspace.
- */
 export const ACTION = Object.freeze({
   SEND_PROPOSAL: { code: "SEND_PROPOSAL", taskType: "SEND_PROPOSAL", label: "إرسال مقترح", button: "تجهيز المقترح", inline: false },
   AWAIT_REPLY: { code: "AWAIT_REPLY", taskType: "AWAITING_REPLY", label: "بانتظار رد", button: "متابعة الرد", inline: false, waiting: true },
   REVIEW_REPLY: { code: "REVIEW_REPLY", taskType: "PROPOSAL_REPLY", label: "مراجعة الرد", button: "مراجعة الرد", inline: false },
   CONFIRM_VIEWING: { code: "CONFIRM_VIEWING", taskType: "VIEWING_CONFIRM", label: "تأكيد موعد المعاينة", button: "تأكيد الموعد", inline: true },
-  RECORD_VIEWING_RESULT: { code: "RECORD_VIEWING_RESULT", taskType: "VIEWING_RESULT", label: "نتيجة المعاينة", button: "نتيجة المعاينة", inline: false },
+  RECORD_VIEWING_RESULT: { code: "RECORD_VIEWING_RESULT", taskType: "VIEWING_RESULT", label: "نتيجة المعاينة", button: "تسجيل النتيجة", inline: false },
   FOLLOW_UP: { code: "FOLLOW_UP", taskType: "JOURNEY_FOLLOW_UP", label: "متابعة الفرصة", button: "متابعة الآن", inline: false },
-  AGREEMENT_FOLLOW_UP: { code: "AGREEMENT_FOLLOW_UP", taskType: "DEAL_ACTION", label: "متابعة إجراءات الاتفاق", button: "متابعة الاتفاق", inline: false }
+  AGREEMENT_FOLLOW_UP: { code: "AGREEMENT_FOLLOW_UP", taskType: "DEAL_ACTION", label: "متابعة إجراءات الاتفاق", button: "إنهاء الصفقة", inline: false }
 });
 
 export function actionOf(code) {
   return ACTION[String(code || "")] || null;
 }
 
-/**
- * Workflow meaning of a party reply (proposal-domain effect codes) → journey patch
- * intent + the broker's next action. Pure: the Worker applies it.
- */
 export function effectOfReply(effect, { proposalKind, fields = {}, role } = {}) {
   switch (effect) {
     case "VIEWING_ACCEPTED":
@@ -145,17 +131,15 @@ export function effectOfReply(effect, { proposalKind, fields = {}, role } = {}) 
   }
 }
 
-/** Next action after a viewing result. */
+/** Viewing result now maps directly to the one next journey state. */
 export function effectOfViewingResult(resultId) {
   const result = viewingResultOf(resultId);
   if (!result) return null;
-  if (result.next === "AGREEMENT") return { stage: STAGE.AGREEMENT, next: "AGREEMENT_FOLLOW_UP" };
-  if (result.next === "NEGOTIATION") return { stage: STAGE.NEGOTIATION, next: "SEND_PROPOSAL" };
-  if (result.next === "FOLLOW_UP") return { next: "FOLLOW_UP", followUpInDays: 3 };
-  return { next: "FOLLOW_UP", followUpInDays: 0, suggestClose: true };
+  if (result.next === "AGREEMENT") return { stage: STAGE.AGREEMENT, next: "AGREEMENT_FOLLOW_UP", flowStage: "FINAL_AGREEMENT" };
+  if (result.next === "NEGOTIATION") return { stage: STAGE.NEGOTIATION, next: "SEND_PROPOSAL", flowStage: "PRICE_NEGOTIATION", activeTopics: ["price"] };
+  return { stage: STAGE.CLOSED, next: "CLOSE_JOURNEY", flowStage: "CLOSED", closeScope: "JOURNEY_ONLY" };
 }
 
-/** Where each stage stands for the path widget: done | current | skipped | todo. */
 export function stageProgress(journey = {}) {
   const current = String(journey.stage || STAGE.NEGOTIATION);
   const order = STAGE_PATH.map((s) => s.id);
@@ -169,33 +153,28 @@ export function stageProgress(journey = {}) {
   });
 }
 
-/**
- * Deterministic next-step suggestion (always available; the AI suggestion, when
- * present, is shown in addition and labelled as such).
- */
 export function suggestNextStep(journey = {}, { now = new Date() } = {}) {
   if (!isJourneyOpen(journey)) return "";
   if (journey.status === JOURNEY_STATUS.PAUSED) return "الفرصة متوقفة مؤقتًا — استأنفها عند جاهزية الأطراف.";
   const replies = journey.lastReplies || {};
   const viewing = journey.viewing || {};
-  if (viewing.state === VIEWING_STATE.ACCEPTED) return "الطرف قبل الموعد — أكّد المعاينة مع الطرف الآخر ثم ثبّتها.";
+  if (viewing.state === VIEWING_STATE.ACCEPTED) return "الطرف قبل الموعد — بانتظار الطرف الآخر واعتماد الموعد.";
   if (viewing.state === VIEWING_STATE.CONFIRMED) {
     const at = viewing.at ? new Date(viewing.at) : null;
     if (at && at.getTime() < now.getTime()) return "موعد المعاينة مضى — سجّل نتيجتها.";
-    return "المعاينة مؤكدة — ذكّر الطرفين قبل الموعد.";
+    return "المعاينة مؤكدة — لا يلزم إجراء حتى الموعد.";
   }
   const client = replies.client;
   const owner = replies.owner;
-  if (client?.effect === "PRICE_COUNTER" || owner?.effect === "PRICE_COUNTER") return "وصل سعر مقابل — راجعه واقترح سعرًا وسطًا على الطرف الآخر.";
-  if (client?.effect === "PRICE_ACCEPTED" && owner?.effect === "PRICE_ACCEPTED") return "الطرفان موافقان مبدئيًا على السعر — اقترح موعد معاينة أو انتقل لمتابعة الاتفاق.";
-  if (journey.stage === STAGE.AGREEMENT) return "تابع خطوات الاتفاق (العربون، العقد، الإفراغ) ثم أتمم الصفقة عند اكتمالها.";
-  if (!journey.lastProposalAt) return "ابدأ بإرسال مقترح سعر أو موعد معاينة للطرفين.";
-  return "تابع الردود وأرسل المقترح التالي عند الحاجة.";
+  if (client?.effect === "PRICE_COUNTER" || owner?.effect === "PRICE_COUNTER") return "وصل سعر مقابل — راجعه فقط إذا كان السعر قابلًا للتفاوض.";
+  if (client?.effect === "PRICE_ACCEPTED" && owner?.effect === "PRICE_ACCEPTED") return "تم الاتفاق على السعر — حدّد موعد المعاينة.";
+  if (journey.stage === STAGE.AGREEMENT) return "راجع خلاصة الاتفاق ثم أنهِ الصفقة عند اكتمالها.";
+  if (!journey.lastProposalAt) return "ابدأ بالإجراء المطلوب في المرحلة الحالية.";
+  return "تابع الرد المطلوب فقط.";
 }
 
-/** Event types for the journey timeline, with their display text. */
 export const EVENT_TEXT = Object.freeze({
-  MATCH_APPROVED: "تم اعتماد المطابقة وبدء التفاوض",
+  MATCH_APPROVED: "تم اعتماد المطابقة وبدء الرحلة",
   PROPOSAL_CREATED: "تم تجهيز مقترح",
   WHATSAPP_OPENED: "تم فتح واتساب",
   MESSAGE_SHARED: "تم فتح المشاركة",
