@@ -11,7 +11,8 @@ import {
   acknowledgeReply, addBrokerNote, closeJourney, completeFollowUp,
   moveStage, pauseJourney, reconcileOffice, resumeJourney
 } from "./journey-service.js";
-import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
+import { cancelProposal, recordHandoff } from "./proposal-service.js";
+import { createProposalsSafe } from "./proposal-flow-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
 import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks } from "./session-service.js";
@@ -50,7 +51,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
   "/os/review/decide": (ctx, b, actor) => decideMatchReviewWithPublicPrice(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
-  "/os/proposals/create": (ctx, b, actor) => createProposals(ctx, {
+  "/os/proposals/create": (ctx, b, actor) => createProposalsSafe(ctx, {
     actor, officeId: ctx.officeId, journeyId: text(b.journeyId), matchId: text(b.matchId), kind: text(b.kind),
     recipients: Array.isArray(b.recipients) ? b.recipients : [], fields: b.fields || {}, messages: b.messages || {}, requestKey: text(b.requestKey)
   }).then((proposals) => ({ ok: true, proposals })),
