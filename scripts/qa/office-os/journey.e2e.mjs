@@ -83,7 +83,7 @@ try {
   await owner.fill('input[name="phone"]', "0501111111");
   await owner.fill('input[name="password"]', "pass-a");
   await owner.getByRole("button", { name: "دخول المكتب" }).click();
-  await owner.locator(".ref-today").waitFor();
+  await owner.locator(".ref-office-tools").waitFor();
   await owner.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await owner.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await owner.getByRole("button", { name: "إضافة طلب", exact: true }).click();
@@ -239,7 +239,7 @@ try {
   await desk.fill('input[name="phone"]', "0501111111");
   await desk.fill('input[name="password"]', "pass-a");
   await desk.getByRole("button", { name: "دخول المكتب" }).click();
-  await desk.locator(".ref-today").waitFor();
+  await desk.locator(".ref-office-tools").waitFor();
   await desk.goto(`${h.origin}/#/journey/${journey.id}`);
   await desk.getByText("سجل الإجراءات").waitFor();
   await shot(desk, "21-desktop-workspace");
