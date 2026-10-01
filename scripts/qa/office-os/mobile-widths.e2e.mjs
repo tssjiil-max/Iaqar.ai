@@ -29,7 +29,7 @@ const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
   { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
-  { name: "office", url: "/#/office", wait: ".ref-today" },
+  { name: "office", url: "/#/office", wait: ".ref-office-tools" },
   { name: "task-detail", url: `/#/task/${s.reviewTaskId}`, wait: ".ref-detail-step" },
   { name: "tasks", url: "/#/tasks", wait: "[data-task]" },
   { name: "menu-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.getByRole("button", { name: "القائمة والإعدادات" }).click(); await p.locator(".os-sheet").waitFor(); } },
