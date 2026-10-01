@@ -1,4 +1,6 @@
 /* Approved digital-office landing page — mobile first, RTL. */
+.os-app[data-view="office"] { padding-bottom: 170px; }
+
 .os-app[data-view="office"] .ref-shell-platform {
   min-height: 58px;
   margin-bottom: 14px;
@@ -177,10 +179,12 @@
 }
 .ref-office-extras-heading {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
   margin: 0 2px 8px;
+  text-align: right;
 }
 .ref-office-extras-heading h2 {
   margin: 0;
