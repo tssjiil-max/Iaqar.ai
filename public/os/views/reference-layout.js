@@ -6,6 +6,7 @@ import { state, subscribe, recordById } from "../core/state.js";
 import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta } from "../domain/task-domain.js";
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
+import { shareOfficeLink } from "./shell.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){const t=String(task.type||"");return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
@@ -28,8 +29,71 @@ export function timeInfo(task,now=new Date()){const due=toDate(task.dueAt||task.
  return{text:d===1?"أمس":d===2?"منذ يومين":d<=10?`منذ ${d} أيام`:formatDay(at,now).split(" ").slice(1,3).join(" "),late:false};}
 export function timeLabel(task){return timeInfo(task).text;}
 export function timeChip(task){const t=timeInfo(task);return t.text?h("span",{class:"ref-time"+(t.late?" late":"")},ic("clock"),t.text):null;}
-export function renderOffice(container){const draw=()=>{clear(container);const tasks=mine();
- append(container,h("section",{class:"os-card ref-today"},h("div",{class:"ref-heading"},h("h2",{text:"مهام اليوم"}),h("button",{type:"button",onClick:()=>go("tasks"),text:"عرض الكل"})),tasks.length?tasks.slice(0,3).map(homeRow):h("p",{class:"os-sub",text:state.tasksReady?"لا توجد مهام الآن":"جارٍ تحميل المهام…"})));};draw();return subscribe(k=>{if(k==="tasks"||k==="records")draw();});}
+
+const PRIMARY_OFFICE_TOOLS = Object.freeze([
+  ["ملفاتي", "archive"],
+  ["النماذج", "contract"],
+  ["الدليل", "users"],
+  ["الخدمات", "link"],
+  ["الحاسبة", "coins"],
+  ["السوق", "chart-up"]
+]);
+
+const SECONDARY_OFFICE_TOOLS = Object.freeze([
+  ["جهات الاتصال", "users"],
+  ["دفتر المكتب", "note"],
+  ["الأرشيف", "archive"],
+  ["المفضلة", "heart"]
+]);
+
+function officeLogo(office) {
+  if (/^https?:\/\//.test(String(office.logoUrl || ""))) {
+    return h("img", { src: office.logoUrl, alt: office.officeName || "شعار المكتب" });
+  }
+  return h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" });
+}
+
+function officeToolCard([label, iconName]) {
+  return h("div", { class: "ref-office-tool", dataset: { officeTool: label } },
+    h("span", { class: "ref-office-tool-icon" }, ic(iconName)),
+    h("strong", { text: label }));
+}
+
+function officeExtraCard([label, iconName]) {
+  return h("div", { class: "ref-office-extra", dataset: { officeTool: label } },
+    h("span", { class: "ref-office-extra-icon" }, ic(iconName)),
+    h("strong", { text: label }));
+}
+
+export function renderOffice(container){
+  clear(container);
+  const office = session.office || {};
+  const officeName = String(office.officeName || "المكتب العقاري").trim();
+  const broker = String(office.brokerName || session.member?.displayName || session.member?.name || "—").trim();
+  const license = String(office.licenseNumber || office.valLicenseNumber || "—").trim();
+  const city = String(office.city || "—").trim();
+
+  append(container,
+    h("section", { class: "os-card ref-office-profile" },
+      h("div", { class: "ref-office-profile-main" },
+        h("div", { class: "ref-office-profile-head" },
+          h("h2", { text: officeName }),
+          h("button", { type: "button", class: "ref-office-share", "aria-label": "مشاركة رابط المكتب", onClick: shareOfficeLink }, ic("link"))),
+        h("div", { class: "ref-office-profile-row" }, h("span", { text: "الوسيط" }), h("b", { text: broker })),
+        h("div", { class: "ref-office-profile-row" }, h("span", { text: "ترخيص فال" }), h("b", { text: license, dir: "ltr" })),
+        h("div", { class: "ref-office-profile-row" }, h("span", { text: "المدينة" }), h("b", { text: city }))),
+      h("div", { class: "ref-office-profile-logo" }, officeLogo(office))),
+
+    h("section", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
+
+    h("section", { class: "ref-office-extras-wrap" },
+      h("div", { class: "ref-office-extras-heading" },
+        h("h2", { text: "أدوات إضافية" }),
+        h("p", { text: "خدمات مساندة لمكتبك" })),
+      h("div", { class: "ref-office-extras", "aria-label": "أدوات إضافية" }, SECONDARY_OFFICE_TOOLS.map(officeExtraCard)))
+  );
+}
+
 export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(container);const task=state.tasks.find(t=>t.id===taskId);if(!task){append(container,h("p",{class:"os-sub",text:state.tasksReady?"المهمة غير متاحة":"جارٍ التحميل…"}));return;}const model=taskCardModel(task),record=taskRecord(task)||{},v=recordView(record),step=taskStep(task);
  const meta=parseMeta(task),request=recordById(task.requestId||meta.clientRequestId),rv=request&&request!==record?recordView(request):null,t=timeInfo(task);
  const status=t.late?"متأخرة":({WAITING_EXTERNAL_RESPONSE:"بانتظار رد",IN_PROGRESS:"قيد التنفيذ",OPEN:"مفتوحة"})[String(task.status||"").toUpperCase()]||"مفتوحة";
