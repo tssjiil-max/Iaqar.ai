@@ -5,7 +5,6 @@ import fs from "node:fs";
 const shell = fs.readFileSync(new URL("../public/os/views/shell.js", import.meta.url), "utf8");
 const office = fs.readFileSync(new URL("../public/os/views/reference-layout.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/os/office-desk.css", import.meta.url), "utf8");
-const icons = fs.readFileSync(new URL("../public/os/core/icons.js", import.meta.url), "utf8");
 
 test("office page uses the approved digital-office hierarchy", () => {
   assert.match(shell, /مكاتب عقارية ذكية/, "main shell header must carry the platform brand");
@@ -40,9 +39,9 @@ test("bare office names are presented as a complete real-estate office title", (
   assert.match(office, /مكتب\s+\$\{raw\}\s+العقاري/, "a bare name such as سلطان should render as مكتب سلطان العقاري");
 });
 
-test("directory uses a dedicated address-book icon, not the contacts icon", () => {
-  assert.match(office, /\["الدليل",\s*"address-book"\]/, "directory must use its own address-book icon");
-  assert.match(icons, /["']address-book["']\s*:/, "address-book glyph must exist in the shared icon set");
+test("directory uses a directory-style icon, not the contacts icon", () => {
+  assert.match(office, /\["الدليل",\s*"clipboard"\]/, "directory must use the existing directory/list glyph");
+  assert.doesNotMatch(office, /\["الدليل",\s*"users"\]/, "directory must not reuse the contacts glyph");
 });
 
 test("additional-tools heading stays grouped and the fixed bottom nav cannot crowd the last row", () => {
