@@ -48,3 +48,10 @@ test("additional-tools heading stays grouped and the fixed bottom nav cannot cro
   assert.match(css, /\.ref-office-extras-heading\s*\{[^}]*flex-direction\s*:\s*column/s, "additional tools title and subtitle should stay visually grouped");
   assert.match(css, /\.os-app\[data-view="office"\][^{]*\{[^}]*padding-bottom\s*:\s*(?:1[5-9][0-9]|[2-9][0-9]{2,})px/s, "office view needs extra bottom clearance above the fixed nav");
 });
+
+test("office icons match the monochrome offer/request icon treatment", () => {
+  assert.match(css, /\.ref-office-tool-icon\s*\{[^}]*width\s*:\s*52px[^}]*height\s*:\s*52px[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)/s, "primary office icon container must match the reference tint and brand color");
+  assert.match(css, /\.ref-office-tool-icon svg\s*\{[^}]*width\s*:\s*26px[^}]*height\s*:\s*26px/s, "primary office glyph should be reduced to 26px");
+  assert.match(css, /\.ref-office-extra-icon\s*\{[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)/s, "secondary office icons must use the same reference tint and brand color");
+  assert.match(css, /\.ref-office-tool-icon \.t2,\s*\.ref-office-extra-icon \.t2\s*\{[^}]*opacity\s*:\s*1/s, "office-only secondary icon layers must be flattened to one monochrome tone");
+});
