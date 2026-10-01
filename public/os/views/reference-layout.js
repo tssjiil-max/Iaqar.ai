@@ -33,7 +33,7 @@ export function timeChip(task){const t=timeInfo(task);return t.text?h("span",{cl
 const PRIMARY_OFFICE_TOOLS = Object.freeze([
   ["ملفاتي", "archive"],
   ["النماذج", "contract"],
-  ["الدليل", "users"],
+  ["الدليل", "clipboard"],
   ["الخدمات", "link"],
   ["الحاسبة", "coins"],
   ["السوق", "chart-up"]
@@ -46,9 +46,22 @@ const SECONDARY_OFFICE_TOOLS = Object.freeze([
   ["المفضلة", "heart"]
 ]);
 
+export function officeDisplayName(office = {}) {
+  const raw = String(
+    office.businessName ||
+    office.tradeName ||
+    office.officeName ||
+    office.name ||
+    ""
+  ).trim();
+  if (!raw) return "المكتب العقاري";
+  if (/(^|\s)مكتب(\s|$)|عقار/.test(raw)) return raw;
+  return `مكتب ${raw} العقاري`;
+}
+
 function officeLogo(office) {
   if (/^https?:\/\//.test(String(office.logoUrl || ""))) {
-    return h("img", { src: office.logoUrl, alt: office.officeName || "شعار المكتب" });
+    return h("img", { src: office.logoUrl, alt: officeDisplayName(office) || "شعار المكتب" });
   }
   return h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" });
 }
@@ -68,10 +81,10 @@ function officeExtraCard([label, iconName]) {
 export function renderOffice(container){
   clear(container);
   const office = session.office || {};
-  const officeName = String(office.officeName || "المكتب العقاري").trim();
-  const broker = String(office.brokerName || session.member?.displayName || session.member?.name || "—").trim();
-  const license = String(office.licenseNumber || office.valLicenseNumber || "—").trim();
-  const city = String(office.city || "—").trim();
+  const officeName = officeDisplayName(office);
+  const broker = String(office.brokerName || office.licensedBrokerName || session.member?.displayName || session.member?.name || "—").trim();
+  const license = String(office.falLicenseNumber || office.licenseNumber || office.valLicenseNumber || office.falNumber || office.licenseNo || "—").trim();
+  const city = String(office.city || office.address?.city || office.location?.city || "—").trim();
 
   append(container,
     h("section", { class: "os-card ref-office-profile" },

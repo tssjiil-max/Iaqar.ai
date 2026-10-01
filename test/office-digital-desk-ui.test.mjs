@@ -33,3 +33,18 @@ test("office tool cards keep a light visual boundary", () => {
   assert.match(css, /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid/s, "primary tools need a light one-pixel border");
   assert.match(css, /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid/s, "secondary tools need a light one-pixel border");
 });
+
+test("bare office names are presented as a complete real-estate office title", () => {
+  assert.match(office, /officeDisplayName/, "office view should normalize a bare office name");
+  assert.match(office, /مكتب\s+\$\{raw\}\s+العقاري/, "a bare name such as سلطان should render as مكتب سلطان العقاري");
+});
+
+test("directory uses a directory-style icon, not the contacts icon", () => {
+  assert.match(office, /\["الدليل",\s*"clipboard"\]/, "directory must use the existing directory/list glyph");
+  assert.doesNotMatch(office, /\["الدليل",\s*"users"\]/, "directory must not reuse the contacts glyph");
+});
+
+test("additional-tools heading stays grouped and the fixed bottom nav cannot crowd the last row", () => {
+  assert.match(css, /\.ref-office-extras-heading\s*\{[^}]*flex-direction\s*:\s*column/s, "additional tools title and subtitle should stay visually grouped");
+  assert.match(css, /\.os-app\[data-view="office"\][^{]*\{[^}]*padding-bottom\s*:\s*(?:1[5-9][0-9]|[2-9][0-9]{2,})px/s, "office view needs extra bottom clearance above the fixed nav");
+});
