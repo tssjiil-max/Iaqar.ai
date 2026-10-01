@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 const shell = fs.readFileSync(new URL("../public/os/views/shell.js", import.meta.url), "utf8");
 const office = fs.readFileSync(new URL("../public/os/views/reference-layout.js", import.meta.url), "utf8");
-const css = fs.readFileSync(new URL("../public/os/reference-layout.css", import.meta.url), "utf8");
+const css = fs.readFileSync(new URL("../public/os/office-desk.css", import.meta.url), "utf8");
 
 test("office page uses the approved digital-office hierarchy", () => {
   assert.match(shell, /مكاتب عقارية ذكية/, "main shell header must carry the platform brand");
