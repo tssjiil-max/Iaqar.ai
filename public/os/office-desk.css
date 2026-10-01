@@ -155,15 +155,15 @@
   box-shadow: 0 3px 14px rgba(3,103,122,.035);
 }
 .ref-office-tool-icon {
-  width: 54px;
-  height: 54px;
+  width: 52px;
+  height: 52px;
   border-radius: 14px;
-  background: var(--brand-tint-2);
+  background: var(--brand-tint);
   color: var(--brand-primary);
   display: grid;
   place-items: center;
 }
-.ref-office-tool-icon svg { width: 31px; height: 31px; }
+.ref-office-tool-icon svg { width: 26px; height: 26px; }
 .ref-office-tool strong {
   color: var(--brand-dark);
   font-size: clamp(14px,4.2vw,18px);
@@ -220,12 +220,16 @@
   width: 43px;
   height: 43px;
   border-radius: 12px;
-  background: var(--brand-tint-2);
+  background: var(--brand-tint);
   color: var(--brand-primary);
   display: grid;
   place-items: center;
 }
 .ref-office-extra-icon svg { width: 24px; height: 24px; }
+.ref-office-tool-icon .t2,
+.ref-office-extra-icon .t2 {
+  opacity: 1;
+}
 .ref-office-extra strong {
   max-width: 100%;
   color: var(--brand-dark);
@@ -250,7 +254,7 @@
   .ref-office-profile-row b { font-size: 12px; }
   .ref-office-tool { min-height: 104px; padding-inline: 4px; }
   .ref-office-tool-icon { width: 47px; height: 47px; }
-  .ref-office-tool-icon svg { width: 27px; height: 27px; }
+  .ref-office-tool-icon svg { width: 24px; height: 24px; }
   .ref-office-tool strong { font-size: 13px; }
   .ref-office-extras-heading h2 { font-size: 16px; }
   .ref-office-extras-heading p { font-size: 9px; }
