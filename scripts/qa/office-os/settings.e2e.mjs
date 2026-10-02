@@ -23,6 +23,7 @@ const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_C
 const checks = [];
 const errors = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "✔" : "✘"} ${name}${detail ? ` — ${detail}` : ""}`); };
+const jpegInfo = (b) => { if (b[0] !== 0xff || b[1] !== 0xd8) return { ok: false }; let i = 2; while (i < b.length) { if (b[i] !== 0xff) { i++; continue; } const m = b[i + 1]; if (m >= 0xc0 && m <= 0xc3) return { ok: true, h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) }; i += 2 + b.readUInt16BE(i + 2); } return { ok: false }; };
 const until = async (fn, label, timeout = 6000) => { const t = Date.now(); while (Date.now() - t < timeout) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 150)); } throw new Error(`timeout: ${label}`); };
 
 async function openAs(uid, hash) {
@@ -44,7 +45,7 @@ async function shot(page, name) {
 }
 
 const bucket = new Map();
-h.env.IAQAR_MEDIA = { put: async (key, bytes, meta) => { bucket.set(key, { bytes: Buffer.from(bytes), meta }); }, get: async (key) => (bucket.has(key) ? { body: bucket.get(key).bytes, writeHttpMetadata() {} } : null) };
+h.env.IAQAR_MEDIA = { put: async (key, bytes, meta) => { bucket.set(key, { bytes: Buffer.from(bytes), meta }); }, get: async (key) => (bucket.has(key) ? { body: bucket.get(key).bytes, writeHttpMetadata(h) { const t = bucket.get(key).meta?.httpMetadata?.contentType; if (t) h.set("content-type", t); } } : null) };
 try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
@@ -132,7 +133,7 @@ try {
   const slugNow = h.store.get(`offices/${OFFICE_A}`).publicSlug;
   await page.goto(`${h.origin}/#/settings/link`);
   const card = await until(() => bucket.get(`office-share/${slugNow}/card.png`)?.bytes, "photo uploaded as the preview image");
-  check("preview image is the broker photo as a 1200×630 rectangular PNG, stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 1200 && card.readUInt32BE(20) === 630 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
+  check("preview image is the broker photo as a 1200×630 rectangular JPEG under 300KB, stored for the office and its slug", jpegInfo(card).ok && jpegInfo(card).w === 1200 && jpegInfo(card).h === 630 && card.length < 300000 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
   fs.writeFileSync(path.join(OUT, "share-photo.png"), card);
   await page.locator("[data-share-card-preview]:not([hidden])").waitFor();
   check("link page shows the image and says it is updated", (await page.locator("[data-share-card-status]").innerText()).includes("صورة المعاينة"));
@@ -154,7 +155,7 @@ try {
   check("og:image is this office's photo (HTTPS path under /share/office/<slug>)", new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og));
   const imageUrl = og.match(/og:image" content="([^"]+)"/)[1];
   const imageResponse = await fetch(imageUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`));
-  check("the image opens directly without login (200 image/png)", imageResponse.status === 200 && /image\/png/.test(imageResponse.headers.get("content-type") || ""), `${imageResponse.status}`);
+  check("the image opens directly without login (200 image/jpeg)", imageResponse.status === 200 && /image\/jpeg/.test(imageResponse.headers.get("content-type") || ""), `${imageResponse.status}`);
   const redirect = await fetch(`${h.origin}/worker/m/${slugNow}`, { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (Android)" } });
   check("a person is sent on to the office page", redirect.status === 302);
   // public office page footer
@@ -177,7 +178,7 @@ try {
   og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
   const fbUrl = (og.match(/og:image" content="([^"]+)"/) || [])[1] || "";
   const fbRes = fbUrl ? await fetch(fbUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`)) : null;
-  check("without a photo og:image is a Worker-served image that returns the platform logo", /\/share\/office\//.test(fbUrl) && fbRes && fbRes.status === 200 && /image\/png/.test(fbRes.headers.get("content-type") || ""));
+  check("without a photo og:image returns the platform logo, not the removed photo left in storage", /\/share\/office\/[^/]+\/card-vlogo-/.test(fbUrl) && fbRes && fbRes.status === 200 && /image\/png/.test(fbRes.headers.get("content-type") || ""));
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-office-logo-mark").first().waitFor();
   check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);

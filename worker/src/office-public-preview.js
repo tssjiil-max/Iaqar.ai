@@ -138,7 +138,8 @@ export async function handlePublicOfficePreview(request, env, deps) {
   // Always the Worker-served image path: the broker photo when stored, else the platform logo (served by the Worker itself,
   // so WhatsApp never depends on an external or private logo URL).
   const hasPhoto = office.sharePhoto === true;
-  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`;
+  // Without a photo the version is marked "logo-…" so a card left in storage from an earlier photo is never served.
+  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, hasPhoto ? version : `logo-${version}`.slice(0, 24))}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
     const headers = deps.corsHeaders();
@@ -167,7 +168,7 @@ export async function handleOfficeShareCardGet(request, env, deps) {
   const parsed = shareCardGetMatch(url.pathname);
   if (!parsed) throw deps.appError("media_not_found", 404, "بطاقة المشاركة غير موجودة");
   const bucket = deps.requireMediaBucket(env);
-  const keys = [officeShareCardStorageKey(parsed.officeId)].filter(Boolean);
+  const keys = /^logo-/i.test(parsed.version) ? [] : [officeShareCardStorageKey(parsed.officeId)].filter(Boolean);
   for (const key of keys) {
     const object = await bucket.get(key);
     if (!object) continue;
@@ -175,7 +176,7 @@ export async function handleOfficeShareCardGet(request, env, deps) {
     object.writeHttpMetadata(headers);
     headers.set("cache-control", "public, max-age=3600");
     headers.set("x-content-type-options", "nosniff");
-    headers.set("content-type", "image/png");
+    if (!/^image\/(png|jpeg)$/.test(headers.get("content-type") || "")) headers.set("content-type", "image/png");
     headers.set("x-iaqar-share-card", "stored");
     return new Response(request.method === "HEAD" ? null : object.body, { headers });
   }
@@ -196,7 +197,7 @@ export async function handleOfficeShareCardUpload(request, env, deps) {
   if (!officeId) throw deps.appError("office_id_required", 400, "officeId مطلوب");
   await deps.authorizeOfficeRequest(request, env, officeId, "manage");
   const contentType = text(request.headers.get("content-type")).toLowerCase();
-  if (contentType !== "image/png") throw deps.appError("unsupported_media", 415, "بطاقة المشاركة يجب أن تكون PNG");
+  if (contentType !== "image/png" && contentType !== "image/jpeg") throw deps.appError("unsupported_media", 415, "بطاقة المشاركة يجب أن تكون PNG أو JPEG");
   const size = Number(request.headers.get("content-length") || 0);
   if (size > 2 * 1024 * 1024) throw deps.appError("image_too_large", 413, "حجم بطاقة المشاركة كبير");
   const bytes = await request.arrayBuffer();
@@ -207,7 +208,7 @@ export async function handleOfficeShareCardUpload(request, env, deps) {
   ].filter(Boolean))];
   const bucket = deps.requireMediaBucket(env);
   const metadata = {
-    httpMetadata: { contentType: "image/png", cacheControl: "public, max-age=3600" },
+    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
     customMetadata: { officeId, publicSlug: slug, uploadedAt: new Date().toISOString() }
   };
   for (const key of keys) {

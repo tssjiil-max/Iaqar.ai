@@ -48,7 +48,7 @@ export async function drawSharePhoto(office) {
     context.fillStyle = "#03677A"; context.font = "500 40px Tahoma, Arial, sans-serif";
     context.fillText("مكتب عقاري", W - side - 60, H / 2 + 60, W - side - 120);
   }
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.82));
 }
 
 /**
@@ -74,7 +74,7 @@ export async function ensureShareCard({ force = false } = {}) {
     if (hasPhoto) {
       response = await fetch(`${workerBase()}/media/office-share-card`, {
         method: "POST",
-        headers: { "Content-Type": "image/png", Authorization: `Bearer ${await idToken()}`, "X-Office-Id": session.officeId, "X-Public-Slug": office.publicSlug, "X-Share-Card-Version": nonce },
+        headers: { "Content-Type": "image/jpeg", Authorization: `Bearer ${await idToken()}`, "X-Office-Id": session.officeId, "X-Public-Slug": office.publicSlug, "X-Share-Card-Version": nonce },
         body: blob
       });
     }
