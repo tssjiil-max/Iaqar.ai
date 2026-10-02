@@ -578,3 +578,25 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-slot-empty { margin: 0; font-size: .86rem; }
 .os-session-confirm { display: grid; gap: 8px; }
 .os-session-buttons.n2 .os-session-act, .os-session-buttons.n3 .os-session-act { min-height: 56px; }
+
+/* ---------- إعدادات المكتب (hub + pages) ---------- */
+.os-set-list { padding: 4px 14px; display: grid; }
+.os-set-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 12px 0; background: none; border: 0; border-bottom: 1px solid var(--brand-line, #DCE8EB); text-align: right; color: var(--brand-dark, #082F3A); font: inherit; cursor: pointer; }
+.os-set-row:last-child { border-bottom: 0; }
+.os-set-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); color: var(--brand-primary, #03677A); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-set-icon svg { width: 23px; height: 23px; }
+.os-set-text { display: grid; gap: 2px; min-width: 0; }
+.os-set-text b { font-weight: 800; }
+.os-set-text small { color: #4d6a72; overflow-wrap: anywhere; }
+.os-set-row > svg { width: 18px; height: 18px; color: var(--brand-primary, #03677A); }
+.os-set-legacy { display: grid; gap: 8px; }
+.os-field-error { color: #9b2c2c; min-height: 0; font-size: .82rem; }
+.os-field-error:empty { display: none; }
+.os-field-note { color: #4d6a72; font-size: .82rem; }
+.os-field-note.is-error { color: #9b2c2c; }
+.os-specialties { flex-wrap: wrap; }
+.os-radio-list { display: grid; gap: 8px; }
+.os-radio { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; text-align: right; padding: 12px; border-radius: 14px; border: 1px solid var(--brand-line, #DCE8EB); background: #fff; font: inherit; color: var(--brand-dark, #082F3A); cursor: pointer; }
+.os-radio.on { border-color: var(--brand-primary, #03677A); background: var(--brand-tint, #EDF5F7); }
+.os-radio-dot { width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--brand-primary, #03677A); background: #fff; }
+.os-radio.on .os-radio-dot { background: radial-gradient(circle, var(--brand-primary, #03677A) 0 45%, #fff 50%); }

@@ -28,6 +28,10 @@
     const r = await fetch("/harness/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, data: resolve(data), merge: Boolean(merge) }) });
     if (!r.ok) throw Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
   }
+  async function remove(path) {
+    const r = await fetch("/harness/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, delete: true }) });
+    if (!r.ok) throw Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+  }
   function poll(load, next) {
     let last = null; let stopped = false;
     const tick = async () => {
@@ -45,6 +49,7 @@
       collection(name) { return query(`${path}/${name}`); },
       async set(data, opts = {}) { await write(path, data, opts.merge); },
       async update(data) { await write(path, data, true); },
+      async delete() { await remove(path); },
       onSnapshot(next) { return poll(async () => { const s = await this.get(); s.__key = s.data() || null; return s; }, (s) => next(s)); }
     };
   }
@@ -66,7 +71,19 @@
       onSnapshot(next) { return poll(() => this.get(), (s) => next(s)); }
     };
   }
-  const db = { collection: (name) => query(name), doc: (p) => docRef(p), settings() {}, enableNetwork: async () => {} };
+  // Minimal transaction: reads go first, writes are applied in order at the end (enough for the name claim).
+  async function runTransaction(fn) {
+    const writes = [];
+    const tx = {
+      get: (ref) => ref.get(),
+      set: (ref, data, opts) => { writes.push(() => ref.set(data, opts)); return tx; },
+      delete: (ref) => { writes.push(() => ref.delete()); return tx; }
+    };
+    const result = await fn(tx);
+    for (const apply of writes) await apply();
+    return result;
+  }
+  const db = { collection: (name) => query(name), doc: (p) => docRef(p), settings() {}, enableNetwork: async () => {}, runTransaction };
   const listeners = [];
   const makeUser = (uid) => (uid ? { uid, email: `${uid}@harness.local`, getIdToken: async () => (await (await fetch(`/harness/token?uid=${encodeURIComponent(uid)}`)).text()), getIdTokenResult: async () => ({ claims: {} }) } : null);
   const auth = {
