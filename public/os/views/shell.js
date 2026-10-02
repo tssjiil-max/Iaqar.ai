@@ -14,13 +14,13 @@ import { enableNotifications, notificationStatus } from "../core/notifications.j
 
 export function officePublicLink() {
   const office = session.office || {};
-  return officeShareUrl({ slug: office.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase(), preview: office.shareCardNonce });
+  return officeShareUrl({ slug: office.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase(), preview: office.sharePreviewFormat === "immutable-v2" ? office.shareCardNonce : "" });
 }
 
 export async function shareOfficeLink() {
   const office = session.office || {};
-  // The preview image (broker photo + trusted data) is refreshed first, so the link opens with the right card.
-  await Promise.race([ensureShareCard(), new Promise((resolve) => setTimeout(resolve, 4000))]);
+  // Publish the immutable preview before sharing. On failure officePublicLink() safely falls back to /m.
+  await ensureShareCard();
   const link = officePublicLink();
   const text = `${office.officeName || "مكتبنا"}\nسجّل عقارك أو طلبك مباشرة من رابط المكتب:\n${link}`;
   if (navigator.share) {
