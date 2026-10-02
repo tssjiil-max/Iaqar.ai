@@ -1,30 +1,51 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nonceKey, isHostedPreviewHost, officeShareUrl, shareCardKey } from "../public/os/domain/share-card-domain.js";
+import { nonceKey, isHostedPreviewHost, officePermanentUrl, officeShareUrl, previewVersion, shareCardKey } from "../public/os/domain/share-card-domain.js";
 
-test("hosted preview domains use the Worker link, custom domains the short link", () => {
-  const base = { slug: "Sultan", officeId: "o1", origin: "https://iaqar-ai-staging--staging-x.web.app", workerOrigin: "https://w.example.workers.dev/" };
-  assert.equal(officeShareUrl({ ...base, hostname: "iaqar-ai-staging--staging-x.web.app" }), "https://w.example.workers.dev/m/sultan");
-  assert.equal(officeShareUrl({ ...base, origin: "https://iaqar.ai", hostname: "iaqar.ai" }), "https://iaqar.ai/m/sultan");
+test("permanent office URL stays /m while hosted sharing uses immutable Worker /s URL", () => {
+  const base = {
+    slug: "Sultan",
+    officeId: "o1",
+    origin: "https://iaqar-ai-staging--staging-x.web.app",
+    workerOrigin: "https://w.example.workers.dev/",
+    preview: "abc123"
+  };
+  assert.equal(officePermanentUrl(base), "https://iaqar-ai-staging--staging-x.web.app/m/sultan");
+  assert.equal(
+    officeShareUrl({ ...base, hostname: "iaqar-ai-staging--staging-x.web.app" }),
+    "https://w.example.workers.dev/s/sultan/abc123"
+  );
+  assert.equal(
+    officeShareUrl({ ...base, origin: "https://iaqar.ai", hostname: "iaqar.ai" }),
+    "https://iaqar.ai/s/sultan/abc123"
+  );
   assert.equal(isHostedPreviewHost("x.firebaseapp.com"), true);
   assert.equal(isHostedPreviewHost("iaqar.ai"), false);
 });
 
-test("without a slug the link falls back to the public landing of the office", () => {
-  const url = officeShareUrl({ officeId: "o1", origin: "https://iaqar.ai", hostname: "iaqar.ai" });
+test("without a preview version sharing safely falls back to /m until the card is published", () => {
+  const url = officeShareUrl({ slug: "sultan", officeId: "o1", origin: "https://iaqar.ai", hostname: "iaqar.ai" });
+  assert.equal(url, "https://iaqar.ai/m/sultan");
+});
+
+test("without a slug the permanent link falls back to the public landing of the office", () => {
+  const url = officePermanentUrl({ officeId: "o1", origin: "https://iaqar.ai" });
   assert.match(url, /office=o1/);
 });
 
-test("image key changes only when the preview image changes (photo or slug)", () => {
+test("image key changes whenever visible preview content changes", () => {
   const office = { officeName: "مكتب", brokerName: "س", licenseNumber: "1", city: "الرياض", publicSlug: "wadi" };
   const a = shareCardKey(office);
-  assert.equal(shareCardKey({ ...office, city: "جدة", officeName: "آخر" }), a, "text is not part of the image");
+  assert.notEqual(shareCardKey({ ...office, city: "جدة" }), a);
+  assert.notEqual(shareCardKey({ ...office, officeName: "آخر" }), a);
+  assert.notEqual(shareCardKey({ ...office, licenseNumber: "2" }), a);
   assert.notEqual(shareCardKey({ ...office, brokerPhotoUrl: "data:image/jpeg;base64,AAAA" }), a);
-  assert.notEqual(shareCardKey({ ...office, publicSlug: "wadi2" }), a, "a new slug needs the image stored under it");
+  assert.notEqual(shareCardKey({ ...office, publicSlug: "wadi2" }), a);
 });
 
-test("a forced refresh keeps the card key part of the nonce", () => {
+test("forced refresh preserves the deterministic key and appends a safe unique suffix", () => {
   assert.equal(nonceKey("abc12-lq3x"), "abc12");
   assert.equal(nonceKey("abc12"), "abc12");
-  assert.equal(nonceKey(""), "");
+  assert.equal(previewVersion("abc12-lq3x"), "abc12-lq3x");
+  assert.equal(previewVersion("../bad?x=1"), "badx1");
 });
