@@ -121,6 +121,7 @@ import { livingTaskId } from "../../public/js/match-group-domain.js";
 import { formatOfficePushPresentation, officeBrandIconCandidates, toAbsoluteHttpsIcon, PLATFORM_DEFAULT_LOGO } from "../../public/js/platform-brand-domain.js";
 import {
   handlePublicOfficePreview,
+  handlePublicOfficeSharePage,
   handleOfficeShareCardGet,
   handleOfficeShareCardUpload,
   handleSavePublicSlug,
@@ -428,6 +429,13 @@ export default {
       // below, which blocks any path containing "send"/"messages".
       if (isOfficeOsPath(url.pathname)) {
         return await handleOfficeOs(request, env, officeOsDeps(), { requestId });
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/s/")) {
+        assertFirebaseSecrets(env);
+        const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+        const accessToken = await getGoogleAccessToken(env);
+        return await handlePublicOfficeSharePage(request, env, publicPreviewDeps(env, requestId, projectId, accessToken));
       }
 
       if (request.method === "GET" && (url.pathname.startsWith("/m/") || url.pathname.startsWith("/o/"))) {
