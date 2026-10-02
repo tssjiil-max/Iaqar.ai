@@ -5,6 +5,7 @@
  */
 
 import {
+  BROKER_ROLE,
   COMMISSION_KEYS,
   canAddParticipatingBroker,
   cooperationBrokerCount,
@@ -74,6 +75,7 @@ export async function runCooperationBrokerAction({
         participatingBrokerId: fh.firestoreString(text(brokerId)),
         participatingBrokerOfficeId: fh.firestoreString(text(actorOfficeId)),
         participatingBrokerName: fh.firestoreString(member.name),
+        optionalThirdBrokerRole: fh.firestoreString(BROKER_ROLE.PARTICIPATING_BROKER),
         participatingBrokerAddedBy: fh.firestoreString(text(actorUid)),
         participatingBrokerAddedAt: fh.firestoreTimestamp(now),
         ...commissionFields(fh, checked.shares, { actorUid, now }),

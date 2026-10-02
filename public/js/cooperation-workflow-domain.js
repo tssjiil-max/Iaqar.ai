@@ -5,6 +5,8 @@ import { formatCooperationReference } from "./reference-code-domain.js";
  * Does not rewrite the matching engine. Proximity never creates a match.
  */
 
+import { resolveCooperationSides } from "./cooperation-brokers-domain.js";
+
 export const COOPERATION_WORKFLOW_PATH = "/cooperation/workflow";
 
 export const COOPERATION_STAGE = Object.freeze({
@@ -520,6 +522,16 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
   return waiting("");
 }
 
+/** targetBrokerId + explicit propertyBrokerId / clientBrokerId, from who originated and which office owns the property. */
+function acceptedBrokerPatch(record, actorUid) {
+  const sides = resolveCooperationSides({ ...record, targetBrokerId: text(actorUid) });
+  return {
+    targetBrokerId: text(actorUid),
+    ...(sides.propertyBrokerId ? { propertyBrokerId: sides.propertyBrokerId } : {}),
+    ...(sides.requestBrokerId ? { clientBrokerId: sides.requestBrokerId } : {})
+  };
+}
+
 export function applyCooperationWorkflowTransition(record = {}, action, { actorOfficeId = "", actorUid = "", now = new Date() } = {}) {
   const act = upper(action);
   const stage = upper(record.currentStage) || COOPERATION_STAGE.MATCH_FOUND;
@@ -564,8 +576,8 @@ export function applyCooperationWorkflowTransition(record = {}, action, { actorO
         status: COOPERATION_RECORD_STATUS.ACCEPTED,
         currentStage: COOPERATION_STAGE.ACCEPTED,
         acceptedAt: iso,
-        // The accepting broker is «وسيط» of the target side (needed to tell who is who in the cooperation).
-        ...(text(actorUid) ? { targetBrokerId: text(actorUid) } : {}),
+        // The accepting broker is the target side; store who is وسيط العرض / وسيط الطلب explicitly.
+        ...(text(actorUid) ? acceptedBrokerPatch(record, actorUid) : {}),
         updatedAt: iso
       }
     };

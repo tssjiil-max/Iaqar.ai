@@ -38,8 +38,8 @@ export function resolveCooperationSides(record = {}) {
   return {
     propertyOfficeId,
     clientOfficeId,
-    propertyBrokerId: brokerOf(propertyOfficeId),
-    requestBrokerId: brokerOf(clientOfficeId)
+    propertyBrokerId: text(record.propertyBrokerId) || brokerOf(propertyOfficeId),
+    requestBrokerId: text(record.clientBrokerId) || brokerOf(clientOfficeId)
   };
 }
 

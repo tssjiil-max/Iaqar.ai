@@ -145,3 +145,17 @@ test("Firestore rules keep cooperation records readable to the two offices only 
   assert.doesNotMatch(block, /participatingBroker|BrokerShare|commissionAgreement/);
   assert.match(block, /allow delete: if false/);
 });
+
+test("accepting stores explicit roles: target broker, وسيط العرض and وسيط الطلب", () => {
+  const pending = { id: "c", originatingOfficeId: A, originatingBrokerId: "uid-a", targetOfficeId: B, propertyOfficeId: B, clientOfficeId: A, status: "PENDING", currentStage: "WAITING_PARTNER" };
+  const { patch } = applyCooperationWorkflowTransition(pending, "ACCEPT", { actorOfficeId: B, actorUid: "uid-b" });
+  assert.equal(patch.targetBrokerId, "uid-b");
+  assert.equal(patch.propertyBrokerId, "uid-b");
+  assert.equal(patch.clientBrokerId, "uid-a");
+});
+
+test("the third broker is stored with an explicit role", async () => {
+  const deps = world();
+  await run(deps, { action: "ADD_PARTICIPATING_BROKER", brokerId: "uid-a2" });
+  assert.equal(deps.docs.get("cooperationRequests/coop-1").optionalThirdBrokerRole, "PARTICIPATING_BROKER");
+});
