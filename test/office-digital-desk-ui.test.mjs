@@ -29,9 +29,9 @@ test("office tool labels and order stay exact", () => {
   }
 });
 
-test("office tool cards keep a light visual boundary", () => {
-  assert.match(css, /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid/s, "primary tools need a light one-pixel border");
-  assert.match(css, /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid/s, "secondary tools need a light one-pixel border");
+test("office tool cards use the same light boundary token as daily tasks", () => {
+  assert.match(css, /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)/s, "primary tools must use the same task-page boundary token");
+  assert.match(css, /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)/s, "secondary tools must use the same task-page boundary token");
 });
 
 test("bare office names are presented as a complete real-estate office title", () => {
@@ -44,8 +44,9 @@ test("directory uses a directory-style icon, not the contacts icon", () => {
   assert.doesNotMatch(office, /\["الدليل",\s*"users"\]/, "directory must not reuse the contacts glyph");
 });
 
-test("additional-tools heading stays grouped and the fixed bottom nav cannot crowd the last row", () => {
-  assert.match(css, /\.ref-office-extras-heading\s*\{[^}]*flex-direction\s*:\s*column/s, "additional tools title and subtitle should stay visually grouped");
+test("additional-tools heading follows the same title/description row rhythm as daily tasks", () => {
+  assert.match(css, /\.ref-office-extras-heading\s*\{[^}]*flex-direction\s*:\s*row[^}]*justify-content\s*:\s*space-between/s, "additional tools title and helper text must share the same row rhythm as the deal-path heading");
+  assert.match(css, /\.ref-office-extras-heading h2\s*\{[^}]*color\s*:\s*var\(--brand-dark\)/s, "additional tools title must use the same dark heading color as daily tasks");
   assert.match(css, /\.os-app\[data-view="office"\][^{]*\{[^}]*padding-bottom\s*:\s*(?:1[5-9][0-9]|[2-9][0-9]{2,})px/s, "office view needs extra bottom clearance above the fixed nav");
 });
 
@@ -80,12 +81,21 @@ test("office visual weight follows the daily-tasks page without redesign", () =>
   );
   assert.match(
     css,
-    /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+rgba\(3,103,122,\.10\)[^}]*box-shadow\s*:\s*none/s,
-    "primary tool cards should keep only a very light boundary"
+    /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)[^}]*box-shadow\s*:\s*none/s,
+    "primary tool cards must use the exact task-page light boundary token"
   );
   assert.match(
     css,
-    /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+rgba\(3,103,122,\.10\)[^}]*box-shadow\s*:\s*none/s,
-    "secondary tool cards should use the same light boundary"
+    /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)[^}]*box-shadow\s*:\s*none/s,
+    "secondary tool cards must use the exact task-page light boundary token"
   );
+});
+
+
+test("office header has the same two-line platform hierarchy as daily tasks", () => {
+  assert.match(shell, /active === "tasks" \? "المهام اليومية" : active === "repo" \? "العروض والطلبات" : "المكتب"/, "office header must show المكتب as the local context line");
+});
+
+test("office identity card uses the same soft card treatment as the daily task path", () => {
+  assert.match(css, /\.ref-office-profile\s*\{[^}]*border\s*:\s*0[^}]*box-shadow\s*:\s*var\(--shadow\)/s, "office identity card must use the shared soft-card treatment");
 });
