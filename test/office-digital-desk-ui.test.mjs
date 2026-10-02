@@ -99,3 +99,16 @@ test("office header has the same two-line platform hierarchy as daily tasks", ()
 test("office identity card uses the same soft card treatment as the daily task path", () => {
   assert.match(css, /\.ref-office-profile\s*\{[^}]*border\s*:\s*0[^}]*box-shadow\s*:\s*var\(--shadow\)/s, "office identity card must use the shared soft-card treatment");
 });
+
+
+test("office profile keeps the full name and right-aligns all values", () => {
+  assert.match(css, /\.ref-office-profile-head h2\s*\{[^}]*white-space\s*:\s*normal[^}]*text-overflow\s*:\s*clip/s, "office name must not be truncated with ellipsis");
+  assert.match(css, /\.ref-office-profile-row b\s*\{[^}]*text-align\s*:\s*right/s, "all office values must align to the right");
+  assert.match(css, /\.ref-office-profile-row b\[dir="ltr"\]\s*\{[^}]*text-align\s*:\s*right/s, "numeric license value must stay visually right-aligned even when LTR");
+});
+
+test("primary and secondary office icon frames are the same size with a light outline", () => {
+  assert.match(css, /\.ref-office-tool-icon\s*\{[^}]*width\s*:\s*43px[^}]*height\s*:\s*43px[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-line\)/s, "primary icon frame must match secondary icon frame size and use a light outline");
+  assert.match(css, /\.ref-office-extra-icon\s*\{[^}]*width\s*:\s*43px[^}]*height\s*:\s*43px[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-line\)/s, "secondary icon frame must use the same light outline");
+  assert.match(css, /\.ref-office-tool-icon svg\s*\{[^}]*width\s*:\s*24px[^}]*height\s*:\s*24px/s, "primary glyph must match secondary glyph size");
+});
