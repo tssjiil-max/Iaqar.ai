@@ -136,6 +136,7 @@ function memoryBucket() {
       if (!row) return null;
       return {
         body: row.bytes,
+        size: row.bytes.byteLength,
         writeHttpMetadata(headers) {
           headers.set("content-type", row.contentType);
           headers.set("cache-control", row.cacheControl);
@@ -184,6 +185,7 @@ test("upload stores immutable version key once; GET and HEAD return public JPEG 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "image/jpeg");
     assert.match(response.headers.get("cache-control"), /immutable/);
+    assert.ok(Number(response.headers.get("content-length")) > 0);
     assert.equal(response.headers.get("location"), null);
   }
 });
