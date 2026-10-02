@@ -600,3 +600,19 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-radio.on { border-color: var(--brand-primary, #03677A); background: var(--brand-tint, #EDF5F7); }
 .os-radio-dot { width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--brand-primary, #03677A); background: #fff; }
 .os-radio.on .os-radio-dot { background: radial-gradient(circle, var(--brand-primary, #03677A) 0 45%, #fff 50%); }
+
+/* مجتمع الوسطاء */
+.os-coop-card { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: start; }
+.os-coop-icon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); color: var(--brand-primary, #03677A); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-coop-icon svg { width: 26px; height: 26px; }
+.os-coop-copy { display: grid; gap: 4px; min-width: 0; }
+.os-coop-copy h3 { margin: 0; font-size: 1.05rem; color: var(--brand-dark, #082F3A); }
+.os-coop-copy p { margin: 0; color: #4d6a72; overflow-wrap: anywhere; }
+.os-coop-status { justify-self: start; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: var(--brand-primary, #03677A); font-size: .84rem; font-weight: 700; }
+.os-coop-status.is-now { background: var(--brand-primary, #03677A); color: #fff; }
+.os-coop-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.os-coop-actions .os-btn { flex: 1 1 140px; justify-content: center; }
+.os-home-community { background: none; border: 0; padding: 4px 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; text-align: right; font: inherit; color: var(--brand-dark, #082F3A); cursor: pointer; }
+.os-home-community .os-set-icon { width: 44px; height: 44px; }
+.os-home-community small { display: block; color: #4d6a72; }
+.os-home-community > svg { width: 18px; height: 18px; color: var(--brand-primary, #03677A); }

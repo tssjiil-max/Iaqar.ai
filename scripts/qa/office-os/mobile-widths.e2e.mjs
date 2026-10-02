@@ -45,6 +45,7 @@ const SCREENS = [
   { name: "journey-viewing-result", url: `/#/journey/${s.viewingResult.journeyId}`, wait: "text=نتيجة المعاينة" },
   { name: "journey-closed", url: `/#/journey/${s.closed.journeyId}`, wait: "text=تمت الصفقة" },
   { name: "settings", url: "/#/settings", wait: ".os-set-list" },
+  { name: "community", url: "/#/community", wait: ".os-chips" },
   { name: "settings-profile", url: "/#/settings/profile", wait: 'input[name="officeName"]' },
   { name: "settings-link", url: "/#/settings/link", wait: "[data-office-link]" },
   { name: "settings-cooperation", url: "/#/settings/cooperation", wait: "[data-mode]" },

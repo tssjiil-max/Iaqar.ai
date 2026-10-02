@@ -30,9 +30,9 @@ export const TASK_TYPES = Object.freeze({
   MISSING_DATA: { badge: "استكمال بيانات", button: "استكمال البيانات", icon: "edit", opens: "record", needsBroker: true },
   OPPORTUNITY_REVIEW: { badge: "سجل جديد", button: "مراجعة السجل", icon: "inbox-in", opens: "record", needsBroker: true },
   OPPORTUNITY_FOLLOW_UP: { badge: "متابعة", button: "متابعة السجل", icon: "clock", opens: "record", needsBroker: true },
-  COOPERATION_REQUEST: { badge: "تعاون", button: "مراجعة طلب التعاون", icon: "users", opens: "legacy", needsBroker: true },
-  COOPERATION_RESPONSE: { badge: "تعاون", button: "عرض حالة التعاون", icon: "users", opens: "legacy", needsBroker: false },
-  COOPERATION_MATCH: { badge: "تعاون", button: "فتح التعاون", icon: "users", opens: "legacy", needsBroker: true },
+  COOPERATION_REQUEST: { badge: "تعاون", button: "مراجعة طلب التعاون", icon: "users", opens: "community", needsBroker: true },
+  COOPERATION_RESPONSE: { badge: "تعاون", button: "عرض حالة التعاون", icon: "users", opens: "community", needsBroker: false },
+  COOPERATION_MATCH: { badge: "تعاون", button: "فتح التعاون", icon: "users", opens: "community", needsBroker: true },
   PLATFORM_OPPORTUNITY_OFFER: { badge: "فرصة من المنصة", button: "استلام الفرصة", icon: "inbox-in", opens: "legacy", needsBroker: true },
   EXTERNAL_RESPONSE: { badge: "رد", button: "مراجعة الرد", icon: "mail", opens: "legacy", needsBroker: true },
   SYSTEM_ACTION: { badge: "إجراء", button: "عرض التفاصيل", icon: "info", opens: "legacy", needsBroker: false }
