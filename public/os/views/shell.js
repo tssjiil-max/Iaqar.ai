@@ -20,7 +20,7 @@ export function officePublicLink() {
 export async function shareOfficeLink() {
   const office = session.office || {};
   // The preview image (broker photo + trusted data) is refreshed first, so the link opens with the right card.
-  await ensureShareCard();
+  await Promise.race([ensureShareCard(), new Promise((resolve) => setTimeout(resolve, 4000))]);
   const link = officePublicLink();
   const text = `${office.officeName || "مكتبنا"}\nسجّل عقارك أو طلبك مباشرة من رابط المكتب:\n${link}`;
   if (navigator.share) {

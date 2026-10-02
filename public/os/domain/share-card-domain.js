@@ -33,6 +33,11 @@ export function shareCardKey(office = {}) {
   return (hash >>> 0).toString(36);
 }
 
+/** The version part of a stored nonce (a forced refresh appends a suffix). */
+export function nonceKey(nonce = "") {
+  return text(nonce).split("-")[0];
+}
+
 /** What is written on the card. Only the license number is shown; «مرخص» appears only with a real verification. */
 export function shareCardLines(office = {}) {
   return {
