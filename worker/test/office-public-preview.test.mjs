@@ -65,7 +65,7 @@ test("WhatsApp crawler receives OG HTML without a meta-refresh", async () => {
   const html = await response.text();
   assert.equal(response.status, 200);
   assert.match(html, /property="og:title" content="Staging Logo Live"/);
-  assert.match(html, /property="og:image" content="https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/icons\/iaqar-default-icon-512.png"/, "no photo, no logo → the platform logo");
+  assert.match(html, /property="og:image" content="https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/[^"]+\/card-v[^"]+\.png"/, "no photo → Worker-served platform logo");
   assert.match(html, /property="og:description" content="مكتب عقاري مرخص في المدينة المنورة"/);
   assert.match(html, /property="og:type" content="website"/);
   assert.match(html, /property="og:url" content="https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/m\/wadi"/);
@@ -138,9 +138,9 @@ async function ogImage(extraFields) {
   return (await response.text()).match(/property="og:image" content="([^"]+)"/)[1];
 }
 
-test("preview image is per office: broker photo, then logo, then the platform logo", async () => {
-  assert.match(await ogImage({ sharePhoto: { booleanValue: true } }), /^https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/);
-  assert.equal(await ogImage({ logoUrl: { stringValue: "https://cdn.example/logo.png" } }), "https://cdn.example/logo.png");
-  assert.equal(await ogImage({ logoUrl: { stringValue: "http://insecure.example/logo.png" } }), "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/icons/iaqar-default-icon-512.png", "never a non-HTTPS image");
-  assert.match(await ogImage({}), /iaqar-default-icon-512\.png$/);
+test("preview image is always served by the Worker (photo when stored, else platform logo) — never an external URL", async () => {
+  const card = /^https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/;
+  assert.match(await ogImage({ sharePhoto: { booleanValue: true } }), card);
+  assert.match(await ogImage({ logoUrl: { stringValue: "https://cdn.example/logo.png" } }), card);
+  assert.match(await ogImage({}), card);
 });

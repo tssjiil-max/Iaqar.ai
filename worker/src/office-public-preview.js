@@ -135,12 +135,10 @@ export async function handlePublicOfficePreview(request, env, deps) {
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
   const landingUrl = officePublicLandingUrl(appOrigin, officeId);
-  // The office's own image: the broker photo (stored as a public PNG), else the office logo, else the platform logo.
-  const logoUrl = text(office.logoUrl);
+  // Always the Worker-served image path: the broker photo when stored, else the platform logo (served by the Worker itself,
+  // so WhatsApp never depends on an external or private logo URL).
   const hasPhoto = office.sharePhoto === true;
-  const imageUrl = hasPhoto
-    ? `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`
-    : /^https:\/\//i.test(logoUrl) ? logoUrl : `${appOrigin}${PLATFORM_DEFAULT_LOGO_512}`;
+  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
     const headers = deps.corsHeaders();
@@ -155,7 +153,6 @@ export async function handlePublicOfficePreview(request, env, deps) {
     workerOrigin,
     canonicalUrl,
     imageUrl,
-    imageIsShareCard: false,
     browserRedirectUrl: landingUrl || canonicalUrl,
     includeBrowserRedirect: true
   });
