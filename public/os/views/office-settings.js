@@ -13,6 +13,8 @@ import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
 import { COOPERATION_OPTIONS, loadCooperationMode, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
+import { loadChannelStatus } from "../core/channels.js";
+import { automationLabel, channelViews } from "../domain/channels-domain.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
 import { officeLinkFor } from "../../js/office-domain.js";
 
@@ -45,6 +47,7 @@ export function renderSettingsHub(container) {
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
+      row("send", "قنوات المكتب", "واتساب وتيليجرام — حالة الاتصال واستقبال الرسائل", "channels"),
       row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")),
     h("section", { class: "os-card os-set-legacy" },
       h("h2", { class: "os-h2" }, ic("gear"), "إعدادات متقدمة"),
@@ -183,5 +186,30 @@ export function renderCooperationSettings(container) {
         group),
       save);
   }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعداد التعاون." })); });
+  return null;
+}
+
+export function renderChannelSettings(container) {
+  if (managerOnly(container, "قنوات المكتب")) return null;
+  const body = h("div", {}, h("div", { class: "os-skeleton" }));
+  append(container, body);
+  loadChannelStatus(session.officeId).then((payload) => {
+    clear(body);
+    const cards = channelViews(payload).map((view) => h("article", { class: "os-card os-chan-card", "data-channel": view.id },
+      h("span", { class: "os-set-icon" }, ic(view.icon)),
+      h("div", { class: "os-set-text" },
+        h("b", { text: view.name }),
+        h("small", { text: view.hint }),
+        view.detail ? h("small", { text: view.detail, dir: "auto" }) : null),
+      h("span", { class: `os-chan-status is-${view.status}`, "data-channel-status": view.status, text: view.statusLabel })));
+    const legacy = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
+    append(body,
+      h("p", { class: "os-sub", text: "القنوات وسيلة نقل فقط: تصل الرسائل إلى صندوق المكتب ثم تُعالج كأي عميل أو عرض أو طلب." }),
+      ...cards,
+      h("section", { class: "os-card os-set-legacy" },
+        h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
+        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` }),
+        h("a", { class: "os-btn secondary block", href: legacy, "data-legacy-channels": "" }, ic("link"), "ربط واتساب وإدارة القناة")));
+  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
   return null;
 }

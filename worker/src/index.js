@@ -1,5 +1,6 @@
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
 import { runCooperationBrokerAction } from "./cooperation-brokers-service.js";
+import { buildChannelStatuses } from "./office-channels-service.js";
 import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
   createPersistentCompletionSession,
@@ -641,6 +642,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
         return await handleCooperationLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/office/channels/status") {
+        return await handleOfficeChannelsStatus(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/brokers") {
@@ -5328,6 +5333,26 @@ async function handleCooperationRequestCreate(request, env, requestId) {
     boundaries: result.boundaries || phase6BoundaryGuarantees(),
     requestId
   }, result.duplicate ? 200 : 201);
+}
+
+async function handleOfficeChannelsStatus(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  await authorizeOfficeRequest(request, env, officeId, "integration");
+  let whatsappIntegration = null;
+  let whatsappUsage = null;
+  if (hasFirebaseSecrets(env)) {
+    const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+    const accessToken = await getGoogleAccessToken(env);
+    const read = async (segments) => {
+      const doc = await getFirestoreDocument({ projectId, segments, accessToken, allowMissing: true });
+      return doc ? firestoreFieldsToJs(doc.fields || {}) : null;
+    };
+    whatsappIntegration = await read(["offices", officeId, "integrations", "whatsapp"]);
+    whatsappUsage = await read(["offices", officeId, "usage", `whatsapp_${utcDayId(new Date())}`]);
+  }
+  return jsonResponse({ ok: true, officeId, ...buildChannelStatuses({ officeId, whatsappIntegration, whatsappUsage, env }), requestId });
 }
 
 async function handleCooperationBrokers(request, env, requestId) {
