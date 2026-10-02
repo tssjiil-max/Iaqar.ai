@@ -135,7 +135,12 @@ export async function handlePublicOfficePreview(request, env, deps) {
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
   const landingUrl = officePublicLandingUrl(appOrigin, officeId);
-  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`;
+  // The office's own image: the broker photo (stored as a public PNG), else the office logo, else the platform logo.
+  const logoUrl = text(office.logoUrl);
+  const hasPhoto = office.sharePhoto === true;
+  const imageUrl = hasPhoto
+    ? `${workerOrigin}${officeShareCardPath(canonicalSlug, version)}`
+    : /^https:\/\//i.test(logoUrl) ? logoUrl : `${appOrigin}${PLATFORM_DEFAULT_LOGO_512}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
     const headers = deps.corsHeaders();
@@ -150,6 +155,7 @@ export async function handlePublicOfficePreview(request, env, deps) {
     workerOrigin,
     canonicalUrl,
     imageUrl,
+    imageIsShareCard: false,
     browserRedirectUrl: landingUrl || canonicalUrl,
     includeBrowserRedirect: true
   });

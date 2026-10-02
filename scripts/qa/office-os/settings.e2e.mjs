@@ -128,33 +128,19 @@ try {
   await page.locator("[data-broker-avatar]").waitFor();
   check("avatar shows in the office card and the image is loaded (not broken)", await page.evaluate(() => { const i = document.querySelector("[data-broker-avatar]"); return i.complete && i.naturalWidth > 0; }));
   await shot(page, "08-office-avatar");
-  const slugPhoto = h.store.get(`offices/${OFFICE_A}`).publicSlug;
-  const beforeCard = bucket.get(`office-share/${slugPhoto}/card.png`)?.bytes;
-  await page.goto(`${h.origin}/#/settings/link`);
-  const withPhoto = await until(() => { const b = bucket.get(`office-share/${slugPhoto}/card.png`)?.bytes; return b && (!beforeCard || !b.equals(beforeCard)) ? b : null; }, "share card regenerated with the broker photo");
-  fs.writeFileSync(path.join(OUT, "share-card-photo.png"), withPhoto);
-  check("changing the broker photo regenerates the share card under a new version", true);
-  await page.goto(`${h.origin}/#/settings/profile`);
-  await page.locator("[data-photo-remove]").click();
-  await page.locator(".os-toast", { hasText: "تم حذف الصورة" }).waitFor();
-  await until(() => h.store.get(`offices/${OFFICE_A}`).brokerPhotoUrl === "", "photo removed");
-  await page.goto(`${h.origin}/#/office`);
-  await page.locator(".ref-office-logo-mark").first().waitFor();
-  check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
-
-  // بطاقة المشاركة (preview image behind the shared link)
-  await page.goto(`${h.origin}/#/settings/link`);
+  // صورة معاينة الرابط (what WhatsApp shows) — with a photo
   const slugNow = h.store.get(`offices/${OFFICE_A}`).publicSlug;
-  await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce && bucket.get(`office-share/${slugNow}/card.png`), "share card uploaded for the current slug");
-  const card = bucket.get(`office-share/${OFFICE_A}/card.png`).bytes;
-  check("share card is a 1200×630 PNG stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 1200 && card.readUInt32BE(20) === 630 && bucket.has(`office-share/${slugNow}/card.png`), `${card.length} bytes ${card.readUInt32BE(16)}x${card.readUInt32BE(20)} keys=${[...bucket.keys()].join(",")} slug=${slugNow}`);
-  fs.writeFileSync(path.join(OUT, "share-card.png"), card);
+  await page.goto(`${h.origin}/#/settings/link`);
+  const card = await until(() => bucket.get(`office-share/${slugNow}/card.png`)?.bytes, "photo uploaded as the preview image");
+  check("preview image is the broker photo as a 600×600 PNG, stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 600 && card.readUInt32BE(20) === 600 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
+  fs.writeFileSync(path.join(OUT, "share-photo.png"), card);
   await page.locator("[data-share-card-preview]:not([hidden])").waitFor();
-  check("link page shows the card preview and says it was updated", (await page.locator("[data-share-card-status]").innerText()).includes("بطاقة المعاينة"));
+  check("link page shows the image and says it is updated", (await page.locator("[data-share-card-status]").innerText()).includes("صورة المعاينة"));
+  await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === true, "public mirror flags the photo");
   const nonceBefore = h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce;
   await page.locator("[data-share-card-refresh]").click();
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce !== nonceBefore, "forced refresh gives a new version");
-  check("«تحديث بطاقة المعاينة» uploads again under a new version (busts WhatsApp's cache)", true);
+  check("«تحديث صورة المعاينة» uploads again under a new version (busts WhatsApp's cache)", true);
   const savedMedia = h.env.IAQAR_MEDIA;
   h.env.IAQAR_MEDIA = undefined;
   await page.locator("[data-share-card-refresh]").click();
@@ -162,14 +148,37 @@ try {
   check("when the upload fails the page says why (status code), not silence", (await page.locator("[data-share-card-status]").innerText()).includes("503"));
   h.env.IAQAR_MEDIA = savedMedia;
   { const i = errors.findIndex((e) => /503/.test(e)); if (i >= 0) errors.splice(i, 1); } // the deliberate failure above
-  const nonce = await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce, "nonce on public office");
-  check("card version is stored on the office and its public mirror", h.store.get(`offices/${OFFICE_A}`).shareCardNonce === nonce);
-  const og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
-  check("crawler gets the office preview: title, description and the card image", og.includes('og:title" content="مكتب سلطان للتسويق العقاري"') && new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og), og.slice(0, 0));
+  const crawl = async () => (await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text());
+  let og = await crawl();
+  check("crawler gets this office's title, description (مرخص), type and url", og.includes('og:title" content="مكتب سلطان للتسويق العقاري"') && og.includes('og:description" content="مكتب عقاري مرخص في الرياض"') && og.includes('og:type" content="website"') && og.includes(`/m/${slugNow}"`));
+  check("og:image is this office's photo (HTTPS path under /share/office/<slug>)", new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og));
+  const imageUrl = og.match(/og:image" content="([^"]+)"/)[1];
+  const imageResponse = await fetch(imageUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`));
+  check("the image opens directly without login (200 image/png)", imageResponse.status === 200 && /image\/png/.test(imageResponse.headers.get("content-type") || ""), `${imageResponse.status}`);
   const redirect = await fetch(`${h.origin}/worker/m/${slugNow}`, { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (Android)" } });
   check("a person is sent on to the office page", redirect.status === 302);
-  const first = bucket.get(`office-share/${OFFICE_A}/card.png`).meta.customMetadata.officeId;
-  check("the card is stored for this office only", first === OFFICE_A);
+  // public office page footer
+  const visitor = await openAs(OWNER_A, "");
+  await visitor.goto(`${h.origin}/o/${slugNow}`);
+  await visitor.locator("[data-powered-by]").waitFor();
+  const footerText = await visitor.locator("[data-powered-by]").innerText();
+  check("public page footer: «مدعوم بواسطة مكاتب عقارية ذكية» + «أنشئ مكتبك العقاري» (no domain name)", footerText.includes("مدعوم بواسطة مكاتب عقارية ذكية") && footerText.includes("أنشئ مكتبك العقاري") && !/iaqar/i.test(footerText) && (await visitor.locator("[data-create-office]").getAttribute("href")) === "/legacy.html#broker");
+  check("the office name stays the main element (title above footer)", await visitor.evaluate(() => { const t = document.querySelector(".os-public-title"), f = document.querySelector("[data-powered-by]"); return parseFloat(getComputedStyle(t).fontSize) > parseFloat(getComputedStyle(f).fontSize) * 1.8; }));
+  await visitor.screenshot({ path: path.join(OUT, "09-public-office-footer.png"), fullPage: true });
+  await page.goto(`${h.origin}/#/settings/profile`);
+  await page.locator("[data-photo-remove]").click();
+  await page.locator(".os-toast", { hasText: "تم حذف الصورة" }).waitFor();
+  await until(() => h.store.get(`offices/${OFFICE_A}`).brokerPhotoUrl === "", "photo removed");
+  await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-office-logo-mark").first().waitFor();
+  await page.goto(`${h.origin}/#/settings/link`);
+  await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === false, "photo removed from the preview");
+  check("without a photo the page says the platform logo is used", (await page.locator("[data-share-card-status]").innerText()).includes("شعار المنصة"));
+  og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
+  check("without a photo og:image falls back to the platform logo (public HTTPS icon)", /og:image" content="[^"]*\/icons\/iaqar-default-icon-512\.png"/.test(og));
+  await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-office-logo-mark").first().waitFor();
+  check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
 
   // قنوات المكتب
   await page.goto(`${h.origin}/#/settings/channels`);

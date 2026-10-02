@@ -9,7 +9,7 @@ function appError(code, status, message) {
   return error;
 }
 
-function previewDeps({ slugOfficeId = "staging-logo-live-20260807", claimedBy = "", publicRows = [] } = {}) {
+function previewDeps({ slugOfficeId = "staging-logo-live-20260807", claimedBy = "", publicRows = [], extraFields = {} } = {}) {
   return {
     projectId: "iaqar-ai-staging",
     accessToken: "token",
@@ -25,7 +25,8 @@ function previewDeps({ slugOfficeId = "staging-logo-live-20260807", claimedBy = 
             officeName: { stringValue: "Staging Logo Live" },
             city: { stringValue: "المدينة المنورة" },
             licenseNumber: { stringValue: "1234567890" },
-            publicSlug: { stringValue: "wadi" }
+            publicSlug: { stringValue: "wadi" },
+            ...extraFields
           }
         };
       }
@@ -38,7 +39,7 @@ function previewDeps({ slugOfficeId = "staging-logo-live-20260807", claimedBy = 
     setFirestoreDocument: async () => ({}),
     deleteFirestoreDocument: async () => ({}),
     firestoreFieldsToJs: (fields) => Object.fromEntries(
-      Object.entries(fields || {}).map(([key, value]) => [key, value.stringValue || value.timestampValue || ""])
+      Object.entries(fields || {}).map(([key, value]) => [key, value.booleanValue ?? (value.stringValue || value.timestampValue || "")])
     ),
     firestoreHelpers: {
       firestoreString: (value) => ({ stringValue: value }),
@@ -64,7 +65,10 @@ test("WhatsApp crawler receives OG HTML without a meta-refresh", async () => {
   const html = await response.text();
   assert.equal(response.status, 200);
   assert.match(html, /property="og:title" content="Staging Logo Live"/);
-  assert.match(html, /property="og:image" content="https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/);
+  assert.match(html, /property="og:image" content="https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/icons\/iaqar-default-icon-512.png"/, "no photo, no logo → the platform logo");
+  assert.match(html, /property="og:description" content="مكتب عقاري مرخص في المدينة المنورة"/);
+  assert.match(html, /property="og:type" content="website"/);
+  assert.match(html, /property="og:url" content="https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/m\/wadi"/);
   assert.match(html, /location\.replace\("https:\/\/iaqar-ai-staging--staging-9c4b0k7h.web.app\/\?office=staging-logo-live-20260807&view=public"\)/);
   assert.equal(html.includes("http-equiv=\"refresh\""), false);
   assert.equal(html.includes("cv2Party"), false);
@@ -123,4 +127,20 @@ test("public slug uniqueness rejects another office", async () => {
     ),
     (error) => error.code === "slug_taken" && String(error.message).includes("جرّب:")
   );
+});
+
+async function ogImage(extraFields) {
+  const response = await handlePublicOfficePreview(
+    new Request("https://iaqar-intake-staging.iaqar-ai.workers.dev/m/wadi", { headers: { "user-agent": "WhatsApp/2.2492.3 N" } }),
+    {},
+    previewDeps({ extraFields })
+  );
+  return (await response.text()).match(/property="og:image" content="([^"]+)"/)[1];
+}
+
+test("preview image is per office: broker photo, then logo, then the platform logo", async () => {
+  assert.match(await ogImage({ sharePhoto: { booleanValue: true } }), /^https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/);
+  assert.equal(await ogImage({ logoUrl: { stringValue: "https://cdn.example/logo.png" } }), "https://cdn.example/logo.png");
+  assert.equal(await ogImage({ logoUrl: { stringValue: "http://insecure.example/logo.png" } }), "https://iaqar-ai-staging--staging-9c4b0k7h.web.app/icons/iaqar-default-icon-512.png", "never a non-HTTPS image");
+  assert.match(await ogImage({}), /iaqar-default-icon-512\.png$/);
 });
