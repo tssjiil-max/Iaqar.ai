@@ -10,12 +10,14 @@ import { openSheet, closeAllSheets } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, filterRecords, recordView, sortRecords, RECORD_KIND } from "../domain/records-domain.js";
 import { photo } from "./reference-layout.js";
 import { relativeAgo } from "../domain/format-domain.js";
+import { engagedRecordIds } from "../domain/task-domain.js";
 import { removeRecordFlow } from "./record-actions.js";
 
 const KIND_TABS = [
   { id: "", label: "جميع السجلات" },
   { id: RECORD_KIND.OFFER, label: "العروض" },
-  { id: RECORD_KIND.REQUEST, label: "الطلبات" }
+  { id: RECORD_KIND.REQUEST, label: "الطلبات" },
+  { id: "UNMATCHED", label: "بلا مطابقة" }
 ];
 
 function recordCard(record) {
@@ -37,7 +39,8 @@ export function openRecordMenu(record) {
 export function renderRepository(container, { query } = {}) {
   const filters = {
     query: query?.get("q") || "",
-    kind: query?.get("kind") || "",
+    kind: query?.get("kind") === "UNMATCHED" ? "" : query?.get("kind") || "",
+    unmatched: query?.get("kind") === "UNMATCHED",
     purpose: "",
     propertyType: "",
     location: "",
@@ -88,7 +91,7 @@ export function renderRepository(container, { query } = {}) {
   const drawTabs = () => {
     clear(tabs);
     for (const tab of KIND_TABS) {
-      tabs.append(h("button", { type: "button", "aria-pressed": String(filters.kind === tab.id), onClick: () => { filters.kind = tab.id; fillPurposes(); drawTabs(); draw(); } }, tab.label));
+      tabs.append(h("button", { type: "button", "aria-pressed": String(tab.id === "UNMATCHED" ? filters.unmatched : !filters.unmatched && filters.kind === tab.id), "data-tab": tab.id || "ALL", onClick: () => { filters.unmatched = tab.id === "UNMATCHED"; filters.kind = filters.unmatched ? "" : tab.id; fillPurposes(); drawTabs(); draw(); } }, tab.label));
     }
   };
 
@@ -98,7 +101,8 @@ export function renderRepository(container, { query } = {}) {
       append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
       return;
     }
-    const rows = sortRecords(filterRecords(state.records, filters));
+    let rows = sortRecords(filterRecords(state.records, filters));
+    if (filters.unmatched) { const engaged = engagedRecordIds(state.tasks); rows = rows.filter((r) => !engaged.has(String(r.id))); }
     summary.textContent = rows.length === 1 ? "سجل واحد" : `${rows.length} سجل`;
     if (!rows.length) {
       const hasAny = state.records.some((r) => recordView(r).lifecycle !== "DELETED");
@@ -115,6 +119,6 @@ export function renderRepository(container, { query } = {}) {
   drawTabs();
   append(container,h("div",{class:"ref-repo-tools"},h("div",{class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),tabs,h("details",{class:"ref-filters"},h("summary",{},"خيارات البحث",summary),filterPanel)),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",h("div",{class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus"),"إضافة سجل جديد"));
   draw();
-  const off = subscribe((kind) => { if (kind === "records") draw(); });
+  const off = subscribe((kind) => { if (kind === "records" || kind === "tasks") draw(); });
   return () => off();
 }

@@ -200,3 +200,17 @@ test("the single deal card opens the page of the deal's current phase", () => {
   assert.equal(dealRoute({ journeyId: "j1", journeyPhase: "VIEWING_SCHEDULING" }), "journey/j1");
   assert.equal(dealRoute({ journeyId: "j1", matchId: "m1", journeyPhase: "MATCHED" }), "review/m1");
 });
+
+import { engagedRecordIds } from "../public/os/domain/task-domain.js";
+
+test("records inside an open match or deal are engaged; the rest are «بلا مطابقة»", () => {
+  const tasks = [
+    { id: "t1", type: "DEAL_JOURNEY", status: "OPEN", journeyId: "j1", offerId: "o1", requestId: "r1" },
+    { id: "t2", type: "MATCH_REVIEW", status: "OPEN", matchId: "m2", metadata: { ownerOfferId: "o2", clientRequestId: "r2" } },
+    { id: "t3", type: "DEAL_JOURNEY", status: "COMPLETED", journeyId: "j3", offerId: "o3", requestId: "r3" },
+    { id: "t4", type: "MISSING_DATA", status: "OPEN", opportunityId: "o4" }
+  ];
+  const ids = engagedRecordIds(tasks);
+  for (const id of ["o1", "r1", "o2", "r2"]) assert.ok(ids.has(id), `${id} is engaged`);
+  for (const id of ["o3", "r3", "o4"]) assert.ok(!ids.has(id), `${id} is not engaged`);
+});
