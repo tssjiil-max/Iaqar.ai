@@ -48,7 +48,7 @@ try {
   await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
   await page.locator(".os-set-row").first().waitFor();
   check("hub lists the five settings pages", (await page.locator(".os-set-row").count()) === 5);
-  check("advanced settings still reach the old app (labelled)", (await page.locator("[data-legacy-settings]").getAttribute("href")).startsWith("/legacy.html?officeId="));
+  check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 
   // بيانات المكتب
@@ -103,11 +103,43 @@ try {
   check("public mirror carries the cooperation mode", h.store.get(`publicOffices/${OFFICE_A}`)?.cooperationMode === "DISABLED");
   await shot(page, "05-cooperation");
 
+  // صورة الوسيط
+  await page.goto(`${h.origin}/#/settings/profile`);
+  await page.locator("[data-photo-card]").waitFor();
+  check("no photo yet → default mark, no remove button", (await page.locator("[data-photo-img]").count()) === 0 && await page.locator("[data-photo-remove]").isHidden());
+  const bad = path.join(OUT, "bad.exe.txt"); fs.writeFileSync(bad, "MZ");
+  await page.setInputFiles("[data-photo-input]", { name: "x.exe", mimeType: "application/x-msdownload", buffer: Buffer.from("MZ") });
+  await page.locator('[data-error="photo"]').filter({ hasText: "JPG" }).waitFor();
+  check("a non-image file is refused with a clear message", (await page.locator("[data-photo-img]").count()) === 0);
+  const png = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 900; c.height = 500; const x = c.getContext("2d"); x.fillStyle = "#03677A"; x.fillRect(0, 0, 900, 500); x.fillStyle = "#fff"; x.fillRect(300, 100, 300, 300); return c.toDataURL("image/png").split(",")[1]; });
+  await page.setInputFiles("[data-photo-input]", { name: "me.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await page.locator("[data-photo-img]").waitFor();
+  check("preview shows before saving; nothing stored yet", !h.store.get(`offices/${OFFICE_A}`).brokerPhotoUrl);
+  await page.locator("[data-photo-save]").click();
+  await page.locator(".os-toast", { hasText: "تم حفظ الصورة" }).waitFor();
+  const stored = (await until(() => h.store.get(`offices/${OFFICE_A}`).brokerPhotoUrl || null, "photo saved"));
+  check("photo stored as a small square JPEG on the office", /^data:image\/jpeg;base64,/.test(stored) && stored.length < 70000, `${stored.length} chars`);
+  await shot(page, "07-photo");
+  await page.reload(); await page.locator("[data-photo-img]").waitFor();
+  check("photo survives reload in settings", true);
+  await page.goto(`${h.origin}/#/office`);
+  await page.locator("[data-broker-avatar]").waitFor();
+  check("avatar shows in the office card and the image is loaded (not broken)", await page.evaluate(() => { const i = document.querySelector("[data-broker-avatar]"); return i.complete && i.naturalWidth > 0; }));
+  await shot(page, "08-office-avatar");
+  await page.goto(`${h.origin}/#/settings/profile`);
+  await page.locator("[data-photo-remove]").click();
+  await page.locator(".os-toast", { hasText: "تم حذف الصورة" }).waitFor();
+  await until(() => h.store.get(`offices/${OFFICE_A}`).brokerPhotoUrl === "", "photo removed");
+  await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-office-logo-mark").first().waitFor();
+  check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
+
   // قنوات المكتب
   await page.goto(`${h.origin}/#/settings/channels`);
   await page.locator("[data-channel]").first().waitFor();
   check("channels page shows WhatsApp connected and Telegram not connected", (await page.locator('[data-channel="whatsapp"] [data-channel-status]').getAttribute("data-channel-status")) === "connected" && (await page.locator('[data-channel="telegram"] [data-channel-status]').getAttribute("data-channel-status")) === "disconnected");
   check("channels page states ASSISTED mode and no automatic sending", (await page.locator("[data-automation]").getAttribute("data-automation")) === "ASSISTED" && (await page.locator("[data-automation]").innerText()).includes("غير مفعّل"));
+  check("channels page has no legacy link", (await page.locator("a[href*='legacy']").count()) === 0);
   check("channels page never shows a full phone number or secret", !/(token|secret|\d{8,})/i.test(await page.locator(".os-main, main, body").first().innerText()));
   await shot(page, "06-channels");
 

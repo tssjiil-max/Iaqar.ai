@@ -37,6 +37,8 @@ let step = "start";
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "ar-SA", hasTouch: true });
+  const legacyHits = [];
+  await ctx.route(/\/legacy\.html/, (route) => { legacyHits.push(route.request().url()); route.fulfill({ status: 200, contentType: "text/html", body: "legacy" }); });
   const page = await ctx.newPage(); page.setDefaultTimeout(10000);
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(e.message));
@@ -63,8 +65,44 @@ try {
   check("reload keeps the same office", (await page.locator("body").innerText()).includes("مكتب الجديد للتسويق"));
   await page.screenshot({ path: path.join(OUT, "01-office.png"), fullPage: true });
 
+  step = "2b: office home is clean (no placeholder grid of extras) and settings keep the user in the new UI";
+  check("home: no «مكتبي» title and no «أدوات إضافية» block", !(await page.locator("body").innerText()).includes("مكتبي") && (await page.locator(".ref-office-extras-wrap").count()) === 0);
+  check("home: every remaining tool card is clearly disabled («قريبًا»)", (await page.locator(".ref-office-tool:not([aria-disabled='true'])").count()) === 0);
+  await page.locator(".ref-menu, [aria-label='القائمة والإعدادات']").first().click();
+  await page.getByRole("button", { name: "مشاركة رابط المكتب" }).click();
+  await page.locator(".os-toast, .os-sheet").first().waitFor();
+  check("share office link works inside the new UI", true);
+  await page.keyboard.press("Escape");
+  await page.goto(`${h.origin}/#/settings/profile`);
+  await page.locator('input[name="city"]').waitFor();
+  await page.fill('input[name="city"]', "الدمام");
+  await page.getByRole("button", { name: "حفظ بيانات المكتب" }).dblclick();
+  await page.locator(".os-toast", { hasText: "تم حفظ بيانات المكتب" }).waitFor();
+  check("settings save shows the new toast and stays in Office OS (double click saves once)", page.url().includes("#/settings/profile") && h.store.get(`offices/${OFFICE}`).city === "الدمام");
+  const png = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = 600; c.height = 800; const x = c.getContext("2d"); x.fillStyle = "#099FB4"; x.fillRect(0, 0, 600, 800); return c.toDataURL("image/png").split(",")[1]; });
+  await page.setInputFiles("[data-photo-input]", { name: "me.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await page.locator("[data-photo-save]").click();
+  await page.locator(".os-toast", { hasText: "تم حفظ الصورة" }).waitFor();
+  await page.goto(`${h.origin}/#/office`); await page.reload();
+  await page.locator("[data-broker-avatar]").waitFor();
+  check("broker photo shows on the office card after reload (and the city change persisted)", (await page.locator("body").innerText()).includes("الدمام"));
+  await page.screenshot({ path: path.join(OUT, "01b-office-photo.png"), fullPage: true });
+
+  step = "2c: sweep of every main route and its safe controls";
+  for (const route of ["office", "tasks", "settings", "settings/profile", "settings/link", "settings/cooperation", "settings/channels", "settings/brokers", "community"]) {
+    await page.goto(`${h.origin}/#/${route}`);
+    await page.waitForTimeout(500);
+    const anchors = await page.locator("a[href*='legacy']").count();
+    const blank = (await page.locator("body").innerText()).trim().length < 20;
+    check(`route #/${route}: no legacy link, not blank`, anchors === 0 && !blank);
+    for (const tab of await page.locator("[role='tab'], [data-tab]").all()) { await tab.click().catch(() => {}); }
+    for (const nav of await page.locator(".ref-bottom button").all()) { await nav.click().catch(() => {}); await page.waitForTimeout(150); }
+  }
+  check("sweep: the old app was never requested", legacyHits.length === 0, legacyHits.join(","));
+
   step = "3: logout then login again returns to the same office";
-  await page.locator(".ref-bell, .ref-menu, [aria-label='القائمة']").first().click();
+  await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-menu, [aria-label='القائمة والإعدادات']").first().click();
   await page.getByRole("button", { name: "تسجيل الخروج" }).click();
   await page.getByRole("heading", { name: "دخول المكتب" }).waitFor();
   check("logout returns to the login screen", true);
@@ -118,6 +156,10 @@ try {
   const body = await page.locator("body").innerText();
   check("review shows this property and client", body.includes("الشاطئ") && body.includes("عميل تجريبي"));
   check("no legacy screen was opened", !page.url().includes("legacy"));
+  await page.getByRole("button", { name: "اعتماد وبدء التفاوض" }).click();
+  await page.getByText("متابعة الفرصة").waitFor();
+  check("approving the match starts the journey inside Office OS", h.store.list(`offices/${OFFICE}/journeys`).length === 1);
+  check("tripwire: the old app was never requested during the whole journey", legacyHits.length === 0, legacyHits.join(","));
   await page.screenshot({ path: path.join(OUT, "03-review.png"), fullPage: true });
 } catch (error) {
   check("fresh-broker journey completed", false, `[${step}] ${String(error?.message || error).split("\n")[0]}`);

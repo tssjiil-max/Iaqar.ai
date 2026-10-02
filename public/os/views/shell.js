@@ -41,7 +41,6 @@ export async function shareOfficeLink() {
 }
 
 function openMenu() {
-  const legacyUrl = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
   const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
     filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
@@ -52,7 +51,6 @@ function openMenu() {
     } }, ic("bell"), h("span", {}, "تنبيهات هذا الجهاز ", h("small", { class: "os-sub", text: `(${notificationStatus()})` }))),
     h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("handshake"), "التعاون بين الوسطاء"),
     session.isManager ? h("button", { type: "button", onClick: () => { sheet.close(); go("settings"); } }, ic("gear"), "إعدادات المكتب") : null,
-    h("a", { href: legacyUrl }, ic("clipboard"), "أدوات إضافية قديمة"),
     h("button", { type: "button", onClick: async () => { sheet.close(); await signOutOffice(); location.replace("/"); } }, ic("logout"), "تسجيل الخروج")
   ];
   const sheet = openSheet("القائمة", h("nav", { class: "os-menu" }, items));

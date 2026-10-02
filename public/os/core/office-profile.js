@@ -7,6 +7,7 @@
 import { db, idToken, workerBase, ApiError } from "./runtime.js";
 import { session } from "./session.js";
 import { OFFICE_NAME_MESSAGES, publicProfileMirror, checkPublicSlug } from "../domain/office-profile-domain.js";
+import { PHOTO_MESSAGES, checkPhotoFile, isSafePhotoDataUrl, squareCrop, PHOTO_SIZE } from "../domain/avatar-domain.js";
 import { COOPERATION_MODES, cooperationSettingsPayload, normalizeCooperationMode } from "../../js/office-domain.js";
 
 const stamp = () => window.firebase.firestore.FieldValue.serverTimestamp();
@@ -86,4 +87,45 @@ export async function savePublicSlug(slug) {
   if (!response.ok) throw new ApiError(payload.message || "تعذر حفظ معرّف الرابط");
   session.office.publicSlug = checked.slug;
   return checked.slug;
+}
+
+/** Broker photo: a small square JPEG stored on the office document (managers only, same write the profile uses). */
+export async function saveBrokerPhoto(dataUrl) {
+  const officeId = session.officeId;
+  if (!officeId || !session.user?.uid) throw new ApiError("سجل دخول المكتب أولًا");
+  const value = dataUrl ? String(dataUrl) : "";
+  if (value && !isSafePhotoDataUrl(value)) throw new ApiError(PHOTO_MESSAGES.unreadable);
+  try {
+    await db().collection("offices").doc(officeId).set({ brokerPhotoUrl: value, updatedAt: stamp() }, { merge: true });
+  } catch (error) {
+    if (error?.code === "permission-denied") throw new ApiError("غير مصرح لك بتعديل الصورة — يلزم مدير المكتب.");
+    throw new ApiError("تعذر حفظ الصورة — حاول مجددًا.");
+  }
+  session.office.brokerPhotoUrl = value;
+}
+
+/** Reads a chosen image, crops it to a centred square and returns a compressed JPEG data URL. */
+export async function photoToDataUrl(file) {
+  const checked = checkPhotoFile(file);
+  if (!checked.ok) throw new ApiError(checked.message);
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch (_) {
+    throw new ApiError(PHOTO_MESSAGES.unreadable);
+  }
+  const { sx, sy, side } = squareCrop(bitmap.width, bitmap.height);
+  if (!side) throw new ApiError(PHOTO_MESSAGES.unreadable);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = PHOTO_SIZE;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, PHOTO_SIZE, PHOTO_SIZE);
+  context.drawImage(bitmap, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+  bitmap.close?.();
+  for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+    const url = canvas.toDataURL("image/jpeg", quality);
+    if (isSafePhotoDataUrl(url)) return url;
+  }
+  throw new ApiError(PHOTO_MESSAGES.tooLarge);
 }
