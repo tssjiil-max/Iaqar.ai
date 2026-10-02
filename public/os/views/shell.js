@@ -62,7 +62,7 @@ export function renderShellHeader({ active = "office" } = {}) {
   const logo = /^https:\/\//.test(String(office.logoUrl || ""))
     ? h("img", { src: office.logoUrl, alt: "" })
     : h("span", { class: "ref-logo" });
-  const localTitle = active === "tasks" ? "المهام اليومية" : active === "repo" ? "العروض والطلبات" : "المكتب";
+  const localTitle = active === "tasks" ? "المهام اليومية" : active === "repo" ? "العروض والطلبات" : "";
 
   return h("header", { class: "ref-shell-header ref-shell-platform" },
     h("div", { class: "ref-brand" }, logo),
