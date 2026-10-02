@@ -1,6 +1,8 @@
 import { h, ic, clear, append } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
+import { watchCooperation } from "../core/community.js";
+import { communitySummary, communityViews } from "../domain/community-domain.js";
 import { session } from "../core/session.js";
 import { state, subscribe, recordById } from "../core/state.js";
 import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta, dealRoute } from "../domain/task-domain.js";
@@ -10,7 +12,7 @@ import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){const t=String(task.type||"");if(t==="DEAL_JOURNEY")return Math.min(5,Math.max(0,Number(task.journeyStep??2)));return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
 function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else location.href="/legacy.html?officeId="+encodeURIComponent(session.officeId)+"&openOperation="+encodeURIComponent(task.id);}
-export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager})),"all"));}
+export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager,officeId:session.officeId})),"all"));}
 export function taskRecord(task){const meta=parseMeta(task);return recordById(task.offerId||meta.ownerOfferId)||recordById(task.opportunityId)||recordById(task.requestId||meta.clientRequestId);}
 export function photo(record={},extra=""){
  const raw=record.coverUrl||record.coverImageUrl||record.images?.[0]||record.photos?.[0]||record.imageUrls?.[0];const url=typeof raw==="string"?raw:raw?.url;
@@ -108,8 +110,8 @@ export function renderOffice(container){
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },
-        h("span", { class: "os-set-icon" }, ic("users")),
-        h("span", {}, h("b", { text: "مجتمع الوسطاء" }), h("small", { text: "التعاون مع مكاتب أخرى وطلباتهم" })),
+        h("span", { class: "os-set-icon" }, ic("handshake")),
+        h("span", {}, h("b", { text: "التعاون" }), h("small", { text: "تعاون مباشر بين وسيط العرض ووسيط الطلب" }), h("span", { class: "os-coop-badge", "data-coop-summary": "" })),
         ic("chev-left"))),
 
     h("section", { class: "os-card ref-office-section" },
@@ -122,6 +124,10 @@ export function renderOffice(container){
         h("p", { text: "خدمات مساندة لمكتبك" })),
       h("div", { class: "ref-office-extras", "aria-label": "أدوات إضافية" }, SECONDARY_OFFICE_TOOLS.map(officeExtraCard)))
   );
+
+  // «التعاون»: a light summary only («2 نشط · 1 بانتظار الرد»); the actions live in Daily Tasks and on the cooperation page.
+  const badge = container.querySelector("[data-coop-summary]");
+  return watchCooperation(session.officeId, (rows) => { if (badge) badge.textContent = communitySummary(communityViews(rows, session.officeId)); }, () => {});
 }
 
 export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(container);const task=state.tasks.find(t=>t.id===taskId);if(!task){append(container,h("p",{class:"os-sub",text:state.tasksReady?"المهمة غير متاحة":"جارٍ التحميل…"}));return;}const model=taskCardModel(task),record=taskRecord(task)||{},v=recordView(record),step=taskStep(task);

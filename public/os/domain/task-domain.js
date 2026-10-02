@@ -7,6 +7,8 @@
 import { isSameRiyadhDay, toDate } from "./format-domain.js";
 import { phaseInfo } from "./deal-flow-domain.js";
 
+import { buildCooperationDailyTaskView } from "../../js/cooperation-workflow-domain.js";
+
 export const ACTIVE_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
 
 /**
@@ -72,7 +74,23 @@ export function isToday(task = {}, now = new Date()) {
 }
 
 /** Managers see all; brokers see tasks assigned to them and unassigned ones. */
-export function visibleToActor(task = {}, { uid = "", isManager = false } = {}) {
+const COOPERATION_TASK_TYPES = new Set(["COOPERATION_MATCH", "COOPERATION_REQUEST", "COOPERATION_RESPONSE"]);
+
+/**
+ * Cooperation shows in «المهام اليومية» only when the broker has something to do (answer a request,
+ * continue the follow-up). Waiting or informational states stay on the cooperation page, never here.
+ * Tasks that lack the cooperation facts are left visible (never hide what we cannot judge).
+ */
+export function cooperationNeedsMyAction(task = {}, officeId = "") {
+  if (!COOPERATION_TASK_TYPES.has(String(task.type || "").toUpperCase()) || !officeId) return true;
+  const meta = parseMeta(task);
+  if (!meta.originatingOfficeId || !meta.targetOfficeId) return true;
+  const view = buildCooperationDailyTaskView({ ...meta, id: meta.cooperationTaskId || task.cooperationId || task.id }, { officeId });
+  return Boolean(view.requiresAction);
+}
+
+export function visibleToActor(task = {}, { uid = "", isManager = false, officeId = "" } = {}) {
+  if (!cooperationNeedsMyAction(task, officeId)) return false;
   if (isManager) return true;
   const assigned = String(task.assignedBrokerId || "");
   return !assigned || assigned === uid;

@@ -73,3 +73,10 @@ export async function officeSetting(officeId, id) {
 export async function saveOfficeSetting(officeId, id, data) {
   await office(officeId).collection("officeSettings").doc(id).set({ ...data, officeId, updatedAt: new Date().toISOString() }, { merge: true });
 }
+
+/** The deal journey that follows an accepted cooperation (same match), when this office has one. */
+export async function journeyForMatch(officeId, matchId) {
+  if (!matchId) return null;
+  const snap = await office(officeId).collection("journeys").where("matchId", "==", matchId).limit(1).get();
+  return snap.docs.length ? docData(snap.docs[0]) : null;
+}

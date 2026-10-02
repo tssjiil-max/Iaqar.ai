@@ -16,3 +16,12 @@ export function watchCooperation(officeId, onRows, onError) {
 export function runCooperationAction(officeId, cooperationId, action, reason = "") {
   return api("/cooperation/workflow", { officeId, cooperationId, action, reason });
 }
+
+/** الوسيط المشارك واتفاق النسب — Worker only (the cooperation record is closed to client writes). */
+export function addParticipatingBroker(officeId, cooperationId, brokerId, shares) {
+  return api("/cooperation/brokers", { officeId, cooperationId, action: "ADD_PARTICIPATING_BROKER", brokerId, shares });
+}
+
+export function saveCommission(officeId, cooperationId, shares) {
+  return api("/cooperation/brokers", { officeId, cooperationId, action: "SET_COMMISSION", shares });
+}

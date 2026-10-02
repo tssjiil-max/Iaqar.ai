@@ -377,7 +377,7 @@ export async function runCooperationWorkflow({
           : "الاتفاق والإغلاق يتمان من سجل الصفقة."
     };
   }
-  const applied = applyCooperationWorkflowTransition(request, action, { actorOfficeId });
+  const applied = applyCooperationWorkflowTransition(request, action, { actorOfficeId, actorUid });
   if (!applied.ok) {
     return {
       ok: false,
