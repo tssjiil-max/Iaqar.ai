@@ -29,6 +29,8 @@ h.store.seed(`publicOffices/${OFFICE}`, office);
 h.store.seed(`offices/${OFFICE}/members/${UID}`, { uid: UID, role: "owner", active: true });
 for (const key of [`+966${PHONE.slice(1)}`, PHONE, `966${PHONE.slice(1)}`]) h.store.seed(`loginDirectory/${sha256(key)}`, { uid: UID, officeId: OFFICE, email: USERS[UID].email, phone: PHONE, active: true });
 
+const bucket = new Map();
+h.env.IAQAR_MEDIA = { put: async (key, bytes) => { bucket.set(key, Buffer.from(bytes)); }, get: async () => null };
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const checks = []; const errors = [];
 const check = (name, ok, detail = "") => { checks.push({ name, ok: Boolean(ok), detail }); console.log(`${ok ? "✔" : "✘"} ${name}${detail ? ` — ${detail}` : ""}`); };
@@ -72,6 +74,8 @@ try {
   await page.getByRole("button", { name: "مشاركة رابط المكتب" }).click();
   await page.locator(".os-toast, .os-sheet").first().waitFor();
   check("share office link works inside the new UI", true);
+  await until(() => bucket.get(`office-share/${OFFICE}/card.png`), "share card for the new office");
+  check("sharing publishes the office card (PNG) for the new office", bucket.get(`office-share/${OFFICE}/card.png`).subarray(1, 4).toString() === "PNG");
   await page.keyboard.press("Escape");
   await page.goto(`${h.origin}/#/settings/profile`);
   await page.locator('input[name="city"]').waitFor();
