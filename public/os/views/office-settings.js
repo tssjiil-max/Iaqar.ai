@@ -174,7 +174,7 @@ export function renderLinkSettings(container) {
     origin: location.origin,
     hostname: location.hostname,
     workerOrigin: workerBase(),
-    preview: session.office?.shareCardNonce
+    preview: session.office?.sharePreviewFormat === "immutable-v2" ? session.office?.shareCardNonce : ""
   });
 
   const linkBox = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-office-link": "" });
