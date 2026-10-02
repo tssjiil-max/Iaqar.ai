@@ -137,7 +137,7 @@ try {
   await page.fill('input[name="phone"]', owner.phone);
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
-  await page.locator(".ref-today").waitFor();
+  await page.locator(".ref-office-tools").waitFor();
   check("live: real «دخول المكتب» login (phone → Worker resolve → Firebase Auth → membership)", true);
   await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
@@ -297,7 +297,7 @@ try {
   await bPage.fill('input[name="phone"]', ownerB.phone);
   await bPage.fill('input[name="password"]', ownerB.password);
   await bPage.getByRole("button", { name: "دخول المكتب" }).click();
-  await bPage.locator(".ref-today").waitFor();
+  await bPage.locator(".ref-office-tools").waitFor();
   const denied = await bPage.evaluate(async ([a, j]) => {
     const out = {};
     for (const [key, ref] of [["journey", firebase.firestore().doc(`offices/${a}/journeys/${j}`)], ["proposals", firebase.firestore().collection(`offices/${a}/proposals`)], ["opportunities", firebase.firestore().collection(`offices/${a}/opportunities`)]]) {
