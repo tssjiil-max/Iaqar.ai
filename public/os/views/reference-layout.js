@@ -66,15 +66,17 @@ function officeLogo(office) {
 }
 
 function officeToolCard([label, iconName]) {
-  return h("div", { class: "ref-office-tool", dataset: { officeTool: label } },
+  return h("div", { class: "ref-office-tool is-soon", dataset: { officeTool: label }, "aria-disabled": "true" },
     h("span", { class: "ref-office-tool-icon" }, ic(iconName)),
-    h("strong", { text: label }));
+    h("strong", { text: label }),
+    h("small", { class: "ref-office-soon", text: "قريبًا" }));
 }
 
 function officeExtraCard([label, iconName]) {
-  return h("div", { class: "ref-office-extra", dataset: { officeTool: label } },
+  return h("div", { class: "ref-office-extra is-soon", dataset: { officeTool: label }, "aria-disabled": "true" },
     h("span", { class: "ref-office-extra-icon" }, ic(iconName)),
-    h("strong", { text: label }));
+    h("strong", { text: label }),
+    h("small", { class: "ref-office-soon", text: "قريبًا" }));
 }
 
 export function renderOffice(container){

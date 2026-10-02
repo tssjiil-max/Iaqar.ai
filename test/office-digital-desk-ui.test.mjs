@@ -114,3 +114,11 @@ test("office identity rows follow the reference: icon, then label and value toge
   assert.match(office, /profileRow\("note", "ترخيص فال", license, \{ ltr: true \}\)/);
   assert.match(office, /profileRow\("pin", "", city\)/);
 });
+
+test("office tools that are not built yet are marked «قريبًا» and are not clickable", () => {
+  const count = (office.match(/class: "ref-office-(tool|extra) is-soon"/g) || []).length;
+  assert.equal(count, 2, "both tool card builders must mark the card as inactive");
+  assert.equal((office.match(/text: "قريبًا"/g) || []).length, 2, "each card builder must show the «قريبًا» label");
+  assert.doesNotMatch(office, /officeTool[^\n]*addEventListener|ref-office-tool[^\n]*onClick/, "inactive tools must not pretend to open something");
+  assert.match(css, /\.ref-office-soon/, "the label needs its own style");
+});
