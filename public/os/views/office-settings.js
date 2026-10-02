@@ -3,7 +3,7 @@
  *   #/settings           hub
  *   #/settings/profile   بيانات المكتب
  *   #/settings/link      رابط المكتب
- *   #/settings/cooperation   التعاون
+ *   #/settings/cooperation   مجتمع الوسطاء
  *   #/settings/brokers   الوسطاء والإسناد والصلاحيات (settings.js)
  * Manager-only; everything saves through core/office-profile.js.
  */
@@ -44,7 +44,7 @@ export function renderSettingsHub(container) {
     h("section", { class: "os-card os-set-list", "aria-label": "إعدادات المكتب" },
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
-      row("users", "التعاون", "استقبال طلبات التعاون من وسطاء آخرين", "cooperation"),
+      row("users", "مجتمع الوسطاء", "التعاون مع وسطاء آخرين وطلباتهم", "cooperation"),
       row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")),
     h("section", { class: "os-card os-set-legacy" },
       h("h2", { class: "os-h2" }, ic("gear"), "إعدادات متقدمة"),
@@ -154,7 +154,7 @@ export function renderLinkSettings(container) {
 }
 
 export function renderCooperationSettings(container) {
-  if (managerOnly(container, "التعاون")) return null;
+  if (managerOnly(container, "مجتمع الوسطاء")) return null;
   const body = h("div", {}, h("div", { class: "os-skeleton" }));
   append(container, body);
   let selected = "";
@@ -178,7 +178,7 @@ export function renderCooperationSettings(container) {
     save.addEventListener("click", () => runAction(save, () => saveCooperationMode(selected), { success: "تم حفظ إعداد التعاون" }));
     append(body,
       h("section", { class: "os-card" },
-        h("h2", { class: "os-h2" }, ic("users"), "التعاون مع وسطاء آخرين"),
+        h("h2", { class: "os-h2" }, ic("users"), "مجتمع الوسطاء"),
         h("p", { class: "os-sub", text: "بيانات التواصل لا تظهر تلقائيًا في أي وضع." }),
         group),
       save);
