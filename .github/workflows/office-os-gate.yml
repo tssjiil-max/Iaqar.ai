@@ -85,6 +85,9 @@ jobs:
       - name: Brokers community
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/community" node scripts/qa/office-os/community.e2e.mjs
+      - name: Fresh broker onboarding (office, logout/login, offer, request, match, task)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/fresh-broker" node scripts/qa/office-os/fresh-broker.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
