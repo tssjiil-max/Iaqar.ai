@@ -184,7 +184,7 @@ export async function handlePublicOfficeSharePage(request, env, deps) {
   const workerOrigin = url.origin;
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
-  const shareUrl = `${workerOrigin}/s/${encodeURIComponent(canonicalSlug)}/${encodeURIComponent(parsed.version)}`;
+  const shareUrl = `${workerOrigin}/s/${encodeURIComponent(parsed.slug)}/${encodeURIComponent(parsed.version)}`;
   const landingUrl = officePublicLandingUrl(appOrigin, officeId);
   const imageUrl = `${workerOrigin}${officeShareCardPath(officeId, parsed.version)}`;
 
