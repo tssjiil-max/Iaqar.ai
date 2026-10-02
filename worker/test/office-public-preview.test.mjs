@@ -138,9 +138,10 @@ async function ogImage(extraFields) {
   return (await response.text()).match(/property="og:image" content="([^"]+)"/)[1];
 }
 
-test("preview image is always served by the Worker (photo when stored, else platform logo) — never an external URL", async () => {
-  const card = /^https:\/\/iaqar-intake-staging.iaqar-ai.workers.dev\/share\/office\/wadi\/card-v/;
-  assert.match(await ogImage({ sharePhoto: { booleanValue: true } }), card);
-  assert.match(await ogImage({ logoUrl: { stringValue: "https://cdn.example/logo.png" } }), card);
-  assert.match(await ogImage({}), card);
+test("preview image is always served by the Worker; without a photo it is marked so a stale stored card is never served", async () => {
+  const base = "https://iaqar-intake-staging.iaqar-ai.workers.dev/share/office/wadi/card-v";
+  const withPhoto = await ogImage({ sharePhoto: { booleanValue: true } });
+  assert.ok(withPhoto.startsWith(base) && !withPhoto.startsWith(`${base}logo-`), withPhoto);
+  assert.ok((await ogImage({ logoUrl: { stringValue: "https://cdn.example/logo.png" } })).startsWith(`${base}logo-`));
+  assert.ok((await ogImage({})).startsWith(`${base}logo-`));
 });

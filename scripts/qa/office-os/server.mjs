@@ -45,7 +45,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
     FIREBASE_PRIVATE_KEY_ID: "0123456789abcdef0123456789abcdef01234567",
     DEPLOYMENT_ENV: "staging",
     // In-memory media bucket (what R2 is in production) so share-card uploads work without a 503.
-    IAQAR_MEDIA: (() => { const objects = new Map(); return { put: async (key, bytes) => { objects.set(key, Buffer.from(bytes)); }, get: async (key) => (objects.has(key) ? { body: objects.get(key), writeHttpMetadata() {} } : null) }; })(),
+    IAQAR_MEDIA: (() => { const objects = new Map(); return { put: async (key, bytes, meta = {}) => { objects.set(key, { bytes: Buffer.from(bytes), type: meta.httpMetadata?.contentType }); }, get: async (key) => (objects.has(key) ? { body: objects.get(key).bytes, writeHttpMetadata(h) { if (objects.get(key).type) h.set("content-type", objects.get(key).type); } } : null) }; })(),
     APP_ORIGIN: ""
   };
   const officeA = {
