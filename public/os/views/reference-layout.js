@@ -6,7 +6,6 @@ import { state, subscribe, recordById } from "../core/state.js";
 import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta } from "../domain/task-domain.js";
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
-import { shareOfficeLink } from "./shell.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){const t=String(task.type||"");return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
@@ -86,20 +85,30 @@ export function renderOffice(container){
   const license = String(office.falLicenseNumber || office.licenseNumber || office.valLicenseNumber || office.falNumber || office.licenseNo || "—").trim();
   const city = String(office.city || office.address?.city || office.location?.city || "—").trim();
 
+  // Icon first (far right in RTL), then «label : value» kept together; numbers stay LTR in place.
+  const profileRow = (icon, label, value, { ltr = false } = {}) => h("div", { class: "ref-office-profile-row" },
+    h("span", { class: "ref-office-row-icon", "aria-hidden": "true" }, ic(icon)),
+    h("div", { class: "ref-office-row-text" },
+      label ? h("span", { text: `${label} :` }) : null,
+      h("b", ltr ? { text: value, class: "ref-office-ltr" } : { text: value })));
+  // The full name always shows: up to two lines, with a slightly smaller size for long names — never clipped.
+  const nameSize = officeName.length > 30 ? "is-long" : officeName.length > 20 ? "is-mid" : "";
+
   append(container,
     h("section", { class: "os-card ref-office-profile" },
       h("div", { class: "ref-office-profile-main" },
         h("div", { class: "ref-office-profile-head" },
-          h("h2", { text: officeName }),
-          h("button", { type: "button", class: "ref-office-share", "aria-label": "مشاركة رابط المكتب", onClick: shareOfficeLink }, ic("link"))),
-        h("div", { class: "ref-office-profile-row" }, h("span", { text: "الوسيط" }), h("b", { text: broker })),
-        h("div", { class: "ref-office-profile-row" }, h("span", { text: "ترخيص فال" }), h("b", { text: license, dir: "ltr" })),
-        h("div", { class: "ref-office-profile-row" }, h("span", { text: "المدينة" }), h("b", { text: city }))),
-      h("div", { class: "ref-office-profile-logo" }, officeLogo(office))),
+          h("h2", { class: nameSize, text: officeName })),
+        profileRow("user", "الوسيط", broker),
+        profileRow("note", "ترخيص فال", license, { ltr: true }),
+        profileRow("pin", "", city)),
+      h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, officeLogo(office)))),
 
-    h("section", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
+    h("section", { class: "os-card ref-office-section" },
+      h("div", { class: "ref-office-heading" }, h("h2", { text: "مكتبي" })),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
 
-    h("section", { class: "ref-office-extras-wrap" },
+    h("section", { class: "os-card ref-office-section ref-office-extras-wrap" },
       h("div", { class: "ref-office-extras-heading" },
         h("h2", { text: "أدوات إضافية" }),
         h("p", { text: "خدمات مساندة لمكتبك" })),

@@ -9,10 +9,11 @@ const css = fs.readFileSync(new URL("../public/os/office-desk.css", import.meta.
 test("office page uses the approved digital-office hierarchy", () => {
   assert.match(shell, /مكاتب عقارية ذكية/, "main shell header must carry the platform brand");
   assert.match(office, /ref-office-profile/, "office identity must be a dedicated card below the header");
-  assert.match(office, /shareOfficeLink/, "office identity card must expose the small share-link action");
+  assert.doesNotMatch(office, /ref-office-share/, "the reference card has no share button; sharing stays in the settings menu");
+  assert.match(shell, /shareOfficeLink\(\); \} \}, ic\("link"\), "مشاركة رابط المكتب"/, "sharing the office link must remain available from the menu");
   assert.match(office, /ref-office-tools/, "primary office tools grid must exist");
   assert.match(office, /ref-office-extras/, "secondary office tools row must exist");
-  assert.doesNotMatch(office, /text:\s*["']مكتبي["']/, "the removed مكتبي heading must not return");
+  assert.match(office, /ref-office-heading[^\n]*text:\s*["']مكتبي["']/, "the reference shows the «مكتبي» heading above the main tools");
 });
 
 test("office tool labels and order stay exact", () => {
@@ -51,9 +52,10 @@ test("additional-tools heading follows the same title/description row rhythm as 
 });
 
 test("office icons match the monochrome offer/request icon treatment", () => {
-  assert.match(css, /\.ref-office-tool-icon\s*\{[^}]*width\s*:\s*52px[^}]*height\s*:\s*52px[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)/s, "primary office icon container must match the reference tint and brand color");
-  assert.match(css, /\.ref-office-tool-icon svg\s*\{[^}]*width\s*:\s*26px[^}]*height\s*:\s*26px/s, "primary office glyph should be reduced to 26px");
-  assert.match(css, /\.ref-office-extra-icon\s*\{[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)/s, "secondary office icons must use the same reference tint and brand color");
+  // One icon frame for main and extra tools (reference): 44px frame, 23px glyph, tint + brand colour, light border, no shadow.
+  assert.match(css, /\.ref-office-tool-icon,\s*\.ref-office-extra-icon\s*\{[^}]*width\s*:\s*44px[^}]*height\s*:\s*44px[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-line\)[^}]*box-shadow\s*:\s*none/s, "main and extra icon frames must be the same size and treatment");
+  assert.match(css, /\.ref-office-tool-icon svg,\s*\.ref-office-extra-icon svg\s*\{[^}]*width\s*:\s*23px[^}]*height\s*:\s*23px/s, "main and extra glyphs must be the same 23px");
+  assert.doesNotMatch(css, /\.ref-office-tool-icon\s*\{[^}]*width/s, "no separate (larger) size for the main tool icons");
   assert.match(css, /\.ref-office-tool-icon \.t2,\s*\.ref-office-extra-icon \.t2\s*\{[^}]*opacity\s*:\s*1/s, "office-only secondary icon layers must be flattened to one monochrome tone");
 });
 
@@ -66,7 +68,7 @@ test("office visual weight follows the daily-tasks page without redesign", () =>
   );
   assert.match(
     css,
-    /\.ref-office-profile\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)\s+minmax\(92px,28%\)[^}]*gap\s*:\s*10px[^}]*padding\s*:\s*12px/s,
+    /\.ref-office-profile\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)\s+minmax\(92px,31%\)[^}]*gap\s*:\s*10px[^}]*padding\s*:\s*12px/s,
     "office identity card must stay compact without changing its structure"
   );
   assert.match(
@@ -93,9 +95,22 @@ test("office visual weight follows the daily-tasks page without redesign", () =>
 
 
 test("office header has the same two-line platform hierarchy as daily tasks", () => {
-  assert.match(shell, /active === "tasks" \? "المهام اليومية" : active === "repo" \? "العروض والطلبات" : "المكتب"/, "office header must show المكتب as the local context line");
+  // The office reference header shows the platform name only; the other screens keep their context line.
+  assert.match(shell, /active === "tasks" \? "المهام اليومية" : active === "repo" \? "العروض والطلبات" : ""/, "office header must not add a line that is not in the reference");
 });
 
 test("office identity card uses the same soft card treatment as the daily task path", () => {
   assert.match(css, /\.ref-office-profile\s*\{[^}]*border\s*:\s*0[^}]*box-shadow\s*:\s*var\(--shadow\)/s, "office identity card must use the shared soft-card treatment");
+});
+
+test("office identity rows follow the reference: icon, then label and value together, name never clipped", () => {
+  assert.match(css, /\.ref-office-profile-row\s*\{[^}]*grid-template-columns\s*:\s*34px\s+minmax\(0,1fr\)[^}]*direction\s*:\s*rtl/s, "rows are icon + text, RTL");
+  assert.match(css, /\.ref-office-row-icon\s*\{[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-line\)[^}]*box-shadow\s*:\s*none/s, "row icons sit in a small tinted square without shadow");
+  assert.match(css, /\.ref-office-row-text b\.ref-office-ltr\s*\{[^}]*direction\s*:\s*ltr[^}]*unicode-bidi\s*:\s*isolate/s, "the licence number is LTR but isolated so it stays beside its label");
+  const name = css.match(/\.ref-office-profile-head h2\s*\{[^}]*\}/s)?.[0] || "";
+  assert.match(name, /white-space\s*:\s*normal/, "the office name may wrap");
+  assert.doesNotMatch(name, /ellipsis|nowrap|line-clamp/, "the office name is never clipped");
+  assert.match(office, /profileRow\("user", "الوسيط", broker\)/);
+  assert.match(office, /profileRow\("note", "ترخيص فال", license, \{ ltr: true \}\)/);
+  assert.match(office, /profileRow\("pin", "", city\)/);
 });
