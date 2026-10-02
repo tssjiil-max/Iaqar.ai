@@ -303,7 +303,7 @@ try {
 
     await page.goto(`${PREVIEW_URL}/#/office`);
     await page.locator(".ref-office-tools").waitFor();
-    check("live: all 10 unbuilt office tools are marked «قريبًا»", (await page.locator(".ref-office-soon").count()) === 10);
+    check("live: all 6 unbuilt office tools are marked «قريبًا»", (await page.locator(".ref-office-soon").count()) === 6);
 
     const api = (route, body) => page.evaluate(async ([w, r, b]) => {
       const token = await firebase.auth().currentUser.getIdToken();
