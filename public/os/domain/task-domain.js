@@ -168,3 +168,20 @@ export function dealRoute(task = {}) {
   if (info.route === "session" && id) return `session/${id}`;
   return id ? `journey/${id}` : "tasks";
 }
+
+/**
+ * Record ids that already take part in a match or a deal — any active task that carries a
+ * match/journey and points at the record. Everything else is «بلا مطابقة».
+ */
+export function engagedRecordIds(tasks = []) {
+  const ids = new Set();
+  for (const task of tasks) {
+    if (!isActiveTask(task)) continue;
+    if (!task.matchId && !task.journeyId) continue;
+    const meta = parseMeta(task);
+    for (const id of [task.offerId, task.requestId, task.opportunityId, meta.ownerOfferId, meta.clientRequestId]) {
+      if (id) ids.add(String(id));
+    }
+  }
+  return ids;
+}

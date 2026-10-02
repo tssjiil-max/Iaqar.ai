@@ -233,6 +233,15 @@ try {
   await owner.goto(`${h.origin}/#/repo`);
   await owner.locator("[data-record]").first().waitFor();
   await shot(owner, "20-repository");
+  // «بلا مطابقة»: a third tab that lists only records outside any open match or deal
+  await owner.locator('[data-tab="UNMATCHED"]').click();
+  check("repository has the «بلا مطابقة» tab", (await owner.locator('[data-tab="UNMATCHED"][aria-pressed="true"]').count()) === 1);
+  const unmatchedNow = await owner.locator("[data-record]").count();
+  await owner.locator('[data-tab="ALL"]').click();
+  const allNow = await owner.locator("[data-record]").count();
+  check("unmatched tab never shows more than all records", unmatchedNow <= allNow && allNow > 0);
+  await owner.locator('[data-tab="UNMATCHED"]').click();
+  await shot(owner, "20b-repository-unmatched");
   const desktopCtx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ar-SA" });
   const desk = await desktopCtx.newPage(); watch(desk, "desktop");
   await desk.goto(`${h.origin}/`);
