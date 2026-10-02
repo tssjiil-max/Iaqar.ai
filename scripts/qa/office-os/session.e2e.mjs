@@ -42,6 +42,12 @@ const owner = await pageFor(`/s#${token(links.owner.url)}`);
 const client = await pageFor(`/s#${token(links.client.url)}`);
 const broker = await pageFor(`/#/session/${jid}`, true);
 
+// «تعديل العرض» reveals the quick price moves; the log is a collapsed «السجل» section.
+async function openAdjust(page) {
+  if ((await page.locator('[data-session-action="adjust"]').getAttribute("aria-expanded")) !== "true") await page.locator('[data-session-action="adjust"]').click();
+}
+const logEvent = (page, hasText) => page.locator(".os-session-event", { hasText }).first();
+
 await step("both party pages open without login and show only role labels", async () => {
   await owner.locator(".os-session-summary").waitFor();
   await client.locator(".os-session-summary").waitFor();
@@ -52,21 +58,25 @@ await step("both party pages open without login and show only role labels", asyn
 });
 
 await step("client −5% appears on the owner page live (no reload)", async () => {
+  await openAdjust(client);
   await client.locator('[data-session-action="minus5"]').click();
   await client.getByText("بانتظار رد المالك").waitFor();
-  await owner.locator(".os-session-event", { hasText: "اقترح سعرًا أقل بـ 5%" }).waitFor({ timeout: 9000 });
+  await logEvent(owner, "اقترح سعرًا أقل بـ 5%").waitFor({ state: "attached", timeout: 9000 });
+  await openAdjust(owner);
   await owner.locator('[data-session-action="plus2"]').waitFor();
   await client.screenshot({ path: path.join(OUT, "client-waiting.png") });
 });
 
 await step("owner compromise shows the computed average and updates the client", async () => {
+  await openAdjust(owner);
   const label = await owner.locator('[data-session-action="compromise"] small').innerText();
   if (!/ريال/.test(label)) throw new Error(`no computed price on the button: ${label}`);
   await owner.locator('[data-session-action="compromise"]').click();
-  await client.locator(".os-session-event", { hasText: "اقترح حلًا وسطًا" }).waitFor({ timeout: 9000 });
+  await logEvent(client, "اقترح حلًا وسطًا").waitFor({ state: "attached", timeout: 9000 });
 });
 
 await step("typed price takes digits only", async () => {
+  await openAdjust(client);
   await client.locator('[data-session-action="manual"]').click();
   const input = client.locator('input[name="price"]');
   await input.fill("2,300,000 آخر سعر");
@@ -74,7 +84,7 @@ await step("typed price takes digits only", async () => {
   if (/[^\d,٠-٩]/.test(value)) throw new Error(`letters kept: ${value}`);
   await client.screenshot({ path: path.join(OUT, "client-typed.png") });
   await client.locator('[data-session-send="manual"]').click();
-  await owner.locator(".os-session-event", { hasText: "اقترح سعرًا" }).first().waitFor({ timeout: 9000 });
+  await logEvent(owner, "اقترح سعرًا").waitFor({ state: "attached", timeout: 9000 });
 });
 
 await step("intervention → broker view flags it live and resolves it", async () => {
@@ -91,7 +101,7 @@ await step("broker message to the owner only", async () => {
   await broker.getByRole("button", { name: "إلى المالك" }).click();
   await broker.locator(".os-session-composer textarea").fill("رسالة للمالك فقط من الاختبار");
   await broker.locator(".os-session-composer").getByRole("button", { name: "إرسال" }).click();
-  await owner.locator(".os-session-event", { hasText: "رسالة للمالك فقط من الاختبار" }).waitFor({ timeout: 9000 });
+  await logEvent(owner, "رسالة للمالك فقط من الاختبار").waitFor({ state: "attached", timeout: 9000 });
   await client.waitForTimeout(6000);
   if (await client.getByText("رسالة للمالك فقط من الاختبار").count()) throw new Error("client saw the owner-only message");
 });
@@ -103,6 +113,31 @@ await step("task and deep link open the same session", async () => {
   const page = await pageFor(`/?openOperation=${encodeURIComponent(task.id)}`, true);
   await page.waitForURL(new RegExp(`#/session/${jid}`), { timeout: 12000 });
   await page.locator(".os-session-summary").waitFor();
+});
+
+
+await step("price accepted → both pages show the slot picker; picking a free slot books it", async () => {
+  // the owner accepts the client's last price (one tap from «قبول»)
+  await owner.locator('[data-session-action="accept"]').click();
+  await owner.locator(".os-session-note", { hasText: "تم الاتفاق على السعر" }).waitFor({ timeout: 9000 });
+  await client.locator('[data-session-action="viewing_pick"]').waitFor({ timeout: 9000 });
+  await client.locator('[data-session-action="viewing_pick"]').click();
+  await client.locator(".os-slot-picker").waitFor();
+  if (await client.locator('input[type="datetime-local"]').count()) throw new Error("free typing of the date must not exist");
+  await client.screenshot({ path: path.join(OUT, "client-slots.png") });
+  await client.locator("[data-slot]").first().click();
+  await client.locator(".os-session-note", { hasText: "بانتظار موافقة المالك" }).waitFor({ timeout: 9000 });
+  await owner.locator('[data-session-action="viewing_ok"]').waitFor({ timeout: 9000 });
+  await owner.screenshot({ path: path.join(OUT, "owner-viewing-ok.png") });
+  await owner.locator('[data-session-action="viewing_ok"]').click();
+  // both sides agreed on a free slot → booked on the broker's calendar
+  await owner.locator(".os-session-note", { hasText: "موعد المعاينة" }).waitFor({ timeout: 9000 });
+  await client.locator(".os-session-note", { hasText: "موعد المعاينة" }).waitFor({ timeout: 9000 });
+});
+
+await step("deal stays one card in Daily Tasks while the deal is open", async () => {
+  const cards = h.store.list(`offices/${OFFICE_A}/operations`).filter((op) => op.type === "DEAL_JOURNEY" && op.journeyId === jid && op.status === "OPEN");
+  if (cards.length !== 1) throw new Error(`expected one DEAL_JOURNEY card, got ${cards.length}`);
 });
 
 await browser.close();

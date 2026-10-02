@@ -49,9 +49,9 @@ const SCREENS = [
   { name: "reply-counter-field", url: `/r#${s.negotiation.ownerReplyToken}`, wait: "text=اختر ردك", auth: false, act: async (p) => { await p.locator('[data-option="counter"]').click(); await p.locator('input[name="text"]').waitFor(); } },
   { name: "reply-saved-state", url: `/r#${s.negotiation.clientReplyToken}`, wait: "text=عدّل ردك", auth: false },
   { name: "session-owner-price", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false },
-  { name: "session-owner-typed", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="manual"]').click(); await p.locator('input[name="price"]').waitFor(); } },
+  { name: "session-owner-typed", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="adjust"]').click(); await p.locator('[data-session-action="manual"]').click(); await p.locator('input[name="price"]').waitFor(); } },
   { name: "session-client-waiting", url: `/s#${linkToken(negLinks.client.url)}`, wait: ".os-session-actions", auth: false },
-  { name: "session-owner-viewing", url: `/s#${linkToken(viewLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="viewing_other"]').click(); await p.locator('input[name="viewingAt"]').waitFor(); } },
+  { name: "session-owner-viewing", url: `/s#${linkToken(viewLinks.owner.url)}`, wait: "text=بانتظار تأكيد الوسيط", auth: false },
   { name: "session-broker", url: `/#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" }
 ];
 
@@ -87,8 +87,10 @@ function layoutIssues() {
   // reachable fully above the bar at the end of the scroll (checked below). A bar that
   // is not fully opaque does not hide anything, so overlaps with it still fail.
   const opaque = (el) => { const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/); if (!m) return false; const parts = m[1].split(",").map(Number); return parts.length < 4 || parts[3] >= 1; };
-  const fixedBar = (el) => { for (let p = el; p && p !== document.body; p = p.parentElement) { if (getComputedStyle(p).position === "fixed") return p; } return null; };
-  const bars = overlay ? [] : [...document.querySelectorAll(".ref-bottom")].filter((el) => getComputedStyle(el).position === "fixed");
+  // A bottom bar is either fixed (.ref-bottom) or sticky-at-bottom (.os-session-actions); both stay put while the page scrolls.
+  const pinned = (p) => { const pos = getComputedStyle(p).position; return pos === "fixed" || (pos === "sticky" && p.matches(".os-session-actions")); };
+  const fixedBar = (el) => { for (let p = el; p && p !== document.body; p = p.parentElement) { if (pinned(p)) return p; } return null; };
+  const bars = overlay ? [] : [...document.querySelectorAll(".ref-bottom, .os-session-actions")].filter(pinned);
   for (const bar of bars) if (!opaque(bar)) issues.push(`fixed-bar-not-opaque "${label(bar).slice(0, 20)}" ${getComputedStyle(bar).backgroundColor}`);
   const controls = [...scope.querySelectorAll("button, a[href], input, select, textarea")].filter(visible).filter(el => {const r=clippedRect(el);return r.right>r.left && r.bottom>r.top;});
   if (bars.length) {

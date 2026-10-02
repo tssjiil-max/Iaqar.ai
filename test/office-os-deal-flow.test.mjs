@@ -189,3 +189,14 @@ test("TEST 8 — one card per open deal, with one phase and one action", () => {
   const closed = h.store.list(`offices/${OFFICE_A}/journeys`).filter((j) => String(j.status).startsWith("CLOSED"));
   for (const j of closed) assert.ok(!ops().some((op) => op.journeyId === (j.journeyId || j.id) && op.type === "DEAL_JOURNEY" && activeOp(op)), "closed deals have no card");
 });
+
+import { dealRoute, TASK_TYPES } from "../public/os/domain/task-domain.js";
+
+test("the single deal card opens the page of the deal's current phase", () => {
+  assert.ok(TASK_TYPES.DEAL_JOURNEY, "DEAL_JOURNEY must be a known task type");
+  assert.equal(dealRoute({ journeyId: "j1", journeyPhase: "PRICE_NEGOTIATION" }), "session/j1");
+  assert.equal(dealRoute({ journeyId: "j1", journeyPhase: "PRICE_DECISION" }), "session/j1");
+  assert.equal(dealRoute({ journeyId: "j1", journeyPhase: "VIEWING_RESULT" }), "journey/j1");
+  assert.equal(dealRoute({ journeyId: "j1", journeyPhase: "VIEWING_SCHEDULING" }), "journey/j1");
+  assert.equal(dealRoute({ journeyId: "j1", matchId: "m1", journeyPhase: "MATCHED" }), "review/m1");
+});

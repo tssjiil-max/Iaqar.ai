@@ -10,7 +10,7 @@ import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { runAction, openSheet } from "../core/ui.js";
 import { getDoc } from "../core/live.js";
-import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor } from "../domain/task-domain.js";
+import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
@@ -62,6 +62,7 @@ function modelFor(task, now) {
 }
 
 function primaryAction(task, model) {
+  if (model.opens === "deal") return () => go(dealRoute(task));
   if (model.opens === "review") return () => go(`review/${task.matchId}`);
   if (model.opens === "workspace" && model.journeyId) return () => go(`journey/${model.journeyId}?focus=${model.type}`);
   if (model.opens === "session" && model.journeyId) return () => go(`session/${model.journeyId}`);

@@ -5,6 +5,7 @@
  */
 
 import { isSameRiyadhDay, toDate } from "./format-domain.js";
+import { phaseInfo } from "./deal-flow-domain.js";
 
 export const ACTIVE_STATUSES = Object.freeze(["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"]);
 
@@ -21,6 +22,7 @@ export const TASK_TYPES = Object.freeze({
   VIEWING_RESULT: { badge: "معاينة", button: "نتيجة المعاينة", icon: "eye", opens: "workspace", needsBroker: true },
   JOURNEY_FOLLOW_UP: { badge: "متابعة", button: "متابعة الآن", icon: "chart-up", opens: "workspace", needsBroker: true },
   DEAL_ACTION: { badge: "إتمام الصفقة", button: "متابعة الاتفاق", icon: "contract", opens: "workspace", needsBroker: true },
+  DEAL_JOURNEY: { badge: "رحلة صفقة", button: "فتح الصفقة", icon: "handshake", opens: "deal", needsBroker: true },
   SESSION_INTERVENTION: { badge: "تدخل مطلوب", button: "فتح جلسة التفاوض", icon: "alert", opens: "session", needsBroker: true },
   SESSION_AGREED: { badge: "تفاوض", button: "فتح جلسة التفاوض", icon: "handshake", opens: "session", needsBroker: true },
   SESSION_PRIVATE_PRICE: { badge: "تفاوض", button: "فتح جلسة التفاوض", icon: "coins", opens: "session", needsBroker: true },
@@ -153,6 +155,16 @@ export function taskCardModel(task = {}, now = new Date()) {
     journeyId: String(task.journeyId || meta.journeyId || ""),
     matchId: String(task.matchId || ""),
     opportunityId: String(task.opportunityId || ""),
-    proposalId: String(meta.proposalId || "")
+    proposalId: String(meta.proposalId || ""),
+    phase: String(task.journeyPhase || meta.journeyPhase || "")
   };
+}
+
+/** A deal card opens the page of the deal's current phase (price → session; viewing/final → workspace). */
+export function dealRoute(task = {}) {
+  const info = phaseInfo(String(task.journeyPhase || ""));
+  const id = String(task.journeyId || "");
+  if (info.route === "review" && task.matchId) return `review/${task.matchId}`;
+  if (info.route === "session" && id) return `session/${id}`;
+  return id ? `journey/${id}` : "tasks";
 }

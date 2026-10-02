@@ -31,10 +31,10 @@ export const PHASE_INFO = Object.freeze({
   MATCHED: { stage: "تطابق", step: 0, action: "مراجعة المطابقة", route: "review" },
   PRICE_DECISION: { stage: "تفاوض", step: 2, action: "فتح التفاوض", route: "session" },
   PRICE_NEGOTIATION: { stage: "تفاوض", step: 2, action: "فتح التفاوض", route: "session" },
-  VIEWING_SCHEDULING: { stage: "معاينة", step: 3, action: "تحديد موعد", route: "session" },
-  VIEWING: { stage: "معاينة", step: 3, action: "تفاصيل المعاينة", route: "session" },
-  VIEWING_RESULT: { stage: "معاينة", step: 3, action: "تسجيل النتيجة", route: "session" },
-  FINAL_AGREEMENT: { stage: "مستندات", step: 4, action: "إنهاء الصفقة", route: "session" },
+  VIEWING_SCHEDULING: { stage: "معاينة", step: 3, action: "تحديد موعد", route: "journey" },
+  VIEWING: { stage: "معاينة", step: 3, action: "تفاصيل المعاينة", route: "journey" },
+  VIEWING_RESULT: { stage: "معاينة", step: 3, action: "تسجيل النتيجة", route: "journey" },
+  FINAL_AGREEMENT: { stage: "مستندات", step: 4, action: "إنهاء الصفقة", route: "journey" },
   CLOSED: { stage: "إغلاق", step: 5, action: "", route: "journey" }
 });
 

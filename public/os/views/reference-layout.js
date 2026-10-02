@@ -3,13 +3,13 @@ import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe, recordById } from "../core/state.js";
-import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta } from "../domain/task-domain.js";
+import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta, dealRoute } from "../domain/task-domain.js";
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
-export function taskStep(task){const t=String(task.type||"");return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
-function openTask(task,model){if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else location.href="/legacy.html?officeId="+encodeURIComponent(session.officeId)+"&openOperation="+encodeURIComponent(task.id);}
+export function taskStep(task){const t=String(task.type||"");if(t==="DEAL_JOURNEY")return Math.min(5,Math.max(0,Number(task.journeyStep??2)));return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
+function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else location.href="/legacy.html?officeId="+encodeURIComponent(session.officeId)+"&openOperation="+encodeURIComponent(task.id);}
 export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager})),"all"));}
 export function taskRecord(task){const meta=parseMeta(task);return recordById(task.offerId||meta.ownerOfferId)||recordById(task.opportunityId)||recordById(task.requestId||meta.clientRequestId);}
 export function photo(record={},extra=""){

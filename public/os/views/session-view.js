@@ -13,7 +13,8 @@ import { watchDoc, watchJourneyEvents } from "../core/live.js";
 import { newRequestKey, openWhatsApp, runAction, toast } from "../core/ui.js";
 import { ROLE_LABEL, parsePayload, sessionEventCard, sessionPrices, sessionStageLabel, isOpenJourney } from "../domain/session-domain.js";
 import { formatPrice } from "../domain/format-domain.js";
-import { sessionEventList, sessionSummary } from "./session-parts.js";
+import { agreedCard, historyDetails, propertyCard, sidesCard } from "./session-parts.js";
+import { PRICE_STATUS_LABEL, agreedItems, normalizePriceStatus } from "../domain/deal-flow-domain.js";
 
 function isSessionEvent(event) {
   const type = String(event.type || "");
@@ -66,15 +67,6 @@ function linksCard(journey, state) {
   };
   append(card, h("div", { class: "os-session-links" }, row("owner"), row("client")));
   return card;
-}
-
-function pricesCard(journey) {
-  const prices = sessionPrices(journey);
-  const priv = journey.session?.privatePrices || {};
-  const line = (role) => h("div", { class: "os-meta-row" }, ic(role === "owner" ? "home" : "user"),
-    h("span", {}, `آخر سعر ${ROLE_LABEL[role]}: `, h("b", { text: formatPrice(prices[role]) || "—" }),
-      priv[role]?.price ? ` · للوسيط فقط: ${formatPrice(priv[role].price)}` : ""));
-  return h("section", { class: "os-card", "aria-label": "أسعار الطرفين" }, h("div", { style: { display: "grid", gap: "6px" } }, line("owner"), line("client")));
 }
 
 function interventionCard(journey) {
@@ -138,14 +130,20 @@ export function renderSession(container, { journeyId }) {
     const prices = sessionPrices(journey);
     const offer = journey.offerSummary || {};
     const cards = events.filter(isSessionEvent).map(brokerCard);
+    const priceStatus = normalizePriceStatus(offer.priceStatus);
+    const priv = journey.session?.privatePrices || {};
+    const sideOf = (role) => ({ price: prices[role] || null, lastText: priv[role]?.price ? `للوسيط فقط: ${formatPrice(priv[role].price)}` : "" });
     append(container,
-      sessionSummary({ propertyType: offer.propertyType, district: offer.district, currentPrice: prices.current, agreedPrice: prices.agreed, stageLabel: sessionStageLabel(journey), intervention: Boolean(journey.session?.intervention?.required) }),
+      propertyCard({
+        propertyType: offer.propertyType, district: offer.district, price: offer.price || prices.current,
+        description: "", priceStatus, priceStatusLabel: PRICE_STATUS_LABEL[priceStatus],
+        stageLabel: sessionStageLabel(journey), intervention: Boolean(journey.session?.intervention?.required)
+      }),
+      agreedCard(agreedItems(journey)),
+      sidesCard({ owner: sideOf("owner"), client: sideOf("client") }, { viewer: "broker" }),
       interventionCard(journey),
-      pricesCard(journey),
       isOpenJourney(journey) ? linksCard(journey, state) : null,
-      h("section", { class: "os-card os-session-history", "aria-label": "سجل الجلسة" },
-        h("h2", { class: "os-h2" }, ic("clock"), "سجل الجلسة"),
-        sessionEventList(cards, { emptyText: "لا توجد حركات بعد — أرسل الروابط للطرفين." })),
+      historyDetails(cards, { emptyText: "لا توجد حركات بعد — أرسل الروابط للطرفين." }),
       isOpenJourney(journey) ? composer(journey, draft) : h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الجلسة. السجل محفوظ." })));
     window.scrollTo({ top: y });
   };
