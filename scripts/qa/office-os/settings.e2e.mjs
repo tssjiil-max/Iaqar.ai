@@ -43,6 +43,8 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
 }
 
+const bucket = new Map();
+h.env.IAQAR_MEDIA = { put: async (key, bytes, meta) => { bucket.set(key, { bytes: Buffer.from(bytes), meta }); }, get: async (key) => (bucket.has(key) ? { body: bucket.get(key).bytes, writeHttpMetadata() {} } : null) };
 try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
@@ -126,6 +128,12 @@ try {
   await page.locator("[data-broker-avatar]").waitFor();
   check("avatar shows in the office card and the image is loaded (not broken)", await page.evaluate(() => { const i = document.querySelector("[data-broker-avatar]"); return i.complete && i.naturalWidth > 0; }));
   await shot(page, "08-office-avatar");
+  const slugPhoto = h.store.get(`offices/${OFFICE_A}`).publicSlug;
+  const beforeCard = bucket.get(`office-share/${slugPhoto}/card.png`)?.bytes;
+  await page.goto(`${h.origin}/#/settings/link`);
+  const withPhoto = await until(() => { const b = bucket.get(`office-share/${slugPhoto}/card.png`)?.bytes; return b && (!beforeCard || !b.equals(beforeCard)) ? b : null; }, "share card regenerated with the broker photo");
+  fs.writeFileSync(path.join(OUT, "share-card-photo.png"), withPhoto);
+  check("changing the broker photo regenerates the share card under a new version", true);
   await page.goto(`${h.origin}/#/settings/profile`);
   await page.locator("[data-photo-remove]").click();
   await page.locator(".os-toast", { hasText: "تم حذف الصورة" }).waitFor();
@@ -133,6 +141,22 @@ try {
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-office-logo-mark").first().waitFor();
   check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
+
+  // بطاقة المشاركة (preview image behind the shared link)
+  await page.goto(`${h.origin}/#/settings/link`);
+  const slugNow = h.store.get(`offices/${OFFICE_A}`).publicSlug;
+  await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce && bucket.get(`office-share/${slugNow}/card.png`), "share card uploaded for the current slug");
+  const card = bucket.get(`office-share/${OFFICE_A}/card.png`).bytes;
+  check("share card is a 1200×630 PNG stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 1200 && card.readUInt32BE(20) === 630 && bucket.has(`office-share/${slugNow}/card.png`), `${card.length} bytes ${card.readUInt32BE(16)}x${card.readUInt32BE(20)} keys=${[...bucket.keys()].join(",")} slug=${slugNow}`);
+  fs.writeFileSync(path.join(OUT, "share-card.png"), card);
+  const nonce = await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce, "nonce on public office");
+  check("card version is stored on the office and its public mirror", h.store.get(`offices/${OFFICE_A}`).shareCardNonce === nonce);
+  const og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
+  check("crawler gets the office preview: title, description and the card image", og.includes('og:title" content="مكتب سلطان للتسويق العقاري"') && new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og), og.slice(0, 0));
+  const redirect = await fetch(`${h.origin}/worker/m/${slugNow}`, { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (Android)" } });
+  check("a person is sent on to the office page", redirect.status === 302);
+  const first = bucket.get(`office-share/${OFFICE_A}/card.png`).meta.customMetadata.officeId;
+  check("the card is stored for this office only", first === OFFICE_A);
 
   // قنوات المكتب
   await page.goto(`${h.origin}/#/settings/channels`);

@@ -17,7 +17,9 @@ import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { loadChannelStatus } from "../core/channels.js";
 import { automationLabel, channelViews } from "../domain/channels-domain.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
-import { officeLinkFor } from "../../js/office-domain.js";
+import { officeShareUrl } from "../domain/share-card-domain.js";
+import { ensureShareCard } from "../core/share-card.js";
+import { workerBase } from "../core/runtime.js";
 
 function pageHead(title, backTo = "settings") {
   return h("div", { class: "os-page-head" },
@@ -160,13 +162,14 @@ export function renderOfficeProfile(container) {
 
 export function renderLinkSettings(container) {
   if (managerOnly(container, "رابط المكتب")) return null;
-  const linkOf = () => officeLinkFor({ origin: location.origin, publicSlug: session.office?.publicSlug, officeId: session.officeId });
+  const linkOf = () => officeShareUrl({ slug: session.office?.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase() });
   const linkBox = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-office-link": "" });
   const slug = h("input", { class: "os-input", name: "publicSlug", dir: "ltr", maxlength: "20", autocomplete: "off", placeholder: "wadi" });
   slug.value = session.office?.publicSlug || "";
   const hint = h("small", { class: "os-field-note", "data-slug-hint": "", role: "status", text: "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." });
   const sync = () => { linkBox.value = linkOf(); };
   sync();
+  ensureShareCard().then((changed) => { if (changed) sync(); });
   slug.addEventListener("input", () => {
     const checked = checkPublicSlug(slug.value);
     hint.textContent = !slug.value ? "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." : checked.ok ? `الرابط: /m/${checked.slug}` : checked.message;

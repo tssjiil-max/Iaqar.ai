@@ -7,21 +7,20 @@ import { h, ic, btn } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session, signOutOffice } from "../core/session.js";
 import { openSheet, toast } from "../core/ui.js";
+import { workerBase } from "../core/runtime.js";
+import { ensureShareCard } from "../core/share-card.js";
+import { officeShareUrl } from "../domain/share-card-domain.js";
 import { enableNotifications, notificationStatus } from "../core/notifications.js";
 
 export function officePublicLink() {
   const office = session.office || {};
-  const slug = String(office.publicSlug || "").trim().toLowerCase();
-  const origin = location.origin;
-  if (slug) return `${origin}/o/${encodeURIComponent(slug)}`;
-  const url = new URL("/", origin);
-  url.searchParams.set("office", session.officeId);
-  url.searchParams.set("view", "public");
-  return url.toString();
+  return officeShareUrl({ slug: office.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase() });
 }
 
 export async function shareOfficeLink() {
   const office = session.office || {};
+  // The preview image (broker photo + trusted data) is refreshed first, so the link opens with the right card.
+  await ensureShareCard();
   const link = officePublicLink();
   const text = `${office.officeName || "مكتبنا"}\nسجّل عقارك أو طلبك مباشرة من رابط المكتب:\n${link}`;
   if (navigator.share) {
