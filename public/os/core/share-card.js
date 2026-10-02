@@ -2,7 +2,7 @@
 
 import { db, idToken, workerBase } from "./runtime.js";
 import { session } from "./session.js";
-import { SHARE_PHOTO_SIZE, nonceKey, shareCardKey } from "../domain/share-card-domain.js";
+import { SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT, nonceKey, shareCardKey } from "../domain/share-card-domain.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 
 const stamp = () => window.firebase.firestore.FieldValue.serverTimestamp();
@@ -26,17 +26,28 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-/** The broker's photo as a square PNG (the image WhatsApp shows). null when there is no photo — the platform logo is used then. */
+/** A rectangular 1200×630 card: the broker photo (sharp-cornered rectangle, never a circle) beside the office name. null when there is no photo. */
 export async function drawSharePhoto(office) {
   if (!isSafePhotoDataUrl(office.brokerPhotoUrl)) return null;
   const photo = await loadImage(office.brokerPhotoUrl);
   if (!photo) return null;
-  const size = SHARE_PHOTO_SIZE;
+  const W = SHARE_CARD_WIDTH, H = SHARE_CARD_HEIGHT;
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
+  canvas.width = W; canvas.height = H;
   const context = canvas.getContext("2d");
-  context.fillStyle = "#fff"; context.fillRect(0, 0, size, size);
-  context.drawImage(photo, 0, 0, size, size);
+  context.fillStyle = "#EDF5F7"; context.fillRect(0, 0, W, H);
+  context.fillStyle = "#099FB4"; context.fillRect(0, 0, 14, H);
+  const side = H;
+  const side0 = Math.min(photo.width, photo.height);
+  context.drawImage(photo, (photo.width - side0) / 2, (photo.height - side0) / 2, side0, side0, W - side, 0, side, side);
+  const name = String(office.name || office.officeName || "").trim().slice(0, 40);
+  if (name) {
+    context.direction = "rtl"; context.textAlign = "right"; context.textBaseline = "middle";
+    context.fillStyle = "#082F3A"; context.font = "700 84px Tahoma, Arial, sans-serif";
+    context.fillText(name, W - side - 60, H / 2 - 30, W - side - 120);
+    context.fillStyle = "#03677A"; context.font = "500 40px Tahoma, Arial, sans-serif";
+    context.fillText("مكتب عقاري", W - side - 60, H / 2 + 60, W - side - 120);
+  }
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png"));
 }
 

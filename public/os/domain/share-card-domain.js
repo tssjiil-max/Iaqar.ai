@@ -1,6 +1,7 @@
 /** Office share card (the preview image WhatsApp shows for the office link) — pure rules. */
 
-export const SHARE_PHOTO_SIZE = 600;
+export const SHARE_CARD_WIDTH = 1200;
+export const SHARE_CARD_HEIGHT = 630;
 
 const text = (value) => String(value == null ? "" : value).trim();
 

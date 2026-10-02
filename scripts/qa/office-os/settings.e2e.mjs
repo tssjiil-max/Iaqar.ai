@@ -132,7 +132,7 @@ try {
   const slugNow = h.store.get(`offices/${OFFICE_A}`).publicSlug;
   await page.goto(`${h.origin}/#/settings/link`);
   const card = await until(() => bucket.get(`office-share/${slugNow}/card.png`)?.bytes, "photo uploaded as the preview image");
-  check("preview image is the broker photo as a 600×600 PNG, stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 600 && card.readUInt32BE(20) === 600 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
+  check("preview image is the broker photo as a 1200×630 rectangular PNG, stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 1200 && card.readUInt32BE(20) === 630 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
   fs.writeFileSync(path.join(OUT, "share-photo.png"), card);
   await page.locator("[data-share-card-preview]:not([hidden])").waitFor();
   check("link page shows the image and says it is updated", (await page.locator("[data-share-card-status]").innerText()).includes("صورة المعاينة"));
@@ -175,7 +175,9 @@ try {
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === false, "photo removed from the preview");
   check("without a photo the page says the platform logo is used", (await page.locator("[data-share-card-status]").innerText()).includes("شعار المنصة"));
   og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
-  check("without a photo og:image falls back to the platform logo (public HTTPS icon)", /og:image" content="[^"]*\/icons\/iaqar-default-icon-512\.png"/.test(og));
+  const fbUrl = (og.match(/og:image" content="([^"]+)"/) || [])[1] || "";
+  const fbRes = fbUrl ? await fetch(fbUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`)) : null;
+  check("without a photo og:image is a Worker-served image that returns the platform logo", /\/share\/office\//.test(fbUrl) && fbRes && fbRes.status === 200 && /image\/png/.test(fbRes.headers.get("content-type") || ""));
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-office-logo-mark").first().waitFor();
   check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
