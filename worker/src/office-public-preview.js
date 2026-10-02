@@ -17,18 +17,25 @@ import {
   officeShareCardPath,
   officeShareCardVersion,
   parsePublicOfficePath,
+  parsePublicOfficeSharePath,
   suggestAssignablePublicSlug,
   validateAssignablePublicSlug
 } from "../../public/js/office-public-link-domain.js";
 import { normalizePublicSlug } from "../../public/js/office-domain.js";
 
-export const OFFICE_SHARE_CARD_KEY_RE = /^office-share\/[a-z0-9_-]{1,80}\/card\.png$/i;
+export const OFFICE_SHARE_CARD_KEY_RE = /^office-share\/[a-z0-9_-]{1,80}\/[a-z0-9_-]{1,48}\.jpg$/i;
 
 function text(value) {
   return String(value == null ? "" : value).trim();
 }
 
-export function officeShareCardStorageKey(officeId) {
+export function officeShareCardStorageKey(officeId, version) {
+  const id = text(officeId).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 80);
+  const ver = text(version).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 48);
+  return id && ver ? `office-share/${id}/${ver}.jpg` : "";
+}
+
+function legacyOfficeShareCardStorageKey(officeId) {
   const id = text(officeId).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 80);
   return id ? `office-share/${id}/card.png` : "";
 }
@@ -52,9 +59,12 @@ export async function pickReachableHttpsIcon(candidates = [], fallback = "") {
 }
 
 export function shareCardGetMatch(pathname = "") {
-  const match = String(pathname || "").match(/^\/share\/office\/([^/]+)\/card-v([^/]+)\.png$/i);
-  if (!match) return null;
-  return { officeId: decodeURIComponent(match[1]), version: decodeURIComponent(match[2]) };
+  const path = String(pathname || "");
+  const current = path.match(/^\/share\/office\/([^/]+)\/([^/]+)\.jpg$/i);
+  if (current) return { officeId: decodeURIComponent(current[1]), version: decodeURIComponent(current[2]), legacy: false };
+  const legacy = path.match(/^\/share\/office\/([^/]+)\/card-v([^/]+)\.png$/i);
+  if (legacy) return { officeId: decodeURIComponent(legacy[1]), version: decodeURIComponent(legacy[2]), legacy: true };
+  return null;
 }
 
 function htmlResponse(html, { headers = {} } = {}) {
@@ -131,15 +141,11 @@ export async function handlePublicOfficePreview(request, env, deps) {
   }
   const appOrigin = deps.resolveAppOrigin(env);
   const workerOrigin = url.origin;
-  const version = officeShareCardVersion(office);
+  const version = text(office.shareCardNonce) || officeShareCardVersion(office);
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
   const landingUrl = officePublicLandingUrl(appOrigin, officeId);
-  // Always the Worker-served image path: the broker photo when stored, else the platform logo (served by the Worker itself,
-  // so WhatsApp never depends on an external or private logo URL).
-  const hasPhoto = office.sharePhoto === true;
-  // Without a photo the version is marked "logo-…" so a card left in storage from an earlier photo is never served.
-  const imageUrl = `${workerOrigin}${officeShareCardPath(canonicalSlug, hasPhoto ? version : `logo-${version}`.slice(0, 24))}`;
+  const imageUrl = `${workerOrigin}${officeShareCardPath(officeId, version)}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
     const headers = deps.corsHeaders();
@@ -163,18 +169,57 @@ export async function handlePublicOfficePreview(request, env, deps) {
   return htmlResponse(html, { headers });
 }
 
+export async function handlePublicOfficeSharePage(request, env, deps) {
+  const url = new URL(request.url);
+  const parsed = parsePublicOfficeSharePath(url.pathname);
+  if (!parsed.slug || !parsed.version) {
+    throw deps.appError("share_link_invalid", 400, "رابط المشاركة غير صالح");
+  }
+  const officeId = await resolveOfficeIdBySlug(deps, parsed.slug);
+  if (!officeId) throw deps.appError("office_link_not_found", 404, "رابط المكتب غير متاح");
+  const office = await readPublicOffice(deps, officeId);
+  if (!office) throw deps.appError("office_link_not_found", 404, "رابط المكتب غير متاح");
+
+  const appOrigin = deps.resolveAppOrigin(env);
+  const workerOrigin = url.origin;
+  const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
+  const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
+  const shareUrl = `${workerOrigin}/s/${encodeURIComponent(canonicalSlug)}/${encodeURIComponent(parsed.version)}`;
+  const landingUrl = officePublicLandingUrl(appOrigin, officeId);
+  const imageUrl = `${workerOrigin}${officeShareCardPath(officeId, parsed.version)}`;
+
+  const html = buildOfficeOgHtml({
+    office,
+    slug: canonicalSlug,
+    origin: appOrigin,
+    workerOrigin,
+    canonicalUrl,
+    ogUrl: shareUrl,
+    imageUrl,
+    imageType: "image/jpeg",
+    browserRedirectUrl: landingUrl || canonicalUrl,
+    includeBrowserRedirect: true
+  });
+  const headers = deps.corsHeaders();
+  headers["x-iaqar-office-preview"] = "immutable-share";
+  headers["x-iaqar-share-version"] = parsed.version;
+  return htmlResponse(html, { headers });
+}
+
 export async function handleOfficeShareCardGet(request, env, deps) {
   const url = new URL(request.url);
   const parsed = shareCardGetMatch(url.pathname);
   if (!parsed) throw deps.appError("media_not_found", 404, "بطاقة المشاركة غير موجودة");
   const bucket = deps.requireMediaBucket(env);
-  const keys = /^logo-/i.test(parsed.version) ? [] : [officeShareCardStorageKey(parsed.officeId)].filter(Boolean);
+  const keys = parsed.legacy
+    ? [legacyOfficeShareCardStorageKey(parsed.officeId)].filter(Boolean)
+    : [officeShareCardStorageKey(parsed.officeId, parsed.version)].filter(Boolean);
   for (const key of keys) {
     const object = await bucket.get(key);
     if (!object) continue;
     const headers = new Headers(deps.corsHeaders());
     object.writeHttpMetadata(headers);
-    headers.set("cache-control", "public, max-age=3600");
+    headers.set("cache-control", parsed.legacy ? "public, max-age=3600" : "public, max-age=31536000, immutable");
     headers.set("x-content-type-options", "nosniff");
     if (!/^image\/(png|jpeg)$/.test(headers.get("content-type") || "")) headers.set("content-type", "image/png");
     headers.set("x-iaqar-share-card", "stored");
@@ -202,27 +247,31 @@ export async function handleOfficeShareCardUpload(request, env, deps) {
   if (size > 2 * 1024 * 1024) throw deps.appError("image_too_large", 413, "حجم بطاقة المشاركة كبير");
   const bytes = await request.arrayBuffer();
   const slug = normalizePublicSlug(request.headers.get("x-public-slug"));
-  const keys = [...new Set([
-    officeShareCardStorageKey(officeId),
-    slug ? officeShareCardStorageKey(slug) : ""
-  ].filter(Boolean))];
+  const version = text(request.headers.get("x-share-card-version")).replace(/[^a-z0-9_-]/gi, "").slice(0, 48);
+  if (!version) throw deps.appError("share_version_required", 400, "نسخة بطاقة المشاركة مطلوبة");
+  const key = officeShareCardStorageKey(officeId, version);
+  if (!key || !OFFICE_SHARE_CARD_KEY_RE.test(key)) throw deps.appError("share_version_invalid", 400, "نسخة بطاقة المشاركة غير صالحة");
+
   const bucket = deps.requireMediaBucket(env);
-  const metadata = {
-    httpMetadata: { contentType, cacheControl: "public, max-age=3600" },
-    customMetadata: { officeId, publicSlug: slug, uploadedAt: new Date().toISOString() }
-  };
-  for (const key of keys) {
-    await bucket.put(key, bytes, metadata);
+  const existing = await bucket.get(key);
+  if (!existing) {
+    await bucket.put(key, bytes, {
+      httpMetadata: { contentType: "image/jpeg", cacheControl: "public, max-age=31536000, immutable" },
+      customMetadata: { officeId, publicSlug: slug, previewVersion: version, uploadedAt: new Date().toISOString() }
+    });
   }
-  const version = text(request.headers.get("x-share-card-version")).replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || "1";
+
   const origin = new URL(request.url).origin;
   return deps.jsonResponse({
     ok: true,
+    immutable: true,
+    existed: Boolean(existing),
     officeId,
     publicSlug: slug,
-    imageUrl: `${origin}${officeShareCardPath(slug || officeId, version)}`,
+    previewVersion: version,
+    imageUrl: `${origin}${officeShareCardPath(officeId, version)}`,
     requestId: deps.requestId
-  }, 201);
+  }, existing ? 200 : 201);
 }
 
 export async function handleSavePublicSlug(request, env, deps) {
