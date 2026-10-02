@@ -54,6 +54,8 @@ const NEW = [
   { name: "push link ?openOperation (journey task) → opportunity workspace", url: `/?officeId=${OFFICE_A}&openOperation=${journeyTask?.id}`, expect: `#/journey/${s.negotiation.journeyId}`, wait: "text=متابعة الفرصة" },
   // Same shape the Worker builds for a session notification (openDailyTask/openMatch are also present).
   { name: "session push link ?openOperation=session:<id> → negotiation session", url: `/?officeId=${OFFICE_A}&openDailyTask=${s.negotiation.journeyId}${s.negotiation.matchId ? `&openMatch=${s.negotiation.matchId}` : ""}&openOperation=${encodeURIComponent(`session:${s.negotiation.journeyId}`)}`, expect: `#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" },
+  // The service worker builds this shape when the notification payload has only a task id.
+  { name: "push link with only ?openDailyTask (match review) → review page", url: `/?officeId=${OFFICE_A}&openDailyTask=${s.reviewTaskId}`, expect: `#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "?openOpportunity → record page", url: `/?officeId=${OFFICE_A}&openOpportunity=${s.review.offerId}`, expect: `#/record/${s.review.offerId}`, wait: "text=تفاصيل السجل" },
   { name: "?openMatch → review page", url: `/?officeId=${OFFICE_A}&openMatch=${s.review.matchId}`, expect: `#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "PWA shortcut ?open=add-opportunity → add form", url: "/?source=pwa&open=add-opportunity", expect: "#/record/new", wait: 'input[name="district"]' },

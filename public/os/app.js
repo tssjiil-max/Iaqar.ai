@@ -24,6 +24,7 @@ import { renderSession } from "./views/session-view.js";
 import { renderSettings } from "./views/settings.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
+import { operationIdFromParams } from "./core/deep-link.js";
 
 const root = document.getElementById("app");
 let cleanup = null;
@@ -69,7 +70,7 @@ function render() {
 /** Push-notification links (?openOperation=…) and legacy deep links → routes. */
 function applyDeepLink() {
   const params = new URLSearchParams(location.search);
-  const operationId = params.get("openOperation");
+  const operationId = operationIdFromParams(params);
   const opportunityId = params.get("openOpportunity");
   const matchId = params.get("openMatch");
   const open = params.get("open");
