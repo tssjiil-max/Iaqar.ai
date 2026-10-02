@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { nonceKey, isHostedPreviewHost, officePermanentUrl, officeShareUrl, previewVersion, shareCardKey } from "../public/os/domain/share-card-domain.js";
 
 test("permanent office URL stays /m while hosted sharing uses immutable Worker /s URL", () => {
@@ -48,4 +49,12 @@ test("forced refresh preserves the deterministic key and appends a safe unique s
   assert.equal(nonceKey("abc12"), "abc12");
   assert.equal(previewVersion("abc12-lq3x"), "abc12-lq3x");
   assert.equal(previewVersion("../bad?x=1"), "badx1");
+});
+
+
+test("menu share waits for immutable publish and passes the current preview version", () => {
+  const source = readFileSync(new URL("../public/os/views/shell.js", import.meta.url), "utf8");
+  assert.match(source, /await ensureShareCard\(\)/);
+  assert.match(source, /sharePreviewFormat === "immutable-v2"/);
+  assert.match(source, /preview: office\.sharePreviewFormat[\s\S]*office\.shareCardNonce/);
 });
