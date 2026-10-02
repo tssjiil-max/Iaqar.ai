@@ -81,11 +81,11 @@ export const VIEWING_STATE_LABEL = Object.freeze({
   CANCELLED: "أُلغي الموعد"
 });
 
+/** «ما نتيجة المعاينة؟» — three answers only. */
 export const VIEWING_RESULTS = Object.freeze([
-  { id: "interested", label: "مهتم", icon: "heart", next: "AGREEMENT" },
-  { id: "needs_negotiation", label: "يحتاج تفاوضًا", icon: "clock", next: "NEGOTIATION" },
-  { id: "not_suitable", label: "غير مناسب", icon: "x-circle", next: "CLOSE_SUGGESTED" },
-  { id: "follow_later", label: "متابعة لاحقة", icon: "calendar", next: "FOLLOW_UP" }
+  { id: "interested", label: "مناسب", icon: "check-circle", next: "AGREEMENT" },
+  { id: "needs_negotiation", label: "يحتاج تفاوض", icon: "handshake", next: "NEGOTIATION" },
+  { id: "not_suitable", label: "غير مناسب", icon: "x-circle", next: "CLOSE_MATCH" }
 ]);
 
 export function viewingResultOf(id) {
@@ -150,9 +150,10 @@ export function effectOfViewingResult(resultId) {
   const result = viewingResultOf(resultId);
   if (!result) return null;
   if (result.next === "AGREEMENT") return { stage: STAGE.AGREEMENT, next: "AGREEMENT_FOLLOW_UP" };
-  if (result.next === "NEGOTIATION") return { stage: STAGE.NEGOTIATION, next: "SEND_PROPOSAL" };
-  if (result.next === "FOLLOW_UP") return { next: "FOLLOW_UP", followUpInDays: 3 };
-  return { next: "FOLLOW_UP", followUpInDays: 0, suggestClose: true };
+  // Only the price opens again; the viewing stays done and the path is not restarted.
+  if (result.next === "NEGOTIATION") return { stage: STAGE.NEGOTIATION, next: "REOPEN_PRICE" };
+  // Close this match only; the offer and the request stay available.
+  return { stage: STAGE.CLOSED, next: "CLOSE_MATCH" };
 }
 
 /** Where each stage stands for the path widget: done | current | skipped | todo. */

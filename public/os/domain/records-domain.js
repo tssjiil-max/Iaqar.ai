@@ -111,6 +111,8 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
   const phoneDigits = whatsappDigits(input.contactPhone ?? input.phone);
   if (!phoneDigits) errors.contactPhone = "اكتب رقم جوال سعودي يبدأ بـ 05";
   const notes = cleanText(input.notes ?? input.details, 1000);
+  // The owner's price decision (offers only): «السعر ثابت» or «قابل للتفاوض» (default).
+  const priceStatus = kind === RECORD_KIND.OFFER && String(input.priceStatus || "").toUpperCase() === "FIXED" ? "FIXED" : "NEGOTIABLE";
   const value = {
     kind,
     purpose,
@@ -122,7 +124,8 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
     rooms: rooms > 0 ? Math.round(rooms) : null,
     contactName,
     contactPhone: phoneDigits ? `0${phoneDigits.slice(3)}` : "",
-    notes
+    notes,
+    priceStatus
   };
   return { ok: Object.keys(errors).length === 0, errors, value };
 }
@@ -159,6 +162,7 @@ export function recordFields(value, { officeId, brokerId, sourceType = "BROKER_D
     advertiserRole: isOffer ? "OWNER" : "CLIENT",
     notes: value.notes,
     details: value.notes,
+    priceStatus: isOffer ? (value.priceStatus === "FIXED" ? "FIXED" : "NEGOTIABLE") : null,
     matchingReadiness: "READY_FOR_MATCHING",
     matchingReadinessMissingJson: "[]",
     lifecycleStatus: existing ? (existing.lifecycleStatus || LIFECYCLE.ACTIVE) : LIFECYCLE.ACTIVE,
@@ -234,6 +238,8 @@ export function recordView(record = {}) {
     rooms: toNumber(record.rooms),
     contactName: cleanText(record.contactName || record.advertiserDisplayName || record.name, 80),
     contactPhone: localPhone(record.contactPhone || record.advertiserPhoneNormalized || record.phone),
+    priceStatus: String(record.priceStatus || "").toUpperCase() === "FIXED" ? "FIXED" : "NEGOTIABLE",
+    priceStatusLabel: String(record.priceStatus || "").toUpperCase() === "FIXED" ? "السعر ثابت" : "قابل للتفاوض",
     notes: cleanText(record.notes || record.details, 1000),
     lifecycle: lifecycleOf(record),
     lifecycleLabel: LIFECYCLE_LABELS[lifecycleOf(record)],

@@ -9,6 +9,21 @@ import { newRequestKey, runAction, toast } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordInput } from "../domain/records-domain.js";
 import { formatNumber } from "../domain/format-domain.js";
 
+/** «حالة السعر» for offers: the owner's decision, asked once here (default: قابل للتفاوض). */
+export function priceStatusField(value = "NEGOTIABLE") {
+  const hidden = h("input", { type: "hidden", name: "priceStatus", value: String(value || "").toUpperCase() === "FIXED" ? "FIXED" : "NEGOTIABLE" });
+  const seg = h("div", { class: "os-seg", role: "radiogroup", "aria-label": "حالة السعر" });
+  for (const [id, label] of [["NEGOTIABLE", "قابل للتفاوض"], ["FIXED", "السعر ثابت"]]) {
+    const b = h("button", { type: "button", role: "radio", "aria-checked": String(hidden.value === id), "aria-pressed": String(hidden.value === id), "data-price-status": id, text: label });
+    b.addEventListener("click", () => {
+      hidden.value = id;
+      seg.querySelectorAll("button").forEach((x) => { const on = x === b; x.setAttribute("aria-pressed", String(on)); x.setAttribute("aria-checked", String(on)); });
+    });
+    seg.append(b);
+  }
+  return h("div", { class: "os-field os-price-status" }, h("span", { text: "حالة السعر" }), seg, hidden);
+}
+
 export function recordFormFields({ kind, values = {}, lockKind = false, onKindChange }) {
   const form = h("div", { class: "os-form" });
   const purposeWrap = h("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
@@ -25,7 +40,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
   const kindSeg = h("div", { class: "os-seg", role: "group", "aria-label": "نوع السجل" },
     [RECORD_KIND.OFFER, RECORD_KIND.REQUEST].map((k) => h("button", {
       type: "button", "aria-pressed": String(kind === k), disabled: lockKind && kind !== k,
-      onClick: () => { if (lockKind || kind === k) return; kind = k; hiddenPurpose.value = ""; onKindChange?.(k); kindSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String([RECORD_KIND.OFFER, RECORD_KIND.REQUEST][i] === k))); drawPurposes(); priceLabel.firstChild.textContent = k === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)"; }
+      onClick: () => { if (lockKind || kind === k) return; kind = k; hiddenPurpose.value = ""; priceStatusBox.hidden = k !== RECORD_KIND.OFFER; onKindChange?.(k); kindSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String([RECORD_KIND.OFFER, RECORD_KIND.REQUEST][i] === k))); drawPurposes(); priceLabel.firstChild.textContent = k === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)"; }
     }, k === RECORD_KIND.OFFER ? "عرض (لدي عقار)" : "طلب (أبحث عن عقار)"))
   );
   const typeInput = h("input", { class: "os-input", name: "propertyType", list: "os-types", value: values.propertyType || "", placeholder: "شقة، فيلا، أرض…", autocomplete: "off" });
@@ -35,6 +50,8 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
   const priceLabel = field(kind === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)", priceInput);
   priceLabel.firstChild.textContent = kind === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)";
 
+  const priceStatusBox = priceStatusField(values.priceStatus);
+  priceStatusBox.hidden = kind !== RECORD_KIND.OFFER;
   form.append(
     field("نوع السجل", kindSeg),
     h("div", { class: "os-field" }, h("span", { text: "الغرض" }), purposeWrap, hiddenPurpose, h("span", { class: "os-error", role: "alert" })),
@@ -44,6 +61,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
       field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "اسم الحي" }))
     ),
     priceLabel,
+    priceStatusBox,
     h("div", { class: "os-row2" },
       field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
       field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true })
@@ -71,7 +89,8 @@ export function readRecordForm(root, kind) {
     rooms: value("rooms"),
     contactName: value("contactName"),
     contactPhone: value("contactPhone"),
-    notes: value("notes")
+    notes: value("notes"),
+    priceStatus: value("priceStatus")
   };
 }
 

@@ -8,6 +8,7 @@ import { h, ic, clear, field, setFieldError, clearFieldErrors, append } from "..
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
+import { priceStatusField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
 
 export function publicOfficeTarget() {
@@ -81,6 +82,7 @@ function intakeForm(root, office, kind) {
         field("المدينة", h("input", { class: "os-input", name: "city", value: office.city || "" })),
         field("الحي", h("input", { class: "os-input", name: "district" }))),
       field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
+      kind === "owner" ? priceStatusField() : null,
       h("div", { class: "os-row2" },
         field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric" }), { optional: true }),
         field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true })),
@@ -94,7 +96,7 @@ function intakeForm(root, office, kind) {
     status.hidden = true;
     clearFieldErrors(form);
     const value = (name) => form.querySelector(`[name="${name}"]`)?.value ?? "";
-    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
+    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), priceStatus: value("priceStatus"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
     const check = validateRecordInput(input, { requireName: true });
     const name = cleanText(input.contactName, 80);
     if (!/\S+\s+\S+/.test(name)) check.errors.contactName = "اكتب الاسم الأول واسم العائلة";
