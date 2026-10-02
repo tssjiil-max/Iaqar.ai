@@ -15,7 +15,8 @@ export function renderLogin(root, { onSignedIn, message = "" } = {}) {
     h("label", { class: "os-field" }, h("span", { text: "رقم الجوال" }), phone),
     h("label", { class: "os-field" }, h("span", { text: "كلمة المرور" }), password),
     toggle, status, submit,
-    h("a", { href: "/legacy.html#forgot", class: "os-btn ghost", style: { justifySelf: "center" } }, "نسيت كلمة المرور"));
+    h("a", { href: "/legacy.html#forgot", class: "os-btn ghost", style: { justifySelf: "center" } }, "نسيت كلمة المرور"),
+    h("a", { href: "/legacy.html#broker", class: "os-btn secondary block", "data-broker-signup": "" }, "تسجيل وسيط جديد"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     status.hidden = true;

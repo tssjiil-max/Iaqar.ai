@@ -495,6 +495,12 @@
       else intakeForm(button.dataset.go, "platform");
     });
     gate.dataset.activeScreen = "home";
+    // Deep links from the new login screen: /legacy.html#broker opens the application form once.
+    const entry = String(location.hash || "").replace(/^#/, "");
+    if (entry === "broker" || entry === "forgot") {
+      try { history.replaceState({}, "", `${location.pathname}${location.search}`); } catch (_) { /* ignore */ }
+      if (entry === "broker") brokerForm(); else forgotPasswordForm();
+    }
   }
   function platformAddChoice() {
     frame(`<section class="access-hero" data-testid="platform-add">
