@@ -101,11 +101,15 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
       if (url.pathname === "/store/get") return send(200, "application/json", JSON.stringify(store.get(url.searchParams.get("path"))));
       if (url.pathname === "/harness/write" && req.method === "POST") {
         const chunks = []; for await (const c of req) chunks.push(c);
-        const { path: docPath, data, merge } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        // The stub is not a rules engine; allow only the client writes the real rules allow.
-        const allowed = /^offices\/[^/]+\/publicIntake\/[^/]+$/.test(docPath) || /^offices\/[^/]+\/officeSettings\/(assignment|deals)$/.test(docPath);
+        const { path: docPath, data, merge, delete: del } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        // The stub is not a rules engine; allow only the client writes the real rules allow
+        // (managers: their own office profile, its public mirror, name claims, office settings).
+        const allowed = /^offices\/[^/]+\/publicIntake\/[^/]+$/.test(docPath)
+          || /^offices\/[^/]+\/officeSettings\/(assignment|deals|cooperation)$/.test(docPath)
+          || /^(offices|publicOffices)\/[^/]+$/.test(docPath)
+          || /^officeNameClaims\/[^/]+$/.test(docPath);
         if (!allowed) return send(403, "application/json", JSON.stringify({ error: "permission-denied" }));
-        if (merge) store.patch(docPath, data); else store.seed(docPath, data);
+        if (del) store.remove(docPath); else if (merge) store.patch(docPath, data); else store.seed(docPath, data);
         return send(200, "application/json", "{}");
       }
       if (url.pathname.startsWith("/worker/")) {

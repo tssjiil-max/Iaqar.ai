@@ -79,6 +79,9 @@ jobs:
       - name: Legacy links and deep links
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/links" node scripts/qa/office-os/deep-links.e2e.mjs
+      - name: Office settings
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/settings" node scripts/qa/office-os/settings.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4

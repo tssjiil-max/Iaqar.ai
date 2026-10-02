@@ -1,7 +1,7 @@
 /** Manager settings: assignment rule, deal-completion permission, brokers list. */
 
 import { h, ic, clear, append } from "../core/dom.js";
-import { back } from "../core/nav.js";
+import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { listMembers, officeSetting, saveOfficeSetting } from "../core/live.js";
 import { runAction } from "../core/ui.js";
@@ -15,7 +15,7 @@ function memberName(member) {
 
 export function renderSettings(container) {
   append(container, h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "رجوع"),
+    h("button", { type: "button", class: "os-back", onClick: () => go("settings") }, ic("chev-right"), "رجوع"),
     h("h1", { class: "os-page-title", text: "الوسطاء والإسناد والصلاحيات" }), h("span")));
   if (!session.isManager) {
     append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
