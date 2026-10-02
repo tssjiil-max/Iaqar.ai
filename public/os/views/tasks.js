@@ -63,6 +63,7 @@ function modelFor(task, now) {
 
 function primaryAction(task, model) {
   if (model.opens === "deal") return () => go(dealRoute(task));
+  if (model.opens === "community") return () => go("community");
   if (model.opens === "review") return () => go(`review/${task.matchId}`);
   if (model.opens === "workspace" && model.journeyId) return () => go(`journey/${model.journeyId}?focus=${model.type}`);
   if (model.opens === "session" && model.journeyId) return () => go(`session/${model.journeyId}`);

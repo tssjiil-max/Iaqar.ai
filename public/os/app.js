@@ -3,7 +3,7 @@
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
- *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/settings[/profile|link|cooperation|brokers]
+ *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/settings[/profile|link|cooperation|brokers]
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -23,6 +23,7 @@ import { renderWorkspace } from "./views/workspace.js";
 import { renderSession } from "./views/session-view.js";
 import { renderSettings } from "./views/settings.js";
 import { renderCooperationSettings, renderLinkSettings, renderOfficeProfile, renderSettingsHub } from "./views/office-settings.js";
+import { renderCommunity } from "./views/community.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
 import { operationIdFromParams } from "./core/deep-link.js";
@@ -49,6 +50,7 @@ function view() {
   if (section === "review" && id) return { name: "review", run: (el) => renderReview(el, { matchId: id }) };
   if (section === "journey" && id) return { name: "journey", run: (el) => renderWorkspace(el, { journeyId: id, focus: query.get("focus") || "" }) };
   if (section === "session" && id) return { name: "session", run: (el) => renderSession(el, { journeyId: id }) };
+  if (section === "community") return { name: "community", run: renderCommunity };
   if (section === "settings") {
     const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };
