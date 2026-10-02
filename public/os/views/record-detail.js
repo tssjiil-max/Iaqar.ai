@@ -93,6 +93,7 @@ export function renderRecordDetail(container, { recordId }) {
       isRequest ? h("p", { class: "os-sub", text: "احتياج العميل ومواصفاته وميزانيته." }) : null,
       h("div", { class: "os-facts", style: { marginTop: "10px" } },
         fact("coins", isRequest ? "الميزانية" : "السعر", view.priceLabel.replace(/^(السعر|الميزانية) /, "")),
+        isRequest ? null : fact("tag", "حالة السعر", view.priceStatusLabel),
         fact("pin", "الموقع", view.location),
         fact("building", "نوع العقار", view.propertyType),
         fact("area", "المساحة", view.areaLabel || "غير محددة"),

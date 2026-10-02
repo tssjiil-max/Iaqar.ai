@@ -111,7 +111,10 @@ test("journey rules: accepted viewing ≠ done, results route next step, flexibl
   assert.equal(effectOfReply("PRICE_ACCEPTED", {}).next, "REVIEW_REPLY");
   assert.equal(effectOfViewingResult("interested").stage, "AGREEMENT");
   assert.equal(effectOfViewingResult("needs_negotiation").stage, "NEGOTIATION");
-  assert.equal(effectOfViewingResult("not_suitable").suggestClose, true);
+  // «غير مناسب» closes this match only (offer and request stay available); three results only.
+  assert.equal(effectOfViewingResult("not_suitable").next, "CLOSE_MATCH");
+  assert.equal(effectOfViewingResult("needs_negotiation").next, "REOPEN_PRICE");
+  assert.equal(effectOfViewingResult("follow_later"), null);
   const skipped = stageProgress({ stage: "AGREEMENT", viewing: { state: "NONE" }, status: "ACTIVE" });
   assert.deepEqual(skipped.map((s) => s.state), ["done", "done", "skipped", "current"]);
   assert.deepEqual(allowedStageMoves({ stage: "AGREEMENT", status: "ACTIVE" }), ["NEGOTIATION", "VIEWING"]);

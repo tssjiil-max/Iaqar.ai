@@ -17,6 +17,7 @@ import {
   effectOfViewingResult, isJourneyOpen, viewingResultOf, canMoveStage
 } from "../../../public/os/domain/journey-domain.js";
 import { lifecycleOf, priceOf, LIFECYCLE } from "../../../public/os/domain/records-domain.js";
+import { PHASE, VIEWING_MINUTES, brokerBusy, checkBrokerAvailability, journeyPhase, phaseInfo } from "../../../public/os/domain/deal-flow-domain.js";
 import { cleanText, formatDateTime, toDate } from "../../../public/os/domain/format-domain.js";
 import { appendJourneyEvent } from "./event-log.js";
 import { finishTasks, journeyTaskId, journeyTitle, notifyBroker, upsertJourneyTask } from "./task-service.js";
@@ -45,12 +46,17 @@ function summaryOf(record = {}) {
     district: cleanText(record.district, 80),
     price: priceOf(record),
     area: Number(record.area || 0) || null,
-    rooms: Number(record.rooms || 0) || null
+    rooms: Number(record.rooms || 0) || null,
+    priceStatus: String(record.priceStatus || "").toUpperCase() === "FIXED" ? "FIXED" : "NEGOTIABLE",
+    notes: cleanText(record.notes || record.details, 160)
   };
 }
 
+/** One Daily Tasks card per open deal (type DEAL_JOURNEY), never an "action" itself. */
+export const DEAL_CARD_TYPE = "DEAL_JOURNEY";
+
 export function deriveCurrentAction(openTasks = {}) {
-  const entries = Object.entries(openTasks || {});
+  const entries = Object.entries(openTasks || {}).filter(([, spec]) => spec?.type !== DEAL_CARD_TYPE);
   if (!entries.length) return null;
   entries.sort((a, b) => ACTION_PRIORITY.indexOf(a[1].type) - ACTION_PRIORITY.indexOf(b[1].type));
   const [taskId, spec] = entries[0];
@@ -84,6 +90,7 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
   for (const task of add) {
     additions.push({ ...task, id: await journeyTaskId({ officeId, journeyId, type: task.type, ref: task.ref || "" }) });
   }
+  const cardId = await journeyTaskId({ officeId, journeyId, type: DEAL_CARD_TYPE, ref: "card" });
   let finishedIds = [];
   const result = await ctx.store.update(journeySegments(officeId, journeyId), async (journey) => {
     const patch = mutate ? await mutate(journey) : {};
@@ -100,7 +107,12 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
       };
     }
     const lastEvent = event ? { text: event.text, at: now.toISOString() } : journey.lastEvent || null;
-    return { ...patch, openTasks: open, currentAction: deriveCurrentAction(open), lastEvent, updatedAt: now };
+    // The deal's single current phase, and its one Daily Tasks card while the deal is open.
+    const merged = { ...journey, ...patch };
+    const phase = journeyPhase(merged, now);
+    if (phase === PHASE.CLOSED) delete open[cardId];
+    else open[cardId] = { type: DEAL_CARD_TYPE, ref: "card", status: "OPEN", dueAt: null, reason: "", actionLabel: phaseInfo(phase).action, proposalId: "", priority: "NORMAL" };
+    return { ...patch, openTasks: open, currentAction: deriveCurrentAction(open), lastEvent, phase, updatedAt: now };
   });
   if (!result) throw ctx.deps.appError("journey_not_found", 404, "الفرصة غير موجودة");
   if (!result.patch) return { journey: result.current, changed: false };
@@ -114,6 +126,7 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
       lastEvent: event?.text || "", lastEventAt: now, actionLabel: task.actionLabel || "", proposalId: task.proposalId || "", now
     });
   }
+  await upsertDealCard(ctx, { officeId, journey, cardId, lastEvent: event?.text || journey.lastEvent?.text || "", now });
   if (event) {
     await appendJourneyEvent(ctx.store, ctx.deps, {
       officeId, journeyId, key: event.key, type: event.type, text: event.text,
@@ -127,6 +140,25 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
       .catch((error) => console.warn("[office-os] notify failed", error?.message));
   }
   return { journey, changed: true, finishedIds, addedIds: additions.map((t) => t.id) };
+}
+
+/** Keep the deal's one card current: phase, stage label, the one action, last movement. */
+async function upsertDealCard(ctx, { officeId, journey, cardId, lastEvent = "", now }) {
+  const phase = journeyPhase(journey, now);
+  if (phase === PHASE.CLOSED) return;
+  const info = phaseInfo(phase);
+  await upsertJourneyTask(ctx.store, ctx.deps, {
+    officeId, journey, type: DEAL_CARD_TYPE, ref: "card", status: "OPEN",
+    priority: journey.session?.intervention?.required ? "HIGH" : "NORMAL",
+    dueAt: phase === PHASE.VIEWING && journey.viewing?.at ? journey.viewing.at : null,
+    reason: `المرحلة الحالية: ${info.stage}`, actionLabel: info.action,
+    lastEvent, lastEventAt: now, now, reopenTerminal: true,
+    extra: {
+      journeyPhase: phase, journeyStage: info.stage, journeyStep: info.step,
+      viewingAt: journey.viewing?.at || null,
+      intervention: Boolean(journey.session?.intervention?.required)
+    }
+  }).catch((error) => console.warn("[office-os] deal card", error?.message));
 }
 
 async function loadMatchContext(ctx, officeId, matchId) {
@@ -271,6 +303,11 @@ export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
     throw ctx.deps.appError("viewing_not_accepted", 409, "لا يوجد موعد مقبول لتأكيده");
   }
   const at = toDate(viewing.at);
+  const journeys = await ctx.store.list(["offices", officeId, "journeys"], 300);
+  const busy = brokerBusy(journeys, journey.assignedBrokerId, { exceptJourneyId: journeyId });
+  if (!checkBrokerAvailability(busy, at, new Date(at.getTime() + VIEWING_MINUTES * 60 * 1000)).ok) {
+    throw ctx.deps.appError("viewing_conflict", 409, "لدى الوسيط معاينة أخرى في هذا الوقت — اختر موعدًا آخر.");
+  }
   return applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     finish: (task) => task.type === "VIEWING_CONFIRM",
@@ -292,29 +329,33 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
   const cleanNote = cleanText(note, 500);
   const now = ctx.now();
   const viewingKey = String(journey.viewing?.at || "direct");
+  const closing = effect.next === "CLOSE_MATCH";
   const add = [];
-  if (effect.next === "AGREEMENT_FOLLOW_UP") add.push({ type: "DEAL_ACTION", ref: `agreement:${viewingKey}`, reason: "العميل مهتم بعد المعاينة — تابع خطوات الاتفاق", actionLabel: "متابعة الاتفاق" });
-  if (effect.next === "SEND_PROPOSAL") add.push({ type: "SEND_PROPOSAL", ref: `after-viewing:${viewingKey}`, reason: "المعاينة تمت ويحتاج الطرفان تفاوضًا", actionLabel: "تجهيز المقترح" });
-  if (effect.next === "FOLLOW_UP") {
-    add.push({
-      type: "JOURNEY_FOLLOW_UP", ref: `viewing-follow:${viewingKey}`,
-      dueAt: new Date(now.getTime() + (effect.followUpInDays || 0) * DAY),
-      reason: effect.suggestClose ? "العقار غير مناسب بعد المعاينة — أغلق الفرصة أو ابحث عن بديل" : "متابعة لاحقة بعد المعاينة",
-      actionLabel: effect.suggestClose ? "إغلاق أو بديل" : "متابعة الآن"
-    });
-  }
-  return applyJourneyChange(ctx, {
+  if (effect.next === "AGREEMENT_FOLLOW_UP") add.push({ type: "DEAL_ACTION", ref: `agreement:${viewingKey}`, reason: "المعاينة مناسبة — أنهِ الصفقة", actionLabel: "إنهاء الصفقة" });
+  const res = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
-    finish: (task) => task.type === "VIEWING_RESULT" || task.type === "VIEWING_CONFIRM",
-    mutate: (j) => (j.viewing?.result === result && j.viewing?.state === VIEWING_STATE.DONE && j.viewing?.resultNote === cleanNote
-      ? null
-      : {
-        stage: effect.stage || j.stage,
-        viewing: { ...(j.viewing || {}), state: VIEWING_STATE.DONE, result, resultLabel: option.label, resultNote: cleanNote, doneAt: now.toISOString(), recordedBy: actor.uid }
-      }),
+    finishStatus: closing ? "DISMISSED" : "COMPLETED",
+    finish: (task) => closing || task.type === "VIEWING_RESULT" || task.type === "VIEWING_CONFIRM",
+    mutate: (j) => {
+      if (j.viewing?.result === result && j.viewing?.state === VIEWING_STATE.DONE && j.viewing?.resultNote === cleanNote) return null;
+      const viewing = { ...(j.viewing || {}), state: VIEWING_STATE.DONE, result, resultLabel: option.label, resultNote: cleanNote, doneAt: now.toISOString(), recordedBy: actor.uid };
+      if (closing) {
+        return {
+          viewing, status: JOURNEY_STATUS.CLOSED_LOST, stage: STAGE.CLOSED, closedAt: now, archivedAt: now, activeProposals: {},
+          outcome: { result: "LOST", reason: "غير مناسب بعد المعاينة", finalPrice: null, closedAt: now.toISOString(), closedBy: actor.uid }
+        };
+      }
+      if (effect.next === "REOPEN_PRICE") {
+        const session = { ...(j.session || {}), agreedPrice: null, agreedAt: null, lastMove: null, priceReopened: true, reopenedAt: now.toISOString() };
+        return { viewing, stage: STAGE.NEGOTIATION, session };
+      }
+      return { viewing, stage: effect.stage || j.stage };
+    },
     add,
-    event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote], text: `نتيجة المعاينة: ${option.label}${cleanNote ? ` — ${cleanNote}` : ""}` }
+    event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote], text: `نتيجة المعاينة: ${option.label}${cleanNote ? ` — ${cleanNote}` : ""}${closing ? " — أُغلقت هذه المطابقة" : ""}` }
   });
+  if (closing && res.changed) await afterJourneyClosed(ctx, officeId, journey, { won: false });
+  return res;
 }
 
 export async function moveStage(ctx, { actor, officeId, journeyId, stage }) {
@@ -412,6 +453,17 @@ export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, r
       text: won ? `تم إتمام الصفقة${price ? ` بسعر ${price.toLocaleString("en-US")} ريال` : ""}` : `أغلقت الفرصة دون صفقة${cleanReason ? ` — ${cleanReason}` : ""}`
     }
   });
+  await afterJourneyClosed(ctx, officeId, journey, { won });
+  return res;
+}
+
+/**
+ * After a deal closes (by the broker, a declined fixed price or «غير مناسب»): stop reply
+ * and session links and mark this match closed. The offer and the request are NOT touched,
+ * so both stay available for other matches.
+ */
+export async function afterJourneyClosed(ctx, officeId, journey, { won = false } = {}) {
+  const now = ctx.now();
   // Close the remaining active reply links so nobody can answer a closed opportunity.
   for (const proposalId of Object.values(journey.activeProposals || {})) {
     const proposal = await ctx.store.get(["offices", officeId, "proposals", proposalId]);
@@ -425,7 +477,6 @@ export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, r
     const hash = journey.sessionLinks?.[role]?.hash;
     if (hash) await ctx.store.set(["sessionLinks", hash], { status: "CLOSED", updatedAt: now }).catch(() => {});
   }
-  return res;
 }
 
 /**

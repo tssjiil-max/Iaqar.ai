@@ -17,9 +17,13 @@ import {
   isOpenJourney, moveText, parseTypedPrice, sessionEventCard, sessionPrices, sessionStage, sessionStageLabel
 } from "../../../public/os/domain/session-domain.js";
 import { EVENT_SOURCE, VIEWING_STATE } from "../../../public/os/domain/journey-domain.js";
+import {
+  PHASE, PRICE_STATUS_LABEL, VIEWING_MINUTES, agreedItems, availableSlots, brokerBusy, checkBrokerAvailability,
+  isOfferedSlot, journeyPhase, priceStatusOf
+} from "../../../public/os/domain/deal-flow-domain.js";
 import { buildWhatsAppUrl, cleanText, formatDateTime, formatPrice, localPhone, parseRiyadhLocal, toDate } from "../../../public/os/domain/format-domain.js";
 import { newReplyToken, isReplyTokenShape } from "./proposal-service.js";
-import { applyJourneyChange, loadJourney } from "./journey-service.js";
+import { applyJourneyChange, afterJourneyClosed, loadJourney } from "./journey-service.js";
 import { assertCanActOn } from "./permissions.js";
 
 const ROLES = [SESSION_ROLE.OWNER, SESSION_ROLE.CLIENT];
@@ -207,6 +211,28 @@ async function officeCard(ctx, officeId) {
   };
 }
 
+/** The assigned broker's booked viewings across the office (other deals only). */
+export async function brokerCalendar(ctx, officeId, journey) {
+  const journeys = await ctx.store.list(["offices", officeId, "journeys"], 300);
+  return brokerBusy(journeys, journey.assignedBrokerId, { exceptJourneyId: journeyIdOf(journey) });
+}
+
+/** Short property description for the parties: no phone numbers or links. */
+function safeDescription(text) {
+  return cleanText(String(text || "").replace(/https?:\/\/\S+/g, "").replace(/[+\d][\d\s-]{6,}\d/g, "").replace(/\s{2,}/g, " "), 160);
+}
+
+function sideOf(journey, role) {
+  const prices = sessionPrices(journey);
+  const entry = journey.session?.prices?.[role];
+  const last = journey.session?.lastMove?.role === role ? journey.session.lastMove : entry;
+  return {
+    price: prices[role] || null,
+    lastText: last?.move ? moveText(last.move, { pct: PRICE_MOVES[last.move]?.pct }) : role === SESSION_ROLE.OWNER ? "السعر المطلوب" : "الميزانية",
+    lastAt: last?.at || null
+  };
+}
+
 /** What the party sees. Nothing about the other party beyond «المالك»/«العميل». */
 async function partyView(ctx, { journey, role, officeId }) {
   const offer = journey.offerSummary || {};
@@ -220,7 +246,10 @@ async function partyView(ctx, { journey, role, officeId }) {
       const card = sessionEventCard(event, role);
       return { id: card.id, who: card.who, text: card.text, detail: card.detail, at: toDate(card.at)?.toISOString() || null, mine: card.mine, actor: card.actor };
     });
-  const available = availableActions(journey, role);
+  const now = ctx.now();
+  const available = availableActions(journey, role, { now });
+  const needsSlots = available.actions.some((a) => a.typed === "slot");
+  const slots = needsSlots ? availableSlots(await brokerCalendar(ctx, officeId, journey), now) : [];
   return {
     role,
     roleLabel: ROLE_LABEL[role],
@@ -228,8 +257,16 @@ async function partyView(ctx, { journey, role, officeId }) {
       propertyType: cleanText(offer.propertyType, 40) || "العقار",
       district: cleanText(offer.district, 80),
       city: cleanText(offer.city, 60),
-      area: Number(offer.area || 0) || null
+      area: Number(offer.area || 0) || null,
+      price: Number(offer.price || 0) || null,
+      description: safeDescription(offer.notes),
+      priceStatus: priceStatusOf(journey),
+      priceStatusLabel: PRICE_STATUS_LABEL[priceStatusOf(journey)]
     },
+    dealPhase: available.dealPhase || journeyPhase(journey, now),
+    agreed: agreedItems(journey, now),
+    sides: { owner: sideOf(journey, SESSION_ROLE.OWNER), client: sideOf(journey, SESSION_ROLE.CLIENT) },
+    slots,
     currentPrice: prices.current || null,
     agreedPrice: prices.agreed || null,
     stage: sessionStage(journey),
@@ -289,11 +326,18 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     typedPrice = parsed.price;
   }
   let typedViewing = null;
-  if (actionId === "viewing_other") {
-    typedViewing = parseRiyadhLocal(viewingAt) || toDate(viewingAt);
-    if (!typedViewing || typedViewing.getTime() < ctx.now().getTime() + 30 * 60 * 1000) {
-      throw ctx.deps.appError("viewing_invalid", 400, "اختر موعدًا قادمًا للمعاينة");
+  if (actionId === "viewing_other" || actionId === "viewing_pick") {
+    // Only a slot the broker's calendar offers right now (re-checked at booking too).
+    typedViewing = toDate(viewingAt) || parseRiyadhLocal(viewingAt);
+    const slots = availableSlots(await brokerCalendar(ctx, link.officeId, resolved.journey), ctx.now());
+    if (!typedViewing || !isOfferedSlot(slots, typedViewing.toISOString())) {
+      throw ctx.deps.appError("viewing_slot_unavailable", 409, "هذا الموعد غير متاح لدى الوسيط — اختر من الأوقات المتاحة.");
     }
+  }
+  if (actionId === "viewing_ok") {
+    const at = toDate(resolved.journey.viewing?.at);
+    const check = at ? checkBrokerAvailability(await brokerCalendar(ctx, link.officeId, resolved.journey), at, new Date(at.getTime() + VIEWING_MINUTES * 60 * 1000)) : { ok: false };
+    if (!check.ok) throw ctx.deps.appError("viewing_conflict", 409, "هذا الموعد لم يعد متاحًا لدى الوسيط — اقترح موعدًا آخر.");
   }
   const subId = cleanSubmissionId(submissionId) || (await ctx.deps.sha256Hex(`${role}|${actionId}|${typedPrice}|${ctx.now().toISOString().slice(0, 16)}`)).slice(0, 32);
   const now = ctx.now();
@@ -309,19 +353,24 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
   const add = [];
   if (applied.move === "intervention") {
     add.push({ type: "SESSION_INTERVENTION", ref: `intervention:${now.toISOString()}`, priority: "HIGH", reason: `طلب ${who} تدخل الوسيط في جلسة التفاوض`, actionLabel: "فتح جلسة التفاوض" });
-  } else if (applied.move === "accept") {
-    add.push({ type: "SESSION_AGREED", ref: `agreed:${applied.price}`, priority: "HIGH", reason: `اتفق الطرفان على ${formatPrice(applied.price)} — حدد موعد المعاينة`, actionLabel: "فتح جلسة التفاوض" });
+  } else if ((applied.move === "accept" || applied.move === "accept_fixed") && resolved.journey.viewing?.state === VIEWING_STATE.DONE) {
+    add.push({ type: "DEAL_ACTION", ref: `agreement:after-viewing:${applied.price}`, reason: `اتفق الطرفان على ${formatPrice(applied.price)} بعد المعاينة — أنهِ الصفقة`, actionLabel: "إنهاء الصفقة" });
   } else if (applied.move === "to_broker") {
     add.push({ type: "SESSION_PRIVATE_PRICE", ref: `private:${role}:${subId}`, priority: "HIGH", reason: `أرسل ${who} سعرًا للوسيط فقط: ${formatPrice(applied.price)}`, actionLabel: "فتح جلسة التفاوض" });
   } else if (applied.move === "viewing_ok") {
-    add.push({ type: "VIEWING_CONFIRM", ref: `viewing:${resolved.journey.viewing?.at || ""}`, dueAt: resolved.journey.viewing?.at || null, reason: `وافق ${who} على موعد المعاينة من جلسة التفاوض — أكّد الموعد`, actionLabel: "تأكيد الموعد" });
-  } else if (applied.move === "viewing_other") {
-    add.push({ type: "SESSION_VIEWING_COUNTER", ref: `viewing-counter:${applied.viewingAt}`, priority: "HIGH", reason: `اقترح ${who} موعدًا آخر للمعاينة: ${formatDateTime(applied.viewingAt, now)}`, actionLabel: "فتح جلسة التفاوض" });
+    const at = toDate(resolved.journey.viewing?.at);
+    add.push({ type: "VIEWING_RESULT", ref: `viewing:${resolved.journey.viewing?.at || ""}`, dueAt: new Date(at.getTime() + VIEWING_MINUTES * 60 * 1000), reason: `معاينة محجوزة ${formatDateTime(at, now)}`, actionLabel: "تسجيل النتيجة" });
   }
+  const priceSettled = ["accept", "accept_fixed"].includes(applied.move);
+  const closing = applied.move === "decline_fixed";
   const result = await applyJourneyChange(ctx, {
     officeId, journeyId, actor: null,
-    // An agreed price supersedes the "waiting for agreement" task; a new price reopens it.
-    finish: (task) => (applied.move === "intervention" ? false : applied.move !== "accept" && task.type === "SESSION_AGREED"),
+    // A settled price ends the old proposal/price tasks; a booked viewing ends the scheduling ones;
+    // a declined fixed price closes this match only.
+    finishStatus: closing ? "DISMISSED" : "COMPLETED",
+    finish: (task) => closing
+      || (priceSettled && ["SESSION_AGREED", "SEND_PROPOSAL", "AWAITING_REPLY", "PROPOSAL_REPLY", "SESSION_PRIVATE_PRICE"].includes(task.type))
+      || (applied.move === "viewing_ok" && ["VIEWING_CONFIRM", "SESSION_VIEWING_COUNTER"].includes(task.type)),
     mutate: (journey) => {
       if ((journey.session?.submissions || []).includes(submissionKey)) return null;
       const fresh = planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, now });
@@ -351,12 +400,13 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     }
   });
   if (!result.changed) return { ok: true, state: "SAVED", duplicate: true };
+  if (closing) await afterJourneyClosed(ctx, officeId, resolved.journey, { won: false });
   return { ok: true, state: "SAVED" };
 }
 
 /** Validate an action against the given journey and build its journey patch. */
 function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, now }) {
-  const available = availableActions(journey, role);
+  const available = availableActions(journey, role, { now });
   const option = available.actions.find((item) => item.id === actionId);
   if (!option) throw ctx.deps.appError("session_action_unavailable", 409, "تغيّر وضع الجلسة — حدّث الصفحة لرؤية الخيارات الحالية.");
   const session = { ...(journey.session || {}) };
@@ -368,6 +418,9 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
     const value = move.typed ? typedPrice : move.price(prices, role);
     if (!(value > 0)) throw ctx.deps.appError("price_unavailable", 409, "لا يوجد سعر لحساب هذا الخيار");
     applied = { move: actionId, price: value, pct: move.pct || 0, base: actionId === "compromise" ? null : prices[role === "owner" ? "client" : "owner"] || null };
+    if (!move.private && actionId === "accept") {
+      patch.stage = journey.viewing?.state === VIEWING_STATE.DONE ? "AGREEMENT" : "VIEWING";
+    }
     if (move.private) {
       session.privatePrices = { ...(session.privatePrices || {}), [role]: { price: value, at: now.toISOString() } };
     } else {
@@ -376,17 +429,39 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
       session.agreedPrice = actionId === "accept" ? value : null;
       session.agreedAt = actionId === "accept" ? now.toISOString() : null;
     }
+  } else if (actionId === "reject") {
+    applied = { move: "reject" };
+    session.lastMove = { role, move: "reject", price: null, at: now.toISOString() };
+    session.agreedPrice = null;
+    session.agreedAt = null;
+  } else if (actionId === "accept_fixed") {
+    const value = prices.owner;
+    if (!(value > 0)) throw ctx.deps.appError("price_unavailable", 409, "لا يوجد سعر ثابت لهذا العرض");
+    applied = { move: "accept_fixed", price: value };
+    session.prices = { ...(session.prices || {}), [role]: { price: value, move: "accept_fixed", at: now.toISOString() } };
+    session.lastMove = { role, move: "accept_fixed", price: value, at: now.toISOString() };
+    session.agreedPrice = value;
+    session.agreedAt = now.toISOString();
+    patch.stage = journey.viewing?.state === VIEWING_STATE.DONE ? "AGREEMENT" : "VIEWING";
+  } else if (actionId === "decline_fixed") {
+    applied = { move: "decline_fixed" };
+    session.lastMove = { role, move: "decline_fixed", price: null, at: now.toISOString() };
+    Object.assign(patch, {
+      status: "CLOSED_LOST", stage: "CLOSED", closedAt: now, archivedAt: now, activeProposals: {},
+      outcome: { result: "LOST", reason: "السعر ثابت ولم يوافق العميل", finalPrice: null, closedAt: now.toISOString(), closedBy: role }
+    });
   } else if (actionId === "intervention") {
     applied = { move: "intervention" };
     session.intervention = { required: true, by: role, at: now.toISOString() };
   } else if (actionId === "viewing_ok") {
-    applied = { move: "viewing_ok" };
+    // Both sides agreed on a free slot → the viewing is booked on the broker's calendar.
+    applied = { move: "viewing_ok", viewingAt: journey.viewing?.at || null };
     const viewing = journey.viewing || {};
-    patch.viewing = { ...viewing, state: VIEWING_STATE.ACCEPTED, acceptedBy: { ...(viewing.acceptedBy || {}), [role]: true } };
+    patch.viewing = { ...viewing, state: VIEWING_STATE.CONFIRMED, acceptedBy: { ...(viewing.acceptedBy || {}), [role]: true }, confirmedAt: now.toISOString(), confirmedBy: "parties" };
+    patch.stage = "VIEWING";
   } else {
-    applied = { move: "viewing_other", viewingAt: typedViewing.toISOString() };
-    const viewing = journey.viewing || {};
-    patch.viewing = { ...viewing, state: VIEWING_STATE.PROPOSED, acceptedBy: {}, counterBy: role, counterAt: typedViewing.toISOString() };
+    applied = { move: actionId, viewingAt: typedViewing.toISOString() };
+    patch.viewing = { state: VIEWING_STATE.PROPOSED, at: typedViewing.toISOString(), proposedBy: role, counterBy: role, proposedAt: now.toISOString(), acceptedBy: { [role]: true } };
   }
   return { applied, patch };
 }

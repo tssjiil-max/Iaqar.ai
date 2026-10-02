@@ -69,14 +69,18 @@ test("party view shows only role labels, property and the deal stage — no pers
   assert.equal(s.property.propertyType, "شقة");
   assert.equal(s.property.district, "الملقا");
   assert.equal(s.currentPrice, 1200000);
-  assert.equal(s.stageLabel, "تواصل");
+  assert.equal(s.stageLabel, "تفاوض", "approval moves straight to the price step");
+  assert.equal(s.property.priceStatusLabel, "قابل للتفاوض");
   const json = JSON.stringify(view.body);
   for (const secret of ["0551230001", "0551230002", "خالد", "فهد", ctx.journeyId, OWNER_A, ...ctx.recordIds]) assert.ok(!json.includes(secret), `leak: ${secret}`);
-  assert.deepEqual(s.actions.filter((a) => !a.secondary).map((a) => a.id), ["accept", "minus2", "minus5", "compromise", "intervention"]);
+  // Few visible buttons: قبول / تعديل العرض; the quick moves live behind «تعديل العرض».
+  assert.deepEqual(s.actions.filter((a) => a.group === "main").map((a) => a.id), ["accept", "adjust"]);
+  assert.deepEqual(s.actions.filter((a) => a.group === "adjust" && !a.secondary).map((a) => a.id), ["minus2", "minus5", "compromise"]);
   assert.equal(s.actions.find((a) => a.id === "minus5").price, 1140000, "5% below the owner's 1,200,000");
   assert.equal(s.actions.find((a) => a.id === "compromise").price, 1150000, "average of the last two prices");
   const ownerView = await call("/os/session/view", { token: ctx.ownerToken });
-  assert.deepEqual(ownerView.body.session.actions.filter((a) => !a.secondary).map((a) => a.id), ["accept", "plus2", "plus5", "compromise", "intervention"]);
+  assert.deepEqual(ownerView.body.session.actions.filter((a) => a.group === "main").map((a) => a.id), ["accept", "adjust"]);
+  assert.deepEqual(ownerView.body.session.actions.filter((a) => a.group === "adjust" && !a.secondary).map((a) => a.id), ["plus2", "plus5", "compromise"]);
   assert.equal(ownerView.body.session.actions.find((a) => a.id === "plus2").price, 1122000);
   assert.ok(events().some((e) => e.type === "SESSION_OPENED"), "opening is logged for the broker");
 });
@@ -170,26 +174,29 @@ test("broker free text reaches only the chosen party", async () => {
   assert.equal((await call("/os/session/act", { token: ctx.clientToken, action: "message", text: "hi" })).status, 400, "parties cannot send free text");
 });
 
-test("accepting agrees on the price; buttons change with the stage", async () => {
+test("accepting agrees on the price → viewing slots from the broker calendar → booked on agreement", async () => {
   const res = await act(ctx.ownerToken, "accept");
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const view = (await call("/os/session/view", { token: ctx.clientToken })).body.session;
   assert.equal(view.agreedPrice, 1160000);
-  assert.equal(view.phase, "AGREED");
-  assert.deepEqual(view.actions.map((a) => a.id), ["intervention"]);
-  assert.ok(ops().some((op) => op.type === "SESSION_AGREED" && active(op)));
-  const at = new Date(Date.now() + 26 * 3600 * 1000).toISOString();
-  const viewing = await call("/os/proposals/create", { officeId: OFFICE_A, journeyId: ctx.journeyId, kind: "VIEWING", recipients: ["client"], fields: { viewingAt: at }, requestKey: "v1" }, OWNER_A);
-  assert.equal(viewing.status, 200, JSON.stringify(viewing.body));
-  const vView = (await call("/os/session/view", { token: ctx.clientToken })).body.session;
-  assert.equal(vView.stageLabel, "معاينة");
-  assert.deepEqual(vView.actions.map((a) => a.id), ["viewing_ok", "viewing_other", "intervention"]);
-  const ok = await act(ctx.clientToken, "viewing_ok");
+  assert.equal(view.dealPhase, "VIEWING_SCHEDULING");
+  assert.deepEqual(view.agreed.map((a) => a.id), ["price"], "the agreed price moves to «تم الاتفاق عليه»");
+  assert.deepEqual(view.actions.map((a) => a.id), ["viewing_pick", "intervention"], "no price buttons remain");
+  assert.ok(view.slots.length && view.slots[0].slots.length, "free slots are offered");
+  assert.ok(!ops().some((op) => op.type === "SESSION_AGREED" && active(op)));
+  const slot = view.slots[0].slots[0];
+  const pick = await act(ctx.clientToken, "viewing_pick", { viewingAt: slot });
+  assert.equal(pick.status, 200, JSON.stringify(pick.body));
+  assert.equal((await call("/os/session/view", { token: ctx.clientToken })).body.session.phase, "VIEWING_WAIT");
+  const oView = (await call("/os/session/view", { token: ctx.ownerToken })).body.session;
+  assert.equal(oView.stageLabel, "معاينة");
+  assert.deepEqual(oView.actions.map((a) => a.id), ["viewing_ok", "viewing_other", "intervention"]);
+  const ok = await act(ctx.ownerToken, "viewing_ok");
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  assert.ok(ops().some((op) => op.type === "VIEWING_CONFIRM" && active(op)));
-  const other = await act(ctx.ownerToken, "viewing_other", { viewingAt: new Date(Date.now() + 50 * 3600 * 1000).toISOString() });
-  assert.equal(other.status, 200, JSON.stringify(other.body));
-  assert.equal((await call("/os/session/view", { token: ctx.ownerToken })).body.session.phase, "VIEWING_WAIT");
+  const booked = (await call("/os/session/view", { token: ctx.ownerToken })).body.session;
+  assert.equal(booked.dealPhase, "VIEWING");
+  assert.deepEqual(booked.agreed.map((a) => a.id), ["price", "viewing"]);
+  assert.ok(ops().some((op) => op.type === "VIEWING_RESULT" && active(op)), "the result step waits for the viewing time");
 });
 
 test("replaced link stops at once; closing the deal stops both links", async () => {
@@ -212,7 +219,7 @@ test("replaced link stops at once; closing the deal stops both links", async () 
 });
 
 test("stage labels follow the approved path only", () => {
-  assert.equal(sessionStageLabel({ status: "ACTIVE", stage: "NEGOTIATION" }), "تواصل");
+  assert.equal(sessionStageLabel({ status: "ACTIVE", stage: "NEGOTIATION" }), "تفاوض");
   assert.equal(sessionStageLabel({ status: "ACTIVE", stage: "AGREEMENT" }), "مستندات");
   assert.equal(sessionStageLabel({ status: "CLOSED_WON", stage: "CLOSED" }), "إغلاق");
   assert.deepEqual(availableActions({ status: "CLOSED_LOST" }, "owner").actions, []);

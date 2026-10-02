@@ -10,7 +10,8 @@
  * - A broker message addressed to one party is invisible to the other.
  */
 
-import { formatPrice, toDate, toNumber } from "./format-domain.js";
+import { formatDateTime, formatPrice, toDate, toNumber } from "./format-domain.js";
+import { PHASE, journeyPhase, phaseInfo } from "./deal-flow-domain.js";
 
 export const SESSION_ROLE = Object.freeze({ OWNER: "owner", CLIENT: "client" });
 export const ROLE_LABEL = Object.freeze({ owner: "المالك", client: "العميل", broker: "الوسيط" });
@@ -47,20 +48,13 @@ export function isOpenJourney(journey = {}) {
   return status === "ACTIVE" || status === "PAUSED";
 }
 
-/** The deal-path stage shown on the session card. */
-export function sessionStage(journey = {}) {
-  const status = String(journey.status || "").toUpperCase();
-  if (status === "CLOSED_WON" || status === "CLOSED_LOST" || journey.stage === "CLOSED") return "CLOSING";
-  if (journey.stage === "AGREEMENT") return "DOCUMENTS";
-  if (journey.stage === "VIEWING") return "VIEWING";
-  if (journey.stage === "MATCH_REVIEW") return "MATCH";
-  if (["PROPOSED", "ACCEPTED", "CONFIRMED"].includes(String(journey.viewing?.state || "")) && journey.viewing?.at) return "VIEWING";
-  const session = sessionOf(journey);
-  return session.lastMove ? "NEGOTIATION" : "CONTACT";
+/** The deal-path stage shown on the session card — from the single current phase. */
+export function sessionStage(journey = {}, now = new Date()) {
+  return SESSION_STAGES[phaseInfo(journeyPhase(journey, now)).step]?.id || "NEGOTIATION";
 }
 
-export function sessionStageLabel(journey = {}) {
-  return SESSION_STAGES.find((s) => s.id === sessionStage(journey))?.label || "";
+export function sessionStageLabel(journey = {}, now = new Date()) {
+  return phaseInfo(journeyPhase(journey, now)).stage;
 }
 
 /**
@@ -94,72 +88,95 @@ export const PRICE_MOVES = Object.freeze({
 });
 
 export const OTHER_ACTIONS = Object.freeze({
-  intervention: { id: "intervention", label: "تدخل الوسيط", icon: "alert" },
+  intervention: { id: "intervention", label: "تدخل الوسيط", icon: "alert", secondary: true },
+  reject: { id: "reject", label: "رفض", icon: "x-circle" },
+  accept_fixed: { id: "accept_fixed", label: "موافق على السعر", icon: "check-circle" },
+  decline_fixed: { id: "decline_fixed", label: "غير موافق", icon: "x-circle" },
+  viewing_pick: { id: "viewing_pick", label: "اختر موعد المعاينة", icon: "calendar", typed: "slot" },
   viewing_ok: { id: "viewing_ok", label: "الموعد مناسب", icon: "check-circle" },
-  viewing_other: { id: "viewing_other", label: "اقترح موعدًا آخر", icon: "calendar", typed: "datetime" }
+  viewing_other: { id: "viewing_other", label: "اقترح موعدًا آخر", icon: "calendar", typed: "slot" }
 });
 
-const PRICE_ORDER = ["accept", "minus2", "minus5", "plus2", "plus5", "compromise", "manual", "to_broker"];
+/** Quick moves behind «تعديل العرض» (the approved ±2/5%, compromise and typed prices). */
+const ADJUST_ORDER = ["minus2", "minus5", "plus2", "plus5", "compromise", "manual", "to_broker"];
+
+function roleOther(role) {
+  return role === SESSION_ROLE.OWNER ? SESSION_ROLE.CLIENT : SESSION_ROLE.OWNER;
+}
 
 /**
- * What this party may do right now — only the buttons that fit the current state.
- * Returns { phase, waiting, note, actions: [{ id, label, icon, price, typed }] }.
+ * What this party may do right now — only the step that is open for them.
+ * Returns { phase, dealPhase, waiting, note, actions: [{ id, label, icon, price, typed, group, secondary }] }.
+ *   group "main"   → the few visible buttons (قبول / تعديل العرض / رفض, or the viewing answers)
+ *   group "adjust" → the quick price moves shown after «تعديل العرض»
  */
-export function availableActions(journey = {}, role = "") {
+export function availableActions(journey = {}, role = "", { now = new Date() } = {}) {
   if (role !== SESSION_ROLE.OWNER && role !== SESSION_ROLE.CLIENT) return { phase: "NONE", actions: [], note: "" };
-  if (!isOpenJourney(journey)) return { phase: "CLOSED", actions: [], note: "أُغلقت هذه الصفقة، ويبقى سجل التفاوض للاطلاع." };
-  const session = sessionOf(journey);
+  if (!isOpenJourney(journey)) return { phase: "CLOSED", dealPhase: PHASE.CLOSED, actions: [], note: "أُغلقت هذه الصفقة، ويبقى سجل التفاوض للاطلاع." };
   const intervention = { ...OTHER_ACTIONS.intervention };
+  const dealPhase = journeyPhase(journey, now);
   if (String(journey.status || "").toUpperCase() === "PAUSED") {
-    return { phase: "PAUSED", waiting: true, actions: [intervention], note: "الصفقة متوقفة مؤقتًا لدى الوسيط." };
+    return { phase: "PAUSED", dealPhase, waiting: true, actions: [intervention], note: "الصفقة متوقفة مؤقتًا لدى الوسيط." };
   }
-  const stage = sessionStage(journey);
-  if (stage === "DOCUMENTS") {
-    return { phase: "DOCUMENTS", waiting: true, actions: [intervention], note: "الوسيط يتابع المستندات وإجراءات الاتفاق." };
+  const base = { dealPhase };
+  const viewing = journey.viewing || {};
+  const at = toDate(viewing.at);
+  if (dealPhase === PHASE.FINAL_AGREEMENT) {
+    return { ...base, phase: "DOCUMENTS", waiting: true, actions: [intervention], note: "تم الاتفاق — الوسيط يتابع إنهاء الصفقة والمستندات." };
   }
-  if (stage === "VIEWING") {
-    const viewing = journey.viewing || {};
-    const at = toDate(viewing.at);
-    const state = String(viewing.state || "NONE");
-    if (!at || !["PROPOSED", "ACCEPTED"].includes(state)) {
-      const note = state === "CONFIRMED" ? "موعد المعاينة مؤكد." : state === "DONE" ? "تمت المعاينة." : "بانتظار الوسيط لتحديد موعد المعاينة.";
-      return { phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note, viewingAt: at ? at.toISOString() : null };
+  if (dealPhase === PHASE.VIEWING || dealPhase === PHASE.VIEWING_RESULT) {
+    const note = dealPhase === PHASE.VIEWING ? `موعد المعاينة: ${formatDateTime(at, now)}` : "تمت المعاينة — بانتظار الوسيط لتسجيل النتيجة.";
+    return { ...base, phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note, viewingAt: at ? at.toISOString() : null };
+  }
+  if (dealPhase === PHASE.VIEWING_SCHEDULING) {
+    const state = String(viewing.state || "NONE").toUpperCase();
+    if (state === "ACCEPTED") {
+      return { ...base, phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note: "قُبل الموعد — بانتظار تأكيد الوسيط.", viewingAt: at ? at.toISOString() : null };
     }
-    if (viewing.counterBy) {
-      const note = viewing.counterBy === role ? "اقترحت موعدًا آخر — بانتظار الوسيط لتحديد الموعد." : `اقترح ${ROLE_LABEL[viewing.counterBy]} موعدًا آخر — بانتظار الوسيط لتحديد الموعد.`;
-      return { phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note, viewingAt: at.toISOString() };
+    if (state === "PROPOSED" && at) {
+      const by = viewing.proposedBy || viewing.counterBy || "";
+      if (by === role) {
+        return { ...base, phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note: `اقترحت موعد ${formatDateTime(at, now)} — بانتظار موافقة ${ROLE_LABEL[roleOther(role)]}.`, viewingAt: at.toISOString() };
+      }
+      return {
+        ...base, phase: "VIEWING", waiting: false, viewingAt: at.toISOString(), note: "",
+        actions: [{ ...OTHER_ACTIONS.viewing_ok, group: "main" }, { ...OTHER_ACTIONS.viewing_other, group: "main" }, intervention]
+      };
     }
-    if (viewing.acceptedBy && viewing.acceptedBy[role]) {
-      return { phase: "VIEWING_ACCEPTED", waiting: true, actions: [intervention], note: "وافقت على الموعد — بانتظار تأكيد الوسيط.", viewingAt: at.toISOString() };
-    }
-    return {
-      phase: "VIEWING", waiting: false, viewingAt: at.toISOString(), note: "",
-      actions: [{ ...OTHER_ACTIONS.viewing_ok }, { ...OTHER_ACTIONS.viewing_other }, intervention]
-    };
+    return { ...base, phase: "VIEWING_PICK", waiting: false, note: "تم الاتفاق على السعر — اختر موعد المعاينة من الأوقات المتاحة.", actions: [{ ...OTHER_ACTIONS.viewing_pick, group: "main" }, intervention] };
   }
   const prices = sessionPrices(journey);
-  if (prices.agreed) {
-    return { phase: "AGREED", waiting: true, actions: [intervention], note: `اتفق الطرفان على ${formatPrice(prices.agreed)} — بانتظار الوسيط لتحديد موعد المعاينة.` };
+  if (dealPhase === PHASE.PRICE_DECISION) {
+    const fixed = prices.owner;
+    if (role === SESSION_ROLE.OWNER) {
+      return { ...base, phase: "FIXED_WAIT", waiting: true, actions: [intervention], note: `السعر ثابت: ${formatPrice(fixed)} — بانتظار رد العميل.` };
+    }
+    return {
+      ...base, phase: "FIXED", waiting: false, note: `السعر ثابت: ${formatPrice(fixed)}`,
+      actions: [{ ...OTHER_ACTIONS.accept_fixed, price: fixed || null, group: "main" }, { ...OTHER_ACTIONS.decline_fixed, group: "main" }, intervention]
+    };
   }
   const last = prices.lastMove;
   if (last && last.role === role) {
-    return {
-      phase: "WAITING", waiting: true, note: `بانتظار رد ${ROLE_LABEL[otherRole(role)]} على سعرك ${formatPrice(last.price)}.`,
-      actions: [intervention]
-    };
+    const note = last.move === "reject" ? `رفضت العرض الحالي — بانتظار رد ${ROLE_LABEL[roleOther(role)]}.` : `بانتظار رد ${ROLE_LABEL[roleOther(role)]} على سعرك ${formatPrice(last.price)}.`;
+    return { ...base, phase: "WAITING", waiting: true, note, actions: [intervention] };
   }
   const actions = [];
-  for (const id of PRICE_ORDER) {
+  const acceptPrice = PRICE_MOVES.accept.price(prices, role);
+  if (acceptPrice > 0) actions.push({ ...strip({ ...PRICE_MOVES.accept, label: "قبول", price: acceptPrice }), group: "main" });
+  const adjust = [];
+  for (const id of ADJUST_ORDER) {
     const move = PRICE_MOVES[id];
     if (!move.roles.includes(role)) continue;
     const price = move.typed ? null : move.price(prices, role);
     if (!move.typed && !(price > 0)) continue;
     if (id === "compromise" && (!prices.owner || !prices.client || prices.owner === prices.client)) continue;
-    if (id === "accept" && !prices[otherRole(role)]) continue;
-    actions.push(strip({ ...move, price }));
+    adjust.push({ ...strip({ ...move, price }), group: "adjust" });
   }
-  actions.push(intervention);
-  return { phase: "PRICE", waiting: false, actions, note: "" };
+  if (adjust.length) actions.push({ id: "adjust", label: "تعديل العرض", icon: "edit", group: "main", toggle: true, price: null, typed: false, secondary: false, pct: 0 });
+  if (last && last.role !== role) actions.push({ ...OTHER_ACTIONS.reject, group: "main", price: null, typed: false, secondary: false, pct: 0 });
+  actions.push(...adjust, intervention);
+  return { ...base, phase: "PRICE", waiting: false, actions, note: "" };
 }
 
 function strip(move) {
@@ -187,8 +204,12 @@ export function moveText(move, { pct = 0 } = {}) {
     case "manual": return "اقترح سعرًا";
     case "to_broker": return "أرسل سعرًا للوسيط فقط";
     case "intervention": return "طلب تدخل الوسيط";
-    case "viewing_ok": return "الموعد مناسب";
+    case "viewing_ok": return "وافق على موعد المعاينة — تم حجز الموعد";
     case "viewing_other": return "اقترح موعدًا آخر للمعاينة";
+    case "viewing_pick": return "اقترح موعد المعاينة";
+    case "accept_fixed": return "وافق على السعر الثابت";
+    case "decline_fixed": return "لم يوافق على السعر الثابت — أُغلقت هذه المطابقة";
+    case "reject": return "رفض العرض الحالي";
     case "opened": return "فتح رابط الجلسة";
     case "resolved": return "تابع الوسيط طلب التدخل";
     default: return "";

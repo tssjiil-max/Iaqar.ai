@@ -544,3 +544,37 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-btn.secondary{background:var(--surface);color:var(--brand-primary);border:1px solid var(--brand-primary)}
 .os-btn.whatsapp{background:var(--brand-primary);color:#fff}
 .os-input:focus,.os-textarea:focus,select.os-input:focus{border-color:var(--brand-primary);box-shadow:0 0 0 3px rgba(8, 47, 58, .12);outline:none}
+
+/* ---------- Negotiation page: three parts (same identity; compact) ---------- */
+.os-part-title { margin: 0 0 8px; font-size: 1rem; }
+.os-deal-property .os-session-grid { margin-bottom: 8px; }
+.os-deal-meta { display: grid; gap: 6px; }
+.os-price-chip { justify-self: start; font-size: .8rem; font-weight: 800; color: var(--brand-primary); background: var(--brand-tint); border-radius: 999px; padding: 3px 10px; }
+.os-price-chip.fixed { color: #fff; background: var(--brand-primary); }
+.os-deal-desc { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.5; overflow-wrap: anywhere; }
+.os-agreed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.os-agreed-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .92rem; color: var(--text); }
+.os-agreed-list li svg { width: 18px; height: 18px; flex: none; color: var(--ok); }
+.os-agreed-list li b { color: var(--brand-dark); }
+.os-agreed-empty { margin: 0; font-size: .86rem; }
+.os-deal-sides-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.os-deal-side { display: grid; gap: 2px; min-width: 0; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.os-deal-side.mine { border-color: var(--brand-soft); background: var(--brand-tint); }
+.os-deal-side-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.os-deal-side-head svg { width: 18px; height: 18px; flex: none; }
+.os-deal-side-head b { font-size: .88rem; color: var(--brand-dark); overflow-wrap: anywhere; }
+.os-deal-side-price { font-size: .98rem; color: var(--brand-primary); white-space: nowrap; }
+.os-deal-side small { color: var(--muted); font-size: .76rem; line-height: 1.35; overflow-wrap: anywhere; }
+.os-deal-history > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800; color: var(--brand-dark); list-style: none; min-height: 32px; }
+.os-deal-history > summary::-webkit-details-marker { display: none; }
+.os-deal-history > summary svg { width: 20px; height: 20px; }
+.os-deal-history[open] > summary { margin-bottom: 8px; }
+.os-session-more { justify-self: center; background: none; border: 0; color: var(--muted); font-size: .84rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 10px; }
+.os-session-more svg { width: 16px; height: 16px; }
+.os-slot-picker { display: grid; gap: 8px; }
+.os-slot-days, .os-slot-times { display: flex; flex-wrap: wrap; gap: 6px; }
+.os-slot-days button, .os-slot-times button { border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); border-radius: 12px; padding: 6px 10px; font: inherit; font-size: .84rem; font-weight: 700; min-height: 36px; }
+.os-slot-days button[aria-pressed="true"], .os-slot-times button[aria-pressed="true"] { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.os-slot-empty { margin: 0; font-size: .86rem; }
+.os-session-confirm { display: grid; gap: 8px; }
+.os-session-buttons.n2 .os-session-act, .os-session-buttons.n3 .os-session-act { min-height: 56px; }
