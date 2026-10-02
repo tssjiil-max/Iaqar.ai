@@ -170,7 +170,8 @@ try {
   const crawl = async () => (await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text());
   let og = await crawl();
   check("crawler gets this office's title, description (مرخص), type and url", og.includes('og:title" content="مكتب سلطان للتسويق العقاري"') && og.includes('og:description" content="مكتب عقاري مرخص في الرياض"') && og.includes('og:type" content="website"') && og.includes(`/m/${slugNow}"`));
-  check("og:image is this office's photo (HTTPS path under /share/office/<slug>)", new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og));
+  check("og:image points to this office/version immutable JPEG",
+    new RegExp(`og:image" content="[^"]*/share/office/${OFFICE_A}/${nonceAfter}\\.jpg`).test(og));
   const imageUrl = og.match(/og:image" content="([^"]+)"/)[1];
   const imageResponse = await fetch(imageUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`));
   check("the image opens directly without login (200 image/jpeg)", imageResponse.status === 200 && /image\/jpeg/.test(imageResponse.headers.get("content-type") || ""), `${imageResponse.status}`);
@@ -192,11 +193,21 @@ try {
   await page.locator(".ref-office-logo-mark").first().waitFor();
   await page.goto(`${h.origin}/#/settings/link`);
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === false, "photo removed from the preview");
-  check("without a photo the page says the platform logo is used", (await page.locator("[data-share-card-status]").innerText()).includes("شعار المنصة"));
+  const fallbackVersion = await until(() => {
+    const row = h.store.get(`publicOffices/${OFFICE_A}`);
+    return row?.sharePreviewFormat === "immutable-v2" && row?.shareCardNonce && row.shareCardNonce !== nonceAfter ? row.shareCardNonce : null;
+  }, "photo removal publishes a new fallback version");
+  check("without a photo the link page still has a generated preview card", !(await page.locator("[data-share-card-preview]").isHidden()));
   og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
   const fbUrl = (og.match(/og:image" content="([^"]+)"/) || [])[1] || "";
   const fbRes = fbUrl ? await fetch(fbUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`)) : null;
-  check("without a photo og:image returns the platform logo, not the removed photo left in storage", /\/share\/office\/[^/]+\/card-vlogo-/.test(fbUrl) && fbRes && fbRes.status === 200 && /image\/png/.test(fbRes.headers.get("content-type") || ""));
+  const fallbackKey = `office-share/${OFFICE_A.toLowerCase()}/${fallbackVersion.toLowerCase()}.jpg`;
+  check("without a photo og:image is a new immutable JPEG fallback, never the removed-photo version",
+    fbUrl.endsWith(`/share/office/${OFFICE_A}/${fallbackVersion}.jpg`)
+      && fallbackVersion !== nonceAfter
+      && bucket.has(fallbackKey)
+      && fbRes?.status === 200
+      && /image\/jpeg/.test(fbRes.headers.get("content-type") || ""));
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-office-logo-mark").first().waitFor();
   check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
