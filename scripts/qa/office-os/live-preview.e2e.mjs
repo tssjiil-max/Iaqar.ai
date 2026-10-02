@@ -289,6 +289,74 @@ try {
   await page.locator("[data-record]").first().waitFor();
   await shot(page, "16-repository");
 
+  // 9b — new journey features, live: signup entry, «قريبًا» tools, fixed price → free slot → booking,
+  // match.appointmentAt for the scheduled reminders, one card per deal, «بلا مطابقة» tab.
+  try {
+    const anon = await (await browser.newContext(mobile)).newPage();
+    anon.setDefaultTimeout(30000);
+    await anon.goto(`${PREVIEW_URL}/`);
+    await anon.locator("[data-broker-signup]").waitFor();
+    check("live: login screen offers «تسجيل وسيط جديد» (links to the application form)", (await anon.locator("[data-broker-signup]").getAttribute("href")) === "/legacy.html#broker");
+    await anon.goto(`${PREVIEW_URL}/legacy.html#broker`);
+    await anon.locator("#brokerForm").waitFor();
+    check("live: /legacy.html#broker opens the broker application form directly", true);
+
+    await page.goto(`${PREVIEW_URL}/#/office`);
+    await page.locator(".ref-office-tools").waitFor();
+    check("live: all 10 unbuilt office tools are marked «قريبًا»", (await page.locator(".ref-office-soon").count()) === 10);
+
+    const api = (route, body) => page.evaluate(async ([w, r, b]) => {
+      const token = await firebase.auth().currentUser.getIdToken();
+      const res = await fetch(`${w}${r}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(b) });
+      return { status: res.status, body: await res.json().catch(() => ({})) };
+    }, [WORKER_URL, route, body]);
+    const district = "الربيع";
+    const request2 = await api("/os/records/save", { officeId: OFFICE, requestKey: `live-r-${RUN}`, record: { kind: "REQUEST", purpose: "PURCHASE", propertyType: "فيلا", city: "الرياض", district, price: 2500000, contactName: "عميل اختباري ٢", contactPhone: "0599933333" } });
+    const offer2 = await api("/os/records/save", { officeId: OFFICE, requestKey: `live-o-${RUN}`, record: { kind: "OFFER", purpose: "SALE", propertyType: "فيلا", city: "الرياض", district, price: 2400000, priceStatus: "FIXED", contactName: "مالك اختباري ٢", contactPhone: "0599944444" } });
+    check("live: records saved (fixed-price offer + request)", request2.status === 200 && offer2.status === 200, `${request2.status}/${offer2.status}`);
+    const match2 = await until(async () => (await office.collection("matches").get()).docs.find((d) => d.data().offerId === offer2.body.recordId && d.data().requestId === request2.body.recordId), "second match", 60000);
+    const approved = await api("/os/review/decide", { officeId: OFFICE, matchId: match2.id, decision: "approve" });
+    check("live: second match approved → journey opened", approved.status === 200 && Boolean(approved.body.journeyId), String(approved.status));
+    const jid = approved.body.journeyId;
+    const links = (await api("/os/session/links", { officeId: OFFICE, journeyId: jid })).body.links;
+    const partyPage = async (url) => { const c = await browser.newContext(mobile); const p = await c.newPage(); p.setDefaultTimeout(30000); await p.goto(`${PREVIEW_URL}/s#${String(url).split("#")[1]}`); return p; };
+    const ownerParty = await partyPage(links.owner.url);
+    const clientParty = await partyPage(links.client.url);
+    await clientParty.locator('[data-session-action="accept_fixed"]').waitFor();
+    check("live: fixed price → the client sees only «موافق / غير موافق» (no price moves)", (await clientParty.locator('[data-session-action="minus5"], [data-session-action="manual"]').count()) === 0);
+    await shot(clientParty, "17-fixed-price-client");
+    await clientParty.locator('[data-session-action="accept_fixed"]').click();
+    await clientParty.locator('[data-session-action="viewing_pick"]').waitFor();
+    await clientParty.locator('[data-session-action="viewing_pick"]').click();
+    await clientParty.locator(".os-slot-picker").waitFor();
+    check("live: viewing time is picked from free slots (no free typing)", (await clientParty.locator('input[type="datetime-local"]').count()) === 0 && (await clientParty.locator("[data-slot]").count()) > 0);
+    await shot(clientParty, "18-slot-picker");
+    const slotIso = await clientParty.locator("[data-slot]").first().getAttribute("data-slot");
+    await clientParty.locator("[data-slot]").first().click();
+    await ownerParty.locator('[data-session-action="viewing_ok"]').waitFor({ timeout: 40000 });
+    await shot(ownerParty, "19-owner-confirms-slot");
+    await ownerParty.locator('[data-session-action="viewing_ok"]').click();
+    const booked = await until(async () => { const j = (await office.collection("journeys").doc(jid).get()).data(); return j.viewing?.state === "CONFIRMED" ? j : null; }, "viewing booked");
+    check("live: both sides agreed on a free slot → viewing CONFIRMED on that slot", new Date(booked.viewing.at).toISOString() === new Date(slotIso).toISOString(), booked.viewing.at);
+    const matchAfter = await until(async () => { const m = (await office.collection("matches").doc(match2.id).get()).data(); return m.appointmentAt ? m : null; }, "match.appointmentAt");
+    const apptMs = matchAfter.appointmentAt.toDate ? matchAfter.appointmentAt.toDate().getTime() : new Date(matchAfter.appointmentAt).getTime();
+    check("live: confirmed viewing mirrored as match.appointmentAt (used by the scheduled reminders)", apptMs === new Date(slotIso).getTime());
+    const cards = (await office.collection("operations").where("journeyId", "==", jid).get()).docs.map((d) => d.data()).filter((o) => o.type === "DEAL_JOURNEY" && ["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"].includes(o.status));
+    check("live: exactly one Daily Tasks card for the open deal", cards.length === 1, String(cards.length));
+
+    const lone = await api("/os/records/save", { officeId: OFFICE, requestKey: `live-lone-${RUN}`, record: { kind: "OFFER", purpose: "SALE", propertyType: "أرض", city: "جدة", district: "الشاطئ", price: 900000, contactName: "مالك منفرد", contactPhone: "0599955555" } });
+    await page.goto(`${PREVIEW_URL}/#/repo`);
+    await page.locator("[data-record]").first().waitFor();
+    await page.locator('[data-tab="UNMATCHED"]').click();
+    await page.locator(`[data-record="${lone.body.recordId}"]`).waitFor();
+    check("live: «بلا مطابقة» lists a record outside any deal", true);
+    check("live: «بلا مطابقة» hides records inside the open deal", (await page.locator(`[data-record="${offer2.body.recordId}"], [data-record="${request2.body.recordId}"]`).count()) === 0);
+    await shot(page, "20-repository-unmatched");
+  } catch (error) {
+    check("live: new journey features", false, String(error?.message || error).split("\n")[0]);
+    for (const ctx of browser.contexts()) for (const p of ctx.pages()) await p.screenshot({ path: path.join(OUT, `live-zz-newfeat-${Math.random().toString(36).slice(2, 6)}.png`), fullPage: true }).catch(() => {});
+  }
+
   // 10 isolation against the live Staging rules: office B cannot read office A
   const bCtx = await browser.newContext(mobile);
   const bPage = await bCtx.newPage();

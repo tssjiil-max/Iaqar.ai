@@ -221,3 +221,9 @@ test("records inside an open match or deal are engaged; the rest are «بلا م
   for (const id of ["o1", "r1", "o2", "r2"]) assert.ok(ids.has(id), `${id} is engaged`);
   for (const id of ["o3", "r3", "o4"]) assert.ok(!ids.has(id), `${id} is not engaged`);
 });
+
+test("the real deal card of an open deal carries both record ids, so «بلا مطابقة» hides them", () => {
+  const tasks = h.store.list(`offices/${OFFICE_A}/operations`).filter((op) => op.journeyId === ctx.neg.journeyId);
+  const ids = engagedRecordIds(tasks);
+  assert.ok(ids.has(ctx.neg.offerId) && ids.has(ctx.neg.requestId), "offer and request of an open deal are engaged");
+});
