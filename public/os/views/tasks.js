@@ -109,7 +109,7 @@ export function renderTasks(container, { filter = "all" } = {}) {
 
   const draw = () => {
     const now = new Date();
-    const mine = state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager }));
+    const mine = state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
     clear(chipsRow);
     for (const f of TASK_FILTERS) {
       const n = filterTasks(mine, f.id, now).length;

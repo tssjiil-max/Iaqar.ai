@@ -1,4 +1,5 @@
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
+import { runCooperationBrokerAction } from "./cooperation-brokers-service.js";
 import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
 import {
   createPersistentCompletionSession,
@@ -640,6 +641,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/cooperation/lifecycle") {
         return await handleCooperationLifecycle(request, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/cooperation/brokers") {
+        return await handleCooperationBrokers(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/cooperation/sync-coordination") {
@@ -5251,7 +5256,8 @@ async function handleCooperationWorkflow(request, env, requestId) {
     reason,
     appointmentAt,
     accessToken,
-    deps: operationsDeps(env)
+    // runCooperationWorkflow reads records with deps.firestoreFieldsToJs, which operationsDeps() does not carry.
+    deps: { ...operationsDeps(env), firestoreFieldsToJs }
   });
   if (!result.ok) {
     throw appError(
@@ -5322,6 +5328,37 @@ async function handleCooperationRequestCreate(request, env, requestId) {
     boundaries: result.boundaries || phase6BoundaryGuarantees(),
     requestId
   }, result.duplicate ? 200 : 201);
+}
+
+async function handleCooperationBrokers(request, env, requestId) {
+  const body = await request.json().catch(() => ({}));
+  const officeId = firestoreOfficeId(body.officeId);
+  const cooperationId = cleanText(body.cooperationId, 180);
+  const action = cleanText(body.action, 40).toUpperCase();
+  if (!officeId) throw appError("office_id_required", 400, "تعذر تحديد المكتب");
+  if (!cooperationId) throw appError("cooperation_id_required", 400, "معرّف التعاون مطلوب");
+  if (!action) throw appError("action_required", 400, "الإجراء مطلوب");
+  const identity = await authorizeOfficeRequest(request, env, officeId, "member");
+  await ensurePilotFeatureEnabled(env, "crossOfficeCollaboration");
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const shares = body.shares && typeof body.shares === "object" ? body.shares : null;
+  const result = await runCooperationBrokerAction({
+    projectId,
+    actorOfficeId: officeId,
+    actorUid: identity.uid || "",
+    cooperationId,
+    action,
+    brokerId: cleanText(body.brokerId, 128),
+    shares,
+    accessToken,
+    deps: { ...operationsDeps(env), firestoreFieldsToJs }
+  });
+  if (!result.ok) {
+    throw appError(result.error || "cooperation_brokers_failed", result.status || 400, result.message || "تعذر تحديث التعاون");
+  }
+  return jsonResponse({ ok: true, ...result, officeId, requestId });
 }
 
 async function handleCooperationLifecycle(request, env, requestId) {

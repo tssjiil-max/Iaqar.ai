@@ -520,7 +520,7 @@ export function yourTurnFor({ stage, role, record = {}, officeId = "" } = {}) {
   return waiting("");
 }
 
-export function applyCooperationWorkflowTransition(record = {}, action, { actorOfficeId = "", now = new Date() } = {}) {
+export function applyCooperationWorkflowTransition(record = {}, action, { actorOfficeId = "", actorUid = "", now = new Date() } = {}) {
   const act = upper(action);
   const stage = upper(record.currentStage) || COOPERATION_STAGE.MATCH_FOUND;
   const status = upper(record.status) || COOPERATION_RECORD_STATUS.SUGGESTED;
@@ -564,6 +564,8 @@ export function applyCooperationWorkflowTransition(record = {}, action, { actorO
         status: COOPERATION_RECORD_STATUS.ACCEPTED,
         currentStage: COOPERATION_STAGE.ACCEPTED,
         acceptedAt: iso,
+        // The accepting broker is «وسيط» of the target side (needed to tell who is who in the cooperation).
+        ...(text(actorUid) ? { targetBrokerId: text(actorUid) } : {}),
         updatedAt: iso
       }
     };

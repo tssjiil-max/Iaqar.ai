@@ -50,7 +50,7 @@ function openMenu() {
       const result = await enableNotifications();
       toast(result.message, result.ok ? "ok" : "bad");
     } }, ic("bell"), h("span", {}, "تنبيهات هذا الجهاز ", h("small", { class: "os-sub", text: `(${notificationStatus()})` }))),
-    h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("users"), "مجتمع الوسطاء"),
+    h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("handshake"), "التعاون بين الوسطاء"),
     session.isManager ? h("button", { type: "button", onClick: () => { sheet.close(); go("settings"); } }, ic("gear"), "إعدادات المكتب") : null,
     h("a", { href: legacyUrl }, ic("clipboard"), "أدوات إضافية قديمة"),
     h("button", { type: "button", onClick: async () => { sheet.close(); await signOutOffice(); location.replace("/"); } }, ic("logout"), "تسجيل الخروج")

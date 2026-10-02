@@ -46,6 +46,7 @@ const SCREENS = [
   { name: "journey-closed", url: `/#/journey/${s.closed.journeyId}`, wait: "text=تمت الصفقة" },
   { name: "settings", url: "/#/settings", wait: ".os-set-list" },
   { name: "community", url: "/#/community", wait: ".os-chips" },
+  { name: "community-details", url: "/#/community", wait: ".os-chips", act: async (p) => { await p.locator("[data-coop-details-open]").first().click().catch(() => {}); await p.waitForTimeout(300); } },
   { name: "settings-profile", url: "/#/settings/profile", wait: 'input[name="officeName"]' },
   { name: "settings-link", url: "/#/settings/link", wait: "[data-office-link]" },
   { name: "settings-cooperation", url: "/#/settings/cooperation", wait: "[data-mode]" },
