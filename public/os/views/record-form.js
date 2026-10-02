@@ -7,6 +7,7 @@ import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { newRequestKey, runAction, toast } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordInput } from "../domain/records-domain.js";
+import { normalizePriceStatus, PRICE_STATUS } from "../domain/flow-domain.js";
 import { formatNumber } from "../domain/format-domain.js";
 
 export function recordFormFields({ kind, values = {}, lockKind = false, onKindChange }) {
@@ -22,10 +23,45 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
       }, p.label));
     }
   };
+
+  const existingPriceStatus = values && Object.keys(values).length ? normalizePriceStatus(values) : "";
+  const hiddenPriceStatus = h("input", { type: "hidden", name: "priceStatus", value: existingPriceStatus });
+  const priceStatusWrap = h("div", { class: "os-seg", role: "group", "aria-label": "حالة السعر" });
+  const priceStatusField = h("div", { class: "os-field", "data-price-status-field": "true" },
+    h("span", { text: "حالة السعر" }), priceStatusWrap, hiddenPriceStatus,
+    h("small", { class: "os-hint", text: "حددها مرة واحدة؛ إذا كان السعر ثابتًا لن يفتح النظام تفاوض سعر." }),
+    h("span", { class: "os-error", role: "alert" })
+  );
+  const drawPriceStatus = () => {
+    clear(priceStatusWrap);
+    const options = [
+      { id: PRICE_STATUS.FIXED, label: "السعر ثابت" },
+      { id: PRICE_STATUS.NEGOTIABLE, label: "قابل للتفاوض" }
+    ];
+    for (const item of options) {
+      priceStatusWrap.append(h("button", {
+        type: "button",
+        "aria-pressed": String(hiddenPriceStatus.value === item.id),
+        onClick: () => { hiddenPriceStatus.value = item.id; drawPriceStatus(); setFieldError(form, "priceStatus", ""); }
+      }, item.label));
+    }
+    priceStatusField.hidden = kind !== RECORD_KIND.OFFER;
+  };
+
   const kindSeg = h("div", { class: "os-seg", role: "group", "aria-label": "نوع السجل" },
     [RECORD_KIND.OFFER, RECORD_KIND.REQUEST].map((k) => h("button", {
       type: "button", "aria-pressed": String(kind === k), disabled: lockKind && kind !== k,
-      onClick: () => { if (lockKind || kind === k) return; kind = k; hiddenPurpose.value = ""; onKindChange?.(k); kindSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String([RECORD_KIND.OFFER, RECORD_KIND.REQUEST][i] === k))); drawPurposes(); priceLabel.firstChild.textContent = k === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)"; }
+      onClick: () => {
+        if (lockKind || kind === k) return;
+        kind = k;
+        hiddenPurpose.value = "";
+        if (kind === RECORD_KIND.REQUEST) hiddenPriceStatus.value = "";
+        onKindChange?.(k);
+        kindSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String([RECORD_KIND.OFFER, RECORD_KIND.REQUEST][i] === k)));
+        drawPurposes();
+        drawPriceStatus();
+        priceLabel.firstChild.textContent = k === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)";
+      }
     }, k === RECORD_KIND.OFFER ? "عرض (لدي عقار)" : "طلب (أبحث عن عقار)"))
   );
   const typeInput = h("input", { class: "os-input", name: "propertyType", list: "os-types", value: values.propertyType || "", placeholder: "شقة، فيلا، أرض…", autocomplete: "off" });
@@ -44,6 +80,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
       field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "اسم الحي" }))
     ),
     priceLabel,
+    priceStatusField,
     h("div", { class: "os-row2" },
       field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
       field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true })
@@ -55,6 +92,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
     field("مواصفات وملاحظات", h("textarea", { class: "os-textarea", name: "notes", maxlength: "1000", placeholder: "المواصفات المطلوبة أو المميزات…", text: values.notes || "" }), { optional: true })
   );
   drawPurposes();
+  drawPriceStatus();
   return { form, getKind: () => kind };
 }
 
@@ -67,6 +105,7 @@ export function readRecordForm(root, kind) {
     city: value("city"),
     district: value("district"),
     price: value("price"),
+    priceStatus: kind === RECORD_KIND.OFFER ? value("priceStatus") : "",
     area: value("area"),
     rooms: value("rooms"),
     contactName: value("contactName"),
@@ -113,6 +152,11 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     formEl.addEventListener("submit", async (event) => {
       event.preventDefault();
       const input = readRecordForm(formEl, getKind());
+      if (getKind() === RECORD_KIND.OFFER && !input.priceStatus) {
+        setFieldError(formEl, "priceStatus", "اختر: السعر ثابت أو قابل للتفاوض");
+        formEl.querySelector("[data-price-status-field]")?.scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
+      }
       const local = validateRecordInput(input);
       if (!local.ok) { showRecordErrors(formEl, local.errors); return; }
       clearFieldErrors(formEl);
@@ -127,7 +171,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       go(`record/${result.recordId}`);
     });
     clear(container);
-    append(container, 
+    append(container,
       h("div", { class: "os-page-head" },
         h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : "repo") }, ic("chev-right"), "رجوع"),
         titleEl, h("span")

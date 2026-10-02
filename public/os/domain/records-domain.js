@@ -7,6 +7,7 @@
  */
 
 import { cleanText, formatArea, formatPrice, localPhone, toNumber, whatsappDigits } from "./format-domain.js";
+import { normalizePriceStatus, priceStatusLabel, PRICE_STATUS } from "./flow-domain.js";
 
 export const RECORD_KIND = Object.freeze({ OFFER: "OFFER", REQUEST: "REQUEST" });
 
@@ -81,8 +82,8 @@ export function priceOf(record = {}) {
 }
 
 /**
- * Validate and normalize broker/public form input. Returns
- * { ok, errors: {field: message}, value } — `value` is safe to persist.
+ * Validate and normalize broker/public form input. Legacy offers without priceStatus
+ * remain LEGACY; they are never silently converted to FIXED.
  */
 export function validateRecordInput(input = {}, { requireName = false } = {}) {
   const errors = {};
@@ -111,6 +112,7 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
   const phoneDigits = whatsappDigits(input.contactPhone ?? input.phone);
   if (!phoneDigits) errors.contactPhone = "اكتب رقم جوال سعودي يبدأ بـ 05";
   const notes = cleanText(input.notes ?? input.details, 1000);
+  const priceStatus = kind === RECORD_KIND.OFFER ? normalizePriceStatus(input) : "";
   const value = {
     kind,
     purpose,
@@ -118,6 +120,7 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
     city,
     district,
     price,
+    priceStatus,
     area: area > 0 ? area : null,
     rooms: rooms > 0 ? Math.round(rooms) : null,
     contactName,
@@ -135,6 +138,7 @@ export function recordFields(value, { officeId, brokerId, sourceType = "BROKER_D
   const isOffer = value.kind === RECORD_KIND.OFFER;
   const tx = transactionTypeFor(value.purpose);
   const phoneIntl = whatsappDigits(value.contactPhone);
+  const normalizedStatus = isOffer ? (value.priceStatus || normalizePriceStatus(existing || {})) : "";
   const fields = {
     officeId,
     opportunityKind: value.kind,
@@ -150,6 +154,8 @@ export function recordFields(value, { officeId, brokerId, sourceType = "BROKER_D
     annualRent: value.purpose === "RENT" || value.purpose === "LEASE_REQUEST" ? value.price : null,
     budget: isOffer ? null : value.price,
     priceMax: isOffer ? null : value.price,
+    priceStatus: isOffer ? normalizedStatus : null,
+    priceNegotiable: isOffer ? normalizedStatus === PRICE_STATUS.NEGOTIABLE : null,
     area: value.area,
     rooms: value.rooms,
     contactName: value.contactName,
@@ -229,6 +235,8 @@ export function recordView(record = {}) {
     propertyType: cleanText(record.propertyType, 40),
     price: priceOf(record),
     priceLabel: recordPriceLabel(record),
+    priceStatus: kind === RECORD_KIND.OFFER ? normalizePriceStatus(record) : "",
+    priceStatusLabel: kind === RECORD_KIND.OFFER ? priceStatusLabel(record) : "",
     area: toNumber(record.area),
     areaLabel: formatArea(record.area),
     rooms: toNumber(record.rooms),

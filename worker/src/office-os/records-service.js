@@ -10,6 +10,7 @@
 import {
   LIFECYCLE, lifecycleOf, recordFields, recordFingerprint, validateRecordInput, kindOf
 } from "../../../public/os/domain/records-domain.js";
+import { PRICE_STATUS } from "../../../public/os/domain/flow-domain.js";
 import { compatibilityLevel } from "../../../public/os/domain/match-review-domain.js";
 import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESHOLD } from "../matching-engine.js";
@@ -58,6 +59,9 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
   const fields = recordFields(check.value, {
     officeId, brokerId: actor.uid, sourceType: "BROKER_DIRECT", sourceReference: `office-os:${actor.uid}`, existing, now
   });
+  // Legacy records intentionally remain tri-state. Do not let older readers interpret
+  // a synthesized `false` as the owner explicitly choosing a fixed price.
+  if (fields.priceStatus === PRICE_STATUS.LEGACY) fields.priceNegotiable = null;
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);
   const matching = await runMatchingSafely(ctx, officeId, id);

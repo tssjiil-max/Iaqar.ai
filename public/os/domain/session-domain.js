@@ -1,21 +1,15 @@
 /**
- * جلسة التفاوض — one live session per deal (journey), shared by the owner, the
- * client and the broker. Pure: the Worker validates and applies every move with the
- * same rules the pages use to decide which buttons to show.
- *
- * - Owner and client answer only with fixed buttons; the only typed value is a price
- *   (digits). Free text is the broker's alone.
- * - Neither party ever sees the other's name, phone or any personal data: events are
- *   rendered as «المالك» / «العميل» / «الوسيط».
- * - A broker message addressed to one party is invisible to the other.
+ * جلسة التفاوض — one live session per deal (journey), shared by the owner, client
+ * and broker. The server validates the same pure action model used by the UI.
  */
 
 import { formatPrice, toDate, toNumber } from "./format-domain.js";
+import { FLOW_STAGE, normalizePriceStatus, PRICE_STATUS } from "./flow-domain.js";
 
 export const SESSION_ROLE = Object.freeze({ OWNER: "owner", CLIENT: "client" });
 export const ROLE_LABEL = Object.freeze({ owner: "المالك", client: "العميل", broker: "الوسيط" });
 
-/** The approved deal path — no other stages exist. */
+/** Kept for visual/backward compatibility; detailed journey state lives in flowStage. */
 export const SESSION_STAGES = Object.freeze([
   { id: "MATCH", label: "تطابق" },
   { id: "CONTACT", label: "تواصل" },
@@ -35,7 +29,6 @@ function sessionOf(journey = {}) {
   return journey.session && typeof journey.session === "object" ? journey.session : {};
 }
 
-/** Round to a readable amount: nearest 1,000 from 100,000 up, else nearest 10. */
 export function roundPrice(value) {
   const n = Number(value) || 0;
   if (n <= 0) return 0;
@@ -47,43 +40,40 @@ export function isOpenJourney(journey = {}) {
   return status === "ACTIVE" || status === "PAUSED";
 }
 
-/** The deal-path stage shown on the session card. */
 export function sessionStage(journey = {}) {
+  const flow = String(journey.flowStage || "").toUpperCase();
+  if (flow === FLOW_STAGE.CLOSED) return "CLOSING";
+  if (flow === FLOW_STAGE.FINAL_AGREEMENT) return "DOCUMENTS";
+  if ([FLOW_STAGE.VIEWING_SCHEDULING, FLOW_STAGE.VIEWING, FLOW_STAGE.VIEWING_RESULT].includes(flow)) return "VIEWING";
+  if ([FLOW_STAGE.PRICE_DECISION, FLOW_STAGE.PRICE_NEGOTIATION].includes(flow)) return "NEGOTIATION";
+  if (flow === FLOW_STAGE.MATCHED) return "MATCH";
+
   const status = String(journey.status || "").toUpperCase();
   if (status === "CLOSED_WON" || status === "CLOSED_LOST" || journey.stage === "CLOSED") return "CLOSING";
   if (journey.stage === "AGREEMENT") return "DOCUMENTS";
   if (journey.stage === "VIEWING") return "VIEWING";
   if (journey.stage === "MATCH_REVIEW") return "MATCH";
   if (["PROPOSED", "ACCEPTED", "CONFIRMED"].includes(String(journey.viewing?.state || "")) && journey.viewing?.at) return "VIEWING";
-  const session = sessionOf(journey);
-  return session.lastMove ? "NEGOTIATION" : "CONTACT";
+  return sessionOf(journey).lastMove ? "NEGOTIATION" : "CONTACT";
 }
 
 export function sessionStageLabel(journey = {}) {
   return SESSION_STAGES.find((s) => s.id === sessionStage(journey))?.label || "";
 }
 
-/**
- * Prices on the table. Before anyone moves, the owner's asking price and the client's
- * budget from the approved records are the starting points.
- */
 export function sessionPrices(journey = {}) {
   const session = sessionOf(journey);
   const prices = session.prices || {};
   const owner = toNumber(prices.owner?.price) || toNumber(journey.offerSummary?.price);
   const client = toNumber(prices.client?.price) || toNumber(journey.requestSummary?.price);
   const lastMove = session.lastMove || null;
-  const agreed = toNumber(session.agreedPrice);
+  const agreed = toNumber(session.agreedPrice || journey.agreedPrice);
   const current = agreed || toNumber(lastMove?.price) || owner || client;
   return { owner, client, current, agreed, lastMove };
 }
 
-/**
- * Price moves. `roles`: who may use the move. `price(prices)`: the server-computed
- * price (null when the move carries a typed price).
- */
 export const PRICE_MOVES = Object.freeze({
-  accept: { id: "accept", label: "موافق", icon: "check-circle", roles: ["owner", "client"], price: (p, role) => p[otherRole(role)] },
+  accept: { id: "accept", label: "قبول", icon: "check-circle", roles: ["owner", "client"], price: (p, role) => p[otherRole(role)] },
   minus2: { id: "minus2", label: "أقل 2%", icon: "chev-down", roles: ["client"], pct: -2, price: (p) => roundPrice(p.owner * 0.98) },
   minus5: { id: "minus5", label: "أقل 5%", icon: "chev-down", roles: ["client"], pct: -5, price: (p) => roundPrice(p.owner * 0.95) },
   plus2: { id: "plus2", label: "أعلى 2%", icon: "chev-up", roles: ["owner"], pct: 2, price: (p) => roundPrice(p.client * 1.02) },
@@ -94,60 +84,78 @@ export const PRICE_MOVES = Object.freeze({
 });
 
 export const OTHER_ACTIONS = Object.freeze({
-  intervention: { id: "intervention", label: "تدخل الوسيط", icon: "alert" },
+  reject: { id: "reject", label: "رفض", icon: "close" },
+  intervention: { id: "intervention", label: "تدخل الوسيط", icon: "alert", secondary: true },
   viewing_ok: { id: "viewing_ok", label: "الموعد مناسب", icon: "check-circle" },
-  viewing_other: { id: "viewing_other", label: "اقترح موعدًا آخر", icon: "calendar", typed: "datetime" }
+  viewing_other: { id: "viewing_other", label: "اختيار موعد آخر", icon: "calendar", typed: "datetime" }
 });
 
 const PRICE_ORDER = ["accept", "minus2", "minus5", "plus2", "plus5", "compromise", "manual", "to_broker"];
 
 /**
- * What this party may do right now — only the buttons that fit the current state.
- * Returns { phase, waiting, note, actions: [{ id, label, icon, price, typed }] }.
+ * The raw valid actions. The UI intentionally groups all adjustment moves under one
+ * «تعديل العرض» control; keeping raw moves here preserves server-side validation and
+ * backward compatibility with existing session links.
  */
 export function availableActions(journey = {}, role = "") {
   if (role !== SESSION_ROLE.OWNER && role !== SESSION_ROLE.CLIENT) return { phase: "NONE", actions: [], note: "" };
   if (!isOpenJourney(journey)) return { phase: "CLOSED", actions: [], note: "أُغلقت هذه الصفقة، ويبقى سجل التفاوض للاطلاع." };
-  const session = sessionOf(journey);
+  const priceStatus = normalizePriceStatus(journey.offerSummary || journey.offer || {});
   const intervention = { ...OTHER_ACTIONS.intervention };
   if (String(journey.status || "").toUpperCase() === "PAUSED") {
-    return { phase: "PAUSED", waiting: true, actions: [intervention], note: "الصفقة متوقفة مؤقتًا لدى الوسيط." };
+    return { phase: "PAUSED", waiting: true, actions: [intervention], note: "الصفقة متوقفة مؤقتًا لدى الوسيط.", priceStatus };
   }
+
   const stage = sessionStage(journey);
   if (stage === "DOCUMENTS") {
-    return { phase: "DOCUMENTS", waiting: true, actions: [intervention], note: "الوسيط يتابع المستندات وإجراءات الاتفاق." };
+    return { phase: "DOCUMENTS", waiting: true, actions: [], note: "الوسيط يتابع إنهاء الصفقة.", priceStatus };
   }
+
   if (stage === "VIEWING") {
     const viewing = journey.viewing || {};
     const at = toDate(viewing.at);
     const state = String(viewing.state || "NONE");
     if (!at || !["PROPOSED", "ACCEPTED"].includes(state)) {
-      const note = state === "CONFIRMED" ? "موعد المعاينة مؤكد." : state === "DONE" ? "تمت المعاينة." : "بانتظار الوسيط لتحديد موعد المعاينة.";
-      return { phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note, viewingAt: at ? at.toISOString() : null };
+      const note = state === "CONFIRMED" ? "موعد المعاينة مؤكد." : state === "DONE" ? "تمت المعاينة." : "بانتظار تحديد موعد المعاينة.";
+      return { phase: "VIEWING_WAIT", waiting: true, actions: [], note, viewingAt: at ? at.toISOString() : null, priceStatus };
     }
     if (viewing.counterBy) {
-      const note = viewing.counterBy === role ? "اقترحت موعدًا آخر — بانتظار الوسيط لتحديد الموعد." : `اقترح ${ROLE_LABEL[viewing.counterBy]} موعدًا آخر — بانتظار الوسيط لتحديد الموعد.`;
-      return { phase: "VIEWING_WAIT", waiting: true, actions: [intervention], note, viewingAt: at.toISOString() };
+      const note = viewing.counterBy === role ? "اخترت موعدًا آخر — بانتظار اعتماده." : `اقترح ${ROLE_LABEL[viewing.counterBy]} موعدًا آخر.`;
+      return { phase: "VIEWING_WAIT", waiting: true, actions: [], note, viewingAt: at.toISOString(), priceStatus };
     }
     if (viewing.acceptedBy && viewing.acceptedBy[role]) {
-      return { phase: "VIEWING_ACCEPTED", waiting: true, actions: [intervention], note: "وافقت على الموعد — بانتظار تأكيد الوسيط.", viewingAt: at.toISOString() };
+      return { phase: "VIEWING_ACCEPTED", waiting: true, actions: [], note: "وافقت على الموعد — بانتظار الطرف الآخر.", viewingAt: at.toISOString(), priceStatus };
     }
     return {
       phase: "VIEWING", waiting: false, viewingAt: at.toISOString(), note: "",
-      actions: [{ ...OTHER_ACTIONS.viewing_ok }, { ...OTHER_ACTIONS.viewing_other }, intervention]
+      actions: [{ ...OTHER_ACTIONS.viewing_ok }, { ...OTHER_ACTIONS.viewing_other }], priceStatus
     };
   }
+
   const prices = sessionPrices(journey);
   if (prices.agreed) {
-    return { phase: "AGREED", waiting: true, actions: [intervention], note: `اتفق الطرفان على ${formatPrice(prices.agreed)} — بانتظار الوسيط لتحديد موعد المعاينة.` };
+    return { phase: "AGREED", waiting: true, actions: [], note: `تم الاتفاق على ${formatPrice(prices.agreed)} — الخطوة التالية تحديد موعد المعاينة.`, priceStatus };
   }
+
+  /** Fixed price: the owner already made the decision when the offer was created. */
+  if (priceStatus === PRICE_STATUS.FIXED) {
+    if (role === SESSION_ROLE.OWNER) {
+      return { phase: "FIXED_WAIT", waiting: true, actions: [], note: `السعر ثابت: ${formatPrice(prices.owner)} — بانتظار قرار العميل.`, priceStatus };
+    }
+    return {
+      phase: "FIXED_PRICE", waiting: false, note: `السعر ثابت: ${formatPrice(prices.owner)}.`, priceStatus,
+      actions: [strip({ ...PRICE_MOVES.accept, price: prices.owner }), { ...OTHER_ACTIONS.reject }]
+    };
+  }
+
   const last = prices.lastMove;
   if (last && last.role === role) {
     return {
       phase: "WAITING", waiting: true, note: `بانتظار رد ${ROLE_LABEL[otherRole(role)]} على سعرك ${formatPrice(last.price)}.`,
-      actions: [intervention]
+      actions: [], priceStatus
     };
   }
+
   const actions = [];
   for (const id of PRICE_ORDER) {
     const move = PRICE_MOVES[id];
@@ -158,15 +166,14 @@ export function availableActions(journey = {}, role = "") {
     if (id === "accept" && !prices[otherRole(role)]) continue;
     actions.push(strip({ ...move, price }));
   }
-  actions.push(intervention);
-  return { phase: "PRICE", waiting: false, actions, note: "" };
+  actions.push({ ...OTHER_ACTIONS.reject });
+  return { phase: "PRICE", waiting: false, actions, note: "", priceStatus };
 }
 
 function strip(move) {
   return { id: move.id, label: move.label, icon: move.icon, price: move.price ?? null, typed: move.typed || false, secondary: move.secondary || false, pct: move.pct || 0 };
 }
 
-/** Validate a typed price: digits only, positive, bounded. */
 export function parseTypedPrice(value) {
   const raw = String(value ?? "").trim();
   if (!raw) return { ok: false, message: "اكتب السعر" };
@@ -177,10 +184,10 @@ export function parseTypedPrice(value) {
   return { ok: true, price: Math.round(n) };
 }
 
-/** Sentence for a move, from the point of view of anyone reading the log. */
 export function moveText(move, { pct = 0 } = {}) {
   switch (move) {
     case "accept": return "وافق على السعر";
+    case "reject": return "رفض العرض";
     case "minus2": case "minus5": return `اقترح سعرًا أقل بـ ${Math.abs(pct || (move === "minus2" ? 2 : 5))}%`;
     case "plus2": case "plus5": return `اقترح سعرًا أعلى بـ ${Math.abs(pct || (move === "plus2" ? 2 : 5))}%`;
     case "compromise": return "اقترح حلًا وسطًا";
@@ -188,17 +195,13 @@ export function moveText(move, { pct = 0 } = {}) {
     case "to_broker": return "أرسل سعرًا للوسيط فقط";
     case "intervention": return "طلب تدخل الوسيط";
     case "viewing_ok": return "الموعد مناسب";
-    case "viewing_other": return "اقترح موعدًا آخر للمعاينة";
+    case "viewing_other": return "اختار موعدًا آخر للمعاينة";
     case "opened": return "فتح رابط الجلسة";
     case "resolved": return "تابع الوسيط طلب التدخل";
     default: return "";
   }
 }
 
-/**
- * Who may see an event: "all" | "broker" | "owner" | "client" | "owner,client".
- * Office events that are not part of the session are broker-only.
- */
 export function eventVisibleTo(event = {}, viewer = "broker") {
   if (viewer === "broker") return true;
   const payload = parsePayload(event);
@@ -218,10 +221,6 @@ export function parsePayload(event = {}) {
   }
 }
 
-/**
- * Party-safe card for one session event. Never includes names, phones or ids.
- * `viewer` decides «أنت» for the viewer's own moves.
- */
 export function sessionEventCard(event = {}, viewer = "broker") {
   const payload = parsePayload(event);
   const type = String(event.type || "");

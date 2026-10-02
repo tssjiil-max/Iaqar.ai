@@ -1,6 +1,7 @@
 /**
- * «المهام اليومية» — only work that needs doing, ordered by due time and by whether
- * the broker must act. Waiting/overdue items stay until they are resolved.
+ * «المهام اليومية» — one visible card per open journey. Supporting repository tasks
+ * that are not attached to a journey remain standalone. The broker always sees the
+ * current stage and one primary action, never a pile of operation buttons.
  */
 
 import { h, ic, clear, emptyState, append } from "../core/dom.js";
@@ -11,8 +12,9 @@ import { recordById, state, subscribe } from "../core/state.js";
 import { runAction, openSheet } from "../core/ui.js";
 import { getDoc } from "../core/live.js";
 import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor } from "../domain/task-domain.js";
+import { groupTasksByJourney } from "../domain/flow-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
-import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
+import { relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
 import { proposalPreparedPanel } from "./composer.js";
 import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
@@ -71,6 +73,7 @@ function primaryAction(task, model) {
   return () => { location.href = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}&openOperation=${encodeURIComponent(task.id)}`; };
 }
 
+/** Existing standalone tasks (missing data, record review, etc.) keep their proven UI. */
 function taskCard(task, now) {
   const model = modelFor(task, now);
   const button = h("button", { type: "button", class: "os-btn primary block", "data-action": model.type },
@@ -90,13 +93,59 @@ function taskCard(task, now) {
     button.addEventListener("click", primaryAction(task, model));
   }
 
-  const record=taskRecord(task)||{},view=recordView(record),step=taskStep(task);
-  const meta=parseMeta(task),client=recordById(task.requestId||meta.clientRequestId),contactName=client?.contactName||view.contactName;
-  const actionTitle=model.type==="MATCH_REVIEW"?"تطابق جديد":model.type==="VIEWING_CONFIRM"?"تأكيد موعد المعاينة":model.type==="SEND_PROPOSAL"?"متابعة عرض سعر":model.button;
-  button.classList.remove("block");button.lastChild.remove();button.append(ic(model.icon));
-  // One main button per card; tapping the card itself opens «تفاصيل المهمة» (no second arrow).
-  const card=h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitle}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
-  return card;
+  const record = taskRecord(task) || {}, view = recordView(record), step = taskStep(task);
+  const meta = parseMeta(task), client = recordById(task.requestId || meta.clientRequestId), contactName = client?.contactName || view.contactName;
+  const actionTitle = model.type === "MATCH_REVIEW" ? "تطابق جديد" : model.type === "VIEWING_CONFIRM" ? "تأكيد موعد المعاينة" : model.type === "SEND_PROPOSAL" ? "متابعة عرض سعر" : model.button;
+  button.classList.remove("block");
+  button.lastChild.remove();
+  button.append(ic(model.icon));
+  return h("article", { class: "os-card ref-task-card", "data-task": task.id, "data-type": model.type, onClick: (e) => { if (!e.target.closest("button,a")) go("task/" + task.id); } },
+    photo(record),
+    h("div", { class: "ref-task-copy" }, h("h3", { text: actionTitle }), contactName ? h("b", { class: "ref-contact" }, ic("user"), contactName) : null, h("p", { text: [view.propertyType, view.location].filter(Boolean).join(" · ") || model.title })),
+    h("div", { class: "ref-task-actions" }, h("div", { class: "ref-task-meta" }, h("span", { class: "ref-status step-" + step, text: STEPS[step][0] }), timeChip(task)), h("div", {}, button))
+  );
+}
+
+function journeyCard(group) {
+  const task = group.task || {};
+  const record = taskRecord(task) || recordById(task.offerId) || {};
+  const view = recordView(record);
+  const meta = parseMeta(task);
+  const description = [view.propertyType || meta.candidatePropertyType, view.location || meta.candidateDistrict].filter(Boolean).join(" · ") || "عقار مطابق";
+  const updated = task.updatedAt || task.createdAt;
+  const route = group.route;
+  const open = () => go(route);
+  const button = h("button", {
+    type: "button",
+    class: "os-btn primary",
+    "data-action": "journey-current-stage",
+    onClick: (event) => { event.stopPropagation(); open(); }
+  }, h("span", { text: group.actionLabel }), ic("chev-left"));
+
+  return h("article", {
+    class: "os-card ref-task-card journey-task-card",
+    "data-journey": group.journeyId,
+    "data-stage": group.stage,
+    onClick: (event) => { if (!event.target.closest("button,a")) open(); }
+  },
+  photo(record),
+  h("div", { class: "ref-task-copy" },
+    h("h3", { text: description }),
+    h("b", { class: "ref-contact", text: `المرحلة الحالية: ${group.stageLabel}` }),
+    h("p", { text: updated ? `آخر حركة ${relativeAgo(updated)}` : "" })
+  ),
+  h("div", { class: "ref-task-actions" },
+    h("div", { class: "ref-task-meta" }, h("span", { class: "ref-status", text: group.stageLabel })),
+    h("div", {}, button)
+  ));
+}
+
+function unitsFor(tasks, now) {
+  const sorted = sortTasks(tasks, now);
+  const journeyTasks = sorted.filter((task) => String(task.journeyId || "").trim());
+  const standalone = sorted.filter((task) => !String(task.journeyId || "").trim());
+  const groups = groupTasksByJourney(journeyTasks).map((group) => ({ kind: "journey", group }));
+  return [...groups, ...standalone.map((task) => ({ kind: "task", task }))];
 }
 
 export function renderTasks(container, { filter = "all" } = {}) {
@@ -110,13 +159,15 @@ export function renderTasks(container, { filter = "all" } = {}) {
     const mine = state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager }));
     clear(chipsRow);
     for (const f of TASK_FILTERS) {
-      const n = filterTasks(mine, f.id, now).length;
+      const filtered = filterTasks(mine, f.id, now);
+      const n = unitsFor(filtered, now).length;
       chipsRow.append(h("button", {
         type: "button", class: "os-chip", "aria-pressed": String(active === f.id),
         onClick: () => { active = f.id; history.replaceState(null, "", `#/tasks?filter=${f.id}`); draw(); }
       }, f.label, n ? h("span", { class: "n", text: String(n) }) : null));
     }
-    const shown = sortTasks(filterTasks(mine, active, now), now);
+    const filtered = filterTasks(mine, active, now);
+    const shown = unitsFor(filtered, now);
     countPill.textContent = countLabel(shown.length);
     clear(list);
     if (!state.tasksReady) {
@@ -130,10 +181,10 @@ export function renderTasks(container, { filter = "all" } = {}) {
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus"), "إضافة عرض أو طلب"))));
       return;
     }
-    for (const task of shown) append(list, taskCard(task, now));
+    for (const unit of shown) append(list, unit.kind === "journey" ? journeyCard(unit.group) : taskCard(unit.task, now));
   };
 
-  append(container, stepStrip(),h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow),list);
+  append(container, stepStrip(), h("details", { class: "ref-filters" }, h("summary", {}, "تصفية المهام", countPill), chipsRow), list);
   draw();
   const off = subscribe((kind) => { if (kind === "tasks" || kind === "records") draw(); });
   const timer = setInterval(draw, 60_000);
