@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   PUBLIC_OFFICE_PATH_PREFIX,
+  PUBLIC_OFFICE_SHARE_PATH_PREFIX,
   SHARE_CARD_HEIGHT,
   SHARE_CARD_WIDTH,
   buildOfficeOgHtml,
@@ -16,6 +17,7 @@ import {
   officeShareCardVersion,
   officeShareMessage,
   parsePublicOfficePath,
+  parsePublicOfficeSharePath,
   suggestAssignablePublicSlug,
   validateAssignablePublicSlug
 } from "../public/js/office-public-link-domain.js";
@@ -42,7 +44,7 @@ test("legacy /o/{slug} stays resolvable after a short slug is assigned", () => {
   assert.match(gate, /history\.replaceState[\s\S]*\/m\//);
 });
 
-test("canonical office links use /m/{slug} and keep /o/{slug} as legacy", () => {
+test("canonical office links use /m and immutable share pages use /s/{slug}/{version}", () => {
   assert.equal(
     officeLinkFor({ origin: "https://iaqar-ai-staging.example", publicSlug: "wadi" }),
     "https://iaqar-ai-staging.example/m/wadi"
@@ -57,10 +59,12 @@ test("canonical office links use /m/{slug} and keep /o/{slug} as legacy", () => 
     slug: "staging-logo-live-1pbwwl",
     legacy: true
   });
+  assert.deepEqual(parsePublicOfficeSharePath("/s/wadi/abc-123"), { slug: "wadi", version: "abc-123" });
   assert.equal(PUBLIC_OFFICE_PATH_PREFIX, "/m");
+  assert.equal(PUBLIC_OFFICE_SHARE_PATH_PREFIX, "/s");
 });
 
-test("WhatsApp share copy is professional and contains the short URL exactly once", () => {
+test("WhatsApp share copy remains a permanent office-link copy helper", () => {
   const message = officeShareMessage({
     officeName: "مكتب الوادي المبارك العقاري",
     origin: "https://iaqar.ai",
@@ -70,21 +74,28 @@ test("WhatsApp share copy is professional and contains the short URL exactly onc
   assert.equal((message.match(/https:\/\/iaqar\.ai\/m\/wadi/g) || []).length, 1);
 });
 
-test("OG HTML is server-rendered and never includes private tokens", () => {
+test("OG HTML separates canonical office URL from immutable share og:url", () => {
   const html = buildOfficeOgHtml({
     office: { officeId: "staging-logo-live-20260807", officeName: "مكتب الوادي المبارك العقاري", city: "المدينة المنورة" },
     slug: "wadi",
     origin: "https://host.example",
     workerOrigin: "https://worker.example",
     canonicalUrl: "https://host.example/m/wadi",
-    imageUrl: "https://worker.example/share/office/wadi/card-vabc.png",
+    ogUrl: "https://worker.example/s/wadi/abc123",
+    imageUrl: "https://worker.example/share/office/staging-logo-live-20260807/abc123.jpg",
+    imageType: "image/jpeg",
     browserRedirectUrl: "https://host.example/?office=staging-logo-live-20260807&view=public"
   });
   assert.match(html, /property="og:title" content="مكتب الوادي المبارك العقاري"/);
   assert.match(html, /property="og:description" content="مكتب عقاري في المدينة المنورة"/);
-  assert.match(html, /property="og:image" content="https:\/\/worker.example\/share\/office\/wadi\/card-vabc.png"/);
+  assert.match(html, /rel="canonical" href="https:\/\/host\.example\/m\/wadi"/);
+  assert.match(html, /property="og:url" content="https:\/\/worker\.example\/s\/wadi\/abc123"/);
+  assert.match(html, /property="og:image" content="https:\/\/worker\.example\/share\/office\/staging-logo-live-20260807\/abc123\.jpg"/);
+  assert.match(html, /property="og:image:width" content="1200"/);
+  assert.match(html, /property="og:image:height" content="630"/);
+  assert.match(html, /property="og:image:type" content="image\/jpeg"/);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
-  assert.match(html, /location\.replace\("https:\/\/host.example\/\?office=staging-logo-live-20260807&view=public"\)/);
+  assert.match(html, /location\.replace\("https:\/\/host\.example\/\?office=staging-logo-live-20260807&view=public"\)/);
   assert.equal(html.includes("cv2Party"), false);
   assert.equal(html.includes("token="), false);
   assert.equal(html.includes("http-equiv=\"refresh\""), false);
@@ -93,8 +104,8 @@ test("OG HTML is server-rendered and never includes private tokens", () => {
     officeOgDescription({ city: "المدينة المنورة", licenseVerified: true }),
     "مكتب عقاري مرخص في المدينة المنورة"
   );
-  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345" }), "مكتب عقاري مرخص في جدة", "license data present → «مرخص»");
-  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345", description: "وصف المكتب" }), "وصف المكتب", "the office's own description wins");
+  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345" }), "مكتب عقاري مرخص في جدة");
+  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345", description: "وصف المكتب" }), "وصف المكتب");
 });
 
 test("license preview never claims verification without a real flag", () => {
@@ -109,14 +120,18 @@ test("license preview never claims verification without a real flag", () => {
   assert.equal(officeShareCardImageMode({}), "fallback");
 });
 
-test("share-card version changes when office identity changes", () => {
+test("share-card version changes with identity and media path is immutable JPEG", () => {
   const a = officeShareCardVersion({ officeName: "أ", logoUrl: "https://a", city: "x" });
   const b = officeShareCardVersion({ officeName: "أ", logoUrl: "https://b", city: "x" });
   assert.notEqual(a, b);
-  assert.match(officeShareCardPath("wadi", a), new RegExp(`/share/office/wadi/card-v${a}\\.png`));
+  assert.equal(
+    officeShareCardPath("office_1", a),
+    `/share/office/office_1/${a}.jpg`
+  );
   const firebase = readFileSync(new URL("../firebase.json", import.meta.url), "utf8");
   assert.match(firebase, /"source": "\/m\/:slug"/);
-  assert.match(firebase, /iaqar-macrodroid-intake\.iaqar-ai\.workers\.dev\/m\/:slug/);
+  assert.match(firebase, /"source": "\/s\/:slug\/:version"/);
+  assert.match(firebase, /iaqar-macrodroid-intake\.iaqar-ai\.workers\.dev\/s\/:slug\/:version/);
   assert.match(firebase, /"source": "\/o\/\*\*"/);
   assert.equal(SHARE_CARD_WIDTH, 1200);
   assert.equal(SHARE_CARD_HEIGHT, 630);

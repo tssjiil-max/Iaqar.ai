@@ -90,7 +90,8 @@ try {
   await page.getByRole("button", { name: "حفظ معرّف الرابط" }).click();
   await until(() => h.store.get(`offices/${OFFICE_A}`).publicSlug === "sultan-new", "slug saved by the Worker");
   check("short link saved through the Worker", (await page.inputValue("[data-office-link]")).endsWith("/m/sultan-new"));
-  check("WhatsApp share link carries the office link", decodeURIComponent(await page.locator("[data-share-link]").getAttribute("href")).includes("/m/sultan-new"));
+  const previewShareUrl = await page.locator("[data-share-link]").getAttribute("data-preview-url");
+  check("WhatsApp share uses the immutable versioned /s link", /\/s\/sultan-new\/[a-z0-9_-]+$/i.test(previewShareUrl || "") && !(previewShareUrl || "").includes("?v="), previewShareUrl || "");
   await shot(page, "04-link");
 
   // التعاون
@@ -129,19 +130,36 @@ try {
   await page.locator("[data-broker-avatar]").waitFor();
   check("avatar shows in the office card and the image is loaded (not broken)", await page.evaluate(() => { const i = document.querySelector("[data-broker-avatar]"); return i.complete && i.naturalWidth > 0; }));
   await shot(page, "08-office-avatar");
-  // صورة معاينة الرابط (what WhatsApp shows) — with a photo
+  // صورة معاينة الرابط (what WhatsApp shows) — immutable page + immutable JPEG.
   const slugNow = h.store.get(`offices/${OFFICE_A}`).publicSlug;
   await page.goto(`${h.origin}/#/settings/link`);
-  const card = await until(() => bucket.get(`office-share/${slugNow}/card.png`)?.bytes, "photo uploaded as the preview image");
-  check("preview image is the broker photo as a 1200×630 rectangular JPEG under 300KB, stored for the office and its slug", jpegInfo(card).ok && jpegInfo(card).w === 1200 && jpegInfo(card).h === 630 && card.length < 300000 && bucket.has(`office-share/${OFFICE_A}/card.png`), `${card.length} bytes`);
-  fs.writeFileSync(path.join(OUT, "share-photo.png"), card);
+  const published = await until(() => {
+    const row = h.store.get(`publicOffices/${OFFICE_A}`);
+    return row?.sharePreviewFormat === "immutable-v2" && row?.shareCardNonce ? row : null;
+  }, "immutable preview metadata saved");
+  const nonceBefore = published.shareCardNonce;
+  const keyBefore = `office-share/${OFFICE_A.toLowerCase()}/${nonceBefore.toLowerCase()}.jpg`;
+  const card = await until(() => bucket.get(keyBefore)?.bytes, "photo uploaded as immutable preview image");
+  check("preview image is a 1200×630 rectangular JPEG under 300KB at the immutable office/version key",
+    jpegInfo(card).ok && jpegInfo(card).w === 1200 && jpegInfo(card).h === 630 && card.length < 300000,
+    `${card.length} bytes · ${keyBefore}`);
+  fs.writeFileSync(path.join(OUT, "share-photo.jpg"), card);
   await page.locator("[data-share-card-preview]:not([hidden])").waitFor();
-  check("link page shows the image and says it is updated", (await page.locator("[data-share-card-status]").innerText()).includes("صورة المعاينة"));
+  check("link page shows the current preview image", !(await page.locator("[data-share-card-preview]").isHidden()));
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === true, "public mirror flags the photo");
-  const nonceBefore = h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce;
+
+  const shareBefore = await page.locator("[data-share-link]").getAttribute("data-preview-url");
+  check("published share URL is /s/<slug>/<version>", shareBefore?.endsWith(`/s/${slugNow}/${nonceBefore}`), shareBefore || "");
+
   await page.locator("[data-share-card-refresh]").click();
-  await until(() => h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce !== nonceBefore, "forced refresh gives a new version");
-  check("«تحديث صورة المعاينة» uploads again under a new version (busts WhatsApp's cache)", true);
+  const nonceAfter = await until(() => {
+    const value = h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce;
+    return value && value !== nonceBefore ? value : null;
+  }, "forced refresh gives a new version");
+  const keyAfter = `office-share/${OFFICE_A.toLowerCase()}/${nonceAfter.toLowerCase()}.jpg`;
+  await until(() => bucket.get(keyAfter)?.bytes, "new immutable JPEG stored");
+  check("forced refresh creates a new share URL and a new image while preserving the old image",
+    bucket.has(keyBefore) && bucket.has(keyAfter) && keyBefore !== keyAfter);
   const savedMedia = h.env.IAQAR_MEDIA;
   h.env.IAQAR_MEDIA = undefined;
   await page.locator("[data-share-card-refresh]").click();
@@ -152,7 +170,8 @@ try {
   const crawl = async () => (await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text());
   let og = await crawl();
   check("crawler gets this office's title, description (مرخص), type and url", og.includes('og:title" content="مكتب سلطان للتسويق العقاري"') && og.includes('og:description" content="مكتب عقاري مرخص في الرياض"') && og.includes('og:type" content="website"') && og.includes(`/m/${slugNow}"`));
-  check("og:image is this office's photo (HTTPS path under /share/office/<slug>)", new RegExp(`og:image" content="[^"]*/share/office/${slugNow}/card-v`).test(og));
+  check("og:image points to this office/version immutable JPEG",
+    new RegExp(`og:image" content="[^"]*/share/office/${OFFICE_A}/${nonceAfter}\\.jpg`).test(og));
   const imageUrl = og.match(/og:image" content="([^"]+)"/)[1];
   const imageResponse = await fetch(imageUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`));
   check("the image opens directly without login (200 image/jpeg)", imageResponse.status === 200 && /image\/jpeg/.test(imageResponse.headers.get("content-type") || ""), `${imageResponse.status}`);
@@ -174,11 +193,21 @@ try {
   await page.locator(".ref-office-logo-mark").first().waitFor();
   await page.goto(`${h.origin}/#/settings/link`);
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.sharePhoto === false, "photo removed from the preview");
-  check("without a photo the page says the platform logo is used", (await page.locator("[data-share-card-status]").innerText()).includes("شعار المنصة"));
+  const fallbackVersion = await until(() => {
+    const row = h.store.get(`publicOffices/${OFFICE_A}`);
+    return row?.sharePreviewFormat === "immutable-v2" && row?.shareCardNonce && row.shareCardNonce !== nonceAfter ? row.shareCardNonce : null;
+  }, "photo removal publishes a new fallback version");
+  check("without a photo the link page still has a generated preview card", !(await page.locator("[data-share-card-preview]").isHidden()));
   og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
   const fbUrl = (og.match(/og:image" content="([^"]+)"/) || [])[1] || "";
   const fbRes = fbUrl ? await fetch(fbUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`)) : null;
-  check("without a photo og:image returns the platform logo, not the removed photo left in storage", /\/share\/office\/[^/]+\/card-vlogo-/.test(fbUrl) && fbRes && fbRes.status === 200 && /image\/png/.test(fbRes.headers.get("content-type") || ""));
+  const fallbackKey = `office-share/${OFFICE_A.toLowerCase()}/${fallbackVersion.toLowerCase()}.jpg`;
+  check("without a photo og:image is a new immutable JPEG fallback, never the removed-photo version",
+    fbUrl.endsWith(`/share/office/${OFFICE_A}/${fallbackVersion}.jpg`)
+      && fallbackVersion !== nonceAfter
+      && bucket.has(fallbackKey)
+      && fbRes?.status === 200
+      && /image\/jpeg/.test(fbRes.headers.get("content-type") || ""));
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-office-logo-mark").first().waitFor();
   check("after removal the default mark returns (no avatar)", (await page.locator("[data-broker-avatar]").count()) === 0);
