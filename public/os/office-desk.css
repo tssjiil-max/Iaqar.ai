@@ -299,3 +299,20 @@
   .ref-office-logo-box { min-height: 126px; }
   .ref-office-tool { min-height: 108px; }
 }
+
+/* Tools that are not built yet: visibly inactive, labelled «قريبًا». */
+.ref-office-tool.is-soon,
+.ref-office-extra.is-soon { cursor: default; }
+.ref-office-tool.is-soon .ref-office-tool-icon,
+.ref-office-extra.is-soon .ref-office-extra-icon { opacity: .7; }
+.ref-office-soon {
+  color: var(--brand-primary);
+  background: var(--brand-tint);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.ref-office-extra .ref-office-soon { font-size: 8.5px; padding: 0 5px; }
