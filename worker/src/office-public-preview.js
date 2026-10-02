@@ -221,7 +221,10 @@ export async function handleOfficeShareCardGet(request, env, deps) {
     object.writeHttpMetadata(headers);
     headers.set("cache-control", parsed.legacy ? "public, max-age=3600" : "public, max-age=31536000, immutable");
     headers.set("x-content-type-options", "nosniff");
-    if (!/^image\/(png|jpeg)$/.test(headers.get("content-type") || "")) headers.set("content-type", "image/png");
+    if (!/^image\/(png|jpeg)$/.test(headers.get("content-type") || "")) {
+      headers.set("content-type", parsed.legacy ? "image/png" : "image/jpeg");
+    }
+    if (Number(object.size || 0) > 0) headers.set("content-length", String(object.size));
     headers.set("x-iaqar-share-card", "stored");
     return new Response(request.method === "HEAD" ? null : object.body, { headers });
   }
