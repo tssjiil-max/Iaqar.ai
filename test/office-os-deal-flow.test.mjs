@@ -140,6 +140,13 @@ test("TEST 4 — booked viewing → «تم الاتفاق عليه» and the pha
   assert.deepEqual((await view(ctx.fixed.client)).agreed.map((a) => a.id), ["price", "viewing"]);
 });
 
+test("a booked viewing is mirrored on the match so the scheduled viewing reminders pick it up", () => {
+  const j = journeyDoc(ctx.fixed.journeyId);
+  const match = h.store.list(`offices/${OFFICE_A}/matches`).find((m) => m.id === ctx.fixed.matchId);
+  assert.ok(match.appointmentAt, "match.appointmentAt is set once the viewing is confirmed");
+  assert.equal(new Date(match.appointmentAt).toISOString(), new Date(j.viewing.at).toISOString());
+});
+
 test("TEST 5 — result «مناسب» → FINAL_AGREEMENT", async () => {
   const res = await call("/os/journeys/viewing/result", { officeId: OFFICE_A, journeyId: ctx.fixed.journeyId, result: "interested" }, OWNER_A);
   assert.equal(res.status, 200, JSON.stringify(res.body));

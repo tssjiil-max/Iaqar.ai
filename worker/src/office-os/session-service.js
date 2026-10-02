@@ -23,7 +23,7 @@ import {
 } from "../../../public/os/domain/deal-flow-domain.js";
 import { buildWhatsAppUrl, cleanText, formatDateTime, formatPrice, localPhone, parseRiyadhLocal, toDate } from "../../../public/os/domain/format-domain.js";
 import { newReplyToken, isReplyTokenShape } from "./proposal-service.js";
-import { applyJourneyChange, afterJourneyClosed, loadJourney } from "./journey-service.js";
+import { applyJourneyChange, afterJourneyClosed, loadJourney, syncMatchAppointment } from "./journey-service.js";
 import { assertCanActOn } from "./permissions.js";
 
 const ROLES = [SESSION_ROLE.OWNER, SESSION_ROLE.CLIENT];
@@ -400,6 +400,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     }
   });
   if (!result.changed) return { ok: true, state: "SAVED", duplicate: true };
+  if (applied.move === "viewing_ok") await syncMatchAppointment(ctx, officeId, result.journey, result.journey?.viewing?.at);
   if (closing) await afterJourneyClosed(ctx, officeId, resolved.journey, { won: false });
   return { ok: true, state: "SAVED" };
 }
