@@ -55,3 +55,37 @@ test("office icons match the monochrome offer/request icon treatment", () => {
   assert.match(css, /\.ref-office-extra-icon\s*\{[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)/s, "secondary office icons must use the same reference tint and brand color");
   assert.match(css, /\.ref-office-tool-icon \.t2,\s*\.ref-office-extra-icon \.t2\s*\{[^}]*opacity\s*:\s*1/s, "office-only secondary icon layers must be flattened to one monochrome tone");
 });
+
+
+test("office visual weight follows the daily-tasks page without redesign", () => {
+  assert.doesNotMatch(
+    css,
+    /\.os-app\[data-view="office"\]\s+\.ref-shell-platform\s*\{/,
+    "office must inherit the exact shared platform header used by daily tasks"
+  );
+  assert.match(
+    css,
+    /\.ref-office-profile\s*\{[^}]*grid-template-columns\s*:\s*minmax\(0,1fr\)\s+minmax\(92px,28%\)[^}]*gap\s*:\s*10px[^}]*padding\s*:\s*12px/s,
+    "office identity card must stay compact without changing its structure"
+  );
+  assert.match(
+    css,
+    /\.ref-office-profile-row\s*\{[^}]*min-height\s*:\s*39px/s,
+    "office identity rows should use the tighter shared vertical rhythm"
+  );
+  assert.match(
+    css,
+    /\.ref-office-logo-mark\s*\{[^}]*width\s*:\s*min\(98px,70%\)/s,
+    "office logo mark should be reduced by roughly 10–15%"
+  );
+  assert.match(
+    css,
+    /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+rgba\(3,103,122,\.10\)[^}]*box-shadow\s*:\s*none/s,
+    "primary tool cards should keep only a very light boundary"
+  );
+  assert.match(
+    css,
+    /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+rgba\(3,103,122,\.10\)[^}]*box-shadow\s*:\s*none/s,
+    "secondary tool cards should use the same light boundary"
+  );
+});
