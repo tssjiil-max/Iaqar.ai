@@ -93,6 +93,8 @@ test("OG HTML is server-rendered and never includes private tokens", () => {
     officeOgDescription({ city: "المدينة المنورة", licenseVerified: true }),
     "مكتب عقاري مرخص في المدينة المنورة"
   );
+  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345" }), "مكتب عقاري مرخص في جدة", "license data present → «مرخص»");
+  assert.equal(officeOgDescription({ city: "جدة", licenseNumber: "1200012345", description: "وصف المكتب" }), "وصف المكتب", "the office's own description wins");
 });
 
 test("license preview never claims verification without a real flag", () => {

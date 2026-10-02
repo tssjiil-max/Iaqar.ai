@@ -74,8 +74,7 @@ try {
   await page.getByRole("button", { name: "مشاركة رابط المكتب" }).click();
   await page.locator(".os-toast, .os-sheet").first().waitFor();
   check("share office link works inside the new UI", true);
-  await until(() => bucket.get(`office-share/${OFFICE}/card.png`), "share card for the new office");
-  check("sharing publishes the office card (PNG) for the new office", bucket.get(`office-share/${OFFICE}/card.png`).subarray(1, 4).toString() === "PNG");
+  check("without a photo no card is stored (the preview uses the platform logo)", !bucket.get(`office-share/${OFFICE}/card.png`));
   await page.keyboard.press("Escape");
   await page.goto(`${h.origin}/#/settings/profile`);
   await page.locator('input[name="city"]').waitFor();

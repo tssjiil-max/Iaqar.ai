@@ -89,8 +89,8 @@ function photoCard() {
     try { pending = await photoToDataUrl(chosen); } catch (error) { pending = null; message.textContent = error.message; }
     draw();
   });
-  save.addEventListener("click", () => runAction(save, async () => { await saveBrokerPhoto(pending); pending = null; draw(); }, { success: "تم حفظ الصورة" }));
-  remove.addEventListener("click", () => runAction(remove, async () => { await saveBrokerPhoto(""); draw(); }, { success: "تم حذف الصورة" }));
+  save.addEventListener("click", () => runAction(save, async () => { await saveBrokerPhoto(pending); pending = null; draw(); ensureShareCard(); }, { success: "تم حفظ الصورة" }));
+  remove.addEventListener("click", () => runAction(remove, async () => { await saveBrokerPhoto(""); draw(); ensureShareCard(); }, { success: "تم حذف الصورة" }));
   draw();
   return h("section", { class: "os-card os-photo-card", "data-photo-card": "" },
     preview,
@@ -169,13 +169,15 @@ export function renderLinkSettings(container) {
   const hint = h("small", { class: "os-field-note", "data-slug-hint": "", role: "status", text: "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." });
   const sync = () => { linkBox.value = linkOf(); };
   sync();
-  const cardImg = h("img", { class: "os-share-card-img", alt: "بطاقة معاينة الرابط", "data-share-card-preview": "", hidden: true });
+  const cardImg = h("img", { class: "os-share-card-img", alt: "صورة معاينة الرابط", "data-share-card-preview": "", hidden: true });
   const cardStatus = h("small", { class: "os-field-note", "data-share-card-status": "", role: "status", text: "جارٍ تجهيز بطاقة المعاينة…" });
-  const refreshCard = h("button", { type: "button", class: "os-btn secondary block", "data-share-card-refresh": "" }, ic("refresh"), "تحديث بطاقة المعاينة");
+  const refreshCard = h("button", { type: "button", class: "os-btn secondary block", "data-share-card-refresh": "" }, ic("refresh"), "تحديث صورة المعاينة");
   const showCard = (result) => {
-    if (result.blob) { if (cardImg.src.startsWith("blob:")) URL.revokeObjectURL(cardImg.src); cardImg.src = URL.createObjectURL(result.blob); cardImg.hidden = false; }
+    if (result.blob) { if (cardImg.src.startsWith("blob:")) URL.revokeObjectURL(cardImg.src); cardImg.src = URL.createObjectURL(result.blob); cardImg.hidden = false; } else cardImg.hidden = true;
     cardStatus.classList.toggle("is-error", result.status === "failed");
-    cardStatus.textContent = result.status === "failed" ? `لم تُحدَّث بطاقة المعاينة: ${result.reason}` : result.status === "uploaded" ? "تم تحديث بطاقة المعاينة — ستظهر في واتساب عند مشاركة الرابط." : "بطاقة المعاينة محدّثة.";
+    cardStatus.textContent = result.status === "failed" ? `لم تُحدَّث صورة المعاينة: ${result.reason}`
+      : !result.hasPhoto ? "لا توجد صورة للوسيط — يظهر شعار المنصة في معاينة الرابط. أضف صورتك من «بيانات المكتب»."
+      : result.status === "uploaded" ? "تم تحديث صورة المعاينة — ستظهر في واتساب عند مشاركة الرابط." : "صورة المعاينة محدّثة.";
     sync(); refreshShare();
   };
   refreshCard.addEventListener("click", () => runAction(refreshCard, async () => showCard(await ensureShareCard({ force: true }))));
@@ -206,8 +208,8 @@ export function renderLinkSettings(container) {
     h("section", { class: "os-card os-form" },
       field("معرّف الرابط القصير", slug, hint), save),
     h("section", { class: "os-card os-share-card" },
-      h("h2", { class: "os-h2" }, ic("shield"), "بطاقة معاينة الرابط"),
-      h("p", { class: "os-sub", text: "هذه الصورة تظهر في واتساب عند مشاركة رابط المكتب: صورة الوسيط وبيانات المكتب ورقم الرخصة." }),
+      h("h2", { class: "os-h2" }, ic("shield"), "صورة معاينة الرابط"),
+      h("p", { class: "os-sub", text: "هذه الصورة تظهر في واتساب عند مشاركة رابط المكتب، مع اسم المكتب ووصفه." }),
       cardImg, cardStatus, refreshCard));
   return null;
 }

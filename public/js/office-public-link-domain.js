@@ -146,10 +146,13 @@ export function officeLicensePreviewLines(office = {}) {
 }
 
 export function officeOgDescription(office = {}) {
+  const custom = text(office.description || office.about);
+  if (custom) return custom.slice(0, 160);
   const city = text(office.city);
-  const verified = hasRealLicenseVerification(office);
-  if (verified && city) return `مكتب عقاري مرخص في ${city}`;
-  if (verified) return "مكتب عقاري مرخص";
+  // «مرخص» is shown when the broker has given license data (the number is shown on the office page too).
+  const licensed = hasRealLicenseVerification(office) || Boolean(text(office.licenseNumber).replace(/[^\d]/g, ""));
+  if (licensed && city) return `مكتب عقاري مرخص في ${city}`;
+  if (licensed) return "مكتب عقاري مرخص";
   if (city) return `مكتب عقاري في ${city}`;
   return "مكتب عقاري";
 }
@@ -178,7 +181,8 @@ export function buildOfficeOgHtml({
   canonicalUrl = "",
   imageUrl = "",
   browserRedirectUrl = "",
-  includeBrowserRedirect = true
+  includeBrowserRedirect = true,
+  imageIsShareCard = true
 } = {}) {
   const name = text(office.officeName || office.displayName) || PLATFORM_APP_NAME;
   const description = officeOgDescription(office);
@@ -209,11 +213,11 @@ export function buildOfficeOgHtml({
   <meta property="og:title" content="${title}">
   <meta property="og:description" content="${desc}">
   <meta property="og:image" content="${img}">
-  <meta property="og:image:width" content="${SHARE_CARD_WIDTH}">
+${imageIsShareCard ? `  <meta property="og:image:width" content="${SHARE_CARD_WIDTH}">
   <meta property="og:image:height" content="${SHARE_CARD_HEIGHT}">
-  <meta property="og:url" content="${url}">
+` : ""}  <meta property="og:url" content="${url}">
   <meta property="og:locale" content="ar_SA">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="${imageIsShareCard ? "summary_large_image" : "summary"}">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${desc}">
   <meta name="twitter:image" content="${img}">

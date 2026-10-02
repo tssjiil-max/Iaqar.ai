@@ -178,5 +178,8 @@ export async function renderPublicOffice(root, target) {
       office.phone ? h("a", { class: "os-btn secondary", href: `tel:${localPhone(office.phone) || office.phone}` }, ic("phone"), "اتصال") : null,
       wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener" }, ic("whatsapp"), "واتساب المكتب") : null),
     h("div", { class: "os-skyline", "aria-hidden": "true" }),
-    h("p", { style: { textAlign: "center", marginTop: "16px" } }, h("a", { href: "/", class: "os-btn ghost" }, ic("key"), "دخول المكتب")));
+    h("p", { style: { textAlign: "center", marginTop: "16px" } }, h("a", { href: "/", class: "os-btn ghost" }, ic("key"), "دخول المكتب")),
+    h("footer", { class: "os-public-powered", "data-powered-by": "" },
+      h("span", { text: "مدعوم بواسطة مكاتب عقارية ذكية" }),
+      h("a", { href: "/legacy.html#broker", "data-create-office": "", text: "أنشئ مكتبك العقاري" })));
 }

@@ -1,8 +1,6 @@
 /** Office share card (the preview image WhatsApp shows for the office link) — pure rules. */
 
-import { officeLicensePreviewLines, officeShareCardCityLine } from "../../js/office-public-link-domain.js";
-
-export const SHARE_CARD = Object.freeze({ width: 1200, height: 630 });
+export const SHARE_PHOTO_SIZE = 600;
 
 const text = (value) => String(value == null ? "" : value).trim();
 
@@ -24,10 +22,10 @@ export function officeShareUrl({ slug = "", officeId = "", origin = "", hostname
   return `${String(base).replace(/\/$/, "")}/m/${encodeURIComponent(handle)}`;
 }
 
-/** Changes only when something shown on the card changes — it becomes the card's cache-busting version. */
+/** Changes only when the preview image changes (photo or slug) — it becomes the image's cache-busting version. */
 export function shareCardKey(office = {}) {
   const photo = text(office.brokerPhotoUrl);
-  const parts = [office.publicSlug, office.officeName, office.brokerName, office.licenseNumber, office.city, office.licenseVerified === true ? "v" : "u", photo ? `${photo.length}:${photo.slice(-24)}` : ""];
+  const parts = [office.publicSlug, photo ? `${photo.length}:${photo.slice(-24)}` : "none"];
   let hash = 2166136261;
   for (const char of parts.map(text).join("|")) { hash ^= char.codePointAt(0); hash = Math.imul(hash, 16777619); }
   return (hash >>> 0).toString(36);
@@ -36,14 +34,4 @@ export function shareCardKey(office = {}) {
 /** The version part of a stored nonce (a forced refresh appends a suffix). */
 export function nonceKey(nonce = "") {
   return text(nonce).split("-")[0];
-}
-
-/** What is written on the card. Only the license number is shown; «مرخص» appears only with a real verification. */
-export function shareCardLines(office = {}) {
-  return {
-    name: text(office.officeName) || "مكتب عقاري",
-    broker: text(office.brokerName) ? `الوسيط: ${text(office.brokerName)}` : "",
-    license: officeLicensePreviewLines(office),
-    city: officeShareCardCityLine(office)
-  };
 }

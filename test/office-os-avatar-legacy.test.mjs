@@ -22,7 +22,7 @@ test("crop is a centred square", () => {
   assert.deepEqual(squareCrop(400, 800), { sx: 0, sy: 200, side: 400 });
 });
 
-test("the Office OS app never navigates to the old app except the two pre-login entries", () => {
+test("the Office OS app never navigates to the old app except the pre-login entries (login, public footer signup)", () => {
   const dir = path.resolve("public/os");
   const hits = [];
   const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
@@ -31,5 +31,5 @@ test("the Office OS app never navigates to the old app except the two pre-login 
     else if (/\.js$/.test(e.name)) fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => { if (/legacy\.html/.test(line) && !/^\s*(\*|\/\/)/.test(line)) hits.push(`${path.relative(dir, f)}:${i + 1}`); });
   });
   walk(dir);
-  assert.deepEqual(hits.filter((h) => !h.startsWith("views/login.js")), [], hits.join(", "));
+  assert.deepEqual(hits.filter((h) => !/^views\/(login|public-office)\.js/.test(h)), [], hits.join(", "));
 });

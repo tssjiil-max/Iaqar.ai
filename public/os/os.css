@@ -647,3 +647,6 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-share-card { display: grid; gap: 10px; }
 .os-share-card-img { width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 14px; border: 1px solid var(--brand-line, #DCE8EB); background: #fff; }
 .os-field-note.is-error { color: #a12b2b; }
+
+.os-public-powered { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; margin-top: 10px; padding: 10px 8px 2px; border-top: 1px solid var(--brand-line, #DCE8EB); font-size: .78rem; color: #6b8289; }
+.os-public-powered a { color: var(--brand-primary, #03677A); font-weight: 700; text-decoration: none; }
