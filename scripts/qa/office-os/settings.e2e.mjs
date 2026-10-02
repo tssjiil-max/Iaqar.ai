@@ -45,8 +45,9 @@ async function shot(page, name) {
 
 try {
   const page = await openAs(OWNER_A, "settings");
+  await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  check("hub lists the four settings pages", (await page.locator(".os-set-row").count()) === 4);
+  check("hub lists the five settings pages", (await page.locator(".os-set-row").count()) === 5);
   check("advanced settings still reach the old app (labelled)", (await page.locator("[data-legacy-settings]").getAttribute("href")).startsWith("/legacy.html?officeId="));
   await shot(page, "01-hub");
 
@@ -101,6 +102,14 @@ try {
   await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.cooperationMode === "DISABLED", "public mirror").catch(() => {});
   check("public mirror carries the cooperation mode", h.store.get(`publicOffices/${OFFICE_A}`)?.cooperationMode === "DISABLED");
   await shot(page, "05-cooperation");
+
+  // قنوات المكتب
+  await page.goto(`${h.origin}/#/settings/channels`);
+  await page.locator("[data-channel]").first().waitFor();
+  check("channels page shows WhatsApp connected and Telegram not connected", (await page.locator('[data-channel="whatsapp"] [data-channel-status]').getAttribute("data-channel-status")) === "connected" && (await page.locator('[data-channel="telegram"] [data-channel-status]').getAttribute("data-channel-status")) === "disconnected");
+  check("channels page states ASSISTED mode and no automatic sending", (await page.locator("[data-automation]").getAttribute("data-automation")) === "ASSISTED" && (await page.locator("[data-automation]").innerText()).includes("غير مفعّل"));
+  check("channels page never shows a full phone number or secret", !/(token|secret|\d{8,})/i.test(await page.locator(".os-main, main, body").first().innerText()));
+  await shot(page, "06-channels");
 
   // الوسطاء (existing page, now under the hub)
   await page.goto(`${h.origin}/#/settings/brokers`);

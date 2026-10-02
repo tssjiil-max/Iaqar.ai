@@ -630,3 +630,8 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-share-input i { font-style: normal; color: #4d6a72; }
 .os-share-sum { border-top: 1px solid var(--brand-line, #DCE8EB); padding-top: 8px; font-weight: 800; }
 .os-share-total.is-bad { color: #9b2c2c; }
+
+.os-chan-card { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.os-chan-status { font-size: .8rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #4d6a72; border: 1px solid var(--brand-line, #DCE8EB); white-space: nowrap; }
+.os-chan-status.is-connected { background: #e4f6ec; color: #17653a; border-color: #bfe5cf; }
+.os-chan-status.is-setup { background: #fff4de; color: #7a5200; border-color: #f0d9a6; }
