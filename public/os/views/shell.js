@@ -14,7 +14,7 @@ import { enableNotifications, notificationStatus } from "../core/notifications.j
 
 export function officePublicLink() {
   const office = session.office || {};
-  return officeShareUrl({ slug: office.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase() });
+  return officeShareUrl({ slug: office.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase(), preview: office.shareCardNonce });
 }
 
 export async function shareOfficeLink() {
