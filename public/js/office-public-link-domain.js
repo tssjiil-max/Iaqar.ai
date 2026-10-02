@@ -13,6 +13,7 @@ import { normalizePublicSlug, officeLinkFor, safeText } from "./office-domain.js
 
 export const PUBLIC_OFFICE_PATH_PREFIX = "/m";
 export const LEGACY_PUBLIC_OFFICE_PATH_PREFIX = "/o";
+export const PUBLIC_OFFICE_SHARE_PATH_PREFIX = "/s";
 export const SHARE_CARD_WIDTH = 1200;
 export const SHARE_CARD_HEIGHT = 630;
 
@@ -76,6 +77,16 @@ export function parsePublicOfficePath(pathname = "") {
   };
 }
 
+export function parsePublicOfficeSharePath(pathname = "") {
+  const path = String(pathname || "").split("?")[0];
+  const match = path.match(/^\/s\/([^/]+)\/([^/]+)\/?$/i);
+  if (!match) return { slug: "", version: "" };
+  return {
+    slug: normalizePublicSlug(decodeURIComponent(match[1] || "")),
+    version: text(decodeURIComponent(match[2] || "")).replace(/[^a-z0-9_-]/gi, "").slice(0, 48)
+  };
+}
+
 export function isCrawlerUserAgent(userAgent = "") {
   return CRAWLER_UA_RE.test(String(userAgent || ""));
 }
@@ -100,10 +111,10 @@ export function officeShareCardVersion(office = {}) {
   return (hash >>> 0).toString(36).slice(0, 10) || "1";
 }
 
-export function officeShareCardPath(slug, version) {
-  const handle = normalizePublicSlug(slug) || text(slug).replace(/[^a-z0-9_-]/gi, "").slice(0, 80);
-  const ver = text(version).replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || "1";
-  return `/share/office/${encodeURIComponent(handle || "office")}/card-v${ver}.png`;
+export function officeShareCardPath(officeId, version) {
+  const id = text(officeId).replace(/[^a-z0-9_-]/gi, "").slice(0, 80);
+  const ver = text(version).replace(/[^a-z0-9_-]/gi, "").slice(0, 48) || "1";
+  return `/share/office/${encodeURIComponent(id || "office")}/${encodeURIComponent(ver)}.jpg`;
 }
 
 export function officePublicLandingUrl(origin, officeId) {
@@ -179,21 +190,26 @@ export function buildOfficeOgHtml({
   origin = "",
   workerOrigin = "",
   canonicalUrl = "",
+  ogUrl = "",
   imageUrl = "",
   browserRedirectUrl = "",
   includeBrowserRedirect = true,
-  imageIsShareCard = true
+  imageIsShareCard = true,
+  imageType = "image/jpeg"
 } = {}) {
   const name = text(office.officeName || office.displayName) || PLATFORM_APP_NAME;
   const description = officeOgDescription(office);
-  const pageUrl = text(canonicalUrl) || officeLinkFor({ origin, publicSlug: slug, officeId: office.officeId });
+  const canonical = text(canonicalUrl) || officeLinkFor({ origin, publicSlug: slug, officeId: office.officeId });
+  const pageUrl = text(ogUrl) || canonical;
   const image = text(imageUrl)
-    || (workerOrigin ? `${String(workerOrigin).replace(/\/$/, "")}${officeShareCardPath(slug || office.publicSlug, officeShareCardVersion(office))}` : "")
+    || (workerOrigin ? `${String(workerOrigin).replace(/\/$/, "")}${officeShareCardPath(office.officeId || slug, officeShareCardVersion(office))}` : "")
     || `${String(origin || workerOrigin).replace(/\/$/, "")}${PLATFORM_DEFAULT_LOGO_512}`;
   const landing = text(browserRedirectUrl) || officePublicLandingUrl(origin, office.officeId) || pageUrl;
   const title = escapeHtml(name);
   const desc = escapeHtml(description);
   const url = escapeHtml(pageUrl);
+  const canonicalHref = escapeHtml(canonical);
+  const imgType = escapeHtml(imageType);
   const img = escapeHtml(image);
   const go = escapeHtml(landing);
   // Never meta-refresh: WhatsApp's crawler follows it and then screenshots the SPA.
@@ -208,13 +224,14 @@ export function buildOfficeOgHtml({
   <meta charset="UTF-8">
   <title>${title}</title>
   <meta name="description" content="${desc}">
-  <link rel="canonical" href="${url}">
+  <link rel="canonical" href="${canonicalHref}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${title}">
   <meta property="og:description" content="${desc}">
   <meta property="og:image" content="${img}">
 ${imageIsShareCard ? `  <meta property="og:image:width" content="${SHARE_CARD_WIDTH}">
   <meta property="og:image:height" content="${SHARE_CARD_HEIGHT}">
+  <meta property="og:image:type" content="${imgType}">
 ` : ""}  <meta property="og:url" content="${url}">
   <meta property="og:locale" content="ar_SA">
   <meta name="twitter:card" content="${imageIsShareCard ? "summary_large_image" : "summary"}">
