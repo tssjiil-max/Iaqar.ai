@@ -293,6 +293,16 @@ export async function acknowledgeReply(ctx, { actor, officeId, journeyId, propos
   });
 }
 
+/**
+ * A confirmed viewing is mirrored on the match as `appointmentAt`, the field the Worker's
+ * scheduled viewing reminders already read — so Office OS viewings get the same reminders.
+ */
+export async function syncMatchAppointment(ctx, officeId, journey, at) {
+  const when = toDate(at);
+  if (!journey?.matchId || !when) return;
+  await ctx.store.set(["offices", officeId, "matches", journey.matchId], { appointmentAt: when }).catch((error) => console.warn("[office-os] appointment sync", error?.message));
+}
+
 export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
   const journey = await loadJourney(ctx, officeId, journeyId);
   assertCanActOn(ctx.deps, actor, journey);
@@ -308,7 +318,7 @@ export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
   if (!checkBrokerAvailability(busy, at, new Date(at.getTime() + VIEWING_MINUTES * 60 * 1000)).ok) {
     throw ctx.deps.appError("viewing_conflict", 409, "لدى الوسيط معاينة أخرى في هذا الوقت — اختر موعدًا آخر.");
   }
-  return applyJourneyChange(ctx, {
+  const confirmed = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     finish: (task) => task.type === "VIEWING_CONFIRM",
     mutate: (j) => (j.viewing?.state === VIEWING_STATE.ACCEPTED
@@ -317,6 +327,8 @@ export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
     add: [{ type: "VIEWING_RESULT", ref: `viewing:${viewing.at}`, dueAt: at, reason: `معاينة مؤكدة ${formatDateTime(at, ctx.now())}`, actionLabel: "نتيجة المعاينة" }],
     event: { type: "VIEWING_CONFIRMED", key: [viewing.at], text: `تم تأكيد موعد المعاينة ${formatDateTime(at, ctx.now())}` }
   });
+  if (confirmed.changed) await syncMatchAppointment(ctx, officeId, confirmed.journey, viewing.at);
+  return confirmed;
 }
 
 export async function recordViewingResult(ctx, { actor, officeId, journeyId, result, note = "" }) {
