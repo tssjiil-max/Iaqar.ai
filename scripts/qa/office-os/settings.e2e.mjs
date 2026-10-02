@@ -149,6 +149,19 @@ try {
   const card = bucket.get(`office-share/${OFFICE_A}/card.png`).bytes;
   check("share card is a 1200×630 PNG stored for the office and its slug", card.subarray(1, 4).toString() === "PNG" && card.readUInt32BE(16) === 1200 && card.readUInt32BE(20) === 630 && bucket.has(`office-share/${slugNow}/card.png`), `${card.length} bytes ${card.readUInt32BE(16)}x${card.readUInt32BE(20)} keys=${[...bucket.keys()].join(",")} slug=${slugNow}`);
   fs.writeFileSync(path.join(OUT, "share-card.png"), card);
+  await page.locator("[data-share-card-preview]:not([hidden])").waitFor();
+  check("link page shows the card preview and says it was updated", (await page.locator("[data-share-card-status]").innerText()).includes("بطاقة المعاينة"));
+  const nonceBefore = h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce;
+  await page.locator("[data-share-card-refresh]").click();
+  await until(() => h.store.get(`publicOffices/${OFFICE_A}`).shareCardNonce !== nonceBefore, "forced refresh gives a new version");
+  check("«تحديث بطاقة المعاينة» uploads again under a new version (busts WhatsApp's cache)", true);
+  const savedMedia = h.env.IAQAR_MEDIA;
+  h.env.IAQAR_MEDIA = undefined;
+  await page.locator("[data-share-card-refresh]").click();
+  await page.locator("[data-share-card-status].is-error").waitFor();
+  check("when the upload fails the page says why (status code), not silence", (await page.locator("[data-share-card-status]").innerText()).includes("503"));
+  h.env.IAQAR_MEDIA = savedMedia;
+  { const i = errors.findIndex((e) => /503/.test(e)); if (i >= 0) errors.splice(i, 1); } // the deliberate failure above
   const nonce = await until(() => h.store.get(`publicOffices/${OFFICE_A}`)?.shareCardNonce, "nonce on public office");
   check("card version is stored on the office and its public mirror", h.store.get(`offices/${OFFICE_A}`).shareCardNonce === nonce);
   const og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();

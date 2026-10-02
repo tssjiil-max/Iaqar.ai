@@ -643,3 +643,7 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-photo-copy small { color: #4d6a72; }
 .os-file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .ref-office-logo-box .ref-office-avatar { width: min(104px, 80%); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 50%; display: block; }
+
+.os-share-card { display: grid; gap: 10px; }
+.os-share-card-img { width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 14px; border: 1px solid var(--brand-line, #DCE8EB); background: #fff; }
+.os-field-note.is-error { color: #a12b2b; }

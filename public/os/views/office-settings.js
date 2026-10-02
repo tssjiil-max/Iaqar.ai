@@ -169,7 +169,17 @@ export function renderLinkSettings(container) {
   const hint = h("small", { class: "os-field-note", "data-slug-hint": "", role: "status", text: "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." });
   const sync = () => { linkBox.value = linkOf(); };
   sync();
-  ensureShareCard().then((changed) => { if (changed) sync(); });
+  const cardImg = h("img", { class: "os-share-card-img", alt: "بطاقة معاينة الرابط", "data-share-card-preview": "", hidden: true });
+  const cardStatus = h("small", { class: "os-field-note", "data-share-card-status": "", role: "status", text: "جارٍ تجهيز بطاقة المعاينة…" });
+  const refreshCard = h("button", { type: "button", class: "os-btn secondary block", "data-share-card-refresh": "" }, ic("refresh"), "تحديث بطاقة المعاينة");
+  const showCard = (result) => {
+    if (result.blob) { if (cardImg.src.startsWith("blob:")) URL.revokeObjectURL(cardImg.src); cardImg.src = URL.createObjectURL(result.blob); cardImg.hidden = false; }
+    cardStatus.classList.toggle("is-error", result.status === "failed");
+    cardStatus.textContent = result.status === "failed" ? `لم تُحدَّث بطاقة المعاينة: ${result.reason}` : result.status === "uploaded" ? "تم تحديث بطاقة المعاينة — ستظهر في واتساب عند مشاركة الرابط." : "بطاقة المعاينة محدّثة.";
+    sync(); refreshShare();
+  };
+  refreshCard.addEventListener("click", () => runAction(refreshCard, async () => showCard(await ensureShareCard({ force: true }))));
+  ensureShareCard().then(showCard);
   slug.addEventListener("input", () => {
     const checked = checkPublicSlug(slug.value);
     hint.textContent = !slug.value ? "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." : checked.ok ? `الرابط: /m/${checked.slug}` : checked.message;
@@ -194,7 +204,11 @@ export function renderLinkSettings(container) {
       h("p", { class: "os-sub", text: "شاركه مع عملائك ومالكي العقارات ليسجّلوا بياناتهم لمكتبك دون حساب." }),
       linkBox, h("div", { class: "os-btn-row" }, copy, share)),
     h("section", { class: "os-card os-form" },
-      field("معرّف الرابط القصير", slug, hint), save));
+      field("معرّف الرابط القصير", slug, hint), save),
+    h("section", { class: "os-card os-share-card" },
+      h("h2", { class: "os-h2" }, ic("shield"), "بطاقة معاينة الرابط"),
+      h("p", { class: "os-sub", text: "هذه الصورة تظهر في واتساب عند مشاركة رابط المكتب: صورة الوسيط وبيانات المكتب ورقم الرخصة." }),
+      cardImg, cardStatus, refreshCard));
   return null;
 }
 

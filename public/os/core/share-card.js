@@ -74,28 +74,46 @@ export async function drawShareCard(office) {
   return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("BLOB_FAILED"))), "image/png"));
 }
 
-/** Uploads the card when what it shows changed; the nonce on both office documents versions the preview URL. Best effort. */
-export async function ensureShareCard() {
+/**
+ * Uploads the card when what it shows changed (or when forced). The nonce on both office documents versions the
+ * preview URL. Never throws; returns { status: "uploaded" | "current" | "failed", reason, blob } so the screen can say what happened.
+ */
+export async function ensureShareCard({ force = false } = {}) {
   const office = session.office || {};
-  if (!session.isManager || !session.officeId || !office.publicSlug) return false;
+  if (!session.isManager || !session.officeId) return { status: "failed", reason: "يلزم مدير المكتب" };
+  if (!office.publicSlug) return { status: "failed", reason: "اضبط معرّف الرابط القصير أولًا" };
   const key = shareCardKey(office);
-  if (office.shareCardNonce === key) return false;
+  let blob = null;
   try {
-    const blob = await drawShareCard(office);
-    const response = await fetch(`${workerBase()}/media/office-share-card`, {
+    blob = await drawShareCard(office);
+  } catch (_) {
+    return { status: "failed", reason: "تعذر رسم البطاقة" };
+  }
+  if (!force && office.shareCardNonce && office.shareCardNonce.split("-")[0] === key) return { status: "current", reason: "", blob };
+  const nonce = force ? `${key}-${Date.now().toString(36)}` : key;
+  let response;
+  try {
+    response = await fetch(`${workerBase()}/media/office-share-card`, {
       method: "POST",
-      headers: { "Content-Type": "image/png", Authorization: `Bearer ${await idToken()}`, "X-Office-Id": session.officeId, "X-Public-Slug": office.publicSlug, "X-Share-Card-Version": key },
+      headers: { "Content-Type": "image/png", Authorization: `Bearer ${await idToken()}`, "X-Office-Id": session.officeId, "X-Public-Slug": office.publicSlug, "X-Share-Card-Version": nonce },
       body: blob
     });
-    if (!response.ok) return false;
-    const patch = { shareCardNonce: key, updatedAt: stamp() };
+  } catch (_) {
+    return { status: "failed", reason: "تعذر الاتصال بالخادم عند رفع البطاقة", blob };
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    return { status: "failed", reason: `رفض الخادم رفع البطاقة (${response.status}${payload.error ? ` · ${payload.error}` : ""})`, blob };
+  }
+  try {
+    const patch = { shareCardNonce: nonce, updatedAt: stamp() };
     await Promise.all([
       db().collection("offices").doc(session.officeId).set(patch, { merge: true }),
       db().collection("publicOffices").doc(session.officeId).set(patch, { merge: true })
     ]);
-    office.shareCardNonce = key;
-    return true;
   } catch (_) {
-    return false;
+    return { status: "failed", reason: "رُفعت البطاقة لكن تعذر حفظ نسختها", blob };
   }
+  office.shareCardNonce = nonce;
+  return { status: "uploaded", reason: "", blob };
 }

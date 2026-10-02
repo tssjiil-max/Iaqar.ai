@@ -173,6 +173,7 @@ export async function handleOfficeShareCardGet(request, env, deps) {
     headers.set("cache-control", "public, max-age=3600");
     headers.set("x-content-type-options", "nosniff");
     headers.set("content-type", "image/png");
+    headers.set("x-iaqar-share-card", "stored");
     return new Response(request.method === "HEAD" ? null : object.body, { headers });
   }
   const fallback = `${deps.resolveAppOrigin(env)}/icons/iaqar-office-share-fallback-1200x630.png`;
@@ -183,6 +184,7 @@ export async function handleOfficeShareCardGet(request, env, deps) {
   headers.set("cache-control", "public, max-age=3600");
   headers.set("x-content-type-options", "nosniff");
   headers.set("content-type", "image/png");
+  headers.set("x-iaqar-share-card", "fallback");
   return new Response(request.method === "HEAD" ? null : response.body, { headers });
 }
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isHostedPreviewHost, officeShareUrl, shareCardKey, shareCardLines } from "../public/os/domain/share-card-domain.js";
+import { nonceKey, isHostedPreviewHost, officeShareUrl, shareCardKey, shareCardLines } from "../public/os/domain/share-card-domain.js";
 
 test("hosted preview domains use the Worker link, custom domains the short link", () => {
   const base = { slug: "Sultan", officeId: "o1", origin: "https://iaqar-ai-staging--staging-x.web.app", workerOrigin: "https://w.example.workers.dev/" };
@@ -31,4 +31,10 @@ test("card shows the license, but claims «مرخص» only with a real verificat
   const verified = shareCardLines({ officeName: "م", licenseNumber: "1200012345", licenseVerified: true });
   assert.ok(verified.license.includes("✓ مكتب عقاري مرخص"));
   assert.ok(!JSON.stringify(plain).includes("0501111111"));
+});
+
+test("a forced refresh keeps the card key part of the nonce", () => {
+  assert.equal(nonceKey("abc12-lq3x"), "abc12");
+  assert.equal(nonceKey("abc12"), "abc12");
+  assert.equal(nonceKey(""), "");
 });
