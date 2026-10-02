@@ -227,3 +227,11 @@ test("the real deal card of an open deal carries both record ids, so «بلا م
   const ids = engagedRecordIds(tasks);
   assert.ok(ids.has(ctx.neg.offerId) && ids.has(ctx.neg.requestId), "offer and request of an open deal are engaged");
 });
+
+import { operationIdFromParams } from "../public/os/core/deep-link.js";
+
+test("a push link with only openDailyTask opens the task like openOperation does", () => {
+  assert.equal(operationIdFromParams(new URLSearchParams("openDailyTask=op_1")), "op_1");
+  assert.equal(operationIdFromParams(new URLSearchParams("openOperation=op_2&openDailyTask=op_1")), "op_2");
+  assert.equal(operationIdFromParams(new URLSearchParams("officeId=x")), "");
+});
