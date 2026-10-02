@@ -17,7 +17,7 @@ import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { loadChannelStatus } from "../core/channels.js";
 import { automationLabel, channelViews } from "../domain/channels-domain.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
-import { officeShareUrl } from "../domain/share-card-domain.js";
+import { officePermanentUrl, officeShareUrl } from "../domain/share-card-domain.js";
 import { ensureShareCard } from "../core/share-card.js";
 import { workerBase } from "../core/runtime.js";
 
@@ -162,54 +162,89 @@ export function renderOfficeProfile(container) {
 
 export function renderLinkSettings(container) {
   if (managerOnly(container, "رابط المكتب")) return null;
-  const linkOf = () => officeShareUrl({ slug: session.office?.publicSlug, officeId: session.officeId, origin: location.origin, hostname: location.hostname, workerOrigin: workerBase() });
+
+  const permanentLinkOf = () => officePermanentUrl({
+    slug: session.office?.publicSlug,
+    officeId: session.officeId,
+    origin: location.origin
+  });
+  const shareLinkOf = () => officeShareUrl({
+    slug: session.office?.publicSlug,
+    officeId: session.officeId,
+    origin: location.origin,
+    hostname: location.hostname,
+    workerOrigin: workerBase(),
+    preview: session.office?.shareCardNonce
+  });
+
   const linkBox = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-office-link": "" });
   const slug = h("input", { class: "os-input", name: "publicSlug", dir: "ltr", maxlength: "20", autocomplete: "off", placeholder: "wadi" });
   slug.value = session.office?.publicSlug || "";
   const hint = h("small", { class: "os-field-note", "data-slug-hint": "", role: "status", text: "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." });
-  const sync = () => { linkBox.value = linkOf(); };
+  const sync = () => { linkBox.value = permanentLinkOf(); };
   sync();
+
   const cardImg = h("img", { class: "os-share-card-img", alt: "صورة معاينة الرابط", "data-share-card-preview": "", hidden: true });
   const cardStatus = h("small", { class: "os-field-note", "data-share-card-status": "", role: "status", text: "جارٍ تجهيز بطاقة المعاينة…" });
   const refreshCard = h("button", { type: "button", class: "os-btn secondary block", "data-share-card-refresh": "" }, ic("refresh"), "تحديث صورة المعاينة");
+
+  const copy = h("button", { type: "button", class: "os-btn primary", "data-copy-link": "" }, ic("link"), "نسخ رابط المشاركة");
+  copy.addEventListener("click", async () => {
+    const value = shareLinkOf();
+    try { await navigator.clipboard.writeText(value); toast("تم نسخ رابط المشاركة", "ok"); }
+    catch (_) { linkBox.select(); toast("تعذر النسخ التلقائي؛ رابط المكتب الدائم ظاهر أعلاه"); }
+  });
+
+  const share = h("a", { class: "os-btn secondary", target: "_blank", rel: "noopener noreferrer", "data-share-link": "" }, ic("whatsapp"), "مشاركة عبر واتساب");
+  const refreshShare = () => {
+    const previewLink = shareLinkOf();
+    share.href = `https://wa.me/?text=${encodeURIComponent(`رابط ${session.office?.officeName || "المكتب"} لتسجيل العروض والطلبات:\n${previewLink}`)}`;
+    share.dataset.previewUrl = previewLink;
+  };
+
   const showCard = (result) => {
-    if (result.blob) { if (cardImg.src.startsWith("blob:")) URL.revokeObjectURL(cardImg.src); cardImg.src = URL.createObjectURL(result.blob); cardImg.hidden = false; } else cardImg.hidden = true;
+    if (result.blob) {
+      if (cardImg.src.startsWith("blob:")) URL.revokeObjectURL(cardImg.src);
+      cardImg.src = URL.createObjectURL(result.blob);
+      cardImg.hidden = false;
+    } else cardImg.hidden = true;
+    if (result.previewVersion) session.office.shareCardNonce = result.previewVersion;
     cardStatus.classList.toggle("is-error", result.status === "failed");
     cardStatus.textContent = result.status === "failed" ? `لم تُحدَّث صورة المعاينة: ${result.reason}`
-      : !result.hasPhoto ? "لا توجد صورة للوسيط — يظهر شعار المنصة في معاينة الرابط. أضف صورتك من «بيانات المكتب»."
-      : result.status === "uploaded" ? "تم تحديث صورة المعاينة — ستظهر في واتساب عند مشاركة الرابط." : "صورة المعاينة محدّثة.";
-    sync(); refreshShare();
+      : result.status === "uploaded" ? "تم إنشاء نسخة مشاركة جديدة — ستُستخدم تلقائيًا في واتساب."
+      : "صورة المعاينة محدّثة.";
+    sync();
+    refreshShare();
   };
+
   refreshCard.addEventListener("click", () => runAction(refreshCard, async () => showCard(await ensureShareCard({ force: true }))));
   ensureShareCard().then(showCard);
+  refreshShare();
+
   slug.addEventListener("input", () => {
     const checked = checkPublicSlug(slug.value);
     hint.textContent = !slug.value ? "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." : checked.ok ? `الرابط: /m/${checked.slug}` : checked.message;
     hint.classList.toggle("is-error", Boolean(slug.value) && !checked.ok);
   });
-  const copy = h("button", { type: "button", class: "os-btn primary", "data-copy-link": "" }, ic("link"), "نسخ الرابط");
-  copy.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(linkBox.value); toast("تم نسخ رابط المكتب", "ok"); } catch (_) { linkBox.select(); toast("حدّد الرابط وانسخه يدويًا"); }
-  });
-  const share = h("a", { class: "os-btn secondary", target: "_blank", rel: "noopener noreferrer", "data-share-link": "" }, ic("whatsapp"), "مشاركة عبر واتساب");
-  const refreshShare = () => { share.href = `https://wa.me/?text=${encodeURIComponent(`رابط ${session.office?.officeName || "المكتب"} لتسجيل العروض والطلبات:\n${linkBox.value}`)}`; };
-  refreshShare();
+
   const save = h("button", { type: "button", class: "os-btn secondary block" }, ic("check"), "حفظ معرّف الرابط");
   save.addEventListener("click", () => runAction(save, async () => {
     await savePublicSlug(slug.value);
     slug.value = session.office.publicSlug;
-    sync(); refreshShare();
+    const result = await ensureShareCard({ force: true });
+    showCard(result);
   }, { success: "تم حفظ معرّف الرابط" }));
+
   append(container,
     h("section", { class: "os-card" },
       h("h2", { class: "os-h2" }, ic("link"), "رابط المكتب"),
-      h("p", { class: "os-sub", text: "شاركه مع عملائك ومالكي العقارات ليسجّلوا بياناتهم لمكتبك دون حساب." }),
+      h("p", { class: "os-sub", text: "الرابط الظاهر أدناه هو رابط المكتب الدائم. أزرار النسخ وواتساب تستخدم نسخة مشاركة محدثة تلقائيًا لمنع عرض صورة قديمة." }),
       linkBox, h("div", { class: "os-btn-row" }, copy, share)),
     h("section", { class: "os-card os-form" },
       field("معرّف الرابط القصير", slug, hint), save),
     h("section", { class: "os-card os-share-card" },
       h("h2", { class: "os-h2" }, ic("shield"), "صورة معاينة الرابط"),
-      h("p", { class: "os-sub", text: "هذه الصورة تظهر في واتساب عند مشاركة رابط المكتب، مع اسم المكتب ووصفه." }),
+      h("p", { class: "os-sub", text: "كل تحديث ينشئ صفحة مشاركة وصورة جديدة؛ رابط المكتب الدائم لا يتغير." }),
       cardImg, cardStatus, refreshCard));
   return null;
 }
