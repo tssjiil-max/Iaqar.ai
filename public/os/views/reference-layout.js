@@ -1,3 +1,5 @@
+import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
+import { openGeneralTask } from "./task-fallback.js";
 import { h, ic, clear, append } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
@@ -11,7 +13,7 @@ import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){const t=String(task.type||"");if(t==="DEAL_JOURNEY")return Math.min(5,Math.max(0,Number(task.journeyStep??2)));return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
-function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else location.href="/legacy.html?officeId="+encodeURIComponent(session.officeId)+"&openOperation="+encodeURIComponent(task.id);}
+function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else openGeneralTask(task);}
 export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager,officeId:session.officeId})),"all"));}
 export function taskRecord(task){const meta=parseMeta(task);return recordById(task.offerId||meta.ownerOfferId)||recordById(task.opportunityId)||recordById(task.requestId||meta.clientRequestId);}
 export function photo(record={},extra=""){
@@ -40,13 +42,6 @@ const PRIMARY_OFFICE_TOOLS = Object.freeze([
   ["السوق", "chart-up"]
 ]);
 
-const SECONDARY_OFFICE_TOOLS = Object.freeze([
-  ["جهات الاتصال", "users"],
-  ["دفتر المكتب", "note"],
-  ["الأرشيف", "archive"],
-  ["المفضلة", "heart"]
-]);
-
 export function officeDisplayName(office = {}) {
   const raw = String(
     office.businessName ||
@@ -60,6 +55,13 @@ export function officeDisplayName(office = {}) {
   return `مكتب ${raw} العقاري`;
 }
 
+function brokerAvatar(office) {
+  if (!isSafePhotoDataUrl(office.brokerPhotoUrl)) return null;
+  const img = h("img", { class: "ref-office-avatar", src: office.brokerPhotoUrl, alt: "صورة الوسيط", "data-broker-avatar": "" });
+  img.addEventListener("error", () => img.replaceWith(officeLogo(office)));
+  return img;
+}
+
 function officeLogo(office) {
   if (/^https?:\/\//.test(String(office.logoUrl || ""))) {
     return h("img", { src: office.logoUrl, alt: officeDisplayName(office) || "شعار المكتب" });
@@ -70,13 +72,6 @@ function officeLogo(office) {
 function officeToolCard([label, iconName]) {
   return h("div", { class: "ref-office-tool is-soon", dataset: { officeTool: label }, "aria-disabled": "true" },
     h("span", { class: "ref-office-tool-icon" }, ic(iconName)),
-    h("strong", { text: label }),
-    h("small", { class: "ref-office-soon", text: "قريبًا" }));
-}
-
-function officeExtraCard([label, iconName]) {
-  return h("div", { class: "ref-office-extra is-soon", dataset: { officeTool: label }, "aria-disabled": "true" },
-    h("span", { class: "ref-office-extra-icon" }, ic(iconName)),
     h("strong", { text: label }),
     h("small", { class: "ref-office-soon", text: "قريبًا" }));
 }
@@ -106,7 +101,7 @@ export function renderOffice(container){
         profileRow("user", "الوسيط", broker),
         profileRow("note", "ترخيص فال", license, { ltr: true }),
         profileRow("pin", "", city)),
-      h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, officeLogo(office)))),
+      h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, brokerAvatar(office) || officeLogo(office)))),
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },
@@ -115,14 +110,8 @@ export function renderOffice(container){
         ic("chev-left"))),
 
     h("section", { class: "os-card ref-office-section" },
-      h("div", { class: "ref-office-heading" }, h("h2", { text: "مكتبي" })),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
-
-    h("section", { class: "os-card ref-office-section ref-office-extras-wrap" },
-      h("div", { class: "ref-office-extras-heading" },
-        h("h2", { text: "أدوات إضافية" }),
-        h("p", { text: "خدمات مساندة لمكتبك" })),
-      h("div", { class: "ref-office-extras", "aria-label": "أدوات إضافية" }, SECONDARY_OFFICE_TOOLS.map(officeExtraCard)))
+      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" }), h("p", { class: "os-sub", text: "قريبًا — هذه الأدوات قيد التجهيز" })),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)))
   );
 
   // «التعاون»: a light summary only («2 نشط · 1 بانتظار الرد»); the actions live in Daily Tasks and on the cooperation page.

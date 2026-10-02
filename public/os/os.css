@@ -635,3 +635,11 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-chan-status { font-size: .8rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #4d6a72; border: 1px solid var(--brand-line, #DCE8EB); white-space: nowrap; }
 .os-chan-status.is-connected { background: #e4f6ec; color: #17653a; border-color: #bfe5cf; }
 .os-chan-status.is-setup { background: #fff4de; color: #7a5200; border-color: #f0d9a6; }
+
+.os-photo-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 14px; align-items: center; }
+.os-avatar-preview { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-avatar-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-photo-copy { display: grid; gap: 6px; min-width: 0; }
+.os-photo-copy small { color: #4d6a72; }
+.os-file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ref-office-logo-box .ref-office-avatar { width: min(104px, 80%); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 50%; display: block; }

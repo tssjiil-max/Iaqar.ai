@@ -12,15 +12,14 @@ test("office page uses the approved digital-office hierarchy", () => {
   assert.doesNotMatch(office, /ref-office-share/, "the reference card has no share button; sharing stays in the settings menu");
   assert.match(shell, /shareOfficeLink\(\); \} \}, ic\("link"\), "مشاركة رابط المكتب"/, "sharing the office link must remain available from the menu");
   assert.match(office, /ref-office-tools/, "primary office tools grid must exist");
-  assert.match(office, /ref-office-extras/, "secondary office tools row must exist");
-  assert.match(office, /ref-office-heading[^\n]*text:\s*["']مكتبي["']/, "the reference shows the «مكتبي» heading above the main tools");
+  assert.doesNotMatch(office, /ref-office-extras-wrap/, "the four duplicate placeholder extras were removed from the home page");
+  assert.match(office, /ref-office-heading[^\n]*text:\s*["']أدوات المكتب["']/, "the heading names what is under it («أدوات المكتب», not «مكتبي»)");
 });
 
 test("office tool labels and order stay exact", () => {
   const expected = [
     "ملفاتي", "النماذج", "الدليل",
-    "الخدمات", "الحاسبة", "السوق",
-    "جهات الاتصال", "دفتر المكتب", "الأرشيف", "المفضلة"
+    "الخدمات", "الحاسبة", "السوق"
   ];
   let cursor = -1;
   for (const label of expected) {
@@ -117,8 +116,8 @@ test("office identity rows follow the reference: icon, then label and value toge
 
 test("office tools that are not built yet are marked «قريبًا» and are not clickable", () => {
   const count = (office.match(/class: "ref-office-(tool|extra) is-soon"/g) || []).length;
-  assert.equal(count, 2, "both tool card builders must mark the card as inactive");
-  assert.equal((office.match(/text: "قريبًا"/g) || []).length, 2, "each card builder must show the «قريبًا» label");
+  assert.equal(count, 1, "the tool card builder must mark the card as inactive");
+  assert.ok((office.match(/text: "قريبًا"/g) || []).length >= 1, "the card builder must show the «قريبًا» label");
   assert.doesNotMatch(office, /officeTool[^\n]*addEventListener|ref-office-tool[^\n]*onClick/, "inactive tools must not pretend to open something");
   assert.match(css, /\.ref-office-soon/, "the label needs its own style");
 });

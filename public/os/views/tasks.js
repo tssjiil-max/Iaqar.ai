@@ -3,6 +3,7 @@
  * the broker must act. Waiting/overdue items stay until they are resolved.
  */
 
+import { openGeneralTask } from "./task-fallback.js";
 import { h, ic, clear, emptyState, append } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -70,7 +71,7 @@ function primaryAction(task, model) {
   if (model.opens === "record" && task.opportunityId) {
     return () => go(model.type === "MISSING_DATA" ? `record/${task.opportunityId}/edit` : `record/${task.opportunityId}`);
   }
-  return () => { location.href = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}&openOperation=${encodeURIComponent(task.id)}`; };
+  return () => openGeneralTask(task);
 }
 
 function taskCard(task, now) {

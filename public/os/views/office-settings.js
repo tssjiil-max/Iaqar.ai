@@ -12,7 +12,8 @@ import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
-import { COOPERATION_OPTIONS, loadCooperationMode, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
+import { COOPERATION_OPTIONS, loadCooperationMode, photoToDataUrl, saveBrokerPhoto, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
+import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { loadChannelStatus } from "../core/channels.js";
 import { automationLabel, channelViews } from "../domain/channels-domain.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
@@ -41,23 +42,61 @@ function row(icon, title, hint, route) {
 export function renderSettingsHub(container) {
   if (managerOnly(container, "إعدادات المكتب")) return null;
   const office = session.office || {};
-  const legacy = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
   append(container,
     h("section", { class: "os-card os-set-list", "aria-label": "إعدادات المكتب" },
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
       row("send", "قنوات المكتب", "واتساب وتيليجرام — حالة الاتصال واستقبال الرسائل", "channels"),
-      row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")),
-    h("section", { class: "os-card os-set-legacy" },
-      h("h2", { class: "os-h2" }, ic("gear"), "إعدادات متقدمة"),
-      h("p", { class: "os-sub", text: "نطاق العمل والأحياء، الهوية البصرية (الشعار)، المكتبة، وتفضيلات الإشعارات — تُفتح حاليًا في الواجهة القديمة وتنتقل لاحقًا." }),
-      h("a", { class: "os-btn secondary block", href: legacy, "data-legacy-settings": "" }, ic("link"), "فتح الإعدادات المتقدمة")));
+      row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")));
   return null;
 }
 
 function field(label, control, error) {
   return h("label", { class: "os-field" }, h("span", { text: label }), control, error);
+}
+
+/** صورة الوسيط: choose → preview → save, or remove. Falls back to the default mark when there is none. */
+function photoCard() {
+  let pending = null;
+  const current = () => (isSafePhotoDataUrl(session.office?.brokerPhotoUrl) ? session.office.brokerPhotoUrl : "");
+  const preview = h("div", { class: "os-avatar-preview", "data-photo-preview": "" });
+  const message = h("small", { class: "os-field-error", "data-error": "photo", role: "alert" });
+  const file = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", class: "os-file-hidden", "data-photo-input": "", "aria-label": "اختيار صورة الوسيط" });
+  const choose = h("button", { type: "button", class: "os-btn secondary", "data-photo-choose": "" }, ic("edit"), "اختيار صورة");
+  const save = h("button", { type: "button", class: "os-btn primary", "data-photo-save": "" }, ic("check"), "حفظ الصورة");
+  const remove = h("button", { type: "button", class: "os-btn ghost", "data-photo-remove": "" }, ic("trash"), "حذف الصورة");
+  const draw = () => {
+    clear(preview);
+    const src = pending || current();
+    if (src) {
+      const img = h("img", { src, alt: "صورة الوسيط", "data-photo-img": "" });
+      img.addEventListener("error", () => { img.remove(); preview.append(h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" })); });
+      preview.append(img);
+    } else preview.append(h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" }));
+    save.hidden = !pending;
+    remove.hidden = Boolean(pending) || !current();
+    choose.lastChild.textContent = current() || pending ? "تغيير الصورة" : "اختيار صورة";
+  };
+  choose.addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    message.textContent = "";
+    const chosen = file.files?.[0];
+    file.value = "";
+    if (!chosen) return;
+    try { pending = await photoToDataUrl(chosen); } catch (error) { pending = null; message.textContent = error.message; }
+    draw();
+  });
+  save.addEventListener("click", () => runAction(save, async () => { await saveBrokerPhoto(pending); pending = null; draw(); }, { success: "تم حفظ الصورة" }));
+  remove.addEventListener("click", () => runAction(remove, async () => { await saveBrokerPhoto(""); draw(); }, { success: "تم حذف الصورة" }));
+  draw();
+  return h("section", { class: "os-card os-photo-card", "data-photo-card": "" },
+    preview,
+    h("div", { class: "os-photo-copy" },
+      h("b", { text: "صورة الوسيط" }),
+      h("small", { text: "تظهر في بطاقة المكتب. بدونها تبقى الصورة الافتراضية." }),
+      h("div", { class: "os-btn-row" }, choose, save, remove),
+      message, file));
 }
 
 export function renderOfficeProfile(container) {
@@ -115,7 +154,7 @@ export function renderOfficeProfile(container) {
       availability.textContent = "";
     }, { success: "تم حفظ بيانات المكتب", onError: (error) => { if (/مستخدم أو محجوز/.test(error.message)) errors.officeName.textContent = error.message; } });
   });
-  append(container, form);
+  append(container, photoCard(), form);
   return null;
 }
 
@@ -202,14 +241,13 @@ export function renderChannelSettings(container) {
         h("small", { text: view.hint }),
         view.detail ? h("small", { text: view.detail, dir: "auto" }) : null),
       h("span", { class: `os-chan-status is-${view.status}`, "data-channel-status": view.status, text: view.statusLabel })));
-    const legacy = `/legacy.html?officeId=${encodeURIComponent(session.officeId)}`;
     append(body,
       h("p", { class: "os-sub", text: "القنوات وسيلة نقل فقط: تصل الرسائل إلى صندوق المكتب ثم تُعالج كأي عميل أو عرض أو طلب." }),
       ...cards,
       h("section", { class: "os-card os-set-legacy" },
         h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
         h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` }),
-        h("a", { class: "os-btn secondary block", href: legacy, "data-legacy-channels": "" }, ic("link"), "ربط واتساب وإدارة القناة")));
+        h("p", { class: "os-sub", "data-channels-setup": "", text: "ربط واتساب وتيليجرام يتم حاليًا بإعداد من إدارة المنصة. بعد الربط تظهر الحالة هنا." })));
   }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
   return null;
 }
