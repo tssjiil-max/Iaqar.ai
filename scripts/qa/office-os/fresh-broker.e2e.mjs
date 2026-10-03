@@ -56,7 +56,10 @@ try {
   step = "1: signed-out visitor sees login and the signup entry";
   await page.goto(`${h.origin}/`);
   await page.getByRole("heading", { name: "دخول المكتب" }).waitFor();
-  check("signup entry present for a new broker (existing application path)", (await page.locator("[data-broker-signup]").getAttribute("href")) === "/legacy.html#broker");
+  await page.locator("[data-broker-signup]").click();
+  await page.getByRole("heading", { name: "تسجيل وسيط عقاري" }).waitFor();
+  check("signup entry opens the application form inside the new UI", (await page.locator("[data-broker-form]").count()) === 1);
+  await page.locator("[data-auth-back]").click();
 
   step = "2: first login lands on the new office page";
   await login();

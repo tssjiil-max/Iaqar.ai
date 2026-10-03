@@ -3,8 +3,12 @@
 import { h, ic, clear, append } from "../core/dom.js";
 import { signInOffice } from "../core/session.js";
 import { runAction } from "../core/ui.js";
+import { renderBrokerApplication, renderForgotPassword } from "./auth-flows.js";
 
-export function renderLogin(root, { onSignedIn, message = "" } = {}) {
+export function renderLogin(root, { onSignedIn, message = "", entry = "" } = {}) {
+  const back = () => renderLogin(root, { onSignedIn });
+  if (entry === "register") return renderBrokerApplication(root, { onBack: back });
+  if (entry === "forgot") return renderForgotPassword(root, { onBack: back });
   clear(root);
   const phone = h("input", { class: "os-input", name: "phone", inputmode: "tel", dir: "ltr", autocomplete: "username", placeholder: "05XXXXXXXX", required: true });
   const password = h("input", { class: "os-input", name: "password", type: "password", autocomplete: "current-password", required: true });
@@ -15,8 +19,8 @@ export function renderLogin(root, { onSignedIn, message = "" } = {}) {
     h("label", { class: "os-field" }, h("span", { text: "رقم الجوال" }), phone),
     h("label", { class: "os-field" }, h("span", { text: "كلمة المرور" }), password),
     toggle, status, submit,
-    h("a", { href: "/legacy.html#forgot", class: "os-btn ghost", style: { justifySelf: "center" } }, "نسيت كلمة المرور"),
-    h("a", { href: "/legacy.html#broker", class: "os-btn secondary block", "data-broker-signup": "" }, "تسجيل وسيط جديد"));
+    h("button", { type: "button", class: "os-btn ghost", style: { justifySelf: "center" }, "data-forgot": "", onClick: () => renderForgotPassword(root, { onBack: back }) }, "نسيت كلمة المرور"),
+    h("button", { type: "button", class: "os-btn secondary block", "data-broker-signup": "", onClick: () => renderBrokerApplication(root, { onBack: back }) }, "تسجيل وسيط جديد"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     status.hidden = true;

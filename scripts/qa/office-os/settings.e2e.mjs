@@ -182,7 +182,7 @@ try {
   await visitor.goto(`${h.origin}/o/${slugNow}`);
   await visitor.locator("[data-powered-by]").waitFor();
   const footerText = await visitor.locator("[data-powered-by]").innerText();
-  check("public page footer: «مدعوم بواسطة مكاتب عقارية ذكية» + «أنشئ مكتبك العقاري» (no domain name)", footerText.includes("مدعوم بواسطة مكاتب عقارية ذكية") && footerText.includes("أنشئ مكتبك العقاري") && !/iaqar/i.test(footerText) && (await visitor.locator("[data-create-office]").getAttribute("href")) === "/legacy.html#broker");
+  check("public page footer: «مدعوم بواسطة مكاتب عقارية ذكية» + «أنشئ مكتبك العقاري» (no domain name)", footerText.includes("مدعوم بواسطة مكاتب عقارية ذكية") && footerText.includes("أنشئ مكتبك العقاري") && !/iaqar/i.test(footerText) && (await visitor.locator("[data-create-office]").getAttribute("href")) === "/#/register");
   check("the office name stays the main element (title above footer)", await visitor.evaluate(() => { const t = document.querySelector(".os-public-title"), f = document.querySelector("[data-powered-by]"); return parseFloat(getComputedStyle(t).fontSize) > parseFloat(getComputedStyle(f).fontSize) * 1.8; }));
   await visitor.screenshot({ path: path.join(OUT, "09-public-office-footer.png"), fullPage: true });
   await page.goto(`${h.origin}/#/settings/profile`);

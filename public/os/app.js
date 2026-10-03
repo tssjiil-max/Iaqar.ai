@@ -123,7 +123,8 @@ async function startOfficeApp() {
   }
   const user = await waitForAuth();
   if (!user) {
-    renderLogin(root, { onSignedIn: enterOffice });
+    const entry = { "#/register": "register", "#/forgot": "forgot" }[location.hash] || "";
+    renderLogin(root, { onSignedIn: enterOffice, entry });
     return;
   }
   const officeId = preferredOfficeId();

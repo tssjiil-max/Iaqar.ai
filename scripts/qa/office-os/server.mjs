@@ -99,6 +99,14 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
         const entry = Object.entries(USERS).find(([, u]) => u.email === email && u.password === password);
         return entry ? send(200, "application/json", JSON.stringify({ uid: entry[0] })) : send(401, "application/json", "{}");
       }
+      if (url.pathname === "/harness/signup") {
+        const email = url.searchParams.get("email");
+        if (Object.values(USERS).some((u) => u.email === email)) return send(409, "application/json", "{}");
+        const uid = `qa-signup-${Date.now()}-${Object.keys(USERS).length}`;
+        USERS[uid] = { phone: "", email, officeId: "", password: url.searchParams.get("password") };
+        return send(200, "application/json", JSON.stringify({ uid }));
+      }
+      if (url.pathname === "/harness/signup-delete") { delete USERS[url.searchParams.get("uid")]; return send(200, "application/json", "{}"); }
       if (url.pathname === "/store/list") return send(200, "application/json", JSON.stringify(store.list(url.searchParams.get("path"))));
       if (url.pathname === "/store/get") return send(200, "application/json", JSON.stringify(store.get(url.searchParams.get("path"))));
       if (url.pathname === "/harness/write" && req.method === "POST") {

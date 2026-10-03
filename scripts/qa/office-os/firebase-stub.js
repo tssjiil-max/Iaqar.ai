@@ -85,12 +85,20 @@
   }
   const db = { collection: (name) => query(name), doc: (p) => docRef(p), settings() {}, enableNetwork: async () => {}, runTransaction };
   const listeners = [];
-  const makeUser = (uid) => (uid ? { uid, email: `${uid}@harness.local`, getIdToken: async () => (await (await fetch(`/harness/token?uid=${encodeURIComponent(uid)}`)).text()), getIdTokenResult: async () => ({ claims: {} }) } : null);
+  const makeUser = (uid) => (uid ? { uid, email: `${uid}@harness.local`, getIdToken: async () => (await (await fetch(`/harness/token?uid=${encodeURIComponent(uid)}`)).text()), getIdTokenResult: async () => ({ claims: {} }), delete: async () => { await fetch(`/harness/signup-delete?uid=${encodeURIComponent(uid)}`); auth.currentUser = null; } } : null);
   const auth = {
     currentUser: makeUser(getUid()),
     onAuthStateChanged(cb) { listeners.push(cb); setTimeout(() => cb(auth.currentUser), 0); return () => {}; },
     setPersistence: async () => {},
     async signOut() { try { localStorage.removeItem(uidKey); } catch (_) { /* ignore */ } auth.currentUser = null; listeners.forEach((cb) => cb(null)); },
+    async createUserWithEmailAndPassword(email, password) {
+      const r = await fetch(`/harness/signup?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
+      if (!r.ok) throw Object.assign(new Error("exists"), { code: "auth/email-already-in-use" });
+      const { uid } = await r.json();
+      auth.currentUser = makeUser(uid);
+      listeners.forEach((cb) => cb(auth.currentUser));
+      return { user: auth.currentUser };
+    },
     async signInWithEmailAndPassword(email, password) {
       const r = await fetch(`/harness/signin?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
       if (!r.ok) throw Object.assign(new Error("wrong password"), { code: "auth/wrong-password" });
@@ -102,6 +110,7 @@
     }
   };
   const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => SERVER_TS } });
-  const app = { name: "[DEFAULT]", options: { projectId: "demo-iaqar" } };
+  const app = { name: "[DEFAULT]", options: { projectId: "demo-iaqar", apiKey: "harness-api-key" } };
+  auth.app = app;
   window.firebase = { apps: [app], app: () => app, auth: Object.assign(() => auth, { Auth: { Persistence: { LOCAL: "local" } } }), firestore };
 })();

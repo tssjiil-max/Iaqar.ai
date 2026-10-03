@@ -181,5 +181,5 @@ export async function renderPublicOffice(root, target) {
     h("p", { style: { textAlign: "center", marginTop: "16px" } }, h("a", { href: "/", class: "os-btn ghost" }, ic("key"), "دخول المكتب")),
     h("footer", { class: "os-public-powered", "data-powered-by": "" },
       h("span", { text: "مدعوم بواسطة مكاتب عقارية ذكية" }),
-      h("a", { href: "/legacy.html#broker", "data-create-office": "", text: "أنشئ مكتبك العقاري" })));
+      h("a", { href: "/#/register", "data-create-office": "", text: "أنشئ مكتبك العقاري" })));
 }
