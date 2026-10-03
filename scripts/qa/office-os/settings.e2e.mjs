@@ -50,7 +50,7 @@ try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  check("hub lists the six settings pages", (await page.locator(".os-set-row").count()) === 6);
+  check("hub lists the seven settings pages", (await page.locator(".os-set-row").count()) === 7);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 

@@ -35,7 +35,7 @@ function managerOnly(container, title) {
 }
 
 function row(icon, title, hint, route) {
-  return h("button", { type: "button", class: "os-set-row", "data-settings": route, onClick: () => go(`settings/${route}`) },
+  return h("button", { type: "button", class: "os-set-row", "data-settings": route, onClick: () => go(route === "library" ? "library" : `settings/${route}`) },
     h("span", { class: "os-set-icon" }, ic(icon)),
     h("span", { class: "os-set-text" }, h("b", { text: title }), h("small", { text: hint })),
     ic("chev-left"));
@@ -50,6 +50,7 @@ export function renderSettingsHub(container) {
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
       row("send", "قنوات المكتب", "واتساب وتيليجرام — حالة الاتصال واستقبال الرسائل", "channels"),
+      row("archive", "مكتبة المكتب", "عقود الوساطة والصفقات ومستندات المكتب", "library"),
       row("bell", "الإشعارات", "أنواع الإشعارات التي يستقبلها المكتب وحسابك", "notifications"),
       row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")));
   return null;

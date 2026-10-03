@@ -3,7 +3,7 @@
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
- *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/settings[/profile|link|cooperation|channels|notifications|brokers]
+ *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/library · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -23,6 +23,7 @@ import { renderWorkspace } from "./views/workspace.js";
 import { renderSession } from "./views/session-view.js";
 import { renderSettings } from "./views/settings.js";
 import { renderNotificationSettings } from "./views/notification-settings.js";
+import { renderLibrary } from "./views/library.js";
 import { renderChannelSettings, renderCooperationSettings, renderLinkSettings, renderOfficeProfile, renderSettingsHub } from "./views/office-settings.js";
 import { renderCommunity } from "./views/community.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
@@ -52,6 +53,7 @@ function view() {
   if (section === "journey" && id) return { name: "journey", run: (el) => renderWorkspace(el, { journeyId: id, focus: query.get("focus") || "" }) };
   if (section === "session" && id) return { name: "session", run: (el) => renderSession(el, { journeyId: id }) };
   if (section === "community") return { name: "community", run: renderCommunity };
+  if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "settings") {
     const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };

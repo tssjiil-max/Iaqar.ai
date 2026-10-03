@@ -45,7 +45,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
     FIREBASE_PRIVATE_KEY_ID: "0123456789abcdef0123456789abcdef01234567",
     DEPLOYMENT_ENV: "staging",
     // In-memory media bucket (what R2 is in production) so share-card uploads work without a 503.
-    IAQAR_MEDIA: (() => { const objects = new Map(); return { put: async (key, bytes, meta = {}) => { objects.set(key, { bytes: Buffer.from(bytes), type: meta.httpMetadata?.contentType }); }, get: async (key) => (objects.has(key) ? { body: objects.get(key).bytes, writeHttpMetadata(h) { if (objects.get(key).type) h.set("content-type", objects.get(key).type); } } : null) }; })(),
+    IAQAR_MEDIA: (() => { const objects = new Map(); return { put: async (key, body, meta = {}) => { objects.set(key, { bytes: Buffer.from(await new Response(body).arrayBuffer()), type: meta.httpMetadata?.contentType }); }, get: async (key) => (objects.has(key) ? { body: objects.get(key).bytes, httpEtag: '"e2e"', writeHttpMetadata(h) { if (objects.get(key).type) h.set("content-type", objects.get(key).type); } } : null) }; })(),
     APP_ORIGIN: ""
   };
   const officeA = {
@@ -117,6 +117,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
         const allowed = /^offices\/[^/]+\/publicIntake\/[^/]+$/.test(docPath)
           || /^offices\/[^/]+\/officeSettings\/(assignment|deals|cooperation|notifications)$/.test(docPath)
           || /^offices\/[^/]+\/brokerSettings\/[^/]+$/.test(docPath)
+          || /^offices\/[^/]+\/library\/[^/]+$/.test(docPath)
           || /^(offices|publicOffices)\/[^/]+$/.test(docPath)
           || /^officeNameClaims\/[^/]+$/.test(docPath);
         if (!allowed) return send(403, "application/json", JSON.stringify({ error: "permission-denied" }));
