@@ -300,9 +300,11 @@ try {
     await anon.locator("[data-broker-form]").waitFor();
     check("live: «تسجيل وسيط جديد» opens the application form inside Office OS", (await anon.locator("[data-broker-form] input").count()) === 6 && !anon.url().includes("legacy"));
     await anon.goto(`${PREVIEW_URL}/#/register`);
+    await anon.reload(); // a hash-only change does not restart the app; the deep link is read at start
     await anon.locator("[data-broker-form]").waitFor();
     check("live: #/register opens the application form directly (nothing is submitted)", true);
     await anon.goto(`${PREVIEW_URL}/#/forgot`);
+    await anon.reload();
     await anon.locator("[data-forgot-form]").waitFor();
     check("live: #/forgot opens the password reset form directly (nothing is submitted)", true);
 
