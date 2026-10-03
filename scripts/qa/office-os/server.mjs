@@ -115,7 +115,8 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
         // The stub is not a rules engine; allow only the client writes the real rules allow
         // (managers: their own office profile, its public mirror, name claims, office settings).
         const allowed = /^offices\/[^/]+\/publicIntake\/[^/]+$/.test(docPath)
-          || /^offices\/[^/]+\/officeSettings\/(assignment|deals|cooperation)$/.test(docPath)
+          || /^offices\/[^/]+\/officeSettings\/(assignment|deals|cooperation|notifications)$/.test(docPath)
+          || /^offices\/[^/]+\/brokerSettings\/[^/]+$/.test(docPath)
           || /^(offices|publicOffices)\/[^/]+$/.test(docPath)
           || /^officeNameClaims\/[^/]+$/.test(docPath);
         if (!allowed) return send(403, "application/json", JSON.stringify({ error: "permission-denied" }));
