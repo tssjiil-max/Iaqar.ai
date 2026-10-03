@@ -296,10 +296,15 @@ try {
     anon.setDefaultTimeout(30000);
     await anon.goto(`${PREVIEW_URL}/`);
     await anon.locator("[data-broker-signup]").waitFor();
-    check("live: login screen offers «تسجيل وسيط جديد» (links to the application form)", (await anon.locator("[data-broker-signup]").getAttribute("href")) === "/legacy.html#broker");
-    await anon.goto(`${PREVIEW_URL}/legacy.html#broker`);
-    await anon.locator("#brokerForm").waitFor();
-    check("live: /legacy.html#broker opens the broker application form directly", true);
+    await anon.locator("[data-broker-signup]").click();
+    await anon.locator("[data-broker-form]").waitFor();
+    check("live: «تسجيل وسيط جديد» opens the application form inside Office OS", (await anon.locator("[data-broker-form] input").count()) === 6 && !anon.url().includes("legacy"));
+    await anon.goto(`${PREVIEW_URL}/#/register`);
+    await anon.locator("[data-broker-form]").waitFor();
+    check("live: #/register opens the application form directly (nothing is submitted)", true);
+    await anon.goto(`${PREVIEW_URL}/#/forgot`);
+    await anon.locator("[data-forgot-form]").waitFor();
+    check("live: #/forgot opens the password reset form directly (nothing is submitted)", true);
 
     await page.goto(`${PREVIEW_URL}/#/office`);
     await page.locator(".ref-office-tools").waitFor();
