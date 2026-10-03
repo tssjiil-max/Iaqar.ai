@@ -88,6 +88,9 @@ jobs:
       - name: Fresh broker onboarding (office, logout/login, offer, request, match, task)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/fresh-broker" node scripts/qa/office-os/fresh-broker.e2e.mjs
+      - name: Login screen flows (forgot password, broker application, public footer entry)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/auth-flows" node scripts/qa/office-os/auth-flows.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
