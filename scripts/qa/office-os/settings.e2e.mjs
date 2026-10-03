@@ -50,7 +50,7 @@ try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  check("hub lists the five settings pages", (await page.locator(".os-set-row").count()) === 5);
+  check("hub lists the six settings pages", (await page.locator(".os-set-row").count()) === 6);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 
@@ -227,6 +227,31 @@ try {
   await page.getByRole("button", { name: "رجوع" }).click();
   await page.locator(".os-set-row").first().waitFor();
   check("brokers page is reachable and returns to the hub", true);
+
+  // الإشعارات (moved from the old settings screen; same storage)
+  await page.goto(`${h.origin}/#/settings`);
+  await page.locator(".os-set-row").first().waitFor();
+  check("the settings hub has the «الإشعارات» row", (await page.locator('[data-settings="notifications"]').count()) === 1);
+  await page.locator('[data-settings="notifications"]').click();
+  await page.locator("[data-pref]").first().waitFor();
+  check("six notification kinds, all on by default", (await page.locator("[data-pref]").count()) === 6 && (await page.locator("[data-pref]:checked").count()) === 6);
+  await page.locator('[data-pref="matchNotifications"]').uncheck();
+  await page.locator("[data-pref-save]").click();
+  await page.locator(".os-alert.ok").waitFor();
+  const officePrefs = h.store.get(`offices/${OFFICE_A}/officeSettings/notifications`) || {};
+  const ownPrefs = h.store.get(`offices/${OFFICE_A}/brokerSettings/${OWNER_A}`) || {};
+  check("a manager saves the office default and their own preference", officePrefs.matchNotifications === false && officePrefs.messageNotifications === true && ownPrefs.matchNotifications === false && officePrefs.officeId === OFFICE_A);
+  check("the saved state says it applies to the office", (await page.locator(".os-alert.ok").innerText()).includes("لهذا المكتب"));
+  await page.reload();
+  await page.locator("[data-pref]").first().waitFor();
+  check("after reload the switch stays off", !(await page.locator('[data-pref="matchNotifications"]').isChecked()) && (await page.locator("[data-pref]:checked").count()) === 5);
+  await shot(page, "07-notifications");
+  const memberPage = await openAs(BROKER_A2, "settings/notifications");
+  await memberPage.locator("[data-pref]").first().waitFor();
+  await memberPage.locator('[data-pref="messageNotifications"]').uncheck();
+  await memberPage.locator("[data-pref-save]").click();
+  await memberPage.locator(".os-alert.ok").waitFor();
+  check("a non-manager saves only their own preference and is told so", (h.store.get(`offices/${OFFICE_A}/brokerSettings/${BROKER_A2}`) || {}).messageNotifications === false && (h.store.get(`offices/${OFFICE_A}/officeSettings/notifications`) || {}).messageNotifications === true && (await memberPage.locator(".os-alert.ok").innerText()).includes("لحسابك فقط"));
 
   // a broker without manager rights
   const broker = await openAs(BROKER_A2, "settings/profile");

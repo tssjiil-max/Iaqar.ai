@@ -650,3 +650,8 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 
 .os-public-powered { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; margin-top: 10px; padding: 10px 8px 2px; border-top: 1px solid var(--brand-line, #DCE8EB); font-size: .78rem; color: #6b8289; }
 .os-public-powered a { color: var(--brand-primary, #03677A); font-weight: 700; text-decoration: none; }
+
+.os-pref-list { display: grid; gap: 2px; margin-top: 8px; }
+.os-pref-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 2px; border-bottom: 1px solid var(--brand-line, #DCE8EB); cursor: pointer; }
+.os-pref-row:last-child { border-bottom: 0; }
+.os-pref-row input { width: 22px; height: 22px; accent-color: var(--brand-primary, #03677A); flex: none; }
