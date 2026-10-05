@@ -59,6 +59,24 @@ export async function journeysForRecord(officeId, recordId) {
   return [...map.values()];
 }
 
+/** Closed deals (won or lost) of this office — member read by rules, newest handled by the view. */
+export async function listClosedJourneys(officeId, limit = 300) {
+  const snap = await office(officeId).collection("journeys").where("status", "in", ["CLOSED_WON", "CLOSED_LOST"]).limit(limit).get();
+  return snap.docs.map(docData);
+}
+
+/** Latest inbound channel messages of this office (member read by rules; Worker-only writes). */
+export function watchInbox(officeId, cb, onError, limit = 100) {
+  return listen(office(officeId).collection("inbox").orderBy("createdAt", "desc").limit(limit),
+    (snap) => cb(snap.docs.map(docData)), onError);
+}
+
+/** Latest audit entries of this office (member read by rules; Worker-only writes). */
+export async function listAuditLog(officeId, limit = 150) {
+  const snap = await office(officeId).collection("auditLogs").orderBy("createdAt", "desc").limit(limit).get();
+  return snap.docs.map(docData);
+}
+
 export async function listMembers(officeId) {
   const snap = await office(officeId).collection("members").limit(100).get();
   return snap.docs.map(docData);

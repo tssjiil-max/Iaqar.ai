@@ -4,6 +4,7 @@
  * It never mutates Match / Negotiation / Viewing / Deal / Cooperation state directly.
  */
 
+import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
 import {
   TELEGRAM_INTAKE_KIND,
   normalizeTelegramInbound,
@@ -215,6 +216,36 @@ export async function handleTelegramCanonicalWebhook({ request, env, requestId =
       }
     });
     return { ok: true, ignored: true, status: 200, officeId, inboxId, requestId };
+  }
+
+  // A plain text that is clearly not a property (greeting, short question, deal follow-up)
+  // stays in the office inbox with its class; the broker decides what to do with it.
+  if (envelope.kind === TELEGRAM_INTAKE_KIND.TEXT && envelope.text) {
+    let messageKind = classifyInboundMessage(envelope.text);
+    try {
+      await helpers.setFirestoreDocument({
+        projectId: helpers.projectId,
+        segments: ["offices", officeId, "inbox", inboxId],
+        accessToken: helpers.accessToken,
+        fields: {
+          messageClass: helpers.firestoreString(messageKind.messageClass),
+          messageClassReason: helpers.firestoreString(messageKind.reason),
+          ...(messageKind.autoConvert ? {} : {
+            processingState: helpers.firestoreString("kept"),
+            status: helpers.firestoreString("kept"),
+            isProcessed: helpers.firestoreBoolean(true),
+            updatedAt: helpers.firestoreTimestamp(new Date())
+          })
+        }
+      });
+    } catch (error) {
+      // The class is a label, never a gate on its own: if it cannot be saved the message is processed as usual.
+      console.warn("[telegram-intake] message class not saved", error?.code || error?.message);
+      messageKind = { ...messageKind, autoConvert: true };
+    }
+    if (!messageKind.autoConvert) {
+      return { ok: true, kept: true, messageClass: messageKind.messageClass, status: 200, officeId, inboxId, requestId };
+    }
   }
 
   const parts = [];

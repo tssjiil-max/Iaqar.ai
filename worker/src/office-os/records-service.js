@@ -5,6 +5,10 @@
  * Removal never hard-deletes: a record linked to an opportunity/proposals is archived,
  * an unlinked one is soft-deleted; both stop taking part in new matches. A record in an
  * open opportunity cannot be removed until that opportunity is closed.
+ *
+ * «إيقاف» and «أرشفة» both take the record out of matching through the lifecycle the engine
+ * already treats as inactive (ARCHIVED); `archiveKind` tells a temporary pause from an
+ * archive. «استئناف / إعادة للنشطة» puts it back and re-runs matching. Nothing is deleted.
  */
 
 import {
@@ -14,6 +18,7 @@ import { compatibilityLevel } from "../../../public/os/domain/match-review-domai
 import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESHOLD } from "../matching-engine.js";
 import { recordFailure } from "./journey-service.js";
+import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
@@ -60,6 +65,11 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
   });
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);
+  await writeAudit(ctx, {
+    officeId, action: existing ? AUDIT_ACTIONS.RECORD_UPDATED : AUDIT_ACTIONS.RECORD_CREATED, actorUid: actor.uid,
+    entityType: "record", entityId: id, key: `v${fields.version}`,
+    details: { kind: check.value.kind, purpose: check.value.purpose, propertyType: check.value.propertyType, district: check.value.district, price: check.value.price }
+  });
   const matching = await runMatchingSafely(ctx, officeId, id);
   return { ok: true, recordId: id, created: !existing, ...matching };
 }
@@ -82,9 +92,50 @@ export async function removeRecord(ctx, { actor, officeId, recordId, reason = ""
   const now = ctx.now();
   const mode = journeys.length ? "archived" : "deleted";
   await ctx.store.set(segments, mode === "archived"
-    ? { lifecycleStatus: LIFECYCLE.ARCHIVED, archivedAt: now.toISOString(), archivedBy: actor.uid, archiveReason: String(reason || "").slice(0, 200), updatedAt: now, version: Number(record.version || 1) + 1 }
+    ? { lifecycleStatus: LIFECYCLE.ARCHIVED, archiveKind: "ARCHIVED", pausedAt: null, archivedAt: now.toISOString(), archivedBy: actor.uid, archiveReason: String(reason || "").slice(0, 200), updatedAt: now, version: Number(record.version || 1) + 1 }
     : { lifecycleStatus: LIFECYCLE.DELETED, deletedAt: now.toISOString(), deletedBy: actor.uid, deletionReason: String(reason || "").slice(0, 200), updatedAt: now, version: Number(record.version || 1) + 1 });
+  await writeAudit(ctx, {
+    officeId, action: mode === "archived" ? AUDIT_ACTIONS.RECORD_ARCHIVED : AUDIT_ACTIONS.RECORD_DELETED, actorUid: actor.uid,
+    entityType: "record", entityId: recordId, key: `v${Number(record.version || 1) + 1}`,
+    details: { requested: "delete", linkedDeals: journeys.length, reason: String(reason || "").slice(0, 200) }
+  });
   // Inactive path of the matching pipeline supersedes its matches and expires reviews.
+  await runMatchingSafely(ctx, officeId, recordId);
+  return { ok: true, mode };
+}
+
+/**
+ * «إيقاف» (kind PAUSED) or «أرشفة» (kind ARCHIVED): the record stays, with its history, but
+ * leaves matching. Refused while it is inside an open deal, like deletion.
+ */
+export async function holdRecord(ctx, { actor, officeId, recordId, kind = "ARCHIVED", reason = "" }) {
+  const hold = String(kind || "").toUpperCase() === "PAUSED" ? "PAUSED" : "ARCHIVED";
+  const segments = ["offices", officeId, "opportunities", recordId];
+  const record = await ctx.store.get(segments);
+  if (!record || String(record.officeId || officeId) !== officeId) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
+  const lifecycle = lifecycleOf(record);
+  if (lifecycle === LIFECYCLE.DELETED) throw ctx.deps.appError("record_deleted", 409, "السجل محذوف");
+  const mode = hold === "PAUSED" ? "paused" : "archived";
+  if (lifecycle === LIFECYCLE.ARCHIVED && (String(record.archiveKind || "ARCHIVED").toUpperCase() === "PAUSED" ? "PAUSED" : "ARCHIVED") === hold) {
+    return { ok: true, mode, duplicate: true };
+  }
+  const journeys = await linkedJourneys(ctx, officeId, recordId);
+  if (journeys.some(isJourneyOpen)) {
+    throw ctx.deps.appError("record_in_open_journey", 409, hold === "PAUSED"
+      ? "السجل مرتبط بفرصة مفتوحة — أغلق الفرصة أولًا ثم أوقفه"
+      : "السجل مرتبط بفرصة مفتوحة — أغلق الفرصة أولًا ثم أرشفه");
+  }
+  const now = ctx.now();
+  const version = Number(record.version || 1) + 1;
+  await ctx.store.set(segments, {
+    lifecycleStatus: LIFECYCLE.ARCHIVED, archiveKind: hold,
+    archivedAt: now.toISOString(), archivedBy: actor.uid, archiveReason: String(reason || "").slice(0, 200),
+    pausedAt: hold === "PAUSED" ? now.toISOString() : null, updatedAt: now, version
+  });
+  await writeAudit(ctx, {
+    officeId, action: hold === "PAUSED" ? AUDIT_ACTIONS.RECORD_PAUSED : AUDIT_ACTIONS.RECORD_ARCHIVED, actorUid: actor.uid,
+    entityType: "record", entityId: recordId, key: `v${version}`, details: { reason: String(reason || "").slice(0, 200) }
+  });
   await runMatchingSafely(ctx, officeId, recordId);
   return { ok: true, mode };
 }
@@ -95,7 +146,8 @@ export async function restoreRecord(ctx, { actor, officeId, recordId }) {
   if (!record) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (lifecycleOf(record) !== LIFECYCLE.ARCHIVED) return { ok: true, duplicate: true };
   const now = ctx.now();
-  await ctx.store.set(segments, { lifecycleStatus: LIFECYCLE.ACTIVE, restoredAt: now.toISOString(), restoredBy: actor.uid, archivedAt: null, updatedAt: now, version: Number(record.version || 1) + 1 });
+  await ctx.store.set(segments, { lifecycleStatus: LIFECYCLE.ACTIVE, archiveKind: null, pausedAt: null, restoredAt: now.toISOString(), restoredBy: actor.uid, archivedAt: null, updatedAt: now, version: Number(record.version || 1) + 1 });
+  await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.RECORD_RESTORED, actorUid: actor.uid, entityType: "record", entityId: recordId, key: `v${Number(record.version || 1) + 1}` });
   const matching = await runMatchingSafely(ctx, officeId, recordId);
   return { ok: true, ...matching };
 }

@@ -19,12 +19,13 @@ import { PROPOSAL_STATUS, RECIPIENT, RECIPIENT_LABEL, sendStateLabel, replyLabel
 import { recordView, recordTitle } from "../domain/records-domain.js";
 import { formatDateTime, formatPrice, relativeAgo, toNumber } from "../domain/format-domain.js";
 import { openComposer, proposalPreparedPanel } from "./composer.js";
+import { DOC_STATUS, DOC_STATUS_LABEL, DOC_STATUS_ORDER, documentChecklist, documentSummary, documentSummaryText } from "../domain/deal-documents-domain.js";
 
 const EVENT_ICON = {
   MATCH_APPROVED: "doc-check", PROPOSAL_CREATED: "note", WHATSAPP_OPENED: "whatsapp", MESSAGE_SHARED: "send", PARTY_REPLY: "reply",
   BROKER_NOTE: "edit3", CALL_OUTCOME: "phone", VIEWING_CONFIRMED: "calendar", VIEWING_RESULT: "eye",
   STAGE_CHANGED: "flag", PAUSED: "pause", RESUMED: "play", CLOSED_WON: "handshake", CLOSED_LOST: "x-circle",
-  PROPOSAL_SUPERSEDED: "refresh", FOLLOW_UP_DONE: "check",
+  PROPOSAL_SUPERSEDED: "refresh", FOLLOW_UP_DONE: "check", DOCUMENT_UPDATED: "note",
   SESSION_MOVE: "handshake", SESSION_BROKER_MESSAGE: "send", SESSION_OPENED: "link", SESSION_LINK: "link", SESSION_RESOLVED: "check"
 };
 const SOURCE_LABEL = { [EVENT_SOURCE.REPLY_LINK]: "عبر رابط الرد", [EVENT_SOURCE.BROKER_NOTE]: "سجّله الوسيط", [EVENT_SOURCE.SYSTEM]: "النظام", [EVENT_SOURCE.BROKER]: "الوسيط" };
@@ -74,7 +75,11 @@ function viewingResultAction(journey, draft) {
   const nextRow = h("div", { class: "os-meta-row", hidden: true });
   const options = h("div", { class: "os-options" });
   const save = h("button", { type: "button", class: "os-btn primary block", disabled: true }, ic("send"), "حفظ النتيجة ومتابعة الصفقة");
-  const NEXT = { AGREEMENT_FOLLOW_UP: "متابعة إجراءات الاتفاق", SEND_PROPOSAL: "العودة للتفاوض وتجهيز مقترح", FOLLOW_UP: "متابعة لاحقة" };
+  const NEXT = {
+    AGREEMENT_FOLLOW_UP: "المستندات ثم إتمام الصفقة", REOPEN_PRICE: "العودة للتفاوض على السعر", CLOSE_MATCH: "إغلاق هذه المطابقة (العرض والطلب يبقيان)",
+    RESCHEDULE_VIEWING: "تحديد موعد معاينة جديد", FOLLOW_UP_RESULT: "متابعة الطرف ثم تسجيل النتيجة بعد يومين",
+    SEND_PROPOSAL: "العودة للتفاوض وتجهيز مقترح", FOLLOW_UP: "متابعة لاحقة"
+  };
   for (const option of VIEWING_RESULTS) {
     const b = h("button", { type: "button", class: `os-option${option.id === "not_suitable" ? " negative" : option.id === "interested" ? " positive" : ""}`, "aria-pressed": "false", "data-result": option.id }, ic(option.icon), option.label);
     const select = () => {
@@ -162,7 +167,10 @@ function nowAction(journey, proposals, offer, request, draft) {
     return card;
   }
   if (type === "DEAL_ACTION") {
+    const docs = documentSummary(documentChecklist(journey));
     append(card, title("متابعة إجراءات الاتفاق"), h("p", { class: "os-sub", text: action.reason }),
+      h("button", { type: "button", class: "os-meta-row os-docs-link", "data-docs-link": "", onClick: () => { const panel = document.getElementById("documents"); if (panel) { panel.open = true; panel.scrollIntoView({ block: "start", behavior: "smooth" }); } } },
+        ic("contract"), h("span", { text: docs.complete ? "المستندات المطلوبة مكتملة" : `المستندات: ${documentSummaryText(docs)}` })),
       h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("button", { type: "button", class: "os-btn primary", onClick: () => composer("AGREEMENT_STEPS") }, ic("send"), "متابعة خطوات الاتفاق"),
         h("button", { type: "button", class: "os-btn secondary", onClick: () => openCloseWon(journey) }, ic("handshake"), "إتمام الصفقة")));
@@ -184,6 +192,51 @@ function nowAction(journey, proposals, offer, request, draft) {
       h("button", { type: "button", class: "os-btn secondary", onClick: () => composer("VIEWING") }, ic("calendar"), "تحديد معاينة"),
       h("button", { type: "button", class: "os-btn secondary", onClick: () => composer("INFO_REQUEST") }, ic("question"), "طلب معلومات")));
   return card;
+}
+
+/**
+ * «مستندات الصفقة»: المطلوب · الموجود · الناقص · حالة المراجعة. Open by default in the agreement
+ * stage; read-only once the deal is closed. Every change is saved by the Worker and logged.
+ */
+function documentsCard(journey) {
+  const jid = journey.journeyId || journey.id;
+  const open = isJourneyOpen(journey);
+  const rows = documentChecklist(journey);
+  const summary = documentSummary(rows);
+  const update = (button, body, success) => runAction(button, () => api("/os/journeys/documents", { officeId: session.officeId, journeyId: jid, ...body }), { success });
+  const list = h("ul", { class: "os-docs", "data-docs": "" }, rows.map((row) => {
+    const select = h("select", { class: "os-select os-doc-status", "aria-label": `حالة ${row.label}`, "data-doc-status": row.id, disabled: open ? null : true },
+      DOC_STATUS_ORDER.map((status) => h("option", { value: status, text: DOC_STATUS_LABEL[status] })));
+    select.value = row.status;
+    select.addEventListener("change", async () => {
+      const saved = await update(select, { documentId: row.id, status: select.value }, `${row.label}: ${DOC_STATUS_LABEL[select.value]}`);
+      // A change that was not saved is not left on screen.
+      if (saved === undefined) select.value = row.status;
+    });
+    const remove = row.custom && open ? h("button", { type: "button", class: "os-icon-btn", "aria-label": `حذف ${row.label}`, "data-doc-remove": row.id }, ic("trash")) : null;
+    remove?.addEventListener("click", () => update(remove, { documentId: row.id, remove: true }, "تم حذف المستند من القائمة"));
+    return h("li", { class: `os-doc is-${row.status.toLowerCase()}`, "data-doc": row.id, "data-doc-state": row.status },
+      h("span", { class: "os-doc-mark" }, ic(row.status === DOC_STATUS.REVIEWED ? "doc-check" : row.status === DOC_STATUS.RECEIVED ? "check" : row.status === DOC_STATUS.NOT_REQUIRED ? "x" : "hourglass")),
+      h("span", { class: "os-doc-copy" }, h("b", { text: row.label }),
+        h("small", { text: [row.partyLabel, row.optional && row.status !== DOC_STATUS.NOT_REQUIRED ? "اختياري" : "", row.note].filter(Boolean).join(" · ") })),
+      select, remove);
+  }));
+  let adder = null;
+  if (open) {
+    const input = h("input", { class: "os-input", name: "documentLabel", maxlength: "80", placeholder: "اسم مستند إضافي", "aria-label": "اسم مستند إضافي" });
+    const add = h("button", { type: "button", class: "os-btn secondary", "data-doc-add": "" }, ic("plus"), "إضافة");
+    add.addEventListener("click", async () => {
+      const res = await update(add, { label: input.value }, "تمت إضافة المستند");
+      if (res?.ok) input.value = "";
+    });
+    adder = h("div", { class: "os-doc-add" }, input, add);
+  }
+  return h("details", { class: "os-card os-documents", "data-panel": "documents", id: "documents", open: journey.stage === STAGE.AGREEMENT || !open },
+    h("summary", { class: "os-h2" }, ic("contract"), "مستندات الصفقة",
+      h("span", { class: `os-badge${summary.complete ? " ok" : " muted"}`, "data-docs-badge": "", text: summary.complete ? "مكتملة" : `الناقص ${summary.missing}` }), ic("chev-down")),
+    h("p", { class: "os-sub os-docs-summary", "data-docs-summary": "", text: documentSummaryText(summary) }),
+    list, adder,
+    open ? null : h("p", { class: "os-sub", text: "الصفقة مغلقة — المستندات للعرض فقط." }));
 }
 
 function proposalsCard(journey, proposals) {
@@ -215,7 +268,9 @@ function openCloseWon(journey) {
   const price = h("input", { class: "os-input", inputmode: "numeric", placeholder: "السعر النهائي (اختياري)" });
   const save = h("button", { type: "button", class: "os-btn primary block" }, ic("handshake"), "تأكيد إتمام الصفقة");
   save.addEventListener("click", async () => {
-    const ok = await confirmDialog({ title: "إتمام الصفقة؟", text: "هذا إجراء نهائي يُغلق الفرصة كصفقة تمت، ويؤرشفها مع حفظ سجلها.", confirmLabel: "إتمام" });
+    const docs = documentSummary(documentChecklist(journey));
+    const missing = docs.missing ? ` مستندات ناقصة (${docs.missing}): ${docs.missingLabels.join("، ")}.` : "";
+    const ok = await confirmDialog({ title: docs.missing ? "إتمام الصفقة مع مستندات ناقصة؟" : "إتمام الصفقة؟", text: `هذا إجراء نهائي يُغلق الفرصة كصفقة تمت، ويؤرشفها مع حفظ سجلها.${missing}`, confirmLabel: "إتمام" });
     if (!ok) return;
     const res = await runAction(save, () => api("/os/journeys/close", { officeId: session.officeId, journeyId: journey.journeyId || journey.id, outcome: "WON", finalPrice: toNumber(price.value) }), { success: "تم إتمام الصفقة" });
     if (res?.ok) sheet.close();
@@ -336,6 +391,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
       h("div", { class: "os-card os-parties-card" },
         h("div", { class: "os-parties" }, partyCard(RECIPIENT.OWNER, recordById(journey.offerId), journey), partyCard(RECIPIENT.CLIENT, recordById(journey.requestId), journey))),
       nowAction(journey, proposals, offer, request, draft),
+      documentsCard(journey),
       stagePath(journey),
       communication,
       timelineCard(events),

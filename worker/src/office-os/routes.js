@@ -6,14 +6,17 @@
 
 import { createStore } from "./store.js";
 import { resolveActor } from "./permissions.js";
-import { findCandidates, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
+import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
 import {
   acknowledgeReply, addBrokerNote, closeJourney, completeFollowUp, confirmViewing, decideMatchReview,
-  moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney
+  moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney, updateDealDocument
 } from "./journey-service.js";
 import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
+import { arrangeRecordImages } from "./record-media-service.js";
+import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
+import { convertInboxMessage } from "./inbox-service.js";
 import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -27,6 +30,9 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
+  "/os/records/pause": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "PAUSED", reason: b.reason }),
+  "/os/records/archive": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "ARCHIVED", reason: b.reason }),
+  "/os/records/media": (ctx, b, actor) => arrangeRecordImages(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), order: Array.isArray(b.order) ? b.order.slice(0, 40).map(text) : null, remove: Array.isArray(b.remove) ? b.remove.slice(0, 40).map(text) : null }),
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
   "/os/review/decide": (ctx, b, actor) => decideMatchReview(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
@@ -40,6 +46,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/journeys/ack-reply": (ctx, b, actor) => acknowledgeReply(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), proposalId: text(b.proposalId) }),
   "/os/journeys/viewing/confirm": (ctx, b, actor) => confirmViewing(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/journeys/viewing/result": (ctx, b, actor) => recordViewingResult(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), result: text(b.result), note: b.note }),
+  "/os/journeys/documents": (ctx, b, actor) => updateDealDocument(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), documentId: text(b.documentId), status: text(b.status), note: b.note, label: b.label, remove: b.remove === true }),
   "/os/journeys/stage": (ctx, b, actor) => moveStage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), stage: text(b.stage) }),
   "/os/journeys/pause": (ctx, b, actor) => pauseJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), resumeInDays: b.resumeInDays, reason: b.reason }),
   "/os/journeys/resume": (ctx, b, actor) => resumeJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
@@ -50,7 +57,13 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
-  "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) })
+  "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
+  // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).
+  "/os/channels/status": (ctx) => channelsStatus(ctx, { officeId: ctx.officeId }),
+  "/os/channels/telegram/link": (ctx, b, actor) => startTelegramLink(ctx, { actor, officeId: ctx.officeId }),
+  "/os/channels/telegram/unlink": (ctx, b, actor) => unlinkTelegram(ctx, { actor, officeId: ctx.officeId }),
+  "/os/channels/whatsapp/disconnect": (ctx, b, actor) => disconnectWhatsapp(ctx, { actor, officeId: ctx.officeId }),
+  "/os/inbox/convert": (ctx, b, actor) => convertInboxMessage(ctx, { actor, officeId: ctx.officeId, inboxId: text(b.inboxId) })
 });
 
 function text(value) {
@@ -86,6 +99,8 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       deps: boundDeps,
       store: createStore(boundDeps, { projectId, accessToken }),
       officeId,
+      // Server-side configuration only (which integrations are set up); never returned to a client as is.
+      env,
       appOrigin: deps.resolveAppOrigin(env),
       now: () => new Date()
     };

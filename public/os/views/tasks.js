@@ -10,10 +10,10 @@ import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { runAction, openSheet } from "../core/ui.js";
-import { getDoc } from "../core/live.js";
-import { TASK_FILTERS, filterTasks, parseMeta, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
+import { getDoc, listClosedJourneys } from "../core/live.js";
+import { CLOSED_STEP, TASK_FILTERS, closedDealModel, closedDealsFor, countTasksByStep, filterTasks, filterTasksByStep, parseMeta, parsePathStep, sortClosedDeals, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
-import { formatDateTime, relativeAgo } from "../domain/format-domain.js";
+import { formatDateTime, formatPrice, relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
 import { proposalPreparedPanel } from "./composer.js";
 import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
@@ -24,6 +24,14 @@ export function countLabel(n) {
   if (n === 2) return "مهمتان";
   if (n <= 10) return `${n} مهام`;
   return `${n} مهمة`;
+}
+
+export function dealCountLabel(n) {
+  if (n === 0) return "لا صفقات مغلقة";
+  if (n === 1) return "صفقة واحدة";
+  if (n === 2) return "صفقتان";
+  if (n <= 10) return `${n} صفقات`;
+  return `${n} صفقة`;
 }
 
 function matchReviewModel(task, model) {
@@ -102,31 +110,99 @@ function taskCard(task, now) {
   return card;
 }
 
-export function renderTasks(container, { filter = "all" } = {}) {
+/** One closed deal in the «إغلاق» stage: what closed, how, when — opens the deal with its full history. */
+function closedDealCard(journey) {
+  const model = closedDealModel(journey);
+  const open = h("button", { type: "button", class: "os-btn secondary", "data-open-deal": model.id }, h("span", { text: "فتح الصفقة" }), ic("chev-left"));
+  open.addEventListener("click", () => go(`journey/${model.id}`));
+  return h("article", { class: "os-card ref-task-card ref-closed-card", "data-closed-deal": model.id, "data-won": String(model.won), onClick: (e) => { if (!e.target.closest("button,a")) go(`journey/${model.id}`); } },
+    photo({ propertyType: model.propertyType }),
+    h("div", { class: "ref-task-copy" },
+      h("h3", { text: model.statusLabel }),
+      h("p", { text: [model.propertyType, model.location].filter(Boolean).join(" · ") }),
+      model.finalPrice ? h("b", { class: "ref-contact" }, ic("coins"), formatPrice(model.finalPrice)) : model.reason ? h("p", { text: model.reason }) : null),
+    h("div", { class: "ref-task-actions" },
+      h("div", { class: "ref-task-meta" }, h("span", { class: "ref-status step-5" + (model.won ? " is-won" : " is-lost"), text: STEPS[CLOSED_STEP][0] }),
+        model.closedAt ? h("span", { class: "ref-time" }, ic("clock"), formatDateTime(model.closedAt).split(" · ")[0]) : null),
+      h("div", {}, open)));
+}
+
+export function renderTasks(container, { filter = "all", step = null } = {}) {
   let active = TASK_FILTERS.some((f) => f.id === filter) ? filter : "all";
+  let activeStep = parsePathStep(step);
+  let closed = null;        // null = not loaded yet, [] = none
+  let closedError = "";
   const countPill = h("span", { class: "os-count" });
   const chipsRow = h("div", { class: "os-chips", role: "group", "aria-label": "تصفية المهام" });
   const list = h("div", { class: "os-task-list", "aria-live": "polite" });
+  const strip = h("div", { "data-path-strip": "" });
+  const stageHead = h("div", { class: "ref-stage-head", "data-stage-head": "", hidden: true });
+
+  const writeRoute = () => {
+    const params = new URLSearchParams();
+    if (active !== "all") params.set("filter", active);
+    if (activeStep !== null) params.set("step", String(activeStep));
+    const query = params.toString();
+    history.replaceState(null, "", `#/tasks${query ? `?${query}` : ""}`);
+  };
+  const selectStep = (next) => { activeStep = next; writeRoute(); draw(); };
+
+  const loadClosed = () => {
+    listClosedJourneys(session.officeId).then((rows) => { closed = sortClosedDeals(closedDealsFor(rows, { uid: session.user?.uid, isManager: session.isManager })); closedError = ""; draw(); })
+      .catch(() => { closed = closed || []; closedError = "تعذر تحميل الصفقات المغلقة"; draw(); });
+  };
 
   const draw = () => {
     const now = new Date();
     const mine = state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
+    const inFilter = filterTasks(mine, active, now);
+    const counts = [...countTasksByStep(inFilter), closed ? closed.length : 0];
+    clear(strip);
+    strip.append(stepStrip({ active: activeStep, counts, onSelect: selectStep }));
+
     clear(chipsRow);
     for (const f of TASK_FILTERS) {
       const n = filterTasks(mine, f.id, now).length;
       chipsRow.append(h("button", {
         type: "button", class: "os-chip", "aria-pressed": String(active === f.id),
-        onClick: () => { active = f.id; history.replaceState(null, "", `#/tasks?filter=${f.id}`); draw(); }
+        onClick: () => { active = f.id; writeRoute(); draw(); }
       }, f.label, n ? h("span", { class: "n", text: String(n) }) : null));
     }
-    const shown = sortTasks(filterTasks(mine, active, now), now);
-    countPill.textContent = countLabel(shown.length);
+
+    clear(stageHead);
+    stageHead.hidden = activeStep === null;
     clear(list);
+
+    if (activeStep === CLOSED_STEP) {
+      const n = closed ? closed.length : 0;
+      countPill.textContent = dealCountLabel(n);
+      append(stageHead, h("b", { text: `مرحلة «${STEPS[CLOSED_STEP][0]}» — ${dealCountLabel(n)}` }),
+        h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
+      if (closed === null) { append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
+      if (closedError) append(list, h("div", { class: "os-alert bad", text: closedError }));
+      if (!closed.length && !closedError) {
+        append(list, h("div", { class: "os-card" }, emptyState("check-circle", "لا توجد صفقات مغلقة بعد", "عند إتمام صفقة أو إغلاقها تظهر هنا مع تاريخها الكامل.")));
+        return;
+      }
+      for (const journey of closed) append(list, closedDealCard(journey));
+      return;
+    }
+
+    const shown = sortTasks(filterTasksByStep(inFilter, activeStep), now);
+    countPill.textContent = countLabel(shown.length);
+    if (activeStep !== null) {
+      append(stageHead, h("b", { text: `مرحلة «${STEPS[activeStep][0]}» — ${countLabel(shown.length)}` }),
+        h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
+    }
     if (!state.tasksReady) {
       append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
       return;
     }
     if (!shown.length) {
+      if (activeStep !== null) {
+        append(list, h("div", { class: "os-card" }, emptyState("check-circle", `لا شيء في مرحلة «${STEPS[activeStep][0]}» الآن`, STEPS[activeStep][2])));
+        return;
+      }
       append(list, h("div", { class: "os-card" }, emptyState("check-circle",
         active === "waiting" ? "لا شيء بانتظار رد" : "لا توجد مهام الآن",
         active === "waiting" ? "المقترحات المرسلة تظهر هنا حتى يصل الرد." : "أضف عروضًا وطلبات، وعند ظهور مطابقة ستصلك مهمة المراجعة هنا.",
@@ -136,9 +212,17 @@ export function renderTasks(container, { filter = "all" } = {}) {
     for (const task of shown) append(list, taskCard(task, now));
   };
 
-  append(container, stepStrip(),h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow),list);
+  append(container, strip, h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow), stageHead, list);
   draw();
-  const off = subscribe((kind) => { if (kind === "tasks" || kind === "records") draw(); });
+  loadClosed();
+  // A deal that closes while this page is open leaves the task list; refresh the closed list then.
+  let openDeals = state.tasks.length;
+  const off = subscribe((kind) => {
+    if (kind !== "tasks" && kind !== "records") return;
+    if (kind === "tasks" && state.tasks.length < openDeals) loadClosed();
+    openDeals = state.tasks.length;
+    draw();
+  });
   const timer = setInterval(draw, 60_000);
   return () => { off(); clearInterval(timer); };
 }

@@ -72,7 +72,7 @@ try {
 
   step = "2b: office home is clean (no placeholder grid of extras) and settings keep the user in the new UI";
   check("home: no «مكتبي» title and no «أدوات إضافية» block", !(await page.locator("body").innerText()).includes("مكتبي") && (await page.locator(".ref-office-extras-wrap").count()) === 0);
-  check("home: every remaining tool card is clearly disabled («قريبًا»)", (await page.locator(".ref-office-tool:not([aria-disabled='true'])").count()) === 0);
+  check("home: every tool card is a working button (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 6 && (await page.locator(".ref-office-tool[aria-disabled='true'], .ref-office-soon").count()) === 0);
   await page.locator(".ref-menu, [aria-label='القائمة والإعدادات']").first().click();
   await page.getByRole("button", { name: "مشاركة رابط المكتب" }).click();
   await page.locator(".os-toast, .os-sheet").first().waitFor();

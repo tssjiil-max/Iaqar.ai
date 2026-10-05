@@ -48,7 +48,7 @@ const bucket = new Map();
 h.env.IAQAR_MEDIA = { put: async (key, bytes, meta) => { bucket.set(key, { bytes: Buffer.from(bytes), meta }); }, get: async (key) => (bucket.has(key) ? { body: bucket.get(key).bytes, writeHttpMetadata(h) { const t = bucket.get(key).meta?.httpMetadata?.contentType; if (t) h.set("content-type", t); } } : null) };
 try {
   const page = await openAs(OWNER_A, "settings");
-  await page.route("**/worker/office/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", status: "connected", displayPhoneNumber: "••••••1234", inboundMessagesToday: 3, inboundOnly: true }, { id: "telegram", status: "disconnected", inboundOnly: true }] }) }));
+  await page.route("**/worker/os/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", state: "CONNECTED", stateLabel: "مرتبط", signupEnabled: true, actions: ["reconnect", "disconnect"], number: "••••••1234", inboundToday: 3, webhookReady: true, webhookLabel: "يعمل — تصل الرسائل", onboardingMode: "coexistence", detail: "", note: "" }, { id: "telegram", state: "DISCONNECTED", stateLabel: "غير مرتبط", configured: true, actions: ["connect"], detail: "", botUsername: "iaqar_bot", note: "" }] }) }));
   await page.locator(".os-set-row").first().waitFor();
   check("hub lists the seven settings pages", (await page.locator(".os-set-row").count()) === 7);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
@@ -215,7 +215,8 @@ try {
   // قنوات المكتب
   await page.goto(`${h.origin}/#/settings/channels`);
   await page.locator("[data-channel]").first().waitFor();
-  check("channels page shows WhatsApp connected and Telegram not connected", (await page.locator('[data-channel="whatsapp"] [data-channel-status]').getAttribute("data-channel-status")) === "connected" && (await page.locator('[data-channel="telegram"] [data-channel-status]').getAttribute("data-channel-status")) === "disconnected");
+  check("channels page shows WhatsApp connected and Telegram not connected", (await page.locator('[data-channel="whatsapp"] [data-channel-status]').getAttribute("data-channel-status")) === "CONNECTED" && (await page.locator('[data-channel="telegram"] [data-channel-status]').getAttribute("data-channel-status")) === "DISCONNECTED");
+  check("each channel offers its own link actions (connect · reconnect · disconnect)", (await page.locator('[data-channel="whatsapp"] [data-channel-action="reconnect"]').count()) === 1 && (await page.locator('[data-channel="whatsapp"] [data-channel-action="disconnect"]').count()) === 1 && (await page.locator('[data-channel="telegram"] [data-channel-action="connect"]').count()) === 1);
   check("channels page states ASSISTED mode and no automatic sending", (await page.locator("[data-automation]").getAttribute("data-automation")) === "ASSISTED" && (await page.locator("[data-automation]").innerText()).includes("غير مفعّل"));
   check("channels page has no legacy link", (await page.locator("a[href*='legacy']").count()) === 0);
   check("channels page never shows a full phone number or secret", !/(token|secret|\d{8,})/i.test(await page.locator(".os-main, main, body").first().innerText()));

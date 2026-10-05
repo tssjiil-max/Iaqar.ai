@@ -187,6 +187,74 @@ export function dealRoute(task = {}) {
   return id ? `journey/${id}` : "tasks";
 }
 
+/** The approved deal path, in order. Index = step number used across the app. */
+export const PATH_STEP_LABELS = Object.freeze(["تطابق", "تواصل", "تفاوض", "معاينة", "مستندات", "إغلاق"]);
+export const CLOSED_STEP = 5;
+
+/** Which path step an open task belongs to (0 تطابق … 4 مستندات). Closed deals (5) are journeys, not tasks. */
+export function taskPathStep(task = {}) {
+  const type = String(task.type || "").toUpperCase();
+  if (type === "DEAL_JOURNEY") return Math.min(CLOSED_STEP, Math.max(0, Number(task.journeyStep ?? 2)));
+  if (type === "MATCH_REVIEW") return 0;
+  if (/VIEWING/.test(type)) return 3;
+  if (type === "DEAL_ACTION") return 4;
+  if (type === "AWAITING_REPLY") return 1;
+  return 2;
+}
+
+/** A valid step number from a route value, or null (= all steps). */
+export function parsePathStep(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= CLOSED_STEP ? n : null;
+}
+
+/** [n0 … n4] — how many of the given tasks sit in each open step. */
+export function countTasksByStep(tasks = []) {
+  const counts = [0, 0, 0, 0, 0];
+  for (const task of tasks) {
+    const step = taskPathStep(task);
+    if (step >= 0 && step < CLOSED_STEP) counts[step] += 1;
+  }
+  return counts;
+}
+
+export function filterTasksByStep(tasks = [], step = null) {
+  if (step === null || step === undefined) return tasks;
+  return tasks.filter((task) => taskPathStep(task) === step);
+}
+
+/** Card model for a closed deal (journey document) in the «إغلاق» step. */
+export function closedDealModel(journey = {}) {
+  const status = String(journey.status || "").toUpperCase();
+  const won = status === "CLOSED_WON";
+  const summary = journey.offerSummary || journey.requestSummary || {};
+  const district = String(summary.district || "").trim();
+  const place = [String(summary.city || "").trim(), district ? (district.startsWith("حي") ? district : `حي ${district}`) : ""].filter(Boolean).join(" - ");
+  const outcome = journey.outcome || {};
+  return {
+    id: String(journey.journeyId || journey.id || ""),
+    won,
+    statusLabel: won ? "تمت الصفقة" : "أُغلقت دون صفقة",
+    propertyType: String(summary.propertyType || "").trim() || "عقار",
+    location: place,
+    finalPrice: Number(outcome.finalPrice || 0) || 0,
+    reason: won ? "" : String(outcome.reason || "").trim(),
+    closedAt: toDate(outcome.closedAt || journey.closedAt)
+  };
+}
+
+/** Closed deals a member may see: a manager sees all; a broker sees the deals assigned to him (or to no one). */
+export function closedDealsFor(journeys = [], { uid = "", isManager = false } = {}) {
+  if (isManager) return journeys;
+  return journeys.filter((journey) => { const assigned = String(journey.assignedBrokerId || ""); return !assigned || assigned === String(uid || ""); });
+}
+
+export function sortClosedDeals(journeys = []) {
+  const at = (j) => toDate(j.outcome?.closedAt || j.closedAt)?.getTime() || 0;
+  return [...journeys].sort((a, b) => at(b) - at(a));
+}
+
 /**
  * Record ids that already take part in a match or a deal — any active task that carries a
  * match/journey and points at the record. Everything else is «بلا مطابقة».

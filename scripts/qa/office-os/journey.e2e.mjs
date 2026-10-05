@@ -233,13 +233,18 @@ try {
   await owner.goto(`${h.origin}/#/repo`);
   await owner.locator("[data-record]").first().waitFor();
   await shot(owner, "20-repository");
-  // «بلا مطابقة»: a third tab that lists only records outside any open match or deal
+  // One unified list: no section tabs; every card says «عرض» or «طلب».
+  check("repository is one list with no section tabs", (await owner.locator(".ref-repo-tools .os-seg").count()) === 0);
+  const cardCount = await owner.locator("[data-record]").count();
+  check("every repository card carries a «عرض» or «طلب» label", (await owner.locator("[data-record] [data-kind-label]").count()) === cardCount && cardCount > 0);
+  // «بلا مطابقة»: a filter under «خيارات البحث» that lists only records outside any open match or deal
+  await owner.locator("[data-repo-filters] > summary").click();
   await owner.locator('[data-tab="UNMATCHED"]').click();
-  check("repository has the «بلا مطابقة» tab", (await owner.locator('[data-tab="UNMATCHED"][aria-pressed="true"]').count()) === 1);
+  check("repository has the «بلا مطابقة» filter", (await owner.locator('[data-tab="UNMATCHED"][aria-pressed="true"]').count()) === 1);
   const unmatchedNow = await owner.locator("[data-record]").count();
-  await owner.locator('[data-tab="ALL"]').click();
+  await owner.locator('[data-tab="UNMATCHED"]').click();
   const allNow = await owner.locator("[data-record]").count();
-  check("unmatched tab never shows more than all records", unmatchedNow <= allNow && allNow > 0);
+  check("unmatched filter never shows more than all records", unmatchedNow <= allNow && allNow > 0);
   await owner.locator('[data-tab="UNMATCHED"]').click();
   await shot(owner, "20b-repository-unmatched");
   const desktopCtx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ar-SA" });

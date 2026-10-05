@@ -78,3 +78,35 @@ html,body{background:var(--surface)}
 .ref-bottom button[aria-current="page"]{color:var(--brand-primary);background:var(--brand-tint)}.ref-bottom button[aria-current="page"] .os-ico{color:var(--brand-primary)}
 .ref-bottom button[aria-current="page"]:before{background:var(--brand-primary)}
 .ref-request{color:var(--brand-primary);background:var(--surface);box-shadow:inset 0 0 0 1px var(--brand-soft)}
+
+/* «مسار الصفقة» stages are buttons: same circles and labels, plus a count badge and a pressed state. */
+.ref-steps>.ref-step{appearance:none;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:center;position:relative;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* The short connectors between the stages are drawn on the strip itself, so no stage button has overflowing content. */
+.ref-steps.ref-steps-live{background-image:repeating-linear-gradient(to right,transparent 0,transparent 8%,var(--brand-line) 8%,var(--brand-line) 12%,transparent 12%,transparent 20%);background-size:calc(100% * 5 / 6) 2px;background-position:center 19px;background-repeat:no-repeat}
+.ref-steps>.ref-step>span{transition:background .15s ease,color .15s ease}
+.ref-steps>.ref-step:focus-visible>span{outline:3px solid var(--brand-soft);outline-offset:2px}
+.ref-steps>.ref-step:active>span{background:var(--tint-strong)}
+.ref-step-count{position:absolute;top:-5px;inset-inline-end:max(0px,calc(50% - 25px));min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--brand-accent);color:#fff;font-size:10px;font-weight:800;font-style:normal;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+.ref-steps .active .ref-step-count{background:var(--brand-dark)}
+.ref-stage-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 10px;min-width:0}
+.ref-stage-head b{font-size:13px;color:var(--brand-dark);min-width:0}
+.ref-stage-all{border:0;background:none;color:var(--brand-primary);font:inherit;font-size:12px;font-weight:700;text-decoration:underline;white-space:nowrap;min-height:32px;padding:0 2px}
+.ref-closed-card .ref-status.is-won{color:var(--ok);background:var(--ok-tint)}
+.ref-closed-card .ref-status.is-lost{color:var(--muted);background:var(--brand-tint)}
+.ref-closed-card .ref-task-copy p{margin-top:2px}
+
+/* «العروض والطلبات»: one list; narrowing lives in «خيارات البحث» (no section tabs). */
+.ref-repo-tools .ref-filters{margin:10px 2px 10px;font-size:13px}
+.ref-repo-tools .ref-filters>summary{min-height:36px;color:var(--brand-dark);font-weight:700;list-style:none}
+.ref-repo-tools .ref-filters>summary::-webkit-details-marker{display:none}
+.ref-repo-tools .ref-filters>summary>svg{width:17px;height:17px;color:var(--brand-primary)}
+.ref-repo-tools .ref-filters>summary .os-count{margin-inline-start:auto}
+.ref-filters-on{font-size:10px;font-weight:800;color:#fff;background:var(--brand-accent);border-radius:9px;padding:1px 7px}
+.ref-filter-form{margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.ref-filter-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ref-filter-row .os-chips{margin:0}
+.ref-record-tags{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.ref-status.ref-state{color:var(--warn);background:var(--warn-tint)}
+.os-record-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.os-record-actions .os-btn{min-width:0}
+@media(min-width:430px){.os-record-actions{grid-template-columns:repeat(4,minmax(0,1fr))}}

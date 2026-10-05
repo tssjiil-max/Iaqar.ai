@@ -4,6 +4,7 @@ export const VIEWING_REMINDER_KIND = Object.freeze({
   CONFIRMED: "confirmed",
   TWO_HOURS: "2h",
   THIRTY_MINUTES: "30m",
+  TEN_MINUTES: "10m",
   OVERDUE: "overdue"
 });
 
@@ -20,6 +21,7 @@ export function viewingReminderSchedule(appointmentAt) {
   return [
     { kind: VIEWING_REMINDER_KIND.TWO_HOURS, at: new Date(at - 120 * MINUTE_MS).toISOString() },
     { kind: VIEWING_REMINDER_KIND.THIRTY_MINUTES, at: new Date(at - 30 * MINUTE_MS).toISOString() },
+    { kind: VIEWING_REMINDER_KIND.TEN_MINUTES, at: new Date(at - 10 * MINUTE_MS).toISOString() },
     { kind: VIEWING_REMINDER_KIND.OVERDUE, at: new Date(at).toISOString() }
   ];
 }
@@ -45,6 +47,7 @@ export function dueViewingReminders(match = {}, now = new Date(), windowMinutes 
 export function viewingReminderCopy(kind) {
   if (kind === VIEWING_REMINDER_KIND.TWO_HOURS) return { title: "معاينة بعد ساعتين", body: "لديك موعد معاينة بعد ساعتين" };
   if (kind === VIEWING_REMINDER_KIND.THIRTY_MINUTES) return { title: "معاينة بعد 30 دقيقة", body: "لديك موعد معاينة بعد 30 دقيقة" };
+  if (kind === VIEWING_REMINDER_KIND.TEN_MINUTES) return { title: "معاينة بعد 10 دقائق", body: "لديك موعد معاينة بعد 10 دقائق" };
   if (kind === VIEWING_REMINDER_KIND.OVERDUE) return { title: "انتهى موعد المعاينة — سجّل النتيجة", body: "انتهى موعد المعاينة — سجّل النتيجة" };
   return { title: "تم تأكيد موعد المعاينة", body: "تم تأكيد موعد المعاينة" };
 }

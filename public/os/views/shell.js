@@ -43,6 +43,8 @@ function openMenu() {
   const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
     filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
+    h("button", { type: "button", "data-menu": "search", onClick: () => { sheet.close(); go("search"); } }, ic("search"), "البحث الشامل"),
+    h("button", { type: "button", "data-menu": "inbox", onClick: () => { sheet.close(); go("inbox"); } }, ic("inbox-in"), "مركز التواصل"),
     h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),
     h("button", { type: "button", onClick: async () => {
       const result = await enableNotifications();
@@ -51,6 +53,7 @@ function openMenu() {
     h("button", { type: "button", onClick: () => { sheet.close(); go("library"); } }, ic("archive"), "مكتبة المكتب"),
     h("button", { type: "button", onClick: () => { sheet.close(); go("settings/notifications"); } }, ic("bell"), "إعدادات الإشعارات"),
     h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("handshake"), "التعاون بين الوسطاء"),
+    session.isManager ? h("button", { type: "button", "data-menu": "audit", onClick: () => { sheet.close(); go("audit"); } }, ic("clipboard"), "سجل النشاط") : null,
     session.isManager ? h("button", { type: "button", onClick: () => { sheet.close(); go("settings"); } }, ic("gear"), "إعدادات المكتب") : null,
     h("button", { type: "button", onClick: async () => { sheet.close(); await signOutOffice(); location.replace("/"); } }, ic("logout"), "تسجيل الخروج")
   ];
@@ -69,13 +72,9 @@ export function renderShellHeader({ active = "office" } = {}) {
     h("div", { class: "ref-shell-title" },
       h("h1", { text: "مكاتب عقارية ذكية" }),
       localTitle ? h("p", { class: "ref-platform-context", text: localTitle }) : null),
-    active !== "repo" ? h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", onClick: openMenu }, ic("bell")) : null,
-    h("button", {
-      type: "button",
-      class: "os-icon-btn ref-menu",
-      "aria-label": active === "repo" ? "رجوع" : "القائمة والإعدادات",
-      onClick: active === "repo" ? () => go("office") : openMenu
-    }, active === "repo" ? ic("chev-left") : ic("gear")));
+    // The same two actions, in the same place and shape, on المكتب / المهام اليومية / العروض والطلبات.
+    h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", onClick: openMenu }, ic("bell")),
+    h("button", { type: "button", class: "os-icon-btn ref-menu", "aria-label": "القائمة والإعدادات", onClick: openMenu }, ic("gear")));
 }
 
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.

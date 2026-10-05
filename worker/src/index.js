@@ -50,6 +50,7 @@ import {
 } from "./operations-domain.js";
 import webpush from "web-push";
 import { handleOfficeOs, isOfficeOsPath } from "./office-os/routes.js";
+import { isPublicRecordImagePath, promoteIntakeImages, servePublicRecordImage, uploadRecordImage, workerOriginOf } from "./office-os/record-media-service.js";
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { journeyIdForPair } from "./office-os/journey-service.js";
 import {
@@ -168,8 +169,12 @@ import {
 } from "./messaging-domain.js";
 import {
   handleTelegramCanonicalWebhook,
-  telegramWebhookRuntimeContract
+  telegramWebhookRuntimeContract,
+  verifyTelegramWebhookSecret
 } from "./telegram-intake-service.js";
+import { handleCentralTelegramWebhook } from "./office-os/channels-service.js";
+import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
+import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
 import {
   PUBLIC_RATE_LIMITS,
@@ -516,6 +521,8 @@ export default {
           appId: enabled ? env.META_APP_ID : "",
           configId: enabled ? env.META_CONFIG_ID : "",
           graphVersion: env.META_GRAPH_VERSION || GRAPH_VERSION,
+          // «coexistence» = the number stays on the WhatsApp Business app; the default, so a link never migrates a number.
+          onboardingMode: String(env.META_ONBOARDING_MODE || "").trim().toLowerCase() === "standard" ? "standard" : "coexistence",
           trialAllowed: Boolean(officeId),
           multiOffice: true,
           inboundOnly: true,
@@ -534,6 +541,11 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/meta/webhook") {
         return receiveMetaWebhook(request, env, requestId);
+      }
+
+      // Central platform bot: one address for every office; the linked chat decides the office.
+      if (request.method === "POST" && url.pathname === "/telegram/webhook") {
+        return await handleCentralTelegramRoute(request, env, requestId);
       }
 
       if (request.method === "POST" && /^\/telegram\/webhook\/[^/]+$/.test(url.pathname)) {
@@ -857,6 +869,15 @@ export default {
 
       if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
         return await deleteOfficeImage(request, env, requestId);
+      }
+
+      // Property photos of an offer (Office OS): member upload, unguessable public address.
+      if (request.method === "POST" && url.pathname === "/media/record-image") {
+        return await uploadRecordImage(request, env, officeOsDeps(), { requestId });
+      }
+
+      if (request.method === "GET" && isPublicRecordImagePath(url.pathname)) {
+        return await servePublicRecordImage(url, env, officeOsDeps(), { headers: corsHeaders() });
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
@@ -1783,6 +1804,33 @@ async function handleTelegramWebhookRoute(request, env, requestId) {
   return jsonResponse({ ...result, requestId }, Number(result.status || 200));
 }
 
+async function handleCentralTelegramRoute(request, env, requestId) {
+  // The secret is checked before anything is read or any credential is used.
+  const secret = verifyTelegramWebhookSecret(request, env.TELEGRAM_WEBHOOK_SECRET);
+  if (!secret.ok) return jsonResponse({ ...secret, requestId }, Number(secret.status || 401));
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = partySessionHelpers();
+  const result = await handleCentralTelegramWebhook({
+    request, env, deps,
+    store: createOfficeOsStore(deps, { projectId, accessToken }),
+    verifySecret: verifyTelegramWebhookSecret,
+    // The routed update goes through the same inbound pipeline as the per-office address.
+    forward: async (officeId, update) => {
+      const inner = new Request(new URL(`/telegram/webhook/${encodeURIComponent(officeId)}`, request.url).toString(), {
+        method: "POST", headers: request.headers, body: JSON.stringify(update)
+      });
+      // TELEGRAM_OFFICE_ID pins the per-office address to one office; here the linked chat already decided the office.
+      const response = await handleTelegramWebhookRoute(inner, { ...env, TELEGRAM_OFFICE_ID: "" }, requestId);
+      const payload = await response.json().catch(() => ({}));
+      return { ...payload, status: response.status };
+    }
+  });
+  const { status = 200, ...payload } = result || {};
+  return jsonResponse({ ...payload, requestId }, Number(status) || 200);
+}
+
 async function handleSharedIntake(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
@@ -2144,6 +2192,13 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
   }});
+
+  // Photos the owner attached on the office link become the offer's own photos (best effort).
+  if (opportunityKind === "OFFER" && mediaPaths.length) {
+    await promoteIntakeImages(officeOsDeps(), {
+      env, projectId, accessToken, officeId, recordId: opportunityId, mediaPaths, workerOrigin: workerOriginOf(request, env)
+    }).catch((error) => console.warn("[office-os] intake photos not promoted", opportunityId, error?.message));
+  }
 
   const contactId = String(parsed.phone || "").replace(/\D/g, "");
   if (contactId) {
@@ -2559,16 +2614,22 @@ async function completeEmbeddedSignup(request, env, requestId) {
     throw appError("waba_subscribe_failed", 502, "تعذر الاشتراك في رسائل الحساب");
   }
 
+  // The number is taken from the account Meta just authorised for this signup — never from the
+  // browser alone — so an office can only link a number of its own WhatsApp Business account.
   let displayPhoneNumber = "";
-  if (!phoneNumberId) {
-    const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
-      headers: { "Authorization": `Bearer ${accessToken}` }
-    });
-    const phones = await phonesResponse.json().catch(() => ({}));
-    const first = Array.isArray(phones.data) ? phones.data[0] : null;
-    phoneNumberId = cleanText(first && first.id, 120);
-    displayPhoneNumber = cleanText(first && first.display_phone_number, 60);
+  const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  const phones = await phonesResponse.json().catch(() => ({}));
+  const phoneList = phonesResponse.ok && Array.isArray(phones.data) ? phones.data : null;
+  if (!phoneList) {
+    console.error("[iaqar-whatsapp] phone list failed", phonesResponse.status);
+    throw appError("meta_phone_list_failed", 502, "تعذر التحقق من رقم واتساب لدى Meta — أعد المحاولة");
   }
+  const chosen = phoneNumberId ? phoneList.find((item) => cleanText(item && item.id, 120) === phoneNumberId) : phoneList[0];
+  if (phoneNumberId && !chosen) throw appError("phone_not_in_account", 409, "هذا الرقم لا يتبع حساب واتساب للأعمال الذي تم ربطه");
+  phoneNumberId = cleanText(chosen && chosen.id, 120);
+  displayPhoneNumber = cleanText(chosen && chosen.display_phone_number, 60);
 
   if (!phoneNumberId) throw appError("phone_number_missing", 502, "لم يتم العثور على رقم واتساب المرتبط");
 
@@ -2584,7 +2645,8 @@ async function completeEmbeddedSignup(request, env, requestId) {
   });
   if (existingAccount) {
     const existing = firestoreFieldsToJs(existingAccount.fields || {});
-    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId)) {
+    // A number another office disconnected can be linked again by the office that now proves it owns it at Meta.
+    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId) && String(existing.status || "") === "connected") {
       throw appError("phone_already_linked", 409, "رقم واتساب مرتبط بمكتب آخر");
     }
   }
@@ -2708,6 +2770,33 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
       reason: "channel_media_requires_adapter"
     };
   }
+
+  // Not every message is a property: a greeting, a short question or a deal follow-up stays
+  // in the office inbox with its class and waits for the broker instead of becoming a record.
+  let messageKind = classifyInboundMessage(messageText);
+  try {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", documentId],
+      accessToken,
+      fields: {
+        messageClass: firestoreString(messageKind.messageClass),
+        messageClassReason: firestoreString(messageKind.reason),
+        ...(messageKind.autoConvert ? {} : {
+          processingState: firestoreString("kept"),
+          status: firestoreString("kept"),
+          isProcessed: firestoreBoolean(true),
+          sourceChannel: firestoreString("whatsapp"),
+          updatedAt: firestoreTimestamp(new Date())
+        })
+      }
+    });
+  } catch (error) {
+    // The class is a label, never a gate on its own: if it cannot be saved the message is processed as usual.
+    console.warn("[iaqar-workflow] message class not saved", { officeId, documentId, code: error && error.code });
+    messageKind = { ...messageKind, autoConvert: true };
+  }
+  if (!messageKind.autoConvert) return { duplicate: false, documentId, kept: true, messageClass: messageKind.messageClass };
 
   try {
     await processInboundMessage({
@@ -7131,6 +7220,11 @@ function officeOsDeps() {
         }
       }),
       sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+      // Media bucket for record photos (delete on removal); absent when storage is not configured.
+      mediaBucket: env.IAQAR_MEDIA || null,
+      // Turn one kept inbox message into a record through the same inbound pipeline as the channels.
+      processInbound: ({ officeId, inboxId, messageText, senderName = "", senderPhone = "", receivedAt = new Date(), source = "whatsapp_cloud_api" }) =>
+        processInboundMessage({ projectId, officeId, inboxDocumentId: inboxId, messageText, senderName, senderPhone, receivedAt, source, accessToken, env }),
       callGemini: (args) => callGeminiGenerateContent({
         env,
         model: String(env.GEMINI_MODEL || "gemini-3.1-flash-lite"),
@@ -8456,7 +8550,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version,X-Public-Slug",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version,X-Public-Slug,X-Record-Id",
     "Access-Control-Max-Age": "86400"
   };
 }

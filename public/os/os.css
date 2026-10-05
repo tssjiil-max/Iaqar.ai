@@ -634,15 +634,26 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-chan-card { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
 .os-chan-status { font-size: .8rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #4d6a72; border: 1px solid var(--brand-line, #DCE8EB); white-space: nowrap; }
 .os-chan-status.is-connected { background: #e4f6ec; color: #17653a; border-color: #bfe5cf; }
-.os-chan-status.is-setup { background: #fff4de; color: #7a5200; border-color: #f0d9a6; }
+.os-chan-status.is-setup, .os-chan-status.is-pending { background: #fff4de; color: #7a5200; border-color: #f0d9a6; }
+.os-chan-status.is-error { background: #fdeaea; color: #9b2c2c; border-color: #f2c7c7; }
+.os-chan { display: grid; gap: 12px; }
+.os-chan-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.os-chan-facts { display: grid; gap: 0; margin: 0; border: 1px solid var(--brand-line, #DCE8EB); border-radius: 12px; overflow: hidden; }
+.os-chan-fact { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr); gap: 10px; padding: 9px 12px; align-items: start; }
+.os-chan-fact + .os-chan-fact { border-top: 1px solid var(--brand-line, #DCE8EB); }
+.os-chan-fact dt { color: #4d6a72; font-size: .82rem; }
+.os-chan-fact dd { margin: 0; font-weight: 700; font-size: .88rem; overflow-wrap: anywhere; }
+.os-chan-link { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--brand-tint, #EDF5F7); }
+.os-chan .os-sub { margin: 0; }
 
 .os-photo-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 14px; align-items: center; }
-.os-avatar-preview { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); border: 1px solid var(--brand-line, #DCE8EB); }
-.os-avatar-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-avatar-preview { width: 88px; height: 88px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-avatar-preview img { width: 100%; height: 100%; object-fit: contain; display: block; background: #fff; }
 .os-photo-copy { display: grid; gap: 6px; min-width: 0; }
 .os-photo-copy small { color: #4d6a72; }
 .os-file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.ref-office-logo-box .ref-office-avatar { width: min(104px, 80%); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 50%; display: block; }
+/* The uploaded office logo / broker photo always shows whole inside its frame (never cropped). */
+.ref-office-logo-box .ref-office-avatar { width: min(112px, 86%); height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 14px; background: #fff; display: block; }
 
 .os-share-card { display: grid; gap: 10px; }
 .os-share-card-img { width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 14px; border: 1px solid var(--brand-line, #DCE8EB); background: #fff; }
@@ -665,3 +676,53 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-lib-file { display: grid; gap: 4px; }
 .os-lib-meta { margin: 0; color: #4d6a72; font-size: .86rem; }
 .os-lib-file .os-btn-row { flex-wrap: wrap; margin-top: 6px; }
+
+/* ---------- Property photos: picker (form) and gallery (record page) ---------- */
+.os-photos-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 8px; }
+.os-photos-grid:empty { display: none; }
+.os-photo { position: relative; margin: 0; border-radius: 12px; overflow: hidden; background: var(--brand-tint); border: 1px solid var(--brand-line); aspect-ratio: 1; }
+.os-photo.is-main { border-color: var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-soft); }
+.os-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-photo-main { position: absolute; top: 5px; inset-inline-start: 5px; background: var(--brand-primary); color: #fff; font-size: .68rem; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.os-photo-controls { position: absolute; inset-inline: 0; bottom: 0; display: flex; justify-content: center; gap: 3px; padding: 4px; background: linear-gradient(180deg, rgba(8, 47, 58, 0), rgba(8, 47, 58, .62)); }
+.os-photo-btn { width: 30px; height: 30px; border-radius: 9px; border: 0; background: rgba(255, 255, 255, .94); color: var(--brand-dark); display: grid; place-items: center; padding: 0; }
+.os-photo-btn svg { width: 16px; height: 16px; }
+.os-photo-btn[disabled] { opacity: .4; }
+.os-photo-btn[data-photo-action="remove"] { color: var(--bad); }
+.os-photos-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.os-photos-foot .os-btn { min-height: 40px; padding: 6px 14px; }
+.os-photos-foot .os-sub { font-size: .8rem; min-width: 0; flex: 1 1 140px; }
+.os-gallery { display: grid; gap: 6px; margin: 8px 0 4px; }
+.os-gallery-main { border: 0; padding: 0; background: var(--brand-tint); border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 10; display: block; width: 100%; }
+.os-gallery-main img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-gallery-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.os-gallery-strip::-webkit-scrollbar { display: none; }
+.os-gallery-thumb { flex: none; width: 64px; height: 64px; border: 1px solid var(--brand-line); padding: 0; border-radius: 10px; overflow: hidden; background: var(--brand-tint); }
+.os-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-photo-full img { width: 100%; height: auto; max-height: 76vh; object-fit: contain; border-radius: 12px; display: block; background: var(--brand-tint-2); }
+@media (max-width: 340px) { .os-photo-btn { width: 26px; height: 26px; } .os-photo-controls { gap: 2px; padding: 3px; } }
+
+/* ---------- Deal documents (المطلوب · الموجود · الناقص · المراجعة) ---------- */
+.os-documents > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.os-documents > summary::-webkit-details-marker { display: none; }
+.os-documents > summary .os-badge { margin-inline-start: auto; }
+.os-documents > summary > svg:last-child { width: 18px; height: 18px; }
+.os-docs-summary { margin: 8px 0 6px; font-size: .86rem; }
+.os-docs { list-style: none; margin: 0; padding: 0; display: grid; }
+.os-doc { display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(104px, 34%) auto; gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--brand-tint); }
+.os-doc:last-child { border-bottom: 0; }
+.os-doc-mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--warn-tint); color: var(--warn); }
+.os-doc-mark svg { width: 17px; height: 17px; }
+.os-doc.is-received .os-doc-mark { background: var(--brand-tint); color: var(--brand-primary); }
+.os-doc.is-reviewed .os-doc-mark { background: var(--ok-tint); color: var(--ok); }
+.os-doc.is-not_required .os-doc-mark { background: var(--brand-tint-2); color: var(--faint); }
+.os-doc.is-not_required .os-doc-copy b { color: var(--faint); text-decoration: line-through; }
+.os-doc-copy { min-width: 0; display: grid; }
+.os-doc-copy b { color: var(--brand-dark); font-size: .92rem; overflow-wrap: anywhere; }
+.os-doc-copy small { color: var(--muted); font-size: .76rem; overflow-wrap: anywhere; }
+.os-doc-status { min-height: 38px; padding: 4px 8px; font-size: .84rem; }
+.os-doc .os-icon-btn { width: 34px; height: 34px; min-width: 34px; min-height: 34px; color: var(--bad); }
+.os-doc-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+.os-doc-add .os-btn { min-height: var(--tap); }
+.os-docs-link { width: 100%; border: 0; background: var(--brand-tint-2); border-radius: 12px; padding: 8px 10px; margin-top: 8px; color: var(--brand-dark); font: inherit; font-size: .86rem; text-align: start; cursor: pointer; }
+@media (max-width: 360px) { .os-doc { grid-template-columns: 26px minmax(0, 1fr) minmax(92px, 36%) auto; gap: 6px; } .os-doc-mark { width: 26px; height: 26px; } }

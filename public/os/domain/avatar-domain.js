@@ -24,7 +24,21 @@ export function isSafePhotoDataUrl(value) {
   return text.length > 0 && text.length <= MAX_PHOTO_DATA_CHARS && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(text);
 }
 
-/** Centre-crop square geometry for a source of w×h. */
+/**
+ * Whole-image placement inside a size×size square: the picture keeps its aspect ratio and
+ * nothing is cut off (an office logo is rarely square). Returns the draw rectangle.
+ */
+export function containFit(width, height, size = PHOTO_SIZE) {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  if (!(w > 0) || !(h > 0) || !(size > 0)) return { dx: 0, dy: 0, dw: 0, dh: 0 };
+  const scale = Math.min(size / w, size / h);
+  const dw = Math.max(1, Math.round(w * scale));
+  const dh = Math.max(1, Math.round(h * scale));
+  return { dx: Math.floor((size - dw) / 2), dy: Math.floor((size - dh) / 2), dw, dh };
+}
+
+/** Centre-crop square geometry for a source of w×h (kept for callers that need a square crop). */
 export function squareCrop(width, height) {
   const side = Math.min(Number(width) || 0, Number(height) || 0);
   return { sx: Math.floor((width - side) / 2), sy: Math.floor((height - side) / 2), side };

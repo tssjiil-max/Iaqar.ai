@@ -563,6 +563,16 @@ service cloud.firestore {
     match /whatsapp_accounts/{phoneNumberId} {
       allow read, write: if false;
     }
+    // ربط تيليجرام بالمكاتب (البوت المركزي): مصدر توجيه الرسائل — للـ Worker فقط.
+    match /telegramChats/{chatId} {
+      allow read, write: if false;
+    }
+    match /telegramLinkCodes/{codeHash} {
+      allow read, write: if false;
+    }
+    match /telegramOfficeLinks/{officeId} {
+      allow read, write: if false;
+    }
     match /partySessionTokens/{tokenHash} {
       allow read, write: if false;
     }
