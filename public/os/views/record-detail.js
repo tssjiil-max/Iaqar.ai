@@ -10,7 +10,7 @@ import { runAction } from "../core/ui.js";
 import { MISSING_LABELS, RECORD_KIND, recordView } from "../domain/records-domain.js";
 import { JOURNEY_STATUS_LABEL, STAGE_LABEL, isJourneyOpen } from "../domain/journey-domain.js";
 import { buildWhatsAppUrl, formatDateTime } from "../domain/format-domain.js";
-import { removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
+import { archiveRecordFlow, pauseRecordFlow, removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
 
 function fact(iconName, label, value) {
   if (!value) return null;
@@ -80,15 +80,20 @@ export function renderRecordDetail(container, { recordId }) {
     const view = recordView(record);
     const isRequest = view.kind === RECORD_KIND.REQUEST;
     const wa = buildWhatsAppUrl(view.contactPhone, "");
-    const actions = h("div", { class: "os-btn-row" },
-      view.lifecycle !== "DELETED" ? h("button", { type: "button", class: "os-btn secondary", onClick: () => go(`record/${view.id}/edit`) }, ic("edit"), "تعديل") : null,
-      view.lifecycle === "ACTIVE" ? h("button", { type: "button", class: "os-btn danger", onClick: (e) => removeRecordFlow(record, { button: e.currentTarget, onDone: () => go("repo") }) }, ic("trash"), "حذف") : null,
-      view.lifecycle === "ARCHIVED" ? h("button", { type: "button", class: "os-btn soft", onClick: (e) => restoreRecordFlow(record, { button: e.currentTarget }) }, ic("restore"), "إعادة للنشطة") : null
+    // Manage the record: تعديل · إيقاف/استئناف · أرشفة · حذف. Every destructive step asks first; history is never destroyed.
+    const act = (label, iconName, kind, name, onClick) => h("button", { type: "button", class: `os-btn ${kind}`, "data-record-action": name, onClick }, ic(iconName), label);
+    const actions = h("div", { class: "os-record-actions", "data-record-actions": "" },
+      view.state !== "DELETED" ? act("تعديل", "edit", "secondary", "edit", () => go(`record/${view.id}/edit`)) : null,
+      view.state === "ACTIVE" ? act("إيقاف", "pause", "secondary", "pause", (e) => pauseRecordFlow(record, { button: e.currentTarget })) : null,
+      view.state === "PAUSED" ? act("استئناف", "play", "soft", "resume", (e) => restoreRecordFlow(record, { button: e.currentTarget })) : null,
+      view.state === "ACTIVE" || view.state === "PAUSED" ? act("أرشفة", "archive", "secondary", "archive", (e) => archiveRecordFlow(record, { button: e.currentTarget })) : null,
+      view.state === "ARCHIVED" ? act("إعادة للنشطة", "restore", "soft", "restore", (e) => restoreRecordFlow(record, { button: e.currentTarget })) : null,
+      view.state !== "DELETED" ? act("حذف", "trash", "danger", "delete", (e) => removeRecordFlow(record, { button: e.currentTarget, onDone: () => go("repo") })) : null
     );
     append(container, h("div", { class: "os-card" },
       h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "6px" } },
         h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel}` }),
-        h("span", { class: `os-badge${view.lifecycle === "ACTIVE" ? "" : " muted"}`, text: view.lifecycleLabel })),
+        h("span", { class: `os-badge${view.state === "ACTIVE" ? "" : " muted"}`, "data-record-state": view.state, text: view.lifecycleLabel })),
       h("h2", { class: "os-task-title", text: view.title }),
       isRequest ? h("p", { class: "os-sub", text: "احتياج العميل ومواصفاته وميزانيته." }) : null,
       h("div", { class: "os-facts", style: { marginTop: "10px" } },

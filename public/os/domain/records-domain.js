@@ -73,6 +73,19 @@ export function lifecycleOf(record = {}) {
   return LIFECYCLE.ACTIVE;
 }
 
+/** A paused record is out of matching for now («موقوف مؤقتًا»); an archived one is filed away. Both keep their history. */
+export function isPaused(record = {}) {
+  return lifecycleOf(record) === LIFECYCLE.ARCHIVED && String(record.archiveKind || "").toUpperCase() === "PAUSED";
+}
+
+/** ACTIVE | PAUSED | ARCHIVED | DELETED — what the broker sees and filters by. */
+export function recordState(record = {}) {
+  const lifecycle = lifecycleOf(record);
+  return lifecycle === LIFECYCLE.ARCHIVED && isPaused(record) ? "PAUSED" : lifecycle;
+}
+
+export const RECORD_STATE_LABELS = Object.freeze({ ACTIVE: "نشط", PAUSED: "موقوف مؤقتًا", ARCHIVED: "مؤرشف", DELETED: "محذوف" });
+
 export function priceOf(record = {}) {
   const purpose = String(record.purpose || "").toUpperCase();
   if (purpose === "SALE") return toNumber(record.salePrice ?? record.priceOrBudget ?? record.price);
@@ -242,7 +255,9 @@ export function recordView(record = {}) {
     priceStatusLabel: String(record.priceStatus || "").toUpperCase() === "FIXED" ? "السعر ثابت" : "قابل للتفاوض",
     notes: cleanText(record.notes || record.details, 1000),
     lifecycle: lifecycleOf(record),
-    lifecycleLabel: LIFECYCLE_LABELS[lifecycleOf(record)],
+    state: recordState(record),
+    paused: isPaused(record),
+    lifecycleLabel: RECORD_STATE_LABELS[recordState(record)] || LIFECYCLE_LABELS[lifecycleOf(record)],
     reference: cleanText(record.referenceCode, 40) || String(record.id || "").slice(-6).toUpperCase(),
     missing: missingForMatching(record)
   };
@@ -286,7 +301,7 @@ function norm(text) {
 
 /**
  * Filter + search. `filters`: { query, kind, purpose, propertyType, location,
- * priceMin, priceMax, status } where status ∈ ACTIVE | ARCHIVED | ALL (DELETED never shown).
+ * priceMin, priceMax, status } where status ∈ ACTIVE | PAUSED | ARCHIVED | ALL (DELETED never shown).
  */
 export function filterRecords(records = [], filters = {}) {
   const query = norm(filters.query);
@@ -297,7 +312,7 @@ export function filterRecords(records = [], filters = {}) {
   return records.filter((record) => {
     const view = recordView(record);
     if (view.lifecycle === LIFECYCLE.DELETED) return false;
-    if (status !== "ALL" && view.lifecycle !== status) return false;
+    if (status !== "ALL" && view.state !== status) return false;
     if (filters.kind && view.kind !== filters.kind) return false;
     if (filters.purpose && view.purpose !== String(filters.purpose).toUpperCase()) return false;
     if (filters.propertyType && norm(view.propertyType) !== norm(filters.propertyType)) return false;

@@ -310,7 +310,7 @@ try {
 
     await page.goto(`${PREVIEW_URL}/#/office`);
     await page.locator(".ref-office-tools").waitFor();
-    check("live: all 6 unbuilt office tools are marked «قريبًا»", (await page.locator(".ref-office-soon").count()) === 6);
+    check("live: the 6 office tools are working buttons (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 6 && (await page.locator(".ref-office-soon").count()) === 0);
 
     const api = (route, body) => page.evaluate(async ([w, r, b]) => {
       const token = await firebase.auth().currentUser.getIdToken();
@@ -354,6 +354,7 @@ try {
     const lone = await api("/os/records/save", { officeId: OFFICE, requestKey: `live-lone-${RUN}`, record: { kind: "OFFER", purpose: "SALE", propertyType: "أرض", city: "جدة", district: "الشاطئ", price: 900000, contactName: "مالك منفرد", contactPhone: "0599955555" } });
     await page.goto(`${PREVIEW_URL}/#/repo`);
     await page.locator("[data-record]").first().waitFor();
+    await page.locator("[data-repo-filters] > summary").click();
     await page.locator('[data-tab="UNMATCHED"]').click();
     await page.locator(`[data-record="${lone.body.recordId}"]`).waitFor();
     check("live: «بلا مطابقة» lists a record outside any deal", true);

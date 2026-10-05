@@ -6,7 +6,7 @@
 
 import { createStore } from "./store.js";
 import { resolveActor } from "./permissions.js";
-import { findCandidates, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
+import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
 import {
   acknowledgeReply, addBrokerNote, closeJourney, completeFollowUp, confirmViewing, decideMatchReview,
   moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney
@@ -27,6 +27,8 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
+  "/os/records/pause": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "PAUSED", reason: b.reason }),
+  "/os/records/archive": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "ARCHIVED", reason: b.reason }),
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
   "/os/review/decide": (ctx, b, actor) => decideMatchReview(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
