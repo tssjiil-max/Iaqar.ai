@@ -99,6 +99,7 @@ test("message classes: only clear non-property messages are kept out of the reco
   const cls = (text) => classifyInboundMessage(text).messageClass;
   assert.equal(cls("السلام عليكم ورحمة الله وبركاته"), MESSAGE_CLASS.SOCIAL);
   assert.equal(cls("صباح الخير يا أبو محمد"), MESSAGE_CLASS.SOCIAL);
+  assert.equal(cls("صباح الخير عندك شي جديد"), MESSAGE_CLASS.UNKNOWN, "a greeting followed by anything else is not social");
   assert.equal(cls("تمام شكراً 🙏"), MESSAGE_CLASS.SOCIAL);
   assert.equal(cls("هل الشقة متوفرة؟"), MESSAGE_CLASS.INQUIRY);
   assert.equal(cls("كم السعر؟"), MESSAGE_CLASS.INQUIRY);
@@ -114,6 +115,16 @@ test("message classes: only clear non-property messages are kept out of the reco
     assert.equal(result.messageClass, MESSAGE_CLASS.UNKNOWN, text);
     assert.equal(result.autoConvert, true);
   }
+  // Anything that names a property, a purpose, a place or a specification is always processed,
+  // whatever else the message says (greeting in front, deal words, a question mark).
+  for (const text of [
+    "أرض بحي العارض إفراغ فوري", "فيلا دورين بحي الملقا الصك إلكتروني", "شقة تمليك التسليم فوري حي العزيزية",
+    "دوبلكس جديد العزيزية الدفعه الاولى 50", "فلة درج صالة حي شوران البيع نقدا او بنك الافراغ فوري",
+    "فيه شقة للايجار حي الملز 3 غرف", "محتاج دور ارضي للايجار؟", "لو سمحت شقة غرفتين وصالة بحي العزيزية ايجار سنوي",
+    "ممكن شقة عوائل بحي الروضة غرفتين وصالة", "هل يوجد فيلا للبيع في حي الياسمين", "السلام عليكم محتاج استديو",
+    "هلا روف جديد بالنرجس", "مساء الخير متوفر استديوهات مفروشه", "السلام عليكم ابو فهد عندك شي بالنرجس",
+    "ملحق عزاب شهري 1500", "نبي فيلا درج داخلي", "هل الارض للبيع؟", "كم سعر الفيلا اللي بالنرجس؟"
+  ]) assert.equal(classifyInboundMessage(text).autoConvert, true, text);
   assert.equal(classifyInboundMessage("كم السعر؟").autoConvert, false);
   assert.equal(classifyInboundMessage("مطلوب شقة للإيجار").autoConvert, true);
 
@@ -249,11 +260,21 @@ test("Telegram: a greeting or a short question stays in the inbox and does not b
 
 test("Telegram: reconnect moves the office to a new chat; disconnect stops delivery", async () => {
   const relink = await call("/os/channels/telegram/link", { officeId: OFFICE_A }, OWNER_A);
+  const waiting = channel(await call("/os/channels/status", { officeId: OFFICE_A }, OWNER_A), "telegram");
+  assert.equal(waiting.linkWaiting, true, "the screen knows a new link is waiting while the old chat still works");
   assert.equal(channel(await call("/os/channels/status", { officeId: OFFICE_A }, OWNER_A), "telegram").state, "CONNECTED", "the current chat keeps working until the new link is completed");
   const moved = await telegram(message(700300, `/start ${codeOf(relink.body.deepLink)}`));
   assert.equal(moved.body.linked, true);
   assert.equal(h.store.get("telegramChats/700100").status, "UNLINKED");
   assert.equal(h.store.get("telegramChats/700300").officeId, OFFICE_A);
+  assert.equal(channel(await call("/os/channels/status", { officeId: OFFICE_A }, OWNER_A), "telegram").linkWaiting, false);
+  // A legacy single-office pin on the per-office address does not break central routing.
+  h.env.TELEGRAM_OFFICE_ID = OFFICE_B;
+  const pinned = await telegram(message(700300, "للبيع عمارة في حي العليا بالرياض السعر 5200000 ريال"));
+  delete h.env.TELEGRAM_OFFICE_ID;
+  assert.equal(pinned.status, 200, JSON.stringify(pinned.body));
+  assert.equal(pinned.body.officeId, OFFICE_A);
+  assert.ok(h.store.get(`telegramOfficeLinks/${OFFICE_A}`).lastInboundAt, "last message time is stamped after a real delivery");
   assert.equal((await telegram(message(700100, "للبيع ارض في العارض 600 متر 1500000"))).body.reason, "chat_not_linked");
 
   assert.equal((await call("/os/channels/telegram/unlink", { officeId: OFFICE_A }, BROKER_A2)).status, 403);

@@ -203,3 +203,18 @@ test("screens: the form previews before saving, offers only; the record page sho
   assert.match(core, /"X-Office-Id": session\.officeId, "X-Record-Id": recordId/, "the upload names the office and the record");
   assert.doesNotMatch(core + picker, /localStorage|sessionStorage/, "photos are stored on the server, not on the device");
 });
+
+test("explicit removals: a photo added meanwhile by a colleague survives a stale form's save", async () => {
+  const { arrangeImages } = await import("../public/os/domain/record-media-domain.js");
+  const img = (id) => ({ id, url: `https://w/${id}`, path: `record-media/o/r/${id}.jpg` });
+  const [a, b, c] = ["a".repeat(32), "b".repeat(32), "c".repeat(32)].map(img);
+  // The form knew a and b, removed nothing, and reordered; c was uploaded by a colleague meanwhile.
+  const kept = arrangeImages([a, b, c], [b.id, a.id], []);
+  assert.deepEqual(kept.images.map((i) => i.id), [b.id, a.id, c.id]);
+  assert.deepEqual(kept.removed, []);
+  const removed = arrangeImages([a, b, c], [b.id], [a.id]);
+  assert.deepEqual(removed.images.map((i) => i.id), [b.id, c.id]);
+  assert.deepEqual(removed.removed.map((i) => i.id), [a.id]);
+  // Without a removal list the older behaviour stays: missing ids are removed.
+  assert.deepEqual(arrangeImages([a, b, c], [b.id]).removed.map((i) => i.id), [a.id, c.id]);
+});

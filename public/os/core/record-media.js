@@ -66,8 +66,8 @@ export async function uploadRecordImage(recordId, blob) {
 }
 
 /** Save which photos stay and in what order (ids; first = main photo). */
-export function arrangeRecordImages(recordId, order) {
-  return api("/os/records/media", { officeId: session.officeId, recordId, order });
+export function arrangeRecordImages(recordId, order, remove = []) {
+  return api("/os/records/media", { officeId: session.officeId, recordId, order, remove });
 }
 
 /** Public office link: a visitor's photo goes to the intake folder of that office (rate-limited by the Worker). */

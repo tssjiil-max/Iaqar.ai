@@ -87,6 +87,8 @@ export function telegramLinkView(link = {}, config = {}, now = new Date()) {
     linkedAt: state === LINK_STATE.CONNECTED ? link.linkedAt || "" : "",
     lastInboundAt: link.lastInboundAt || "",
     pendingExpiresAt: state === LINK_STATE.PENDING ? link.pendingExpiresAt : "",
+    // A new link may be waiting while the current chat keeps working («إعادة الربط»).
+    linkWaiting: configured && millis(link.pendingExpiresAt) > now.getTime(),
     note: configured ? "" : "بوت المنصة غير مفعّل على هذه البيئة بعد. يتفعّل الربط بعد إعداد البوت من إدارة المنصة."
   };
 }
@@ -109,7 +111,7 @@ export function whatsappLinkView(integration = {}, config = {}, usage = {}) {
   const webhookReady = config.webhookReady === true;
   const webhookLabel = !webhookReady ? "غير مهيأ على هذه البيئة"
     : state !== LINK_STATE.CONNECTED ? "جاهز — يبدأ الاستقبال بعد الربط"
-      : integration?.lastInboundAt ? "يعمل — تصل الرسائل" : "جاهز — لم تصل رسالة بعد";
+      : integration?.lastInboundAt || inboundToday > 0 ? "يعمل — تصل الرسائل" : "جاهز — لم تصل رسالة بعد";
   return {
     id: "whatsapp", state, stateLabel: LINK_STATE_LABEL[state], signupEnabled, actions,
     number, inboundToday, webhookReady, webhookLabel,

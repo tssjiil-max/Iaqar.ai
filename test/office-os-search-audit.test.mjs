@@ -76,4 +76,8 @@ test("the audit trail reads as plain Arabic, newest first, with a link to the th
   assert.equal(filterAudit(views, "deal").length, 1);
   assert.equal(filterAudit(views, "ALL").length, 5);
   assert.equal(auditEntryView({}).text, "إجراء مسجَّل في النظام");
+  const deal = auditEntryView({ action: "DEAL_DOCUMENT_UPDATED", entityType: "deal", entityId: "j5", detailsJson: JSON.stringify({ label: "صك الملكية", status: "RECEIVED" }) });
+  assert.equal(deal.route, "journey/j5", "deal entries open their deal");
+  assert.equal(deal.group, "deal");
+  assert.equal(deal.detail, "صك الملكية — موجود");
 });

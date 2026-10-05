@@ -218,7 +218,10 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   const officeId = await officeForTelegramChat({ store, deps }, chat.id);
   if (!officeId) return { ok: true, status: 200, ignored: true, reason: "chat_not_linked" };
   const result = await forward(officeId, update);
-  await store.set(["telegramOfficeLinks", officeId], { lastInboundAt: now.toISOString(), updatedAt: now }).catch(() => {});
+  // «آخر رسالة» is stamped only when the message was really accepted for this office.
+  if (result?.ok !== false && Number(result?.status || 200) < 400) {
+    await store.set(["telegramOfficeLinks", officeId], { lastInboundAt: now.toISOString(), updatedAt: now }).catch(() => {});
+  }
   return { ...result, routedBy: "chat_link" };
 }
 

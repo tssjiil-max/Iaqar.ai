@@ -134,8 +134,8 @@ export async function servePublicRecordImage(url, env, deps, { headers: baseHead
   return new Response(object.body, { headers });
 }
 
-/** Keep / order / remove. `order` = ids to keep, first is the main photo. */
-export async function arrangeRecordImages(ctx, { actor, officeId, recordId, order }) {
+/** Keep / order / remove. `order` = ids first-is-main; `remove` (optional) = the ids to delete explicitly. */
+export async function arrangeRecordImages(ctx, { actor, officeId, recordId, order, remove = null }) {
   const id = cleanRecordId(recordId);
   if (!id) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (!Array.isArray(order)) throw ctx.deps.appError("record_images_order_required", 400, "ترتيب الصور مطلوب");
@@ -147,7 +147,7 @@ export async function arrangeRecordImages(ctx, { actor, officeId, recordId, orde
   let images = recordImages(record);
   const before = images.map((image) => image.id).join(",");
   const result = await ctx.store.update(segments, (current) => {
-    const arranged = arrangeImages(recordImages(current), order);
+    const arranged = arrangeImages(recordImages(current), order, remove);
     removed = arranged.removed;
     images = arranged.images;
     if (images.map((image) => image.id).join(",") === recordImages(current).map((image) => image.id).join(",")) return null;

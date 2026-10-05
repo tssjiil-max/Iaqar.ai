@@ -21,6 +21,8 @@ let pickerSeq = 0;
 export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" } = {}) {
   let items = existing.map((image) => ({ key: `e-${image.id}`, id: image.id, url: image.url, blob: null }));
   const initial = items.map((item) => item.id).join(",");
+  // Only photos the broker removed here are deleted on save (never ones a colleague added meanwhile).
+  const removedIds = new Set();
   let busy = 0;
   const grid = h("div", { class: "os-photos-grid", "data-photo-grid": "", "aria-live": "polite" });
   const message = h("small", { class: "os-field-error", role: "alert", "data-photo-error": "" });
@@ -45,7 +47,7 @@ export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" 
           first ? null : control("اجعلها الصورة الرئيسية", "flag", "main", () => { items = moveItem(items, index, 0); draw(); }),
           control("تقديم", "chev-right", "earlier", () => { items = moveItem(items, index, index - 1); draw(); }, first),
           control("تأخير", "chev-left", "later", () => { items = moveItem(items, index, index + 1); draw(); }, index === items.length - 1),
-          control("حذف الصورة", "trash", "remove", () => { if (item.blob) URL.revokeObjectURL(item.url); items = items.filter((x) => x !== item); message.textContent = ""; draw(); }))));
+          control("حذف الصورة", "trash", "remove", () => { if (item.blob) URL.revokeObjectURL(item.url); else if (item.id) removedIds.add(item.id); items = items.filter((x) => x !== item); message.textContent = ""; draw(); }))));
     });
     counter.textContent = items.length ? `${items.length} من ${max} — الصورة الأولى هي الرئيسية` : hint || `حتى ${max} صور. تُصغَّر تلقائيًا مع الحفاظ على وضوحها.`;
     add.disabled = items.length >= max || busy > 0;
@@ -96,7 +98,7 @@ export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" 
         }
       }
       const order = items.filter((item) => item.id).map((item) => item.id);
-      if (uploaded || order.join(",") !== initial) await arrangeRecordImages(recordId, order);
+      if (uploaded || order.join(",") !== initial) await arrangeRecordImages(recordId, order, [...removedIds]);
       draw();
       return { uploaded, failed };
     },

@@ -208,7 +208,11 @@ function documentsCard(journey) {
     const select = h("select", { class: "os-select os-doc-status", "aria-label": `حالة ${row.label}`, "data-doc-status": row.id, disabled: open ? null : true },
       DOC_STATUS_ORDER.map((status) => h("option", { value: status, text: DOC_STATUS_LABEL[status] })));
     select.value = row.status;
-    select.addEventListener("change", () => update(select, { documentId: row.id, status: select.value }, `${row.label}: ${DOC_STATUS_LABEL[select.value]}`));
+    select.addEventListener("change", async () => {
+      const saved = await update(select, { documentId: row.id, status: select.value }, `${row.label}: ${DOC_STATUS_LABEL[select.value]}`);
+      // A change that was not saved is not left on screen.
+      if (saved === undefined) select.value = row.status;
+    });
     const remove = row.custom && open ? h("button", { type: "button", class: "os-icon-btn", "aria-label": `حذف ${row.label}`, "data-doc-remove": row.id }, ic("trash")) : null;
     remove?.addEventListener("click", () => update(remove, { documentId: row.id, remove: true }, "تم حذف المستند من القائمة"));
     return h("li", { class: `os-doc is-${row.status.toLowerCase()}`, "data-doc": row.id, "data-doc-state": row.status },

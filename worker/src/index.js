@@ -1821,7 +1821,8 @@ async function handleCentralTelegramRoute(request, env, requestId) {
       const inner = new Request(new URL(`/telegram/webhook/${encodeURIComponent(officeId)}`, request.url).toString(), {
         method: "POST", headers: request.headers, body: JSON.stringify(update)
       });
-      const response = await handleTelegramWebhookRoute(inner, env, requestId);
+      // TELEGRAM_OFFICE_ID pins the per-office address to one office; here the linked chat already decided the office.
+      const response = await handleTelegramWebhookRoute(inner, { ...env, TELEGRAM_OFFICE_ID: "" }, requestId);
       const payload = await response.json().catch(() => ({}));
       return { ...payload, status: response.status };
     }
@@ -2613,16 +2614,22 @@ async function completeEmbeddedSignup(request, env, requestId) {
     throw appError("waba_subscribe_failed", 502, "تعذر الاشتراك في رسائل الحساب");
   }
 
+  // The number is taken from the account Meta just authorised for this signup — never from the
+  // browser alone — so an office can only link a number of its own WhatsApp Business account.
   let displayPhoneNumber = "";
-  if (!phoneNumberId) {
-    const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
-      headers: { "Authorization": `Bearer ${accessToken}` }
-    });
-    const phones = await phonesResponse.json().catch(() => ({}));
-    const first = Array.isArray(phones.data) ? phones.data[0] : null;
-    phoneNumberId = cleanText(first && first.id, 120);
-    displayPhoneNumber = cleanText(first && first.display_phone_number, 60);
+  const phonesResponse = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(wabaId)}/phone_numbers`, {
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  const phones = await phonesResponse.json().catch(() => ({}));
+  const phoneList = phonesResponse.ok && Array.isArray(phones.data) ? phones.data : null;
+  if (!phoneList) {
+    console.error("[iaqar-whatsapp] phone list failed", phonesResponse.status);
+    throw appError("meta_phone_list_failed", 502, "تعذر التحقق من رقم واتساب لدى Meta — أعد المحاولة");
   }
+  const chosen = phoneNumberId ? phoneList.find((item) => cleanText(item && item.id, 120) === phoneNumberId) : phoneList[0];
+  if (phoneNumberId && !chosen) throw appError("phone_not_in_account", 409, "هذا الرقم لا يتبع حساب واتساب للأعمال الذي تم ربطه");
+  phoneNumberId = cleanText(chosen && chosen.id, 120);
+  displayPhoneNumber = cleanText(chosen && chosen.display_phone_number, 60);
 
   if (!phoneNumberId) throw appError("phone_number_missing", 502, "لم يتم العثور على رقم واتساب المرتبط");
 
@@ -2638,7 +2645,8 @@ async function completeEmbeddedSignup(request, env, requestId) {
   });
   if (existingAccount) {
     const existing = firestoreFieldsToJs(existingAccount.fields || {});
-    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId)) {
+    // A number another office disconnected can be linked again by the office that now proves it owns it at Meta.
+    if (existing.officeId && !officeIdsEquivalent(existing.officeId, officeId) && String(existing.status || "") === "connected") {
       throw appError("phone_already_linked", 409, "رقم واتساب مرتبط بمكتب آخر");
     }
   }
@@ -2765,23 +2773,29 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
 
   // Not every message is a property: a greeting, a short question or a deal follow-up stays
   // in the office inbox with its class and waits for the broker instead of becoming a record.
-  const messageKind = classifyInboundMessage(messageText);
-  await setFirestoreDocument({
-    projectId,
-    segments: ["offices", officeId, "inbox", documentId],
-    accessToken,
-    fields: {
-      messageClass: firestoreString(messageKind.messageClass),
-      messageClassReason: firestoreString(messageKind.reason),
-      ...(messageKind.autoConvert ? {} : {
-        processingState: firestoreString("kept"),
-        status: firestoreString("kept"),
-        isProcessed: firestoreBoolean(true),
-        sourceChannel: firestoreString("whatsapp"),
-        updatedAt: firestoreTimestamp(new Date())
-      })
-    }
-  });
+  let messageKind = classifyInboundMessage(messageText);
+  try {
+    await setFirestoreDocument({
+      projectId,
+      segments: ["offices", officeId, "inbox", documentId],
+      accessToken,
+      fields: {
+        messageClass: firestoreString(messageKind.messageClass),
+        messageClassReason: firestoreString(messageKind.reason),
+        ...(messageKind.autoConvert ? {} : {
+          processingState: firestoreString("kept"),
+          status: firestoreString("kept"),
+          isProcessed: firestoreBoolean(true),
+          sourceChannel: firestoreString("whatsapp"),
+          updatedAt: firestoreTimestamp(new Date())
+        })
+      }
+    });
+  } catch (error) {
+    // The class is a label, never a gate on its own: if it cannot be saved the message is processed as usual.
+    console.warn("[iaqar-workflow] message class not saved", { officeId, documentId, code: error && error.code });
+    messageKind = { ...messageKind, autoConvert: true };
+  }
   if (!messageKind.autoConvert) return { duplicate: false, documentId, kept: true, messageClass: messageKind.messageClass };
 
   try {

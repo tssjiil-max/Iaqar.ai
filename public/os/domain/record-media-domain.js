@@ -109,19 +109,29 @@ export function coverUrlOf(images = []) {
 }
 
 /**
- * Apply the broker's arrangement: `order` lists the ids to keep, first = main photo.
- * Unknown ids are ignored; existing photos missing from `order` are removed.
- * Returns { images, removed } — `removed` are the entries whose files must be deleted.
+ * Apply the broker's arrangement: `order` lists ids first = main photo.
+ *   - without `remove`: existing photos missing from `order` are removed;
+ *   - with `remove` (a list of ids): only those are removed, and photos the form did not know
+ *     about (added meanwhile by a colleague) are kept after the ordered ones.
+ * Unknown ids are ignored. Returns { images, removed } — `removed` are the entries whose files must be deleted.
  */
-export function arrangeImages(existing = [], order = []) {
+export function arrangeImages(existing = [], order = [], remove = null) {
   const byId = new Map(existing.map((image) => [image.id, image]));
+  const dropped = Array.isArray(remove) ? new Set(remove.map((id) => String(id || ""))) : null;
   const images = [];
   const kept = new Set();
   for (const raw of Array.isArray(order) ? order : []) {
     const id = String(raw || "");
-    if (!byId.has(id) || kept.has(id)) continue;
+    if (!byId.has(id) || kept.has(id) || (dropped && dropped.has(id))) continue;
     kept.add(id);
     images.push(byId.get(id));
+  }
+  if (dropped) {
+    for (const image of existing) {
+      if (kept.has(image.id) || dropped.has(image.id)) continue;
+      kept.add(image.id);
+      images.push(image);
+    }
   }
   return { images, removed: existing.filter((image) => !kept.has(image.id)) };
 }

@@ -296,13 +296,25 @@ export async function acknowledgeReply(ctx, { actor, officeId, journeyId, propos
 }
 
 /**
- * A confirmed viewing is mirrored on the match as `appointmentAt`, the field the Worker's
- * scheduled viewing reminders already read — so Office OS viewings get the same reminders.
+ * The viewing time is mirrored on the match, where the Worker's scheduled viewing reminders
+ * read it (2 hours · 30 minutes · 10 minutes before, and when the time has passed). Reminders
+ * fire only for a viewing the broker confirmed, so the confirmation writes the status the
+ * reminder job checks and clears any result left from an earlier viewing of the same deal.
  */
-export async function syncMatchAppointment(ctx, officeId, journey, at) {
+export async function syncMatchAppointment(ctx, officeId, journey, at, { confirmed = false } = {}) {
   const when = toDate(at);
   if (!journey?.matchId || !when) return;
-  await ctx.store.set(["offices", officeId, "matches", journey.matchId], { appointmentAt: when }).catch((error) => console.warn("[office-os] appointment sync", error?.message));
+  const fields = confirmed
+    ? { appointmentAt: when, appointmentStatus: "CONFIRMED_BY_BROKER", viewingOutcome: "", viewingCompletedAt: "" }
+    : { appointmentAt: when };
+  await ctx.store.set(["offices", officeId, "matches", journey.matchId], fields).catch((error) => console.warn("[office-os] appointment sync", error?.message));
+}
+
+/** A recorded result ends the reminders of that viewing (a new confirmed time starts them again). */
+async function endMatchViewing(ctx, officeId, journey, result) {
+  if (!journey?.matchId) return;
+  await ctx.store.set(["offices", officeId, "matches", journey.matchId], { viewingOutcome: String(result || "done"), viewingCompletedAt: ctx.now() })
+    .catch((error) => console.warn("[office-os] viewing end sync", error?.message));
 }
 
 export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
@@ -329,7 +341,7 @@ export async function confirmViewing(ctx, { actor, officeId, journeyId }) {
     add: [{ type: "VIEWING_RESULT", ref: `viewing:${viewing.at}`, dueAt: at, reason: `معاينة مؤكدة ${formatDateTime(at, ctx.now())}`, actionLabel: "نتيجة المعاينة" }],
     event: { type: "VIEWING_CONFIRMED", key: [viewing.at], text: `تم تأكيد موعد المعاينة ${formatDateTime(at, ctx.now())}` }
   });
-  if (confirmed.changed) await syncMatchAppointment(ctx, officeId, confirmed.journey, viewing.at);
+  if (confirmed.changed) await syncMatchAppointment(ctx, officeId, confirmed.journey, viewing.at, { confirmed: true });
   return confirmed;
 }
 
@@ -367,7 +379,7 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
   // «معاينة أخرى» / «لم يحضر»: the deal stays in the viewing stage and needs a new time.
   if (effect.next === "RESCHEDULE_VIEWING") {
     const reason = result === "no_show" ? "لم يحضر أحد الطرفين — حدّد موعد معاينة جديدًا" : "مطلوب معاينة أخرى — حدّد موعدًا جديدًا";
-    return applyJourneyChange(ctx, {
+    const rescheduled = await applyJourneyChange(ctx, {
       officeId, journeyId, actor,
       finish: (task) => task.type === "VIEWING_RESULT" || task.type === "VIEWING_CONFIRM" || task.type === "SEND_PROPOSAL",
       mutate: (j) => {
@@ -385,6 +397,8 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
       add: [{ type: "SEND_PROPOSAL", ref: `reviewing:${viewingKey}:${result}`, reason, actionLabel: "تحديد موعد" }],
       event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote], text: `نتيجة المعاينة: ${option.label}${cleanNote ? ` — ${cleanNote}` : ""} — مطلوب موعد جديد` }
     });
+    if (rescheduled.changed) await endMatchViewing(ctx, officeId, journey, result);
+    return rescheduled;
   }
 
   const res = await applyJourneyChange(ctx, {
@@ -409,6 +423,7 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
     add,
     event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote], text: `نتيجة المعاينة: ${option.label}${cleanNote ? ` — ${cleanNote}` : ""}${closing ? " — أُغلقت هذه المطابقة" : ""}` }
   });
+  if (res.changed) await endMatchViewing(ctx, officeId, journey, result);
   if (closing && res.changed) await afterJourneyClosed(ctx, officeId, journey, { won: false });
   return res;
 }

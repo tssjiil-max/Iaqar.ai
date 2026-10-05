@@ -16,7 +16,7 @@ import { listAuditLog, listClosedJourneys, listMembers, watchInbox } from "../co
 import { listLibrary } from "../core/library.js";
 import { relativeAgo } from "../domain/format-domain.js";
 import { recordView } from "../domain/records-domain.js";
-import { visibleToActor } from "../domain/task-domain.js";
+import { closedDealsFor, visibleToActor } from "../domain/task-domain.js";
 import { MESSAGE_CLASS_LABEL, MESSAGE_CLASS_ORDER, countByClass, filterInbox, inboxItemView } from "../domain/message-class-domain.js";
 import { MIN_QUERY, searchOffice } from "../domain/search-domain.js";
 import { AUDIT_FILTERS, auditViews, filterAudit } from "../domain/audit-domain.js";
@@ -119,7 +119,7 @@ export function renderSearch(container, { query = "" } = {}) {
     const stop = watchInbox(session.officeId, (docs) => { stop(); resolve(docs); }, reject);
   })]).then(([deals, documents, messages]) => {
     if (closed) return;
-    extra.closed = deals.status === "fulfilled" ? deals.value : [];
+    extra.closed = deals.status === "fulfilled" ? closedDealsFor(deals.value, { uid: session.user?.uid, isManager: session.isManager }) : [];
     extra.documents = documents.status === "fulfilled" ? documents.value : [];
     extra.messages = messages.status === "fulfilled" ? messages.value : [];
     draw();

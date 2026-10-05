@@ -37,12 +37,16 @@ function normalize(value) {
     .replace(/\s+/g, " ").trim();
 }
 
-const PROPERTY = /(شقه|شقق|فيلا|فله|فلل|ارض|اراضي|عماره|عمائر|دور|ادوار|دبلكس|دوبلكس|استوديو|غرفه|غرف|محل|معرض|مكتب|مستودع|استراحه|مزرعه|شاليه|بيت|منزل|عقار|قصر|برج|مخطط|قطعه)/;
-const STRONG_OFFER = /( معروض| عندي | لدينا | لدي | يوجد لدي| متوفر لدي| اعرض )/;
-const STRONG_REQUEST = /( مطلوب| ابغي | ابغا | ابي | احتاج | ابحث | يبحث | نبحث | ادور | ارغب | نرغب | للشراء | استئجار | مشتري | مستاجر )/;
-const PURPOSE_WORD = /(للبيع|للايجار|للتاجير|للتقبيل|للتنازل)/;
+// Anything that names a property, a purpose, a place or a specification is treated as possible
+// record material: such a message is never kept out of processing.
+const PROPERTY = /(شقه|شقق|فيلا|فله|فلل|ارض|اراضي|عماره|عمائر|دور|ادوار|دبلكس|دوبلكس|استوديو|استديو|ستوديو|غرفه|غرف|محل|محلات|معرض|مكتب|مكاتب|مستودع|هنجر|ورشه|استراحه|مزرعه|شاليه|بيت|منزل|عقار|قصر|برج|مخطط|قطعه|روف|ملحق|بنايه|مبني|فندق|كراج|مجمع|سكن|صاله)/;
+const WANTS = /( مطلوب| ابغي | ابغا | ابي | احتاج | محتاج| ودي | نبي | نبغي | يبي | يبغي | تبي | ابحث | يبحث | نبحث | ادور | ارغب | نرغب | للشراء | استئجار | مشتري | مستاجر )/;
+const HAS = /( معروض| عندي | عندنا | لدينا | لدي | يوجد | اعرض | نعرض )/;
+const AVAILABLE = /(متوفر|متاح|موجود)/;
+const PURPOSE_WORD = /(للبيع|للايجار|للتاجير|للتقبيل|للتنازل|للاستثمار|ايجار|تمليك|بيع)/;
+const DETAIL = /( حي | بحي | الحي |شارع|مخطط|شمال|جنوب|شرق|غرب|غرفتين|صاله|متر|مساحه|مفروش|عوائل|عزاب|واجهه|مؤثث|سنوي|شهري|نقدا|كاش|بنك|تمويل|الف|مليون|ريال)/;
 const DEAL_CUE = /(المعاينه|معاينه|موعد|العربون|عربون|العقد|الصك|الافراغ|افراغ|الدفعه|التحويل|التوقيع|المفتاح|المفاتيح|الاستلام|التسليم|السعي|العموله)/;
-const QUESTION_CUE = /(\?|؟|^هل |^كم |^وين |^اين |^متي |^كيف |^ممكن |^لو سمحت|^عندكم |^فيه )/;
+const QUESTION_CUE = /(\?|؟|^هل |^كم |^وين |^اين |^متي |^كيف |^ممكن |^لو سمحت)/;
 const SOCIAL_WORDS = [
   "السلام عليكم ورحمه الله وبركاته", "السلام عليكم ورحمه الله", "السلام عليكم", "وعليكم السلام", "سلام عليكم", "سلام",
   "صباح الخير", "صباح النور", "مساء الخير", "مساء النور", "مرحبا", "اهلا وسهلا", "اهلا", "هلا والله", "هلا", "حياك الله", "حياكم الله",
@@ -51,7 +55,7 @@ const SOCIAL_WORDS = [
   "جمعه مباركه", "عيد مبارك", "كل عام وانتم بخير", "رمضان كريم", "مع السلامه", "في امان الله", "hi", "hello", "thanks", "thank you"
 ].sort((a, b) => b.length - a.length);
 
-/** A greeting/thanks, alone or followed by a short address («يا أبو محمد»). */
+/** A greeting/thanks, alone or followed only by a short address («يا أبو محمد»). */
 function onlySocial(text) {
   let rest = ` ${text.replace(/[.,،!؛:()"'~\-_*]/g, " ").replace(/\p{Extended_Pictographic}/gu, " ").replace(/\s+/g, " ").trim()} `;
   if (!rest.trim()) return true;
@@ -61,7 +65,8 @@ function onlySocial(text) {
     if (parts.length > 1) { found = true; rest = parts.join("  "); }
   }
   const left = rest.trim().split(/\s+/).filter(Boolean);
-  return found && left.length <= 3 && !/\d/.test(rest);
+  if (!found || /\d/.test(rest)) return false;
+  return left.length === 0 || (left[0] === "يا" && left.length <= 4);
 }
 
 /**
@@ -72,19 +77,22 @@ export function classifyInboundMessage(input) {
   const text = normalize(input);
   const done = (messageClass, reason) => ({ messageClass, label: MESSAGE_CLASS_LABEL[messageClass], reason, autoConvert: autoConverts(messageClass) });
   if (!text) return done(MESSAGE_CLASS.UNKNOWN, "رسالة بلا نص");
+  const padded = ` ${text.replace(/[.,،!؛:()"'~\-_*؟?]/g, " ").replace(/\s+/g, " ").trim()} `;
   const property = PROPERTY.test(text);
-  const wants = STRONG_REQUEST.test(` ${text} `);
-  const has = STRONG_OFFER.test(` ${text} `);
-  const purpose = PURPOSE_WORD.test(text);
-  const bigNumber = /\d{3,}/.test(text) || /(الف|مليون)/.test(text);
+  const wants = WANTS.test(padded);
   const question = QUESTION_CUE.test(text);
+  const has = HAS.test(padded) || (AVAILABLE.test(text) && !question);
+  const purpose = PURPOSE_WORD.test(text);
+  const detail = DETAIL.test(padded) || /\d{3,}/.test(text);
   const short = text.length <= 90;
-  const describesProperty = property && (wants || has || purpose || bigNumber);
+  // «material» = anything a record could be built from. Such a message is always processed.
+  const material = wants || has || purpose || detail;
 
-  if (!property && !wants && !has && !purpose && !DEAL_CUE.test(text) && !question && text.length <= 120 && onlySocial(text)) return done(MESSAGE_CLASS.SOCIAL, "تحية أو شكر بلا تفاصيل عقار");
-  // A short question about availability or price, with no details to build a record from.
-  if (question && short && !bigNumber && !wants && !has) return done(MESSAGE_CLASS.INQUIRY, "سؤال قصير بلا تفاصيل كافية لإنشاء سجل");
-  if (DEAL_CUE.test(text) && short && !describesProperty) return done(MESSAGE_CLASS.DEAL, "تتحدث عن خطوة في صفقة قائمة");
+  if (!property && !material && !DEAL_CUE.test(text) && !question && text.length <= 120 && onlySocial(text)) return done(MESSAGE_CLASS.SOCIAL, "تحية أو شكر بلا تفاصيل عقار");
+  // A short question with nothing to build a record from («هل الشقة متوفرة؟» · «كم السعر؟»).
+  if (question && short && !material) return done(MESSAGE_CLASS.INQUIRY, "سؤال قصير بلا تفاصيل كافية لإنشاء سجل");
+  // A step in a running deal, with no property described at all.
+  if (DEAL_CUE.test(text) && short && !property && !material) return done(MESSAGE_CLASS.DEAL, "تتحدث عن خطوة في صفقة قائمة");
   if (property && wants && !has) return done(MESSAGE_CLASS.REQUEST, "تذكر نوع عقار مع صيغة طلب");
   // «للبيع / للإيجار» alone reads as an offer unless the sender is asking a question.
   if (property && !wants && (has || (purpose && !question))) return done(MESSAGE_CLASS.OFFER, "تذكر نوع عقار مع صيغة عرض");

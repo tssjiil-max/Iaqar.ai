@@ -11,7 +11,7 @@ import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { runAction, openSheet } from "../core/ui.js";
 import { getDoc, listClosedJourneys } from "../core/live.js";
-import { CLOSED_STEP, TASK_FILTERS, closedDealModel, countTasksByStep, filterTasks, filterTasksByStep, parseMeta, parsePathStep, sortClosedDeals, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
+import { CLOSED_STEP, TASK_FILTERS, closedDealModel, closedDealsFor, countTasksByStep, filterTasks, filterTasksByStep, parseMeta, parsePathStep, sortClosedDeals, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, formatPrice, relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
@@ -148,7 +148,7 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
   const selectStep = (next) => { activeStep = next; writeRoute(); draw(); };
 
   const loadClosed = () => {
-    listClosedJourneys(session.officeId).then((rows) => { closed = sortClosedDeals(rows); closedError = ""; draw(); })
+    listClosedJourneys(session.officeId).then((rows) => { closed = sortClosedDeals(closedDealsFor(rows, { uid: session.user?.uid, isManager: session.isManager })); closedError = ""; draw(); })
       .catch(() => { closed = closed || []; closedError = "تعذر تحميل الصفقات المغلقة"; draw(); });
   };
 

@@ -47,6 +47,7 @@ Each office links its own channels from `#/settings/channels`; the server stores
 ### WhatsApp — per-office number, Cloud API with coexistence
 
 - Linking uses Meta Embedded Signup with the existing `POST /meta/signup/complete` (token exchange + `subscribed_apps` only; the number is never registered or migrated by this Worker).
+- The number is always taken from the phone list of the account Meta authorised in that signup (`GET /{wabaId}/phone_numbers`); a `phoneNumberId` sent by the browser is accepted only if it is in that list. A number another office disconnected can be linked again by the office that proves ownership this way.
 - `META_ONBOARDING_MODE` (plain var): `coexistence` (default) adds `featureType: "whatsapp_business_app_onboarding"` so the number stays on the WhatsApp Business app; `standard` is the classic flow. `/meta/config` returns the mode.
 - Needs `META_APP_ID`, `META_CONFIG_ID` (public identifiers) and `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` (secrets). Until then the screen says the official link is not enabled and offers no button.
 - Routing truth stays `whatsapp_accounts/{phoneNumberId}` (`status == "connected"`). «فصل» (`POST /os/channels/whatsapp/disconnect`, manager) sets it to `disconnected`; nothing is deleted and the business keeps its WhatsApp account.

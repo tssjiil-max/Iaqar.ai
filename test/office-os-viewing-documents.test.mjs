@@ -249,3 +249,30 @@ test("screens: the workspace shows the checklist and names missing documents bef
   assert.match(view, /disabled: open \? null : true/, "read-only once the deal is closed");
   for (const next of ["RESCHEDULE_VIEWING", "FOLLOW_UP_RESULT", "REOPEN_PRICE", "CLOSE_MATCH"]) assert.match(view, new RegExp(`${next}:`), `next-step text for ${next}`);
 });
+
+test("a viewing the broker confirms gets the scheduled reminders; a recorded result stops them", async () => {
+  const deal = await dealWithPastViewing();
+  const journey = journeyDoc(deal.journeyId);
+  assert.ok(journey.matchId, "the deal knows its match");
+  const at = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  h.store.patch(`offices/${OFFICE_A}/journeys/${deal.journeyId}`, { viewing: { state: "ACCEPTED", at: at.toISOString() } });
+  const matchPath = `offices/${OFFICE_A}/matches/${journey.matchId}`;
+  assert.deepEqual(dueViewingReminders(h.store.get(matchPath), new Date(at.getTime() - 9 * 60000), 5), [], "nothing is due before the broker confirms");
+
+  const confirmed = await call("/os/journeys/viewing/confirm", { officeId: OFFICE_A, journeyId: deal.journeyId }, OWNER_A);
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  const match = h.store.get(matchPath);
+  assert.equal(match.appointmentStatus, "CONFIRMED_BY_BROKER");
+  assert.equal(new Date(match.appointmentAt).getTime(), at.getTime());
+  const kinds = (minutesBefore) => dueViewingReminders(h.store.get(matchPath), new Date(at.getTime() - minutesBefore * 60000), 5).map((r) => r.kind);
+  assert.deepEqual(kinds(118), ["2h"]);
+  assert.deepEqual(kinds(28), ["30m"]);
+  assert.deepEqual(kinds(8), ["10m"], "ten minutes before");
+  assert.deepEqual(kinds(-2), ["overdue"]);
+
+  h.store.patch(`offices/${OFFICE_A}/journeys/${deal.journeyId}`, { viewing: { ...journeyDoc(deal.journeyId).viewing, at: new Date(Date.now() - 60000).toISOString() } });
+  const result = await call("/os/journeys/viewing/result", { officeId: OFFICE_A, journeyId: deal.journeyId, result: "no_show" }, OWNER_A);
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(h.store.get(matchPath).viewingOutcome, "no_show");
+  assert.deepEqual(kinds(8), [], "no reminder for a viewing whose result is recorded");
+});

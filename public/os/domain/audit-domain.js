@@ -47,7 +47,7 @@ function parseJson(value, fallback) {
 
 function groupOf(action, entityType) {
   if (/^(COOPERATION_|BANK_SHARING_|SHARED_OPPORTUNITY_)/.test(action)) return "cooperation";
-  if (entityType === "journey" || action.startsWith("DEAL_")) return "deal";
+  if (entityType === "journey" || entityType === "deal" || action.startsWith("DEAL_")) return "deal";
   if (entityType === "channel" || entityType === "inbox" || action.startsWith("CHANNEL_") || action.startsWith("INBOX_")) return "channel";
   return "record";
 }
@@ -69,7 +69,7 @@ export function auditEntryView(entry = {}, { memberNames = {}, recordTitles = {}
   if (action === "RECORD_MEDIA_UPDATED" && Number.isFinite(Number(details.count))) detail.push(`عدد الصور الآن: ${Number(details.count)}`);
   if ((action === "RECORD_PAUSED" || action === "RECORD_ARCHIVED" || action === "RECORD_DELETED") && details.reason) detail.push(String(details.reason).slice(0, 120));
   const route = entityType === "record" && entityId ? `record/${entityId}`
-    : entityType === "journey" && entityId ? `journey/${entityId}`
+    : (entityType === "journey" || entityType === "deal") && entityId ? `journey/${entityId}`
       : entityType === "channel" ? "settings/channels"
         : entityType === "inbox" ? (details.recordId ? `record/${details.recordId}` : "inbox")
           : group === "cooperation" ? "community" : "";

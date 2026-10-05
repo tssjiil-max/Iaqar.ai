@@ -384,6 +384,10 @@ try {
   await until(async () => (await chanState("whatsapp")) === "DISCONNECTED", "whatsapp disconnected on screen");
   check("disconnect switches off routing on the server without deleting the account record", h.store.get("whatsapp_accounts/pn_e2e").status === "disconnected" && h.store.get("whatsapp_accounts/pn_e2e").wabaId === "waba_e2e");
 
+  await page.locator('[data-channel="telegram"] [data-channel-action="reconnect"]').click();
+  await page.locator("[data-telegram-open]").waitFor();
+  check("«إعادة الربط» shows a new one-time link while the current chat stays «مرتبط»", (await chanState("telegram")) === "CONNECTED" && /\?start=/.test(await page.locator("[data-telegram-open]").getAttribute("href")));
+
   // — communication center
   step = "inbox";
   await page.locator("[data-open-inbox]").click();

@@ -362,7 +362,8 @@ function telegramCard(view, reload, pending) {
   const actions = view.actions.map((action) => action === "disconnect"
     ? channelAction("disconnect", view.state === "CONNECTED" ? "فصل" : "إلغاء الرابط", { kind: "danger", icon: "x", run: unlink })
     : channelAction(action, action === "connect" ? "ربط تيليجرام" : view.state === "PENDING" ? "رابط جديد" : "إعادة الربط", { kind: action === "connect" ? "primary" : "secondary", icon: "link", run: link }));
-  const showLink = view.state === "PENDING" && pending.link;
+  // The one-time link stays on screen until it is used, cancelled or expired — also while the current chat is still linked.
+  const showLink = Boolean(pending.link) && view.linkWaiting === true;
   const copy = h("button", { type: "button", class: "os-btn secondary", "data-telegram-copy": "" }, ic("clipboard"), "نسخ الرابط");
   copy.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(pending.link); toast("تم نسخ رابط الربط"); } catch (_) { toast("تعذر النسخ — افتح الرابط مباشرة", "bad"); }
@@ -377,7 +378,7 @@ function telegramCard(view, reload, pending) {
       h("div", { class: "os-btn-row" },
         h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-telegram-open": "" }, ic("send"), "فتح تيليجرام"),
         copy)) : null,
-    view.state === "PENDING" && !pending.link ? h("p", { class: "os-sub", "data-telegram-pending": "", text: "رابط ربط سابق ما زال بانتظار الإتمام. أنشئ رابطًا جديدًا إن لم يعد لديك." }) : null,
+    view.linkWaiting && !pending.link ? h("p", { class: "os-sub", "data-telegram-pending": "", text: "رابط ربط سابق ما زال بانتظار الإتمام. أنشئ رابطًا جديدًا إن لم يعد لديك." }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
     actions.length ? h("div", { class: "os-btn-row" }, ...actions) : null);
 }
@@ -392,6 +393,7 @@ export function renderChannelSettings(container) {
   let closed = false;
   const draw = (payload) => {
     const byId = Object.fromEntries((payload.channels || []).map((view) => [view.id, view]));
+    if (byId.telegram && !byId.telegram.linkWaiting) pending.link = "";
     clear(body);
     append(body,
       h("p", { class: "os-sub", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
@@ -406,7 +408,7 @@ export function renderChannelSettings(container) {
         h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
     clearTimeout(timer);
     // While a Telegram link waits for «ابدأ», check the state again so the screen turns «مرتبط» by itself.
-    if (!closed && byId.telegram?.state === "PENDING" && pending.link) timer = setTimeout(() => { if (body.isConnected) reload(); }, 4000);
+    if (!closed && byId.telegram?.linkWaiting && pending.link) timer = setTimeout(() => { if (body.isConnected) reload().catch(() => { /* the next press or visit reloads */ }); }, 4000);
   };
   async function reload() {
     const payload = await loadChannels(session.officeId);

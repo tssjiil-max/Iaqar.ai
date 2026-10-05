@@ -244,6 +244,12 @@ export function closedDealModel(journey = {}) {
   };
 }
 
+/** Closed deals a member may see: a manager sees all; a broker sees the deals assigned to him (or to no one). */
+export function closedDealsFor(journeys = [], { uid = "", isManager = false } = {}) {
+  if (isManager) return journeys;
+  return journeys.filter((journey) => { const assigned = String(journey.assignedBrokerId || ""); return !assigned || assigned === String(uid || ""); });
+}
+
 export function sortClosedDeals(journeys = []) {
   const at = (j) => toDate(j.outcome?.closedAt || j.closedAt)?.getTime() || 0;
   return [...journeys].sort((a, b) => at(b) - at(a));
