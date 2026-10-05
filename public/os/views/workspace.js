@@ -124,9 +124,9 @@ function nowAction(journey, proposals, offer, request, draft) {
   }
   const type = action?.type || "";
   if (type.startsWith("SESSION_")) {
-    append(card, title(action.label && action.label !== "فتح جلسة التفاوض" ? action.label : type === "SESSION_INTERVENTION" ? "تدخل مطلوب" : "متابعة جلسة التفاوض"),
+    append(card, title(action.label && !["فتح غرفة التفاوض", "فتح جلسة التفاوض"].includes(action.label) ? action.label : type === "SESSION_INTERVENTION" ? "تدخل مطلوب" : "متابعة غرفة التفاوض"),
       h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: action.reason }),
-      h("button", { type: "button", class: "os-btn primary block", onClick: () => go(`session/${jid}`) }, ic("handshake"), "فتح جلسة التفاوض"));
+      h("button", { type: "button", class: "os-btn primary block", onClick: () => go(`session/${jid}`) }, ic("handshake"), "فتح غرفة التفاوض"));
     return card;
   }
   if (type === "VIEWING_RESULT") {
@@ -383,7 +383,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     );
     const communication = isJourneyOpen(journey) ? communicationCard(journey, offer, request, draft) : null;
     const sessionEntry = h("button", { type: "button", class: "os-btn secondary block os-session-entry", onClick: () => go(`session/${journeyId}`) },
-      ic("handshake"), "جلسة التفاوض", journey.session?.intervention?.required ? h("span", { class: "os-badge late", text: "تدخل مطلوب" }) : null);
+      ic("handshake"), "غرفة التفاوض", journey.session?.intervention?.required ? h("span", { class: "os-badge late", text: "تدخل مطلوب" }) : null);
     append(container, 
       summary,
       sessionEntry,

@@ -151,9 +151,12 @@ test("intervention: event, task in daily tasks, notification, flagged session; l
   assert.equal(task.priority, "HIGH");
   assert.equal(task.journeyId, ctx.journeyId);
   assert.ok(h.store.list(`offices/${OFFICE_A}/notifications`).some((n) => n.title.startsWith("تدخل مطلوب")));
-  const view = (await call("/os/session/view", { token: ctx.ownerToken })).body.session;
-  assert.equal(view.intervention, true);
+  const view = (await call("/os/session/view", { token: ctx.clientToken })).body.session;
+  assert.equal(view.intervention, true, "the side that asked sees its request is with the broker");
   assert.ok(view.events.length >= 4, "previous log still visible");
+  const ownerView = (await call("/os/session/view", { token: ctx.ownerToken })).body.session;
+  assert.equal(ownerView.intervention, false, "the other side is not told about a request to the broker");
+  assert.ok(!ownerView.events.some((event) => /تدخل الوسيط/.test(event.text)));
   const resolved = await call("/os/session/resolve", { officeId: OFFICE_A, journeyId: ctx.journeyId }, OWNER_A);
   assert.equal(resolved.status, 200);
   assert.equal(h.store.get(`offices/${OFFICE_A}/journeys/${ctx.journeyId}`).session.intervention.required, false);

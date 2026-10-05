@@ -1,5 +1,5 @@
 /**
- * جلسة التفاوض — one live session per deal (journey), shared by the owner, the
+ * غرفة التفاوض — one live session per deal (journey), shared by the owner, the
  * client and the broker. Pure: the Worker validates and applies every move with the
  * same rules the pages use to decide which buttons to show.
  *
@@ -88,11 +88,11 @@ export const PRICE_MOVES = Object.freeze({
 });
 
 export const OTHER_ACTIONS = Object.freeze({
-  intervention: { id: "intervention", label: "تدخل الوسيط", icon: "alert", secondary: true },
+  intervention: { id: "intervention", label: "طلب تدخل الوسيط", icon: "alert", secondary: true, typed: "message" },
   reject: { id: "reject", label: "رفض", icon: "x-circle" },
   accept_fixed: { id: "accept_fixed", label: "موافق على السعر", icon: "check-circle" },
   decline_fixed: { id: "decline_fixed", label: "غير موافق", icon: "x-circle" },
-  viewing_pick: { id: "viewing_pick", label: "اختر موعد المعاينة", icon: "calendar", typed: "slot" },
+  viewing_pick: { id: "viewing_pick", label: "طلب معاينة", icon: "calendar", typed: "slot" },
   viewing_ok: { id: "viewing_ok", label: "الموعد مناسب", icon: "check-circle" },
   viewing_other: { id: "viewing_other", label: "اقترح موعدًا آخر", icon: "calendar", typed: "slot" }
 });
@@ -206,15 +206,34 @@ export function moveText(move, { pct = 0 } = {}) {
     case "intervention": return "طلب تدخل الوسيط";
     case "viewing_ok": return "وافق على موعد المعاينة — تم حجز الموعد";
     case "viewing_other": return "اقترح موعدًا آخر للمعاينة";
-    case "viewing_pick": return "اقترح موعد المعاينة";
+    case "viewing_pick": return "طلب معاينة واقترح موعدًا";
     case "accept_fixed": return "وافق على السعر الثابت";
     case "decline_fixed": return "لم يوافق على السعر الثابت — أُغلقت هذه المطابقة";
     case "reject": return "رفض العرض الحالي";
-    case "opened": return "فتح رابط الجلسة";
+    case "opened": return "فتح رابط الغرفة";
     case "resolved": return "تابع الوسيط طلب التدخل";
     default: return "";
   }
 }
+
+/** Sentence for a room move (a term, an information request, readiness) in the timeline. */
+export function roomMoveText(payload = {}) {
+  const term = payload.termLabel ? `«${payload.termLabel}»` : "البند";
+  switch (payload.move) {
+    case "term_propose": return payload.replaces ? `طلب تعديل ${term} من «${payload.replaces}» إلى: ${payload.optionLabel}` : `اقترح في ${term}: ${payload.optionLabel}`;
+    case "term_accept": return `وافق على ${term}: ${payload.optionLabel} — تم الاتفاق`;
+    case "term_reject": return `لم يوافق على اقتراح ${term}: ${payload.optionLabel}`;
+    case "info_request": return `طلب معلومة من الوسيط: ${payload.topicLabel || ""}`;
+    case "ready": return payload.both ? "جاهز للاتفاق — الطرفان جاهزان الآن" : "جاهز للاتفاق";
+    default: return "";
+  }
+}
+
+/** What the broker did with a request — the wording of the broker's own log. */
+const DECISION_TEXT = Object.freeze({
+  forward: "مرّرها للطرف الآخر كما هي", rephrase: "أرسل صياغته للطرف الآخر", reply: "ردّ على المرسل",
+  dismiss: "لم يمرّرها", handled: "عالجها داخل الصفقة"
+});
 
 /**
  * Who may see an event: "all" | "broker" | "owner" | "client" | "owner,client".
@@ -246,17 +265,25 @@ export function parsePayload(event = {}) {
 export function sessionEventCard(event = {}, viewer = "broker") {
   const payload = parsePayload(event);
   const type = String(event.type || "");
-  const actor = String(payload.role || (type === "SESSION_BROKER_MESSAGE" || type === "SESSION_RESOLVED" ? "broker" : ""));
+  const actor = String(payload.role || (type === "SESSION_BROKER_MESSAGE" || type === "SESSION_RESOLVED" || type === "SESSION_REQUEST_HANDLED" ? "broker" : ""));
   const who = actor && actor === viewer && viewer !== "broker" ? "أنت" : ROLE_LABEL[actor] || "الوسيط";
   let text = "";
   let detail = "";
   if (type === "SESSION_MOVE") {
-    text = moveText(payload.move, { pct: payload.pct });
+    text = roomMoveText(payload) || moveText(payload.move, { pct: payload.pct });
     if (payload.price) detail = formatPrice(payload.price);
     if (payload.move === "viewing_other" && payload.viewingAt) detail = String(payload.viewingAtLabel || "");
+    // What a side wrote to the broker is shown to the broker and to its writer only (the event itself is not sent to the other side).
+    if (payload.move === "intervention" && payload.text) detail = `«${String(payload.text)}»`;
   } else if (type === "SESSION_BROKER_MESSAGE") {
     text = String(payload.text || "");
+    // A passed-on message is always shown as passed on by the broker — never as said directly by the other side.
+    if (payload.relayedFrom && ROLE_LABEL[payload.relayedFrom]) text = `نقل الوسيط عن ${ROLE_LABEL[payload.relayedFrom]}: «${text}»`;
     detail = viewer === "broker" ? `إلى ${payload.audience === "all" ? "الطرفين" : ROLE_LABEL[payload.audience] || ""}` : "";
+  } else if (type === "SESSION_REQUEST_HANDLED") {
+    text = viewer === "broker"
+      ? `طلب ${ROLE_LABEL[payload.requestRole] || "الطرف"}: ${DECISION_TEXT[payload.decision] || "تابعه"}`
+      : "تابع الوسيط طلبك";
   } else if (type === "SESSION_RESOLVED") {
     text = moveText("resolved");
   } else if (type === "SESSION_OPENED") {
@@ -273,6 +300,9 @@ export function sessionEventCard(event = {}, viewer = "broker") {
     detail,
     at: event.at || event.createdAt || null,
     mine: Boolean(actor && actor === viewer),
-    private: payload.audience === "broker"
+    private: payload.audience === "broker",
+    // The broker's own interventions (decisions on requests, passed-on and direct messages).
+    intervention: type === "SESSION_REQUEST_HANDLED" || type === "SESSION_BROKER_MESSAGE" || type === "SESSION_RESOLVED" || (type === "SESSION_MOVE" && (payload.move === "intervention" || payload.move === "info_request")),
+    audience: String(payload.audience || "")
   };
 }

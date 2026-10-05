@@ -331,6 +331,17 @@ try {
     const clientParty = await partyPage(links.client.url);
     await clientParty.locator('[data-session-action="accept_fixed"]').waitFor();
     check("live: fixed price → the client sees only «موافق / غير موافق» (no price moves)", (await clientParty.locator('[data-session-action="minus5"], [data-session-action="manual"]').count()) === 0);
+    // The room of this deal: three parts in order, the terms of a villa sale, a proposal that needs the other side.
+    const parts = await clientParty.locator("[data-room-part]").evaluateAll((els) => els.map((el) => el.getAttribute("data-room-part")).join(","));
+    const liveTerms = await clientParty.locator("[data-term]").evaluateAll((els) => els.map((el) => el.getAttribute("data-term")));
+    check("live: the negotiation room has its three parts and the terms of this property", parts === "property,agreed,versus" && liveTerms.includes("payment_method") && !liveTerms.includes("rent_payments"), `${parts} | ${liveTerms.join(",")}`);
+    await ownerParty.locator('[data-term="payment_method"] [data-term-action="propose"]').click();
+    await ownerParty.locator('[data-term="payment_method"] [data-term-option="cash"]').click();
+    await clientParty.locator('[data-term="payment_method"] [data-term-action="accept"]').waitFor({ timeout: 40000 });
+    check("live: a proposed term is not shown as agreed until the other side accepts", (await clientParty.locator('[data-agreed="term:payment_method"]').count()) === 0);
+    await clientParty.locator('[data-term="payment_method"] [data-term-action="accept"]').click();
+    await clientParty.locator('[data-agreed="term:payment_method"]').waitFor({ timeout: 40000 });
+    check("live: an accepted term moves to «ما تم الاتفاق عليه» with who accepted", (await clientParty.locator('[data-agreed="term:payment_method"]').innerText()).includes("وافق العميل"));
     await shot(clientParty, "17-fixed-price-client");
     await clientParty.locator('[data-session-action="accept_fixed"]').click();
     await clientParty.locator('[data-session-action="viewing_pick"]').waitFor();
