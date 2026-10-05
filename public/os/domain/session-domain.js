@@ -162,7 +162,10 @@ export function availableActions(journey = {}, role = "", { now = new Date() } =
     return { ...base, phase: "WAITING", waiting: true, note, actions: [intervention] };
   }
   const actions = [];
-  const acceptPrice = PRICE_MOVES.accept.price(prices, role);
+  // «قبول» answers a price the other side actually put forward: the owner's asking price is his
+  // standing offer, but the client's budget is not a proposal until the client proposes a price.
+  const proposed = role === SESSION_ROLE.CLIENT || Boolean(sessionOf(journey).prices?.client?.price);
+  const acceptPrice = proposed ? PRICE_MOVES.accept.price(prices, role) : 0;
   if (acceptPrice > 0) actions.push({ ...strip({ ...PRICE_MOVES.accept, label: "قبول", price: acceptPrice }), group: "main" });
   const adjust = [];
   for (const id of ADJUST_ORDER) {

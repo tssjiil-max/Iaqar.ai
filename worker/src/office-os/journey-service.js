@@ -415,7 +415,8 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
         };
       }
       if (effect.next === "REOPEN_PRICE") {
-        const session = { ...(j.session || {}), agreedPrice: null, agreedAt: null, lastMove: null, priceReopened: true, reopenedAt: now.toISOString() };
+        // The price is open again: nobody is «جاهز للاتفاق» until a new price is agreed.
+        const session = { ...(j.session || {}), agreedPrice: null, agreedAt: null, lastMove: null, priceReopened: true, reopenedAt: now.toISOString(), ready: {} };
         return { viewing, stage: STAGE.NEGOTIATION, session };
       }
       return { viewing, stage: effect.stage || j.stage };

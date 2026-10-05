@@ -100,7 +100,9 @@ test("a proposal is not an agreement: the term state machine", () => {
   assert.equal(apply({ role: "owner", action: "term_propose", termId: "rent_payments", optionId: "weekly" }).code, "option_unknown");
   assert.equal(apply({ role: "owner", action: "term_propose", termId: "rent_payments", optionId: "two" }).ok, true);
   assert.equal(roomAgreedItems(journey, now).length, 0, "a proposal never appears as agreed");
-  assert.equal(apply({ role: "owner", action: "term_accept", termId: "rent_payments" }).ok, false, "a side cannot accept its own proposal");
+  assert.equal(apply({ role: "owner", action: "term_accept", termId: "rent_payments", optionId: "two" }).ok, false, "a side cannot accept its own proposal");
+  assert.equal(apply({ role: "client", action: "term_accept", termId: "rent_payments", optionId: "one" }).code, "term_changed", "an answer must name the option it answers");
+  assert.equal(apply({ role: "client", action: "term_accept", termId: "rent_payments" }).code, "term_changed");
   assert.deepEqual(termRows(journey, "client").find((r) => r.id === "rent_payments").actions, ["accept", "reject", "propose"]);
   assert.deepEqual(termRows(journey, "owner").find((r) => r.id === "rent_payments").actions, ["propose"]);
   assert.deepEqual(termRows(journey, "broker").find((r) => r.id === "rent_payments").actions, [], "the broker watches; the sides decide");
@@ -108,7 +110,7 @@ test("a proposal is not an agreement: the term state machine", () => {
   assert.ok(partyStatus(journey, "client", { now }).items.includes("دفعات الإيجار"));
   // Counter-proposal, then acceptance by the other side.
   assert.equal(apply({ role: "client", action: "term_propose", termId: "rent_payments", optionId: "four" }).ok, true);
-  const accepted = apply({ role: "owner", action: "term_accept", termId: "rent_payments" });
+  const accepted = apply({ role: "owner", action: "term_accept", termId: "rent_payments", optionId: "four" });
   assert.equal(accepted.applied.agreed, true);
   const agreed = roomAgreedItems(journey, now).find((item) => item.id === "term:rent_payments");
   assert.equal(agreed.value, "أربع دفعات");
@@ -119,12 +121,26 @@ test("a proposal is not an agreement: the term state machine", () => {
   const changing = roomAgreedItems(journey, now).find((item) => item.id === "term:rent_payments");
   assert.equal(changing.value, "أربع دفعات", "still the agreed value");
   assert.match(changing.changing, /طلب العميل تعديله إلى «شهريًا»/);
-  assert.equal(apply({ role: "owner", action: "term_reject", termId: "rent_payments" }).ok, true);
+  // The proposer swaps the option while the other side is about to accept what it saw: nothing is agreed.
+  assert.equal(apply({ role: "client", action: "term_propose", termId: "rent_payments", optionId: "one" }).ok, true);
+  assert.equal(apply({ role: "owner", action: "term_accept", termId: "rent_payments", optionId: "monthly" }).code, "term_changed");
+  assert.equal(roomAgreedItems(journey, now).find((item) => item.id === "term:rent_payments").value, "أربع دفعات");
+  // A side may change its own unanswered proposal twice, then it waits.
+  assert.equal(apply({ role: "client", action: "term_propose", termId: "rent_payments", optionId: "two" }).ok, true);
+  assert.equal(apply({ role: "client", action: "term_propose", termId: "rent_payments", optionId: "monthly" }).code, "term_wait_for_answer");
+  assert.deepEqual(termRows(journey, "client").find((r) => r.id === "rent_payments").actions, [], "no more changes until the owner answers");
+  assert.equal(apply({ role: "owner", action: "term_reject", termId: "rent_payments", optionId: "two" }).ok, true);
   assert.equal(roomAgreedItems(journey, now).find((item) => item.id === "term:rent_payments").changing, "");
   assert.equal(canMarkReady(journey, "owner"), false, "no «جاهز للاتفاق» before the price is agreed");
   assert.equal(planTermAction({ ...journey, status: "PAUSED" }, { role: "owner", action: "term_propose", termId: "lease_term", optionId: "one_year", now }).code, "room_not_live");
   assert.equal(planTermAction({ ...journey, status: "CLOSED_WON" }, { role: "owner", action: "term_propose", termId: "lease_term", optionId: "one_year", now }).ok, false);
   assert.equal(relaySafeText("كلمني على 0551234567 او https://wa.me/966551234567 ضروري"), "كلمني على او ضروري");
+  for (const leak of ["۰۵۵۱۲۳۴۵۶۷", "٠٥٥١٢٣٤٥٦٧", "055.123.4567", "(055) 1234567", "055/123/4567", "055_123_4567", "055–123–4567", "055\u200b1234567", "+966 55 123 4567", "05 5 123 4567", "اتصل 055123 ثم 4567", "www.example.com", "t.me/ahmad", "wa.me/966551234567", "ftp://x.y/z", "a.b@gmail.com", "@ahmad_realestate"]) {
+    assert.ok(!/[\d٠-٩۰-۹]{3,}|example|ahmad|gmail|t\.me|wa\.me|x\.y/.test(relaySafeText(`راسلني ${leak} اليوم`)), `leaks: ${leak}`);
+  }
+  assert.equal(relaySafeText("الدفعة 50 ألف والباقي بعد 30 يوم"), "الدفعة 50 ألف والباقي بعد 30 يوم", "ordinary small numbers stay");
+  assert.equal(propertyFamily("شقة دور أرضي"), FAMILY.UNIT, "«أرضي» is a floor, not a land");
+  assert.equal(propertyFamily("أرض تجارية"), FAMILY.LAND);
 });
 
 // ------------------------------------------------------------------ one real room per main property type
@@ -160,9 +176,10 @@ for (const scenario of SCENARIOS) {
 
     const foreign = await act(d.owner, "term_propose", { termId: scenario.absent, optionId: "cash" });
     assert.equal(foreign.status, 400, "a term outside this property's rules is refused by the server");
-    assert.equal((await act(d.owner, "term_accept", { termId: scenario.termId })).status, 409, "a side cannot accept its own proposal");
+    assert.equal((await act(d.owner, "term_accept", { termId: scenario.termId, optionId: scenario.option })).status, 409, "a side cannot accept its own proposal");
+    assert.equal((await act(d.client, "term_accept", { termId: scenario.termId })).status, 409, "an answer without the option it answers is refused");
 
-    const accepted = await act(d.client, "term_accept", { termId: scenario.termId });
+    const accepted = await act(d.client, "term_accept", { termId: scenario.termId, optionId: term(client, scenario.termId).pending.option });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     const after = await view(d.owner);
     const agreed = after.room.agreed.find((item) => item.id === `term:${scenario.termId}`);
@@ -191,6 +208,9 @@ test("journey 1 — the owner proposes a price, the client answers, the agreed p
   Object.assign(room, await deal({ type: "شقة", price: 1200000, budget: 1100000, area: 150, rooms: 4 }));
   const owner = await view(room.owner);
   assert.equal(owner.room.status.owner.turn, "ACT");
+  assert.ok(!owner.actions.some((action) => action.id === "accept"), "the client's budget is not a proposal the owner can accept alone");
+  assert.equal((await act(room.owner, "accept")).status, 409);
+  assert.ok((await view(room.client)).actions.some((action) => action.id === "accept"), "the owner's asking price is his standing offer");
   assert.equal((await act(room.owner, "manual", { price: "1,180,000" })).status, 200);
   const client = await view(room.client);
   assert.equal(client.room.status.client.turn, "ACT");
@@ -204,6 +224,22 @@ test("journey 1 — the owner proposes a price, the client answers, the agreed p
   const agreed = (await view(room.client)).room.agreed.find((item) => item.id === "price");
   assert.equal(agreed.value, "1,150,000 ريال");
   assert.match(agreed.meta, /وافق المالك/);
+});
+
+test("the room photo is served through the side's own link, with no record address in the page", async () => {
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+  const upload = await h.worker.fetch(new Request("https://worker.test/media/record-image", { method: "POST", headers: { authorization: `Bearer ${idTokenFor(OWNER_A)}`, "x-office-id": OFFICE_A, "x-record-id": room.offerId, "content-type": "image/jpeg" }, body: jpeg }), h.env, { waitUntil() {} });
+  assert.equal(upload.status, 201, await upload.clone().text());
+  const session = await view(room.client);
+  assert.match(session.room.imageVersion, /^v[a-f0-9]{12}$/);
+  const json = JSON.stringify(session);
+  assert.ok(!json.includes("record-media") && !json.includes(room.offerId) && !json.includes(OFFICE_A), "no storage path, record id or office id reaches the page");
+  const picture = await h.worker.fetch(new Request("https://worker.test/os/session/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: room.client }) }), h.env, { waitUntil() {} });
+  assert.equal(picture.status, 200);
+  assert.equal(picture.headers.get("content-type"), "image/jpeg");
+  assert.equal(new Uint8Array(await picture.arrayBuffer()).length, jpeg.length);
+  const bad = await h.worker.fetch(new Request("https://worker.test/os/session/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: "x".repeat(43) }) }), h.env, { waitUntil() {} });
+  assert.equal(bad.status, 404, "an unknown link gets no photo");
 });
 
 test("journey 2 — a side asks the broker to step in; the message reaches the broker only", async () => {
@@ -298,9 +334,17 @@ test("journey 6 — terms continue after the price; «جاهز للاتفاق» 
   assert.equal((await act(room.client, "term_propose", { termId: "payment_method", optionId: "bank" })).status, 200);
   assert.equal((await view(room.client)).room.canReady, false, "a waiting proposal blocks «جاهز للاتفاق»");
   assert.equal((await act(room.client, "ready")).status, 409);
-  assert.equal((await act(room.owner, "term_reject", { termId: "payment_method" })).status, 200);
+  assert.equal((await act(room.owner, "term_reject", { termId: "payment_method", optionId: "bank" })).status, 200);
   assert.equal((await act(room.owner, "term_propose", { termId: "payment_method", optionId: "mixed" })).status, 200);
-  assert.equal((await act(room.client, "term_accept", { termId: "payment_method" })).status, 200);
+  // The owner swaps his proposal while the client is about to accept the one on his screen.
+  assert.equal((await act(room.owner, "term_propose", { termId: "payment_method", optionId: "cash" })).status, 200);
+  const stale = await act(room.client, "term_accept", { termId: "payment_method", optionId: "mixed" });
+  assert.equal(stale.status, 409, "the client cannot be made to accept an option he did not see");
+  assert.equal(stale.body.error, "term_changed");
+  assert.equal(journeyDoc(room.journeyId).session.terms.payment_method.agreed, undefined);
+  assert.equal((await act(room.client, "term_reject", { termId: "payment_method", optionId: "cash" })).status, 200);
+  assert.equal((await act(room.owner, "term_propose", { termId: "payment_method", optionId: "mixed" })).status, 200);
+  assert.equal((await act(room.client, "term_accept", { termId: "payment_method", optionId: "mixed" })).status, 200);
   const client = await view(room.client);
   assert.equal(client.room.canReady, true);
   assert.equal((await act(room.client, "ready")).status, 200);
@@ -314,7 +358,9 @@ test("journey 6 — terms continue after the price; «جاهز للاتفاق» 
   // A new proposal reopens the agreement.
   assert.equal((await act(room.owner, "term_propose", { termId: "transfer_time", optionId: "month" })).status, 200);
   assert.deepEqual(journeyDoc(room.journeyId).session.ready, {});
-  assert.equal((await act(room.client, "term_accept", { termId: "transfer_time" })).status, 200);
+  assert.equal(ops().filter((op) => op.type === "DEAL_ACTION" && op.journeyId === room.journeyId && active(op) && /جاهزان/.test(JSON.stringify(op))).length, 0, "the «both ready» task is withdrawn with the readiness");
+  assert.ok(!(await view(room.owner)).room.agreed.some((item) => item.id === "ready"));
+  assert.equal((await act(room.client, "term_accept", { termId: "transfer_time", optionId: "month" })).status, 200);
 });
 
 test("journey 7 — agreeing on the viewing moves the deal to the viewing stage; the room stops with the deal", async () => {

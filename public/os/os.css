@@ -784,4 +784,5 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
   .os-versus-mark { display: none; }
   .os-deal-sides-grid.os-room-versus { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-
+[data-room-flash] { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+[data-room-flash] .os-icon-btn { flex: none; width: 36px; height: 36px; }

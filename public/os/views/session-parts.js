@@ -162,12 +162,13 @@ export function roomTermsList(rows = [], { viewer = "broker", openTerm = "", onT
     const buttons = [];
     if (onAction && row.actions?.includes("accept")) {
       const b = h("button", { type: "button", class: "os-btn primary", "data-term-action": "accept" }, ic("check"), "قبول الشرط");
-      b.addEventListener("click", () => onAction("term_accept", row, ""));
+      // The answer carries the option shown here: if the proposal changed meanwhile the server refuses it.
+      b.addEventListener("click", () => onAction("term_accept", row, row.pending?.option || ""));
       buttons.push(b);
     }
     if (onAction && row.actions?.includes("reject")) {
       const b = h("button", { type: "button", class: "os-btn danger", "data-term-action": "reject" }, ic("x"), "رفض الشرط");
-      b.addEventListener("click", () => onAction("term_reject", row, ""));
+      b.addEventListener("click", () => onAction("term_reject", row, row.pending?.option || ""));
       buttons.push(b);
     }
     if (onAction && row.actions?.includes("propose") && row.options?.length) {

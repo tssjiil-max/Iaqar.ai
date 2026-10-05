@@ -22,12 +22,16 @@ The sides open it with their private links (`/s#<token>`, no account); the broke
 | --- | --- | --- |
 | price moves, `accept`, `reject`, fixed-price answers, viewing slot moves | the side whose turn it is | unchanged from the session rules (`session-domain.js`) |
 | `term_propose {termId, optionId}` | either side | the term waits for the other side; clears «جاهز للاتفاق» |
-| `term_accept {termId}` / `term_reject {termId}` | the side that did not propose | accept → agreed (time, proposer, accepter saved); reject → proposal removed, agreed value (if any) stays |
+| `term_accept {termId, optionId}` / `term_reject {termId, optionId}` | the side that did not propose | the answer names the option the side saw — if the proposal changed meanwhile the server answers 409 and nothing is agreed. accept → agreed (time, proposer, accepter saved); reject → proposal removed, agreed value (if any) stays |
 | `info_request {topicId}` | either side | a request to the broker (never shown to the other side) + a HIGH task |
 | `intervention {message?}` | either side | the only free text a side can write; goes to the broker alone + a HIGH task |
 | `ready` | either side, once the price is agreed and nothing is waiting | when both are ready the broker gets a task to complete the deal |
 
-A side holds at most 3 unanswered requests. Every move is one journey event (`SESSION_MOVE`) with `role`, `move`, the proposal, `prev` / `next` deal phase and, for terms, `termPrev` / `termNext`.
+A side holds at most 3 unanswered requests, and may change its own unanswered proposal on a term twice before it must wait for the answer (later changes do not notify the broker again).
+«قبول» on the price answers a price the other side actually proposed: the owner's asking price is his standing offer, but the client's budget is only a starting point until the client proposes a price.
+«جاهز للاتفاق» counts only for the price agreed now; any new price or proposal resets it and withdraws the «both ready» task.
+
+The main photo reaches a side through its own link (`POST /os/session/image {token}`), so no storage path, record id or office id appears in the side's page. Every move is one journey event (`SESSION_MOVE`) with `role`, `move`, the proposal, `prev` / `next` deal phase and, for terms, `termPrev` / `termNext`.
 
 ## The broker steps in when needed (`POST /os/session/request`)
 

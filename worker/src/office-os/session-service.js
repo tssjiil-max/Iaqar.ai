@@ -27,7 +27,7 @@ import {
   partyStatus, planTermAction, propertyFacts, readiness, relaySafeText, reminderText, requestView, requestsOf, roomAgreedItems, roomMoveText,
   roomSchema, termRows
 } from "../../../public/os/domain/negotiation-room-domain.js";
-import { RECORD_IMAGE_KEY_PATTERN } from "../../../public/os/domain/record-media-domain.js";
+import { keyBelongsTo, recordImages } from "../../../public/os/domain/record-media-domain.js";
 import { newReplyToken, isReplyTokenShape } from "./proposal-service.js";
 import { applyJourneyChange, afterJourneyClosed, loadJourney, syncMatchAppointment } from "./journey-service.js";
 import { assertCanActOn } from "./permissions.js";
@@ -200,7 +200,7 @@ export async function resolveIntervention(ctx, { actor, officeId, journeyId }) {
  */
 export async function handleSessionRequest(ctx, { actor, officeId, journeyId, requestId, decision, text = "", requestKey = "" }) {
   const journey = await loadOwnJourney(ctx, { actor, officeId, journeyId });
-  const choice = REQUEST_DECISIONS[String(decision || "")];
+  const choice = Object.hasOwn(REQUEST_DECISIONS, String(decision || "")) ? REQUEST_DECISIONS[String(decision)] : null;
   if (!choice) throw ctx.deps.appError("decision_invalid", 400, "اختر الإجراء على الطلب");
   const request = requestsOf(journey).find((item) => String(item.id) === String(requestId || ""));
   if (!request) throw ctx.deps.appError("request_not_found", 404, "الطلب غير موجود في هذه الصفقة");
@@ -220,21 +220,10 @@ export async function handleSessionRequest(ctx, { actor, officeId, journeyId, re
     if (outgoing.length < 2) throw ctx.deps.appError("message_required", 400, "اكتب الرسالة");
     target = choice.to === "sender" ? request.role : other;
   }
-  if (target) {
-    if (!isOpenJourney(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة");
-    const relayedFrom = choice.id === "forward" ? request.role : "";
-    await applyJourneyChange(ctx, {
-      officeId, journeyId, actor,
-      mutate: (j) => ({ session: { ...(j.session || {}), lastBrokerMessageAt: now.toISOString() } }),
-      event: {
-        // One message per request and decision: a repeated press never sends it twice.
-        type: "SESSION_BROKER_MESSAGE", key: ["request", request.id, choice.id], source: EVENT_SOURCE.BROKER,
-        text: relayedFrom ? `نقل الوسيط إلى ${ROLE_LABEL[target]} عن ${ROLE_LABEL[relayedFrom]}: ${outgoing}` : `رسالة الوسيط إلى ${ROLE_LABEL[target]}: ${outgoing}`,
-        payload: { audience: target, text: outgoing, relayedFrom, requestId: String(request.id), via: "broker" }
-      }
-    });
-  }
-  return applyJourneyChange(ctx, {
+  if (target && !isOpenJourney(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة");
+  // The request is closed first, under a guard: of two presses (or two brokers) only one decides,
+  // so a request can never be both passed on and answered.
+  const marked = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     finish: (task) => task.type === "SESSION_INTERVENTION" && task.ref === `request:${request.id}`,
     mutate: (j) => {
@@ -247,12 +236,31 @@ export async function handleSessionRequest(ctx, { actor, officeId, journeyId, re
       return { session: { ...(j.session || {}), requests, intervention } };
     },
     event: {
-      type: "SESSION_REQUEST_HANDLED", key: ["request-handled", request.id, requestKey || choice.id], source: EVENT_SOURCE.BROKER,
+      type: "SESSION_REQUEST_HANDLED", key: ["request-handled", request.id], source: EVENT_SOURCE.BROKER,
       text: `قرار الوسيط في ${view.kindLabel} من ${view.roleLabel}: ${choice.label}`,
       // Seen by the broker and the side that asked; the other side learns only what the broker chose to pass on.
       payload: { audience: request.role, requestRole: request.role, requestId: String(request.id), kind: view.kind, decision: choice.id, prev: "OPEN", next: "HANDLED" }
     }
   });
+  if (!marked.changed) return { journey: marked.journey, changed: false, duplicate: true };
+  if (target) {
+    const relayedFrom = choice.id === "forward" ? request.role : "";
+    try {
+      await applyJourneyChange(ctx, {
+        officeId, journeyId, actor,
+        mutate: (j) => ({ session: { ...(j.session || {}), lastBrokerMessageAt: now.toISOString() } }),
+        event: {
+          type: "SESSION_BROKER_MESSAGE", key: ["request", request.id], source: EVENT_SOURCE.BROKER,
+          text: relayedFrom ? `نقل الوسيط إلى ${ROLE_LABEL[target]} عن ${ROLE_LABEL[relayedFrom]}: ${outgoing}` : `رسالة الوسيط إلى ${ROLE_LABEL[target]}: ${outgoing}`,
+          payload: { audience: target, text: outgoing, relayedFrom, requestId: String(request.id), via: "broker" }
+        }
+      });
+    } catch (error) {
+      console.error("[office-os] request message failed", error?.code, error?.message);
+      throw ctx.deps.appError("request_message_failed", 502, "سُجّل قرارك لكن تعذر إرسال الرسالة — أرسلها من مربع الرسائل أسفل الصفحة.");
+    }
+  }
+  return marked;
 }
 
 function j2key(journey) {
@@ -305,6 +313,30 @@ function sideOf(journey, role) {
   };
 }
 
+/** The first photo of this deal's offer, only when it is one of that record's own stored photos. */
+async function coverImageOf(ctx, officeId, journey) {
+  if (!journey.offerId) return null;
+  const record = await ctx.store.get(["offices", officeId, "opportunities", journey.offerId]).catch(() => null);
+  const first = record ? recordImages(record)[0] : null;
+  return first && keyBelongsTo(first.path, officeId, journey.offerId) ? first : null;
+}
+
+/**
+ * POST /os/session/image { token } → the main photo of the room's property (bytes).
+ * Scoped by the party's own link; works while the link is valid (also after the deal closed).
+ */
+export async function sessionImage(ctx, { token, ip = "unknown" }) {
+  rateLimit(ctx, "os/session/image", ip);
+  const resolved = await resolveLink(ctx, token);
+  if (resolved.state !== "ACTIVE" && resolved.state !== "CLOSED") return null;
+  const cover = await coverImageOf(ctx, resolved.link.officeId, resolved.journey);
+  const bucket = ctx.deps.mediaBucket;
+  if (!cover || !bucket) return null;
+  const object = await bucket.get(cover.path);
+  if (!object) return null;
+  return { body: object.body, contentType: /^image\/(jpeg|png|webp)$/.test(cover.contentType) ? cover.contentType : "image/jpeg" };
+}
+
 /** What the party sees. Nothing about the other party beyond «المالك»/«العميل». */
 async function partyView(ctx, { journey, role, officeId }) {
   const offer = journey.offerSummary || {};
@@ -323,23 +355,23 @@ async function partyView(ctx, { journey, role, officeId }) {
   const needsSlots = available.actions.some((a) => a.typed === "slot");
   const slots = needsSlots ? availableSlots(await brokerCalendar(ctx, officeId, journey), now) : [];
   const schema = roomSchema(journey);
-  // The main photo of the offer (the office's own record of this deal only).
-  const offerRecord = journey.offerId ? await ctx.store.get(["offices", officeId, "opportunities", journey.offerId]).catch(() => null) : null;
-  const cover = String(offerRecord?.coverUrl || "");
-  const coverPath = String(offerRecord?.images?.[0]?.path || "");
-  const image = /^https?:\/\//.test(cover) && RECORD_IMAGE_KEY_PATTERN.test(coverPath) && coverPath.startsWith(`record-media/${officeId}/`) ? cover : "";
+  // The main photo of the offer. The page gets it through its own link (POST /os/session/image),
+  // so no office or record id ever appears in the party's page.
+  const cover = await coverImageOf(ctx, officeId, journey);
+  const image = cover ? `v${(await ctx.deps.sha256Hex(`room-image|${cover.id}`)).slice(0, 12)}` : "";
   const ready = readiness(journey);
   const other = role === SESSION_ROLE.OWNER ? SESSION_ROLE.CLIENT : SESSION_ROLE.OWNER;
   const room = {
     family: schema.family, familyLabel: schema.familyLabel, deal: schema.deal, dealLabel: schema.dealLabel,
     priceLabel: schema.priceLabel, viewingLabel: schema.viewingLabel,
-    image,
+    imageVersion: image,
     facts: propertyFacts(journey),
     agreed: roomAgreedItems(journey, now),
     terms: termRows(journey, role).map((row) => ({
       id: row.id, label: row.label, state: row.state, mine: row.mine, actions: row.actions, proposeLabel: row.proposeLabel,
       options: row.options, agreed: row.agreed ? { label: row.agreed.label } : null,
-      pending: row.pending ? { label: row.pending.label, by: row.pending.by } : null,
+      // The option id travels with an answer, so a side can only accept or reject what it actually saw.
+      pending: row.pending ? { option: row.pending.option, label: row.pending.label, by: row.pending.by } : null,
       rejected: row.rejected ? { label: row.rejected.label, by: row.rejected.by, proposedBy: row.rejected.proposedBy } : null
     })),
     infoTopics: canSendRequest(journey, role) ? schema.infoTopics : [],
@@ -423,7 +455,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
   const officeId = link.officeId;
   const journeyId = journeyIdOf(resolved.journey);
   const actionId = String(action || "");
-  if (!PRICE_MOVES[actionId] && !OTHER_ACTIONS[actionId] && !ROOM_ACTIONS[actionId]) throw ctx.deps.appError("session_action_invalid", 400, "إجراء غير معروف");
+  if (![PRICE_MOVES, OTHER_ACTIONS, ROOM_ACTIONS].some((set) => Object.hasOwn(set, actionId))) throw ctx.deps.appError("session_action_invalid", 400, "إجراء غير معروف");
   // The one place a side may write freely: a note for the broker only, with «طلب تدخل الوسيط».
   const noteToBroker = actionId === "intervention" ? cleanText(message, MAX_REQUEST_TEXT) : "";
   const room = { termId: String(termId || "").slice(0, 40), optionId: String(optionId || "").slice(0, 40), topicId: String(topicId || "").slice(0, 40), note: noteToBroker };
@@ -477,6 +509,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     add.push({ type: "VIEWING_RESULT", ref: `viewing:${resolved.journey.viewing?.at || ""}`, dueAt: new Date(at.getTime() + VIEWING_MINUTES * 60 * 1000), reason: `معاينة محجوزة ${formatDateTime(at, now)}`, actionLabel: "تسجيل النتيجة" });
   }
   const priceSettled = ["accept", "accept_fixed"].includes(applied.move);
+  const readinessReset = Boolean(plan.patch.session?.ready) && Object.keys(plan.patch.session.ready).length === 0 && Object.keys(resolved.journey.session?.ready || {}).length > 0;
   const closing = applied.move === "decline_fixed";
   const result = await applyJourneyChange(ctx, {
     officeId, journeyId, actor: null,
@@ -484,6 +517,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     // a declined fixed price closes this match only.
     finishStatus: closing ? "DISMISSED" : "COMPLETED",
     finish: (task) => closing
+      || (readinessReset && task.type === "DEAL_ACTION" && String(task.ref || "").startsWith("ready:"))
       || (priceSettled && ["SESSION_AGREED", "SEND_PROPOSAL", "AWAITING_REPLY", "PROPOSAL_REPLY", "SESSION_PRIVATE_PRICE"].includes(task.type))
       || (applied.move === "viewing_ok" && ["VIEWING_CONFIRM", "SESSION_VIEWING_COUNTER"].includes(task.type)),
     mutate: (journey) => {
@@ -513,7 +547,8 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
         audience: applied.move === "to_broker" ? "broker" : applied.move === "intervention" || applied.move === "info_request" ? role : "all"
       }
     },
-    notify: {
+    // A side changing its own unanswered proposal is logged but does not ring the broker again.
+    notify: applied.revision ? null : {
       key: `session|${journeyId}|${role}|${subId}`,
       title: applied.move === "intervention" ? `تدخل مطلوب — ${who}` : applied.move === "info_request" ? `طلب معلومة — ${who}` : `غرفة التفاوض — ${who}`,
       body: `${card.text}${card.detail ? `: ${card.detail}` : ""}`,
@@ -530,7 +565,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
 
 /** Validate an action against the given journey and build its journey patch. */
 function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, now, room = {} }) {
-  if (ROOM_ACTIONS[actionId]) return planRoomAction(ctx, journey, { role, actionId, now, room });
+  if (Object.hasOwn(ROOM_ACTIONS, actionId)) return planRoomAction(ctx, journey, { role, actionId, now, room });
   const available = availableActions(journey, role, { now });
   const option = available.actions.find((item) => item.id === actionId);
   if (!option) throw ctx.deps.appError("session_action_unavailable", 409, "تغيّر وضع الغرفة — حدّث الصفحة لرؤية الخيارات الحالية.");
@@ -553,8 +588,8 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
       session.lastMove = { role, move: actionId, price: value, at: now.toISOString() };
       session.agreedPrice = actionId === "accept" ? value : null;
       session.agreedAt = actionId === "accept" ? now.toISOString() : null;
-      // A new price on the table means nobody is «جاهز للاتفاق» any more.
-      if (actionId !== "accept") session.ready = {};
+      // Any price move resets «جاهز للاتفاق»: readiness is given for the price agreed now.
+      session.ready = {};
     }
   } else if (actionId === "reject") {
     applied = { move: "reject" };
@@ -570,6 +605,7 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
     session.lastMove = { role, move: "accept_fixed", price: value, at: now.toISOString() };
     session.agreedPrice = value;
     session.agreedAt = now.toISOString();
+    session.ready = {};
     patch.stage = journey.viewing?.state === VIEWING_STATE.DONE ? "AGREEMENT" : "VIEWING";
   } else if (actionId === "decline_fixed") {
     applied = { move: "decline_fixed" };

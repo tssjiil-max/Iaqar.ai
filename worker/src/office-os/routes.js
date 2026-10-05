@@ -17,7 +17,7 @@ import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
-import { handleSessionRequest, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
+import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
@@ -110,6 +110,17 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
     };
   };
   try {
+    // The room's main photo, by the party's own link (bytes, not JSON).
+    if (url.pathname === "/os/session/image") {
+      const picture = await sessionImage(await makeCtx(""), { token: body.token, ip: meta.ip });
+      if (!picture) return deps.jsonResponse({ ok: false, error: "not_found", requestId }, 404);
+      const response = deps.jsonResponse({}, 200);
+      const headers = new Headers(response.headers);
+      headers.set("content-type", picture.contentType);
+      headers.set("cache-control", "private, max-age=300");
+      headers.set("x-content-type-options", "nosniff");
+      return new Response(picture.body, { status: 200, headers });
+    }
     const publicHandler = PUBLIC_ROUTES[url.pathname];
     if (publicHandler) {
       const ctx = await makeCtx("");

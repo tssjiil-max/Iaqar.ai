@@ -27,6 +27,28 @@ const closed = () => ({ typed: "", value: "", day: "", term: "", extra: "", note
 const anythingOpen = () => Boolean(open.typed || open.term || open.extra);
 let busy = false;
 let seq = 0;
+// Why the last press was refused — kept across the redraw that follows, so the visitor reads it.
+let flash = "";
+// The room's main photo, fetched with this link (no record address in the page).
+const photo = { version: "", url: "", loading: "" };
+
+async function loadPhoto(version) {
+  if (!version || photo.version === version || photo.loading === version) return;
+  photo.loading = version;
+  try {
+    const response = await fetch(`${workerBase()}/os/session/image`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }), referrerPolicy: "no-referrer" });
+    if (!response.ok || !/^image\//.test(response.headers.get("content-type") || "")) return;
+    const blob = await response.blob();
+    if (photo.url) URL.revokeObjectURL(photo.url);
+    photo.url = URL.createObjectURL(blob);
+    photo.version = version;
+    if (!anythingOpen()) render();
+  } catch (_) {
+    /* the room works without its photo */
+  } finally {
+    photo.loading = "";
+  }
+}
 
 async function call(path, body) {
   const response = await fetch(`${workerBase()}${path}`, {
@@ -221,13 +243,20 @@ async function submit(fields, status) {
     const { status: code, payload } = await call("/os/session/act", body);
     if (payload.ok) {
       open = closed();
+      flash = "";
       await refresh(true);
       return;
     }
     if (payload.state && payload.state !== "ACTIVE") { stateView(payload.message || "هذا الرابط لم يعد يعمل."); return; }
-    status.textContent = payload.message || (code === 429 ? "طلبات كثيرة — حاول بعد قليل." : "تعذر الإرسال — حاول مجددًا.");
+    const message = payload.message || (code === 429 ? "طلبات كثيرة — حاول بعد قليل." : "تعذر الإرسال — حاول مجددًا.");
+    status.textContent = message;
     status.hidden = false;
-    if (code === 409) { open = closed(); await refresh(true); }
+    if (code === 409) {
+      // The room changed under this page: show the current state and say why the press was refused. A typed note is kept.
+      flash = message;
+      open = fields.action === "intervention" ? { ...closed(), extra: "broker", note: open.note } : closed();
+      await refresh(true);
+    }
   } catch (_) {
     status.textContent = "تعذر الاتصال — تحقق من الإنترنت وحاول مجددًا.";
     status.hidden = false;
@@ -244,10 +273,18 @@ function render() {
   const live = current.state !== "CLOSED";
   const y = window.scrollY;
   clear(root);
+  loadPhoto(room.imageVersion || "");
+  const notice = flash ? h("div", { class: "os-alert bad", role: "alert", "data-room-flash": "" }, h("span", { text: flash })) : null;
+  if (notice) {
+    const dismiss = h("button", { type: "button", class: "os-icon-btn", "aria-label": "إخفاء التنبيه" }, ic("x"));
+    dismiss.addEventListener("click", () => { flash = ""; notice.remove(); });
+    notice.append(dismiss);
+  }
   const main = h("main", { class: "os-app os-session-app os-room", "data-room-family": room.family || "", "data-room-deal": room.deal || "" },
     head(office, session),
+    notice,
     roomPropertyCard({
-      facts: room.facts || [], image: room.image || "", propertyType: session.property?.propertyType,
+      facts: room.facts || [], image: room.imageVersion && photo.version === room.imageVersion ? photo.url : "", propertyType: session.property?.propertyType,
       priceStatus: session.property?.priceStatus, priceStatusLabel: session.property?.priceStatusLabel,
       description: session.property?.description, stageLabel: session.stageLabel, intervention: session.intervention
     }),
@@ -262,7 +299,13 @@ function render() {
 
 async function refresh(force = false) {
   const { payload } = await call("/os/session/view", { token });
-  if (!payload.ok) { stateView(payload.message || "هذا الرابط غير صالح.", payload.state === "REPLACED" ? "info" : "warn"); return false; }
+  if (!payload.ok) {
+    // A busy or failing server is not an invalid link: keep the room on screen and try again at the next refresh.
+    if (!payload.state && current) return true;
+    version = "";
+    stateView(payload.message || "هذا الرابط غير صالح.", payload.state === "REPLACED" ? "info" : "warn");
+    return false;
+  }
   const room = payload.session?.room || {};
   const next = `${payload.state}|${payload.session?.version}|${JSON.stringify([payload.session?.actions || [], room.terms || [], room.agreed || [], room.status || {}, room.ready || {}, room.requests || [], room.canReady, room.canRequest])}`;
   if (force || next !== version) {

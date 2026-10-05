@@ -21,6 +21,13 @@ const jid = s.negotiation.journeyId;
 const token = (url) => String(url).split("#")[1];
 const links = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: jid })).links;
 
+// A main photo on the offer of this deal (a real 1×1 JPEG through the Worker's upload route).
+const { idTokenFor } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
+const offerId = h.store.get(`offices/${OFFICE_A}/journeys/${jid}`).offerId;
+const jpeg = Buffer.from("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/yQALCAABAAEBAREA/8wABgAQEAX/2gAIAQEAAD8A0s8g/9k=", "base64");
+const uploaded = await fetch(`${h.origin}/worker/media/record-image`, { method: "POST", headers: { authorization: `Bearer ${idTokenFor(OWNER_A)}`, "x-office-id": OFFICE_A, "x-record-id": offerId, "content-type": "image/jpeg" }, body: jpeg });
+if (uploaded.status !== 201) throw new Error(`photo upload failed: ${uploaded.status}`);
+
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const device = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "ar-SA", hasTouch: true, isMobile: true };
 const results = [];
@@ -98,6 +105,12 @@ await step("the room has three parts and the terms of this kind of property (a v
   const terms = await owner.locator("[data-term]").evaluateAll((els) => els.map((el) => el.getAttribute("data-term")));
   if (!terms.includes("payment_method") || !terms.includes("furniture") || terms.includes("rent_payments") || terms.includes("land_pricing")) throw new Error(`terms: ${terms.join(",")}`);
   if ((await owner.locator("[data-room-versus] [data-side]").count()) !== 2) throw new Error("the two sides are not facing each other");
+  await client.locator("[data-room-image]").waitFor({ timeout: 9000 });
+  const src = await client.locator("[data-room-image]").getAttribute("src");
+  if (!src.startsWith("blob:")) throw new Error(`the photo must come through the side's link, got ${src.slice(0, 40)}`);
+  const html = await client.content();
+  if (html.includes("record-media") || html.includes(offerId) || html.includes(OFFICE_A)) throw new Error("a storage path or an internal id reached the side's page");
+  if (!(await client.locator("[data-room-image]").evaluate((img) => img.complete && img.naturalWidth > 0))) throw new Error("the photo did not render");
   if (await owner.locator("[data-room-part] textarea, [data-room-part] input[type=text]").count()) throw new Error("free typing is offered to a side before it asks for the broker");
 });
 

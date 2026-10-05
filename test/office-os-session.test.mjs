@@ -79,7 +79,8 @@ test("party view shows only role labels, property and the deal stage — no pers
   assert.equal(s.actions.find((a) => a.id === "minus5").price, 1140000, "5% below the owner's 1,200,000");
   assert.equal(s.actions.find((a) => a.id === "compromise").price, 1150000, "average of the last two prices");
   const ownerView = await call("/os/session/view", { token: ctx.ownerToken });
-  assert.deepEqual(ownerView.body.session.actions.filter((a) => a.group === "main").map((a) => a.id), ["accept", "adjust"]);
+  // The client's budget is a starting point, not a proposal: the owner cannot «قبول» it before the client proposes.
+  assert.deepEqual(ownerView.body.session.actions.filter((a) => a.group === "main").map((a) => a.id), ["adjust"]);
   assert.deepEqual(ownerView.body.session.actions.filter((a) => a.group === "adjust" && !a.secondary).map((a) => a.id), ["plus2", "plus5", "compromise"]);
   assert.equal(ownerView.body.session.actions.find((a) => a.id === "plus2").price, 1122000);
   assert.ok(events().some((e) => e.type === "SESSION_OPENED"), "opening is logged for the broker");

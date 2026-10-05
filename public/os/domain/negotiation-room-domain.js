@@ -32,19 +32,27 @@ function norm(value) {
   return String(value || "").replace(/[إأآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[ًٌٍَُِّْـ]/g, "").trim();
 }
 
-/** Keyword → family, checked in order (first match wins). New types only need a keyword here. */
-const FAMILY_KEYWORDS = Object.freeze([
-  [FAMILY.LAND, ["ارض", "اراضي", "مخطط", "قطعه"]],
-  [FAMILY.BUILDING, ["عماره", "عمائر", "برج", "بنايه", "مجمع"]],
-  [FAMILY.COMMERCIAL, ["محل", "مكتب", "مستودع", "معرض", "ورشه", "هنجر", "تجاري"]],
-  [FAMILY.VILLA, ["فيلا", "فله", "دوبلكس", "دبلكس", "استراحه", "قصر", "بيت", "شاليه", "مزرعه"]],
-  [FAMILY.UNIT, ["شقه", "دور", "غرفه", "استوديو", "استديو", "روف", "ملحق"]]
+/**
+ * Word → family. The FIRST word of the type that is recognised decides, so «شقة دور أرضي» is a
+ * unit and «أرض تجارية» is a land. Land words must match a whole word («أرضي» is not a land).
+ * A new type only needs a word here.
+ */
+const FAMILY_WORDS = Object.freeze([
+  [FAMILY.LAND, ["ارض", "اراضي", "مخطط", "قطعه"], true],
+  [FAMILY.BUILDING, ["عماره", "عمائر", "برج", "بنايه", "مجمع"], false],
+  [FAMILY.COMMERCIAL, ["محل", "مكتب", "مستودع", "معرض", "ورشه", "هنجر"], false],
+  [FAMILY.VILLA, ["فيلا", "فله", "دوبلكس", "دبلكس", "استراحه", "قصر", "بيت", "شاليه", "مزرعه"], false],
+  [FAMILY.UNIT, ["شقه", "دور", "غرفه", "استوديو", "استديو", "روف", "ملحق"], false]
 ]);
 
 export function propertyFamily(propertyType) {
-  const text = norm(propertyType);
-  if (!text) return FAMILY.OTHER;
-  for (const [family, words] of FAMILY_KEYWORDS) if (words.some((word) => text.includes(word))) return family;
+  const tokens = norm(propertyType).split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    const bare = token.replace(/^ال/, "");
+    for (const [family, words, whole] of FAMILY_WORDS) {
+      if (words.some((word) => (whole ? bare === word : bare.startsWith(word)))) return family;
+    }
+  }
   return FAMILY.OTHER;
 }
 
@@ -152,6 +160,8 @@ export function propertyFacts(journey = {}) {
 // ------------------------------------------------------------------ term state
 
 export const TERM_STATE = Object.freeze({ NONE: "NONE", PENDING: "PENDING", AGREED: "AGREED" });
+/** How many times a side may change its own proposal on a term before the other side answers. */
+export const MAX_PROPOSAL_REVISIONS = 2;
 export const ROOM_ACTIONS = Object.freeze({
   term_propose: "term_propose", term_accept: "term_accept", term_reject: "term_reject",
   info_request: "info_request", ready: "ready"
@@ -193,7 +203,7 @@ export function termRows(journey = {}, viewer = "broker") {
     const agreed = entry.agreed?.option && labelOf(term, entry.agreed.option)
       ? { option: entry.agreed.option, label: labelOf(term, entry.agreed.option), at: entry.agreed.at || null, acceptedBy: entry.agreed.acceptedBy || "", proposedBy: entry.agreed.proposedBy || "" } : null;
     const pending = entry.pending?.option && labelOf(term, entry.pending.option) && isParty(entry.pending.by)
-      ? { option: entry.pending.option, label: labelOf(term, entry.pending.option), by: entry.pending.by, at: entry.pending.at || null } : null;
+      ? { option: entry.pending.option, label: labelOf(term, entry.pending.option), by: entry.pending.by, at: entry.pending.at || null, revisions: Number(entry.pending.revisions || 0) } : null;
     const rejected = !pending && entry.rejected?.option && labelOf(term, entry.rejected.option)
       ? { option: entry.rejected.option, label: labelOf(term, entry.rejected.option), by: entry.rejected.by || "", proposedBy: entry.rejected.proposedBy || "", at: entry.rejected.at || null } : null;
     const state = pending ? TERM_STATE.PENDING : agreed ? TERM_STATE.AGREED : TERM_STATE.NONE;
@@ -202,7 +212,7 @@ export function termRows(journey = {}, viewer = "broker") {
     let proposeLabel = "اقتراح";
     if (live && isParty(viewer)) {
       if (pending && !mine) { actions = ["accept", "reject", "propose"]; proposeLabel = "اقتراح آخر"; }
-      else if (pending && mine) { actions = ["propose"]; proposeLabel = "تعديل الاقتراح"; }
+      else if (pending && mine) { actions = pending.revisions >= MAX_PROPOSAL_REVISIONS ? [] : ["propose"]; proposeLabel = "تعديل الاقتراح"; }
       else { actions = ["propose"]; proposeLabel = agreed ? "طلب تعديل" : "اقتراح"; }
     }
     // Options that would change nothing are not offered.
@@ -238,19 +248,27 @@ export function planTermAction(journey = {}, { role, action, termId, optionId = 
     if (!label) return fail("option_unknown", "اختر أحد الخيارات المتاحة");
     if (row.pending && row.pending.option === optionId) return fail("term_unchanged", row.mine ? "هذا هو اقتراحك الحالي" : "هذا هو الاقتراح المطروح — اقبله أو اقترح غيره");
     if (!row.pending && row.agreed && row.agreed.option === optionId) return fail("term_unchanged", "هذا هو المتفق عليه حاليًا");
+    // A side may change its own unanswered proposal a few times only; then it waits for the answer.
+    const revisions = row.mine ? Number(entry.pending?.revisions || 0) + 1 : 0;
+    if (revisions > MAX_PROPOSAL_REVISIONS) return fail("term_wait_for_answer", "عدّلت اقتراحك أكثر من مرة — انتظر رد الطرف الآخر عليه أولًا");
     // The agreed value (if any) stays in force until the other side accepts the new one.
-    entry.pending = { option: optionId, by: role, at };
+    entry.pending = { option: optionId, by: role, at, revisions };
     entry.rejected = null;
-    applied = { move: action, option: optionId, optionLabel: label, nextState: TERM_STATE.PENDING, agreed: false, replaces: row.agreed ? row.agreed.label : "" };
+    applied = { move: action, option: optionId, optionLabel: label, nextState: TERM_STATE.PENDING, agreed: false, replaces: row.agreed ? row.agreed.label : "", revision: revisions > 0 };
+  } else if (action === ROOM_ACTIONS.term_accept || action === ROOM_ACTIONS.term_reject) {
+    if (!row.pending || row.mine) return fail(action === ROOM_ACTIONS.term_accept ? "term_nothing_to_accept" : "term_nothing_to_reject", "لا يوجد اقتراح من الطرف الآخر على هذا البند");
+    // The answer names the option the side actually saw: if the proposal changed meanwhile, nothing is accepted or rejected.
+    if (String(optionId || "") !== row.pending.option) return fail("term_changed", "تغيّر الاقتراح على هذا البند — راجع الاقتراح الحالي ثم أجب");
+  }
+  if (action === ROOM_ACTIONS.term_propose) {
+    // built above
   } else if (action === ROOM_ACTIONS.term_accept) {
-    if (!row.pending || row.mine) return fail("term_nothing_to_accept", "لا يوجد اقتراح من الطرف الآخر على هذا البند");
     // An agreement needs both: one proposed, the other accepted.
     entry.agreed = { option: row.pending.option, at, proposedBy: row.pending.by, acceptedBy: role, proposedAt: row.pending.at };
     entry.pending = null;
     entry.rejected = null;
     applied = { move: action, option: row.pending.option, optionLabel: row.pending.label, nextState: TERM_STATE.AGREED, agreed: true, replaces: row.agreed && row.agreed.option !== row.pending.option ? row.agreed.label : "" };
   } else if (action === ROOM_ACTIONS.term_reject) {
-    if (!row.pending || row.mine) return fail("term_nothing_to_reject", "لا يوجد اقتراح من الطرف الآخر على هذا البند");
     entry.rejected = { option: row.pending.option, proposedBy: row.pending.by, by: role, at };
     entry.pending = null;
     applied = { move: action, option: row.pending.option, optionLabel: row.pending.label, nextState: row.agreed ? TERM_STATE.AGREED : TERM_STATE.NONE, agreed: false, replaces: "" };
@@ -297,9 +315,13 @@ export function roomAgreedItems(journey = {}, now = new Date()) {
 // ------------------------------------------------------------------ جاهز للاتفاق
 
 export function readiness(journey = {}) {
-  const ready = journey.session?.ready || {};
-  const owner = ready.owner || null;
-  const client = ready.client || null;
+  const session = journey.session || {};
+  const ready = session.ready || {};
+  // «جاهز» is about the price agreed NOW: a readiness given before the current agreement does not count.
+  const since = agreedPriceOf(journey) ? toDate(session.agreedAt)?.getTime() || 0 : Infinity;
+  const valid = (value) => (toDate(value) && toDate(value).getTime() >= since ? value : null);
+  const owner = valid(ready.owner);
+  const client = valid(ready.client);
   const both = Boolean(owner && client);
   return { owner, client, both, at: both ? [owner, client].sort().at(-1) : null };
 }
@@ -363,9 +385,29 @@ export function canSendRequest(journey = {}, role = "") {
   return requestsOf(journey).filter((item) => item.role === role && String(item.status || "OPEN") === "OPEN").length < MAX_OPEN_REQUESTS;
 }
 
-/** Text passed from one side to the other never carries a phone number or a link. */
+/**
+ * Text passed from one side to the other never carries a way to reach the sender directly:
+ * phone numbers (any digits script, any separators, split by spaces), links with or without a
+ * scheme, e-mail addresses and @handles are removed. Short numbers and prices written with
+ * their unit stay readable where possible; when in doubt the number is removed.
+ */
 export function relaySafeText(text) {
-  return cleanText(String(text || "").replace(/https?:\/\/\S+/gi, " ").replace(/[+\d٠-٩][\d٠-٩\s-]{6,}[\d٠-٩]/g, " ").replace(/\s{2,}/g, " "), MAX_REQUEST_TEXT);
+  let out = String(text || "")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+  out = out
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, " ")
+    .replace(/\S+@\S+/g, " ")
+    .replace(/(^|\s)@[\w.]+/g, " ")
+    .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi, " ");
+  // Any run of digits and separators holding 7 digits or more is treated as a phone number.
+  out = out.replace(/\+?\d(?:[\s().\-–—_/\\,،]*\d){6,}/g, " ");
+  // Digits split across words («055123 ثم 4567»): when the message holds 9 digits or more in all, every digit group of 3+ goes.
+  if ((out.match(/\d/g) || []).length >= 9) out = out.replace(/\d{3,}/g, " ");
+  // Brackets and separators left alone after a number was removed.
+  out = out.replace(/(^|\s)[()\[\]{}.,،\-–—_/\\+]+(?=\s|$)/g, " ");
+  return cleanText(out.replace(/\s{2,}/g, " "), MAX_REQUEST_TEXT);
 }
 
 // ------------------------------------------------------------------ حالة كل طرف

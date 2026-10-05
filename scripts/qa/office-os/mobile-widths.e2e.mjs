@@ -27,7 +27,7 @@ await callWorker(h, "/os/session/message", { officeId: OFFICE_A, journeyId: s.ne
 // The room: a term waiting for the client's answer, one agreed term, and a request waiting for the broker.
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_propose", termId: "payment_method", optionId: "mixed", submissionId: "widths-term-1" }, "");
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "term_propose", termId: "transfer_time", optionId: "two_weeks", submissionId: "widths-term-2" }, "");
-await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_accept", termId: "transfer_time", submissionId: "widths-term-3" }, "");
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_accept", termId: "transfer_time", optionId: "two_weeks", submissionId: "widths-term-3" }, "");
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "intervention", message: "أحتاج مهلة قصيرة لترتيب التمويل قبل الرد على السعر النهائي، هل يمكن ذلك؟", submissionId: "widths-request-1" }, "");
 
 const SCREENS = [
