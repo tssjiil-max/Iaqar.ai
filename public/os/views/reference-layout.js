@@ -7,12 +7,13 @@ import { watchCooperation } from "../core/community.js";
 import { communitySummary, communityViews } from "../domain/community-domain.js";
 import { session } from "../core/session.js";
 import { state, subscribe, recordById } from "../core/state.js";
-import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta, dealRoute } from "../domain/task-domain.js";
+import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta, dealRoute, taskPathStep } from "../domain/task-domain.js";
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
+import { officeToolByLabel } from "../domain/office-tools-domain.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
-export function taskStep(task){const t=String(task.type||"");if(t==="DEAL_JOURNEY")return Math.min(5,Math.max(0,Number(task.journeyStep??2)));return t==="MATCH_REVIEW"?0:/VIEWING/.test(t)?3:t==="DEAL_ACTION"?4:t==="AWAITING_REPLY"?1:2;}
+export function taskStep(task){return taskPathStep(task);}
 function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else openGeneralTask(task);}
 export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager,officeId:session.officeId})),"all"));}
 export function taskRecord(task){const meta=parseMeta(task);return recordById(task.offerId||meta.ownerOfferId)||recordById(task.opportunityId)||recordById(task.requestId||meta.clientRequestId);}
@@ -22,7 +23,24 @@ export function photo(record={},extra=""){
  if(/^https?:\/\//.test(url||"")){const img=h("img",{src:url,alt:record.propertyType||"العقار",loading:"lazy"});img.addEventListener("error",()=>{img.remove();box.append(ic(propertyTypeIcon(record.propertyType)));},{once:true});box.append(img);}else box.append(ic(propertyTypeIcon(record.propertyType)));
  return box;
 }
-export function stepStrip(){return h("section",{class:"ref-path os-card"},h("div",{class:"ref-path-heading"},h("h2",{text:"مسار الصفقة"}),h("span",{text:"تتابع المهام من التطابق حتى إغلاق الصفقة"})),h("div",{class:"ref-steps"},STEPS.map(([name,icon],i)=>h("div",{class:i===0?"active":""},h("span",{},ic(icon)),h("small",{text:name})))));}
+/**
+ * «مسار الصفقة»: six buttons. Pressing a stage shows everything in it; pressing it again shows all.
+ * `counts[i]` (when known) is the number of items in stage i and shows as a small badge.
+ */
+export function stepStrip({ active = null, counts = [], onSelect = null } = {}) {
+  const steps = STEPS.map(([name, icon, hint], i) => {
+    const n = Number(counts[i] || 0);
+    const selected = active === i;
+    return h("button", {
+      type: "button", class: "ref-step" + (selected ? " active" : ""), "data-step": String(i), "aria-pressed": String(selected),
+      "aria-label": n ? `${name} — ${n}` : name, title: hint,
+      onClick: () => { if (onSelect) onSelect(selected ? null : i); }
+    }, h("span", {}, ic(icon), n ? h("em", { class: "ref-step-count", "data-step-count": String(i), text: n > 99 ? "99+" : String(n) }) : null), h("small", { text: name }));
+  });
+  return h("section", { class: "ref-path os-card" },
+    h("div", { class: "ref-path-heading" }, h("h2", { text: "مسار الصفقة" }), h("span", { text: "اضغط أي مرحلة لعرض ما فيها" })),
+    h("div", { class: "ref-steps", role: "group", "aria-label": "مراحل الصفقة" }, steps));
+}
 function homeRow(task){const r=taskRecord(task)||{},v=recordView(r),m=taskCardModel(task),s=taskStep(task);return h("button",{class:"ref-home-row",type:"button",onClick:()=>go("task/"+task.id)},photo(r),h("div",{class:"ref-row-copy"},h("b",{text:s===0?"مراجعة تطابق":m.button}),h("small",{text:v.location||m.title||task.titleText||"مهمة"})),h("span",{class:"ref-status step-"+s,text:STEPS[s][0]}),timeChip(task)||h("span"),ic("chev-left"));}
 /** Card time from real data: an appointment shows its day/time (late when passed); otherwise how long ago the task last moved. */
 export function timeInfo(task,now=new Date()){const due=toDate(task.dueAt||task.appointmentAt||task.viewingAt);if(due){const day=formatDay(due,now),near=["اليوم","غدًا","أمس"].includes(day),text=near?formatDateTime(due,now).replace(" · "," "):day.split(" ").slice(1,3).join(" ");return due<now?{text:"متأخرة · "+text,late:true}:{text,late:false};}
@@ -69,11 +87,14 @@ function officeLogo(office) {
   return h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" });
 }
 
+/** Every tool opens a working screen (routes live in office-tools-domain.js); none is a placeholder. */
 function officeToolCard([label, iconName]) {
-  return h("div", { class: "ref-office-tool is-soon", dataset: { officeTool: label }, "aria-disabled": "true" },
+  const tool = officeToolByLabel(label);
+  const card = h("button", { type: "button", class: "ref-office-tool", dataset: { officeTool: label, toolRoute: tool?.route || "" }, "aria-label": tool?.hint ? `${label} — ${tool.hint}` : label },
     h("span", { class: "ref-office-tool-icon" }, ic(iconName)),
-    h("strong", { text: label }),
-    h("small", { class: "ref-office-soon", text: "قريبًا" }));
+    h("strong", { text: label }));
+  if (tool) card.addEventListener("click", () => go(tool.route));
+  return card;
 }
 
 export function renderOffice(container){
@@ -110,7 +131,7 @@ export function renderOffice(container){
         ic("chev-left"))),
 
     h("section", { class: "os-card ref-office-section" },
-      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" }), h("p", { class: "os-sub", text: "قريبًا — هذه الأدوات قيد التجهيز" })),
+      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)))
   );
 

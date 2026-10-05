@@ -637,12 +637,13 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-chan-status.is-setup { background: #fff4de; color: #7a5200; border-color: #f0d9a6; }
 
 .os-photo-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 14px; align-items: center; }
-.os-avatar-preview { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); border: 1px solid var(--brand-line, #DCE8EB); }
-.os-avatar-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-avatar-preview { width: 88px; height: 88px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; background: var(--brand-tint, #EDF5F7); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-avatar-preview img { width: 100%; height: 100%; object-fit: contain; display: block; background: #fff; }
 .os-photo-copy { display: grid; gap: 6px; min-width: 0; }
 .os-photo-copy small { color: #4d6a72; }
 .os-file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.ref-office-logo-box .ref-office-avatar { width: min(104px, 80%); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 50%; display: block; }
+/* The uploaded office logo / broker photo always shows whole inside its frame (never cropped). */
+.ref-office-logo-box .ref-office-avatar { width: min(112px, 86%); height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 14px; background: #fff; display: block; }
 
 .os-share-card { display: grid; gap: 10px; }
 .os-share-card-img { width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 14px; border: 1px solid var(--brand-line, #DCE8EB); background: #fff; }

@@ -7,7 +7,7 @@
 import { db, idToken, workerBase, ApiError } from "./runtime.js";
 import { session } from "./session.js";
 import { OFFICE_NAME_MESSAGES, publicProfileMirror, checkPublicSlug } from "../domain/office-profile-domain.js";
-import { PHOTO_MESSAGES, checkPhotoFile, isSafePhotoDataUrl, squareCrop, PHOTO_SIZE } from "../domain/avatar-domain.js";
+import { PHOTO_MESSAGES, checkPhotoFile, isSafePhotoDataUrl, containFit, PHOTO_SIZE } from "../domain/avatar-domain.js";
 import { COOPERATION_MODES, cooperationSettingsPayload, normalizeCooperationMode } from "../../js/office-domain.js";
 
 const stamp = () => window.firebase.firestore.FieldValue.serverTimestamp();
@@ -104,7 +104,7 @@ export async function saveBrokerPhoto(dataUrl) {
   session.office.brokerPhotoUrl = value;
 }
 
-/** Reads a chosen image, crops it to a centred square and returns a compressed JPEG data URL. */
+/** Reads a chosen image and returns a compressed JPEG data URL holding the whole picture (no crop), centred on white. */
 export async function photoToDataUrl(file) {
   const checked = checkPhotoFile(file);
   if (!checked.ok) throw new ApiError(checked.message);
@@ -114,14 +114,14 @@ export async function photoToDataUrl(file) {
   } catch (_) {
     throw new ApiError(PHOTO_MESSAGES.unreadable);
   }
-  const { sx, sy, side } = squareCrop(bitmap.width, bitmap.height);
-  if (!side) throw new ApiError(PHOTO_MESSAGES.unreadable);
+  const { dx, dy, dw, dh } = containFit(bitmap.width, bitmap.height, PHOTO_SIZE);
+  if (!dw || !dh) throw new ApiError(PHOTO_MESSAGES.unreadable);
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = PHOTO_SIZE;
   const context = canvas.getContext("2d");
   context.fillStyle = "#fff";
   context.fillRect(0, 0, PHOTO_SIZE, PHOTO_SIZE);
-  context.drawImage(bitmap, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+  context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, dx, dy, dw, dh);
   bitmap.close?.();
   for (const quality of [0.85, 0.7, 0.55, 0.4]) {
     const url = canvas.toDataURL("image/jpeg", quality);

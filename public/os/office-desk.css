@@ -1,8 +1,8 @@
 /* Approved digital-office landing page — mobile first, RTL (reference: office screen). */
 .os-app[data-view="office"] { padding-bottom: 170px; }
 
-/* Header on the office page: only the platform name, with both actions as light squares. */
-.os-app[data-view="office"] .ref-bell {
+/* One header on the three main screens: both actions are the same light squares everywhere. */
+.ref-shell-header .ref-bell {
   width: 40px;
   min-width: 40px;
   height: 40px;
@@ -12,7 +12,7 @@
   display: grid;
   place-items: center;
 }
-.os-app[data-view="office"] .ref-bell svg { width: 22px; height: 22px; }
+.ref-shell-header .ref-bell svg { width: 22px; height: 22px; }
 
 /* ---------- Office identity card ---------- */
 .ref-office-profile {
@@ -275,8 +275,8 @@
 
 @media (max-width: 359px) {
   .os-app[data-view="office"] { padding-inline: 10px; }
-  .os-app[data-view="office"] .ref-bell { width: 32px; min-width: 32px; height: 32px; border-radius: 11px; }
-  .os-app[data-view="office"] .ref-bell svg { width: 19px; height: 19px; }
+  .ref-shell-header .ref-bell { width: 32px; min-width: 32px; height: 32px; border-radius: 11px; }
+  .ref-shell-header .ref-bell svg { width: 19px; height: 19px; }
   .ref-office-profile { grid-template-columns: minmax(0,1fr) 86px; gap: 8px; padding: 10px; }
   .ref-office-profile-logo { padding-inline-start: 8px; }
   .ref-office-logo-box { min-height: 112px; }
@@ -300,7 +300,12 @@
   .ref-office-tool { min-height: 108px; }
 }
 
-/* Tools that are not built yet: visibly inactive, labelled «قريبًا». */
+/* Office tools are real buttons: same card as before, with press/focus feedback. */
+button.ref-office-tool { font: inherit; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; transition: background .15s ease, border-color .15s ease; }
+button.ref-office-tool:active { background: var(--brand-tint-2); border-color: var(--brand-line); }
+button.ref-office-tool:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; }
+
+/* A tool that is not built yet (none today): visibly inactive, labelled «قريبًا». */
 .ref-office-tool.is-soon,
 .ref-office-extra.is-soon { cursor: default; }
 .ref-office-tool.is-soon .ref-office-tool-icon,
@@ -316,3 +321,42 @@
   white-space: nowrap;
 }
 .ref-office-extra .ref-office-soon { font-size: 8.5px; padding: 0 5px; }
+
+/* ---------- Tool screens (النماذج · الدليل · الخدمات · الحاسبة · السوق): same cards, tokens and type as the app ---------- */
+.os-app[data-view="tool"] { max-width: 520px; padding: 18px 14px calc(28px + env(safe-area-inset-bottom)); background: var(--surface); min-height: 100dvh; }
+.os-tool-intro { margin: 0 2px 12px; font-size: .9rem; }
+.os-tool-heading { margin: 0 0 10px; }
+.os-tool-heading .os-sub { margin: 2px 0 0; font-size: .82rem; }
+.os-app[data-view="tool"] .os-seg { margin: 0 0 12px; }
+.os-tool-list { display: grid; gap: 10px; }
+.os-template { display: grid; gap: 10px; }
+.os-template .os-h2 { margin: 0; font-size: 1rem; }
+.os-template-text { min-height: 132px; font-size: .92rem; line-height: 1.7; resize: vertical; }
+.os-guide { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.os-guide-step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px 10px; align-items: start; margin: 0; }
+.os-guide-num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-primary); color: #fff; font-weight: 800; font-size: .95rem; }
+.os-guide-copy { min-width: 0; }
+.os-guide-copy b { display: block; color: var(--brand-dark); font-size: 1rem; }
+.os-guide-copy p { margin: 2px 0 0; font-size: .86rem; }
+.os-guide-step .os-btn { grid-column: 2; justify-self: start; min-height: 38px; padding: 6px 12px; font-size: .86rem; }
+a.os-service-row { text-decoration: none; color: inherit; }
+.os-calc-result { display: grid; gap: 0; padding-block: 6px; }
+.os-calc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--brand-tint); min-width: 0; }
+.os-calc-row:last-child { border-bottom: 0; }
+.os-calc-row span { color: var(--muted); font-size: .88rem; min-width: 0; }
+.os-calc-row b { color: var(--brand-dark); font-size: .95rem; white-space: nowrap; unicode-bidi: isolate; }
+.os-calc-row.strong span { color: var(--brand-dark); font-weight: 700; }
+.os-calc-row.strong b { color: var(--brand-primary); font-size: 1.05rem; }
+.os-market-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; }
+.os-market-stat b { display: block; font-size: 1.5rem; font-weight: 800; color: var(--brand-primary); line-height: 1.2; }
+.os-market-stat small { color: var(--muted); font-size: .8rem; }
+.os-market-table { display: grid; }
+.os-market-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.15fr); gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--brand-tint); align-items: start; }
+.os-market-row:last-child { border-bottom: 0; }
+.os-market-row.head { color: var(--muted); font-size: .78rem; font-weight: 700; padding-top: 0; }
+.os-market-row span { min-width: 0; display: grid; }
+.os-market-row b { color: var(--brand-dark); font-size: .88rem; overflow-wrap: anywhere; }
+.os-market-row small { color: var(--muted); font-size: .74rem; }
+.os-market-gaps li, .os-market-districts li { align-items: start; }
+.os-market-gaps li span, .os-market-districts li span { display: grid; min-width: 0; }
+.os-market-gaps li small, .os-market-districts li small { color: var(--muted); font-size: .8rem; }

@@ -114,10 +114,11 @@ test("office identity rows follow the reference: icon, then label and value toge
   assert.match(office, /profileRow\("pin", "", city\)/);
 });
 
-test("office tools that are not built yet are marked «قريبًا» and are not clickable", () => {
-  const count = (office.match(/class: "ref-office-(tool|extra) is-soon"/g) || []).length;
-  assert.equal(count, 1, "the tool card builder must mark the card as inactive");
-  assert.ok((office.match(/text: "قريبًا"/g) || []).length >= 1, "the card builder must show the «قريبًا» label");
-  assert.doesNotMatch(office, /officeTool[^\n]*addEventListener|ref-office-tool[^\n]*onClick/, "inactive tools must not pretend to open something");
-  assert.match(css, /\.ref-office-soon/, "the label needs its own style");
+test("every office tool is a real button that opens its own screen (no «قريبًا» placeholders)", () => {
+  assert.doesNotMatch(office, /class: "ref-office-(tool|extra) is-soon"/, "no tool card is built as inactive");
+  assert.doesNotMatch(office, /text: "قريبًا"/, "no «قريبًا» label on the office page");
+  assert.match(office, /h\("button", \{ type: "button", class: "ref-office-tool"/, "tool cards are buttons");
+  assert.match(office, /card\.addEventListener\("click", \(\) => go\(tool\.route\)\)/, "a tool card opens its route");
+  const app = fs.readFileSync(new URL("../public/os/app.js", import.meta.url), "utf8");
+  assert.match(app, /section === "tools"/, "the app routes #/tools/<id>");
 });

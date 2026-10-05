@@ -60,7 +60,7 @@ function field(label, control, error) {
   return h("label", { class: "os-field" }, h("span", { text: label }), control, error);
 }
 
-/** صورة الوسيط: choose → preview → save, or remove. Falls back to the default mark when there is none. */
+/** شعار المكتب أو صورة الوسيط: choose → preview → save, or remove. The whole image is kept (no crop). Falls back to the default mark when there is none. */
 function photoCard() {
   let pending = null;
   const current = () => (isSafePhotoDataUrl(session.office?.brokerPhotoUrl) ? session.office.brokerPhotoUrl : "");
@@ -97,8 +97,8 @@ function photoCard() {
   return h("section", { class: "os-card os-photo-card", "data-photo-card": "" },
     preview,
     h("div", { class: "os-photo-copy" },
-      h("b", { text: "صورة الوسيط" }),
-      h("small", { text: "تظهر في بطاقة المكتب. بدونها تبقى الصورة الافتراضية." }),
+      h("b", { text: "شعار المكتب أو صورة الوسيط" }),
+      h("small", { text: "تظهر كاملة في بطاقة المكتب دون قص. بدونها يبقى الشعار الافتراضي." }),
       h("div", { class: "os-btn-row" }, choose, save, remove),
       message, file));
 }

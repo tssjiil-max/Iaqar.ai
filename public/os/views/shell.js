@@ -69,13 +69,9 @@ export function renderShellHeader({ active = "office" } = {}) {
     h("div", { class: "ref-shell-title" },
       h("h1", { text: "مكاتب عقارية ذكية" }),
       localTitle ? h("p", { class: "ref-platform-context", text: localTitle }) : null),
-    active !== "repo" ? h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", onClick: openMenu }, ic("bell")) : null,
-    h("button", {
-      type: "button",
-      class: "os-icon-btn ref-menu",
-      "aria-label": active === "repo" ? "رجوع" : "القائمة والإعدادات",
-      onClick: active === "repo" ? () => go("office") : openMenu
-    }, active === "repo" ? ic("chev-left") : ic("gear")));
+    // The same two actions, in the same place and shape, on المكتب / المهام اليومية / العروض والطلبات.
+    h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", onClick: openMenu }, ic("bell")),
+    h("button", { type: "button", class: "os-icon-btn ref-menu", "aria-label": "القائمة والإعدادات", onClick: openMenu }, ic("gear")));
 }
 
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.

@@ -59,6 +59,12 @@ export async function journeysForRecord(officeId, recordId) {
   return [...map.values()];
 }
 
+/** Closed deals (won or lost) of this office — member read by rules, newest handled by the view. */
+export async function listClosedJourneys(officeId, limit = 100) {
+  const snap = await office(officeId).collection("journeys").where("status", "in", ["CLOSED_WON", "CLOSED_LOST"]).limit(limit).get();
+  return snap.docs.map(docData);
+}
+
 export async function listMembers(officeId) {
   const snap = await office(officeId).collection("members").limit(100).get();
   return snap.docs.map(docData);

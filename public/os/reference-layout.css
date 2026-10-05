@@ -78,3 +78,18 @@ html,body{background:var(--surface)}
 .ref-bottom button[aria-current="page"]{color:var(--brand-primary);background:var(--brand-tint)}.ref-bottom button[aria-current="page"] .os-ico{color:var(--brand-primary)}
 .ref-bottom button[aria-current="page"]:before{background:var(--brand-primary)}
 .ref-request{color:var(--brand-primary);background:var(--surface);box-shadow:inset 0 0 0 1px var(--brand-soft)}
+
+/* «مسار الصفقة» stages are buttons: same circles and labels, plus a count badge and a pressed state. */
+.ref-steps>.ref-step{appearance:none;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:center;position:relative;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ref-steps>.ref-step:not(:last-child):after{content:"";position:absolute;width:20%;height:2px;background:var(--brand-line);top:19px;left:-12%}
+.ref-steps>.ref-step>span{position:relative;transition:background .15s ease,color .15s ease}
+.ref-steps>.ref-step:focus-visible>span{outline:3px solid var(--brand-soft);outline-offset:2px}
+.ref-steps>.ref-step:active>span{background:var(--tint-strong)}
+.ref-step-count{position:absolute;top:-5px;inset-inline-end:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--brand-accent);color:#fff;font-size:10px;font-weight:800;font-style:normal;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+.ref-steps .active .ref-step-count{background:var(--brand-dark)}
+.ref-stage-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 10px;min-width:0}
+.ref-stage-head b{font-size:13px;color:var(--brand-dark);min-width:0}
+.ref-stage-all{border:0;background:none;color:var(--brand-primary);font:inherit;font-size:12px;font-weight:700;text-decoration:underline;white-space:nowrap;min-height:32px;padding:0 2px}
+.ref-closed-card .ref-status.is-won{color:var(--ok);background:var(--ok-tint)}
+.ref-closed-card .ref-status.is-lost{color:var(--muted);background:var(--brand-tint)}
+.ref-closed-card .ref-task-copy p{margin-top:2px}
