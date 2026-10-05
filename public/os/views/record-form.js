@@ -8,6 +8,8 @@ import { recordById, state, subscribe } from "../core/state.js";
 import { newRequestKey, runAction, toast } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordInput } from "../domain/records-domain.js";
 import { formatNumber } from "../domain/format-domain.js";
+import { recordImages } from "../domain/record-media-domain.js";
+import { imagePicker } from "./record-images.js";
 
 /** «حالة السعر» for offers: the owner's decision, asked once here (default: قابل للتفاوض). */
 export function priceStatusField(value = "NEGOTIABLE") {
@@ -123,10 +125,14 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     const initialKind = existing ? kindOf(existing) || kind : (kind === RECORD_KIND.REQUEST ? RECORD_KIND.REQUEST : RECORD_KIND.OFFER);
     const values = existing ? { ...existing, price: priceOf(existing) } : {};
     const titleEl = h("h1", { class: "os-page-title", text: existing ? "تعديل السجل" : initialKind === RECORD_KIND.REQUEST ? "إضافة طلب" : "إضافة عرض" });
+    // Photos belong to offers only; the picker hides when the record is a request.
+    const picker = imagePicker({ existing: existing ? recordImages(existing) : [] });
+    picker.el.hidden = initialKind !== RECORD_KIND.OFFER;
     const { form, getKind } = recordFormFields({
       kind: initialKind, values, lockKind: Boolean(existing),
-      onKindChange: (k) => { titleEl.textContent = k === RECORD_KIND.REQUEST ? "إضافة طلب" : "إضافة عرض"; }
+      onKindChange: (k) => { titleEl.textContent = k === RECORD_KIND.REQUEST ? "إضافة طلب" : "إضافة عرض"; picker.el.hidden = k !== RECORD_KIND.OFFER; }
     });
+    form.append(picker.el);
     const saveBtn = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), existing ? "حفظ التعديلات" : "حفظ وفحص المطابقات");
     const formEl = h("form", { class: "os-card", novalidate: true }, form, h("div", { style: { marginTop: "14px" } }, saveBtn));
     formEl.addEventListener("submit", async (event) => {
@@ -135,14 +141,23 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       const local = validateRecordInput(input);
       if (!local.ok) { showRecordErrors(formEl, local.errors); return; }
       clearFieldErrors(formEl);
-      const result = await runAction(saveBtn, () => api("/os/records/save", { officeId: session.officeId, recordId, record: input, requestKey }), {
+      let photos = { uploaded: 0, failed: 0 };
+      const result = await runAction(saveBtn, async () => {
+        const saved = await api("/os/records/save", { officeId: session.officeId, recordId, record: input, requestKey });
+        // The record is saved first; photos follow. A photo that fails never loses the record.
+        if (saved?.ok && !saved.duplicate && getKind() === RECORD_KIND.OFFER && picker.changed()) {
+          try { photos = await picker.commit(saved.recordId); } catch (_) { photos = { uploaded: 0, failed: Math.max(1, picker.count()) }; }
+        }
+        return saved;
+      }, {
         onError: (error) => { if (error.details) showRecordErrors(formEl, error.details); }
       });
       if (!result?.ok) return;
+      if (photos.failed) toast("تم حفظ السجل، وتعذر رفع بعض الصور — أعد إضافتها من «تعديل».", "bad");
       if (result.duplicate && result.duplicateMessage) toast(result.duplicateMessage);
       else if (result.matchingPending) toast("تم الحفظ، وسيُستكمل فحص المطابقة تلقائيًا", "ok");
       else if (result.matches > 0) toast(result.matches === 1 ? "تم الحفظ — ظهرت مطابقة للمراجعة في المهام اليومية" : `تم الحفظ — ظهرت ${result.matches} مطابقات للمراجعة`, "ok");
-      else toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");
+      else if (!photos.failed) toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");
       go(`record/${result.recordId}`);
     });
     clear(container);

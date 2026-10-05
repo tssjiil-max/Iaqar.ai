@@ -50,6 +50,7 @@ import {
 } from "./operations-domain.js";
 import webpush from "web-push";
 import { handleOfficeOs, isOfficeOsPath } from "./office-os/routes.js";
+import { isPublicRecordImagePath, promoteIntakeImages, servePublicRecordImage, uploadRecordImage, workerOriginOf } from "./office-os/record-media-service.js";
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { journeyIdForPair } from "./office-os/journey-service.js";
 import {
@@ -857,6 +858,15 @@ export default {
 
       if (request.method === "DELETE" && url.pathname === "/media/office-cover") {
         return await deleteOfficeImage(request, env, requestId);
+      }
+
+      // Property photos of an offer (Office OS): member upload, unguessable public address.
+      if (request.method === "POST" && url.pathname === "/media/record-image") {
+        return await uploadRecordImage(request, env, officeOsDeps(), { requestId });
+      }
+
+      if (request.method === "GET" && isPublicRecordImagePath(url.pathname)) {
+        return await servePublicRecordImage(url, env, officeOsDeps(), { headers: corsHeaders() });
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/media/public/office-covers/")) {
@@ -2144,6 +2154,13 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
     hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
   }});
+
+  // Photos the owner attached on the office link become the offer's own photos (best effort).
+  if (opportunityKind === "OFFER" && mediaPaths.length) {
+    await promoteIntakeImages(officeOsDeps(), {
+      env, projectId, accessToken, officeId, recordId: opportunityId, mediaPaths, workerOrigin: workerOriginOf(request, env)
+    }).catch((error) => console.warn("[office-os] intake photos not promoted", opportunityId, error?.message));
+  }
 
   const contactId = String(parsed.phone || "").replace(/\D/g, "");
   if (contactId) {
@@ -7131,6 +7148,8 @@ function officeOsDeps() {
         }
       }),
       sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+      // Media bucket for record photos (delete on removal); absent when storage is not configured.
+      mediaBucket: env.IAQAR_MEDIA || null,
       callGemini: (args) => callGeminiGenerateContent({
         env,
         model: String(env.GEMINI_MODEL || "gemini-3.1-flash-lite"),
@@ -8456,7 +8475,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version,X-Public-Slug",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Hub-Signature-256,X-Office-Id,X-Intake-Id,X-Media-Kind,X-Media-Index,X-Office-Image-Variant,X-Source-Id,X-Source-Type,X-File-Name,X-Voice-Context,X-Voice-Duration-Sec,X-Share-Card-Version,X-Public-Slug,X-Record-Id",
     "Access-Control-Max-Age": "86400"
   };
 }

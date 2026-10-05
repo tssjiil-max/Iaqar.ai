@@ -10,6 +10,7 @@ import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
 import { priceStatusField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
+import { imagePicker } from "./record-images.js";
 
 export function publicOfficeTarget() {
   const path = location.pathname;
@@ -72,6 +73,8 @@ function intakeForm(root, office, kind) {
   drawPurpose();
   const price = h("input", { class: "os-input", name: "price", inputmode: "numeric", placeholder: "مثال: 850,000" });
   price.addEventListener("blur", () => { if (price.value) price.value = formatNumber(price.value) || price.value; });
+  // The rules and the Worker accept up to 5 photos from the public link, for offers only.
+  const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
   const form = h("form", { class: "os-card", novalidate: true },
@@ -87,6 +90,7 @@ function intakeForm(root, office, kind) {
         field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric" }), { optional: true }),
         field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true })),
       field(kind === "owner" ? "وصف العقار ومميزاته" : "المواصفات المطلوبة", h("textarea", { class: "os-textarea", name: "notes", maxlength: "900" }), { optional: true }),
+      picker ? picker.el : null,
       field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
       status, submit,
@@ -108,6 +112,8 @@ function intakeForm(root, office, kind) {
     const v = check.value;
     const ok = await runAction(submit, async () => {
       const ref = db().collection("offices").doc(office.id).collection("publicIntake").doc();
+      // Photos first (to this intake's folder); the intake then lists exactly what was stored.
+      const mediaPaths = picker && picker.count() ? await picker.commitToIntake(office.id, ref.id) : [];
       await ref.set({
         officeId: office.id,
         kind,
@@ -122,8 +128,8 @@ function intakeForm(root, office, kind) {
         area: v.area || 0,
         rooms: v.rooms || 0,
         details: v.notes || "",
-        mediaPaths: [],
-        imageCount: 0,
+        mediaPaths,
+        imageCount: mediaPaths.length,
         hasVideo: false,
         source: "office_public_link",
         status: "new",

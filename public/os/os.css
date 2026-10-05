@@ -666,3 +666,28 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-lib-file { display: grid; gap: 4px; }
 .os-lib-meta { margin: 0; color: #4d6a72; font-size: .86rem; }
 .os-lib-file .os-btn-row { flex-wrap: wrap; margin-top: 6px; }
+
+/* ---------- Property photos: picker (form) and gallery (record page) ---------- */
+.os-photos-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 8px; }
+.os-photos-grid:empty { display: none; }
+.os-photo { position: relative; margin: 0; border-radius: 12px; overflow: hidden; background: var(--brand-tint); border: 1px solid var(--brand-line); aspect-ratio: 1; }
+.os-photo.is-main { border-color: var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-soft); }
+.os-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-photo-main { position: absolute; top: 5px; inset-inline-start: 5px; background: var(--brand-primary); color: #fff; font-size: .68rem; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.os-photo-controls { position: absolute; inset-inline: 0; bottom: 0; display: flex; justify-content: center; gap: 3px; padding: 4px; background: linear-gradient(180deg, rgba(8, 47, 58, 0), rgba(8, 47, 58, .62)); }
+.os-photo-btn { width: 30px; height: 30px; border-radius: 9px; border: 0; background: rgba(255, 255, 255, .94); color: var(--brand-dark); display: grid; place-items: center; padding: 0; }
+.os-photo-btn svg { width: 16px; height: 16px; }
+.os-photo-btn[disabled] { opacity: .4; }
+.os-photo-btn[data-photo-action="remove"] { color: var(--bad); }
+.os-photos-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.os-photos-foot .os-btn { min-height: 40px; padding: 6px 14px; }
+.os-photos-foot .os-sub { font-size: .8rem; min-width: 0; flex: 1 1 140px; }
+.os-gallery { display: grid; gap: 6px; margin: 8px 0 4px; }
+.os-gallery-main { border: 0; padding: 0; background: var(--brand-tint); border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 10; display: block; width: 100%; }
+.os-gallery-main img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-gallery-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.os-gallery-strip::-webkit-scrollbar { display: none; }
+.os-gallery-thumb { flex: none; width: 64px; height: 64px; border: 1px solid var(--brand-line); padding: 0; border-radius: 10px; overflow: hidden; background: var(--brand-tint); }
+.os-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.os-photo-full img { width: 100%; height: auto; max-height: 76vh; object-fit: contain; border-radius: 12px; display: block; background: var(--brand-tint-2); }
+@media (max-width: 340px) { .os-photo-btn { width: 26px; height: 26px; } .os-photo-controls { gap: 2px; padding: 3px; } }

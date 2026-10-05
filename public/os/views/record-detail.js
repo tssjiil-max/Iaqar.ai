@@ -11,6 +11,7 @@ import { MISSING_LABELS, RECORD_KIND, recordView } from "../domain/records-domai
 import { JOURNEY_STATUS_LABEL, STAGE_LABEL, isJourneyOpen } from "../domain/journey-domain.js";
 import { buildWhatsAppUrl, formatDateTime } from "../domain/format-domain.js";
 import { archiveRecordFlow, pauseRecordFlow, removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
+import { imageGallery } from "./record-images.js";
 
 function fact(iconName, label, value) {
   if (!value) return null;
@@ -95,7 +96,7 @@ export function renderRecordDetail(container, { recordId }) {
         h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel}` }),
         h("span", { class: `os-badge${view.state === "ACTIVE" ? "" : " muted"}`, "data-record-state": view.state, text: view.lifecycleLabel })),
       h("h2", { class: "os-task-title", text: view.title }),
-      isRequest ? h("p", { class: "os-sub", text: "احتياج العميل ومواصفاته وميزانيته." }) : null,
+      isRequest ? h("p", { class: "os-sub", text: "احتياج العميل ومواصفاته وميزانيته." }) : imageGallery(record),
       h("div", { class: "os-facts", style: { marginTop: "10px" } },
         fact("coins", isRequest ? "الميزانية" : "السعر", view.priceLabel.replace(/^(السعر|الميزانية) /, "")),
         isRequest ? null : fact("tag", "حالة السعر", view.priceStatusLabel),
